@@ -587,13 +587,19 @@ button.harness-chip:disabled {
   margin-left: auto;
 }
 
-/* The panel grows out of its chip: from the chip's corner (the panel opens above it, or below when short
-   of room) it fades in as a clip uncovers it, and closing furls it back into that corner instead of
-   shrinking, so nothing ever scales. Phones keep the sheet's own motion. */
+/* The panel grows out of its chip: measured from the chip's rect where the Web Animations API runs
+   (model-morph.ts sets data-morph and uncovers from there), else from the chip's corner via the keyframes
+   below. Either way it fades in as a clip uncovers it, and closing furls it back into that corner.
+   Phones keep the sheet's own motion. */
 @media (min-width: 820px) {
   .model-picker .model-pop {
     transform-origin: bottom left;
     animation: model-grow var(--dur-spring) var(--spring);
+  }
+
+  /* A measured morph replaces the keyframed corner grow; the furl below still closes it. */
+  .model-picker .model-pop[data-morph]:not(.is-leaving) {
+    animation: none;
   }
 
   .model-picker .model-pop.is-below {
@@ -603,6 +609,8 @@ button.harness-chip:disabled {
   .model-picker .model-pop.is-leaving {
     pointer-events: none;
     animation: model-furl var(--dur-hover) var(--ease-out) forwards;
+  }
+
   .model-picker .model-pop.is-below.is-leaving {
     animation-name: model-furl-below;
   }

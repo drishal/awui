@@ -7,6 +7,7 @@ import type { ModelInfo } from "../../shared/protocol.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { IconCheck, IconChevronDown, IconRefresh, IconSearch, Spinner } from "../icons.js";
 import { groupModels, type ModelGroup } from "../model-search.js";
+import { morphClip } from "../model-morph.js";
 import { load, save } from "../storage.js";
 import { Dot } from "./Dot.js";
 
@@ -111,6 +112,25 @@ export function ModelPicker({
     // Runs only when the picker opens.
   }, [open]);
 
+  const pop = useRef<HTMLDivElement>(null);
+  // The measured morph (A8): once the panel mounts, uncover it from the chip's rect instead of the
+  // keyframed corner. Phones keep the sheet's own motion, reduced motion stays still, and browsers
+  // without the Web Animations API keep the CSS keyframes.
+  useLayoutEffect(() => {
+    if (!showPop || leaving) return;
+    const panel = pop.current;
+    const chip = trigger.current;
+    if (!panel || !chip || typeof panel.animate !== "function") return;
+    if (window.matchMedia?.("(pointer: coarse)").matches) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    panel.dataset.morph = "";
+    const anim = panel.animate(
+      [{ clipPath: morphClip(chip.getBoundingClientRect(), panel.getBoundingClientRect()), opacity: "0" }, { clipPath: "inset(-24px)", opacity: "1" }],
+      { duration: 180, easing: getComputedStyle(panel).getPropertyValue("--ease-out") || "ease-out" },
+    );
+    return () => anim.cancel();
+  }, [showPop, leaving]);
+
   useEffect(() => {
     if (!open) return;
     document.getElementById(`${listId}-opt-${active}`)?.scrollIntoView({ block: "nearest" });
@@ -188,6 +208,7 @@ export function ModelPicker({
         <>
           <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(false)} />
           <div
+            ref={pop}
             className={`model-pop${place.below ? " is-below" : ""}${leaving ? " is-leaving" : ""}`}
             role="dialog"
             aria-label="Choose a model"

@@ -51,6 +51,8 @@ test("typing on the focused model chip opens the picker with that text searched"
   await page.keyboard.type("gpt55");
   const dialog = page.getByRole("dialog", { name: "Choose a model" });
   await expect(dialog).toBeVisible();
+  // The panel morphs out of the chip's measured rect, not just its corner.
+  await expect(dialog).toHaveAttribute("data-morph", "");
   await expect(page.getByRole("combobox", { name: "Search models" })).toHaveValue("gpt55");
   await expect(dialog.getByRole("option")).toHaveText([/GPT-5\.5/, /GPT-5\.5 Mini/]);
   // The first match is the one Enter takes.
