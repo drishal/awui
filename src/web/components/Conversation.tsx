@@ -177,51 +177,50 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   const [asked, setAsked] = useState(false);
   const factText = sentence.facts.join(" · ");
   const status = STATUS_WORD[item.status];
-  const label = `${sentence.text}${factText ? `, ${factText}` : ""}${time ? `, ${time}` : ""}, ${status}`;
+  // The reason rides inside the row, where the label would otherwise hide it from a screen reader.
+  const label = `${sentence.text}${factText ? `, ${factText}` : ""}${sentence.error ? `, ${sentence.error}` : ""}${time ? `, ${time}` : ""}, ${status}`;
   return (
     <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} data-testid="tool-row" data-tool={item.name} data-status={item.status}>
       <div className="drow tool-line">
-        <button type="button" className="drow-head tool-head" aria-expanded={open} aria-label={label} onClick={() => setOpen((v) => !v)}>
-          <KindChip kind={kind} running={running} />
-          <span className="tool-sentence">
-            <span className="tool-verb">{sentence.verb}</span>
-            {sentence.target ? <> <span className={sentence.code ? "tool-target is-code" : "tool-target"}>{sentence.target}</span></> : null}
-            {sentence.rest ? (sentence.rest.startsWith(":") ? sentence.rest : <> {sentence.rest}</>) : null}
-          </span>
-          <span className="tool-facts">
-            {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : factText ? <span className="tool-fact">{factText}</span> : null}
-            {time ? <span className="tool-time"><Rolling text={time} /></span> : null}
-          </span>
-          <span className="tool-status" role="img" aria-label={status}>
-            {running ? <Spinner size={14} /> : failed ? <IconAlertCircle size={15} /> : <IconCheck size={14} draw={live} />}
-          </span>
-          <IconChevronDown size={14} className="tool-chevron" />
-        </button>
-        {sentence.error || (failed && retry) ? (
-          <div className="tool-failure">
-            {sentence.error ? (
-              <div className="tool-error" data-testid="tool-error">
-                {sentence.error}
-              </div>
-            ) : null}
-            {failed && retry ? (
-              <button
-                type="button"
-                className="btn btn-small btn-ghost tool-retry"
-                aria-label={retryLabel(item, workspace)}
-                disabled={retry.mode === "blocked" || asked}
-                title={retry.mode === "blocked" ? "This agent cannot take a message while it works" : retry.mode === "queue" ? "Queued as a follow-up for when the agent is free" : "Ask the agent to run this call again"}
-                onClick={() => {
-                  setAsked(true);
-                  retry.send(retryPrompt(item, workspace));
-                }}
-              >
-                <IconRefresh size={13} />
-                {asked ? (retry.mode === "queue" ? "Queued" : "Asked") : "Ask to retry"}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+        <div className="tool-row-line">
+          <button type="button" className="drow-head tool-head" aria-expanded={open} aria-label={label} onClick={() => setOpen((v) => !v)}>
+            <KindChip kind={kind} running={running} />
+            <span className="tool-sentence">
+              <span className="tool-verb">{sentence.verb}</span>
+              {sentence.target ? <> <span className={sentence.code ? "tool-target is-code" : "tool-target"}>{sentence.target}</span></> : null}
+              {sentence.rest ? (sentence.rest.startsWith(":") ? sentence.rest : <> {sentence.rest}</>) : null}
+              {sentence.error ? (
+                <span className="tool-error" data-testid="tool-error">
+                  {sentence.error}
+                </span>
+              ) : null}
+            </span>
+            <span className="tool-facts">
+              {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : factText ? <span className="tool-fact">{factText}</span> : null}
+              {time ? <span className="tool-time"><Rolling text={time} /></span> : null}
+            </span>
+            <span className="tool-status" role="img" aria-label={status}>
+              {running ? <Spinner size={14} /> : failed ? <IconAlertCircle size={15} /> : <IconCheck size={14} draw={live} />}
+            </span>
+            <IconChevronDown size={14} className="tool-chevron" />
+          </button>
+          {failed && retry ? (
+            <button
+              type="button"
+              className="btn btn-small btn-ghost tool-retry"
+              aria-label={asked ? (retry.mode === "queue" ? "Retry queued" : "Retry asked") : retryLabel(item, workspace)}
+              disabled={retry.mode === "blocked" || asked}
+              title={retry.mode === "blocked" ? "This agent cannot take a message while it works" : retry.mode === "queue" ? "Queued as a follow-up for when the agent is free" : "Ask the agent to run this call again"}
+              onClick={() => {
+                setAsked(true);
+                retry.send(retryPrompt(item, workspace));
+              }}
+            >
+              <IconRefresh size={13} />
+              <span className="tool-retry-text">{asked ? (retry.mode === "queue" ? "Queued" : "Asked") : "Ask to retry"}</span>
+            </button>
+          ) : null}
+        </div>
         <Collapse open={open} unfurl>
           <div className="drow-body">
             {item.subagents ? (

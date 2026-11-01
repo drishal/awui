@@ -247,22 +247,23 @@
   transform: rotate(180deg);
 }
 
-/* A failure's reason in one muted line under its sentence (and a test run's failing test), the retry beside it. */
-.tool-failure {
+/* A failed call is still one row: the reason rides at the end of its sentence, muted, and the retry button
+   shares the row. The reason steps aside while the call is open, since its output says it in full. */
+.tool-row-line {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-right: 12px;
+  min-width: 0;
 }
 
-.tool-failure .tool-error {
+.tool-row-line > .tool-head {
   flex: 1 1 auto;
   min-width: 0;
 }
 
 .tool-retry {
   flex: none;
-  margin-bottom: 6px;
+  margin-right: 12px;
 }
 
 .tool-retry .icon {
@@ -270,13 +271,17 @@
 }
 
 .tool-error {
-  padding: 0 8px 6px 38px;
-  overflow: hidden;
-  color: var(--text-2);
+  color: var(--muted-text);
   font-family: var(--font-mono);
   font-size: calc(var(--chat-small) - 0.6px);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.tool-error::before {
+  content: " · ";
+}
+
+.tool-row.is-open > .tool-line > .tool-row-line > .tool-head .tool-error {
+  display: none;
 }
 
 .tool-line .drow-body {
@@ -289,8 +294,8 @@
   background: var(--code-bg);
 }
 
-/* An opened call is one tile: its sentence, any failure line, and its body share the code surface, with no rule
-   between them (a hover still shades the sentence: --hover is see-through). */
+/* An opened call is one tile: its sentence and its body share the code surface, with no rule between them
+   (a hover still shades the sentence: --hover is see-through). */
 .tool-line {
   transition: background-color var(--dur-hover) ease;
 }
@@ -312,14 +317,7 @@
 /* What the body spells out in full (the whole command, the file, the address: ToolBody's .names-target) leaves the
    sentence, so the opened call says it once: the verb and the facts head the tile, and the body carries on under
    them. The chain is exact, so a subagent's own calls, deeper in, never hide their parent's sentence. */
-.tool-row.is-open:has(> .tool-line > .collapse > .collapse-inner > .drow-body > .tool-body > .names-target) > .tool-line > .tool-head .tool-target {
-  display: none;
-}
-
-/* The reason line under a failed call (or a test run's failing test) is read from its output, which the opened
-   tile shows: open, only its retry stays. */
-.tool-row.is-open > .tool-line > .tool-failure > .tool-error,
-.tool-row.is-open > .tool-line > .tool-failure:not(:has(.tool-retry)) {
+.tool-row.is-open:has(> .tool-line > .collapse > .collapse-inner > .drow-body > .tool-body > .names-target) > .tool-line > .tool-row-line > .tool-head .tool-target {
   display: none;
 }
 
@@ -412,21 +410,23 @@
     min-height: 32px;
   }
 
-  /* The retry button takes the full width under the error line. */
-  .tool-failure {
-    flex-wrap: wrap;
-    padding: 0 8px 8px 38px;
+  /* The retry is a round mark on touch: its words would leave the sentence too little room for the reason. */
+  .tool-retry {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    margin-right: 6px;
+    padding: 0;
   }
 
-  .tool-failure .tool-error {
-    flex: 1 0 100%;
-    padding: 0 0 6px;
+  /* The words are gone, so the mark centres itself. */
+  .tool-retry-text {
+    display: none;
   }
 
-  .tool-failure .tool-retry {
-    flex: 1 0 100%;
-    min-height: 44px;
-    margin: 0;
+  .tool-retry .icon {
+    margin-right: 0;
   }
 }
 

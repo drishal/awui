@@ -91,8 +91,13 @@ test("a failed call tints its row with the reason, opens its card, and the tally
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   const row = page.locator('[data-tool="bash"]');
   await expect(row).toHaveAttribute("data-status", "error");
-  await expect(row.locator(".tool-sentence")).toHaveText("Couldn't run npm run e2e");
+  await expect(row.locator(".tool-sentence")).toContainText("Couldn't run npm run e2e");
   await expect(row.getByTestId("tool-error")).toHaveText("Error: port 4791 is already in use");
+  // One line: the reason shares the sentence's line, and the row is no taller than its head.
+  const [sentenceBox, reasonBox] = [await row.locator(".tool-sentence").boundingBox(), await row.getByTestId("tool-error").boundingBox()];
+  expect(reasonBox!.y).toBeLessThan(sentenceBox!.y + sentenceBox!.height);
+  const [rowBox, headBox] = [await row.boundingBox(), await row.locator(".tool-head").boundingBox()];
+  expect(rowBox!.height).toBeLessThanOrEqual(headBox!.height + 2);
   await expect(row.locator('.tool-status[aria-label="failed"]')).toBeVisible();
   const tint = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(tint).not.toBe("rgba(0, 0, 0, 0)");
@@ -136,6 +141,9 @@ test("Ask to retry sends a prompt naming the call when idle, and only the latest
   const retry = page.getByRole("button", { name: "Ask the agent to retry running npm run e2e" });
   await expect(retry).toBeVisible();
   await expect(retry).toHaveText("Ask to retry");
+  // The button shares the call's line: the failed row is one line, not two.
+  const [retryBox, sentenceBox] = [await retry.boundingBox(), await page.locator('[data-tool="bash"] .tool-sentence').last().boundingBox()];
+  expect(retryBox!.y).toBeLessThan(sentenceBox!.y + sentenceBox!.height);
   await retry.click();
   await expect(page.getByTestId("user-prompt").last()).toHaveText("Retry the failed tool call (running npm run e2e). It failed with: Error: port 4791 is already in use");
   await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });
@@ -153,7 +161,7 @@ test("an earlier turn's failed call has no retry while a new turn runs", async (
 
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-  test("the facts sit under the sentence and the retry button is full width", async ({ page }) => {
+  test("the facts sit under the sentence and the retry stays on the call's line", async ({ page }) => {
     await signInAndOpen(page);
     await page.keyboard.press("Escape");
     await newChat(page);
@@ -163,8 +171,11 @@ test.describe("on a phone", () => {
     expect(facts!.y).toBeGreaterThan(sentence!.y + sentence!.height - 2);
     const failed = page.locator('[data-status="error"]');
     const [button, card] = [await failed.getByRole("button", { name: /^Ask the agent to retry/ }).boundingBox(), await failed.boundingBox()];
-    expect(button!.width).toBeGreaterThan(card!.width * 0.7);
-    expect(button!.height).toBeGreaterThanOrEqual(44);
+    // One line: the button sits inside the call's row, finger-sized, not under it.
+    expect(button!.y).toBeGreaterThanOrEqual(card!.y - 1);
+    expect(button!.y + button!.height).toBeLessThanOrEqual(card!.y + card!.height + 1);
+    expect(button!.width).toBeLessThan(card!.width * 0.7);
+    expect(button!.height).toBeGreaterThanOrEqual(32);
   });
 });
 
