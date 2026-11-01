@@ -260,15 +260,23 @@
   transition: opacity 0.12s var(--ease-out);
 }
 
-.collapse.is-unfurl:not(.is-open) {
+/* Shutting on the spring (Collapse.tsx's measured height, with a few pixels of give as it lands): the rows stay
+   at 1fr, so the body is laid out whole and the moving edge clips it, as when it unfurls. */
+.collapse.is-unfurl.is-shutting {
+  grid-template-rows: 1fr;
+  transition: none;
+  opacity: 1;
+}
+
+.collapse.is-unfurl:not(.is-open):not(.is-shutting) {
   transition:
-    grid-template-rows 0.24s var(--ease-out),
+    grid-template-rows 0.24s var(--ease-spring),
     opacity 0.14s ease 0.1s;
 }
 
 .collapse.is-unfurl > .collapse-inner > * {
   transform: translateY(-10px);
-  transition: transform 0.24s var(--ease-out);
+  transition: transform 0.22s var(--ease-spring);
 }
 
 .collapse.is-unfurl.is-open > .collapse-inner > * {

@@ -8,7 +8,7 @@ import type { AssistantItem, ChatItem, ChatStatus, ImageRef, NoticeItem, Request
 import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronUp, IconClock, IconCopy, IconEdit, IconFile, IconFork, IconImage, IconInfo, IconLink, IconRefresh, IconSearch, IconSpark, IconUndo, IconWarning, IconX, RaySpinner, Spinner, ToolIcon } from "../icons.js";
 import { promptLink } from "../prompt-link.js";
 import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
-import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, latestThought, modelName, modelSwitches, relativePath, sameChangeStat, saysSomething, toolLabel, type ChangeStat, type Turn, workAfterSegment, workSegments, type WorkSegment } from "../turns.js";
+import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, latestThought, modelName, modelSwitches, relativePath, sameChangeStat, saysSomething, segmentStartsOpen, toolLabel, type ChangeStat, type Turn, workAfterSegment, workSegments, type WorkSegment } from "../turns.js";
 import { useNow } from "../hooks.js";
 import { callTime, toolSentence } from "../tool-sentence.js";
 import { phaseDelay, workingPhase } from "../working-phase.js";
@@ -61,6 +61,7 @@ function DisclosureRow({
   tone,
   children,
   defaultOpen = false,
+  autoOpen,
   hideSummaryWhenOpen = false,
   testId,
 }: {
@@ -74,11 +75,15 @@ function DisclosureRow({
   tone?: "error" | "warn";
   children?: React.ReactNode;
   defaultOpen?: boolean;
+  /** Open by itself while this is true (a thought still streaming); a click takes over from it. */
+  autoOpen?: boolean;
   /** The summary previews the body (thought's first line): hide it once open. */
   hideSummaryWhenOpen?: boolean;
   testId?: string;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  // Its own state only once someone touched it: until then it follows `autoOpen` (a thought that is streaming).
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const open = chosen ?? autoOpen ?? defaultOpen;
   const expandable = children !== undefined && children !== null && children !== false;
   return (
     <div className={`drow${open ? " is-open" : ""}${tone ? ` tone-${tone}` : ""}`} data-testid={testId}>
@@ -87,7 +92,7 @@ function DisclosureRow({
         className="drow-head"
         aria-expanded={expandable ? open : undefined}
         disabled={!expandable}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setChosen(!open)}
       >
         <span className="drow-lead">
           <span className="drow-icon">{icon}</span>
@@ -123,16 +128,26 @@ function firstLine(text: string): string {
 /** Past this many lines a call's output scrolls in its panel, and "Full output" opens it in a sheet. */
 const FULL_OUTPUT_LINES = 16;
 
+/** A thought reads itself out while it streams, then folds to its first line once the agent moves on. */
 const ThoughtRow = memo(function ThoughtRow({ thinking, streaming }: { thinking: string; streaming: boolean }) {
+  const body = useRef<HTMLDivElement>(null);
+  // Its body is capped, so a long thought scrolls itself: the newest words stay in view as they arrive.
+  useEffect(() => {
+    const el = body.current;
+    if (streaming && el) el.scrollTop = el.scrollHeight;
+  }, [thinking, streaming]);
   return (
     <DisclosureRow
       icon={streaming ? <Spinner size={13} /> : <IconSpark size={14} />}
       title={streaming ? "Thinking" : "Thought"}
       summary={<span className="drow-prose">{firstLine(thinking)}</span>}
+      autoOpen={streaming}
       hideSummaryWhenOpen
       testId="thought-row"
     >
-      <div className="thought-body">{thinking}</div>
+      <div className="thought-body" ref={body}>
+        {thinking}
+      </div>
     </DisclosureRow>
   );
 });
@@ -806,8 +821,9 @@ function ProcessFold({
   const foldId = segment?.key ?? turn.id;
   const items = segment?.items ?? turn.process;
   const failedCalls = items.filter((item) => item.kind === "tool" && item.status === "error").length;
-  // A fold nobody touched follows its turn, and stays open when a call in it failed, so the failure is seen.
-  const open = foldId === turn.id ? turnOpen : (folds[foldId] ?? (turnOpen || failedCalls > 0));
+  // A fold nobody touched follows its turn: the stretch still running is open, one that ended in a reply folds
+  // away as the reply lands, and a failed call keeps its stretch open so the failure is seen.
+  const open = segment === undefined ? turnOpen : (folds[foldId] ?? segmentStartsOpen(turnOpen, segment, failedCalls));
   const live = turn.live && (place === undefined || place === "last");
   const now = useNow(live);
   // Seen working: when the run settles in view, the spinner gives way to a check that draws itself.
@@ -827,12 +843,18 @@ function ProcessFold({
   const thought = live && !open ? latestThought(turn) : null;
   const root = useRef<HTMLDivElement>(null);
   const wantFailed = useRef(false);
-  const showFailed = () => {
-    const row = root.current?.querySelector<HTMLElement>(".tool-row.is-failed .tool-head");
+  // Goes to the first failed row once it is drawn. A body that had fully left after closing mounts its rows a
+  // frame or two into reopening, so the row is waited for rather than missed (the card is still open meanwhile).
+  const showFailed = (frames = 12) => {
+    const card = root.current;
+    if (!card?.classList.contains("is-open")) return;
+    const row = card.querySelector<HTMLElement>(".tool-row.is-failed .tool-head");
     if (row) {
       row.scrollIntoView({ block: "center" });
       row.focus();
+      return;
     }
+    if (frames > 0) requestAnimationFrame(() => showFailed(frames - 1));
   };
   // The tally opens the card, then goes to the first failed row once it is drawn.
   useEffect(() => {
@@ -1551,7 +1573,7 @@ export function Conversation({
                   ) : null}
                   <TurnView
                     turn={turn}
-                    open={overrides[turn.id] ?? (turn.live || [...turn.process, ...turn.workAfter].some((i) => i.kind === "tool" && i.status === "error"))}
+                    open={overrides[turn.id] ?? turn.live}
                     onToggle={onToggle}
                     workspace={workspace}
                     canFork={canFork}

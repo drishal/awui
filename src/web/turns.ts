@@ -246,6 +246,16 @@ export function workAfterSegment(turn: Turn): WorkSegment | null {
   return { key: `${turn.id}#after`, items: turn.workAfter, reply: null, counts: workCounts(turn.workAfter), answerAt: -1 };
 }
 
+/**
+ * Whether a stretch's fold starts open: the one still running is open, while a stretch that already ends in a
+ * reply has been read, so it folds away as the reply lands. A live failed call keeps its stretch open (its
+ * failure is being seen now); a settled turn opens nothing, and its failures are read from the tally.
+ */
+export function segmentStartsOpen(turnOpen: boolean, segment: WorkSegment, failedCalls: number): boolean {
+  if (!turnOpen) return false;
+  return failedCalls > 0 || segment.reply === null;
+}
+
 /** What a stretch of work ran, by kind: the fold's summary line. */
 export function workCounts(items: ChatItem[]): Partial<Record<ToolCategory, number>> {
   const counts: Partial<Record<ToolCategory, number>> = {};

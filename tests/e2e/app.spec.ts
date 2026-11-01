@@ -319,6 +319,8 @@ test("hovering a turn shows when it was sent and how fast it went", async ({ pag
   await signInAndOpen(page);
   await newChat(page);
   await sendAndWait(page, "when was this");
+  // A settled turn's card shuts on its spring: let it land, so the rows below are measured at rest.
+  await expect(page.getByTestId("turn").last().locator(".collapse")).toHaveCount(0);
   const turn = page.getByTestId("turn").last();
   // The prompt's time sits among its actions, with the full date on its title.
   const when = turn.locator(".prompt-time");
@@ -334,7 +336,9 @@ test("hovering a turn shows when it was sent and how fast it went", async ({ pag
   const before = await row.boundingBox();
   await turn.getByTestId("answer").hover();
   await expect(timing).toHaveCSS("opacity", "1");
-  expect(await row.boundingBox()).toEqual(before);
+  // Hovering fades the timing in; the row itself must not move (within a pixel: sub-pixel rounding is noise).
+  const after = await row.boundingBox();
+  for (const edge of ["x", "y", "width", "height"] as const) expect(Math.abs(after![edge] - before![edge])).toBeLessThan(1);
   // Keyboard focus anywhere in the answer shows it too.
   await page.mouse.move(0, 0);
   await expect(timing).toHaveCSS("opacity", "0");
@@ -1559,4 +1563,41 @@ test("each stretch of a turn's work opens on its own", async ({ page }) => {
   await folds.nth(0).click();
   await expect(folds.nth(0)).toHaveAttribute("aria-expanded", "false");
   await expect(folds.nth(1)).toHaveAttribute("aria-expanded", "true");
+});
+
+test("a thought reads itself out while it streams, then folds to one line when the tool call starts", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "slowthought please");
+  // The answer has a thought row of its own later; pin this one by its text.
+  const thought = page.getByTestId("thought-row").filter({ hasText: "Looking for the card's model" });
+  const head = thought.locator(".drow-head");
+  // Streaming: it is open by itself, so its text is readable as it arrives.
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+  await expect(thought.locator(".thought-body")).toBeVisible();
+  // The command starts: the row folds back to its first line, without a click.
+  await expect(head).toHaveAttribute("aria-expanded", "false", { timeout: 20_000 });
+  await expect(thought).toContainText("Looking for the card's model");
+  await expect(thought.locator(".thought-body")).toBeHidden();
+  // Once it is past, a click still opens it for reading.
+  await head.click();
+  await expect(thought.locator(".thought-body")).toBeVisible();
+});
+
+test("work above a reply folds away as the reply lands, while the work after it stays open", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "workreply slow please");
+  const turn = page.getByTestId("turn").last();
+  const cards = turn.locator(".process-card");
+  await expect(turn.getByTestId("interim-reply")).toContainText("The build is fine");
+  // The stretch the agent is working in holds the command, and stays open...
+  await expect(cards.last()).toContainText("npm test");
+  await expect(cards.last().getByTestId("process-toggle")).toHaveAttribute("aria-expanded", "true");
+  // ...while the one that ended in the reply has been read, so it folds shut on its own.
+  await expect(cards.first().getByTestId("process-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });
+  // Settled, everything is shut, as an old chat opens.
+  await expect(cards.first().getByTestId("process-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(cards.last().getByTestId("process-toggle")).toHaveAttribute("aria-expanded", "false");
 });

@@ -545,6 +545,25 @@ class FakeLiveChat implements LiveChat {
         await this.think(WIDE_THOUGHT, signal);
         await this.call({ name: "bash", args: { command: "udevadm info /sys/class/sound/card0" }, output: "E: ID_MODEL=ACCENTUM_Plus" }, signal);
       }
+      if (/\bslowthought\b/i.test(text)) {
+        // A thought read out slowly, then a command: the row is open while it streams and folds once the call starts.
+        await this.think("Looking for the card's model, then its driver, before running the command.", signal, 8);
+        await this.call({ name: "bash", args: { command: "npm run check" }, output: "ok" }, signal);
+      }
+      if (/\bworkreply\b/i.test(text)) {
+        // Work, a reply to the user, then work again: the stretch above the reply folds away as the reply lands.
+        // Two calls a side, so each stretch is a card with a header (one call is a row of its own), and the
+        // second side's command prints a line at a time, so a test can look while the run goes.
+        await this.call({ name: "bash", args: { command: "npm run build" }, output: "built" }, signal);
+        await this.call({ name: "read", args: { path: "dist/index.js" }, output: "// built" }, signal);
+        await this.reply("The build is fine; now the tests.", signal);
+        const lines = Array.from({ length: 6 }, (_, i) => ` \u2713 tests/unit/case-${i + 1}.test.ts`);
+        await this.call(
+          { name: "bash", args: { command: "npm test" }, output: lines.join("\n"), updates: lines.map((_, i) => lines.slice(0, i + 1).join("\n")) },
+          signal,
+        );
+        await this.call({ name: "read", args: { path: "test-results/last.txt" }, output: "all good" }, signal);
+      }
       if (/\bafterreply\b/i.test(text)) {
         // The answer, then a tool call after it: that work keeps its place below the reply.
         await this.reply("The answer comes first.\n\nThen the agent keeps working.", signal);
@@ -671,10 +690,10 @@ class FakeLiveChat implements LiveChat {
   }
 
   /** A step that only thinks: no text and no call, as a model narrates between its calls. */
-  private async think(thinking: string, signal: AbortSignal): Promise<void> {
+  private async think(thinking: string, signal: AbortSignal, factor = 1): Promise<void> {
     this.emit({ type: "assistant_start", model: this.model });
     for (const chunk of chunks(thinking, Math.ceil(thinking.length / 6))) {
-      await this.pause(signal);
+      await this.pause(signal, factor);
       this.emit({ type: "assistant_delta", field: "thinking", delta: chunk });
     }
     this.record({ role: "assistant", content: [{ type: "thinking", thinking }], stopReason: "stop", model: this.model });

@@ -87,7 +87,10 @@ test("a failed call tints its row with the reason, opens its card, and the tally
   // Two calls, so the card has a header and its tally.
   await sendAndWait(page, "tool toolfail");
   const toggle = page.getByTestId("process-toggle").last();
-  // A failed run stays open once it settles.
+  // Settled, the card is shut like every other one: the failure shows as the tally and the tint...
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("failed-tally")).toHaveText("1 failed");
+  await page.getByTestId("failed-tally").click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   const row = page.locator('[data-tool="bash"]');
   await expect(row).toHaveAttribute("data-status", "error");
@@ -104,6 +107,13 @@ test("a failed call tints its row with the reason, opens its card, and the tally
   // Closed, the tally opens the card and puts focus on the failed row.
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await page.getByTestId("failed-tally").click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(row.locator(".tool-head")).toBeFocused();
+  // A body that has fully left after closing (its rows unmount 330 ms later) must still take the focus.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await page.waitForTimeout(400);
   await page.getByTestId("failed-tally").click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(row.locator(".tool-head")).toBeFocused();
@@ -166,6 +176,10 @@ test.describe("on a phone", () => {
     await page.keyboard.press("Escape");
     await newChat(page);
     await sendAndWait(page, "testrun toolfail");
+    // Settled cards are shut (their bodies unmount after the shut): open the card before measuring its rows.
+    const toggle = page.getByTestId("process-toggle").last();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
     const row = page.locator('[data-tool="bash"]').first();
     const [sentence, facts] = [await row.locator(".tool-sentence").boundingBox(), await row.locator(".tool-facts").boundingBox()];
     expect(facts!.y).toBeGreaterThan(sentence!.y + sentence!.height - 2);

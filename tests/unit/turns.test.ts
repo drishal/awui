@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatItem } from "../../src/shared/protocol.js";
-import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, modelName, modelSwitches, relativePath, saysSomething, latestThought, readsAsReply, workAfterSegment, workSegments, toolLabel } from "../../src/web/turns.js";
+import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, modelName, modelSwitches, relativePath, saysSomething, latestThought, readsAsReply, segmentStartsOpen, workAfterSegment, workSegments, toolLabel, type WorkSegment } from "../../src/web/turns.js";
 
 const tool = (id: string, category: "read" | "edit" | "command", extra: Record<string, unknown> = {}): ChatItem => ({
   kind: "tool",
@@ -210,6 +210,23 @@ describe("replies between tool calls", () => {
   });
 });
 
+describe("a stretch's fold", () => {
+  // Work, then a reply, then more work (still running): the first stretch ends in a reply, the second is live.
+  const [turn] = buildTurns([{ kind: "user", id: "u1", text: "go" }, { kind: "assistant", id: "r1", text: "a reply", thinking: "", streaming: false }, tool("t1", "command")], "running");
+  const [replied, running] = turn ? workSegments(turn) : [];
+  expect(replied?.reply?.id).toBe("r1");
+  expect(running?.reply).toBeNull();
+
+  it("is open while its work still runs, and folds away once a reply lands after it", () => {
+    expect(segmentStartsOpen(true, running as WorkSegment, 0)).toBe(true);
+    expect(segmentStartsOpen(true, replied as WorkSegment, 0)).toBe(false);
+  });
+  it("is shut on a settled turn, even around a failure, and stays open around a live one", () => {
+    expect(segmentStartsOpen(false, running as WorkSegment, 0)).toBe(false);
+    expect(segmentStartsOpen(false, replied as WorkSegment, 1)).toBe(false);
+    expect(segmentStartsOpen(true, replied as WorkSegment, 1)).toBe(true);
+  });
+});
 describe("a message streaming after a reply", () => {
   it("leaves the reply where it is, from the first token to the settled turn", () => {
     const reply: ChatItem = { kind: "assistant", id: "a1", text: "Done — 2/3 complete.\n\n- [x] a\n- [x] b\n- [ ] c", thinking: "", streaming: false };
