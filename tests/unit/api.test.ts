@@ -275,6 +275,25 @@ describe("chat lifecycle over HTTP + SSE", () => {
     expect((await agent.post("/api/chats/resume").send({ harnessId: "fake", workspaceId: ws.id, sessionId: "fake:unknown" })).status).toBe(404);
   });
 
+  it("lists a harness's models for a folder before any chat exists", async () => {
+    const { agent, ws } = await setup();
+    const res = await agent.get(`/api/harnesses/fake/models?workspaceId=${ws.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.models.map((m: { key: string }) => m.key)).toContain("fake/slow");
+    expect((await agent.get("/api/harnesses/fake/models?workspaceId=missing")).status).toBe(404);
+    expect((await agent.get("/api/harnesses/missing/models?workspaceId=" + ws.id)).status).toBe(404);
+  });
+
+  it("starts a chat on the model picked on the start screen", async () => {
+    const { agent, ws, t } = await setup();
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id, model: "fake/slow" })).body as ChatSnapshot;
+    expect(chat.config.model).toBe("fake/slow");
+    // A model the harness refuses leaves no half-made chat behind.
+    const refused = await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id, model: "nope/nope" });
+    expect(refused.status).toBe(422);
+    expect(t.manager.list().filter((c) => c.status !== "disposed")).toHaveLength(1);
+  });
+
   it("round-trips an approval request; first answer wins, late answers get 409", async () => {
     const { agent, ws, t } = await setup();
     const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;

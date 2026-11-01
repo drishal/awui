@@ -61,6 +61,23 @@ test("typing and Enter create exactly one chat, with its prompt and answer", asy
   await expect(page.locator(".session", { hasText: "hello from the start" })).toBeVisible();
 });
 
+test("the start screen picks the model the chat starts on", async ({ page }) => {
+  await signInAndOpen(page);
+  // The chip reads its list from the harness for this folder; until a pick it names the harness's default.
+  const picker = page.locator(".start-screen").getByTestId("model-picker");
+  await expect(picker).toHaveAccessibleName("Model: Default model");
+  await picker.click();
+  const dialog = page.getByRole("dialog", { name: "Choose a model" });
+  await dialog.getByRole("combobox", { name: "Search models" }).fill("slow");
+  await dialog.getByRole("option", { name: /Fake Slow/ }).click();
+  await expect(picker).toHaveAccessibleName("Model: Fake Slow");
+  await page.getByRole("textbox", { name: box }).fill("on the slow model");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("user-prompt")).toHaveText(["on the slow model"]);
+  // The chat opened on the picked model, not the harness's default.
+  await expect(page.locator(".composer-controls").getByTestId("model-picker")).toHaveAccessibleName("Model: Fake Slow");
+});
+
 test("a double Enter (or double click) makes exactly one chat", async ({ page }) => {
   await signInAndOpen(page);
   const input = page.getByRole("textbox", { name: box });

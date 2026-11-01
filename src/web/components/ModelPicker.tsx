@@ -37,6 +37,7 @@ export function ModelPicker({
   disabled,
   onSelect,
   onRefresh,
+  emptyLabel = "No model",
 }: {
   models: ModelInfo[];
   current: string | null;
@@ -45,6 +46,8 @@ export function ModelPicker({
   onSelect: (key: string) => void;
   /** Re-read the harness's models (new local servers, catalogs, config edits). */
   onRefresh: () => Promise<void>;
+  /** The chip's words with nothing picked yet (the start screen: the harness's own default). */
+  emptyLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   // Closing furls the panel back into the chip for a moment before it goes (see .model-pop.is-leaving).
@@ -60,7 +63,7 @@ export function ModelPicker({
   const listId = useId();
   const recentKey = `recentModels.${harnessId}`;
   const currentModel = models.find((m) => m.key === current);
-  const label = currentModel ? currentModel.name : (current ?? "No model");
+  const label = currentModel ? currentModel.name : (current ?? emptyLabel);
 
   const sections = useMemo<Array<ModelGroup & { recent?: boolean }>>(() => {
     if (!showPop) return [];

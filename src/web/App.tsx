@@ -12,6 +12,7 @@ import type {
   ConfigPatch,
   ImageAttachment,
   InteractionAnswer,
+  ModelInfo,
   ProjectSession,
   PushNote,
   SendMode,
@@ -529,6 +530,49 @@ export function App() {
   /** The start screen's Send: create the chat, then post the message to its id (the render closure still holds no chat). */
   const [startBusy, setStartBusy] = useState(false);
   const startingRef = useRef(false);
+  // The start screen's model chip: the harness's models for the folder, read before any chat
+  // exists. A pick applies when the chat is created, never to this or the last chat.
+  const [startModels, setStartModels] = useState<ModelInfo[]>([]);
+  const [startModel, setStartModel] = useState<string | null>(null);
+  const modelFetch = useRef(0);
+  const modelsKey = useRef<string | null>(null);
+  const loadStartModels = async (forHarness: string, forWs: WorkspaceInfo): Promise<ModelInfo[]> => {
+    const seq = ++modelFetch.current;
+    try {
+      const { models } = await api<{ models: ModelInfo[] }>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?workspaceId=${encodeURIComponent(forWs.id)}`);
+      if (seq === modelFetch.current) {
+        setStartModels(models);
+        // A model the harness no longer lists (another harness, another folder's providers) is no pick.
+        setStartModel((picked) => (picked && models.some((m) => m.key === picked) ? picked : null));
+      }
+      return models;
+    } catch {
+      if (seq === modelFetch.current) setStartModels([]);
+      return [];
+    }
+  };
+  useEffect(() => {
+    // No chip behind a chat, and a chat's start invalidates a list still on its way.
+    if (chatId !== null || !harnessId || !workspace) {
+      modelFetch.current += 1;
+      modelsKey.current = null;
+      setStartModels([]);
+      return;
+    }
+    // Another harness or folder: the list on screen belongs to the old one, so drop it (and the
+    // pick in it) before asking for the new one, rather than offering models this chat cannot use.
+    const key = `${harnessId}\0${workspace.id}`;
+    if (modelsKey.current !== key) {
+      modelsKey.current = key;
+      setStartModels([]);
+      setStartModel(null);
+    }
+    void loadStartModels(harnessId, workspace);
+  }, [chatId, harnessId, workspace?.id]);
+  const refreshStartModels = async (): Promise<void> => {
+    if (!harnessId || !workspace) return;
+    await loadStartModels(harnessId, workspace);
+  };
   const startSend = async (text: string, images: PendingImage[]): Promise<boolean> => {
     // Two quick presses (a double Enter) must make one chat: the ref guards before state can re-render.
     if (!harnessId || startingRef.current) return false;
@@ -543,7 +587,7 @@ export function App() {
     setBanner(null);
     try {
       const ws = await enterWorkspace(target);
-      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId, workspaceId: ws.id } });
+      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId, workspaceId: ws.id, ...(startModel ? { model: startModel } : {}) } });
       if (token !== nav.current) {
         api(`/api/chats/${snapshot.chatId}/dispose`, { body: {} }).catch(() => undefined);
         return false;
@@ -1792,6 +1836,10 @@ export function App() {
                 harnesses={boot.harnesses}
                 harnessId={harnessId}
                 onHarness={chooseHarness}
+                models={startModels}
+                model={startModel}
+                onModel={setStartModel}
+                onRefreshModels={refreshStartModels}
                 workspace={harnessId === "awui" ? null : workspace}
                 recent={recent}
                 onPickFolder={() => {

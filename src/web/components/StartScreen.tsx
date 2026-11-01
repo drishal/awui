@@ -1,22 +1,27 @@
 // The start screen: what the main pane shows while no chat is open — the
-// question, the box, and the two choices that matter (agent and folder) right
+// question, the box, and the choices that matter (agent, model, folder) right
 // under it. Sending creates the chat and posts the message to it; nothing
 // starts until the user presses Send. It reads like the hero of a just-made
 // chat (hero.css, Composer's card), and the box and button carry the real
 // composer's names ("Message", "Send") so every shortcut and test finds them.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import { IMAGE_MIME_TYPES, MAX_IMAGES, type HarnessStatus } from "../../shared/protocol.js";
+import { IMAGE_MIME_TYPES, MAX_IMAGES, type HarnessStatus, type ModelInfo } from "../../shared/protocol.js";
 import { useAddImagesToDraft } from "../draft-bus.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { IconArrowUp, IconChevronDown, IconFolder, IconImage, IconLink, IconPlus, IconX, Spinner } from "../icons.js";
 import { dataUrl, imageFiles, prepareImage, type PendingImage } from "../images.js";
 import { recentForChip, startAction, startExamples, startHeading, startSendBlocked, startSetup, type StartSetup } from "../start-screen.js";
 import { HarnessMenu } from "./HarnessMenu.js";
+import { ModelPicker } from "./ModelPicker.js";
 
 export function StartScreen({
   harnesses,
   harnessId,
   onHarness,
+  models,
+  model,
+  onModel,
+  onRefreshModels,
   workspace,
   recent,
   onPickFolder,
@@ -34,6 +39,12 @@ export function StartScreen({
   harnesses: HarnessStatus[];
   harnessId: string | null;
   onHarness: (id: string) => void;
+  /** The harness's models for this folder, read before any chat exists. */
+  models: ModelInfo[];
+  /** The model picked here, or null to start on the harness's own default. */
+  model: string | null;
+  onModel: (key: string) => void;
+  onRefreshModels: () => Promise<void>;
   workspace: { name: string; path: string } | null;
   /** Recent folder paths, newest first (the chip's menu, plus "Choose another folder…"). */
   recent: string[];
@@ -66,6 +77,9 @@ export function StartScreen({
   const blocked = startSendBlocked(setup());
   const name = harnesses.find((h) => h.id === harnessId)?.displayName ?? "the agent";
   const awui = harnessId === "awui";
+  // The model chip is the composer's, before a chat exists: only a harness that can change models
+  // has one, and only once its list has loaded (the fetch runs when the harness or folder changes).
+  const showModel = harnesses.find((h) => h.id === harnessId)?.capabilities.supportsModelSelection === true && models.length > 0;
   const tooLong = text.length > maxChars;
 
   // The box grows with the draft like the real composer's.
@@ -275,6 +289,17 @@ export function StartScreen({
                   onPick={onHarness}
                   ariaKeyShortcuts="Enter"
                 />
+                {showModel && harnessId ? (
+                  <ModelPicker
+                    models={models}
+                    current={model}
+                    harnessId={harnessId}
+                    disabled={busy}
+                    onSelect={onModel}
+                    onRefresh={onRefreshModels}
+                    emptyLabel="Default model"
+                  />
+                ) : null}
                 {!awui ? <FolderChip workspace={workspace} recent={recent} onPick={onPickFolder} onOpen={onOpenRecent} /> : null}
               </div>
               <div className="composer-actions">

@@ -494,6 +494,20 @@ export function createApp(deps: AppDeps) {
     res.json({ sessions });
   });
 
+  // The models a chat in this workspace could start on, so the start screen can
+  // offer one before any session exists. The same call a chat's own config makes.
+  app.get("/api/harnesses/:id/models", async (req, res) => {
+    const adapter = availableAdapter(req.params.id);
+    const ws = await workspaces.get(String(req.query.workspaceId ?? ""));
+    const problem = adapter.workspaceProblem(ws.path);
+    if (problem) throw new ChatError(422, "workspace_unsupported", problem);
+    try {
+      res.json({ models: await adapter.listModels(ws.path) });
+    } catch (error) {
+      throw new ChatError(502, "models_unavailable", `${adapter.displayName} could not list its models: ${errorMessage(error)}`);
+    }
+  });
+
   // A session's last prompt and answer, for a history picker's preview: from
   // the live chat when one is open, else the harness's own file (read only,
   // the harness is not started). Cut short: a preview, not a transcript.
@@ -727,6 +741,16 @@ export function createApp(deps: AppDeps) {
     const adapter = availableAdapter(input.harnessId);
     const ws = await workspaces.get(input.workspaceId);
     const chat = await manager.create(adapter, ws);
+    if (input.model) {
+      // The start screen picked this before the session existed: apply it now, while the chat is
+      // still starting and nothing has run, so the first prompt already uses it.
+      try {
+        await chat.setConfig({ model: input.model });
+      } catch (error) {
+        await chat.dispose("The chosen model was refused").catch(() => undefined);
+        throw error;
+      }
+    }
     res.status(201).json(chat.snapshot());
   });
 

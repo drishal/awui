@@ -656,6 +656,8 @@ export const openWorkspaceSchema = z.object({ path: z.string().min(1).max(4096) 
 export const createChatSchema = z.object({
   harnessId: z.string().min(1).max(64),
   workspaceId: z.string().min(1).max(128),
+  /** A model picked before the chat existed (the start screen's chip); absent starts on the harness's own default. */
+  model: z.string().min(1).max(512).optional(),
 });
 export const resumeChatSchema = z.object({
   harnessId: z.string().min(1).max(64),
