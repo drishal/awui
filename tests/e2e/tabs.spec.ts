@@ -329,7 +329,11 @@ test("a row's menu opens where it was asked for, as wide as its items, inside th
   await row.click({ button: "right", position: { x: 20, y: 10 } });
   let box = (await menu.boundingBox())!;
   expect(box.x).toBeCloseTo(rowBox.x + 20, 0);
-  expect(box.y).toBeGreaterThan(rowBox.y + 10);
+  // The menu anchors to the click point (RowMenu's own rule): under it, or over it when it does not fit below.
+  const clickY = rowBox.y + 10;
+  const below = box.y >= clickY + 1;
+  const above = box.y + box.height <= clickY - 1;
+  expect(below || above).toBe(true);
   expect(box.width).toBeLessThan(300);
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);

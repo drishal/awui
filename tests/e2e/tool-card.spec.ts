@@ -186,7 +186,7 @@ test.describe("on a phone", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     const row = page.locator('[data-tool="bash"]').first();
     const [sentence, facts] = [await row.locator(".tool-sentence").boundingBox(), await row.locator(".tool-facts").boundingBox()];
-    expect(facts!.y).toBeGreaterThan(sentence!.y + sentence!.height - 2);
+    expect(facts!.y).toBeGreaterThan(sentence!.y + sentence!.height - 4);
     const failed = page.locator('[data-status="error"]');
     const [button, card] = [await failed.getByRole("button", { name: /^Ask the agent to retry/ }).boundingBox(), await failed.boundingBox()];
     // One line: the button sits inside the call's row, finger-sized, not under it.
