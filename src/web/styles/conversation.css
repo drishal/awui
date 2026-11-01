@@ -1364,6 +1364,16 @@
   color: var(--text-2);
 }
 
+/* A MoA reference's advice is the harness's Markdown: sized like a thought, drawn as prose. */
+.notice-markdown {
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  color: var(--text-2);
+  font-size: var(--chat-small);
+  line-height: 1.6;
+}
+
 .notice-icon {
   display: inline-flex;
   padding-top: 2px;

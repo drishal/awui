@@ -32,7 +32,7 @@ import {
   type SlashCommand,
   type TodoItem,
 } from "../../shared/protocol.js";
-import { commandOutputEvents, historyToItems, isObj, type Obj } from "./agent-events.js";
+import { boundText, commandOutputEvents, historyToItems, isObj, type Obj } from "./agent-events.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
 import {
   GatewaySocket,
@@ -677,6 +677,38 @@ class HermesLiveChat implements LiveChat {
         // Not reasoning: the gateway's live status line (spinner, wait notices).
         this.statusLine(str(p.text));
         break;
+      // MoA (Hermes's Mixture of Agents): each reference model's advice is the turn's reasoning,
+      // so it opens as its own fold with the model's label. The fan-out and the hand to the
+      // aggregator read on the status line, as Hermes's own status bar shows them.
+      case "moa.reference": {
+        const text = str(p.text).trim();
+        const label = str(p.label) || "reference";
+        const index = num(p.index);
+        const count = num(p.count);
+        if (text) {
+          this.emit({
+            type: "notice",
+            level: "info",
+            title: `MoA · ${label}${index !== null && count !== null ? ` (${index}/${count})` : ""}`,
+            text: `MoA reference advice from ${label}`,
+            detail: boundText(text).text,
+            detailFormat: "markdown",
+          });
+        }
+        break;
+      }
+      case "moa.progress": {
+        const done = num(p.refs_done);
+        const total = num(p.refs_total);
+        if (done !== null && total !== null) this.statusLine(`MoA · ${done}/${total} references done`);
+        break;
+      }
+      case "moa.phase":
+      case "moa.aggregating": {
+        const aggregator = str(p.aggregator);
+        this.statusLine(aggregator ? `MoA · aggregating with ${aggregator}` : "MoA · aggregating");
+        break;
+      }
       case "message.interim": {
         // An interim carries the same display text, reasoning block and all.
         const text = splitReasoningBlock(str(p.text)).text;
@@ -959,6 +991,9 @@ class HermesLiveChat implements LiveChat {
   private async slash(id: string, text: string): Promise<void> {
     try {
       const done = await this.live.request<Obj>("slash.exec", { session_id: id, command: text });
+      // A pending-input built-in (/moa, /init, /goal) answers with a send directive, not
+      // output: the gateway wants its message submitted, and does not return 4018 for a retry.
+      if (await this.runDirective(id, done)) return;
       return this.commandOutput(text, str(done?.output));
     } catch (error) {
       if (!(error instanceof HermesRpcError) || error.code !== 4018) throw error;
@@ -966,13 +1001,26 @@ class HermesLiveChat implements LiveChat {
     const name = text.slice(1).split(/\s+/)[0] ?? "";
     const arg = text.slice(1 + name.length).trim();
     const result = await this.live.request<Obj>("command.dispatch", { session_id: id, name, arg });
-    const message = str(result?.message);
-    if ((result?.type === "send" || result?.type === "skill") && message) {
-      await this.live.request("prompt.submit", { session_id: id, text: message });
-      this.emit({ type: "user_message", text });
-      return;
-    }
+    if (await this.runDirective(id, result)) return;
     this.commandOutput(text, str(result?.output) || (result?.type === "prefill" ? str(result?.text) : ""));
+  }
+
+  /**
+   * A command that becomes a prompt (Hermes's `type: "send"` or `"skill"`: /moa, /init, a
+   * skill): submit the message it hands back, and put its notice in the turn. The user row
+   * is that message, which is the row the harness stores; the slash itself would vanish on
+   * reload. `ambient: false` because the notice is said before the turn's first event, when
+   * the chat still reads idle.
+   */
+  private async runDirective(id: string, result: Obj): Promise<boolean> {
+    const type = str(result?.type);
+    const message = str(result?.message);
+    if ((type !== "send" && type !== "skill") || !message) return false;
+    await this.live.request("prompt.submit", { session_id: id, text: message });
+    this.emit({ type: "user_message", text: message });
+    const notice = str(result?.notice);
+    if (notice) this.emit({ type: "notice", level: "info", text: notice, ambient: false });
+    return true;
   }
 
   /** A command that ran without a model turn: the command as the prompt, its output, then idle. */
@@ -1357,6 +1405,8 @@ export class HermesAdapter implements HarnessAdapter {
     for (const provider of Array.isArray(result?.providers) ? result.providers : []) {
       if (!isObj(provider)) continue;
       const slug = str(provider.slug);
+      // A virtual provider (MoA) names itself to the user; a normal one is its slug.
+      const providerName = str(provider.source) === "virtual" ? str(provider.name) || undefined : undefined;
       if (provider.is_user_defined === true) userDefined.add(slug);
       const capabilities = isObj(provider.capabilities) ? provider.capabilities : {};
       for (const model of Array.isArray(provider.models) ? provider.models : []) {
@@ -1365,7 +1415,7 @@ export class HermesAdapter implements HarnessAdapter {
         const key = `${slug}/${id}`;
         if (seen.has(key)) continue; // several endpoints can expose the same provider/model id
         seen.add(key);
-        models.push({ key, provider: slug, id, name: id, ...(isObj(capability) && capability.reasoning === true ? { reasoning: true } : {}) });
+        models.push({ key, provider: slug, ...(providerName ? { providerName } : {}), id, name: id, ...(isObj(capability) && capability.reasoning === true ? { reasoning: true } : {}) });
       }
     }
     this.probes.set(cwd, { at: Date.now(), models, userDefined });

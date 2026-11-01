@@ -137,6 +137,8 @@ export interface ModelInfo {
   /** `provider/id`, the value sent back in config patches. */
   key: string;
   provider: string;
+  /** The provider's display name, when it says more than the slug (Hermes's virtual `moa` row: "Mixture of Agents"). */
+  providerName?: string;
   id: string;
   name: string;
   reasoning?: boolean;
@@ -307,6 +309,8 @@ export interface NoticeItem {
   title?: string;
   /** The full text behind the disclosure, when `text` only summarizes it. */
   detail?: string;
+  /** The detail is the harness's Markdown (Hermes's MoA reference advice), drawn as such instead of verbatim. */
+  detailFormat?: "markdown";
   at?: number;
   /** Arrived while the agent was idle (e.g. extension notices on open): not part of any turn's work. */
   ambient?: boolean;

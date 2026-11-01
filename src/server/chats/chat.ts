@@ -458,7 +458,7 @@ class EventReducer {
         this.emit({ type: "queue", queue: this.queue });
         break;
       case "notice":
-        this.notice(event.level, event.text, undefined, { ...(event.title ? { title: event.title } : {}), ...(event.detail ? { detail: event.detail } : {}) });
+        this.notice(event.level, event.text, event.ambient, { ...(event.title ? { title: event.title } : {}), ...(event.detail ? { detail: event.detail } : {}), ...(event.detailFormat ? { detailFormat: event.detailFormat } : {}) });
         break;
       case "config":
         this.config = { ...this.config, ...event.config };
@@ -518,7 +518,7 @@ class EventReducer {
     this.log.record(event);
   }
 
-  notice(level: "info" | "warning" | "error", text: string, ambient?: boolean, more: { title?: string; detail?: string } = {}): void {
+  notice(level: "info" | "warning" | "error", text: string, ambient?: boolean, more: { title?: string; detail?: string; detailFormat?: "markdown" } = {}): void {
     const status = this.fx.status();
     const busy = status === "running" || status === "stopping" || status === "compacting";
     const between = ambient ?? !busy;
@@ -529,6 +529,7 @@ class EventReducer {
       text,
       ...(more.title ? { title: more.title } : {}),
       ...(more.detail ? { detail: more.detail } : {}),
+      ...(more.detailFormat ? { detailFormat: more.detailFormat } : {}),
       at: Date.now(),
       ...(between ? { ambient: true } : {}),
     });

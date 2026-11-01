@@ -258,7 +258,8 @@ if every test passes.
   printing a Vitest summary with one failure), `toolfail` (a command call that
   errors), `manycalls` (twelve quick reads, a run long enough to fold),
   `widethought` (two calls with narrated thinking between, a code line in it
-  far wider than the column). Add a word there when a
+  far wider than the column), `moaref` (a MoA turn's reference advice as
+  Markdown folds, with the fan-out on the status line). Add a word there when a
   feature needs a new scenario,
   rather than mocking deeper.
 - **herdr** is a stand-in socket (`tests/helpers/fake-herdr.ts`): unit tests give

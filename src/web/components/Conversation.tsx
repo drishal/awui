@@ -276,7 +276,13 @@ function NoticeRow({ item }: { item: NoticeItem }) {
     return (
       <div className={`notice-row notice-detail${arrival}`} data-testid="extension-message">
         <DisclosureRow icon={icon} title={item.title ?? "Extension"}>
-          <pre className="thought-body">{item.detail}</pre>
+          {item.detailFormat === "markdown" ? (
+            <div className="notice-markdown">
+              <Markdown text={item.detail} />
+            </div>
+          ) : (
+            <pre className="thought-body">{item.detail}</pre>
+          )}
         </DisclosureRow>
       </div>
     );

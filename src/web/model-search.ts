@@ -18,7 +18,7 @@ export function matchRank(query: string, model: ModelInfo): number | null {
   if (!q) return 0;
   const qc = compact(query);
   const name = normalize(model.name);
-  const fields = [model.name, model.id, model.provider, model.key];
+  const fields = [model.name, model.id, model.provider, model.providerName ?? "", model.key];
   if (name.startsWith(q) || compact(model.name).startsWith(qc)) return 0;
   if (name.split(" ").some((word) => word.startsWith(q))) return 1;
   if (name.includes(q) || compact(model.name).includes(qc)) return 2;

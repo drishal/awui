@@ -18,7 +18,9 @@ export function configSummary(chat: SummaryChat, harnesses: Array<{ id: string; 
   const { config, capabilities } = chat;
   const parts = [harnesses.find((h) => h.id === chat.harnessId)?.displayName ?? chat.harnessId];
   if (capabilities.supportsModelSelection) {
-    parts.push(config.models.find((m) => m.key === config.model)?.name ?? config.model ?? "No model");
+    const model = config.models.find((m) => m.key === config.model);
+    // A virtual provider (MoA) says its name: "Mixture of Agents · default", not "default".
+    parts.push(model ? (model.providerName ? `${model.providerName} · ${model.name}` : model.name) : (config.model ?? "No model"));
   }
   if (capabilities.supportsThinkingLevel && config.thinkingLevel) parts.push(levelTitle(config.thinkingLevel));
   if (capabilities.supportsPermissionMode && config.permissionMode) {

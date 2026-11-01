@@ -19,6 +19,7 @@
 //   "toolfail" a command call that fails (port in use), then the run carries on
 //   "todolist" a rpiv-todo `todo` call whose result carries the whole numbered list (the status stack's source)
 //   "widethought" a call, thinking shaped like narration with a code line wider than the column, another call
+//   "moaref" a MoA turn's reference advice as Markdown notice folds, and its status line
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -563,6 +564,13 @@ class FakeLiveChat implements LiveChat {
           signal,
         );
         await this.call({ name: "read", args: { path: "test-results/last.txt" }, output: "all good" }, signal);
+      }
+      if (/\bmoaref\b/i.test(text)) {
+        // A MoA turn's reference advice: each is a notice whose detail is Markdown, with the fan-out on the status line.
+        this.emit({ type: "extension_status", key: "fake:status", text: "MoA · 1/2 references done" });
+        this.emit({ type: "notice", level: "info", title: "MoA · opencode-go:glm-5.3-flash (1/2)", text: "MoA reference advice from opencode-go:glm-5.3-flash", detail: "## Advice one\n\nUse `cache` for repeats.", detailFormat: "markdown" });
+        this.emit({ type: "notice", level: "info", title: "MoA · opencode-go:deepseek-v4.1-flash (2/2)", text: "MoA reference advice from opencode-go:deepseek-v4.1-flash", detail: "- fast\n- cheap", detailFormat: "markdown" });
+        this.emit({ type: "extension_status", key: "fake:status", text: null });
       }
       if (/\bafterreply\b/i.test(text)) {
         // The answer, then a tool call after it: that work keeps its place below the reply.

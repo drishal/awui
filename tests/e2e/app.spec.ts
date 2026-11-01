@@ -1405,6 +1405,22 @@ test("an extension's message (a memory recall) shows as a labelled row, not its 
   await expect(row).toContainText("- prefers tabs over spaces");
 });
 
+test("a MoA reference's advice opens as formatted Markdown under its model", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "moaref please");
+  await page.getByTestId("process-toggle").last().click();
+  const first = page.getByTestId("extension-message").filter({ hasText: "MoA · opencode-go:glm-5.3-flash" });
+  await expect(first).toContainText("opencode-go:glm-5.3-flash (1/2)");
+  await first.locator(".drow-head").click();
+  // The advice is the model's Markdown, not its source: a heading and inline code render.
+  await expect(first.locator(".notice-markdown h2")).toHaveText("Advice one");
+  await expect(first.locator(".notice-markdown code")).toHaveText("cache");
+  const second = page.getByTestId("extension-message").filter({ hasText: "deepseek-v4.1-flash" });
+  await second.locator(".drow-head").click();
+  await expect(second.locator(".notice-markdown li")).toHaveText(["fast", "cheap"]);
+});
+
 test("subagents show live, then their answers, and open their own transcripts", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);

@@ -30,6 +30,11 @@ describe("the composer's one-line config summary", () => {
     expect(configSummary({ harnessId: "fake", capabilities: caps(), config: config() }, harnesses)).toBe("Pi · Fake Echo · High");
   });
 
+  it("names a virtual provider with its preset (Hermes's MoA)", () => {
+    const moa: ModelInfo[] = [{ key: "moa/default", provider: "moa", providerName: "Mixture of Agents", id: "default", name: "default" }];
+    expect(configSummary({ harnessId: "fake", capabilities: caps(), config: config({ model: "moa/default", models: moa }) }, harnesses)).toBe("Pi · Mixture of Agents · default · High");
+  });
+
   it("adds the permission mode only when the harness has one", () => {
     const withModes = caps({ supportsPermissionMode: true });
     expect(configSummary({ harnessId: "fake", capabilities: withModes, config: config({ permissionMode: "default" }) }, harnesses)).toBe(

@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { HermesAdapter, hermesModelKey, liveHermesLinks, splitReasoningBlock } from "../../src/server/harness/hermes.js";
-import type { LiveChat } from "../../src/server/harness/types.js";
+import type { HarnessEvent, LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
 
@@ -150,6 +150,20 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(models[0]).toMatchObject({ reasoning: true });
   });
 
+  it("names Hermes's virtual MoA provider and the presets it offers", async () => {
+    const stored = JSON.parse(readFileSync(state, "utf8"));
+    stored.moa = true;
+    writeFileSync(state, JSON.stringify(stored));
+    const models = await adapter.listModels(project, true);
+    expect(models.find((m) => m.key === "moa/default")).toMatchObject({
+      provider: "moa",
+      providerName: "Mixture of Agents",
+      id: "default",
+      name: "default",
+      reasoning: true,
+    });
+  });
+
   it("handles a multi-provider gateway: qualified model key matches the catalog without double prefixing", async () => {
     const { chat } = await openChat();
     await chat.send("multimodel check", "normal");
@@ -285,6 +299,7 @@ describe("hermes adapter (scripted gateway)", () => {
     expect((await live.listCommands()).map((c) => [c.name, c.source])).toEqual([
       ["status", "command"],
       ["review", "skill"],
+      ["moa", "command"],
     ]);
     // A built-in answers with output and no model turn.
     await chat.send("/status", "normal");
@@ -296,6 +311,34 @@ describe("hermes adapter (scripted gateway)", () => {
     await chat.send("/review the tests", "normal");
     await until(() => chat.snapshot().items.some((i) => i.kind === "assistant" && i.text.includes("Review: the tests")));
     await until(() => chat.status === "idle");
+  });
+
+  it("runs /moa as the prompt it becomes, with each reference's advice folded under its model", async () => {
+    const { chat, live } = await openChat();
+    const events: HarnessEvent[] = [];
+    live.subscribe((e) => events.push(e));
+    await chat.send("/moa explain the cache", "normal");
+    await until(() => chat.status === "idle");
+    const items = chat.snapshot().items;
+    // The user row is the submitted prompt, which is the row Hermes stores; the slash is how it was sent.
+    expect(items.find((i) => i.kind === "user")).toMatchObject({ text: "explain the cache" });
+    // The one-shot's notice belongs to the turn, not to an idle moment after it.
+    const oneShot = items.find((i) => i.kind === "notice" && /MoA one-shot queued/.test(i.text));
+    expect(oneShot).toMatchObject({ level: "info" });
+    expect((oneShot as { ambient?: boolean }).ambient).toBeUndefined();
+    // Each reference opens as Markdown advice under the model that wrote it.
+    const refs = items.filter((i) => i.kind === "notice" && i.title?.startsWith("MoA · opencode-go"));
+    expect(refs.map((i) => (i.kind === "notice" ? i.title : ""))).toEqual([
+      "MoA · opencode-go:glm-5.3-flash (1/2)",
+      "MoA · opencode-go:deepseek-v4.1-flash (2/2)",
+    ]);
+    expect(refs[0]).toMatchObject({ detailFormat: "markdown", detail: "## Advice one\n\nUse `cache` for repeats." });
+    // The fan-out and the hand to the aggregator read on the status line, then clear.
+    const statuses = events.flatMap((e) => (e.type === "extension_status" ? [e.text] : []));
+    expect(statuses).toContain("MoA · 1/2 references done");
+    expect(statuses).toContain("MoA · 2/2 references done");
+    expect(statuses).toContain("MoA · aggregating with opencode-go:glm-5.3");
+    expect(chat.snapshot().extensionStatus).toEqual({});
   });
 });
 

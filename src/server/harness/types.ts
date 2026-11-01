@@ -115,7 +115,7 @@ export type HarnessEvent =
   | { type: "settled" }
   | { type: "compacting"; active: boolean }
   | { type: "queue"; queue: QueueState }
-  | { type: "notice"; level: "info" | "warning" | "error"; text: string; title?: string; detail?: string }
+  | { type: "notice"; level: "info" | "warning" | "error"; text: string; title?: string; detail?: string; /** The detail is Markdown (Hermes's MoA reference advice). */ detailFormat?: "markdown"; /** Say where it belongs instead of guessing from the status (a one-shot command's notice lands before its turn starts). */ ambient?: boolean }
   | { type: "config"; config: Partial<ChatConfig> }
   | { type: "title"; title: string }
   | { type: "session"; nativeId: string }

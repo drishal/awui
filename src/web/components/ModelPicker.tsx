@@ -30,6 +30,11 @@ function shortName(name: string): string {
   return name.length > 28 ? `${name.slice(0, 27)}…` : name;
 }
 
+/** A provider group's heading: its display name when it has one (Hermes's MoA), else the slug. */
+function providerLabel(section: { provider: string; models: ModelInfo[] }): string {
+  return section.models[0]?.providerName ?? section.provider;
+}
+
 export function ModelPicker({
   models,
   current,
@@ -63,7 +68,8 @@ export function ModelPicker({
   const listId = useId();
   const recentKey = `recentModels.${harnessId}`;
   const currentModel = models.find((m) => m.key === current);
-  const label = currentModel ? currentModel.name : (current ?? emptyLabel);
+  // A virtual provider (MoA) needs its name here: its preset alone ("default") says nothing.
+  const label = currentModel ? (currentModel.providerName ? `${currentModel.providerName} · ${currentModel.name}` : currentModel.name) : (current ?? emptyLabel);
 
   const sections = useMemo<Array<ModelGroup & { recent?: boolean }>>(() => {
     if (!showPop) return [];
@@ -193,7 +199,7 @@ export function ModelPicker({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`Model: ${label}`}
-        title={currentModel ? `${currentModel.name} · ${currentModel.provider}` : label}
+        title={currentModel ? `${currentModel.name} · ${currentModel.providerName ?? currentModel.provider}` : label}
         disabled={disabled || models.length === 0}
         data-testid="model-picker"
         onClick={() => (open && !leaving ? close() : openWith(""))}
@@ -275,14 +281,14 @@ export function ModelPicker({
               <div className="model-current">
                 Current <strong>{currentModel.name}</strong>
                 <Dot />
-                {currentModel.provider}
+                {currentModel.providerName ?? currentModel.provider}
               </div>
             ) : null}
             <div className="model-list" id={listId} role="listbox" aria-label="Models">
               {sections.map((section) => (
-                <div key={section.provider} role="group" aria-label={section.provider} className="model-group">
+                <div key={section.provider} role="group" aria-label={providerLabel(section)} className="model-group">
                   <div className="model-group-head" aria-hidden="true">
-                    <span>{section.provider}</span>
+                    <span>{providerLabel(section)}</span>
                     <span>{section.models.length}</span>
                   </div>
                   {section.models.map((model) => {

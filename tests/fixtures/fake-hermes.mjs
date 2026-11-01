@@ -9,6 +9,7 @@
 //   "vanish"  the turn stops on a fallback model with no message.complete
 //   "wait"  a provider-wait line on the status line (thinking.delta)
 //   "echoed"  the "💭 **Reasoning:**" block Hermes prepends when show_reasoning is on
+//   "moa"  reference advice and an aggregator handoff, as a MoA turn emits
 // Every turn starts with the gateway's spinner frame on the status line, as the real one does.
 // Session rows for projects.tree/list come from FAKE_HERMES_STATE (JSON file).
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -26,6 +27,7 @@ const RESUME_PARAMS = new Set(["session_id", "profile", "cols", "source", "lazy"
 let runtimeId = "4242";
 let title = "Fake Hermes session";
 let multimodel = false;
+let moaTurn = false;
 let model = "fake-model";
 let provider = "fake";
 let effort = "medium";
@@ -38,7 +40,7 @@ const approvals = [];
 const state = () => {
   try {
     const raw = JSON.parse(readFileSync(stateFile, "utf8"));
-    return { rows: Array.isArray(raw?.rows) ? raw.rows : [], spawns: Array.isArray(raw?.spawns) ? raw.spawns : [], cwd: typeof raw?.cwd === "string" ? raw.cwd : "" };
+    return { rows: Array.isArray(raw?.rows) ? raw.rows : [], spawns: Array.isArray(raw?.spawns) ? raw.spawns : [], cwd: typeof raw?.cwd === "string" ? raw.cwd : "", moa: raw?.moa === true };
   } catch {
     return { rows: [], spawns: [], cwd: "" };
   }
@@ -73,6 +75,16 @@ async function runPrompt(text) {
   event("session.info", { model, provider, reasoning_effort: effort, running: true, title, stored_session_id: storedId });
   event("message.start", undefined, sessionId);
   event("thinking.delta", { text: "(´･_･`) musing..." }, sessionId);
+  if (moaTurn || provider === "moa") {
+    // As the real gateway's MoA facade: two references advise, then the aggregator takes over.
+    event("moa.progress", { label: "opencode-go:glm-5.3-flash", refs_done: 1, refs_total: 2 }, sessionId);
+    event("moa.reference", { label: "opencode-go:glm-5.3-flash", index: 1, count: 2, text: "## Advice one\n\nUse `cache` for repeats." }, sessionId);
+    event("moa.progress", { label: "opencode-go:deepseek-v4.1-flash", refs_done: 2, refs_total: 2 }, sessionId);
+    event("moa.reference", { label: "opencode-go:deepseek-v4.1-flash", index: 2, count: 2, text: "- fast\n- cheap" }, sessionId);
+    event("moa.phase", { phase: "aggregator", refs_done: 2, refs_total: 2, aggregator: "opencode-go:glm-5.3" }, sessionId);
+    event("moa.aggregating", { aggregator: "opencode-go:glm-5.3" }, sessionId);
+    moaTurn = false;
+  }
   if (/\bwait\b/.test(text)) {
     event("thinking.delta", { text: "Waiting for the provider (5s)..." }, sessionId);
     await new Promise((r) => setTimeout(r, 150));
@@ -219,13 +231,28 @@ rl.on("line", (line) => {
         items: [
           { text: "/status", display: "/status", meta: "Show session status", kind: "command" },
           { text: "/review", display: "/review", meta: "Review the work so far", kind: "skill" },
+          { text: "/moa", display: "/moa", meta: "Run one prompt through the default Mixture of Agents preset, then restore your model (usage: /moa <prompt>)", kind: "command" },
         ],
       });
     case "slash.exec":
       if (String(params.command).startsWith("/status")) return ok(id, { output: "hermes status: fine" });
+      // A pending-input built-in: the gateway answers with the prompt to submit, not output.
+      const moa = /^\/moa(?:\s|$)/.exec(String(params.command));
+      if (moa) {
+        const arg = String(params.command).slice(4).trim();
+        if (!arg) return fail(id, 4004, "MoA usage: /moa <prompt>");
+        moaTurn = true;
+        return ok(id, { type: "send", notice: "MoA one-shot queued with preset default; previous model will be restored after this turn.", message: arg });
+      }
       return fail(id, 4018, "skill command: use command.dispatch");
     case "command.dispatch":
       if (params.name === "review") return ok(id, { type: "skill", name: "review", message: `Review: ${params.arg || "everything"}` });
+      if (params.name === "moa") {
+        const arg = String(params.arg || "").trim();
+        if (!arg) return fail(id, 4004, "MoA usage: /moa <prompt>");
+        moaTurn = true;
+        return ok(id, { type: "send", notice: "MoA one-shot queued with preset default; previous model will be restored after this turn.", message: arg });
+      }
       return fail(id, 4018, `not a quick/plugin/bundle/skill command: ${params.name}`);
     case "prompt.submit": {
       // Hermes Desktop's edit: cut before a stored user row, only when confirmed.
@@ -266,10 +293,15 @@ rl.on("line", (line) => {
         return ok(id, { key: "show_reasoning", value: on ? "1" : "0", scope: "session" });
       }
       return fail(id, 4002, `unknown config key: ${params.key}`);
-    case "model.options":
+    case "model.options": {
+      // Hermes's virtual MoA provider, when the config enables a preset (a test sets state().moa).
+      const moaRow = state().moa
+        ? [{ slug: "moa", name: "Mixture of Agents", models: ["default"], source: "virtual", authenticated: true, auth_type: "virtual", is_current: false, capabilities: { default: { reasoning: true } } }]
+        : [];
       return ok(id, multimodel
         ? {
             providers: [
+              ...moaRow,
               { slug: "local", name: "Local", models: ["opencode-go-v4-flash", "glm-local"], capabilities: { "opencode-go-v4-flash": { reasoning: true } }, authenticated: true, is_user_defined: true },
               { slug: "remote", name: "Remote", models: ["opencode-go-v4-flash", "opus-4-1"], capabilities: {}, authenticated: true, is_user_defined: true },
             ],
@@ -277,11 +309,13 @@ rl.on("line", (line) => {
           }
         : {
             providers: [
+              ...moaRow,
               { slug: "fake", name: "Fake", models: ["fake-model", "fake-mini"], capabilities: { "fake-model": { reasoning: true, fast: false }, "fake-mini": { reasoning: false, fast: true } }, authenticated: true, is_current: true },
             ],
             model: "fake-model",
             provider: "fake",
           });
+    }
     case "projects.tree":
       return ok(id, {
         projects: [
