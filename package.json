@@ -24,7 +24,8 @@
     "service": "node scripts/service.mjs",
     "smoke": "SMOKE=1 vitest run tests/smoke",
     "atui": "bin/atui",
-    "test:atui": "npm run build && bun test tests/atui"
+    "test:atui": "npm run build && bun test tests/atui",
+    "test:e2e:fast": "npm run build && node scripts/e2e-parallel.mjs"
   },
   "dependencies": {
     "@opentui/core": "0.5.17",

@@ -6,8 +6,10 @@ import { expect, test } from "@playwright/test";
 
 // A real HOST=0.0.0.0 server reached through this machine's LAN address, so
 // the browser is "another device": it must sign in with username/password.
-const PORT = 4792;
-const ENV_PORT = 4793;
+// The suite's own port plus one and two: a second checkout or a shard moves the whole block with
+// AWUI_E2E_PORT, so these servers never land on another run's port.
+const PORT = (Number(process.env.AWUI_E2E_PORT) || 4791) + 1;
+const ENV_PORT = PORT + 1;
 const lanIp = Object.values(networkInterfaces())
   .flat()
   .find((a) => a && a.family === "IPv4" && !a.internal)?.address;

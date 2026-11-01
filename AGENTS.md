@@ -46,7 +46,8 @@ Match the task to a guide before opening code:
 | `bin/atui` (`npm run atui`) | Run the terminal client under Bun. Needs a running server. |
 | `npm run typecheck` | Four projects: server, web, tests, atui. **Run it before every commit.** |
 | `npm test` | Vitest: `tests/unit/**` (and `tests/smoke/**`, which skips itself unless `SMOKE=1`). |
-| `npm run test:e2e` | Build, then Playwright (`tests/e2e`) against the built server with fake harnesses on port 4791. ~2.5 min. |
+| `npm run test:e2e` | Build, then Playwright (`tests/e2e`) against the built server with fake harnesses on port 4791. ~12 min. |
+| `npm run test:e2e:fast` | The same suite as two shards at once (`scripts/e2e-parallel.mjs`): one server per shard, on ports 4801 and 4811, output in `test-results/shard-N`. ~6 min. A spec that starts its own server (remote-login) takes the suite's port plus one and two. |
 | `npm run test:atui` | Build, then `bun test tests/atui` (atui in OpenTUI's test renderer, and the Tern client against a stand-in Tern, both against a real server). |
 | `awui doctor [--json]` | Checks config.yml, Node/Bun, each harness, workspace roots, the state folder's mode, the port, remote sign-in, herdr; prints ✓/!/✗ lines, exit 1 on a ✗ (`src/server/doctor.ts`). |
 | `awui tern` | The Tern client in a Tern pane (`bun --conditions=browser src/tern/main.ts`; Solid's default Bun build is its server one, where effects never run). |
