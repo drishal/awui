@@ -49,6 +49,12 @@ interface AwuiProviderRow {
 
 interface AwuiSettingsState {
   rows: AwuiProviderRow[];
+  /** The share checkbox as the user has it now. */
+  shareAuth: boolean;
+  /** What the server had when the section loaded; the toggle is sent only when the two differ. */
+  loadedShareAuth: boolean;
+  /** A ~/.pi/agent/auth.json exists, so sharing is offered rather than only explained. */
+  piLogin: boolean;
   busy: boolean;
   error: string | null;
   saved: boolean;
@@ -56,11 +62,16 @@ interface AwuiSettingsState {
 
 interface AwuiSettingsResponse {
   providers: Record<string, { baseUrl: string; api: string; hasApiKey: boolean; modelOverrides?: Record<string, unknown> }>;
+  shareAuth: boolean;
+  piLogin: boolean;
 }
 
 function draftAwui(c: AwuiSettingsResponse): AwuiSettingsState {
   return {
     rows: Object.entries(c.providers).map(([name, p]) => ({ name, baseUrl: p.baseUrl, api: p.api, apiKey: "", hadKey: p.hasApiKey })),
+    shareAuth: c.shareAuth,
+    loadedShareAuth: c.shareAuth,
+    piLogin: c.piLogin,
     busy: false,
     error: null,
     saved: false,
@@ -236,7 +247,9 @@ export function SettingsDialog({
         // Blank key keeps the stored one (omitted); "-" is the form's clear sentinel, sent as "".
         providers[r.name.trim()] = { baseUrl: r.baseUrl.trim(), api: r.api.trim() || "openai-completions", ...(r.apiKey === "" ? {} : { apiKey: r.apiKey === "-" ? "" : r.apiKey }) };
       }
-      const next = await api<AwuiSettingsResponse>("/api/awui/settings", { method: "PUT", body: { providers } });
+      // The toggle is sent only when it changed: a providers-only save must not re-seed Pi's list.
+      const shareAuth = awui.shareAuth !== awui.loadedShareAuth ? awui.shareAuth : undefined;
+      const next = await api<AwuiSettingsResponse>("/api/awui/settings", { method: "PUT", body: { providers, ...(shareAuth !== undefined ? { shareAuth } : {}) } });
       setAwui({ ...draftAwui(next), saved: true });
     } catch (e) {
       setAwui({ ...awui, busy: false, error: errorText(e) });
@@ -569,7 +582,17 @@ export function SettingsDialog({
       {awui ? (
         <section className="settings-section" aria-labelledby="settings-awui">
           <h2 id="settings-awui">Awui harness</h2>
-          <p className="settings-note">Providers the read-only Awui chat can call, from its own agent dir (never your ~‑pi config). Blank API key keeps the stored one; type `-` to clear it.</p>
+          <p className="settings-note">Providers the read-only Awui chat can call, in its own agent dir. Blank API key keeps the stored one; type `-` to clear it.</p>
+          <label className="settings-row settings-check">
+            <input
+              type="checkbox"
+              disabled={!awui.piLogin || awui.busy}
+              checked={awui.shareAuth}
+              onChange={() => setAwui({ ...awui, saved: false, shareAuth: !awui.shareAuth })}
+            />
+            <span>Share Pi's login — the Awui chat can use what your terminal pi is logged into, and Pi's providers are copied in when you turn it on</span>
+          </label>
+          {!awui.piLogin ? <p className="settings-note">No pi login found (~/.pi/agent/auth.json); log into pi first to share it.</p> : null}
           <div className="awui-providers">
             {awui.rows.map((r, i) => (
               <div className="awui-provider" key={i}>

@@ -5,7 +5,9 @@
 //
 //   - its own agent dir (models/auth/MCP) and per-workspace session dir, both
 //     under awui's state folder, so it never reads or writes the real pi's
-//     `~/.pi/agent` (the user's pi config stays the user's);
+//     `~/.pi/agent` (the user's pi config stays the user's) — save the one
+//     opt-in in Settings that links its auth.json to the user's pi login,
+//     chosen by the user (see awui-settings.ts), never by default;
 //   - a tool DENYLIST on spawn (`--exclude-tools bash,edit,write,powershell`),
 //     pi's four writing/executing builtins. A denylist, not an allowlist: it
 //     cannot accidentally under-specify, and it reaches extension and MCP

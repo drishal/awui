@@ -4,7 +4,7 @@
 // instead of the user's pi config. The spawn-time lockdown (the denied tool set,
 // no extensions) is wired in awui.ts and proven by typecheck + the pi adapter's
 // own tests; it is not part of the public shape, so it is not asserted here.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { tempDir } from "../helpers/app.js";
@@ -80,6 +80,25 @@ describe("AwuiAdapter", () => {
     try {
       const agentDir = await ad.resolveAgentDir();
       expect(existsSync(path.join(agentDir, "models.json"))).toBe(false);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+    }
+  });
+
+  it("never links the user's pi login by itself; that is the Settings opt-in (awui-settings.ts)", async () => {
+    const home = tempDir("awui-home-");
+    const piAgent = path.join(home, ".pi", "agent");
+    mkdirSync(piAgent, { recursive: true });
+    writeFileSync(path.join(piAgent, "auth.json"), JSON.stringify({ xai: { access: "t" } }));
+    const stateDir2 = tempDir("awui-state-");
+    const ad = new AwuiAdapter(stateDir2);
+    const prevHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const agentDir = await ad.resolveAgentDir();
+      const auth = path.join(agentDir, "auth.json");
+      expect(existsSync(auth) ? lstatSync(auth).isSymbolicLink() : false).toBe(false);
     } finally {
       if (prevHome === undefined) delete process.env.HOME;
       else process.env.HOME = prevHome;
