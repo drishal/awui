@@ -709,6 +709,20 @@ test("todos from the harness show in the status stack, which can be hidden", asy
   await expect(page.getByTestId("status-stack").getByRole("button", { name: "Show status" })).toBeVisible();
 });
 
+test("a rpiv-todo list shows in the status stack, and its call reads as the action it took", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "todolist");
+  // The tool's result carries the whole list; the row says which action it was, not "the plan".
+  await expect(page.locator('[data-tool="todo"] .tool-sentence')).toHaveText("Updated #2 to in progress");
+  const stack = page.getByTestId("status-stack");
+  await expect(stack).toContainText("Todos");
+  await expect(stack).toContainText("1/3");
+  await expect(stack.locator(".stack-row")).toHaveCount(3);
+  await expect(stack).toContainText("Draw the reason inline");
+  await expect(stack).toContainText("Run the suite");
+});
+
 test("a long Working says why: the harness's own status line shows above the composer until it clears", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);

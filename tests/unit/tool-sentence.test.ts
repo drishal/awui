@@ -146,6 +146,21 @@ describe("toolSentence: MCP, agents, plan, unknown", () => {
     expect(toolSentence(ops, WS).text).toBe("Updated the plan");
     expect(toolSentence(ops, WS).facts).toEqual([]);
   });
+  it("words rpiv-todo's todo by its action, not as the whole plan", () => {
+    const todo = (call: object, status: "running" | "done" | "error" = "done") => toolSentence({ ...tool({ name: "todo", category: "other", args: args(call) }), status }, WS);
+    expect(todo({ action: "create", subject: "Ship the diff view" }).text).toBe("Added a todo: Ship the diff view");
+    expect(todo({ action: "create", tasks: [{ subject: "a" }, { subject: "b" }, { subject: "c" }] }).text).toBe("Added 3 todos");
+    expect(todo({ action: "update", id: 2, status: "in_progress" }).text).toBe("Updated #2 to in progress");
+    expect(todo({ action: "update", id: 2, status: "in_progress" }, "running").text).toBe("Updating #2 to in progress");
+    expect(todo({ action: "delete", id: 3 }, "error").text).toBe("Couldn't delete #3");
+    expect(todo({ action: "get", id: 3 }).text).toBe("Read #3");
+    expect(todo({ action: "list" }).text).toBe("Listed the todos");
+    expect(todo({ action: "clear" }).text).toBe("Cleared the todos");
+    // No count to claim: the list itself is the status stack's, not this call's.
+    expect(todo({ action: "update", id: 2, status: "completed" }).facts).toEqual([]);
+    // An `action` this tool does not take stays a plan call.
+    expect(toolSentence(tool({ name: "todo", category: "other", args: args({ action: "rewind" }) }), WS).text).toBe("Updated the plan");
+  });
   it("uses an unknown tool by its words and invents no fact", () => {
     const odd = tool({ name: "lspDiagnostics", category: "other", output: "a\nb\nc" });
     expect(toolSentence({ ...odd, status: "running" }, WS).text).toBe("Using lsp diagnostics");

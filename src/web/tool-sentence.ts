@@ -94,6 +94,13 @@ const VERBS: Record<string, Record<Tense, string>> = {
   mcp: { running: "Asking", done: "Asked", error: "Couldn't ask" },
   agents: { running: "Running", done: "Ran", error: "Couldn't run" },
   plan: { running: "Updating", done: "Updated", error: "Couldn't update" },
+  // rpiv-todo's `todo`: one action on a numbered list, each worded as what it did.
+  todo_create: { running: "Adding", done: "Added", error: "Couldn't add" },
+  todo_update: { running: "Updating", done: "Updated", error: "Couldn't update" },
+  todo_delete: { running: "Deleting", done: "Deleted", error: "Couldn't delete" },
+  todo_get: { running: "Reading", done: "Read", error: "Couldn't read" },
+  todo_list: { running: "Listing", done: "Listed", error: "Couldn't list" },
+  todo_clear: { running: "Clearing", done: "Cleared", error: "Couldn't clear" },
   render: { running: "Rendering", done: "Rendered", error: "Couldn't render" },
   other: { running: "Using", done: "Used", error: "Couldn't use" },
 };
@@ -109,6 +116,14 @@ function readFacts(item: ToolItem): string[] {
 export function changeFact(added: number, removed: number): string | undefined {
   const parts = [added > 0 ? `+${added}` : "", removed > 0 ? `−${removed}` : ""].filter(Boolean);
   return parts.length > 0 ? parts.join(" ") : undefined;
+}
+
+/** The actions rpiv-todo's `todo` takes; any other `action` belongs to another tool. */
+const TODO_ACTIONS = new Set(["create", "update", "list", "get", "delete", "clear"]);
+
+/** A todo or plan call in any harness's spelling: Pi/omp's `todo`, Claude's `TodoWrite`, `ExitPlanMode`, `plan_mode_complete`. */
+export function isPlanCall(name: string, hasPlan = false): boolean {
+  return hasPlan || /todo|exitplanmode|plan_mode|(^|_)plan($|_)/i.test(name);
 }
 
 function todoCount(args: Args): { done: number; total: number } | undefined {
@@ -149,7 +164,22 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
   const mcp = mcpParts(item.name);
   if (mcp) return make("mcp", mcp.server, false, `: ${toolWords(mcp.tool)}`, []);
 
-  if (/todo|exitplanmode|plan_mode|(^|_)plan($|_)/i.test(item.name) || item.plan !== undefined) {
+  // rpiv-todo's `todo` acts on one numbered task, so the row says which action, not "the plan".
+  const todoAction = str(args.action);
+  if (todoAction && TODO_ACTIONS.has(todoAction)) {
+    if (todoAction === "list" || todoAction === "clear") return make(`todo_${todoAction}`, "the todos", false, undefined, []);
+    if (todoAction === "create") {
+      const batch = Array.isArray(args.tasks) ? args.tasks.filter((t) => typeof t === "object" && t !== null).length : 0;
+      if (batch > 0) return make("todo_create", plural(batch, "todo"), false, undefined, []);
+      const subject = str(args.subject);
+      return make("todo_create", "a todo", false, subject ? `: ${subject}` : undefined, []);
+    }
+    const id = typeof args.id === "number" ? `#${args.id}` : "";
+    const status = todoAction === "update" ? str(args.status) : undefined;
+    return make(`todo_${todoAction}`, id || "a todo", false, status ? `to ${status.replace(/_/g, " ")}` : undefined, []);
+  }
+
+  if (isPlanCall(item.name, item.plan !== undefined)) {
     const todos = todoCount(args);
     return make("plan", "the plan", false, todos ? `(${plural(todos.total, "step")})` : undefined, todos && todos.total > 0 ? [`${todos.done} of ${todos.total} done`] : []);
   }

@@ -156,6 +156,16 @@ describe("agent event normalization", () => {
     expect(toolSummary({ op: "init", items: ["a", "b"] })).toBe("Planned 2 tasks");
     expect(toolSummary({ list: [{ phase: "P", items: ["a"] }] })).toBe("Planned 1 task");
     expect(toolSummary({ items: ["a"], phase: "P" })).toBe("Added 1 task");
+    // rpiv-todo's `todo`: one action on a numbered list, not a whole-list payload.
+    expect(toolSummary({ action: "create", subject: "Ship the diff view" })).toBe("Added a todo: Ship the diff view");
+    expect(toolSummary({ action: "create", tasks: [{ subject: "a" }, { subject: "b" }] })).toBe("Added 2 todos");
+    expect(toolSummary({ action: "update", id: 2, status: "in_progress" })).toBe("Updated #2 to in progress");
+    expect(toolSummary({ action: "get", id: 3 })).toBe("Read #3");
+    expect(toolSummary({ action: "delete", id: 3 })).toBe("Deleted #3");
+    expect(toolSummary({ action: "list" })).toBe("Listed the todos");
+    expect(toolSummary({ action: "clear" })).toBe("Cleared the todos");
+    // A create with no subject still says what it did, and claims nothing it was not given.
+    expect(toolSummary({ action: "create", subject: "" })).toBe("Added a todo");
     expect(toolCategory("todo_write")).toBe("other");
   });
 
@@ -176,6 +186,28 @@ describe("agent event normalization", () => {
       { text: "a", status: "completed" },
       { text: "b", status: "pending" },
     ]);
+    // rpiv-todo (`@ssk_dev/rpiv-todo-lean`): `{action, params, tasks: [{id, subject, status}], nextId}`, tombstones hidden.
+    expect(
+      piTodos([
+        result({
+          action: "update",
+          params: { action: "update", id: 2, status: "in_progress" },
+          tasks: [
+            { id: 1, subject: "Read the code", status: "completed" },
+            { id: 2, subject: "Write the fix", status: "in_progress" },
+            { id: 3, subject: "Gone", status: "deleted" },
+            { id: 4, subject: "Run the tests", status: "pending" },
+          ],
+          nextId: 5,
+        }),
+      ]),
+    ).toEqual([
+      { text: "Read the code", status: "completed" },
+      { text: "Write the fix", status: "in_progress" },
+      { text: "Run the tests", status: "pending" },
+    ]);
+    // An op result with no `tasks` (an older build) keeps the newer shapes from being read as this one.
+    expect(piTodos([result({ op: "done" })])).toEqual([]);
   });
 
   it("takes an edit's count from its output only in the bracketed form", () => {

@@ -260,16 +260,49 @@ export function piTodos(messages: unknown[]): TodoItem[] {
         .map((t) => ({ text: String(t.text ?? "").slice(0, 500), status: t.done === true ? "completed" : "pending" }))
         .slice(0, 100);
     }
+    // rpiv-todo (`todo` with an `action`): the whole numbered list, tombstones included.
+    if (Array.isArray(m.details.tasks)) {
+      return (m.details.tasks as unknown[])
+        .filter(isObj)
+        .flatMap((t): TodoItem[] => (t.status === "deleted" || typeof t.subject !== "string" ? [] : [{ text: t.subject.slice(0, 500), status: String(t.status ?? "pending") }]))
+        .slice(0, 100);
+    }
   }
   return [];
+}
+
+/** The actions rpiv-todo's `todo` takes; any other `action` belongs to another tool. */
+const TODO_ACTIONS = new Set(["create", "update", "list", "get", "delete", "clear"]);
+
+/** rpiv-todo's `todo`: one action on a numbered list (`{action, id?, subject?, status?, tasks?}`), in words. */
+function todoActionSummary(args: Obj): string | null {
+  const action = typeof args.action === "string" ? args.action : "";
+  if (!TODO_ACTIONS.has(action)) return null;
+  if (action === "list") return "Listed the todos";
+  if (action === "clear") return "Cleared the todos";
+  if (action === "create") {
+    const batch = Array.isArray(args.tasks) ? args.tasks.filter(isObj).length : 0;
+    if (batch > 0) return `Added ${plural(batch, "todo")}`;
+    const subject = typeof args.subject === "string" ? oneLine(args.subject) : "";
+    return subject ? `Added a todo: ${subject}` : "Added a todo";
+  }
+  const id = typeof args.id === "number" ? `#${args.id}` : "";
+  if (action === "update") {
+    const status = typeof args.status === "string" && args.status.trim() ? ` to ${args.status.replace(/_/g, " ")}` : "";
+    return `Updated ${id || "a todo"}${status}`;
+  }
+  return `${action === "delete" ? "Deleted" : "Read"} ${id || "a todo"}`;
 }
 
 /**
  * A todo call in words: Claude Code's and Hermes's whole list (`todos`) as
  * its progress and current item; omp's and Pi's operations (`ops`, or one
- * `op`, which Pi lets a model leave out) as what they did.
+ * `op`, which Pi lets a model leave out) as what they did; rpiv-todo's single
+ * action (`action`) as the one thing it did.
  */
 function todoSummary(args: Obj): string | null {
+  const action = todoActionSummary(args);
+  if (action) return action;
   if (Array.isArray(args.todos) && args.todos.every(isObj)) {
     const todos = args.todos as Obj[];
     const done = todos.filter((t) => /done|complete/.test(String(t.status))).length;

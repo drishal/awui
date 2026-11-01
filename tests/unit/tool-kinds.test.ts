@@ -29,6 +29,19 @@ describe("a test run", () => {
   });
 });
 
+describe("a todo or plan call", () => {
+  it("is a kind of its own, whatever the harness calls the tool", () => {
+    // Pi/omp's `todo`, Claude's `TodoWrite`, and a plan handed over for review.
+    expect(toolKinds([tool("todo", "other")])[0]).toEqual({ key: "plan", category: "other", plan: true });
+    expect(toolKinds([tool("TodoWrite", "other")])[0]?.key).toBe("plan");
+    expect(toolKinds([tool("ExitPlanMode", "other")])[0]?.key).toBe("plan");
+    // And it is one kind, not one per spelling.
+    expect(toolKinds([tool("todo", "other"), tool("TodoWrite", "other")]).map((k) => k.key)).toEqual(["plan"]);
+    // A tool whose name only reads like one stays its category.
+    expect(toolKinds([tool("explain", "other")])[0]?.key).toBe("other");
+  });
+});
+
 describe("iconStack", () => {
   const k = (key: string) => ({ key, category: "other" as const });
   it("shows three and counts the rest", () => {

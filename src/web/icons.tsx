@@ -336,9 +336,10 @@ export function RaySpinner({ size = 14 }: { size?: number }) {
   );
 }
 
-export function ToolIcon({ category, size, test = false }: { category: ToolCategory; size?: number; test?: boolean }) {
+export function ToolIcon({ category, size, test = false, plan = false }: { category: ToolCategory; size?: number; test?: boolean; plan?: boolean }) {
   const props = size ? { size } : {};
   if (test) return <IconFlask {...props} />;
+  if (plan) return <IconPlan {...props} />;
   switch (category) {
     case "read":
       return <IconFile {...props} />;

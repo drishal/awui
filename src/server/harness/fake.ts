@@ -17,6 +17,7 @@
 //   "testrun" run a command that prints a Vitest summary with one failing test
 //   "manycalls" twelve quick reads in a row (a run long enough to fold)
 //   "toolfail" a command call that fails (port in use), then the run carries on
+//   "todolist" a rpiv-todo `todo` call whose result carries the whole numbered list (the status stack's source)
 //   "widethought" a call, thinking shaped like narration with a code line wider than the column, another call
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -35,7 +36,7 @@ import {
   type SlashCommand,
   type TodoItem,
 } from "../../shared/protocol.js";
-import { commandOutputEvents, extensionMessage, forkCutIndex, historyToItems, isObj, usageEntries } from "./agent-events.js";
+import { commandOutputEvents, extensionMessage, forkCutIndex, historyToItems, isObj, piTodos, usageEntries } from "./agent-events.js";
 import { seedTranscript, toolRecordText, type HandoffSeed } from "./handoff.js";
 import type {
   HarnessAdapter,
@@ -342,6 +343,9 @@ class FakeLiveChat implements LiveChat {
   }
 
   async getTodos(): Promise<TodoItem[]> {
+    // A scripted `todo` call is read the way Pi's own adapter reads it (its result's details).
+    const recorded = piTodos(this.session.messages);
+    if (recorded.length > 0) return recorded;
     const wanted = this.session.messages.some((m) => {
       const msg = m as { role?: string; content?: unknown };
       return msg.role === "user" && typeof msg.content === "string" && /\btodo\b/i.test(msg.content);
@@ -577,6 +581,23 @@ class FakeLiveChat implements LiveChat {
       }
       if (/\btoolfail\b/i.test(text)) {
         await this.call({ name: "bash", args: { command: "npm run e2e" }, output: "Error: port 4791 is already in use\n    at Server.setupListenHandle", isError: true }, signal);
+      }
+      if (/\btodolist\b/i.test(text)) {
+        // rpiv-todo (`todo`): one action on a numbered list, whose result carries the whole list again.
+        const tasks = [
+          { id: 1, subject: "Read the tool card", status: "completed" },
+          { id: 2, subject: "Draw the reason inline", status: "in_progress" },
+          { id: 3, subject: "Run the suite", status: "pending" },
+        ];
+        await this.call(
+          {
+            name: "todo",
+            args: { action: "update", id: 2, status: "in_progress" },
+            output: "Updated #2 (pending → in_progress)",
+            details: { action: "update", params: { action: "update", id: 2, status: "in_progress" }, tasks, nextId: 4 },
+          },
+          signal,
+        );
       }
       if (/\bplanned\b/i.test(text)) {
         // A plan handed over for review, as Claude Code's ExitPlanMode does it.

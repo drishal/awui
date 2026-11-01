@@ -3,6 +3,7 @@
 // the rest. Also the monogram and hue an MCP server's chip wears. Pure.
 import type { ChatItem, ToolCategory } from "../shared/protocol.js";
 import { toolFacts } from "./tool-facts.js";
+import { isPlanCall } from "./tool-sentence.js";
 
 export interface ToolKind {
   /** Distinct per kind: the category, or `mcp:<server>`. */
@@ -12,6 +13,8 @@ export interface ToolKind {
   server?: string;
   /** A command whose output was a test run: it wears the test glyph, and is a kind of its own. */
   test?: boolean;
+  /** A todo or plan call: it wears the checklist, and is a kind of its own. */
+  plan?: boolean;
 }
 
 /** The kind of one call: its MCP server, a test run (a command whose output tool-facts reads as one), else its category. */
@@ -19,6 +22,7 @@ export function toolKind(item: Extract<ChatItem, { kind: "tool" }>): ToolKind {
   const server = /^mcp__(.+?)__/.exec(item.name)?.[1];
   if (server) return { key: `mcp:${server}`, category: item.category, server };
   if (item.category === "command" && toolFacts(item).kind === "test") return { key: "test", category: "command", test: true };
+  if (isPlanCall(item.name, item.plan !== undefined)) return { key: "plan", category: item.category, plan: true };
   return { key: item.category, category: item.category };
 }
 

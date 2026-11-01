@@ -144,7 +144,7 @@ const TIMER_AFTER_MS = 1500;
 function KindChip({ kind, running = false }: { kind: ToolKind; running?: boolean }) {
   return (
     <span className={`kind-chip${kind.server ? ` is-server hue-${serverHue(kind.server)}` : ""}${kind.test ? " is-test" : ""}`} aria-hidden="true">
-      {running ? <Spinner size={12} /> : kind.server ? <span className="kind-mono">{monogram(kind.server)}</span> : <ToolIcon category={kind.category} size={12} test={kind.test === true} />}
+      {running ? <Spinner size={12} /> : kind.server ? <span className="kind-mono">{monogram(kind.server)}</span> : <ToolIcon category={kind.category} size={12} test={kind.test === true} plan={kind.plan === true} />}
     </span>
   );
 }
