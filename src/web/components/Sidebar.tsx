@@ -5,7 +5,8 @@
 // carry a menu (new tab, resume command, pin, snooze, archive, move), and drag
 // to a new place inside their date section. On phones it is the drawer.
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ChatStatus, Checkout, HarnessStatus, ProjectSession, SessionsOverview, WorkspaceInfo } from "../../shared/protocol.js";
+import type { ChatStatus, Checkout, HarnessStatus, ProjectSession, RoomSummary, SessionsOverview, WorkspaceInfo } from "../../shared/protocol.js";
+import { RoomList } from "./RoomList.js";
 import { useDismiss, useLeave, useNow, useViewSlide } from "../hooks.js";
 import { useHoverCard } from "../hover-card.js";
 import { IconArchive, IconCheck, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
@@ -934,6 +935,14 @@ export function Sidebar(props: {
   limits: UsageLimits | null;
   /** One bulk change for a selection of sessions (the endpoint takes them together). */
   onMarkMany: (ids: string[], change: MarkChange) => void;
+  /** Board rooms: the sidebar's own section, above chats. */
+  rooms: RoomSummary[] | null;
+  roomsError: string | null;
+  roomsLoading: boolean;
+  activeRoomId: string | null;
+  onOpenRoom: (roomId: string) => void;
+  onNewRoom: () => void;
+  onRefreshRooms: () => void;
   harnesses: HarnessStatus[];
   harnessId: string | null;
   onHarness: (id: string) => void;
@@ -1220,6 +1229,22 @@ export function Sidebar(props: {
           ) : null}
           {props.sessionsError ? <p className="sidebar-note is-warning">{props.sessionsError}</p> : null}
           <ul ref={sessionList} className="session-list" aria-busy={props.sessionsLoading} aria-label="Sessions by project">
+            {/*
+              Rooms are the Awui harness's surface: they appear in its sidebar scope, not in a
+              coding harness's. A server with no Awui harness has no scope to put them in (and
+              Board runs on any harness), so there they stay visible.
+            */}
+            {props.harnessId === "awui" || !props.harnesses.some((h) => h.id === "awui") ? (
+              <RoomList
+                rooms={props.rooms}
+                activeRoomId={props.activeRoomId}
+                loading={props.roomsLoading}
+                error={props.roomsError}
+                onOpen={props.onOpenRoom}
+                onNew={props.onNewRoom}
+                onRefresh={props.onRefreshRooms}
+              />
+            ) : null}
             {props.sessionsLoading && groups.length === 0 ? (
               <li className="skeleton-list" aria-hidden="true">
                 <span className="skeleton-row" />

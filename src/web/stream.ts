@@ -2,21 +2,37 @@
 // jittered backoff 0.5s→10s (then stay at the cap), a heartbeat watchdog,
 // pause while offline, immediate retry on `online` / tab visible. A new
 // EventSource does not send Last-Event-ID, so the last id goes in the query.
-import type { ChatEvent } from "../shared/protocol.js";
+// One core serves both resources — a chat (/api/chats/:id/events, frames named
+// `chat`) and a Board room (/api/rooms/:id/events, frames named `room`) — which
+// differ only in URL, frame name, gone-probe, and which frame ends the stream.
+import type { ChatEvent, RoomEvent } from "../shared/protocol.js";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
 const TIERS_MS = [500, 1000, 2000, 4000, 8000, 10_000];
 const HEARTBEAT_DEAD_MS = 45_000;
 
-export interface StreamHandlers {
-  onEvent(event: ChatEvent): void;
+export interface StreamHandlers<E> {
+  onEvent(event: E): void;
   onState(state: ConnectionState): void;
-  /** The chat no longer exists (404) or the browser is signed out (401). */
+  /** The stream's resource no longer exists (404) or the browser is signed out (401). */
   onGone(status: number): void;
 }
 
-export class ChatStream {
+/** What differs between one stream and another. */
+interface StreamShape<E> {
+  /** The SSE frame name the server sends, one JSON `E` per frame. */
+  readonly eventName: string;
+  /** The stream's URL for its id; `from` is the caller's lastEventId, or null from nothing. */
+  url(id: string, from: number | null): string;
+  /** A cheap GET that answers 404/401 when the resource is gone for good. */
+  probe(id: string): string;
+  /** Whether this frame means the stream itself is over (nothing to reconnect to). */
+  terminal?(event: E): boolean;
+}
+
+/** The connection policy both resources share; a subclass only names its shape. */
+abstract class ReconnectingStream<E> {
   private es: EventSource | null = null;
   private lastId: number | null = null;
   private attempt = 0;
@@ -29,11 +45,12 @@ export class ChatStream {
   /**
    * `from` is the lastEventId of a snapshot the caller already holds: the
    * server then replays only what came after it, instead of sending that
-   * whole snapshot again (1.7 MB for a long session).
+   * whole snapshot again (1.7 MB for a long chat).
    */
-  constructor(
-    private readonly chatId: string,
-    private readonly handlers: StreamHandlers,
+  protected constructor(
+    private readonly shape: StreamShape<E>,
+    private readonly id: string,
+    private readonly handlers: StreamHandlers<E>,
     from: number | null = null,
   ) {
     this.lastId = from;
@@ -60,6 +77,12 @@ export class ChatStream {
     this.es = null;
   }
 
+  /** A caller got a new snapshot while a reconnect was pending: replay after it. */
+  resumeFrom(id: number): void {
+    if (this.es) return;
+    this.lastId = Math.max(this.lastId ?? 0, id);
+  }
+
   private setState(state: ConnectionState): void {
     if (!this.stopped) this.handlers.onState(state);
   }
@@ -71,8 +94,7 @@ export class ChatStream {
       return;
     }
     this.setState(this.attempt === 0 && !this.opened ? "connecting" : "reconnecting");
-    const query = this.lastId !== null ? `?lastEventId=${this.lastId}` : "";
-    const es = new EventSource(`/api/chats/${encodeURIComponent(this.chatId)}/events${query}`);
+    const es = new EventSource(this.shape.url(this.id, this.lastId));
     this.es = es;
     this.lastAlive = Date.now();
     es.addEventListener("open", () => {
@@ -81,19 +103,19 @@ export class ChatStream {
       this.lastAlive = Date.now();
       this.setState("connected");
     });
-    es.addEventListener("chat", (message) => {
+    es.addEventListener(this.shape.eventName, (message) => {
       const msg = message as MessageEvent<string>;
       this.lastAlive = Date.now();
-      let event: ChatEvent;
+      let event: E;
       try {
-        event = JSON.parse(msg.data) as ChatEvent;
+        event = JSON.parse(msg.data) as E;
       } catch {
         // Leave lastId untouched so a reconnect replays this frame.
         return;
       }
       if (msg.lastEventId) this.lastId = Number(msg.lastEventId);
       this.handlers.onEvent(event);
-      if (event.type === "disposed") this.stop();
+      if (this.shape.terminal?.(event) === true) this.stop();
     });
     es.addEventListener("heartbeat", () => {
       this.lastAlive = Date.now();
@@ -110,7 +132,7 @@ export class ChatStream {
   private async afterError(): Promise<void> {
     if (this.stopped) return;
     try {
-      const res = await fetch(`/api/chats/${encodeURIComponent(this.chatId)}`, { cache: "no-store", credentials: "same-origin" });
+      const res = await fetch(this.shape.probe(this.id), { cache: "no-store", credentials: "same-origin" });
       if (res.status === 404 || res.status === 401) {
         this.setState("disconnected");
         this.handlers.onGone(res.status);
@@ -163,4 +185,38 @@ export class ChatStream {
   private onVisible = () => {
     if (document.visibilityState === "visible" && !this.es) this.reconnectNow();
   };
+}
+
+/** The ordinary chat's stream: `chat` frames on /api/chats/:id/events, ended by `disposed`. */
+export class ChatStream extends ReconnectingStream<ChatEvent> {
+  constructor(chatId: string, handlers: StreamHandlers<ChatEvent>, from: number | null = null) {
+    super(
+      {
+        eventName: "chat",
+        url: (id, lastId) => `/api/chats/${encodeURIComponent(id)}/events${lastId !== null ? `?lastEventId=${lastId}` : ""}`,
+        probe: (id) => `/api/chats/${encodeURIComponent(id)}`,
+        terminal: (event) => event.type === "disposed",
+      },
+      chatId,
+      handlers,
+      from,
+    );
+  }
+}
+
+/** A Board room's stream: `room` frames on /api/rooms/:id/events, ended by `disposed`. */
+export class RoomStream extends ReconnectingStream<RoomEvent> {
+  constructor(roomId: string, handlers: StreamHandlers<RoomEvent>, from: number | null = null) {
+    super(
+      {
+        eventName: "room",
+        url: (id, lastId) => `/api/rooms/${encodeURIComponent(id)}/events${lastId !== null ? `?lastEventId=${lastId}` : ""}`,
+        probe: (id) => `/api/rooms/${encodeURIComponent(id)}`,
+        terminal: (event) => event.type === "disposed",
+      },
+      roomId,
+      handlers,
+      from,
+    );
+  }
 }

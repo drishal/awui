@@ -6,6 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp, RECENT_SESSIONS_PER_HARNESS } from "./app.js";
 import { ChatManager } from "./chats/manager.js";
+import { RoomManager } from "./boards/manager.js";
+import { approvalAnswers } from "../shared/approval.js";
 import { ConfigError, loadConfig, migrateStateDir } from "./config.js";
 import { liveOmpChildren } from "./harness/omp.js";
 import { HarnessRegistry } from "./harness/registry.js";
@@ -180,6 +182,27 @@ async function main(): Promise<void> {
   const prompts = await SavedPrompts.open(config.stateDir);
   const limits = await Limits.open(registry, config.stateDir);
   const notifier = await Notifier.open(config.stateDir, (m) => console.error(`awui: ${m}`));
+  // Board rooms: load their durable state before any route exists, and mark
+  // work interrupted by the previous process as interrupted (nothing paid resumes).
+  const boards = new RoomManager({
+    registry,
+    workspaces,
+    chats: manager,
+    stateDir: config.stateDir,
+    log: (m) => console.error(`awui: boards: ${m}`),
+    notify: (note) => {
+      const answers = note.request ? approvalAnswers(note.request) : null;
+      notifier.notify({
+        kind: note.kind,
+        chatId: note.roomId,
+        sessionId: null,
+        title: note.title,
+        body: note.body,
+        ...(note.request && answers ? { approval: { requestId: note.request.id, ...answers } } : {}),
+      });
+    },
+  });
+  await boards.start();
   const lanUrls = config.host === "0.0.0.0" ? sampleLanHosts().ipv4.map((ip) => `http://${ip}:${config.port}/`) : [];
   const pairingUrls = [...lanUrls, ...config.allowedHosts.map((h) => `https://${h}/`)];
   const webDir = process.env.AWUI_WEB_DIR ?? (root === null ? null : path.join(root, "dist", "web"));
@@ -201,6 +224,7 @@ async function main(): Promise<void> {
     prompts,
     limits,
     notifier,
+    boards,
     checkpointsDir: path.join(config.stateDir, "checkpoints"),
     stateDir: config.stateDir,
     settings: {
@@ -271,6 +295,8 @@ async function main(): Promise<void> {
     server.close();
     for (const socket of sockets) socket.destroy();
     try {
+      // Rooms first: their schedulers may still reach chats the manager is about to close.
+      await boards.shutdown();
       await manager.shutdown();
       await registry.shutdown();
     } finally {

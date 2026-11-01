@@ -8,10 +8,12 @@ import request from "supertest";
 import { createApp } from "../../src/server/app.js";
 import { hashPassword, PasswordAuth } from "../../src/server/auth.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
+import { RoomManager } from "../../src/server/boards/manager.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
 import { HarnessRegistry } from "../../src/server/harness/registry.js";
 import type { Herdr } from "../../src/server/herdr.js";
 import { Security } from "../../src/server/security.js";
+import type { InteractionRequest, PushNote } from "../../src/shared/protocol.js";
 import { ThemeStore } from "../../src/server/theme.js";
 import { Workspaces } from "../../src/server/workspaces.js";
 
@@ -34,6 +36,10 @@ export interface TestApp {
   project: string;
   security: Security;
   fake: FakeAdapter;
+  boards: RoomManager;
+  stateDir: string;
+  workspaces: Workspaces;
+  boardNotes: Array<{ kind: PushNote["kind"]; roomId: string; title: string; body: string; request?: InteractionRequest }>;
 }
 
 export async function makeTestApp(options: {
@@ -46,8 +52,12 @@ export async function makeTestApp(options: {
   themeFile?: string | null;
   chunkDelayMs?: number;
   heartbeatMs?: number;
+  /** Watch the room-level notes the manager sends (in place of ordinary per-chat news). */
+  onBoardNote?: (note: { kind: PushNote["kind"]; roomId: string; title: string; body: string; request?: InteractionRequest }) => void;
   /** Fake B cannot store past turns (as Hermes and Claude Code): handoffs to it are briefings. */
   fakeBBriefOnly?: boolean;
+  /** The fake harness takes this long to stop a run (the stop-timeout test). */
+  fakeStopDelayMs?: number;
   /** Serve the Settings routes over a config.yml in this test's own settings folder. */
   withSettings?: boolean;
   /** Keep file checkpoints (in this test's own folder). */
@@ -59,7 +69,7 @@ export async function makeTestApp(options: {
   const project = path.join(root, "proj");
   mkdirSync(project);
   const registry = new HarnessRegistry();
-  const fake = new FakeAdapter({ chunkDelayMs: options.chunkDelayMs ?? 2 });
+  const fake = new FakeAdapter({ chunkDelayMs: options.chunkDelayMs ?? 2, ...(options.fakeStopDelayMs ? { stopDelayMs: options.fakeStopDelayMs } : {}) });
   registry.register(fake);
   registry.register(
     new FakeAdapter({ id: "fake-b", displayName: "Fake B", capabilities: { supportsSteer: false, supportsRewind: false, supportsPermissionMode: false, supportsResumeCommand: false, ...(options.fakeBBriefOnly ? { supportsHandoff: false } : {}) } }),
@@ -77,6 +87,19 @@ export async function makeTestApp(options: {
   });
   const manager = new ChatManager();
   const stateDir = path.join(root, ".state");
+  const boardNotes: TestApp["boardNotes"] = [];
+  const boards = new RoomManager({
+    registry,
+    workspaces,
+    chats: manager,
+    stateDir,
+    log: () => undefined,
+    notify: (note) => {
+      boardNotes.push(note);
+      options.onBoardNote?.(note);
+    },
+  });
+  await boards.start();
   const app = createApp({
     version: "test",
     home: root,
@@ -89,6 +112,7 @@ export async function makeTestApp(options: {
     webDir: null,
     heartbeatMs: options.heartbeatMs ?? 20_000,
     stateDir,
+    boards,
     ...(options.herdr ? { herdr: options.herdr } : {}),
     ...(options.withCheckpoints ? { checkpointsDir: path.join(root, ".state", "checkpoints") } : {}),
     ...(options.withSettings
@@ -110,11 +134,12 @@ export async function makeTestApp(options: {
   const port = (server.address() as AddressInfo).port;
   manager.render = { baseUrl: `http://127.0.0.1:${port}` };
   const close = async () => {
+    await boards.shutdown();
     await manager.shutdown();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   };
-  return { app, server, port, close, manager, registry, root, project, security, fake };
+  return { app, server, port, close, manager, registry, root, project, security, fake, boards, stateDir, workspaces, boardNotes };
 }
 
 /** A supertest agent on this machine: local requests need no sign-in. */

@@ -77,14 +77,15 @@ src/server/
   security.ts, auth.ts        Host/Origin/Tailscale checks, local vs remote, scrypt logins, signed cookies, lockout.
   workspaces.ts               WORKSPACE_ROOTS confinement (realpath), folder browsing.
   chats/chat.ts               One live chat: the EventReducer folds HarnessEvents into ChatItems, the event log, SSE fan-out, commands.
-  chats/manager.ts            Chat registry; one live writer per native session; idle reaping.
+  chats/manager.ts            Chat registry; one live writer per native session; idle reaping. An internal owner (Board rooms) marks a chat as driven, not the user's.
+  boards/                     Board rooms, web-only: store.ts (strict atomic persistence, JSONL room records), manager.ts (CRUD + the ownership oracle ordinary surfaces filter by), events.ts (room SSE), scheduler.ts (one active turn per room, serial), turn-runner.ts (direct responders, one bounded consultation round), sessions.ts (bot session pool over ChatManager-owned chats), context.ts/consult.ts/budget.ts (pure envelope, control-document parser, caps).
   harness/types.ts            HarnessAdapter / LiveChat contract and the normalized HarnessEvent union.
   harness/registry.ts         One factory per harness; AWUI_HARNESSES selects them.
   harness/{pi,omp,hermes,claude,opencode,grok}.ts   The six adapters; grok-transcript.ts folds Grok's ACP session updates (live and on disk). fake.ts is the deterministic test adapter.
   harness/opencode-server.ts  OpenCode's one shared `opencode serve`: started when needed, awui's password, events by session.
   harness/opencode-messages.ts  OpenCode's messages, models, forms, permissions as awui's (pure, against recorded shapes).
-  harness/awui.ts              The Awui chat harness: a read-only `pi` child (subclass), own agent dir, write/exec tools denied; loads render_html + eval_python, not rewind. Web-only.
-  awui-settings.ts             The Awui harness's provider settings: edit its isolated agent dir's models.json (keys never echoed).
+  harness/awui.ts              The Awui chat harness: a read-only `pi` child (subclass), own agent dir, write/exec tools denied; loads render_html + eval_python, not rewind. Web-only; its Settings can link the user's pi login into that dir (awui-settings.ts).
+  awui-settings.ts             The Awui harness's provider settings: edit its isolated agent dir's models.json (keys never echoed; pi-shaped fields survive saves), plus the opt-in that links the user's pi auth.json in and seeds Pi's providers once.
   harness/agent-events.ts     Pi-family event and transcript normalization (Pi and omp share it); historyToItems.
   harness/session-files.ts    Pi/omp session JSONL: active branch by parentId, fork and seed writers.
   harness/claude-sessions.ts  Claude Code's session files.
@@ -174,10 +175,16 @@ if every test passes.
 1. **Never edit an existing harness session file.** Forks, handoffs, and seeds
    only *add* new sessions in the harness's own store. In-place Edit/Retry goes
    through the harness itself (`/rewind-to` on Pi/omp, Hermes's own RPC), never
-   by rewriting its JSONL. awui keeps no second transcript database.
+   by rewriting its JSONL. awui keeps no second transcript database for
+   ordinary chats; Board rooms (`src/server/boards/`) own only their
+   cross-harness portable projection and control records, never a mirror of a
+   harness's native stream.
 2. **One live writer per session, in this process.** `ChatManager` maps a native
    session to one chat; a second tab or device attaches as another SSE
    subscriber. Never spawn a second child for a session that is already open.
+   A Board membership's native session is created and resumed only through the
+   Board manager, and one room runs one turn at a time with its bots serial —
+   parallel room execution is a later, separately designed feature.
 3. **Normalize at the adapter boundary.** SDK and wire types never leave
    `src/server/harness/<name>.ts`; everything else sees `HarnessEvent`,
    `ChatItem`, and `protocol.ts` types. The browser never names a file path
@@ -259,7 +266,13 @@ if every test passes.
   errors), `manycalls` (twelve quick reads, a run long enough to fold),
   `widethought` (two calls with narrated thinking between, a code line in it
   far wider than the column), `moaref` (a MoA turn's reference advice as
-  Markdown folds, with the fan-out on the status line). Add a word there when a
+  Markdown folds, with the fan-out on the status line), and the Board scenarios
+  `consult` (a valid control document on the first invocation, a plain answer
+  once its consultation result comes back), `consult-bad`, `consult-unknown`,
+  `consult-self`, `consult-dup` (malformed, off-allowlist, self, repeated),
+  `consult-slow`, `consult-fail`, `consult-ask` (an approval raised inside a
+  consultant), `roomtwice` (distinguishable output per member), and `usagevary`
+  (different token counts, one call unpriced). Add a word there when a
   feature needs a new scenario,
   rather than mocking deeper.
 - **herdr** is a stand-in socket (`tests/helpers/fake-herdr.ts`): unit tests give

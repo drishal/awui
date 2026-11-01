@@ -1,8 +1,25 @@
 // The app shell: bootstrap and sign-in, the tabs of open chats, the sidebar,
 // the conversation and its header, the composer, and every dialog. It owns
 // which chat is shown (the URL's #chat=, chat-stream.ts streams it over SSE)
-// and hands each region its data and callbacks; the regions themselves live
-// in components/ and draw from props. docs/ui.md maps which part is where.
+// and which room (the URL's #room=, use-room-stream.ts streams it); rooms do
+// not open as tabs. It hands each region its data and callbacks; the regions
+// themselves live in components/ and draw from props. docs/ui.md maps which
+// part is where.
+import { openRoomHash, roomIdFromHash, TURN_STATUS_LABEL, useRoomStream } from "./use-room-stream.js";
+import {
+  answerRoomRequest as postRoomAnswer,
+  cancelQueuedTurn as postCancelQueuedTurn,
+  downloadRoomExport,
+  fetchHistory,
+  sendRoomMessage as postRoomMessage,
+  stopRoom as postStopRoom,
+  useBots,
+  useRooms,
+} from "./rooms.js";
+import { oldestSeq } from "./room-state.js";
+import { RoomView } from "./components/RoomView.js";
+import { BotEditor } from "./components/BotEditor.js";
+import { RoomEditor } from "./components/RoomEditor.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   SessionMarkState,
@@ -12,6 +29,7 @@ import type {
   ConfigPatch,
   ImageAttachment,
   InteractionAnswer,
+  RoomInfo,
   ModelInfo,
   ProjectSession,
   PushNote,
@@ -101,6 +119,16 @@ export function App() {
     setChat,
   });
   const { overview, sessionsError, sessionsLoading, refreshSessions, markSession, orderSessions } = useSessions({ boot, workspace, chat });
+
+  // Rooms are a sibling of chats: the URL's #room= names the shown one, and only
+  // that room streams. The sidebar list and the bot profiles are plain fetches.
+  const room = useRoomStream({ onSignedOut: () => setSignedOut(true) });
+  const { rooms: roomsList, error: roomsError, loading: roomsLoading, refresh: refreshRooms } = useRooms(() => setSignedOut(true));
+  const { bots: botsList, refresh: refreshBots } = useBots(() => setSignedOut(true));
+  /** The room dialog: creating one, or editing the shown room. */
+  const [roomEditor, setRoomEditor] = useState<{ mode: "create" } | { mode: "edit" } | null>(null);
+  /** The bot profile dialog: an id, or null for a new one. */
+  const [botEditor, setBotEditor] = useState<{ botId: string | null } | null>(null);
   const {
     sidebarWidth,
     setSidebarWidth,
@@ -113,6 +141,69 @@ export function App() {
     narrow,
     openedWhileNarrow,
   } = useSidebarLayout();
+
+  /** A room is a target, not a tab: opening one navigates (Back returns to what was shown). */
+  const openRoom = (id: string) => {
+    openRoomHash(id);
+    setDrawerOpen(false);
+  };
+  /** Leave the room for whatever the user asked for next (a chat, a project, the start screen). */
+  const leaveRoom = () => {
+    if (!room.roomId) return;
+    // A chat may already own the URL (its hash write does not fire hashchange): drop the room only.
+    if (roomIdFromHash() !== null) openRoomHash(null);
+    else room.detach();
+  };
+  const applyRoom = (info: RoomInfo) => {
+    room.apply([{ type: "room", room: info }]);
+    void refreshRooms();
+  };
+  const sendToRoom = async (text: string, mentions: string[], clientId: string) => {
+    if (!room.roomId) return false;
+    try {
+      const result = await postRoomMessage(room.roomId, { text, mentions, clientId });
+      // The posted turn is queued now; its record arrives as a `record` event.
+      room.apply([{ type: "queue", queued: result.queued }]);
+      void refreshRooms();
+      return true;
+    } catch (e) {
+      fail(e);
+      return false;
+    }
+  };
+  const answerInRoom = (requestId: string, answer: InteractionAnswer) => {
+    if (!room.roomId) return;
+    postRoomAnswer(room.roomId, requestId, answer).catch((e: unknown) => fail(e));
+  };
+  const stopRoom = () => {
+    if (!room.roomId) return;
+    postStopRoom(room.roomId).catch((e: unknown) => fail(e));
+  };
+  const cancelQueuedInRoom = (turnId: string) => {
+    if (!room.roomId) return;
+    postCancelQueuedTurn(room.roomId, turnId)
+      .then(({ queued }) => room.apply([{ type: "queue", queued }]))
+      .catch((e: unknown) => fail(e));
+  };
+  const loadOlderRoomRecords = async () => {
+    const state = room.state;
+    if (!room.roomId || !state) return;
+    const before = oldestSeq(state);
+    if (before === null) return;
+    try {
+      const { records } = await fetchHistory(room.roomId, before);
+      room.prepend(records);
+    } catch (e) {
+      fail(e);
+    }
+  };
+  /** The room's workspace path: the wire carries only its name, and tool rows want a path. */
+  const roomWorkspacePath = overview.workspaces.find((w) => w.id === room.state?.room.workspaceId)?.path ?? "";
+  /** Projects a new room may run in: every registered one, plus the current (even before it has a session). */
+  const boardWorkspaces = useMemo(() => {
+    const list = workspace ? [workspace, ...overview.workspaces] : overview.workspaces;
+    return list.filter((w, i) => list.findIndex((x) => x.id === w.id) === i);
+  }, [overview.workspaces, workspace]);
 
   /** What a share or prompt link put into the start screen's box (it waits there until Send). */
   const [startSeed, setStartSeed] = useState<{ text?: string; images?: PendingImage[]; hidden?: number } | null>(null);
@@ -481,6 +572,7 @@ export function App() {
 
   /** Show the start screen: no chat on screen; the open tabs stay, none active. Nothing starts until a send. */
   const showStart = () => {
+    leaveRoom();
     rememberShown();
     setStartSeed(null);
     setTabState((st) => ({ ...st, active: -1 }));
@@ -497,6 +589,7 @@ export function App() {
    * tab's place, since a draft matches no chat).
    */
   const newTab = () => {
+    leaveRoom();
     rememberShown();
     setStartSeed(null);
     setTabState((st) => placeTab(st, draftTab(harnessId ?? "", workspace?.path ?? ""), { newTab: true }));
@@ -704,6 +797,7 @@ export function App() {
   };
 
   const activateTab = (index: number) => {
+    leaveRoom();
     const tab = tabsRef.current.tabs[index];
     if (!tab) return;
     if (index === tabsRef.current.active && chat?.chatId === tab.chatId) return;
@@ -813,14 +907,24 @@ export function App() {
     void loadTab({ ...tab, chatId: null });
   }, [chat?.gone]);
 
-  // On load, the shown tab reattaches unless the URL already names a chat.
+  // On load, the shown tab reattaches unless the URL already names a chat or a room.
   const restored = useRef(false);
   useEffect(() => {
     if (!boot || restored.current) return;
     restored.current = true;
     const tab = tabsRef.current.tabs[tabsRef.current.active];
-    if (tab && !chatIdFromHash()) void loadTab(tab);
+    if (tab && !chatIdFromHash() && !roomIdFromHash()) void loadTab(tab);
   }, [boot]);
+
+  // Opening a chat while a room is shown leaves the room: the URL names one target,
+  // and the chat's own hash write (replaceState) never reports a hashchange.
+  const lastChatId = useRef<string | null>(null);
+  useEffect(() => {
+    const id = chat?.chatId ?? null;
+    const previous = lastChatId.current;
+    lastChatId.current = id;
+    if (id !== null && id !== previous && room.roomId) leaveRoom();
+  }, [chat?.chatId, room.roomId]);
 
   /** Open a chat beside the main one: `s` at once, or the pane's picker. */
   const openBeside = async (s?: ProjectSession) => {
@@ -847,6 +951,7 @@ export function App() {
     s: ProjectSession,
     { newTab = false, workspace: known, ignoreHerdr = false }: { newTab?: boolean; workspace?: WorkspaceInfo; ignoreHerdr?: boolean } = {},
   ) => {
+    leaveRoom();
     // Opening it here is reading it: no toast, the dot just goes. Awaited, so the
     // overview refresh that opening triggers cannot land first and put it back.
     if (s.unread) {
@@ -1500,13 +1605,30 @@ export function App() {
           setChatSearch(q);
           setDrawerOpen(false);
         }}
-        // While a chat opens, its row is the current one already (its tab is in place).
-        activeSessionId={heading ? (tabState.tabs[tabState.active]?.sessionId ?? null) : (chat?.sessionId ?? null)}
-        activeChatId={heading ? (tabState.tabs[tabState.active]?.chatId ?? null) : chatId}
-        activeStatus={heading ? null : (chat?.status ?? null)}
-        onOpenSession={(s, newTab) => void openSession(s, { newTab })}
+        // While a chat opens, its row is the current one already (its tab is in place). A room is not a session row.
+        activeSessionId={room.roomId ? null : heading ? (tabState.tabs[tabState.active]?.sessionId ?? null) : (chat?.sessionId ?? null)}
+        activeChatId={room.roomId ? null : heading ? (tabState.tabs[tabState.active]?.chatId ?? null) : chatId}
+        activeStatus={room.roomId ? null : heading ? null : (chat?.status ?? null)}
+        rooms={roomsList}
+        roomsError={roomsError}
+        roomsLoading={roomsLoading}
+        activeRoomId={room.roomId}
+        onOpenRoom={openRoom}
+        onNewRoom={() => setRoomEditor({ mode: "create" })}
+        onRefreshRooms={() => void refreshRooms()}
+        onOpenSession={(s, newTab) => {
+          leaveRoom();
+          void openSession(s, { newTab });
+        }}
         onWarmSession={warmSession}
-        onOpenBeside={wide ? (s) => void openBeside(s) : undefined}
+        onOpenBeside={
+          wide
+            ? (s) => {
+                leaveRoom();
+                void openBeside(s);
+              }
+            : undefined
+        }
         onMarkSession={(s, change) => void markSessionAs(s, change)}
         onReorderSessions={(harnessId, workspaceId, ids) => {
           const before = overview.orders?.[`${harnessId}:${workspaceId}`];
@@ -1571,7 +1693,16 @@ export function App() {
             </button>
           ) : null}
           <div className="chat-title">
-            {heading ? (
+            {room.roomId ? (
+              <>
+                <h1>{room.state?.room.name ?? "Room"}</h1>
+                <div className="chat-sub">
+                  <span className="badge badge-room">Room</span>
+                  {room.state ? <span className="chat-path">{room.state.room.workspaceName}</span> : null}
+                  {room.state?.room.archived ? <span className="room-tag is-archived">Archived</span> : null}
+                </div>
+              </>
+            ) : heading ? (
               <>
                 <h1>{heading.title}</h1>
                 <div className="chat-sub">
@@ -1608,12 +1739,12 @@ export function App() {
               </>
             )}
           </div>
-          {chat && changedFiles > 0 ? (
+          {chat && !room.roomId && changedFiles > 0 ? (
             <button type="button" className="btn btn-small review-open" title="Review the changes and comment on them" onClick={() => setReviewOpen(true)}>
               <IconEdit size={14} /> <span className="review-label">Review</span> <span className="review-count">{changedFiles}</span>
             </button>
           ) : null}
-          {wide && (chat || side) ? (
+          {wide && !room.roomId && (chat || side) ? (
             <button
               type="button"
               className={`icon-btn split-toggle${side ? " is-on" : ""}`}
@@ -1628,7 +1759,7 @@ export function App() {
           <button type="button" className="icon-btn palette-open" aria-label="Commands" title={`Commands (${shortcutHint("palette")})`} onClick={() => setPaletteOpen(true)}>
             <IconSearch size={16} />
           </button>
-          {chat && chat.status !== "disposed" ? (
+          {chat && !room.roomId && chat.status !== "disposed" ? (
             <div className="menu">
               <button type="button" className="icon-btn" aria-label="Chat actions" aria-expanded={menuOpen} aria-haspopup="menu" onClick={() => setMenuOpen((v) => !v)}>
                 <IconMore size={18} />
@@ -1741,7 +1872,32 @@ export function App() {
 
         <div className={`chat-split${side ? " is-split" : ""}`}>
           <div className="chat-body" data-pane="main">
-            {chat && !hasPrompt ? (
+            {room.roomId ? (
+              <RoomView
+                key={room.roomId}
+                roomId={room.roomId}
+                state={room.state}
+                gone={room.gone}
+                conn={room.conn}
+                boot={boot}
+                bots={botsList}
+                workspacePath={roomWorkspacePath}
+                onSend={sendToRoom}
+                onAnswer={answerInRoom}
+                onStop={stopRoom}
+                onCancelQueued={cancelQueuedInRoom}
+                onLoadOlder={loadOlderRoomRecords}
+                onEditRoom={() => setRoomEditor({ mode: "edit" })}
+                onRoom={applyRoom}
+                onExport={() => {
+                  if (room.roomId) downloadRoomExport(room.roomId);
+                }}
+                onNotice={(text) => setBanner({ level: "info", text })}
+                onNewBot={() => setBotEditor({ botId: null })}
+                onEditBot={(botId) => setBotEditor({ botId })}
+                onLeave={() => openRoomHash(null)}
+              />
+            ) : chat && !hasPrompt ? (
               <div className="hero">
                 <div className="hero-inner">
                   {chat.items.length > 0 ? (
@@ -1888,9 +2044,55 @@ export function App() {
           if (s) void openSession(s);
         }}
       />
-      <StatusBar conn={conn} chat={chat} harnessName={chatHarness?.displayName ?? null} version={boot.version} />
+      <StatusBar
+        conn={conn}
+        chat={chat}
+        room={
+          room.roomId
+            ? {
+                conn: room.conn,
+                name: room.state?.room.name ?? "Room",
+                workspace: room.state?.room.workspaceName ?? "",
+                status: room.state?.activeTurn ? (TURN_STATUS_LABEL[room.state.activeTurn.state] ?? room.state.activeTurn.state) : "Idle",
+              }
+            : null
+        }
+        harnessName={chatHarness?.displayName ?? null}
+        version={boot.version}
+      />
 
       {pickerOpen ? <WorkspacePicker recent={recent} onOpen={(p) => void openWorkspace(p)} onClose={() => setPickerOpen(false)} error={pickerError} /> : null}
+      {roomEditor ? (
+        <RoomEditor
+          room={roomEditor.mode === "edit" ? room.state?.room ?? null : null}
+          bots={botsList}
+          workspaces={boardWorkspaces}
+          onCreated={(snapshot) => {
+            void refreshRooms();
+            openRoom(snapshot.room.id);
+          }}
+          onSaved={applyRoom}
+          onNewBot={() => setBotEditor({ botId: null })}
+          onPickFolder={() => {
+            setPickerError(null);
+            setPickerOpen(true);
+          }}
+          onNotice={(text) => setBanner({ level: "info", text })}
+          onClose={() => setRoomEditor(null)}
+        />
+      ) : null}
+      {botEditor ? (
+        <BotEditor
+          bot={botEditor.botId ? botsList?.find((b) => b.id === botEditor.botId) ?? null : null}
+          harnesses={boot.harnesses}
+          workspaces={boardWorkspaces}
+          defaultWorkspaceId={room.state?.room.workspaceId ?? workspace?.id ?? null}
+          onSaved={() => void refreshBots()}
+          onDeleted={() => void refreshBots()}
+          onNotice={(text) => setBanner({ level: "info", text })}
+          onClose={() => setBotEditor(null)}
+        />
+      ) : null}
       {renameOpen && chat ? (
         <RenameDialog
           initial={chat.title}

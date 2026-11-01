@@ -5,7 +5,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { InteractionRequest, LimitAccount, PushNote, WorkspaceInfo } from "../../shared/protocol.js";
 import { DeferredLiveChat } from "../harness/deferred.js";
 import type { HarnessAdapter, LiveChat } from "../harness/types.js";
-import { Chat, ChatError, errorMessage } from "./chat.js";
+import { Chat, ChatError, errorMessage, type ChatOwner } from "./chat.js";
 import { ChatCheckpoints, type Checkpoints } from "../checkpoints.js";
 
 const IDLE_DISPOSE_MS = 30 * 60_000;
@@ -88,7 +88,8 @@ export class ChatManager {
       if (!this.onChainHandoff) throw new Error("Handoffs cannot run here");
       await this.onChainHandoff(c, step, rest);
     };
-    if (this.checkpoints) {
+    // Board-owned chats take no ordinary per-prompt checkpoints; a room-level design comes later.
+    if (this.checkpoints && !chat.owner) {
       chat.checkpoints = new ChatCheckpoints(this.checkpoints.service, chat, this.checkpoints.sessionsDir);
       void chat.checkpoints.start();
     }
@@ -112,17 +113,18 @@ export class ChatManager {
     for (const [k, id] of this.bySession) if (id === chat.chatId) this.bySession.delete(k);
   }
 
-  async create(adapter: HarnessAdapter, workspace: WorkspaceInfo): Promise<Chat> {
+  async create(adapter: HarnessAdapter, workspace: WorkspaceInfo, owner?: ChatOwner): Promise<Chat> {
     const problem = adapter.workspaceProblem(workspace.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
-    const render = this.renderFor(adapter);
+    // A board-owned chat gets no render token: room-scoped HTML render needs its own ownership route first.
+    const render = owner ? undefined : this.renderFor(adapter);
     let live;
     try {
       live = await adapter.openChat({ cwd: workspace.path, renderEnv: render?.env });
     } catch (error) {
       throw new ChatError(502, "harness_init_failed", `${adapter.displayName} failed to start: ${errorMessage(error)}`);
     }
-    const chat = await this.load(adapter, workspace, live);
+    const chat = await this.load(adapter, workspace, live, owner);
     if (render && this.render) chat.render = { token: render.token, baseUrl: this.render.baseUrl };
     this.register(chat);
     return chat;
@@ -145,16 +147,16 @@ export class ChatManager {
    * big for the transport, say), the session is closed again rather than left
    * running with nothing attached to it.
    */
-  private async load(adapter: HarnessAdapter, workspace: WorkspaceInfo, live: LiveChat): Promise<Chat> {
+  private async load(adapter: HarnessAdapter, workspace: WorkspaceInfo, live: LiveChat, owner?: ChatOwner): Promise<Chat> {
     try {
-      return await Chat.open(randomUUID(), adapter, workspace, live);
+      return await Chat.open(randomUUID(), adapter, workspace, live, owner);
     } catch (error) {
       await live.dispose().catch(() => undefined);
       throw new ChatError(502, "harness_load_failed", `${adapter.displayName} could not load this session: ${errorMessage(error)}`);
     }
   }
 
-  async resume(adapter: HarnessAdapter, workspace: WorkspaceInfo, nativeId: string): Promise<Chat> {
+  async resume(adapter: HarnessAdapter, workspace: WorkspaceInfo, nativeId: string, owner?: ChatOwner): Promise<Chat> {
     const k = key(adapter.id, nativeId);
     const existing = this.liveChatFor(adapter.id, nativeId);
     if (existing) return existing;
@@ -163,7 +165,8 @@ export class ChatManager {
     const problem = adapter.workspaceProblem(workspace.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
     const open = (async () => {
-      const render = this.renderFor(adapter);
+      // A board-owned chat gets no render token: room-scoped HTML render needs its own ownership route first.
+      const render = owner ? undefined : this.renderFor(adapter);
       const req = { cwd: workspace.path, resumeNativeId: nativeId, renderEnv: render?.env };
       // From the file when the adapter can read it: the chat shows now and the
       // harness starts behind it; the file read also proves the session is this project's.
@@ -182,7 +185,7 @@ export class ChatManager {
           throw new ChatError(502, "harness_init_failed", `${adapter.displayName} failed to resume: ${errorMessage(error)}`);
         }
       }
-      const chat = await this.load(adapter, workspace, live);
+      const chat = await this.load(adapter, workspace, live, owner);
       if (render && this.render) chat.render = { token: render.token, baseUrl: this.render.baseUrl };
       this.register(chat);
       return chat;

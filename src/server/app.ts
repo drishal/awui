@@ -8,6 +8,15 @@ import { buildIdOf } from "./build-id.js";
 import { embeddedWeb } from "./embedded.js";
 import {
   answerSchema,
+  botCreateSchema,
+  botPatchSchema,
+  memberAddSchema,
+  memberPatchSchema,
+  roomAnswerSchema,
+  roomCreateSchema,
+  roomHistoryQuery,
+  roomMessageSchema,
+  roomPatchSchema,
   type Bootstrap,
   chainSchema,
   type ChatEvent,
@@ -64,6 +73,7 @@ import {
 } from "../shared/protocol.js";
 import { approvalAnswers } from "../shared/approval.js";
 import { ChatError, errorMessage, type Chat } from "./chats/chat.js";
+import type { BoardManager } from "./boards/types.js";
 import { storedImage } from "./image-store.js";
 import { isHtmlRenderId, readHtmlRender, saveHtmlRender } from "./html-render.js";
 import type { ChatManager } from "./chats/manager.js";
@@ -134,6 +144,8 @@ export interface AppDeps {
   stateDir?: string | null;
   /** Herdr's panes, to mark the sessions they run; none when absent (tests that do not ask for it). */
   herdr?: Herdr;
+  /** Board rooms; without one the board routes answer 404 and ownership filtering is a no-op. */
+  boards?: BoardManager;
   log?: (message: string) => void;
 }
 
@@ -196,6 +208,8 @@ export function createApp(deps: AppDeps) {
   const usageReader = new UsageReader();
   if (deps.checkpointsDir) manager.checkpoints = { service: new Checkpoints(deps.checkpointsDir), sessionsDir: path.join(deps.checkpointsDir, "sessions") };
   manager.onNews = (chat, kind, text, request) => {
+    // A board-owned chat's runs are the room's business: the room sends its own notes.
+    if (chat.owner) return;
     // An approval's note carries its two answers, so the notification's own buttons can send one.
     const answers = request ? approvalAnswers(request) : null;
     notifier.notify({
@@ -209,6 +223,7 @@ export function createApp(deps: AppDeps) {
     if ((kind === "ask" || kind === "error") && chat.sessionId) marks.wake(chat.sessionId);
   };
   manager.onRunStart = (chat) => {
+    if (chat.owner) return;
     if (chat.sessionId) marks.wake(chat.sessionId);
   };
   const log = deps.log ?? ((m: string) => console.error(m));
@@ -267,6 +282,8 @@ export function createApp(deps: AppDeps) {
     const token = req.get("x-awui-render-token") ?? "";
     const chat = token !== "" ? manager.chatForRenderToken(token) : undefined;
     if (!chat) throw new ChatError(403, "bad_render_token", "Not a live chat's render token");
+    // Board-owned chats are never given a render token, and must not get one through this route either.
+    if (chat.owner) throw new ChatError(403, "bad_render_token", "Not a live chat's render token");
     const html = typeof req.body?.html === "string" ? req.body.html : "";
     const saved = await saveHtmlRender(stateDir, { html, title: req.body?.title, height: req.body?.height });
     if (!saved) throw new ChatError(400, "bad_render", "Empty or oversized HTML document");
@@ -286,7 +303,7 @@ export function createApp(deps: AppDeps) {
   app.use("/api", (req, res, next) => {
     // An upload's body is the file itself, whatever type the browser names; its route reads it raw.
     if (req.method === "POST" && /^\/workspaces\/[^/]+\/upload$/.test(req.path)) return next();
-    return (req.method === "POST" && /^\/chats\/[^/]+\/messages$/.test(req.path) ? messageJson : textJson)(req, res, next);
+    return (req.method === "POST" && /^\/(?:chats|rooms)\/[^/]+\/messages$/.test(req.path) ? messageJson : textJson)(req, res, next);
   });
 
   // A broken config.yml keeps the defaults here; the server logged why at startup.
@@ -471,7 +488,7 @@ export function createApp(deps: AppDeps) {
     const ws = await workspaces.get(String(req.query.workspaceId ?? ""));
     const problem = adapter.workspaceProblem(ws.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
-    const native = await adapter.listSessions(ws.path);
+    const native = (await adapter.listSessions(ws.path)).filter((s) => !deps.boards?.ownsNativeSession(adapter.id, s.nativeId));
     const seen = new Set<string>();
     const sessions: SessionSummary[] = native.map((s) => {
       seen.add(s.nativeId);
@@ -480,7 +497,7 @@ export function createApp(deps: AppDeps) {
     });
     // Live chats whose session the harness has not persisted yet.
     for (const chat of manager.list()) {
-      if (chat.harnessId !== adapter.id || chat.workspace.id !== ws.id || chat.status === "disposed") continue;
+      if (chat.owner || chat.harnessId !== adapter.id || chat.workspace.id !== ws.id || chat.status === "disposed") continue;
       if (chat.nativeId && seen.has(chat.nativeId)) continue;
       sessions.unshift({
         id: chat.sessionId ?? `${adapter.id}:live-${chat.chatId}`,
@@ -502,7 +519,9 @@ export function createApp(deps: AppDeps) {
     const problem = adapter.workspaceProblem(ws.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
     try {
-      res.json({ models: await adapter.listModels(ws.path) });
+      // thinkingLevels is the harness's own default list, for a picker with no model chosen yet;
+      // a model's own levels (ModelInfo.levels) win when one is. Both are the harness's words, never invented.
+      res.json({ models: await adapter.listModels(ws.path), thinkingLevels: await adapter.listThinkingLevels(ws.path).catch(() => []) });
     } catch (error) {
       throw new ChatError(502, "models_unavailable", `${adapter.displayName} could not list its models: ${errorMessage(error)}`);
     }
@@ -517,6 +536,8 @@ export function createApp(deps: AppDeps) {
     const prefix = `${adapter.id}:`;
     if (!input.sessionId.startsWith(prefix)) throw new ChatError(400, "wrong_harness", "Session belongs to another harness");
     const nativeId = input.sessionId.slice(prefix.length);
+    // A room membership's native session is never an ordinary preview target.
+    if (deps.boards?.ownsNativeSession(adapter.id, nativeId)) throw new ChatError(404, "no_preview", "That session belongs to a Board room");
     const ws = await workspaces.get(input.workspaceId);
     const live = manager.liveChatFor(adapter.id, nativeId);
     const items = live ? live.snapshot().items : ((await adapter.readTranscript?.({ cwd: ws.path, nativeId }).catch(() => null))?.items ?? null);
@@ -560,6 +581,8 @@ export function createApp(deps: AppDeps) {
     const prefix = `${adapter.id}:`;
     if (!input.sessionId.startsWith(prefix)) throw new ChatError(400, "wrong_harness", "Session belongs to another harness");
     const nativeId = input.sessionId.slice(prefix.length);
+    // A room membership's session resumes only through its room, never in a terminal as an ordinary chat.
+    if (deps.boards?.ownsNativeSession(adapter.id, nativeId)) throw new ChatError(404, "not_saved", "That session belongs to a Board room");
     const ws = await workspaces.get(input.workspaceId);
     const argv = await adapter.resumeCommand({ cwd: ws.path, nativeId });
     if (!argv) throw new ChatError(404, "not_saved", "That session has nothing saved to resume yet");
@@ -595,8 +618,9 @@ export function createApp(deps: AppDeps) {
       adapters.map(async (adapter) => {
         try {
           const here = current && !adapter.workspaceProblem(current.path) ? await adapter.listSessions(current.path) : [];
-          if (current) for (const s of here) add(adapter, s, current);
+          if (current) for (const s of here) if (!deps.boards?.ownsNativeSession(adapter.id, s.nativeId)) add(adapter, s, current);
           for (const s of await adapter.listRecentSessions(RECENT_SESSIONS_PER_HARNESS)) {
+            if (deps.boards?.ownsNativeSession(adapter.id, s.nativeId)) continue;
             const ws = await workspaceFor(s.cwd);
             if (ws && !adapter.workspaceProblem(ws.path)) add(adapter, s, ws);
           }
@@ -606,7 +630,7 @@ export function createApp(deps: AppDeps) {
       }),
     );
     for (const chat of manager.list()) {
-      if (chat.status === "disposed") continue;
+      if (chat.owner || chat.status === "disposed") continue;
       const id = chat.sessionId ?? `${chat.harnessId}:live-${chat.chatId}`;
       if (sessions.has(id)) continue;
       projects.set(chat.workspace.id, chat.workspace);
@@ -736,6 +760,139 @@ export function createApp(deps: AppDeps) {
     res.json({ ids: await order.set(harnessId, workspaceId, ids) });
   });
 
+  // ---- Board: reusable bot profiles, rooms, and their streams -----------------
+  // All of it sits behind the same requireAuth as every other /api route. A
+  // server without board wiring answers 404 rather than pretending.
+  const board = (): BoardManager => {
+    if (!deps.boards) throw new ChatError(404, "board_off", "Board rooms are not wired on this server");
+    return deps.boards;
+  };
+
+  app.get("/api/bots", async (_req, res) => {
+    res.json(await board().listBots());
+  });
+  app.post("/api/bots", async (req, res) => {
+    res.status(201).json(await board().createBot(body(botCreateSchema, req)));
+  });
+  app.patch("/api/bots/:id", async (req, res) => {
+    res.json(await board().patchBot(req.params.id, body(botPatchSchema, req)));
+  });
+  app.delete("/api/bots/:id", async (req, res) => {
+    await board().deleteBot(req.params.id);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/rooms", async (_req, res) => {
+    res.json(await board().listRooms());
+  });
+  app.post("/api/rooms", async (req, res) => {
+    const info = await board().createRoom(body(roomCreateSchema, req));
+    // The snapshot opens the room immediately, instead of a refetch from the client.
+    res.status(201).json(await board().roomSnapshot(info.id));
+  });
+  app.get("/api/rooms/:id", async (req, res) => {
+    res.json(await board().roomSnapshot(req.params.id));
+  });
+  app.patch("/api/rooms/:id", async (req, res) => {
+    res.json(await board().patchRoom(req.params.id, body(roomPatchSchema, req)));
+  });
+  app.post("/api/rooms/:id/members", async (req, res) => {
+    res.json(await board().addMember(req.params.id, body(memberAddSchema, req)));
+  });
+  app.patch("/api/rooms/:id/members/:memberId", async (req, res) => {
+    res.json(await board().patchMember(req.params.id, req.params.memberId, body(memberPatchSchema, req)));
+  });
+  app.delete("/api/rooms/:id/members/:memberId", async (req, res) => {
+    res.json(await board().removeMember(req.params.id, req.params.memberId));
+  });
+  app.post("/api/rooms/:id/members/:memberId/reset", async (req, res) => {
+    res.json(await board().resetMemberSession(req.params.id, req.params.memberId));
+  });
+
+  // Persist and queue: the turn runs on its own, with no request holding it open.
+  app.post("/api/rooms/:id/messages", async (req, res) => {
+    res.status(202).json(await board().postMessage(req.params.id, body(roomMessageSchema, req)));
+  });
+  app.post("/api/rooms/:id/stop", async (req, res) => {
+    await board().stop(req.params.id);
+    res.json({ ok: true });
+  });
+  app.delete("/api/rooms/:id/queue/:turnId", async (req, res) => {
+    res.json({ queued: await board().cancelQueued(req.params.id, req.params.turnId) });
+  });
+  app.post("/api/rooms/:id/requests/:requestId/answer", async (req, res) => {
+    const { answer } = body(roomAnswerSchema, req);
+    await board().answerRequest(req.params.id, req.params.requestId, answer);
+    res.json({ ok: true });
+  });
+  app.get("/api/rooms/:id/history", async (req, res) => {
+    const query = roomHistoryQuery.parse(req.query);
+    res.json({ records: await board().roomHistory(req.params.id, query) });
+  });
+  app.get("/api/rooms/:id/usage", async (req, res) => {
+    res.json(await board().roomUsage(req.params.id));
+  });
+  app.get("/api/rooms/:id/export", async (req, res) => {
+    const markdown = await board().exportRoom(req.params.id);
+    const info = await board().roomSnapshot(req.params.id);
+    const slug = info.room.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "room";
+    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${slug}-${new Date().toISOString().slice(0, 10)}.md"`);
+    res.send(markdown);
+  });
+
+  // The room stream: same snapshot/replay semantics as a chat's.
+  app.get("/api/rooms/:id/events", async (req, res) => {
+    const manager = board();
+    const last = parseLastEventId(req.headers["last-event-id"] ?? req.query.lastEventId);
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.write("retry: 2000\n\n");
+    let closed = false;
+    const write = (chunk: string) => {
+      if (!closed) res.write(chunk);
+    };
+    let unsubscribe: () => void;
+    try {
+      // subscribe validates the room before it sends anything, so an unknown id ends the stream cleanly.
+      unsubscribe = await manager.subscribe(
+        req.params.id,
+        {
+          send: (id: number, event) => write(`id: ${id}\nevent: room\ndata: ${JSON.stringify(event)}\n\n`),
+          close: () => {
+            if (!closed) {
+              closed = true;
+              res.end();
+            }
+          },
+        },
+        last,
+      );
+    } catch {
+      closed = true;
+      res.end();
+      return;
+    }
+    const heartbeat = setInterval(() => write("event: heartbeat\ndata: {}\n\n"), deps.heartbeatMs ?? 20_000);
+    req.on("close", () => {
+      closed = true;
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
+  });
+
+  // A board-owned chat is driven only by its room scheduler. Ordinary chat routes
+  // must not read it, answer its requests, or open a second writer on it.
+  app.use("/api/chats/:id", (req, _res, next) => {
+    const owned = deps.boards !== undefined && manager.list().some((chat) => chat.chatId === req.params.id && chat.owner);
+    if (owned) throw new ChatError(404, "chat_not_found", "No such chat");
+    next();
+  });
+
   app.post("/api/chats", async (req, res) => {
     const input = body(createChatSchema, req);
     const adapter = availableAdapter(input.harnessId);
@@ -761,6 +918,8 @@ export function createApp(deps: AppDeps) {
     if (!input.sessionId.startsWith(prefix)) throw new ChatError(400, "wrong_harness", "Session belongs to another harness");
     const ws = await workspaces.get(input.workspaceId);
     const nativeId = input.sessionId.slice(prefix.length);
+    // Refuse a board-owned session before any resume: a second writer outside the room scheduler is never allowed.
+    if (deps.boards?.ownsNativeSession(adapter.id, nativeId)) throw new ChatError(404, "not_found", "That session belongs to a Board room");
     // A herdr pane runs this session's harness already: a second one here would write the same session file.
     if (deps.herdr && !input.ignoreHerdr && !manager.liveChatFor(adapter.id, nativeId)) {
       const pane = (await deps.herdr.bySession()).get(input.sessionId);

@@ -59,6 +59,7 @@ banners-dialogs.css), so search rather than guess.
 | Saved prompts, shortcuts | `SavedPromptsDialog.tsx`, `ShortcutSheet.tsx` | `saved-prompts.css`, `shortcuts.css` | `unified.spec.ts` |
 | A chat beside the main one | `SidePane.tsx` | `side-pane.css` | `unified.spec.ts` |
 | Notice cards (finished, needs you, Undo): stacked, fanned on hover, swiped away on a phone | `ToastStack.tsx` (`toast-stack.ts`) | `toasts.css` | `toasts-and-swipes.spec.ts`, `tabs.spec.ts` |
+| Board rooms: sidebar section, room view (run cards, nested consultations, approvals), editors | `RoomList.tsx`, `RoomView.tsx`, `RoomConversation.tsx`, `BotRun.tsx`, `RoomComposer.tsx`, `RoomMembers.tsx`, `BotEditor.tsx`, `RoomEditor.tsx` (fold: `room-state.ts`; stream: `use-room-stream.ts` over `stream.ts`'s shared core; mentions: `room-mentions.ts`) | `board.css` | `board.spec.ts` |
 | Phones: drawer, sheets, long press, row swipe actions | `ActionSheet.tsx`, `gestures.ts` (`useRowSwipe` in `Sidebar.tsx`'s rows) | `phones.css`, `responsive.css`, `sidebar.css` | `phone.spec.ts`, `toasts-and-swipes.spec.ts` |
 | Motion and the ripple (turn entrance, streaming caret, start-screen mark) | `ripple.ts`, `arrivals.ts` | `motion.css`, `ripple.css` | `app.spec.ts`, `motion.spec.ts` |
 

@@ -20,6 +20,20 @@
 //   "todolist" a rpiv-todo `todo` call whose result carries the whole numbered list (the status stack's source)
 //   "widethought" a call, thinking shaped like narration with a code line wider than the column, another call
 //   "moaref" a MoA turn's reference advice as Markdown notice folds, and its status line
+//
+// Board rooms drive this adapter through the real server. A Board invocation is
+// recognised by the prompt envelope's "## Current request" section, and its
+// those words pick the scenario:
+//   "consult"       the whole answer is a valid control document for the first permitted consultant
+//   "consult-bad"   the same, with trailing prose after the envelope
+//   "consult-unknown" targets a handle the room does not have
+//   "consult-self"  targets the bot's own handle
+//   "consult-dup"   asks the same question twice in one document
+//   "consult-slow"  a consultant that streams slowly (Stop and wall-clock tests)
+//   "consult-fail"  a consultant whose run fails
+//   "consult-ask"   a consultant whose harness raises a confirm request
+//   "roomtwice"     a short answer naming the bot, so two addressed bots differ
+//   "usagevary"     different token counts per model, and a null cost for fake/slow
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -51,6 +65,8 @@ import type {
   RecentNativeSession,
   UsageEntry,
 } from "./types.js";
+import { CONSULT_MARKER_BEGIN, CONSULT_MARKER_END } from "../boards/types.js";
+import { CONSULT_RESULTS_MARKER } from "../boards/consult.js";
 
 interface FakeCall {
   name: string;
@@ -106,10 +122,30 @@ export interface FakeAdapterOptions {
   chunkDelayMs?: number;
   /** How long resuming a session takes to "start the harness" (the real ones take 0.4–3 s). */
   resumeDelayMs?: number;
+  /** How long a stop takes to bite while a run is going: a harness that refuses to stop promptly. */
+  stopDelayMs?: number;
   capabilities?: Partial<HarnessCapabilities>;
 }
 
 class Aborted extends Error {}
+
+/** The board envelope's current-request section, or null for an ordinary chat prompt. */
+function boardTask(text: string): string | null {
+  const marker = "## Current request\n";
+  const at = text.indexOf(marker);
+  if (at < 0) return null;
+  const rest = text.slice(at + marker.length);
+  const end = rest.indexOf("\n\n## ");
+  return (end >= 0 ? rest.slice(0, end) : rest).trim();
+}
+
+/** The fields the board envelope carries for this bot. */
+function boardIdentity(text: string): { name: string; handle: string; permitted: string[] } {
+  const name = /^Name: (.+)$/m.exec(text)?.[1]?.trim() ?? "Fake";
+  const handle = /^Handle: (.+)$/m.exec(text)?.[1]?.trim() ?? "fake";
+  const permitted = [...text.matchAll(/^- @([A-Za-z0-9_-]+) \(/gm)].map((match) => match[1] ?? "").filter((value) => value.length > 0);
+  return { name, handle, permitted };
+}
 
 export class FakeAdapter implements HarnessAdapter {
   readonly id;
@@ -119,9 +155,11 @@ export class FakeAdapter implements HarnessAdapter {
   readonly sessions = new Map<string, FakeSession>();
   private readonly chunkDelayMs: number;
   private readonly resumeDelayMs: number;
+  private readonly stopDelayMs: number;
 
   constructor(options: FakeAdapterOptions = {}) {
     this.resumeDelayMs = options.resumeDelayMs ?? 0;
+    this.stopDelayMs = options.stopDelayMs ?? 0;
     this.id = asHarnessId(options.id ?? "fake");
     this.displayName = options.displayName ?? "Fake";
     this.chunkDelayMs = options.chunkDelayMs ?? 15;
@@ -224,7 +262,7 @@ export class FakeAdapter implements HarnessAdapter {
         push({ role: "toolResult", toolCallId: id, toolName: entry.name, content: [{ type: "text", text: toolRecordText(entry) }], isError: false });
       }
     }
-    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode);
+    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode, this.stopDelayMs);
   }
 
   /** Like the file-backed harnesses: each call's usage, from the stored session. */
@@ -256,7 +294,7 @@ export class FakeAdapter implements HarnessAdapter {
       session = { nativeId: randomUUID(), cwd: req.cwd, title: "", messages: [], updatedAt: new Date() };
       this.sessions.set(session.nativeId, session);
     }
-    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode, req.renderEnv);
+    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode, this.stopDelayMs, req.renderEnv);
   }
 
   async shutdown(): Promise<void> {}
@@ -279,6 +317,8 @@ class FakeLiveChat implements LiveChat {
     private readonly delayMs: number,
     /** The adapter declares permission modes (fake does, fake-b does not). */
     private readonly modes: boolean,
+    /** A stop that waits this long before biting, for the teardown-bound test. */
+    private readonly stopDelayMs = 0,
     private readonly renderEnv?: NodeJS.ProcessEnv,
   ) {}
 
@@ -331,8 +371,13 @@ class FakeLiveChat implements LiveChat {
   }
 
   async getUsage(): Promise<HarnessUsage | null> {
-    const role = (r: string) => this.session.messages.filter((m) => (m as { role?: string }).role === r).length;
+    const role = (r: string) => this.session.messages.filter((m) => isObj(m) && m.role === r).length;
     const steps = role("assistant");
+    // "usagevary" rooms report different counts per model, and one unpriced model, for aggregation and null-cost tests.
+    const vary = this.session.messages.some((m) => isObj(m) && m.role === "user" && typeof m.content === "string" && m.content.includes("usagevary"));
+    if (vary) {
+      return { turns: role("user"), steps, input: steps * 2000, cachedInput: steps * 500, cacheWrite: steps * 100, output: steps * (this.model === "fake/slow" ? 90 : 40), cost: this.model === "fake/slow" ? null : steps * 0.002 };
+    }
     return { turns: role("user"), steps, input: steps * 1200, cachedInput: Math.max(0, steps - 1) * 900, cacheWrite: 0, output: steps * 40, cost: null };
   }
 
@@ -413,7 +458,14 @@ class FakeLiveChat implements LiveChat {
     this.emitQueue();
   }
 
+  private stopDelayUsed = false;
+
   async abort(): Promise<void> {
+    // The delay belongs to a harness that refuses to stop promptly; a later dispose must not wait again.
+    if (this.stopDelayMs > 0 && this.running && !this.stopDelayUsed) {
+      this.stopDelayUsed = true;
+      await sleep(this.stopDelayMs);
+    }
     this.steering = [];
     this.followUps = [];
     this.emitQueue();
@@ -501,6 +553,11 @@ class FakeLiveChat implements LiveChat {
     if (!this.session.title) {
       this.session.title = text.slice(0, 60);
       this.emit({ type: "title", title: this.session.title });
+    }
+    const task = boardTask(text);
+    if (task !== null) {
+      await this.boardTurn(task, text, signal);
+      return;
     }
     try {
       if (/\bask\b/i.test(text)) {
@@ -661,6 +718,74 @@ class FakeLiveChat implements LiveChat {
       this.record({ role: "assistant", content: [], stopReason: "aborted" });
       this.emit({ type: "assistant_end", text: this.partial, thinking: "", error: "Stopped" });
     }
+  }
+
+  /** Board scenarios: the words live in the envelope's current-request section, never in the charter. */
+  private async boardTurn(task: string, envelope: string, signal: AbortSignal): Promise<void> {
+    const { name, handle, permitted } = boardIdentity(envelope);
+    if (/\broomtwice\b/i.test(task)) {
+      await this.say(`Answer from ${name} (@${handle}) about: ${task.slice(0, 80)}`, signal);
+      return;
+    }
+    if (/\bslow\b/i.test(task)) {
+      // A long, slowly streamed answer, so tests can act while the run is live.
+      await this.say(`Echo from ${name}: ${task}\n${"x".repeat(400)}`, signal, true);
+      return;
+    }
+    if (task === "ask" || /^ask\b/i.test(task)) {
+      // The ordinary approval scenario, inside a room: only the user can answer it.
+      const approved = await this.ask(signal);
+      await this.say(approved ? "Approved path." : "Denied path.", signal);
+      return;
+    }
+    if (!/\bconsult/.test(task)) {
+      // usagevary and every plain Board request: a short, distinguishable answer.
+      await this.say(`Echo from ${name}: ${task.slice(0, 200)}`, signal);
+      return;
+    }
+    const consultant = envelope.includes("## Consultations") && !envelope.includes(CONSULT_RESULTS_MARKER);
+    if (consultant) {
+      if (/consult-fail/i.test(task)) {
+        this.emit({ type: "assistant_start", model: this.model });
+        await this.pause(signal);
+        this.record({ role: "assistant", content: [], stopReason: "error", errorMessage: "Fake consultant failure" });
+        this.emit({ type: "assistant_end", text: "", thinking: "", error: "Fake consultant failure" });
+        return;
+      }
+      if (/consult-ask/i.test(task)) {
+        const approved = await this.ask(signal);
+        await this.say(`Consultant answer (${approved ? "approved" : "denied"}): ${task.slice(0, 120)}`, signal);
+        return;
+      }
+      await this.say(`Consultant answer from ${name}: ${task.slice(0, 200)}`, signal, /consult-slow/i.test(task));
+      return;
+    }
+    if (envelope.includes(CONSULT_RESULTS_MARKER)) {
+      await this.say(`Final answer after consultations: ${task.slice(0, 200)}`, signal);
+      return;
+    }
+    const to = permitted[0] ?? "Scout";
+    const question = `Please weigh in on: ${task.slice(0, 300)}`;
+    const target = /consult-self/i.test(task) ? handle : /consult-unknown/i.test(task) ? "Outsider" : to;
+    const requests = /consult-dup/i.test(task) ? [{ to: target, question }, { to: target, question }] : [{ to: target, question }];
+    const document = `${CONSULT_MARKER_BEGIN}\n${JSON.stringify({ version: 1, action: "consult", requests }, null, 2)}\n${CONSULT_MARKER_END}`;
+    await this.say(/consult-bad/i.test(task) ? `${document}\n\nHope that helps!` : document, signal);
+  }
+
+  /** A reply whose text is exactly what the scenario asked for (no thinking, no bullets). */
+  private async say(text: string, signal: AbortSignal, slow = false): Promise<void> {
+    this.partial = "";
+    this.emit({ type: "assistant_start", model: this.model });
+    const size = slow ? 8 : Math.max(4, Math.ceil(text.length / 6));
+    for (const chunk of chunks(text, size)) {
+      await this.pause(signal, slow ? 15 : 1);
+      this.partial += chunk;
+      this.emit({ type: "assistant_delta", field: "text", delta: chunk });
+    }
+    const usage = { input: 1200, output: Math.ceil(text.length / 4), cacheRead: 0, cacheWrite: 0 };
+    const cost = { total: (usage.input + usage.output * 5) / 1_000_000 };
+    this.record({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop", model: this.model, usage: { ...usage, cost } });
+    this.emit({ type: "assistant_end", text, thinking: "", usage });
   }
 
   private partial = "";

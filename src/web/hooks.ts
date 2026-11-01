@@ -74,7 +74,11 @@ export function useDismiss<T extends HTMLElement>(
       : null;
     const onKey = escape
       ? (e: KeyboardEvent) => {
-          if (e.key === "Escape") onCloseRef.current();
+          if (e.key !== "Escape") return;
+          // The topmost popover owns Escape: without this, a native <dialog>'s cancel
+          // would close the dialog underneath the picker that just closed.
+          e.preventDefault();
+          onCloseRef.current();
         }
       : null;
     if (onDown) document.addEventListener("pointerdown", onDown);

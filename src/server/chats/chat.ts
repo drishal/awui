@@ -57,6 +57,18 @@ export interface ChatSubscriber {
   close(): void;
 }
 
+/**
+ * Who owns a chat besides the user: Board's rooms drive harness sessions
+ * through the manager like any chat, marked so ordinary surfaces (session
+ * lists, search, usage, notifications, resume) can keep them out. Server-only;
+ * it never reaches the browser.
+ */
+export interface ChatOwner {
+  kind: "room";
+  roomId: string;
+  membershipId: string;
+}
+
 /** Past this, a subagent transcript is read as its first and last halves. */
 const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
 
@@ -705,6 +717,8 @@ export class Chat implements CheckpointHost {
     readonly workspace: WorkspaceInfo,
     live: LiveChat,
     config: ChatConfig,
+    /** Set for internally owned chats (Board rooms): server-only, never serialized. */
+    readonly owner?: ChatOwner,
   ) {
     this.live = live;
     this.reducer = new EventReducer(this.log, this.timing, adapter.id, config, live.nativeId, {
@@ -720,7 +734,7 @@ export class Chat implements CheckpointHost {
     });
   }
 
-  static async open(chatId: string, adapter: HarnessAdapter, workspace: WorkspaceInfo, live: LiveChat): Promise<Chat> {
+  static async open(chatId: string, adapter: HarnessAdapter, workspace: WorkspaceInfo, live: LiveChat, owner?: ChatOwner): Promise<Chat> {
     const [items, config, context, usage, todos] = await Promise.all([
       live.history(),
       live.getConfig(),
@@ -728,7 +742,7 @@ export class Chat implements CheckpointHost {
       live.getUsage().catch(() => null),
       live.getTodos().catch(() => []),
     ]);
-    const chat = new Chat(chatId, adapter, workspace, live, config);
+    const chat = new Chat(chatId, adapter, workspace, live, config, owner);
     if (live.starting) chat.status = "starting";
     chat.context = context;
     chat.noteContext(context);
@@ -971,7 +985,8 @@ export class Chat implements CheckpointHost {
     }
   }
 
-  private waitForSettle(): Promise<void> {
+  /** Wait until the run settles on its own (idle, error, disposed) or the cap passes — what internal callers (Board's bot sessions) wait on, never assistant_end. */
+  waitSettled(): Promise<void> {
     if (this.status === "idle" || this.status === "error" || this.status === "disposed") return Promise.resolve();
     let resolve!: () => void;
     const promise = new Promise<void>((r) => {
@@ -1207,7 +1222,7 @@ export class Chat implements CheckpointHost {
     } catch (error) {
       this.reducer.notice("error", `Stop failed: ${errorMessage(error)}`);
     }
-    await this.waitForSettle();
+    await this.waitSettled();
     if (this.status === "stopping") this.setStatus("idle");
   }
 

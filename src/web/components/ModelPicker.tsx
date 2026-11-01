@@ -2,7 +2,7 @@
 // Harness's composer seat), with Hermes's "Current" line and OpenCode-style
 // matching plus recents. Combobox + listbox semantics; on phones it opens as
 // a bottom sheet.
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ModelInfo } from "../../shared/protocol.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { IconCheck, IconChevronDown, IconRefresh, IconSearch, Spinner } from "../icons.js";
@@ -43,6 +43,11 @@ export function ModelPicker({
   onSelect,
   onRefresh,
   emptyLabel = "No model",
+  triggerLabel,
+  header,
+  levels,
+  thinking,
+  onThinking,
 }: {
   models: ModelInfo[];
   current: string | null;
@@ -53,6 +58,14 @@ export function ModelPicker({
   onRefresh: () => Promise<void>;
   /** The chip's words with nothing picked yet (the start screen: the harness's own default). */
   emptyLabel?: string;
+  /** Replaces the chip's words (Board's combined harness · model chip). */
+  triggerLabel?: string;
+  /** A row above the search (Board's harness chips): the caller switches catalogs from inside the picker. */
+  header?: ReactNode;
+  /** The thinking levels the harness exposes for the chosen model: a footer to pick one, never free text. */
+  levels?: string[];
+  thinking?: string;
+  onThinking?: (level: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   // Closing furls the panel back into the chip for a moment before it goes (see .model-pop.is-leaving).
@@ -70,6 +83,7 @@ export function ModelPicker({
   const currentModel = models.find((m) => m.key === current);
   // A virtual provider (MoA) needs its name here: its preset alone ("default") says nothing.
   const label = currentModel ? (currentModel.providerName ? `${currentModel.providerName} · ${currentModel.name}` : currentModel.name) : (current ?? emptyLabel);
+  const chipLabel = triggerLabel ?? shortName(label);
 
   const sections = useMemo<Array<ModelGroup & { recent?: boolean }>>(() => {
     if (!showPop) return [];
@@ -99,7 +113,9 @@ export function ModelPicker({
   const choose = (model: ModelInfo) => {
     const recent = [model.key, ...load<string[]>(recentKey, []).filter((k) => k !== model.key)].slice(0, 8);
     save(recentKey, recent);
-    close();
+    // The composer's chip closes on a pick; Board's combined chip stays open so the thinking
+    // levels of the newly chosen model can be set in the same visit.
+    if (onThinking === undefined) close();
     if (model.key !== current) onSelect(model.key);
   };
 
@@ -198,9 +214,9 @@ export function ModelPicker({
         className="pill-trigger"
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Model: ${label}`}
+        aria-label={triggerLabel ? triggerLabel : `Model: ${label}`}
         title={currentModel ? `${currentModel.name} · ${currentModel.providerName ?? currentModel.provider}` : label}
-        disabled={disabled || models.length === 0}
+        disabled={disabled || (models.length === 0 && header === undefined)}
         data-testid="model-picker"
         onClick={() => (open && !leaving ? close() : openWith(""))}
         onKeyDown={(e) => {
@@ -210,7 +226,7 @@ export function ModelPicker({
           openWith(e.key);
         }}
       >
-        <span className="pill-label">{shortName(label)}</span>
+        <span className="pill-label">{chipLabel}</span>
         <IconChevronDown size={12} />
       </button>
       {showPop ? (
@@ -223,6 +239,7 @@ export function ModelPicker({
             aria-label="Choose a model"
             style={{ ["--pop-max-h" as string]: `${place.maxHeight}px` }}
           >
+            {header}
             <div className="model-search">
               <IconSearch size={14} />
               <input
@@ -320,6 +337,21 @@ export function ModelPicker({
               ))}
               {flat.length === 0 ? <div className="model-empty">No models match “{query}”</div> : null}
             </div>
+            {levels && levels.length > 0 && onThinking ? (
+              <div className="model-thinking" role="group" aria-label="Thinking level">
+                <span className="model-thinking-label">Thinking</span>
+                <div className="board-thinking-chips">
+                  <button type="button" className="board-level-chip" aria-pressed={!thinking} onClick={() => onThinking("")}>
+                    Model default
+                  </button>
+                  {levels.map((level) => (
+                    <button key={level} type="button" className="board-level-chip" aria-pressed={thinking === level} onClick={() => onThinking(level)}>
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </>
       ) : null}

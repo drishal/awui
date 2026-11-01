@@ -14,6 +14,12 @@ adapter declares (name, colour, capabilities, setup command) in
 change seems to need `harnessId === "<id>"` in a client, it belongs on the
 adapter instead.
 
+Board rooms (`src/server/boards/`) consume this same contract: a bot is any
+registered adapter driven through the ChatManager, its chat marked as
+internally owned so ordinary surfaces keep its sessions out. A new harness
+needs no Board work; native custom instructions or consult tools, if ever
+added, would be optional capabilities an adapter declares.
+
 ## 1. Find out how the agent talks
 
 Before writing code, run the real CLI in a scratch project (tmux, cheapest

@@ -1128,3 +1128,319 @@ export const settingsPatchSchema = z
   })
   .strict();
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>;
+
+// ---- Board: rooms of named bots over the existing harnesses ----------------
+//
+// A room owns ordering, attribution, routing, and its own portable transcript
+// (records); each membership owns a separate native harness session the room
+// drives through the normal ChatManager. Wire types never carry a native
+// session id or internal chat id: the browser knows members and invocations.
+
+/** Bound for every Board payload; the plan's defaults (see .todo/awui.md §11). */
+export const BOARD_MAX_BOTS = 100;
+export const BOARD_MAX_ROOMS = 50;
+export const BOARD_MAX_MEMBERS = 12;
+export const BOARD_MAX_DIRECT_RESPONDERS = 4;
+export const BOARD_CONSULT_DEPTH = 1;
+export const BOARD_MAX_CONSULT_REQUESTS = 4;
+export const BOARD_MAX_INVOCATIONS = 8;
+export const BOARD_MAX_INVOCATIONS_PER_MEMBER = 3;
+export const BOARD_TURN_WALL_CLOCK_MS = 180_000;
+export const BOARD_QUEUE_MAX = 20;
+/** The consult control document a direct responder may end with (§9). */
+export const BOARD_CONTROL_MAX_BYTES = 16 * 1024;
+/** Consultation questions are bounded apart from the message cap. */
+export const BOARD_MAX_QUESTION_CHARS = 4_000;
+/** Missed-history window per invocation: records and characters, with an explicit omission marker past it. */
+export const BOARD_CONTEXT_MAX_RECORDS = 40;
+export const BOARD_CONTEXT_MAX_CHARS = 24_000;
+/** Records per snapshot or history page. */
+export const BOARD_HISTORY_PAGE = 100;
+/** Projected ChatItems kept per bot run (bounded like tool output). */
+export const BOARD_MAX_RUN_ITEMS = 400;
+export const BOARD_MAX_INSTRUCTIONS_CHARS = 8_000;
+export const BOARD_MAX_BOT_NAME_CHARS = 64;
+export const BOARD_MAX_ROLE_CHARS = 64;
+/** A mention handle: safe characters, unique per room (case-insensitive). */
+export const BOARD_HANDLE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
+
+/** A reusable bot: one harness, one model, its own instructions. Credentials never appear here. */
+export interface BotProfile {
+  id: string;
+  name: string;
+  harnessId: string;
+  /** `provider/id` as the harness's model list spells it; null is the harness default. */
+  model: string | null;
+  thinkingLevel: string | null;
+  /** Sent with every invocation, so a native compaction cannot erase Board behavior. */
+  instructions: string;
+  /** Informational label (lead, researcher, critic); the server routes by mention, never by role. */
+  role: string;
+  /** A theme accent token, never a hard-coded colour. */
+  accent: string | null;
+  /** The harness's own mode id, only when it declares permission modes. */
+  permissionMode: string | null;
+  revision: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A bot's identity inside one room: what mentions, rank, and consultation policy attach to. */
+export interface RoomMemberView {
+  id: string;
+  botId: string;
+  name: string;
+  handle: string;
+  /** Display and serial response order; ties break by member id. */
+  rank: number;
+  canLead: boolean;
+  consultable: boolean;
+  /** Member ids this one may consult; the server is the only routing authority. */
+  consultants: string[];
+  /** Disabled members never run and cannot be picked as lead. */
+  enabled: boolean;
+  accent: string | null;
+  harnessId: string;
+  model: string | null;
+  thinkingLevel: string | null;
+  role: string;
+  permissionMode: string | null;
+}
+
+/** A room's spend caps, editable through PATCH /api/rooms/:id. */
+export interface RoomBudgets {
+  maxDirectResponders: number;
+  maxConsultRequests: number;
+  maxInvocations: number;
+  maxInvocationsPerMember: number;
+  turnWallClockMs: number;
+  queueMax: number;
+}
+
+/** A room's shape as the room view and the `room` event carry it. */
+export interface RoomInfo {
+  id: string;
+  name: string;
+  topic: string | null;
+  workspaceId: string;
+  workspaceName: string;
+  archived: boolean;
+  /** Null when the lead was removed and no canLead member remains: the composer explains instead of running. */
+  leadMemberId: string | null;
+  members: RoomMemberView[];
+  budgets: RoomBudgets;
+}
+
+/** A rooms-list row. */
+export interface RoomSummary {
+  id: string;
+  name: string;
+  topic: string | null;
+  archived: boolean;
+  leadName: string | null;
+  memberCount: number;
+  status: "idle" | "queued" | "running" | "waiting";
+  pendingCount: number;
+  lastActivityAt: number | null;
+  usage: BoardUsage;
+}
+
+/** Tokens and calls over some invocations; `cost` null means nothing was priced (never zero). */
+export interface BoardUsage {
+  turns: number;
+  steps: number;
+  input: number;
+  cachedInput: number;
+  cacheWrite: number;
+  output: number;
+  cost: number | null;
+  /** Invocations the harness did not price. */
+  unpriced: number;
+}
+
+/** One entry in a room's portable transcript. Bot runs are upserted by id (a running run settles in place). */
+export type RoomRecord =
+  | { kind: "user"; id: string; seq: number; at: number; turnId: string; text: string; mentions: string[] }
+  | {
+      kind: "bot_run";
+      id: string;
+      seq: number;
+      at: number;
+      turnId: string;
+      memberId: string;
+      invocationId: string;
+      /** The consultation record this run answers, when it is a consultant's run. */
+      consultOf?: string;
+      status: "running" | "done" | "failed" | "stopped";
+      model: string | null;
+      /** The effort level in force at settlement, from the confirmed ChatConfig (null when the harness has none). */
+      thinkingLevel?: string | null;
+      /** The invocation's own projected items, ids namespaced `<invocationId>:<itemId>`. */
+      items: ChatItem[];
+      usage: BoardUsage | null;
+      /** Wall clock of the invocation, when it ran to a settle. */
+      latencyMs: number | null;
+      error?: string;
+    }
+  | { kind: "consultation"; id: string; seq: number; at: number; turnId: string; fromMemberId: string; toMemberId: string; question: string; outcome: "requested" | "refused" | "answered" | "failed"; reason?: string }
+  | { kind: "notice"; id: string; seq: number; at: number; turnId: string | null; level: "info" | "warning" | "error"; text: string };
+
+export type RoomTurnState = "queued" | "running" | "waiting_for_user" | "stopping" | "stopped" | "done" | "failed" | "interrupted";
+
+/** One user turn as the room shows it (the queue's rows and the active one). */
+export interface RoomTurnView {
+  id: string;
+  state: RoomTurnState;
+  text: string;
+  mentions: string[];
+  directMemberIds: string[];
+  queuedAt: number;
+  startedAt: number | null;
+  endedAt: number | null;
+  /** Invocations spent so far, beside Stop, so the caps are not mysterious. */
+  invocationCount: number;
+  consultCount: number;
+  stopReason?: string;
+}
+
+/** An approval a bot's harness raised, surfaced in the room; only the user answers it. */
+export interface RoomPendingRequest {
+  /** Namespaced `<invocationId>:<requestId>`, what the answer route takes. */
+  id: string;
+  turnId: string;
+  memberId: string;
+  invocationId: string;
+  request: InteractionRequest;
+}
+
+/** The whole room as a fresh viewer gets it: shape, a page of records, and the live state. */
+export interface RoomSnapshot {
+  room: RoomInfo;
+  /** Newest last, at most BOARD_HISTORY_PAGE; older ones come from the history route. */
+  records: RoomRecord[];
+  activeTurn: RoomTurnView | null;
+  queued: RoomTurnView[];
+  pending: RoomPendingRequest[];
+  usage: BoardUsage;
+  lastEventId: number;
+}
+
+/** Room SSE, the same snapshot/replay semantics as ordinary Chat SSE. */
+export type RoomEvent =
+  | { type: "snapshot"; snapshot: RoomSnapshot }
+  | { type: "record"; record: RoomRecord }
+  | { type: "item"; invocationId: string; item: ChatItem }
+  | { type: "delta"; invocationId: string; itemId: string; field: "text" | "thinking" | "output"; append: string }
+  | { type: "turn"; turn: RoomTurnView }
+  | { type: "queue"; queued: RoomTurnView[] }
+  | { type: "request"; request: RoomPendingRequest }
+  | { type: "request_resolved"; requestId: string; outcome: string }
+  | { type: "usage"; usage: BoardUsage }
+  | { type: "room"; room: RoomInfo }
+  | { type: "disposed"; reason: string };
+
+export const botCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(BOARD_MAX_BOT_NAME_CHARS),
+    harnessId: z.string().min(1).max(64),
+    model: z.string().min(1).max(512).nullable().optional(),
+    thinkingLevel: z.string().min(1).max(32).nullable().optional(),
+    instructions: z.string().max(BOARD_MAX_INSTRUCTIONS_CHARS).optional(),
+    role: z.string().max(BOARD_MAX_ROLE_CHARS).optional(),
+    accent: z.string().min(1).max(32).nullable().optional(),
+    permissionMode: z.string().min(1).max(64).nullable().optional(),
+  })
+  .strict();
+export const botPatchSchema = z
+  .object({
+    name: z.string().trim().min(1).max(BOARD_MAX_BOT_NAME_CHARS).optional(),
+    model: z.string().min(1).max(512).nullable().optional(),
+    thinkingLevel: z.string().min(1).max(32).nullable().optional(),
+    instructions: z.string().max(BOARD_MAX_INSTRUCTIONS_CHARS).optional(),
+    role: z.string().max(BOARD_MAX_ROLE_CHARS).optional(),
+    accent: z.string().min(1).max(32).nullable().optional(),
+    permissionMode: z.string().min(1).max(64).nullable().optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), { message: "empty patch" });
+
+/** A member as room creation and member-add spell it. */
+const memberShape = {
+  botId: z.string().min(1).max(64),
+  handle: z.string().regex(BOARD_HANDLE_PATTERN),
+  rank: z.number().int().min(0).max(999),
+  canLead: z.boolean(),
+  consultable: z.boolean(),
+  consultants: z.array(z.string().min(1).max(64)).max(BOARD_MAX_MEMBERS),
+};
+export const roomCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    topic: z.string().max(500).nullable().optional(),
+    workspaceId: z.string().min(1).max(128),
+    /** members[0] is the lead; `leadBotId` names another member instead. */
+    members: z
+      .array(
+        z
+          .object({
+            botId: memberShape.botId,
+            handle: memberShape.handle.optional(),
+            rank: memberShape.rank.optional(),
+            canLead: memberShape.canLead.optional(),
+            consultable: memberShape.consultable.optional(),
+            consultants: memberShape.consultants.default([]),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(BOARD_MAX_MEMBERS),
+    leadBotId: z.string().min(1).max(64).optional(),
+  })
+  .strict();
+export const roomPatchSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100).optional(),
+    topic: z.string().max(500).nullable().optional(),
+    archived: z.boolean().optional(),
+    leadMemberId: z.string().min(1).max(64).optional(),
+    budgets: z
+      .object({
+        maxDirectResponders: z.number().int().min(1).max(BOARD_MAX_DIRECT_RESPONDERS).optional(),
+        maxConsultRequests: z.number().int().min(0).max(BOARD_MAX_CONSULT_REQUESTS).optional(),
+        maxInvocations: z.number().int().min(1).max(BOARD_MAX_INVOCATIONS).optional(),
+        maxInvocationsPerMember: z.number().int().min(1).max(BOARD_MAX_INVOCATIONS_PER_MEMBER).optional(),
+        turnWallClockMs: z.number().int().min(10_000).max(600_000).optional(),
+        queueMax: z.number().int().min(0).max(BOARD_QUEUE_MAX).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .refine((v) => v.name !== undefined || v.topic !== undefined || v.archived !== undefined || v.leadMemberId !== undefined || v.budgets !== undefined, { message: "empty patch" });
+export const memberAddSchema = z
+  .object({
+    botId: memberShape.botId,
+    handle: memberShape.handle,
+    rank: memberShape.rank.optional(),
+    canLead: memberShape.canLead.optional(),
+    consultable: memberShape.consultable.optional(),
+    consultants: memberShape.consultants.default([]),
+  })
+  .strict();
+export const memberPatchSchema = z
+  .object({
+    handle: memberShape.handle.optional(),
+    rank: memberShape.rank.optional(),
+    canLead: memberShape.canLead.optional(),
+    consultable: memberShape.consultable.optional(),
+    consultants: memberShape.consultants.optional(),
+    enabled: z.boolean().optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), { message: "empty patch" });
+export const roomMessageSchema = z.object({
+  text: z.string().min(1).max(MAX_MESSAGE_CHARS),
+  /** Membership ids the message addresses; empty means the lead only. The server validates count and membership. */
+  mentions: z.array(z.string().min(1).max(64)).max(BOARD_MAX_MEMBERS),
+  /** Idempotency key: a network retry must not post the user message twice. */
+  clientId: z.string().min(1).max(128).optional(),
+}).strict();
+export const roomAnswerSchema = z.object({ answer: interactionAnswerSchema }).strict();
+export const roomHistoryQuery = z.object({ before: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(BOARD_HISTORY_PAGE).optional() });
