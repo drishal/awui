@@ -119,6 +119,55 @@
   animation: pop-down var(--dur-spring) var(--spring);
 }
 
+/* Closing furls back into the anchor: the reverse of the unfurl above, quick and
+   eased out (never sprung), so the eye follows the panel home. Text stays sharp:
+   a clip plus a few pixels of drift, never a scale (see the pops above). */
+.command-menu.is-leaving,
+.harness-menu.is-leaving,
+.usage-pop.is-leaving,
+.model-pop.is-leaving {
+  pointer-events: none;
+  animation: pop-up-leave var(--dur-hover) var(--ease-out) forwards;
+}
+
+.is-row > .harness-menu.is-leaving,
+.model-pop.is-below.is-leaving,
+.menu-list.is-leaving {
+  pointer-events: none;
+  animation: pop-down-leave var(--dur-hover) var(--ease-out) forwards;
+}
+
+@keyframes pop-up-leave {
+  from {
+    opacity: 1;
+    clip-path: inset(-24px);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+    clip-path: inset(100% -24px -24px -24px);
+  }
+}
+
+@keyframes pop-down-leave {
+  from {
+    opacity: 1;
+    clip-path: inset(-24px);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+    clip-path: inset(-24px -24px 100% -24px);
+  }
+}
+
+@keyframes rise-leave {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 .model-backdrop,
 .backdrop.is-open {
   animation: fade-in 0.18s ease;
@@ -164,6 +213,11 @@
   .model-pop.is-below {
     transform-origin: bottom center;
     animation: rise-in var(--dur-spring) var(--spring);
+  }
+  /* A phone's sheet slides back down instead of furling into a corner. */
+  .model-pop.is-leaving,
+  .model-pop.is-below.is-leaving {
+    animation: rise-leave var(--dur-hover) var(--ease-out) forwards;
   }
 }
 

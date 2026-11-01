@@ -5,7 +5,7 @@
 // popover is the harness menu's, so the composer's menus look alike.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { PermissionModeInfo } from "../../shared/protocol.js";
-import { useDismiss } from "../hooks.js";
+import { useDismiss, useLeave } from "../hooks.js";
 import { IconCheck, IconChevronDown, IconShield } from "../icons.js";
 
 export function PermissionPicker({
@@ -20,6 +20,7 @@ export function PermissionPicker({
   onSelect: (mode: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { render: showMenu, leaving } = useLeave(open);
   const [active, setActive] = useState(0);
   const [shift, setShift] = useState(0);
   const wrap = useRef<HTMLDivElement>(null);
@@ -109,10 +110,10 @@ export function PermissionPicker({
         <span className="pill-label">{label}</span>
         <IconChevronDown size={12} />
       </button>
-      {open ? (
+      {showMenu ? (
         <div
           ref={list}
-          className="harness-menu permission-menu"
+          className={`harness-menu permission-menu${leaving ? " is-leaving" : ""}`}
           role="listbox"
           tabIndex={-1}
           aria-label="Permission mode"

@@ -32,7 +32,7 @@ import { continueList, indentList } from "../list-continue.js";
 import { loadStash, saveStash, stashDraft, takeFromStash, type StashEntry } from "../stash.js";
 import { CONTINUE_TEXT, limitStop } from "../../shared/limit-stop.js";
 import { LimitRecovery } from "./LimitRecovery.js";
-import { useDismiss } from "../hooks.js";
+import { useDismiss, useLeave } from "../hooks.js";
 import { GitPanel, GitRow } from "./GitStatusView.js";
 import { useGitStatus } from "../git.js";
 import { Dot, dotted } from "./Dot.js";
@@ -279,6 +279,7 @@ export function Composer({
   // The stash (stash.ts): park this draft, or take one back (what is here then goes in its place).
   const [stash, setStash] = useState<StashEntry[]>(loadStash);
   const [stashOpen, setStashOpen] = useState(false);
+  const { render: showStash, leaving: stashLeaving } = useLeave(stashOpen);
   const stashRef = useRef<HTMLDivElement>(null);
   // Escape closes it wherever the focus is; the focus starts on its first item that can be used.
   useDismiss(stashRef, stashOpen, () => setStashOpen(false), { escape: true, outside: false });
@@ -338,6 +339,7 @@ export function Composer({
     }
   };
   const [thenMenu, setThenMenu] = useState(false);
+  const { render: showThen, leaving: thenLeaving } = useLeave(thenMenu);
   /** The draft as the chain's next step: sent when the run before it is over (or, with `harness`, a handoff carrying it). */
   const addThen = async (harness?: string) => {
     const draft = text.trim();
@@ -469,6 +471,7 @@ export function Composer({
             ? "prompt"
             : null;
   const menuOpen = menuKind !== null;
+  const { render: renderMenu, leaving: menuLeaving } = useLeave(menuOpen);
   const promptMatches = menuKind === "prompt" ? matchPrompts(savedPrompts ?? [], promptQuery ?? "") : [];
   const menuItems =
     menuKind === "slash"
@@ -477,6 +480,13 @@ export function Composer({
         ? skillMenu(commands ?? [], skillQuery ?? "")
         : promptMatches.map((p): SlashCommand => ({ name: p.name, description: promptGist(p), source: "saved" }));
   const activeCommand = menuItems[Math.min(menuIndex, menuItems.length - 1)];
+  // The furl keeps showing what was open: while it plays, menuKind is already null.
+  const lastMenu = useRef({ kind: menuKind, items: menuItems });
+  useEffect(() => {
+    if (menuOpen) lastMenu.current = { kind: menuKind, items: menuItems };
+  }, [menuOpen, menuKind, menuItems]);
+  const renderKind = menuOpen ? menuKind : lastMenu.current.kind;
+  const renderItems = menuOpen ? menuItems : lastMenu.current.items;
   const wantsCommands = (slashQuery !== undefined || skillQuery !== undefined) && !closed;
 
   useEffect(() => {
@@ -833,35 +843,35 @@ export function Composer({
               {stashNote}
             </p>
           ) : null}
-          {menuOpen ? (
+          {renderMenu ? (
             <div
-              className={`command-menu${menuKind === "skill" ? " is-skills" : menuKind === "prompt" ? " is-prompts" : ""}`}
+              className={`command-menu${renderKind === "skill" ? " is-skills" : renderKind === "prompt" ? " is-prompts" : ""}${menuLeaving ? " is-leaving" : ""}`}
               id={menuId}
               role="listbox"
-              aria-label={menuKind === "skill" ? "Skills" : menuKind === "prompt" ? "Saved prompts" : "Commands"}
+              aria-label={renderKind === "skill" ? "Skills" : renderKind === "prompt" ? "Saved prompts" : "Commands"}
             >
               <div className="command-menu-head" aria-hidden="true">
-                {menuKind === "skill" ? dotted(["Skills", skillCount]) : menuKind === "prompt" ? dotted(["Saved prompts", savedPrompts?.length ?? 0]) : "Commands"}
+                {renderKind === "skill" ? dotted(["Skills", skillCount]) : renderKind === "prompt" ? dotted(["Saved prompts", savedPrompts?.length ?? 0]) : "Commands"}
               </div>
-              {menuItems.length === 0 ? (
+              {renderItems.length === 0 ? (
                 <div className="command-empty">
-                  {menuKind === "prompt"
+                  {renderKind === "prompt"
                     ? `No saved prompt matches #${promptQuery}`
                     : commands === null
                       ? "Loading commands…"
-                      : menuKind === "skill"
+                      : renderKind === "skill"
                         ? `No skill matches $${skillQuery}`
                         : `No command matches /${slashQuery}`}
                 </div>
               ) : (
-                menuItems.map((c, i) => (
+                renderItems.map((c, i) => (
                   <div
                     key={`${c.source}:${c.name}`}
                     id={`${menuId}-${i}`}
                     role="option"
                     aria-selected={i === menuIndex}
                     className={`command-item${i === menuIndex ? " is-active" : ""}`}
-                    title={c.description ? `${menuKind === "skill" ? `$${skillName(c)}` : `/${c.name}`}${c.hint ? ` ${c.hint}` : ""}: ${c.description}` : undefined}
+                    title={c.description ? `${renderKind === "skill" ? `$${skillName(c)}` : `/${c.name}`}${c.hint ? ` ${c.hint}` : ""}: ${c.description}` : undefined}
                     onPointerMove={() => setMenuIndex(i)}
                     onMouseDown={(e) => {
                       // Keep the caret in the composer.
@@ -869,20 +879,20 @@ export function Composer({
                       completeCommand(c);
                     }}
                   >
-                    {menuKind === "skill" ? (
+                    {renderKind === "skill" ? (
                       <IconSpark size={14} className="command-icon-skill" />
-                    ) : menuKind === "prompt" ? (
+                    ) : renderKind === "prompt" ? (
                       <IconPlan size={14} className="command-icon-prompt" />
                     ) : (
                       <IconTerminal size={14} />
                     )}
-                    <span className="command-name">{menuKind === "skill" ? `$${skillName(c)}` : menuKind === "prompt" ? `#${c.name}` : `/${c.name}`}</span>
+                    <span className="command-name">{renderKind === "skill" ? `$${skillName(c)}` : renderKind === "prompt" ? `#${c.name}` : `/${c.name}`}</span>
                     {c.description ? <span className="command-desc">{c.description}</span> : null}
-                    {menuKind === "slash" && (c.source === "skill" || c.source === "prompt" || c.source === "app") ? <span className="command-source">{c.source}</span> : null}
+                    {renderKind === "slash" && (c.source === "skill" || c.source === "prompt" || c.source === "app") ? <span className="command-source">{c.source}</span> : null}
                   </div>
                 ))
               )}
-              {menuKind === "prompt" ? (
+              {renderKind === "prompt" ? (
                 <button
                   type="button"
                   className="command-foot command-foot-btn"
@@ -895,7 +905,7 @@ export function Composer({
                 </button>
               ) : null}
               {/* Where the skills went: under "$", unless the query already asks for them. */}
-              {menuKind === "slash" && skillCount > 0 && !(slashQuery ?? "").toLowerCase().startsWith("skill") ? (
+              {renderKind === "slash" && skillCount > 0 && !(slashQuery ?? "").toLowerCase().startsWith("skill") ? (
                 <div className="command-foot" aria-hidden="true">
                   <IconSpark size={12} /> {skillCount} {skillCount === 1 ? "skill" : "skills"} under <kbd className="keycap">$</kbd>
                 </div>
@@ -981,10 +991,10 @@ export function Composer({
                 <IconStash size={16} />
                 {stash.length > 0 ? <span className="stash-count">{stash.length}</span> : null}
               </button>
-              {stashOpen ? (
+              {showStash ? (
                 <>
                   <div className="menu-backdrop" onClick={() => setStashOpen(false)} aria-hidden="true" />
-                  <ul className="menu-list stash-menu" role="menu" aria-label="Stash" onKeyDown={(e) => e.key === "Escape" && setStashOpen(false)}>
+                  <ul className={`menu-list stash-menu${stashLeaving ? " is-leaving" : ""}`} role="menu" aria-label="Stash" onKeyDown={(e) => e.key === "Escape" && setStashOpen(false)}>
                     <li role="none">
                       <button type="button" role="menuitem" disabled={empty && images.length === 0} onClick={stashNow}>
                         <IconStash size={14} /> Stash this draft <kbd>Alt+S</kbd>
@@ -1081,10 +1091,10 @@ export function Composer({
                     <button type="button" className="pill-btn then-more" aria-label="Then hand off to…" aria-expanded={thenMenu} onClick={() => setThenMenu((v) => !v)}>
                       <IconChevronDown size={12} />
                     </button>
-                    {thenMenu ? (
+                    {showThen ? (
                       <>
                         <div className="menu-backdrop" onClick={() => setThenMenu(false)} aria-hidden="true" />
-                        <ul className="menu-list then-menu" role="menu" aria-label="Then hand off to" onKeyDown={(e) => e.key === "Escape" && setThenMenu(false)}>
+                        <ul className={`menu-list then-menu${thenLeaving ? " is-leaving" : ""}`} role="menu" aria-label="Then hand off to" onKeyDown={(e) => e.key === "Escape" && setThenMenu(false)}>
                           <li className="then-menu-head muted" role="none">
                             Once the run is over, hand off to…
                           </li>

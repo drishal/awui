@@ -6,7 +6,7 @@
 // to a new place inside their date section. On phones it is the drawer.
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatStatus, Checkout, HarnessStatus, ProjectSession, SessionsOverview, WorkspaceInfo } from "../../shared/protocol.js";
-import { useDismiss, useNow, useViewSlide } from "../hooks.js";
+import { useDismiss, useLeave, useNow, useViewSlide } from "../hooks.js";
 import { useHoverCard } from "../hover-card.js";
 import { IconArchive, IconCheck, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
 import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
@@ -712,6 +712,7 @@ function FocusedHeader({
   scope: Array<{ workspace: WorkspaceInfo; count: number; current: boolean }>;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { render: showMenu, leaving } = useLeave(menuOpen);
   const [iconOpen, setIconOpen] = useState(false);
   const icons = useProjectIcons();
   const headWrap = useRef<HTMLDivElement>(null);
@@ -764,10 +765,10 @@ function FocusedHeader({
       <button type="button" className="icon-btn project-new" aria-label={`New chat in ${workspace.name}`} title={`New chat in ${workspace.name}`} disabled={!canStartChat} onClick={() => onNewChat(workspace)}>
         <IconPlus size={13} />
       </button>
-      {menuOpen ? (
+      {showMenu ? (
         <>
           <div className="menu-backdrop" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-          <ul ref={menu} className="menu-list focus-menu" role="menu" aria-label="Project" onKeyDown={onMenuKey}>
+          <ul ref={menu} className={`menu-list focus-menu${leaving ? " is-leaving" : ""}`} role="menu" aria-label="Project" onKeyDown={onMenuKey}>
             <li role="none" className="focus-menu-all">
               <button type="button" role="menuitem" onClick={() => pick(onShowAll)}>
                 <IconChevronLeft size={13} /> All projects

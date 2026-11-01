@@ -7,7 +7,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { IMAGE_MIME_TYPES, MAX_IMAGES, type HarnessStatus } from "../../shared/protocol.js";
 import { useAddImagesToDraft } from "../draft-bus.js";
-import { useDismiss } from "../hooks.js";
+import { useDismiss, useLeave } from "../hooks.js";
 import { IconArrowUp, IconChevronDown, IconFolder, IconImage, IconLink, IconPlus, IconX, Spinner } from "../icons.js";
 import { dataUrl, imageFiles, prepareImage, type PendingImage } from "../images.js";
 import { recentForChip, startAction, startExamples, startHeading, startSendBlocked, startSetup, type StartSetup } from "../start-screen.js";
@@ -314,6 +314,7 @@ export function StartScreen({
  */
 function FolderChip({ workspace, recent, onPick, onOpen }: { workspace: { name: string; path: string } | null; recent: string[]; onPick: () => void; onOpen: (path: string) => void }) {
   const [open, setOpen] = useState(false);
+  const { render: showMenu, leaving } = useLeave(open);
   const wrap = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLUListElement>(null);
   useDismiss(wrap, open, () => setOpen(false));
@@ -363,10 +364,10 @@ function FolderChip({ workspace, recent, onPick, onOpen }: { workspace: { name: 
         <span className="folder-chip-name">{workspace?.name ?? "Choose a folder"}</span>
         <IconChevronDown size={12} />
       </button>
-      {open ? (
+      {showMenu ? (
         <>
           <div className="menu-backdrop" onClick={() => setOpen(false)} aria-hidden="true" />
-          <ul ref={menu} className="menu-list folder-menu" role="menu" aria-label="Folder" onKeyDown={onKey}>
+          <ul ref={menu} className={`menu-list folder-menu${leaving ? " is-leaving" : ""}`} role="menu" aria-label="Folder" onKeyDown={onKey}>
             {items.map((path, i) => (
               <li key={path} role="none">
                 <button type="button" role="menuitem" title={path} onClick={() => pick(() => onOpen(path))}>

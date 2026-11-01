@@ -8,7 +8,7 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ContextCategory, ContextPoint, ContextUsage, SessionUsage } from "../../shared/protocol.js";
 import { coarse } from "../gestures.js";
-import { useDismiss } from "../hooks.js";
+import { useDismiss, useLeave } from "../hooks.js";
 import { sparkline, SPARK_H, SPARK_W } from "../sparkline.js";
 import { type DraftSize, draftRow, draftSize, draftWarning } from "../token-estimate.js";
 import { Dialog } from "./Dialog.js";
@@ -190,6 +190,7 @@ function UsageBody({ context, usage, draft, canCompact, history, compacting, com
 /** `draft` is the composer's text and image count, for the figure of what sending adds; `canCompact` whether the harness can answer a full window with Compact. */
 export function ContextRing({ context, usage, draft, canCompact, history, compacting }: { context: ContextUsage | null; usage: SessionUsage | null; draft: { text: string; images: number }; canCompact: boolean; history: ContextPoint[]; compacting: boolean }) {
   const [open, setOpen] = useState(false);
+  const { render: showPop, leaving } = useLeave(open);
   const wrap = useRef<HTMLDivElement>(null);
   const pop = useRef<HTMLDivElement>(null);
 
@@ -263,16 +264,15 @@ export function ContextRing({ context, usage, draft, canCompact, history, compac
         </svg>
         <span className="context-pct">{Math.round(pct)}%</span>
       </button>
-      {open ? (
-        coarse() ? (
-          <Dialog title="Context and usage" onClose={() => setOpen(false)} className="usage-sheet">
-            <UsageBody context={context} usage={usage} draft={size} canCompact={canCompact} history={history} compacting={compacting} compacted={compacted} />
-          </Dialog>
-        ) : (
-          <div className="usage-pop" ref={pop} role="dialog" aria-label="Context and usage" data-testid="usage-panel">
-            <UsageBody context={context} usage={usage} draft={size} canCompact={canCompact} history={history} compacting={compacting} compacted={compacted} />
-          </div>
-        )
+      {showPop && !coarse() ? (
+        <div className={`usage-pop${leaving ? " is-leaving" : ""}`} ref={pop} role="dialog" aria-label="Context and usage" data-testid="usage-panel">
+          <UsageBody context={context} usage={usage} draft={size} canCompact={canCompact} history={history} compacting={compacting} compacted={compacted} />
+        </div>
+      ) : null}
+      {open && coarse() ? (
+        <Dialog title="Context and usage" onClose={() => setOpen(false)} className="usage-sheet">
+          <UsageBody context={context} usage={usage} draft={size} canCompact={canCompact} history={history} compacting={compacting} compacted={compacted} />
+        </Dialog>
       ) : null}
     </div>
   );

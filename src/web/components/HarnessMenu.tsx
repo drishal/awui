@@ -6,7 +6,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { HarnessStatus } from "../../shared/protocol.js";
 import { harnessColor } from "../harness-colors.js";
-import { useDismiss } from "../hooks.js";
+import { useDismiss, useLeave } from "../hooks.js";
 import { IconCheck, IconChevronDown } from "../icons.js";
 
 export interface HarnessChoice {
@@ -43,6 +43,7 @@ export function HarnessMenu({
   onPick: (harnessId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { render: showMenu, leaving } = useLeave(open);
   const [active, setActive] = useState(-1);
   const wrap = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -139,10 +140,10 @@ export function HarnessMenu({
         ) : null}
         <IconChevronDown size={12} />
       </button>
-      {open ? (
+      {showMenu ? (
         <div
           ref={list}
-          className="harness-menu"
+          className={`harness-menu${leaving ? " is-leaving" : ""}`}
           role="listbox"
           tabIndex={-1}
           aria-label={menuLabel}

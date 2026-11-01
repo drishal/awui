@@ -6,7 +6,7 @@
 // level than the one picked (Hermes's "ultra" sends "max"), the pill and the
 // popover say so.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { useDismiss } from "../hooks.js";
+import { useDismiss, useLeave } from "../hooks.js";
 import { IconChevronDown } from "../icons.js";
 import { clipBand } from "./ModelPicker.js";
 
@@ -30,6 +30,7 @@ export function ThinkingPicker({
   onSelect: (level: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { render: showPop, leaving } = useLeave(open);
   const [below, setBelow] = useState(false);
   const at = Math.max(0, levels.indexOf(current ?? ""));
   const [value, setValue] = useState(at);
@@ -146,10 +147,10 @@ export function ThinkingPicker({
         </span>
         <IconChevronDown size={12} />
       </button>
-      {open ? (
+      {showPop ? (
         <>
-          <div className="model-backdrop" aria-hidden="true" onClick={() => close(false)} />
-          <div className={`model-pop effort-pop${below ? " is-below" : ""}`} role="dialog" aria-label="Thinking effort">
+          <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(false)} />
+          <div className={`model-pop effort-pop${below ? " is-below" : ""}${leaving ? " is-leaving" : ""}`} role="dialog" aria-label="Thinking effort">
             <div className="effort-head">
               <span className="effort-label">Effort</span>
               <span className="effort-value">{title(shown)}</span>

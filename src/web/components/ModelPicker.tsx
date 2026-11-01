@@ -4,16 +4,13 @@
 // a bottom sheet.
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ModelInfo } from "../../shared/protocol.js";
-import { useDismiss } from "../hooks.js";
+import { useDismiss, useLeave } from "../hooks.js";
 import { IconCheck, IconChevronDown, IconRefresh, IconSearch, Spinner } from "../icons.js";
 import { groupModels, type ModelGroup } from "../model-search.js";
 import { load, save } from "../storage.js";
 import { Dot } from "./Dot.js";
 
 const MAX_RECENT = 5;
-/** How long the closing motion runs before the panel is removed (the CSS leave animation is as long). */
-const LEAVE_MS = 120;
-
 /** Visible vertical band for a popover under `el`: the viewport cut by any clipping ancestor. */
 export function clipBand(el: HTMLElement): { top: number; bottom: number } {
   let top = 0;
@@ -49,9 +46,8 @@ export function ModelPicker({
   onRefresh: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  // Closing plays the opening backwards for a moment before the panel goes (see .model-pop.is-leaving).
-  const [leaving, setLeaving] = useState(false);
-  const leaveTimer = useRef<number | undefined>(undefined);
+  // Closing furls the panel back into the chip for a moment before it goes (see .model-pop.is-leaving).
+  const { render: showPop, leaving } = useLeave(open);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [place, setPlace] = useState<{ below: boolean; maxHeight: number }>({ below: false, maxHeight: 520 });
@@ -66,7 +62,7 @@ export function ModelPicker({
   const label = currentModel ? currentModel.name : (current ?? "No model");
 
   const sections = useMemo<Array<ModelGroup & { recent?: boolean }>>(() => {
-    if (!open) return [];
+    if (!showPop) return [];
     const groups = groupModels(models, query, current);
     if (query.trim()) return groups;
     const recent = load<string[]>(recentKey, [])
@@ -75,25 +71,17 @@ export function ModelPicker({
       .filter((m): m is ModelInfo => m !== undefined)
       .slice(0, MAX_RECENT);
     return recent.length > 0 ? [{ provider: "Recent", models: recent, recent: true }, ...groups] : groups;
-  }, [open, models, query, current, recentKey]);
+  }, [showPop, models, query, current, recentKey]);
   const flat = useMemo(() => sections.flatMap((s) => s.models), [sections]);
 
   const close = (refocus = true) => {
-    if (!open || leaving) return;
+    if (!open) return;
     setQuery("");
     if (refocus) trigger.current?.focus();
-    setLeaving(true);
-    leaveTimer.current = window.setTimeout(() => {
-      setOpen(false);
-      setLeaving(false);
-    }, LEAVE_MS);
+    setOpen(false);
   };
-  useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
-
   /** Open the picker, with `text` already typed into its search. */
   const openWith = (text: string) => {
-    window.clearTimeout(leaveTimer.current);
-    setLeaving(false);
     setQuery(text);
     setOpen(true);
   };
@@ -196,9 +184,9 @@ export function ModelPicker({
         <span className="pill-label">{shortName(label)}</span>
         <IconChevronDown size={12} />
       </button>
-      {open ? (
+      {showPop ? (
         <>
-          <div className="model-backdrop" aria-hidden="true" onClick={() => close(false)} />
+          <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(false)} />
           <div
             className={`model-pop${place.below ? " is-below" : ""}${leaving ? " is-leaving" : ""}`}
             role="dialog"

@@ -14,6 +14,38 @@ export function useNow(enabled: boolean, intervalMs = 1000): number {
   return now;
 }
 
+/** How long a popover's furl plays before it unmounts (matches --dur-hover, the leave length in motion.css). */
+export const LEAVE_MS = 120;
+
+/**
+ * Keep a popover mounted briefly after `open` goes false so its closing furl
+ * (an `.is-leaving` animation) can play: `render` stays true for LEAVE_MS with
+ * `leaving` set, then both go false. Reopening inside the window cancels it.
+ */
+export function useLeave(open: boolean): { render: boolean; leaving: boolean } {
+  const [render, setRender] = useState(open);
+  const [leaving, setLeaving] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  // Opening mounts in the same commit (focus and layout effects see the panel at once);
+  // only the unmount waits, so the furl can play. Reopening inside the window cancels it.
+  if (open && (!render || leaving)) {
+    setRender(true);
+    setLeaving(false);
+  }
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    window.clearTimeout(timer.current);
+    if (!open && render) {
+      setLeaving(true);
+      timer.current = window.setTimeout(() => {
+        setRender(false);
+        setLeaving(false);
+      }, LEAVE_MS);
+    }
+  }, [open, render]);
+  return { render, leaving };
+}
+
 export interface DismissOptions {
   /** Close on Escape. Off by default: not every surface is keyboard-dismissed. */
   escape?: boolean;

@@ -588,7 +588,8 @@ button.harness-chip:disabled {
 }
 
 /* The panel grows out of its chip: from the chip's corner (the panel opens above it, or below when short
-   of room) it fades in as a clip uncovers it, and closing shrinks it back quickly. Phones keep the sheet's own motion. */
+   of room) it fades in as a clip uncovers it, and closing furls it back into that corner instead of
+   shrinking, so nothing ever scales. Phones keep the sheet's own motion. */
 @media (min-width: 820px) {
   .model-picker .model-pop {
     transform-origin: bottom left;
@@ -599,15 +600,17 @@ button.harness-chip:disabled {
     transform-origin: top left;
     animation-name: model-grow-below;
   }
-
   .model-picker .model-pop.is-leaving {
     pointer-events: none;
-    animation: model-shrink var(--dur-hover) var(--ease-out) forwards;
+    animation: model-furl var(--dur-hover) var(--ease-out) forwards;
+  .model-picker .model-pop.is-below.is-leaving {
+    animation-name: model-furl-below;
   }
 }
 
 /* Uncovered from the chip's corner rather than scaled up from it, so the list's text is sharp as it opens
-   (motion.css's pops say why); the clip ends 24 px wide of the panel, past its shadow. */
+   (motion.css's pops say why); the clip ends 24 px wide of the panel, past its shadow. Closing is the
+   same clip in reverse: it furls back into the corner instead of shrinking, so nothing ever scales. */
 @keyframes model-grow {
   from {
     opacity: 0;
@@ -628,9 +631,35 @@ button.harness-chip:disabled {
   }
 }
 
-@keyframes model-shrink {
+@keyframes model-furl {
+  from {
+    opacity: 1;
+    clip-path: inset(-24px);
+  }
   to {
     opacity: 0;
-    transform: scale(0.92);
+    clip-path: inset(100% 100% -24px -24px);
+  }
+}
+
+@keyframes model-furl-below {
+  from {
+    opacity: 1;
+    clip-path: inset(-24px);
+  }
+  to {
+    opacity: 0;
+    clip-path: inset(-24px 100% 100% -24px);
+  }
+}
+
+/* A phone's backdrop fades back out while the sheet slides down. */
+.model-backdrop.is-leaving {
+  animation: fade-out var(--dur-hover) ease-out forwards;
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
   }
 }
