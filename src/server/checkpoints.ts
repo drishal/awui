@@ -196,6 +196,8 @@ export class ChatCheckpoints {
   private pending: Pending[] = [];
   private turns = new Map<number, TurnCheckpoint>();
   private repo: string | null = null;
+  /** The newest list write; flush() awaits it so a resumed session reads what this one saw. */
+  private lastPersist: Promise<void> = Promise.resolve();
   /** Trees this chat may restore: its checkpoints, and the "put back" points of its restores. */
   private known = new Set<string>();
 
@@ -278,7 +280,12 @@ export class ChatCheckpoints {
 
   /** Save without waiting; a failed write is logged, never an unhandled rejection (Node exits on one). */
   private persistSoon(): void {
-    this.persist().catch((error: unknown) => console.error(`awui: could not save checkpoints: ${error instanceof Error ? error.message : String(error)}`));
+    this.lastPersist = this.persist().catch((error: unknown) => console.error(`awui: could not save checkpoints: ${error instanceof Error ? error.message : String(error)}`));
+  }
+
+  /** Await the newest list write: a dispose must not let a resume read a stale file. */
+  async flush(): Promise<void> {
+    await this.lastPersist;
   }
 
   private persist(): Promise<void> {

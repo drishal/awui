@@ -1342,6 +1342,8 @@ export class Chat implements CheckpointHost {
 
   async dispose(reason: string): Promise<void> {
     if (this.status === "disposed") return;
+    // The checkpoint list is written without waiting; a resume right after must read it.
+    await this.checkpoints?.flush().catch(() => undefined);
     // A closed chat keeps no timer.
     this.clearContinue(false);
     if (this.viewersTimer) clearTimeout(this.viewersTimer);
