@@ -21,6 +21,9 @@ describe("atui rows, neat-render's way", () => {
     expect(neatRow(tool({ args: JSON.stringify({ path: "/w/src/a.ts", offset: 1, limit: 20 }), paths: ["/w/src/a.ts"], output: "a\nb\n" }), "/w")).toEqual({ label: "Read", glue: " ", detail: "src/a.ts:1-20", facts: ["2 lines"] });
     const bash = neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "# check the tests\nnpm test" }), status: "error", output: "1 failed\nCommand exited with code 2" }), "/w");
     expect(bash).toEqual({ label: "Bash", glue: " ", detail: "$ npm test", note: "check the tests", facts: ["exit 2", "2 lines"] });
+    expect(neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "ls" }), status: "error", output: "boom", exitCode: 1 }), "/w").facts).toEqual(["exit 1", "1 line"]);
+    // A reported code beats guessing one from the output text.
+    expect(neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "ls" }), status: "error", output: "all good", exitCode: 2 }), "/w").facts).toEqual(["exit 2", "1 line"]);
     expect(neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "ls" }), output: "x" }), "/w").facts).toEqual(["1 line"]);
     expect(neatRow(tool({ name: "grep", category: "search", args: JSON.stringify({ pattern: "listen", path: "/w/src" }), paths: ["/w/src"], output: "a\nb" }), "/w")).toMatchObject({ label: "Search", detail: "listen in src", facts: ["2 results"] });
     expect(neatRow(tool({ name: "web_fetch", category: "web", args: JSON.stringify({ urls: ["https://example.com/a/", "https://b.dev"] }) }), "/w")).toMatchObject({ label: "Fetch", detail: "example.com/a +1 more" });

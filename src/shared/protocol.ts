@@ -291,6 +291,8 @@ export interface ToolItem {
   htmlRender?: HtmlRenderRef;
   /** A proposed plan the call handed over for review (Claude's ExitPlanMode, pi-plan-mode's plan_mode_complete), as Markdown. */
   plan?: string;
+  /** A shell call's exit code, when the harness reported one (OpenCode's shell result carries metadata.exit; Pi/omp/Claude bash results carry none). */
+  exitCode?: number;
   at?: number;
   endedAt?: number;
 }

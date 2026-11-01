@@ -216,6 +216,17 @@ export function editShape(diff: ToolDiff | null, output: string | null): Pick<To
   const stat = output === null ? null : outputDiffStat(output);
   return stat ? { diffStat: stat } : {};
 }
+/**
+ * A shell call's exit code from its result's structured side, when the harness reported one.
+ * OpenCode's shell result carries it as `metadata.exit` (which toolDetails spreads onto
+ * `details`); Pi/omp/Claude bash results carry no code, so those calls stay without one
+ * and their rows keep reading the output instead of guessing.
+ */
+export function exitCodeOf(details: unknown): number | null {
+  if (!isObj(details)) return null;
+  const exit = details.exit;
+  return typeof exit === "number" && Number.isInteger(exit) ? exit : null;
+}
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
@@ -638,6 +649,12 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
           // A render call's page reference survives in its result's details, so a reload re-arms the frame.
           const page = renderCalls.has(String(raw.toolCallId)) ? htmlRenderRef(raw.details) : undefined;
           if (page) tool.htmlRender = page;
+          // A shell call's exit rides on the item when the harness reported one (OpenCode does).
+          if (tool.category === "command") {
+            const exitCode = exitCodeOf(raw.details);
+            if (exitCode !== null) tool.exitCode = exitCode;
+            else delete tool.exitCode;
+          }
         }
         // A wait or a proc read reports on background runs another call started.
         const reports = detailReports(raw.details);

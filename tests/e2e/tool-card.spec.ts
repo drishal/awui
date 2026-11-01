@@ -102,6 +102,10 @@ test("a failed call tints its row with the reason, opens its card, and the tally
   const [rowBox, headBox] = [await row.boundingBox(), await row.locator(".tool-head").boundingBox()];
   expect(rowBox!.height).toBeLessThanOrEqual(headBox!.height + 2);
   await expect(row.locator('.tool-status[aria-label="failed"]')).toBeVisible();
+  // The harness reported exit 1, so the row carries it as a fact beside the reason.
+  await expect(row.locator(".tool-fact")).toHaveText("exit 1");
+  // The row's name carries the reason, since the name replaces the text inside it.
+  await expect(row.locator(".tool-head")).toHaveAccessibleName(/Couldn't run npm run e2e, exit 1, Error: port 4791 is already in use,\s*(?:[^,]+, )?failed/);
   const tint = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(tint).not.toBe("rgba(0, 0, 0, 0)");
   // Closed, the tally opens the card and puts focus on the failed row.

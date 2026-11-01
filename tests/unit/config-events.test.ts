@@ -113,6 +113,15 @@ describe("agent event normalization", () => {
     expect(items.map((i) => i.kind)).toEqual(["user", "assistant", "tool", "notice", "tool"]);
     expect(items[2]).toMatchObject({ status: "done", output: "data" });
     // A call the transcript never got a result for is over, and says why instead of spinning.
+    // OpenCode's shell result carries its exit in the details; a bash result without one stays without.
+    const withExit = historyToItems([
+      { role: "assistant", content: [{ type: "toolCall", id: "c3", name: "shell", arguments: { command: "echo hi" } }] },
+      { role: "toolResult", toolCallId: "c3", content: [{ type: "text", text: "hi\n" }], isError: false, details: { exit: 0 } },
+      { role: "assistant", content: [{ type: "toolCall", id: "c4", name: "bash", arguments: { command: "ls" } }] },
+      { role: "toolResult", toolCallId: "c4", content: [{ type: "text", text: "x" }], isError: false },
+    ]);
+    expect(withExit[0]).toMatchObject({ name: "shell", status: "done", exitCode: 0 });
+    expect(withExit[1]).not.toHaveProperty("exitCode");
     expect(items[4]).toMatchObject({ status: "done", output: NO_RESULT_TEXT });
   });
 

@@ -599,7 +599,7 @@ class FakeLiveChat implements LiveChat {
         await this.call({ name: "bash", args: { command: "npm test" }, output }, signal);
       }
       if (/\btoolfail\b/i.test(text)) {
-        await this.call({ name: "bash", args: { command: "npm run e2e" }, output: "Error: port 4791 is already in use\n    at Server.setupListenHandle", isError: true }, signal);
+        await this.call({ name: "bash", args: { command: "npm run e2e" }, output: "Error: port 4791 is already in use\n    at Server.setupListenHandle", isError: true, details: { exit: 1 } }, signal);
       }
       if (/\btodolist\b/i.test(text)) {
         // rpiv-todo (`todo`): one action on a numbered list, whose result carries the whole list again.

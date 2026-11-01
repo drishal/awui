@@ -126,8 +126,11 @@ export function neatRow(item: ToolItem, workspace: string): NeatRow {
       const { note, command } = splitComments(cmd, lang === "js" ? "//" : "#");
       const label = /bash|shell|terminal|exec/i.test(item.name) ? "Bash" : lang === "js" ? "JavaScript" : lang === "py" ? "Python" : item.name;
       // Success is the expected case and the bullet already says it: only a failure's code is worth a word.
-      const exit = failed ? /exit(?:ed)?(?: with)?(?: code|status)?:? (\d+)/i.exec(item.output.slice(-300)) : null;
-      const facts = exit && exit[1] !== "0" ? [`exit ${exit[1]}`] : [];
+      // A reported code beats guessing one from the output's last lines.
+      const reported = typeof item.exitCode === "number" ? String(item.exitCode) : null;
+      const guessed = failed && reported === null ? /exit(?:ed)?(?: with)?(?: code|status)?:? (\d+)/i.exec(item.output.slice(-300)) : null;
+      const code = reported ?? (guessed ? guessed[1] : null);
+      const facts = code && code !== "0" ? [`exit ${code}`] : [];
       if (lines) facts.push(plural(lines, "line"));
       return { label, glue: " ", detail: label === "Bash" ? `$ ${command}` : (command.split("\n").find((l) => l.trim()) ?? command), facts: outcome(facts), ...(note ? { note } : {}) };
     }

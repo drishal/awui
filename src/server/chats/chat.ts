@@ -30,7 +30,7 @@ import type {
 } from "../../shared/protocol.js";
 import { MAX_CONTEXT_HISTORY } from "../../shared/protocol.js";
 import { promises as fs } from "node:fs";
-import { boundText, editShape, historyToItems, NO_RESULT_TEXT, stringifyArgs, toolCategory, toolPaths, toolSummary } from "../harness/agent-events.js";
+import { boundText, editShape, exitCodeOf, historyToItems, NO_RESULT_TEXT, stringifyArgs, toolCategory, toolPaths, toolSummary } from "../harness/agent-events.js";
 import { argsDiff, resultDiff } from "../harness/tool-diff.js";
 import { applyReports, detailReports, runsFromArgs, runsFromDetails, settleRuns, transcriptFile, transcriptRecords, type AgentReport } from "../harness/subagents.js";
 import { htmlRenderRef, isHtmlRenderCall } from "../harness/render-token.js";
@@ -407,6 +407,8 @@ class EventReducer {
         const page = this.renderCalls.delete(event.toolCallId) ? htmlRenderRef(event.details) : undefined;
         // A failed edit keeps the diff it tried, but changed nothing to count.
         const { diffStat: _attempted, ...uncounted } = settled;
+        // A shell call's exit rides on the item when the harness reported one (OpenCode does).
+        const exitCode = settled.category === "command" ? exitCodeOf(event.details) : null;
         this.put({
           ...(event.isError ? uncounted : settled),
           output: bounded.text,
@@ -414,6 +416,7 @@ class EventReducer {
           status: event.isError ? "error" : "done",
           endedAt: Date.now(),
           ...(page ? { htmlRender: page } : {}),
+          ...(exitCode !== null ? { exitCode } : {}),
         });
         if (base.name.toLowerCase().includes("todo")) this.fx.refreshTodos();
         // A wait or a proc read reports on background runs another call started.

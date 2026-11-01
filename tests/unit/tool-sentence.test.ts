@@ -89,6 +89,14 @@ describe("toolSentence: commands", () => {
     expect(toolSentence({ ...bash, output: "" }, WS).facts).toEqual(["no output"]);
     expect(toolSentence({ ...bash, status: "running", output: "" }, WS).facts).toEqual([]);
   });
+  it("says exit N when the harness reported one, else the line count", () => {
+    // OpenCode's shell result carries metadata.exit; Pi/omp/Claude bash results carry none.
+    expect(toolSentence({ ...bash, exitCode: 0 }, WS).facts).toEqual(["2 lines"]);
+    expect(toolSentence({ ...bash, exitCode: 2 }, WS).facts).toEqual(["exit 2"]);
+    expect(toolSentence({ ...bash, status: "error", output: "boom", exitCode: 1 }, WS).facts).toEqual(["exit 1"]);
+    // A parsed test run still wins over the bare code: the summary says more.
+    expect(toolSentence({ ...bash, output: " Tests  1 failed | 1 passed (2)", exitCode: 1 }, WS).facts).toEqual(["1 passed", "1 failed"]);
+  });
   it("takes the first line, skips a leading comment, and cuts at 60 characters", () => {
     expect(toolSentence({ ...bash, args: args({ command: "# check it\nrg -n listen src\nwc -l" }) }, WS).target).toBe("rg -n listen src");
     const long = toolSentence({ ...bash, args: args({ command: `echo ${"x".repeat(100)}` }) }, WS).target;

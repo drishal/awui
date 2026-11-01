@@ -146,7 +146,9 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
   const rel = (p: string) => relativePath(p, workspace);
   const make = (kind: string, target: string, code: boolean, rest: string | undefined, facts: string[]): ToolSentence => {
     const verb = (VERBS[kind] as Record<Tense, string>)[tense];
-    const known = parsed.facts.length > 0 ? parsed.facts : item.status === "error" ? [] : facts;
+    // A failure's output is the error, so output-derived counts are dropped; a reported exit code is
+    // metadata, not output, so it still reads beside the reason.
+    const known = parsed.facts.length > 0 ? parsed.facts : item.status === "error" ? facts.filter((f) => f.startsWith("exit ")) : facts;
     // A run that finished with a failing test says which one, though the call itself did not fail.
     const error = parsed.error ?? (item.status === "error" ? errorLine(item.output) : undefined);
     const tail = rest ? (rest.startsWith(":") ? rest : ` ${rest}`) : "";
@@ -197,7 +199,11 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
     case "command": {
       const cmd = str(args.command) ?? str(args.cmd) ?? str(args.script) ?? str(args.code) ?? str(args.input) ?? item.summary;
       const n = lineCount(item.output);
-      return make("command", commandLine(cmd), true, undefined, settled ? [n > 0 ? plural(n, "line") : "no output"] : []);
+      // A reported exit code says more than a line count (OpenCode reports one; a parsed test
+      // run still wins, since its summary says the most). Success is the expected case, so a
+      // clean 0 keeps the line count and only a failure's code — or any nonzero one — is a word.
+      const exit = typeof item.exitCode === "number" && (item.status === "error" || item.exitCode !== 0) ? [`exit ${item.exitCode}`] : [];
+      return make("command", commandLine(cmd), true, undefined, settled ? (exit.length > 0 ? exit : [n > 0 ? plural(n, "line") : "no output"]) : []);
     }
     case "search": {
       const pattern = str(args.pattern) ?? str(args.query) ?? str(args.regex) ?? str(args.glob) ?? str(args.name) ?? str(args.q) ?? item.summary;
