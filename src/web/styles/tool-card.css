@@ -462,38 +462,6 @@
   }
 }
 
-/* "Show 7 more calls": the fold of a long run, a quiet full-width row between the ends. */
-.tool-more {
-  display: block;
-  width: 100%;
-  min-height: calc(var(--drow-h) * var(--chat-scale));
-  padding: 3px 12px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--muted-text);
-  font-size: calc(var(--chat-small) - 0.6px);
-  text-align: center;
-  transition: background-color var(--dur-hover) ease;
-}
-
-.tool-more:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.process-card .process-body > .tool-more {
-  border-top: 1px solid var(--hairline);
-  border-bottom: 1px solid var(--hairline);
-  border-radius: 0;
-}
-
-@media (pointer: coarse) {
-  .tool-more {
-    min-height: 44px;
-  }
-}
-
 /* The working mark: eight rays that fade one after another (no rotation), then, when the run
    settles in view, a check that draws itself (a one-unit path whose dash is pulled back; B7's 360 ms
    and 80 ms delay). Switched off by the reduced-motion rule: the rays then sit lit, the check drawn. */

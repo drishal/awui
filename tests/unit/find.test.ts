@@ -1,7 +1,7 @@
 // Find in chat (find.ts): matching, stepping, and the folds a query opens.
 import { describe, expect, it } from "vitest";
 import type { ChatItem } from "../../src/shared/protocol.js";
-import { callsToShow, findOffsets, foldsToOpen, stepMatch } from "../../src/web/find.js";
+import { findOffsets, foldsToOpen, stepMatch } from "../../src/web/find.js";
 import { buildTurns } from "../../src/web/turns.js";
 
 const user = (id: string, text: string): ChatItem => ({ kind: "user", id, text });
@@ -22,12 +22,5 @@ describe("find in chat", () => {
       reply("a2", "nothing here"),
     ];
     expect(foldsToOpen(buildTurns(items, "idle"), "NEEDLE")).toEqual(["u1"]);
-  });
-  it("also shows every call of a long run that holds a match", () => {
-    const call = (n: number): ChatItem => ({ kind: "tool", id: `t${n}`, name: "read", args: "", status: "done", output: "", truncated: false, category: "read", summary: n === 5 ? "src/needle.ts" : `src/f${n}.ts`, paths: [] });
-    const long = [user("u1", "go"), ...Array.from({ length: 10 }, (_, i) => call(i)), reply("a1", "done")];
-    expect(callsToShow(buildTurns(long, "idle"), "needle")).toEqual(["u1#all"]);
-    expect(callsToShow(buildTurns(long, "idle"), "absent")).toEqual([]);
-    expect(callsToShow(buildTurns([user("u1", "go"), call(5), reply("a1", "done")], "idle"), "needle")).toEqual([]);
   });
 });

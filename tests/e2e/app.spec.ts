@@ -140,7 +140,6 @@ test("tool cards: the harness's numbered diff, a terminal, a search, a fetch", a
   await newChat(page);
   await sendAndWait(page, "showcase");
   await openFold(page);
-  await page.getByRole("button", { name: "Show 4 more calls" }).click();
   const tool = (name: string) => page.locator(`[data-testid="tool-row"][data-tool="${name}"]`);
   for (const name of ["edit", "write", "bash", "grep", "web_fetch"]) await tool(name).getByRole("button").first().click();
   // Pi's own diff wins over the arguments': its line numbers, its skipped run, the changed words marked.

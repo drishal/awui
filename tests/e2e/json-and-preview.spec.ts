@@ -8,9 +8,6 @@ async function openFold(page: Page) {
   const toggle = page.getByTestId("process-toggle").last();
   if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  // The showcase's nine calls fold to their ends.
-  const more = page.getByRole("button", { name: /^Show \d+ more calls$/ });
-  if (await more.count()) await more.click();
 }
 
 test("an MCP-like call shows its arguments and its JSON result as folding trees", async ({ page }) => {

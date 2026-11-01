@@ -15,9 +15,6 @@ test("a run of calls is one card: a header that counts and stacks the kinds, a s
   await expect(stack.locator(".kind-more")).toHaveText("+5");
   await toggle.click();
   const rows = page.getByTestId("tool-row");
-  // Nine calls fold to the first three and last two.
-  await expect(rows).toHaveCount(5);
-  await page.getByRole("button", { name: "Show 4 more calls" }).click();
   await expect(rows).toHaveCount(9);
   await expect(rows.first().locator(".tool-sentence")).toHaveText("Edited src/server.ts");
   await expect(page.locator('[data-tool="bash"] .tool-sentence')).toHaveText("Ran npm test -- --run tool-diff");

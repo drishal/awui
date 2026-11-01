@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { newChat, send, sendAndWait, signInAndOpen } from "./helpers.js";
 
-// The tool card's later touches: a long run folded to its ends, a test run's own glyph, the working label's mark.
+// The tool card's later touches: every call in a long run, a test run's own glyph, the working label's mark.
 
-test("a long run shows its first three and last two calls, and one button shows the rest", async ({ page }) => {
+test("a long run shows every call without a more-calls fold", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
   await sendAndWait(page, "manycalls");
@@ -11,17 +11,13 @@ test("a long run shows its first three and last two calls, and one button shows 
   await expect(toggle).toContainText("Used 12 tools");
   await toggle.click();
   const rows = page.getByTestId("tool-row");
-  await expect(rows).toHaveCount(5);
-  await expect(rows.nth(2).locator(".tool-sentence")).toContainText("part-3.ts");
-  await expect(rows.nth(3).locator(".tool-sentence")).toContainText("part-11.ts");
-  const more = page.getByRole("button", { name: "Show 7 more calls" });
-  await more.focus();
-  await page.keyboard.press("Enter");
   await expect(rows).toHaveCount(12);
-  await expect(more).toHaveCount(0);
+  await expect(rows.nth(2).locator(".tool-sentence")).toContainText("part-3.ts");
+  await expect(rows.nth(10).locator(".tool-sentence")).toContainText("part-11.ts");
+  await expect(page.getByRole("button", { name: /^Show \d+ more calls?$/ })).toHaveCount(0);
 });
 
-test("find in chat reaches a call the fold hides", async ({ page }) => {
+test("find in chat reaches a call inside a closed card", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
   await sendAndWait(page, "manycalls");

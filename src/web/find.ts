@@ -3,7 +3,6 @@
 // folded "Worked for …" process opens that fold first, which the browser's own
 // find cannot do. Matching is pure here; the component walks the DOM's text
 // and paints with the CSS Custom Highlight API, so the page is never rewritten.
-import { callCount, FOLD_AFTER } from "./run-fold.js";
 import { toolSentence } from "./tool-sentence.js";
 import type { Turn } from "./turns.js";
 
@@ -37,16 +36,6 @@ function processText(turn: Turn): string {
 export function foldsToOpen(turns: readonly Turn[], query: string): string[] {
   if (!query.trim()) return [];
   return turns.filter((t) => t.prompt && findOffsets(processText(t), query).length > 0).map((t) => t.id);
-}
-
-/** Turns whose long run of calls hides rows (run-fold.ts) and holds a match: they show every call, under the key `<id>#all`. */
-export function callsToShow(turns: readonly Turn[], query: string): string[] {
-  return foldsToOpen(turns, query)
-    .filter((id) => {
-      const turn = turns.find((t) => t.id === id);
-      return turn !== undefined && [turn.process, turn.workAfter].some((items) => callCount(items) > FOLD_AFTER);
-    })
-    .map((id) => `${id}#all`);
 }
 
 /** The next match to show, from `current`, wrapping around; -1 when there are none. */
