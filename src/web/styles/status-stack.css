@@ -301,6 +301,13 @@
 }
 
 /* Git panel: the same right-hand sheet as Review. */
+.git-title {
+  flex: 1;
+  /* The path can be longer than a phone: the title must shrink and truncate,
+     or the head row overflows and drops Refresh and Close off the sheet. */
+  min-width: 0;
+}
+
 .git-title h2 {
   display: flex;
   align-items: center;
