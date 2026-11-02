@@ -1430,7 +1430,10 @@ test("subagents show live, then their answers, and open their own transcripts", 
   await expect(row.locator(".run-status.is-running")).toHaveCount(1);
   // The running agent's latest command, whichever of the two runs when this looks (the scout first, then the worker).
   await expect(row.locator(".run-activity")).toContainText(/bash (rg -n listen src|sed -n 1,40p src\/server\.ts)/);
+  // The job strip above the composer mirrors the run, and leaves when it settles.
+  await expect(page.getByTestId("job-progress")).toContainText(/1 running agents/);
   await expect(page.locator(".answer-actions")).toBeVisible({ timeout: 20000 });
+  await expect(page.getByTestId("job-progress")).toHaveCount(0);
   await openFold(page);
   // Settled, it opens like any other row (one call is its own card, which may have stayed open from the run).
   const head = row.getByRole("button").first();

@@ -12,7 +12,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChainStep, QueueState, TodoItem } from "../../shared/protocol.js";
 import { addToDraft } from "../draft-bus.js";
-import { IconCheck, IconChevronDown, IconCircle, IconClock, IconEdit, IconQueue, IconSteer, IconSwap, IconWarning, IconX, Spinner } from "../icons.js";
+import { IconAgents, IconCheck, IconChevronDown, IconCircle, IconClock, IconEdit, IconQueue, IconSteer, IconSwap, IconWarning, IconX, Spinner } from "../icons.js";
+import { jobLine, type JobProgress } from "../job-progress.js";
 import { announceLanding, ranFromQueue, type Spot } from "../queue-glide.js";
 import { load, save } from "../storage.js";
 
@@ -79,6 +80,7 @@ export function StatusStack({
   onChain,
   base,
   working = false,
+  jobs = null,
 }: {
   chatId: string;
   /** The harness's own status line (`<harness>:status`), when it has one. */
@@ -97,6 +99,8 @@ export function StatusStack({
   base?: React.ReactNode;
   /** The chat is running now: an in-progress todo spins only then. */
   working?: boolean;
+  /** Live delegated runs across the chat's tools (omp's TUI strip: "2 agents · 1 running, 1 done"). */
+  jobs?: JobProgress | null;
 }) {
   const key = `stack.${chatId}`;
   const [hidden, setHidden] = useState(() => load<boolean>(key, false));
@@ -153,7 +157,7 @@ export function StatusStack({
     }
     setEditing(null);
   }, [queue, editing]);
-  const count = (notice ? 1 : 0) + queued.length + (todos.length > 0 ? 1 : 0) + (lost ? 1 : 0) + chain.length;
+  const count = (jobs ? 1 : 0) + (notice ? 1 : 0) + queued.length + (todos.length > 0 ? 1 : 0) + (lost ? 1 : 0) + chain.length;
   if (count === 0) return base ? <div className="status-stack is-base-only">{base}</div> : null;
   const done = todos.filter((t) => /done|complete/.test(t.status)).length;
 
@@ -174,6 +178,13 @@ export function StatusStack({
       </button>
       {!hidden ? (
         <div className="stack-body">
+          {jobs ? (
+            <div className="stack-row stack-jobs" role="status" aria-live="polite" data-testid="job-progress">
+              <span className="stack-icon">{jobs.mode === "background" ? <IconAgents size={13} /> : <Spinner size={12} />}</span>
+              <span className="stack-text">{jobLine(jobs).label}</span>
+              <span className="stack-meta">{jobLine(jobs).meta}</span>
+            </div>
+          ) : null}
           {notice ? (
             <div className="stack-row stack-notice" role="status" data-testid="harness-status">
               <span className="stack-icon">

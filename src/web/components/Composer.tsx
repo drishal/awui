@@ -35,6 +35,7 @@ import { LimitRecovery } from "./LimitRecovery.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { GitPanel, GitRow } from "./GitStatusView.js";
 import { useGitStatus } from "../git.js";
+import { jobProgress } from "../job-progress.js";
 import { Dot, dotted } from "./Dot.js";
 
 /** The prompt box's drag limits: a line, or most of a screen. */
@@ -614,6 +615,8 @@ export function Composer({
   const pending = closed ? [] : chat.pending;
   const harnessName = harnesses.find((h) => h.id === chat.harnessId)?.displayName ?? chat.harnessId;
   const stopped = useMemo(() => limitStop(chat.items, chat.status, limits ?? null, harnessName), [chat.items, chat.status, limits, harnessName]);
+  // The subagent/job strip above the composer: live while any delegated run is.
+  const jobs = useMemo(() => jobProgress(chat.items), [chat.items]);
 
   return (
     <div className={`composer${hero ? " is-hero" : ""}`}>
@@ -662,6 +665,7 @@ export function Composer({
         onChain={setChain}
         base={git ? <GitRow git={git} onOpen={() => setGitOpen(true)} /> : null}
         working={busy}
+        jobs={jobs}
       />
       {gitOpen && git ? <GitPanel chatId={chat.chatId} git={git} at={gitAt} onRefresh={refreshGit} onClose={() => setGitOpen(false)} /> : null}
       {stopped && !busy && pending.length === 0 && !closed ? (
