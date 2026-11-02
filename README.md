@@ -72,7 +72,15 @@ awui also runs natively on Windows (x64). The harnesses it drives — pi, omp's 
 - `awui install service` and `awui install tui` are Linux/macOS-only; on Windows run `awui.exe` directly (or from a Task Scheduler task).
 - herdr and the web "Run" code-block shells are POSIX; on win32 the Run block's `sh`/`bash` fence maps to cmd/PowerShell.
 
-Build the Windows binary from any host with `bun run scripts/build-binary.ts --all` (writes `dist/bin/windows-x64/awui.exe`).
+There is no prebuilt Windows download. Build it from a clone (inside `devenv shell` for the toolchain) — the build cross-compiles, so you can produce the `.exe` from Linux or macOS:
+
+```bash
+devenv shell                                # pinned Bun/Node toolchain
+bun run scripts/build-binary.ts --all       # every target; there is no single-target flag
+# → dist/bin/windows-x64/awui.exe   (the linux/darwin/macos binaries land beside it in dist/bin/)
+```
+
+Copy `dist/bin/windows-x64/awui.exe` onto the Windows machine and run `awui.exe` — the web UI and API come up on `http://127.0.0.1:4783`. The harnesses (`pi`, `omp`, `claude`) must be installed and signed in there first.
 
 Open http://127.0.0.1:4783/ on this machine. No token and no sign-in: local use is open.
 
