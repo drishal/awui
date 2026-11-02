@@ -63,9 +63,9 @@ test("typing and Enter create exactly one chat, with its prompt and answer", asy
 
 test("the start screen picks the model the chat starts on", async ({ page }) => {
   await signInAndOpen(page);
-  // The chip reads its list from the harness for this folder; until a pick it names the harness's default.
+  // The chip reads its list from the harness for this folder; until a pick it names the harness's own default.
   const picker = page.locator(".start-screen").getByTestId("model-picker");
-  await expect(picker).toHaveAccessibleName("Model: Default model");
+  await expect(picker).toHaveAccessibleName("Model: Fake Echo · low");
   await picker.click();
   const dialog = page.getByRole("dialog", { name: "Choose a model" });
   await dialog.getByRole("combobox", { name: "Search models" }).fill("slow");

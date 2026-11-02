@@ -521,7 +521,13 @@ export function createApp(deps: AppDeps) {
     try {
       // thinkingLevels is the harness's own default list, for a picker with no model chosen yet;
       // a model's own levels (ModelInfo.levels) win when one is. Both are the harness's words, never invented.
-      res.json({ models: await adapter.listModels(ws.path), thinkingLevels: await adapter.listThinkingLevels(ws.path).catch(() => []) });
+      // defaultModel is the harness's own default so the start screen can name it; null when the harness does not say.
+      const [models, thinkingLevels, defaultModel] = await Promise.all([
+        adapter.listModels(ws.path),
+        adapter.listThinkingLevels(ws.path).catch(() => [] as string[]),
+        adapter.defaultModel ? adapter.defaultModel(ws.path).catch(() => null) : Promise.resolve(null),
+      ]);
+      res.json({ models, thinkingLevels, defaultModel });
     } catch (error) {
       throw new ChatError(502, "models_unavailable", `${adapter.displayName} could not list its models: ${errorMessage(error)}`);
     }

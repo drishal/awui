@@ -193,6 +193,13 @@ export interface HarnessAdapter {
   resolveSessionDir(cwd: string): Promise<string>;
   listModels(cwd: string): Promise<ModelInfo[]>;
   listThinkingLevels(cwd: string): Promise<string[]>;
+  /**
+   * The model and thinking level a fresh chat in `cwd` would start on, so the
+   * start screen can name the harness's own default instead of a generic
+   * "Default model". Null when the harness does not expose one. Display only;
+   * it never overrides an explicit pick.
+   */
+  defaultModel?(cwd: string): Promise<{ model: string; thinkingLevel: string | null } | null>;
   listSessions(cwd: string): Promise<NativeSessionSummary[]>;
   /** The newest sessions across every project, newest first. */
   listRecentSessions(limit: number): Promise<RecentNativeSession[]>;

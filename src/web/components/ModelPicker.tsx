@@ -38,6 +38,7 @@ function providerLabel(section: { provider: string; models: ModelInfo[] }): stri
 export function ModelPicker({
   models,
   current,
+  defaultModel = null,
   harnessId,
   disabled,
   onSelect,
@@ -51,6 +52,8 @@ export function ModelPicker({
 }: {
   models: ModelInfo[];
   current: string | null;
+  /** The harness's own default (the start screen), named on the chip when `current` is null. */
+  defaultModel?: { model: string; thinkingLevel: string | null } | null;
   harnessId: string;
   disabled: boolean;
   onSelect: (key: string) => void;
@@ -80,9 +83,15 @@ export function ModelPicker({
   const [refreshing, setRefreshing] = useState(false);
   const listId = useId();
   const recentKey = `recentModels.${harnessId}`;
-  const currentModel = models.find((m) => m.key === current);
+  // Nothing picked: show the harness's own default's name (and its reasoning share) when it said one,
+  // not the bare "Default model". The pick list still opens on the real default and the user picks first.
+  const effectiveKey = current ?? defaultModel?.model ?? null;
+  const currentModel = models.find((m) => m.key === effectiveKey);
   // A virtual provider (MoA) needs its name here: its preset alone ("default") says nothing.
-  const label = currentModel ? (currentModel.providerName ? `${currentModel.providerName} · ${currentModel.name}` : currentModel.name) : (current ?? emptyLabel);
+  const nameLabel = currentModel ? (currentModel.providerName ? `${currentModel.providerName} · ${currentModel.name}` : currentModel.name) : null;
+  // The reasoning word belongs only to the harness's own default: a picked model's level is the chat's own row, not the chip's.
+  const reasoningLabel = !current && currentModel?.reasoning ? (defaultModel?.thinkingLevel ?? null) : null;
+  const label = nameLabel ? (reasoningLabel ? `${nameLabel} · ${reasoningLabel}` : nameLabel) : (current ?? emptyLabel);
   const chipLabel = triggerLabel ?? shortName(label);
 
   const sections = useMemo<Array<ModelGroup & { recent?: boolean }>>(() => {

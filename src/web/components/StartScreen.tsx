@@ -20,6 +20,7 @@ export function StartScreen({
   onHarness,
   models,
   model,
+  defaultModel = null,
   onModel,
   onRefreshModels,
   workspace,
@@ -43,6 +44,8 @@ export function StartScreen({
   models: ModelInfo[];
   /** The model picked here, or null to start on the harness's own default. */
   model: string | null;
+  /** The harness's own default for a fresh chat, when it says one; named on the chip when nothing is picked. */
+  defaultModel?: { model: string; thinkingLevel: string | null } | null;
   onModel: (key: string) => void;
   onRefreshModels: () => Promise<void>;
   workspace: { name: string; path: string } | null;
@@ -293,6 +296,7 @@ export function StartScreen({
                   <ModelPicker
                     models={models}
                     current={model}
+                    defaultModel={defaultModel}
                     harnessId={harnessId}
                     disabled={busy}
                     onSelect={onModel}

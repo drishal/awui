@@ -207,6 +207,11 @@ export class FakeAdapter implements HarnessAdapter {
     return FAKE_THINKING;
   }
 
+  /** A chat starts on the first model and the lowest thinking level, so the start screen names it. */
+  async defaultModel(): Promise<{ model: string; thinkingLevel: string | null } | null> {
+    return { model: "fake/echo", thinkingLevel: "low" };
+  }
+
   async listSessions(cwd: string): Promise<NativeSessionSummary[]> {
     return [...this.sessions.values()]
       .filter((s) => s.cwd === cwd && s.messages.length > 0)

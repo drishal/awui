@@ -627,20 +627,28 @@ export function App() {
   // exists. A pick applies when the chat is created, never to this or the last chat.
   const [startModels, setStartModels] = useState<ModelInfo[]>([]);
   const [startModel, setStartModel] = useState<string | null>(null);
+  // The harness's own default for a fresh chat, when it says one: the chip names it instead of "Default model".
+  const [startDefault, setStartDefault] = useState<{ model: string; thinkingLevel: string | null } | null>(null);
   const modelFetch = useRef(0);
   const modelsKey = useRef<string | null>(null);
   const loadStartModels = async (forHarness: string, forWs: WorkspaceInfo): Promise<ModelInfo[]> => {
     const seq = ++modelFetch.current;
     try {
-      const { models } = await api<{ models: ModelInfo[] }>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?workspaceId=${encodeURIComponent(forWs.id)}`);
+      const { models, defaultModel } = await api<{ models: ModelInfo[]; defaultModel?: { model: string; thinkingLevel: string | null } | null }>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?workspaceId=${encodeURIComponent(forWs.id)}`);
       if (seq === modelFetch.current) {
         setStartModels(models);
+        // Only a default that names a model the list actually offers is shown; anything else is no better than "Default model".
+        const usable = defaultModel && models.some((m) => m.key === defaultModel.model) ? defaultModel : null;
+        setStartDefault(usable);
         // A model the harness no longer lists (another harness, another folder's providers) is no pick.
         setStartModel((picked) => (picked && models.some((m) => m.key === picked) ? picked : null));
       }
       return models;
     } catch {
-      if (seq === modelFetch.current) setStartModels([]);
+      if (seq === modelFetch.current) {
+        setStartModels([]);
+        setStartDefault(null);
+      }
       return [];
     }
   };
@@ -650,6 +658,7 @@ export function App() {
       modelFetch.current += 1;
       modelsKey.current = null;
       setStartModels([]);
+      setStartDefault(null);
       return;
     }
     // Another harness or folder: the list on screen belongs to the old one, so drop it (and the
@@ -659,6 +668,7 @@ export function App() {
       modelsKey.current = key;
       setStartModels([]);
       setStartModel(null);
+      setStartDefault(null);
     }
     void loadStartModels(harnessId, workspace);
   }, [chatId, harnessId, workspace?.id]);
@@ -1994,6 +2004,7 @@ export function App() {
                 onHarness={chooseHarness}
                 models={startModels}
                 model={startModel}
+                defaultModel={startDefault}
                 onModel={setStartModel}
                 onRefreshModels={refreshStartModels}
                 workspace={harnessId === "awui" ? null : workspace}

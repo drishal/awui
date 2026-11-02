@@ -604,7 +604,7 @@ export class OmpAdapter implements HarnessAdapter {
   };
   private lister: AcpLister;
   private sessionFiles = new SessionFiles(() => this.resolveSessionDir());
-  private probeCache = new Map<string, { at: number; models: ModelInfo[]; levels: string[] }>();
+  private probeCache = new Map<string, { at: number; models: ModelInfo[]; levels: string[]; defaultModel: { model: string; thinkingLevel: string | null } | null }>();
 
   constructor(private readonly options: OmpOptions) {
     this.cliCommand = options.command ?? "omp";
@@ -799,7 +799,7 @@ export class OmpAdapter implements HarnessAdapter {
   }
 
   /** One throwaway `--no-session` child per workspace (cached) for models and thinking levels. */
-  private async probe(cwd: string): Promise<{ models: ModelInfo[]; levels: string[] }> {
+  private async probe(cwd: string): Promise<{ models: ModelInfo[]; levels: string[]; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
     const cached = this.probeCache.get(cwd);
     if (cached && Date.now() - cached.at < 5 * 60_000) return cached;
     const rpc = new OmpRpc(this.cliCommand, ["--mode", "rpc-ui", "--no-session", "--cwd", cwd], this.env(), cwd, () => undefined, () => undefined);
@@ -807,10 +807,15 @@ export class OmpAdapter implements HarnessAdapter {
       await rpc.ready;
       const models = await rpc.command<Obj>("get_available_models");
       const levels = await rpc.command<Obj>("get_available_thinking_levels");
+      // A sessionless child still answers get_state with the model and thinking level a new session
+      // would start on; that is the default the start screen names instead of "Default model".
+      const state = await rpc.command<Obj>("get_state").catch(() => null);
+      const defModel = state ? toModelInfo(state.model) : null;
       const result = {
         at: Date.now(),
         models: (Array.isArray(models?.models) ? models.models : []).map(toModelInfo).filter((m): m is ModelInfo => m !== null),
         levels: Array.isArray(levels?.levels) ? levels.levels.map(String) : [],
+        defaultModel: defModel ? { model: defModel.key, thinkingLevel: typeof state?.thinkingLevel === "string" ? state.thinkingLevel : null } : null,
       };
       this.probeCache.set(cwd, result);
       return result;
@@ -825,6 +830,10 @@ export class OmpAdapter implements HarnessAdapter {
 
   async listThinkingLevels(cwd: string): Promise<string[]> {
     return (await this.probe(cwd)).levels;
+  }
+
+  async defaultModel(cwd: string): Promise<{ model: string; thinkingLevel: string | null } | null> {
+    return (await this.probe(cwd)).defaultModel;
   }
 
   async openChat(req: OpenChatRequest): Promise<LiveChat> {

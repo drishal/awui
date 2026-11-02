@@ -441,7 +441,7 @@ export class PiAdapter implements HarnessAdapter {
   get capabilities(): HarnessCapabilities {
     return this.capabilitySet;
   }
-  private modelCache = new Map<string, { at: number; models: ModelInfo[] }>();
+  private modelCache = new Map<string, { at: number; models: ModelInfo[]; defaultModel: { model: string; thinkingLevel: string | null } | null }>();
 
   async discover(): Promise<HarnessDiscovery> {
     const overrides = {
@@ -615,9 +615,9 @@ export class PiAdapter implements HarnessAdapter {
   }
 
   /** One throwaway `--no-session` child per workspace (cached) for models. */
-  private async probeModels(cwd: string): Promise<ModelInfo[]> {
+  private async probeModels(cwd: string): Promise<{ models: ModelInfo[]; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
     const cached = this.modelCache.get(cwd);
-    if (cached && Date.now() - cached.at < 60_000) return cached.models;
+    if (cached && Date.now() - cached.at < 60_000) return cached;
     const rpc = new PiRpc(
       this.cliCommand,
       ["--mode", "rpc", "--no-session", "--session-dir", this.sessionDirFor(cwd, await this.resolveAgentDir())],
@@ -629,15 +629,28 @@ export class PiAdapter implements HarnessAdapter {
       await rpc.ready;
       const data = await rpc.command<Obj>("get_available_models");
       const models = (Array.isArray(data?.models) ? data.models : []).map(toModelInfo).filter((m): m is ModelInfo => m !== null);
-      this.modelCache.set(cwd, { at: Date.now(), models });
-      return models;
+      // A sessionless child still answers get_state with the model and thinking level a new session
+      // would start on; that is the default the start screen names instead of "Default model".
+      const state = await rpc.command<Obj>("get_state").catch(() => null);
+      const stateModel = isObj(state?.model) ? state.model : null;
+      const defaultModel =
+        stateModel && typeof stateModel.provider === "string" && typeof stateModel.id === "string"
+          ? { model: `${stateModel.provider}/${stateModel.id}`, thinkingLevel: typeof state?.thinkingLevel === "string" ? state.thinkingLevel : null }
+          : null;
+      const result = { at: Date.now(), models, defaultModel };
+      this.modelCache.set(cwd, result);
+      return result;
     } finally {
       await rpc.kill().catch(() => undefined);
     }
   }
 
   async listModels(cwd: string): Promise<ModelInfo[]> {
-    return this.probeModels(cwd);
+    return (await this.probeModels(cwd)).models;
+  }
+
+  async defaultModel(cwd: string): Promise<{ model: string; thinkingLevel: string | null } | null> {
+    return (await this.probeModels(cwd)).defaultModel;
   }
 
   /** Pi resolves thinking levels per model; LiveChat.getConfig() reports them. */
