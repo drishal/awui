@@ -10,6 +10,7 @@ import { loadConfig, type ServerConfig } from "./config.js";
 import { herdrSocketPath } from "./herdr.js";
 import { HarnessRegistry } from "./harness/registry.js";
 import { configDir, configEnv, herdrEnabled, readUserConfig, type UserConfig } from "./user-config.js";
+import { IS_WINDOWS } from "./platform-win.js";
 import { Workspaces } from "./workspaces.js";
 import type { HarnessStatus } from "../shared/protocol.js";
 
@@ -40,6 +41,8 @@ export interface DoctorInput {
   portProbe: PortProbe;
   remote: { exposed: boolean; credentials: boolean };
   herdr: { enabled: boolean; socket: string; exists: boolean };
+  /** Native Windows host: mode bits are not enforceable, so the state-folder mode is not a failure. */
+  windows: boolean;
 }
 
 const MIN_NODE = [22, 19, 0];
@@ -87,8 +90,9 @@ export function evaluate(i: DoctorInput): Check[] {
   else out.push({ name: "Workspace roots", ok: true, detail: `${i.workspaceRoots} usable` });
   const s = i.stateDir;
   if (s.error || s.mode === null) out.push({ name: "State folder", ok: false, detail: `${s.path}: ${s.error ?? "cannot be read"}` });
-  else if ((s.mode & 0o077) !== 0) out.push({ name: "State folder", ok: false, detail: `${s.path} has mode ${s.mode.toString(8)}; group/other can read it (chmod 700)` });
-  else out.push({ name: "State folder", ok: true, detail: `${s.path} (mode ${s.mode.toString(8)})` });
+  // Windows NTFS does not enforce POSIX mode bits: readable-by-others is judged by ACL, which a mode number cannot see.
+  else if (!i.windows && (s.mode & 0o077) !== 0) out.push({ name: "State folder", ok: false, detail: `${s.path} has mode ${s.mode.toString(8)}; group/other can read it (chmod 700)` });
+  else out.push({ name: "State folder", ok: true, detail: i.windows ? s.path : `${s.path} (mode ${s.mode.toString(8)})` });
   const where = `${i.host}:${i.port}`;
   const p = i.portProbe;
   out.push(
@@ -196,6 +200,7 @@ export async function gather(env: NodeJS.ProcessEnv = process.env): Promise<Doct
     portProbe: await probePort(config.host, config.port),
     remote: { exposed, credentials: config.login !== null || existsSync(config.credentialsFile) },
     herdr: { enabled: herdrEnabled(userConfig, env), socket, exists: existsSync(socket) },
+    windows: IS_WINDOWS,
   };
 }
 

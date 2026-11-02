@@ -2,14 +2,30 @@
 // in the chat's project folder by the shell its fence names, with a time
 // limit and a cap on what is kept of the output. Any signed-in device may do
 // this, as it may already ask the agent to.
-import { spawn } from "node:child_process";
+//
+// The fences that reach here are POSIX shells (bash/sh/zsh/fish — see
+// code-blocks.ts); a Windows host has none of those on PATH. runCommand maps
+// a request onto what the host actually has: on win32 `sh` runs under cmd and
+// `bash` under PowerShell, and the timeout kills the process tree with
+// taskkill, since Windows has no process-group signal for this.
+import { spawn, spawnSync } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
+import { IS_WINDOWS } from "./platform-win.js";
 import type { RunShell, RunResult } from "../shared/protocol.js";
 
 const TIMEOUT_MS = 60_000;
 const MAX_OUTPUT = 100_000;
 
 const SHELLS: Record<RunShell, string> = { bash: "bash", sh: "sh", zsh: "zsh", fish: "fish" };
+
+/** The interpreter and its one-line flag for a fence's shell on this host. */
+function shellFor(shell: RunShell): [string, string] {
+  if (IS_WINDOWS) {
+    if (shell === "bash") return ["powershell.exe", "-Command"];
+    return [process.env.ComSpec ?? "cmd.exe", "/c"]; // sh/zsh/fish all fall to cmd
+  }
+  return [SHELLS[shell], "-c"];
+}
 
 export function runCommand(command: string, shell: RunShell, cwd: string): Promise<RunResult> {
   return new Promise((resolve) => {
@@ -30,10 +46,18 @@ export function runCommand(command: string, shell: RunShell, cwd: string): Promi
         truncated = true;
       }
     };
-    const child = spawn(SHELLS[shell], ["-c", command], { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const [bin, flag] = shellFor(shell);
+    // detached is POSIX-only (it starts a new process group for the group kill
+    // below); Windows has no groups here, and the kill goes through taskkill.
+    const child = IS_WINDOWS
+      ? spawn(bin, [flag, command], { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"] })
+      : spawn(bin, [flag, command], { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"], detached: true });
     const kill = (signal: NodeJS.Signals) => {
       try {
-        if (child.pid) process.kill(-child.pid, signal);
+        if (child.pid) {
+          if (IS_WINDOWS) spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+          else process.kill(-child.pid, signal);
+        }
       } catch {
         // already gone
       }

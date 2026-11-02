@@ -3,7 +3,8 @@
 // trust decisions, and session files; this module only translates. Driving the
 // CLI instead of the pinned SDK means the user's `pi update` flows through and
 // no lockfile pin can skew the session format.
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execHarness, spawnHarness } from "../platform-win.js";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -46,7 +47,6 @@ import type {
   UsageEntry,
 } from "./types.js";
 
-const run = promisify(execFile);
 const SESSION_DIR_ENV = "PI_CODING_AGENT_SESSION_DIR";
 const AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
 /** How long the RPC ready handshake may take. */
@@ -308,7 +308,7 @@ class PiRpc {
     });
     this.readyResolve = resolveReady;
     this.readyReject = rejectReady;
-    this.child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    this.child = spawnHarness(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.stderr = new StderrTail(this.child);
     const rl = readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity });
     let up = false;
@@ -451,7 +451,7 @@ export class PiAdapter implements HarnessAdapter {
     const warnings: string[] = [];
     let label: { version: string; versionDetail?: string };
     try {
-      const { stdout } = await run(this.cliCommand, ["--version"], { timeout: 15_000 });
+      const { stdout } = await execHarness(this.cliCommand, ["--version"], { timeout: 15_000 });
       label = versionLabel(stdout);
     } catch {
       return {

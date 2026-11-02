@@ -8,6 +8,7 @@ import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 import { chatWidthSchema, densitySchema, themeChoiceSchema, type ChatWidth, type Density, type ThemeChoice } from "../shared/protocol.js";
+import { IS_WINDOWS, defaultConfigDir } from "./platform-win.js";
 
 export const CONFIG_FILE = "config.yml";
 export const THEME_FILE = "theme.yml";
@@ -89,15 +90,15 @@ export type UserConfig = z.infer<typeof schema>;
 /** The settings folder, or null when AWUI_CONFIG_DIR is set to "". */
 export function configDir(env: NodeJS.ProcessEnv = process.env): string | null {
   if (env.AWUI_CONFIG_DIR !== undefined) return env.AWUI_CONFIG_DIR ? path.resolve(env.AWUI_CONFIG_DIR) : null;
-  return path.join(env.XDG_CONFIG_HOME || path.join(homedir(), ".config"), "awui");
+  return defaultConfigDir(env, homedir());
 }
 
 /** One-time rename of the pre-rename settings folder; returns "moved" when it happened. */
 export function migrateConfigDir(env: NodeJS.ProcessEnv = process.env): "moved" | null {
   if (env.AWUI_CONFIG_DIR !== undefined) return null; // an explicit dir is authoritative; nothing to move
-  const base = env.XDG_CONFIG_HOME || path.join(homedir(), ".config");
-  const old = path.join(base, "agentwebui");
-  const target = path.join(base, "awui");
+  const dir = defaultConfigDir(env, homedir());
+  const old = path.join(path.dirname(dir), "agentwebui");
+  const target = dir;
   if (!existsSync(old) || existsSync(target)) return null;
   try {
     renameSync(old, target);

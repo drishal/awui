@@ -3,6 +3,7 @@
 // pending-request bookkeeping behind each adapter's JSON-RPC dialect
 // (omp rpc-ui, omp acp, the hermes gateway).
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { killChildTree, terminateHarnessChild } from "../platform-win.js";
 import type { Obj } from "./agent-events.js";
 
 /** How long `terminateChild` waits between SIGTERM and SIGKILL. */
@@ -35,19 +36,12 @@ export function terminateChild(child: ChildProcessWithoutNullStreams, timeoutMs 
   try {
     child.stdin.end();
   } catch {
-    // The pipe is already gone; SIGTERM below still settles this.
+    // The pipe is already gone; the kill below still settles this.
   }
-  const kill = (signal: NodeJS.Signals) => {
-    try {
-      child.kill(signal);
-    } catch {
-      // Already gone.
-    }
-  };
-  kill("SIGTERM");
+  terminateHarnessChild(child);
   timer = setTimeout(() => {
     if (child.exitCode === null && child.signalCode === null) {
-      kill("SIGKILL");
+      killChildTree(child);
       // Settle regardless: if it is still alive past SIGKILL the process is
       // being torn down anyway (systemd reaps the cgroup on stop).
       done();

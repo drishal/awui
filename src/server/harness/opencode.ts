@@ -11,7 +11,7 @@
 // awui's own checkpoints undo those); fork copies the session before a prompt.
 // A new chat's session is made on its first message, so an untouched chat
 // leaves nothing in OpenCode's list.
-import { execFile } from "node:child_process";
+import { execHarness } from "../platform-win.js";
 import { homedir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -66,7 +66,6 @@ import type {
   UsageEntry,
 } from "./types.js";
 
-const run = promisify(execFile);
 const MODEL_CACHE_MS = 5 * 60_000;
 /** Messages are read a page at a time, and no more than this many (history, previews, usage). */
 const PAGE = 200;
@@ -798,7 +797,7 @@ export class OpenCodeAdapter implements HarnessAdapter {
   async discover(): Promise<HarnessDiscovery> {
     const overrides = { OPENCODE_CONFIG: (this.options.env ?? process.env).OPENCODE_CONFIG ? "set" : "unset" } as const;
     try {
-      const { stdout } = await run(this.cliCommand, ["--version"], { timeout: 15_000, env: this.options.env ?? process.env });
+      const { stdout } = await execHarness(this.cliCommand, ["--version"], { timeout: 15_000, env: this.options.env ?? process.env });
       const label = versionLabel(stdout);
       const major = Number(/(\d+)\./.exec(label.version)?.[1] ?? 0);
       if (major < 2) return { available: false, reason: `awui drives OpenCode 2's HTTP API; this is ${label.version}. Update OpenCode.`, warnings: [], overrides };

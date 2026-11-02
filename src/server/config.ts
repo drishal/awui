@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { configDir, launchSettings, THEME_FILE, type UserConfig } from "./user-config.js";
+import { IS_WINDOWS, defaultStateDir } from "./platform-win.js";
 
 export const DEFAULT_PORT = 4783;
 
@@ -113,13 +114,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, file?: UserConf
   }
   const roots = list(env.WORKSPACE_ROOTS, path.delimiter).map((r) => path.resolve(expandHome(r, home)));
   const xdgConfig = env.XDG_CONFIG_HOME || path.join(home, ".config");
-  const xdgState = env.XDG_STATE_HOME || path.join(home, ".local", "state");
   const themeFile = env.THEME_FILE ? path.resolve(expandHome(env.THEME_FILE, home)) : null;
   const host = env.HOST === undefined || env.HOST === "" ? "127.0.0.1" : env.HOST;
   if (host !== "127.0.0.1" && host !== "0.0.0.0") {
     throw new ConfigError("host (HOST) must be 127.0.0.1 (default) or 0.0.0.0 (LAN, username/password sign-in)");
   }
-  const stateDir = path.join(xdgState, STATE_DIR_NAME);
+  // AWUI_STATE_DIR (what --state-dir sets) wins; else the platform's state dir.
+  const stateDir = env.AWUI_STATE_DIR ? path.resolve(expandHome(env.AWUI_STATE_DIR, home)) : defaultStateDir(env, home);
   let login: ServerConfig["login"] = null;
   if (env.AUTH_PASSWORD) {
     const username = (env.AUTH_USERNAME ?? "").trim();

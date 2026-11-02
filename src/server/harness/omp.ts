@@ -8,7 +8,8 @@
 // commands and an opt-in `ask` dialog, so nothing used here changed. Newer
 // minors are assumed additive and stay quiet; an older build or a new major
 // line is reported by ompVersionWarning().
-import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execHarness, spawnHarness } from "../platform-win.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -50,8 +51,6 @@ import type {
   RecentNativeSession,
   UsageEntry,
 } from "./types.js";
-
-const run = promisify(execFile);
 
 /**
  * What to warn about for a detected omp CLI, or null when its signature is
@@ -161,7 +160,7 @@ class LineProcess {
   private exitListeners = new Set<(message: string) => void>();
 
   constructor(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, onLine: (frame: Obj) => void) {
-    this.child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    this.child = spawnHarness(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.stderr = new StderrTail(this.child);
     track(this.child);
     const rl = readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity });
@@ -617,7 +616,7 @@ export class OmpAdapter implements HarnessAdapter {
 
   /** Every signed-in account's limits; omp asks each provider, which takes a few seconds. */
   async usageLimits(): Promise<LimitAccount[]> {
-    const { stdout } = await run(this.cliCommand, ["usage", "--json", "--redact"], { timeout: 30_000, env: this.env(), maxBuffer: 4 * 1024 * 1024 });
+    const { stdout } = await execHarness(this.cliCommand, ["usage", "--json", "--redact"], { timeout: 30_000, env: this.env(), maxBuffer: 4 * 1024 * 1024 });
     return ompLimits(JSON.parse(stdout) as unknown);
   }
 
@@ -628,7 +627,7 @@ export class OmpAdapter implements HarnessAdapter {
     } as const;
     const warnings: string[] = [];
     try {
-      const { stdout } = await run(this.cliCommand, ["--version"], { timeout: 15_000, env: this.env() });
+      const { stdout } = await execHarness(this.cliCommand, ["--version"], { timeout: 15_000, env: this.env() });
       const label = versionLabel(stdout.trim().replace(/^omp\//, ""));
       const warning = ompVersionWarning(label.version);
       if (warning) warnings.push(warning);

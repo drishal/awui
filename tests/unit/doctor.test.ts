@@ -17,6 +17,7 @@ const healthy: DoctorInput = {
   portProbe: { kind: "free" },
   remote: { exposed: false, credentials: false },
   herdr: { enabled: false, socket: "/h.sock", exists: false },
+  windows: false,
 };
 const by = (c: ReturnType<typeof evaluate>, name: string) => c.find((x) => x.name === name)!;
 

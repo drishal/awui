@@ -4,6 +4,7 @@
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { promisify } from "node:util";
+import { IS_WINDOWS } from "./platform-win.js";
 
 const scrypt = promisify(scryptCb) as (
   password: string,
@@ -42,7 +43,8 @@ export async function loadCredentials(file: string): Promise<StoredCredentials> 
     throw new CredentialError(`No credentials at ${file}. Run \`npm run set-password\` first.`);
   }
   const stat = await fs.stat(file);
-  if ((stat.mode & 0o077) !== 0) await fs.chmod(file, 0o600);
+  // Windows NTFS has no POSIX mode to tighten; ACLs govern read access there.
+  if (!IS_WINDOWS && (stat.mode & 0o077) !== 0) await fs.chmod(file, 0o600);
   let data: Partial<StoredCredentials>;
   try {
     data = JSON.parse(raw) as Partial<StoredCredentials>;

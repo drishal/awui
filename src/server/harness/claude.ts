@@ -4,7 +4,8 @@
 // models, login, settings, hooks, MCP servers, skills, permissions, and session
 // files; this module translates its stream and control requests and reads its
 // session files (never writing one, except a fork's new copy).
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execHarness, spawnHarness } from "../platform-win.js";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -60,7 +61,6 @@ import type {
   UsageEntry,
 } from "./types.js";
 
-const run = promisify(execFile);
 /** How long the initialize handshake may take (hooks and MCP servers start first). */
 const READY_TIMEOUT_MS = 60_000;
 const MODEL_CACHE_MS = 5 * 60_000;
@@ -183,7 +183,7 @@ class ClaudeRpc {
   readonly init: Promise<Obj>;
 
   constructor(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, onFrame: (frame: Obj) => void) {
-    this.child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    this.child = spawnHarness(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.stderr = new StderrTail(this.child);
     track(this.child);
     const rl = readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity });
@@ -926,7 +926,7 @@ export class ClaudeAdapter implements HarnessAdapter {
   async discover(): Promise<HarnessDiscovery> {
     const overrides = { CLAUDE_CONFIG_DIR: this.childEnv().CLAUDE_CONFIG_DIR ? "set" : "unset" } as const;
     try {
-      const { stdout } = await run(this.cliCommand, ["--version"], { timeout: 15_000, env: this.childEnv() });
+      const { stdout } = await execHarness(this.cliCommand, ["--version"], { timeout: 15_000, env: this.childEnv() });
       const label = versionLabel(stdout);
       return { available: true, ...(label.version ? label : {}), warnings: [], overrides };
     } catch {

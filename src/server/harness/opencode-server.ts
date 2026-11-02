@@ -6,7 +6,8 @@
 // listing, a preview, or a chat. With no chat open it stops after a while, so a
 // sidebar that lists OpenCode's sessions does not keep a server up for nothing.
 // One event stream (/api/event) is read and handed to each chat by session id.
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { killChildTree, spawnHarness } from "../platform-win.js";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import readline from "node:readline";
@@ -100,7 +101,7 @@ export class OpenCodeServer {
   private async start(): Promise<Running> {
     const password = randomBytes(24).toString("base64url");
     // The home folder: the server serves every project by its location, so it belongs to none.
-    const child = spawn(this.command, ["serve", "--hostname", "127.0.0.1", "--port", "0"], {
+    const child = spawnHarness(this.command, ["serve", "--hostname", "127.0.0.1", "--port", "0"], {
       cwd: homedir(),
       env: { ...this.env(), OPENCODE_SERVER_PASSWORD: password },
       stdio: ["pipe", "pipe", "pipe"],
@@ -110,7 +111,7 @@ export class OpenCodeServer {
     if (!exitHookInstalled) {
       exitHookInstalled = true;
       process.once("exit", () => {
-        for (const c of servers) c.kill("SIGKILL");
+        for (const c of servers) killChildTree(c);
       });
     }
     const stderr = new StderrTail(child);

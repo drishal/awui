@@ -5,7 +5,8 @@
 // is a child of its own, never a second writer on the leader's session).
 // Grok's `session/update` payloads are folded in grok-transcript.ts, shared with
 // the file reader, so a resumed chat and a running one cannot drift.
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execHarness, spawnHarness } from "../platform-win.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -56,8 +57,6 @@ import type {
   StepUsage,
   UsageEntry,
 } from "./types.js";
-
-const run = promisify(execFile);
 
 /** How long the initialize or session handshake may take. */
 const READY_TIMEOUT_MS = 60_000;
@@ -151,7 +150,7 @@ class GrokRpc {
     /** Called synchronously inside the line handler for a frame that answers one of our requests. */
     private readonly onAnswered: (frame: Obj) => void,
   ) {
-    this.child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    this.child = spawnHarness(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.stderr = new StderrTail(this.child);
     track(this.child);
     const rl = readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity });
@@ -792,7 +791,7 @@ export class GrokAdapter implements HarnessAdapter {
   async discover(): Promise<HarnessDiscovery> {
     const overrides = { GROK_HOME: this.childEnv().GROK_HOME ? "set" : "unset" } as const;
     try {
-      const { stdout } = await run(this.cliCommand, ["--version"], { timeout: 15_000, env: this.childEnv() });
+      const { stdout } = await execHarness(this.cliCommand, ["--version"], { timeout: 15_000, env: this.childEnv() });
       const label = versionLabel(stdout);
       return { available: true, ...(label.version ? label : {}), warnings: [], overrides };
     } catch {

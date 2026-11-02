@@ -19,6 +19,12 @@ const TERN_MAIN = path.join("src", "tern", "main.ts");
 const ATUI_PRELOAD = path.join("node_modules", "@opentui", "solid", "scripts", "preload.js");
 
 export async function installTui(stateDir: string): Promise<void> {
+  if (process.platform === "win32") {
+    // The wrapper is a #!/bin/sh script in ~/.local/bin, which Windows cannot
+    // run. atui is for a terminal anyway; run it from a POSIX shell (WSL,
+    // Git Bash) or a Linux host pointed at this server.
+    throw new ChatError(500, "no_atui_windows", "atui's launcher is a Unix shell script. On Windows run atui under WSL/Git Bash, or use the web UI.");
+  }
   const home = os.homedir();
   if (!home) throw new ChatError(500, "no_home", "$HOME is not set");
   const bin = spawnSync("bun", ["--version"], { stdio: "ignore" });

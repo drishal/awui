@@ -13,7 +13,8 @@
 // clarify) that arrive as ordinary JSON-RPC requests with `srq-…` ids and are
 // answered with ordinary JSON-RPC responses.
 import { DatabaseSync } from "node:sqlite";
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execHarness, spawnHarness } from "../platform-win.js";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -60,7 +61,7 @@ import type {
   StepUsage,
 } from "./types.js";
 
-const run = promisify(execFile);
+const run = execHarness;
 const READY_TIMEOUT_MS = 30_000;
 const PROBE_TTL_MS = 60_000;
 /** How long a discovered gateway endpoint is trusted: its port and instance change only on a restart. */
@@ -239,6 +240,14 @@ async function printedRuntime(bin: string): Promise<GatewayRuntime | null> {
 
 async function launcherRuntime(cliCommand: string): Promise<GatewayRuntime> {
   const fallback: GatewayRuntime = { python: process.platform === "win32" ? "python" : "python3", env: { ...process.env }, source: "PATH" };
+  // The launcher is read as a POSIX shell script (shebang, inline Python,
+  // trailing `exec`); there is no such shape to parse on Windows, so the
+  // runtime is whatever Python the launcher itself answers with, else PATH's.
+  if (process.platform === "win32") {
+    const explicit = process.env.HERMES_PYTHON?.trim();
+    if (explicit) return { python: explicit, env: { ...process.env }, source: "HERMES_PYTHON" };
+    return (await printedRuntime(cliCommand)) ?? fallback;
+  }
   try {
     const { stdout } = await run("sh", ["-c", `command -v -- "$1"`, "sh", cliCommand], { timeout: 5_000 });
     const bin = stdout.trim().split("\n")[0];
@@ -311,7 +320,7 @@ class HermesRpc implements GatewayLink {
     private readonly onEvent: (params: Obj) => void,
     private readonly onRequest: (frame: GatewayFrame) => void,
   ) {
-    this.child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    this.child = spawnHarness(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.stderr = new StderrTail(this.child);
     this.ready = new Promise((resolve, reject) => {
       this.readyResolve = resolve;

@@ -16,6 +16,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { IS_WINDOWS } from "./platform-win.js";
 import type { NextFunction, Request, Response } from "express";
 import { LoginLimiter, type PasswordAuth } from "./auth.js";
 import { parseAuthority } from "./config.js";
@@ -256,7 +257,8 @@ export async function loadOrCreateSecret(stateDir: string): Promise<Buffer> {
     const existing = (await fs.readFile(file, "utf8")).trim();
     if (/^[0-9a-f]{64}$/.test(existing)) {
       const stat = await fs.stat(file);
-      if ((stat.mode & 0o077) !== 0) await fs.chmod(file, 0o600);
+      // Windows NTFS has no POSIX mode to tighten; ACLs govern read access there.
+      if (!IS_WINDOWS && (stat.mode & 0o077) !== 0) await fs.chmod(file, 0o600);
       return Buffer.from(existing, "hex");
     }
   } catch (error) {

@@ -88,6 +88,11 @@ const OLD_UNIT_NAME = "agent-web-ui.service";
  * first, so the two do not fight over the port.
  */
 export async function installService(opts: { link: boolean }): Promise<void> {
+  if (process.platform === "win32") {
+    // systemd has no Windows port; there is no awui service to install there.
+    // Run the built awui.exe from a terminal or a Task Scheduler task instead.
+    throw new ChatError(500, "no_systemd", "install service needs systemd (Linux). On Windows run awui.exe from a terminal or a Task Scheduler task.");
+  }
   const { bin, binPath, unitDir, unitPath } = installPaths();
   const oldUnitPath = path.join(unitDir, OLD_UNIT_NAME);
   if (existsSync(oldUnitPath)) {
