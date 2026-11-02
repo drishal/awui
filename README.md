@@ -109,7 +109,7 @@ then restart. Other devices get a sign-in form; this machine still opens directl
 
 ### Developer environment
 
-`devenv` gives the pinned toolchain (Node 22, the nixpkgs `bun` the binary build needs, the e2e browsers): `devenv shell` enters it, `devenv tasks run awui:binary` builds the binary, `devenv up` runs `npm run dev` as a process. The nixpkgs-built bun inside the shell is what makes the compiled binary run on this machine (the upstream bun binary segfaults here); build binaries only inside the shell. Without `devenv`, install Bun (≥ 1.3.14) yourself from [bun.sh](https://bun.sh/docs/installation) (`curl -fsSL https://bun.sh/install | bash`, or see the page for Windows) — `awui install tui` needs Bun too (its doctor check will flag a missing one).
+`devenv` gives the pinned toolchain (Node 22, the nixpkgs `bun` the binary build needs, the e2e browsers): `devenv shell` enters it, `devenv tasks run awui:binary` builds the binary, `devenv up` runs `npm run dev` as a process. The nixpkgs-built bun inside the shell is what makes the compiled binary run on this machine (the upstream bun binary segfaults here); build binaries only inside the shell. Without `devenv`, install Bun (≥ 1.3.14) yourself from [bun.sh](https://bun.sh/docs/installation) — macOS/Linux/WSL: `curl -fsSL https://bun.sh/install | bash`; Windows: `powershell -c "irm bun.sh/install.ps1 | iex"` (or `npm i -g bun`). `awui install tui` needs Bun too (its doctor check will flag a missing one).
 
 ### Configuration (`~/.config/awui`)
 
