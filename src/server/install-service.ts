@@ -53,6 +53,14 @@ function installPaths(): { bin: string; binPath: string; unitDir: string; unitPa
   return { bin, binPath, unitDir, unitPath: path.join(unitDir, UNIT_NAME) };
 }
 
+/** Where awui installs itself on Windows: the standard per-user Programs dir. */
+function windowsPaths(): { bin: string; binPath: string } {
+  const home = os.homedir();
+  if (!home) throw new ChatError(500, "no_home", "$HOME is not set");
+  const bin = path.join(process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"), "Programs", "awui");
+  return { bin, binPath: path.join(bin, `${BIN_NAME}.exe`) };
+}
+
 /** systemd reads % as a specifier and " as quoting: escape both inside quoted values. */
 const unitValue = (s: string): string => s.replace(/%/g, "%%").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
@@ -81,29 +89,87 @@ WantedBy=default.target
 const OLD_UNIT_NAME = "agent-web-ui.service";
 
 /**
- * Windows autostart: the per-user Registry Run key
- * (HKCU\Software\Microsoft\Windows\CurrentVersion\Run), the standard way a
- * per-user program starts at logon without admin. A Scheduled Task would be
- * the systemd-timer analog, but both it and the ScheduledTasks cmdlets need a
- * full interactive token — over an SSH/WinRM session Windows denies them —
- * whereas `reg add` on HKCU always works for the signed-in user. The value
- * points straight at awui.exe; the harnesses pi/omp/claude resolve through
- * their own PATH in the logon session's environment.
+ * Windows install: copy awui.exe into the standard per-user Programs dir
+ * (%LOCALAPPDATA%\Programs\awui), put that dir on the user's PATH so `awui`
+ * runs from any terminal, and register the per-user Registry Run key so awui
+ * starts at logon. The whole thing needs no admin and survives an SSH session.
+ *
+ * PATH goes through the Registry (HKCU\Environment), the way t3code's CLI
+ * installer does it: read the current value back base64-encoded and only write
+ * a changed one, keep REG_EXPAND_SZ so %VAR% entries survive, and broadcast
+ * WM_SETTINGCHANGE so the new PATH is live without a re-login. A Scheduled
+ * Task would be the systemd-timer analog, but creating one needs a full
+ * interactive token Windows denies an SSH/WinRM session; `reg add` on HKCU
+ * always works for the signed-in user.
  */
-async function installAutostartWindows(opts: { link: boolean }): Promise<void> {
-  const exe = selfToInstall(process.execPath, isEmbedded, () => builtBinaryPath(repoRoot()));
-  // On Windows a file symlink needs Developer Mode or admin (unlike POSIX, or a
-  // directory junction, which can't link a file). A dev checkout wanting the
-  // live rebuild should instead re-run `install service` after a build: the
-  // /F below re-points the Run value at the new exe.
-  if (opts.link) console.warn("awui: --link has no effect on Windows (symlinking an exe needs Developer Mode); re-run `install service` after a rebuild instead.");
+const WINDOWS_PATH_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+if ($env:AWUI_SET -eq '1') {
+  $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+  $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+  if ($key.GetValueNames() -contains 'Path' -and $key.GetValueKind('Path') -eq 'String') {
+    $kind = [Microsoft.Win32.RegistryValueKind]::String
+  }
+  $key.SetValue('Path', $env:AWUI_PATH, $kind)
+  Add-Type -Namespace A -Name E -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);'
+  $r = [System.UIntPtr]::Zero
+  [void][A.E]::SendMessageTimeout([System.IntPtr]0xffff, 0x1A, [System.UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r)
+} else {
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+  $value = if ($key) { $key.GetValue('Path', '', 'DoNotExpandEnvironmentNames') } else { '' }
+  [Console]::Out.Write([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$value)))
+}
+`;
+
+/** Read the raw user PATH from HKCU\Environment, or "" when there is none. */
+function readUserPathWindows(): string {
+  try {
+    const out = execFileSync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_PATH_SCRIPT], { env: { ...process.env }, encoding: "buffer" });
+    return Buffer.from(out.toString("utf8").trim(), "base64").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+/** Set the user PATH in HKCU\Environment and broadcast the change. */
+function setUserPathWindows(value: string): void {
+  execFileSync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_PATH_SCRIPT], {
+    env: { ...process.env, AWUI_SET: "1", AWUI_PATH: value },
+    stdio: "inherit",
+  });
+}
+
+async function installWindows(opts: { link: boolean }): Promise<void> {
+  const self = selfToInstall(process.execPath, isEmbedded, () => builtBinaryPath(repoRoot()));
+  // On Windows a file symlink needs Developer Mode or admin (a directory
+  // junction can't link an exe), so there is no live-rebuild link install.
+  // A dev checkout re-runs `install service` after a build: the copy below
+  // overwrites the installed exe and the Run key keeps pointing at it.
+  if (opts.link) console.warn("awui: --link has no effect on Windows; re-run `install service` after a rebuild instead.");
+  const { bin, binPath } = windowsPaths();
+
+  await fs.mkdir(bin, { recursive: true });
+  // Windows locks a running exe, so write to a temp file and rename over it.
+  const tmp = `${binPath}.${process.pid}.tmp`;
+  await fs.copyFile(self, tmp);
+  await fs.rename(tmp, binPath);
+
+  // PATH: append the install dir unless it is already there (case-insensitive).
+  const existing = readUserPathWindows();
+  const entries = existing.split(";").filter((e) => e.length > 0);
+  const has = entries.some((e) => e.replace(/[\\/]+$/, "").toLowerCase() === bin.replace(/[\\/]+$/, "").toLowerCase());
+  if (!has) {
+    setUserPathWindows([...entries, bin].join(";"));
+    console.log(`added ${bin} to the user PATH (open a new terminal to pick it up)`);
+  }
+
   const key = String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`;
   try {
-    execFileSync("reg.exe", ["add", key, "/v", "awui", "/t", "REG_SZ", "/d", `"${exe}"`, "/f"], { stdio: "inherit" });
-    console.log(`awui autostart installed (run key, starts at logon as ${os.userInfo().username}): ${exe}`);
-    console.log(`remove with: reg delete ${key} /v awui`);
+    execFileSync("reg.exe", ["add", key, "/v", "awui", "/t", "REG_SZ", "/d", `"${binPath}"`, "/f"], { stdio: "inherit" });
+    console.log(`awui installed: ${binPath} (on PATH, starts at logon as ${os.userInfo().username})`);
+    console.log(`remove autostart with: reg delete ${key} /v awui`);
   } catch (error) {
-    throw new ChatError(500, "autostart_failed", `could not set the Run key: ${error instanceof Error ? error.message : String(error)}`);
+    throw new ChatError(500, "autostart_failed", `installed ${binPath} but could not set the Run key: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -116,8 +182,8 @@ async function installAutostartWindows(opts: { link: boolean }): Promise<void> {
  */
 export async function installService(opts: { link: boolean }): Promise<void> {
   if (process.platform === "win32") {
-    // systemd has no Windows port; autostart there is the per-user Run key.
-    await installAutostartWindows(opts);
+    // systemd has no Windows port: install to Programs + PATH + the Run key.
+    await installWindows(opts);
     return;
   }
   const { bin, binPath, unitDir, unitPath } = installPaths();
