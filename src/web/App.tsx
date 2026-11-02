@@ -629,25 +629,31 @@ export function App() {
   const [startModel, setStartModel] = useState<string | null>(null);
   // The harness's own default for a fresh chat, when it says one: the chip names it instead of "Default model".
   const [startDefault, setStartDefault] = useState<{ model: string; thinkingLevel: string | null } | null>(null);
+  // The thinking levels the harness offers a fresh chat, and the one picked here ("" = the harness's default).
+  const [startLevels, setStartLevels] = useState<string[]>([]);
+  const [startThinking, setStartThinking] = useState<string>("");
   const modelFetch = useRef(0);
   const modelsKey = useRef<string | null>(null);
   const loadStartModels = async (forHarness: string, forWs: WorkspaceInfo): Promise<ModelInfo[]> => {
     const seq = ++modelFetch.current;
     try {
-      const { models, defaultModel } = await api<{ models: ModelInfo[]; defaultModel?: { model: string; thinkingLevel: string | null } | null }>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?workspaceId=${encodeURIComponent(forWs.id)}`);
+      const { models, defaultModel, thinkingLevels } = await api<{ models: ModelInfo[]; defaultModel?: { model: string; thinkingLevel: string | null } | null; thinkingLevels?: string[] }>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?workspaceId=${encodeURIComponent(forWs.id)}`);
       if (seq === modelFetch.current) {
         setStartModels(models);
         // Only a default that names a model the list actually offers is shown; anything else is no better than "Default model".
         const usable = defaultModel && models.some((m) => m.key === defaultModel.model) ? defaultModel : null;
         setStartDefault(usable);
+        setStartLevels(thinkingLevels ?? []);
         // A model the harness no longer lists (another harness, another folder's providers) is no pick.
         setStartModel((picked) => (picked && models.some((m) => m.key === picked) ? picked : null));
+        setStartThinking((picked) => (thinkingLevels?.includes(picked) ? picked : ""));
       }
       return models;
     } catch {
       if (seq === modelFetch.current) {
         setStartModels([]);
         setStartDefault(null);
+        setStartLevels([]);
       }
       return [];
     }
@@ -659,6 +665,8 @@ export function App() {
       modelsKey.current = null;
       setStartModels([]);
       setStartDefault(null);
+      setStartLevels([]);
+      setStartThinking("");
       return;
     }
     // Another harness or folder: the list on screen belongs to the old one, so drop it (and the
@@ -669,6 +677,8 @@ export function App() {
       setStartModels([]);
       setStartModel(null);
       setStartDefault(null);
+      setStartLevels([]);
+      setStartThinking("");
     }
     void loadStartModels(harnessId, workspace);
   }, [chatId, harnessId, workspace?.id]);
@@ -690,7 +700,7 @@ export function App() {
     setBanner(null);
     try {
       const ws = await enterWorkspace(target);
-      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId, workspaceId: ws.id, ...(startModel ? { model: startModel } : {}) } });
+      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId, workspaceId: ws.id, ...(startModel ? { model: startModel } : {}), ...(startThinking ? { thinkingLevel: startThinking } : {}) } });
       if (token !== nav.current) {
         api(`/api/chats/${snapshot.chatId}/dispose`, { body: {} }).catch(() => undefined);
         return false;
@@ -711,6 +721,9 @@ export function App() {
         return false;
       }
       setStartSeed(null);
+      // The chat took the picks; a next New chat starts on the harness's defaults again.
+      setStartModel(null);
+      setStartThinking("");
       showChat(snapshot);
       void refreshSessions();
       return true;
@@ -2005,6 +2018,9 @@ export function App() {
                 models={startModels}
                 model={startModel}
                 defaultModel={startDefault}
+                thinkingLevels={startLevels}
+                thinking={startThinking}
+                onThinking={setStartThinking}
                 onModel={setStartModel}
                 onRefreshModels={refreshStartModels}
                 workspace={harnessId === "awui" ? null : workspace}

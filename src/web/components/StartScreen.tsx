@@ -21,6 +21,9 @@ export function StartScreen({
   models,
   model,
   defaultModel = null,
+  thinkingLevels = [],
+  thinking = "",
+  onThinking,
   onModel,
   onRefreshModels,
   workspace,
@@ -46,6 +49,11 @@ export function StartScreen({
   model: string | null;
   /** The harness's own default for a fresh chat, when it says one; named on the chip when nothing is picked. */
   defaultModel?: { model: string; thinkingLevel: string | null } | null;
+  /** The thinking levels the harness offers a fresh chat; a footer on the model chip when any. */
+  thinkingLevels?: string[];
+  /** The level picked here, "" for the harness's default. */
+  thinking?: string;
+  onThinking?: (level: string) => void;
   onModel: (key: string) => void;
   onRefreshModels: () => Promise<void>;
   workspace: { name: string; path: string } | null;
@@ -302,6 +310,9 @@ export function StartScreen({
                     onSelect={onModel}
                     onRefresh={onRefreshModels}
                     emptyLabel="Default model"
+                    levels={thinkingLevels}
+                    thinking={thinking}
+                    onThinking={onThinking}
                   />
                 ) : null}
                 {!awui ? <FolderChip workspace={workspace} recent={recent} onPick={onPickFolder} onOpen={onOpenRecent} /> : null}

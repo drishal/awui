@@ -904,13 +904,13 @@ export function createApp(deps: AppDeps) {
     const adapter = availableAdapter(input.harnessId);
     const ws = await workspaces.get(input.workspaceId);
     const chat = await manager.create(adapter, ws);
-    if (input.model) {
-      // The start screen picked this before the session existed: apply it now, while the chat is
-      // still starting and nothing has run, so the first prompt already uses it.
+    if (input.model || input.thinkingLevel) {
+      // The start screen picked these before the session existed: apply them now, while the chat
+      // is still starting and nothing has run, so the first prompt already uses them.
       try {
-        await chat.setConfig({ model: input.model });
+        await chat.setConfig({ ...(input.model ? { model: input.model } : {}), ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}) });
       } catch (error) {
-        await chat.dispose("The chosen model was refused").catch(() => undefined);
+        await chat.dispose("The chosen model or thinking level was refused").catch(() => undefined);
         throw error;
       }
     }

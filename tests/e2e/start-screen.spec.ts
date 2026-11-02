@@ -78,6 +78,23 @@ test("the start screen picks the model the chat starts on", async ({ page }) => 
   await expect(page.locator(".composer-controls").getByTestId("model-picker")).toHaveAccessibleName("Model: Fake Slow");
 });
 
+test("the start screen's thinking level carries into the chat", async ({ page }) => {
+  await signInAndOpen(page);
+  // The model chip's footer offers the harness's thinking levels before any chat exists.
+  await page.locator(".start-screen").getByTestId("model-picker").click();
+  const dialog = page.getByRole("dialog", { name: "Choose a model" });
+  const thinking = dialog.getByRole("group", { name: "Thinking level" });
+  await expect(thinking).toBeVisible();
+  await thinking.getByRole("button", { name: "high", exact: true }).click();
+  await expect(thinking.getByRole("button", { name: "high", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await page.getByRole("textbox", { name: box }).fill("think hard");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("user-prompt")).toHaveText(["think hard"]);
+  // The chat opened on the picked thinking level.
+  await expect(page.locator(".composer-controls").getByTestId("thinking-picker")).toHaveAccessibleName(/high/);
+});
+
 test("a double Enter (or double click) makes exactly one chat", async ({ page }) => {
   await signInAndOpen(page);
   const input = page.getByRole("textbox", { name: box });
