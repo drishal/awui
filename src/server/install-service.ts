@@ -90,8 +90,13 @@ const OLD_UNIT_NAME = "agent-web-ui.service";
  * points straight at awui.exe; the harnesses pi/omp/claude resolve through
  * their own PATH in the logon session's environment.
  */
-async function installAutostartWindows(): Promise<void> {
+async function installAutostartWindows(opts: { link: boolean }): Promise<void> {
   const exe = selfToInstall(process.execPath, isEmbedded, () => builtBinaryPath(repoRoot()));
+  // On Windows a file symlink needs Developer Mode or admin (unlike POSIX, or a
+  // directory junction, which can't link a file). A dev checkout wanting the
+  // live rebuild should instead re-run `install service` after a build: the
+  // /F below re-points the Run value at the new exe.
+  if (opts.link) console.warn("awui: --link has no effect on Windows (symlinking an exe needs Developer Mode); re-run `install service` after a rebuild instead.");
   const key = String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`;
   try {
     execFileSync("reg.exe", ["add", key, "/v", "awui", "/t", "REG_SZ", "/d", `"${exe}"`, "/f"], { stdio: "inherit" });
@@ -111,8 +116,8 @@ async function installAutostartWindows(): Promise<void> {
  */
 export async function installService(opts: { link: boolean }): Promise<void> {
   if (process.platform === "win32") {
-    // systemd has no Windows port; autostart there is a per-user logon task.
-    await installAutostartWindows();
+    // systemd has no Windows port; autostart there is the per-user Run key.
+    await installAutostartWindows(opts);
     return;
   }
   const { bin, binPath, unitDir, unitPath } = installPaths();
