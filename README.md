@@ -69,7 +69,7 @@ awui also runs natively on Windows (x64). The harnesses it drives — pi, omp's 
 
 - Settings default to `%APPDATA%\awui` and state to `%LOCALAPPDATA%\awui` (an explicit `XDG_CONFIG_HOME`/`XDG_STATE_HOME` still wins).
 - A stopping harness is killed with `taskkill /PID <pid> /T /F`, since Windows has no SIGTERM/SIGKILL, so a CLI shim's real `node.exe` tree dies too.
-- `awui install service` and `awui install tui` are Linux/macOS-only; on Windows run `awui.exe` directly (or from a Task Scheduler task).
+- `awui install service` starts awui with your session: on Linux/macOS it puts the binary at `~/.local/bin/awui` and writes a systemd user unit; on Windows it registers a per-user Scheduled Task that runs `awui.exe` at logon. `awui install tui` is Linux/macOS-only.
 - herdr and the web "Run" code-block shells are POSIX; on win32 the Run block's `sh`/`bash` fence maps to cmd/PowerShell.
 
 There is no prebuilt Windows download. Build it from a clone (inside `devenv shell` for the toolchain) — the build cross-compiles, so you can produce the `.exe` from Linux or macOS:

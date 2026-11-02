@@ -81,6 +81,28 @@ WantedBy=default.target
 const OLD_UNIT_NAME = "agent-web-ui.service";
 
 /**
+ * Windows autostart: the per-user Registry Run key
+ * (HKCU\Software\Microsoft\Windows\CurrentVersion\Run), the standard way a
+ * per-user program starts at logon without admin. A Scheduled Task would be
+ * the systemd-timer analog, but both it and the ScheduledTasks cmdlets need a
+ * full interactive token — over an SSH/WinRM session Windows denies them —
+ * whereas `reg add` on HKCU always works for the signed-in user. The value
+ * points straight at awui.exe; the harnesses pi/omp/claude resolve through
+ * their own PATH in the logon session's environment.
+ */
+async function installAutostartWindows(): Promise<void> {
+  const exe = selfToInstall(process.execPath, isEmbedded, () => builtBinaryPath(repoRoot()));
+  const key = String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`;
+  try {
+    execFileSync("reg.exe", ["add", key, "/v", "awui", "/t", "REG_SZ", "/d", `"${exe}"`, "/f"], { stdio: "inherit" });
+    console.log(`awui autostart installed (run key, starts at logon as ${os.userInfo().username}): ${exe}`);
+    console.log(`remove with: reg delete ${key} /v awui`);
+  } catch (error) {
+    throw new ChatError(500, "autostart_failed", `could not set the Run key: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
  * Install awui at binPath (copy, or symlink when link=true), write the unit,
  * daemon-reload, and enable+start it. Which file gets installed is selfToInstall's
  * decision, so `bin/awui install service` from a checkout installs the built binary
@@ -89,9 +111,9 @@ const OLD_UNIT_NAME = "agent-web-ui.service";
  */
 export async function installService(opts: { link: boolean }): Promise<void> {
   if (process.platform === "win32") {
-    // systemd has no Windows port; there is no awui service to install there.
-    // Run the built awui.exe from a terminal or a Task Scheduler task instead.
-    throw new ChatError(500, "no_systemd", "install service needs systemd (Linux). On Windows run awui.exe from a terminal or a Task Scheduler task.");
+    // systemd has no Windows port; autostart there is a per-user logon task.
+    await installAutostartWindows();
+    return;
   }
   const { bin, binPath, unitDir, unitPath } = installPaths();
   const oldUnitPath = path.join(unitDir, OLD_UNIT_NAME);

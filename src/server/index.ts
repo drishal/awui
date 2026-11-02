@@ -324,8 +324,9 @@ Usage:
   awui tern [options]    awui drawn natively in a Tern pane (also awui --tern; awui tern --help)
   awui doctor [--json]   Check the setup (config, harnesses, state folder, port) and print a report; exit 1 on a problem
   awui install tui       Fetch and install the atui terminal client (~/.local/bin/atui) and the Tern client
-  awui install service   Install the binary to ~/.local/bin and enable the systemd user service
-                         [--link symlinks it instead of copying, for a dev checkout]
+  awui install service   Install the binary for autostart: ~/.local/bin + systemd on Linux/macOS,
+                         a logon Scheduled Task on Windows
+                         [--link symlinks it instead of copying (POSIX only), for a dev checkout]
 
 Flags:
   --port <n>             Listen port (default 4783; env PORT)
