@@ -63,6 +63,17 @@ awui                 # serves UI + API on http://127.0.0.1:4783
 
 `npm link` puts `awui` (the server) and `atui` (the terminal client) on your PATH.
 
+#### Windows
+
+awui also runs natively on Windows (x64). The harnesses it drives — pi, omp's native `omp.exe`, Claude Code — run there too, and awui spawns them through the win32-aware launcher: npm-installed CLIs ship a `<name>.cmd` batch shim that Node cannot exec directly, so those are run through `cmd`, while a native `.exe` (omp) is spawned as-is. Differences from a POSIX host:
+
+- Settings default to `%APPDATA%\awui` and state to `%LOCALAPPDATA%\awui` (an explicit `XDG_CONFIG_HOME`/`XDG_STATE_HOME` still wins).
+- A stopping harness is killed with `taskkill /PID <pid> /T /F`, since Windows has no SIGTERM/SIGKILL, so a CLI shim's real `node.exe` tree dies too.
+- `awui install service` and `awui install tui` are Linux/macOS-only; on Windows run `awui.exe` directly (or from a Task Scheduler task).
+- herdr and the web "Run" code-block shells are POSIX; on win32 the Run block's `sh`/`bash` fence maps to cmd/PowerShell.
+
+Build the Windows binary from any host with `bun run scripts/build-binary.ts --all` (writes `dist/bin/windows-x64/awui.exe`).
+
 Open http://127.0.0.1:4783/ on this machine. No token and no sign-in: local use is open.
 
 Settings live in `~/.config/awui/`: `config.yml` (start from [`config.example.yml`](config.example.yml)) and, optionally, a base16 `theme.yml`. To use it from other devices (LAN and/or Tailscale Serve), set:
