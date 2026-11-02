@@ -441,7 +441,12 @@ export class PiAdapter implements HarnessAdapter {
   get capabilities(): HarnessCapabilities {
     return this.capabilitySet;
   }
+  // Models change only when a provider logs in/out, so the last fetch stays valid past a short
+  // TTL; serving it beats a cold spawn (pi --mode rpc boots in ~2s). A stale entry is refresh-
+  // checked in the background while the route answers from it at once.
   private modelCache = new Map<string, { at: number; models: ModelInfo[]; defaultModel: { model: string; thinkingLevel: string | null } | null }>();
+  private modelInflight = new Map<string, Promise<{ models: ModelInfo[]; defaultModel: { model: string; thinkingLevel: string | null } | null }>>();
+  private static readonly MODELS_TTL_MS = 60_000;
 
   async discover(): Promise<HarnessDiscovery> {
     const overrides = {
@@ -614,10 +619,32 @@ export class PiAdapter implements HarnessAdapter {
     return env;
   }
 
-  /** One throwaway `--no-session` child per workspace (cached) for models. */
-  private async probeModels(cwd: string): Promise<{ models: ModelInfo[]; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
+  /**
+   * One throwaway `--no-session` child per workspace for models. A cached entry is served at
+   * once whatever its age; only a missing or fresh-enough entry spawns. Two callers share one
+   * spawn (single-flight), so polling the chips never doubles a cold probe.
+   */
+  private probeModels(cwd: string): Promise<{ models: ModelInfo[]; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
     const cached = this.modelCache.get(cwd);
-    if (cached && Date.now() - cached.at < 60_000) return cached;
+    const inflight = this.modelInflight.get(cwd);
+    if (cached) {
+      // Serve the last answer now; refresh once it is too old, without blocking this call.
+      if (Date.now() - cached.at >= PiAdapter.MODELS_TTL_MS && !inflight) {
+        const refresh = this.fetchModels(cwd).finally(() => this.modelInflight.delete(cwd));
+        this.modelInflight.set(cwd, refresh);
+        void refresh.catch(() => undefined);
+      }
+      return Promise.resolve(cached);
+    }
+    // Nothing cached yet: this call waits for the one spawn, and a concurrent caller joins it.
+    if (inflight) return inflight;
+    const pending = this.fetchModels(cwd).finally(() => this.modelInflight.delete(cwd));
+    this.modelInflight.set(cwd, pending);
+    return pending;
+  }
+
+  /** The actual spawn + query, only ever run under probeModels's single-flight guard. */
+  private async fetchModels(cwd: string): Promise<{ models: ModelInfo[]; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
     const rpc = new PiRpc(
       this.cliCommand,
       ["--mode", "rpc", "--no-session", "--session-dir", this.sessionDirFor(cwd, await this.resolveAgentDir())],

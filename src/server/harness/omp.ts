@@ -797,10 +797,29 @@ export class OmpAdapter implements HarnessAdapter {
     return chat;
   }
 
-  /** One throwaway `--no-session` child per workspace (cached) for models and thinking levels. */
-  private async probe(cwd: string): Promise<{ models: ModelInfo[]; levels: string[]; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
+  /** One throwaway `--no-session` child per workspace for models and thinking levels. A cached
+   * answer is served at once whatever its age; only a missing one spawns (single-flight). */
+  private probe(cwd: string): Promise<{ models: ModelInfo[]; levels: string[]; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
     const cached = this.probeCache.get(cwd);
-    if (cached && Date.now() - cached.at < 5 * 60_000) return cached;
+    const inflight = this.probeInflight.get(cwd);
+    if (cached) {
+      if (Date.now() - cached.at >= 5 * 60_000 && !inflight) {
+        const refresh = this.fetchProbe(cwd).finally(() => this.probeInflight.delete(cwd));
+        this.probeInflight.set(cwd, refresh);
+        void refresh.catch(() => undefined);
+      }
+      return Promise.resolve(cached);
+    }
+    if (inflight) return inflight;
+    const pending = this.fetchProbe(cwd).finally(() => this.probeInflight.delete(cwd));
+    this.probeInflight.set(cwd, pending);
+    return pending;
+  }
+
+  private probeInflight = new Map<string, Promise<{ models: ModelInfo[]; levels: string[]; defaultModel: { model: string; thinkingLevel: string | null } | null }>>();
+
+  /** The spawn + query, only ever run under probe's single-flight guard. */
+  private async fetchProbe(cwd: string): Promise<{ models: ModelInfo[]; levels: string[]; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
     const rpc = new OmpRpc(this.cliCommand, ["--mode", "rpc-ui", "--no-session", "--cwd", cwd], this.env(), cwd, () => undefined, () => undefined);
     try {
       await rpc.ready;
