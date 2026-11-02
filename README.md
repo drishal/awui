@@ -60,7 +60,7 @@ awui also runs natively on Windows (x64). The harnesses it drives — pi, omp's 
 
 - Settings default to `%APPDATA%\awui` and state to `%LOCALAPPDATA%\awui` (an explicit `XDG_CONFIG_HOME`/`XDG_STATE_HOME` still wins).
 - A stopping harness is killed with `taskkill /PID <pid> /T /F`, since Windows has no SIGTERM/SIGKILL, so a CLI shim's real `node.exe` tree dies too.
-- `awui install service` starts awui with your session: on Linux/macOS it puts the binary at `~/.local/bin/awui` and writes a systemd user unit; on Windows it sets the per-user `HKCU\…\CurrentVersion\Run` registry value to run `awui.exe` at logon (the mechanism Electron and node-auto-launch use; a Scheduled Task would need an interactive token). `awui install tui` is Linux/macOS-only.
+- `awui install service` installs awui and starts it with your session: on Linux/macOS it copies the binary to `~/.local/bin/awui` and writes a systemd user unit; on Windows it copies `awui.exe` to `%LOCALAPPDATA%\Programs\awui`, adds that dir to your PATH, and sets the per-user `HKCU\…\CurrentVersion\Run` value so it starts at logon (the mechanism Electron and node-auto-launch use). Re-run it after an update to refresh. `awui install tui` is Linux/macOS-only.
 - herdr and the web "Run" code-block shells are POSIX; on win32 the Run block's `sh`/`bash` fence maps to cmd/PowerShell.
 
 There is no prebuilt Windows download, and the build cross-compiles, so you can produce the `.exe` from Linux or macOS. Inside `devenv shell` (for the toolchain):
