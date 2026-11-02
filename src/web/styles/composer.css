@@ -520,27 +520,44 @@
    (which opens the chat-settings sheet), and on the right the context ring
    and a round Send/Stop. The capture button is a desktop affordance (there
    is no window to grab); the pickers (the desktop's chips) stay hidden
-   behind the one pill. Touch targets are 44 px at the icon and send buttons;
-   the pill is content-height so the row stays slim. */
+   behind the one pill. The whole row stays slim (32 px targets, a 32 px
+   pill): the 44 px touch guidelines are traded for one-handed reach, as the
+   phone chat apps do. */
 @media (max-width: 600px) {
   .composer-card {
-    padding-top: 8px;
+    padding-top: 6px;
     padding-bottom: 6px;
   }
 
   .composer-input {
-    min-height: 24px;
+    min-height: 22px;
     max-height: 180px;
   }
 
   .composer.is-hero .composer-input {
-    min-height: 30px;
+    min-height: 26px;
   }
 
   .composer-bar {
     flex-wrap: nowrap;
-    gap: 6px;
-    margin-top: 4px;
+    gap: 4px;
+    margin-top: 2px;
+  }
+
+  /* Slim the big touch targets of phones.css and responsive.css inside this
+     one row: 32 px each, the size of the desktop row, so the card reads as
+     one line of controls rather than a strip of buttons. */
+  .composer-bar .composer-attach,
+  .composer-bar .stash .icon-btn,
+  .composer-bar .round-btn {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+  }
+
+  .composer-bar .composer-attach {
+    margin-left: -4px;
   }
 
   .composer-bar .composer-attach .attach-image {
@@ -607,8 +624,8 @@
     flex: 1;
     min-width: 0;
     width: auto;
-    height: 36px;
-    min-height: 36px;
+    height: 32px;
+    min-height: 32px;
     justify-content: center;
     border-radius: 999px;
   }

@@ -50,7 +50,7 @@ banners-dialogs.css), so search rather than guess.
 | Empty chat, opening a chat | `App.tsx` (hero), `SwitchSplash.tsx`, `Loader.tsx` | `hero.css`, `opening-chat.css`, `loader.css` | `app.spec.ts`, `tabs.spec.ts` |
 | Composer card and its row of controls | `Composer.tsx`, `ChipEditor.tsx` (the box, its chips: `draft-chips.ts`, long pastes: `paste-ranges.ts`), `ComposerControls.tsx`, `ModelPicker.tsx`, `ThinkingPicker.tsx`, `PermissionPicker.tsx`, `HarnessMenu.tsx` (chip), `ContextRing.tsx` (the draft size beside it: `token-estimate.ts`; the panel's sparkline: `sparkline.ts`) | `composer.css`, `model-picker.css` | `app.spec.ts`, `composer-extras.spec.ts` |
 | Composer extras: stash, link note, usage-limit banner, dropped files (`@path` by name, the Add-to-project note) | `Composer.tsx`, `LimitRecovery.tsx` (drops: `file-drop.ts`, `upload.ts`) | `composer-extras.css` | `composer-extras.spec.ts` |
-| Status stack (todos, queue, chain) and the git row | `StatusStack.tsx`, `GitStatusView.tsx` | `status-stack.css`, `queue-edit.css`, `chain.css` | `app.spec.ts`, `unified.spec.ts` |
+| Status stack (todos, queue, chain, the live agents/jobs strip) and the git row | `StatusStack.tsx` (the strip's counts: `job-progress.ts`), `GitStatusView.tsx` | `status-stack.css`, `queue-edit.css`, `chain.css` | `app.spec.ts`, `unified.spec.ts` |
 | Approvals and questions | `ApprovalStack.tsx` | `approvals.css` | `app.spec.ts` |
 | Dialogs: settings, folders, restore, palette, images | `Dialog.tsx`, `SettingsDialog.tsx`, `WorkspacePicker.tsx`, `RestoreDialog.tsx`, `HerdrDialog.tsx`, `CommandPalette.tsx`, `ImageViewer.tsx`, `LoginForm.tsx` | `banners-dialogs.css`, `settings.css` | `settings.spec.ts`, `app.spec.ts`, `herdr.spec.ts`, `remote-login.spec.ts` |
 | Searches: every chat, in project, find in chat | `ChatSearch.tsx`, `ProjectSearch.tsx`, `find.ts` | `chat-search.css`, `project-search.css`, `find.css` | `unified.spec.ts`, `composer-extras.spec.ts` |
@@ -92,10 +92,11 @@ a literal colour.
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
   a literal, for a new row height or gap.
 - **Text:** `--chat-font` = 14.5 px × `--chat-scale` (config.yml's text size).
-- **Control sizes:** the composer's row is 32 px tall, every control in it
-  round; phones raise touch targets to 36–44 px in `phones.css`. Keep a row of
-  controls one height: mismatched heights and radii are what makes a part
-  "look off".
+- **Control sizes:** the composer's row is 32 px tall on every screen, every
+  control in it round (the composer is the exception to `phones.css` raising
+  touch targets to 36–44 px elsewhere: a phone keeps its one slim row). Keep
+  a row of controls one height: mismatched heights and radii are what makes a
+  part "look off".
 - **Motion:** short and eased out; `prefers-reduced-motion` turns it all off
   (the rule at the end of `tokens.css`).
 
