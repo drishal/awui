@@ -32,36 +32,27 @@ palette, the file viewer, the light theme, and the phone layout are in
 
 ### Install
 
-A self-contained `awui` binary runs the whole thing with no Node on the machine — the server, the web bundle, and the harness extensions are all embedded:
+A self-contained `awui` binary runs the whole thing with no Node on the machine — the server, the web bundle, and the harness extensions are all embedded. There is no released download yet, so clone and build it:
 
 ```bash
-curl -fsSL https://github.com/drishal/awui/releases/latest/download/awui-linux-x64 -o ~/.local/bin/awui
-chmod +x ~/.local/bin/awui
+git clone https://github.com/drishal/awui.git
+cd awui
+npm ci
+npm run build:binary               # = bun run scripts/build-binary.ts → dist/bin/<platform>/awui (inside devenv shell)
+cp dist/bin/linux-x64/awui ~/.local/bin/awui   # macOS: dist/bin/darwin-arm64/awui; Windows: dist/bin/windows-x64/awui.exe
 awui                 # web UI + API on http://127.0.0.1:4783
 awui install tui     # also drop the atui terminal client on your PATH (~/.local/bin/atui)
 awui doctor          # check the setup (config, harnesses, state folder, port); --json for machines
 awui tern            # in a Tern pane: awui drawn natively by Tern (after awui install tui)
 ```
 
-State goes to `$XDG_STATE_HOME/awui` as usual, so a binary and a source run share one config and one set of sessions.
-
-Build it yourself from a clone (inside `devenv shell`; see below): `bun run scripts/build-binary.ts` writes `dist/bin/<platform>/awui`. `scripts/build-binary.ts --all` cross-compiles every target.
+`bun run scripts/build-binary.ts --all` cross-compiles every target. State goes to `$XDG_STATE_HOME/awui`, so a binary and a source run share one config and one set of sessions.
 
 `awui install service` puts the binary at `~/.local/bin/awui` and writes a systemd user unit, `~/.config/systemd/user/awui.service`, that runs it and starts with your session; a leftover `agent-web-ui.service` from before the rename is retired first, so the two never share the port. Add `--link` to symlink the binary instead of copying it — what a dev checkout wants, so a rebuild is live after `systemctl --user restart awui`. Running `bin/awui install service --link` from a checkout installs the binary the build wrote, not the node running the script.
 
 ### From source
 
-Requirements: Node ≥ 22.19 (24 LTS recommended), npm, and `pi`, `omp`, `hermes`, `claude`, `opencode`, and/or `grok` installed and logged in. A missing harness shows as unavailable instead of crashing the app.
-
-```bash
-git clone https://github.com/drishal/awui.git
-cd awui
-npm run build:binary
-cp dist/bin/linux-x64/awui ~/.local/bin/awui
-awui                 # serves UI + API on http://127.0.0.1:4783
-```
-
-`npm link` puts `awui` (the server) and `atui` (the terminal client) on your PATH.
+Requirements: Node ≥ 22.19 (24 LTS recommended), npm, and `pi`, `omp`, `hermes`, `claude`, `opencode`, and/or `grok` installed and logged in. A missing harness shows as unavailable instead of crashing the app. The build is the [Install](#install) flow above; `npm link` also puts `awui` (the server) and `atui` (the terminal client) on your PATH.
 
 #### Windows
 
@@ -69,15 +60,15 @@ awui also runs natively on Windows (x64). The harnesses it drives — pi, omp's 
 
 - Settings default to `%APPDATA%\awui` and state to `%LOCALAPPDATA%\awui` (an explicit `XDG_CONFIG_HOME`/`XDG_STATE_HOME` still wins).
 - A stopping harness is killed with `taskkill /PID <pid> /T /F`, since Windows has no SIGTERM/SIGKILL, so a CLI shim's real `node.exe` tree dies too.
-- `awui install service` starts awui with your session: on Linux/macOS it puts the binary at `~/.local/bin/awui` and writes a systemd user unit; on Windows it registers a per-user Scheduled Task that runs `awui.exe` at logon. `awui install tui` is Linux/macOS-only.
+- `awui install service` starts awui with your session: on Linux/macOS it puts the binary at `~/.local/bin/awui` and writes a systemd user unit; on Windows it sets the per-user `HKCU\…\CurrentVersion\Run` registry value to run `awui.exe` at logon (the mechanism Electron and node-auto-launch use; a Scheduled Task would need an interactive token). `awui install tui` is Linux/macOS-only.
 - herdr and the web "Run" code-block shells are POSIX; on win32 the Run block's `sh`/`bash` fence maps to cmd/PowerShell.
 
-There is no prebuilt Windows download. Build it from a clone (inside `devenv shell` for the toolchain) — the build cross-compiles, so you can produce the `.exe` from Linux or macOS:
+There is no prebuilt Windows download, and the build cross-compiles, so you can produce the `.exe` from Linux or macOS. Inside `devenv shell` (for the toolchain):
 
 ```bash
-devenv shell                                # pinned Bun/Node toolchain
-bun run scripts/build-binary.ts --all       # every target; there is no single-target flag
-# → dist/bin/windows-x64/awui.exe   (the linux/darwin/macos binaries land beside it in dist/bin/)
+npm ci
+bun run scripts/build-binary.ts --all         # cross-compile every target (no single-target flag)
+# → dist/bin/windows-x64/awui.exe   (the linux/darwin binaries land beside it in dist/bin/)
 ```
 
 Copy `dist/bin/windows-x64/awui.exe` onto the Windows machine and run `awui.exe` — the web UI and API come up on `http://127.0.0.1:4783`. The harnesses (`pi`, `omp`, `claude`) must be installed and signed in there first.
