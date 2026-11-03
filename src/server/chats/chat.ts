@@ -1342,8 +1342,6 @@ export class Chat implements CheckpointHost {
 
   async dispose(reason: string): Promise<void> {
     if (this.status === "disposed") return;
-    // The checkpoint list is written without waiting; a resume right after must read it.
-    await this.checkpoints?.flush().catch(() => undefined);
     // A closed chat keeps no timer.
     this.clearContinue(false);
     if (this.viewersTimer) clearTimeout(this.viewersTimer);
@@ -1361,6 +1359,10 @@ export class Chat implements CheckpointHost {
     try {
       await this.live.dispose();
     } finally {
+      // The checkpoint list is written without waiting, and onDisposed is what lets the session be resumed: the
+      // resume must read this chat's list. Awaited only here, after the status above, so a second dispose that
+      // comes in meanwhile returns at the guard instead of running all of this again.
+      await this.checkpoints?.flush().catch(() => undefined);
       this.onDisposed?.(this);
     }
   }
