@@ -12,37 +12,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChainStep, QueueState, TodoItem } from "../../shared/protocol.js";
 import { addToDraft } from "../draft-bus.js";
-import { IconAgents, IconCheck, IconChevronDown, IconCircle, IconClock, IconEdit, IconQueue, IconSteer, IconSwap, IconWarning, IconX, Spinner } from "../icons.js";
+import { IconAgents, IconChevronDown, IconClock, IconEdit, IconQueue, IconSteer, IconSwap, IconWarning, IconX, Spinner } from "../icons.js";
 import { jobLine, type JobProgress } from "../job-progress.js";
 import { announceLanding, ranFromQueue, type Spot } from "../queue-glide.js";
 import { load, save } from "../storage.js";
-
-/**
- * A todo's mark. One the agent marked as in progress spins only while the chat is working: a run that
- * was stopped, or a session reopened later, leaves its last list behind, and a spinner there reads as
- * work going on when nothing is.
- */
-function TodoIcon({ status, working }: { status: string; working: boolean }) {
-  const done = /done|complete/.test(status);
-  // The check draws only when this row changes to done while it is on screen (not when a list first appears), and keeps its class
-  // after, so a later re-render does not cut the drawing short.
-  const was = useRef(status);
-  const drew = useRef(false);
-  if (!done) drew.current = false;
-  else if (was.current !== status && !/done|complete/.test(was.current)) drew.current = true;
-  was.current = status;
-  if (done) return <IconCheck size={13} draw={drew.current} />;
-  if (/progress|active|doing/.test(status)) {
-    return working ? (
-      <Spinner size={12} />
-    ) : (
-      <span className="todo-stalled" role="img" aria-label="Started, not running now" title="Started, not running now">
-        <IconClock size={13} />
-      </span>
-    );
-  }
-  return <IconCircle size={13} />;
-}
+import { TodoTree } from "./TodoTree.js";
 
 function Group({
   title,
@@ -283,17 +257,7 @@ export function StatusStack({
           ) : null}
           {todos.length > 0 ? (
             <Group title="Todos" meta={`${done}/${todos.length}`} defaultOpen>
-              <ul className="stack-list">
-                {todos.map((todo, i) => (
-                  <li key={`${i}:${todo.text}`} className={`stack-row todo-${todo.status.replace(/[^a-z_]/gi, "")}`}>
-                    <span className="stack-icon">
-                      <TodoIcon status={todo.status} working={working} />
-                    </span>
-                    <span className="stack-text">{todo.text}</span>
-                    {todo.phase && todo.phase !== todos[i - 1]?.phase ? <span className="stack-meta">{todo.phase}</span> : null}
-                  </li>
-                ))}
-              </ul>
+              <TodoTree todos={todos} working={working} />
             </Group>
           ) : null}
         </div>

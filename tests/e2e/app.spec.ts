@@ -704,6 +704,15 @@ test("todos from the harness show in the status stack, which can be hidden", asy
   await expect(stack).toContainText("Todos");
   await expect(stack).toContainText("1/3");
   await expect(stack.locator(".stack-row")).toHaveCount(3);
+  // The harness's phases are a tree: a numbered row with its count, the tasks under it.
+  const phases = stack.getByRole("list", { name: "Todo phases" });
+  await expect(phases.getByRole("button", { name: /I\. Plan 1\/2/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(phases.getByRole("button", { name: /II\. Verify 0\/1/ })).toBeVisible();
+  // A click folds a phase away.
+  await phases.getByRole("button", { name: /I\. Plan/ }).click();
+  await expect(stack.getByText("Read the code")).toBeHidden();
+  await phases.getByRole("button", { name: /I\. Plan/ }).click();
+  await expect(stack.getByText("Read the code")).toBeVisible();
   // The run has settled: the step left in progress shows a still mark, not a spinner.
   await expect(stack.getByRole("img", { name: "Started, not running now" })).toHaveCount(1);
   await expect(stack.locator(".todo-in_progress .spinner")).toHaveCount(0);

@@ -619,3 +619,148 @@
   margin: 10px 0 0;
   font-size: 12px;
 }
+
+/* TodoTree.tsx: phases as rows with a ring, a numeral, and done/total; their tasks hang on a drawn branch. */
+.todo-tree {
+  margin: 0;
+  padding: 2px 0 4px;
+  list-style: none;
+}
+
+.todo-phase-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.todo-phase-head:hover {
+  background: var(--hover);
+}
+
+.todo-phase-numeral {
+  min-width: 2.4ch;
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-phase-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-phase.is-done .todo-phase-name,
+.todo-phase.is-done .todo-phase-numeral {
+  color: var(--muted-text);
+}
+
+.todo-phase-count {
+  color: var(--muted-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-phase-chevron {
+  color: var(--muted-text);
+  transition: transform var(--dur-spring) var(--spring);
+}
+
+.todo-phase-head[aria-expanded="false"] .todo-phase-chevron {
+  transform: rotate(-90deg);
+}
+
+.todo-ring {
+  flex: none;
+}
+
+.todo-ring circle {
+  fill: none;
+  stroke-width: 2;
+}
+
+.todo-ring-track {
+  stroke: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+.todo-ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s var(--ease-out);
+}
+
+.todo-ring.is-full .todo-ring-fill {
+  stroke: var(--ok);
+}
+
+.todo-phase.is-active .todo-ring-track {
+  stroke: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* The branch: a quiet line down from the phase's ring, a short tick into each task. */
+.todo-branch {
+  position: relative;
+  margin: 0 0 2px 14px;
+  padding: 0 0 0 12px;
+  list-style: none;
+}
+
+.todo-branch::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 14px;
+  left: 0;
+  border-left: 1px solid var(--hairline-strong);
+}
+
+.todo-branch > .stack-row {
+  position: relative;
+}
+
+.todo-branch > .stack-row::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -12px;
+  width: 9px;
+  border-top: 1px solid var(--hairline-strong);
+}
+
+/* A task's background job: its id and state as a small chip at the end of the row. */
+.todo-job {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+  color: var(--info);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.todo-job.is-done {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+}
+
+.todo-job.is-failed,
+.todo-job.is-stopped {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
