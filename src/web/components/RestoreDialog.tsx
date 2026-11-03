@@ -73,7 +73,7 @@ export function RestoreDialog({
         </ul>
       ) : null}
       {canFork && through > 1 ? (
-        <label className="settings-check">
+        <label className="checkbox">
           <input type="checkbox" checked={fork} onChange={(e) => setFork(e.target.checked)} />
           Also fork the conversation from before turn {through}
         </label>

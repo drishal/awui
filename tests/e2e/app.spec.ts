@@ -35,7 +35,7 @@ test("settings opens from the sidebar gear and shows pairing plus the server", a
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(settings).toBeVisible();
   await expect(settings.getByRole("button", { name: "Pair phone" })).toBeVisible();
-  await expect(settings.getByRole("combobox", { name: "Theme" })).toBeVisible();
+  await expect(settings.getByRole("button", { name: "Theme" })).toBeVisible();
   await expect(settings.getByRole("slider", { name: "Chat text size" })).toBeVisible();
   // The e2e server runs without a settings folder, so the server section is read-only.
   await expect(settings).toContainText("nothing to save to");

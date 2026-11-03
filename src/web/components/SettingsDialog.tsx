@@ -8,8 +8,11 @@ import { useEffect, useState, type CSSProperties } from "react";
 import type { Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
+import { Segmented } from "./Segmented.js";
+import { Select } from "./Select.js";
+import { Switch } from "./Switch.js";
 import { TEXT_SCALES } from "./Sidebar.js";
-import { IconRefresh } from "../icons.js";
+import { IconPlus, IconRefresh, IconX } from "../icons.js";
 import type { NotifyState } from "../notify.js";
 import { chime, chimeOn, setChime } from "../attention.js";
 
@@ -306,326 +309,376 @@ export function SettingsDialog({
 
   const pendingText = server?.restartPending.map((k) => RESTART_LABEL[k]).join(", ") ?? "";
 
+  const themeOptions = [
+    { value: "", label: "Automatic", hint: "theme.yml if present, else the system" },
+    { value: "system", label: "System" },
+    { value: "light", label: "Light" },
+    { value: "dark", label: "Dark" },
+    { value: "base16", label: "base16", ...(scheme?.name ? { hint: scheme.name } : {}) },
+  ];
+  const setAwuiRow = (i: number, change: Partial<AwuiProviderRow>) => awui && setAwui({ ...awui, saved: false, rows: awui.rows.map((x, j) => (j === i ? { ...x, ...change } : x)) });
+
   return (
     <Dialog title="Settings" onClose={onClose} className="dialog-wide settings-dialog">
       <section className="settings-section" aria-labelledby="settings-device">
         <h3 id="settings-device">This device</h3>
-        <div className="settings-row">
-          <span className="settings-label">Other devices</span>
-          <div className="settings-actions">
+        <div className="settings-card">
+          <Row label="Other devices" desc={signedInAs ? `Signed in as ${signedInAs}.` : "Open awui on a phone by scanning a code."}>
             <button type="button" className="btn btn-small" onClick={onPair}>
               Pair phone
             </button>
             {signedInAs ? (
-              <button type="button" className="btn btn-small" onClick={onSignOut} title={`Signed in as ${signedInAs}`}>
+              <button type="button" className="btn btn-small btn-ghost" onClick={onSignOut} title={`Signed in as ${signedInAs}`}>
                 Sign out
               </button>
             ) : null}
-          </div>
-        </div>
-        <div className="settings-row">
-          <span className="settings-label">Notifications</span>
-          <div className="settings-actions">
+          </Row>
+          <Row
+            label="Notifications"
+            descId="notify-note"
+            desc={
+              notifyError ??
+              `${NOTIFY_NOTE[notify.mode]}${notify.why === "insecure" ? " Push needs HTTPS (Tailscale Serve) or this machine." : notify.why === "no-push" ? " This browser has no push service." : ""}`
+            }
+          >
             {notifyOn ? (
-              <button type="button" className="btn btn-small" disabled={notifyBusy} onClick={() => void notifyAction(onTestNotify)}>
+              <button type="button" className="btn btn-small btn-ghost" disabled={notifyBusy} onClick={() => void notifyAction(onTestNotify)}>
                 Send a test
               </button>
             ) : null}
-            <button
-              type="button"
-              className={`btn btn-small${notifyOn ? "" : " btn-primary"}`}
-              disabled={notifyBusy || notify.mode === "unsupported"}
-              aria-pressed={notifyOn}
-              onClick={() => void notifyAction(onToggleNotify)}
-            >
-              {notifyOn ? "Turn off" : "Turn on"}
-            </button>
-          </div>
-        </div>
-        <p className="settings-note" data-testid="notify-note">
-          {notifyError ??
-            `${NOTIFY_NOTE[notify.mode]}${notify.why === "insecure" ? " Push needs HTTPS (Tailscale Serve) or this machine." : notify.why === "no-push" ? " This browser has no push service." : ""}`}
-        </p>
-        <div className="settings-row">
-          <span className="settings-label" id="settings-chime">
-            Sound
-          </span>
-          <div className="settings-actions">
-            <button
-              type="button"
-              className="btn btn-small"
-              aria-labelledby="settings-chime"
-              aria-pressed={chimes}
-              onClick={() => {
-                setChime(!chimes);
-                setChimes(!chimes);
-                if (!chimes) chime();
+            <Switch label="Notifications" describedBy="notify-note" checked={notifyOn} disabled={notifyBusy || notify.mode === "unsupported"} onChange={() => void notifyAction(onToggleNotify)} />
+          </Row>
+          <Row label="Sound" desc="A chime, in this browser, when a chat finishes out of sight or asks for an answer." toggle>
+            <Switch
+              label="Sound"
+              checked={chimes}
+              onChange={(on) => {
+                setChime(on);
+                setChimes(on);
+                if (on) chime();
               }}
-            >
-              {chimes ? "On" : "Off"}
-            </button>
-          </div>
+            />
+          </Row>
         </div>
-        <p className="settings-note">A chime, in this browser, when a chat finishes out of sight or asks for an answer.</p>
       </section>
 
-      <section className="settings-section" aria-labelledby="settings-server">
-        <h3 id="settings-server">Server</h3>
-        <p className="settings-note">
-          {server && !server.writable
-            ? "This server runs without a settings folder, so there is nothing to save to."
-            : server && !server.editable
-              ? "These live in config.yml on the machine running the server; change them there."
-              : "Saved to config.yml for every device. Theme, text size, chat width, sidebar, status bar, and herdr apply here at once and on other devices on their next page load (atui on its next start); the rest when the server restarts."}
-        </p>
-        {!draft ? (
-          error ? null : <p className="settings-note">Loading…</p>
-        ) : (
-          <form
-            className="settings-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void save();
-            }}
-          >
-            <label className="settings-row">
-              <span className="settings-label">Theme</span>
-              <select className="select" aria-label="Theme" disabled={!editable} value={draft.theme} onChange={(e) => update({ theme: e.target.value as ThemeChoice | "" })}>
-                <option value="">theme.yml if present, else system</option>
-                <option value="system">System</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-                {scheme ? (
-                  <option value="base16" title={scheme.name ?? undefined}>
-                    base16
-                  </option>
-                ) : (
-                  <option value="base16">base16</option>
-                )}
-              </select>
-            </label>
-            <div className="settings-row settings-slider-row">
-              <span className="settings-label" id="settings-text-size-label">
-                Chat text size
-              </span>
-              <div className="text-slider">
-                <input
-                  type="range"
-                  className="text-slider-input"
-                  aria-label="Chat text size"
+      {!draft ? (
+        <section className="settings-section" aria-labelledby="settings-server">
+          <h3 id="settings-server">Server</h3>
+          {error ? (
+            <p className="notice notice-error" role="alert">
+              {error}
+            </p>
+          ) : (
+            <p className="settings-note">Loading…</p>
+          )}
+        </section>
+      ) : (
+        <form
+          className="settings-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <section className="settings-section" aria-labelledby="settings-look">
+            <h3 id="settings-look">Appearance</h3>
+            <p className="settings-note">
+              {server && !server.writable
+                ? "This server runs without a settings folder, so there is nothing to save to."
+                : server && !server.editable
+                  ? "These live in config.yml on the machine running the server; change them there."
+                  : "Saved to config.yml for every device: it applies here at once, and on other devices at their next page load (atui at its next start)."}
+            </p>
+            <div className="settings-card">
+              <Row label="Theme" desc={draft.theme === "base16" && scheme?.name ? `The ${scheme.name} scheme from theme.yml.` : "Follow the system, or pin light or dark."}>
+                <Select label="Theme" value={draft.theme} disabled={!editable} options={themeOptions} onChange={(theme) => update({ theme: theme as ThemeChoice | "" })} />
+              </Row>
+              <Row label="Chat text size" desc="The conversation and the composer; menus keep their size.">
+                <div className="text-slider">
+                  <input
+                    type="range"
+                    className="text-slider-input"
+                    aria-label="Chat text size"
+                    disabled={!editable}
+                    min={SCALE_MIN}
+                    max={SCALE_MAX}
+                    step={0.01}
+                    value={draft.textScale}
+                    style={{ "--slider-fill": `${SCALE_MAX <= SCALE_MIN ? 0 : Math.min(100, Math.max(0, ((draft.textScale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100))}%` } as CSSProperties}
+                    onChange={(e) => update({ textScale: Number(e.target.value) })}
+                  />
+                  <output className="text-slider-value" aria-live="off">
+                    {Math.round(draft.textScale * 100)}%
+                  </output>
+                  <span className="text-slider-reset">
+                    {draft.textScale !== 1 ? (
+                      <button type="button" className="ghost-icon" aria-label="Reset text size" title="Reset to 100%" disabled={!editable} onClick={() => update({ textScale: 1 })}>
+                        <IconRefresh size={14} />
+                      </button>
+                    ) : null}
+                  </span>
+                </div>
+              </Row>
+              <Row label="Chat width" desc={WIDTH_NOTE[draft.chatWidth]}>
+                <Segmented<ChatWidth>
+                  label="Chat width"
+                  value={draft.chatWidth}
                   disabled={!editable}
-                  min={SCALE_MIN}
-                  max={SCALE_MAX}
-                  step={0.01}
-                  value={draft.textScale}
-                  style={{ "--slider-fill": `${SCALE_MAX <= SCALE_MIN ? 0 : Math.min(100, Math.max(0, ((draft.textScale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100))}%` } as CSSProperties}
-                  onChange={(e) => update({ textScale: Number(e.target.value) })}
+                  options={[
+                    { value: "comfortable", label: "Comfortable", title: "960px" },
+                    { value: "wide", label: "Wide", title: "1400px" },
+                    { value: "full", label: "Full", title: "The whole pane" },
+                  ]}
+                  onChange={(chatWidth) => update({ chatWidth })}
                 />
-                <span className="text-slider-reset">
-                  {draft.textScale !== 1 ? (
-                    <button
-                      type="button"
-                      className="ghost-icon"
-                      aria-label="Reset text size"
-                      title="Reset to 100%"
-                      disabled={!editable}
-                      onClick={() => update({ textScale: 1 })}
-                    >
-                      <IconRefresh size={14} />
-                    </button>
-                  ) : null}
-                </span>
-                <output className="text-slider-value" aria-live="off">
-                  {Math.round(draft.textScale * 100)}%
-                </output>
-              </div>
+              </Row>
+              <Row label="Density" desc={draft.density === "compact" ? "Tighter rows and gaps, with a mouse (touch keeps the larger sizes)." : "Room to breathe between rows."}>
+                <Segmented<Density>
+                  label="Density"
+                  value={draft.density}
+                  disabled={!editable}
+                  options={[
+                    { value: "comfortable", label: "Comfortable" },
+                    { value: "compact", label: "Compact" },
+                  ]}
+                  onChange={(density) => update({ density })}
+                />
+              </Row>
             </div>
-            <label className="settings-row">
-              <span className="settings-label">Chat width</span>
-              <select className="select" aria-label="Chat width" disabled={!editable} value={draft.chatWidth} onChange={(e) => update({ chatWidth: e.target.value as ChatWidth })}>
-                <option value="comfortable">Comfortable (960px)</option>
-                <option value="wide">Wide (1400px)</option>
-                <option value="full">Full: the whole pane</option>
-              </select>
-            </label>
-            <label className="settings-row">
-              <span className="settings-label">Density</span>
-              <select className="select" aria-label="Density" disabled={!editable} value={draft.density} onChange={(e) => update({ density: e.target.value as Density })}>
-                <option value="comfortable">Comfortable</option>
-                <option value="compact">Compact: tighter rows and gaps</option>
-              </select>
-            </label>
-            <label className="settings-row settings-check">
-              <input type="checkbox" disabled={!editable} checked={draft.autocollapseSidebar} onChange={(e) => update({ autocollapseSidebar: e.target.checked })} />
-              <span>Fold the sidebar away in narrow windows</span>
-            </label>
-            <label className="settings-row settings-check">
-              <input type="checkbox" disabled={!editable} checked={draft.showStatusBar} onChange={(e) => update({ showStatusBar: e.target.checked })} />
-              <span>Show the status bar under the conversation (connection, harness, model, folder, version)</span>
-            </label>
-            <label className="settings-row settings-check">
-              <input type="checkbox" disabled={field("herdr")} checked={draft.herdr} onChange={(e) => update({ herdr: e.target.checked })} />
-              <span>Work with herdr: mark the sessions open in its panes, and let atui in a pane report its chats</span>
-            </label>
-            <label className="settings-row">
-              <span className="settings-label">Listen on</span>
-              <select className="select" aria-label="Listen on" disabled={field("host")} value={draft.host} onChange={(e) => update({ host: e.target.value as Draft["host"] })}>
-                <option value="127.0.0.1">This machine only (127.0.0.1)</option>
-                <option value="0.0.0.0">All networks, with sign-in (0.0.0.0)</option>
-              </select>
-            </label>
-            <label className="settings-row">
-              <span className="settings-label">Port</span>
-              <input className="input settings-port" aria-label="Port" inputMode="numeric" disabled={field("port")} value={draft.port} onChange={(e) => update({ port: e.target.value.replace(/\D/g, "") })} />
-            </label>
-            <label className="settings-row">
-              <span className="settings-label">Username</span>
-              <input className="input" aria-label="Username" autoComplete="username" disabled={field("username")} value={draft.username} onChange={(e) => update({ username: e.target.value })} />
-            </label>
-            <label className="settings-row">
-              <span className="settings-label">Password</span>
-              <input
-                className="input"
-                type="password"
-                aria-label="Password"
-                autoComplete="new-password"
-                disabled={field("hasPassword") || draft.removePassword}
-                placeholder={server?.values.hasPassword ? "Set (type to change)" : "Not set"}
-                value={draft.password}
-                onChange={(e) => update({ password: e.target.value })}
-              />
-            </label>
-            {server?.values.hasPassword && editable && !overridden("hasPassword") ? (
-              <label className="settings-row settings-check">
-                <input type="checkbox" checked={draft.removePassword} onChange={(e) => update({ removePassword: e.target.checked, password: "" })} />
-                <span>Remove the password from config.yml</span>
-              </label>
-            ) : null}
-            <label className="settings-row settings-stack">
-              <span className="settings-label">Workspace roots</span>
-              <textarea
-                className="input"
-                aria-label="Workspace roots"
-                rows={2}
-                disabled={field("workspaceRoots")}
-                placeholder="Your home folder (one folder per line)"
-                value={draft.workspaceRoots}
-                onChange={(e) => update({ workspaceRoots: e.target.value })}
-              />
-            </label>
-            <label className="settings-row settings-stack">
-              <span className="settings-label">Allowed hosts</span>
-              <textarea
-                className="input"
-                aria-label="Allowed hosts"
-                rows={2}
-                disabled={field("allowedHosts")}
-                placeholder="e.g. machine.tailnet.ts.net (one per line)"
-                value={draft.allowedHosts}
-                onChange={(e) => update({ allowedHosts: e.target.value })}
-              />
-            </label>
-            <label className="settings-row settings-stack">
-              <span className="settings-label">Allowed Tailscale users</span>
-              <textarea
-                className="input"
-                aria-label="Allowed Tailscale users"
-                rows={2}
-                disabled={field("allowedTailscaleUsers")}
-                placeholder="Anyone on the tailnet who signs in (one login per line)"
-                value={draft.allowedTailscaleUsers}
-                onChange={(e) => update({ allowedTailscaleUsers: e.target.value })}
-              />
-            </label>
+          </section>
+
+          <section className="settings-section" aria-labelledby="settings-layout">
+            <h3 id="settings-layout">Layout</h3>
+            <div className="settings-card">
+              <Row label="Fold the sidebar away in narrow windows" desc="It comes back as a drawer from the edge." toggle>
+                <Switch label="Fold the sidebar away in narrow windows" checked={draft.autocollapseSidebar} disabled={!editable} onChange={(autocollapseSidebar) => update({ autocollapseSidebar })} />
+              </Row>
+              <Row label="Status bar" desc="Under the conversation: connection, harness, model, folder, version." toggle>
+                <Switch label="Status bar" checked={draft.showStatusBar} disabled={!editable} onChange={(showStatusBar) => update({ showStatusBar })} />
+              </Row>
+              <Row label="Work with herdr" desc="Mark the sessions open in its panes, and let atui in a pane report its chats." toggle>
+                <Switch label="Work with herdr" checked={draft.herdr} disabled={field("herdr")} onChange={(herdr) => update({ herdr })} />
+              </Row>
+            </div>
+          </section>
+
+          <section className="settings-section" aria-labelledby="settings-network">
+            <h3 id="settings-network">Network and sign-in</h3>
+            <p className="settings-note">Takes effect when the server restarts.</p>
+            <div className="settings-card">
+              <Row label="Listen on" desc={draft.host === "0.0.0.0" ? "Every network this machine is on (0.0.0.0); other devices sign in." : "This machine only (127.0.0.1): no sign-in needed here."}>
+                <Segmented<Draft["host"]>
+                  label="Listen on"
+                  value={draft.host}
+                  disabled={field("host")}
+                  options={[
+                    { value: "127.0.0.1", label: "This machine", title: "127.0.0.1" },
+                    { value: "0.0.0.0", label: "All networks", title: "0.0.0.0, with sign-in" },
+                  ]}
+                  onChange={(host) => update({ host })}
+                />
+              </Row>
+              <Row label="Port">
+                <input className="input settings-port" aria-label="Port" inputMode="numeric" disabled={field("port")} value={draft.port} onChange={(e) => update({ port: e.target.value.replace(/\D/g, "") })} />
+              </Row>
+              <Row label="Username" desc="For signing in from other devices.">
+                <input className="input" aria-label="Username" autoComplete="username" disabled={field("username")} value={draft.username} onChange={(e) => update({ username: e.target.value })} />
+              </Row>
+              <Row label="Password" desc={server?.values.hasPassword ? "Set. Type a new one to change it." : "Not set."}>
+                <input
+                  className="input"
+                  type="password"
+                  aria-label="Password"
+                  autoComplete="new-password"
+                  disabled={field("hasPassword") || draft.removePassword}
+                  placeholder={server?.values.hasPassword ? "••••••••" : "Not set"}
+                  value={draft.password}
+                  onChange={(e) => update({ password: e.target.value })}
+                />
+              </Row>
+              {server?.values.hasPassword && editable && !overridden("hasPassword") ? (
+                <Row label="Remove the password from config.yml" desc="Other devices can no longer sign in with it." toggle>
+                  <Switch label="Remove the password from config.yml" checked={draft.removePassword} onChange={(removePassword) => update({ removePassword, password: "" })} />
+                </Row>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="settings-section" aria-labelledby="settings-access">
+            <h3 id="settings-access">Folders and access</h3>
+            <p className="settings-note">One per line. Takes effect when the server restarts.</p>
+            <div className="settings-card">
+              <Row label="Workspace roots" desc="The folders projects may be opened in." stack>
+                <textarea
+                  className="input"
+                  aria-label="Workspace roots"
+                  rows={2}
+                  disabled={field("workspaceRoots")}
+                  placeholder="Your home folder"
+                  value={draft.workspaceRoots}
+                  onChange={(e) => update({ workspaceRoots: e.target.value })}
+                />
+              </Row>
+              <Row label="Allowed hosts" desc="Names this server answers to besides localhost." stack>
+                <textarea
+                  className="input"
+                  aria-label="Allowed hosts"
+                  rows={2}
+                  disabled={field("allowedHosts")}
+                  placeholder="e.g. machine.tailnet.ts.net"
+                  value={draft.allowedHosts}
+                  onChange={(e) => update({ allowedHosts: e.target.value })}
+                />
+              </Row>
+              <Row label="Allowed Tailscale users" desc="Empty lets anyone on the tailnet who signs in." stack>
+                <textarea
+                  className="input"
+                  aria-label="Allowed Tailscale users"
+                  rows={2}
+                  disabled={field("allowedTailscaleUsers")}
+                  placeholder="one login per line"
+                  value={draft.allowedTailscaleUsers}
+                  onChange={(e) => update({ allowedTailscaleUsers: e.target.value })}
+                />
+              </Row>
+            </div>
             {server && server.envOverrides.length > 0 ? (
               <p className="settings-note">Set by the environment, so config.yml cannot change: {server.envOverrides.join(", ")}.</p>
             ) : null}
-            {error ? (
-              <p className="notice notice-error" role="alert">
-                {error}
-              </p>
-            ) : null}
-            {server && server.restartPending.length > 0 ? (
-              <div className="settings-restart" role="status">
-                <span>Saved; takes effect after a restart: {pendingText}.</span>
-                {server.canRestart && server.editable ? (
-                  <button type="button" className="btn btn-small" disabled={restarting} onClick={() => void restart()}>
-                    {restarting ? "Restarting…" : "Restart server"}
-                  </button>
-                ) : (
-                  <span className="muted">Restart the server to apply.</span>
-                )}
-              </div>
-            ) : saved ? (
-              <p className="settings-note" role="status">
-                Saved.
-              </p>
-            ) : null}
-            {editable ? (
-              <div className="settings-foot">
-                <button type="button" className="btn btn-small btn-ghost" disabled={!dirty || saving} onClick={() => server && setDraft(draftOf(server.values))}>
-                  Discard
+          </section>
+
+          {error ? (
+            <p className="notice notice-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          {server && server.restartPending.length > 0 ? (
+            <div className="settings-restart" role="status">
+              <span>Saved; takes effect after a restart: {pendingText}.</span>
+              {server.canRestart && server.editable ? (
+                <button type="button" className="btn btn-small" disabled={restarting} onClick={() => void restart()}>
+                  {restarting ? "Restarting…" : "Restart server"}
                 </button>
-                <button type="submit" className="btn btn-small btn-primary" disabled={!dirty || saving}>
-                  {saving ? "Saving…" : "Save"}
-                </button>
-              </div>
-            ) : null}
-          </form>
-        )}
-        {!draft && error ? (
-          <p className="notice notice-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </section>
+              ) : (
+                <span className="muted">Restart the server to apply.</span>
+              )}
+            </div>
+          ) : null}
+          {editable ? (
+            <div className={`settings-foot${dirty ? " is-dirty" : ""}`}>
+              <span className="settings-foot-state" role="status">
+                {saving ? "Saving…" : dirty ? "Unsaved changes" : saved ? "Saved." : ""}
+              </span>
+              <button type="button" className="btn btn-small btn-ghost" disabled={!dirty || saving} onClick={() => server && setDraft(draftOf(server.values))}>
+                Discard
+              </button>
+              <button type="submit" className="btn btn-small btn-primary" disabled={!dirty || saving}>
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          ) : null}
+        </form>
+      )}
+
       {awui ? (
         <section className="settings-section" aria-labelledby="settings-awui">
-          <h2 id="settings-awui">Awui harness</h2>
-          <p className="settings-note">Providers the read-only Awui chat can call, in its own agent dir. Blank API key keeps the stored one; type `-` to clear it.</p>
-          <label className="settings-row settings-check">
-            <input
-              type="checkbox"
-              disabled={!awui.piLogin || awui.busy}
-              checked={awui.shareAuth}
-              onChange={() => setAwui({ ...awui, saved: false, shareAuth: !awui.shareAuth })}
-            />
-            <span>Share Pi's login — the Awui chat can use what your terminal pi is logged into, and Pi's providers are copied in when you turn it on</span>
-          </label>
-          {!awui.piLogin ? <p className="settings-note">No pi login found (~/.pi/agent/auth.json); log into pi first to share it.</p> : null}
-          <div className="awui-providers">
-            {awui.rows.map((r, i) => (
-              <div className="awui-provider" key={i}>
-                <input className="input" aria-label="Provider name" placeholder="name (e.g. litellm)" value={r.name} onChange={(e) => setAwui({ ...awui, saved: false, rows: awui.rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                <input className="input" aria-label="Base URL" placeholder="http://host:8085/v1" value={r.baseUrl} onChange={(e) => setAwui({ ...awui, saved: false, rows: awui.rows.map((x, j) => (j === i ? { ...x, baseUrl: e.target.value } : x)) })} />
-                <input className="input" aria-label="API kind" placeholder="openai-completions" value={r.api} onChange={(e) => setAwui({ ...awui, saved: false, rows: awui.rows.map((x, j) => (j === i ? { ...x, api: e.target.value } : x)) })} />
-                <input className="input" type="password" aria-label="API key" autoComplete="new-password" placeholder={r.hadKey ? "Set (type to change)" : "None"} value={r.apiKey} onChange={(e) => setAwui({ ...awui, saved: false, rows: awui.rows.map((x, j) => (j === i ? { ...x, apiKey: e.target.value } : x)) })} />
-                <button type="button" className="ghost-icon" aria-label={`Remove ${r.name || "provider"}`} title="Remove provider" onClick={() => setAwui({ ...awui, saved: false, rows: awui.rows.filter((_, j) => j !== i) })}>
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="settings-actions">
-            <button type="button" className="btn btn-small btn-ghost" onClick={() => setAwui({ ...awui, saved: false, rows: [...awui.rows, { name: "", baseUrl: "", api: "openai-completions", apiKey: "", hadKey: false }] })}>
-              Add provider
-            </button>
-            <button type="button" className="btn btn-small btn-primary" disabled={awui.busy} onClick={() => void saveAwui()}>
-              {awui.busy ? "Saving…" : "Save"}
-            </button>
+          <h3 id="settings-awui">Awui harness</h3>
+          <p className="settings-note">The providers the read-only Awui chat can call, kept in its own agent folder.</p>
+          <div className="settings-card">
+            <Row
+              label="Share Pi's login"
+              desc={
+                awui.piLogin
+                  ? "Use what your terminal pi is logged into. Pi's providers are copied in when you turn it on; ones you set here stay as they are."
+                  : "No pi login found (~/.pi/agent/auth.json): log into pi first to share it."
+              }
+              toggle
+            >
+              <Switch label="Share Pi's login" checked={awui.shareAuth} disabled={!awui.piLogin || awui.busy} onChange={(shareAuth) => setAwui({ ...awui, saved: false, shareAuth })} />
+            </Row>
+            <div className="settings-row is-stack">
+              <span className="settings-row-text">
+                <span className="settings-label">Providers</span>
+                <span className="settings-desc">Leave a key blank to keep the stored one; type - to clear it.</span>
+              </span>
+              {awui.rows.length > 0 ? (
+                <div className="awui-providers">
+                  {awui.rows.map((r, i) => (
+                    <div className="awui-provider" key={i}>
+                      <input className="input" aria-label="Provider name" placeholder="name (e.g. litellm)" value={r.name} onChange={(e) => setAwuiRow(i, { name: e.target.value })} />
+                      <input className="input" aria-label="Base URL" placeholder="http://host:8085/v1" value={r.baseUrl} onChange={(e) => setAwuiRow(i, { baseUrl: e.target.value })} />
+                      <input className="input" aria-label="API kind" placeholder="openai-completions" value={r.api} onChange={(e) => setAwuiRow(i, { api: e.target.value })} />
+                      <input className="input" type="password" aria-label="API key" autoComplete="new-password" placeholder={r.hadKey ? "Set (type to change)" : "No key"} value={r.apiKey} onChange={(e) => setAwuiRow(i, { apiKey: e.target.value })} />
+                      <button type="button" className="ghost-icon" aria-label={`Remove ${r.name || "provider"}`} title="Remove provider" onClick={() => setAwui({ ...awui, saved: false, rows: awui.rows.filter((_, j) => j !== i) })}>
+                        <IconX size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="settings-empty">None yet{awui.shareAuth ? "" : ": add one, or share Pi's login above"}.</p>
+              )}
+            </div>
           </div>
           {awui.error ? (
             <p className="notice notice-error" role="alert">
               {awui.error}
             </p>
-          ) : awui.saved ? (
-            <p className="settings-note" role="status">
-              Saved.
-            </p>
           ) : null}
+          <div className="settings-foot">
+            <span className="settings-foot-state" role="status">
+              {awui.busy ? "Saving…" : awui.saved ? "Saved." : ""}
+            </span>
+            <button type="button" className="btn btn-small btn-ghost" onClick={() => setAwui({ ...awui, saved: false, rows: [...awui.rows, { name: "", baseUrl: "", api: "openai-completions", apiKey: "", hadKey: false }] })}>
+              <IconPlus size={13} /> Add provider
+            </button>
+            <button type="button" className="btn btn-small btn-primary" disabled={awui.busy} onClick={() => void saveAwui()}>
+              {awui.busy ? "Saving…" : "Save"}
+            </button>
+          </div>
         </section>
       ) : null}
       <p className="settings-version">awui v{version}</p>
     </Dialog>
+  );
+}
+
+const WIDTH_NOTE: Record<ChatWidth, string> = {
+  comfortable: "A 960px column, easy to read.",
+  wide: "A 1400px column, for wide code and tables.",
+  full: "The whole pane, edge to edge.",
+};
+
+/**
+ * One setting: its name and a line about it on the left, its control on the right
+ * (under them, for a wide one). A toggle row is a <label>, so a click anywhere on
+ * its words flips the switch, and the switch is named by them.
+ */
+function Row({ label, desc, descId, toggle = false, stack = false, children }: { label: string; desc?: string; descId?: string; toggle?: boolean; stack?: boolean; children: React.ReactNode }) {
+  const text = (
+    <span className="settings-row-text">
+      <span className="settings-label">{label}</span>
+      {desc ? (
+        <span className="settings-desc" id={descId} data-testid={descId}>
+          {desc}
+        </span>
+      ) : null}
+    </span>
+  );
+  const className = `settings-row${stack ? " is-stack" : ""}${toggle ? " is-toggle" : ""}`;
+  if (toggle) {
+    return (
+      <label className={className}>
+        {text}
+        <span className="settings-control">{children}</span>
+      </label>
+    );
+  }
+  return (
+    <div className={className}>
+      {text}
+      <span className="settings-control">{children}</span>
+    </div>
   );
 }

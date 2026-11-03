@@ -364,7 +364,3 @@
   color-scheme: light;
 }
 
-/* Settings: the awui harness providers editor. */
-.awui-providers { display: grid; gap: 8px; }
-.awui-provider { display: grid; grid-template-columns: minmax(90px,0.8fr) 1.6fr minmax(90px,1fr) minmax(90px,1fr) auto; gap: 6px; align-items: center; }
-.awui-provider .input { min-width: 0; }

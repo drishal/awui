@@ -4,20 +4,19 @@
   overflow-y: auto;
 }
 
+/* Each group: a small heading, a line about it, then its settings in one card
+   (rows split by hairlines, words left, control right), like the system's own
+   settings rather than a form of loose fields. */
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 4px 0 14px;
-}
-
-.settings-section + .settings-section {
-  padding-top: 14px;
-  border-top: 1px solid var(--hairline);
+  gap: 8px;
+  padding: 4px 0 18px;
 }
 
 .settings-section h3 {
   margin: 0;
+  padding: 0 4px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -25,49 +24,112 @@
   color: var(--muted-text);
 }
 
+.settings-section > .settings-note {
+  margin-top: -4px;
+  padding: 0 4px;
+  font-size: 12.5px;
+}
+
 .settings-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+}
+
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  box-shadow: inset 0 0 0 1px var(--hairline);
 }
 
 .settings-row {
-  display: grid;
-  grid-template-columns: 170px minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 8px 20px;
+  min-height: 54px;
+  padding: 10px 14px;
   font-size: 13px;
 }
 
-.settings-row .select,
-.settings-row .input {
-  width: 100%;
-  max-width: 360px;
+.settings-row + .settings-row {
+  border-top: 1px solid var(--hairline);
 }
 
-.settings-port.input {
-  max-width: 110px;
+/* A toggle row is its switch's label: the whole row takes the click. */
+.settings-row.is-toggle {
+  cursor: pointer;
 }
 
-.settings-stack {
-  align-items: start;
+.settings-row.is-toggle:has(.switch:disabled) {
+  cursor: default;
 }
 
-.settings-stack textarea {
-  resize: vertical;
-  font-family: var(--font-mono);
-  font-size: 13px;
+.settings-row.is-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.settings-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .settings-label {
-  color: var(--text-2);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
 }
 
-.settings-check {
-  grid-template-columns: auto minmax(0, 1fr);
-  justify-content: start;
+.settings-desc {
+  color: var(--muted-text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.settings-control {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  padding-left: 182px;
+  max-width: 62%;
+}
+
+.settings-row.is-stack > .settings-control {
+  max-width: none;
+  justify-content: stretch;
+}
+
+.settings-control > .input {
+  width: 240px;
+}
+
+.settings-row.is-stack > .settings-control > .input {
+  width: 100%;
+}
+
+.settings-control > .settings-port.input {
+  width: 96px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-control textarea {
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.settings-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted-text);
 }
 
 .settings-actions {
@@ -80,7 +142,9 @@
 .text-slider {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  width: 280px;
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -176,10 +240,50 @@
   font-size: 13px;
 }
 
+/* Save and Discard stay in reach at the bottom of the scrolling body while there is something to save. */
 .settings-foot {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  padding: 10px 0 2px;
+}
+
+.settings-form > .settings-foot {
+  position: sticky;
+  bottom: -1px;
+  z-index: 1;
+  margin: 0 -2px;
+  padding: 10px 2px 12px;
+  background: linear-gradient(to bottom, transparent, var(--card) 14px);
+}
+
+.settings-foot-state {
+  margin-right: auto;
+  font-size: 12.5px;
+  color: var(--muted-text);
+}
+
+.settings-foot.is-dirty .settings-foot-state {
+  color: var(--text-2);
+}
+
+/* The Awui harness's providers: one line each, the URL widest. */
+.awui-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.awui-provider {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.9fr) 32px;
+  align-items: center;
+  gap: 6px;
+}
+
+.awui-provider > .input {
+  min-width: 0;
 }
 
 .settings-version {
@@ -190,13 +294,30 @@
 }
 
 @media (max-width: 640px) {
+  /* The words take the row and the control goes under them, but a switch stays beside its words. */
   .settings-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
+    flex-wrap: wrap;
   }
 
-  .settings-check {
-    grid-template-columns: auto minmax(0, 1fr);
-    padding-left: 0;
+  .settings-row:not(:has(.switch)) > .settings-row-text {
+    flex-basis: 100%;
+  }
+
+  .settings-control {
+    max-width: none;
+  }
+
+  .settings-row:not(:has(.switch)) > .settings-control {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .settings-control > .input,
+  .text-slider {
+    width: 100%;
+  }
+
+  .awui-provider {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
   }
 }

@@ -61,7 +61,8 @@ test.describe("shared look in config.yml", () => {
     await expect(settings).toBeVisible();
     // No per-device look controls remain: theme and text size live in the server form.
     await expect(settings.getByText("This device")).toBeVisible();
-    await settings.getByLabel("Theme", { exact: true }).selectOption("dark");
+    await settings.getByRole("button", { name: "Theme" }).click();
+    await settings.getByRole("listbox", { name: "Theme" }).getByRole("option", { name: "Dark" }).click();
     const slider = settings.getByRole("slider", { name: "Chat text size" });
     await slider.fill("1.22");
     await expect(settings.getByText("122%", { exact: true })).toBeVisible();
@@ -100,7 +101,7 @@ test.describe("shared look in config.yml", () => {
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings).toBeVisible();
-    await settings.getByLabel("Density", { exact: true }).selectOption("compact");
+    await settings.getByRole("group", { name: "Density" }).getByRole("button", { name: "Compact" }).click();
     await settings.getByRole("button", { name: "Save", exact: true }).click();
     await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
     expect(readFileSync(configFile, "utf8")).toContain("density: compact");
@@ -116,7 +117,7 @@ test.describe("shared look in config.yml", () => {
 
     // Back to comfortable leaves no setting behind.
     await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await settings.getByLabel("Density", { exact: true }).selectOption("comfortable");
+    await settings.getByRole("group", { name: "Density" }).getByRole("button", { name: "Comfortable" }).click();
     await settings.getByRole("button", { name: "Save", exact: true }).click();
     await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
     expect(readFileSync(configFile, "utf8")).not.toContain("density");
