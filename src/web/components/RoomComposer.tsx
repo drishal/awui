@@ -8,7 +8,7 @@ import { load, save } from "../storage.js";
 import { newClientId } from "../rooms.js";
 import { insertMention, matchMembers, mentionRange, resolveMentions } from "../room-mentions.js";
 import { dollars, shortTokens, tokensOf } from "../usage.js";
-import { IconArrowUp, IconStop } from "../icons.js";
+import { IconArrowUp, IconStop, Spinner } from "../icons.js";
 import { ChipEditor, type ChipEditorHandle } from "./ChipEditor.js";
 
 /** How many invocation/usage facts fit beside Stop before they stop being facts worth reading. */
@@ -207,14 +207,13 @@ export function RoomComposer({
           </span>
           <span className="room-composer-actions">
             {busy ? (
-              <button type="button" className="btn btn-small room-stop" aria-label="Stop the room's work" disabled={stopping} onClick={onStop}>
-                <IconStop size={13} />
-                {stopping ? "Stopping…" : "Stop"}
+              <button type="button" className="round-btn is-stop room-stop" aria-label="Stop the room's work" title={stopping ? "Stopping…" : "Stop, and cancel what is queued"} disabled={stopping} onClick={onStop}>
+                {stopping ? <Spinner size={14} /> : <IconStop size={14} />}
               </button>
             ) : null}
-            <button type="button" className="btn btn-primary room-send" aria-label="Send to the room" disabled={disabled || empty} onClick={() => void send()}>
-              <IconArrowUp size={14} />
-              <span>Send</span>
+            {/* While a turn runs a message still goes: it queues behind it. */}
+            <button type="button" className="round-btn room-send" aria-label="Send to the room" title={busy ? "Queue behind the running turn" : "Send"} disabled={disabled || empty} onClick={() => void send()}>
+              <IconArrowUp size={16} />
             </button>
           </span>
         </div>

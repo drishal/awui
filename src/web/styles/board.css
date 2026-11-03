@@ -194,7 +194,6 @@
   gap: 12px;
   flex-wrap: wrap;
   padding: 10px max(16px, calc((100% - var(--chat-col)) / 2)) 8px;
-  border-bottom: 1px solid var(--hairline);
 }
 
 .room-head-main {
@@ -691,22 +690,22 @@
   font-size: 11.5px;
 }
 
+/* The room's composer is the chat's composer card: a rounded panel with a soft ring, round send and stop. */
 .room-composer {
-  padding: 6px max(16px, calc((100% - var(--chat-col)) / 2)) 10px;
-  border-top: 1px solid var(--hairline);
-  background: var(--bg);
+  padding: 4px max(16px, calc((100% - var(--chat-col)) / 2)) calc(12px + env(safe-area-inset-bottom));
 }
 
 .room-composer-box {
   position: relative;
-  border: 1px solid var(--control-border);
-  border-radius: var(--r-md);
-  background: var(--surface);
-  padding: 6px 8px 6px;
+  padding: var(--composer-pad-top) 10px var(--composer-pad-bottom) 14px;
+  border-radius: var(--r-panel);
+  background: var(--card);
+  box-shadow: var(--shadow-soft), 0 0 0 1px var(--hairline);
+  transition: box-shadow 0.12s ease;
 }
 
 .room-composer-box:focus-within {
-  border-color: var(--accent);
+  box-shadow: var(--shadow-soft), 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .room-composer-box .composer-input {
