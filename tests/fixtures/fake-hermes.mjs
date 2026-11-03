@@ -27,6 +27,7 @@ const RESUME_PARAMS = new Set(["session_id", "profile", "cols", "source", "lazy"
 let runtimeId = "4242";
 let title = "Fake Hermes session";
 let multimodel = false;
+let proxied = false;
 let moaTurn = false;
 let model = "fake-model";
 let provider = "fake";
@@ -144,6 +145,11 @@ async function runPrompt(text) {
     messages.push({ role: "user", text, timestamp: now, row_id: ++rowIds });
     messages.push({ role: "assistant", text: body, reasoning: "hmm", timestamp: now });
     return;
+  }
+  if (/\bproxied\b/.test(text)) {
+    // A pick on a provider the gateway serves through a proxy: session info afterwards
+    // names the proxy (the real Hermes answers "litellm/x" for a pick on opencode-go).
+    proxied = true;
   }
   turns += 1;
   const failed = /\bfail\b/.test(text);
@@ -276,7 +282,9 @@ rl.on("line", (line) => {
         // --provider the provider stays and the whole value is the model's name.
         const [, name, slug] = /^(\S+)(?:\s+--provider\s+(\S+))?$/.exec(String(params.value).trim()) ?? [];
         model = name ?? String(params.value);
-        if (slug) provider = slug;
+        // A proxied provider: the switch lands, but from here on session info names the proxy,
+        // as the real Hermes does when opencode-go rides on its LiteLLM client.
+        provider = proxied && slug === "opencode-go" ? "litellm" : (slug ?? provider);
         event("session.info", { model, provider, reasoning_effort: effort, running: false, stored_session_id: storedId, title });
         return ok(id, { key: "model", value: params.value });
       }
@@ -311,6 +319,7 @@ rl.on("line", (line) => {
             providers: [
               ...moaRow,
               { slug: "fake", name: "Fake", models: ["fake-model", "fake-mini"], capabilities: { "fake-model": { reasoning: true, fast: false }, "fake-mini": { reasoning: false, fast: true } }, authenticated: true, is_current: true },
+              ...(proxied ? [{ slug: "opencode-go", name: "OpenCode Go", models: ["deepseek-v4.1-flash"], capabilities: {}, authenticated: true }] : []),
             ],
             model: "fake-model",
             provider: "fake",

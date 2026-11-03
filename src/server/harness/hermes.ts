@@ -510,6 +510,9 @@ class HermesLiveChat implements LiveChat {
   private usage: Obj = {};
   private todos: TodoItem[] = [];
   private models: ModelInfo[] | null = null;
+  /** The catalog key a config.set asked for. A proxied pick can read back as the proxy ("litellm/x"),
+      outside the catalog; the picker keeps naming what was picked until the catalog resolves it. */
+  private pickedKey: string | null = null;
   private turns = 0;
   private running = false;
   private disposed = false;
@@ -920,7 +923,17 @@ class HermesLiveChat implements LiveChat {
 
   /** The picker's key for the model this session is on (see hermesModelKey). */
   private modelKey(): string {
-    return hermesModelKey(str(this.info.model), str(this.info.provider), this.models ?? [], this.adapter.userDefinedProviders(this.cwd));
+    const models = this.models ?? [];
+    const key = hermesModelKey(str(this.info.model), str(this.info.provider), models, this.adapter.userDefinedProviders(this.cwd));
+    // Hermes reports the proxy over the pick (a pick on "opencode-go/x" comes back "litellm/x"): when the
+    // reconstructed key is not in the catalog, name the pick instead, as long as it still ends in the id.
+    if (this.pickedKey && !models.some((m) => m.key === key)) {
+      const id = this.pickedKey.split("/").pop() ?? "";
+      const bare = key.split("/").pop() ?? "";
+      if (id && bare === id) return this.pickedKey;
+      this.pickedKey = null; // the session moved on
+    }
+    return key;
   }
 
   /** Asked of this chat's own gateway: a probe child would cost a second gateway start (~2 s). */
@@ -1071,6 +1084,7 @@ class HermesLiveChat implements LiveChat {
       const value = await this.switchTarget(patch.model);
       const result = await this.live.request<Obj>("config.set", { session_id: id, key: "model", value, confirm_expensive_model: false });
       if (result?.confirm_required === true) throw new Error(str(result.confirm_message) || "That model needs confirmation");
+      this.pickedKey = patch.model;
       this.models = null;
     }
     if (patch.thinkingLevel !== undefined) {

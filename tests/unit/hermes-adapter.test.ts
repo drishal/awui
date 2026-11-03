@@ -242,6 +242,19 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(answer && "text" in answer ? answer.text : "").toBe("on remote as opencode-go-v4-flash");
   });
 
+  it("keeps naming the picked model when a proxied provider reports back its proxy", async () => {
+    const { chat } = await openChat();
+    await chat.send("proxied setup", "normal");
+    await until(() => chat.status === "idle");
+    // The catalog holds opencode-go/deepseek-v4.1-flash; after the pick the gateway's session info
+    // says "litellm/deepseek-v4.1-flash". The chip and the picker keep naming what was picked.
+    await chat.setConfig({ model: "opencode-go/deepseek-v4.1-flash" });
+    await until(() => chat.snapshot().config.model === "opencode-go/deepseek-v4.1-flash");
+    await chat.send("whoami", "normal");
+    await until(() => chat.status === "idle");
+    expect(chat.snapshot().config.model).toBe("opencode-go/deepseek-v4.1-flash");
+  });
+
   it("names the picked model by the provider Hermes reports, never a catalog entry the requests do not reach", () => {
     const models = [
       { key: "opencode-go/deepseek-v4.1-flash", provider: "opencode-go", id: "deepseek-v4.1-flash", name: "deepseek-v4.1-flash" },
