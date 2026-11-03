@@ -42,6 +42,10 @@ const TIMEOUT_MS = 15_000;
 
 const cache = new Map<string, { at: number; stamp: string; result: DirenvEnv }>();
 
+/** `direnv status` never evaluates the .envrc (about 2 ms), so its answer can be kept a good while. */
+const STATE_CACHE_MS = 30_000;
+const stateCache = new Map<string, { at: number; stamp: string; state: DirenvState }>();
+
 /** The nearest .envrc at or above dir, if one exists (direnv walks the same tree upward). */
 export function findEnvrc(dir: string): string | null {
   let here = dir;
@@ -105,6 +109,33 @@ function probe(dir: string, rcPath: string): DirenvEnv {
 }
 
 /**
+ * Only the "is it blocked?" half of envForSpawn, for listings (the sidebar, a workspace's
+ * info): `direnv status --json` reads the allow files and never evaluates the .envrc, where
+ * `direnv export` runs it (a devenv one takes a second or more, and the call blocks the loop).
+ * foundRC.allowed is 0 allowed, 1 not allowed yet, 2 denied; both of the latter block an export.
+ */
+export function direnvState(dir: string): DirenvState {
+  const rcPath = findEnvrc(dir);
+  if (!rcPath) return { blocked: false, rcPath: null };
+  const stamped = stampOf(rcPath);
+  const hit = stateCache.get(dir);
+  if (hit && hit.stamp === stamped && Date.now() - hit.at < STATE_CACHE_MS) return hit.state;
+  let state: DirenvState = { blocked: false, rcPath };
+  if (!IS_WINDOWS) {
+    try {
+      const out = execFileSync("direnv", ["status", "--json"], { cwd: dir, timeout: 5_000, maxBuffer: 1024 * 1024, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      const found = (JSON.parse(out) as { state?: { foundRC?: { allowed?: number } | null } }).state?.foundRC;
+      // No foundRC (or direnv missing, or an older direnv without --json) leaves it unblocked, like probe().
+      state = { blocked: typeof found?.allowed === "number" && found.allowed !== 0, rcPath };
+    } catch {
+      // keep the unblocked default
+    }
+  }
+  stateCache.set(dir, { at: Date.now(), stamp: stamped, state });
+  return state;
+}
+
+/**
  * The env for a child about to spawn in dir: the server's env with the tree's
  * direnv diff applied when its .envrc is allowed, unchanged otherwise; the
  * state's `blocked` flags an envrc waiting on a `direnv allow`. Lasts CACHE_MS,
@@ -128,6 +159,8 @@ export function allowEnvrc(dir: string): boolean {
   try {
     execFileSync("direnv", ["allow", dir], { cwd: dir, timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
     cache.delete(dir);
+    // One allow can cover several folders under the same .envrc.
+    stateCache.clear();
     return true;
   } catch {
     return false;
@@ -137,4 +170,5 @@ export function allowEnvrc(dir: string): boolean {
 /** Test hook: forget every cached answer. */
 export function clearDirenvCache(): void {
   cache.clear();
+  stateCache.clear();
 }

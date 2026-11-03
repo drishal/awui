@@ -107,7 +107,7 @@ import { commitStaged, GitActionError, stageFiles, unstageFiles } from "./git-ac
 import { runCommand } from "./run-command.js";
 import { shellLine } from "./shell-line.js";
 import type { Workspaces } from "./workspaces.js";
-import { allowEnvrc, envForSpawn, findEnvrc } from "./direnv.js";
+import { allowEnvrc, direnvState } from "./direnv.js";
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
 export const RECENT_SESSIONS_PER_HARNESS = 200;
@@ -397,8 +397,7 @@ export function createApp(deps: AppDeps) {
   // for in a terminal, and the user just read what they are allowing in the prompt's file link.
   app.post("/api/workspaces/:id/direnv-allow", async (req, res) => {
     const ws = await workspaces.get(req.params.id);
-    const state = findEnvrc(ws.path) ? envForSpawn(ws.path).state : null;
-    if (!state?.blocked) throw new ChatError(409, "not_blocked", "No blocked .envrc here");
+    if (!direnvState(ws.path).blocked) throw new ChatError(409, "not_blocked", "No blocked .envrc here");
     if (!allowEnvrc(ws.path)) throw new ChatError(500, "direnv_failed", "direnv allow did not run");
     res.json(await workspaces.get(ws.id));
   });

@@ -2,11 +2,11 @@
 // harness envForSpawn returns, the blocked state is reported, and allowEnvrc
 // consents it. Real direnv against temp folders (skipped where direnv is absent).
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { allowEnvrc, clearDirenvCache, envForSpawn, findEnvrc } from "../../src/server/direnv.js";
+import { allowEnvrc, clearDirenvCache, direnvState, envForSpawn, findEnvrc } from "../../src/server/direnv.js";
 
 const HAS_DIRENV = (() => {
   try {
@@ -66,6 +66,20 @@ describe.skipIf(!HAS_DIRENV)("direnv spawn env", () => {
     const second = envForSpawn(proj);
     expect(second.state.blocked).toBe(false);
     expect(second.env.AWUI_TEST_ENVRC).toBe("from-envrc");
+  });
+
+  it("reads the blocked state without evaluating the .envrc", () => {
+    const root = makeProject();
+    const proj = path.join(root, "proj");
+    // An .envrc that would run for ages (and leave a marker) if anything evaluated it.
+    writeFileSync(path.join(proj, ".envrc"), `touch ${JSON.stringify(path.join(root, "ran"))}\nsleep 20\n`);
+    const started = Date.now();
+    expect(direnvState(proj)).toEqual({ blocked: true, rcPath: path.join(proj, ".envrc") });
+    expect(allowEnvrc(proj)).toBe(true);
+    expect(direnvState(proj).blocked).toBe(false);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(existsSync(path.join(root, "ran"))).toBe(false);
+    expect(direnvState(root)).toEqual({ blocked: false, rcPath: null });
   });
 
   it("re-reads when the .envrc changes on disk", () => {
