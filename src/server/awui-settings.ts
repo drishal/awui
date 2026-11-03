@@ -138,9 +138,9 @@ async function unsharePiLogin(agentDir: string): Promise<void> {
 /**
  * Copy the user's ~/.pi/agent/models.json providers into the isolated dir,
  * once, when sharing turns on — the same endpoints and keys, no retyping.
- * Entries are copied verbatim (a provider's `models` catalog included). The
- * seed stands down when the harness's own list holds a provider pi does not:
- * the user's edits here win over the copy.
+ * Entries are copied verbatim (a provider's `models` catalog included), and
+ * only the ones the harness's own list lacks: a provider already there, with
+ * the key or endpoint the user set in this dialog, wins over pi's copy of it.
  */
 async function seedPiProviders(agentDir: string): Promise<void> {
   let pi: Record<string, unknown> | undefined;
@@ -153,8 +153,8 @@ async function seedPiProviders(agentDir: string): Promise<void> {
   }
   if (!pi) return;
   const stored = (await readModelsFile(agentDir)).providers ?? {};
-  if (Object.keys(stored).some((name) => !(name in pi))) return;
-  await writeModelsFile(agentDir, pi);
+  if (Object.keys(pi).every((name) => name in stored)) return;
+  await writeModelsFile(agentDir, { ...pi, ...stored });
 }
 
 /** The settings as the dialog sees them: apiKeys redacted to a flag, never the key (peer to how the login password is write-only). */

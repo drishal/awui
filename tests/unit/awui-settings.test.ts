@@ -156,15 +156,24 @@ describe("sharing the user's pi login", () => {
     });
   });
 
-  it("the seed stands down when the harness's own list holds a provider pi does not", async () => {
-    const home = piHomeWith(piAuth, piProviders);
+  it("the seed adds only what the harness's own list lacks, and an edited provider keeps its edits", async () => {
+    const home = piHomeWith(piAuth, { ...piProviders, other: { baseUrl: "http://192.0.2.30:1/v1", api: "openai-completions" } });
     await withHome(home, async () => {
-      const { registry } = registryWith();
-      await writeAwuiConfig(registry, { providers: { mine: { baseUrl: "http://h:5/v1", api: "openai-completions", apiKey: "sk-mine" } } });
+      const { registry, agentDir } = registryWith();
+      await writeAwuiConfig(registry, {
+        providers: {
+          mine: { baseUrl: "http://h:5/v1", api: "openai-completions", apiKey: "sk-mine" },
+          // The same name as pi's, with an endpoint and key set here.
+          local2: { baseUrl: "http://h:6/v1", api: "openai-completions", apiKey: "sk-edited" },
+        },
+      });
       const next = await writeAwuiConfig(registry, { shareAuth: true });
       expect(next.shareAuth).toBe(true);
+      expect(Object.keys(next.providers).sort()).toEqual(["local2", "mine", "other"]);
+      const raw = JSON.parse(await readFile(path.join(agentDir, "models.json"), "utf8")) as { providers: Record<string, { baseUrl: string; apiKey?: string }> };
       // The user's own list wins over the copy.
-      expect(Object.keys(next.providers)).toEqual(["mine"]);
+      expect(raw.providers.local2).toMatchObject({ baseUrl: "http://h:6/v1", apiKey: "sk-edited" });
+      expect(raw.providers.mine?.apiKey).toBe("sk-mine");
     });
   });
 
