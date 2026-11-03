@@ -86,6 +86,25 @@ describe("chat search, the matching", () => {
     expect(result.scanned).toBeLessThan(20);
     expect(result.total).toBe(20);
   });
+
+  it("keeps every session of a long history between searches, and finishes a cut-short search in the background", async () => {
+    const searcher = new ChatSearcher();
+    let reads = 0;
+    const session = (id: string): ProjectSession => ({ id, harnessId: asHarnessId("fake"), title: "t", updatedAt: "a", workspaceId: "w" });
+    const many = Array.from({ length: 450 }, (_, i) => ({ session: session(`fake:m${i}`), read: async () => (reads++, items) }));
+    await searcher.search("nomatch", many, []);
+    await searcher.search("nomatch", many, []);
+    // More sessions than the old cap of 400: still all read once.
+    expect(reads).toBe(450);
+
+    const slow = Array.from({ length: 12 }, (_, i) => ({ session: session(`fake:w${i}`), read: () => new Promise<ChatItem[]>((r) => setTimeout(() => r(items), 25)) }));
+    const first = await searcher.search("nomatch", slow, [], 20);
+    expect(first.truncated).toBe(true);
+    await new Promise((r) => setTimeout(r, 600));
+    const second = await searcher.search("nomatch", slow, [], 20);
+    expect(second.truncated).toBe(false);
+    expect(second.scanned).toBe(12);
+  });
 });
 
 describe("chat search, the route", () => {

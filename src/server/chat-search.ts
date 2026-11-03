@@ -31,7 +31,14 @@ const HITS_SHOWN = 3;
 const MAX_RESULTS = 120;
 const BUDGET_MS = 3000;
 const PARALLEL = 6;
-const CACHED_SESSIONS = 400;
+/**
+ * What is kept between searches: bounded by text, since that is what costs memory. The text of
+ * 700 real sessions came to 8.5 M characters, so this holds every session of a large history;
+ * a count cap of 400 once lay below the number of sessions, so each search evicted what the
+ * next one needed and could never finish.
+ */
+const CACHED_CHARS = 60_000_000;
+const CACHED_SESSIONS = 5000;
 
 const collapse = (text: string) => text.replace(/\s+/g, " ").trim();
 
@@ -123,7 +130,39 @@ export function sessionHits(title: string, entries: SearchEntry[], words: string
 
 /** The searcher, with each session's text kept between searches (the newest version of each). */
 export class ChatSearcher {
-  private cache = new Map<string, { version: string; entries: SearchEntry[] | null }>();
+  private cache = new Map<string, { version: string; entries: SearchEntry[] | null; chars: number }>();
+  private cachedChars = 0;
+  private warming = false;
+
+  private remember(id: string, version: string, entries: SearchEntry[] | null): void {
+    const held = this.cache.get(id);
+    if (held) this.cachedChars -= held.chars;
+    this.cache.delete(id);
+    const chars = entries?.reduce((sum, e) => sum + e.text.length, 0) ?? 0;
+    this.cache.set(id, { version, entries, chars });
+    this.cachedChars += chars;
+    while (this.cache.size > 1 && (this.cache.size > CACHED_SESSIONS || this.cachedChars > CACHED_CHARS)) {
+      const oldest = this.cache.keys().next().value as string;
+      this.cachedChars -= this.cache.get(oldest)?.chars ?? 0;
+      this.cache.delete(oldest);
+    }
+  }
+
+  /**
+   * A search that ran out of time leaves sessions unread: read them now, one at a time and
+   * without the time budget, so the next search finds them and finishes. One pass at a time.
+   */
+  private warm(targets: SearchTarget[]): void {
+    if (this.warming) return;
+    this.warming = true;
+    void (async () => {
+      try {
+        for (const target of targets) await this.entriesOf(target);
+      } finally {
+        this.warming = false;
+      }
+    })();
+  }
 
   private async entriesOf(target: SearchTarget): Promise<SearchEntry[] | null> {
     const { session } = target;
@@ -133,11 +172,7 @@ export class ChatSearcher {
     if (hit && hit.version === version) return hit.entries;
     const items = await target.read().catch(() => null);
     const entries = items ? searchEntries(items) : null;
-    if (version !== null) {
-      this.cache.delete(session.id);
-      this.cache.set(session.id, { version, entries });
-      if (this.cache.size > CACHED_SESSIONS) this.cache.delete(this.cache.keys().next().value as string);
-    }
+    if (version !== null) this.remember(session.id, version, entries);
     return entries;
   }
 
@@ -167,6 +202,7 @@ export class ChatSearcher {
       }
     };
     await Promise.all(Array.from({ length: Math.min(PARALLEL, targets.length) }, worker));
+    if (outOfTime) this.warm(targets);
     const results = found.filter((r): r is ChatSearchResult => r !== null).slice(0, MAX_RESULTS);
     const used = new Set(results.map((r) => r.session.workspaceId));
     return {
