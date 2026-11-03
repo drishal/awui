@@ -167,7 +167,8 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
   if (mcp) return make("mcp", mcp.server, false, `: ${toolWords(mcp.tool)}`, []);
 
   // rpiv-todo's `todo` acts on one numbered task, so the row says which action, not "the plan".
-  const todoAction = str(args.action);
+  // Other tools take an `action` too (bg_task, memory, subagent), so only a todo tool's is a todo's.
+  const todoAction = /todo/i.test(item.name) ? str(args.action) : undefined;
   if (todoAction && TODO_ACTIONS.has(todoAction)) {
     if (todoAction === "list" || todoAction === "clear") return make(`todo_${todoAction}`, "the todos", false, undefined, []);
     if (todoAction === "create") {

@@ -364,7 +364,7 @@ class EventReducer {
           output: "",
           truncated: false,
           category,
-          summary: toolSummary(event.args),
+          summary: toolSummary(event.args, event.name),
           paths: toolPaths(event.args),
           ...(edits ? editShape(argsDiff(event.args), null) : {}),
           ...(runs ? { subagents: runs } : {}),

@@ -166,15 +166,20 @@ describe("agent event normalization", () => {
     expect(toolSummary({ list: [{ phase: "P", items: ["a"] }] })).toBe("Planned 1 task");
     expect(toolSummary({ items: ["a"], phase: "P" })).toBe("Added 1 task");
     // rpiv-todo's `todo`: one action on a numbered list, not a whole-list payload.
-    expect(toolSummary({ action: "create", subject: "Ship the diff view" })).toBe("Added a todo: Ship the diff view");
-    expect(toolSummary({ action: "create", tasks: [{ subject: "a" }, { subject: "b" }] })).toBe("Added 2 todos");
-    expect(toolSummary({ action: "update", id: 2, status: "in_progress" })).toBe("Updated #2 to in progress");
-    expect(toolSummary({ action: "get", id: 3 })).toBe("Read #3");
-    expect(toolSummary({ action: "delete", id: 3 })).toBe("Deleted #3");
-    expect(toolSummary({ action: "list" })).toBe("Listed the todos");
-    expect(toolSummary({ action: "clear" })).toBe("Cleared the todos");
+    expect(toolSummary({ action: "create", subject: "Ship the diff view" }, "todo")).toBe("Added a todo: Ship the diff view");
+    expect(toolSummary({ action: "create", tasks: [{ subject: "a" }, { subject: "b" }] }, "todo")).toBe("Added 2 todos");
+    expect(toolSummary({ action: "update", id: 2, status: "in_progress" }, "todo")).toBe("Updated #2 to in progress");
+    expect(toolSummary({ action: "get", id: 3 }, "todo")).toBe("Read #3");
+    expect(toolSummary({ action: "delete", id: 3 }, "todo")).toBe("Deleted #3");
+    expect(toolSummary({ action: "list" }, "todo")).toBe("Listed the todos");
+    expect(toolSummary({ action: "clear" }, "todo")).toBe("Cleared the todos");
     // A create with no subject still says what it did, and claims nothing it was not given.
-    expect(toolSummary({ action: "create", subject: "" })).toBe("Added a todo");
+    expect(toolSummary({ action: "create", subject: "" }, "todo")).toBe("Added a todo");
+    // Another tool's `action` is its own: bg_task, memory, and subagent take create, list, update, clear too.
+    expect(toolSummary({ action: "list" }, "bg_status")).not.toMatch(/todo/);
+    expect(toolSummary({ action: "clear" }, "bg_task")).not.toMatch(/todo/);
+    expect(toolSummary({ action: "update", content: "x" }, "memory")).not.toMatch(/todo/);
+    expect(toolSummary({ action: "list" })).not.toMatch(/todo/);
     expect(toolCategory("todo_write")).toBe("other");
   });
 

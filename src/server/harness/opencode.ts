@@ -498,7 +498,7 @@ class OpenCodeChat implements LiveChat {
       case "session.tool.called": {
         const name = child.tools.get(str(d.id)) ?? "tool";
         child.toolCount += 1;
-        const summary = toolSummary(d.input);
+        const summary = toolSummary(d.input, name);
         child.activity = [...child.activity, `${name}${summary ? ` ${summary}` : ""}`].slice(-4);
         return this.report(childId);
       }

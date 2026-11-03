@@ -168,6 +168,9 @@ describe("toolSentence: MCP, agents, plan, unknown", () => {
     expect(todo({ action: "update", id: 2, status: "completed" }).facts).toEqual([]);
     // An `action` this tool does not take stays a plan call.
     expect(toolSentence(tool({ name: "todo", category: "other", args: args({ action: "rewind" }) }), WS).text).toBe("Updated the plan");
+    // Another tool's `action` is not a todo's.
+    expect(toolSentence(tool({ name: "bg_status", category: "other", args: args({ action: "list" }) }), WS).text).not.toMatch(/todo/);
+    expect(toolSentence(tool({ name: "memory", category: "other", args: args({ action: "update", content: "x" }) }), WS).text).not.toMatch(/todo/);
   });
   it("uses an unknown tool by its words and invents no fact", () => {
     const odd = tool({ name: "lspDiagnostics", category: "other", output: "a\nb\nc" });

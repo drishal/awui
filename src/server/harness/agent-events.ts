@@ -311,8 +311,9 @@ function todoActionSummary(args: Obj): string | null {
  * `op`, which Pi lets a model leave out) as what they did; rpiv-todo's single
  * action (`action`) as the one thing it did.
  */
-function todoSummary(args: Obj): string | null {
-  const action = todoActionSummary(args);
+function todoSummary(args: Obj, name: string | undefined): string | null {
+  // `action` is a common argument (bg_task, memory, subagent take one too), so it is a todo's only on a todo tool.
+  const action = name !== undefined && /todo/i.test(name) ? todoActionSummary(args) : null;
   if (action) return action;
   if (Array.isArray(args.todos) && args.todos.every(isObj)) {
     const todos = args.todos as Obj[];
@@ -353,12 +354,13 @@ function todoSummary(args: Obj): string | null {
  * One-line description of a call: its command, else what a search looks for
  * (and where, unless that is just the working directory), else its path, else
  * its query. Every harness's tools go through this, so a grep reads the same
- * in Pi, omp, Hermes, and Claude Code.
+ * in Pi, omp, Hermes, and Claude Code. The tool's name, when known, tells a
+ * todo's `action` from another tool's.
  */
-export function toolSummary(args: unknown): string {
+export function toolSummary(args: unknown, name?: string): string {
   if (typeof args === "string") return oneLine(args);
   if (!isObj(args)) return "";
-  const todo = todoSummary(args);
+  const todo = todoSummary(args, name);
   if (todo) return todo;
   const paths = toolPaths(args);
   for (const key of ["command", "cmd", "script", "code"]) {
@@ -616,7 +618,7 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
             output: "",
             truncated: false,
             category,
-            summary: toolSummary(block.arguments),
+            summary: toolSummary(block.arguments, name),
             paths: toolPaths(block.arguments),
             ...(edits ? editShape(argsDiff(block.arguments), null) : {}),
             ...(category === "agent" ? withRuns(runsFromArgs(block.arguments)) : {}),

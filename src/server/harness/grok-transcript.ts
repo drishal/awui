@@ -336,7 +336,7 @@ function toolItem(fold: Extract<GrokFold, { type: "tool_start" }>): ToolItem {
     output: "",
     truncated: false,
     category,
-    summary: toolSummary(fold.args),
+    summary: toolSummary(fold.args, fold.name),
     paths: toolPaths(fold.args),
     ...(edits ? editShape(null, null) : {}),
     at: fold.at,
