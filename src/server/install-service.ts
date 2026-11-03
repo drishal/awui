@@ -121,13 +121,17 @@ if ($env:AWUI_SET -eq '1') {
 }
 `;
 
-/** Read the raw user PATH from HKCU\Environment, or "" when there is none. */
-function readUserPathWindows(): string {
+/**
+ * Read the raw user PATH from HKCU\Environment: "" when there is none, null when it
+ * could not be read. The two differ on purpose: a PATH written back after a failed
+ * read would hold only awui's folder, and every other entry would be gone.
+ */
+function readUserPathWindows(): string | null {
   try {
     const out = execFileSync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_PATH_SCRIPT], { env: { ...process.env }, encoding: "buffer" });
     return Buffer.from(out.toString("utf8").trim(), "base64").toString("utf8");
   } catch {
-    return "";
+    return null;
   }
 }
 
@@ -156,9 +160,12 @@ async function installWindows(opts: { link: boolean }): Promise<void> {
 
   // PATH: append the install dir unless it is already there (case-insensitive).
   const existing = readUserPathWindows();
-  const entries = existing.split(";").filter((e) => e.length > 0);
+  const entries = (existing ?? "").split(";").filter((e) => e.length > 0);
   const has = entries.some((e) => e.replace(/[\\/]+$/, "").toLowerCase() === bin.replace(/[\\/]+$/, "").toLowerCase());
-  if (!has) {
+  if (existing === null) {
+    // Unread, the PATH is left alone: writing one back would drop every entry it had.
+    console.warn(`awui: could not read the user PATH, so it was left as it is; add ${bin} to it yourself to run \`awui\` from a terminal`);
+  } else if (!has) {
     setUserPathWindows([...entries, bin].join(";"));
     console.log(`added ${bin} to the user PATH (open a new terminal to pick it up)`);
   }
