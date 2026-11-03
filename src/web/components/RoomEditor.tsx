@@ -1,8 +1,10 @@
 // Creating a room (name, topic, workspace, its first members, the lead) and
 // editing one (name, topic, lead, archive, budgets). Membership policy —
 // ranks, allowlists, enable/disable, resets — lives in RoomMembers, because it
-// needs membership ids the server only assigns when the room exists.
-import { useEffect, useState } from "react";
+// needs membership ids the server only assigns when the room exists. Drawn
+// in FormRow cards like Settings: a new room is its name, its folder, and a
+// ranked list of bots with one of them marked as the lead.
+import { useEffect, useId, useState } from "react";
 import type { BotProfile, RoomBudgets, RoomInfo, RoomSnapshot, WorkspaceInfo } from "../../shared/protocol.js";
 import { BOARD_MAX_CONSULT_REQUESTS, BOARD_MAX_DIRECT_RESPONDERS, BOARD_MAX_INVOCATIONS, BOARD_MAX_INVOCATIONS_PER_MEMBER, BOARD_MAX_MEMBERS, BOARD_QUEUE_MAX, BOARD_TURN_WALL_CLOCK_MS } from "../../shared/protocol.js";
 import { errorText } from "../api.js";
@@ -10,9 +12,12 @@ import { createRoom, patchRoom, type RoomPatch } from "../rooms.js";
 import { handleFrom } from "../room-mentions.js";
 import { budgetsOf, DEFAULT_BUDGETS } from "../room-state.js";
 import { harnessColor } from "../harness-colors.js";
-import { IconChevronDown, IconChevronUp, IconPlus, IconX } from "../icons.js";
+import { IconChevronDown, IconChevronUp, IconFolder, IconPlus, IconX } from "../icons.js";
+import { Collapse } from "./Collapse.js";
 import { Dialog } from "./Dialog.js";
+import { FormRow } from "./FormRow.js";
 import { Select } from "./Select.js";
+import { Switch } from "./Switch.js";
 
 interface DraftMember {
   botId: string;
@@ -51,6 +56,8 @@ export function RoomEditor({
   const [archived, setArchived] = useState(room?.archived ?? false);
   const [leadId, setLeadId] = useState(room?.leadMemberId ?? "");
   const [saving, setSaving] = useState(false);
+  const [budgetsOpen, setBudgetsOpen] = useState(false);
+  const budgetsId = useId();
   // The server's refusal is said in the dialog, not behind it in the page banner.
   const [notice, setNotice] = useState<string | null>(null);
   // A project opened while this dialog was up becomes the default (the list it was built from grew).
@@ -62,7 +69,8 @@ export function RoomEditor({
   const [budgets, setBudgets] = useState<Record<BudgetKey, string>>(() => budgetText(caps));
 
   const trimmed = name.trim();
-  const lead = leadBotId ?? drafts.find((d) => d.canLead)?.botId ?? null;
+  // The lead is the one marked, else the first bot added: a new room always has one.
+  const lead = (leadBotId !== null && drafts.some((d) => d.botId === leadBotId) ? leadBotId : null) ?? drafts[0]?.botId ?? null;
   const valid = trimmed.length > 0 && trimmed.length <= 100 && (room !== null || (workspaceId !== "" && drafts.length > 0 && lead !== null));
 
   const add = (bot: BotProfile) => {
@@ -142,148 +150,150 @@ export function RoomEditor({
     }
   };
 
+  const available = bots?.filter((b) => !drafts.some((d) => d.botId === b.id)) ?? [];
+  const budgetSummary = `${caps.maxDirectResponders} direct · ${caps.maxConsultRequests} consults · ${caps.maxInvocations} runs · ${Math.round(caps.turnWallClockMs / 1000)}s a turn`;
+
   return (
     <Dialog title={room ? `Edit ${room.name}` : "New room"} onClose={onClose} className="room-editor-dialog">
       <div className="board-form">
-        <label className="room-field">
-          <span>Name</span>
-          <input type="text" value={name} maxLength={100} aria-label="Room name" onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="room-field">
-          <span>Topic</span>
-          <input type="text" value={topic} maxLength={500} aria-label="Room topic" placeholder="What this room is for" onChange={(e) => setTopic(e.target.value)} />
-        </label>
-        {room === null ? (
-          <div className="room-field">
-            <span>Workspace</span>
-            <div className="board-model-row">
-              {workspaces.length === 0 ? (
-                <span className="room-warning">Open a project first: a room runs its bots in one.</span>
-              ) : (
-                <Select label="Room workspace" value={workspaceId} onChange={setWorkspaceId} options={workspaces.map((w) => ({ value: w.id, label: w.name }))} />
-              )}
+        <div className="form-card">
+          <FormRow label="Name" stack>
+            <input className="input" type="text" value={name} maxLength={100} aria-label="Room name" placeholder="e.g. webui review" onChange={(e) => setName(e.target.value)} />
+          </FormRow>
+          <FormRow label="Topic" desc="Optional: what this room is for. Every bot sees it." stack>
+            <input className="input" type="text" value={topic} maxLength={500} aria-label="Room topic" placeholder="What this room is for" onChange={(e) => setTopic(e.target.value)} />
+          </FormRow>
+          {room === null ? (
+            <FormRow label="Project" desc={workspaces.length === 0 ? "Open a project first: a room runs its bots in one." : "The folder its bots work in."}>
+              {workspaces.length > 0 ? <Select label="Room workspace" value={workspaceId} onChange={setWorkspaceId} options={workspaces.map((w) => ({ value: w.id, label: w.name, hint: w.path }))} /> : null}
               {onPickFolder ? (
-                <button type="button" className="btn btn-small" aria-label="Open another project" onClick={onPickFolder}>
-                  Open project…
+                <button type="button" className="btn btn-small btn-ghost" aria-label="Open another project" onClick={onPickFolder}>
+                  <IconFolder size={13} /> Open…
                 </button>
               ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="room-field">
-            <span>Workspace</span>
-            <span className="board-static">{room.workspaceName}</span>
-          </div>
-        )}
+            </FormRow>
+          ) : (
+            <FormRow label="Project" desc="Fixed once the room exists.">
+              <span className="board-static">
+                <IconFolder size={13} /> {room.workspaceName}
+              </span>
+            </FormRow>
+          )}
+        </div>
+
         {room === null ? (
-          <div className="board-field">
-            <span className="board-field-label">Members (the first added is ranked first)</span>
-            {bots === null ? <p className="muted">Loading bots…</p> : bots.length === 0 ? (
-              <div className="room-no-bots">
-                <p>A room runs bots, and there are none yet. Create one first.</p>
-                <button type="button" className="btn btn-small" onClick={onNewBot}>
+          <section className="form-section board-members-section" aria-labelledby="room-members-head">
+            <h3 id="room-members-head">Members</h3>
+            <p className="form-note">In rank order. A message with no @mention goes to the lead; consultations are set in Members once the room exists.</p>
+            {bots === null ? (
+              <p className="form-empty">Loading bots…</p>
+            ) : bots.length === 0 ? (
+              <div className="board-empty">
+                <p>A room runs bots, and there are none yet. A bot is a harness, a model, and its instructions.</p>
+                <button type="button" className="btn btn-small btn-primary" onClick={onNewBot}>
                   <IconPlus size={13} /> Create a bot
                 </button>
               </div>
             ) : (
               <>
-                <ul className="room-draft-members">
+                <ol className="form-card room-draft-members" aria-label="Room members">
+                  {drafts.length === 0 ? <li className="form-empty room-draft-empty">No members yet: add a bot below. The first one leads until you pick another.</li> : null}
                   {drafts.map((d, i) => {
                     const bot = bots.find((b) => b.id === d.botId);
+                    const isLead = d.botId === lead;
+                    const name = bot?.name ?? "this bot";
                     return (
-                      <li key={d.botId} className="room-draft-member">
-                        <span className="room-draft-rank">{i + 1}</span>
-                        <button type="button" className="icon-btn" aria-label={`Move ${bot?.name ?? "this bot"} up`} disabled={i === 0} onClick={() => move(i, -1)}>
-                          <IconChevronUp size={12} />
-                        </button>
-                        <button type="button" className="icon-btn" aria-label={`Move ${bot?.name ?? "this bot"} down`} disabled={i === drafts.length - 1} onClick={() => move(i, 1)}>
-                          <IconChevronDown size={12} />
-                        </button>
-                        <span className="badge badge-harness" style={harnessColor(bot?.harnessId)}>
-                          {bot?.harnessId ?? "?"}
+                      <li key={d.botId} className={`room-draft-member${isLead ? " is-lead" : ""}`}>
+                        <span className="room-draft-rank" aria-hidden="true">
+                          {i + 1}
                         </span>
-                        <span className="room-draft-name">{bot?.name ?? d.botId}</span>
-                        <label className="room-check">
-                          <input
-                            type="checkbox"
-                            checked={d.canLead}
-                            aria-label={`Let ${bot?.name ?? "this bot"} lead`}
-                            onChange={(e) => setDrafts(drafts.map((x) => (x.botId === d.botId ? { ...x, canLead: e.target.checked } : x)))}
-                          />
-                          can lead
+                        <span className="bot-dot" style={{ "--bot-accent": bot?.accent ? `var(--${bot.accent}, var(--accent))` : `var(--harness-${bot?.harnessId ?? "none"}, var(--muted))` } as React.CSSProperties} aria-hidden="true" />
+                        <span className="room-draft-who">
+                          <span className="room-draft-name">{bot?.name ?? d.botId}</span>
+                          <span className="room-draft-meta">
+                            <span className="badge badge-harness" style={harnessColor(bot?.harnessId)}>
+                              {bot?.harnessId ?? "?"}
+                            </span>
+                            {bot?.role ? <span>{bot.role}</span> : null}
+                          </span>
+                        </span>
+                        <label className="room-handle">
+                          <span aria-hidden="true">@</span>
+                          <input type="text" value={d.handle} aria-label={`Handle for ${name}`} aria-invalid={!/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(d.handle)} onChange={(e) => setHandle(d.botId, e.target.value)} />
                         </label>
-                        <label className="room-field room-handle">
-                          <span>@</span>
-                          <input type="text" value={d.handle} aria-label={`Handle for ${bot?.name ?? "this bot"}`} onChange={(e) => setHandle(d.botId, e.target.value)} />
-                        </label>
-                        <button type="button" className="icon-btn" aria-label={`Remove ${bot?.name ?? "this bot"} from the room`} onClick={() => drop(d.botId)}>
-                          <IconX size={13} />
+                        <button type="button" className="board-lead-chip" aria-pressed={isLead} aria-label={`Make ${name} the lead`} title={isLead ? "Answers messages with no @mention" : "Make this bot the lead"} onClick={() => setLeadBotId(d.botId)}>
+                          Lead
                         </button>
+                        <span className="room-draft-actions">
+                          <button type="button" className="ghost-icon" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                            <IconChevronUp size={13} />
+                          </button>
+                          <button type="button" className="ghost-icon" aria-label={`Move ${name} down`} disabled={i === drafts.length - 1} onClick={() => move(i, 1)}>
+                            <IconChevronDown size={13} />
+                          </button>
+                          <button type="button" className="ghost-icon" aria-label={`Remove ${name} from the room`} onClick={() => drop(d.botId)}>
+                            <IconX size={13} />
+                          </button>
+                        </span>
                       </li>
                     );
                   })}
-                </ul>
+                </ol>
                 {duplicateHandle ? <p className="room-warning">Two members cannot share the handle @{duplicateHandle}.</p> : null}
                 {badHandle ? <p className="room-warning">@{badHandle} is not a handle: 1–32 letters, digits, `_` or `-`.</p> : null}
                 <div className="room-pick-bots" role="group" aria-label="Bots to add">
-                  {bots
-                    .filter((b) => !drafts.some((d) => d.botId === b.id))
-                    .map((bot) => (
-                      <button key={bot.id} type="button" className="btn btn-small room-pick-bot" aria-label={`Add ${bot.name}`} onClick={() => add(bot)}>
-                        <IconPlus size={12} />
-                        Add {bot.name}
-                        <span className="muted">{bot.harnessId}</span>
-                      </button>
-                    ))}
+                  {available.map((bot) => (
+                    <button key={bot.id} type="button" className="pill-btn room-pick-bot" aria-label={`Add ${bot.name}`} disabled={drafts.length >= BOARD_MAX_MEMBERS} onClick={() => add(bot)}>
+                      <IconPlus size={12} />
+                      <span className="harness-dot" style={{ ["--harness" as string]: `var(--harness-${bot.harnessId}, var(--muted))` }} aria-hidden="true" />
+                      {bot.name}
+                      <span className="room-pick-harness">{bot.harnessId}</span>
+                    </button>
+                  ))}
+                  <button type="button" className="pill-btn room-pick-bot is-new" onClick={onNewBot}>
+                    <IconPlus size={12} /> New bot
+                  </button>
                 </div>
-                {drafts.length === 0 ? <p className="room-warning">No members yet: click a bot above to add it. A room needs at least one, and the first added is ranked first.</p> : null}
-                <button type="button" className="btn btn-small" onClick={onNewBot}>
-                  <IconPlus size={13} /> New bot
-                </button>
-                {drafts.length > 0 && lead === null ? <p className="room-warning">Pick at least one bot that can lead; a room runs its lead for bare messages.</p> : null}
-                {drafts.length > 0 ? (
-                  <label className="room-field">
-                    <span>Lead</span>
-                    <Select
-                      label="Room lead"
-                      value={lead ?? ""}
-                      onChange={(value) => setLeadBotId(value || null)}
-                      options={drafts.filter((d) => d.canLead).map((d) => ({ value: d.botId, label: bots.find((b) => b.id === d.botId)?.name ?? d.botId }))}
-                    />
-                  </label>
-                ) : null}
-                <p className="board-hint">A bare message goes only to the lead. Consultation allowlists are set once the room exists, in Members.</p>
               </>
             )}
-          </div>
+          </section>
         ) : (
           <>
-            <label className="room-field">
-              <span>Lead</span>
-              <Select
-                label="Room lead"
-                value={leadId}
-                onChange={setLeadId}
-                options={[{ value: "", label: "No lead" }, ...room.members.filter((m) => m.canLead && m.enabled).map((m) => ({ value: m.id, label: `${m.name} (@${m.handle})` }))]}
-              />
-              <span className="board-hint">A message with no @mention goes only to the lead.</span>
-            </label>
-            <label className="room-check room-archive-check">
-              <input type="checkbox" checked={archived} aria-label="Archive this room" onChange={(e) => setArchived(e.target.checked)} />
-              Archived (bots do not run; the transcript stays)
-            </label>
-            <details className="room-budgets">
-              <summary>Budgets</summary>
-              <p className="board-hint">Per top-level turn, enforced by the server. Changing them affects the next turn, not the one running.</p>
-              <div className="room-budget-grid">
-                <BudgetField label="Direct responders" value={budgets.maxDirectResponders} limits={BUDGET_LIMITS.maxDirectResponders} onChange={(v) => setBudgets({ ...budgets, maxDirectResponders: v })} />
-                <BudgetField label="Consultation requests" value={budgets.maxConsultRequests} limits={BUDGET_LIMITS.maxConsultRequests} onChange={(v) => setBudgets({ ...budgets, maxConsultRequests: v })} />
-                <BudgetField label="Total invocations" value={budgets.maxInvocations} limits={BUDGET_LIMITS.maxInvocations} onChange={(v) => setBudgets({ ...budgets, maxInvocations: v })} />
-                <BudgetField label="Invocations per bot" value={budgets.maxInvocationsPerMember} limits={BUDGET_LIMITS.maxInvocationsPerMember} onChange={(v) => setBudgets({ ...budgets, maxInvocationsPerMember: v })} />
-                <BudgetField label="Wall clock (ms)" value={budgets.turnWallClockMs} limits={BUDGET_LIMITS.turnWallClockMs} onChange={(v) => setBudgets({ ...budgets, turnWallClockMs: v })} />
-                <BudgetField label="Queued turns" value={budgets.queueMax} limits={BUDGET_LIMITS.queueMax} onChange={(v) => setBudgets({ ...budgets, queueMax: v })} />
-              </div>
-            </details>
+            <div className="form-card">
+              <FormRow label="Lead" desc="Answers every message with no @mention.">
+                <Select
+                  label="Room lead"
+                  value={leadId}
+                  onChange={setLeadId}
+                  options={[{ value: "", label: "No lead" }, ...room.members.filter((m) => m.canLead && m.enabled).map((m) => ({ value: m.id, label: m.name, hint: `@${m.handle}` }))]}
+                />
+              </FormRow>
+              <FormRow label="Archived" desc="Its bots do not run; the transcript stays readable." toggle>
+                <Switch label="Archive this room" checked={archived} onChange={setArchived} />
+              </FormRow>
+            </div>
+            <div className="form-card room-budgets">
+              <button type="button" className="room-budgets-head" aria-expanded={budgetsOpen} aria-controls={budgetsId} onClick={() => setBudgetsOpen((v) => !v)}>
+                <span className="form-row-text">
+                  <span className="form-label">Budgets</span>
+                  <span className="form-desc">{budgetSummary}</span>
+                </span>
+                <IconChevronDown size={14} className="room-budgets-chevron" />
+              </button>
+              <Collapse open={budgetsOpen}>
+                <div className="room-budgets-body" id={budgetsId}>
+                  <p className="form-note">Per message, enforced by the server. A change applies from the next message, not the one running.</p>
+                  <div className="room-budget-grid">
+                    <BudgetField label="Direct responders" value={budgets.maxDirectResponders} limits={BUDGET_LIMITS.maxDirectResponders} onChange={(v) => setBudgets({ ...budgets, maxDirectResponders: v })} />
+                    <BudgetField label="Consultation requests" value={budgets.maxConsultRequests} limits={BUDGET_LIMITS.maxConsultRequests} onChange={(v) => setBudgets({ ...budgets, maxConsultRequests: v })} />
+                    <BudgetField label="Total invocations" value={budgets.maxInvocations} limits={BUDGET_LIMITS.maxInvocations} onChange={(v) => setBudgets({ ...budgets, maxInvocations: v })} />
+                    <BudgetField label="Invocations per bot" value={budgets.maxInvocationsPerMember} limits={BUDGET_LIMITS.maxInvocationsPerMember} onChange={(v) => setBudgets({ ...budgets, maxInvocationsPerMember: v })} />
+                    <BudgetField label="Wall clock (ms)" value={budgets.turnWallClockMs} limits={BUDGET_LIMITS.turnWallClockMs} onChange={(v) => setBudgets({ ...budgets, turnWallClockMs: v })} />
+                    <BudgetField label="Queued messages" value={budgets.queueMax} limits={BUDGET_LIMITS.queueMax} onChange={(v) => setBudgets({ ...budgets, queueMax: v })} />
+                  </div>
+                </div>
+              </Collapse>
+            </div>
           </>
         )}
       </div>
@@ -293,11 +303,12 @@ export function RoomEditor({
         </p>
       ) : null}
       <div className="board-actions">
-        <button type="button" className="btn btn-primary" disabled={!valid || saving || !budgetsValid || (room === null && !memberOk)} onClick={() => void save()}>
-          {room ? "Save room" : "Create room"}
-        </button>
+        {room === null && drafts.length === 0 && bots !== null && bots.length > 0 ? <span className="board-actions-hint">Add at least one bot</span> : null}
         <button type="button" className="btn btn-ghost" onClick={onClose}>
           Cancel
+        </button>
+        <button type="button" className="btn btn-primary" disabled={!valid || saving || !budgetsValid || (room === null && !memberOk)} onClick={() => void save()}>
+          {room ? "Save room" : "Create room"}
         </button>
       </div>
     </Dialog>
@@ -330,10 +341,15 @@ function budgetText(caps: RoomBudgets): Record<BudgetKey, string> {
 }
 
 function BudgetField({ label, value, limits, onChange }: { label: string; value: string | undefined; limits: { min: number; max: number }; onChange: (value: string) => void }) {
+  const n = Number((value ?? "").trim());
+  const ok = Number.isInteger(n) && n >= limits.min && n <= limits.max;
   return (
-    <label className="room-field room-budget-field">
-      <span>{label}</span>
-      <input type="number" min={limits.min} max={limits.max} value={value ?? ""} aria-label={label} onChange={(e) => onChange(e.target.value)} title={`${limits.min}–${limits.max}`} />
+    <label className="room-budget-field">
+      <span className="room-budget-label">{label}</span>
+      <input className="input" type="number" min={limits.min} max={limits.max} value={value ?? ""} aria-label={label} aria-invalid={!ok} onChange={(e) => onChange(e.target.value)} />
+      <span className="room-budget-range">
+        {limits.min.toLocaleString()}–{limits.max.toLocaleString()}
+      </span>
     </label>
   );
 }

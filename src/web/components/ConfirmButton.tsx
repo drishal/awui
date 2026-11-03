@@ -11,6 +11,7 @@ export function ConfirmButton({
   disabled,
   className = "",
   danger,
+  iconOnly = false,
   children,
 }: {
   /** What the action does, used in the aria-labels ("Delete this prompt"). */
@@ -24,6 +25,8 @@ export function ConfirmButton({
   danger?: boolean;
   /** Icon, if any, drawn before the label. */
   children?: ReactNode;
+  /** Draw only the icon (the label is the tooltip and the accessible name): for a row with no room for words. */
+  iconOnly?: boolean;
 }) {
   const [asking, setAsking] = useState(false);
   const yes = useRef<HTMLButtonElement>(null);
@@ -57,9 +60,9 @@ export function ConfirmButton({
 
   if (!asking) {
     return (
-      <button type="button" ref={face} className={className} disabled={disabled} aria-label={label} onClick={arm}>
+      <button type="button" ref={face} className={className} disabled={disabled} aria-label={label} title={iconOnly ? label : undefined} onClick={arm}>
         {children}
-        {label}
+        {iconOnly ? null : label}
       </button>
     );
   }

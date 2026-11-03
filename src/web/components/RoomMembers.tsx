@@ -2,17 +2,20 @@
 // every membership with its rank, whether it may lead, whether others may
 // consult it, who it may consult, enable/disable, session reset (future native
 // session only), removal, and adding a profile to the room.
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { BotProfile, RoomInfo, RoomMemberView } from "../../shared/protocol.js";
 import { BOARD_HANDLE_PATTERN } from "../../shared/protocol.js";
 import { errorText } from "../api.js";
 import { addMember, patchMember, patchRoom, removeMember, resetMember } from "../rooms.js";
 import { handleFrom } from "../room-mentions.js";
 import { harnessColor } from "../harness-colors.js";
-import { IconChevronDown, IconChevronUp, IconPlus, IconRefresh, IconX } from "../icons.js";
+import { IconCheck, IconChevronDown, IconChevronUp, IconPlus, IconRefresh, IconX } from "../icons.js";
+import { Collapse } from "./Collapse.js";
 import { ConfirmButton } from "./ConfirmButton.js";
-import { Select } from "./Select.js";
 import { Dialog } from "./Dialog.js";
+import { FormRow } from "./FormRow.js";
+import { Select } from "./Select.js";
+import { Switch } from "./Switch.js";
 
 const byRank = (a: RoomMemberView, b: RoomMemberView) => a.rank - b.rank || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
@@ -95,21 +98,21 @@ export function RoomMembers({
             {notice}
           </p>
         ) : null}
-        <label className="room-field">
-          <span>Lead</span>
-          <Select
-            label="Room lead"
-            value={room.leadMemberId ?? ""}
-            disabled={busy || working !== null}
-            onChange={(leadMemberId) => {
-              if (leadMemberId) void run("lead", () => patchRoom(room.id, { leadMemberId }));
-            }}
-            options={[{ value: "", label: "No lead" }, ...members.filter((m) => m.canLead && m.enabled).map((m) => ({ value: m.id, label: `${m.name} (@${m.handle})` }))]}
-          />
-        </label>
-        {lead === null ? <p className="room-warning">No enabled member can lead. Enable one of the can-lead members below.</p> : null}
+        <div className="form-card">
+          <FormRow label="Lead" desc={lead === null ? "No enabled member can lead: turn on Can lead for one below." : "Answers every message with no @mention."}>
+            <Select
+              label="Room lead"
+              value={room.leadMemberId ?? ""}
+              disabled={busy || working !== null}
+              onChange={(leadMemberId) => {
+                if (leadMemberId) void run("lead", () => patchRoom(room.id, { leadMemberId }));
+              }}
+              options={[{ value: "", label: "No lead" }, ...members.filter((m) => m.canLead && m.enabled).map((m) => ({ value: m.id, label: m.name, hint: `@${m.handle}` }))]}
+            />
+          </FormRow>
+        </div>
 
-        <ul className="room-roster" aria-label="Room members">
+        <ul className="form-card room-roster" aria-label="Room members">
           {members.map((member, index) => (
             <MemberRow
               key={member.id}
@@ -138,7 +141,7 @@ export function RoomMembers({
         ) : (
           <button
             type="button"
-            className="btn btn-small room-add-member"
+            className="pill-btn room-add-member"
             disabled={busy || bots === null}
             onClick={() => (bots !== null && bots.length === 0 ? onNewBot() : setAdding(true))}
           >
@@ -181,10 +184,12 @@ function MemberRow({
   const others = members.filter((m) => m.id !== member.id);
   const [handle, setHandle] = useState(member.handle);
   const handleValid = BOARD_HANDLE_PATTERN.test(handle) && handle === handle.trim();
+  const [consultsOpen, setConsultsOpen] = useState(false);
+  const consultsId = useId();
   return (
     <li className={`room-member${member.enabled ? "" : " is-off"}${isLead ? " is-lead" : ""}`} data-testid="room-member">
       <div className="room-member-head">
-        <span className="room-member-accent" style={member.accent ? ({ "--bot-accent": `var(--${member.accent}, var(--accent))` } as React.CSSProperties) : undefined} aria-hidden="true" />
+        <span className="room-member-accent" style={{ "--bot-accent": member.accent ? `var(--${member.accent}, var(--accent))` : `var(--harness-${member.harnessId}, var(--muted))` } as React.CSSProperties} aria-hidden="true" />
         <span className="room-member-name">{member.name}</span>
         {isLead ? <span className="room-member-tag is-lead">lead</span> : null}
         {member.role ? <span className="room-member-role">{member.role}</span> : null}
@@ -194,28 +199,30 @@ function MemberRow({
         {member.model ? <span className="room-member-model">{member.model}</span> : null}
         {!member.enabled ? <span className="room-member-tag is-off">disabled</span> : null}
         <span className="room-member-actions">
-          <button type="button" className="icon-btn" aria-label={`Move ${member.name} up`} title="Move up" disabled={busy || first} onClick={() => onMove(-1)}>
+          <button type="button" className="ghost-icon" aria-label={`Move ${member.name} up`} title="Move up" disabled={busy || first} onClick={() => onMove(-1)}>
             <IconChevronUp size={13} />
           </button>
-          <button type="button" className="icon-btn" aria-label={`Move ${member.name} down`} title="Move down" disabled={busy || last} onClick={() => onMove(1)}>
+          <button type="button" className="ghost-icon" aria-label={`Move ${member.name} down`} title="Move down" disabled={busy || last} onClick={() => onMove(1)}>
             <IconChevronDown size={13} />
           </button>
-          <button type="button" className="btn btn-small" aria-label={`Edit ${member.name}'s profile`} disabled={busy} onClick={() => onEditBot(member.botId)}>
+          <button type="button" className="btn btn-small btn-ghost" aria-label={`Edit ${member.name}'s profile`} disabled={busy} onClick={() => onEditBot(member.botId)}>
             Profile
           </button>
           <ConfirmButton
             label={`Reset ${member.name}'s session`}
             confirmLabel="New session?"
-            className="btn btn-small btn-ghost"
+            className="ghost-icon"
+            iconOnly
             disabled={busy}
             onConfirm={() => onRun(() => resetMember(room.id, member.id))}
           >
-            <IconRefresh size={13} />
+            <IconRefresh size={14} />
           </ConfirmButton>
           <ConfirmButton
             label={`Remove ${member.name}`}
             confirmLabel="Remove?"
-            className="btn btn-small btn-ghost"
+            className="ghost-icon"
+            iconOnly
             danger
             disabled={busy}
             onConfirm={() => onRun(() => removeMember(room.id, member.id))}
@@ -226,37 +233,19 @@ function MemberRow({
       </div>
       <div className="room-member-policy">
         <label className="room-check">
-          <input
-            type="checkbox"
-            checked={member.enabled}
-            disabled={busy}
-            aria-label={`Enable ${member.name}`}
-            onChange={(e) => onRun(() => patchMember(room.id, member.id, { enabled: e.target.checked }))}
-          />
-          enabled
+          <Switch label={`Enable ${member.name}`} checked={member.enabled} disabled={busy} onChange={(enabled) => onRun(() => patchMember(room.id, member.id, { enabled }))} />
+          Enabled
         </label>
         <label className="room-check">
-          <input
-            type="checkbox"
-            checked={member.canLead}
-            disabled={busy}
-            aria-label={`Let ${member.name} lead`}
-            onChange={(e) => onRun(() => patchMember(room.id, member.id, { canLead: e.target.checked }))}
-          />
-          can lead
+          <Switch label={`Let ${member.name} lead`} checked={member.canLead} disabled={busy} onChange={(canLead) => onRun(() => patchMember(room.id, member.id, { canLead }))} />
+          Can lead
         </label>
         <label className="room-check">
-          <input
-            type="checkbox"
-            checked={member.consultable}
-            disabled={busy}
-            aria-label={`Allow consulting ${member.name}`}
-            onChange={(e) => onRun(() => patchMember(room.id, member.id, { consultable: e.target.checked }))}
-          />
-          may be consulted
+          <Switch label={`Allow consulting ${member.name}`} checked={member.consultable} disabled={busy} onChange={(consultable) => onRun(() => patchMember(room.id, member.id, { consultable }))} />
+          May be consulted
         </label>
-        <label className="room-check room-handle">
-          <span>@{""}</span>
+        <label className="room-handle">
+          <span aria-hidden="true">@</span>
           <input
             type="text"
             value={handle}
@@ -278,32 +267,36 @@ function MemberRow({
         </label>
         {working ? <span className="room-member-working">Saving…</span> : null}
       </div>
-      {member.consultable && others.length > 0 ? (
-        <details className="room-allowlist">
-          <summary>
+      {others.length > 0 ? (
+        <>
+          <button type="button" className="room-allowlist-head" aria-expanded={consultsOpen} aria-controls={consultsId} onClick={() => setConsultsOpen((v) => !v)}>
             May consult {member.consultants.length === 0 ? "nobody" : `${member.consultants.length} ${member.consultants.length === 1 ? "member" : "members"}`}
-          </summary>
-          <ul>
-            {others.map((other) => (
-              <li key={other.id}>
-                <label className="room-check">
-                  <input
-                    type="checkbox"
-                    checked={member.consultants.includes(other.id)}
-                    disabled={busy || !other.consultable}
+            <IconChevronDown size={12} />
+          </button>
+          <Collapse open={consultsOpen}>
+            <div className="room-allowlist" id={consultsId} role="group" aria-label={`Who ${member.name} may consult`}>
+              {others.map((other) => {
+                const on = member.consultants.includes(other.id);
+                return (
+                  <button
+                    key={other.id}
+                    type="button"
+                    className="room-consult-chip"
+                    aria-pressed={on}
                     aria-label={`Let ${member.name} consult ${other.name}`}
-                    onChange={(e) => {
-                      const next = e.target.checked ? [...member.consultants, other.id] : member.consultants.filter((id) => id !== other.id);
-                      onRun(() => patchMember(room.id, member.id, { consultants: next }));
-                    }}
-                  />
-                  {other.name} <span className="muted">@{other.handle}</span>
-                  {!other.consultable ? <span className="muted"> — may not be consulted</span> : null}
-                </label>
-              </li>
-            ))}
-          </ul>
-        </details>
+                    title={other.consultable ? undefined : `${other.name} may not be consulted`}
+                    disabled={busy || (!other.consultable && !on)}
+                    onClick={() => onRun(() => patchMember(room.id, member.id, { consultants: on ? member.consultants.filter((id) => id !== other.id) : [...member.consultants, other.id] }))}
+                  >
+                    {on ? <IconCheck size={12} /> : <IconPlus size={12} />}
+                    {other.name}
+                    <span className="muted">@{other.handle}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Collapse>
+        </>
       ) : null}
     </li>
   );
@@ -342,9 +335,8 @@ function AddMember({
     }
   };
   return (
-    <div className="room-add" role="group" aria-label="Add a member">
-      <label className="room-field">
-        <span>Bot</span>
+    <div className="form-card room-add" role="group" aria-label="Add a member">
+      <FormRow label="Bot" desc={bot ? `${bot.harnessId}${bot.role ? ` · ${bot.role}` : ""}${bot.model ? ` · ${bot.model}` : ""}` : undefined}>
         <Select
           label="Bot to add"
           value={botId}
@@ -360,28 +352,31 @@ function AddMember({
             dot: `var(--harness-${b.harnessId}, var(--muted))`,
           }))}
         />
-      </label>
-      <label className="room-field">
-        <span>Handle</span>
-        <input
-          type="text"
-          value={handle}
-          aria-label="Handle for the new member"
-          aria-invalid={!handleOk || duplicate}
-          onChange={(e) => setHandle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void submit();
-          }}
-        />
-      </label>
-      {!handleOk ? <p className="room-warning">A handle is 1–32 letters, digits, `_` or `-`, starting with a letter or digit.</p> : null}
-      {duplicate ? <p className="room-warning">Another member already uses @{handle}.</p> : null}
+      </FormRow>
+      <FormRow
+        label="Handle"
+        desc={!handleOk ? "1–32 letters, digits, _ or -, starting with a letter or digit." : duplicate ? `Another member already uses @${handle}.` : "How the room mentions it."}
+      >
+        <label className="room-handle">
+          <span aria-hidden="true">@</span>
+          <input
+            type="text"
+            value={handle}
+            aria-label="Handle for the new member"
+            aria-invalid={!handleOk || duplicate}
+            onChange={(e) => setHandle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void submit();
+            }}
+          />
+        </label>
+      </FormRow>
       <div className="room-add-actions">
-        <button type="button" className="btn btn-small" disabled={busy || !handleOk || duplicate} onClick={() => void submit()}>
-          Add to room
-        </button>
         <button type="button" className="btn btn-small btn-ghost" onClick={onClose}>
           Cancel
+        </button>
+        <button type="button" className="btn btn-small btn-primary" disabled={busy || !handleOk || duplicate} onClick={() => void submit()}>
+          Add to room
         </button>
       </div>
     </div>

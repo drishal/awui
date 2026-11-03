@@ -15,6 +15,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Settings' lists (folders, hosts, logins) read as the config file's lines. */
+.settings-dialog .form-control textarea {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
 .settings-actions {
   display: flex;
   flex-wrap: wrap;

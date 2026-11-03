@@ -80,6 +80,25 @@ test("mentions run exactly the named bots, in room rank order", async ({ page })
   await expect(page.getByTestId("bot-run-status").first()).toHaveText("Done");
 });
 
+test("a new room's lead is the bot marked Lead, not the first one added", async ({ page }) => {
+  await makeBot(page, "First Pick");
+  await page.getByRole("button", { name: /^(New bot|Create a bot)$/ }).click();
+  await page.getByLabel("Bot name").fill("Marked Lead");
+  await page.getByRole("button", { name: "Create bot" }).click();
+  await expect(page.getByRole("button", { name: "Add Marked Lead" })).toBeVisible({ timeout: 10_000 });
+  await page.getByLabel("Room name").fill("Lead Room");
+  await page.getByRole("button", { name: "Add First Pick" }).click();
+  await page.getByRole("button", { name: "Add Marked Lead" }).click();
+  // The first bot added leads until another is marked.
+  await expect(page.getByRole("button", { name: "Make First Pick the lead" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Make Marked Lead the lead" }).click();
+  await expect(page.getByRole("button", { name: "Make First Pick the lead" })).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "Create room" }).click();
+  await page.getByRole("button", { name: "Open room Lead Room" }).click();
+  await page.getByRole("button", { name: "Room members" }).click();
+  await expect(page.getByRole("button", { name: "Room lead", exact: true })).toHaveText(/Marked Lead/);
+});
+
 test("a consultation round nests under its requester and the requester answers plainly", async ({ page }) => {
   await makeBot(page, "Asker Bot");
   await page.getByRole("button", { name: /^(New bot|Create a bot)$/ }).click();

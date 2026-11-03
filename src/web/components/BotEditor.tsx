@@ -1,16 +1,17 @@
 // A bot profile's form: which harness runs it, which real model and thinking
 // level that harness offers here, its instructions (sent on every invocation),
-// its role label, and its accent. Capability-gated: a control appears only when
+// its role label, and its accent (a row of swatches, not a list of token names). Capability-gated: a control appears only when
 // the harness says it has one, and never with a fictional universal value.
 import { useEffect, useState } from "react";
 import type { BotProfile, HarnessStatus, ModelInfo, WorkspaceInfo } from "../../shared/protocol.js";
 import { BOARD_MAX_BOT_NAME_CHARS, BOARD_MAX_INSTRUCTIONS_CHARS, BOARD_MAX_ROLE_CHARS, HARNESS_ACCENTS } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { createBot, deleteBot, patchBot } from "../rooms.js";
-import { IconRefresh } from "../icons.js";
+import { IconRefresh, IconX } from "../icons.js";
 import { ConfirmButton } from "./ConfirmButton.js";
-import { Select } from "./Select.js";
 import { Dialog } from "./Dialog.js";
+import { FormRow } from "./FormRow.js";
+import { Select } from "./Select.js";
 import { ModelPicker } from "./ModelPicker.js";
 
 const ACCENTS: string[] = [...HARNESS_ACCENTS];
@@ -160,51 +161,41 @@ export function BotEditor({
     }
   };
 
+  const preset = ROLE_PRESETS.find((p) => p.label === role.trim().toLowerCase());
+  const modelNote = modelsError ?? (staleModel ? `“${staleModel}” is not offered by ${harness?.displayName ?? harnessId} here, so it was cleared: pick another, or keep the harness default.` : null);
+
   return (
     <Dialog title={bot ? `Edit ${bot.name}` : "New bot"} onClose={onClose} className="bot-editor-dialog">
       <div className="board-form">
-        <label className="room-field">
-          <span>Name</span>
-          <input type="text" value={name} maxLength={BOARD_MAX_BOT_NAME_CHARS} aria-label="Bot name" onChange={(e) => setName(e.target.value)} />
-        </label>
-        {bot || !harness?.capabilities.supportsModelSelection ? (
-          <label className="room-field">
-            <span>Harness</span>
-            {bot ? (
-              <span className="board-static" title="A bot's harness cannot change; create a new profile instead">
-                {harness?.displayName ?? bot.harnessId}
-              </span>
-            ) : (
-              <Select
-                label="Harness"
-                value={harnessId}
-                onChange={setHarnessId}
-                options={harnesses.map((h) => ({
-                  value: h.id,
-                  label: h.displayName,
-                  hint: h.available ? (h.version ?? "") : (h.reason ?? "not installed"),
-                  disabled: !h.available,
-                  dot: `var(--harness-${h.id}, var(--muted))`,
-                }))}
-              />
-            )}
-          </label>
-        ) : null}
-        {workspaces.length > 1 ? (
-          <label className="room-field">
-            <span>Model catalog from</span>
-            <Select
-              label="Model catalog workspace"
-              value={workspaceId}
-              onChange={setWorkspaceId}
-              options={workspaces.map((w) => ({ value: w.id, label: w.name }))}
-            />
-          </label>
-        ) : null}
-        {harness?.capabilities.supportsModelSelection ? (
-          <div className="board-field">
-            <span className="board-field-label">{bot ? "Model" : "Harness & model"}</span>
-            <div className="board-model-row">
+        <div className="form-card">
+          <FormRow label="Name" desc="Also its @handle in a room, unless the room picks another." stack>
+            <input className="input" type="text" value={name} maxLength={BOARD_MAX_BOT_NAME_CHARS} aria-label="Bot name" placeholder="e.g. reviewer" onChange={(e) => setName(e.target.value)} />
+          </FormRow>
+          {bot || !harness?.capabilities.supportsModelSelection ? (
+            <FormRow label="Harness" desc={bot ? "A bot's harness cannot change; make a new bot instead." : "The agent that runs this bot."}>
+              {bot ? (
+                <span className="board-static">
+                  <span className="harness-dot" style={{ ["--harness" as string]: `var(--harness-${bot.harnessId}, var(--muted))` }} aria-hidden="true" />
+                  {harness?.displayName ?? bot.harnessId}
+                </span>
+              ) : (
+                <Select
+                  label="Harness"
+                  value={harnessId}
+                  onChange={setHarnessId}
+                  options={harnesses.map((h) => ({
+                    value: h.id,
+                    label: h.displayName,
+                    hint: h.available ? (h.version ?? "") : (h.reason ?? "not installed"),
+                    disabled: !h.available,
+                    dot: `var(--harness-${h.id}, var(--muted))`,
+                  }))}
+                />
+              )}
+            </FormRow>
+          ) : null}
+          {harness?.capabilities.supportsModelSelection ? (
+            <FormRow label={bot ? "Model" : "Harness and model"} desc={modelNote ?? (model === null ? "The harness's own default, until you pick one." : "Picked from the harness's own list.")}>
               <ModelPicker
                 models={models}
                 current={model}
@@ -240,85 +231,86 @@ export function BotEditor({
                       ),
                     })}
               />
-              <button type="button" className="icon-btn" aria-label="Refresh models" title="Re-read this harness's models" onClick={() => void loadModels()}>
+              {model !== null ? (
+                <button type="button" className="ghost-icon" aria-label="Use the harness default" title="Use the harness default" onClick={() => setModel(null)}>
+                  <IconX size={13} />
+                </button>
+              ) : null}
+              <button type="button" className="ghost-icon" aria-label="Refresh models" title="Re-read this harness's models" onClick={() => void loadModels()}>
                 <IconRefresh size={14} />
               </button>
-            </div>
-            {model !== null ? (
-              <button type="button" className="btn btn-small btn-ghost" onClick={() => setModel(null)}>
-                Use the harness default
-              </button>
-            ) : null}
-            {modelsError ? <p className="room-warning">{modelsError}</p> : null}
-            {staleModel ? (
-              <p className="room-warning">
-                “{staleModel}” is not offered by {harness?.displayName ?? harnessId} here, so it was cleared: pick a model from the list, or leave Harness default.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        {harness?.capabilities.supportsPermissionMode ? (
-          <label className="room-field">
-            <span>Permission mode</span>
-            <input
-              type="text"
-              value={permissionMode}
-              aria-label="Permission mode"
-              placeholder="Harness default"
-              onChange={(e) => setPermissionMode(e.target.value)}
-            />
-            <span className="board-hint">The harness's own mode id. awui checks it when the bot runs; a mode it refuses is reported, never silently ignored.</span>
-          </label>
-        ) : null}
-        <div className="room-field">
-          <span>Role</span>
-          <div className="board-role-presets" role="group" aria-label="Role presets">
-            {ROLE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                className="board-role-preset"
-                aria-pressed={role.trim().toLowerCase() === preset.label}
-                title={preset.instructions}
-                onClick={() => {
-                  setRole(preset.label);
-                  // Fill the instructions from the preset, but never over text the user wrote:
-                  // an empty field, or one still holding another preset's words, may be replaced.
-                  setInstructions((previous) => {
-                    const trimmed = previous.trim();
-                    const untouched = trimmed === "" || ROLE_PRESETS.some((p) => p.instructions.trim() === trimmed);
-                    return untouched ? preset.instructions : previous;
-                  });
-                }}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <input type="text" value={role} maxLength={BOARD_MAX_ROLE_CHARS} aria-label="Role" placeholder="lead, researcher, critic…" onChange={(e) => setRole(e.target.value)} />
-          <span className="board-hint">{ROLE_PRESETS.find((preset) => preset.label === role.trim().toLowerCase())?.hint ?? "A label for you; routing follows mentions, never the role."}</span>
+            </FormRow>
+          ) : null}
+          {workspaces.length > 1 && harness?.capabilities.supportsModelSelection ? (
+            <FormRow label="Models from" desc="The project whose model list to read; providers can differ per folder.">
+              <Select label="Model catalog workspace" value={workspaceId} onChange={setWorkspaceId} options={workspaces.map((w) => ({ value: w.id, label: w.name, hint: w.path }))} />
+            </FormRow>
+          ) : null}
+          {harness?.capabilities.supportsPermissionMode ? (
+            <FormRow label="Permission mode" desc="The harness's own mode id, checked when the bot runs; a mode it refuses is reported.">
+              <input className="input" type="text" value={permissionMode} aria-label="Permission mode" placeholder="Harness default" onChange={(e) => setPermissionMode(e.target.value)} />
+            </FormRow>
+          ) : null}
         </div>
-        <label className="room-field">
-          <span>Accent</span>
-          <Select
-            label="Accent"
-            value={accent}
-            onChange={setAccent}
-            options={[{ value: "", label: "Theme default" }, ...ACCENTS.map((token) => ({ value: token, label: token, dot: `var(--${token})` }))]}
-          />
-        </label>
-        <label className="room-field">
-          <span>Instructions</span>
-          <textarea
-            value={instructions}
-            maxLength={BOARD_MAX_INSTRUCTIONS_CHARS}
-            rows={6}
-            aria-label="Instructions"
-            placeholder="How this bot should work in a room…"
-            onChange={(e) => setInstructions(e.target.value)}
-          />
-          <span className="board-hint">Sent with every invocation, because harnesses have no portable system prompt. A room's history cannot erase them.</span>
-        </label>
+
+        <div className="form-card">
+          <FormRow label="Role" desc={preset?.hint ?? "A label for you; routing follows @mentions, never the role. A preset also fills in its instructions."} stack>
+            <div className="board-role-row">
+              <div className="board-role-presets" role="group" aria-label="Role presets">
+                {ROLE_PRESETS.map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    className="board-role-preset"
+                    aria-pressed={role.trim().toLowerCase() === p.label}
+                    title={p.instructions}
+                    onClick={() => {
+                      setRole(p.label);
+                      // Fill the instructions from the preset, but never over text the user wrote:
+                      // an empty field, or one still holding another preset's words, may be replaced.
+                      setInstructions((previous) => {
+                        const trimmed = previous.trim();
+                        const untouched = trimmed === "" || ROLE_PRESETS.some((q) => q.instructions.trim() === trimmed);
+                        return untouched ? p.instructions : previous;
+                      });
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <input className="input board-role-input" type="text" value={role} maxLength={BOARD_MAX_ROLE_CHARS} aria-label="Role" placeholder="or your own" onChange={(e) => setRole(e.target.value)} />
+            </div>
+          </FormRow>
+          <FormRow label="Accent" desc="Its dot in the room and on its replies.">
+            <div className="board-swatches" role="radiogroup" aria-label="Accent">
+              {[{ value: "", label: "Theme default" }, ...ACCENTS.map((token) => ({ value: token, label: token }))].map((swatch) => (
+                <button
+                  key={swatch.value || "default"}
+                  type="button"
+                  role="radio"
+                  aria-checked={accent === swatch.value}
+                  aria-label={swatch.label}
+                  title={swatch.label}
+                  className={`board-swatch${swatch.value === "" ? " is-default" : ""}`}
+                  style={swatch.value ? ({ "--swatch": `var(--${swatch.value})` } as React.CSSProperties) : undefined}
+                  onClick={() => setAccent(swatch.value)}
+                />
+              ))}
+            </div>
+          </FormRow>
+          <FormRow label="Instructions" desc="Sent with every message the bot answers (harnesses have no shared system prompt), so a room's history cannot erase them." stack>
+            <textarea
+              className="input"
+              value={instructions}
+              maxLength={BOARD_MAX_INSTRUCTIONS_CHARS}
+              rows={6}
+              aria-label="Instructions"
+              placeholder="How this bot should work in a room…"
+              onChange={(e) => setInstructions(e.target.value)}
+            />
+          </FormRow>
+        </div>
       </div>
       {notice ? (
         <p className="room-warning" role="alert">
@@ -326,12 +318,6 @@ export function BotEditor({
         </p>
       ) : null}
       <div className="board-actions">
-        <button type="button" className="btn btn-primary" disabled={!valid || saving} onClick={() => void save()}>
-          {bot ? "Save profile" : "Create bot"}
-        </button>
-        <button type="button" className="btn btn-ghost" onClick={onClose}>
-          Cancel
-        </button>
         {bot ? (
           <ConfirmButton
             label={`Delete ${bot.name}`}
@@ -351,6 +337,12 @@ export function BotEditor({
             }}
           />
         ) : null}
+        <button type="button" className="btn btn-ghost" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-primary" disabled={!valid || saving} onClick={() => void save()}>
+          {bot ? "Save bot" : "Create bot"}
+        </button>
       </div>
     </Dialog>
   );
