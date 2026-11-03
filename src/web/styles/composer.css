@@ -631,6 +631,78 @@
   }
 }
 
+/* Folded to one row (composer-fold.ts, Claude's app): the card is a pill — a
+   filled round +, the box's placeholder line, the context ring as the chip,
+   and the round Send. The bar's children rejoin the card's own row
+   (display: contents), so useMorph measures the box, + and Send on both sides
+   of the fold and glides them. Tapping the box focuses it and the card opens,
+   so the fold needs no toggle of its own. */
+@media (max-width: 600px) {
+  .composer-card.is-folded {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 999px;
+  }
+
+  .composer-card.is-folded:focus-within {
+    box-shadow: var(--shadow-soft), 0 0 0 1px var(--hairline);
+  }
+
+  .composer-card.is-folded .composer-input {
+    order: 1;
+    flex: 1;
+    min-width: 0;
+    min-height: 32px;
+    padding: 6px 2px;
+    /* One line's worth: the placeholder sets the row's height. */
+    line-height: 20px;
+  }
+
+  .composer-card.is-folded .composer-input.is-empty::before {
+    inset: 6px auto auto 2px;
+  }
+
+  .composer-card.is-folded .composer-bar {
+    display: contents;
+  }
+
+  .composer-card.is-folded .composer-attach {
+    order: 0;
+    margin-left: 0;
+    /* The filled round +, Send's counterpart at the row's head. */
+    display: inline-grid;
+    place-items: center;
+    background: var(--surface-2);
+    color: var(--text);
+    border-radius: 50%;
+  }
+
+  .composer-card.is-folded .composer-attach:hover:not(:disabled) {
+    background: var(--hover);
+  }
+
+  /* The settings pill and its row take no space when folded; the box's tap is
+     what opens them again (its focus re-runs the fold). */
+  .composer-card.is-folded .composer-controls {
+    display: none;
+  }
+
+  .composer-card.is-folded .composer-actions {
+    order: 2;
+    margin-left: 0;
+    gap: 4px;
+  }
+
+  /* The ring keeps its measure (it's inside the actions, not a morph part):
+     it reads as the row's chip, and still opens its usage popover. */
+  .composer-card.is-folded .context-ring {
+    height: 28px;
+    padding: 0 4px;
+  }
+}
+
 .composer-controls {
   display: flex;
   align-items: center;

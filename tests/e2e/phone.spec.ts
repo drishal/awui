@@ -147,7 +147,10 @@ test("a phone composer folds its pickers into one settings chip", async ({ page 
   await signInAndOpen(page);
   await page.keyboard.press("Escape");
   await openChat(page);
+  // Folded to one row while idle: the chip is hidden until the box takes focus.
   const chip = page.getByTestId("config-chip");
+  await expect(chip).toBeHidden();
+  await page.getByRole("textbox", { name: "Message" }).click();
   await expect(chip).toBeVisible();
   await expect(page.locator(".composer-pickers")).toBeHidden();
   await expect(chip).toContainText("Fake");
@@ -190,7 +193,9 @@ test("the permission list opens on screen from the settings sheet", async ({ pag
   await signInAndOpen(page);
   await page.keyboard.press("Escape");
   await openChat(page);
-  // On a phone the composer's pickers live behind one chip.
+  // On a phone the composer's pickers live behind one chip; the folded card
+  // opens when the box takes focus.
+  await page.getByRole("textbox", { name: "Message" }).click();
   await page.getByTestId("config-chip").click();
   await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("permission-picker").click();
   const list = page.getByRole("listbox", { name: "Permission mode" });

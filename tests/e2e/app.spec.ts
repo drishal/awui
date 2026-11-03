@@ -642,6 +642,8 @@ test("the model picker opens as a bottom sheet on phones", async ({ page }) => {
   await page.keyboard.press("Escape");
   await openChat(page);
   // A phone folds the composer's pickers into one chip; the model lives in its sheet.
+  // The card rests folded to one row while idle, so the box takes focus first.
+  await page.getByRole("textbox", { name: "Message" }).click();
   await page.getByTestId("config-chip").click();
   await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("model-picker").click();
   const dialog = page.getByRole("dialog", { name: "Choose a model" });
