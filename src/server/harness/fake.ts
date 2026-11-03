@@ -16,6 +16,7 @@
 //   "ticking" run a command whose output arrives a line at a time
 //   "testrun" run a command that prints a Vitest summary with one failing test
 //   "bgjob" leave a test suite running in the background (omp's shapes): a wait streams its widget, then it reports done
+//   "orphantask" a task job spawns (omp's shapes) and nothing ever reports it: the run settles with it running
 //   "e2eprogress" run a Playwright suite whose line reporter prints its progress a test at a time, one failing
 //   "manycalls" twelve quick reads in a row (a run long enough to fold)
 //   "toolfail" a command call that fails (port in use), then the run carries on
@@ -712,6 +713,20 @@ class FakeLiveChat implements LiveChat {
         const report = { jobs: [{ jobId: "bg_1", type: "bash", status: "completed", label: command, durationMs: 4200 }] };
         this.record({ role: "custom", customType: "async-result", display: false, content: "<system-notice>\nBackground job bg_1 has completed.\n11 passed, 1 failed\n</system-notice>", details: report });
         this.emit({ type: "job_reports", jobs: jobReports("async-result", "11 passed, 1 failed", report) });
+      }
+      if (/\borphantask\b/i.test(text)) {
+        // omp's delegated task spawned and never heard of again (the run settled with it open,
+        // as the EsetResearch transcript reads): still "running" at settle, so the UI folds it.
+        await this.call(
+          {
+            name: "task",
+            args: { context: "Research the thing", i: "Researching" },
+            output: "Spawned agent `EsetResearch` (job `EsetResearch`).",
+            details: { async: { state: "running", jobId: "EsetResearch", type: "task" } },
+          },
+          signal,
+        );
+        // No wait, no async-result: the run just ends.
       }
       if (/\be2eprogress\b/i.test(text)) {
         // Playwright's line reporter: the total up front, then [n/N] as each test starts, a failure numbered as it lands.

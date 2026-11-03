@@ -65,6 +65,17 @@ describe("omp's background jobs", () => {
     const tool = historyToItems(messages).find((i): i is ToolItem => i.kind === "tool");
     expect(tool?.jobs).toEqual([expect.objectContaining({ id: "bg_1", status: "failed", startedAt: 1000, endedAt: 5000 })]);
   });
+
+  it("a task left running with no report in a settled transcript reads as stopped", () => {
+    // The EsetResearch shape: a task spawn's details mark it running; nothing ever reports again.
+    const messages = [
+      { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "task", arguments: { context: "Research" } }], timestamp: 1000 },
+      { role: "toolResult", toolCallId: "c1", toolName: "task", content: [{ type: "text", text: "Spawned agent `EsetResearch` (job `EsetResearch`)." }], details: { async: { state: "running", jobId: "EsetResearch", type: "task" } }, timestamp: 1001 },
+    ];
+    const tool = historyToItems(messages).find((i): i is ToolItem => i.kind === "tool");
+    expect(tool?.jobs).toEqual([expect.objectContaining({ id: "EsetResearch", kind: "task", status: "stopped" })]);
+    expect(tool?.jobs?.[0]?.endedAt).toBeTypeOf("number");
+  });
 });
 
 describe("Claude Code's background tasks", () => {

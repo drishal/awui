@@ -706,7 +706,13 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
     }
   }
   // A tool call without a result in a settled transcript was interrupted: no spinner, and a note where its output was.
+  // The same for a task (subagent) a call still shows running: the transcript is settled, so its run loop is over
+  // and it can never report again. A shell job still can (a backgrounded command outlives the settle).
+  const now = Date.now();
   for (const tool of tools.values()) {
+    if (tool.jobs?.some((j) => j.kind === "task" && j.status === "running")) {
+      tool.jobs = tool.jobs.map((j) => (j.kind === "task" && j.status === "running" ? { ...j, status: "stopped", endedAt: now } : j));
+    }
     if (tool.status !== "running") continue;
     tool.status = "done";
     if (!tool.output) tool.output = NO_RESULT_TEXT;

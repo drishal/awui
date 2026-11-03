@@ -687,11 +687,21 @@ class EventReducer {
   /**
    * A run that ends with calls still open leaves no spinner: a cancelled question, or a
    * harness that lost the result, must read as ended once it says the run is over.
+   * The same for a task (subagent) a call reported running: its progress comes through the
+   * run loop of the session that settled, so with the run over it can never report again.
+   * A shell job is not touched: a backgrounded command can still be alive past the settle.
    */
   closeRunningTools(note = NO_RESULT_TEXT): void {
+    const now = Date.now();
     for (const item of this.items) {
-      if (item.kind !== "tool" || item.status !== "running") continue;
-      this.put({ ...item, status: "done", output: item.output || note, endedAt: item.endedAt ?? Date.now() });
+      if (item.kind !== "tool") continue;
+      const orphanedJobs = item.jobs?.some((j) => j.kind === "task" && j.status === "running") ?? false;
+      if (item.status !== "running" && !orphanedJobs) continue;
+      this.put({
+        ...item,
+        ...(item.status === "running" ? { status: "done", output: item.output || note, endedAt: item.endedAt ?? now } : {}),
+        ...(orphanedJobs ? { jobs: item.jobs!.map((j) => (j.kind === "task" && j.status === "running" ? { ...j, status: "stopped" as const, endedAt: now } : j)) } : {}),
+      });
     }
   }
 }

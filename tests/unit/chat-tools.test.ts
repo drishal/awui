@@ -38,6 +38,24 @@ describe("a call left open when its run ends", () => {
     expect(tool).toMatchObject({ name: "ask_user", status: "done", output: NO_RESULT_TEXT });
     expect(tool?.endedAt).toBeTypeOf("number");
   });
+
+  it("a task job it never heard back from stops at the settle, not at the stale cutoff", async () => {
+    t = await makeTestApp();
+    const agent = await signedIn(t);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    const live = () => (t as TestApp).manager.get(chat.chatId);
+
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "orphantask" });
+    await until(() => live().status === "idle");
+
+    const [spawn] = tools(live().snapshot());
+    expect(spawn?.jobs).toBeDefined();
+    const [job] = spawn?.jobs ?? [];
+    expect(job?.id).toBe("EsetResearch");
+    expect(job?.status).toBe("stopped");
+    expect(job?.endedAt).toBeTypeOf("number");
+  });
 });
 
 describe("a run that does more than write", () => {
