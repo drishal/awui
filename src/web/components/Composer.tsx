@@ -32,12 +32,16 @@ import { continueList, indentList } from "../list-continue.js";
 import { loadStash, saveStash, stashDraft, takeFromStash, type StashEntry } from "../stash.js";
 import { CONTINUE_TEXT, limitStop } from "../../shared/limit-stop.js";
 import { LimitRecovery } from "./LimitRecovery.js";
-import { useDismiss, useLeave, useNow } from "../hooks.js";
+import { useDismiss, useLeave, useMediaQuery, useMorph, useNow } from "../hooks.js";
+import { composerFolded } from "../composer-fold.js";
 import { GitPanel, GitRow } from "./GitStatusView.js";
 import { useGitStatus } from "../git.js";
 import { jobProgress } from "../job-progress.js";
 import { chatJobs, FINISHED_SHOWN_MS, shownJobs } from "../jobs.js";
 import { Dot, dotted } from "./Dot.js";
+
+/** What glides when the phone's card folds or opens: the box, the + and the right-hand buttons. */
+const MORPH_PARTS = [".composer-input", ".composer-attach", ".composer-actions"] as const;
 
 /** The prompt box's drag limits: a line, or most of a screen. */
 const MIN_PROMPT_H = 26;
@@ -109,6 +113,10 @@ export function Composer({
   const [viewing, setViewing] = useState<number | null>(null);
   const thumbs = useRef(new Map<number, HTMLElement>());
   const area = useRef<ChipEditorHandle>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  // In the box, or still on something inside the card: the folded phone card stays open (composer-fold.ts).
+  const [writing, setWriting] = useState(false);
+  const touching = useRef(false);
   // The divider above the card (pi-vot's): drag it up for a taller prompt. The
   // height is the textarea's, kept per device; double-click or the keyboard resets.
   const [promptHeight, setPromptHeight] = useState<number | null>(() => load<number | null>("composerHeight", null));
@@ -611,6 +619,11 @@ export function Composer({
   };
 
   const empty = !text.trim();
+  // A phone's composer rests as one pill row and opens into the box and its controls when you write (Claude's
+  // app): the open is a morph, the card's height springing and its parts gliding to their new places.
+  const phone = useMediaQuery("(max-width: 600px)");
+  const pillRow = composerFolded({ phone, hero: Boolean(hero), closed, writing, text, images: images.length, pastes: pastes.length, menuOpen, dragging });
+  useMorph(cardRef, pillRow, MORPH_PARTS);
   const model = chat.config.models.find((m) => m.key === chat.config.model);
   const blind = images.length > 0 && model?.vision === false;
   const pending = closed ? [] : chat.pending;
@@ -705,7 +718,26 @@ export function Composer({
         />
       ) : (
         <div
-          className={`composer-card${closed ? " is-closed" : ""}${dragging ? " is-dragging" : ""}`}
+          ref={cardRef}
+          className={`composer-card${closed ? " is-closed" : ""}${dragging ? " is-dragging" : ""}${pillRow ? " is-folded" : ""}`}
+          // Writing opens the folded card; it folds again once focus has left it (a touch on its chip keeps it open).
+          onFocus={(e) => {
+            if ((e.target as HTMLElement).closest(".composer-input")) setWriting(true);
+          }}
+          onBlur={() => {
+            window.setTimeout(() => {
+              const card = cardRef.current;
+              if (card && !card.contains(document.activeElement) && !touching.current) setWriting(false);
+            }, 160);
+          }}
+          onPointerDown={() => {
+            touching.current = true;
+            const up = () => {
+              window.removeEventListener("pointerup", up);
+              window.setTimeout(() => (touching.current = false), 250);
+            };
+            window.addEventListener("pointerup", up);
+          }}
           onDragOver={(e) => {
             if (closed || !hasFiles(e)) return;
             e.preventDefault();
@@ -927,7 +959,7 @@ export function Composer({
           <ChipEditor
             ref={area}
             className="composer-input"
-            style={promptHeight !== null ? { minHeight: promptHeight } : undefined}
+            style={promptHeight !== null && !pillRow ? { minHeight: promptHeight } : undefined}
             value={text}
             disabled={closed}
             placeholder={

@@ -119,3 +119,58 @@ export function useViewSlide(ref: RefObject<HTMLElement | null>, view: string): 
     );
   }, [ref, view]);
 }
+
+/** Whether a media query matches now, kept in step as it changes (a phone's width, a rotated screen). */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => typeof window !== "undefined" && window.matchMedia?.(query).matches === true);
+  useEffect(() => {
+    const list = window.matchMedia?.(query);
+    if (!list) return;
+    const update = () => setMatches(list.matches);
+    update();
+    list.addEventListener("change", update);
+    return () => list.removeEventListener("change", update);
+  }, [query]);
+  return matches;
+}
+
+/**
+ * Animate a container between two layouts when `state` changes (FLIP): its height springs from the old
+ * to the new, and each part named by `parts` (selectors inside it) glides from where it was to where it
+ * is now. Parts are measured against the container's own top-left, since a container anchored at the
+ * bottom (the composer) moves its top as it grows, and its parts ride along with it. Measured after every
+ * render, so the "before" is always the last layout drawn. Off under reduced motion.
+ */
+export function useMorph(root: RefObject<HTMLElement | null>, state: unknown, parts: readonly string[], durationMs = 380): void {
+  const last = useRef<{ box: DOMRect; parts: Array<DOMRect | null> } | null>(null);
+  const was = useRef(state);
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const measure = () => ({ box: el.getBoundingClientRect(), parts: parts.map((sel) => el.querySelector(sel)?.getBoundingClientRect() ?? null) });
+    const before = last.current;
+    const changed = was.current !== state;
+    was.current = state;
+    const now = measure();
+    last.current = now;
+    if (!changed || !before || typeof el.animate !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const easing = getComputedStyle(el).getPropertyValue("--spring").trim() || "ease-out";
+    const timing = { duration: durationMs, easing };
+    if (Math.abs(before.box.height - now.box.height) > 0.5) {
+      el.classList.add("is-morphing");
+      const grow = el.animate([{ height: `${before.box.height}px` }, { height: `${now.box.height}px` }], timing);
+      grow.onfinish = grow.oncancel = () => el.classList.remove("is-morphing");
+    }
+    parts.forEach((sel, i) => {
+      const from = before.parts[i];
+      const to = now.parts[i];
+      const node = el.querySelector<HTMLElement>(sel);
+      if (!from || !to || !node) return;
+      const dx = from.left - before.box.left - (to.left - now.box.left);
+      const dy = from.top - before.box.top - (to.top - now.box.top);
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+      node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], timing);
+    });
+  });
+}
