@@ -32,10 +32,11 @@ import { continueList, indentList } from "../list-continue.js";
 import { loadStash, saveStash, stashDraft, takeFromStash, type StashEntry } from "../stash.js";
 import { CONTINUE_TEXT, limitStop } from "../../shared/limit-stop.js";
 import { LimitRecovery } from "./LimitRecovery.js";
-import { useDismiss, useLeave } from "../hooks.js";
+import { useDismiss, useLeave, useNow } from "../hooks.js";
 import { GitPanel, GitRow } from "./GitStatusView.js";
 import { useGitStatus } from "../git.js";
 import { jobProgress } from "../job-progress.js";
+import { chatJobs, FINISHED_SHOWN_MS, shownJobs } from "../jobs.js";
 import { Dot, dotted } from "./Dot.js";
 
 /** The prompt box's drag limits: a line, or most of a screen. */
@@ -617,6 +618,11 @@ export function Composer({
   const stopped = useMemo(() => limitStop(chat.items, chat.status, limits ?? null, harnessName), [chat.items, chat.status, limits, harnessName]);
   // The subagent/job strip above the composer: live while any delegated run is.
   const jobs = useMemo(() => jobProgress(chat.items, busy), [chat.items, busy]);
+  // Background jobs (a backgrounded command, a waited-on task): the running ones, and one that just ended for a moment.
+  const allJobs = useMemo(() => chatJobs(chat.items), [chat.items]);
+  const jobsTicking = allJobs.some((j) => j.status === "running" || (j.endedAt !== undefined && Date.now() - j.endedAt < FINISHED_SHOWN_MS));
+  const jobsNow = useNow(jobsTicking, 2000);
+  const background = useMemo(() => shownJobs(allJobs, jobsNow), [allJobs, jobsNow]);
 
   return (
     <div className={`composer${hero ? " is-hero" : ""}`}>
@@ -666,6 +672,8 @@ export function Composer({
         base={git ? <GitRow git={git} onOpen={() => setGitOpen(true)} /> : null}
         working={busy}
         jobs={jobs}
+        background={background}
+        allJobs={allJobs}
       />
       {gitOpen && git ? <GitPanel chatId={chat.chatId} git={git} at={gitAt} onRefresh={refreshGit} onClose={() => setGitOpen(false)} /> : null}
       {stopped && !busy && pending.length === 0 && !closed ? (

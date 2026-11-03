@@ -209,3 +209,15 @@ describe("helpers", () => {
     expect(callTime(38_000)).toBe("38s");
   });
 });
+
+describe("calls about background jobs", () => {
+  const job = { id: "bg_1", kind: "shell" as const, status: "running" as const, label: "npm run test:e2e", title: "Running the e2e suite" };
+  const call = (name: string, extra: Partial<ToolItem>) => ({ kind: "tool" as const, id: "t:1", name, args: "{}", status: "done" as const, output: "", truncated: false, category: "other" as const, summary: "", paths: [], ...extra });
+  it("names a wait's job by its id and what it is for", () => {
+    expect(toolSentence(call("wait", { status: "running", jobs: [job] }), "/w").text).toBe("Waiting on bg_1: Running the e2e suite");
+    expect(toolSentence(call("wait", { jobs: [job, { ...job, id: "bg_2", status: "done" }] }), "/w")).toMatchObject({ text: "Waited on 2 jobs", facts: ["1 of 2 finished"] });
+  });
+  it("says a command was left running in the background, as which job", () => {
+    expect(toolSentence(call("bash", { category: "command", args: JSON.stringify({ command: "npm run test:e2e" }), jobs: [job] }), "/w").facts).toEqual(["in background · bg_1"]);
+  });
+});

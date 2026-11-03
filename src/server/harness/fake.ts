@@ -15,6 +15,7 @@
 //   "contended" refuse a prompt because a run is going (pi's "already processing")
 //   "ticking" run a command whose output arrives a line at a time
 //   "testrun" run a command that prints a Vitest summary with one failing test
+//   "bgjob" leave a test suite running in the background (omp's shapes): a wait streams its widget, then it reports done
 //   "e2eprogress" run a Playwright suite whose line reporter prints its progress a test at a time, one failing
 //   "manycalls" twelve quick reads in a row (a run long enough to fold)
 //   "toolfail" a command call that fails (port in use), then the run carries on
@@ -53,6 +54,7 @@ import {
   type TodoItem,
 } from "../../shared/protocol.js";
 import { commandOutputEvents, extensionMessage, forkCutIndex, historyToItems, isObj, piTodos, usageEntries } from "./agent-events.js";
+import { jobReports } from "./jobs.js";
 import { seedTranscript, toolRecordText, type HandoffSeed } from "./handoff.js";
 import type {
   HarnessAdapter,
@@ -76,6 +78,8 @@ interface FakeCall {
   details?: Record<string, unknown>;
   /** The output as it arrives while the call runs, one update per entry (else one "partial output…"). */
   updates?: string[];
+  /** The partial result's details with each update (omp's wait streams its jobs this way). */
+  updateDetails?: Array<Record<string, unknown>>;
   /** The call failed: its result is an error. */
   isError?: boolean;
 }
@@ -664,6 +668,51 @@ class FakeLiveChat implements LiveChat {
       if (/\bmanycalls\b/i.test(text)) {
         for (let n = 1; n <= 12; n++) await this.call({ name: "read", args: { path: `src/part-${n}.ts` }, output: `// part ${n}` }, signal);
       }
+      if (/\bbgjob\b/i.test(text)) {
+        // omp: a backgrounded bash starts the job, a wait streams its widget, and an async-result says how it ended.
+        const command = "npm run test:e2e:fast";
+        await this.call(
+          {
+            name: "bash",
+            args: { command, i: "Running the e2e suite" },
+            output: "Backgrounded as job bg_1; its output is injected into the conversation as a follow-up the moment it finishes.",
+            details: { async: { state: "running", jobId: "bg_1", type: "bash" }, timeoutSeconds: 600 },
+          },
+          signal,
+        );
+        const widget = (passed: number, failed: number, done: boolean) => ({
+          title: "e2e fast · 12 tests",
+          stage: done ? `${passed} passed, ${failed} failed` : `[chromium] › tests/e2e/tabs.spec.ts:${passed * 10}:1 › case ${passed + failed + 1}`,
+          headline: { text: String(passed), label: "passed" },
+          blocks: [
+            { kind: "meter", label: "tests done", value: (passed + failed) / 12, text: `${passed + failed}/12`, tone: failed > 0 ? "warning" : "success" },
+            { kind: "stat", items: [{ label: "passed", text: String(passed), tone: "success" }, { label: "failed", text: String(failed), tone: failed > 0 ? "error" : "muted" }] },
+            { kind: "grid", label: "tests", items: Array.from({ length: passed + failed }, (_, i) => ({ label: String(i + 1), text: i === 2 && failed > 0 ? "✘" : "✓", tone: i === 2 && failed > 0 ? "error" : "success" })) },
+          ],
+        });
+        const job = (passed: number, failed: number, done: boolean) => ({ id: "bg_1", type: "bash", status: done ? "completed" : "running", label: command, intent: "Running the e2e suite", widget: widget(passed, failed, done) });
+        const steps: Array<[number, number]> = [
+          [1, 0],
+          [2, 0],
+          [3, 1],
+          [6, 1],
+          [9, 1],
+        ];
+        await this.call(
+          {
+            name: "wait",
+            args: { i: "Waiting for the suite" },
+            output: "Job bg_1 completed",
+            updates: steps.map(([p, f]) => `waiting on 1 job (${p + f}/12)`),
+            updateDetails: steps.map(([p, f]) => ({ op: "wait", jobs: [job(p, f, false)] })),
+            details: { op: "wait", jobs: [{ ...job(11, 1, true), durationMs: 4200 }] },
+          },
+          signal,
+        );
+        const report = { jobs: [{ jobId: "bg_1", type: "bash", status: "completed", label: command, durationMs: 4200 }] };
+        this.record({ role: "custom", customType: "async-result", display: false, content: "<system-notice>\nBackground job bg_1 has completed.\n11 passed, 1 failed\n</system-notice>", details: report });
+        this.emit({ type: "job_reports", jobs: jobReports("async-result", "11 passed, 1 failed", report) });
+      }
       if (/\be2eprogress\b/i.test(text)) {
         // Playwright's line reporter: the total up front, then [n/N] as each test starts, a failure numbered as it lands.
         const lines = ["Running 8 tests using 1 worker", ""];
@@ -976,8 +1025,9 @@ class FakeLiveChat implements LiveChat {
     this.emit({ type: "assistant_end", text: "", thinking: "" });
     this.emit({ type: "tool_start", toolCallId, name: call.name, args: call.args });
     await this.pause(signal, 2);
-    for (const output of call.updates ?? ["partial output…"]) {
-      this.emit({ type: "tool_update", toolCallId, output });
+    for (const [i, output] of (call.updates ?? ["partial output…"]).entries()) {
+      const details = call.updateDetails?.[i];
+      this.emit({ type: "tool_update", toolCallId, output, ...(details ? { details } : {}) });
       await this.pause(signal, call.updates ? 10 : 2);
     }
     const details = call.details ? { details: call.details } : {};

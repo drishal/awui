@@ -1,0 +1,343 @@
+/* ---- background jobs (JobCard.tsx) --------------------------------------------- */
+/* A job is a small card: a mark, what it is for, its headline number, its id and clock on one line,
+   the command under it, then its progress as the harness drew it (meters, stats, a spark, a grid).
+   The card's left edge carries its state: the info colour while it runs, then green or red. */
+
+.job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 6px 6px;
+}
+
+.tool-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px 40px;
+}
+
+.job-card {
+  --job-edge: var(--info);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 12px 10px 14px;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  animation: settle-in var(--dur-spring) var(--spring);
+}
+
+.job-card::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--job-edge);
+  transition: background-color 0.3s ease;
+}
+
+.job-card.is-done {
+  --job-edge: var(--ok);
+}
+
+.job-card.is-failed {
+  --job-edge: var(--danger);
+  background: color-mix(in srgb, var(--danger) 5%, var(--card));
+}
+
+.job-card.is-stopped {
+  --job-edge: var(--muted);
+}
+
+/* While it runs, a faint light travels down its edge. */
+.job-card.is-running::before {
+  background: linear-gradient(180deg, var(--info), color-mix(in srgb, var(--info) 35%, transparent), var(--info)) 0 0 / 100% 200%;
+  animation: job-edge 2.2s linear infinite;
+}
+
+@keyframes job-edge {
+  to {
+    background-position: 0 -200%;
+  }
+}
+
+.job-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.job-mark {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+  justify-content: center;
+  color: var(--info);
+}
+
+.job-card.is-done .job-mark {
+  color: var(--ok);
+}
+
+.job-card.is-failed .job-mark {
+  color: var(--danger);
+}
+
+.job-card.is-stopped .job-mark {
+  color: var(--muted-text);
+}
+
+.job-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-headline {
+  flex: none;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.job-headline strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-id {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.job-time {
+  flex: none;
+  min-width: 4ch;
+  color: var(--muted-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.job-command,
+.job-stage {
+  padding-left: 22px;
+  overflow: hidden;
+  color: var(--muted-text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-command > span {
+  color: color-mix(in srgb, var(--muted-text) 70%, transparent);
+}
+
+.job-stage.is-failed {
+  color: var(--danger);
+}
+
+.job-card > .test-meter {
+  padding: 4px 0 0 22px;
+}
+
+.job-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 0 22px;
+}
+
+/* Tones: the harness's words for a part, as the theme's colours. */
+.job-card .tone-success {
+  --tone: var(--ok);
+}
+
+.job-card .tone-error {
+  --tone: var(--danger);
+}
+
+.job-card .tone-warning {
+  --tone: var(--warn);
+}
+
+.job-card .tone-info {
+  --tone: var(--info);
+}
+
+.job-card .tone-accent {
+  --tone: var(--accent);
+}
+
+.job-card .tone-muted {
+  --tone: var(--muted);
+}
+
+.job-block-top,
+.job-block-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.job-block-value {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.job-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-track {
+  position: relative;
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+
+.job-track-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--share) * 100%);
+  border-radius: inherit;
+  background: var(--tone, var(--accent));
+  transition: width 0.5s var(--ease-out);
+}
+
+.job-card.is-running .job-meter .job-track-fill {
+  background:
+    linear-gradient(100deg, transparent 30%, color-mix(in srgb, white 35%, transparent) 50%, transparent 70%) 0 0 / 200% 100%,
+    var(--tone, var(--accent));
+  animation: shimmer 1.8s linear infinite;
+}
+
+.job-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.job-stat {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tone, var(--text)) 10%, transparent);
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.job-stat strong {
+  color: var(--tone, var(--text));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-note {
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+/* A spark: a count over time as thin columns, the newest brightest, with the last value beside it. */
+.job-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.job-spark-bars {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  gap: 2px;
+  height: 30px;
+  min-width: 0;
+}
+
+.job-spark-bars > span {
+  flex: 1 1 0;
+  max-width: 7px;
+  height: calc(var(--h) * 100%);
+  border-radius: 2px 2px 1px 1px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.job-spark-bars > span:last-child {
+  background: var(--accent);
+}
+
+.job-spark-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--muted-text);
+  font-size: 11.5px;
+}
+
+.job-spark-side strong {
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-bar {
+  display: grid;
+  grid-template-columns: minmax(2ch, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+/* A grid: one small square a test (or step), green or red as it went. */
+.job-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-grid-cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.job-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--tone, color-mix(in srgb, var(--text) 14%, transparent));
+}

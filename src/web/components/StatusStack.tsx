@@ -9,7 +9,7 @@
 // an edit whose message ran meanwhile goes to the composer instead of being lost.
 // Under the queue, the chain: what the server runs after this run (a message,
 // a handoff), each step removable, with Resume and Clear when it is paused.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChainStep, QueueState, TodoItem } from "../../shared/protocol.js";
 import { addToDraft } from "../draft-bus.js";
 import { IconAgents, IconChevronDown, IconClock, IconEdit, IconQueue, IconSteer, IconSwap, IconWarning, IconX, Spinner } from "../icons.js";
@@ -17,6 +17,8 @@ import { jobLine, type JobProgress } from "../job-progress.js";
 import { announceLanding, ranFromQueue, type Spot } from "../queue-glide.js";
 import { load, save } from "../storage.js";
 import { TodoTree } from "./TodoTree.js";
+import { JobCard } from "./JobCard.js";
+import type { ChatJob } from "../jobs.js";
 
 function Group({
   title,
@@ -55,6 +57,8 @@ export function StatusStack({
   base,
   working = false,
   jobs = null,
+  background = [],
+  allJobs = [],
 }: {
   chatId: string;
   /** The harness's own status line (`<harness>:status`), when it has one. */
@@ -75,6 +79,10 @@ export function StatusStack({
   working?: boolean;
   /** Live delegated runs across the chat's tools (omp's TUI strip: "2 agents · 1 running, 1 done"). */
   jobs?: JobProgress | null;
+  /** Background jobs to show now (jobs.ts shownJobs): running ones, and one that just ended. */
+  background?: ChatJob[];
+  /** Every job the chat knows, so a todo that names one can show its state. */
+  allJobs?: ChatJob[];
 }) {
   const key = `stack.${chatId}`;
   const [hidden, setHidden] = useState(() => load<boolean>(key, false));
@@ -131,7 +139,9 @@ export function StatusStack({
     }
     setEditing(null);
   }, [queue, editing]);
-  const count = (jobs ? 1 : 0) + (notice ? 1 : 0) + queued.length + (todos.length > 0 ? 1 : 0) + (lost ? 1 : 0) + chain.length;
+  const jobsById = useMemo(() => new Map(allJobs.map((j) => [j.id, j])), [allJobs]);
+  const runningJobs = background.filter((j) => j.status === "running").length;
+  const count = (background.length > 0 ? 1 : 0) + (jobs ? 1 : 0) + (notice ? 1 : 0) + queued.length + (todos.length > 0 ? 1 : 0) + (lost ? 1 : 0) + chain.length;
   if (count === 0) return base ? <div className="status-stack is-base-only">{base}</div> : null;
   const done = todos.filter((t) => /done|complete/.test(t.status)).length;
 
@@ -158,6 +168,15 @@ export function StatusStack({
               <span className="stack-text">{jobLine(jobs).label}</span>
               <span className="stack-meta">{jobLine(jobs).meta}</span>
             </div>
+          ) : null}
+          {background.length > 0 ? (
+            <Group title="Background" meta={runningJobs > 0 ? `${runningJobs} running` : "finished"} defaultOpen>
+              <div className="job-list" data-testid="background-jobs">
+                {background.map((job) => (
+                  <JobCard key={job.id} job={job} />
+                ))}
+              </div>
+            </Group>
           ) : null}
           {notice ? (
             <div className="stack-row stack-notice" role="status" data-testid="harness-status">
@@ -257,7 +276,7 @@ export function StatusStack({
           ) : null}
           {todos.length > 0 ? (
             <Group title="Todos" meta={`${done}/${todos.length}`} defaultOpen>
-              <TodoTree todos={todos} working={working} />
+              <TodoTree todos={todos} working={working} jobs={jobsById} />
             </Group>
           ) : null}
         </div>

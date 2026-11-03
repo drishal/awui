@@ -93,6 +93,11 @@ const VERBS: Record<string, Record<Tense, string>> = {
   websearch: { running: "Searching the web for", done: "Searched the web for", error: "Couldn't search the web for" },
   mcp: { running: "Asking", done: "Asked", error: "Couldn't ask" },
   agents: { running: "Running", done: "Ran", error: "Couldn't run" },
+  // Background jobs: a wait on them, a look at their list, one stopped.
+  jobwait: { running: "Waiting on", done: "Waited on", error: "Couldn't wait on" },
+  joblist: { running: "Checking", done: "Checked", error: "Couldn't check" },
+  jobstop: { running: "Stopping", done: "Stopped", error: "Couldn't stop" },
+  jobstart: { running: "Starting", done: "Started", error: "Couldn't start" },
   plan: { running: "Updating", done: "Updated", error: "Couldn't update" },
   // rpiv-todo's `todo`: one action on a numbered list, each worded as what it did.
   todo_create: { running: "Adding", done: "Added", error: "Couldn't add" },
@@ -163,6 +168,21 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
   }
   if (item.htmlRender) return make("render", item.htmlRender.title, false, undefined, []);
 
+  // A call about background jobs says which: the wait on them, the list looked at, the one stopped or started.
+  const jobs = item.jobs ?? [];
+  if (jobs.length > 0 && item.category !== "command") {
+    const one = jobs.length === 1 ? jobs[0] : undefined;
+    // One job is named by its id, then what it is for ("Waiting on bg_1: Running the e2e suite").
+    const named = one ? one.id : plural(jobs.length, "job");
+    const why = one?.title ? `: ${one.title}` : undefined;
+    const finished = jobs.filter((j) => j.status !== "running").length;
+    const counts = settled && jobs.length > 1 && finished > 0 ? [`${finished} of ${jobs.length} finished`] : [];
+    if (/^(wait|await)$/i.test(item.name)) return make("jobwait", named, Boolean(one), why, counts);
+    if (/stop|kill/i.test(item.name) || str(args.action) === "stop") return make("jobstop", named, Boolean(one), why, []);
+    if (str(args.action) === "spawn" && one) return make("jobstart", one.title ?? one.label, false, "in the background", [one.id]);
+    return make("joblist", jobs.length === 1 ? named : "background jobs", Boolean(one), why, counts.length > 0 ? counts : jobs.length > 1 ? [plural(jobs.length, "job")] : []);
+  }
+
   const mcp = mcpParts(item.name);
   if (mcp) return make("mcp", mcp.server, false, `: ${toolWords(mcp.tool)}`, []);
 
@@ -204,6 +224,9 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
       // run still wins, since its summary says the most). Success is the expected case, so a
       // clean 0 keeps the line count and only a failure's code — or any nonzero one — is a word.
       const exit = typeof item.exitCode === "number" && (item.status === "error" || item.exitCode !== 0) ? [`exit ${item.exitCode}`] : [];
+      // Left running in the background: the row says so, and as which job.
+      const background = item.jobs?.[0];
+      if (background) return make("command", commandLine(cmd), true, undefined, settled ? [`in background · ${background.id}`] : []);
       return make("command", commandLine(cmd), true, undefined, settled ? (exit.length > 0 ? exit : [n > 0 ? plural(n, "line") : "no output"]) : []);
     }
     case "search": {

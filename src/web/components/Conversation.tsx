@@ -13,6 +13,8 @@ import { useNow } from "../hooks.js";
 import { callTime, toolSentence } from "../tool-sentence.js";
 import { testProgress } from "../tool-facts.js";
 import { TestMeter } from "./TestMeter.js";
+import { JobCard } from "./JobCard.js";
+import { chatJobs } from "../jobs.js";
 import { phaseDelay, workingPhase } from "../working-phase.js";
 import { retryLabel, retryPrompt, type RetryMode } from "../tool-retry.js";
 import { iconStack, monogram, serverHue, toolKind, toolKinds, usedLabel, type ToolKind } from "../tool-kinds.js";
@@ -186,8 +188,11 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   const arrival = useArrival(item.id);
   // Seen running: its status mark draws in when the spinner gives way.
   const [live] = useState(item.status === "running");
-  // Agents seen working start open, so their progress shows as it happens.
-  const [open, setOpen] = useState(Boolean(item.subagents) && live);
+  // A call about background jobs (a wait, a list) draws them as cards, not its raw output.
+  const watchedJobs = useMemo(() => (item.jobs && item.category !== "command" ? chatJobs([item]) : null), [item]);
+  // Agents seen working start open, so their progress shows as it happens; so does a wait on jobs.
+  // (A wait learns its jobs from its first update, after it is drawn: its name is what says so at the start.)
+  const [open, setOpen] = useState((Boolean(item.subagents) || watchedJobs !== null || /^(wait|await)$/i.test(item.name)) && live);
   // The full-output sheet, which follows the item as its output streams in.
   const [full, setFull] = useState(false);
   const retry = useContext(RetryContext);
@@ -245,6 +250,12 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
           <div className="drow-body">
             {item.subagents ? (
               <AgentsCard item={item} renderItem={(it) => <ProcessItem item={it} workspace={workspace} />} />
+            ) : watchedJobs ? (
+              <div className="tool-jobs">
+                {watchedJobs.map((job) => (
+                  <JobCard key={job.id} job={job} />
+                ))}
+              </div>
             ) : (
               <div className="tool-body">
                 <ToolBody item={item} workspace={workspace} bare />
