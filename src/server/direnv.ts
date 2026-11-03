@@ -12,7 +12,7 @@
 // .envrc (devenv can build), and the answer is cached briefly per directory,
 // keyed on the envrc's mtime so an edit (and its re-allow) lands on the next
 // spawn without a server restart.
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -36,11 +36,23 @@ export interface DirenvEnv {
 /** direnv's own bookkeeping names; they belong to direnv's shell session, not a spawned agent. */
 const DIRENV_OWN = /^DIRENV_(ACTIVE|DIFF|DIR|FILE|WATCHES|LOG)/;
 
-const CACHE_MS = 5_000;
+/**
+ * How long an export is reused. It used to be 5 s, so nearly every harness start paid a
+ * full `direnv export` (1.5 s for a devenv project, 10 s cold) on top of its own boot. The
+ * stamp below covers what a devenv/flake .envrc is made from, so edits still land at once.
+ */
+const CACHE_MS = 60_000;
 /** A slow .envrc (devenv evaluation) is capped well under a spawn's own cost. */
 const TIMEOUT_MS = 15_000;
 
 const cache = new Map<string, { at: number; stamp: string; result: DirenvEnv }>();
+
+/** A blocked .envrc is looked at again soon: `direnv allow` run in a terminal changes nothing the stamp can see. */
+const BLOCKED_CACHE_MS = 5_000;
+
+function reusable(hit: { at: number; stamp: string; result: DirenvEnv } | undefined, stamped: string): hit is { at: number; stamp: string; result: DirenvEnv } {
+  return hit !== undefined && hit.stamp === stamped && Date.now() - hit.at < (hit.result.state.blocked ? BLOCKED_CACHE_MS : CACHE_MS);
+}
 
 /** `direnv status` never evaluates the .envrc (about 2 ms), so its answer can be kept a good while. */
 const STATE_CACHE_MS = 30_000;
@@ -58,34 +70,60 @@ export function findEnvrc(dir: string): string | null {
   }
 }
 
-/** stat's (mtime, size) as the change stamp; a missing file is "gone". */
+/** Files beside an .envrc that its environment is evaluated from (devenv and flake projects). */
+const RC_INPUTS = ["devenv.nix", "devenv.yaml", "devenv.lock", "flake.nix", "flake.lock", "shell.nix", ".env"];
+
+/** stat's (mtime, size) of the .envrc and the files it is built from, as the change stamp; a missing .envrc is "gone". */
 function stampOf(rcPath: string): string {
   try {
     const s = statSync(rcPath);
-    return `${rcPath}:${s.mtimeMs}:${s.size}`;
+    let stamp = `${rcPath}:${s.mtimeMs}:${s.size}`;
+    const dir = path.dirname(rcPath);
+    for (const name of RC_INPUTS) {
+      try {
+        const input = statSync(path.join(dir, name));
+        stamp += `|${name}:${input.mtimeMs}:${input.size}`;
+      } catch {
+        // not part of this project
+      }
+    }
+    return stamp;
   } catch {
     return "gone";
   }
 }
 
+const EXPORT_ARGS = ["export", "json"];
+
 function probe(dir: string, rcPath: string): DirenvEnv {
   if (IS_WINDOWS) return { env: process.env, state: { blocked: false, rcPath } };
-  let stdout: string;
   try {
-    stdout = execFileSync("direnv", ["export", "json"], {
-      cwd: dir,
-      timeout: TIMEOUT_MS,
-      maxBuffer: 4 * 1024 * 1024,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const stdout = execFileSync("direnv", EXPORT_ARGS, { cwd: dir, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return interpret(stdout, null, rcPath);
   } catch (error) {
+    return interpret("", error, rcPath);
+  }
+}
+
+/** The same probe off the event loop: a devenv .envrc takes seconds, and every chat's stream waits on a blocked loop. */
+function probeAsync(dir: string, rcPath: string): Promise<DirenvEnv> {
+  if (IS_WINDOWS) return Promise.resolve({ env: process.env, state: { blocked: false, rcPath } });
+  return new Promise((resolve) => {
+    execFile("direnv", EXPORT_ARGS, { cwd: dir, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, encoding: "utf8" }, (error, stdout, stderr) => {
+      resolve(error ? interpret("", Object.assign(error, { stderr }), rcPath) : interpret(stdout, null, rcPath));
+    });
+  });
+}
+
+/** What `direnv export json` said, as the spawn env and the blocked state. */
+function interpret(stdout: string, failure: unknown, rcPath: string): DirenvEnv {
+  if (failure) {
     // The one failure that means something to the user: an .envrc direnv will not run yet
     // ("direnv: error <path>/.envrc is blocked. Run `direnv allow`..."). Anything else (direnv
     // missing, a failed eval) leaves the server env untouched.
     let stderr = "";
-    if (error && typeof error === "object" && "stderr" in error) {
-      const value = error.stderr;
+    if (typeof failure === "object" && failure !== null && "stderr" in failure) {
+      const value = failure.stderr;
       if (typeof value === "string" || Buffer.isBuffer(value)) stderr = String(value);
     }
     return { env: process.env, state: { blocked: /is blocked/.test(stderr), rcPath } };
@@ -146,10 +184,37 @@ export function envForSpawn(dir: string): DirenvEnv {
   if (!rcPath) return { env: process.env, state: { blocked: false, rcPath: null } };
   const stamped = stampOf(rcPath);
   const hit = cache.get(dir);
-  if (hit && hit.stamp === stamped && Date.now() - hit.at < CACHE_MS) return hit.result;
+  if (reusable(hit, stamped)) return hit.result;
   const result = probe(dir, rcPath);
   cache.set(dir, { at: Date.now(), stamp: stamped, result });
   return result;
+}
+
+const preparing = new Map<string, Promise<void>>();
+
+/**
+ * Fill envForSpawn's cache for dir without blocking the event loop. Callers that are about
+ * to start a harness await this first; the synchronous spawn that follows then finds the
+ * answer cached instead of running the export itself. Never rejects.
+ */
+export function prepareSpawnEnv(dir: string): Promise<void> {
+  const rcPath = findEnvrc(dir);
+  if (!rcPath) return Promise.resolve();
+  const stamped = stampOf(rcPath);
+  if (reusable(cache.get(dir), stamped)) return Promise.resolve();
+  let pending = preparing.get(dir);
+  if (!pending) {
+    pending = probeAsync(dir, rcPath)
+      .then((result) => {
+        cache.set(dir, { at: Date.now(), stamp: stamped, result });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        preparing.delete(dir);
+      });
+    preparing.set(dir, pending);
+  }
+  return pending;
 }
 
 /** Allow the tree's .envrc (direnv allow), so the next spawn picks it up. True when direnv took it. */
@@ -158,7 +223,7 @@ export function allowEnvrc(dir: string): boolean {
   if (!rcPath) return false;
   try {
     execFileSync("direnv", ["allow", dir], { cwd: dir, timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
-    cache.delete(dir);
+    cache.clear();
     // One allow can cover several folders under the same .envrc.
     stateCache.clear();
     return true;

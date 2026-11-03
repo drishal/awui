@@ -2,11 +2,11 @@
 // harness envForSpawn returns, the blocked state is reported, and allowEnvrc
 // consents it. Real direnv against temp folders (skipped where direnv is absent).
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { allowEnvrc, clearDirenvCache, direnvState, envForSpawn, findEnvrc } from "../../src/server/direnv.js";
+import { allowEnvrc, clearDirenvCache, direnvState, envForSpawn, findEnvrc, prepareSpawnEnv } from "../../src/server/direnv.js";
 
 const HAS_DIRENV = (() => {
   try {
@@ -80,6 +80,39 @@ describe.skipIf(!HAS_DIRENV)("direnv spawn env", () => {
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(existsSync(path.join(root, "ran"))).toBe(false);
     expect(direnvState(root)).toEqual({ blocked: false, rcPath: null });
+  });
+
+  it("evaluates off the event loop and leaves the answer cached for the spawn", async () => {
+    const root = makeProject();
+    const proj = path.join(root, "proj");
+    const ran = path.join(root, "ran");
+    writeFileSync(path.join(proj, ".envrc"), `echo run >> ${JSON.stringify(ran)}\nsleep 1\nexport AWUI_TEST_ENVRC=prepared\nexport DIRENV_LOG_FORMAT=\n`);
+    expect(allowEnvrc(proj)).toBe(true);
+    clearDirenvCache();
+    let ticks = 0;
+    const timer = setInterval(() => (ticks += 1), 50);
+    await prepareSpawnEnv(proj);
+    clearInterval(timer);
+    // A second of evaluation: a blocked loop would have let almost none of the 50 ms ticks through.
+    expect(ticks).toBeGreaterThan(8);
+    expect(envForSpawn(proj).env.AWUI_TEST_ENVRC).toBe("prepared");
+    expect(readFileSync(ran, "utf8").trim().split("\n")).toHaveLength(1);
+  });
+
+  it("evaluates again when a file the .envrc is built from changes", async () => {
+    const root = makeProject();
+    const proj = path.join(root, "proj");
+    const ran = path.join(root, "ran");
+    writeFileSync(path.join(proj, ".envrc"), `echo run >> ${JSON.stringify(ran)}\nexport DIRENV_LOG_FORMAT=\n`);
+    expect(allowEnvrc(proj)).toBe(true);
+    clearDirenvCache();
+    await prepareSpawnEnv(proj);
+    envForSpawn(proj);
+    await prepareSpawnEnv(proj);
+    expect(readFileSync(ran, "utf8").trim().split("\n")).toHaveLength(1);
+    writeFileSync(path.join(proj, "devenv.lock"), "{}");
+    envForSpawn(proj);
+    expect(readFileSync(ran, "utf8").trim().split("\n")).toHaveLength(2);
   });
 
   it("re-reads when the .envrc changes on disk", () => {

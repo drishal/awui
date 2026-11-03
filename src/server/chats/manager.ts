@@ -7,6 +7,7 @@ import { DeferredLiveChat } from "../harness/deferred.js";
 import type { HarnessAdapter, LiveChat } from "../harness/types.js";
 import { Chat, ChatError, errorMessage, type ChatOwner } from "./chat.js";
 import { ChatCheckpoints, type Checkpoints } from "../checkpoints.js";
+import { prepareSpawnEnv } from "../direnv.js";
 
 const IDLE_DISPOSE_MS = 30 * 60_000;
 const REAP_INTERVAL_MS = 60_000;
@@ -120,6 +121,8 @@ export class ChatManager {
     const render = owner ? undefined : this.renderFor(adapter);
     let live;
     try {
+      // The project's .envrc is evaluated off the event loop first; the spawn then finds it cached.
+      await prepareSpawnEnv(workspace.path);
       live = await adapter.openChat({ cwd: workspace.path, renderEnv: render?.env });
     } catch (error) {
       throw new ChatError(502, "harness_init_failed", `${adapter.displayName} failed to start: ${errorMessage(error)}`);
@@ -173,13 +176,17 @@ export class ChatManager {
       const transcript = adapter.readTranscript ? await adapter.readTranscript({ cwd: workspace.path, nativeId }).catch(() => null) : null;
       let live: LiveChat;
       if (transcript) {
-        live = new DeferredLiveChat(nativeId, transcript, () => adapter.openChat(req), (error) => `${adapter.displayName} failed to resume: ${errorMessage(error)}`);
+        live = new DeferredLiveChat(nativeId, transcript, async () => {
+          await prepareSpawnEnv(workspace.path);
+          return adapter.openChat(req);
+        }, (error) => `${adapter.displayName} failed to resume: ${errorMessage(error)}`);
       } else {
         const known = await adapter.listSessions(workspace.path);
         if (!known.some((s) => s.nativeId === nativeId)) {
           throw new ChatError(404, "session_not_found", "That session is not in this workspace's session list");
         }
         try {
+          await prepareSpawnEnv(workspace.path);
           live = await adapter.openChat(req);
         } catch (error) {
           throw new ChatError(502, "harness_init_failed", `${adapter.displayName} failed to resume: ${errorMessage(error)}`);

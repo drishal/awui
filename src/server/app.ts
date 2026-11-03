@@ -107,7 +107,7 @@ import { commitStaged, GitActionError, stageFiles, unstageFiles } from "./git-ac
 import { runCommand } from "./run-command.js";
 import { shellLine } from "./shell-line.js";
 import type { Workspaces } from "./workspaces.js";
-import { allowEnvrc, direnvState } from "./direnv.js";
+import { allowEnvrc, direnvState, prepareSpawnEnv } from "./direnv.js";
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
 export const RECENT_SESSIONS_PER_HARNESS = 200;
@@ -532,6 +532,8 @@ export function createApp(deps: AppDeps) {
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
     // The list is served from cache at any age (a cold probe costs seconds); Refresh asks the harness again.
     if (req.query.refresh === "1") adapter.forgetModels?.(ws.path);
+    // A cold probe spawns the harness in the project: evaluate its .envrc off the event loop first.
+    await prepareSpawnEnv(ws.path);
     try {
       // thinkingLevels is the harness's own default list, for a picker with no model chosen yet;
       // a model's own levels (ModelInfo.levels) win when one is. Both are the harness's words, never invented.
