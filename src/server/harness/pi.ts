@@ -676,6 +676,11 @@ export class PiAdapter implements HarnessAdapter {
     return (await this.probeModels(cwd)).models;
   }
 
+  /** A probe already on its way was started moments ago, so it is still the one to wait for. */
+  forgetModels(cwd: string): void {
+    this.modelCache.delete(cwd);
+  }
+
   async defaultModel(cwd: string): Promise<{ model: string; thinkingLevel: string | null } | null> {
     return (await this.probeModels(cwd)).defaultModel;
   }

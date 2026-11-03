@@ -518,6 +518,8 @@ export function createApp(deps: AppDeps) {
     const ws = await workspaces.get(String(req.query.workspaceId ?? ""));
     const problem = adapter.workspaceProblem(ws.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
+    // The list is served from cache at any age (a cold probe costs seconds); Refresh asks the harness again.
+    if (req.query.refresh === "1") adapter.forgetModels?.(ws.path);
     try {
       // thinkingLevels is the harness's own default list, for a picker with no model chosen yet;
       // a model's own levels (ModelInfo.levels) win when one is. Both are the harness's words, never invented.

@@ -634,10 +634,10 @@ export function App() {
   const [startThinking, setStartThinking] = useState<string>("");
   const modelFetch = useRef(0);
   const modelsKey = useRef<string | null>(null);
-  const loadStartModels = async (forHarness: string, forWs: WorkspaceInfo): Promise<ModelInfo[]> => {
+  const loadStartModels = async (forHarness: string, forWs: WorkspaceInfo, refresh = false): Promise<ModelInfo[]> => {
     const seq = ++modelFetch.current;
     try {
-      const { models, defaultModel, thinkingLevels } = await api<{ models: ModelInfo[]; defaultModel?: { model: string; thinkingLevel: string | null } | null; thinkingLevels?: string[] }>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?workspaceId=${encodeURIComponent(forWs.id)}`);
+      const { models, defaultModel, thinkingLevels } = await api<{ models: ModelInfo[]; defaultModel?: { model: string; thinkingLevel: string | null } | null; thinkingLevels?: string[] }>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?workspaceId=${encodeURIComponent(forWs.id)}${refresh ? "&refresh=1" : ""}`);
       if (seq === modelFetch.current) {
         setStartModels(models);
         // Only a default that names a model the list actually offers is shown; anything else is no better than "Default model".
@@ -684,7 +684,7 @@ export function App() {
   }, [chatId, harnessId, workspace?.id]);
   const refreshStartModels = async (): Promise<void> => {
     if (!harnessId || !workspace) return;
-    await loadStartModels(harnessId, workspace);
+    await loadStartModels(harnessId, workspace, true);
   };
   const startSend = async (text: string, images: PendingImage[]): Promise<boolean> => {
     // Two quick presses (a double Enter) must make one chat: the ref guards before state can re-render.

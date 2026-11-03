@@ -192,6 +192,11 @@ export interface HarnessAdapter {
   resolveAgentDir(): Promise<string>;
   resolveSessionDir(cwd: string): Promise<string>;
   listModels(cwd: string): Promise<ModelInfo[]>;
+  /**
+   * Drop what listModels has cached for `cwd`, so the next call asks the harness
+   * again (a Refresh after logging into a provider). Only adapters that cache.
+   */
+  forgetModels?(cwd: string): void;
   listThinkingLevels(cwd: string): Promise<string[]>;
   /**
    * The model and thinking level a fresh chat in `cwd` would start on, so the

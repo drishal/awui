@@ -125,6 +125,17 @@ describe("omp adapter (scripted omp)", () => {
     expect(m2?.levels).toBeUndefined();
   });
 
+  it("serves the model list from its cache, and asks omp again once told to forget it", async () => {
+    await adapter.listModels(project);
+    await adapter.listModels(project);
+    const probes = () => readState().spawns.filter((s: { args: string[] }) => s.args.includes("--no-session")).length;
+    expect(probes()).toBe(1);
+    // A Refresh after logging into a provider must reach omp, not the cache.
+    adapter.forgetModels(project);
+    await adapter.listModels(project);
+    expect(probes()).toBe(2);
+  });
+
   it("streams a prompt with a tool call and settles via session_settled", async () => {
     const { chat } = await openChat();
     await chat.send("run tool please", "normal");

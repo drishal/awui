@@ -842,6 +842,11 @@ export class OmpAdapter implements HarnessAdapter {
     }
   }
 
+  /** A probe already on its way was started moments ago, so it is still the one to wait for. */
+  forgetModels(cwd: string): void {
+    this.probeCache.delete(cwd);
+  }
+
   async listModels(cwd: string): Promise<ModelInfo[]> {
     return (await this.probe(cwd)).models;
   }
