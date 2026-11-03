@@ -38,8 +38,16 @@ export class Limits {
     writeJson(this.file, [...this.reported.values()]).catch((error: unknown) => console.error(`awui: could not save limits: ${error instanceof Error ? error.message : String(error)}`));
   }
 
+  /** Start the first poll now, so the first sidebar load finds an answer (a poll takes seconds: omp's `usage` and a Claude Code probe). */
+  warm(): void {
+    void this.poll();
+  }
+
   async get(): Promise<UsageLimits> {
-    if (!this.polled || Date.now() - this.polled.at > POLL_MS) await this.poll();
+    if (!this.polled) await this.poll();
+    // A stale reading is served at once while a fresh one is read behind it: the meter
+    // refreshes every few minutes, and each of those used to wait out the whole poll.
+    else if (Date.now() - this.polled.at > POLL_MS) void this.poll();
     const polled = this.polled ?? { accounts: [], errors: [] };
     const byId = new Map<string, LimitAccount>();
     for (const a of [...this.reported.values(), ...polled.accounts]) {

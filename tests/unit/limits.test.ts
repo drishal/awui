@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { claudeLimits, ompLimits } from "../../src/server/harness/limits.js";
 import { HarnessRegistry } from "../../src/server/harness/registry.js";
 import type { HarnessAdapter } from "../../src/server/harness/types.js";
@@ -101,5 +101,37 @@ describe("subscription limits", () => {
     expect(got.accounts[0]?.windows[0]?.used).toBe(0.7);
     limits.report({ ...polled, windows: [{ label: "5 hours", used: 0.9, resetsAt: null }], at: 3000 });
     expect((await limits.get()).accounts[0]?.windows[0]?.used).toBe(0.9);
+  });
+  it("serves a stale reading at once and refreshes it behind the request", async () => {
+    vi.useFakeTimers();
+    try {
+      const account = (used: number): LimitAccount => ({ id: "claude", source: "Claude Code", provider: "Anthropic", windows: [{ label: "5 hours", used, resetsAt: null }], limited: false, at: used });
+      let reading = 0.1;
+      let release: (() => void) | null = null;
+      let slow = false;
+      const registry = new HarnessRegistry();
+      registry.register({
+        id: "claude",
+        displayName: "Claude Code",
+        usageLimits: async () => {
+          if (slow) await new Promise<void>((resolve) => (release = resolve));
+          return [account(reading)];
+        },
+      } as unknown as HarnessAdapter);
+      registry.isAvailable = () => true;
+      const limits = Limits.inMemory(registry);
+      expect((await limits.get()).accounts[0]?.windows[0]?.used).toBe(0.1);
+      // Past the poll interval, with the next poll slow: the old reading comes back without waiting for it.
+      vi.setSystemTime(Date.now() + 61_000);
+      reading = 0.2;
+      slow = true;
+      expect((await limits.get()).accounts[0]?.windows[0]?.used).toBe(0.1);
+      slow = false;
+      (release as (() => void) | null)?.();
+      await vi.advanceTimersByTimeAsync(0);
+      expect((await limits.get()).accounts[0]?.windows[0]?.used).toBe(0.2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

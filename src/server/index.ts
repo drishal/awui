@@ -180,6 +180,7 @@ async function main(): Promise<void> {
   const order = await SessionOrder.open(config.stateDir);
   const prompts = await SavedPrompts.open(config.stateDir);
   const limits = await Limits.open(registry, config.stateDir);
+  limits.warm();
   const notifier = await Notifier.open(config.stateDir, (m) => console.error(`awui: ${m}`));
   // Board rooms: load their durable state before any route exists, and mark
   // work interrupted by the previous process as interrupted (nothing paid resumes).
