@@ -143,6 +143,28 @@ function setUserPathWindows(value: string): void {
   });
 }
 
+/**
+ * Copy the exe into place. Windows will not replace an exe that is running (the
+ * Run key starts awui at logon, so a reinstall usually meets a running one), but
+ * it lets that file be renamed: the running copy moves aside to `.old`, the new
+ * one takes its name, and the old file goes on the next install once it has exited.
+ */
+async function placeWindowsExe(self: string, binPath: string): Promise<void> {
+  const aside = `${binPath}.old`;
+  await fs.rm(aside, { force: true }).catch(() => undefined); // still running from the last swap: it stays until then
+  const tmp = `${binPath}.${process.pid}.tmp`;
+  await fs.copyFile(self, tmp);
+  try {
+    await fs.rename(tmp, binPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES") throw error;
+    await fs.rename(binPath, aside);
+    await fs.rename(tmp, binPath);
+    console.log(`awui: the running ${path.basename(binPath)} was moved aside; restart awui (or log in again) to run the new one`);
+  }
+}
+
 async function installWindows(opts: { link: boolean }): Promise<void> {
   const self = selfToInstall(process.execPath, isEmbedded, () => builtBinaryPath(repoRoot()));
   // On Windows a file symlink needs Developer Mode or admin (a directory
@@ -153,10 +175,7 @@ async function installWindows(opts: { link: boolean }): Promise<void> {
   const { bin, binPath } = windowsPaths();
 
   await fs.mkdir(bin, { recursive: true });
-  // Windows locks a running exe, so write to a temp file and rename over it.
-  const tmp = `${binPath}.${process.pid}.tmp`;
-  await fs.copyFile(self, tmp);
-  await fs.rename(tmp, binPath);
+  await placeWindowsExe(self, binPath);
 
   // PATH: append the install dir unless it is already there (case-insensitive).
   const existing = readUserPathWindows();
