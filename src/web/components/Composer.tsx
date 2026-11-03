@@ -616,7 +616,7 @@ export function Composer({
   const harnessName = harnesses.find((h) => h.id === chat.harnessId)?.displayName ?? chat.harnessId;
   const stopped = useMemo(() => limitStop(chat.items, chat.status, limits ?? null, harnessName), [chat.items, chat.status, limits, harnessName]);
   // The subagent/job strip above the composer: live while any delegated run is.
-  const jobs = useMemo(() => jobProgress(chat.items), [chat.items]);
+  const jobs = useMemo(() => jobProgress(chat.items, busy), [chat.items, busy]);
 
   return (
     <div className={`composer${hero ? " is-hero" : ""}`}>

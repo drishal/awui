@@ -26,13 +26,27 @@ export interface JobProgress {
  * counts: a completed call's rows stay readable inside its own card, so the
  * strip exists while at least one run is pending or running and vanishes when
  * the last settles.
+ *
+ * A run's own status is not enough to call it alive: nothing settles the runs
+ * of a call that was stopped or never got its result, and a background run
+ * whose report never came stays "running" for good. So an inline run counts
+ * only while the chat is busy and its call is still open, and a background
+ * run only within the latest turn: the strip never outlives the work it shows.
  */
-export function jobProgress(items: ChatItem[]): JobProgress | null {
+export function jobProgress(items: ChatItem[], busy: boolean): JobProgress | null {
   let total = 0;
   const counts: Record<SubagentRun["status"], number> = { pending: 0, running: 0, done: 0, failed: 0, stopped: 0 };
   let mode: JobProgress["mode"] = "inline";
-  for (const item of items) {
+  let latestTurn = 0;
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i]?.kind === "user") {
+      latestTurn = i;
+      break;
+    }
+  }
+  for (const [index, item] of items.entries()) {
     if (item.kind !== "tool" || !item.subagents) continue;
+    if (item.subagents.background ? index < latestTurn : !busy || item.status !== "running") continue;
     const runs = item.subagents.runs;
     // Only calls still doing something: a settled call's rows are its own
     // card's history (failed or finished runs), not the strip's tally.
