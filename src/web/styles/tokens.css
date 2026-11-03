@@ -1,8 +1,22 @@
 /* ---- tokens: the base colours a theme overrides, sizes, radii, and the reduced-motion rule ---- */
+
+/* Nerd Font symbols (a session title's leading icon, '🭬' markers): prefer an installed
+   Symbols Nerd Font (the nerd-fonts "symbols-only" pack), else the vendored subset
+   under fonts/. unicode-range keeps the file from downloading on pages without these
+   codepoints. The font stacks list the family names; this face is the last resort. */
+@font-face {
+  font-family: "Symbols Nerd Font";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local("Symbols Nerd Font Mono"), local("Symbols Nerd Font"), url("/fonts/SymbolsNerdFontMono-Regular.woff2") format("woff2");
+  unicode-range: U+E000-F8FF, U+E0000-E0FFF, U+23E0-23FF, U+F0000-FFFFD, U+100000-10FFFD;
+}
+
 :root {
   color-scheme: light;
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif, "Symbols Nerd Font Mono", "Symbols Nerd Font";
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace, "Symbols Nerd Font Mono", "Symbols Nerd Font";
   --bg: #ffffff;
   --surface: #f9fafb;
   --surface-2: #eef1f5;

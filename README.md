@@ -516,7 +516,7 @@ The built-in light and dark themes follow your system. A base16 or base24 scheme
 - **Validation:** only exact 6-digit hex is accepted, because colors become CSS custom properties applied through the CSSOM.
 - **Contrast:** roles are checked against WCAG AA (4.5:1 for text, 3:1 for controls and focus) and nudged if needed, against the page, the cards, and the chip surface where text sits; secondary text (`--muted-text`) is derived a step below `--text-2`, never from base16's comment colour as is. Adjustments are logged.
 - **Live updates:** the file is re-resolved (realpath and mtime) on each request, so a home-manager switch shows up the next time a tab becomes visible.
-- **Fonts:** an optional `fonts.sans` / `fonts.mono` goes first in the font stacks, with system fallbacks.
+- **Fonts:** an optional `fonts.sans` / `fonts.mono` goes first in the font stacks, with system fallbacks. Nerd Font codepoints (a session's icon-marked title) are always covered: each stack ends with the Symbols Nerd Font names, and a Nerd Font symbols woff2 ships with the app as the last resort for a machine without that pack installed, sized by `unicode-range` so it only downloads where a page actually contains one.
 
 ### Wiring it to stylix (NixOS / home-manager)
 

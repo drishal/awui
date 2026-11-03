@@ -26,11 +26,11 @@ export function applyTheme(mode: ThemeMode, info: ThemeInfo | null): void {
       applied.push(name);
     }
     if (info.fonts.sans) {
-      root.style.setProperty("--font-sans", `"${info.fonts.sans}", system-ui, -apple-system, "Segoe UI", sans-serif`);
+      root.style.setProperty("--font-sans", `"${info.fonts.sans}", system-ui, -apple-system, "Segoe UI", sans-serif, "Symbols Nerd Font Mono", "Symbols Nerd Font"`);
       applied.push("--font-sans");
     }
     if (info.fonts.mono) {
-      root.style.setProperty("--font-mono", `"${info.fonts.mono}", ui-monospace, "SFMono-Regular", Menlo, monospace`);
+      root.style.setProperty("--font-mono", `"${info.fonts.mono}", ui-monospace, "SFMono-Regular", Menlo, monospace, "Symbols Nerd Font Mono", "Symbols Nerd Font"`);
       applied.push("--font-mono");
     }
     root.dataset.theme = info.polarity ?? "dark";
