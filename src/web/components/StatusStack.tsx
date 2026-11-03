@@ -94,17 +94,15 @@ export function StatusStack({
   const [editing, setEditing] = useState<{ k: string; i: number; original: string; draft: string } | null>(null);
   const [lost, setLost] = useState(false);
   // Where each queued row is, and which messages the user took out, so one that left because it ran
-  // can glide from its row into the prompt it became (queue-glide.ts).
+  // can glide from its row into the prompt it became (queue-glide.ts). Measured after every render:
+  // the rows sit inside the stack card's Collapse, which mounts its content a frame after the queue
+  // gains its first row, so a capture keyed on the texts alone would see an empty list and lose the spot.
   const queueList = useRef<HTMLUListElement>(null);
   const last = useRef<{ texts: string[]; spots: Map<string, Spot> }>({ texts: [], spots: new Map() });
   const taken = useRef(new Set<string>());
-  const queuedTexts = queued.map((q) => q.t).join("\u0000");
   useLayoutEffect(() => {
     const texts = queued.map((q) => q.t);
-    for (const text of ranFromQueue(last.current.texts, texts, taken.current)) {
-      const spot = last.current.spots.get(text);
-      if (spot) announceLanding(text, spot);
-    }
+    const gone = ranFromQueue(last.current.texts, texts, taken.current);
     taken.current.clear();
     const rows = [...(queueList.current?.children ?? [])];
     const spots = new Map<string, Spot>();
@@ -112,9 +110,14 @@ export function StatusStack({
       const box = rows[i]?.getBoundingClientRect();
       if (box && !spots.has(t)) spots.set(t, { left: box.left, top: box.top });
     });
-    last.current = { texts, spots };
+    // Announce after measuring, from the best spots at hand: a row's spot known now beats an older one.
+    for (const text of gone) {
+      const spot = spots.get(text) ?? last.current.spots.get(text);
+      if (spot) announceLanding(text, spot);
+    }
+    last.current = { texts, spots: spots.size > 0 || texts.length === 0 ? spots : last.current.spots };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queuedTexts]);
+  });
   /** The queue with this message changed (or, with null, removed), from the queue as it is now. */
   const change = async (k: string, i: number, original: string, next: string | null) => {
     const field = k === "Steering" ? "steering" : "followUp";
