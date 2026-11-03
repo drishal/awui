@@ -1,12 +1,13 @@
 // Normalization for Pi-family agent events and transcript messages. omp is a
 // Pi fork and emits the same shapes over RPC, so both adapters share this.
 // Inputs are untyped on purpose: SDK and wire types never leave the adapters.
-import type { ChatItem, TodoItem, ToolCategory, ToolDiff, ToolItem } from "../../shared/protocol.js";
+import type { BackgroundJob, ChatItem, TodoItem, ToolCategory, ToolDiff, ToolItem } from "../../shared/protocol.js";
 import { argsDiff, resultDiff } from "./tool-diff.js";
 import { imageRefs } from "../image-store.js";
 import { applyReports, asyncReports, detailReports, isAgentTool, notifyReports, runsFromArgs, runsFromDetails, settleRuns, type AgentReport } from "./subagents.js";
 import { htmlRenderRef, isHtmlRenderCall } from "./render-token.js";
 import { planFromArgs } from "./plans.js";
+import { applyJobReports, jobReports, jobsFromCall } from "./jobs.js";
 import type { HarnessEvent, StepUsage, UsageEntry } from "./types.js";
 
 export const MAX_TOOL_OUTPUT_CHARS = 16_000;
@@ -461,8 +462,13 @@ export function normalizeAgentEvent(event: unknown, settledType: string): Harnes
       }
       if (message.role === "custom") {
         const reports = [...asyncReports(message.customType, message.content, message.details), ...notifyReports(message.customType, message.content)];
+        const jobs = jobReports(message.customType, message.content, message.details);
         const shown = message.display === true ? extensionMessage(message.customType, message.content) : null;
-        return [...(reports.length > 0 ? [{ type: "subagent_reports" as const, reports }] : []), ...(shown ? [{ type: "notice" as const, level: "info" as const, ...shown }] : [])];
+        return [
+          ...(reports.length > 0 ? [{ type: "subagent_reports" as const, reports }] : []),
+          ...(jobs.length > 0 ? [{ type: "job_reports" as const, jobs }] : []),
+          ...(shown ? [{ type: "notice" as const, level: "info" as const, ...shown }] : []),
+        ];
       }
       return [];
     }
@@ -569,6 +575,14 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
       if (next) tool.subagents = next;
     }
   };
+  // Each call's raw arguments: a job's start is read from them with its result.
+  const toolArgs = new Map<string, unknown>();
+  const reportJobs = (jobs: BackgroundJob[], at: number | undefined) => {
+    for (const tool of tools.values()) {
+      const next = tool.jobs ? applyJobReports(tool.jobs, jobs, at) : null;
+      if (next) tool.jobs = next;
+    }
+  };
   for (const raw of messages) {
     if (!isObj(raw)) continue;
     const at = typeof raw.timestamp === "number" ? raw.timestamp : undefined;
@@ -626,6 +640,7 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
             ...stamp,
           };
           if (isHtmlRenderCall(name, block.arguments)) renderCalls.add(id);
+          toolArgs.set(id, block.arguments);
           tools.set(id, tool);
           items.push(tool);
         }
@@ -657,6 +672,12 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
             if (exitCode !== null) tool.exitCode = exitCode;
             else delete tool.exitCode;
           }
+          const jobs = jobsFromCall(tool.name, toolArgs.get(String(raw.toolCallId)), raw.details, toolResultText(raw));
+          if (jobs) {
+            // A started job is stamped with its call's time; a later look (a wait, a list) says how it stands.
+            tool.jobs = jobs.map((j) => (j.status === "running" && j.startedAt === undefined && tool.at !== undefined ? { ...j, startedAt: tool.at } : j));
+            reportJobs(jobs.filter((j) => j.status !== "running"), at);
+          }
         }
         // A wait or a proc read reports on background runs another call started.
         const reports = detailReports(raw.details);
@@ -672,6 +693,8 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
       case "custom": {
         const reports = [...asyncReports(raw.customType, raw.content, raw.details), ...notifyReports(raw.customType, raw.content)];
         if (reports.length > 0) report(reports);
+        const jobs = jobReports(raw.customType, raw.content, raw.details);
+        if (jobs.length > 0) reportJobs(jobs, at);
         if (raw.display === true) {
           const shown = extensionMessage(raw.customType, raw.content);
           if (shown) items.push({ kind: "notice", id: nextId("n"), level: "info", ...shown, ...stamp });

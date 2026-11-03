@@ -43,6 +43,7 @@ import {
   type SessionMeta,
   type UsageBaseline,
 } from "./claude-sessions.js";
+import { claudeTaskReport } from "./jobs.js";
 import { claudeLimits, claudeUsageLimits } from "./limits.js";
 import { renderHtmlMcpServer } from "./render-extension.js";
 import { HTML_RENDER_MCP_SERVER, HTML_RENDER_MCP_TOOL, splitRenderMarker } from "./render-token.js";
@@ -583,6 +584,15 @@ class ClaudeLiveChat implements LiveChat {
       case "notification":
         if (str(frame.message) || str(frame.text)) this.emit({ type: "notice", level: "info", text: str(frame.message) || str(frame.text) });
         return;
+      // A background task (a run_in_background Bash) ending, or its state changing: the call that started it shows it.
+      case "task_notification":
+      case "task_updated": {
+        const id = str(frame.task_id);
+        const state = frame.subtype === "task_notification" ? str(frame.status) : isObj(frame.patch) ? str(frame.patch.status) : "";
+        if (!id || !state) return;
+        this.emit({ type: "job_reports", jobs: [claudeTaskReport(id, state, str(frame.summary))] });
+        return;
+      }
       default:
         return;
     }

@@ -3,6 +3,7 @@
 // fold (EventReducer), the stream (EventLog), and model-call timing (Timing)
 // are collaborators; Chat itself keeps the LiveChat binding and the commands.
 import type {
+  BackgroundJob,
   AssistantItem,
   ChainStep,
   ChatConfig,
@@ -33,6 +34,7 @@ import { promises as fs } from "node:fs";
 import { boundText, editShape, exitCodeOf, historyToItems, NO_RESULT_TEXT, stringifyArgs, toolCategory, toolPaths, toolSummary } from "../harness/agent-events.js";
 import { argsDiff, resultDiff } from "../harness/tool-diff.js";
 import { applyReports, detailReports, runsFromArgs, runsFromDetails, settleRuns, transcriptFile, transcriptRecords, type AgentReport } from "../harness/subagents.js";
+import { applyJobReports, jobsFromCall, mergeJob } from "../harness/jobs.js";
 import { htmlRenderRef, isHtmlRenderCall } from "../harness/render-token.js";
 import { planFromArgs } from "../harness/plans.js";
 import { branchMessages } from "../harness/session-files.js";
@@ -253,6 +255,8 @@ class EventReducer {
   private pending = new Map<string, InteractionRequest>();
   /** Running calls that are the render tool, decided from their raw args at tool_start. */
   private renderCalls = new Set<string>();
+  /** Each running call's raw arguments: a background job's start is read from them with its result. */
+  private toolArgs = new Map<string, unknown>();
   private counter = 0;
   private currentAssistant: string | null = null;
   private currentModel: string | undefined;
@@ -372,6 +376,7 @@ class EventReducer {
           at: Date.now(),
         };
         if (isHtmlRenderCall(event.name, event.args)) this.renderCalls.add(event.toolCallId);
+        this.toolArgs.set(event.toolCallId, event.args);
         this.put(tool);
         break;
       }
@@ -381,7 +386,9 @@ class EventReducer {
         const bounded = boundText(event.output);
         // Subagent progress replaces the last snapshot (it is not a patch).
         const runs = item.category === "agent" && event.details !== undefined ? runsFromDetails(event.toolCallId, event.details, item.subagents ?? null) : null;
-        this.upsert({ ...item, output: bounded.text, truncated: bounded.truncated, ...(runs ? { subagents: runs } : {}) });
+        // A wait streams the jobs it waits on: their status, and omp's widget of their progress.
+        const jobs = event.details !== undefined ? this.callJobs(item, event.details, event.output) : null;
+        this.upsert({ ...item, output: bounded.text, truncated: bounded.truncated, ...(runs ? { subagents: runs } : {}), ...(jobs ? { jobs } : {}) });
         this.dirtyTools.add(item.id);
         this.scheduleFlush();
         break;
@@ -421,6 +428,8 @@ class EventReducer {
         const { diffStat: _attempted, ...uncounted } = settled;
         // A shell call's exit rides on the item when the harness reported one (OpenCode does).
         const exitCode = settled.category === "command" ? exitCodeOf(event.details) : null;
+        const jobs = this.callJobs(base, event.details, event.output);
+        this.toolArgs.delete(event.toolCallId);
         this.put({
           ...(event.isError ? uncounted : settled),
           output: bounded.text,
@@ -429,7 +438,10 @@ class EventReducer {
           endedAt: Date.now(),
           ...(page ? { htmlRender: page } : {}),
           ...(exitCode !== null ? { exitCode } : {}),
+          ...(jobs ? { jobs } : {}),
         });
+        // A wait that saw a job end tells the call that started it too.
+        if (jobs) this.applyJobReports(jobs.filter((j) => j.status !== "running"));
         if (base.name.toLowerCase().includes("todo")) this.fx.refreshTodos();
         // A wait or a proc read reports on background runs another call started.
         const reports = detailReports(event.details);
@@ -438,6 +450,9 @@ class EventReducer {
       }
       case "subagent_reports":
         this.applyReports(event.reports);
+        break;
+      case "job_reports":
+        this.applyJobReports(event.jobs);
         break;
       case "busy":
         this.busySignals++;
@@ -555,6 +570,29 @@ class EventReducer {
   replaceConfig(config: ChatConfig): void {
     this.config = config;
     this.emit({ type: "config", config });
+  }
+
+  /** The jobs a call started or looked at, a started one stamped with its call's time. */
+  private callJobs(item: ToolItem, details: unknown, output: string): BackgroundJob[] | null {
+    const id = item.id.slice(2);
+    const jobs = jobsFromCall(item.name, this.toolArgs.get(id), details, output);
+    if (!jobs) return null;
+    return jobs.map((j) => {
+      const prior = item.jobs?.find((p) => p.id === j.id);
+      const merged = prior ? mergeJob(prior, j) : j;
+      return merged.status === "running" && merged.startedAt === undefined && item.at !== undefined ? { ...merged, startedAt: item.at } : merged;
+    });
+  }
+
+  /** Background jobs reporting in: every call holding one shows how it stands now. */
+  private applyJobReports(reports: BackgroundJob[]): void {
+    if (reports.length === 0) return;
+    const at = Date.now();
+    for (const item of this.items) {
+      if (item.kind !== "tool" || !item.jobs) continue;
+      const next = applyJobReports(item.jobs, reports, at);
+      if (next) this.put({ ...item, jobs: next });
+    }
   }
 
   /** Background runs reporting in: the call that started them shows it. */

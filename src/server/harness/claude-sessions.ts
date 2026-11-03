@@ -7,6 +7,7 @@
 // historyToItems, the usage baseline, each call's usage, and a fork cut after
 // the Nth prompt.
 import { isObj, textOf, type Obj } from "./agent-events.js";
+import { claudeTaskNotice } from "./jobs.js";
 import { splitRenderMarker } from "./render-token.js";
 import type { UsageEntry } from "./types.js";
 
@@ -226,7 +227,9 @@ export function transcriptMessages(entries: Obj[]): Obj[] {
     const notice = taskNotice(entry);
     if (notice !== null) {
       // A displayed custom message is a notice row in historyToItems, inside the turn it arrived in.
-      out.push({ role: "custom", customType: "background-task", display: true, content: notice, ...stamp });
+      // Its task's id and state ride along, so the call that started it is told how it ended.
+      const job = claudeTaskNotice(queuedText(entry) ?? "");
+      out.push({ role: "custom", customType: "background-task", display: true, content: notice, ...(job ? { details: { jobs: [{ id: job.id, status: job.status, label: job.label, ...(job.title ? { title: job.title } : {}) }] } } : {}), ...stamp });
       continue;
     }
     if (entry.type !== "user") continue;

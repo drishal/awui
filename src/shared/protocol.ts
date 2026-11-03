@@ -295,8 +295,56 @@ export interface ToolItem {
   plan?: string;
   /** A shell call's exit code, when the harness reported one (OpenCode's shell result carries metadata.exit; Pi/omp/Claude bash results carry none). */
   exitCode?: number;
+  /**
+   * Background jobs this call started or looked at (omp's backgrounded bash and `wait`, Claude Code's
+   * run_in_background, the bg_task extension's spawn and status), as it last saw them; a job's later
+   * report updates every call that holds it.
+   */
+  jobs?: BackgroundJob[];
   at?: number;
   endedAt?: number;
+}
+
+/** How a job's widget colours a part: the harness's words, mapped to theme tokens by the client. */
+export type JobTone = "success" | "error" | "warning" | "info" | "muted" | "accent";
+
+/** One part of a job's widget (omp's job widget: what its progress means, worked out by the harness). */
+export type JobBlock =
+  | { kind: "meter"; label?: string; /** 0–1. */ value: number; text?: string; tone?: JobTone }
+  | { kind: "stat"; items: Array<{ label: string; text: string; tone?: JobTone }> }
+  | { kind: "text"; text: string }
+  | { kind: "bars"; label?: string; items: Array<{ label: string; value: number; text?: string; tone?: JobTone }>; max?: number }
+  | { kind: "spark"; label?: string; values: number[]; last?: string; min?: number; max?: number }
+  | { kind: "grid"; label?: string; items: Array<{ label: string; text?: string; tone?: JobTone }> };
+
+/** A job's progress as the harness draws it (omp's job widget), bounded. */
+export interface JobWidget {
+  title?: string;
+  /** Where it is now: the test running, the step it is on. */
+  stage?: string;
+  /** One big number with its word ("208 passed"). */
+  headline?: { text: string; label?: string };
+  blocks: JobBlock[];
+}
+
+/** A command or task the agent left running in the background, as one call saw it. */
+export interface BackgroundJob {
+  /** The harness's own id: omp's bg_3, Claude Code's task id, bg_task's bg-1. */
+  id: string;
+  kind: "shell" | "task";
+  status: "running" | "done" | "failed" | "stopped";
+  /** What it runs, one line, bounded: the command, or the task's name. */
+  label: string;
+  /** Why, in words, when the harness says (omp's intent, Claude's description, bg_task's title). */
+  title?: string;
+  /** Epoch ms, when known. */
+  startedAt?: number;
+  endedAt?: number;
+  durationMs?: number;
+  exitCode?: number;
+  /** The tail of what it printed, when the harness handed it over (bounded). */
+  output?: string;
+  widget?: JobWidget;
 }
 
 export interface NoticeItem {
