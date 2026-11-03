@@ -223,7 +223,7 @@ describe("a Hermes home whose gateway is running", () => {
 
   it("shows a session the gateway will not mount from state.db, and says so", async () => {
     const db = new DatabaseSync(path.join(home, "state.db"));
-    db.exec("CREATE TABLE sessions (id TEXT PRIMARY KEY, cwd TEXT, title TEXT); CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, tool_name TEXT, tool_call_id TEXT, reasoning TEXT, timestamp REAL, active INTEGER)");
+    db.exec("CREATE TABLE sessions (id TEXT PRIMARY KEY, cwd TEXT, title TEXT); CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, tool_name TEXT, tool_call_id TEXT, tool_calls TEXT, reasoning TEXT, timestamp REAL, active INTEGER)");
     db.prepare("INSERT INTO sessions (id, cwd, title) VALUES (?, ?, ?)").run("refused-webui", project, "Old awui chat");
     db.prepare("INSERT INTO messages (session_id, role, content, timestamp, active) VALUES (?, ?, ?, ?, ?)").run("refused-webui", "user", "hello from the store", 1, 1);
     db.close();

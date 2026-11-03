@@ -66,6 +66,8 @@ const READY_TIMEOUT_MS = 30_000;
 const PROBE_TTL_MS = 60_000;
 /** How long a discovered gateway endpoint is trusted: its port and instance change only on a restart. */
 const ENDPOINT_TTL_MS = 15_000;
+/** Rows one transcript read from the store returns: a longer chat is answered by the gateway, which is not cut. */
+const STORED_TRANSCRIPT_ROWS = 4000;
 /** Hermes's effort ladder (agent/reasoning_effort.py); the route clamps to what it accepts. */
 const REASONING_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 
@@ -465,6 +467,39 @@ function rowToMessages(row: Obj): unknown[] {
     default:
       return [];
   }
+}
+
+/**
+ * A stored assistant row's tool calls, decoded the way the gateway decodes them when it pairs a result
+ * with its call: Hermes keeps `[{id, function: {name, arguments}}]` with the arguments as a JSON string.
+ * The arguments are left out when the gateway would leave them out (python's `if args`: an empty object
+ * or list is no arguments), so a tool item's wording cannot differ on that edge.
+ */
+function storedToolCalls(raw: unknown): Array<{ id: string; name: string; args: unknown }> {
+  if (typeof raw !== "string" || !raw) return [];
+  let list: unknown;
+  try {
+    list = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  const calls: Array<{ id: string; name: string; args: unknown }> = [];
+  for (const call of list) {
+    if (!isObj(call) || !isObj(call.function)) continue;
+    const id = str(call.id);
+    const name = str(call.function.name);
+    if (!id || !name) continue;
+    let args: unknown = {};
+    try {
+      args = JSON.parse(str(call.function.arguments) || "{}");
+    } catch {
+      args = {};
+    }
+    const shipped = isObj(args) ? Object.keys(args).length > 0 : Array.isArray(args) ? args.length > 0 : Boolean(args);
+    calls.push({ id, name, args: shipped ? args : undefined });
+  }
+  return calls;
 }
 
 /** Stored transcript rows (role/text/reasoning/tool) as display items. */
@@ -1516,6 +1551,12 @@ export class HermesAdapter implements HarnessAdapter {
    */
   async readTranscript(req: { cwd: string; nativeId: string }): Promise<{ items: ChatItem[]; title: string | null } | null> {
     if (this.options.command) return null;
+    // The home's own store answers a plain session in about a millisecond; the gateway costs a fresh
+    // attach and a resume to read the same rows (measured tens to hundreds of milliseconds per
+    // session, 18-2000 ms in the wild). The store only answers when it would show exactly what
+    // session.history shows (see storedTranscript), so every other session still takes the gateway path.
+    const stored = await this.storedTranscript(req, true);
+    if (stored) return stored;
     const home = await this.resolveAgentDir();
     const link = await this.attach(home, (endpoint, ticket) => CanonicalChatLink.open(endpoint, ticket, () => undefined, () => undefined));
     if (!link) return null;
@@ -1537,12 +1578,20 @@ export class HermesAdapter implements HarnessAdapter {
   }
 
   /**
-   * A session the gateway will not mount, read from the home's state.db. Read-only, and
-   * only the columns the transcript needs: this is the harness's own store, not a second
-   * one. Null when the row is missing or belongs to another folder, so the manager's
-   * session-list guard still says that.
+   * A session read from the home's state.db. Read-only, and only the columns the transcript needs:
+   * this is the harness's own store, not a second one. Null when the row is missing or belongs to
+   * another folder, so the manager's session-list guard still says that.
+   *
+   * `exact` is readTranscript's fast path: it answers only when these rows are exactly what the
+   * gateway's session.history would return, so the two reads can be swapped without a chat changing.
+   * Anything the gateway's display projection reshapes answers null instead: a compression lineage,
+   * a folded row (compaction archives rows, removes them, or merges them), a typed row (steer,
+   * skill invocation, hidden scaffolding — the projection unwraps or drops those), structured
+   * content (attachments are rendered, not shown as JSON), codex commentary, or a chat longer than
+   * this read's cap. The not-found fallback in readTranscript reads with `exact` off: a session the
+   * gateway will not mount shows what the store has.
    */
-  private async storedTranscript(req: { cwd: string; nativeId: string }): Promise<{ items: ChatItem[]; title: string | null } | null> {
+  private async storedTranscript(req: { cwd: string; nativeId: string }, exact = false): Promise<{ items: ChatItem[]; title: string | null } | null> {
     const file = path.join(await this.resolveAgentDir(), "state.db");
     let db: DatabaseSync;
     try {
@@ -1555,23 +1604,71 @@ export class HermesAdapter implements HarnessAdapter {
       if (!session) return null;
       const folder = str(session.cwd);
       if (folder && path.resolve(folder) !== path.resolve(req.cwd)) return null;
+      if (exact && !this.plainTranscript(db, req.nativeId)) return null;
       // Indexed on (session_id, id). Enough for a chat; a longer one is cut, as every other transcript read is.
-      const rows = db.prepare("SELECT id, role, content, tool_name, tool_call_id, reasoning, timestamp FROM messages WHERE session_id = ? AND active = 1 ORDER BY id LIMIT 4000").all(req.nativeId) as Array<Record<string, unknown>>;
-      const messages = rows.map((row) => ({
-        role: str(row.role),
-        ...(row.content !== undefined ? { content: row.content } : {}),
-        ...(typeof row.content === "string" && row.content ? { text: row.content } : {}),
-        ...(str(row.tool_name) ? { name: str(row.tool_name) } : {}),
-        ...(str(row.tool_call_id) ? { tool_call_id: str(row.tool_call_id) } : {}),
-        ...(str(row.reasoning) ? { reasoning: str(row.reasoning) } : {}),
-        ...(typeof row.timestamp === "number" ? { timestamp: row.timestamp } : {}),
-        ...(typeof row.id === "number" ? { row_id: row.id } : {}),
-      }));
+      const rows = db.prepare(`SELECT id, role, content, tool_name, tool_call_id, tool_calls, reasoning, timestamp FROM messages WHERE session_id = ? AND active = 1 ORDER BY id LIMIT ${STORED_TRANSCRIPT_ROWS}`).all(req.nativeId) as Array<Record<string, unknown>>;
+      // A tool row keeps no arguments of its own: the call's name and arguments sit on the assistant
+      // row that made it, and both projections pair the two in row order. Without the pairing a tool
+      // item loses its name, its argument summary and the paths it touched.
+      const calls = new Map<string, { name: string; args: unknown }>();
+      const messages: unknown[] = [];
+      for (const row of rows) {
+        if (str(row.role) === "assistant") for (const call of storedToolCalls(row.tool_calls)) calls.set(call.id, call);
+        const call = str(row.role) === "tool" ? calls.get(str(row.tool_call_id)) : undefined;
+        const name = call?.name || str(row.tool_name);
+        messages.push({
+          role: str(row.role),
+          ...(row.content !== undefined ? { content: row.content } : {}),
+          ...(typeof row.content === "string" && row.content ? { text: row.content } : {}),
+          ...(name ? { name } : {}),
+          ...(call && call.args !== undefined ? { args: call.args } : {}),
+          ...(str(row.tool_call_id) ? { tool_call_id: str(row.tool_call_id) } : {}),
+          ...(str(row.reasoning) ? { reasoning: str(row.reasoning) } : {}),
+          ...(typeof row.timestamp === "number" ? { timestamp: row.timestamp } : {}),
+          ...(typeof row.id === "number" ? { row_id: row.id } : {}),
+        });
+      }
       return { items: transcriptItems(messages), title: str(session.title) || null };
     } catch {
       return null;
     } finally {
       db.close();
+    }
+  }
+
+  /**
+   * Whether this session's stored rows are the gateway's display transcript, row for row (the checks
+   * `storedTranscript`'s `exact` path relies on). One aggregate inside one handle, so the fast path
+   * costs two indexed reads, and a session it cannot vouch for goes straight to the gateway.
+   */
+  private plainTranscript(db: DatabaseSync, nativeId: string): boolean {
+    // A store too old to carry the display columns cannot answer "would the gateway reshape this?":
+    // the gateway read is the safe answer, and readTranscript's not-found fallback still reads plainly.
+    try {
+      // A compression child's display set is its whole lineage's rows, not this session's own.
+      const session = db.prepare("SELECT parent_session_id FROM sessions WHERE id = ?").get(nativeId) as { parent_session_id?: unknown } | undefined;
+      if (str(session?.parent_session_id)) return false;
+      const row = db
+        .prepare(
+          `SELECT COUNT(*) AS total, SUM(active = 1) AS active,
+                  SUM(COALESCE(compacted, 0) != 0 OR COALESCE(_compressed_summary, 0) != 0) AS folded,
+                  SUM(display_kind IS NOT NULL OR display_metadata LIKE '%"model_only"%') AS typed,
+                  SUM(role IN ('user', 'assistant') AND substr(content, 1, 1) = '[') AS structured,
+                  SUM(codex_message_items IS NOT NULL) AS commentary
+             FROM messages WHERE session_id = ?`,
+        )
+        .get(nativeId) as Record<string, unknown> | undefined;
+      const total = num(row?.total) ?? 0;
+      return (
+        total <= STORED_TRANSCRIPT_ROWS &&
+        (num(row?.active) ?? 0) === total &&
+        !num(row?.folded) &&
+        !num(row?.typed) &&
+        !num(row?.structured) &&
+        !num(row?.commentary)
+      );
+    } catch {
+      return false;
     }
   }
 
