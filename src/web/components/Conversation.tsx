@@ -11,6 +11,8 @@ import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
 import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, latestThought, modelName, modelSwitches, relativePath, sameChangeStat, saysSomething, segmentStartsOpen, toolLabel, type ChangeStat, type Turn, workAfterSegment, workSegments, type WorkSegment } from "../turns.js";
 import { useNow } from "../hooks.js";
 import { callTime, toolSentence } from "../tool-sentence.js";
+import { testProgress } from "../tool-facts.js";
+import { TestMeter } from "./TestMeter.js";
 import { phaseDelay, workingPhase } from "../working-phase.js";
 import { retryLabel, retryPrompt, type RetryMode } from "../tool-retry.js";
 import { iconStack, monogram, serverHue, toolKind, toolKinds, usedLabel, type ToolKind } from "../tool-kinds.js";
@@ -192,6 +194,8 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   const [asked, setAsked] = useState(false);
   const factText = sentence.facts.join(" · ");
   const status = STATUS_WORD[item.status];
+  // A test run that announced its total shows how far it has got while it runs.
+  const progress = useMemo(() => (running && item.category === "command" && item.output ? testProgress(item.output) : null), [running, item.category, item.output]);
   // The reason rides inside the row, where the label would otherwise hide it from a screen reader.
   const label = `${sentence.text}${factText ? `, ${factText}` : ""}${sentence.error ? `, ${sentence.error}` : ""}${time ? `, ${time}` : ""}, ${status}`;
   return (
@@ -236,6 +240,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
             </button>
           ) : null}
         </div>
+        {progress ? <TestMeter progress={progress} /> : null}
         <Collapse open={open} unfurl>
           <div className="drow-body">
             {item.subagents ? (

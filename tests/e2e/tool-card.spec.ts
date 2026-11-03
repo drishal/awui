@@ -220,3 +220,19 @@ test.describe("reduced motion", () => {
     for (const a of animated) expect(a).toMatch(/^none0s/);
   });
 });
+
+test("a running test command shows how far it has got, and the bar goes when it settles", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "e2eprogress");
+  const meter = page.getByTestId("test-meter");
+  const bar = meter.getByRole("progressbar", { name: "Tests" });
+  // Playwright announced 8 tests; the bar counts them as they go, the failure in red.
+  await expect(bar).toHaveAttribute("aria-valuemax", "8");
+  await expect.poll(async () => Number(await bar.getAttribute("aria-valuenow")), { timeout: 10_000 }).toBeGreaterThanOrEqual(4);
+  await expect(meter.getByText("1 failed")).toBeVisible();
+  await expect(meter.locator(".test-meter-now")).toContainText("tests/e2e/tabs.spec.ts");
+  // Settled, the row's facts take over and the live bar leaves.
+  await expect(page.locator(".answer-actions").last()).toBeVisible({ timeout: 20_000 });
+  await expect(meter).toHaveCount(0);
+});

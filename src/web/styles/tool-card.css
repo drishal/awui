@@ -497,3 +497,84 @@
   place-items: center;
   color: color-mix(in srgb, var(--ok) 80%, transparent);
 }
+
+/* TestMeter.tsx: a running test command's progress under its row (and in a job's card). The fill is the
+   passed share, its last stretch red for what failed, and a light sweeps it while the run goes. */
+.test-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.tool-line > .test-meter {
+  padding: 2px 14px 9px 40px;
+}
+
+.test-meter-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: calc(var(--chat-small) - 0.5px);
+  color: var(--muted-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.test-meter-count strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.test-meter-failed {
+  color: var(--danger);
+}
+
+.test-meter-pct {
+  margin-left: auto;
+}
+
+.test-meter-track {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+
+.test-meter-fill,
+.test-meter-fail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  transition: width 0.5s var(--ease-out);
+}
+
+.test-meter-fill {
+  width: calc(var(--done) * 100%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 70%, var(--accent)), var(--ok));
+}
+
+.test-meter.is-live .test-meter-fill {
+  background:
+    linear-gradient(100deg, transparent 30%, color-mix(in srgb, white 35%, transparent) 50%, transparent 70%) 0 0 / 200% 100%,
+    linear-gradient(90deg, color-mix(in srgb, var(--ok) 70%, var(--accent)), var(--ok));
+  animation: shimmer 1.8s linear infinite;
+}
+
+/* The failures sit at the end of what is done, so the bar reads green, then red, then the rest. */
+.test-meter-fail {
+  left: calc((var(--done) - var(--failed)) * 100%);
+  width: calc(var(--failed) * 100%);
+  background: var(--danger);
+}
+
+.test-meter-now {
+  overflow: hidden;
+  color: var(--muted-text);
+  font-family: var(--font-mono);
+  font-size: calc(var(--chat-small) - 1.5px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

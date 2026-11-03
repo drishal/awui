@@ -292,3 +292,92 @@ export function toolFacts(item: ToolItem): ToolFacts {
   }
   return NONE;
 }
+
+/** A test run's progress while it runs: how far, out of how many, what failed, and what runs now. */
+export interface TestProgress {
+  done: number;
+  total: number;
+  failed: number;
+  /** The test running now (or the last one reported), as the runner names it. */
+  current?: string;
+}
+
+/** e2e-parallel's tag on each line of a shard ("[1] "): never a Playwright [n/N] counter, which has a slash. */
+const SHARD = /^\[(\d+)\] (.*)$/;
+
+/**
+ * How far a test run has got, read from the output it has printed so far: only
+ * runners that announce their total up front can say "19 of 27" (Playwright's
+ * "Running 27 tests", pytest's "collected 27 items", cargo's "running 27
+ * tests"); Vitest and Jest say theirs only at the end, where toolFacts reads
+ * it. Shards tagged by e2e-parallel ("[1] …") are counted apiece and added up.
+ * Reads the head (the total) and tail (the newest progress) the item keeps.
+ */
+export function testProgress(output: string): TestProgress | null {
+  const lines = output.replace(ANSI, "").split("\n");
+  const shards = new Map<string, { total: number; done: number; failed: number; failedSeen: Set<string> }>();
+  const shardOf = (key: string) => {
+    let s = shards.get(key);
+    if (!s) shards.set(key, (s = { total: 0, done: 0, failed: 0, failedSeen: new Set() }));
+    return s;
+  };
+  let current: string | undefined;
+  let pytestPercent: number | null = null;
+  for (const raw of lines) {
+    const tagged = SHARD.exec(raw);
+    const key = tagged ? (tagged[1] as string) : "";
+    const line = tagged ? (tagged[2] as string) : raw;
+    const s = shardOf(key);
+    let m: RegExpExecArray | null;
+    // Playwright: the total, then the line reporter's [n/N] (test n starting) or the list reporter's "✓  12 [project] › …".
+    if ((m = /^Running (\d+) tests? using \d+ workers?/.exec(line.trim()))) s.total = Number(m[1]);
+    // Only with Playwright's "›" between project, file, and title: ninja and cmake print "[12/40] Building …" too.
+    else if ((m = /^\[(\d+)\/(\d+)\] (.+ › .+)$/.exec(line.trim()))) {
+      s.total = Number(m[2]);
+      s.done = Math.max(s.done, Number(m[1]) - 1);
+      current = (m[3] as string).trim();
+    } else if ((m = /^\s*([✓✘×✔-])\s+(\d+) (\[.+ › .+)$/.exec(line))) {
+      s.done = Math.max(s.done, Number(m[2]));
+      if ((m[1] === "✘" || m[1] === "×") && !s.failedSeen.has(m[2] as string)) {
+        s.failedSeen.add(m[2] as string);
+        s.failed += 1;
+      }
+      current = (m[3] as string).replace(/\s+\(\d+(\.\d+)?m?s\)$/, "").trim();
+    } else if ((m = /^\s{2}(\d+)\) \[/.exec(line))) {
+      // The line reporter's numbered failures: the highest number is how many failed so far.
+      s.failed = Math.max(s.failed, Number(m[1]));
+    }
+    // pytest: the total, then a file's result letters (or -v's PASSED/FAILED lines) with a percentage.
+    else if ((m = /^collected (\d+) items?/.exec(line.trim()))) s.total = Number(m[1]);
+    else if ((m = /^(\S+\.py)\s+([.FEsxX]+)\s+\[\s*(\d+)%\]$/.exec(line.trim()))) {
+      s.done += (m[2] as string).length;
+      s.failed += ((m[2] as string).match(/[FE]/g) ?? []).length;
+      current = m[1];
+      pytestPercent = Number(m[3]);
+    } else if ((m = /^(\S+::\S+) (PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\s+\[\s*(\d+)%\]$/.exec(line.trim()))) {
+      s.done += 1;
+      if (m[2] === "FAILED" || m[2] === "ERROR") s.failed += 1;
+      current = m[1];
+      pytestPercent = Number(m[3]);
+    }
+    // cargo test: each binary's "running N tests", then a line per test.
+    else if ((m = /^running (\d+) tests?$/.exec(line.trim()))) s.total += Number(m[1]);
+    else if ((m = /^test (\S+) \.\.\. (ok|FAILED|ignored)/.exec(line.trim()))) {
+      s.done += 1;
+      if (m[2] === "FAILED") s.failed += 1;
+      current = m[1];
+    }
+  }
+  let total = 0;
+  let done = 0;
+  let failed = 0;
+  for (const s of shards.values()) {
+    total += s.total;
+    done += Math.min(s.done, s.total || s.done);
+    failed += s.failed;
+  }
+  // pytest's output is cut to head and tail, so counted letters can fall short: its own percentage is the floor.
+  if (pytestPercent !== null && total > 0) done = Math.max(done, Math.round((pytestPercent / 100) * total));
+  if (total <= 0) return null;
+  return { done: Math.min(done, total), total, failed, ...(current ? { current: cut(current, 160) } : {}) };
+}
