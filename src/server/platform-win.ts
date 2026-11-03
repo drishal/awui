@@ -45,16 +45,33 @@ export function defaultStateDir(env: NodeJS.ProcessEnv, home: string): string {
   return path.join(stateBase(env, home), "awui");
 }
 
+/** cmd.exe's metacharacters, each escaped with a caret (cross-spawn's set). */
+const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
+
+/** The shim's path on a cmd line: every metacharacter (spaces too) caret-escaped, no quotes. */
+function cmdCommand(command: string): string {
+  return command.replace(CMD_META, "^$1");
+}
+
 /**
- * Quote one argument for cmd.exe's `/c` line. cmd has its own metacharacters
- * (`& | < > ^ % !`), so a word holding any of them (or a space) gets double
- * quotes. These lines come from awui's own config (the user's harness launch),
- * never from untrusted wire input, so this stays a conservative quote rather
- * than a full cmd arg grammar; it keeps paths-with-spaces intact.
+ * One argument on a cmd line that runs an npm `.cmd` shim, the way cross-spawn
+ * escapes it. First the C runtime's rules, which the node.exe at the end of the
+ * shim parses with: backslashes before a quote or the end are doubled and an
+ * inner quote becomes \". Then every cmd metacharacter is caret-escaped, and
+ * escaped again, because the shim hands its arguments on through `%*`, which
+ * cmd reads a second time. Quoting alone is not enough: cmd takes no backslash
+ * escape and expands %VAR% inside quotes, so a path holding `&` or `%` would
+ * otherwise break the line or run part of it.
  */
-function cmdWord(word: string): string {
-  if (word.length === 0) return '""';
-  return /[\s"&|<>^%!]/.test(word) ? `"${word.replace(/"/g, '\\"')}"` : word;
+function cmdArg(arg: string): string {
+  const quoted = `"${arg.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"').replace(/(?=(\\+?)?)\1$/, "$1$1")}"`;
+  return quoted.replace(CMD_META, "^$1").replace(CMD_META, "^$1");
+}
+
+/** The `cmd /d /s /c` argv that runs a batch shim: /s strips the outer quotes and runs the line inside verbatim. */
+function cmdLine(shim: string, args: string[]): [string, string[]] {
+  const line = [cmdCommand(shim), ...args.map(cmdArg)].join(" ");
+  return [process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `"${line}"`]];
 }
 
 export interface ExecResult {
@@ -62,8 +79,8 @@ export interface ExecResult {
   stderr: string;
 }
 
-/** cmd.exe argument quoting, exported for tests. */
-export { cmdWord };
+/** cmd.exe escaping, exported for tests. */
+export { cmdArg, cmdCommand };
 
 /**
  * On Windows, turn the command the adapters were given into what Node can
@@ -86,10 +103,7 @@ export function resolveWin(command: string, args: string[]): [string, string[]] 
   const hasSep = /[/\\]/.test(command) || /^[A-Za-z]:/.test(command);
   if (hasSep || /\.[A-Za-z0-9]+$/.test(command)) {
     // Explicit path or extension: .cmd/.bat need the interpreter, .exe runs bare.
-    if (/\.(cmd|bat)$/i.test(command)) {
-      const line = [cmdWord(command), ...args.map(cmdWord)].join(" ");
-      return [process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", line]];
-    }
+    if (/\.(cmd|bat)$/i.test(command)) return cmdLine(command, args);
     return [command, []];
   }
   // Bare name: prefer the .cmd shim, since that is what npm writes on Windows.
@@ -100,8 +114,7 @@ export function resolveWin(command: string, args: string[]): [string, string[]] 
       const shim = path.join(dir, command + ext);
       try {
         accessSync(shim);
-        const line = [cmdWord(shim), ...args.map(cmdWord)].join(" ");
-        return [process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", line]];
+        return cmdLine(shim, args);
       } catch {
         /* not here */
       }
@@ -120,8 +133,10 @@ export function resolveWin(command: string, args: string[]): [string, string[]] 
 export function spawnHarness(command: string, args: string[], opts: SpawnOptions): ChildProcessWithoutNullStreams {
   if (IS_WINDOWS) {
     const [argv0, prefix] = resolveWin(command, args);
-    // resolveWin already folded the real args into the cmd line when it wrapped.
-    return spawn(argv0, prefix.length > 0 ? prefix : args, opts) as ChildProcessWithoutNullStreams;
+    // resolveWin already folded the real args into the cmd line when it wrapped. That line is escaped for cmd
+    // already, so Node must pass it verbatim: its own quoting would wrap it again and /s would strip the wrong quotes.
+    if (prefix.length > 0) return spawn(argv0, prefix, { ...opts, windowsVerbatimArguments: true }) as ChildProcessWithoutNullStreams;
+    return spawn(argv0, args, opts) as ChildProcessWithoutNullStreams;
   }
   return spawn(command, args, opts) as ChildProcessWithoutNullStreams;
 }
@@ -148,7 +163,8 @@ export function execHarness(
   };
   if (IS_WINDOWS) {
     const [argv0, prefix] = resolveWin(command, args);
-    execFile(argv0, prefix.length > 0 ? prefix : args, { encoding: "utf8", ...opts }, finish);
+    // A wrapped line is already escaped for cmd: Node passes it verbatim (see spawnHarness).
+    execFile(argv0, prefix.length > 0 ? prefix : args, { encoding: "utf8", ...opts, ...(prefix.length > 0 ? { windowsVerbatimArguments: true } : {}) }, finish);
     return promise;
   }
   execFile(command, args, { encoding: "utf8", ...opts }, finish);

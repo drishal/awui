@@ -2,20 +2,22 @@
 // These run on any host (they take no process.platform branch of their own),
 // so they pin the Windows behaviour without needing a Windows runner.
 import { describe, expect, it } from "vitest";
-import { cmdWord, resolveWin } from "../../src/server/platform-win.js";
+import { cmdArg, cmdCommand, resolveWin } from "../../src/server/platform-win.js";
 
-describe("cmdWord", () => {
-  it("leaves plain words bare", () => {
-    expect(cmdWord("pi")).toBe("pi");
-    expect(cmdWord("--mode")).toBe("--mode");
+describe("cmd escaping", () => {
+  it("caret-escapes the shim's path, spaces included, without quoting it", () => {
+    expect(cmdCommand("C:\\Users\\Jo Doe\\npm\\pi.cmd")).toBe("C:\\Users\\Jo^ Doe\\npm\\pi.cmd");
+    expect(cmdCommand("C:\\a&b (x)\\pi.cmd")).toBe("C:\\a^&b^ ^(x^)\\pi.cmd");
   });
-  it("quotes words with spaces or cmd metacharacters", () => {
-    expect(cmdWord("C:\\Program Files\\pi\\pi.cmd")).toBe('"C:\\Program Files\\pi\\pi.cmd"');
-    expect(cmdWord("a&b")).toBe('"a&b"');
-    expect(cmdWord("")).toBe('""');
-  });
-  it("escapes embedded double quotes", () => {
-    expect(cmdWord('say "hi"')).toBe('"say \\"hi\\""');
+  it("quotes each argument for node.exe, then escapes it twice for cmd (the line, and the shim's %*)", () => {
+    expect(cmdArg("--mode")).toBe('^^^"--mode^^^"');
+    // An inner quote is \" for the C runtime; cmd sees every character escaped.
+    expect(cmdArg('say "hi"')).toBe('^^^"say^^^ \\^^^"hi\\^^^"^^^"');
+    // %VAR% expands inside quotes in cmd, so it is escaped like any other metacharacter.
+    expect(cmdArg("%PATH%&calc")).toBe('^^^"^^^%PATH^^^%^^^&calc^^^"');
+    // Backslashes before the closing quote are doubled, or they would escape it.
+    expect(cmdArg("C:\\dir\\")).toBe('^^^"C:\\dir\\\\^^^"');
+    expect(cmdArg("")).toBe('^^^"^^^"');
   });
 });
 
@@ -23,9 +25,8 @@ describe("resolveWin", () => {
   it("wraps an explicit .cmd path in cmd /d /s /c", () => {
     const [argv0, prefix] = resolveWin("C:\\tools\\pi.cmd", ["--mode", "rpc"]);
     expect(argv0.toLowerCase()).toContain("cmd");
-    expect(prefix.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
-    expect(prefix[3]).toContain("pi.cmd");
-    expect(prefix[3]).toContain("--mode");
+    // /s strips the outer quotes and runs the escaped line inside as it is.
+    expect(prefix).toEqual(["/d", "/s", "/c", '"C:\\tools\\pi.cmd ^^^"--mode^^^" ^^^"rpc^^^""']);
   });
   it("leaves an explicit .exe path alone", () => {
     expect(resolveWin("C:\\tools\\omp.exe", ["--mode", "rpc-ui"])).toEqual(["C:\\tools\\omp.exe", []]);
