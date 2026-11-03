@@ -87,6 +87,18 @@ test("the start screen's thinking level carries into the chat", async ({ page })
   await expect(thinking).toBeVisible();
   await thinking.getByRole("button", { name: "high", exact: true }).click();
   await expect(thinking.getByRole("button", { name: "high", exact: true })).toHaveAttribute("aria-pressed", "true");
+  // The chip says the level picked here, not the harness's default one.
+  await expect(page.locator(".start-screen").getByTestId("model-picker")).toHaveAccessibleName("Model: Fake Echo · high");
+  // The footer offers the chosen model's own levels, and a model that does not take the picked one drops it,
+  // rather than starting a chat the harness refuses.
+  await dialog.getByRole("combobox", { name: "Search models" }).fill("gpt-5.5");
+  await dialog.getByRole("option", { name: /^GPT-5\.5\b(?! Mini)/ }).click();
+  await thinking.getByRole("button", { name: "xhigh", exact: true }).click();
+  await dialog.getByRole("combobox", { name: "Search models" }).fill("glm");
+  await dialog.getByRole("option", { name: /GLM-5\.3-Flash/ }).click();
+  await expect(thinking.getByRole("button", { name: "xhigh", exact: true })).toHaveCount(0);
+  await expect(thinking.getByRole("button", { name: "Model default" })).toHaveAttribute("aria-pressed", "true");
+  await thinking.getByRole("button", { name: "high", exact: true }).click();
   await page.keyboard.press("Escape");
   await page.getByRole("textbox", { name: box }).fill("think hard");
   await page.keyboard.press("Enter");

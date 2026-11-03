@@ -89,8 +89,11 @@ export function ModelPicker({
   const currentModel = models.find((m) => m.key === effectiveKey);
   // A virtual provider (MoA) needs its name here: its preset alone ("default") says nothing.
   const nameLabel = currentModel ? (currentModel.providerName ? `${currentModel.providerName} · ${currentModel.name}` : currentModel.name) : null;
-  // The reasoning word belongs only to the harness's own default: a picked model's level is the chat's own row, not the chip's.
-  const reasoningLabel = !current && currentModel?.reasoning ? (defaultModel?.thinkingLevel ?? null) : null;
+  // The levels the footer offers: the chosen model's own when it lists them (omp's per-model efforts), else the harness's.
+  const footerLevels = currentModel?.levels?.length ? currentModel.levels : (levels ?? []);
+  // The reasoning word: a level picked in this picker's own footer (the start screen) says itself; with none, only
+  // the harness's own default names its level. A chat's chip leaves the level to its own Thinking row.
+  const reasoningLabel = onThinking && thinking ? thinking : !current && currentModel?.reasoning ? (defaultModel?.thinkingLevel ?? null) : null;
   const label = nameLabel ? (reasoningLabel ? `${nameLabel} · ${reasoningLabel}` : nameLabel) : (current ?? emptyLabel);
   const chipLabel = triggerLabel ?? shortName(label);
 
@@ -126,6 +129,9 @@ export function ModelPicker({
     // levels of the newly chosen model can be set in the same visit.
     if (onThinking === undefined) close();
     if (model.key !== current) onSelect(model.key);
+    // A level the new model does not take would be refused when the chat starts: back to the model's default.
+    const next = model.levels?.length ? model.levels : (levels ?? []);
+    if (onThinking && thinking && !next.includes(thinking)) onThinking("");
   };
 
   // Place above the pill unless there is too little room; size to the space.
@@ -346,14 +352,14 @@ export function ModelPicker({
               ))}
               {flat.length === 0 ? <div className="model-empty">No models match “{query}”</div> : null}
             </div>
-            {levels && levels.length > 0 && onThinking ? (
+            {footerLevels.length > 0 && onThinking ? (
               <div className="model-thinking" role="group" aria-label="Thinking level">
                 <span className="model-thinking-label">Thinking</span>
                 <div className="board-thinking-chips">
                   <button type="button" className="board-level-chip" aria-pressed={!thinking} onClick={() => onThinking("")}>
                     Model default
                   </button>
-                  {levels.map((level) => (
+                  {footerLevels.map((level) => (
                     <button key={level} type="button" className="board-level-chip" aria-pressed={thinking === level} onClick={() => onThinking(level)}>
                       {level}
                     </button>
