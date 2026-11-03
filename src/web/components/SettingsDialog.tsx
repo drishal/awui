@@ -8,6 +8,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import type { Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
+import { FormRow } from "./FormRow.js";
 import { Segmented } from "./Segmented.js";
 import { Select } from "./Select.js";
 import { Switch } from "./Switch.js";
@@ -320,10 +321,10 @@ export function SettingsDialog({
 
   return (
     <Dialog title="Settings" onClose={onClose} className="dialog-wide settings-dialog">
-      <section className="settings-section" aria-labelledby="settings-device">
+      <section className="form-section" aria-labelledby="settings-device">
         <h3 id="settings-device">This device</h3>
-        <div className="settings-card">
-          <Row label="Other devices" desc={signedInAs ? `Signed in as ${signedInAs}.` : "Open awui on a phone by scanning a code."}>
+        <div className="form-card">
+          <FormRow label="Other devices" desc={signedInAs ? `Signed in as ${signedInAs}.` : "Open awui on a phone by scanning a code."}>
             <button type="button" className="btn btn-small" onClick={onPair}>
               Pair phone
             </button>
@@ -332,8 +333,8 @@ export function SettingsDialog({
                 Sign out
               </button>
             ) : null}
-          </Row>
-          <Row
+          </FormRow>
+          <FormRow
             label="Notifications"
             descId="notify-note"
             desc={
@@ -347,8 +348,8 @@ export function SettingsDialog({
               </button>
             ) : null}
             <Switch label="Notifications" describedBy="notify-note" checked={notifyOn} disabled={notifyBusy || notify.mode === "unsupported"} onChange={() => void notifyAction(onToggleNotify)} />
-          </Row>
-          <Row label="Sound" desc="A chime, in this browser, when a chat finishes out of sight or asks for an answer." toggle>
+          </FormRow>
+          <FormRow label="Sound" desc="A chime, in this browser, when a chat finishes out of sight or asks for an answer." toggle>
             <Switch
               label="Sound"
               checked={chimes}
@@ -358,19 +359,19 @@ export function SettingsDialog({
                 if (on) chime();
               }}
             />
-          </Row>
+          </FormRow>
         </div>
       </section>
 
       {!draft ? (
-        <section className="settings-section" aria-labelledby="settings-server">
+        <section className="form-section" aria-labelledby="settings-server">
           <h3 id="settings-server">Server</h3>
           {error ? (
             <p className="notice notice-error" role="alert">
               {error}
             </p>
           ) : (
-            <p className="settings-note">Loading…</p>
+            <p className="form-note">Loading…</p>
           )}
         </section>
       ) : (
@@ -381,20 +382,20 @@ export function SettingsDialog({
             void save();
           }}
         >
-          <section className="settings-section" aria-labelledby="settings-look">
+          <section className="form-section" aria-labelledby="settings-look">
             <h3 id="settings-look">Appearance</h3>
-            <p className="settings-note">
+            <p className="form-note">
               {server && !server.writable
                 ? "This server runs without a settings folder, so there is nothing to save to."
                 : server && !server.editable
                   ? "These live in config.yml on the machine running the server; change them there."
                   : "Saved to config.yml for every device: it applies here at once, and on other devices at their next page load (atui at its next start)."}
             </p>
-            <div className="settings-card">
-              <Row label="Theme" desc={draft.theme === "base16" && scheme?.name ? `The ${scheme.name} scheme from theme.yml.` : "Follow the system, or pin light or dark."}>
+            <div className="form-card">
+              <FormRow label="Theme" desc={draft.theme === "base16" && scheme?.name ? `The ${scheme.name} scheme from theme.yml.` : "Follow the system, or pin light or dark."}>
                 <Select label="Theme" value={draft.theme} disabled={!editable} options={themeOptions} onChange={(theme) => update({ theme: theme as ThemeChoice | "" })} />
-              </Row>
-              <Row label="Chat text size" desc="The conversation and the composer; menus keep their size.">
+              </FormRow>
+              <FormRow label="Chat text size" desc="The conversation and the composer; menus keep their size.">
                 <div className="text-slider">
                   <input
                     type="range"
@@ -419,8 +420,8 @@ export function SettingsDialog({
                     ) : null}
                   </span>
                 </div>
-              </Row>
-              <Row label="Chat width" desc={WIDTH_NOTE[draft.chatWidth]}>
+              </FormRow>
+              <FormRow label="Chat width" desc={WIDTH_NOTE[draft.chatWidth]}>
                 <Segmented<ChatWidth>
                   label="Chat width"
                   value={draft.chatWidth}
@@ -432,8 +433,8 @@ export function SettingsDialog({
                   ]}
                   onChange={(chatWidth) => update({ chatWidth })}
                 />
-              </Row>
-              <Row label="Density" desc={draft.density === "compact" ? "Tighter rows and gaps, with a mouse (touch keeps the larger sizes)." : "Room to breathe between rows."}>
+              </FormRow>
+              <FormRow label="Density" desc={draft.density === "compact" ? "Tighter rows and gaps, with a mouse (touch keeps the larger sizes)." : "Room to breathe between rows."}>
                 <Segmented<Density>
                   label="Density"
                   value={draft.density}
@@ -444,30 +445,30 @@ export function SettingsDialog({
                   ]}
                   onChange={(density) => update({ density })}
                 />
-              </Row>
+              </FormRow>
             </div>
           </section>
 
-          <section className="settings-section" aria-labelledby="settings-layout">
+          <section className="form-section" aria-labelledby="settings-layout">
             <h3 id="settings-layout">Layout</h3>
-            <div className="settings-card">
-              <Row label="Fold the sidebar away in narrow windows" desc="It comes back as a drawer from the edge." toggle>
+            <div className="form-card">
+              <FormRow label="Fold the sidebar away in narrow windows" desc="It comes back as a drawer from the edge." toggle>
                 <Switch label="Fold the sidebar away in narrow windows" checked={draft.autocollapseSidebar} disabled={!editable} onChange={(autocollapseSidebar) => update({ autocollapseSidebar })} />
-              </Row>
-              <Row label="Status bar" desc="Under the conversation: connection, harness, model, folder, version." toggle>
+              </FormRow>
+              <FormRow label="Status bar" desc="Under the conversation: connection, harness, model, folder, version." toggle>
                 <Switch label="Status bar" checked={draft.showStatusBar} disabled={!editable} onChange={(showStatusBar) => update({ showStatusBar })} />
-              </Row>
-              <Row label="Work with herdr" desc="Mark the sessions open in its panes, and let atui in a pane report its chats." toggle>
+              </FormRow>
+              <FormRow label="Work with herdr" desc="Mark the sessions open in its panes, and let atui in a pane report its chats." toggle>
                 <Switch label="Work with herdr" checked={draft.herdr} disabled={field("herdr")} onChange={(herdr) => update({ herdr })} />
-              </Row>
+              </FormRow>
             </div>
           </section>
 
-          <section className="settings-section" aria-labelledby="settings-network">
+          <section className="form-section" aria-labelledby="settings-network">
             <h3 id="settings-network">Network and sign-in</h3>
-            <p className="settings-note">Takes effect when the server restarts.</p>
-            <div className="settings-card">
-              <Row label="Listen on" desc={draft.host === "0.0.0.0" ? "Every network this machine is on (0.0.0.0); other devices sign in." : "This machine only (127.0.0.1): no sign-in needed here."}>
+            <p className="form-note">Takes effect when the server restarts.</p>
+            <div className="form-card">
+              <FormRow label="Listen on" desc={draft.host === "0.0.0.0" ? "Every network this machine is on (0.0.0.0); other devices sign in." : "This machine only (127.0.0.1): no sign-in needed here."}>
                 <Segmented<Draft["host"]>
                   label="Listen on"
                   value={draft.host}
@@ -478,14 +479,14 @@ export function SettingsDialog({
                   ]}
                   onChange={(host) => update({ host })}
                 />
-              </Row>
-              <Row label="Port">
+              </FormRow>
+              <FormRow label="Port">
                 <input className="input settings-port" aria-label="Port" inputMode="numeric" disabled={field("port")} value={draft.port} onChange={(e) => update({ port: e.target.value.replace(/\D/g, "") })} />
-              </Row>
-              <Row label="Username" desc="For signing in from other devices.">
+              </FormRow>
+              <FormRow label="Username" desc="For signing in from other devices.">
                 <input className="input" aria-label="Username" autoComplete="username" disabled={field("username")} value={draft.username} onChange={(e) => update({ username: e.target.value })} />
-              </Row>
-              <Row label="Password" desc={server?.values.hasPassword ? "Set. Type a new one to change it." : "Not set."}>
+              </FormRow>
+              <FormRow label="Password" desc={server?.values.hasPassword ? "Set. Type a new one to change it." : "Not set."}>
                 <input
                   className="input"
                   type="password"
@@ -496,20 +497,20 @@ export function SettingsDialog({
                   value={draft.password}
                   onChange={(e) => update({ password: e.target.value })}
                 />
-              </Row>
+              </FormRow>
               {server?.values.hasPassword && editable && !overridden("hasPassword") ? (
-                <Row label="Remove the password from config.yml" desc="Other devices can no longer sign in with it." toggle>
+                <FormRow label="Remove the password from config.yml" desc="Other devices can no longer sign in with it." toggle>
                   <Switch label="Remove the password from config.yml" checked={draft.removePassword} onChange={(removePassword) => update({ removePassword, password: "" })} />
-                </Row>
+                </FormRow>
               ) : null}
             </div>
           </section>
 
-          <section className="settings-section" aria-labelledby="settings-access">
+          <section className="form-section" aria-labelledby="settings-access">
             <h3 id="settings-access">Folders and access</h3>
-            <p className="settings-note">One per line. Takes effect when the server restarts.</p>
-            <div className="settings-card">
-              <Row label="Workspace roots" desc="The folders projects may be opened in." stack>
+            <p className="form-note">One per line. Takes effect when the server restarts.</p>
+            <div className="form-card">
+              <FormRow label="Workspace roots" desc="The folders projects may be opened in." stack>
                 <textarea
                   className="input"
                   aria-label="Workspace roots"
@@ -519,8 +520,8 @@ export function SettingsDialog({
                   value={draft.workspaceRoots}
                   onChange={(e) => update({ workspaceRoots: e.target.value })}
                 />
-              </Row>
-              <Row label="Allowed hosts" desc="Names this server answers to besides localhost." stack>
+              </FormRow>
+              <FormRow label="Allowed hosts" desc="Names this server answers to besides localhost." stack>
                 <textarea
                   className="input"
                   aria-label="Allowed hosts"
@@ -530,8 +531,8 @@ export function SettingsDialog({
                   value={draft.allowedHosts}
                   onChange={(e) => update({ allowedHosts: e.target.value })}
                 />
-              </Row>
-              <Row label="Allowed Tailscale users" desc="Empty lets anyone on the tailnet who signs in." stack>
+              </FormRow>
+              <FormRow label="Allowed Tailscale users" desc="Empty lets anyone on the tailnet who signs in." stack>
                 <textarea
                   className="input"
                   aria-label="Allowed Tailscale users"
@@ -541,10 +542,10 @@ export function SettingsDialog({
                   value={draft.allowedTailscaleUsers}
                   onChange={(e) => update({ allowedTailscaleUsers: e.target.value })}
                 />
-              </Row>
+              </FormRow>
             </div>
             {server && server.envOverrides.length > 0 ? (
-              <p className="settings-note">Set by the environment, so config.yml cannot change: {server.envOverrides.join(", ")}.</p>
+              <p className="form-note">Set by the environment, so config.yml cannot change: {server.envOverrides.join(", ")}.</p>
             ) : null}
           </section>
 
@@ -582,11 +583,11 @@ export function SettingsDialog({
       )}
 
       {awui ? (
-        <section className="settings-section" aria-labelledby="settings-awui">
+        <section className="form-section" aria-labelledby="settings-awui">
           <h3 id="settings-awui">Awui harness</h3>
-          <p className="settings-note">The providers the read-only Awui chat can call, kept in its own agent folder.</p>
-          <div className="settings-card">
-            <Row
+          <p className="form-note">The providers the read-only Awui chat can call, kept in its own agent folder.</p>
+          <div className="form-card">
+            <FormRow
               label="Share Pi's login"
               desc={
                 awui.piLogin
@@ -596,11 +597,11 @@ export function SettingsDialog({
               toggle
             >
               <Switch label="Share Pi's login" checked={awui.shareAuth} disabled={!awui.piLogin || awui.busy} onChange={(shareAuth) => setAwui({ ...awui, saved: false, shareAuth })} />
-            </Row>
-            <div className="settings-row is-stack">
-              <span className="settings-row-text">
-                <span className="settings-label">Providers</span>
-                <span className="settings-desc">Leave a key blank to keep the stored one; type - to clear it.</span>
+            </FormRow>
+            <div className="form-row is-stack">
+              <span className="form-row-text">
+                <span className="form-label">Providers</span>
+                <span className="form-desc">Leave a key blank to keep the stored one; type - to clear it.</span>
               </span>
               {awui.rows.length > 0 ? (
                 <div className="awui-providers">
@@ -617,7 +618,7 @@ export function SettingsDialog({
                   ))}
                 </div>
               ) : (
-                <p className="settings-empty">None yet{awui.shareAuth ? "" : ": add one, or share Pi's login above"}.</p>
+                <p className="form-empty">None yet{awui.shareAuth ? "" : ": add one, or share Pi's login above"}.</p>
               )}
             </div>
           </div>
@@ -649,36 +650,3 @@ const WIDTH_NOTE: Record<ChatWidth, string> = {
   wide: "A 1400px column, for wide code and tables.",
   full: "The whole pane, edge to edge.",
 };
-
-/**
- * One setting: its name and a line about it on the left, its control on the right
- * (under them, for a wide one). A toggle row is a <label>, so a click anywhere on
- * its words flips the switch, and the switch is named by them.
- */
-function Row({ label, desc, descId, toggle = false, stack = false, children }: { label: string; desc?: string; descId?: string; toggle?: boolean; stack?: boolean; children: React.ReactNode }) {
-  const text = (
-    <span className="settings-row-text">
-      <span className="settings-label">{label}</span>
-      {desc ? (
-        <span className="settings-desc" id={descId} data-testid={descId}>
-          {desc}
-        </span>
-      ) : null}
-    </span>
-  );
-  const className = `settings-row${stack ? " is-stack" : ""}${toggle ? " is-toggle" : ""}`;
-  if (toggle) {
-    return (
-      <label className={className}>
-        {text}
-        <span className="settings-control">{children}</span>
-      </label>
-    );
-  }
-  return (
-    <div className={className}>
-      {text}
-      <span className="settings-control">{children}</span>
-    </div>
-  );
-}

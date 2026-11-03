@@ -4,138 +4,28 @@
   overflow-y: auto;
 }
 
-/* Each group: a small heading, a line about it, then its settings in one card
-   (rows split by hairlines, words left, control right), like the system's own
-   settings rather than a form of loose fields. */
-.settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 4px 0 18px;
-}
-
-.settings-section h3 {
-  margin: 0;
-  padding: 0 4px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--muted-text);
-}
-
-.settings-section > .settings-note {
-  margin-top: -4px;
-  padding: 0 4px;
-  font-size: 12.5px;
-}
-
 .settings-form {
   display: flex;
   flex-direction: column;
 }
 
-.settings-card {
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--text) 3%, transparent);
-  box-shadow: inset 0 0 0 1px var(--hairline);
-}
-
-.settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 20px;
-  min-height: 54px;
-  padding: 10px 14px;
-  font-size: 13px;
-}
-
-.settings-row + .settings-row {
-  border-top: 1px solid var(--hairline);
-}
-
-/* A toggle row is its switch's label: the whole row takes the click. */
-.settings-row.is-toggle {
-  cursor: pointer;
-}
-
-.settings-row.is-toggle:has(.switch:disabled) {
-  cursor: default;
-}
-
-.settings-row.is-stack {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.settings-row-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.settings-label {
-  color: var(--text);
-  font-size: 13.5px;
-  font-weight: 500;
-}
-
-.settings-desc {
-  color: var(--muted-text);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.settings-control {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  max-width: 62%;
-}
-
-.settings-row.is-stack > .settings-control {
-  max-width: none;
-  justify-content: stretch;
-}
-
-.settings-control > .input {
-  width: 240px;
-}
-
-.settings-row.is-stack > .settings-control > .input {
-  width: 100%;
-}
-
-.settings-control > .settings-port.input {
+.form-control > .settings-port.input {
   width: 96px;
   text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-.settings-control textarea {
-  resize: vertical;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-}
-
-.settings-empty {
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--muted-text);
 }
 
 .settings-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* A note outside a card (the restore dialog's). */
+.settings-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted-text);
 }
 
 /* Chat text size slider: accent fill to the thumb, stop ticks, live value. */
@@ -223,12 +113,6 @@
   text-align: right;
 }
 
-.settings-note {
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted-text);
-}
-
 .settings-restart {
   display: flex;
   flex-wrap: wrap;
@@ -294,25 +178,6 @@
 }
 
 @media (max-width: 640px) {
-  /* The words take the row and the control goes under them, but a switch stays beside its words. */
-  .settings-row {
-    flex-wrap: wrap;
-  }
-
-  .settings-row:not(:has(.switch)) > .settings-row-text {
-    flex-basis: 100%;
-  }
-
-  .settings-control {
-    max-width: none;
-  }
-
-  .settings-row:not(:has(.switch)) > .settings-control {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .settings-control > .input,
   .text-slider {
     width: 100%;
   }

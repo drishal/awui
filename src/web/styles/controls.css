@@ -425,3 +425,149 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* A dialog's form (FormRow.tsx): each group a small heading, a line about it, then
+   its fields in one card (rows split by hairlines, words left, control right),
+   like the system's own settings rather than a column of loose fields. */
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 18px;
+}
+
+.form-section h3 {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+
+.form-note {
+  margin: 0;
+  color: var(--muted-text);
+}
+
+.form-section > .form-note {
+  margin-top: -4px;
+  padding: 0 4px;
+  font-size: 12.5px;
+}
+
+.form-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 20px;
+  min-height: 54px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.form-row + .form-row {
+  border-top: 1px solid var(--hairline);
+}
+
+/* A toggle row is its switch's label: the whole row takes the click. */
+.form-row.is-toggle {
+  cursor: pointer;
+}
+
+.form-row.is-toggle:has(.switch:disabled) {
+  cursor: default;
+}
+
+.form-row.is-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.form-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.form-label {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.form-desc {
+  color: var(--muted-text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.form-control {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 62%;
+}
+
+.form-row.is-stack > .form-control {
+  max-width: none;
+  justify-content: stretch;
+}
+
+.form-control > .input {
+  width: 240px;
+}
+
+.form-row.is-stack > .form-control > .input {
+  width: 100%;
+}
+
+.form-control textarea {
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.form-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted-text);
+}
+
+@media (max-width: 640px) {
+  /* The words take the row and the control goes under them, but a switch stays beside its words. */
+  .form-row {
+    flex-wrap: wrap;
+  }
+
+  .form-row:not(:has(.switch)) > .form-row-text {
+    flex-basis: 100%;
+  }
+
+  .form-control {
+    max-width: none;
+  }
+
+  .form-row:not(:has(.switch)) > .form-control {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .form-control > .input {
+    width: 100%;
+  }
+}
