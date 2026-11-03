@@ -1,13 +1,13 @@
-// A Board form's select: the app's own menu instead of a native <select>, whose
-// OS popup ignores the theme and dumps every option at once (the workspace list
-// over a home directory). The trigger is a field-shaped button; the listbox
-// reuses the harness menu's classes, so it looks and keys like every other menu
-// here — dots, a hint line, a check on the selected row.
+// A form's select: the app's own menu instead of a native <select>, whose OS
+// popup ignores the theme and dumps every option at once (the workspace list
+// over a home directory). The trigger is the composer's pill chip, sized to what
+// it says; the listbox reuses the harness menu's classes, so it looks and keys
+// like every other menu here — dots, a hint line, a check on the selected row.
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useDismiss, useLeave } from "../hooks.js";
 import { IconCheck, IconChevronDown } from "../icons.js";
 
-export interface BoardSelectOption {
+export interface SelectOption {
   value: string;
   label: string;
   /** A line after the label: a version, a note, or why it cannot be picked. */
@@ -17,21 +17,24 @@ export interface BoardSelectOption {
   dot?: string;
 }
 
-export function BoardSelect({
+export function Select({
   label,
   value,
   options,
   onChange,
   placeholder = "Choose…",
   disabled = false,
+  wide = false,
 }: {
   /** The field's name: the trigger's accessible name and the menu's. */
   label: string;
   value: string;
-  options: BoardSelectOption[];
+  options: SelectOption[];
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  /** Fill the row instead of fitting the chosen label (a long list of folders). */
+  wide?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const { render: showMenu, leaving } = useLeave(open);
@@ -103,11 +106,11 @@ export function BoardSelect({
   };
 
   return (
-    <div className="harness-menu-wrap is-row board-select-wrap" ref={wrap}>
+    <div className={`harness-menu-wrap is-row select-wrap${wide ? " is-wide" : ""}`} ref={wrap}>
       <button
         ref={trigger}
         type="button"
-        className="board-select"
+        className="pill-trigger select-trigger"
         aria-label={label}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -116,7 +119,7 @@ export function BoardSelect({
         onKeyDown={onTriggerKey}
       >
         {current?.dot ? <span className="harness-dot" style={{ ["--harness" as string]: current.dot }} aria-hidden="true" /> : null}
-        <span className="harness-row-name">{current?.label ?? placeholder}</span>
+        <span className="pill-label">{current?.label ?? placeholder}</span>
         <IconChevronDown size={12} />
       </button>
       {showMenu ? (

@@ -11,7 +11,7 @@ import { handleFrom } from "../room-mentions.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconChevronDown, IconChevronUp, IconPlus, IconRefresh, IconX } from "../icons.js";
 import { ConfirmButton } from "./ConfirmButton.js";
-import { BoardSelect } from "./BoardSelect.js";
+import { Select } from "./Select.js";
 import { Dialog } from "./Dialog.js";
 
 const byRank = (a: RoomMemberView, b: RoomMemberView) => a.rank - b.rank || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -97,7 +97,7 @@ export function RoomMembers({
         ) : null}
         <label className="room-field">
           <span>Lead</span>
-          <BoardSelect
+          <Select
             label="Room lead"
             value={room.leadMemberId ?? ""}
             disabled={busy || working !== null}
@@ -345,7 +345,7 @@ function AddMember({
     <div className="room-add" role="group" aria-label="Add a member">
       <label className="room-field">
         <span>Bot</span>
-        <BoardSelect
+        <Select
           label="Bot to add"
           value={botId}
           onChange={(value) => {

@@ -369,6 +369,40 @@
   display: flex;
 }
 
+/* Select (a form's choice): the composer's pill, sized to the chosen label, its menu at least as wide. */
+.select-wrap {
+  max-width: 100%;
+}
+
+.select-wrap.is-wide,
+.select-wrap.is-wide > .select-trigger {
+  width: 100%;
+}
+
+.select-trigger {
+  max-width: 100%;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.select-trigger > .pill-label {
+  flex: 1;
+}
+
+.select-trigger > .icon {
+  flex: none;
+  opacity: 0.7;
+}
+
+.select-wrap > .harness-menu {
+  right: auto;
+  width: max-content;
+  min-width: max(100%, 220px);
+  max-width: min(360px, 80vw);
+}
+
 .harness-row {
   display: flex;
   align-items: center;

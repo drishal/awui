@@ -12,7 +12,7 @@ import { budgetsOf, DEFAULT_BUDGETS } from "../room-state.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconChevronDown, IconChevronUp, IconPlus, IconX } from "../icons.js";
 import { Dialog } from "./Dialog.js";
-import { BoardSelect } from "./BoardSelect.js";
+import { Select } from "./Select.js";
 
 interface DraftMember {
   botId: string;
@@ -160,7 +160,7 @@ export function RoomEditor({
               {workspaces.length === 0 ? (
                 <span className="room-warning">Open a project first: a room runs its bots in one.</span>
               ) : (
-                <BoardSelect label="Room workspace" value={workspaceId} onChange={setWorkspaceId} options={workspaces.map((w) => ({ value: w.id, label: w.name }))} />
+                <Select label="Room workspace" value={workspaceId} onChange={setWorkspaceId} options={workspaces.map((w) => ({ value: w.id, label: w.name }))} />
               )}
               {onPickFolder ? (
                 <button type="button" className="btn btn-small" aria-label="Open another project" onClick={onPickFolder}>
@@ -244,7 +244,7 @@ export function RoomEditor({
                 {drafts.length > 0 ? (
                   <label className="room-field">
                     <span>Lead</span>
-                    <BoardSelect
+                    <Select
                       label="Room lead"
                       value={lead ?? ""}
                       onChange={(value) => setLeadBotId(value || null)}
@@ -260,7 +260,7 @@ export function RoomEditor({
           <>
             <label className="room-field">
               <span>Lead</span>
-              <BoardSelect
+              <Select
                 label="Room lead"
                 value={leadId}
                 onChange={setLeadId}

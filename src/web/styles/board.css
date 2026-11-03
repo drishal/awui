@@ -878,39 +878,6 @@
   min-width: 0;
 }
 
-/* The Board forms' select: a field-shaped trigger for the app's own menu (BoardSelect) —
-   a native <select>'s OS popup ignores the theme and shows every option at once. */
-.board-select {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-  font: inherit;
-  font-size: 13px;
-  padding: 6px 8px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--r-sm);
-  background: var(--bg);
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-}
-.board-select .harness-row-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.board-select:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.board-select-wrap {
-  width: 100%;
-}
-
 /* Role presets: a label to start from and the kind of model the role wants — never a model. */
 .board-role-presets {
   display: flex;

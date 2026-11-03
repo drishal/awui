@@ -9,7 +9,7 @@ import { api, errorText } from "../api.js";
 import { createBot, deleteBot, patchBot } from "../rooms.js";
 import { IconRefresh } from "../icons.js";
 import { ConfirmButton } from "./ConfirmButton.js";
-import { BoardSelect } from "./BoardSelect.js";
+import { Select } from "./Select.js";
 import { Dialog } from "./Dialog.js";
 import { ModelPicker } from "./ModelPicker.js";
 
@@ -175,7 +175,7 @@ export function BotEditor({
                 {harness?.displayName ?? bot.harnessId}
               </span>
             ) : (
-              <BoardSelect
+              <Select
                 label="Harness"
                 value={harnessId}
                 onChange={setHarnessId}
@@ -193,7 +193,7 @@ export function BotEditor({
         {workspaces.length > 1 ? (
           <label className="room-field">
             <span>Model catalog from</span>
-            <BoardSelect
+            <Select
               label="Model catalog workspace"
               value={workspaceId}
               onChange={setWorkspaceId}
@@ -300,7 +300,7 @@ export function BotEditor({
         </div>
         <label className="room-field">
           <span>Accent</span>
-          <BoardSelect
+          <Select
             label="Accent"
             value={accent}
             onChange={setAccent}
