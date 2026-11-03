@@ -18,6 +18,7 @@ import { announceLanding, ranFromQueue, type Spot } from "../queue-glide.js";
 import { load, save } from "../storage.js";
 import { TodoTree } from "./TodoTree.js";
 import { JobCard } from "./JobCard.js";
+import { Collapse } from "./Collapse.js";
 import type { ChatJob } from "../jobs.js";
 
 function Group({
@@ -39,7 +40,9 @@ function Group({
         <span>{title}</span>
         {meta ? <span className="stack-meta">{meta}</span> : null}
       </button>
-      {open ? <div className="stack-group-body">{children}</div> : null}
+      <Collapse open={open}>
+        <div className="stack-group-body">{children}</div>
+      </Collapse>
     </div>
   );
 }
@@ -142,11 +145,27 @@ export function StatusStack({
   const jobsById = useMemo(() => new Map(allJobs.map((j) => [j.id, j])), [allJobs]);
   const runningJobs = background.filter((j) => j.status === "running").length;
   const count = (background.length > 0 ? 1 : 0) + (jobs ? 1 : 0) + (notice ? 1 : 0) + queued.length + (todos.length > 0 ? 1 : 0) + (lost ? 1 : 0) + chain.length;
-  if (count === 0) return base ? <div className="status-stack is-base-only">{base}</div> : null;
+  const empty = count === 0;
+  // The card grows in when something first arrives and shrinks away when the last thing goes, showing what it
+  // last held while it shrinks. One already there when the chat opens is simply there.
+  const lastCard = useRef<React.ReactNode>(null);
+  const [shownAtMount] = useState(!empty);
+  const [entered, setEntered] = useState(!empty);
+  const [lingering, setLingering] = useState(!empty);
+  useEffect(() => {
+    if (!empty) {
+      setLingering(true);
+      const frame = requestAnimationFrame(() => setEntered(true));
+      return () => cancelAnimationFrame(frame);
+    }
+    setEntered(false);
+    const t = window.setTimeout(() => setLingering(false), STACK_SHRINK_MS);
+    return () => window.clearTimeout(t);
+  }, [empty]);
   const done = todos.filter((t) => /done|complete/.test(t.status)).length;
 
-  return (
-    <div className={`status-stack${hidden ? " is-hidden" : ""}`} data-testid="status-stack">
+  const card = empty ? null : (
+    <>
       <button
         type="button"
         className="stack-ridge"
@@ -160,7 +179,7 @@ export function StatusStack({
         <span className="ridge-bar" aria-hidden="true" />
         {hidden ? <span className="ridge-count">{count}</span> : null}
       </button>
-      {!hidden ? (
+      <Collapse open={!hidden}>
         <div className="stack-body">
           {jobs ? (
             <div className="stack-row stack-jobs" role="status" aria-live="polite" data-testid="job-progress">
@@ -280,8 +299,23 @@ export function StatusStack({
             </Group>
           ) : null}
         </div>
+      </Collapse>
+    </>
+  );
+  if (card) lastCard.current = card;
+  if (empty && !lingering && !base) return null;
+
+  return (
+    <div className={`status-stack${empty ? " is-base-only" : ""}${hidden ? " is-hidden" : ""}`} data-testid={empty ? undefined : "status-stack"}>
+      {!empty || lingering ? (
+        <Collapse open={!empty && (shownAtMount || entered)}>
+          <div className="stack-card">{card ?? lastCard.current}</div>
+        </Collapse>
       ) : null}
       {base}
     </div>
   );
 }
+
+/** How long the stack's card takes to shrink away (Collapse's grow), before it leaves the page. */
+const STACK_SHRINK_MS = 320;

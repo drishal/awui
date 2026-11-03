@@ -1,10 +1,15 @@
 /* ---- status stack (Hermes Desktop) ---------------------------------------------- */
 
+/* The card grows open when something arrives and shrinks away when the last thing goes (Collapse.tsx, on
+   the spring), its surface fading in and out with it; hiding it with the ridge folds its body the same way. */
 .status-stack {
   margin: 0 8px 6px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   background: var(--surface);
+  transition:
+    background-color 0.29s var(--ease-out),
+    border-color 0.29s var(--ease-out);
 }
 
 .status-stack.is-hidden {
@@ -185,8 +190,7 @@
   text-align: left;
 }
 
-.status-stack:not(.is-hidden) > .stack-body + .git-row,
-.status-stack.is-hidden > .git-row {
+.status-stack:not(.is-base-only) > .git-row {
   margin-top: 4px;
 }
 
