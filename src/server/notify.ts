@@ -6,7 +6,8 @@
 // signed with a VAPID key kept in the state folder.
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, type JsonWebKey, type KeyObject } from "node:crypto";
 import path from "node:path";
-import type { PushNote } from "../shared/protocol.js";
+import { approvalAnswers } from "../shared/approval.js";
+import type { InteractionRequest, PushNote } from "../shared/protocol.js";
 import { isObj, readJson, writeJson } from "./state-file.js";
 
 const MAX_NOTES = 50;
@@ -45,6 +46,24 @@ export function vapidAuthorization(endpoint: string, privateKey: KeyObject, publ
 interface Subscription {
   endpoint: string;
   addedAt: number;
+}
+
+/**
+ * A Board room's note as a push note. A room's bots are no ordinary chats (their
+ * chat routes answer 404), so the note names the room: a click opens it, and an
+ * approval's Approve/Deny goes to the room's answer route.
+ */
+export function roomPushNote(note: { kind: PushNote["kind"]; roomId: string; title: string; body: string; request?: InteractionRequest }): Omit<PushNote, "id" | "at"> {
+  const answers = note.request ? approvalAnswers(note.request) : null;
+  return {
+    kind: note.kind,
+    chatId: "",
+    roomId: note.roomId,
+    sessionId: null,
+    title: note.title,
+    body: note.body,
+    ...(note.request && answers ? { approval: { requestId: note.request.id, ...answers } } : {}),
+  };
 }
 
 export type PushFetch = (url: string, init: { method: string; headers: Record<string, string> }) => Promise<{ status: number }>;

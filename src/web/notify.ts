@@ -101,7 +101,7 @@ export async function turnOff(state: NotifyState): Promise<NotifyState> {
 /** Show a note from the page (the in-page fallback), through the worker when there is one: Android has no `new Notification`. */
 async function show(note: PushNote, onOpen: (note: PushNote) => void): Promise<void> {
   const reg = await navigator.serviceWorker?.getRegistration().catch(() => undefined);
-  const options = { body: note.body, tag: note.id, data: { chatId: note.chatId, sessionId: note.sessionId }, requireInteraction: note.kind === "ask" };
+  const options = { body: note.body, tag: note.id, data: { chatId: note.chatId, sessionId: note.sessionId, roomId: note.roomId ?? null }, requireInteraction: note.kind === "ask" };
   if (reg) {
     await reg.showNotification(note.title, options);
     return;
@@ -129,8 +129,9 @@ export function useNotifications(enabled: boolean, onOpen: (note: PushNote) => v
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      const data = e.data as { type?: string; chatId?: string; sessionId?: string | null } | null;
+      const data = e.data as { type?: string; chatId?: string; sessionId?: string | null; roomId?: string } | null;
       if (data?.type === "open-chat" && data.chatId) openRef.current({ id: "", kind: "done", chatId: data.chatId, sessionId: data.sessionId ?? null, title: "", body: "", at: 0 });
+      if (data?.type === "open-room" && data.roomId) openRef.current({ id: "", kind: "done", chatId: "", roomId: data.roomId, sessionId: null, title: "", body: "", at: 0 });
     };
     navigator.serviceWorker?.addEventListener("message", onMessage);
     return () => navigator.serviceWorker?.removeEventListener("message", onMessage);

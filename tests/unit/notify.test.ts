@@ -1,6 +1,7 @@
 import { createPublicKey, generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { Notifier, pushEndpointProblem, rawPublicKey, vapidAuthorization, type PushFetch } from "../../src/server/notify.js";
+import { Notifier, pushEndpointProblem, rawPublicKey, roomPushNote, vapidAuthorization, type PushFetch } from "../../src/server/notify.js";
+import { roomAnswerSchema } from "../../src/shared/protocol.js";
 
 const FCM = "https://fcm.googleapis.com/fcm/send/abc123";
 
@@ -49,5 +50,14 @@ describe("web push", () => {
     n.notify({ kind: "done", chatId: "", sessionId: null, title: "Test", body: "Test" }, FCM);
     await new Promise((r) => setTimeout(r, 10));
     expect(calls.map((c) => c.url)).toEqual([FCM]);
+  });
+
+  it("names a Board room's note by its room, with answers the room's route takes", () => {
+    const note = roomPushNote({ kind: "ask", roomId: "r1", title: "webui", body: "@lead asks: Run it?", request: { id: "q1", kind: "confirm", title: "Run it?", createdAt: 0 } });
+    // No chat id: a room's bots are not ordinary chats, so the worker must go through the room.
+    expect(note).toMatchObject({ chatId: "", roomId: "r1", sessionId: null, approval: { requestId: "q1" } });
+    expect(roomAnswerSchema.safeParse({ answer: note.approval?.approve }).success).toBe(true);
+    expect(roomAnswerSchema.safeParse({ answer: note.approval?.deny }).success).toBe(true);
+    expect(roomPushNote({ kind: "done", roomId: "r1", title: "webui", body: "done" }).approval).toBeUndefined();
   });
 });

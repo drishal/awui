@@ -431,8 +431,11 @@ export interface UsageLimits {
 export interface PushNote {
   id: string;
   kind: "done" | "error" | "ask";
+  /** The chat it is about; "" for a Board room's note, which names its room instead. */
   chatId: string;
   sessionId: string | null;
+  /** A Board room's note: the room to open, and where an approval's answer goes (a room's bots are no ordinary chats). */
+  roomId?: string;
   /** The chat's title. */
   title: string;
   /** One line: the answer's start, the question, or the error. */

@@ -1032,6 +1032,10 @@ export function App() {
 
   /** A notification was clicked: show its chat, or resume its session once the server no longer holds the chat. */
   const openNote = async (note: PushNote) => {
+    if (note.roomId) {
+      openRoom(note.roomId);
+      return;
+    }
     if (!note.chatId) return;
     const tab = findTab(tabsRef.current, { chatId: note.chatId, sessionId: note.sessionId });
     if (tab >= 0) {

@@ -43,14 +43,14 @@ async function showNotes() {
   }
   cursor = data.now;
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  const watching = (chatId) => chatId && windows.some((w) => w.visibilityState === "visible" && new URL(w.url).hash === `#chat=${chatId}`);
+  const watching = (hash) => windows.some((w) => w.visibilityState === "visible" && new URL(w.url).hash === hash);
   for (const note of data.notes) {
-    if (shown.has(note.id) || watching(note.chatId)) continue;
+    if (shown.has(note.id) || (note.roomId ? watching(`#room=${note.roomId}`) : note.chatId && watching(`#chat=${note.chatId}`))) continue;
     shown.add(note.id);
     await self.registration.showNotification(note.title, {
       body: note.body,
       tag: note.id,
-      data: { chatId: note.chatId, sessionId: note.sessionId, approval: note.approval ?? null },
+      data: { chatId: note.chatId, sessionId: note.sessionId, roomId: note.roomId ?? null, approval: note.approval ?? null },
       requireInteraction: note.kind === "ask",
       ...(note.approval
         ? {
@@ -66,10 +66,14 @@ async function showNotes() {
 
 /** Send the approval's answer the button chose; say how it went in a short notification. */
 async function answer(data, choice) {
-  const { chatId, approval } = data;
+  const { chatId, roomId, approval } = data;
+  // A room's bots answer through the room, never the chat routes (which refuse a room's chats).
+  const url = roomId
+    ? `/api/rooms/${encodeURIComponent(roomId)}/requests/${encodeURIComponent(approval.requestId)}/answer`
+    : `/api/chats/${encodeURIComponent(chatId)}/requests/${encodeURIComponent(approval.requestId)}`;
   let outcome;
   try {
-    const res = await fetch(`/api/chats/${encodeURIComponent(chatId)}/requests/${encodeURIComponent(approval.requestId)}`, {
+    const res = await fetch(url, {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
@@ -79,7 +83,7 @@ async function answer(data, choice) {
   } catch {
     outcome = "Could not reach the server";
   }
-  await self.registration.showNotification(outcome, { tag: `answer-${approval.requestId}`, data: { chatId }, silent: true });
+  await self.registration.showNotification(outcome, { tag: `answer-${approval.requestId}`, data: { chatId, roomId }, silent: true });
 }
 
 self.addEventListener("notificationclick", (event) => {
@@ -89,17 +93,18 @@ self.addEventListener("notificationclick", (event) => {
     event.waitUntil(answer(data, event.action));
     return;
   }
-  const { chatId, sessionId } = data;
+  const { chatId, sessionId, roomId } = data;
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const target = windows.find((w) => w.focused) ?? windows[0];
       if (target) {
         await target.focus();
-        if (chatId) target.postMessage({ type: "open-chat", chatId, sessionId });
+        if (roomId) target.postMessage({ type: "open-room", roomId });
+        else if (chatId) target.postMessage({ type: "open-chat", chatId, sessionId });
         return;
       }
-      await self.clients.openWindow(chatId ? `/#chat=${chatId}` : "/");
+      await self.clients.openWindow(roomId ? `/#room=${roomId}` : chatId ? `/#chat=${chatId}` : "/");
     })(),
   );
 });

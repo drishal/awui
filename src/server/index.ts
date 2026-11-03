@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { createApp, RECENT_SESSIONS_PER_HARNESS } from "./app.js";
 import { ChatManager } from "./chats/manager.js";
 import { RoomManager } from "./boards/manager.js";
-import { approvalAnswers } from "../shared/approval.js";
 import { ConfigError, loadConfig, migrateStateDir } from "./config.js";
 import { liveOmpChildren } from "./harness/omp.js";
 import { HarnessRegistry } from "./harness/registry.js";
@@ -27,7 +26,7 @@ import { runRoutine } from "./routine-runner.js";
 import { SessionOrder } from "./session-order.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { Limits } from "./limits.js";
-import { Notifier } from "./notify.js";
+import { Notifier, roomPushNote } from "./notify.js";
 import { ThemeStore } from "./theme.js";
 import { Herdr, herdrSocketPath } from "./herdr.js";
 import { configDir, configEnv, herdrEnabled, migrateConfigDir, readUserConfig, UserConfigError } from "./user-config.js";
@@ -190,17 +189,7 @@ async function main(): Promise<void> {
     chats: manager,
     stateDir: config.stateDir,
     log: (m) => console.error(`awui: boards: ${m}`),
-    notify: (note) => {
-      const answers = note.request ? approvalAnswers(note.request) : null;
-      notifier.notify({
-        kind: note.kind,
-        chatId: note.roomId,
-        sessionId: null,
-        title: note.title,
-        body: note.body,
-        ...(note.request && answers ? { approval: { requestId: note.request.id, ...answers } } : {}),
-      });
-    },
+    notify: (note) => void notifier.notify(roomPushNote(note)),
   });
   await boards.start();
   const lanUrls = config.host === "0.0.0.0" ? sampleLanHosts().ipv4.map((ip) => `http://${ip}:${config.port}/`) : [];
