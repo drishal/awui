@@ -57,6 +57,12 @@ export interface WorkspaceInfo {
   id: string;
   path: string;
   name: string;
+  /**
+   * The project's direnv state: a .envrc in the tree that direnv will not run
+   * until allowed (so harness children spawn without it), and its path.
+   * Absent means no .envrc or direnv not installed.
+   */
+  direnv?: { blocked: boolean; rcPath: string | null };
 }
 
 export interface DirEntry {
@@ -708,6 +714,8 @@ export interface Bootstrap {
 export const MAX_MESSAGE_CHARS = 100_000;
 
 export const openWorkspaceSchema = z.object({ path: z.string().min(1).max(4096) });
+/** Allow a project's .envrc (direnv allow), within the workspace roots. */
+export const direnvAllowSchema = z.object({ workspaceId: z.string().min(1).max(128) });
 export const createChatSchema = z.object({
   harnessId: z.string().min(1).max(64),
   workspaceId: z.string().min(1).max(128),

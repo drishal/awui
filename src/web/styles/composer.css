@@ -202,6 +202,38 @@
   color: var(--muted-text);
 }
 
+/* The blocked-.envrc notice above the card: the same quiet frame as the paste offer,
+   but in the warning colour, since the agent runs on a different environment than the UI says. */
+.direnv-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--warn) 8%, var(--bg));
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.direnv-note > .icon {
+  color: var(--warn);
+  flex: none;
+}
+
+.direnv-note-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.direnv-note-error {
+  flex-basis: 100%;
+  color: var(--warn);
+  font-size: 12px;
+}
+
 .composer-images {
   display: flex;
   flex-wrap: wrap;

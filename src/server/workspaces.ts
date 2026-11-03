@@ -7,6 +7,7 @@ import path from "node:path";
 import type { BrowseResult, DirEntry, WorkspaceInfo } from "../shared/protocol.js";
 import { ChatError } from "./chats/chat.js";
 import { expandHome } from "./config.js";
+import { envForSpawn, findEnvrc } from "./direnv.js";
 
 const MAX_ENTRIES = 2000;
 /** Opened workspaces remembered by id. The listing routes re-touch theirs on
@@ -73,6 +74,10 @@ export class Workspaces {
 
   /** Insert or refresh a workspace as most-recently-used, evicting past the cap. */
   private remember(info: WorkspaceInfo): WorkspaceInfo {
+    // The direnv state rides along so the composer and the start screen can
+    // offer to allow a blocked .envrc; envForSpawn's cache makes this cheap.
+    const rcPath = findEnvrc(info.path);
+    if (rcPath) info.direnv = envForSpawn(info.path).state;
     this.byId.delete(info.id);
     this.byId.set(info.id, info);
     if (this.byId.size > MAX_OPENED) {

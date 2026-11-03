@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, symlinkSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { approvalAnswers } from "../../src/shared/approval.js";
@@ -47,6 +47,27 @@ describe("bootstrap and workspaces", () => {
     expect((await agent.post("/api/workspaces/open").send({ path: path.join(t.root, "escape") })).status).toBe(403);
     expect((await agent.post("/api/workspaces/open").send({ path: path.join(t.root, "missing") })).status).toBe(404);
   });
+
+  it("allows a blocked .envrc through the workspace route and refuses when there is none", async () => {
+    let hasDirenv = true;
+    try {
+      execFileSync("direnv", ["version"], { stdio: "ignore" });
+    } catch {
+      hasDirenv = false;
+    }
+    if (!hasDirenv) return;
+    const { agent, t, ws } = await setup();
+    // None here: the route says so rather than writing anything.
+    expect((await agent.post(`/api/workspaces/${ws.id}/direnv-allow`)).status).toBe(409);
+    // A fresh .envrc blocks, the route allows it, and the workspace answer says so.
+    writeFileSync(path.join(t.project, ".envrc"), "export AWUI_TEST_ENVRC=route\n");
+    const blocked = await agent.post("/api/workspaces/open").send({ path: t.project });
+    expect(blocked.body.direnv?.blocked).toBe(true);
+    const res = await agent.post(`/api/workspaces/${ws.id}/direnv-allow`);
+    expect(res.status).toBe(200);
+    expect(res.body.direnv?.blocked).toBe(false);
+  });
+
 
   it("browses one level of directories and hides symlink escapes", async () => {
     const { agent, t } = await setup();

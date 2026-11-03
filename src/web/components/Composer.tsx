@@ -32,6 +32,7 @@ import { continueList, indentList } from "../list-continue.js";
 import { loadStash, saveStash, stashDraft, takeFromStash, type StashEntry } from "../stash.js";
 import { CONTINUE_TEXT, limitStop } from "../../shared/limit-stop.js";
 import { LimitRecovery } from "./LimitRecovery.js";
+import { DirenvNote } from "./DirenvNote.js";
 import { useDismiss, useLeave, useMediaQuery, useMorph, useNow } from "../hooks.js";
 import { composerFolded } from "../composer-fold.js";
 import { GitPanel, GitRow } from "./GitStatusView.js";
@@ -702,6 +703,7 @@ export function Composer({
           }}
         />
       ) : null}
+      <DirenvNote chat={chat} />
       {pending.length === 0 && folded ? <ApprovalFolded key={folded.id} folded={folded} onDone={() => setFolded(null)} /> : null}
       {pending.length > 0 ? (
         <ApprovalStack

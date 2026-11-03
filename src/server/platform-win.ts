@@ -18,6 +18,7 @@
 import { execFile, spawn, spawnSync, type ChildProcessWithoutNullStreams, type SpawnOptions } from "node:child_process";
 import { accessSync } from "node:fs";
 import path from "node:path";
+import { envForSpawn } from "./direnv.js";
 
 export const IS_WINDOWS = process.platform === "win32";
 
@@ -125,12 +126,20 @@ export function resolveWin(command: string, args: string[]): [string, string[]] 
 }
 
 /**
- * The spawn site for every harness child. On POSIX this is spawn() unchanged.
+ * The spawn site for every harness child. On POSIX this is spawn() unchanged,
+ * with the project's direnv diff applied: a .envrc the user allowed (in the
+ * child's cwd or a parent) gives the harness the same environment a terminal
+ * there would. The caller's own env wins over the diff; process.env feeds both.
  * On Windows a bare npm CLI (pi, claude) resolves to its `.cmd` shim and runs
  * through the command interpreter, since CreateProcess cannot execute a batch
  * file directly; a native `.exe` (omp) or an explicit path spawns as-is.
  */
 export function spawnHarness(command: string, args: string[], opts: SpawnOptions): ChildProcessWithoutNullStreams {
+  if (!IS_WINDOWS) {
+    // direnv is POSIX-first; on Windows there is nothing to merge.
+    const dir = typeof opts.cwd === "string" ? opts.cwd : process.cwd();
+    opts = { ...opts, env: { ...envForSpawn(dir).env, ...(opts.env ?? {}) } };
+  }
   if (IS_WINDOWS) {
     const [argv0, prefix] = resolveWin(command, args);
     // resolveWin already folded the real args into the cmd line when it wrapped. That line is escaped for cmd

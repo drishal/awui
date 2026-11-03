@@ -107,6 +107,7 @@ import { commitStaged, GitActionError, stageFiles, unstageFiles } from "./git-ac
 import { runCommand } from "./run-command.js";
 import { shellLine } from "./shell-line.js";
 import type { Workspaces } from "./workspaces.js";
+import { allowEnvrc, envForSpawn, findEnvrc } from "./direnv.js";
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
 export const RECENT_SESSIONS_PER_HARNESS = 200;
@@ -388,6 +389,18 @@ export function createApp(deps: AppDeps) {
   app.post("/api/workspaces/open", async (req, res) => {
     const { path: p } = body(openWorkspaceSchema, req);
     res.json(await workspaces.open(p));
+  });
+
+  // Approve a project's .envrc (direnv allow): the composer/start screen offer this when the
+  // workspace's tree has a blocked one. Goes to someone signed in from anywhere — it writes to
+  // the user's direnv state (~/.local/share/direnv/allow), the same consent `direnv allow` asks
+  // for in a terminal, and the user just read what they are allowing in the prompt's file link.
+  app.post("/api/workspaces/:id/direnv-allow", async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const state = findEnvrc(ws.path) ? envForSpawn(ws.path).state : null;
+    if (!state?.blocked) throw new ChatError(409, "not_blocked", "No blocked .envrc here");
+    if (!allowEnvrc(ws.path)) throw new ChatError(500, "direnv_failed", "direnv allow did not run");
+    res.json(await workspaces.get(ws.id));
   });
 
   // A project's files for a client's @mention picker, relative to the project.
