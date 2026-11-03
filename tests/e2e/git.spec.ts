@@ -37,3 +37,19 @@ test("the git panel stages a file, commits it, and unstages another", async ({ p
   await expect(panel.getByRole("button", { name: /^Commit/ })).toBeDisabled();
   await expect(panel.getByRole("heading", { name: "Untracked" })).toBeVisible();
 });
+
+test("the status stack's ridge folds the git row too, and brings it back", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/gamma` } })).json()) as { id: string };
+  const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await page.goto(`/#chat=${chat.chatId}`);
+
+  const row = page.getByTestId("git-row");
+  await expect(row).toBeVisible();
+  // The stack holds the git row alone (base-only): its ridge is the one pill above it.
+  const ridge = page.getByRole("button", { name: "Hide status" });
+  await ridge.click();
+  await expect(row).toBeHidden();
+  await page.getByRole("button", { name: "Show status" }).click();
+  await expect(row).toBeVisible();
+});

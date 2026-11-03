@@ -314,8 +314,25 @@ export function StatusStack({
         <Collapse open={!empty && (shownAtMount || entered)}>
           <div className="stack-card">{card ?? lastCard.current}</div>
         </Collapse>
+      ) : base ? (
+        /* The git row alone (base-only): the ridge hides it too. */
+        <button
+          type="button"
+          className="stack-ridge"
+          aria-expanded={!hidden}
+          aria-label={hidden ? "Show status" : "Hide status"}
+          onClick={() => {
+            setHidden(!hidden);
+            save(key, !hidden);
+          }}
+        >
+          <span className="ridge-bar" aria-hidden="true" />
+        </button>
       ) : null}
-      {base}
+      {/* The git row folds with the rest on the ridge. */}
+      {base ? (
+        <Collapse open={!hidden}>{base}</Collapse>
+      ) : null}
     </div>
   );
 }
