@@ -362,15 +362,6 @@ class ClaudeLiveChat implements LiveChat {
   }
 
   async start(): Promise<void> {
-    if (this.resumeId) {
-      const file = await this.adapter.sessionFile(this.cwd, this.resumeId);
-      if (!file) throw new Error("Session not found in Claude Code's project folder");
-      const entries = parseEntries(await fs.readFile(file, "utf8"));
-      const meta = sessionMeta(entries, this.resumeId);
-      this.sessionTitle = meta && meta.title !== meta.firstPrompt.slice(0, 80) ? meta.title : null;
-      this.usage = usageBaseline(entries);
-      this.todos = toTodos(latestTodos(entries));
-    }
     const args = [...STREAM_ARGS, ...renderMcpArgs(this.renderEnv), ...this.adapter.extraArgs, ...(this.resumeId ? ["--resume", this.resumeId] : ["--session-id", this.sessionId])];
     const rpc = new ClaudeRpc(this.adapter.cliCommand, args, this.adapter.childEnv(), this.cwd, (frame) => this.onFrame(frame));
     this.rpc = rpc;
@@ -379,22 +370,42 @@ class ClaudeLiveChat implements LiveChat {
       this.dialogs.cancelAll();
       this.emit({ type: "fatal", message: `claude stopped unexpectedly (${message})` });
     });
+    // The session file (hundreds of MB for a long one) is read while the child boots, not before it
+    // is spawned: the two do not depend on each other.
+    const resumed = this.resumeId ? this.readResumed(this.resumeId) : null;
+    resumed?.catch(() => undefined);
     try {
+      if (resumed) {
+        const { entries, meta } = await resumed;
+        this.sessionTitle = meta && meta.title !== meta.firstPrompt.slice(0, 80) ? meta.title : null;
+        this.usage = usageBaseline(entries);
+        this.todos = toTodos(latestTodos(entries));
+      }
       const init = await rpc.init;
       const models = Array.isArray(init.models) ? init.models : [];
       this.models = models.map(toModelInfo).filter((m): m is ModelInfo => m !== null);
       this.autoModels = autoModeModels(models);
       this.permissionMode = str(init.current_permission_mode) || null;
       this.commands = (Array.isArray(init.commands) ? init.commands : []).map(toCommand).filter((c): c is SlashCommand => c !== null);
-      const settings = await this.readSettings(rpc);
-      this.model = str(settings.effective.model) || "default";
       // Thinking is omitted from the stream unless asked for; summaries are what the TUI shows.
-      await rpc.request({ subtype: "set_max_thinking_tokens", max_thinking_tokens: null, thinking_display: "summarized" }).catch(() => undefined);
+      const [settings] = await Promise.all([
+        this.readSettings(rpc),
+        rpc.request({ subtype: "set_max_thinking_tokens", max_thinking_tokens: null, thinking_display: "summarized" }).catch(() => undefined),
+      ]);
+      this.model = str(settings.effective.model) || "default";
       this.emit({ type: "session", nativeId: this.sessionId });
     } catch (error) {
       await rpc.kill().catch(() => undefined);
       throw error;
     }
+  }
+
+  /** A resumed session's own file: its title, usage so far, and last todo list. */
+  private async readResumed(id: string): Promise<{ entries: Obj[]; meta: ReturnType<typeof sessionMeta> }> {
+    const file = await this.adapter.sessionFile(this.cwd, id);
+    if (!file) throw new Error("Session not found in Claude Code's project folder");
+    const entries = parseEntries(await fs.readFile(file, "utf8"));
+    return { entries, meta: sessionMeta(entries, id) };
   }
 
   // ---- the stream -------------------------------------------------------------

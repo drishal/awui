@@ -271,6 +271,10 @@ describe("claude adapter (scripted CLI)", () => {
     expect(copy.snapshot().items.map((i) => (i.kind === "user" || i.kind === "assistant" ? i.text : i.kind))).toEqual(["first prompt", "claude says first prompt"]);
   });
 
+  it("refuses to resume a session that has no file, and stops the child it started meanwhile", async () => {
+    await expect(adapter.openChat({ cwd: project, resumeNativeId: "no-such-session" })).rejects.toThrow(/Session not found/);
+  });
+
   it("gives a terminal command that resumes the session by id, once it is saved", async () => {
     const { chat, live } = await openChat();
     const nativeId = live.nativeId as string;
