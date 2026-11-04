@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Key } from "@stencil-hq/tern";
-import type { ChatItem, ProjectSession, SessionsOverview, ToolItem } from "../../src/shared/protocol.js";
+import type { ChatItem, InteractionRequest, ProjectSession, SessionsOverview, ToolItem } from "../../src/shared/protocol.js";
 import type { ChatState } from "../../src/web/chat-state.js";
 import type { Node } from "@stencil-hq/tern";
 import { applyEdit, draftState, editKey, lineStep, redo, setText, undo, wordStep, type DraftState } from "../../src/tern/draft.js";
 import { filterItems, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
-import { decorations, dock, placeholder, type DockCx } from "../../src/tern/dock.js";
+import { askShape, decorations, dock, placeholder, type DockCx } from "../../src/tern/dock.js";
 import { themeSheet } from "../../src/tern/look.js";
 import { conversation, foldHead, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
@@ -183,6 +183,31 @@ describe("the Tern dock", () => {
     const folded = all(dock(dockCx({ todos }, { todosOpen: false }))).find((n) => n.props.role === "awui.todos");
     expect(folded?.props.collapsed).toBe(true);
     expect(folded?.children.filter(Boolean)).toEqual([]);
+  });
+
+
+  const request = (over: Partial<InteractionRequest>): InteractionRequest => ({ id: "r1", kind: "select", title: "Run command?", message: "npm test", options: ["Approve", "Deny"], createdAt: 1, ...over });
+
+  it("draws an approval as a tool row waiting for its yes, its buttons answering by option", () => {
+    const answered: Array<[string, number]> = [];
+    const r = request({ options: ["Allow once", "Always allow (npm test)", "Deny"] });
+    const row = all(dock(dockCx({ pending: [r] }, { on: { answer: (q: InteractionRequest, i: number) => answered.push([q.id, i]) } as unknown as DockCx["on"] }))).find((n) => n.kind === "tool");
+    expect(row?.props).toMatchObject({ name: "bash", title: "Run command", target: "npm test", targetKind: "command", status: "ask", confirm: "card" });
+    expect(row?.props.ask).toEqual({ allow: "Allow once · 1", deny: "Deny · 3", always: "Always allow · 2" });
+    const on = row?.handlers?.onAction;
+    void on?.["allow"]?.({ act: "allow" } as never);
+    void on?.["always"]?.({ act: "always" } as never);
+    void on?.["deny"]?.({ act: "deny" } as never);
+    expect(answered).toEqual([["r1", 0], ["r1", 1], ["r1", 2]]);
+  });
+
+  it("keeps a question, or a choice of more than an allowance, as a card", () => {
+    expect(askShape(request({ options: ["Approve", "Deny"] }))).toEqual({ allow: 0, deny: 1, always: null });
+    expect(askShape(request({ kind: "confirm", options: undefined }))).toEqual({ allow: 0, deny: 1, always: null });
+    expect(askShape(request({ options: ["Allow once", "Allow for this session", "Deny"] }))).toEqual({ allow: 0, deny: 2, always: 1 });
+    expect(askShape(request({ options: ["Red", "Green", "Blue"] }))).toBeNull();
+    expect(askShape(request({ options: ["Allow once", "Maybe", "Deny"] }))).toBeNull();
+    expect(askShape(request({ kind: "input", options: undefined }))).toBeNull();
   });
 
   it("offers the permission mode as a chip where the harness has modes, marking one that asks nothing", () => {

@@ -150,7 +150,8 @@ describe("awui tern", () => {
     const { tern, app, until } = client;
     tern.type("ask please\r");
     await until(() => tern.nodes.has("dock.d.req"), "the approval card");
-    expect(tern.text("dock")).toContain("Approve");
+    // Tern's own ask panel draws the buttons: the row carries their labels.
+    expect(tern.find("tool", "dock")[0]?.p).toMatchObject({ status: "ask", ask: { allow: "Approve · 1", deny: "Deny · 2" } });
     tern.type("1");
     await until(() => !tern.nodes.has("dock.d.req") && app.chat()?.status === "idle", "the approval to go");
     expect(tern.text("main")).toContain("Approved");

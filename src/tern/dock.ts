@@ -79,7 +79,77 @@ export function placeholder(chat: ChatState | null, harness: HarnessStatus | nul
   return "Message the agent…";
 }
 
+/** An approval's three answers as Tern's ask panel has them: the option each button sends. */
+export interface AskShape {
+  allow: number;
+  deny: number;
+  /** "Always allow" or "Allow for this session", when the harness offers one. */
+  always: number | null;
+}
+
+/**
+ * Whether a request is a yes/no the tool row's ask panel can draw: an approval (Approve, Deny), or Allow once,
+ * one standing allowance, and Deny (Claude Code, OpenCode). Anything else (a question, more choices) stays a card.
+ */
+export function askShape(r: InteractionRequest): AskShape | null {
+  const options = optionsOf(r);
+  if (options.length < 2 || options.length > 3) return null;
+  const labels = options.map((o) => o.label.toLowerCase());
+  const deny = labels.findIndex((l) => l === "deny");
+  const allow = labels.findIndex((l) => l === "approve" || l === "allow once");
+  if (deny < 0 || allow < 0) return null;
+  const always = labels.findIndex((l, i) => i !== deny && i !== allow && (l.startsWith("always allow") || l.startsWith("allow for this session")));
+  if (options.length === 3 && always < 0) return null;
+  return { allow, deny, always: always < 0 ? null : always };
+}
+
+/** The icon a request's words suggest (a request names no tool, only its title and message). */
+export function askIcon(r: InteractionRequest): string {
+  const words = `${r.title} ${r.message ?? ""}`;
+  if (/\b(bash|shell|command|run|exec)/i.test(words)) return "bash";
+  if (/\b(edit|patch)/i.test(words)) return "edit";
+  if (/\b(write|create)/i.test(words)) return "write";
+  if (/\b(fetch|web|url|http)/i.test(words)) return "web";
+  if (/\b(read|open)/i.test(words)) return "read";
+  return "";
+}
+
+/** An approval as a tool row waiting for its yes: Tern draws the buttons, and a click reaches `answer` with the option's index. */
+function approvalNode(r: InteractionRequest, shape: AskShape, cx: DockCx): Node {
+  const options = optionsOf(r);
+  const first = (r.message ?? "").split("\n").find((l) => l.trim()) ?? "";
+  const name = askIcon(r);
+  const key = (i: number) => (i < 9 ? ` · ${i + 1}` : "");
+  const alwaysLabel = shape.always === null ? null : options[shape.always]?.label.replace(/ \(.*\)$/, "");
+  const alwaysTitle = shape.always === null ? undefined : options[shape.always]?.label;
+  return ui.tool(
+    {
+      key: "req",
+      role: "awui.approval",
+      name,
+      title: r.title.replace(/\?$/, ""),
+      ...(first ? { target: first, targetKind: name === "bash" ? "command" : "text" } : {}),
+      status: "ask",
+      confirm: "card",
+      ask: {
+        allow: `${options[shape.allow]?.label ?? "Approve"}${key(shape.allow)}`,
+        deny: `Deny${key(shape.deny)}`,
+        always: alwaysLabel === null || alwaysLabel === undefined ? false : `${alwaysLabel}${key(shape.always as number)}`,
+      },
+      ...(alwaysTitle && alwaysTitle !== alwaysLabel ? { intent: alwaysTitle } : {}),
+      onAction: {
+        allow: () => cx.on.answer(r, shape.allow),
+        deny: () => cx.on.answer(r, shape.deny),
+        ...(shape.always !== null ? { always: () => cx.on.answer(r, shape.always as number) } : {}),
+      },
+    },
+    r.message && (r.message.includes("\n") || r.message.length > 120) ? ui.text({ key: "m", text: r.message }) : null,
+  );
+}
+
 function requestNode(r: InteractionRequest, cx: DockCx): Node {
+  const shape = askShape(r);
+  if (shape) return approvalNode(r, shape, cx);
   const options = optionsOf(r);
   const text = r.kind === "input" || r.kind === "editor";
   const buttons = options.map((o, i) =>

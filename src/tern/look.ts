@@ -119,6 +119,8 @@ export const STYLESHEET = `
 .answer.primary { color: var(--page, #000); background: ${INK}; }
 .answer.deny { color: var(--bad); }
 .answer .n { color: var(--t4); margin-right: 6px; }
+/* An approval is a tool row's ask panel. Tern draws an Enter keycap on Allow; Enter sends the composer here, so none is shown. */
+[data-role='awui.approval'] .sf-tool-ask-btn .sf-kbd, [data-role='awui.approval'] .sf-tool-ask-btn .kbd { display: none; }
 
 /* Tabs along the top, when there are two or more. */
 [data-role='awui.tabs'] { margin-bottom: -6px; }
