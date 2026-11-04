@@ -71,12 +71,12 @@ export function errorLine(output: string): string | undefined {
   return line.length > ERROR_CUT ? `${line.slice(0, ERROR_CUT - 1)}…` : line;
 }
 
-/** A command's first line worth showing: the model's leading `# note` lines are skipped, a shebang is not a note. Cut to 60 characters. */
-function commandLine(cmd: string): string {
+/** A command's first line worth showing: the model's leading `# note` lines are skipped, a shebang is not a note. Cut to `cut` characters (60; a surface that truncates by its own width passes Infinity). */
+export function commandLine(cmd: string, cut = COMMAND_CUT): string {
   const lines = cmd.split("\n").map((l) => l.trim()).filter(Boolean);
   // Agents start most commands by changing into the project ("cd /home/me/app && …"); the row says what ran, not where.
   const line = (lines.find((l) => !l.startsWith("#") || l.startsWith("#!")) ?? lines[0] ?? "").replace(/^(?:cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*)+/, "");
-  return line.length > COMMAND_CUT ? `${line.slice(0, COMMAND_CUT - 1)}…` : line;
+  return line.length > cut ? `${line.slice(0, cut - 1)}…` : line;
 }
 
 function hostAndPath(url: string): string {

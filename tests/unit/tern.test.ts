@@ -244,10 +244,20 @@ describe("the Tern conversation", () => {
   it("draws a command as Tern's tool row, its output folded under it", () => {
     const node = toolNode(tool({ args: JSON.stringify({ command: "npm test" }), output: "ok\n", at: 1000, endedAt: 3500 }), "/w", () => undefined);
     expect(node.kind).toBe("tool");
-    expect(node.props).toMatchObject({ name: "bash", title: "Bash", target: "npm test", targetKind: "command", status: "done", took: 2500, collapsible: true, collapsed: true, frame: "inline" });
+    expect(node.props).toMatchObject({ name: "bash", title: "Ran", target: "npm test", targetKind: "command", status: "done", took: 2500, collapsible: true, collapsed: true, frame: "inline" });
     expect(node.children[0]?.kind).toBe("ansi");
-    // The web UI's row carries no "1 line" count.
-    expect(node.props.meta).toBeUndefined();
+    // The facts are the web UI's: what the output holds.
+    expect(node.props.meta).toEqual(["1 line"]);
+  });
+
+  it("words a call as the web UI does: a command without its cd, a failure with its reason", () => {
+    const ran = toolNode(tool({ args: JSON.stringify({ command: "cd /w && npm run build --silent" }), output: "ok\n" }), "/w", () => undefined);
+    expect(ran.props).toMatchObject({ title: "Ran", target: "npm run build --silent" });
+    const mcp = toolNode(tool({ name: "mcp__tracker__triage_ticket", category: "other", args: "{}" }), "/w", () => undefined);
+    expect(mcp.props).toMatchObject({ title: "Asked", target: "tracker: triage ticket" });
+    const failed = toolNode(tool({ status: "error", args: JSON.stringify({ file_path: "/w/src/gone.ts" }), category: "read", paths: ["/w/src/gone.ts"], output: "Error: ENOENT: no such file or directory" }), "/w", () => undefined);
+    expect(failed.props).toMatchObject({ title: "Couldn't read", target: "src/gone.ts", status: "error" });
+    expect(JSON.stringify(failed.props.note)).toContain("ENOENT");
   });
 
   it("times a finished call only past a second and a half, as the web UI's rows do", () => {
@@ -268,7 +278,7 @@ describe("the Tern conversation", () => {
       () => undefined,
     );
     // Folded like every row, its +/− count saying how big it is.
-    expect(node.props).toMatchObject({ title: "Edit", target: "src/a.ts", targetKind: "path", meta: ["+1", "−1"], collapsed: true });
+    expect(node.props).toMatchObject({ title: "Edited", target: "src/a.ts", targetKind: "path", meta: ["+1", "−1"], collapsed: true });
     expect(node.props.preview).toBeUndefined();
     expect(node.children[0]?.kind).toBe("diff");
     expect(String(node.children[0]?.props.text)).toContain("-a\n+b");

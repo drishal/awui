@@ -11,6 +11,7 @@ import { buildTurns, countSummary, formatDuration, latestThought, workAfterSegme
 import { isBusy } from "../web/session-groups.js";
 import type { ChatState } from "../web/chat-state.js";
 import { fileUrl, STATUS_LABEL, unifiedDiff } from "../atui/format.js";
+import { commandLine, toolSentence } from "../web/tool-sentence.js";
 import { neatRow, shortPath, thoughtTitle } from "../atui/neat.js";
 
 /** Turns drawn at first; older ones wait behind "Show earlier" (Tern keeps what is drawn, so a long chat stays light). */
@@ -90,14 +91,20 @@ function agentNode(run: SubagentRun): Node {
 /** One tool call as Tern's `tool` row: icon, verb, target, facts, timer, and its output folded under it. */
 export function toolNode(item: ToolItem, workspace: string, age: ConversationCx["age"]): Node {
   const row = neatRow(item, workspace);
+  // The words are the web UI's ("Ran npm test", "Couldn't read src/a.ts"), with the facts it reads from the output.
+  const sentence = toolSentence(item, workspace);
   const running = item.status === "running";
-  let target = row.detail ?? "";
-  if (item.category === "command" && target.startsWith("$ ")) target = target.slice(2);
+  // A command is shown whole (Tern cuts it to the pane's width), minus the `cd` agents start with.
+  // What follows the target joins it when it is a continuation (": triage ticket"), else is a fact beside it ("in src").
+  const subject = item.category === "command" && !item.subagents && row.detail?.startsWith("$ ") ? commandLine(row.detail.slice(2), Infinity) : sentence.target;
+  const target = sentence.rest?.startsWith(":") ? `${subject}${sentence.rest}` : subject;
   const targetKind = item.category === "command" ? "command" : item.category === "search" ? "pattern" : item.category === "web" ? "query" : item.paths.length > 0 ? "path" : "text";
-  // The web UI's row: the diff count at the end and nothing else (no "4 lines", "2 results").
+  // The web UI's row: the diff count at the end, else the facts its output holds ("412 lines", "12 passed").
+  const exit = /^exit (\d+)$/.exec(sentence.facts.find((f) => f.startsWith("exit ")) ?? "");
   const meta: string[] = [];
+  if (sentence.rest && !sentence.rest.startsWith(":")) meta.push(sentence.rest);
   if (item.diffStat && (item.diffStat.added || item.diffStat.removed)) meta.push(`+${item.diffStat.added}`, `−${item.diffStat.removed}`);
-  const exit = /^exit (\d+)$/.exec(row.facts.find((f) => f.startsWith("exit ")) ?? "");
+  else meta.push(...sentence.facts.filter((f) => !f.startsWith("exit ")));
   const path = item.paths[0] ? shortPath(item.paths[0], workspace) : undefined;
   const took = !running && item.at !== undefined && item.endedAt !== undefined ? item.endedAt - item.at : undefined;
 
@@ -121,11 +128,11 @@ export function toolNode(item: ToolItem, workspace: string, age: ConversationCx[
     {
       key: item.id,
       name: TOOL_NAMES[item.category] || item.name,
-      title: row.label,
+      title: sentence.verb,
       ...(target ? { target } : {}),
       targetKind,
       ...(meta.length > 0 ? { meta } : {}),
-      ...(row.note ? { note: row.note } : {}),
+      ...(sentence.error ? { note: [span(sentence.error, "error")] } : row.note ? { note: row.note } : {}),
       ...(exit ? { exit: Number(exit[1]) } : {}),
       status: toolStatus(item),
       ...(running && item.at !== undefined ? { age: age(item.id, item.at) } : took !== undefined && took >= TOOK_AFTER_MS ? { took } : {}),
