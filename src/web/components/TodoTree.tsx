@@ -64,7 +64,7 @@ function TodoRows({ items, working, jobs }: { items: TodoItem[]; working: boolea
   return (
     <>
       {items.map((todo, i) => (
-        <li key={`${i}:${todo.text}`} className={`stack-row todo-${todo.status.replace(/[^a-z_]/gi, "")}`}>
+        <li key={`${i}:${todo.text}`} className={`stack-row todo-row todo-${todo.status.replace(/[^a-z_]/gi, "")}`}>
           <span className="stack-icon">
             <TodoIcon status={todo.status} working={working} />
           </span>
@@ -79,7 +79,8 @@ function TodoRows({ items, working, jobs }: { items: TodoItem[]; working: boolea
   );
 }
 
-function Phase({ phase, working, jobs }: { phase: TodoPhase; working: boolean; jobs: ReadonlyMap<string, BackgroundJob> }) {
+/** `lone`: the list's only phase, whose count would repeat the Todos header's. */
+function Phase({ phase, working, jobs, lone }: { phase: TodoPhase; working: boolean; jobs: ReadonlyMap<string, BackgroundJob>; lone: boolean }) {
   const total = phase.items.length;
   const finished = phase.done === total;
   // Untouched, a phase follows its work: open while any of it is left, folded once it is all done.
@@ -91,9 +92,11 @@ function Phase({ phase, working, jobs }: { phase: TodoPhase; working: boolean; j
         <PhaseRing done={phase.done} total={total} />
         {phase.numeral ? <span className="todo-phase-numeral">{phase.numeral}</span> : null}
         <span className="todo-phase-name">{phase.name ?? "Other"}</span>
-        <span className="todo-phase-count">
-          {phase.done}/{total}
-        </span>
+        {lone ? null : (
+          <span className="todo-phase-count">
+            {phase.done}/{total}
+          </span>
+        )}
         <IconChevronDown size={12} className="todo-phase-chevron" />
       </button>
       <Collapse open={open}>
@@ -120,7 +123,7 @@ export function TodoTree({ todos, working, jobs = NO_JOBS }: { todos: TodoItem[]
   return (
     <ol className="todo-tree" aria-label="Todo phases">
       {tree.map((phase, i) => (
-        <Phase key={`${i}:${phase.name ?? ""}`} phase={phase} working={working} jobs={jobs} />
+        <Phase key={`${i}:${phase.name ?? ""}`} phase={phase} working={working} jobs={jobs} lone={tree.length === 1} />
       ))}
     </ol>
   );

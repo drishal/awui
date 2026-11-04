@@ -685,17 +685,25 @@
 /* TodoTree.tsx: phases as rows with a ring, a numeral, and done/total; their tasks hang on a drawn branch. */
 .todo-tree {
   margin: 0;
-  padding: 2px 0 4px;
+  padding: 0 0 2px;
   list-style: none;
+}
+
+/* Todos run tighter than the card's other rows: a task a line of its own, a few pixels tall each. */
+.todo-row {
+  min-height: 22px;
+  padding-block: 1px;
+  gap: 7px;
+  font-size: 12.5px;
 }
 
 .todo-phase-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
-  min-height: 28px;
-  padding: 2px 8px;
+  min-height: 24px;
+  padding: 1px 8px;
   border: 0;
   border-radius: var(--r-sm);
   background: none;
@@ -710,7 +718,7 @@
 }
 
 .todo-phase-numeral {
-  min-width: 2.4ch;
+  margin-right: -2px;
   color: var(--accent);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -775,8 +783,8 @@
 /* The branch: a quiet line down from the phase's ring, a short tick into each task. */
 .todo-branch {
   position: relative;
-  margin: 0 0 2px 14px;
-  padding: 0 0 0 12px;
+  margin: 0 0 1px 15px;
+  padding: 0 0 0 11px;
   list-style: none;
 }
 
@@ -784,7 +792,7 @@
   content: "";
   position: absolute;
   top: 0;
-  bottom: 14px;
+  bottom: 11px;
   left: 0;
   border-left: 1px solid var(--hairline-strong);
 }
@@ -797,8 +805,8 @@
   content: "";
   position: absolute;
   top: 50%;
-  left: -12px;
-  width: 9px;
+  left: -11px;
+  width: 8px;
   border-top: 1px solid var(--hairline-strong);
 }
 
