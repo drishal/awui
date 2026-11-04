@@ -73,7 +73,7 @@ export class FakeTern {
     this.sent.push({ verb, body });
     if (verb === "q" && body.q === "hello") {
       this.#reply(
-        `${ESC}_tsp;r;${JSON.stringify({ r: "hello", v: 1, term: "tern", ver: "0.8.3", kinds: KINDS, features: ["blobs", "settle", "adopt", "dock", "program-palette", "scroll", "styles", "flow"], apc: 65536, credits: 2, cols: 160, cell: { w: 8, h: 16 }, dark: true, reduceMotion: false, hour12: false })}${ESC}\\`,
+        `${ESC}_tsp;r;${JSON.stringify({ r: "hello", v: 1, term: "tern", ver: "0.8.3", kinds: KINDS, features: ["blobs", "settle", "adopt", "dock", "scroll", "styles", "flow"], apc: 65536, credits: 2, cols: 160, cell: { w: 8, h: 16 }, dark: true, reduceMotion: false, hour12: false })}${ESC}\\`,
       );
     } else if (verb === "f") this.#frame(body as { sf: string; s: number; ops: unknown[][] });
   }

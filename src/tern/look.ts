@@ -1,56 +1,43 @@
-// How awui looks in Tern: the server's theme as Tern's program palette, and
-// one stylesheet that lays the chat out the way the web UI does (a centred
+// How awui looks in Tern: the server's theme as a stylesheet of Tern's colour
+// variables, and one stylesheet that lays the chat out the way the web UI does (a centred
 // reading column, the prompt as a pill on the right, quiet "Worked for …"
 // folds, a composer card with its chips under it). Tern draws every node
 // natively and owns fonts, spacing between blocks, and motion; the sheet only
 // shapes our own roles (`awui.*`) and `el` classes, and colours come from
-// Tern's variables (--t1…, --l1…, --accent) and the palette's (--sf-p-*), so a
+// Tern's variables (--t1…, --l1…, --accent) and the theme sheet's (--awui-*), so a
 // light pane, a dark one, and a base16 scheme all read right.
-import type { Palette } from "@stencil-hq/tern";
 import type { Theme } from "../atui/theme.js";
 
-type Colors = Record<string, string>;
-
 /**
- * The program palette. A theme file on the server is one scheme, dark or
- * light: its colours are used whole for the pane's matching appearance, and
- * the other keeps Tern's own (a dark scheme's fills would be dark blotches on
- * a light pane). Without a theme file only the harness's colour is ours.
- * `harness` is not one of Tern's tokens: spans name it and the sheet reads it
- * as --sf-p-harness.
+ * The theme as a stylesheet. Tern 0.9 has no program palette (SDK 0.1's `palette` verb is gone), so the
+ * pane's colours are Tern's own variables set on our two roots, which every node of the chat sits under.
+ * A theme file is one scheme, dark or light: its colours are used whole in the pane's matching appearance
+ * (`dark` is Tern's, and a new sheet is sent when it changes), and the other keeps Tern's own, since a
+ * dark scheme's fills would be dark blotches on a light pane. Without a theme file only the harness's
+ * colour is ours. `--awui-harness` and `--awui-thinking` are not Tern's: the sheet below reads them.
  */
-export function paletteFor(theme: Theme, harness: string, polarity: "dark" | "light" | null): Palette {
-  const own: Colors = { harness, thinking: theme.thinking };
-  if (!polarity) return { dark: own, light: own };
-  const colors: Colors = {
-    ...own,
-    text: theme.text,
-    accent: theme.accent,
-    muted: theme.muted,
-    dim: theme.muted,
-    success: theme.ok,
-    warning: theme.warn,
-    error: theme.danger,
-    mdLink: theme.link,
-    mdHeading: theme.text,
-    toolTitle: theme.text,
-    toolDiffAdded: theme.ok,
-    toolDiffRemoved: theme.danger,
-    syntaxType: theme.info,
-    userMessageBg: theme.surface2,
-    cardBg: theme.surface,
-    selectedBg: theme.selection,
-    statusLineBg: theme.surface,
-    toolSuccessBg: theme.surface,
-    toolErrorBg: theme.surface,
-    toolPendingBg: theme.surface,
-    infoBg: theme.surface,
-  };
-  return polarity === "dark" ? { dark: colors, light: own, name: { dark: "awui" } } : { dark: own, light: colors, name: { light: "awui" } };
+export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "light" | null, dark: boolean): string {
+  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${theme.thinking}`];
+  const scheme =
+    polarity && (polarity === "dark") === dark
+      ? [
+          `--t1: ${theme.text}`,
+          `--t2: ${theme.text2}`,
+          `--t3: ${theme.muted}`,
+          `--t4: ${theme.muted}`,
+          `--accent: ${theme.accent}`,
+          `--sf-accent: ${theme.accent}`,
+          `--sf-c-accent: ${theme.accent}`,
+          `--ok: ${theme.ok}`,
+          `--warn: ${theme.warn}`,
+          `--bad: ${theme.danger}`,
+        ]
+      : [];
+  return `[data-role='awui.page'], [data-role='awui.dock'] { ${[...own, ...scheme].join("; ")}; }\n`;
 }
 
-/** A colour that follows the palette's harness token, mixed into the pane's ink. */
-const HARNESS = "var(--sf-p-harness, var(--accent))";
+/** A colour that follows the theme sheet's harness colour, mixed into the pane's ink. */
+const HARNESS = "var(--awui-harness, var(--accent))";
 const INK = "var(--t1, currentColor)";
 const tint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 

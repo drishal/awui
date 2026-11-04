@@ -30,7 +30,7 @@
   "dependencies": {
     "@opentui/core": "0.5.17",
     "@opentui/solid": "0.5.17",
-    "@stencil-hq/tern": "0.1.0",
+    "@stencil-hq/tern": "0.2.0",
     "express": "5.2.1",
     "helmet": "8.3.0",
     "react": "19.3.0",

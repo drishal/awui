@@ -9,7 +9,7 @@ import type { Node } from "@stencil-hq/tern";
 import { applyEdit, draftState, editKey, lineStep, redo, setText, undo, wordStep, type DraftState } from "../../src/tern/draft.js";
 import { filterItems, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
 import { decorations, dock, placeholder, type DockCx } from "../../src/tern/dock.js";
-import { paletteFor } from "../../src/tern/look.js";
+import { themeSheet } from "../../src/tern/look.js";
 import { conversation, foldHead, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
 import { ternEntry } from "../../src/server/tern-client.js";
@@ -204,14 +204,12 @@ describe("the Tern dock", () => {
   });
 });
 
-describe("the Tern palette", () => {
+describe("the Tern theme sheet", () => {
   it("uses a theme file's colours only in its own appearance", () => {
-    const dark = paletteFor(DARK, "#ff0000", "dark");
-    expect(dark.dark?.text).toBe(DARK.text);
-    expect(dark.light).toEqual({ harness: "#ff0000", thinking: DARK.thinking });
-    const none = paletteFor(DARK, "#ff0000", null);
-    expect(none.dark).toEqual(none.light);
-    expect(none.dark?.text).toBeUndefined();
+    expect(themeSheet(DARK, "#ff0000", "dark", true)).toContain(`--t1: ${DARK.text}`);
+    expect(themeSheet(DARK, "#ff0000", "dark", false)).not.toContain("--t1");
+    expect(themeSheet(DARK, "#ff0000", "dark", false)).toContain("--awui-harness: #ff0000");
+    expect(themeSheet(DARK, "#ff0000", null, true)).not.toContain("--t1");
   });
 });
 

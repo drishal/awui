@@ -114,12 +114,12 @@ async function start(project = "alpha", base = BASE): Promise<Client> {
 }
 
 describe("awui tern", () => {
-  it("opens one inline surface with the stylesheet and palette, and the web UI's start screen", async () => {
+  it("opens one inline surface with the stylesheet and theme sheet, and the web UI's start screen", async () => {
     client = await start();
     const { tern } = client;
     expect(tern.sent.find((m) => m.verb === "o")?.body).toMatchObject({ mode: "inline", role: "awui.chat" });
     expect(tern.sent.some((m) => m.verb === "s" && (m.body as { name: string }).name === "awui")).toBe(true);
-    expect(tern.sent.some((m) => m.verb === "t")).toBe(true);
+    expect(tern.sent.some((m) => m.verb === "s" && (m.body as { name: string }).name === "awui-theme")).toBe(true);
     expect(tern.text("main")).toContain("What should Fake do in alpha?");
     expect(tern.text("main")).toContain("Explain this project's structure");
     expect(tern.focus).toBe("dock.d.comp.ed");

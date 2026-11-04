@@ -25,7 +25,7 @@ import { applyEdit, draftState, editKey, insert, lineStep, moveTo, setText, undo
 import { conversation, headNode, TURN_WINDOW } from "./view.js";
 import { ANSWER_ID, dock, EDITOR_ID } from "./dock.js";
 import { AT_CARET, filterItems, menuNode, moveSelection, sessionRows, SHEETS, type Menu, type MenuItem, type MenuKind } from "./overlays.js";
-import { paletteFor, STYLESHEET } from "./look.js";
+import { STYLESHEET, themeSheet } from "./look.js";
 import { startExamples, startHeading, startSetup } from "../web/start-screen.js";
 
 export interface TernOptions {
@@ -147,9 +147,11 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
 
     // ---- the look: palette by theme and harness, the sheet once ---------------------------
     surface.stylesheet("awui", STYLESHEET);
+    // Tern's appearance (a `theme` event when it switches): a theme file's scheme is used only in its own.
+    const [dark, setDark] = createSignal(session.caps.dark);
     createEffect(() => {
       const h = harness();
-      surface.palette(paletteFor(app.theme(), accentOf(app.theme(), h?.accent), opts.polarity));
+      surface.stylesheet("awui-theme", themeSheet(app.theme(), accentOf(app.theme(), h?.accent), opts.polarity, dark()));
     });
 
     // The pane's title follows the chat, as the web UI's tab does.
@@ -921,6 +923,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             log?.({ t: Date.now(), ...input });
             // Events reach the handlers the view attached before this loop sees them; the rest need nothing.
             if (input.type === "key") onKey(input.key);
+            else if (input.event.ev === "theme") setDark(input.event.dark);
           } catch (error) {
             say(error instanceof Error ? error.message : String(error), "error");
           }
