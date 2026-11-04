@@ -3,12 +3,12 @@
 // with the details: upstream, last commit, stashes, and every changed file by
 // group, each opening to its diff against HEAD.
 import { useEffect, useRef, useState } from "react";
-import type { GitFileDiff, GitStatus } from "../../shared/protocol.js";
+import type { DirenvState, GitFileDiff, GitStatus } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { GROUP_LABEL, groupFiles, OPERATION_LABEL, stateLetter, type GroupedFile } from "../git.js";
 import { ago } from "../turns.js";
 import { useNow } from "../hooks.js";
-import { IconBranch, IconCheck, IconChevronDown, IconChevronRight, IconRefresh, IconX } from "../icons.js";
+import { IconBranch, IconCheck, IconChevronDown, IconChevronRight, IconRefresh, IconTerminal, IconX } from "../icons.js";
 import { DiffBadge, DiffView } from "./ToolBody.js";
 import { Dot, dotted } from "./Dot.js";
 
@@ -74,6 +74,20 @@ export function GitRow({ git, onOpen }: { git: GitStatus; onOpen: () => void }) 
       <DiffBadge added={git.added} removed={git.removed} />
       <IconChevronRight size={13} className="git-open" />
     </button>
+  );
+}
+
+/** The project's environment as direnv loaded it (the row beside the git one): shown only when direnv says so. */
+export function DirenvRow({ direnv }: { direnv: DirenvState }) {
+  if (direnv.rcPath === null || direnv.blocked || direnv.allowed !== true) return null;
+  const slash = direnv.rcPath.lastIndexOf("/");
+  return (
+    <div className="direnv-row" data-testid="direnv-row" title={`direnv loads ${direnv.rcPath} into every agent this project starts`}>
+      <IconTerminal size={13} className="direnv-row-icon" />
+      <span className="direnv-row-text">direnv</span>
+      <span className="direnv-row-file">{direnv.rcPath.slice(slash + 1)}</span>
+      <IconCheck size={11} className="direnv-row-check" />
+    </div>
   );
 }
 

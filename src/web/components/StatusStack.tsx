@@ -57,6 +57,7 @@ export function StatusStack({
   chainPaused = null,
   harnessName = (id) => id,
   onChain,
+  top,
   base,
   working = false,
   jobs = null,
@@ -76,6 +77,8 @@ export function StatusStack({
   harnessName?: (id: string) => string;
   /** Put a changed chain in place; `resume` lets a paused one go on. */
   onChain?: (steps: ChainStep[], resume?: boolean) => Promise<boolean>;
+  /** A row held above everything else in the stack (the direnv indicator); with nothing else to show it leads the base. */
+  top?: React.ReactNode;
   /** Always shown under the rest, even when it is hidden (the git row). */
   base?: React.ReactNode;
   /** The chat is running now: an in-progress todo spins only then. */
@@ -183,6 +186,7 @@ export function StatusStack({
         {hidden ? <span className="ridge-count">{count}</span> : null}
       </button>
       <Collapse open={!hidden}>
+        {top ? <div className="stack-top">{top}</div> : null}
         <div className="stack-body">
           {jobs ? (
             <div className="stack-row stack-jobs" role="status" aria-live="polite" data-testid="job-progress">
@@ -306,7 +310,7 @@ export function StatusStack({
     </>
   );
   if (card) lastCard.current = card;
-  if (empty && !lingering && !base) return null;
+  if (empty && !lingering && !base && !top) return null;
 
   return (
     <div className={`status-stack${empty ? " is-base-only" : ""}${hidden ? " is-hidden" : ""}`} data-testid={empty ? undefined : "status-stack"}>
@@ -314,7 +318,7 @@ export function StatusStack({
         <Collapse open={!empty && (shownAtMount || entered)}>
           <div className="stack-card">{card ?? lastCard.current}</div>
         </Collapse>
-      ) : base ? (
+      ) : base || top ? (
         /* The git row alone (base-only): the ridge hides it too. */
         <button
           type="button"
@@ -330,8 +334,11 @@ export function StatusStack({
         </button>
       ) : null}
       {/* The git row folds with the rest on the ridge. */}
-      {base ? (
-        <Collapse open={!hidden}>{base}</Collapse>
+      {base || (empty && top) ? (
+        <Collapse open={!hidden}>
+          {empty ? top : null}
+          {base}
+        </Collapse>
       ) : null}
     </div>
   );

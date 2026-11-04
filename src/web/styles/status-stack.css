@@ -198,6 +198,64 @@
   background: var(--hover);
 }
 
+/* Direnv row (at the top of the stack): the same quiet bubble, in the ok colour —
+   the agent starts on the environment the UI shows. */
+.direnv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 8px);
+  min-height: 30px;
+  margin: 0 4px 4px;
+  padding: 0 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* Led first in the card, under the ridge and above the body: the card's own width. */
+.stack-top {
+  padding: 0 6px 6px;
+}
+
+.stack-top > .direnv-row {
+  width: 100%;
+  margin: 0;
+}
+
+.status-stack.is-base-only > .direnv-row {
+  width: 100%;
+  min-height: 32px;
+  margin: 0 0 4px;
+  border-radius: var(--r-lg);
+}
+
+.direnv-row-icon {
+  flex: none;
+  color: var(--ok);
+}
+
+.direnv-row-text {
+  flex: none;
+}
+
+.direnv-row-file {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.direnv-row-check {
+  flex: none;
+  color: var(--ok);
+}
+
 .git-branch-icon {
   flex: none;
   color: var(--accent);

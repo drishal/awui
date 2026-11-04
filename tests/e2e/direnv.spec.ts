@@ -42,4 +42,18 @@ test("an allowed .envrc shows no prompt", async ({ page }) => {
   await newChat(page);
   await sendAndWait(page, "hello");
   await expect(page.getByTestId("direnv-note")).toHaveCount(0);
+  // The loaded environment is an indicator at the top of the composer's status stack, above the todos.
+  const row = page.getByTestId("direnv-row");
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("direnv");
+  await expect(row).toContainText(".envrc");
+});
+
+test("a project without an .envrc shows no direnv row", async ({ page }) => {
+  const project = path.join(process.env.AWUI_E2E_ROOT as string, "noenvrc");
+  mkdirSync(project, { recursive: true });
+  await signInAndOpen(page, "noenvrc");
+  await newChat(page);
+  await sendAndWait(page, "hello");
+  await expect(page.getByTestId("direnv-row")).toHaveCount(0);
 });

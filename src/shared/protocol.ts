@@ -586,6 +586,16 @@ export interface GitFileDiff {
   note?: string;
 }
 
+/** The project's direnv state, as `direnv status --json` reports it (the composer's direnv row). */
+export interface DirenvState {
+  /** The nearest .envrc, when one exists in the tree. */
+  rcPath: string | null;
+  /** A .envrc direnv refuses to run until allowed (the composer's note). */
+  blocked: boolean;
+  /** The .envrc is allowed and loads into every spawn here; null when direnv could not say. */
+  allowed: boolean | null;
+}
+
 /** The project's git repository as `git status` sees it (the composer's git row). */
 export interface GitStatus {
   root: string;

@@ -1,21 +1,22 @@
 // The project's git status for the composer's git row: read when the chat
 // opens, after each run, every few seconds while the agent works, and when
-// the window comes back into focus.
+// the window comes back into focus. The direnv state rides along (the same
+// reading, no second fetch): the composer's direnv row shows it.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatStatus, GitDiffSide, GitFile, GitFileState, GitStatus } from "../shared/protocol.js";
+import type { ChatStatus, DirenvState, GitDiffSide, GitFile, GitFileState, GitStatus } from "../shared/protocol.js";
 import { api } from "./api.js";
 
 const WORKING_POLL_MS = 8000;
 
 export function useGitStatus(chatId: string | null, status: ChatStatus | null) {
-  const [git, setGit] = useState<{ chatId: string; status: GitStatus | null; at: number } | null>(null);
+  const [git, setGit] = useState<{ chatId: string; status: GitStatus | null; direnv: DirenvState | null; at: number } | null>(null);
   const seq = useRef(0);
   const refresh = useCallback(async () => {
     if (!chatId) return;
     const mine = ++seq.current;
     try {
-      const res = await api<{ status: GitStatus | null }>(`/api/chats/${chatId}/git`);
-      if (mine === seq.current) setGit({ chatId, status: res.status, at: Date.now() });
+      const res = await api<{ status: GitStatus | null; direnv?: DirenvState | null }>(`/api/chats/${chatId}/git`);
+      if (mine === seq.current) setGit({ chatId, status: res.status, direnv: res.direnv ?? null, at: Date.now() });
     } catch {
       // keep what is shown
     }
@@ -42,7 +43,7 @@ export function useGitStatus(chatId: string | null, status: ChatStatus | null) {
     };
   }, [refresh]);
 
-  return { git: git && git.chatId === chatId ? git.status : null, at: git?.at ?? 0, refresh };
+  return { git: git && git.chatId === chatId ? git.status : null, direnv: git && git.chatId === chatId ? git.direnv : null, at: git?.at ?? 0, refresh };
 }
 
 const LETTER: Record<GitFileState, string> = {

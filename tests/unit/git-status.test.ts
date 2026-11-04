@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { gitFileDiff, gitStatus, parseNumstat, parsePorcelain } from "../../src/server/git-status.js";
+import { clearDirenvCache } from "../../src/server/direnv.js";
 import { groupFiles } from "../../src/web/git.js";
 import { tempDir } from "../helpers/app.js";
 
@@ -155,8 +156,16 @@ describe("git status over HTTP", () => {
       const agent = await signedIn(t);
       const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body as { id: string };
       const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as { chatId: string };
-      const status = (await agent.get(`/api/chats/${chat.chatId}/git`).expect(200)).body.status;
-      expect(status).toMatchObject({ branch: "main", counts: { changed: 1 }, added: 1, removed: 1 });
+      // The direnv state rides along: no .envrc here, so none.
+      const res = (await agent.get(`/api/chats/${chat.chatId}/git`).expect(200)).body as { status: unknown; direnv: { blocked: boolean; rcPath: string | null; allowed: boolean | null } };
+      expect(res.status).toMatchObject({ branch: "main", counts: { changed: 1 }, added: 1, removed: 1 });
+      expect(res.direnv).toEqual({ blocked: false, rcPath: null, allowed: null });
+      // An allowed .envrc says so by direnv's own word.
+      writeFileSync(path.join(t.project, ".envrc"), "export AWUI_TEST_ENVRC=git-route\n");
+      execFileSync("direnv", ["allow"], { cwd: t.project });
+      clearDirenvCache();
+      const allowed = (await agent.get(`/api/chats/${chat.chatId}/git`).expect(200)).body as { direnv: { blocked: boolean; allowed: boolean | null } };
+      expect(allowed.direnv).toEqual({ blocked: false, rcPath: path.join(t.project, ".envrc"), allowed: true });
       const diff = (await agent.get(`/api/chats/${chat.chatId}/git/diff?path=a.txt&side=unstaged`).expect(200)).body;
       expect(diff.diff.lines.map((l: { kind: string; text: string }) => `${l.kind}:${l.text}`)).toEqual(["del:a", "add:b"]);
       await agent.get(`/api/chats/${chat.chatId}/git/diff?path=${encodeURIComponent("/etc/passwd")}&side=untracked`).expect(404);

@@ -35,7 +35,7 @@ import { LimitRecovery } from "./LimitRecovery.js";
 import { DirenvNote } from "./DirenvNote.js";
 import { useDismiss, useLeave, useMediaQuery, useMorph, useNow } from "../hooks.js";
 import { composerFolded } from "../composer-fold.js";
-import { GitPanel, GitRow } from "./GitStatusView.js";
+import { DirenvRow, GitPanel, GitRow } from "./GitStatusView.js";
 import { useGitStatus } from "../git.js";
 import { jobProgress } from "../job-progress.js";
 import { chatJobs, FINISHED_SHOWN_MS, shownJobs } from "../jobs.js";
@@ -98,7 +98,7 @@ export function Composer({
   const [sending, setSending] = useState(false);
   const [answering, setAnswering] = useState(false);
   const [folded, setFolded] = useState<FoldedRequest | null>(null);
-  const { git, at: gitAt, refresh: refreshGit } = useGitStatus(chat.chatId, chat.status);
+  const { git, direnv, at: gitAt, refresh: refreshGit } = useGitStatus(chat.chatId, chat.status);
   const [gitOpen, setGitOpen] = useState(false);
   const [images, setImages] = useState<PendingImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -683,6 +683,7 @@ export function Composer({
         chainPaused={chat.chainPaused}
         harnessName={name}
         onChain={setChain}
+        top={direnv ? <DirenvRow direnv={direnv} /> : null}
         base={git ? <GitRow git={git} onOpen={() => setGitOpen(true)} /> : null}
         working={busy}
         jobs={jobs}

@@ -1160,7 +1160,7 @@ export function createApp(deps: AppDeps) {
   // The project's git status (the composer's git row) and a listed file's diff.
   app.get("/api/chats/:id/git", async (req, res) => {
     const chat = manager.get(req.params.id);
-    res.json({ status: await gitStatus(chat.workspace.path).catch(() => null) });
+    res.json({ status: await gitStatus(chat.workspace.path).catch(() => null), direnv: direnvState(chat.workspace.path) });
   });
   app.get("/api/chats/:id/git/diff", async (req, res) => {
     const chat = manager.get(req.params.id);

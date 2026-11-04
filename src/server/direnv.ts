@@ -25,6 +25,12 @@ export interface DirenvState {
   blocked: boolean;
   /** The .envrc that matters (nearest up the tree), when one exists. */
   rcPath: string | null;
+  /**
+   * The .envrc is allowed and loads into every spawn here (direnv's own
+   * answer, so "loaded" is direnv's word, not an awui guess). Null when
+   * direnv could not say (absent, or an older one without `status --json`).
+   */
+  allowed: boolean | null;
 }
 
 /** What a spawn takes: the env, and the state for an "allow?" prompt. */
@@ -96,7 +102,7 @@ function stampOf(rcPath: string): string {
 const EXPORT_ARGS = ["export", "json"];
 
 function probe(dir: string, rcPath: string): DirenvEnv {
-  if (IS_WINDOWS) return { env: process.env, state: { blocked: false, rcPath } };
+  if (IS_WINDOWS) return { env: process.env, state: { blocked: false, rcPath, allowed: null } };
   try {
     const stdout = execFileSync("direnv", EXPORT_ARGS, { cwd: dir, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     return interpret(stdout, null, rcPath);
@@ -107,7 +113,7 @@ function probe(dir: string, rcPath: string): DirenvEnv {
 
 /** The same probe off the event loop: a devenv .envrc takes seconds, and every chat's stream waits on a blocked loop. */
 function probeAsync(dir: string, rcPath: string): Promise<DirenvEnv> {
-  if (IS_WINDOWS) return Promise.resolve({ env: process.env, state: { blocked: false, rcPath } });
+  if (IS_WINDOWS) return Promise.resolve({ env: process.env, state: { blocked: false, rcPath, allowed: null } });
   return new Promise((resolve) => {
     execFile("direnv", EXPORT_ARGS, { cwd: dir, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, encoding: "utf8" }, (error, stdout, stderr) => {
       resolve(error ? interpret("", Object.assign(error, { stderr }), rcPath) : interpret(stdout, null, rcPath));
@@ -126,13 +132,13 @@ function interpret(stdout: string, failure: unknown, rcPath: string): DirenvEnv 
       const value = failure.stderr;
       if (typeof value === "string" || Buffer.isBuffer(value)) stderr = String(value);
     }
-    return { env: process.env, state: { blocked: /is blocked/.test(stderr), rcPath } };
+    return { env: process.env, state: { blocked: /is blocked/.test(stderr), rcPath, allowed: null } };
   }
   let parsed: Record<string, string | null>;
   try {
     parsed = JSON.parse(stdout || "{}") as Record<string, string | null>;
   } catch {
-    return { env: process.env, state: { blocked: false, rcPath } };
+    return { env: process.env, state: { blocked: false, rcPath, allowed: null } };
   }
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const [name, value] of Object.entries(parsed)) {
@@ -143,7 +149,8 @@ function interpret(stdout: string, failure: unknown, rcPath: string): DirenvEnv 
   // direnv's bookkeeping may also sit in the server's own environment (a server started from a
   // direnv shell): a spawned agent is not a direnv session, so these never cross over.
   for (const name of Object.keys(env)) if (DIRENV_OWN.test(name)) delete env[name];
-  return { env, state: { blocked: false, rcPath } };
+  // A successful export is direnv's own word that the .envrc loaded.
+  return { env, state: { blocked: false, rcPath, allowed: true } };
 }
 
 /**
@@ -152,21 +159,27 @@ function interpret(stdout: string, failure: unknown, rcPath: string): DirenvEnv 
  * `direnv export` runs it (a devenv one takes a second or more, and the call blocks the loop).
  * foundRC.allowed is 0 allowed, 1 not allowed yet, 2 denied; both of the latter block an export.
  */
+/** `direnv status --json`'s shape, as far as it matters here: whether the found .envrc is allowed (0 yes, 1 not yet, 2 denied). */
+interface DirenvStatusJson {
+  state?: { foundRC?: { allowed?: number } | null } | null;
+}
+
 export function direnvState(dir: string): DirenvState {
   const rcPath = findEnvrc(dir);
-  if (!rcPath) return { blocked: false, rcPath: null };
+  if (!rcPath) return { blocked: false, rcPath: null, allowed: null };
   const stamped = stampOf(rcPath);
   const hit = stateCache.get(dir);
   if (hit && hit.stamp === stamped && Date.now() - hit.at < STATE_CACHE_MS) return hit.state;
-  let state: DirenvState = { blocked: false, rcPath };
+  let state: DirenvState = { blocked: false, rcPath, allowed: null };
   if (!IS_WINDOWS) {
     try {
       const out = execFileSync("direnv", ["status", "--json"], { cwd: dir, timeout: 5_000, maxBuffer: 1024 * 1024, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-      const found = (JSON.parse(out) as { state?: { foundRC?: { allowed?: number } | null } }).state?.foundRC;
-      // No foundRC (or direnv missing, or an older direnv without --json) leaves it unblocked, like probe().
-      state = { blocked: typeof found?.allowed === "number" && found.allowed !== 0, rcPath };
+      const parsed = JSON.parse(out) as DirenvStatusJson; // direnv's own wire shape; one field matters
+      const allowed = typeof parsed.state?.foundRC?.allowed === "number" ? parsed.state.foundRC.allowed === 0 : null;
+      // No foundRC (or direnv missing, or an older direnv without --json) leaves it unknown, like probe().
+      state = { blocked: allowed === false, rcPath, allowed };
     } catch {
-      // keep the unblocked default
+      // keep the unknown default
     }
   }
   stateCache.set(dir, { at: Date.now(), stamp: stamped, state });
@@ -181,7 +194,7 @@ export function direnvState(dir: string): DirenvState {
  */
 export function envForSpawn(dir: string): DirenvEnv {
   const rcPath = findEnvrc(dir);
-  if (!rcPath) return { env: process.env, state: { blocked: false, rcPath: null } };
+  if (!rcPath) return { env: process.env, state: { blocked: false, rcPath: null, allowed: null } };
   const stamped = stampOf(rcPath);
   const hit = cache.get(dir);
   if (reusable(hit, stamped)) return hit.result;

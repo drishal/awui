@@ -74,12 +74,13 @@ describe.skipIf(!HAS_DIRENV)("direnv spawn env", () => {
     // An .envrc that would run for ages (and leave a marker) if anything evaluated it.
     writeFileSync(path.join(proj, ".envrc"), `touch ${JSON.stringify(path.join(root, "ran"))}\nsleep 20\n`);
     const started = Date.now();
-    expect(direnvState(proj)).toEqual({ blocked: true, rcPath: path.join(proj, ".envrc") });
+    expect(direnvState(proj)).toEqual({ blocked: true, rcPath: path.join(proj, ".envrc"), allowed: false });
     expect(allowEnvrc(proj)).toBe(true);
     expect(direnvState(proj).blocked).toBe(false);
+    expect(direnvState(proj).allowed).toBe(true);
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(existsSync(path.join(root, "ran"))).toBe(false);
-    expect(direnvState(root)).toEqual({ blocked: false, rcPath: null });
+    expect(direnvState(root)).toEqual({ blocked: false, rcPath: null, allowed: null });
   });
 
   it("evaluates off the event loop and leaves the answer cached for the spawn", async () => {
