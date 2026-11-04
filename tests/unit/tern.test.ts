@@ -10,7 +10,7 @@ import { applyEdit, draftState, editKey, lineStep, redo, setText, undo, wordStep
 import { filterItems, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
 import { askShape, decorations, dock, placeholder, type DockCx } from "../../src/tern/dock.js";
 import { themeSheet } from "../../src/tern/look.js";
-import { conversation, foldHead, toolNode, type ConversationCx } from "../../src/tern/view.js";
+import { conversation, foldHead, foldHeadSpans, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
 import { ternEntry } from "../../src/server/tern-client.js";
 import { DARK } from "../../src/atui/theme.js";
@@ -250,6 +250,20 @@ describe("the Tern conversation", () => {
     expect(node.props.meta).toEqual(["1 line"]);
   });
 
+  it("shows a running test run's progress as a meter over its output, the failures as a red stretch", () => {
+    const run = toolNode(tool({ status: "running", at: 1000, args: JSON.stringify({ command: "pytest" }), output: "collected 10 items\n\ntests/test_a.py ..F.   [ 40%]" }), "/w", () => 0);
+    const [meter, out] = run.children;
+    expect(meter?.kind).toBe("col");
+    const bar = meter?.children[0];
+    expect(bar?.kind).toBe("meter");
+    expect(bar?.props.parts).toEqual([{ value: 0.3, token: "success", label: "passed" }, { value: 0.1, token: "error", label: "failed" }]);
+    expect(JSON.stringify(bar?.props.label)).toContain("4/10 tests");
+    expect(JSON.stringify(bar?.props.total)).toContain("1 failed");
+    expect(out?.kind).toBe("ansi");
+    // Settled, the bar goes: the row's facts say how it ended.
+    expect(toolNode(tool({ status: "done", args: JSON.stringify({ command: "pytest" }), output: "collected 10 items\n\ntests/test_a.py ..F." }), "/w", () => 0).children[0]?.kind).toBe("ansi");
+  });
+
   it("words a call as the web UI does: a command without its cd, a failure with its reason", () => {
     const ran = toolNode(tool({ args: JSON.stringify({ command: "cd /w && npm run build --silent" }), output: "ok\n" }), "/w", () => undefined);
     expect(ran.props).toMatchObject({ title: "Ran", target: "npm run build --silent" });
@@ -320,6 +334,16 @@ describe("the Tern conversation", () => {
     expect(foldHead(turn, seg, "only")).toBe("Worked for 27s · 3 commands");
     expect(foldHead(turn, seg, "last")).toBe("3 commands");
     expect(foldHead({ ...turn, live: true }, seg, "only")).toBe("Working · 3 commands");
+  });
+
+  it("adds the turn's +/− to the first stretch and a tally of failed calls", () => {
+    const turn = { live: false, startedAt: 0, endedAt: 27_000, changeStat: { added: 12, removed: 3, files: 2, partial: false } } as Turn;
+    const items = [tool({ status: "error" }), tool({ id: "t2" }), tool({ id: "t3", status: "error" })];
+    const seg = { counts: { command: 3 }, items } as unknown as WorkSegment;
+    const text = (place: "first" | "last") => foldHeadSpans(turn, seg, place).map((s) => s.t).join("");
+    expect(text("first")).toBe("Worked for 27s · 3 commands  +12 −3  2 failed");
+    expect(text("last")).toBe("3 commands  2 failed");
+    expect(foldHeadSpans(turn, { counts: { command: 1 }, items: [tool({})] } as unknown as WorkSegment, "only").map((s) => s.t).join("")).toBe("Worked for 27s · 1 command  +12 −3");
   });
 });
 

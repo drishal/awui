@@ -12,6 +12,7 @@ import { isBusy } from "../web/session-groups.js";
 import type { ChatState } from "../web/chat-state.js";
 import { fileUrl, STATUS_LABEL, unifiedDiff } from "../atui/format.js";
 import { commandLine, toolSentence } from "../web/tool-sentence.js";
+import { testProgress, type TestProgress } from "../web/tool-facts.js";
 import { neatRow, shortPath, thoughtTitle } from "../atui/neat.js";
 
 /** Turns drawn at first; older ones wait behind "Show earlier" (Tern keeps what is drawn, so a long chat stays light). */
@@ -60,6 +61,26 @@ const TOOL_NAMES: Record<ToolItem["category"], string> = { read: "read", edit: "
 
 function toolStatus(item: ToolItem): "running" | "done" | "error" {
   return item.status;
+}
+
+/** How far a test run has got: a bar of the passed and failed shares, "12/80 tests", the failures, and the test running now. */
+export function progressNode(p: TestProgress): Node {
+  const passed = Math.max(0, Math.min(p.done - p.failed, p.total)) / p.total;
+  const failed = Math.min(p.failed, p.done) / p.total;
+  return ui.col(
+    { key: "tests", gap: "xs" },
+    ui.meter({
+      key: "m",
+      size: "md",
+      parts: [
+        { value: passed, token: "success", label: "passed" },
+        { value: failed, token: "error", label: "failed" },
+      ],
+      label: [span(`${p.done}/${p.total} tests`)],
+      ...(p.failed > 0 ? { total: [span(`${p.failed} failed`, "error")] } : {}),
+    }),
+    p.current ? ui.text({ key: "now", truncate: "end" }, span(p.current, "muted")) : null,
+  );
 }
 
 /** A subagent's run as an `agent` row, its answer folded under it. */
@@ -122,7 +143,12 @@ export function toolNode(item: ToolItem, workspace: string, age: ConversationCx[
   } else if (item.output.trim()) {
     if (item.category === "read" && path) body = ui.code({ key: "out", text: item.output, path });
     else body = ui.ansi({ key: "out", text: item.output, ...(running ? { follow: true } : {}) });
-    if (running && item.category === "command") preview = { tail: 4 };
+    if (running && item.category === "command") {
+      preview = { tail: 4 };
+      // A test run that announced its total shows how far it has got, its failures as a red stretch at the end.
+      const progress = testProgress(item.output);
+      if (progress && progress.total > 0) body = [progressNode(progress), body];
+    }
   }
   return ui.tool(
     {
@@ -212,6 +238,23 @@ export function foldHead(turn: Turn, segment: WorkSegment, place: "first" | "mid
   const duration = turn.startedAt !== undefined ? formatDuration((turn.endedAt ?? turn.startedAt) - turn.startedAt) : null;
   const head = duration ? `Worked for ${duration}` : "Worked";
   return counts ? `${head} · ${counts}` : head;
+}
+
+/**
+ * The fold line with what the web UI's header adds to it: the turn's +/− on the first stretch, and a tally of
+ * failed calls (a settled turn opens nothing, so the tally is how a failure is found).
+ */
+export function foldHeadSpans(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only"): Span[] {
+  const spans: Span[] = [span(foldHead(turn, segment, place), "muted")];
+  const stat = place === "first" || place === "only" ? turn.changeStat : null;
+  if (stat) {
+    const more = stat.partial ? "+" : "";
+    if (stat.added > 0) spans.push(span(`  +${stat.added}${more}`, "ins"));
+    if (stat.removed > 0) spans.push(span(`${stat.added > 0 ? " " : "  "}−${stat.removed}${more}`, "del"));
+  }
+  const failed = segment.items.filter((item) => item.kind === "tool" && item.status === "error").length;
+  if (failed > 0) spans.push(span(`  ${failed} failed`, "error"));
+  return spans;
 }
 
 /** The prompt: a pill, its images, and (picked) the things a past prompt offers. */
@@ -317,7 +360,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
           {
             key: `w${i}`,
             role: live ? "awui.fold-live" : "awui.fold",
-            head: [span(foldHead(turn, segment, place), "muted")],
+            head: foldHeadSpans(turn, segment, place),
             collapsible: true,
             collapsed: !open,
             onToggle: (e) => cx.on.fold(key, !e.collapsed),
@@ -359,7 +402,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
         {
           key: "after",
           role: turn.live ? "awui.fold-live" : "awui.fold",
-          head: [span(foldHead(turn, after, "last"), "muted")],
+          head: foldHeadSpans(turn, after, "last"),
           collapsible: true,
           collapsed: !open,
           onToggle: (e) => cx.on.fold(after.key, !e.collapsed),
