@@ -94,6 +94,10 @@ describe("agent event normalization", () => {
     expect(normalizeAgentEvent({ type: "tool_execution_end", toolCallId: "1", result: { content: [{ type: "text", text: "ok" }] }, isError: false }, "x")).toEqual([
       { type: "tool_end", toolCallId: "1", output: "ok", isError: false },
     ]);
+    expect(normalizeAgentEvent({ type: "retry_fallback_applied", from: "anthropic/opus", to: "openai/gpt", role: "default", reason: "Rate limited" }, "x")).toEqual([
+      { type: "notice", level: "warning", text: "Switched anthropic/opus to openai/gpt: Rate limited" },
+    ]);
+    expect(normalizeAgentEvent({ type: "retry_fallback_applied" }, "x")).toEqual([{ type: "notice", level: "warning", text: "Switched another model" }]);
     expect(normalizeAgentEvent({ type: "agent_settled" }, "agent_settled")).toEqual([{ type: "settled" }]);
     expect(normalizeAgentEvent({ type: "session_settled" }, "session_settled")).toEqual([{ type: "settled" }]);
     expect(normalizeAgentEvent({ type: "agent_end" }, "agent_settled")).toEqual([]);

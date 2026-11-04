@@ -545,6 +545,13 @@ export function normalizeAgentEvent(event: unknown, settledType: string): Harnes
       return event.success === false
         ? [{ type: "notice", level: "error", text: `Retries exhausted: ${String(event.finalError ?? "error")}` }]
         : [];
+    case "retry_fallback_applied": {
+      // omp moved the request to its next candidate model (a rate limit, an outage, a rejected tier): the run goes on, on another model.
+      const to = typeof event.to === "string" && event.to ? event.to : "another model";
+      const from = typeof event.from === "string" && event.from ? `${event.from} to ` : "";
+      const reason = typeof event.reason === "string" && event.reason ? `: ${event.reason}` : "";
+      return [{ type: "notice", level: "warning", text: `Switched ${from}${to}${reason}` }];
+    }
     case "session_info_changed":
       return typeof event.name === "string" && event.name ? [{ type: "title", title: event.name }] : [];
     case "thinking_level_changed":
