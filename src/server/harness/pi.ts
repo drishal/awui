@@ -437,6 +437,7 @@ export class PiAdapter implements HarnessAdapter {
     supportsQueueEdit: true,
     supportsPermissionMode: false,
     supportsResumeCommand: false,
+    jobsSurviveRestart: false,
   };
   get capabilities(): HarnessCapabilities {
     return this.capabilitySet;

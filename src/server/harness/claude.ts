@@ -918,6 +918,8 @@ export class ClaudeAdapter implements HarnessAdapter {
     supportsQueueEdit: true,
     supportsPermissionMode: true,
     supportsResumeCommand: true,
+    // Backgrounded Bash lives in a task file the CLI keeps across restarts; the file is the truth.
+    jobsSurviveRestart: true,
   };
   private modelCache: { at: number; models: ModelInfo[] } | null = null;
   private usageCache: { at: number; accounts: LimitAccount[] } | null = null;

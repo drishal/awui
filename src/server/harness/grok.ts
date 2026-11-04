@@ -762,6 +762,7 @@ export class GrokAdapter implements HarnessAdapter {
     // Grok's permission mode is its own config, which awui never writes.
     supportsPermissionMode: false,
     supportsResumeCommand: true,
+    jobsSurviveRestart: false,
   };
   private modelCache: { at: number; models: ModelInfo[] } | null = null;
   private metaCache = new Map<string, { mtimeMs: number; size: number; meta: SessionMeta | null }>();

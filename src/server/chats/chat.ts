@@ -54,6 +54,23 @@ export class ChatError extends Error {
   }
 }
 
+/**
+ * A chat opened from a transcript still carrying background jobs marked running. Jobs whose
+ * process died with the last harness generation do not resume; mark them stopped so the
+ * status stack does not keep them ticking. Harnesses whose jobs live outside the process
+ * (Claude Code's task files) pass `survivesRestart` and keep their stored state.
+ */
+function reconcileLoadedJobs(item: ChatItem, survivesRestart: boolean): ChatItem {
+  if (survivesRestart || item.kind !== "tool" || !item.jobs) return item;
+  let changed = false;
+  const jobs = item.jobs.map((job) => {
+    if (job.status !== "running") return job;
+    changed = true;
+    return { ...job, status: "stopped" as const, endedAt: job.endedAt ?? Date.now() };
+  });
+  return changed ? { ...item, jobs } : item;
+}
+
 export interface ChatSubscriber {
   send(id: number, event: ChatEvent): void;
   close(): void;
@@ -796,7 +813,7 @@ export class Chat implements CheckpointHost {
     chat.noteContext(context);
     chat.usage = chat.timing.compose(usage);
     chat.todos = todos;
-    chat.reducer.load(items, live.title);
+    chat.reducer.load(items.map((item) => reconcileLoadedJobs(item, adapter.capabilities.jobsSurviveRestart)), live.title);
     // A resumed old chat keeps its stored recency until someone talks in it;
     // only a brand-new (empty) history starts at now.
     let latest: number | null = null;

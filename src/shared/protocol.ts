@@ -28,6 +28,8 @@ export interface HarnessCapabilities {
   supportsPermissionMode: boolean;
   /** A saved session can be resumed in the harness's own CLI from a terminal, by a command the server gives ("Copy resume command"). */
   supportsResumeCommand: boolean;
+  /** A backgrounded job outlives the harness process that started it (Claude Code's task files). Without this, a job reloaded from a transcript as still running is reconciled to stopped, because the new process no longer holds it. */
+  jobsSurviveRestart: boolean;
 }
 
 export interface HarnessStatus {

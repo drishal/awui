@@ -97,6 +97,30 @@ describe("resume from the session file", () => {
     expect(snap.items.find((i) => i.kind === "notice")).toMatchObject({ level: "error", text: expect.stringContaining("no such binary") });
   });
 
+  it("marks a backgrounded shell job still running on the file as stopped after a fresh start", async () => {
+    // The job's async-result never reached the old server (a restart, say): the file still says running.
+    const adapter = new FakeAdapter({ chunkDelayMs: 1, resumeDelayMs: 50 });
+    const live = await adapter.openChat({ cwd: ws.path });
+    let settled = false;
+    live.subscribe((e) => {
+      if (e.type === "settled") settled = true;
+    });
+    await live.prompt("orphanshell");
+    await until(() => settled);
+    await live.dispose();
+    const manager = new ChatManager();
+    managers.push(manager);
+    const chat = await manager.resume(adapter, ws, live.nativeId as string);
+    // Read at once: the deferred view is the transcript. The job is reconciled, not ticking.
+    const jobs = chat.snapshot().items.flatMap((i) => (i.kind === "tool" ? (i.jobs ?? []) : []));
+    expect(jobs.map((j) => [j.id, j.status])).toEqual([["bg_1", "stopped"]]);
+    expect(jobs[0]?.endedAt).toBeTypeOf("number");
+    // And once the harness is up the flipped state still holds (nothing re-runs it).
+    await until(() => chat.status === "idle");
+    const again = chat.snapshot().items.flatMap((i) => (i.kind === "tool" ? (i.jobs ?? []) : []));
+    expect(again.map((j) => [j.id, j.status])).toEqual([["bg_1", "stopped"]]);
+  });
+
   it("closes the harness that arrives after its chat was closed", async () => {
     const { manager, adapter, nativeId } = await storedSession(150);
     const open = adapter.openChat.bind(adapter);

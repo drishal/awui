@@ -17,6 +17,7 @@
 //   "testrun" run a command that prints a Vitest summary with one failing test
 //   "bgjob" leave a test suite running in the background (omp's shapes): a wait streams its widget, then it reports done
 //   "orphantask" a task job spawns (omp's shapes) and nothing ever reports it: the run settles with it running
+//   "orphanshell" a backgrounded shell whose async-result never arrives: its job stays running on the file
 //   "e2eprogress" run a Playwright suite whose line reporter prints its progress a test at a time, one failing
 //   "manycalls" twelve quick reads in a row (a run long enough to fold)
 //   "toolfail" a command call that fails (port in use), then the run carries on
@@ -185,6 +186,7 @@ export class FakeAdapter implements HarnessAdapter {
       supportsQueueEdit: true,
       supportsPermissionMode: true,
       supportsResumeCommand: true,
+      jobsSurviveRestart: false,
       ...options.capabilities,
     };
   }
@@ -727,6 +729,19 @@ class FakeLiveChat implements LiveChat {
           signal,
         );
         // No wait, no async-result: the run just ends.
+      }
+      if (/\borphanshell\b/i.test(text)) {
+        // A backgrounded shell whose async-result never arrived (the server went away before it fired):
+        // the run settles with a `running` shell job on the file, which resume must reconcile.
+        await this.call(
+          {
+            name: "bash",
+            args: { command: "sleep 30", i: "Sleeping" },
+            output: "Backgrounded as job bg_1",
+            details: { async: { state: "running", jobId: "bg_1", type: "bash" } },
+          },
+          signal,
+        );
       }
       if (/\be2eprogress\b/i.test(text)) {
         // Playwright's line reporter: the total up front, then [n/N] as each test starts, a failure numbered as it lands.

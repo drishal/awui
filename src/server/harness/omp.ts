@@ -600,6 +600,7 @@ export class OmpAdapter implements HarnessAdapter {
     supportsQueueEdit: true,
     supportsPermissionMode: false,
     supportsResumeCommand: false,
+    jobsSurviveRestart: false,
   };
   private lister: AcpLister;
   private sessionFiles = new SessionFiles(() => this.resolveSessionDir());

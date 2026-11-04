@@ -59,6 +59,7 @@ export class AwuiAdapter extends PiAdapter {
     supportsQueueEdit: true,
     supportsPermissionMode: false,
     supportsResumeCommand: false,
+    jobsSurviveRestart: false,
   };
   // A distinct accent so the harness menu tells it apart from Pi.
   protected override accentToken = "thinking";
