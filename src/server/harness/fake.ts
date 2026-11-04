@@ -24,6 +24,7 @@
 //   "todolist" a rpiv-todo `todo` call whose result carries the whole numbered list (the status stack's source)
 //   "widethought" a call, thinking shaped like narration with a code line wider than the column, another call
 //   "moaref" a MoA turn's reference advice as Markdown notice folds, and its status line
+//   "noticefold" a reply, an extension's notice, then a second reply (a tool-less stretch between replies)
 //
 // Board rooms drive this adapter through the real server. A Board invocation is
 // recognised by the prompt envelope's "## Current request" section, and its
@@ -641,6 +642,14 @@ class FakeLiveChat implements LiveChat {
         this.emit({ type: "notice", level: "info", title: "MoA · opencode-go:glm-5.3-flash (1/2)", text: "MoA reference advice from opencode-go:glm-5.3-flash", detail: "## Advice one\n\nUse `cache` for repeats.", detailFormat: "markdown" });
         this.emit({ type: "notice", level: "info", title: "MoA · opencode-go:deepseek-v4.1-flash (2/2)", text: "MoA reference advice from opencode-go:deepseek-v4.1-flash", detail: "- fast\n- cheap", detailFormat: "markdown" });
         this.emit({ type: "extension_status", key: "fake:status", text: null });
+      }
+      if (/\bnoticefold\b/i.test(text)) {
+        // Work, a reply, an extension's notice (pi's kendex event), then a second reply: the
+        // notice's stretch holds no tool, so it draws inline — not a fold card with an empty header.
+        await this.call({ name: "bash", args: { command: "sleep 1" }, output: "" }, signal);
+        await this.reply("First reply, then the notice.", signal);
+        this.emit({ type: "notice", level: "info", title: "Kendex background tasks:event", text: "Background task bg-1 finished.", detail: "Background task bg-1 finished.\nCommand: npm run e2e" });
+        await this.reply("Second reply, after the notice.", signal);
       }
       if (/\bafterreply\b/i.test(text)) {
         // The answer, then a tool call after it: that work keeps its place below the reply.

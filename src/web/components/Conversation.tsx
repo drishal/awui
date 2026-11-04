@@ -889,6 +889,23 @@ function ProcessFold({
   // One settled call is its own card: a header saying "Used 1 tool" over that call would only say it twice.
   // A live card keeps its header, which carries the phase and the clock while the run goes.
   const single = !live && toolCount === 1 && items.every((item) => item.kind === "tool" || item.kind === "assistant");
+  // A stretch with no tool and no header to show (a middle stretch of notices between replies)
+  // draws its rows inline: an empty pill with the rows folded inside it says nothing. A leading
+  // fold keeps its card — its header says "Worked", and Find opens it by that id.
+  if (!live && toolCount === 0 && !label) {
+    const inlineThought = answerThinking ? <ThoughtRow thinking={answerThinking.thinking} streaming={answerThinking.streaming && !answerThinking.text} /> : null;
+    return (
+      <div className="process-inline">
+        {items.map((item, i) => (
+          <Fragment key={item.id}>
+            {i === answerAt ? inlineThought : null}
+            <ProcessItem item={item} workspace={workspace} />
+          </Fragment>
+        ))}
+        {answerAt >= items.length ? inlineThought : null}
+      </div>
+    );
+  }
   return (
     <div ref={root} className={`process process-card${open || single ? " is-open" : ""}${single ? " is-single" : ""}${live ? " is-live" : ""}${failedCalls > 0 ? " has-failed" : ""}`}>
       {single ? null : <div className="process-bar">

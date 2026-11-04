@@ -698,6 +698,24 @@ test("work the agent runs after its answer keeps its place below the reply", asy
   expect(await top(after)).toBeGreaterThan(await top(answer));
 });
 
+test("a notice between replies draws as its own row, not an empty fold card", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "noticefold please");
+  const turn = page.getByTestId("turn").last();
+  const notice = turn.getByTestId("extension-message");
+  await expect(notice).toContainText("Kendex background tasks:event");
+  // The notice's stretch holds no tool, so no fold card wraps it: its rows draw inline.
+  // (The command's own single-call card is still there, holding only its row.)
+  expect(await turn.locator(".process-card").filter({ has: notice }).count()).toBe(0);
+  const top = (l: ReturnType<typeof page.locator>) => l.boundingBox().then((b) => b?.y ?? 0);
+  const replies = turn.getByTestId("interim-reply");
+  // The notice sits between the two replies, in order.
+  expect(await top(replies.first())).toBeLessThan(await top(notice));
+  expect(await top(notice)).toBeLessThan(await top(replies.last()));
+  await expect(turn.getByTestId("answer")).toContainText("Echo: noticefold please");
+});
+
 test("todos from the harness show in the status stack, which can be hidden", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
