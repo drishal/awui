@@ -66,6 +66,21 @@ describe("omp's background jobs", () => {
     expect(tool?.jobs).toEqual([expect.objectContaining({ id: "bg_1", status: "failed", startedAt: 1000, endedAt: 5000 })]);
   });
 
+  it("a proc read of a job omp no longer holds ends it, here and in a reloaded transcript", () => {
+    const gone = "Background job or service not found: bg_1";
+    expect(jobsFromCall("read", { path: "proc://bg_1" }, {}, gone)).toEqual([{ id: "bg_1", kind: "shell", status: "stopped", label: "bg_1" }]);
+    expect(jobsFromCall("read", { path: "proc://bg_1" }, {}, "still going")).toBeNull();
+    expect(jobsFromCall("read", { path: "src/app.ts" }, {}, gone)).toBeNull();
+    const messages = [
+      { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "npm run test:e2e:fast" } }], timestamp: 1000 },
+      { role: "toolResult", toolCallId: "c1", toolName: "bash", content: [{ type: "text", text: "" }], details: { async: { state: "running", jobId: "bg_1", type: "bash" } }, timestamp: 1001 },
+      { role: "assistant", content: [{ type: "toolCall", id: "c2", name: "read", arguments: { path: "proc://bg_1" } }], timestamp: 2000 },
+      { role: "toolResult", toolCallId: "c2", toolName: "read", content: [{ type: "text", text: gone }], details: {}, isError: true, timestamp: 2001 },
+    ];
+    const tool = historyToItems(messages).find((i): i is ToolItem => i.kind === "tool" && i.id.endsWith("c1"));
+    expect(tool?.jobs).toEqual([expect.objectContaining({ id: "bg_1", status: "stopped", label: "npm run test:e2e:fast", startedAt: 1000, endedAt: 2001 })]);
+  });
+
   it("a task left running with no report in a settled transcript reads as stopped", () => {
     // The EsetResearch shape: a task spawn's details mark it running; nothing ever reports again.
     const messages = [

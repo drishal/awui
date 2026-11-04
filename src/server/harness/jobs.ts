@@ -163,6 +163,10 @@ export function jobsFromCall(name: string, args: unknown, details: unknown, outp
     const jobs = d.jobs.filter(isObj).map(ompJob).filter((j): j is BackgroundJob => j !== null);
     return jobs.length > 0 ? jobs.slice(0, MAX_JOBS) : null;
   }
+  // omp's `read proc://bg_N` on a job it no longer holds (the child restarted, or the job was reaped): no end report
+  // will ever come, so the answer itself says the job is gone rather than leaving it running on the status stack.
+  const gone = /^read$/i.test(name) ? /^proc:\/\/([\w.-]+)/.exec(str(a.path))?.[1] : undefined;
+  if (gone && /^Background job or service not found/i.test(output.trim())) return [{ id: gone, kind: "shell", status: "stopped", label: gone }];
   // The bg_task extension: one task, or the list.
   if (/^bg_(task|status)$/.test(name)) {
     const raw = isObj(d.task) ? [d.task] : Array.isArray(d.tasks) ? d.tasks : [];
