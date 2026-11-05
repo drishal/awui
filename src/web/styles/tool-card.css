@@ -259,6 +259,7 @@
 /* A failed call is still one row: the reason rides at the end of its sentence, muted, and the retry button
    shares the row. The reason steps aside while the call is open, since its output says it in full. */
 .tool-row-line {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -270,12 +271,24 @@
   min-width: 0;
 }
 
-.tool-retry {
+/* Ask to retry's unseen twin inside the head (the head is a button, and buttons do not nest): it takes the
+   button's width between the facts and the status mark, so a failed row's mark and chevron stay in the column. */
+.tool-retry-room {
   flex: none;
-  margin-right: 12px;
+  visibility: hidden;
+  pointer-events: none;
 }
 
-.tool-retry .icon {
+/* The real button, laid over its twin: 12px padding + 14px chevron + gap + 16px status + gap from the right. */
+.tool-retry {
+  position: absolute;
+  top: 50%;
+  right: 62px;
+  translate: 0 -50%;
+}
+
+.tool-retry .icon,
+.tool-retry-room .icon {
   margin-right: 4px;
 }
 
@@ -420,13 +433,19 @@
   }
 
   /* The retry is a round mark on touch: its words would leave the sentence too little room for the reason. */
-  .tool-retry {
+  .tool-retry,
+  .tool-retry-room {
     width: 40px;
     min-width: 40px;
     height: 40px;
     min-height: 40px;
-    margin-right: 6px;
     padding: 0;
+  }
+
+  /* The facts wrap under the sentence, so the head is two lines: the button sits on the first, with its twin. */
+  .tool-retry {
+    top: 3px;
+    translate: none;
   }
 
   /* The words are gone, so the mark centres itself. */
@@ -434,7 +453,8 @@
     display: none;
   }
 
-  .tool-retry .icon {
+  .tool-retry .icon,
+  .tool-retry-room .icon {
     margin-right: 0;
   }
 }

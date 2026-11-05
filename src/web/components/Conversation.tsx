@@ -203,6 +203,13 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   const progress = useMemo(() => (running && item.category === "command" && item.output ? testProgress(item.output) : null), [running, item.category, item.output]);
   // The reason rides inside the row, where the label would otherwise hide it from a screen reader.
   const label = `${sentence.text}${factText ? `, ${factText}` : ""}${sentence.error ? `, ${sentence.error}` : ""}${time ? `, ${time}` : ""}, ${status}`;
+  const retryFace =
+    failed && retry ? (
+      <>
+        <IconRefresh size={13} />
+        <span className="tool-retry-text">{asked ? (retry.mode === "queue" ? "Queued" : "Asked") : "Ask to retry"}</span>
+      </>
+    ) : null;
   return (
     <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} data-testid="tool-row" data-tool={item.name} data-status={item.status}>
       <div className="drow tool-line">
@@ -223,6 +230,9 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
               {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : factText ? <span className="tool-fact">{factText}</span> : null}
               {time ? <span className="tool-time"><Rolling text={time} /></span> : null}
             </span>
+            {/* Ask to retry cannot sit inside this button, so its twin holds its place here, unseen: the status mark and
+                chevron keep the rows' column whatever the label's width, and the real button is laid over it. */}
+            {retryFace ? <span className="btn btn-small btn-ghost tool-retry-room" aria-hidden="true">{retryFace}</span> : null}
             <span className="tool-status" role="img" aria-label={status}>
               {running ? <Spinner size={14} /> : failed ? <IconAlertCircle size={15} /> : <IconCheck size={14} draw={live} />}
             </span>
@@ -240,8 +250,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
                 retry.send(retryPrompt(item, workspace));
               }}
             >
-              <IconRefresh size={13} />
-              <span className="tool-retry-text">{asked ? (retry.mode === "queue" ? "Queued" : "Asked") : "Ask to retry"}</span>
+              {retryFace}
             </button>
           ) : null}
         </div>

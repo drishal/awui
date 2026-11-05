@@ -158,6 +158,10 @@ test("Ask to retry sends a prompt naming the call when idle, and only the latest
   // The button shares the call's line: the failed row is one line, not two.
   const [retryBox, sentenceBox] = [await retry.boundingBox(), await page.locator('[data-tool="bash"] .tool-sentence').last().boundingBox()];
   expect(retryBox!.y).toBeLessThan(sentenceBox!.y + sentenceBox!.height);
+  // It lies over its unseen twin in the row, which keeps the status mark and chevron in the rows' column.
+  const room = await page.locator('[data-tool="bash"] .tool-retry-room').last().boundingBox();
+  expect(Math.abs(retryBox!.x - room!.x)).toBeLessThan(1);
+  expect(Math.abs(retryBox!.width - room!.width)).toBeLessThan(1);
   await retry.click();
   await expect(page.getByTestId("user-prompt").last()).toHaveText("Retry the failed tool call (running npm run e2e). It failed with: Error: port 4791 is already in use");
   await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });
@@ -194,6 +198,9 @@ test.describe("on a phone", () => {
     expect(button!.y + button!.height).toBeLessThanOrEqual(card!.y + card!.height + 1);
     expect(button!.width).toBeLessThan(card!.width * 0.7);
     expect(button!.height).toBeGreaterThanOrEqual(32);
+    // The retry holds its own room in the row: the failed call's mark stays in the passing call's column.
+    const [failedMark, passedMark] = [await failed.locator(".tool-status").boundingBox(), await row.locator(".tool-status").boundingBox()];
+    expect(Math.abs(failedMark!.x - passedMark!.x)).toBeLessThan(1);
   });
 });
 
