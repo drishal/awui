@@ -8,13 +8,13 @@ disagree, the code is the truth: fix whichever is stale.
 ## What this is
 
 **awui** (agent web UI) is a local, private web UI for the **Pi**, **omp**
-(oh-my-pi), **Hermes** (hermes-agent), **Claude Code**, and **OpenCode** coding-agent
-harnesses. **atui** is its terminal client, and **awui tern** draws it natively in a
+(oh-my-pi), **Hermes** (hermes-agent), **Claude Code**, **OpenCode**, **Grok Build**, and
+**DeepSeek Harness** (dsh) coding-agent harnesses. **atui** is its terminal client, and **awui tern** draws it natively in a
 Tern pane. All are thin clients of one Node server:
 
 ```
 browser (src/web, React)  ─┐
-                            ├─ HTTP + SSE ─▶ server (src/server, Express 5) ─▶ HarnessAdapter ─▶ pi / omp / hermes / claude / opencode
+                            ├─ HTTP + SSE ─▶ server (src/server, Express 5) ─▶ HarnessAdapter ─▶ pi / omp / hermes / claude / opencode / grok / dsh
 atui    (src/atui, Solid) ─┤                 127.0.0.1:4783 by default             (one child process per live chat)
 tern    (src/tern, TSP)   ─┘
 ```
@@ -51,7 +51,7 @@ Match the task to a guide before opening code:
 | `npm run test:atui` | Build, then `bun test tests/atui` (atui in OpenTUI's test renderer, and the Tern client against a stand-in Tern, both against a real server). |
 | `awui doctor [--json]` | Checks config.yml, Node/Bun, each harness, workspace roots, the state folder's mode, the port, remote sign-in, herdr; prints ✓/!/✗ lines, exit 1 on a ✗ (`src/server/doctor.ts`). |
 | `awui tern` | The Tern client in a Tern pane (`bun --conditions=browser src/tern/main.ts`; Solid's default Bun build is its server one, where effects never run). |
-| `npm run smoke` | Opt-in tests against the real installed harnesses. No model is called unless `SMOKE_MODEL` (and `SMOKE_CLAUDE_MODEL`) name one. |
+| `npm run smoke` | Opt-in tests against the real installed harnesses. No model is called unless `SMOKE_MODEL` (and `SMOKE_CLAUDE_MODEL`, `SMOKE_GROK_MODEL`, `SMOKE_DSH_MODEL`) name one. |
 | `node scripts/ui-shot.mjs <url> <selector> <out.png>` | Screenshot one element of a running UI and print every control's size, radius, padding, and font (`--phone`, `--narrow`, `--light`). See docs/ui.md. |
 | `npm run set-password` | Store an scrypt login for other devices. |
 | `npm run service -- install\|uninstall\|print` | The systemd user unit (`contrib/systemd/awui.service`). |
@@ -81,7 +81,7 @@ src/server/
   boards/                     Board rooms, web-only: store.ts (strict atomic persistence, JSONL room records), manager.ts (CRUD + the ownership oracle ordinary surfaces filter by), events.ts (room SSE), scheduler.ts (one active turn per room, serial), turn-runner.ts (direct responders, one bounded consultation round), sessions.ts (bot session pool over ChatManager-owned chats), context.ts/consult.ts/budget.ts (pure envelope, control-document parser, caps).
   harness/types.ts            HarnessAdapter / LiveChat contract and the normalized HarnessEvent union.
   harness/registry.ts         One factory per harness; AWUI_HARNESSES selects them.
-  harness/{pi,omp,hermes,claude,opencode,grok}.ts   The six adapters; grok-transcript.ts folds Grok's ACP session updates (live and on disk). fake.ts is the deterministic test adapter.
+  harness/{pi,omp,hermes,claude,opencode,grok,dsh}.ts   The seven adapters; grok-transcript.ts folds Grok's ACP session updates (live and on disk), and dsh-transcript.ts decodes DeepSeek Harness's concatenated-zstd session log and folds its ACP updates. fake.ts is the deterministic test adapter.
   harness/opencode-server.ts  OpenCode's one shared `opencode serve`: started when needed, awui's password, events by session.
   harness/opencode-messages.ts  OpenCode's messages, models, forms, permissions as awui's (pure, against recorded shapes).
   harness/awui.ts              The Awui chat harness: a read-only `pi` child (subclass), own agent dir, write/exec tools denied; loads render_html + eval_python, not rewind. Web-only; its Settings can link the user's pi login into that dir (awui-settings.ts).
@@ -154,7 +154,7 @@ extensions/render-html-mcp.mjs  The same tool as an MCP server (stdio JSON-RPC, 
 extensions/eval-python.ts     An awui-harness extension registering eval_python: runs a snippet in a scratch tmp dir (no workspace).
 contrib/                      systemd unit and home-manager modules (templates; users copy them).
 tests/unit                    Vitest. tests/helpers/app.ts builds a real app with fake adapters (makeTestApp).
-tests/fixtures                Scripted stand-ins: fake-omp.mjs, fake-hermes.mjs, fake-claude.mjs, themes/.
+tests/fixtures                Scripted stand-ins: fake-omp.mjs, fake-hermes.mjs, fake-claude.mjs, fake-grok.mjs, fake-dsh.mjs, themes/.
 tests/e2e                     Playwright. global-setup.ts starts the built server with AWUI_HARNESSES=fake,fake-b.
 tests/atui                    bun:test against a real server; helpers.tsx mounts atui in the test renderer;
                               tern-fake.tsx is a stand-in Tern (handshake, frames applied to a document, acks).
@@ -280,8 +280,9 @@ if every test passes.
   `agents.json` in `$AWUI_E2E_HERDR` (calls land in `calls.jsonl`); the atui test
   server runs with `AWUI_HERDR=0`. Never point a test at the developer's herdr.
 - **Scripted CLIs** (`tests/fixtures/fake-omp.mjs`, `fake-hermes.mjs`,
-  `fake-claude.mjs`, `fake-opencode.mjs`) speak each harness's real wire protocol
-  (the last is an HTTP server with OpenCode 2's routes and event stream). Adapter changes
+  `fake-claude.mjs`, `fake-opencode.mjs`, `fake-grok.mjs`, `fake-dsh.mjs`) speak each harness's real wire protocol
+  (OpenCode's is an HTTP server with OpenCode 2's routes and event stream; DSH's writes
+  v4 concatenated-zstd session logs). Adapter changes
   get a test against one of them; record new frames from the real CLI rather
   than inventing them.
 - **Unit tests** build a real server with `makeTestApp()` (tests/helpers/app.ts)
@@ -292,8 +293,8 @@ if every test passes.
   chat. Select by role and accessible name, not CSS classes, where you can.
 - **Real data checks.** When parsing a harness's files or events, check the
   parser against real sessions on the machine (`~/.pi/agent/sessions`,
-  `~/.omp/agent/sessions`, `~/.claude/projects`) with a throwaway script, read
-  only. Never open the session the current agent is itself running in.
+  `~/.omp/agent/sessions`, `~/.claude/projects`, `~/.dsh/sessions`) with a
+  throwaway script, read only. Never open the session the current agent is itself running in.
 - **Screenshots** for visual work: `node scripts/ui-shot.mjs` for one element
   and its controls' sizes against a sandbox server (docs/ui.md, sections 4–5);
   `AWUI_SCREENSHOTS=<dir> npx playwright test screenshots` writes frames; for atui, render frames in `tests/atui` and read
@@ -377,7 +378,7 @@ unit test; a `tests/atui` case that drives it by keys or clicks.
     scripts, CI). `chore: bump @playwright/test to 1.56`
 
   The scope is the part it changes: `web`, `atui`, `tern`, `server`, a
-  harness (`pi`, `omp`, `hermes`, `claude`, `opencode`, `grok`, `awui`), or a
+  harness (`pi`, `omp`, `hermes`, `claude`, `opencode`, `grok`, `dsh`, `awui`), or a
   narrower area when that reads better (`composer`, `sidebar`, `tabs`,
   `security`, `doctor`, `e2e`). Leave it out (`docs: …`) when the change is
   not about one part. Tests and docs that ship with a change go in its commit

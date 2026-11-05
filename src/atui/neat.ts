@@ -311,5 +311,5 @@ export function tokenCount(chars: number): string {
 
 /** A harness's mark on the prompt card: π for Pi, as neat-render draws it. */
 export function harnessGlyph(harnessId: string): string {
-  return ({ pi: "π", omp: "ω", claude: "✻", hermes: "☤", opencode: "▣" } as Record<string, string>)[harnessId] ?? (harnessId[0]?.toUpperCase() ?? "›");
+  return ({ pi: "π", omp: "ω", claude: "✻", hermes: "☤", opencode: "▣", dsh: "✦" } as Record<string, string>)[harnessId] ?? (harnessId[0]?.toUpperCase() ?? "›");
 }

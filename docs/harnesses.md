@@ -41,7 +41,7 @@ Then pick the adapter to copy, by transport:
 
 | The agent speaks | Copy | Notes |
 |---|---|---|
-| ACP (Agent Client Protocol) over stdio | `grok.ts` + `grok-transcript.ts` | The generic path. ACP has no steer or follow-up: declare both false. |
+| ACP (Agent Client Protocol) over stdio | `grok.ts` + `grok-transcript.ts` | The generic path. ACP has no steer or follow-up: declare both false. An app that replays no history (DSH) also needs a reader for its own session files: see `dsh.ts` + `dsh-transcript.ts`. |
 | Its own JSON lines over stdio, one child per chat | `pi.ts` (rpc mode), `claude.ts` (stream-json) | `omp.ts` is a Pi fork that strips Pi's `PI_*` variables from its child. |
 | One HTTP server shared by every chat | `opencode.ts` + `opencode-server.ts` + `opencode-messages.ts` | Start the server once, route its event stream by session. |
 | A gateway process that owns its home | `hermes.ts` + `hermes-gateway.ts` + `hermes-canonical.ts` | Attach to the owner; the stdio child is only the fallback. |
@@ -120,6 +120,7 @@ Required:
 | File | Change |
 |---|---|
 | `src/server/harness/<id>.ts` | The adapter. Wire and SDK types never leave it (AGENTS rule 3). |
+| `src/server/harness/<id>-transcript.ts` | When the agent's history lives in its own files (Grok, DSH): the pure reader, fold, and usage parser, tested without a process. |
 | `src/server/harness/registry.ts` | One line in `factories`: `<id>: (config) => new XAdapter({ home: config.home, ...config.launch.<id> })`. |
 | `src/server/config.ts` | Add `<id>` to the default `harnesses` list (and the doc comment above it). |
 | `src/server/user-config.ts` | `harnesses.<id>` in the schema (`launchSchema` if it takes `command` and `args`), and `<ID>_BIN` in `BIN_ENV`. |
@@ -202,3 +203,19 @@ agent on this machine:
   permissions.
 - **Never write the agent's session files.** Forks and handoffs add new
   sessions through the agent's own store; everything else is read-only.
+- **An ACP app may replay nothing.** DSH's ACP surface deliberately sends no
+  history on resume, so `history()`, the sidebar, and usage must come from the
+  app's own store — DSH writes one zstd frame per append inside a single
+  `session.v4.jsonl.zstd`, which Node's one-shot decompressor stops reading at
+  the first frame. `dsh-transcript.ts` scans frame headers and decodes each
+  frame itself. Test the reader against real files, including a torn last
+  append.
+- **An optional transport is a setup step, not an install.** DSH's `acp` bundle
+  is not in every installation (the Nix package ships only the web and
+  headless bundles). Discovery must name the pinned install command and report
+  the harness unavailable, never start a chat that cannot answer; the profile
+  itself is DSH's own store and lives under `~/.dsh`.
+- **Resume needs the session's providers.** DSH refuses a session whose
+  recorded model route has no registered adapter. A profile that mounts fewer
+  providers than the one that wrote the session can list it but not resume it;
+  say so in the setup docs rather than rewriting the session.

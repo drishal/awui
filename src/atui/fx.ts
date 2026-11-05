@@ -162,6 +162,8 @@ const SPINNERS: Record<string, string[]> = {
   hermes: ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"],
   // OpenCode's square mark, turning.
   opencode: ["▖", "▘", "▝", "▗"],
+  // DeepSeek Harness's spark, turning.
+  dsh: ["✦", "✧", "✶", "✷"],
 };
 
 /** Each harness's own spinner (Claude Code's asterisks for Claude, omp's moon for omp); braille dots otherwise. */
