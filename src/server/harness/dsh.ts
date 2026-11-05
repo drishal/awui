@@ -6,12 +6,23 @@
 // own session logs (`~/.dsh/sessions/<project>/<id>/session.v4.jsonl.zstd`),
 // never written. The installed profile stays the source of truth for models,
 // login, permissions, and session files.
+//
+// The stock bridge sends only committed messages, so text would land a step at
+// a time. awui's acp-flow plugin (extensions/acp-flow.mjs) streams it live: each
+// child gets a `--patch` overlay, written in awui's state folder, that swaps
+// the bridge row for the plugin, which runs the same bridge inside it and adds
+// DSH's own provider deltas as an extension notification. The committed
+// chunks then repeat what streamed; they are held and only replace the bubble
+// when DSH kept something else (a cancel keeps a safe prefix).
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 import { execHarness, spawnHarness } from "../platform-win.js";
-import { embeddedVersion } from "../embedded.js";
+import { embeddedVersion, extractedExtensionPath } from "../embedded.js";
+import { writeJson } from "../state-file.js";
 import {
   asHarnessId,
   type ChatConfig,
@@ -81,6 +92,17 @@ const HEAD_BYTES = 128 * 1024;
 /** The head read's plaintext budget; the title is within the first few frames. */
 const HEAD_TEXT_BYTES = 512 * 1024;
 const CLIENT_VERSION = embeddedVersion ?? "dev";
+/** The acp-flow plugin's extension notification: one live frame (extensions/acp-flow.mjs). */
+const FLOW_METHOD = "_acp-flow/assistant_stream";
+/** The plugin's mark on the initialize response, under `agentCapabilities._meta`. */
+const FLOW_META = "acp-flow";
+/** The stock bridge row the plugin stands in for: its id in the profile tree, and its package. */
+const BRIDGE_ROW = "acp";
+const BRIDGE_PACKAGE = "@deepseek-ai/dsh-acp";
+/** DSH's boot report of a plugin row that did not activate; the profile then has no ACP server at all. */
+const FLOW_FAILED = /^acp-flow \(/m;
+/** How long committed chunks wait for more of their message when no boundary (a tool, a turn end) comes. */
+const COMMIT_SETTLE_MS = 120;
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -146,6 +168,8 @@ export function liveDshChildren(): number {
 class DshRpc {
   readonly child: ChildProcessWithoutNullStreams;
   exited = false;
+  /** The acp-flow row did not activate: the child has no ACP server, so it was stopped. */
+  flowFailed = false;
   private readonly stderr: StderrTail;
   private exitListeners = new Set<(message: string) => void>();
   private readonly calls = new PendingRequests<string>(
@@ -169,6 +193,17 @@ class DshRpc {
     this.child = spawnHarness(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.stderr = new StderrTail(this.child);
     track(this.child);
+    if (args.includes("--patch")) {
+      // A plugin row that fails leaves DSH booted with no ACP server, silent until the handshake times out.
+      let said = "";
+      this.child.stderr.on("data", (chunk: Buffer) => {
+        if (this.flowFailed) return;
+        said = (said + chunk.toString("utf8")).slice(-4_000);
+        if (!FLOW_FAILED.test(said)) return;
+        this.flowFailed = true;
+        this.child.kill("SIGKILL");
+      });
+    }
     const rl = readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity });
     rl.on("line", (line) => {
       if (!line.trim()) return;
@@ -450,7 +485,7 @@ class DshLiveChat implements LiveChat {
   private sessionId: string | null = null;
   /** Updates before the session response: DSH replays none, but autonomous work may start during a resume. */
   private accepting = false;
-  private readonly pendingUpdates: Obj[] = [];
+  private readonly pendingUpdates: Array<{ update: Obj } | { flow: Obj }> = [];
   private model: string | null = null;
   private level: string | null = null;
   private models: ModelInfo[] = [];
@@ -462,6 +497,13 @@ class DshLiveChat implements LiveChat {
   private turnOpen = false;
   private promptRpc: Promise<unknown> | null = null;
   private assistantOpen = false;
+  /** The acp-flow plugin marked the handshake: text streams live, and committed chunks repeat it. */
+  private flowing = false;
+  /** What the open assistant bubble has streamed live. */
+  private streamed = { text: "", thinking: "" };
+  /** The step's committed text and thinking, held until a boundary compares them with what streamed. */
+  private committed: { text: string; thinking: string } | null = null;
+  private commitTimer: NodeJS.Timeout | null = null;
   private readonly openTools = new Map<string, { name: string; args: unknown }>();
   private readonly permissionOptions = new Map<string, string[]>();
   private readonly mcpServers: unknown[];
@@ -499,10 +541,18 @@ class DshLiveChat implements LiveChat {
   }
 
   async start(): Promise<void> {
-    const rpc = new DshRpc(this.adapter.cliCommand, this.adapter.chatArgs, this.adapter.childEnv(), this.cwd, (frame) => this.onFrame(frame));
+    const patch = await this.adapter.flowPatch();
+    if ((await this.launch(patch)) === "ok") return;
+    // The plugin did not load (a DSH that moved the bridge's API, say): the stock bridge still works, without live text.
+    this.adapter.disableFlow();
+    await this.launch(null);
+  }
+
+  private async launch(patch: string | null): Promise<"ok" | "flow failed"> {
+    const rpc = new DshRpc(this.adapter.cliCommand, this.adapter.chatArgs(patch), this.adapter.childEnv(), this.cwd, (frame) => this.onFrame(frame));
     this.rpc = rpc;
     rpc.onExit((message) => {
-      if (this.disposed) return;
+      if (this.disposed || this.rpc !== rpc || rpc.flowFailed) return;
       this.dialogs.cancelAll();
       this.emit({ type: "fatal", message: `DeepSeek Harness stopped unexpectedly (${message})` });
     });
@@ -518,9 +568,18 @@ class DshLiveChat implements LiveChat {
       this.emit({ type: "session", nativeId });
       this.emitConfig();
       // Work that started while the resume handshake ran arrives after its session event.
-      for (const update of this.pendingUpdates.splice(0)) this.onUpdate(update);
+      for (const pending of this.pendingUpdates.splice(0)) {
+        if ("flow" in pending) this.onFlow(pending.flow);
+        else this.onUpdate(pending.update);
+      }
+      return "ok";
     } catch (error) {
+      this.rpc = null;
       await rpc.kill().catch(() => undefined);
+      if (patch && rpc.flowFailed) {
+        this.pendingUpdates.length = 0;
+        return "flow failed";
+      }
       throw error;
     }
   }
@@ -533,6 +592,8 @@ class DshLiveChat implements LiveChat {
     this.imageCapable = prompt.image === true;
     const sessions = isObj(capabilities.sessionCapabilities) ? capabilities.sessionCapabilities : {};
     if (this.resumeId && sessions.resume === undefined) throw new Error("This DeepSeek Harness build cannot resume ACP sessions");
+    const meta = isObj(capabilities._meta) ? capabilities._meta : {};
+    this.flowing = isObj(meta[FLOW_META]);
   }
 
   private applySession(result: Obj, sessionId: string): string {
@@ -562,10 +623,18 @@ class DshLiveChat implements LiveChat {
   private onFrame(frame: Obj): void {
     const method = typeof frame.method === "string" ? frame.method : null;
     if (method === null) return;
+    if (method === FLOW_METHOD) {
+      const flow = isObj(frame.params) ? frame.params : null;
+      // Before the handshake's mark nothing says the committed chunks repeat these, so they would show twice.
+      if (!flow || !this.flowing) return;
+      if (this.accepting) this.onFlow(flow);
+      else if (this.pendingUpdates.length < 1000) this.pendingUpdates.push({ flow });
+      return;
+    }
     const update = updateOf(frame);
     if (update) {
       if (this.accepting) this.onUpdate(update);
-      else if (this.pendingUpdates.length < 1000) this.pendingUpdates.push(update);
+      else if (this.pendingUpdates.length < 1000) this.pendingUpdates.push({ update });
       return;
     }
     if (method === "session/request_permission") {
@@ -582,15 +651,18 @@ class DshLiveChat implements LiveChat {
     const fold = foldAcpUpdate(update, Date.now());
     switch (fold.type) {
       case "delta": {
-        if (!this.assistantOpen) {
-          this.assistantOpen = true;
-          this.emit({ type: "assistant_start", ...(this.model ? { model: this.model } : {}) });
+        if (this.flowing) {
+          this.holdCommitted(fold.field, fold.delta);
+          return;
         }
+        this.openAssistant();
         this.emit({ type: "assistant_delta", field: fold.field, delta: fold.delta });
         return;
       }
       case "tool_start": {
-        this.assistantOpen = false;
+        // The step's committed message comes before its calls, so this is where it is complete.
+        this.settleCommitted();
+        this.closeAssistant();
         this.openTools.set(fold.toolCallId, { name: fold.name, args: fold.args });
         this.emit({ type: "tool_start", toolCallId: fold.toolCallId, name: fold.name, args: fold.args });
         if (update.status === "completed" || update.status === "failed") this.finishTool(update);
@@ -614,6 +686,76 @@ class DshLiveChat implements LiveChat {
       default:
         return;
     }
+  }
+
+  private openAssistant(): void {
+    if (this.assistantOpen) return;
+    this.assistantOpen = true;
+    this.streamed = { text: "", thinking: "" };
+    this.emit({ type: "assistant_start", ...(this.model ? { model: this.model } : {}) });
+  }
+
+  private closeAssistant(): void {
+    this.assistantOpen = false;
+    this.streamed = { text: "", thinking: "" };
+  }
+
+  /** One live frame from acp-flow: an attempt's start, a provider delta, or its end. */
+  private onFlow(flow: Obj): void {
+    if (this.sessionId && str(flow.sessionId) !== this.sessionId) return;
+    if (flow.type === "start") {
+      this.settleCommitted();
+      return;
+    }
+    if (flow.type === "text" || flow.type === "thinking") {
+      const delta = str(flow.text);
+      if (!delta) return;
+      this.openAssistant();
+      this.streamed[flow.type] += delta;
+      this.emit({ type: "assistant_delta", field: flow.type, delta });
+      return;
+    }
+    if (flow.type !== "end" || flow.outcome === "message") return;
+    // A failed or dropped attempt never becomes a message; keep what it showed, marked, so a retry starts a clean bubble.
+    if (this.assistantOpen && (this.streamed.text || this.streamed.thinking)) {
+      this.emit({ type: "assistant_end", text: this.streamed.text, thinking: this.streamed.thinking, error: "This attempt failed; DeepSeek Harness dropped it." });
+    }
+    this.closeAssistant();
+  }
+
+  /** A committed chunk while flowing: held, because it repeats what streamed unless DSH kept something else. */
+  private holdCommitted(field: "text" | "thinking", delta: string): void {
+    this.committed ??= { text: "", thinking: "" };
+    this.committed[field] += delta;
+    // Autonomous work has no prompt result to settle at; the chunks of one message come back to back.
+    if (this.commitTimer) clearTimeout(this.commitTimer);
+    this.commitTimer = setTimeout(() => this.settleCommitted(), COMMIT_SETTLE_MS);
+  }
+
+  /**
+   * Compare the held committed message with what streamed. Equal (the usual
+   * case: DSH builds the message from the same deltas) changes nothing; a
+   * message that never streamed shows whole; a different one replaces the
+   * bubble. A field the message leaves empty keeps what streamed, which is
+   * how the chat folds an `assistant_end`.
+   */
+  private settleCommitted(): void {
+    if (this.commitTimer) clearTimeout(this.commitTimer);
+    this.commitTimer = null;
+    const committed = this.committed;
+    this.committed = null;
+    if (!committed || (!committed.text && !committed.thinking)) return;
+    if (!this.assistantOpen) {
+      this.openAssistant();
+      if (committed.thinking) this.emit({ type: "assistant_delta", field: "thinking", delta: committed.thinking });
+      if (committed.text) this.emit({ type: "assistant_delta", field: "text", delta: committed.text });
+      this.streamed = { ...committed };
+      return;
+    }
+    const differs = (committed.text && committed.text !== this.streamed.text) || (committed.thinking && committed.thinking !== this.streamed.thinking);
+    if (!differs) return;
+    this.emit({ type: "assistant_end", text: committed.text, thinking: committed.thinking });
+    this.closeAssistant();
   }
 
   /** A tool's final frame, including a page the render tool published. */
@@ -754,7 +896,9 @@ class DshLiveChat implements LiveChat {
     this.turnOpen = false;
     for (const id of [...this.openTools.keys()]) this.emit({ type: "tool_end", toolCallId: id, output: "", isError: true });
     this.openTools.clear();
-    this.assistantOpen = false;
+    // The bridge drains its updates before the prompt result, so the last message's chunks are all here.
+    this.settleCommitted();
+    this.closeAssistant();
     // Empty text: the streamed bubble stays; this only closes the turn.
     this.emit({ type: "assistant_end", text: "", thinking: "" });
     this.emit({ type: "settled" });
@@ -833,6 +977,8 @@ class DshLiveChat implements LiveChat {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    if (this.commitTimer) clearTimeout(this.commitTimer);
+    this.commitTimer = null;
     this.dialogs.cancelAll();
     this.hub.clear();
     const rpc = this.rpc;
@@ -851,6 +997,8 @@ export interface DshOptions {
   /** The user's home directory; the DSH home is DSH_HOME when set, else `<home>/.dsh`. */
   home: string;
   env?: NodeJS.ProcessEnv;
+  /** awui's state folder, where the acp-flow overlay is written; without one, text arrives a step at a time. */
+  stateDir?: string;
 }
 
 interface ProbeResult {
@@ -860,6 +1008,73 @@ interface ProbeResult {
 
 /** The discovery probe's answer, keyed by command and home; the registry asks more than once. */
 const probes = new Map<string, { at: number; result: ProbeResult }>();
+
+let flowPluginFile: string | null | undefined;
+
+/** extensions/acp-flow.mjs: the materialized embedded copy in the binary, else the repo path found by walking up. */
+function acpFlowPlugin(): string | null {
+  if (flowPluginFile !== undefined) return flowPluginFile;
+  const embedded = extractedExtensionPath("acp-flow.mjs");
+  if (embedded !== null) return (flowPluginFile = embedded);
+  flowPluginFile = null;
+  for (let dir = path.dirname(fileURLToPath(import.meta.url)); ; dir = path.dirname(dir)) {
+    const file = path.join(dir, "extensions", "acp-flow.mjs");
+    if (existsSync(file)) return (flowPluginFile = file);
+    if (path.dirname(dir) === dir) return flowPluginFile;
+  }
+}
+
+/** What a `!!js` value (a Cordis expression, evaluated at boot) parses to here: kept apart from plain strings. */
+const EXPRESSION = Symbol("dsh expression");
+
+/** A composed profile tree from `dsh --dump-config`, its `!!js` expressions marked rather than read as text. */
+export function parseProfileTree(text: string): unknown {
+  return parseYaml(text, {
+    logLevel: "error",
+    customTags: [{ tag: "tag:yaml.org,2002:js", resolve: (source: string) => ({ [EXPRESSION]: source }) }],
+  });
+}
+
+function hasExpression(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasExpression);
+  if (typeof value !== "object" || value === null) return false;
+  return EXPRESSION in value || Object.values(value).some(hasExpression);
+}
+
+/**
+ * The stock bridge row in a composed profile tree, or null when it is
+ * missing, off, not the stock package, or carries an expression (which the
+ * overlay could only copy as its text, changing what it means).
+ */
+export function bridgeRow(tree: unknown): Obj | null {
+  const visit = (node: unknown): Obj | null => {
+    if (Array.isArray(node)) {
+      for (const entry of node) {
+        const found = visit(entry);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (!isObj(node)) return null;
+    if (node.id === BRIDGE_ROW) return node;
+    // A group row nests its entries in its config.
+    return Array.isArray(node.config) ? visit(node.config) : null;
+  };
+  const row = visit(tree);
+  if (!row || row.name !== BRIDGE_PACKAGE || row.disabled === true || hasExpression(row)) return null;
+  return row;
+}
+
+/**
+ * The `--patch` overlay that swaps the bridge row for acp-flow: the stock row
+ * turned off, and the plugin inserted with everything else the row carries
+ * (its inject list and its provider/model config), so the bridge inside the
+ * plugin runs as it would have. JSON is YAML, which DSH's patch reader takes.
+ */
+export function flowOverlay(row: Obj, plugin: string): unknown[] {
+  const { id: _id, name: _name, disabled: _disabled, ...rest } = row;
+  return [{ id: BRIDGE_ROW, disabled: true }, { insert: [{ ...rest, id: "acp-flow", name: plugin }] }];
+}
 
 /** An absolute Node to run awui's render MCP server, or null when there is none. */
 function nodeForMcp(): string | null {
@@ -915,9 +1130,47 @@ export class DshAdapter implements HarnessAdapter {
     return this.options.args ?? [];
   }
 
-  /** The child's command line: the ACP profile, then config.yml's arguments for it. */
-  get chatArgs(): string[] {
-    return ["--profile", PROFILE, ...this.extraArgs];
+  /** The child's command line: the ACP profile, the acp-flow overlay when there is one, then config.yml's arguments. */
+  chatArgs(patch: string | null): string[] {
+    return ["--profile", PROFILE, ...(patch ? ["--patch", patch] : []), ...this.extraArgs];
+  }
+
+  private flowCache: { at: number; patch: Promise<string | null> } | null = null;
+  private flowOff = false;
+
+  /**
+   * The overlay file that loads acp-flow, written once a minute at most, or
+   * null when live text is off: no state folder, `AWUI_DSH_FLOW=0`, a profile
+   * whose bridge row is not the stock one, or a plugin that failed to load.
+   */
+  flowPatch(): Promise<string | null> {
+    if (this.flowOff || !this.options.stateDir || (this.options.env ?? process.env).AWUI_DSH_FLOW === "0") return Promise.resolve(null);
+    if (this.flowCache && Date.now() - this.flowCache.at < PROBE_CACHE_MS) return this.flowCache.patch;
+    const stateDir = this.options.stateDir;
+    const patch = (async (): Promise<string | null> => {
+      const plugin = acpFlowPlugin();
+      if (!plugin) return null;
+      let tree: unknown;
+      try {
+        // The composed tree, read without mounting it: the row's config is whatever the profile's layers made it.
+        const { stdout } = await execHarness(this.cliCommand, ["--profile", PROFILE, "--dump-config"], { timeout: 15_000, env: this.childEnv() });
+        tree = parseProfileTree(stdout);
+      } catch {
+        return null;
+      }
+      const row = bridgeRow(tree);
+      if (!row) return null;
+      const file = path.join(stateDir, "dsh", "acp-flow.patch.yml");
+      await writeJson(file, flowOverlay(row, plugin));
+      return existsSync(file) ? file : null;
+    })();
+    this.flowCache = { at: Date.now(), patch };
+    return patch;
+  }
+
+  /** A chat found the plugin broken: the rest of this process's chats use the stock bridge. */
+  disableFlow(): void {
+    this.flowOff = true;
   }
 
   /** The child's environment: the user's own, so their DSH_HOME and login apply. */

@@ -22,7 +22,7 @@ const factories: Record<string, (config: ServerConfig) => HarnessAdapter> = {
   claude: (config) => new ClaudeAdapter({ home: config.home, ...config.launch.claude }),
   opencode: (config) => new OpenCodeAdapter(config.launch.opencode?.command ? { command: config.launch.opencode.command } : {}),
   grok: (config) => new GrokAdapter({ home: config.home, ...config.launch.grok }),
-  dsh: (config) => new DshAdapter({ home: config.home, ...config.launch.dsh }),
+  dsh: (config) => new DshAdapter({ home: config.home, stateDir: config.stateDir, ...config.launch.dsh }),
   // A locked-down pi child: chat-style, read-only (web search + read tools + read-only MCP), its own agent dir.
   awui: (config) => new AwuiAdapter(config.stateDir, config.launch.pi?.command),
   // Test-only adapters, selected with AWUI_HARNESSES=fake,fake-b.

@@ -1,8 +1,8 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
-import { DshAdapter, liveDshChildren } from "../../src/server/harness/dsh.js";
+import { bridgeRow, DshAdapter, flowOverlay, liveDshChildren, parseProfileTree } from "../../src/server/harness/dsh.js";
 import type { LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
@@ -285,6 +285,147 @@ describe("the DeepSeek Harness adapter (scripted ACP app)", () => {
     expect(await adapter.listSessions(other)).toEqual([]);
     expect(await adapter.listRecentSessions(10)).toHaveLength(1);
     expect(nativeId).toBeTruthy();
+  });
+});
+
+describe("live text through acp-flow (scripted plugin)", () => {
+  const plugin = path.join(import.meta.dirname, "..", "..", "extensions", "acp-flow.mjs");
+  let stateDir: string;
+
+  /** The adapter as the registry builds it: with a state folder, so chats load the plugin. */
+  function useFlow(env: NodeJS.ProcessEnv = {}) {
+    stateDir = tempDir("awui-dsh-state-");
+    adapter = new DshAdapter({ command: script, home, stateDir, env: { ...process.env, DSH_HOME: dshHome, FAKE_DSH_HOME: dshHome, FAKE_DSH_STATE: state, ...env } });
+  }
+
+  const assistants = (chat: Chat) => chat.snapshot().items.filter((i) => i.kind === "assistant");
+
+  it("swaps the stock bridge row for the plugin, keeping the row's inject and config", async () => {
+    useFlow();
+    await openChat();
+    expect(recorded("patches")).toEqual([
+      [
+        { id: "acp", disabled: true },
+        { insert: [{ id: "acp-flow", name: plugin, inject: ["acpAppStartup"], config: { provider: "deepseek-official", model: "deepseek-v4-flash" } }] },
+      ],
+    ]);
+    // The overlay lives in awui's state folder, private like the rest of it.
+    expect(statSync(path.join(stateDir, "dsh", "acp-flow.patch.yml")).mode & 0o777).toBe(0o600);
+  });
+
+  it("shows the text while the turn runs, once, without another session's stream", async () => {
+    useFlow();
+    const { chat } = await openChat();
+    await chat.send("paced hello", "normal");
+    // The commit lags the live text by 300ms: the bubble has words while the run is still going.
+    await until(() => assistants(chat).some((i) => i.kind === "assistant" && i.text.includes("dsh says")), 2000);
+    expect(chat.status).not.toBe("idle");
+    await until(() => chat.status === "idle");
+    expect(assistants(chat)).toHaveLength(1);
+    expect(assistants(chat)[0]).toMatchObject({ text: "dsh says paced hello", streaming: false });
+    expect(JSON.stringify(chat.snapshot().items)).not.toContain("stray");
+  });
+
+  it("streams thinking before the answer, in one bubble", async () => {
+    useFlow();
+    const { chat } = await openChat();
+    await chat.send("think about it", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "dsh says think about it"));
+    expect(assistants(chat)).toHaveLength(1);
+    expect(assistants(chat)[0]).toMatchObject({ thinking: "hmm", text: "dsh says think about it" });
+  });
+
+  it("replaces the bubble with the message DSH kept when it is not what streamed", async () => {
+    useFlow();
+    const { chat } = await openChat();
+    await chat.send("cut it", "normal");
+    await until(() => chat.status === "idle");
+    expect(assistants(chat)).toHaveLength(1);
+    expect(assistants(chat)[0]).toMatchObject({ text: "dsh says cut it" });
+  });
+
+  it("keeps a failed attempt's text marked, and streams the retry into a bubble of its own", async () => {
+    useFlow();
+    const { chat } = await openChat();
+    await chat.send("retry once", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "dsh says retry once"));
+    const [failed, kept] = assistants(chat);
+    expect(failed).toMatchObject({ text: "dsh says ret" });
+    expect(failed?.kind === "assistant" && failed.error).toContain("attempt failed");
+    expect(kept).toMatchObject({ text: "dsh says retry once" });
+    expect(kept?.kind === "assistant" && kept.error).toBeFalsy();
+  });
+
+  it("keeps a step's text before its tool call and the next step's after it", async () => {
+    useFlow();
+    const { chat } = await openChat();
+    await chat.send("use the tool", "normal");
+    await until(() => chat.status === "idle" && toolItem(chat).status === "done");
+    const items = chat.snapshot().items;
+    expect(items.map((i) => i.kind)).toEqual(["user", "assistant", "tool", "assistant"]);
+    expect(items[1]).toMatchObject({ text: "dsh says " });
+    expect(items[3]).toMatchObject({ text: "use the tool" });
+  });
+
+  it("shows a message that never streamed whole, from its committed chunks", async () => {
+    useFlow();
+    const { chat } = await openChat();
+    // The ask script has no live frames: an approval, then the committed answer only.
+    await chat.send("ask to make a file", "normal");
+    await until(() => chat.snapshot().pending.length === 1);
+    chat.answer(chat.snapshot().pending[0]?.id as string, { kind: "select", value: "Allow once" });
+    await until(() => chat.status === "idle" && answered(chat, "dsh says ask to make a file"));
+    expect(assistants(chat).filter((i) => i.kind === "assistant" && i.text.includes("dsh says ask"))).toHaveLength(1);
+  });
+
+  it("stops a live run on DSH's own cancel and keeps what streamed", async () => {
+    useFlow();
+    const { chat } = await openChat();
+    await chat.send("slow please", "normal");
+    await until(() => assistants(chat).some((i) => i.kind === "assistant" && i.text.length > 0));
+    await chat.abort();
+    expect(chat.status).toBe("idle");
+    expect(recorded("cancels")).toHaveLength(1);
+    expect(assistants(chat)).toHaveLength(1);
+  });
+
+  it("falls back to the stock bridge when the plugin does not load, and stops trying it", async () => {
+    useFlow({ FAKE_DSH_FLOW_BROKEN: "1" });
+    const started = Date.now();
+    const { chat } = await openChat();
+    // The failed row is caught from DSH's boot report, not by waiting out the handshake.
+    expect(Date.now() - started).toBeLessThan(10_000);
+    await chat.send("hello there", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "dsh says hello there"));
+    expect(chat.snapshot().items.some((i) => i.kind === "notice")).toBe(false);
+    await openChat();
+    expect(recorded("patches")).toHaveLength(1);
+  });
+
+  it("leaves the profile alone when its bridge row is not the stock one, the tree cannot be read, or AWUI_DSH_FLOW=0", async () => {
+    for (const env of [{ FAKE_DSH_DUMP: "custom" }, { FAKE_DSH_DUMP: "fail" }, { AWUI_DSH_FLOW: "0" }]) {
+      useFlow(env);
+      const { chat } = await openChat();
+      await chat.send("hello there", "normal");
+      await until(() => chat.status === "idle" && answered(chat, "dsh says hello there"));
+    }
+    expect(recorded("patches")).toEqual([]);
+  });
+});
+
+describe("the acp-flow overlay (no process)", () => {
+  it("copies the stock bridge row, found inside a group too, and refuses one it would change", () => {
+    const tree = parseProfileTree(`- id: tools\n  name: cordis:group\n  config:\n    - id: acp\n      name: '@deepseek-ai/dsh-acp'\n      inject: [acpAppStartup]\n      config: { provider: p, model: m }\n`);
+    const row = bridgeRow(tree);
+    expect(row).toMatchObject({ id: "acp", inject: ["acpAppStartup"], config: { provider: "p", model: "m" } });
+    expect(flowOverlay(row as Record<string, unknown>, "/x/acp-flow.mjs")).toEqual([
+      { id: "acp", disabled: true },
+      { insert: [{ id: "acp-flow", name: "/x/acp-flow.mjs", inject: ["acpAppStartup"], config: { provider: "p", model: "m" } }] },
+    ]);
+    // A Cordis expression is evaluated at boot; copied, it would become its own source text.
+    expect(bridgeRow(parseProfileTree("- id: acp\n  name: '@deepseek-ai/dsh-acp'\n  config:\n    model: !!js env.MODEL\n"))).toBeNull();
+    expect(bridgeRow(parseProfileTree("- id: acp\n  name: '@deepseek-ai/dsh-acp'\n  disabled: true\n"))).toBeNull();
+    expect(bridgeRow(parseProfileTree("- id: acp\n  name: '@me/my-bridge'\n"))).toBeNull();
   });
 });
 

@@ -53,7 +53,7 @@ async function webFiles(): Promise<string[]> {
 }
 
 // The extension sources ride in as text; they are written to disk at startup for -e.
-const EXTENSIONS = ["rewind-to.ts", "render-html.ts", "render-html-mcp.mjs", "eval-python.ts"];
+const EXTENSIONS = ["rewind-to.ts", "render-html.ts", "render-html-mcp.mjs", "eval-python.ts", "acp-flow.mjs"];
 
 /** The generated module the binary embeds: registers web files and extension sources. */
 async function assetModule(): Promise<string> {

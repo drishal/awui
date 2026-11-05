@@ -210,6 +210,14 @@ agent on this machine:
   the first frame. `dsh-transcript.ts` scans frame headers and decodes each
   frame itself. Test the reader against real files, including a torn last
   append.
+- **An ACP app may stream only committed messages.** DSH's bridge sends each
+  model step whole. Its loop publishes deltas in-process, so awui's Cordis
+  plugin (`extensions/acp-flow.mjs`) wraps the stock bridge through its
+  `config.stream` transport and adds them as an extension notification, loaded
+  per child with a `--patch` overlay rather than installed. The committed
+  chunks that follow repeat the text: hold them and compare, never append
+  them. A plugin that fails to load leaves no ACP server at all, so watch the
+  boot's stderr and fall back to the stock bridge.
 - **An optional transport is a setup step, not an install.** DSH's `acp` bundle
   is not in every installation (the Nix package ships only the web and
   headless bundles). Discovery must name the pinned install command and report

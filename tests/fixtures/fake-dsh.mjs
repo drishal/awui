@@ -8,6 +8,16 @@
 //   "slow"  many small chunks (cancellable)   "fail" accept the prompt, then error
 // Every prompt, set_config value, permission answer, and cancel is recorded in
 // $FAKE_DSH_STATE so a test can see what went out on the wire.
+//
+// Launched with a `--patch` overlay that inserts acp-flow, it also plays the
+// plugin: the handshake carries its mark, and a model step streams live
+// `_acp-flow/assistant_stream` frames before the committed chunks repeat it,
+// in the order the real loop and bridge produce them. Flow-only words:
+//   "paced" the commit lags the live text    "cut"   DSH keeps less than streamed
+//   "retry" a failed attempt, then a clean one
+// `--dump-config` prints the composed tree's bridge row (FAKE_DSH_DUMP=custom
+// names another package there, =fail exits 1), and FAKE_DSH_FLOW_BROKEN=1 has
+// the plugin row fail to activate, as DSH reports it, leaving no ACP server.
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { constants, zstdCompressSync } from "node:zlib";
@@ -17,6 +27,27 @@ import readline from "node:readline";
 const argv = process.argv.slice(2);
 if (argv.includes("--version")) {
   console.log("0.2.2-alpha.3");
+  process.exit(0);
+}
+if (argv.includes("--dump-config")) {
+  if (process.env.FAKE_DSH_DUMP === "fail") process.exit(1);
+  const bridge = process.env.FAKE_DSH_DUMP === "custom" ? "@someone/acp-bridge" : "'@deepseek-ai/dsh-acp'";
+  console.log(`# == @deepseek-ai/dsh-base
+- id: llm
+  name: cordis:group
+  config:
+    - id: llm-deepseek
+      name: '@deepseek-ai/dsh-llm-deepseek'
+# == @deepseek-ai/dsh-acp-app
+- id: acp-app-startup
+  name: '@deepseek-ai/dsh-acp-app'
+- id: acp
+  name: ${bridge}
+  inject:
+    - acpAppStartup
+  config:
+    provider: deepseek-official
+    model: deepseek-v4-flash`);
   process.exit(0);
 }
 if (process.env.FAKE_DSH_NO_ACP === "1") {
@@ -32,6 +63,10 @@ if (argv.includes("--help")) {
 if (process.env.FAKE_DSH_EXIT_1 === "1") process.exit(1);
 
 const home = process.env.FAKE_DSH_HOME ?? process.env.DSH_HOME ?? path.join(process.env.HOME ?? "", ".dsh");
+const patchAt = argv.indexOf("--patch");
+const patchText = patchAt >= 0 ? readFileSync(argv[patchAt + 1], "utf8") : "";
+/** Playing the acp-flow plugin: the overlay swapped the bridge row for it. */
+const flow = patchText.includes('"acp-flow"');
 const cwd = path.resolve(process.cwd());
 const statePath = process.env.FAKE_DSH_STATE;
 const record = (key, value) => {
@@ -113,6 +148,13 @@ function configOptions() {
       options: (EFFORTS[current.model] ?? []).map((value) => ({ value, name: value === "off" ? "Off" : value[0].toUpperCase() + value.slice(1) })),
     },
   ];
+}
+
+if (patchAt >= 0) record("patches", JSON.parse(patchText));
+if (flow && process.env.FAKE_DSH_FLOW_BROKEN === "1") {
+  process.stderr.write("dsh: warning: 1 entry did not activate\nacp-flow (file:///x/acp-flow.mjs): Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@deepseek-ai/dsh-acp'\n");
+  setInterval(() => undefined, 1_000);
+  await new Promise(() => undefined);
 }
 
 const out = (frame) => process.stdout.write(`${JSON.stringify(frame)}\n`);
@@ -232,6 +274,92 @@ async function toolCall(callId, name, args, output, extra = {}) {
   });
 }
 
+// ---- acp-flow's live frames ----------------------------------------------------
+
+let attemptNo = 0;
+const words = (text) => text.match(/\S+\s*/g) ?? [];
+const flowFrame = (params, to = sessionId) => notify("_acp-flow/assistant_stream", { sessionId: to, ...params });
+
+/** One model attempt as the plugin streams it: start, the provider's deltas, then its end. */
+async function liveAttempt(pieces, outcome = "message", lag = 0) {
+  const attemptId = `${sessionId}:${++attemptNo}`;
+  flowFrame({ type: "start", attemptId, turn, step: stepNo });
+  for (const [type, text] of pieces) {
+    if (cancelled) break;
+    await sleep(2);
+    flowFrame({ type, attemptId, text });
+  }
+  if (lag) await sleep(lag);
+  flowFrame({ type: "end", attemptId, outcome });
+}
+
+/** The stock bridge's committed chunks for one message, after the live frames, in block order. */
+function commit({ thinking = "", text = "" }) {
+  if (thinking) notify("session/update", { sessionId, update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: thinking } } });
+  if (text) notify("session/update", { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } });
+}
+
+/** A prompt while playing acp-flow; false hands the words without a live script to the stock path. */
+async function flowPrompt(id, text) {
+  if (text.includes("retry")) {
+    await liveAttempt(words("dsh says ret").map((w) => ["text", w]), "attempt");
+    const answer = `dsh says ${text}`;
+    await liveAttempt(words(answer).map((w) => ["text", w]));
+    commit({ text: answer });
+    assistantEvent(answer, "", []);
+    finishTurn(id);
+    return true;
+  }
+  if (text.includes("cut")) {
+    // A cancel commits the safe prefix of what streamed, so DSH keeps less than the client saw.
+    const kept = `dsh says ${text}`;
+    await liveAttempt(words(`${kept} and more`).map((w) => ["text", w]));
+    commit({ text: kept });
+    assistantEvent(kept, "", []);
+    finishTurn(id);
+    return true;
+  }
+  if (text.includes("tool")) {
+    const callId = `call-tool-${++toolSeq}`;
+    await liveAttempt([["text", "dsh says "]]);
+    commit({ text: "dsh says " });
+    assistantEvent("dsh says ", "", [{ callId, name: "read", args: { file_path: "README.md" } }]);
+    await toolCall(callId, "read", { file_path: "README.md" }, "file.txt");
+    await liveAttempt(words(text).map((w) => ["text", w]));
+    commit({ text });
+    assistantEvent(text, "", [], false);
+    finishTurn(id);
+    return true;
+  }
+  if (text.includes("slow")) {
+    const pieces = [...`dsh says ${text}`].map((char) => ["text", char]);
+    let streamed = "";
+    const attemptId = `${sessionId}:${++attemptNo}`;
+    flowFrame({ type: "start", attemptId, turn, step: stepNo });
+    for (const [type, char] of pieces) {
+      if (cancelled) break;
+      await sleep(5);
+      streamed += char;
+      flowFrame({ type, attemptId, text: char });
+    }
+    flowFrame({ type: "end", attemptId, outcome: "message" });
+    commit({ text: streamed });
+    assistantEvent(streamed, "", []);
+    finishTurn(id);
+    return true;
+  }
+  if (text.includes("ask") || text.includes("diff")) return false;
+  const answer = `dsh says ${text}`;
+  const thinking = text.includes("think") ? "hmm" : "";
+  // A subagent's stream is not this session's; the plugin filters it, and so does the adapter.
+  flowFrame({ type: "text", attemptId: "other:1", text: "stray" }, "someone-else");
+  await liveAttempt([...(thinking ? [["thinking", "hm"], ["thinking", "m"]] : []), ...words(answer).map((w) => ["text", w])], "message", text.includes("paced") ? 300 : 0);
+  commit({ thinking, text: answer });
+  assistantEvent(answer, thinking, []);
+  finishTurn(id);
+  return true;
+}
+
 async function prompt(id, text) {
   record("prompts", text);
   cancelled = false;
@@ -250,6 +378,8 @@ async function prompt(id, text) {
     fail(id, -32000, "boom");
     return;
   }
+
+  if (flow && (await flowPrompt(id, text))) return;
 
   if (text.includes("slow")) {
     let streamed = "";
@@ -419,6 +549,7 @@ rl.on("line", (line) => {
           mcpCapabilities: { http: true },
           promptCapabilities: { image: process.env.FAKE_DSH_IMAGES === "1", audio: false, embeddedContext: false },
           sessionCapabilities: { close: {}, list: {}, resume: {} },
+          ...(flow ? { _meta: { "acp-flow": { version: 1 } } } : {}),
         },
         authMethods: [],
       });
