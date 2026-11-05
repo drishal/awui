@@ -910,7 +910,6 @@ function ProcessFold({
     <div ref={root} className={`process process-card${open || single ? " is-open" : ""}${single ? " is-single" : ""}${live ? " is-live" : ""}${failedCalls > 0 ? " has-failed" : ""}`}>
       {single ? null : <div className="process-bar">
         <button type="button" className="process-head" aria-expanded={open} aria-controls={bodyId} onClick={() => onToggle(foldId, open)} data-testid="process-toggle">
-          {live ? <RaySpinner size={14} /> : wasLive ? <span className="process-done"><IconCheck size={14} draw /></span> : null}
           {stack.shown.length > 0 ? (
             <span className="kind-stack" data-testid="kind-stack" aria-hidden="true">
               {stack.shown.map((kind) => (
@@ -937,6 +936,13 @@ function ProcessFold({
           </span>
           {/* Outside the label, which ellipsises: the count stays whole on a narrow screen, and shows with the fold closed. */}
           {leading && turn.changeStat ? <ChangeCounts stat={turn.changeStat} /> : null}
+          {/* The run's status sits in the rows' status column, as a row's does: the icon stack then lines up with the
+              rows' icons, and the spinner giving way to the check moves nothing. */}
+          {live || wasLive ? (
+            <span className={`process-status${live ? "" : " is-done"}`} data-testid="process-status" aria-hidden="true">
+              {live ? <RaySpinner size={14} /> : <IconCheck size={14} draw />}
+            </span>
+          ) : null}
           <IconChevronDown size={14} className="process-chevron" />
         </button>
         {failedCalls > 0 ? (

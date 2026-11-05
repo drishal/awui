@@ -54,12 +54,13 @@
   transform: rotate(180deg);
 }
 
-/* "1 failed": a button over the header's right side that opens the card and goes to the first failed row. */
+/* "1 failed": a button over the header's right side that opens the card and goes to the first failed row.
+   A button cannot sit inside the head (itself a button), so the head's right end is laid out by hand:
+   tally | status | chevron, at the head's gap, the status in the rows' status column. */
 .process-card.has-failed .process-head {
-  padding-right: 112px;
+  padding-right: 138px;
 }
 
-/* The chevron stays the last thing on the line, right of the tally. */
 .process-card.has-failed .process-chevron {
   position: absolute;
   top: 50%;
@@ -67,10 +68,18 @@
   translate: 0 -50%;
 }
 
+/* 12px padding + 14px chevron + the 10px gap: where a row's status mark sits. */
+.process-card.has-failed .process-status {
+  position: absolute;
+  top: 50%;
+  right: 36px;
+  translate: 0 -50%;
+}
+
 .process-failed {
   position: absolute;
   top: 50%;
-  right: 34px;
+  right: 62px;
   transform: translateY(-50%);
   padding: 2px 9px;
   border: 0;
@@ -491,10 +500,17 @@
   }
 }
 
-.process-done {
+/* The header's status, sized and coloured as a row's (.tool-status) so the two share a column. */
+.process-status {
   display: inline-grid;
   flex: none;
   place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-text);
+}
+
+.process-status.is-done {
   color: color-mix(in srgb, var(--ok) 80%, transparent);
 }
 
