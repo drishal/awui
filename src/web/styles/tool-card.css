@@ -432,6 +432,19 @@
     min-height: 32px;
   }
 
+  /* Settled with a tally, the check only repeats "Worked for …": on a phone its room goes back to the label. */
+  .process-card.has-failed:not(.is-live) .process-status {
+    display: none;
+  }
+
+  .process-card.has-failed:not(.is-live) .process-head {
+    padding-right: 112px;
+  }
+
+  .process-card.has-failed:not(.is-live) .process-failed {
+    right: 34px;
+  }
+
   /* The retry is a round mark on touch: its words would leave the sentence too little room for the reason. */
   .tool-retry,
   .tool-retry-room {

@@ -188,6 +188,9 @@ test.describe("on a phone", () => {
     const toggle = page.getByTestId("process-toggle").last();
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // Settled with a tally, the header gives the check's room back to its label, which then fits whole.
+    await expect(toggle.getByTestId("process-status")).toBeHidden();
+    expect(await toggle.locator(".process-label").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const row = page.locator('[data-tool="bash"]').first();
     const [sentence, facts] = [await row.locator(".tool-sentence").boundingBox(), await row.locator(".tool-facts").boundingBox()];
     expect(facts!.y).toBeGreaterThan(sentence!.y + sentence!.height - 4);
