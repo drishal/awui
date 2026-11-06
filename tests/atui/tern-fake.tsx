@@ -32,6 +32,8 @@ export class FakeTern {
   focus: string | null = null;
   /** Every node the program asked to scroll into view, in order, with whether it was in the document when the op came. */
   readonly reveals: Array<{ id: string; present: boolean }> = [];
+  /** Every scroll the program asked for (a node, how far), in order. */
+  readonly scrolls: Array<{ id: string; to: unknown }> = [];
   /** Nodes as they were first added, before later `set` ops: startup props remain visible here. */
   readonly added: Array<{ id: string; k: string; p?: Record<string, unknown> }> = [];
   #buffer = "";
@@ -147,6 +149,9 @@ export class FakeTern {
           return;
         case "reveal":
           this.reveals.push({ id, present: node !== undefined });
+          return;
+        case "scroll":
+          this.scrolls.push({ id, to: op[2] });
           return;
         default:
           return;

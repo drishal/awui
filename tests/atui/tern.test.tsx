@@ -8,6 +8,7 @@ import { connect } from "@stencil-hq/tern";
 import { Server } from "../../src/atui/client.js";
 import { createAtui, type Atui } from "../../src/atui/state.js";
 import { createTernApp } from "../../src/tern/app.js";
+import { shortTokens, tokensOf } from "../../src/web/usage.js";
 import { BASE, startServer, wait } from "./helpers.js";
 import { FakeTern } from "./tern-fake.js";
 
@@ -348,6 +349,88 @@ describe("awui tern", () => {
     await until(() => tern.reveals.length === 2 && tern.nodes.get(fold.id)?.p.collapsed === false, "the key to open it");
     expect(tern.reveals[1]).toEqual({ id: row()?.id ?? "", present: true });
     expect(tern.errors).toEqual([]);
+  });
+
+  it("opens Usage from the palette or C-x u with the chats' real totals, changes the range and scrolls, and Esc closes it", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("usagevary please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: usagevary please"), "the run");
+    const report = await app.usageReport(30);
+    expect(report.totals.calls).toBeGreaterThan(0);
+    const tiles = () => JSON.stringify(tern.find("stats", "layer")[0]?.p.items ?? []);
+    const open = () => tern.find("overlay", "layer").some((n) => n.p.head === "Usage");
+
+    // From the palette: filter to the entry and take it.
+    tern.type("\x0b");
+    await until(() => tern.find("picker", "layer").length === 1, "the palette");
+    tern.type("usage");
+    await until(() => ((tern.find("picker", "layer")[0]?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label).join() === "Usage", "the entry");
+    tern.type("\r");
+    await until(() => open() && tiles().includes(shortTokens(tokensOf(report.totals))), "the report");
+    expect(tern.find("picker", "layer")).toEqual([]);
+    expect(tiles()).toContain(`${report.totals.calls} model call`);
+    // A day's bar each (30 of them), a table row for the harness and the model, the footer's keys.
+    expect(tern.find("chart", "layer")[0]?.p).toMatchObject({ kind: "bars" });
+    expect(((tern.find("chart", "layer")[0]?.p.series ?? []) as unknown[]).length).toBe(30);
+    const rows = tern.find("table", "layer").map((t) => (t.p.rows as Array<{ id: string }>).map((r) => r.id));
+    expect(rows).toEqual([report.byHarness.map((h) => h.harnessId), report.byModel.map((m) => m.model)]);
+    expect(tern.text("layer")).toContain("Read from the harnesses' own session files");
+
+    // The arrows change the range (a new read), and the scroll keys reach the body.
+    tern.type("\x1b[D");
+    await until(() => tern.find("overlay", "layer")[0]?.p.meta === "last 7 days" && ((tern.find("chart", "layer")[0]?.p.series ?? []) as unknown[]).length === 7, "the 7 day range");
+    tern.type("\x1b[D");
+    await wait(100);
+    expect(tern.find("overlay", "layer")[0]?.p.meta).toBe("last 7 days");
+    tern.type("\x1b[B");
+    tern.type("\x1b[F");
+    await until(() => tern.scrolls.length === 2, "the scrolls");
+    expect(tern.scrolls).toEqual([{ id: "layer.usage.body", to: "line-down" }, { id: "layer.usage.body", to: "end" }]);
+    // Keys other than these are swallowed: nothing reaches the composer behind it.
+    tern.type("zz");
+    await wait(100);
+    expect(String(tern.nodes.get("dock.d.comp.ed")?.p.text ?? "")).toBe("");
+
+    tern.type("\x1b");
+    await until(() => !open(), "Esc to close it");
+
+    // From the key, and a click on Close.
+    tern.type("\x18u");
+    await until(() => open() && tern.find("overlay", "layer")[0]?.p.meta === "last 30 days" && tiles().includes(shortTokens(tokensOf(report.totals))), "the report again");
+    tern.event({ ev: "action", id: "layer.usage.end", act: "click" });
+    await until(() => !open(), "the Close button");
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("shows Usage's wait and its error in the overlay, never a blank one", async () => {
+    const slow = usageProxy({ ms: 700 });
+    try {
+      client = await start("alpha", slow.base);
+      const { tern, until } = client;
+      tern.type("\x18u");
+      await until(() => tern.text("layer").includes("Reading sessions"), "the wait");
+      expect(tern.find("spinner", "layer").length).toBe(1);
+      expect(tern.find("stats", "layer")).toEqual([]);
+      await until(() => tern.find("stats", "layer").length === 1 && tern.find("spinner", "layer").length === 0, "the report");
+      await client.quit();
+      client = null;
+    } finally {
+      slow.stop();
+    }
+    const broken = usageProxy({ status: 500 });
+    try {
+      client = await start("alpha", broken.base);
+      const { tern, until } = client;
+      tern.type("\x18u");
+      await until(() => tern.text("layer").includes("Could not read usage: Usage cannot be read now"), "the error");
+      expect(tern.find("stats", "layer")).toEqual([]);
+      expect(tern.find("spinner", "layer")).toEqual([]);
+      tern.type("\x1b");
+      await until(() => tern.find("overlay", "layer").length === 0, "Esc to close it");
+    } finally {
+      broken.stop();
+    }
   });
 
   it("opens thinking and permission as searchable picker sheets", async () => {

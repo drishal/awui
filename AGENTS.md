@@ -151,7 +151,8 @@ src/tern/                     The Tern client (`awui tern`): atui's state (atui/
                               through the Tern Surface Protocol (@stencil-hq/tern). app.ts: the controller (effect → view,
                               keys, menus); view.ts the conversation (web/turns.ts as Tern nodes); dock.ts the composer card,
                               requests, status strip; overlays.ts the picker sheets and caret menus; draft.ts the composer's
-                              text (pure, Tern never edits it); look.ts the palette and the one stylesheet (awui.* roles).
+                              text (pure, Tern never edits it); usage.ts the Usage overlay (figures from web/usage.ts, then its nodes);
+                              look.ts the palette and the one stylesheet (awui.* roles).
 extensions/rewind-to.ts       A Pi/omp extension the server loads into its children (-e) for in-place Edit/Retry.
 extensions/render-html.ts     A Pi/omp extension registering render_html, which publishes an HTML page into the chat.
 extensions/render-html-mcp.mjs  The same tool as an MCP server (stdio JSON-RPC, no dependencies), for Claude Code.

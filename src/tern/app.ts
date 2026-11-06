@@ -2,7 +2,7 @@
 // atui/state.ts) drawn as one Tern surface instead of a terminal grid. The
 // surface is `inline`, so the chat lives in the pane's scrollback and stays
 // there when the client quits: `main` holds the conversation, `dock` the
-// composer Tern pins to the bottom, `layer` the menus. One Solid effect turns
+// composer Tern pins to the bottom, `layer` the menus and the Usage screen. One Solid effect turns
 // the state into a view and hands it to the SDK, which sends only what
 // changed, under Tern's flow control. Keys come from the pty (Tern never
 // edits our text); clicks and native edits come as events to the handlers the
@@ -26,6 +26,7 @@ import { applyEdit, draftState, editKey, insert, lineStep, moveTo, setText, undo
 import { conversation, firstFailedCall, headNode, PAGE_ID, PAGE_KEY, TURN_WINDOW } from "./view.js";
 import { ANSWER_ID, dock, EDITOR_ID, inputReady } from "./dock.js";
 import { AT_CARET, filterItems, menuNode, moveSelection, sessionRows, SHEETS, type Menu, type MenuItem, type MenuKind } from "./overlays.js";
+import { stepRange, USAGE_SCROLL_ID, usageNode, type UsageScreen } from "./usage.js";
 import { STYLESHEET, themeSheet } from "./look.js";
 import { startExamples, startHeading, startSetup } from "../web/start-screen.js";
 
@@ -57,6 +58,7 @@ const LEADER: Array<{ key: string; label: string }> = [
   { key: "z", label: "Put undone files back" },
   { key: "e", label: "Open or fold all work" },
   { key: "f", label: "Show failed calls" },
+  { key: "u", label: "Usage across chats" },
   { key: "y", label: "Copy the last answer" },
   { key: "q", label: "Quit" },
 ];
@@ -86,6 +88,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const [notice, setNotice] = createSignal<{ n: number; text: string; tone: "success" | "info" | "error" } | null>(null);
     const [blobTick, setBlobTick] = createSignal(0);
     const [todosOpen, setTodosOpen] = createSignal(true);
+    // The Usage screen: null while closed.
+    const [usage, setUsage] = createSignal<UsageScreen | null>(null);
     let recall: Recall | null = null;
     let lastEsc = 0;
     let lastCtrlC = 0;
@@ -337,6 +341,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (c && isBusy(c.status)) items.push({ id: "stop", label: "Stop the agent", value: "Esc Esc", icon: "stop" });
       items.push({ id: "x:e", label: allWork() ? "Fold all work" : "Open all work", value: "C-x e", icon: "expand" });
       if (c) items.push({ id: "x:f", label: "Show failed calls", value: "C-x f", icon: "x-circle", ...(c.items.some((i) => i.kind === "tool" && i.status === "error") ? {} : { disabled: "No call has failed in this chat" }) });
+      items.push({ id: "x:u", label: "Usage", value: "C-x u", icon: "chart", keywords: "tokens cost limits spend" });
       if (c) items.push({ id: "x:y", label: "Copy the last answer", value: "C-x y", icon: "copy" });
       if (app.putBackable()) items.push({ id: "x:z", label: "Put the undone files back", value: "C-x z", icon: "undo" });
       if (c) items.push({ id: "web", label: "Copy this chat's link in the web UI", icon: "globe", keywords: "browser open" });
@@ -406,6 +411,22 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       surface.reveal(hit.row, "start");
     };
 
+    /** Reads the report for `days` (the one shown stays until it comes); an answer for a range since left is dropped. */
+    const readUsage = (days: UsageScreen["days"]) => {
+      setUsage((u) => ({ report: null, ...u, days, error: null, busy: true }));
+      app.usageReport(days).then(
+        (report) => setUsage((u) => (u && u.days === days ? { ...u, report, error: null, busy: false } : u)),
+        (error: unknown) => setUsage((u) => (u && u.days === days ? { ...u, report: null, error: error instanceof Error ? error.message : String(error), busy: false } : u)),
+      );
+    };
+
+    const openUsage = () => {
+      setLeader(false);
+      setMenu(null);
+      void app.refreshLimits();
+      readUsage(30);
+    };
+
     const runLeader = (key: string) => {
       setLeader(false);
       setMenu(null);
@@ -438,6 +459,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           return toggleAllWork();
         case "f":
           return showFailed();
+        case "u":
+          return openUsage();
         case "y": {
           const text = lastAnswer();
           return text ? copy(text) : say("No answer to copy yet");
@@ -699,8 +722,21 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
 
       const layer: (Node | null)[] = [];
       const m = menu();
-      const kind = m?.kind ?? caretKind();
-      if (kind) {
+      const screen = usage();
+      // The Usage screen holds the keys: the composer's menu, whatever its text says, waits behind it.
+      const kind = screen ? null : (m?.kind ?? caretKind());
+      if (screen) {
+        layer.push(
+          usageNode({
+            screen,
+            limits: app.limits(),
+            name: (id) => app.boot()?.harnesses.find((x) => x.id === id)?.displayName ?? id,
+            supports: (k) => session.caps.kinds.includes(k),
+            now: Date.now(),
+            on: { close: () => setUsage(null) },
+          }),
+        );
+      } else if (kind) {
         const items = menuItems();
         const shownMenu: Menu = m ?? { kind, query: "", selected: caretIndex() };
         layer.push(
@@ -844,6 +880,18 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       return true;
     };
 
+    /** The Usage screen's keys: Esc closes, the arrows change the range and scroll, the rest is swallowed. */
+    const onUsageKey = (key: Key, screen: UsageScreen) => {
+      const { name, ctrl } = key;
+      if (name === "escape" || (ctrl && name === "g")) return setUsage(null);
+      if (name === "left" || name === "right") {
+        const days = stepRange(screen.days, name === "left" ? -1 : 1);
+        return days === screen.days ? undefined : readUsage(days);
+      }
+      const to = name === "up" || (ctrl && name === "p") ? "line-up" : name === "down" || (ctrl && name === "n") ? "line-down" : name === "page_up" ? "page-up" : name === "page_down" || name === "space" ? "page-down" : name === "home" ? "start" : name === "end" ? "end" : null;
+      if (to) surface.scroll(USAGE_SCROLL_ID, to);
+    };
+
     const onCaretMenuKey = (key: Key): boolean => {
       const items = caretItems();
       if (items.length === 0) return false;
@@ -889,12 +937,15 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const now = Date.now();
 
       if (ctrl && name === "c") {
+        if (usage()) return setUsage(null);
         if (menu()) return setMenu(null);
         if (draft().draft.text) return setDraft((s) => setText(s, ""));
         if (now - lastCtrlC < DOUBLE_MS * 2) return quit();
         lastCtrlC = now;
         return say("C-c again quits (the chat keeps running on the server)");
       }
+      const screen = usage();
+      if (screen) return onUsageKey(key, screen);
       if (leader()) {
         if (name === "escape" || (ctrl && name === "g")) return setLeader(false);
         return runLeader(key.text ?? name);

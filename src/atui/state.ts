@@ -23,6 +23,7 @@ import type {
   SessionsOverview,
   ThemeInfo,
   UsageLimits,
+  UsageReport,
   UserItem,
   WorkspaceInfo,
 } from "../shared/protocol.js";
@@ -308,6 +309,9 @@ export function createAtui(server: Server, opts: AtuiOptions) {
       return [];
     }
   };
+
+  /** Usage across chats over the last `days` days, by the terminal's own days (the web UI's dialog asks the same route). Rejects with the server's message. */
+  const usageReport = (days: number): Promise<UsageReport> => server.call<UsageReport>(`/api/usage?days=${days}&tz=${new Date().getTimezoneOffset()}`);
 
   const previews = new Map<string, Promise<SessionPreview | null>>();
   /** A session's last exchange for the history picker; asked once per session while atui runs. */
@@ -771,6 +775,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     imageMode,
     contextHistory,
     searchFiles,
+    usageReport,
     preview,
     image,
     init,
