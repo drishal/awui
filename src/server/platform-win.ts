@@ -126,10 +126,12 @@ export function resolveWin(command: string, args: string[]): [string, string[]] 
 }
 
 /**
- * The spawn site for every harness child. On POSIX this is spawn() unchanged,
- * with the project's direnv diff applied: a .envrc the user allowed (in the
- * child's cwd or a parent) gives the harness the same environment a terminal
- * there would. The caller's own env wins over the diff; process.env feeds both.
+ * The spawn site for every harness child. On POSIX this is spawn() with the
+ * project's direnv diff applied: a .envrc the user allowed (in the child's cwd
+ * or a parent) gives the harness the same environment a terminal there would.
+ * The diff wins over adapters' copied process.env, which may describe another
+ * project's shell. Intentional per-chat additions (the render credentials) are
+ * applied after it, never as a source of stale project variables.
  * On Windows a bare npm CLI (pi, claude) resolves to its `.cmd` shim and runs
  * through the command interpreter, since CreateProcess cannot execute a batch
  * file directly; a native `.exe` (omp) or an explicit path spawns as-is.
@@ -138,7 +140,18 @@ export function spawnHarness(command: string, args: string[], opts: SpawnOptions
   if (!IS_WINDOWS) {
     // direnv is POSIX-first; on Windows there is nothing to merge.
     const dir = typeof opts.cwd === "string" ? opts.cwd : process.cwd();
-    opts = { ...opts, env: { ...envForSpawn(dir).env, ...(opts.env ?? {}) } };
+    const spawnEnv = { ...process.env, ...(opts.env ?? {}) };
+    const projectEnv = envForSpawn(dir).env;
+    const env = { ...spawnEnv, ...projectEnv };
+    // PATH is special: it both locates the harness binary (which the project's direnv
+    // env doesn't know about — pi lives in ~/.pi/agent/bin, only on the server's PATH)
+    // and selects the project's tools. Prepend the project's PATH entries so its tools
+    // (nightly cargo, MinGW) win and the binary still resolves from the inherited tail.
+    if (projectEnv.PATH && spawnEnv.PATH) env.PATH = `${projectEnv.PATH}:${spawnEnv.PATH}`;
+    // Intentional per-chat additions follow the project's env.
+    env.AWUI_RENDER_TOKEN = opts.env?.AWUI_RENDER_TOKEN ?? process.env.AWUI_RENDER_TOKEN;
+    env.AWUI_RENDER_URL = opts.env?.AWUI_RENDER_URL ?? process.env.AWUI_RENDER_URL;
+    opts = { ...opts, env };
   }
   if (IS_WINDOWS) {
     const [argv0, prefix] = resolveWin(command, args);

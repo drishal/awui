@@ -11,6 +11,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 import { IS_WINDOWS } from "./platform-win.js";
+import { envForSpawn } from "./direnv.js";
 import type { RunShell, RunResult } from "../shared/protocol.js";
 
 const TIMEOUT_MS = 60_000;
@@ -49,9 +50,10 @@ export function runCommand(command: string, shell: RunShell, cwd: string): Promi
     const [bin, flag] = shellFor(shell);
     // detached is POSIX-only (it starts a new process group for the group kill
     // below); Windows has no groups here, and the kill goes through taskkill.
+    const env = IS_WINDOWS ? process.env : envForSpawn(cwd).env;
     const child = IS_WINDOWS
-      ? spawn(bin, [flag, command], { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"] })
-      : spawn(bin, [flag, command], { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+      ? spawn(bin, [flag, command], { cwd, env, stdio: ["ignore", "pipe", "pipe"] })
+      : spawn(bin, [flag, command], { cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
     const kill = (signal: NodeJS.Signals) => {
       try {
         if (child.pid) {

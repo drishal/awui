@@ -40,7 +40,7 @@ export interface DirenvEnv {
 }
 
 /** direnv's own bookkeeping names; they belong to direnv's shell session, not a spawned agent. */
-const DIRENV_OWN = /^DIRENV_(ACTIVE|DIFF|DIR|FILE|WATCHES|LOG)/;
+const DIRENV_OWN = /^DIRENV_(ACTIVE|DIFF|DIR|FILE|WATCHES|LOG|RC_PATH)/;
 
 /**
  * How long an export is reused. It used to be 5 s, so nearly every harness start paid a

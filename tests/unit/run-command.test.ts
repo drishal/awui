@@ -1,4 +1,6 @@
-import { realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { runCommand } from "../../src/server/run-command.js";
 import { runnable } from "../../src/web/code-blocks.js";
@@ -28,6 +30,17 @@ describe("running a shell code block", () => {
     // A character split across two writes comes out whole.
     const split = await runCommand("printf '\\342\\202'; sleep 0.05; printf '\\254 ok'", "sh", dir);
     expect(split.output).toBe("€ ok");
+  });
+
+  it("runs with its project's full direnv environment", async () => {
+    const dir = tempDir("awui-run-direnv-");
+    const tools = path.join(dir, "tools");
+    mkdirSync(tools);
+    writeFileSync(path.join(tools, "cargo"), "#!/bin/sh\nprintf 'nightly cargo\\n'\n", { mode: 0o755 });
+    writeFileSync(path.join(dir, ".envrc"), `export PATH=${JSON.stringify(tools)}:$PATH\nexport DEVENV_ROOT=${JSON.stringify(dir)}\n`);
+    execFileSync("direnv", ["allow"], { cwd: dir });
+    const result = await runCommand('printf \'%s\\n\' "$DEVENV_ROOT"; cargo', "sh", dir);
+    expect(result.output.trimEnd().split("\n")).toEqual([dir, "nightly cargo"]);
   });
 
   it("runs over HTTP in the chat's project, one line only", async () => {

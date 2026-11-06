@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { allowEnvrc, clearDirenvCache, direnvState, envForSpawn, findEnvrc, prepareSpawnEnv } from "../../src/server/direnv.js";
+import { IS_WINDOWS, spawnHarness } from "../../src/server/platform-win.js";
 
 const HAS_DIRENV = (() => {
   try {
@@ -52,6 +53,36 @@ describe.skipIf(!HAS_DIRENV)("direnv spawn env", () => {
     expect(env.DIRENV_DIFF).toBeUndefined();
     expect(env.DIRENV_DIR).toBeUndefined();
     expect(env.DIRENV_WATCHES).toBeUndefined();
+  });
+
+  it.skipIf(IS_WINDOWS)("project tools win over caller env, and a harness binary on the caller PATH still resolves", () => {
+    const root = makeProject();
+    const proj = path.join(root, "proj");
+    const cargo = path.join(root, "toolchain", "bin");
+    const piBin = path.join(root, "agent", "bin");
+    mkdirSync(cargo, { recursive: true });
+    mkdirSync(piBin, { recursive: true });
+    // Project toolchain provides cargo (the direnv env); the caller's PATH provides the pi harness binary.
+    writeFileSync(path.join(cargo, "cargo"), "#!/bin/sh\nprintf 'nightly cargo\\n'\n", { mode: 0o755 });
+    writeFileSync(path.join(piBin, "pi"), "#!/bin/sh\nprintf 'resolved pi via inherited PATH\\n'\n", { mode: 0o755 });
+    writeFileSync(path.join(proj, ".envrc"), `export PATH=${JSON.stringify(cargo)}\nexport DEVENV_ROOT=${JSON.stringify(proj)}\nexport CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=/nix/store/project-mingw-cc\n`);
+    expect(allowEnvrc(proj)).toBe(true);
+    const callerEnv = { ...process.env, PATH: `${piBin}:/run/current-system/sw/bin`, DEVENV_ROOT: "/another/project", AWUI_RENDER_TOKEN: "chat-token" };
+    const child = spawnHarness("sh", ["-c", "printf '%s\\n' \"$DEVENV_ROOT\" \"$CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER\" \"$AWUI_RENDER_TOKEN\"; cargo; pi"], { cwd: proj, env: callerEnv });
+    let stdout = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    return new Promise<void>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code) => {
+        try {
+          expect(code).toBe(0);
+          expect(stdout.trimEnd().split("\n")).toEqual([proj, "/nix/store/project-mingw-cc", "chat-token", "nightly cargo", "resolved pi via inherited PATH"]);
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
   });
 
   it("reports a fresh .envrc as blocked and leaves the env unchanged", () => {
@@ -131,7 +162,7 @@ describe.skipIf(!HAS_DIRENV)("direnv spawn env", () => {
     expect(envForSpawn(proj).env.AWUI_TEST_ENVRC).toBe("second");
   });
 
-  it("a project without one anywhere is untouched", () => {
+  it.skipIf(IS_WINDOWS)("a project without one anywhere keeps an intentional render token", () => {
     const root = mkdtempSync(path.join(tmpdir(), "awui-direnv-none-"));
     roots.push(root);
     const proj = path.join(root, "proj");
@@ -141,5 +172,17 @@ describe.skipIf(!HAS_DIRENV)("direnv spawn env", () => {
     expect(state.rcPath).toBeNull();
     expect(env.AWUI_TEST_ENVRC).toBeUndefined();
     expect(allowEnvrc(proj)).toBe(false);
+    const callerEnv = { ...process.env, AWUI_RENDER_TOKEN: "chat-token" };
+    const child = spawnHarness("sh", ["-c", "printf %s \"$AWUI_RENDER_TOKEN\""], { cwd: proj, env: callerEnv });
+    let stdout = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    return new Promise<void>((resolve, reject) => child.once("error", reject).once("close", () => {
+      try {
+        expect(stdout).toBe("chat-token");
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    }));
   });
 });

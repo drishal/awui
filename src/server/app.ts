@@ -1154,6 +1154,7 @@ export function createApp(deps: AppDeps) {
     const chat = manager.get(req.params.id);
     const { command, shell } = body(runCommandSchema, req);
     log(`run: a ${shell} command in ${chat.workspace.name}`);
+    await prepareSpawnEnv(chat.workspace.path);
     res.json(await runCommand(command, shell, chat.workspace.path));
   });
 
