@@ -18,6 +18,7 @@ const healthy: DoctorInput = {
   remote: { exposed: false, credentials: false },
   herdr: { enabled: false, socket: "/h.sock", exists: false },
   windows: false,
+  embedded: false,
 };
 const by = (c: ReturnType<typeof evaluate>, name: string) => c.find((x) => x.name === name)!;
 
@@ -56,6 +57,11 @@ describe("doctor", () => {
     expect(by(checks, "Bun").ok).toBe("warn");
     expect(by(checks, "Remote access").ok).toBe("warn");
     expect(by(checks, "herdr").ok).toBe("warn");
+  });
+
+  it("does not warn on Bun in the binary, where the terminal clients are built in", () => {
+    const checks = evaluate({ ...healthy, bunVersion: null, embedded: true });
+    expect(by(checks, "Bun")).toMatchObject({ ok: true, detail: "not needed (the binary carries the terminal clients)" });
   });
 
   it("reports a config error and never a secret", () => {

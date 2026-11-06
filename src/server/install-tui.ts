@@ -1,62 +1,64 @@
-// `awui install tui`: the terminal client is a Bun/OpenTUI script, so it cannot
-// ride in the binary; this fetches the atui source (the build's pinned commit,
-// or the repo's default branch from source) into the state folder and drops an
-// `atui` wrapper on the user's PATH (~/.local/bin). The wrapper runs the cached
-// copy directly.
-import { spawnSync } from "node:child_process";
-import { promises as fs, existsSync } from "node:fs";
+// `awui install tui`: put the `atui` command on the user's PATH
+// (~/.local/bin/atui). The compiled binary carries atui (see clients.ts), so
+// the command is a symlink to it: run as `atui`, the binary is atui. From a
+// checkout it links the checkout's bin/atui, which runs the source under Bun.
+// `install service` makes the same link beside the binary it installs.
+import { existsSync, promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { ChatError } from "./chats/chat.js";
+import { isEmbedded } from "./embedded.js";
 
-// The build's `define` constants; undefined outside the binary.
-declare const AWUI_REPO: string | undefined;
-declare const AWUI_COMMIT: string | undefined;
+/**
+ * What ~/.local/bin/atui links to: `awui` beside it when that is this very
+ * binary (so a reinstalled awui is the new atui too), else this binary, else
+ * the checkout's bin/atui.
+ */
+export function atuiTarget(bin: string, execPath: string, embedded: boolean, checkoutRoot: () => string): string {
+  if (!embedded) return path.join(checkoutRoot(), "bin", "atui");
+  const sibling = path.join(bin, "awui");
+  try {
+    if (realpathSync(sibling) === realpathSync(execPath)) return "awui";
+  } catch {
+    // No awui beside it: link the binary where it is.
+  }
+  return execPath;
+}
 
-const DEFAULT_REPO = "github.com/drishal/awui";
-const ATUI_MAIN = path.join("src", "atui", "main.tsx");
-const TERN_MAIN = path.join("src", "tern", "main.ts");
-const ATUI_PRELOAD = path.join("node_modules", "@opentui", "solid", "scripts", "preload.js");
+/** Make `bin`/atui a symlink to `target`, replacing what was there (a link, or the old Bun wrapper script) in one rename. */
+export async function linkAtui(bin: string, target: string): Promise<string> {
+  const file = path.join(bin, "atui");
+  await fs.mkdir(bin, { recursive: true, mode: 0o700 });
+  const tmp = `${file}.${process.pid}.tmp`;
+  await fs.rm(tmp, { force: true });
+  await fs.symlink(target, tmp);
+  await fs.rename(tmp, file);
+  return file;
+}
+
+/** The checkout root, walking up from this module to the package.json. */
+function checkoutRoot(): string {
+  for (let dir = path.dirname(fileURLToPath(import.meta.url)); ; dir = path.dirname(dir)) {
+    if (existsSync(path.join(dir, "package.json"))) return dir;
+    if (path.dirname(dir) === dir) throw new ChatError(500, "no_root", "cannot locate the awui package root");
+  }
+}
 
 export async function installTui(stateDir: string): Promise<void> {
   if (process.platform === "win32") {
-    // The wrapper is a #!/bin/sh script in ~/.local/bin, which Windows cannot
-    // run. atui is for a terminal anyway; run it from a POSIX shell (WSL,
-    // Git Bash) or a Linux host pointed at this server.
-    throw new ChatError(500, "no_atui_windows", "atui's launcher is a Unix shell script. On Windows run atui under WSL/Git Bash, or use the web UI.");
+    // A file symlink needs Developer Mode or admin on Windows; the binary's own subcommand needs neither.
+    throw new ChatError(500, "no_atui_windows", "on Windows, run atui as `awui tui` (an `atui` link needs Developer Mode or admin)");
   }
   const home = os.homedir();
   if (!home) throw new ChatError(500, "no_home", "$HOME is not set");
-  const bin = spawnSync("bun", ["--version"], { stdio: "ignore" });
-  if (bin.error || bin.status !== 0) {
-    throw new ChatError(500, "no_bun", "atui needs Bun (1.3.14 or later): https://bun.sh");
+  const bin = path.join(home, ".local", "bin");
+  const file = await linkAtui(bin, atuiTarget(bin, process.execPath, isEmbedded, checkoutRoot));
+  // Earlier binaries fetched atui's source and packages into the state folder for a Bun wrapper; nothing runs that copy now.
+  const fetched = path.join(stateDir, "atui");
+  if (existsSync(path.join(fetched, "src", "atui", "main.tsx"))) {
+    await fs.rm(fetched, { recursive: true, force: true });
+    console.log(`removed the old fetched atui copy at ${fetched}`);
   }
-  const atuiDir = path.join(stateDir, "atui");
-  const mainFile = path.join(atuiDir, ATUI_MAIN);
-  // A copy fetched before the Tern client existed is fetched again, so `awui tern` finds it (and its packages).
-  if (!existsSync(mainFile) || !existsSync(path.join(atuiDir, TERN_MAIN))) {
-    await fs.mkdir(atuiDir, { recursive: true, mode: 0o700 });
-    const ref = typeof AWUI_COMMIT !== "undefined" ? AWUI_COMMIT : "main";
-    const repo = typeof AWUI_REPO !== "undefined" && AWUI_REPO ? AWUI_REPO : DEFAULT_REPO;
-    const host = repo.startsWith("http") ? repo : `https://${repo.replace(/\.git$/, "")}`;
-    const url = `${host}/archive/${ref}.tar.gz`;
-    const res = await fetch(url);
-    if (!res.ok || !res.body) throw new ChatError(502, "fetch_failed", `could not fetch the atui source (${url}: HTTP ${res.status})`);
-    const tmp = path.join(atuiDir, "atui.tar.gz");
-    await fs.writeFile(tmp, Buffer.from(await res.arrayBuffer()), { mode: 0o600 });
-    const untar = spawnSync("tar", ["-xzf", tmp, "--strip-components=1", "-C", atuiDir], { stdio: "inherit" });
-    await fs.rm(tmp, { force: true });
-    if (untar.status !== 0) throw new ChatError(500, "untar_failed", "could not unpack the atui source");
-    const install = spawnSync("bun", ["install", "--no-save"], { cwd: atuiDir, stdio: "inherit" });
-    if (install.status !== 0) throw new ChatError(500, "deps_failed", "could not install atui's dependencies");
-  }
-  const binPath = path.join(home, ".local", "bin", "atui");
-  await fs.mkdir(path.dirname(binPath), { recursive: true, mode: 0o700 });
-  const preload = path.join(atuiDir, ATUI_PRELOAD);
-  await fs.writeFile(
-    binPath,
-    `#!/bin/sh\nexec bun --preload "${preload.replace(/"/g, '\\"')}" "${mainFile.replace(/"/g, '\\"')}" "$@"\n`,
-    { mode: 0o755 },
-  );
-  console.log(`atui installed at ${binPath}; run it with \`atui\` (in a Tern pane, \`awui tern\` draws awui natively).`);
+  console.log(`atui installed at ${file}; run it with \`atui\` (or \`awui tui\`; in a Tern pane, \`awui tern\`).`);
 }

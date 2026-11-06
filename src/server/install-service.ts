@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ChatError } from "./chats/chat.js";
 import { isEmbedded } from "./embedded.js";
+import { atuiTarget, linkAtui } from "./install-tui.js";
 
 const UNIT_NAME = "awui.service";
 const BIN_NAME = "awui";
@@ -197,6 +198,9 @@ async function installWindows(opts: { link: boolean }): Promise<void> {
   } catch (error) {
     throw new ChatError(500, "autostart_failed", `installed ${binPath} but could not set the Run key: ${error instanceof Error ? error.message : String(error)}`);
   }
+  // A file symlink for `atui` needs Developer Mode or admin on Windows; the
+  // binary's own subcommand needs neither, so the terminal client is `awui tui`.
+  console.log("the terminal client is `awui tui` (an `atui` link needs Developer Mode or admin)");
 }
 
 /**
@@ -234,6 +238,9 @@ export async function installService(opts: { link: boolean }): Promise<void> {
     await fs.chmod(tmp, 0o755);
     await fs.rename(tmp, binPath);
   }
+  // The installed awui is also atui: `atui` beside it hands every argument to the
+  // binary, which starts the terminal client under that name (clients.ts).
+  const atui = await linkAtui(bin, atuiTarget(bin, process.execPath, isEmbedded, repoRoot));
   await fs.mkdir(unitDir, { recursive: true, mode: 0o700 });
   const unit = unitFor(binPath, process.env.PATH ?? "");
   const tmpUnit = `${unitPath}.${process.pid}.tmp`;
@@ -243,7 +250,7 @@ export async function installService(opts: { link: boolean }): Promise<void> {
   try {
     execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "inherit" });
     execFileSync("systemctl", ["--user", "enable", "--now", UNIT_NAME], { stdio: "inherit" });
-    console.log(`awui installed: ${binPath} → ${unitPath} (enabled, started)`);
+    console.log(`awui installed: ${binPath} → ${unitPath} (enabled, started; also ${atui})`);
   } catch (error) {
     throw new ChatError(500, "systemd_failed", `wrote ${unitPath} and ${binPath} but systemd failed: ${error instanceof Error ? error.message : String(error)}`);
   }

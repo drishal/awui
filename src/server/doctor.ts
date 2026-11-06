@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { loadConfig, type ServerConfig } from "./config.js";
+import { isEmbedded } from "./embedded.js";
 import { herdrSocketPath } from "./herdr.js";
 import { HarnessRegistry } from "./harness/registry.js";
 import { configDir, configEnv, herdrEnabled, readUserConfig, type UserConfig } from "./user-config.js";
@@ -43,6 +44,8 @@ export interface DoctorInput {
   herdr: { enabled: boolean; socket: string; exists: boolean };
   /** Native Windows host: mode bits are not enforceable, so the state-folder mode is not a failure. */
   windows: boolean;
+  /** This process is the compiled binary: the terminal clients are built in, so Bun is not needed for them. */
+  embedded: boolean;
 }
 
 const MIN_NODE = [22, 19, 0];
@@ -70,12 +73,15 @@ export function evaluate(i: DoctorInput): Check[] {
       ? { name: "Node", ok: true, detail: i.nodeVersion }
       : { name: "Node", ok: false, detail: `${i.nodeVersion} is older than 22.19` },
   );
+  // A source run needs Bun for atui and `awui tern`; the binary carries both clients built in.
   out.push(
-    i.bunVersion === null
-      ? { name: "Bun", ok: "warn", detail: "not found (needed for atui and awui tern)" }
-      : atLeast(i.bunVersion, MIN_BUN)
-        ? { name: "Bun", ok: true, detail: i.bunVersion }
-        : { name: "Bun", ok: "warn", detail: `${i.bunVersion} is older than 1.3.14 (atui and awui tern need it)` },
+    i.embedded
+      ? { name: "Bun", ok: true, detail: i.bunVersion ?? "not needed (the binary carries the terminal clients)" }
+      : i.bunVersion === null
+        ? { name: "Bun", ok: "warn", detail: "not found (needed for atui and awui tern)" }
+        : atLeast(i.bunVersion, MIN_BUN)
+          ? { name: "Bun", ok: true, detail: i.bunVersion }
+          : { name: "Bun", ok: "warn", detail: `${i.bunVersion} is older than 1.3.14 (atui and awui tern need it)` },
   );
   if (i.harnessError) out.push({ name: "Harnesses", ok: false, detail: i.harnessError });
   for (const h of i.harnesses) {
@@ -201,6 +207,7 @@ export async function gather(env: NodeJS.ProcessEnv = process.env): Promise<Doct
     remote: { exposed, credentials: config.login !== null || existsSync(config.credentialsFile) },
     herdr: { enabled: herdrEnabled(userConfig, env), socket, exists: existsSync(socket) },
     windows: IS_WINDOWS,
+    embedded: isEmbedded,
   };
 }
 
