@@ -43,14 +43,14 @@ Match the task to a guide before opening code:
 | `npm run dev` | Backend under `tsx watch` plus Vite on http://127.0.0.1:5173 (proxies `/api` to the backend's port). |
 | `npm run build` | `vite build` → `dist/web`, then `tsc -p tsconfig.server.json` → `dist/server`. The server entry is `dist/server/server/index.js`. |
 | `npm start` / `bin/awui` | Run the built server. |
-| `bin/atui` (`npm run atui`) | Run the terminal client under Bun. Needs a running server. |
+| `bin/atui` (`npm run atui`) | Run the terminal client under Bun (from a checkout; the binary runs it as `awui tui`). Needs a running server. |
 | `npm run typecheck` | Four projects: server, web, tests, atui. **Run it before every commit.** |
 | `npm test` | Vitest: `tests/unit/**` (and `tests/smoke/**`, which skips itself unless `SMOKE=1`). |
 | `npm run test:e2e` | Build, then Playwright (`tests/e2e`) against the built server with fake harnesses on port 4791. ~12 min. |
 | `npm run test:e2e:fast` | The same suite as two shards at once (`scripts/e2e-parallel.mjs`): one server per shard, on ports 4801 and 4811, output in `test-results/shard-N`. ~6 min. A spec that starts its own server (remote-login) takes the suite's port plus one and two. |
 | `npm run test:atui` | Build, then `bun test tests/atui` (atui in OpenTUI's test renderer, and the Tern client against a stand-in Tern, both against a real server). |
 | `awui doctor [--json]` | Checks config.yml, Node/Bun, each harness, workspace roots, the state folder's mode, the port, remote sign-in, herdr; prints ✓/!/✗ lines, exit 1 on a ✗ (`src/server/doctor.ts`). |
-| `awui tern` | The Tern client in a Tern pane (`bun --conditions=browser src/tern/main.ts`; Solid's default Bun build is its server one, where effects never run). |
+| `awui tern` | The Tern client in a Tern pane (from a checkout: `bun --conditions=browser src/tern/main.ts`; Solid's default Bun build is its server one, where effects never run; the binary runs it built in). |
 | `npm run smoke` | Opt-in tests against the real installed harnesses. No model is called unless `SMOKE_MODEL` (and `SMOKE_CLAUDE_MODEL`, `SMOKE_GROK_MODEL`, `SMOKE_DSH_MODEL`) name one. |
 | `node scripts/ui-shot.mjs <url> <selector> <out.png>` | Screenshot one element of a running UI and print every control's size, radius, padding, and font (`--phone`, `--narrow`, `--light`). See docs/ui.md. |
 | `npm run set-password` | Store an scrypt login for other devices. |
@@ -67,11 +67,13 @@ src/shared/protocol.ts        Wire types and Zod request schemas: the only contr
 src/shared/html-render.ts     Agent-rendered pages: bootstrap markup, theme payload, frame-height math (no harness types).
 src/shared/approval.ts        Which requests are plain approvals, and their Approve/Deny answers (the card and push notes).
 src/server/
-  index.ts                    Startup: config, state-folder migration, registry, routes, listen, shutdown. Subcommand: `install tui`.
+  index.ts                    Startup: config, state-folder migration, registry, routes, listen, shutdown. Subcommands: `tui`, `tern`, `doctor`, `install tui|service`.
   app.ts                      Every route (Express 5), SSE, error mapping. All /api routes but health/login/logout need auth.
   embedded.ts                 The binary's baked-in assets: embedded web bundle, extension sources, version; materializes extensions into state dir for `-e`.
-  install-tui.ts              `awui install tui`: fetch the atui source and drop a `~/.local/bin/atui` wrapper.
-  tern-client.ts              `awui tern` / `awui --tern`: find the Tern client (checkout, else the install tui copy) and run it under Bun.
+  clients.ts                  The terminal clients behind the command line: `awui tui` (or the binary symlinked as `atui`) runs atui, `awui tern` the Tern client. In the binary they run in-process (the `awui:clients` module); from source under Bun.
+  clients-module.d.ts         The `awui:clients` module's types: the binary's bundled terminal clients (scripts/build-binary.ts bundles src/atui/embed.ts as it).
+  install-tui.ts              `awui install tui`: the `~/.local/bin/atui` symlink (to the binary, which carries atui, or the checkout's bin/atui); retires the old fetched copy.
+  install-service.ts          `awui install service`: the binary + systemd unit (or Windows Run key), plus the `atui` link beside it.
   assets.gen.ts               Checked-in stub replaced by the generated embed map at binary-build time.
   config.ts, user-config.ts   Environment + ~/.config/awui/config.yml → ServerConfig. settings.ts edits config.yml for the Settings dialog.
   security.ts, auth.ts        Host/Origin/Tailscale checks, local vs remote, scrypt logins, signed cookies, lockout.
@@ -309,7 +311,7 @@ if every test passes.
 
 ## Environment
 
-- **Node ≥ 22.19 and npm; Bun ≥ 1.3.14 for atui.** On the maintainer's NixOS
+- **Node ≥ 22.19 and npm; Bun ≥ 1.3.14 for the terminal clients from source** (the compiled binary carries them). On the maintainer's NixOS
   machine every tool comes from the system configuration (`~/dotfiles/NixOS`).
   Do not install anything globally or imperatively (`npm -g`, `pip install`,
   ad-hoc venvs). If something is missing, use it temporarily with

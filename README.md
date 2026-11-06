@@ -42,18 +42,20 @@ npm ci
 npm run build:binary               # = bun run scripts/build-binary.ts → dist/bin/<platform>/awui (inside devenv shell)
 cp dist/bin/linux-x64/awui ~/.local/bin/awui   # macOS: dist/bin/darwin-arm64/awui; Windows: dist/bin/windows-x64/awui.exe
 awui                 # web UI + API on http://127.0.0.1:4783
-awui install tui     # also drop the atui terminal client on your PATH (~/.local/bin/atui)
+awui tui             # the terminal client (also `awui install tui` for an `atui` command)
 awui doctor          # check the setup (config, harnesses, state folder, port); --json for machines
-awui tern            # in a Tern pane: awui drawn natively by Tern (after awui install tui)
+awui tern            # in a Tern pane: awui drawn natively by Tern
 ```
+
+The binary carries both terminal clients: `awui tui` is atui and `awui tern` is the Tern client, bundled at build time, so a binary needs no Bun and no fetched copy, and its clients always match its server. `awui install tui` puts an `atui` command on your PATH — a symlink to the binary, which acts as atui when run under that name.
 
 `bun run scripts/build-binary.ts --all` cross-compiles every target. State goes to `$XDG_STATE_HOME/awui`, so a binary and a source run share one config and one set of sessions.
 
-`awui install service` puts the binary at `~/.local/bin/awui` and writes a systemd user unit, `~/.config/systemd/user/awui.service`, that runs it and starts with your session; a leftover `agent-web-ui.service` from before the rename is retired first, so the two never share the port. Add `--link` to symlink the binary instead of copying it — what a dev checkout wants, so a rebuild is live after `systemctl --user restart awui`. Running `bin/awui install service --link` from a checkout installs the binary the build wrote, not the node running the script.
+`awui install service` puts the binary at `~/.local/bin/awui` and writes a systemd user unit, `~/.config/systemd/user/awui.service`, that runs it and starts with your session; a leftover `agent-web-ui.service` from before the rename is retired first, so the two never share the port. It also puts `atui` beside the binary. Add `--link` to symlink the binary instead of copying it — what a dev checkout wants, so a rebuild is live after `systemctl --user restart awui`. Running `bin/awui install service --link` from a checkout installs the binary the build wrote, not the node running the script.
 
 ### From source
 
-Requirements: Node ≥ 22.19 (24 LTS recommended), npm, and `pi`, `omp`, `hermes`, `claude`, `opencode`, `grok`, and/or `dsh` installed and logged in. A missing harness shows as unavailable instead of crashing the app. The build is the [Install](#install) flow above; `npm link` also puts `awui` (the server) and `atui` (the terminal client) on your PATH.
+Requirements: Node ≥ 22.19 (24 LTS recommended), npm, and `pi`, `omp`, `hermes`, `claude`, `opencode`, `grok`, and/or `dsh` installed and logged in. A missing harness shows as unavailable instead of crashing the app. The build is the [Install](#install) flow above; `npm link` also puts `awui` (the server) and `atui` (the terminal client) on your PATH. From a checkout the terminal clients run from source under Bun (`atui`, or `awui tui`/`awui tern`); the compiled binary carries them instead.
 
 #### Windows
 
@@ -61,7 +63,7 @@ awui also runs natively on Windows (x64). The harnesses it drives — pi, omp's 
 
 - Settings default to `%APPDATA%\awui` and state to `%LOCALAPPDATA%\awui` (an explicit `XDG_CONFIG_HOME`/`XDG_STATE_HOME` still wins).
 - A stopping harness is killed with `taskkill /PID <pid> /T /F`, since Windows has no SIGTERM/SIGKILL, so a CLI shim's real `node.exe` tree dies too.
-- `awui install service` installs awui and starts it with your session: on Linux/macOS it copies the binary to `~/.local/bin/awui` and writes a systemd user unit; on Windows it copies `awui.exe` to `%LOCALAPPDATA%\Programs\awui`, adds that dir to your PATH, and sets the per-user `HKCU\…\CurrentVersion\Run` value so it starts at logon (the mechanism Electron and node-auto-launch use). Re-run it after an update to refresh. `awui install tui` is Linux/macOS-only.
+- `awui install service` installs awui and starts it with your session: on Linux/macOS it copies the binary to `~/.local/bin/awui` and writes a systemd user unit; on Windows it copies `awui.exe` to `%LOCALAPPDATA%\Programs\awui`, adds that dir to your PATH, and sets the per-user `HKCU\…\CurrentVersion\Run` value so it starts at logon (the mechanism Electron and node-auto-launch use). Re-run it after an update to refresh. `awui install tui` is Linux/macOS-only; on Windows run the terminal client as `awui tui` (an `atui` file symlink needs Developer Mode or admin).
 - herdr and the web "Run" code-block shells are POSIX; on win32 the Run block's `sh`/`bash` fence maps to cmd/PowerShell.
 
 There is no prebuilt Windows download, and the build cross-compiles, so you can produce the `.exe` from Linux or macOS. Inside `devenv shell` (for the toolchain):
@@ -101,7 +103,7 @@ then restart. Other devices get a sign-in form; this machine still opens directl
 
 ### Developer environment
 
-`devenv` gives the pinned toolchain (Node 22, the nixpkgs `bun` the binary build needs, the e2e browsers): `devenv shell` enters it, `devenv tasks run awui:binary` builds the binary, `devenv up` runs `npm run dev` as a process. The nixpkgs-built bun inside the shell is what makes the compiled binary run on this machine (the upstream bun binary segfaults here); build binaries only inside the shell. Without `devenv`, install Bun (≥ 1.3.14) yourself from [bun.sh](https://bun.sh/docs/installation) — macOS/Linux/WSL: `curl -fsSL https://bun.sh/install | bash`; Windows: `powershell -c "irm bun.sh/install.ps1 | iex"` (or `npm i -g bun`). `awui install tui` needs Bun too (its doctor check will flag a missing one).
+`devenv` gives the pinned toolchain (Node 22, the nixpkgs `bun` the binary build needs, the e2e browsers): `devenv shell` enters it, `devenv tasks run awui:binary` builds the binary, `devenv up` runs `npm run dev` as a process. The nixpkgs-built bun inside the shell is what makes the compiled binary run on this machine (the upstream bun binary segfaults here); build binaries only inside the shell. Without `devenv`, install Bun (≥ 1.3.14) yourself from [bun.sh](https://bun.sh/docs/installation) — macOS/Linux/WSL: `curl -fsSL https://bun.sh/install | bash`; Windows: `powershell -c "irm bun.sh/install.ps1 | iex"` (or `npm i -g bun`). From a checkout the terminal clients need Bun too (the doctor check flags a missing one; the binary carries them instead).
 
 ### Configuration (`~/.config/awui`)
 
@@ -251,12 +253,10 @@ TUI-only slash commands are not emulated. New, Resume, Rename, Compact, model, t
 
 ## In a terminal: atui
 
-`atui` is the same app in a terminal, in [OpenCode](https://github.com/anomalyco/opencode)'s TUI style, built on its renderer ([OpenTUI](https://github.com/anomalyco/opentui) with Solid). It is a client of the running server, like a browser tab: every harness, session, approval, setting, and theme is shared, a chat started in one shows in the other, and a run keeps going when atui quits (it prints the chat's `--chat` id and its web link).
-
-It needs [Bun](https://bun.sh) 1.3.14 or later (OpenTUI's native core loads through Bun's FFI). From this repository after `npm install`:
+`atui` is the same app in a terminal, in [OpenCode](https://github.com/anomalyco/opencode)'s TUI style, built on its renderer ([OpenTUI](https://github.com/anomalyco/opentui) with Solid). It is a client of the running server, like a browser tab: every harness, session, approval, setting, and theme is shared, a chat started in one shows in the other, and a run keeps going when atui quits (it prints the chat's `--chat` id and its web link). The compiled binary carries it: `awui tui` runs atui without Bun; `awui install tui` puts an `atui` command on your PATH (a symlink to the binary). From a checkout it runs from source under [Bun](https://bun.sh) 1.3.14 or later (OpenTUI's native core loads through Bun's FFI):
 
 ```bash
-npm link                     # puts atui on PATH (or: ln -s "$PWD/bin/atui" ~/.local/bin/atui)
+npm link                     # puts atui on PATH (or: ln -s "$PWD/bin/atui" ~/.local/bin/atui; or the binary's: awui install tui)
 cd ~/code/some-project && atui
 atui --harness omp           # the harness for new chats
 atui --resume                # this project's newest session (or --resume <id>)
@@ -295,7 +295,7 @@ cd ~/code/some-project && awui tern     # or awui --tern
 awui tern --harness omp --resume        # atui's options: --url, --harness, --resume [id], --chat <id>
 ```
 
-It is a client of the running server like the browser and atui (the same sessions, approvals, and settings), shares atui's state code, and needs Bun as atui does: from a checkout it runs `src/tern/main.ts`, from the binary the copy `awui install tui` fetched. The keys are atui's: **Enter** sends (a steer while the agent works), **Shift+Enter** adds a line, **↑/↓** in an empty composer recall sent prompts, **Tab** moves between a saved prompt's blanks, **Ctrl+K** is the palette, **Ctrl+X** then a letter does the rest (`s` sessions, `n` new chat, `a` new chat in a tab, `]`/`[`/`w` tabs, `m` model, `t` thinking, `h` harness or hand off, `c` compact, `z` put undone files back, `e` open or fold all work, `y` copy the last answer, `q` quit; Ctrl+X alone shows them), **Esc Esc** stops a run, and **Ctrl+C Ctrl+C** quits (the chat keeps running on the server). A click on a prompt offers Retry, Edit, Fork, Undo files, and Copy; under an answer are Copy, Fork, and Undo files. Tern runs no scripts, so an agent's HTML page is a card that opens in the web UI. Outside Tern, or inside tmux, screen, zellij, or herdr (which swallow the protocol), it says so: atui is the client for any terminal. `AWUI_TERN_LOG=<file>` logs every key and event it reads, and `TERN_TSP_RECORD=<file>` records every message for Tern's `surface-play`.
+It is a client of the running server like the browser and atui (the same sessions, approvals, and settings), shares atui's state code, and the compiled binary carries it: `awui tern` runs it without Bun. From a checkout it runs `src/tern/main.ts` under Bun with Solid's reactive build (`--conditions=browser`; the default Bun build is Solid's server one, where effects never run). The keys are atui's: **Enter** sends (a steer while the agent works), **Shift+Enter** adds a line, **↑/↓** in an empty composer recall sent prompts, **Tab** moves between a saved prompt's blanks, **Ctrl+K** is the palette, **Ctrl+X** then a letter does the rest (`s` sessions, `n` new chat, `a` new chat in a tab, `]`/`[`/`w` tabs, `m` model, `t` thinking, `h` harness or hand off, `c` compact, `z` put undone files back, `e` open or fold all work, `y` copy the last answer, `q` quit; Ctrl+X alone shows them), **Esc Esc** stops a run, and **Ctrl+C Ctrl+C** quits (the chat keeps running on the server). A click on a prompt offers Retry, Edit, Fork, Undo files, and Copy; under an answer are Copy, Fork, and Undo files. Tern runs no scripts, so an agent's HTML page is a card that opens in the web UI. Outside Tern, or inside tmux, screen, zellij, or herdr (which swallow the protocol), it says so: atui is the client for any terminal. `AWUI_TERN_LOG=<file>` logs every key and event it reads, and `TERN_TSP_RECORD=<file>` records every message for Tern's `surface-play`.
 
 ## Architecture
 
@@ -325,6 +325,9 @@ src/server/
   workspaces.ts             roots, realpath confinement, folder browsing
   theme.ts                  base16/base24 parsing, contrast-checked CSS variables
   app.ts, index.ts          Express 5 routes, SSE, startup/shutdown
+  clients.ts                the terminal clients behind the command line: `awui tui` (or the binary as `atui`) and `awui tern`
+  clients-module.d.ts       the `awui:clients` module the binary's build bundles (the two clients' entry points)
+  install-tui.ts            `awui install tui`: the `atui` symlink (the binary carries the client itself)
 src/web/                    React + Vite client
 ```
 
