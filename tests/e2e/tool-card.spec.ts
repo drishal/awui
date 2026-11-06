@@ -154,7 +154,7 @@ test("Ask to retry sends a prompt naming the call when idle, and only the latest
   await sendAndWait(page, "toolfail");
   const retry = page.getByRole("button", { name: "Ask the agent to retry running npm run e2e" });
   await expect(retry).toBeVisible();
-  await expect(retry).toHaveText("Ask to retry");
+  await expect(retry).toHaveAttribute("title", "Ask to retry");
   // The button shares the call's line: the failed row is one line, not two.
   const [retryBox, sentenceBox] = [await retry.boundingBox(), await page.locator('[data-tool="bash"] .tool-sentence').last().boundingBox()];
   expect(retryBox!.y).toBeLessThan(sentenceBox!.y + sentenceBox!.height);

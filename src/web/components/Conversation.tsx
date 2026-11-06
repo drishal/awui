@@ -203,12 +203,10 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   const progress = useMemo(() => (running && item.category === "command" && item.output ? testProgress(item.output) : null), [running, item.category, item.output]);
   // The reason rides inside the row, where the label would otherwise hide it from a screen reader.
   const label = `${sentence.text}${factText ? `, ${factText}` : ""}${sentence.error ? `, ${sentence.error}` : ""}${time ? `, ${time}` : ""}, ${status}`;
+  // The face is just the mark: after a click the mark becomes a check and the button disables, and the words stay in its hover text and accessible name.
   const retryFace =
     failed && retry ? (
-      <>
-        <IconRefresh size={13} />
-        <span className="tool-retry-text">{asked ? (retry.mode === "queue" ? "Queued" : "Asked") : "Ask to retry"}</span>
-      </>
+      asked ? <IconCheck size={13} /> : <IconRefresh size={13} />
     ) : null;
   return (
     <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} data-testid="tool-row" data-tool={item.name} data-status={item.status}>
@@ -244,7 +242,17 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
               className="btn btn-small btn-ghost tool-retry"
               aria-label={asked ? (retry.mode === "queue" ? "Retry queued" : "Retry asked") : retryLabel(item, workspace)}
               disabled={retry.mode === "blocked" || asked}
-              title={retry.mode === "blocked" ? "This agent cannot take a message while it works" : retry.mode === "queue" ? "Queued as a follow-up for when the agent is free" : "Ask the agent to run this call again"}
+              title={
+                asked
+                  ? retry.mode === "queue"
+                    ? "Queued as a follow-up for when the agent is free"
+                    : "Asked the agent to run this call again"
+                  : retry.mode === "blocked"
+                    ? "This agent cannot take a message while it works"
+                    : retry.mode === "queue"
+                      ? "Ask to retry (queued as a follow-up for when the agent is free)"
+                      : "Ask to retry"
+              }
               onClick={() => {
                 setAsked(true);
                 retry.send(retryPrompt(item, workspace));

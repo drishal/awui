@@ -287,10 +287,6 @@
   translate: 0 -50%;
 }
 
-.tool-retry .icon,
-.tool-retry-room .icon {
-  margin-right: 4px;
-}
 
 .tool-error {
   color: var(--muted-text);
@@ -445,7 +441,8 @@
     right: 34px;
   }
 
-  /* The retry is a round mark on touch: its words would leave the sentence too little room for the reason. */
+  /* The retry is a round mark on touch: a finger-sized hit area, and a pill radius to undo the ghost
+     button's wider one, which hides its smaller one. */
   .tool-retry,
   .tool-retry-room {
     width: 40px;
@@ -453,23 +450,14 @@
     height: 40px;
     min-height: 40px;
     padding: 0;
+    border-radius: 999px;
   }
-
   /* The facts wrap under the sentence, so the head is two lines: the button sits on the first, with its twin. */
   .tool-retry {
     top: 3px;
     translate: none;
   }
 
-  /* The words are gone, so the mark centres itself. */
-  .tool-retry-text {
-    display: none;
-  }
-
-  .tool-retry .icon,
-  .tool-retry-room .icon {
-    margin-right: 0;
-  }
 }
 
 /* The working phase in the header ("Thinking", "Running npm test", "Writing"): a new one rises in
