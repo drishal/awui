@@ -12,7 +12,7 @@ import { askShape, decorations, dock, placeholder, type DockCx } from "../../src
 import { themeSheet } from "../../src/tern/look.js";
 import { conversation, foldHead, foldHeadSpans, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
-import { ternEntry } from "../../src/server/tern-client.js";
+import { clientCommand, sourceRun } from "../../src/server/clients.js";
 import { DARK } from "../../src/atui/theme.js";
 import type { Turn, WorkSegment } from "../../src/web/turns.js";
 
@@ -354,22 +354,31 @@ describe("awui tern's command line", () => {
     expect(parseTernArgs(["-h"], {})).toEqual({ help: true });
   });
 
-  it("finds the client in the checkout, else where `awui install tui` put it", () => {
-    expect(ternEntry("/nowhere", false)).toMatch(/src\/tern\/main\.ts$/);
-    const state = mkdtempSync(path.join(tmpdir(), "awui-tern-"));
-    // A binary somewhere with no checkout above it, before and after install tui.
-    expect(ternEntry(state, true, "/usr/bin/env")).toBeNull();
-    mkdirSync(path.join(state, "atui", "src", "tern"), { recursive: true });
-    writeFileSync(path.join(state, "atui", "src", "tern", "main.ts"), "");
-    expect(ternEntry(state, true, "/usr/bin/env")).toBe(path.join(state, "atui", "src", "tern", "main.ts"));
-    // A binary built into a checkout's dist/bin (install service --link) runs the checkout's client:
-    // a checkout of its own, since this one has a built binary only after `npm run build:binary`.
+  it("picks the client by command, flag, or the binary's atui name", () => {
+    expect(clientCommand(["tui", "--help"], "awui")).toEqual({ client: "atui", args: ["--help"] });
+    expect(clientCommand(["tern", "--url", "http://h:1/"], "awui")).toEqual({ client: "tern", args: ["--url", "http://h:1/"] });
+    expect(clientCommand(["--tern"], "awui")).toEqual({ client: "tern", args: [] });
+    // The binary linked as `atui` takes every argument, server subcommands included.
+    expect(clientCommand(["--version"], "atui")).toEqual({ client: "atui", args: ["--version"] });
+    expect(clientCommand(["--version"], "/home/me/.local/bin/atui")).toEqual({ client: "atui", args: ["--version"] });
+    expect(clientCommand(["--version"], "atui.exe")).toEqual({ client: "atui", args: ["--version"] });
+    // A symlink's path is argv0 only when it is the basename's end; `awui` runs the server.
+    expect(clientCommand(["--version"], "awui")).toBeNull();
+    expect(clientCommand(["doctor"], "awui")).toBeNull();
+  });
+
+  it("runs the clients from source under Bun with their settings", () => {
     const repo = mkdtempSync(path.join(tmpdir(), "awui-checkout-"));
     mkdirSync(path.join(repo, "src", "tern"), { recursive: true });
-    mkdirSync(path.join(repo, "dist", "bin", "linux-x64"), { recursive: true });
     writeFileSync(path.join(repo, "package.json"), "{}");
-    writeFileSync(path.join(repo, "src", "tern", "main.ts"), "");
-    writeFileSync(path.join(repo, "dist", "bin", "linux-x64", "awui"), "");
-    expect(ternEntry(state, true, path.join(repo, "dist", "bin", "linux-x64", "awui"))).toBe(path.join(repo, "src", "tern", "main.ts"));
+    // atui rides OpenTUI's Solid transform; Tern rides Solid's reactive build (--conditions=browser).
+    const atui = sourceRun("atui", repo);
+    expect(atui.entry).toBe(path.join(repo, "src", "atui", "main.tsx"));
+    expect(atui.bunArgs.join(" ")).toContain("preload");
+    expect(atui.needs).toBe(path.join("@opentui", "solid"));
+    const tern = sourceRun("tern", repo);
+    expect(tern.entry).toBe(path.join(repo, "src", "tern", "main.ts"));
+    expect(tern.bunArgs).toContain("--conditions=browser");
+    expect(tern.needs).toBe(path.join("@stencil-hq", "tern"));
   });
 });
