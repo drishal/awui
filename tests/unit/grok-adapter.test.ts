@@ -281,6 +281,13 @@ describe("the grok adapter (scripted CLI)", () => {
     expect(existsSync(dir)).toBe(true);
   });
 
+  it("names the model a new chat starts on from the same handshake as the list", async () => {
+    const [models, fallback] = await Promise.all([adapter.listModels(project), adapter.defaultModel(project)]);
+    expect(fallback).toEqual({ model: "grok-4.7", thinkingLevel: null });
+    expect(models.some((m) => m.key === fallback?.model)).toBe(true);
+    expect(liveGrokChildren()).toBe(0);
+  });
+
   it("lists Grok's models from a short-lived handshake, leaving no session behind", async () => {
     const models = await adapter.listModels(project);
     expect(models.map((m) => [m.key, m.provider, m.levels])).toEqual([

@@ -70,6 +70,10 @@ describe("opencode adapter (scripted server)", () => {
     expect(JSON.stringify(models)).not.toContain("sk-fake");
   });
 
+  it("names the server's default model for a new session", async () => {
+    expect(await adapter.defaultModel(project)).toEqual({ model: "opencode/fast-free", thinkingLevel: null });
+  });
+
   it("makes the session on the first message, then streams a turn with thinking and usage", async () => {
     const { chat, live } = await openChat();
     expect(live.nativeId).toBeNull();

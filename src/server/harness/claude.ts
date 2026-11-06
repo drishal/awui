@@ -244,6 +244,13 @@ class ClaudeRpc {
   }
 }
 
+/** One sessionless child's answer for a project: the models, and the default a new chat there starts on. */
+interface ModelProbe {
+  at: number;
+  models: ModelInfo[];
+  defaultModel: { model: string; thinkingLevel: string | null };
+}
+
 function toModelInfo(m: unknown): ModelInfo | null {
   if (!isObj(m) || typeof m.value !== "string" || !m.value) return null;
   const levels = Array.isArray(m.supportedEffortLevels) ? m.supportedEffortLevels.map(String) : [];
@@ -921,7 +928,9 @@ export class ClaudeAdapter implements HarnessAdapter {
     // Backgrounded Bash lives in a task file the CLI keeps across restarts; the file is the truth.
     jobsSurviveRestart: true,
   };
-  private modelCache: { at: number; models: ModelInfo[] } | null = null;
+  /** Per project: the models are the account's, but the default comes from the project's own settings too. */
+  private modelCache = new Map<string, ModelProbe>();
+  private modelReads = new Map<string, Promise<ModelProbe>>();
   private usageCache: { at: number; accounts: LimitAccount[] } | null = null;
   private metaCache = new Map<string, { mtimeMs: number; size: number; meta: SessionMeta | null }>();
 
@@ -1045,13 +1054,46 @@ export class ClaudeAdapter implements HarnessAdapter {
   }
 
   async listModels(cwd: string): Promise<ModelInfo[]> {
-    if (this.modelCache && Date.now() - this.modelCache.at < MODEL_CACHE_MS) return this.modelCache.models;
+    return (await this.probeModels(cwd)).models;
+  }
+
+  /** The model and effort a new chat in `cwd` starts on: what Claude Code's own settings resolve to, as a chat reads them. */
+  async defaultModel(cwd: string): Promise<{ model: string; thinkingLevel: string | null } | null> {
+    return (await this.probeModels(cwd)).defaultModel;
+  }
+
+  forgetModels(cwd: string): void {
+    this.modelCache.delete(cwd);
+  }
+
+  /** One sessionless child answers both the list and the default; a second caller joins the one on its way. */
+  private probeModels(cwd: string): Promise<ModelProbe> {
+    const cached = this.modelCache.get(cwd);
+    if (cached && Date.now() - cached.at < MODEL_CACHE_MS) return Promise.resolve(cached);
+    const running = this.modelReads.get(cwd);
+    if (running) return running;
+    const read = this.fetchModels(cwd).finally(() => this.modelReads.delete(cwd));
+    this.modelReads.set(cwd, read);
+    return read;
+  }
+
+  private async fetchModels(cwd: string): Promise<ModelProbe> {
     const rpc = new ClaudeRpc(this.cliCommand, [...STREAM_ARGS, "--no-session-persistence"], this.childEnv(), cwd, () => undefined);
     try {
       const init = await rpc.init;
       const models = (Array.isArray(init.models) ? init.models : []).map(toModelInfo).filter((m): m is ModelInfo => m !== null);
-      this.modelCache = { at: Date.now(), models };
-      return models;
+      // The same get_settings a chat reads its model and effort from (readSettings): the user's, the project's, and the local layer resolved.
+      const settings = await rpc.request<Obj>({ subtype: "get_settings" }).catch(() => null);
+      const effective = settings && isObj(settings.effective) ? settings.effective : {};
+      const applied = settings && isObj(settings.applied) ? settings.applied : null;
+      const named = str(effective.model) || "default";
+      // Settings may name a model by its full id; the picker knows it by its key.
+      const model = models.find((m) => m.key === named)?.key ?? models.find((m) => m.id === named)?.key ?? named;
+      const effort = (applied ? str(applied.effort) : str(effective.effortLevel)) || null;
+      const probe: ModelProbe = { at: Date.now(), models, defaultModel: { model, thinkingLevel: effort } };
+      if (this.modelCache.size > 50) this.modelCache.clear();
+      this.modelCache.set(cwd, probe);
+      return probe;
     } finally {
       await rpc.kill().catch(() => undefined);
     }
@@ -1074,7 +1116,7 @@ export class ClaudeAdapter implements HarnessAdapter {
   }
 
   dropModelCache(): void {
-    this.modelCache = null;
+    this.modelCache.clear();
   }
 
   /** Effort levels are per model (ModelInfo.levels). */

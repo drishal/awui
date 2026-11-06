@@ -788,7 +788,7 @@ export class OpenCodeAdapter implements HarnessAdapter {
     jobsSurviveRestart: false,
   };
   readonly server: OpenCodeServer;
-  private modelCache = new Map<string, { at: number; models: ModelInfo[]; windows: Map<string, number> }>();
+  private modelCache = new Map<string, { at: number; models: ModelInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null }>();
 
   constructor(private readonly options: OpenCodeOptions = {}) {
     this.cliCommand = options.command ?? (process.env.OPENCODE_BIN?.trim() || "opencode");
@@ -844,10 +844,27 @@ export class OpenCodeAdapter implements HarnessAdapter {
     return out;
   }
 
-  private async models(cwd: string): Promise<{ models: ModelInfo[]; windows: Map<string, number> }> {
+  private modelReads = new Map<string, Promise<{ models: ModelInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null }>>();
+
+  /** The list and the default are asked together (the start screen), so a read on its way is shared. */
+  private models(cwd: string): Promise<{ models: ModelInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
     const cached = this.modelCache.get(cwd);
-    if (cached && Date.now() - cached.at < MODEL_CACHE_MS) return cached;
-    const found = await this.server.call<{ data?: unknown[] }>("GET", `/api/model?${locationQuery(cwd)}`);
+    if (cached && Date.now() - cached.at < MODEL_CACHE_MS) return Promise.resolve(cached);
+    const running = this.modelReads.get(cwd);
+    if (running) return running;
+    const read = this.readModels(cwd).finally(() => this.modelReads.delete(cwd));
+    this.modelReads.set(cwd, read);
+    return read;
+  }
+
+  private async readModels(cwd: string): Promise<{ models: ModelInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
+    // The default a new session there starts on is the server's own answer (a chat's currentModel asks the same).
+    const [found, fallback] = await Promise.all([
+      this.server.call<{ data?: unknown[] }>("GET", `/api/model?${locationQuery(cwd)}`),
+      this.server.call<{ data?: unknown }>("GET", `/api/model/default?${locationQuery(cwd)}`).catch(() => null),
+    ]);
+    const key = modelKey(fallback?.data);
+    const defaultModel = key ? { model: key, thinkingLevel: levelOf(fallback?.data) } : null;
     const models: ModelInfo[] = [];
     const windows = new Map<string, number>();
     for (const raw of found?.data ?? []) {
@@ -857,13 +874,21 @@ export class OpenCodeAdapter implements HarnessAdapter {
       windows.set(info.key, contextWindow(raw));
     }
     if (this.modelCache.size > 50) this.modelCache.clear();
-    const entry = { at: Date.now(), models, windows };
+    const entry = { at: Date.now(), models, windows, defaultModel };
     this.modelCache.set(cwd, entry);
     return entry;
   }
 
   async listModels(cwd: string): Promise<ModelInfo[]> {
     return (await this.models(cwd)).models;
+  }
+
+  async defaultModel(cwd: string): Promise<{ model: string; thinkingLevel: string | null } | null> {
+    return (await this.models(cwd)).defaultModel;
+  }
+
+  forgetModels(cwd: string): void {
+    this.modelCache.delete(cwd);
   }
 
   async contextWindow(cwd: string, key: string): Promise<number> {

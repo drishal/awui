@@ -290,6 +290,7 @@ function control(frame) {
   const fail = (error) => out({ type: "control_response", response: { subtype: "error", request_id: id, error } });
   switch (request.subtype) {
     case "initialize":
+      record("inits", process.cwd());
       return ok({
         commands: [{ name: "review", description: "Review the change", argumentHint: "[focus]" }],
         models: MODELS,
@@ -300,7 +301,8 @@ function control(frame) {
       // As 2.1.301 answers: `effective` is what the settings layers name, `applied` what runs.
       const levels = MODELS.find((m) => m.value === model)?.supportedEffortLevels ?? [];
       const effort = levels.length === 0 ? null : levels.includes(flagEffort) ? flagEffort : (DEFAULT_EFFORT[model] ?? null);
-      return ok({ effective: { model: "default", ...(flagEffort ? { effortLevel: flagEffort } : {}) }, applied: { model: MODELS.find((m) => m.value === model)?.resolvedModel, effort } });
+      // FAKE_CLAUDE_SETTINGS_MODEL: a settings file naming a model (by its full id, as some do).
+      return ok({ effective: { model: process.env.FAKE_CLAUDE_SETTINGS_MODEL ?? "default", ...(flagEffort ? { effortLevel: flagEffort } : {}) }, applied: { model: MODELS.find((m) => m.value === model)?.resolvedModel, effort } });
     }
     case "set_model":
       model = request.model ?? "default";

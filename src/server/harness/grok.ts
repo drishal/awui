@@ -764,7 +764,9 @@ export class GrokAdapter implements HarnessAdapter {
     supportsResumeCommand: true,
     jobsSurviveRestart: false,
   };
-  private modelCache: { at: number; models: ModelInfo[] } | null = null;
+  private modelCache: { at: number; models: ModelInfo[]; current: string | null } | null = null;
+  /** The listing child on its way: the list and the default are asked together, and share it. */
+  private modelRead: Promise<{ at: number; models: ModelInfo[]; current: string | null }> | null = null;
   private metaCache = new Map<string, { mtimeMs: number; size: number; meta: SessionMeta | null }>();
 
   constructor(private readonly options: GrokOptions) {
@@ -977,11 +979,26 @@ export class GrokAdapter implements HarnessAdapter {
   }
 
   async listModels(cwd: string): Promise<ModelInfo[]> {
-    if (this.modelCache && Date.now() - this.modelCache.at < MODEL_CACHE_MS) return this.modelCache.models;
+    return (await this.readModels(cwd)).models;
+  }
+
+  /** The model a new chat starts on: the handshake's currentModelId (Grok's own config), when it lists that model. */
+  async defaultModel(cwd: string): Promise<{ model: string; thinkingLevel: string | null } | null> {
+    const { models, current } = await this.readModels(cwd);
+    return current && models.some((m) => m.key === current) ? { model: current, thinkingLevel: null } : null;
+  }
+
+  private readModels(cwd: string): Promise<{ at: number; models: ModelInfo[]; current: string | null }> {
+    if (this.modelCache && Date.now() - this.modelCache.at < MODEL_CACHE_MS) return Promise.resolve(this.modelCache);
     // initialize alone: session/new would create a session directory for a model list.
-    const table = await this.fetchModels(cwd);
-    this.modelCache = { at: Date.now(), models: table.models };
-    return table.models;
+    this.modelRead ??= this.fetchModels(cwd)
+      .then((table) => (this.modelCache = { at: Date.now(), models: table.models, current: table.current }))
+      .finally(() => (this.modelRead = null));
+    return this.modelRead;
+  }
+
+  forgetModels(): void {
+    this.dropModelCache();
   }
 
   dropModelCache(): void {

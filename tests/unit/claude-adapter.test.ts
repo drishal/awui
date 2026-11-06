@@ -61,6 +61,23 @@ const recorded = (key: string): unknown[] => {
 const answered = (chat: Chat, text: string) => chat.snapshot().items.some((i) => i.kind === "assistant" && i.text.includes(text));
 
 describe("claude adapter (scripted CLI)", () => {
+  it("names the model and effort a new chat starts on, from the same child that lists the models", async () => {
+    await adapter.shutdown();
+    adapter = new ClaudeAdapter({
+      command: script,
+      home,
+      env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), FAKE_CLAUDE_STATE: state, CLAUDECODE: "1", FAKE_CLAUDE_SETTINGS_MODEL: "fake-haiku" },
+    });
+    const [models, fallback] = await Promise.all([adapter.listModels(project), adapter.defaultModel(project)]);
+    // Settings name the model by its full id; the start screen knows it by the picker's key.
+    expect(fallback).toEqual({ model: "haiku", thinkingLevel: "medium" });
+    expect(models.some((m) => m.key === fallback?.model)).toBe(true);
+    expect(recorded("inits")).toHaveLength(1);
+    adapter.forgetModels(project);
+    await adapter.defaultModel(project);
+    expect(recorded("inits")).toHaveLength(2);
+  });
+
   it("opens with a session id of its own, then streams a turn with thinking and usage", async () => {
     const { chat, live } = await openChat();
     expect(live.nativeId).toMatch(/^[0-9a-f-]{36}$/);
