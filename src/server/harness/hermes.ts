@@ -1277,7 +1277,9 @@ export class HermesAdapter implements HarnessAdapter {
     supportsResumeCommand: false,
     jobsSurviveRestart: false,
   };
-  private probes = new Map<string, { at: number; models: ModelInfo[]; userDefined: Set<string> }>();
+  private probes = new Map<string, { at: number; models: ModelInfo[]; userDefined: Set<string>; defaultKey: string }>();
+  /** A catalog read on its way per project: the models route asks for the list and the default at once, which is one probe. */
+  private catalogReads = new Map<string, Promise<ModelInfo[]>>();
   private rowCache: { at: number; rows: StoredRow[] } | null = null;
 
   /**
@@ -1476,6 +1478,15 @@ export class HermesAdapter implements HarnessAdapter {
   async listModels(cwd: string, refresh = false, ask?: (params: Obj) => Promise<Obj>): Promise<ModelInfo[]> {
     const cached = this.probes.get(cwd);
     if (!refresh && cached && Date.now() - cached.at < PROBE_TTL_MS) return cached.models;
+    if (refresh || ask) return this.readCatalog(cwd, refresh, ask);
+    const inflight = this.catalogReads.get(cwd);
+    if (inflight) return inflight;
+    const read = this.readCatalog(cwd, false).finally(() => this.catalogReads.delete(cwd));
+    this.catalogReads.set(cwd, read);
+    return read;
+  }
+
+  private async readCatalog(cwd: string, refresh: boolean, ask?: (params: Obj) => Promise<Obj>): Promise<ModelInfo[]> {
     const params = refresh ? { refresh: true } : {};
     const result = ask ? await ask(params) : await this.withProbe(cwd, (rpc) => rpc.request<Obj>("model.options", params));
     const models: ModelInfo[] = [];
@@ -1497,8 +1508,18 @@ export class HermesAdapter implements HarnessAdapter {
         models.push({ key, provider: slug, ...(providerName ? { providerName } : {}), id, name: id, ...(isObj(capability) && capability.reasoning === true ? { reasoning: true } : {}) });
       }
     }
-    this.probes.set(cwd, { at: Date.now(), models, userDefined });
+    // Asked without a session_id, model.options names the model and provider from the profile's config:
+    // what a new chat starts on, which the start screen's chip then names instead of "Default model".
+    const defaultKey = hermesModelKey(str(result?.model), str(result?.provider), models, userDefined);
+    this.probes.set(cwd, { at: Date.now(), models, userDefined, defaultKey });
     return models;
+  }
+
+  /** The model a new chat in `cwd` starts on, as a catalog key (the reasoning level is the session's, so not said). */
+  async defaultModel(cwd: string): Promise<{ model: string; thinkingLevel: string | null } | null> {
+    await this.listModels(cwd);
+    const key = this.probes.get(cwd)?.defaultKey;
+    return key ? { model: key, thinkingLevel: null } : null;
   }
 
   /** The providers in the last catalog read for `cwd` that are the user's own endpoints (Hermes's "custom"). */

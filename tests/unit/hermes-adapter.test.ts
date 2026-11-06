@@ -150,6 +150,14 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(models[0]).toMatchObject({ reasoning: true });
   });
 
+  it("names the configured default model for a new chat, from one catalog read", async () => {
+    const [models, fallback] = await Promise.all([adapter.listModels(project), adapter.defaultModel(project)]);
+    expect(fallback).toEqual({ model: "fake/fake-model", thinkingLevel: null });
+    expect(models.some((m) => m.key === fallback?.model)).toBe(true);
+    // The list and the default came from one probe gateway, not two.
+    expect(JSON.parse(readFileSync(state, "utf8")).spawns).toHaveLength(1);
+  });
+
   it("names Hermes's virtual MoA provider and the presets it offers", async () => {
     const stored = JSON.parse(readFileSync(state, "utf8"));
     stored.moa = true;
