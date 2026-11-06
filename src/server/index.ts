@@ -17,7 +17,7 @@ import { embeddedVersion, extractEmbeddedExtensions, isEmbedded } from "./embedd
 import "./assets.gen.js";
 import { installTui } from "./install-tui.js";
 import { installService } from "./install-service.js";
-import { runTern } from "./tern-client.js";
+import { clientCommand, runClient } from "./clients.js";
 import { runDoctor } from "./doctor.js";
 import { SessionMarks } from "./session-marks.js";
 import { Routines } from "./routines.js";
@@ -306,15 +306,16 @@ async function main(): Promise<void> {
 }
 
 
-/** awui's CLI surface. Beyond `install tui`, a few flags; everything else is env or config.yml. */
+/** awui's CLI surface. Beyond the subcommands, a few flags; everything else is env or config.yml. */
 const HELP = `awui ${embeddedVersion ?? ""} — local web UI for coding agents
 
 Usage:
   awui [flags]           Run the web UI + API (default)
+  awui tui [options]     atui, awui in the terminal (also \`atui\`; awui tui --help)
   awui tern [options]    awui drawn natively in a Tern pane (also awui --tern; awui tern --help)
   awui doctor [--json]   Check the setup (config, harnesses, state folder, port) and print a report; exit 1 on a problem
-  awui install tui       Fetch and install the atui terminal client (~/.local/bin/atui) and the Tern client
-  awui install service   Install the binary for autostart: ~/.local/bin + systemd on Linux/macOS,
+  awui install tui       Put the \`atui\` command on the PATH (~/.local/bin/atui, a link to this awui)
+  awui install service   Install the binary for autostart: ~/.local/bin (with atui) + systemd on Linux/macOS,
                          a logon Scheduled Task on Windows
                          [--link symlinks it instead of copying (POSIX only), for a dev checkout]
 
@@ -353,9 +354,17 @@ function parseFlags(argv: string[]): { port?: string; host?: string; stateDir?: 
   return out;
 }
 
-/** `awui install tui|service`, or flags that run the web server; anything else is a usage error. */
+/** A client (`awui tui`, `awui tern`, the binary as `atui`), `awui doctor`, `awui install tui|service`, or flags that run the web server; anything else is a usage error. */
 const args = process.argv.slice(2);
-if (args[0] === "doctor") {
+// First: the binary linked as `atui` hands atui every argument, `doctor` and `install` included.
+const client = clientCommand(args, process.argv0);
+if (client) {
+  // The clients take their own options (--url, --harness, --resume, --chat), not the server's.
+  runClient(client.client, client.args, { binary: isEmbedded, version: embeddedVersion }).catch((error: unknown) => {
+    console.error(`awui: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
+} else if (args[0] === "doctor") {
   runDoctor(args.slice(1)).then(
     (code) => process.exit(code),
     (error: unknown) => {
@@ -363,11 +372,6 @@ if (args[0] === "doctor") {
       process.exit(1);
     },
   );
-} else if (args[0] === "tern" || args.includes("--tern")) {
-  // The Tern client takes its own options (--url, --harness, --resume, --chat), not the server's.
-  const rest = args[0] === "tern" ? args.slice(1) : args.filter((a) => a !== "--tern");
-  const config = loadConfig({});
-  runTern(rest, config.stateDir, { binary: isEmbedded, version: embeddedVersion });
 } else if (args[0] === "install" && args[1] !== "tui" && args[1] !== "service") {
   console.error(`awui install: expected \`tui\` or \`service\`${args[1] ? `, not \`${args[1]}\`` : ""}\n\n${HELP}`);
   process.exit(64);

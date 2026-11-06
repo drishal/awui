@@ -24,8 +24,9 @@ function reactive(): boolean {
   });
 }
 
-async function main(): Promise<void> {
-  const parsed = parseTernArgs(process.argv.slice(2), process.env);
+/** Run the Tern client with `argv` (its options, without the command): from source under Bun, or `awui tern` inside the binary. */
+export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+  const parsed = parseTernArgs(argv, process.env);
   if ("help" in parsed) {
     console.log(TERN_USAGE);
     return;

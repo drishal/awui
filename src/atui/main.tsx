@@ -14,8 +14,9 @@ import { progressSequence, speaksProgress, type Progress, type TerminalState } f
 import { App } from "./ui/app.js";
 import { startTicker, stopTicker } from "./ui/ticker.js";
 
-async function main(): Promise<void> {
-  const parsed = parseArgs(process.argv.slice(2), process.env);
+/** Run atui with `argv` (its options, without the command): from bin/atui, or `awui tui` inside the binary. */
+export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+  const parsed = parseArgs(argv, process.env);
   if ("help" in parsed) {
     console.log(USAGE);
     return;

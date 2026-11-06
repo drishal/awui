@@ -1,19 +1,25 @@
 // Builds the self-contained `awui` binary: the dist server plus the built web
-// bundle and the harness extension sources, embedded, compiled to a native
-// executable per target with `bun build --compile`. The web server is the
-// product; `awui install tui` (a subcommand inside the binary) lays down the
-// atui Bun script separately.
+// bundle, the harness extension sources, and both terminal clients (atui and
+// Tern, the `awui:clients` module), embedded, compiled to a native executable
+// per target with `bun build --compile`.
 //
 //   bun run scripts/build-binary.ts            # this machine's platform
 //   bun run scripts/build-binary.ts --all      # every target (CI/release)
 //
-// Pipeline: `npm run build` (dist/server + dist/web), generate the embedded
-// asset module, then compile. The generated module's import runs
-// registerEmbeddedAssets() at startup, so the server serves the bundle from
+// Pipeline: `npm run build` (dist/server + dist/web), bundle the clients, generate
+// the embedded asset module, then compile. The generated module's import runs
+// registerEmbeddedAssets() at startup, so the server serves the web bundle from
 // memory and materializes the extension sources into the state folder on first
-// run of a harness chat.
-import { $ } from "bun";
-import { readdir, readFile, stat } from "node:fs/promises";
+// run of a harness chat. The clients bundle rides in as the `awui:clients` module:
+// `awui tui` and `awui tern` (src/server/clients.ts) import it, so a binary needs
+// no Bun and no fetched copy, and its clients always match its server.
+import { $, type CompileTarget } from "bun";
+import { existsSync } from "node:fs";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+// Static, by file: the package's "./bun-plugin" export map does not resolve under
+// Bun (its "types" condition first), and this script runs under `bun run` only
+// (the plugin's node build throws on Bun.build), so the file path is safe.
+import { createSolidTransformPlugin } from "../node_modules/@opentui/solid/scripts/solid-plugin.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,6 +29,57 @@ process.chdir(root);
 
 // The embeds read from dist/: build the server and web bundle first.
 await $`npm run build`;
+
+// The clients bundle: atui and Tern as the `awui:clients` module (src/atui/embed.ts).
+// It gets the settings the server must not: OpenTUI's Solid transform for atui, and
+// Tern rides whatever `--conditions` the server bundle does not set (Solid's reactive
+// build is picked by the client's own `bun --conditions=browser` from source; here the
+// bundler resolves the browser conditions directly). The native @opentui/core-<platform>
+// packages stay external: the compiled bundle handles each one's with-type-file import
+// (the .so/.dll embeds there), and npm's os/cpu gates mean only this platform's package
+// is installed — the others are stubs that fail loudly if ever imported.
+const NATIVE_PACKAGES = ["@opentui/core-darwin-x64", "@opentui/core-darwin-arm64", "@opentui/core-linux-x64", "@opentui/core-linux-x64-musl", "@opentui/core-linux-arm64", "@opentui/core-linux-arm64-musl", "@opentui/core-win32-x64", "@opentui/core-win32-arm64"];
+
+/** Bundle the terminal clients into dist/clients.js. */
+async function bundleClients(): Promise<void> {
+  // The native packages npm did not install (other platforms): real stub modules, since
+  // Bun.build's onResolve must give the "file" namespace an absolute path.
+  const missing = NATIVE_PACKAGES.filter((pkg) => !existsSync(path.join(root, "node_modules", pkg)));
+  const stubDir = path.join(root, "dist", "client-stubs");
+  await mkdir(stubDir, { recursive: true });
+  for (const pkg of missing) {
+    const name = pkg.split("/")[1]!;
+    await Bun.write(path.join(stubDir, `${name}.js`), `throw new Error("native library for another platform rides in ${pkg}'s package only");\nexport default "";\n`);
+  }
+  const stubbed = new Set(missing.map((pkg) => pkg.split("/")[1]!));
+  const clients = await Bun.build({
+    entrypoints: [path.join(root, "src", "atui", "embed.ts")],
+    target: "bun",
+    format: "esm",
+    minify: false,
+    sourcemap: "none",
+    plugins: [
+      createSolidTransformPlugin(),
+      {
+        name: "client-native-stubs",
+        setup(build) {
+          for (const pkg of missing) {
+            const name = pkg.split("/")[1]!;
+            build.onResolve({ filter: new RegExp(`^${pkg.replace(/[-/]/g, "\\$&")}$`) }, () => ({ path: path.join(stubDir, `${name}.js`) }));
+          }
+        },
+      },
+    ],
+    // Every native package rides external: this platform's so the compiled bundle embeds
+    // its library, the stubbed ones so their stubs stay small loader-time failures.
+    external: NATIVE_PACKAGES,
+  });
+  if (!clients.success) throw new Error(`the clients bundle failed: ${clients.logs.slice(0, 5).map(String).join("; ")}`);
+  await Bun.write(path.join(root, "dist", "clients.js"), clients.outputs[0]!);
+  if (stubbed.size > 0) await rm(stubDir, { recursive: true, force: true });
+}
+
+await bundleClients();
 
 const ALL = process.argv.includes("--all");
 const CONTENT_TYPES: Record<string, string> = {
@@ -124,7 +181,17 @@ try {
       minify: true,
       sourcemap: "none",
       target: "bun",
-      compile: { target: target as import("bun").CompileTarget, outfile: staged },
+      // The clients bundle rides in as the `awui:clients` module (src/server/clients-module.d.ts);
+      // the declared module has no real file, so a resolver hands the import dist/clients.js.
+      plugins: [
+        {
+          name: "awui-clients-module",
+          setup(build) {
+            build.onResolve({ filter: /^awui:clients$/ }, () => ({ path: path.join(root, "dist", "clients.js") }));
+          },
+        },
+      ],
+      compile: { target: target as CompileTarget, outfile: staged },
       define: {
         AWUI_EMBEDDED: "true",
         AWUI_VERSION: JSON.stringify(pkg.version),
