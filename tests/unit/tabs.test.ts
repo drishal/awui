@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChatSnapshot } from "../../src/shared/protocol.js";
 import { setPinned } from "../../src/web/tab-order.js";
-import { closeTab, findTab, markUnread, NO_TABS, placeChat, placeTab, runningChats, syncActive, type TabState } from "../../src/web/tabs.js";
+import { closeTab, findTab, markUnread, NO_TABS, placeChat, placeTab, runningChats, syncActive, type Tab, type TabState } from "../../src/web/tabs.js";
 
 const snap = (chatId: string, sessionId: string | null = `fake:${chatId}`, title = chatId) =>
   ({ chatId, sessionId, harnessId: "fake", workspace: { id: "w", path: "/p", name: "p" }, title }) as unknown as ChatSnapshot;
@@ -18,6 +18,23 @@ describe("session tabs", () => {
     // A new tab goes right after the shown one.
     s = placeChat({ ...s, active: 0 }, snap("d"), { newTab: true });
     expect([ids(s), s.active]).toEqual([["b", "d", "c"], 1]);
+  });
+
+  it("places a chat in the background: the tab its key names, else a new one after the shown, and the view stays", () => {
+    const key = "tmine";
+    const tabOf = (chatId: string | null, k: string, title = chatId ?? "New chat"): Tab => ({ key: k, chatId, sessionId: chatId ? `fake:${chatId}` : null, harnessId: "fake", workspacePath: "/p", title });
+    // The shown tab is "b" (active 1); the draft the start screen's send belongs to sits after it.
+    const s: TabState = { tabs: [tabOf("a", "t0"), tabOf("b", "t1"), tabOf(null, key)], active: 1 };
+    // The create landed after the user switched to b: the draft tab that sent it is
+    // filled in, and the view stays on b.
+    const landed = placeChat(s, snap("new", "fake:new", "Named"), { background: true, forKey: key });
+    expect(ids(landed)).toEqual(["a", "b", "new"]);
+    expect(landed.active).toBe(1);
+    expect(landed.tabs[2]?.key).toBe(key);
+    // Without a key of its own (a stale one, or no draft), a new tab after the shown one.
+    const beside = placeChat(s, snap("new2", "fake:new2", "Other"), { background: true });
+    expect(ids(beside)).toEqual(["a", "b", "new2", null]);
+    expect(beside.active).toBe(1);
   });
 
   it("switches to the tab that already holds the chat or its session instead of opening it twice", () => {

@@ -556,6 +556,8 @@ export function App() {
     rememberShown();
     setTabState((st) => placeChat(st, snapshot, { newTab }));
     setChat(snapshot);
+    // The start screen's tab key is consumed: its draft has become (or lost) this chat.
+    startTabKey.current = null;
     setBanner(null);
     setSplash((sp) => (sp ? { ...sp, leaving: true } : sp));
     if (!keepDrawer) setDrawerOpen(false);
@@ -575,6 +577,7 @@ export function App() {
     leaveRoom();
     rememberShown();
     setStartSeed(null);
+    startTabKey.current = null;
     setTabState((st) => ({ ...st, active: -1 }));
     setChat(null);
     setHash(null);
@@ -592,7 +595,14 @@ export function App() {
     leaveRoom();
     rememberShown();
     setStartSeed(null);
-    setTabState((st) => placeTab(st, draftTab(harnessId ?? "", workspace?.path ?? ""), { newTab: true }));
+    startTabKey.current = null;
+    let made: string | null = null;
+    setTabState((st) => {
+      const next = placeTab(st, draftTab(harnessId ?? "", workspace?.path ?? ""), { newTab: true });
+      made = next.tabs[next.active]?.key ?? null;
+      return next;
+    });
+    startTabKey.current = made;
     setChat(null);
     setHash(null);
     setBanner(null);
@@ -600,6 +610,11 @@ export function App() {
     setDrawerOpen(false);
   };
 
+
+  /** The tab a start screen's send fills in: the draft tab the strip's + made, or none
+   * (the start screen without a tab, a project's +). Kept here, so a create that lands
+   * after the user switched tabs fills that same tab in from the background. */
+  const startTabKey = useRef<string | null>(null);
   /** A project's +: that project's folder on the start screen, with nothing started yet. */
   const startIn = async (ws: WorkspaceInfo) => {
     try {
@@ -701,10 +716,10 @@ export function App() {
     try {
       const ws = await enterWorkspace(target);
       const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId, workspaceId: ws.id, ...(startModel ? { model: startModel } : {}), ...(startThinking ? { thinkingLevel: startThinking } : {}) } });
-      if (token !== nav.current) {
-        api(`/api/chats/${snapshot.chatId}/dispose`, { body: {} }).catch(() => undefined);
-        return false;
-      }
+      // A create is never undone by the user going elsewhere while it ran (a tab
+      // switch, another open): the chat keeps its tab and its prompt, landing in
+      // the background below. startingRef already guarantees one create at a time,
+      // so there is nothing to dispose this one against.
       try {
         await api(`/api/chats/${snapshot.chatId}/messages`, {
           body: {
@@ -724,7 +739,18 @@ export function App() {
       // The chat took the picks; a next New chat starts on the harness's defaults again.
       setStartModel(null);
       setStartThinking("");
-      showChat(snapshot);
+      if (token !== nav.current) {
+        // The user went elsewhere while the harness spawned: the chat keeps its tab —
+        // the draft that sent it, else a background one after the view — and does not
+        // steal the screen or get dropped for the detour.
+        const from = startTabKey.current;
+        // The create snapshot predates the message: read it back once the run has
+        // taken it, so the background tab carries its title (and items) at once.
+        const fresh = await api<ChatSnapshot>(`/api/chats/${snapshot.chatId}`).catch(() => snapshot);
+        setTabState((st) => placeChat(st, fresh, { background: true, ...(from ? { forKey: from } : {}) }));
+      } else {
+        showChat(snapshot);
+      }
       void refreshSessions();
       return true;
     } catch (e) {
@@ -749,11 +775,16 @@ export function App() {
     try {
       const ws = await enterWorkspace(target);
       const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId, workspaceId: ws.id } });
-      if (token !== nav.current) return;
+      if (token !== nav.current) {
+        // The user went elsewhere while the harness spawned: the chat keeps its tab
+        // (a background one after the view), not dropped for the detour.
+        setTabState((st) => placeChat(st, snapshot, { newTab: true, background: true }));
+        void refreshSessions();
+        return;
+      }
       showChat(snapshot, { newTab });
       void refreshSessions();
     } catch (e) {
-      if (token !== nav.current) return;
       fail(e);
       setDrawerOpen(false);
     } finally {
@@ -1001,7 +1032,11 @@ export function App() {
     const token = beginOpen(splashFor(tab));
     rememberShown();
     const before = tabsRef.current;
-    const placed = placeTab(before, tab, { newTab });
+    // The draft the user is composing in (a start screen's tab) is never taken
+    // over: opening a past session beside it keeps the new chat they are about
+    // to start. Anything else still takes the shown tab's place.
+    const composing = startTabKey.current !== null && before.active >= 0 && before.tabs[before.active]?.key === startTabKey.current;
+    const placed = placeTab(before, tab, { newTab: newTab || composing });
     tabsRef.current = placed;
     setTabState(placed);
     setDrawerOpen(false);

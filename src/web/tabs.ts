@@ -61,11 +61,31 @@ export function findTab(state: TabState, chat: { chatId: string | null; sessionI
 /**
  * Put a chat on screen. A chat that is already open in a tab is switched to;
  * otherwise it takes over the shown tab (Hermes's main view), or a new one
- * after it with `newTab` (or when nothing is open yet).
+ * after it with `newTab` (or when nothing is open yet). With `background`, the
+ * view stays where it is: the chat fills the tab `forKey` names (the draft a
+ * start screen's send belongs to), or a new tab after the shown one — a create
+ * that landed after the user went elsewhere keeps its tab instead of stealing
+ * the screen or being dropped.
  */
-export function placeChat(state: TabState, snapshot: ChatSnapshot, { newTab = false }: { newTab?: boolean } = {}): TabState {
-  const { key: _key, ...tab } = fromSnapshot(snapshot, "");
-  return placeTab(state, tab, { newTab });
+export function placeChat(state: TabState, snapshot: ChatSnapshot, { newTab = false, background = false, forKey }: { newTab?: boolean; background?: boolean; forKey?: string } = {}): TabState {
+  const base = fromSnapshot(snapshot, "");
+  if (background) {
+    if (forKey) {
+      const at = state.tabs.findIndex((t) => t.key === forKey);
+      if (at >= 0) {
+        const was = state.tabs[at] as Tab;
+        const tabs = state.tabs.slice();
+        tabs[at] = { ...base, key: forKey, pinned: was.pinned };
+        return { tabs, active: state.active };
+      }
+    }
+    // No tab of its own to fill (or its key is stale): a new one after the shown
+    // tab, but never among the pinned ones, and the shown tab stays shown.
+    const at = Math.max(state.active + 1, pinnedCount(state.tabs));
+    const tabs = [...state.tabs.slice(0, at), { ...base, key: newKey() }, ...state.tabs.slice(at)];
+    return { tabs, active: state.active };
+  }
+  return placeTab(state, base, { newTab });
 }
 
 /**
