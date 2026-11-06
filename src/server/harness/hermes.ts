@@ -654,8 +654,14 @@ class HermesLiveChat implements LiveChat {
       // The key needs the catalog to tell a real pick from a stranded name; once it is read, say it again.
       if (!this.models) void this.modelList().then(() => this.emit({ type: "config", config: { model: this.modelKey() || null } }), () => undefined);
     }
+    // Only a payload that names `running` says anything about it. The canonical gateway's own
+    // session.info (gateway/session_local.py::local_session_info: the auto-title republish and the
+    // turn's agent inventory, both mid-turn) carries no `running` field at all, and reading that as
+    // false settled every turn before its first tool ran: the chat said Idle while Hermes worked.
+    // Hermes Desktop reads the field the same way (use-message-stream/gateway-event/session-info.ts).
+    if (typeof info.running !== "boolean") return;
     const wasRunning = this.running;
-    this.running = info.running === true;
+    this.running = info.running;
     if (this.running && !wasRunning) this.emit({ type: "busy" });
     // A turn that ends without `message.complete` (reclaimed session, crash) still settles the UI.
     if (!this.running && wasRunning) {
@@ -707,6 +713,9 @@ class HermesLiveChat implements LiveChat {
     const p = isObj(params.payload) ? params.payload : {};
     switch (type) {
       case "message.start":
+        // The turn is live from here whatever session.info says later; its running=false at the end is then
+        // the same settle message.complete already made, not a second one.
+        this.running = true;
         this.emit({ type: "busy" });
         this.emit({ type: "assistant_start", ...(str(this.info.model) ? { model: str(this.info.model) } : {}) });
         break;
@@ -778,11 +787,22 @@ class HermesLiveChat implements LiveChat {
           ...(error ? { error } : {}),
           ...(step ? { usage: step } : {}),
         });
+        this.running = false;
         this.statusLine("");
         this.emit({ type: "settled" });
         break;
       }
+      case "tool.generating": {
+        // The model is still writing a call's arguments (a long patch can take a while, and nothing
+        // else arrives meanwhile). It names the tool and nothing more — no id, no args — so, as in
+        // Hermes Desktop, it is a status, not a row: a row made from it could never be matched to
+        // the tool.start that follows. That start clears it.
+        const name = str(p.name);
+        if (name) this.statusLine(`Writing a ${name} call`);
+        break;
+      }
       case "tool.start": {
+        if (this.statusText?.startsWith("Writing a ")) this.statusLine("");
         const args = p.args ?? p.args_text ?? {};
         this.emit({ type: "tool_start", toolCallId: str(p.tool_id) || randomUUID(), name: str(p.name) || "tool", args });
         break;

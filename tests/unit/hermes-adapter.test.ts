@@ -294,6 +294,20 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(assistant && assistant.kind === "assistant" && assistant.thinking).toBe("hmm ");
   });
 
+  it("stays running through a mid-turn session.info that names no running state", async () => {
+    const { chat } = await openChat();
+    await chat.send("retitled run", "normal");
+    // Before the call starts: the title has landed, the model is writing the call, and the turn is still live.
+    await until(() => chat.snapshot().extensionStatus["hermes:status"] === "Writing a terminal call");
+    expect(chat.status).toBe("running");
+    expect(chat.snapshot().title).toBe("Retitled by Hermes");
+    await until(() => chat.snapshot().items.some((i) => i.kind === "tool" && i.status === "running"));
+    expect(chat.status).toBe("running");
+    expect(chat.snapshot().extensionStatus["hermes:status"]).toBeUndefined();
+    await until(() => chat.status === "idle");
+    expect(chat.snapshot().items.find((i) => i.kind === "tool")).toMatchObject({ name: "terminal", status: "done" });
+  });
+
   it("settles a turn and follows the model from session.info alone", async () => {
     const { chat } = await openChat();
     await chat.send("vanish now", "normal");

@@ -110,6 +110,18 @@ async function runPrompt(text) {
     event("tool.start", { tool_id: "t-approval", name: "terminal", args: { command: "rm -rf /tmp/x" } });
     event("tool.complete", { tool_id: "t-approval", name: "terminal", result: "removed", summary: "rm -rf /tmp/x" });
   }
+  if (/\bretitled\b/.test(text)) {
+    // As the canonical gateway does mid-turn: the auto-title lands as a session.info that names no
+    // `running` (gateway/session_local.py::local_session_info), then the model writes a call's
+    // arguments (tool.generating: a name, no id) before the call runs.
+    title = "Retitled by Hermes";
+    event("session.info", { model, provider, title, stored_session_id: storedId, lazy: false }, sessionId);
+    event("tool.generating", { name: "terminal" }, sessionId);
+    await new Promise((r) => setTimeout(r, 150));
+    event("tool.start", { tool_id: "t-retitled", name: "terminal", args: { command: "ls" } }, sessionId);
+    await new Promise((r) => setTimeout(r, 150));
+    event("tool.complete", { tool_id: "t-retitled", name: "terminal", result: "a\nb" }, sessionId);
+  }
   if (/\btool\b|\bbig\b/.test(text)) {
     const big = /\bbig\b/.test(text);
     event("tool.start", { tool_id: "t1", name: "read", args: { path: "README.md" } });
