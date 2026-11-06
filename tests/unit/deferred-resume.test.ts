@@ -142,6 +142,27 @@ describe("resume from the session file", () => {
   });
 });
 
+describe("a prompt sent after the harness is up", () => {
+  it("is this chat's own run, not one the harness started on its own", async () => {
+    const hub = new EventHub();
+    const real = {
+      nativeId: "n1",
+      subscribe: (l: HarnessEventListener) => hub.subscribe(l),
+      getConfig: async () => ({ model: "fake/echo", thinkingLevel: null, models: [], thinkingLevels: [] }),
+      prompt: async () => void hub.emit({ type: "busy" }),
+      dispose: async () => undefined,
+    } as unknown as LiveChat;
+    const chat = new DeferredLiveChat("n1", { items: [], title: null }, async () => real, String);
+    const seen: string[] = [];
+    chat.subscribe((e) => seen.push(e.type === "notice" ? `notice: ${e.text}` : e.type));
+    // Up and idle first: the reopened chat is waiting for its next message.
+    await until(() => seen.includes("settled"));
+    await chat.prompt("next question");
+    expect(seen).toContain("busy");
+    expect(seen.filter((e) => e.startsWith("notice"))).toEqual([]);
+  });
+});
+
 describe("a harness that is already running when it comes up", () => {
   it("stays running, not Idle: its own settle ends the run", async () => {
     // A turn an extension started at load (Pi's background-tasks): the start is buffered before anyone subscribes.

@@ -31,7 +31,7 @@ export class DeferredLiveChat implements LiveChat {
   private hub = new EventHub();
   private real: LiveChat | null = null;
   private disposed = false;
-  /** A run (prompt, steer, follow-up) arrived before the harness did: its own events settle the chat. */
+  /** A run (prompt, steer, follow-up) was sent from here: its own events settle the chat, and its busy is no surprise. */
   private asked = false;
   /**
    * The harness started a run of its own as it came up, with no prompt from here: an extension's
@@ -89,7 +89,10 @@ export class DeferredLiveChat implements LiveChat {
 
   /** The harness, once it is up (a command waits here). `run` marks a prompt, which settles on its own. */
   private async harness(run = false): Promise<LiveChat> {
-    if (run && !this.real) this.asked = true;
+    // Every prompt from here counts, not only one sent while the harness was starting: one sent after
+    // it came up used to leave this unset, so its run's busy read as the harness working on its own,
+    // and the first message in every reopened chat raised the "started working on its own" warning.
+    if (run) this.asked = true;
     return this.ready;
   }
 
