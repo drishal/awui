@@ -108,6 +108,7 @@ import { runCommand } from "./run-command.js";
 import { shellLine } from "./shell-line.js";
 import type { Workspaces } from "./workspaces.js";
 import { allowEnvrc, direnvState, prepareSpawnEnv } from "./direnv.js";
+import { ModelCatalog } from "./model-catalog.js";
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
 export const RECENT_SESSIONS_PER_HARNESS = 200;
@@ -143,6 +144,8 @@ export interface AppDeps {
   checkpointsDir?: string | null;
   /** The server state folder, where agent-rendered HTML pages are stored. */
   stateDir?: string | null;
+  /** The start screen's model answers per harness and project; saved in the state folder when absent and one is set. */
+  modelCatalog?: ModelCatalog;
   /** Herdr's panes, to mark the sessions they run; none when absent (tests that do not ask for it). */
   herdr?: Herdr;
   /** Board rooms; without one the board routes answer 404 and ownership filtering is a no-op. */
@@ -205,6 +208,7 @@ export function createApp(deps: AppDeps) {
   const limits = deps.limits ?? Limits.inMemory(registry);
   manager.onLimits = (account) => limits.report(account);
   const notifier = deps.notifier ?? Notifier.inMemory();
+  const modelCatalog = deps.modelCatalog ?? new ModelCatalog(deps.stateDir ? path.join(deps.stateDir, "model-catalog.json") : null);
   const chatSearcher = new ChatSearcher();
   const usageReader = new UsageReader();
   if (deps.checkpointsDir) manager.checkpoints = { service: new Checkpoints(deps.checkpointsDir), sessionsDir: path.join(deps.checkpointsDir, "sessions") };
@@ -530,23 +534,18 @@ export function createApp(deps: AppDeps) {
     const ws = await workspaces.get(String(req.query.workspaceId ?? ""));
     const problem = adapter.workspaceProblem(ws.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
-    // The list is served from cache at any age (a cold probe costs seconds); Refresh asks the harness again.
-    if (req.query.refresh === "1") adapter.forgetModels?.(ws.path);
+    // The answer is served from the catalog at any age, saved across restarts and refreshed behind
+    // the request once stale (model-catalog.ts: a cold probe costs seconds); Refresh asks the harness now.
     // A cold probe spawns the harness in the project: evaluate its .envrc off the event loop first.
     await prepareSpawnEnv(ws.path);
     try {
-      // thinkingLevels is the harness's own default list, for a picker with no model chosen yet;
-      // a model's own levels (ModelInfo.levels) win when one is. Both are the harness's words, never invented.
-      // defaultModel is the harness's own default so the start screen can name it; null when the harness does not say.
-      const [models, thinkingLevels, defaultModel] = await Promise.all([
-        adapter.listModels(ws.path),
-        adapter.listThinkingLevels(ws.path).catch(() => [] as string[]),
-        adapter.defaultModel ? adapter.defaultModel(ws.path).catch(() => null) : Promise.resolve(null),
-      ]);
-      res.json({ models, thinkingLevels, defaultModel });
+      res.json(await modelCatalog.get(adapter, ws.path, req.query.refresh === "1"));
     } catch (error) {
       throw new ChatError(502, "models_unavailable", `${adapter.displayName} could not list its models: ${errorMessage(error)}`);
     }
+    // The other harnesses' answers for this project, filled in behind it, so switching harness here is instant.
+    const others = registry.list().filter((other) => other.id !== adapter.id && registry.isAvailable(other.id) && !other.workspaceProblem(ws.path));
+    void modelCatalog.warm(others, ws.path);
   });
 
   // A session's last prompt and answer, for a history picker's preview: from

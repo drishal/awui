@@ -106,6 +106,7 @@ src/server/
   file-view.ts                The file viewer: one of the project's own files (project-files' list), realpath-confined, bounded.
   saved-prompts.ts            Saved prompts: the server's list for every device, names unique, bounded, in the state folder.
   usage-report.ts             Usage across chats: each session's calls (adapter.readUsage), added up by day, harness, model, chat.
+  model-catalog.ts            The start screen's models, levels, and default per harness and project: served at once, refreshed behind, saved across restarts.
   chat-search.ts              Search every chat: the sidebar's sessions read (never started), matched, bounded, cached per version.
   herdr.ts                    herdr's JSON socket: its panes by session (sidebar marks, the resume guard), focusing one; atui reports through it.
   harness/plans.ts            A plan call's plan (ExitPlanMode, plan_mode_complete) onto its tool item, bounded.
