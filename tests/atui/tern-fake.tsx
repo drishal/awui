@@ -30,6 +30,8 @@ export class FakeTern {
   /** Every message the program sent, in order: verb and body. */
   readonly sent: Array<{ verb: string; body: unknown }> = [];
   focus: string | null = null;
+  /** Nodes as they were first added, before later `set` ops: startup props remain visible here. */
+  readonly added: Array<{ id: string; k: string; p?: Record<string, unknown> }> = [];
   #buffer = "";
   #chunks = new Map<string, string>();
 
@@ -84,6 +86,7 @@ export class FakeTern {
 
   #add(node: WireNode): void {
     this.nodes.set(node.id, { id: node.id, k: node.k, p: { ...(node.p ?? {}) }, c: (node.c ?? []).map((c) => c.id) });
+    this.added.push(node);
     for (const child of node.c ?? []) this.#add(child);
   }
 

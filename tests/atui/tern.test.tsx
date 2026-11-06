@@ -60,6 +60,35 @@ function olderServer(keys: readonly string[]): { base: string; stop: () => void 
   return { base: `http://127.0.0.1:${proxy.port}`, stop: () => void proxy.stop(true) };
 }
 
+/** The test server behind a proxy that holds back each chat's event stream by `ms`: a chat that is shown but not yet connected. */
+function slowStream(ms: number): { base: string; stop: () => void } {
+  const proxy = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url);
+      if (url.pathname.endsWith("/events")) await wait(ms);
+      return fetch(`${BASE}${url.pathname}${url.search}`, { method: req.method, headers: req.headers, body: req.method === "GET" ? null : await req.text() });
+    },
+  });
+  return { base: `http://127.0.0.1:${proxy.port}`, stop: () => void proxy.stop(true) };
+}
+
+/** The test server behind a proxy that holds /api/usage back by `ms`, or answers it with `status` and an error when one is given. */
+function usageProxy(opts: { ms?: number; status?: number }): { base: string; stop: () => void } {
+  const proxy = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url);
+      if (url.pathname === "/api/usage") {
+        if (opts.ms) await wait(opts.ms);
+        if (opts.status) return Response.json({ error: "Usage cannot be read now", code: "usage_failed" }, { status: opts.status });
+      }
+      return fetch(`${BASE}${url.pathname}${url.search}`, { method: req.method, headers: req.headers, body: req.method === "GET" ? null : await req.text() });
+    },
+  });
+  return { base: `http://127.0.0.1:${proxy.port}`, stop: () => void proxy.stop(true) };
+}
+
 interface Client {
   tern: FakeTern;
   app: Atui;
@@ -75,10 +104,11 @@ afterEach(async () => {
   client = null;
 });
 
-async function start(project = "alpha", base = BASE): Promise<Client> {
+/** `lateInit` draws the first frame before the server has answered (init is the test's to call); `chatId` opens that chat. */
+async function start(project = "alpha", base = BASE, opts: { lateInit?: boolean; chatId?: string } = {}): Promise<Client> {
   const tern = new FakeTern();
-  const app = createRoot(() => createAtui(new Server(base), { cwd: path.join(server.root, project), harness: "fake" }));
-  await app.init();
+  const app = createRoot(() => createAtui(new Server(base), { cwd: path.join(server.root, project), harness: "fake", ...(opts.chatId ? { chatId: opts.chatId } : {}) }));
+  if (!opts.lateInit) await app.init();
   const session = await connect({ app: "awui", input: tern.input, output: tern.output, env: { TERM_PROGRAM: "tern" }, exitHooks: false, features: ["edit", "undo", "send"] });
   if (!session) throw new Error("the stand-in Tern did not answer hello");
   const written: string[] = [];
@@ -124,6 +154,47 @@ describe("awui tern", () => {
     expect(tern.text("main")).toContain("Explain this project's structure");
     expect(tern.focus).toBe("dock.d.comp.ed");
     expect(tern.errors).toEqual([]);
+  });
+
+  it("asks Tern to hold startup typing until the start screen has its data, then never again", async () => {
+    client = await start("alpha", BASE, { lateInit: true });
+    const { tern, app, until } = client;
+    const held = () => tern.nodes.get("dock.d.comp.ed")?.p.typeahead === true;
+    // Drawn before the server has answered: nothing real to type into yet.
+    expect(held()).toBe(true);
+    await wait(150);
+    expect(held()).toBe(true);
+    await app.init();
+    await until(() => !held(), "typeahead to clear");
+    expect(tern.text("main")).toContain("What should Fake do in alpha?");
+    // Once cleared it stays cleared: a run and its end do not set it again.
+    tern.type("tool please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: tool please"), "a run");
+    expect(held()).toBe(false);
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("holds startup typing for a chat until its stream is connected", async () => {
+    const first = await start();
+    first.tern.type("hello\r");
+    await first.until(() => first.app.chat()?.status === "idle" && first.tern.text("main").includes("Echo: hello"), "the first chat");
+    const chatId = first.app.chat()?.chatId;
+    await first.quit();
+    // The chat's snapshot is shown at once, but its event stream opens late.
+    const slow = slowStream(500);
+    try {
+      client = await start("alpha", slow.base, { chatId });
+      const { tern, app, until } = client;
+      const held = () => tern.nodes.get("dock.d.comp.ed")?.p.typeahead === true;
+      expect(app.chat()?.chatId).toBe(chatId ?? "");
+      expect(app.conn()).toBe("connecting");
+      expect(held()).toBe(true);
+      await until(() => app.conn() === "connected" && !held(), "the stream to connect and typeahead to clear");
+      expect(tern.text("main")).toContain("Echo: hello");
+      expect(tern.errors).toEqual([]);
+    } finally {
+      slow.stop();
+    }
   });
 
   it("sends a message and draws the prompt, the folded work, and the streamed answer", async () => {

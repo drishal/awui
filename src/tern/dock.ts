@@ -9,6 +9,7 @@ import { isBusy } from "../web/session-groups.js";
 import { blanks } from "../web/prompt-blanks.js";
 import { accountName, tokens, windowLabel } from "../atui/format.js";
 import { optionsOf } from "../atui/requests.js";
+import type { Connection } from "../atui/client.js";
 import { selection, type Draft } from "./draft.js";
 
 /** The editor's node id, for focus and caret-anchored menus. */
@@ -16,12 +17,24 @@ export const EDITOR_ID = "dock.d.comp.ed";
 /** A text question's input. */
 export const ANSWER_ID = "dock.d.req.in";
 
+/**
+ * Whether the client can take input for a real screen, which is when the editor stops asking Tern to hold what
+ * is typed: the server has answered (a shown chat's stream is connected, or a chat that is gone says so; the
+ * start screen has its data) and that screen is the one drawn, not a session still opening.
+ */
+export function inputReady(s: { chat: { gone?: string } | null; conn: Connection | "idle"; booted: boolean; opening: boolean }): boolean {
+  if (s.opening) return false;
+  return s.chat ? s.chat.gone !== undefined || s.conn === "connected" : s.booted;
+}
+
 export interface DockCx {
   chat: ChatState | null;
   harness: HarnessStatus | null;
   git: GitStatus | null;
   limits: UsageLimits | null;
   connected: boolean;
+  /** True until the client can take input for a real screen (inputReady); Tern buffers what the user typed meanwhile. */
+  typeahead: boolean;
   version: string;
   project: string | null;
   draft: Draft;
@@ -289,6 +302,7 @@ function composerNode(cx: DockCx): Node {
       decor: decorations(cx.draft.text),
       maxLines: 10,
       sendable: true,
+      ...(cx.typeahead ? { typeahead: true } : {}),
       aria: "Message",
       onFocus: cx.on.focusEditor,
       onEdit: cx.on.editDraft,

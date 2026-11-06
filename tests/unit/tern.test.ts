@@ -8,7 +8,7 @@ import type { ChatState } from "../../src/web/chat-state.js";
 import type { Node } from "@stencil-hq/tern";
 import { applyEdit, draftState, editKey, lineStep, redo, setText, undo, wordStep, type DraftState } from "../../src/tern/draft.js";
 import { filterItems, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
-import { askShape, decorations, dock, placeholder, type DockCx } from "../../src/tern/dock.js";
+import { askShape, decorations, dock, inputReady, placeholder, type DockCx } from "../../src/tern/dock.js";
 import { themeSheet } from "../../src/tern/look.js";
 import { conversation, foldHead, foldHeadSpans, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
@@ -159,7 +159,7 @@ describe("the Tern dock", () => {
   const dockCx = (chat: Partial<ChatState>, over: Partial<DockCx> = {}): DockCx =>
     ({
       chat: { chatId: "c", status: "idle", items: [], pending: [], queue: { steering: [], followUp: [] }, chain: [], todos: [], capabilities: {}, config: { models: [] }, ...chat } as unknown as ChatState,
-      harness: null, git: null, limits: null, connected: true, version: "t", project: null,
+      harness: null, git: null, limits: null, connected: true, typeahead: false, version: "t", project: null,
       draft: { text: "", cursor: 0, anchor: null }, ghost: "", editing: null, answer: { text: "", cursor: 0, anchor: null }, leader: false, todosOpen: true,
       on: new Proxy({}, { get: () => noop }) as DockCx["on"],
       ...over,
@@ -226,6 +226,23 @@ describe("the Tern dock", () => {
   it("asks for what fits the chat's state", () => {
     expect(placeholder(null, null, null)).toBe("Message the agent…");
     expect(placeholder(null, null, 3)).toMatch(/^Edit message 3/);
+  });
+});
+
+describe("the Tern client's typeahead", () => {
+  const booted = { chat: null, conn: "idle" as const, booted: true, opening: false };
+  it("holds until the start screen has its data, or the shown chat's stream is connected", () => {
+    expect(inputReady({ ...booted, booted: false })).toBe(false);
+    expect(inputReady(booted)).toBe(true);
+    expect(inputReady({ ...booted, chat: {}, conn: "connecting" })).toBe(false);
+    expect(inputReady({ ...booted, chat: {}, conn: "connected" })).toBe(true);
+    expect(inputReady({ ...booted, chat: {}, conn: "reconnecting" })).toBe(false);
+  });
+
+  it("is not ready for a session still opening, and is for a chat that says it is gone", () => {
+    expect(inputReady({ ...booted, opening: true })).toBe(false);
+    expect(inputReady({ ...booted, chat: {}, conn: "connected", opening: true })).toBe(false);
+    expect(inputReady({ ...booted, chat: { gone: "This chat was closed" }, conn: "connecting" })).toBe(true);
   });
 });
 

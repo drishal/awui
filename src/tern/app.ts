@@ -23,7 +23,7 @@ import { applyMention, ghostCompletion, mentionAt, notifySequence } from "../atu
 import { optionsOf } from "../atui/requests.js";
 import { applyEdit, draftState, editKey, insert, lineStep, moveTo, setText, undo as undoDraft, type DraftState } from "./draft.js";
 import { conversation, headNode, TURN_WINDOW } from "./view.js";
-import { ANSWER_ID, dock, EDITOR_ID } from "./dock.js";
+import { ANSWER_ID, dock, EDITOR_ID, inputReady } from "./dock.js";
 import { AT_CARET, filterItems, menuNode, moveSelection, sessionRows, SHEETS, type Menu, type MenuItem, type MenuKind } from "./overlays.js";
 import { STYLESHEET, themeSheet } from "./look.js";
 import { startExamples, startHeading, startSetup } from "../web/start-screen.js";
@@ -67,6 +67,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
 
     // ---- local state: what only this pane holds -----------------------------------------
     const [draft, setDraft] = createSignal<DraftState>(draftState());
+    const [typeahead, setTypeahead] = createSignal(true);
     const [answer, setAnswer] = createSignal<DraftState>(draftState());
     const [focus, setFocus] = createSignal<"editor" | "answer">("editor");
     const [menu, setMenu] = createSignal<Menu | null>(null);
@@ -617,6 +618,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         limits: app.limits(),
         connected: app.conn() !== "reconnecting",
         version: opts.version,
+        typeahead: typeahead(),
         project: app.workspace()?.path.replace(process.env.HOME ?? "\u0000", "~") ?? null,
         draft: draft().draft,
         ghost: ghost(),
@@ -749,6 +751,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (closed) return;
       try {
         surface.render(view());
+        // Tern holds what is typed until the client can take input for a real screen: connected, with the chat or
+        // the start screen (and its data) what is drawn. That is cleared once, here, after the frame that shows it.
+        if (untrack(typeahead) && inputReady({ chat: app.chat(), conn: app.conn(), booted: app.boot() !== null, opening: app.opening() !== null })) setTypeahead(false);
       } catch (error) {
         // A view that cannot be drawn says why, in place of the chat, and the keys still work (C-c C-c quits);
         // one failure must not take the pane and its terminal modes down with it.
