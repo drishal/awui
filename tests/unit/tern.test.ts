@@ -264,6 +264,51 @@ describe("the Tern conversation", () => {
     expect(toolNode(tool({ status: "done", args: JSON.stringify({ command: "pytest" }), output: "collected 10 items\n\ntests/test_a.py ..F." }), "/w", () => 0).children[0]?.kind).toBe("ansi");
   });
 
+  it("draws every job widget block natively, or as plain text when the terminal lacks its kind", () => {
+    const item = tool({
+      name: "wait",
+      category: "other",
+      status: "running",
+      at: 1000,
+      jobs: [{
+        id: "j1",
+        kind: "shell",
+        status: "running",
+        label: "npm test",
+        title: "Tests",
+        startedAt: 1000,
+        widget: {
+          headline: { text: "8", label: "passed" },
+          stage: "test nine",
+          blocks: [
+            { kind: "meter", label: "done", value: 0.5, text: "5/10", tone: "success" },
+            { kind: "stat", items: [{ label: "failed", text: "1", tone: "error" }] },
+            { kind: "text", text: "still running" },
+            { kind: "bars", label: "workers", items: [{ label: "a", value: 3, text: "three", tone: "accent" }], max: 5 },
+            { kind: "spark", label: "rate", values: [1, 3, 2], last: "2/s", min: 0, max: 4 },
+            { kind: "grid", label: "cases", items: [{ label: "one", text: "✓", tone: "success" }] },
+          ],
+        },
+      }],
+    });
+    const rich = toolNode(item, "/w", () => 4200, () => true);
+    const all = (n: Node): Node[] => [n, ...n.children.flatMap(all)];
+    const nodes = all(rich);
+    const job = nodes.find((n) => n.props.role === "awui.job");
+    expect(job?.props).toMatchObject({ name: "job", title: "Tests", target: "npm test", status: "running", age: 4200 });
+    expect(nodes.filter((n) => n.kind === "chart").map((n) => n.props.kind)).toEqual(["bars", "spark"]);
+    expect(nodes.find((n) => n.kind === "chart" && n.props.kind === "bars")?.props.series).toEqual([{ value: 3, label: "a", title: "three", tone: "accent" }]);
+    expect(nodes.some((n) => n.kind === "meter" && n.props.value === 0.5)).toBe(true);
+    expect(nodes.some((n) => n.kind === "stats")).toBe(true);
+    expect(nodes.some((n) => n.kind === "kv")).toBe(true);
+
+    const plain = all(toolNode(item, "/w", () => 4200, () => false));
+    expect(plain.some((n) => ["meter", "stats", "kv", "chart"].includes(n.kind))).toBe(false);
+    expect(JSON.stringify(plain.map((n) => n.props))).toContain("5/10");
+    expect(JSON.stringify(plain.map((n) => n.props))).toContain("three");
+    expect(JSON.stringify(plain.map((n) => n.props))).toContain("2/s");
+  });
+
   it("words a call as the web UI does: a command without its cd, a failure with its reason", () => {
     const ran = toolNode(tool({ args: JSON.stringify({ command: "cd /w && npm run build --silent" }), output: "ok\n" }), "/w", () => undefined);
     expect(ran.props).toMatchObject({ title: "Ran", target: "npm run build --silent" });
@@ -305,7 +350,7 @@ describe("the Tern conversation", () => {
     ];
     const chat = { chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status: "idle", items, capabilities: {}, checkpoints: [] } as unknown as ChatState;
     const noop = () => undefined;
-    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", age: () => undefined, shown: 30, folds: new Map(), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
+    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, age: () => undefined, supports: () => true, shown: 30, folds: new Map(), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
     const [turn] = conversation(cx);
     const kinds = (n: Node): string[] => [n.kind, ...n.children.flatMap(kinds)];
     expect(kinds(turn as Node)).not.toContain("section");
@@ -322,10 +367,27 @@ describe("the Tern conversation", () => {
     ];
     const chat = { chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status: "idle", items, capabilities: {}, checkpoints: [] } as unknown as ChatState;
     const noop = () => undefined;
-    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", age: () => undefined, shown: 30, folds: new Map([["u1#0", true]]), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
+    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, age: () => undefined, supports: () => true, shown: 30, folds: new Map([["u1#0", true]]), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
     const all = (n: Node): Node[] => [n, ...n.children.flatMap(all)];
     const thought = conversation(cx).flatMap((n) => all(n as Node)).find((n) => n.kind === "tool" && n.props.name === "thinking");
     expect(thought?.props).toMatchObject({ title: "Thought", target: "Considering the config first", frame: "inline", collapsed: true });
+  });
+
+  it("works a job's elapsed time from the view's clock, not the wall clock", () => {
+    const wait = (job: Record<string, unknown>) =>
+      tool({ name: "wait", category: "other", status: "running", jobs: [{ id: "j1", kind: "shell", label: "npm test", ...job }] as unknown as ToolItem["jobs"] });
+    const jobOf = (item: ToolItem, now: number) => {
+      const all = (n: Node): Node[] => [n, ...n.children.flatMap(all)];
+      const job = all(toolNode(item, "/w", (_key, at) => at, () => true, now)).find((n) => n.props.role === "awui.job");
+      if (!job) throw new Error("no job row");
+      return job.props;
+    };
+    // A running job with no start but a duration began that long before the view's time.
+    expect(jobOf(wait({ status: "running", durationMs: 3000 }), 10_000).age).toBe(7000);
+    expect(jobOf(wait({ status: "running", durationMs: 3000 }), 20_000).age).toBe(17_000);
+    // A finished one with a start and no end ran until the view's time.
+    expect(jobOf(wait({ status: "done", startedAt: 1000 }), 6000).took).toBe(5000);
+    expect(jobOf(wait({ status: "done", startedAt: 1000 }), 9000).took).toBe(8000);
   });
 
   it("words a fold the web UI's way", () => {

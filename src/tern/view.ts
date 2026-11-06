@@ -1,14 +1,18 @@
 // The conversation as Tern nodes: the web UI's turns (web/turns.ts), drawn
 // with Tern's own components. A prompt is a pill on the right; each stretch
 // of work folds to one "Worked for …" line holding native tool rows (commands
-// with their output, edits as real diffs, subagents as agent rows); replies
-// stream as Markdown. Tern clocks every timer and spinner from the ages sent
+// with their output, edits as real diffs, jobs as meter/chart/key-value rows,
+// JSON as trees, subagents as agent rows); replies stream as Markdown. Tern
+// clocks every timer and spinner from the ages sent
 // here, so nothing re-renders to make time pass. Pure apart from the
-// handlers it attaches, which call back into the app.
-import { span, ui, html, type Node, type Span } from "@stencil-hq/tern";
-import type { AssistantItem, ChatItem, HarnessStatus, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../shared/protocol.js";
+// handlers it attaches, which call back into the app: the clock (`now`)
+// comes in through ConversationCx, never read here.
+import { span, ui, html, type Json, type Node, type Span } from "@stencil-hq/tern";
+import type { AssistantItem, ChatItem, HarnessStatus, JobBlock, JobTone, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../shared/protocol.js";
 import { buildTurns, countSummary, formatDuration, latestThought, workAfterSegment, workSegments, type Turn, type WorkSegment } from "../web/turns.js";
 import { isBusy } from "../web/session-groups.js";
+import { chatJobs, jobElapsed, jobStart, type ChatJob } from "../web/jobs.js";
+import { OPEN_DEPTH, parseJsonContainer } from "../web/json-tree.js";
 import type { ChatState } from "../web/chat-state.js";
 import { fileUrl, STATUS_LABEL, unifiedDiff } from "../atui/format.js";
 import { commandLine, toolSentence } from "../web/tool-sentence.js";
@@ -24,12 +28,16 @@ export interface ConversationCx {
   harness: HarnessStatus | null;
   /** The server's address, for links into the web UI (a rendered page, which Tern cannot show). */
   webUrl: string;
+  /** The time of this view (epoch ms), read by the app once per build: a running job's elapsed time is worked out from it. */
+  now: number;
   /**
    * How long ago `at` was, for a timer keyed `key`: worked out once per key
    * and kept, so later frames send the same age and Tern's clock runs on
    * untouched (a new age would restart it).
    */
   age: (key: string, at: number | undefined) => number | undefined;
+  /** Whether the terminal can draw a rich kind; unsupported job and JSON blocks stay plain text. */
+  supports: (kind: string) => boolean;
   /** How many turns to draw from the end. */
   shown: number;
   /** Folds the user opened or closed, by key: true is open. */
@@ -109,8 +117,118 @@ function agentNode(run: SubagentRun): Node {
   );
 }
 
-/** One tool call as Tern's `tool` row: icon, verb, target, facts, timer, and its output folded under it. */
-export function toolNode(item: ToolItem, workspace: string, age: ConversationCx["age"]): Node {
+/** A widget block without its native kind keeps every label and value as plain text. */
+function plainJobBlock(block: JobBlock, key: string): Node {
+  const rows: Array<{ text: string; tone?: JobTone }> = [];
+  switch (block.kind) {
+    case "meter":
+      rows.push({ text: `${block.label ? `${block.label}: ` : ""}${block.text ?? `${Math.round(block.value * 100)}%`}`, tone: block.tone });
+      break;
+    case "stat":
+      rows.push(...block.items.map((item) => ({ text: `${item.label} ${item.text}`, tone: item.tone })));
+      break;
+    case "text":
+      rows.push({ text: block.text });
+      break;
+    case "bars":
+      if (block.label) rows.push({ text: block.label });
+      rows.push(...block.items.map((item) => ({ text: `${item.label}: ${item.text ?? item.value}`, tone: item.tone })));
+      break;
+    case "spark":
+      rows.push({ text: [block.label, block.values.join(" "), block.last].filter(Boolean).join(" · ") });
+      break;
+    case "grid":
+      if (block.label) rows.push({ text: block.label });
+      rows.push(...block.items.map((item) => ({ text: `${item.label}${item.text ? ` ${item.text}` : ""}`, tone: item.tone })));
+      break;
+  }
+  return ui.col({ key, role: "awui.job-block", gap: "xs" }, rows.map((row, i) => ui.text({ key: `r${i}`, text: row.text, tone: row.tone })));
+}
+
+/** One harness-drawn job block, using the richest kind this terminal announced. */
+function jobBlockNode(block: JobBlock, key: string, supports: ConversationCx["supports"]): Node {
+  switch (block.kind) {
+    case "meter":
+      return supports("meter") ? ui.meter({ key, value: block.value, label: block.label, total: block.text ?? `${Math.round(block.value * 100)}%`, tone: block.tone }) : plainJobBlock(block, key);
+    case "stat":
+      if (supports("stats")) return ui.stats({ key, items: block.items.map((item) => ({ label: item.label, value: item.text, tone: item.tone })) });
+      if (supports("kv")) return ui.kv({ key, items: block.items.map((item) => ({ k: item.label, v: item.tone ? [span(item.text, item.tone)] : item.text })) });
+      return plainJobBlock(block, key);
+    case "bars":
+      return supports("chart")
+        ? ui.chart({
+            key,
+            kind: "bars",
+            summary: block.label,
+            max: block.max ?? Math.max(...block.items.map((item) => item.value), 1),
+            series: block.items.map((item) => ({ value: item.value, label: item.label, title: item.text, tone: item.tone })),
+          })
+        : plainJobBlock(block, key);
+    case "spark":
+      return supports("chart")
+        ? ui.chart({
+            key,
+            kind: "spark",
+            summary: [block.last, block.label].filter(Boolean).join(" · "),
+            series: block.values,
+            min: block.min ?? 0,
+            max: block.max ?? Math.max(...block.values, 1),
+          })
+        : plainJobBlock(block, key);
+    case "grid":
+      if (!supports("kv")) return plainJobBlock(block, key);
+      return ui.col(
+        { key, gap: "xs" },
+        block.label ? ui.text({ key: "label" }, span(block.label, "muted")) : null,
+        ui.kv({ key: "kv", layout: "grid", items: block.items.map((item) => ({ k: item.label, v: item.text ? (item.tone ? [span(item.text, item.tone)] : item.text) : "" })) }),
+      );
+    case "text":
+      return ui.text({ key, text: block.text });
+  }
+}
+
+/** A background job as a native row, with the web card's wording, timing, and widget. */
+function jobNode(job: ChatJob, age: ConversationCx["age"], supports: ConversationCx["supports"], now: number): Node {
+  const running = job.status === "running";
+  const widget = job.widget;
+  const title = job.title ?? widget?.title ?? null;
+  const elapsed = jobElapsed(job, now);
+  const started = jobStart(job) ?? (elapsed !== undefined ? now - elapsed : undefined);
+  const stage = widget?.stage && widget.stage !== title ? widget.stage : null;
+  const children: Node[] = (widget?.blocks ?? []).map((block, i) => jobBlockNode(block, `b${i}`, supports));
+  // A job without a widget may still be a test run whose output announces its progress.
+  const progress = !widget?.blocks.length && job.output ? testProgress(job.output) : null;
+  if (progress && progress.total > 0) children.push(progressNode(progress));
+  if (stage) children.push(ui.text({ key: "stage" }, span(stage, "muted")));
+  if (job.status === "failed" && job.exitCode !== undefined) children.push(ui.text({ key: "exit", text: `exit ${job.exitCode}`, tone: "error" }));
+  return ui.tool(
+    {
+      key: job.id,
+      role: "awui.job",
+      name: "job",
+      title: title ?? job.label,
+      ...(title ? { target: job.label, targetKind: job.kind === "shell" ? "command" : "text" } : {}),
+      status: job.status === "failed" ? "error" : job.status === "stopped" ? "cancelled" : job.status,
+      badges: [{ text: job.id, tone: "muted" }],
+      ...(widget?.headline ? { meta: [`${widget.headline.text}${widget.headline.label ? ` ${widget.headline.label}` : ""}`] } : {}),
+      ...(running && started !== undefined ? { age: age(`job:${job.id}`, started) } : !running && elapsed !== undefined ? { took: elapsed } : {}),
+      frame: "inline",
+      ...(children.length > 0 ? { collapsible: true, collapsed: false } : {}),
+    },
+    children,
+  );
+}
+
+/** A parsed JSON container as Tern's own collapsible tree, open to the same depth as the web UI's. */
+function jsonSection(key: string, label: string, value: object): Node {
+  return ui.col({ key, gap: "xs" }, ui.text({ key: "label" }, span(label, "muted")), ui.json({ key: "json", value: value as Json, open: OPEN_DEPTH, aria: `${label} as JSON` }));
+}
+
+/**
+ * One tool call as Tern's `tool` row: icon, verb, target, facts, timer, and its output folded under it.
+ * `now` is read only by the jobs a wait or list call shows; a live view always passes the cx's.
+ */
+export function toolNode(item: ToolItem, workspace: string, age: ConversationCx["age"], supports: ConversationCx["supports"] = () => true, now = 0): Node {
   const row = neatRow(item, workspace);
   // The words are the web UI's ("Ran npm test", "Couldn't read src/a.ts"), with the facts it reads from the output.
   const sentence = toolSentence(item, workspace);
@@ -129,26 +247,41 @@ export function toolNode(item: ToolItem, workspace: string, age: ConversationCx[
   const path = item.paths[0] ? shortPath(item.paths[0], workspace) : undefined;
   const took = !running && item.at !== undefined && item.endedAt !== undefined ? item.endedAt - item.at : undefined;
 
+  const watchedJobs = item.jobs && item.jobs.length > 0 && item.category !== "command" ? chatJobs([item]) : null;
   let body: Node | Node[] | null = null;
   let collapsed = !running;
   let preview: { lines: number } | { tail: number } | undefined;
   if (item.subagents) {
     body = item.subagents.runs.map((r) => agentNode(r));
     collapsed = false;
+  } else if (watchedJobs) {
+    // As in the web UI, a wait or list call shows the jobs themselves rather than its raw status output.
+    body = watchedJobs.map((job) => jobNode(job, age, supports, now));
+    collapsed = false;
   } else if (item.plan) {
     body = ui.md({ key: "plan" }, item.plan);
   } else if (item.diff && item.diff.lines.length > 0) {
     // Folded like every other row, as in the web UI: the +/− count says how big it is, a click shows it.
     body = ui.diff({ key: "diff", text: unifiedDiff(path ?? "file", item.diff), ...(path ? { path } : {}) });
-  } else if (item.output.trim()) {
-    if (item.category === "read" && path) body = ui.code({ key: "out", text: item.output, path });
-    else body = ui.ansi({ key: "out", text: item.output, ...(running ? { follow: true } : {}) });
-    if (running && item.category === "command") {
-      preview = { tail: 4 };
-      // A test run that announced its total shows how far it has got, its failures as a red stretch at the end.
-      const progress = testProgress(item.output);
-      if (progress && progress.total > 0) body = [progressNode(progress), body];
+  } else {
+    const parts: Node[] = [];
+    // Commands, reads, and edits already name their input in the row; other calls show structured arguments as the web UI does.
+    const args = item.category === "other" && supports("json") ? parseJsonContainer(item.args) : null;
+    if (args) parts.push(jsonSection("in", "Input", args));
+    if (item.output.trim()) {
+      if (item.category === "read" && path) parts.push(ui.code({ key: "out", text: item.output, path }));
+      else {
+        const output = supports("json") ? parseJsonContainer(item.output) : null;
+        parts.push(output ? jsonSection("out", "Output", output) : ui.ansi({ key: "out", text: item.output, ...(running ? { follow: true } : {}) }));
+      }
+      if (running && item.category === "command") {
+        preview = { tail: 4 };
+        // A test run that announced its total shows how far it has got, its failures as a red stretch at the end.
+        const progress = testProgress(item.output);
+        if (progress && progress.total > 0) parts.unshift(progressNode(progress));
+      }
     }
+    if (parts.length > 0) body = parts;
   }
   return ui.tool(
     {
@@ -212,7 +345,7 @@ function workItem(item: ChatItem, cx: ConversationCx): Node | Node[] | null {
   const ws = cx.chat.workspace.path;
   switch (item.kind) {
     case "tool":
-      return toolNode(item, ws, cx.age);
+      return toolNode(item, ws, cx.age, cx.supports, cx.now);
     case "assistant": {
       const out: Node[] = [];
       if (item.thinking.trim()) out.push(thoughtNode(item, cx, `${item.id}~t`));

@@ -145,6 +145,39 @@ describe("awui tern", () => {
     expect(tern.errors).toEqual([]);
   });
 
+  it("draws a background job's widget as a native job card", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("bgjob\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: bgjob"), "the background job run");
+    const job = tern.find("tool").find((n) => n.p.role === "awui.job");
+    if (!job) throw new Error("the wait call has no job card");
+    expect(job.p).toMatchObject({ name: "job", status: "done", title: "Running the e2e suite", target: "npm run test:e2e:fast" });
+    expect(tern.find("meter", job.id)[0]?.p).toMatchObject({ value: 1, total: "12/12", tone: "warning" });
+    expect(tern.find("stats", job.id)[0]?.p.items).toEqual([
+      { label: "passed", value: "11", tone: "success" },
+      { label: "failed", value: "1", tone: "error" },
+    ]);
+    expect(tern.find("kv", job.id)[0]?.p.items).toHaveLength(12);
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("draws an MCP-like call's JSON arguments and result as native JSON trees", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("showcase\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: showcase"), "the showcase run");
+    const call = tern.find("tool").find((n) => n.p.name === "mcp__tracker__triage_ticket");
+    if (!call) throw new Error("the MCP-like call is missing");
+    const trees = tern.find("json", call.id);
+    expect(trees).toHaveLength(2);
+    expect(trees[0]?.p.value).toMatchObject({ query: "listen", filter: { state: "open", labels: ["bug", "server"] }, limit: 2 });
+    expect(trees[1]?.p.value).toMatchObject({ total: 2 });
+    expect(trees.every((n) => n.p.open === 2)).toBe(true);
+    expect(tern.find("ansi", call.id)).toHaveLength(0);
+    expect(tern.errors).toEqual([]);
+  });
+
   it("answers an approval with its number key", async () => {
     client = await start();
     const { tern, app, until } = client;
