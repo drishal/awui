@@ -1,5 +1,5 @@
 // What floats over the chat in Tern's `layer`: the command palette and the
-// session, model, and harness pickers as Tern's native picker sheet; the
+// session, model, thinking, permission, and harness pickers as Tern's native picker sheet; the
 // composer's / $ # @ menus as a list at the caret; the C-x keys as a card at
 // the bottom. Tern draws them but never takes the keyboard, so the app keeps
 // each menu's query and selection and moves them by key; this module only
@@ -102,7 +102,7 @@ export function sessionRows(overview: SessionsOverview, at: { here: string | nul
 }
 
 /** Menus drawn as Tern's picker sheet (searchable); the rest are small lists. */
-export const SHEETS: ReadonlySet<MenuKind> = new Set(["palette", "sessions", "model", "harness"]);
+export const SHEETS: ReadonlySet<MenuKind> = new Set(["palette", "sessions", "model", "thinking", "permission", "harness"]);
 
 /** Menus whose query is what the composer holds after its trigger, not typed into the menu. */
 export const AT_CARET: ReadonlySet<MenuKind> = new Set(["slash", "skill", "prompts", "files"]);
@@ -207,7 +207,7 @@ function sheet(cx: MenuCx): Node {
   });
 }
 
-/** A small list: over the caret for the composer's menus, centred for thinking, at the bottom for C-x. */
+/** A small list: over the caret for the composer's menus, or at the bottom for C-x. */
 function list(cx: MenuCx): Node {
   const { menu, items } = cx;
   const at = AT_CARET.has(menu.kind);

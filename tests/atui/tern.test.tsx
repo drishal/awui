@@ -301,6 +301,32 @@ describe("awui tern", () => {
     expect(String(tern.nodes.get("dock.d.comp.chips.l.m")?.p.text)).not.toBe("Model ⌄");
   });
 
+  it("opens thinking and permission as searchable picker sheets", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("\x18");
+    tern.type("t");
+    await until(() => tern.text("layer").includes("Thinking"), "the thinking menu");
+    const thinking = tern.find("picker", "layer")[0];
+    if (!thinking) throw new Error("thinking is not a picker sheet");
+    expect(thinking.p).toMatchObject({ title: "Thinking", noun: "levels", current: ["low"] });
+    tern.type("high");
+    await until(() => ((tern.nodes.get(thinking.id)?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label).join(",") === "high", "the thinking query");
+    tern.type("\r");
+    await until(() => app.chat()?.config.thinkingLevel === "high" && tern.find("picker", "layer").length === 0, "the thinking choice");
+
+    tern.event({ ev: "action", id: "dock.d.comp.chips.l.p", act: "click" });
+    await until(() => tern.text("layer").includes("Permissions"), "the permission menu");
+    const permission = tern.find("picker", "layer")[0];
+    if (!permission) throw new Error("permission is not a picker sheet");
+    expect(permission.p).toMatchObject({ title: "Permissions", noun: "modes", current: ["default"] });
+    tern.type("bypass");
+    await until(() => ((tern.nodes.get(permission.id)?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label).join(",") === "Bypass", "the permission query");
+    tern.type("\r");
+    await until(() => app.chat()?.config.permissionMode === "bypass" && tern.find("picker", "layer").length === 0, "the permission choice");
+    expect(tern.errors).toEqual([]);
+  });
+
   it("draws a chat from a server older than itself (no chain, checkpoints)", async () => {
     const older = olderServer(["chain", "chainPaused", "checkpoints"]);
     try {
