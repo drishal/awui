@@ -301,6 +301,55 @@ describe("awui tern", () => {
     expect(String(tern.nodes.get("dock.d.comp.chips.l.m")?.p.text)).not.toBe("Model ⌄");
   });
 
+  it("words the live line with the run's phase once it has held steady", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    const line = () => tern.find("shimmer").map((n) => String(n.p.text));
+    tern.type("slow please\r");
+    await until(() => line().includes("Working"), "the first phase");
+    // Thinking and then writing follow within the hold, so the line goes from Working to Writing without flashing between.
+    await until(() => line().includes("Writing"), "the writing phase");
+    expect(app.chat()?.status).toBe("running");
+    await until(() => app.chat()?.status === "idle" && line().length === 0, "the run to end");
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("opens a failed call from the palette or C-x f, and says when none failed", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("tool please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: tool please"), "a run without a failure");
+    tern.type("\x18f");
+    await until(() => tern.text("layer").includes("No call has failed in this chat"), "the notice");
+    expect(tern.reveals).toEqual([]);
+
+    tern.type("toolfail\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: toolfail"), "the failing run");
+    const fold = tern.find("section").filter((n) => n.p.role === "awui.fold").at(-1) as { id: string; p: Record<string, unknown> };
+    expect(JSON.stringify(fold.p.head)).toContain("1 failed");
+    expect(fold.p.collapsed).toBe(true);
+    const row = () => tern.find("tool", fold.id).find((n) => n.p.status === "error");
+    expect(row()).toBeDefined();
+
+    // From the palette: filter to the entry and take it.
+    tern.type("\x0b");
+    await until(() => tern.find("picker", "layer").length === 1, "the palette");
+    tern.type("failed");
+    await until(() => ((tern.find("picker", "layer")[0]?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label).join() === "Show failed calls", "the entry");
+    tern.type("\r");
+    await until(() => tern.reveals.length === 1, "the reveal");
+    expect(tern.reveals[0]).toEqual({ id: row()?.id ?? "", present: true });
+    expect(tern.nodes.get(fold.id)?.p.collapsed).toBe(false);
+
+    // From the key, with the fold closed again.
+    tern.event({ ev: "toggle", id: fold.id, collapsed: true });
+    await until(() => tern.nodes.get(fold.id)?.p.collapsed === true, "the fold to close");
+    tern.type("\x18f");
+    await until(() => tern.reveals.length === 2 && tern.nodes.get(fold.id)?.p.collapsed === false, "the key to open it");
+    expect(tern.reveals[1]).toEqual({ id: row()?.id ?? "", present: true });
+    expect(tern.errors).toEqual([]);
+  });
+
   it("opens thinking and permission as searchable picker sheets", async () => {
     client = await start();
     const { tern, app, until } = client;
@@ -344,18 +393,23 @@ describe("awui tern", () => {
     }
   });
 
-  it("names the latest thought on the working line only while the live fold is closed", async () => {
+  it("shows the phase on the working line, and the latest thought beside it only while the live fold is closed", async () => {
     client = await start();
     const { tern, until } = client;
     tern.type("slow please\r");
     const shimmer = () => tern.find("shimmer")[0]?.p.text as string | undefined;
+    const thought = () => tern.find("text").find((n) => n.p.role === "awui.working-thought");
     const liveFold = () => tern.find("section").find((n) => n.p.role === "awui.fold-live");
     await until(() => liveFold() !== undefined && shimmer() !== undefined, "the live fold", 8000);
-    // Open (as a live fold starts), the thought is a row in it: the line just says Working.
+    // Open (as a live fold starts), and before the first phase has held: the line just says Working, and the
+    // thought is a row in the fold, not on the line.
     expect(liveFold()?.p.collapsed).toBe(false);
     expect(shimmer()).toBe("Working");
+    expect(thought()).toBeUndefined();
+    // Closed, the line keeps the phase and shows the latest thought after it, as the web UI's closed card does.
     tern.event({ ev: "toggle", id: liveFold()?.id, collapsed: true });
-    await until(() => shimmer()?.startsWith("Considering") === true, "the thought on the working line");
+    await until(() => shimmer() === "Writing", "the writing phase on the working line");
+    await until(() => JSON.stringify(thought() ?? "").includes("Considering"), "the latest thought beside the phase");
   }, 20_000);
 
   it("quits with C-c C-c, and leaves the chat on the server", async () => {

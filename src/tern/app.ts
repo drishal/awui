@@ -8,12 +8,13 @@
 // edits our text); clicks and native edits come as events to the handlers the
 // view attached. The keys are atui's: C-k commands, C-x then a letter.
 import { appendFileSync } from "node:fs";
-import { createEffect, createMemo, createRoot, createSignal, on, untrack } from "solid-js";
+import { createEffect, createMemo, createRoot, createSignal, on, onCleanup, untrack } from "solid-js";
 import { span, ui, html, type Key, type Node, type Session, type Surface } from "@stencil-hq/tern";
 import type { HarnessStatus, InteractionRequest, SavedPrompt, SlashCommand } from "../shared/protocol.js";
 import type { ChatState } from "../web/chat-state.js";
 import { buildTurns, ago as agoMs } from "../web/turns.js";
 import { isBusy } from "../web/session-groups.js";
+import { phaseDelay, workingPhase } from "../web/working-phase.js";
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../web/commands.js";
 import { sentPrompts, recallStep, type Recall } from "../web/prompt-history.js";
 import { blanks, matchPrompts, nextBlank, promptGist } from "../web/prompt-blanks.js";
@@ -22,7 +23,7 @@ import { accentOf } from "../atui/theme.js";
 import { applyMention, ghostCompletion, mentionAt, notifySequence } from "../atui/assist.js";
 import { optionsOf } from "../atui/requests.js";
 import { applyEdit, draftState, editKey, insert, lineStep, moveTo, setText, undo as undoDraft, type DraftState } from "./draft.js";
-import { conversation, headNode, TURN_WINDOW } from "./view.js";
+import { conversation, firstFailedCall, headNode, PAGE_ID, PAGE_KEY, TURN_WINDOW } from "./view.js";
 import { ANSWER_ID, dock, EDITOR_ID, inputReady } from "./dock.js";
 import { AT_CARET, filterItems, menuNode, moveSelection, sessionRows, SHEETS, type Menu, type MenuItem, type MenuKind } from "./overlays.js";
 import { STYLESHEET, themeSheet } from "./look.js";
@@ -55,6 +56,7 @@ const LEADER: Array<{ key: string; label: string }> = [
   { key: "c", label: "Compact the context" },
   { key: "z", label: "Put undone files back" },
   { key: "e", label: "Open or fold all work" },
+  { key: "f", label: "Show failed calls" },
   { key: "y", label: "Copy the last answer" },
   { key: "q", label: "Quit" },
 ];
@@ -143,6 +145,35 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         },
       ),
     );
+
+    // What the live turn is doing, held steady as the web UI's fold label is (useSteadyPhase): a new phase waits
+    // until the last has been up PHASE_HOLD_MS, so a burst of fast calls does not flicker. The clock lives here,
+    // not in the view, which is handed the phase shown.
+    const wantedPhase = createMemo(() => {
+      const c = app.chat();
+      const turn = c && isBusy(c.status) ? buildTurns(c.items, c.status).at(-1) : undefined;
+      return c && turn?.live ? workingPhase(turn, c.workspace.path) : "";
+    });
+    const [phase, setPhase] = createSignal("");
+    let phaseAt = 0;
+    let phaseTimer: ReturnType<typeof setTimeout> | undefined;
+    createEffect(
+      on(
+        wantedPhase,
+        (wanted) => {
+          clearTimeout(phaseTimer);
+          // No phase (the run is over) shows at once and starts the hold afresh, so the next run's first phase is not held back.
+          const wait = wanted ? phaseDelay(phaseAt, Date.now()) : 0;
+          const show = () => {
+            phaseAt = wanted ? Date.now() : 0;
+            setPhase(wanted);
+          };
+          if (wait === 0) show();
+          else phaseTimer = setTimeout(show, wait);
+        },
+      ),
+    );
+    onCleanup(() => clearTimeout(phaseTimer));
 
     const harness = (): HarnessStatus | null => app.harness();
 
@@ -305,6 +336,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (c?.capabilities.supportsCompact) items.push({ id: "x:c", label: "Compact the context", value: "C-x c", icon: "compaction", ...(idle ? {} : { disabled: "Wait until the agent is idle" }) });
       if (c && isBusy(c.status)) items.push({ id: "stop", label: "Stop the agent", value: "Esc Esc", icon: "stop" });
       items.push({ id: "x:e", label: allWork() ? "Fold all work" : "Open all work", value: "C-x e", icon: "expand" });
+      if (c) items.push({ id: "x:f", label: "Show failed calls", value: "C-x f", icon: "x-circle", ...(c.items.some((i) => i.kind === "tool" && i.status === "error") ? {} : { disabled: "No call has failed in this chat" }) });
       if (c) items.push({ id: "x:y", label: "Copy the last answer", value: "C-x y", icon: "copy" });
       if (app.putBackable()) items.push({ id: "x:z", label: "Put the undone files back", value: "C-x z", icon: "undo" });
       if (c) items.push({ id: "web", label: "Copy this chat's link in the web UI", icon: "globe", keywords: "browser open" });
@@ -362,6 +394,18 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       setFolds(map);
     };
 
+    /** Opens the fold holding the first failed call of the latest turn that has one, and brings its row into view. */
+    const showFailed = () => {
+      const c = app.chat();
+      const turns = c ? buildTurns(c.items, c.status) : [];
+      const hit = firstFailedCall(turns, PAGE_ID);
+      if (!hit) return say("No call has failed in this chat");
+      // The fold and the turn's place in the window are drawn first: the op follows the frame that holds them, in order.
+      setShown((n) => Math.max(n, turns.length - hit.turn));
+      setFolds((m) => new Map(m).set(hit.fold, true));
+      surface.reveal(hit.row, "start");
+    };
+
     const runLeader = (key: string) => {
       setLeader(false);
       setMenu(null);
@@ -392,6 +436,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           return void app.putBack();
         case "e":
           return toggleAllWork();
+        case "f":
+          return showFailed();
         case "y": {
           const text = lastAnswer();
           return text ? copy(text) : say("No answer to copy yet");
@@ -573,6 +619,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             harness: h,
             webUrl: opts.url,
             now: Date.now(),
+            phase: phase(),
             age: ageOf,
             supports: (kind) => session.caps.kinds.includes(kind),
             shown: shown(),
@@ -696,7 +743,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (banner) layer.push(ui.toast({ key: `b${banner.text}`, text: banner.text, tone: banner.level === "error" ? "error" : "info" }));
 
       return {
-        main: ui.col(ui.col({ key: "page", role: "awui.page" }, main)),
+        main: ui.col(ui.col({ key: PAGE_KEY, role: "awui.page" }, main)),
         dock: ui.col(dockNode),
         layer: ui.col(layer),
       };

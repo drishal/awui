@@ -30,6 +30,8 @@ export class FakeTern {
   /** Every message the program sent, in order: verb and body. */
   readonly sent: Array<{ verb: string; body: unknown }> = [];
   focus: string | null = null;
+  /** Every node the program asked to scroll into view, in order, with whether it was in the document when the op came. */
+  readonly reveals: Array<{ id: string; present: boolean }> = [];
   /** Nodes as they were first added, before later `set` ops: startup props remain visible here. */
   readonly added: Array<{ id: string; k: string; p?: Record<string, unknown> }> = [];
   #buffer = "";
@@ -142,6 +144,9 @@ export class FakeTern {
         case "focus":
           if (id !== null && !node) return fail(`unknown id ${id}`);
           this.focus = id;
+          return;
+        case "reveal":
+          this.reveals.push({ id, present: node !== undefined });
           return;
         default:
           return;

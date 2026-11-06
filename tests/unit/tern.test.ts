@@ -10,11 +10,11 @@ import { applyEdit, draftState, editKey, lineStep, redo, setText, undo, wordStep
 import { filterItems, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
 import { askShape, decorations, dock, inputReady, placeholder, type DockCx } from "../../src/tern/dock.js";
 import { themeSheet } from "../../src/tern/look.js";
-import { conversation, foldHead, foldHeadSpans, toolNode, type ConversationCx } from "../../src/tern/view.js";
+import { conversation, firstFailedCall, foldHead, foldHeadSpans, PAGE_ID, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
 import { clientCommand, sourceRun } from "../../src/server/clients.js";
 import { DARK } from "../../src/atui/theme.js";
-import type { Turn, WorkSegment } from "../../src/web/turns.js";
+import { buildTurns, type Turn, type WorkSegment } from "../../src/web/turns.js";
 
 const key = (name: string, over: Partial<Key> = {}): Key => ({ name, ctrl: false, alt: false, shift: false, meta: false, ...(name.length === 1 ? { text: name } : {}), ...over });
 
@@ -367,7 +367,7 @@ describe("the Tern conversation", () => {
     ];
     const chat = { chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status: "idle", items, capabilities: {}, checkpoints: [] } as unknown as ChatState;
     const noop = () => undefined;
-    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, age: () => undefined, supports: () => true, shown: 30, folds: new Map(), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
+    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map(), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
     const [turn] = conversation(cx);
     const kinds = (n: Node): string[] => [n.kind, ...n.children.flatMap(kinds)];
     expect(kinds(turn as Node)).not.toContain("section");
@@ -384,7 +384,7 @@ describe("the Tern conversation", () => {
     ];
     const chat = { chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status: "idle", items, capabilities: {}, checkpoints: [] } as unknown as ChatState;
     const noop = () => undefined;
-    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, age: () => undefined, supports: () => true, shown: 30, folds: new Map([["u1#0", true]]), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
+    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map([["u1#0", true]]), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
     const all = (n: Node): Node[] => [n, ...n.children.flatMap(all)];
     const thought = conversation(cx).flatMap((n) => all(n as Node)).find((n) => n.kind === "tool" && n.props.name === "thinking");
     expect(thought?.props).toMatchObject({ title: "Thought", target: "Considering the config first", frame: "inline", collapsed: true });
@@ -405,6 +405,80 @@ describe("the Tern conversation", () => {
     // A finished one with a start and no end ran until the view's time.
     expect(jobOf(wait({ status: "done", startedAt: 1000 }), 6000).took).toBe(5000);
     expect(jobOf(wait({ status: "done", startedAt: 1000 }), 9000).took).toBe(8000);
+  });
+
+  describe("the fold of a live turn", () => {
+    const noop = () => undefined;
+    const all = (n: Node): Node[] => [n, ...n.children.flatMap(all)];
+    const chatOf = (items: ChatItem[], status: ChatState["status"]) => ({ chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status, items, capabilities: {}, checkpoints: [] }) as unknown as ChatState;
+    const cxOf = (chat: ChatState, over: Partial<ConversationCx> = {}): ConversationCx => ({
+      chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map(), picked: null, blob: () => null,
+      on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop }, ...over,
+    });
+    const buildTurnsOf = (chat: ChatState) => buildTurns(chat.items, chat.status);
+    const reply = (id: string, text: string): ChatItem => ({ kind: "assistant", id, text, thinking: "", streaming: false });
+    const prompt = { kind: "user", id: "u1", text: "go", images: [] } as unknown as ChatItem;
+    /** Two stretches of work with a reply between them; the first ran `first`. */
+    const twoStretches = (first: Partial<ToolItem>): ChatItem[] => [prompt, tool({ id: "t1", ...first }), reply("a1", "Found it."), tool({ id: "t2", status: "running" })];
+    const folds = (cx: ConversationCx) => conversation(cx).flatMap(all).filter((n) => n.kind === "section" && String(n.props.role).startsWith("awui.fold"));
+
+    it("starts open while it runs, and a stretch that already ended in a reply folds unless a call in it failed", () => {
+      const quiet = folds(cxOf(chatOf(twoStretches({}), "running")));
+      expect(quiet.map((n) => n.props.collapsed)).toEqual([true, false]);
+      const failed = folds(cxOf(chatOf(twoStretches({ status: "error" }), "running")));
+      expect(failed.map((n) => n.props.collapsed)).toEqual([false, false]);
+      expect(JSON.stringify(failed[0]?.props.head)).toContain("1 failed");
+    });
+
+    it("lets a fold the user toggled stay as they left it, and opens nothing in a settled turn", () => {
+      const live = chatOf(twoStretches({ status: "error" }), "running");
+      expect(folds(cxOf(live, { folds: new Map([["u1#0", false]]) })).map((n) => n.props.collapsed)).toEqual([true, false]);
+      const settled = chatOf([prompt, tool({ id: "t1", status: "error" }), reply("a1", "It broke.")], "idle");
+      expect(folds(cxOf(settled)).map((n) => n.props.collapsed)).toEqual([true]);
+      expect(folds(cxOf(settled, { folds: new Map([["u1#0", true]]) })).map((n) => n.props.collapsed)).toEqual([false]);
+    });
+
+    it("words the live line with the phase it is given, else Working, and keeps compaction and stopping", () => {
+      const line = (cx: ConversationCx) => String(conversation(cx).flatMap(all).find((n) => n.kind === "shimmer")?.props.text);
+      const chat = chatOf(twoStretches({}), "running");
+      expect(line(cxOf(chat, { phase: "Running npm test" }))).toBe("Running npm test");
+      expect(line(cxOf(chat))).toBe("Working");
+      expect(line(cxOf({ ...chat, status: "compacting" }, { phase: "Writing" }))).toBe("Compacting the context");
+      expect(line(cxOf({ ...chat, status: "stopping" }, { phase: "Writing" }))).toBe("Stopping");
+    });
+
+    it("finds the first failed call of the latest turn that has one, at the id its row is drawn with", () => {
+      const items: ChatItem[] = [
+        prompt,
+        tool({ id: "old", status: "error" }),
+        reply("a1", "One."),
+        { kind: "user", id: "u2", text: "again", images: [] } as unknown as ChatItem,
+        tool({ id: "ok" }),
+        reply("a2", "Two."),
+        tool({ id: "bad1", status: "error" }),
+        tool({ id: "bad2", status: "error" }),
+        { kind: "user", id: "u3", text: "last", images: [] } as unknown as ChatItem,
+        tool({ id: "fine" }),
+        reply("a3", "Three."),
+      ];
+      const chat = chatOf(items, "idle");
+      const hit = firstFailedCall(buildTurnsOf(chat), PAGE_ID);
+      expect(hit).toEqual({ turn: 1, fold: "u2#1", row: `${PAGE_ID}.u2.w1.items.bad1` });
+      // The id is the one the drawn row has: the page's keys down the tree.
+      const ids = (n: Node, prefix: string): string[] => [prefix, ...n.children.flatMap((c, i) => ids(c, `${prefix}.${String(c.props.key ?? i)}`))];
+      const drawn = conversation(cxOf(chat)).flatMap((n) => ids(n, `${PAGE_ID}.${String(n.props.key)}`));
+      expect(drawn).toContain(hit?.row);
+      expect(firstFailedCall(buildTurnsOf(chatOf([prompt, tool({}), reply("a1", "ok")], "idle")), PAGE_ID)).toBeNull();
+    });
+
+    it("finds a failed call in the work after the reply", () => {
+      const chat = chatOf([prompt, reply("a1", "Done.\n\n- one\n- two"), tool({ id: "late", status: "error" })], "idle");
+      const turns = buildTurnsOf(chat);
+      const hit = firstFailedCall(turns, PAGE_ID);
+      expect(hit).toEqual({ turn: 0, fold: "u1#after", row: `${PAGE_ID}.u1.after.items.late` });
+      const ids = (n: Node, prefix: string): string[] => [prefix, ...n.children.flatMap((c, i) => ids(c, `${prefix}.${String(c.props.key ?? i)}`))];
+      expect(conversation(cxOf(chat)).flatMap((n) => ids(n, `${PAGE_ID}.${String(n.props.key)}`))).toContain(hit?.row);
+    });
   });
 
   it("words a fold the web UI's way", () => {

@@ -5,11 +5,11 @@
 // JSON as trees, subagents as agent rows); replies stream as Markdown. Tern
 // clocks every timer and spinner from the ages sent
 // here, so nothing re-renders to make time pass. Pure apart from the
-// handlers it attaches, which call back into the app: the clock (`now`)
-// comes in through ConversationCx, never read here.
+// handlers it attaches, which call back into the app: the clock (`now`) and
+// the live phase's wording come in through ConversationCx, never read here.
 import { span, ui, html, type Json, type Node, type Span } from "@stencil-hq/tern";
 import type { AssistantItem, ChatItem, HarnessStatus, JobBlock, JobTone, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../shared/protocol.js";
-import { buildTurns, countSummary, formatDuration, latestThought, workAfterSegment, workSegments, type Turn, type WorkSegment } from "../web/turns.js";
+import { buildTurns, countSummary, formatDuration, latestThought, segmentStartsOpen, workAfterSegment, workSegments, type Turn, type WorkSegment } from "../web/turns.js";
 import { isBusy } from "../web/session-groups.js";
 import { chatJobs, jobElapsed, jobStart, type ChatJob } from "../web/jobs.js";
 import { OPEN_DEPTH, parseJsonContainer } from "../web/json-tree.js";
@@ -18,6 +18,10 @@ import { fileUrl, STATUS_LABEL, unifiedDiff } from "../atui/format.js";
 import { commandLine, toolSentence } from "../web/tool-sentence.js";
 import { testProgress, type TestProgress } from "../web/tool-facts.js";
 import { neatRow, shortPath, thoughtTitle } from "../atui/neat.js";
+
+/** The conversation's column in the surface (main > page): a node's id is this, then its keys down the tree, which is how a row is revealed. */
+export const PAGE_KEY = "page";
+export const PAGE_ID = `main.${PAGE_KEY}`;
 
 /** Turns drawn at first; older ones wait behind "Show earlier" (Tern keeps what is drawn, so a long chat stays light). */
 export const TURN_WINDOW = 30;
@@ -30,6 +34,11 @@ export interface ConversationCx {
   webUrl: string;
   /** The time of this view (epoch ms), read by the app once per build: a running job's elapsed time is worked out from it. */
   now: number;
+  /**
+   * What the live turn is doing, in the web UI's words ("Thinking", "Running npm test", "Writing"), held steady
+   * by the app so a burst of fast calls does not flicker; empty when it has none yet.
+   */
+  phase: string;
   /**
    * How long ago `at` was, for a timer keyed `key`: worked out once per key
    * and kept, so later frames send the same age and Tern's clock runs on
@@ -362,6 +371,30 @@ function workItem(item: ChatItem, cx: ConversationCx): Node | Node[] | null {
   }
 }
 
+/** How many of a stretch's calls failed. */
+const failedCalls = (items: ChatItem[]) => items.filter((item) => item.kind === "tool" && item.status === "error").length;
+
+/**
+ * The first failed call of the latest turn that has one, for "Show failed calls": the index of its turn, the key
+ * of the fold holding it (the folds map's), and its row's node id under the conversation's column `page`. The
+ * ids are the ones `turnNode` gives its fold (`w<n>`, or `after`) and `toolNode` its row.
+ */
+export function firstFailedCall(turns: Turn[], page: string): { turn: number; fold: string; row: string } | null {
+  for (let t = turns.length - 1; t >= 0; t--) {
+    const turn = turns[t] as Turn;
+    // A turn without a prompt draws no fold (its rows stand bare), so there is nothing to open there.
+    if (!turn.prompt) continue;
+    const stretches = workSegments(turn).map((segment, i) => ({ segment, node: `w${i}` }));
+    const after = workAfterSegment(turn);
+    if (after) stretches.push({ segment: after, node: "after" });
+    for (const { segment, node } of stretches) {
+      const call = segment.items.find((item) => item.kind === "tool" && item.status === "error");
+      if (call) return { turn: t, fold: segment.key, row: `${page}.${turn.id}.${node}.items.${call.id}` };
+    }
+  }
+  return null;
+}
+
 /** A stretch's fold line: "Worked for 27s · 3 commands", "Working · 2 reads" while it runs, "1 command" between replies. */
 export function foldHead(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only"): string {
   const counts = countSummary(segment.counts);
@@ -375,7 +408,7 @@ export function foldHead(turn: Turn, segment: WorkSegment, place: "first" | "mid
 
 /**
  * The fold line with what the web UI's header adds to it: the turn's +/− on the first stretch, and a tally of
- * failed calls (a settled turn opens nothing, so the tally is how a failure is found).
+ * failed calls (a settled turn opens nothing, so the tally is how a failure is found; C-x f goes to it).
  */
 export function foldHeadSpans(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only"): Span[] {
   const spans: Span[] = [span(foldHead(turn, segment, place), "muted")];
@@ -385,7 +418,7 @@ export function foldHeadSpans(turn: Turn, segment: WorkSegment, place: "first" |
     if (stat.added > 0) spans.push(span(`  +${stat.added}${more}`, "ins"));
     if (stat.removed > 0) spans.push(span(`${stat.added > 0 ? " " : "  "}−${stat.removed}${more}`, "del"));
   }
-  const failed = segment.items.filter((item) => item.kind === "tool" && item.status === "error").length;
+  const failed = failedCalls(segment.items);
   if (failed > 0) spans.push(span(`  ${failed} failed`, "error"));
   return spans;
 }
@@ -432,18 +465,20 @@ function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
 }
 
 /**
- * The live turn's last line: what the agent is doing, shimmering, with Tern's own timer. Its latest
- * thought stands in for the work only while that fold is closed (the web UI's rule); open, the
- * thought is already a row in it.
+ * The live turn's last line: what the agent is doing, shimmering, with Tern's own timer. The words are the
+ * web UI's phase ("Thinking", the running call's sentence, "Writing"), held steady by the app (cx.phase).
+ * While the live fold is closed its latest thought shows after them, muted, as the web UI's closed card shows
+ * it under the phase; open, the thought is in the fold already.
  */
 function workingNode(turn: Turn, cx: ConversationCx, foldOpen: boolean): Node {
+  const words = cx.chat.status === "compacting" ? "Compacting the context" : cx.chat.status === "stopping" ? "Stopping" : cx.phase || "Working";
   const thought = foldOpen ? null : latestThought(turn);
-  const words = cx.chat.status === "compacting" ? "Compacting the context" : cx.chat.status === "stopping" ? "Stopping" : (thought ?? "Working");
   return ui.row(
     { key: "working", role: "awui.working", gap: "sm", align: "center" },
     ui.spinner({ key: "s", style: "braille", tone: "accent" }),
     ui.shimmer({ key: "w", text: words }),
     turn.startedAt !== undefined ? ui.elapsed({ key: "t", age: cx.age(`${turn.id}~start`, turn.startedAt) ?? 0 }) : null,
+    thought ? ui.text({ key: "thought", role: "awui.working-thought" }, span(thought, "muted")) : null,
   );
 }
 
@@ -473,6 +508,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
   const parts: (Node | null)[] = [];
   if (turn.prompt) parts.push(promptNode(turn, turn.prompt, cx));
   const segments = workSegments(turn);
+  // Whether the live stretch's fold is open: the working line shows the latest thought only while it is closed.
   let liveOpen = false;
   segments.forEach((segment, i) => {
     const place = segments.length === 1 ? "only" : i === 0 ? "first" : i === segments.length - 1 ? "last" : "middle";
@@ -481,7 +517,8 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
     const answerThought = segment.answerAt >= 0 && turn.answer?.thinking.trim() ? turn.answer : null;
     if (work.length > 0 || answerThought) {
       const key = segment.key;
-      const open = cx.folds.get(key) ?? live;
+      // The web UI's rule: a stretch nobody touched is open while it runs, and a live failure keeps it open.
+      const open = cx.folds.get(key) ?? segmentStartsOpen(turn.live, segment, failedCalls(segment.items));
       if (live) liveOpen = open;
       const children = work.flatMap((item) => {
         const n = workItem(item, cx);
@@ -524,7 +561,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
   // Work the agent did after writing its reply: its own fold below it.
   const after = workAfterSegment(turn);
   if (after) {
-    const open = cx.folds.get(after.key) ?? turn.live;
+    const open = cx.folds.get(after.key) ?? segmentStartsOpen(turn.live, after, failedCalls(after.items));
     if (turn.live) liveOpen = open;
     const children = after.items.flatMap((item) => {
       const n = workItem(item, cx);
