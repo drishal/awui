@@ -145,6 +145,12 @@ export class CanonicalChatLink implements GatewayLink {
         return this.history(str(params.session_id)) as Promise<T>;
       case "prompt.submit":
         return this.submit(params) as Promise<T>;
+      // A correction is fenced to the execution it was typed into. A stale generation is refused
+      // (and the closed parameter set takes no input id), and the adapter then queues the text.
+      case "session.steer": {
+        const session = this.require();
+        return this.socket.request("session.steer", { session_id: session.sessionId, text: str(params.text), execution_generation: session.generation }) as Promise<T>;
+      }
       case "session.interrupt": {
         const session = this.require();
         return this.socket.request("session.interrupt", { session_id: session.sessionId, execution_generation: session.generation }) as Promise<T>;

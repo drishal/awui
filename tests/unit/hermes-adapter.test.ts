@@ -135,6 +135,43 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(assistant && assistant.kind === "assistant" && assistant.text.length).toBeLessThan("hermes says slow please".length);
   });
 
+  // What the scripted gateway recorded: the steers it was sent, and the prompts submitted while a turn ran.
+  const recorded = (): { steers: { text: string; status: string }[]; busySubmits: { text: string; queued: boolean }[] } => JSON.parse(readFileSync(state, "utf8"));
+  const userTexts = (chat: Chat) => chat.snapshot().items.flatMap((i) => (i.kind === "user" ? [i.text] : []));
+
+  it("steers into the running turn with session.steer, and sends no prompt for it", async () => {
+    const { chat } = await openChat();
+    await chat.send("hold please", "normal");
+    await until(() => chat.status === "running");
+    await chat.send("use the other file", "steer");
+    expect(recorded().steers).toEqual([{ text: "use the other file", status: "queued" }]);
+    expect(recorded().busySubmits).toEqual([]);
+    expect(userTexts(chat)).toEqual(["hold please", "use the other file"]);
+    await until(() => chat.status === "idle");
+  });
+
+  it("queues a steer the gateway rejects as the next prompt, which then runs after the turn", async () => {
+    const { chat } = await openChat();
+    await chat.send("hold please", "normal");
+    await until(() => chat.status === "running");
+    await chat.send("reject this", "steer");
+    expect(recorded().steers).toEqual([{ text: "reject this", status: "rejected" }]);
+    expect(recorded().busySubmits).toEqual([{ text: "reject this", queued: true }]);
+    await until(() => chat.snapshot().items.some((i) => i.kind === "assistant" && i.text === "hermes says reject this"));
+    await until(() => chat.status === "idle");
+  });
+
+  it("sends a follow-up as a queued prompt, never as a live correction", async () => {
+    const { chat } = await openChat();
+    await chat.send("hold please", "normal");
+    await until(() => chat.status === "running");
+    await chat.send("and then this", "followUp");
+    expect(recorded().steers).toEqual([]);
+    expect(recorded().busySubmits).toEqual([{ text: "and then this", queued: true }]);
+    await until(() => chat.snapshot().items.some((i) => i.kind === "assistant" && i.text === "hermes says and then this"));
+    await until(() => chat.status === "idle");
+  });
+
   it("asks a chat's own gateway for its models instead of starting a probe", async () => {
     const { chat } = await openChat();
     const before = JSON.parse(readFileSync(state, "utf8")).spawns.length;

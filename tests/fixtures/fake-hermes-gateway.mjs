@@ -241,7 +241,19 @@ server.on("upgrade", (req, socket) => {
         // "silentrename": another viewer renames the session and its session.updated never reaches this client,
         // so the revision this client holds is stale without it knowing.
         if (/\bsilentrename\b/.test(String(params.text ?? ""))) session.revision += 1;
-        return callChild(id, "prompt.submit", { session_id: params.session_id, text: params.text }, () => admission(params));
+        return callChild(id, "prompt.submit", { session_id: params.session_id, text: params.text, queued: params.queued }, () => admission(params));
+      // gateway/session_busy_controls.py::correct: a closed parameter set (no input id) and an integer
+      // generation fence, which must be the running execution's. Anything else is refused.
+      case "session.steer": {
+        const closed = new Set(["session_id", "profile", "text", "execution_generation"]);
+        if (Object.keys(params).some((key) => !closed.has(key)) || typeof params.text !== "string" || !params.text.trim() || !Number.isInteger(params.execution_generation)) {
+          return send({ jsonrpc: "2.0", id, error: { code: 4002, message: "invalid_params", data: { reason: "invalid_params" } } });
+        }
+        if (params.execution_generation !== session.generation) {
+          return send({ jsonrpc: "2.0", id, error: { code: 4009, message: "stale_generation", data: { reason: "stale_generation", execution_generation: session.generation } } });
+        }
+        return callChild(id, "session.steer", { session_id: params.session_id, text: params.text }, (result) => ({ ...result, execution_generation: session.generation, authority_epoch: 1 }));
+      }
       case "session.interrupt":
         return callChild(id, "session.interrupt", { session_id: params.session_id }, handleResult);
       case "session.detach":

@@ -10,6 +10,8 @@
 //   "wait"  a provider-wait line on the status line (thinking.delta)
 //   "echoed"  the "💭 **Reasoning:**" block Hermes prepends when show_reasoning is on
 //   "moa"  reference advice and an aggregator handoff, as a MoA turn emits
+//   "hold"  keep the turn open until a steer, a queued prompt, or an interrupt arrives (or 3s pass)
+//   A steer with "reject" in it is answered `rejected`, as a gateway does when no live turn can take it.
 // Every turn starts with the gateway's spinner frame on the status line, as the real one does.
 // Session rows for projects.tree/list come from FAKE_HERMES_STATE (JSON file).
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -33,6 +35,10 @@ let model = "fake-model";
 let provider = "fake";
 let effort = "medium";
 let aborted = false;
+let running = false;
+// What "hold" waits on, and the prompts the gateway queued behind a running turn (`queued: true`).
+let release = null;
+const queuedPrompts = [];
 let turns = 0;
 const messages = [];
 let rowIds = 100;
@@ -41,7 +47,14 @@ const approvals = [];
 const state = () => {
   try {
     const raw = JSON.parse(readFileSync(stateFile, "utf8"));
-    return { rows: Array.isArray(raw?.rows) ? raw.rows : [], spawns: Array.isArray(raw?.spawns) ? raw.spawns : [], cwd: typeof raw?.cwd === "string" ? raw.cwd : "", moa: raw?.moa === true };
+    return {
+      rows: Array.isArray(raw?.rows) ? raw.rows : [],
+      spawns: Array.isArray(raw?.spawns) ? raw.spawns : [],
+      cwd: typeof raw?.cwd === "string" ? raw.cwd : "",
+      moa: raw?.moa === true,
+      steers: Array.isArray(raw?.steers) ? raw.steers : [],
+      busySubmits: Array.isArray(raw?.busySubmits) ? raw.busySubmits : [],
+    };
   } catch {
     return { rows: [], spawns: [], cwd: "" };
   }
@@ -70,7 +83,18 @@ function emitUsage() {
   return { model: "fake-model", input: 900, output: 12, reasoning: 3, total: 912, calls: turns, context_used: 1200, context_max: 200000, context_percent: 1, cache_read: 300, cache_write: 0 };
 }
 
+// A turn, then whatever the gateway queued behind it (a submit sent as `queued` while it ran).
 async function runPrompt(text) {
+  running = true;
+  try {
+    await runTurn(text);
+    for (let next = queuedPrompts.shift(); next !== undefined; next = queuedPrompts.shift()) await runTurn(next);
+  } finally {
+    running = false;
+  }
+}
+
+async function runTurn(text) {
   aborted = false;
   const sessionId = runtimeId;
   event("session.info", { model, provider, reasoning_effort: effort, running: true, title, stored_session_id: storedId });
@@ -85,6 +109,11 @@ async function runPrompt(text) {
     event("moa.phase", { phase: "aggregator", refs_done: 2, refs_total: 2, aggregator: "opencode-go:glm-5.3" }, sessionId);
     event("moa.aggregating", { aggregator: "opencode-go:glm-5.3" }, sessionId);
     moaTurn = false;
+  }
+  if (/\bhold\b/.test(text)) {
+    // Say so first: this delta is the signal that the turn is under way (and, behind a gateway, carries its generation).
+    event("message.delta", { text: "holding " }, sessionId);
+    await new Promise((resolve) => { release = resolve; setTimeout(resolve, 3000); });
   }
   if (/\bwait\b/.test(text)) {
     event("thinking.delta", { text: "Waiting for the provider (5s)..." }, sessionId);
@@ -233,7 +262,18 @@ rl.on("line", (line) => {
         event("session.title", { session_id: storedId, title });
       }
       return ok(id, { title });
+    // Steer and redirect, as tui_gateway's _correction_method answers them: text into a live turn (`queued`),
+    // `rejected` when nothing running can take it, and the text is required.
+    case "session.steer": {
+      const text = String(params.text ?? "").trim();
+      if (!text) return fail(id, 4002, "text is required");
+      const status = running && !/\breject\b/.test(text) ? "queued" : "rejected";
+      persist({ steers: [...state().steers, { text, status }] });
+      if (status === "queued") release?.();
+      return ok(id, { status, text });
+    }
     case "session.interrupt":
+      release?.();
       aborted = true;
       for (const resolve of pendingApprovals.values()) resolve();
       pendingApprovals.clear();
@@ -281,6 +321,17 @@ rl.on("line", (line) => {
         if (at < 0) return fail(id, 4018, "target row_id not found");
         if (at === 0 && params.confirm_empty_truncate !== true) return fail(id, 4028, "truncation would erase the entire session transcript");
         messages.splice(at);
+      }
+      // A submit while a turn runs: `queued` waits for it to end and then runs, as the gateway's queue does.
+      // Without the flag the real gateway follows its busy_input_mode (a live correction), so tests read
+      // `busySubmits` to see which kind a send was.
+      if (running) {
+        persist({ busySubmits: [...state().busySubmits, { text: String(params.text ?? ""), queued: params.queued === true }] });
+        if (params.queued === true) {
+          queuedPrompts.push(String(params.text ?? ""));
+          release?.();
+          return ok(id, { status: "queued" });
+        }
       }
       ok(id, { status: "streaming" });
       void runPrompt(String(params.text ?? ""));

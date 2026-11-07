@@ -1023,13 +1023,15 @@ class HermesLiveChat implements LiveChat {
     return this.todos;
   }
 
-  async prompt(text: string, images: ImageAttachment[] = []): Promise<void> {
+  async prompt(text: string, images: ImageAttachment[] = [], queued = false): Promise<void> {
     const id = this.requireSession();
     if (images.length === 0 && /^\/\S/.test(text.trim())) return this.slash(id, text.trim());
     for (const image of images) {
       await this.live.request("image.attach_bytes", { session_id: id, content_base64: image.data, filename: `pasted.${image.mimeType.split("/")[1] ?? "png"}` });
     }
-    await this.live.request("prompt.submit", { session_id: id, text });
+    // `queued` says "run after this turn", which Hermes never turns into a live correction. Without it a
+    // submit during a run follows the gateway's own `display.busy_input_mode` (redirect, by default).
+    await this.live.request("prompt.submit", { session_id: id, text, ...(queued ? { queued: true } : {}) });
     // The gateway never echoes the user row, so the manager learns about it here.
     this.emit({ type: "user_message", text, ...(images.length > 0 ? { imageCount: images.length } : {}) });
   }
@@ -1119,12 +1121,25 @@ class HermesLiveChat implements LiveChat {
     });
   }
 
+  /**
+   * `session.steer`: Hermes puts the text into the running turn's next tool result, with no new user
+   * turn and no interruption. The gateway answers `queued` when a live turn took it, and `rejected`
+   * when nothing could (the turn ended first, or its agent has no steer): Ink's `steerOrQueue` then
+   * sends it as the next prompt, and so does this. Images and "/" commands cannot be steered (Hermes's
+   * steer is text), so they wait for their own turn, as a follow-up does.
+   */
   async steer(text: string, images?: ImageAttachment[]): Promise<void> {
-    await this.prompt(text, images ?? []);
+    const id = this.requireSession();
+    if ((images?.length ?? 0) > 0 || /^\/\S/.test(text.trim())) return this.prompt(text, images ?? [], true);
+    const result = await this.live.request<Obj>("session.steer", { session_id: id, text }).catch(() => null);
+    if (str(result?.status) !== "queued") return this.prompt(text, [], true);
+    // The gateway never echoes the user row, so the manager learns about it here, as for a prompt.
+    this.emit({ type: "user_message", text });
   }
 
+  /** Waits in the gateway's queue and runs as the next turn; never a correction of the one running. */
   async followUp(text: string, images?: ImageAttachment[]): Promise<void> {
-    await this.prompt(text, images ?? []);
+    await this.prompt(text, images ?? [], true);
   }
 
   async abort(): Promise<void> {
@@ -1275,7 +1290,7 @@ export class HermesAdapter implements HarnessAdapter {
     supportsHandoff: false,
     supportsRewind: true,
     supportsHtmlRender: false,
-    // Its steer and follow-up are prompts sent at once: nothing waits in a queue.
+    // A steer lands in the running turn and a follow-up waits in Hermes's own queue, which awui cannot take back.
     supportsQueueEdit: false,
     supportsPermissionMode: false,
     supportsResumeCommand: false,

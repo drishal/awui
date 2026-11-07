@@ -75,6 +75,10 @@ async function until(predicate: () => boolean, ms = 8000) {
   }
 }
 
+// A held turn's first words: by then its events have moved the link to the execution's generation, the fence a steer carries.
+// (A steer sent before that carries the older one, which the owner refuses and the adapter queues instead.)
+const turnStarted = (chat: Chat) => until(() => chat.snapshot().items.some((i) => i.kind === "assistant" && i.text.startsWith("holding")));
+
 async function openChat() {
   const live = await adapter.openChat({ cwd: project });
   const ws: WorkspaceInfo = { id: "w", path: project, name: "proj" };
@@ -132,6 +136,31 @@ describe("a Hermes home whose gateway is running", () => {
     const submit = canonical().find((call) => call.name === "prompt.submit");
     expect(submit?.params).toMatchObject({ session_id: "4242", text: "hello there", queued: true });
     expect(submit?.params.input_id).toEqual(expect.any(String));
+  });
+
+  it("steers with session.steer, fenced to the running execution and with no input id", async () => {
+    const { chat } = await openChat();
+    await chat.send("hold please", "normal");
+    await turnStarted(chat);
+    await chat.send("use the other file", "steer");
+    const steer = canonical().filter((call) => call.name === "session.steer");
+    expect(steer).toHaveLength(1);
+    // The generation the turn's events carry: the one the owner would otherwise refuse as stale.
+    expect(steer[0]?.params).toEqual({ session_id: "4242", text: "use the other file", execution_generation: 1 });
+    expect(canonical().filter((call) => call.name === "prompt.submit")).toHaveLength(1);
+    await until(() => chat.status === "idle");
+  });
+
+  it("queues a steer the owner rejects as the next prompt, and a follow-up always as one", async () => {
+    const { chat } = await openChat();
+    await chat.send("hold please", "normal");
+    await turnStarted(chat);
+    await chat.send("reject this", "steer");
+    await chat.send("and then this", "followUp");
+    const submits = canonical().filter((call) => call.name === "prompt.submit");
+    expect(submits.map((call) => [call.params.text, call.params.queued])).toEqual([["hold please", true], ["reject this", true], ["and then this", true]]);
+    await until(() => chat.snapshot().items.some((i) => i.kind === "assistant" && i.text === "hermes says and then this"));
+    await until(() => chat.status === "idle");
   });
 
   it("asks the session to stream its reasoning on create and on resume", async () => {
