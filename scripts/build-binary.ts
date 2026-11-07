@@ -15,7 +15,10 @@
 // no Bun and no fetched copy, and its clients always match its server.
 import { $, type CompileTarget } from "bun";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+// The footer the runtime looks for (src/server/desktop-embed.ts): one definition,
+// so the build and the reader cannot drift.
+import { DESKTOP_MAGIC } from "../src/server/desktop-embed.ts";
 // Static, by file: the package's "./bun-plugin" export map does not resolve under
 // Bun (its "types" condition first), and this script runs under `bun run` only
 // (the plugin's node build throws on Bun.build), so the file path is safe.
@@ -26,6 +29,43 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 process.chdir(root);
+
+const ALL = process.argv.includes("--all");
+/**
+ * `--with-desktop` (`npm run build:desktop`): append the packaged desktop app to
+ * this platform's binary, so `awui desktop` needs no separate download or build.
+ * The payload sits after the executable image — [payload][length u64 LE][magic] —
+ * where a loader ignores it (an AppImage's own trick) and
+ * src/server/desktop-embed.ts finds it again.
+ */
+const WITH_DESKTOP = process.argv.includes("--with-desktop");
+if (WITH_DESKTOP && ALL) {
+  console.error("--with-desktop builds this platform's app into this platform's binary; it cannot ride in --all's cross-compiled ones");
+  process.exit(64);
+}
+
+/** The single-file desktop build for this platform: today, the Linux AppImage. */
+async function desktopPayload(): Promise<string> {
+  if (process.platform !== "linux") {
+    throw new Error(`--with-desktop needs a single-file desktop build; only the Linux AppImage is packaged as one so far (this is ${process.platform})`);
+  }
+  const release = path.join(root, "apps", "desktop", "release");
+  const images = existsSync(release) ? (await readdir(release)).filter((f) => f.endsWith(".AppImage")).sort() : [];
+  const image = images.at(-1);
+  if (!image) {
+    throw new Error(`no AppImage in ${release}; package the desktop app first:\n  cd apps/desktop && npm ci && npm run dist:linux`);
+  }
+  return path.join(release, image);
+}
+
+// Resolved before the build, so a missing app fails in a second rather than after
+// the server is built and compiled.
+const DESKTOP_PAYLOAD = WITH_DESKTOP
+  ? await desktopPayload().catch((error: unknown) => {
+      console.error(`build:desktop: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(64);
+    })
+  : null;
 
 // The embeds read from dist/: build the server and web bundle first.
 await $`npm run build`;
@@ -81,7 +121,16 @@ async function bundleClients(): Promise<void> {
 
 await bundleClients();
 
-const ALL = process.argv.includes("--all");
+/** Append the payload and its footer to a compiled binary, before it is renamed into place. */
+async function appendDesktop(binary: string, payload: string): Promise<void> {
+  const bytes = await readFile(payload);
+  const footer = Buffer.alloc(8 + DESKTOP_MAGIC.length);
+  footer.writeBigUInt64LE(BigInt(bytes.length), 0);
+  footer.write(DESKTOP_MAGIC, 8, "utf8");
+  await appendFile(binary, bytes);
+  await appendFile(binary, footer);
+  console.log(`  + desktop app ${path.basename(payload)} (${(bytes.length / 1_048_576).toFixed(0)} MB)`);
+}
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -199,6 +248,7 @@ try {
         AWUI_REPO: JSON.stringify(repo),
       },
     });
+    if (DESKTOP_PAYLOAD) await appendDesktop(staged, DESKTOP_PAYLOAD);
     await Bun.$`mv -f ${staged} ${outfile}`;
     console.log(`  → ${outfile}`);
   }

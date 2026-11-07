@@ -17,6 +17,7 @@ import { embeddedVersion, extractEmbeddedExtensions, isEmbedded } from "./embedd
 import "./assets.gen.js";
 import { installTui } from "./install-tui.js";
 import { installService } from "./install-service.js";
+import { installDesktop, installDesktopIcon, runDesktop } from "./desktop-app.js";
 import { clientCommand, runClient } from "./clients.js";
 import { runDoctor } from "./doctor.js";
 import { SessionMarks } from "./session-marks.js";
@@ -314,7 +315,10 @@ Usage:
   awui tui [options]     atui, awui in the terminal (also \`atui\`; awui tui --help)
   awui tern [options]    awui drawn natively in a Tern pane (also awui --tern; awui tern --help)
   awui doctor [--json]   Check the setup (config, harnesses, state folder, port) and print a report; exit 1 on a problem
+  awui desktop [args]    The optional desktop app (Electron): attaches to a running server, or starts one
+                         [--install-icon: add it to the application menu (~/.local/share/applications)]
   awui install tui       Put the \`atui\` command on the PATH (~/.local/bin/atui, a link to this awui)
+  awui install desktop   Put the \`awui-desktop\` command on the PATH (~/.local/bin, a link to the built app)
   awui install service   Install the binary for autostart: ~/.local/bin (with atui) + systemd on Linux/macOS,
                          a logon Scheduled Task on Windows
                          [--link symlinks it instead of copying (POSIX only), for a dev checkout]
@@ -372,8 +376,26 @@ if (client) {
       process.exit(1);
     },
   );
-} else if (args[0] === "install" && args[1] !== "tui" && args[1] !== "service") {
-  console.error(`awui install: expected \`tui\` or \`service\`${args[1] ? `, not \`${args[1]}\`` : ""}\n\n${HELP}`);
+} else if (args[0] === "desktop") {
+  // The optional Electron app: the one this binary carries, else one installed or
+  // built here. Started detached, so this command returns and the app outlives it.
+  // `--install-icon` is this command's own flag; everything else goes to the app.
+  let stateDir = "";
+  try {
+    stateDir = loadConfig().stateDir;
+  } catch (error) {
+    console.error(`awui desktop: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(EXIT_CONFIG);
+  }
+  const rest = args.slice(1);
+  const wantsIcon = rest.includes("--install-icon");
+  const work = wantsIcon ? installDesktopIcon({ stateDir }) : runDesktop({ args: rest.filter((a) => a !== "--install-icon"), stateDir });
+  work.catch((error: unknown) => {
+    console.error(`awui desktop: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
+} else if (args[0] === "install" && args[1] !== "tui" && args[1] !== "service" && args[1] !== "desktop") {
+  console.error(`awui install: expected \`tui\`, \`service\` or \`desktop\`${args[1] ? `, not \`${args[1]}\`` : ""}\n\n${HELP}`);
   process.exit(64);
 } else if (args[0] === "install") {
   const what = args[1] as string;
@@ -384,10 +406,16 @@ if (client) {
     process.exit(64);
   }
   const link = flags.link === true;
-  const config = loadConfig({ ...(flags.stateDir ? { AWUI_STATE_DIR: flags.stateDir } : {}) });
+  // process.env first, so a state folder set there is the one installed into; --state-dir wins.
+  const config = loadConfig({ ...process.env, ...(flags.stateDir ? { AWUI_STATE_DIR: flags.stateDir } : {}) });
   if (what === "service") {
     installService({ link }).catch((error: unknown) => {
       console.error(`awui: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    });
+  } else if (what === "desktop") {
+    installDesktop({ stateDir: config.stateDir }).catch((error: unknown) => {
+      console.error(`awui install desktop: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     });
   } else {

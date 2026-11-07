@@ -1,0 +1,8 @@
+# The desktop app's own toolchain and artifacts. The server, the web bundle and
+# the terminal clients are built by the root package and never land here.
+node_modules/
+dist/
+release/
+# The awui binary staged for packaging (scripts/stage-binary.mjs copies it in).
+resources/awui
+resources/awui.exe

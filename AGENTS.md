@@ -42,6 +42,7 @@ Match the task to a guide before opening code:
 | `npm ci` | Install. Never `npm -g`, never `npx playwright install` (see Environment). |
 | `npm run dev` | Backend under `tsx watch` plus Vite on http://127.0.0.1:5173 (proxies `/api` to the backend's port). |
 | `npm run build` | `vite build` → `dist/web`, then `tsc -p tsconfig.server.json` → `dist/server`. The server entry is `dist/server/server/index.js`. |
+| `npm run build:binary` / `npm run build:desktop` | The compiled binary in `dist/bin/<platform>`; `build:desktop` appends the packaged desktop app so `awui desktop` carries it (~257 MB vs ~95 MB). Run inside `devenv shell`. |
 | `npm start` / `bin/awui` | Run the built server. |
 | `bin/atui` (`npm run atui`) | Run the terminal client under Bun (from a checkout; the binary runs it as `awui tui`). Needs a running server. |
 | `npm run typecheck` | Four projects: server, web, tests, atui. **Run it before every commit.** |
@@ -49,7 +50,9 @@ Match the task to a guide before opening code:
 | `npm run test:e2e` | Build, then Playwright (`tests/e2e`) against the built server with fake harnesses on port 4791. ~12 min. |
 | `npm run test:e2e:fast` | The same suite as two shards at once (`scripts/e2e-parallel.mjs`): one server per shard, on ports 4801 and 4811, output in `test-results/shard-N`. ~6 min. A spec that starts its own server (remote-login) takes the suite's port plus one and two. |
 | `npm run test:atui` | Build, then `bun test tests/atui` (atui in OpenTUI's test renderer, and the Tern client against a stand-in Tern, both against a real server). |
+| `npm run desktop` | The optional desktop app from a checkout (`apps/desktop`, after `npm ci` there). It attaches to a running server or starts one; `npm run smoke` in that folder drives it under Playwright (needs a display or Xvfb). |
 | `awui doctor [--json]` | Checks config.yml, Node/Bun, each harness, workspace roots, the state folder's mode, the port, remote sign-in, herdr; prints ✓/!/✗ lines, exit 1 on a ✗ (`src/server/doctor.ts`). |
+| `awui desktop` / `awui install desktop` | Start the optional Electron app (detached; it attaches to a running server) and link a built one as `awui-desktop` (`src/server/desktop-app.ts`). |
 | `awui tern` | The Tern client in a Tern pane (from a checkout: `bun --conditions=browser src/tern/main.ts`; Solid's default Bun build is its server one, where effects never run; the binary runs it built in). |
 | `npm run smoke` | Opt-in tests against the real installed harnesses. No model is called unless `SMOKE_MODEL` (and `SMOKE_CLAUDE_MODEL`, `SMOKE_GROK_MODEL`, `SMOKE_DSH_MODEL`) name one. |
 | `node scripts/ui-shot.mjs <url> <selector> <out.png>` | Screenshot one element of a running UI and print every control's size, radius, padding, and font (`--phone`, `--narrow`, `--light`). See docs/ui.md. |
@@ -74,6 +77,11 @@ src/server/
   clients-module.d.ts         The `awui:clients` module's types: the binary's bundled terminal clients (scripts/build-binary.ts bundles src/atui/embed.ts as it).
   install-tui.ts              `awui install tui`: the `~/.local/bin/atui` symlink (to the binary, which carries atui, or the checkout's bin/atui); retires the old fetched copy.
   install-service.ts          `awui install service`: the binary + systemd unit (or Windows Run key), plus the `atui` link beside it.
+  desktop-app.ts              `awui desktop` / `awui install desktop` / `awui desktop --install-icon`: finds the optional Electron
+                              app (env, the copy the binary carries, ~/.local/bin link, PATH, a checkout's apps/desktop), starts it
+                              detached, links it, or writes the XDG menu entry + icon.
+  desktop-embed.ts            The app a binary can carry: `--with-desktop` appends [payload][len u64][magic] after the
+                              executable image; this reads it back and extracts it into the state folder once.
   assets.gen.ts               Checked-in stub replaced by the generated embed map at binary-build time.
   config.ts, user-config.ts   Environment + ~/.config/awui/config.yml → ServerConfig. settings.ts edits config.yml for the Settings dialog.
   security.ts, auth.ts        Host/Origin/Tailscale checks, local vs remote, scrypt logins, signed cookies, lockout.
@@ -159,6 +167,9 @@ extensions/render-html-mcp.mjs  The same tool as an MCP server (stdio JSON-RPC, 
 extensions/eval-python.ts     An awui-harness extension registering eval_python: runs a snippet in a scratch tmp dir (no workspace).
 extensions/acp-flow.mjs       A DSH Cordis plugin, loaded per chat by a --patch overlay: runs the stock ACP bridge inside it and streams live text as _acp-flow/assistant_stream.
 contrib/                      systemd unit and home-manager modules (templates; users copy them).
+apps/desktop/                 The optional desktop app: an Electron shell that attaches to a running server or starts one.
+                              src/main.ts is the whole shell; what it decides without a window is src/shared/desktop.ts
+                              (pure, unit-tested). It loads the served page — never a second copy of the UI.
 tests/unit                    Vitest. tests/helpers/app.ts builds a real app with fake adapters (makeTestApp).
 tests/fixtures                Scripted stand-ins: fake-omp.mjs, fake-hermes.mjs, fake-claude.mjs, fake-grok.mjs, fake-dsh.mjs, themes/.
 tests/e2e                     Playwright. global-setup.ts starts the built server with AWUI_HARNESSES=fake,fake-b.

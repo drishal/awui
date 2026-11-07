@@ -1,0 +1,29 @@
+{
+  "name": "awui-desktop",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The optional desktop app for awui: one window over the awui server this machine runs, or one it starts itself.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/apps/desktop/src/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && electron .",
+    "smoke": "node scripts/smoke.mjs",
+    "stage:bin": "node scripts/stage-binary.mjs",
+    "dist": "npm run build && npm run stage:bin && electron-builder",
+    "dist:linux": "npm run build && npm run stage:bin && electron-builder --linux",
+    "dist:mac": "npm run build && npm run stage:bin && electron-builder --mac",
+    "dist:win": "npm run build && npm run stage:bin && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
+    "typescript": "7.0.2"
+  },
+  "homepage": "https://github.com/drishal/awui",
+  "author": {
+    "name": "drishal"
+  },
+  "desktopName": "awui-desktop.desktop"
+}

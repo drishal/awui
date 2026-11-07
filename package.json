@@ -19,13 +19,15 @@
     "test:e2e": "npm run build && playwright test",
     "build": "vite build && tsc -p tsconfig.server.json",
     "build:binary": "bun run scripts/build-binary.ts",
+    "build:desktop": "bun run scripts/build-binary.ts --with-desktop",
     "start": "node dist/server/server/index.js",
     "set-password": "node scripts/set-password.mjs",
     "service": "node scripts/service.mjs",
     "smoke": "SMOKE=1 vitest run tests/smoke",
     "atui": "bin/atui",
     "test:atui": "npm run build && bun test tests/atui",
-    "test:e2e:fast": "npm run build && node scripts/e2e-parallel.mjs"
+    "test:e2e:fast": "npm run build && node scripts/e2e-parallel.mjs",
+    "desktop": "npm --prefix apps/desktop run start"
   },
   "dependencies": {
     "@opentui/core": "0.5.17",

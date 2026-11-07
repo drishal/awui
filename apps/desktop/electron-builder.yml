@@ -1,0 +1,64 @@
+# Packaging for the desktop app. One shell, no second copy of the UI: the app
+# carries Electron and (when staged) the awui binary it can start, and loads the
+# page the server serves.
+#
+#   npm run stage:bin     # copy this platform's awui binary into resources/
+#   npm run dist:linux    # AppImage + deb   (also dist:mac, dist:win)
+appId: dev.awui.desktop
+productName: awui
+copyright: MIT
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - assets/**
+  - package.json
+
+# The server the app starts when none is running. Staged by scripts/stage-binary.mjs;
+# a build without it is the "light" app that attaches to an awui already installed.
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - "awui*"
+
+protocols:
+  - name: awui
+    schemes:
+      - awui
+
+linux:
+  # AppImage only: the .deb leg needs fpm, a downloaded Ruby binary that does not
+  # run on NixOS. `electron-builder --linux deb` still works where fpm does.
+  target:
+    - AppImage
+  executableName: awui-desktop
+  # Electron reads package.json's desktopName as its app id, so the running
+  # window and this .desktop entry are one application to the desktop.
+  syncDesktopName: true
+  # fpm needs a maintainer for the .deb; the author name alone is enough.
+  maintainer: drishal
+  category: Development
+  synopsis: Local web UI for coding-agent harnesses
+  desktop:
+    entry:
+      Name: awui
+      Comment: A local, private web UI for Pi, omp, Hermes, Claude Code, OpenCode, Grok Build and DSH
+      Categories: Development;Utility;
+      # Must match the --class the app sets before Chromium starts, or the
+      # window and its .desktop entry are two different applications to the
+      # desktop (and Wayland's portals register the wrong one).
+      StartupWMClass: awui-desktop
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+
+win:
+  target:
+    - nsis
