@@ -207,8 +207,9 @@ server.on("upgrade", (req, socket) => {
       info: { desktop_protocol: "hermes-gateway-v1", ...(legacy.info ?? {}), ...(session.cwd ? { cwd: session.cwd } : {}) },
     };
   };
+  // As the real owner: the receipt answers while the prompt is queued, so it names the generation as it is; the
+  // generation moves when the prompt starts running (hermes_state_runtime.py), which its events then carry.
   const admission = (params) => {
-    session.generation += 1;
     return { admission_id: params.input_id ?? `adm-${session.generation}`, ref: { profile_id: home, session_id: session.sessionId }, sequence: session.generation, status: "queued", outcome: null, authority_epoch: 1, execution_generation: session.generation };
   };
   const handleResult = () => ({ ref: { profile_id: home, session_id: session.sessionId }, instance_id: instanceId, authority_epoch: 1, revision: session.revision, execution_generation: session.generation, execution_state: "idle" });
@@ -237,6 +238,9 @@ server.on("upgrade", (req, socket) => {
         if (params.session_id === "refused-webui") return send({ jsonrpc: "2.0", id, error: { code: 4001, message: "not_found", data: { reason: "not_found" } } });
         return callChild(id, "session.resume", { session_id: params.session_id, source: params.source }, (legacy) => snapshot(legacy, params));
       case "prompt.submit":
+        // "silentrename": another viewer renames the session and its session.updated never reaches this client,
+        // so the revision this client holds is stale without it knowing.
+        if (/\bsilentrename\b/.test(String(params.text ?? ""))) session.revision += 1;
         return callChild(id, "prompt.submit", { session_id: params.session_id, text: params.text }, () => admission(params));
       case "session.interrupt":
         return callChild(id, "session.interrupt", { session_id: params.session_id }, handleResult);
@@ -254,11 +258,16 @@ server.on("upgrade", (req, socket) => {
       }
       case "session.mutate": {
         const payload = params.payload ?? {};
+        // The owner's fences (hermes_state_runtime.mutate_runtime_session): a stale revision or generation is refused,
+        // and the refusal names the current ones.
+        const stale = params.expected_revision !== session.revision ? "revision_conflict" : params.expected_generation !== undefined && params.expected_generation !== session.generation ? "stale_generation" : null;
+        if (stale) return send({ jsonrpc: "2.0", id, error: { code: 4009, message: stale, data: { reason: stale, revision: session.revision, execution_generation: session.generation } } });
         const wrapped = (result) => mutateResult(params, result);
         if (params.operation === "rename") return callChild(id, "session.title", { session_id: params.session_id, title: payload.title }, wrapped);
         if (params.operation === "model") {
           const value = payload.provider ? `${payload.model} --provider ${payload.provider}` : payload.model;
-          return callChild(id, "config.set", { session_id: params.session_id, key: "model", value }, wrapped);
+          // The real reply projects the route now in force (gateway/session_mutation_model.py).
+          return callChild(id, "config.set", { session_id: params.session_id, key: "model", value }, (result) => mutateResult(params, { ...result, model: payload.model, ...(payload.provider ? { provider: payload.provider } : {}) }));
         }
         if (params.operation === "reasoning") return callChild(id, "config.set", { session_id: params.session_id, key: "reasoning", value: payload.effort }, wrapped);
         if (params.operation === "compress") return callChild(id, "session.compress", { session_id: params.session_id, ...(payload.focus ? { focus_topic: payload.focus } : {}) }, wrapped);
@@ -286,7 +295,6 @@ server.on("upgrade", (req, socket) => {
   // The scripts' server→client requests become the canonical wire's prompt events.
   const promptEvent = (msg) => {
     const params = msg.params ?? {};
-    session.generation += 1;
     if (msg.method === "approval") {
       const promptId = `p-${++session.next}`;
       prompts.set(promptId, { legacyId: msg.id, kind: "approval" });
@@ -316,6 +324,11 @@ server.on("upgrade", (req, socket) => {
       calls.delete(String(msg.id));
       send(msg.error ? { jsonrpc: "2.0", id: pending.clientId, error: msg.error } : { jsonrpc: "2.0", id: pending.clientId, result: pending.wrap(msg.result ?? {}) });
       return;
+    }
+    // A turn starting is the queued prompt starting to run: the generation moves, and the execution's events carry it.
+    if (msg.method === "event" && msg.params) {
+      if (msg.params.type === "message.start") session.generation += 1;
+      msg.params.execution_generation = session.generation;
     }
     send(msg);
   });

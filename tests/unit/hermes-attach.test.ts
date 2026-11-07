@@ -182,6 +182,32 @@ describe("a Hermes home whose gateway is running", () => {
     expect(await live.getUsage()).toMatchObject({ turns: 1 });
   });
 
+  it("changes the model after a turn, when the owner has moved the execution generation", async () => {
+    const { chat } = await openChat();
+    await chat.send("hello there", "normal");
+    await until(() => chat.status === "idle");
+    // The turn's start moved the generation past the one the submit receipt named; the change presents the current one.
+    await chat.setConfig({ model: "fake/fake-mini" });
+    expect(chat.snapshot().config.model).toBe("fake/fake-mini");
+    const models = canonical().filter((call) => call.name === "session.mutate" && call.params.operation === "model");
+    expect(models).toHaveLength(1);
+    await chat.send("whoami", "normal");
+    await until(() => chat.status === "idle" && chat.snapshot().items.filter((i) => i.kind === "assistant").length === 2);
+    expect(chat.snapshot().items.filter((i) => i.kind === "assistant").at(-1)).toMatchObject({ text: "on fake as fake-mini" });
+  });
+
+  it("retries a model change once at the fences a stale-revision refusal names", async () => {
+    const { chat } = await openChat();
+    await chat.send("silentrename now", "normal");
+    await until(() => chat.status === "idle");
+    // The revision moved with no event this client saw: the first attempt is refused, the retry presents the owner's.
+    await chat.setConfig({ model: "fake/fake-mini" });
+    expect(chat.snapshot().config.model).toBe("fake/fake-mini");
+    const models = canonical().filter((call) => call.name === "session.mutate" && call.params.operation === "model");
+    expect(models).toHaveLength(2);
+    expect(Number(models[1]?.params.expected_revision)).toBe(Number(models[0]?.params.expected_revision) + 1);
+  });
+
   it("rewinds with a mutation before the reworded prompt", async () => {
     const { chat } = await openChat();
     for (const text of ["one", "two", "three"]) {

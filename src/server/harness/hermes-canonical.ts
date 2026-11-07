@@ -19,7 +19,7 @@
 // keeps seeing it.
 import { randomUUID } from "node:crypto";
 import { isObj, type Obj } from "./agent-events.js";
-import { GatewaySocket, type GatewayEndpoint, type GatewayFrame, type GatewayLink } from "./hermes-gateway.js";
+import { GatewaySocket, HermesRpcError, type GatewayEndpoint, type GatewayFrame, type GatewayLink } from "./hermes-gateway.js";
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -319,8 +319,45 @@ export class CanonicalChatLink implements GatewayLink {
     return this.socket.request("config.set", params);
   }
 
-  /** One revision-fenced edit; `fenced` edits also carry the generation they expect. */
+  /**
+   * One revision-fenced edit; `fenced` edits also carry the generation they expect. A value pick (model,
+   * reasoning) refused for a stale fence is tried once more at the fences the refusal names, as Hermes
+   * Desktop does (api/canonical-protocol.ts, retryableFence): applying the same value again is harmless,
+   * unlike a compare-and-set of shared metadata (a rename, a rewind), which is left refused.
+   */
   private async mutate(operation: string, payload: Obj, fenced: boolean): Promise<Obj> {
+    try {
+      return await this.mutateOnce(operation, payload, fenced);
+    } catch (error) {
+      if (!(operation === "model" || operation === "reasoning") || !this.adoptRefusedFences(error)) throw error;
+      return this.mutateOnce(operation, payload, fenced);
+    }
+  }
+
+  /**
+   * A fence refusal (`revision_conflict`, `stale_generation`) did not change the session, and names its current
+   * fences in the error's data: take them (never moving backwards). True when the next attempt has new fences.
+   */
+  private adoptRefusedFences(error: unknown): boolean {
+    if (!(error instanceof HermesRpcError) || !this.session) return false;
+    const data = isObj(error.data) ? error.data : {};
+    const reason = str(data.reason) || error.message;
+    if (reason !== "revision_conflict" && reason !== "stale_generation") return false;
+    const revision = num(data.revision);
+    const generation = num(data.execution_generation);
+    let moved = false;
+    if (revision !== null && revision > this.session.revision) {
+      this.session.revision = revision;
+      moved = true;
+    }
+    if (generation !== null && generation > this.session.generation) {
+      this.session.generation = generation;
+      moved = true;
+    }
+    return moved;
+  }
+
+  private async mutateOnce(operation: string, payload: Obj, fenced: boolean): Promise<Obj> {
     const session = this.require();
     const request: Obj = { session_id: session.sessionId, request_id: randomUUID(), expected_revision: session.revision, operation, payload };
     if (fenced) request.expected_generation = session.generation;
@@ -348,6 +385,7 @@ export class CanonicalChatLink implements GatewayLink {
   private onEvent(params: Obj): void {
     const type = str(params.type);
     const payload = isObj(params.payload) ? params.payload : {};
+    this.adoptEventFences(type, params, payload);
     if (type === "approval.request" || type === "clarify.request") {
       const promptId = str(payload.prompt_id);
       if (!promptId) return;
@@ -364,6 +402,25 @@ export class CanonicalChatLink implements GatewayLink {
       if (promptId) this.onEventOuter({ type: "request.cancel", payload: { id: promptId } });
     }
     this.onEventOuter(params);
+  }
+
+  /**
+   * Keep the fences an edit must present current from the stream, as Hermes Desktop's canonical client does
+   * (api/canonical-protocol.ts, event): the owner bumps the execution generation when a queued prompt starts
+   * running, after the submit receipt was answered, and stamps it on that execution's events; a commit by
+   * another viewer, or the owner's own auto-title, moves the revision and says so in `session.info` /
+   * `session.updated`. Without this, every model or reasoning change after a turn was refused as stale.
+   */
+  private adoptEventFences(type: string, params: Obj, payload: Obj): void {
+    const session = this.session;
+    if (!session) return;
+    const sid = str(params.session_id);
+    if (sid && sid !== session.sessionId) return;
+    const generation = num(params.execution_generation) ?? num(payload.execution_generation);
+    if (generation !== null && generation > session.generation) session.generation = generation;
+    const revision = num(payload.revision);
+    if (revision === null) return;
+    if (type === "session.info" || (type === "session.updated" && revision > session.revision)) session.revision = Math.max(session.revision, revision);
   }
 
   private onRequest(frame: GatewayFrame): void {

@@ -38,14 +38,19 @@ export type GatewayFrame = {
   method?: string;
   params?: Obj;
   result?: unknown;
-  error?: { code?: number; message?: string };
+  error?: { code?: number; message?: string; data?: unknown };
 };
 
-/** A gateway error with its JSON-RPC code (4018: "run this through command.dispatch"). */
+/**
+ * A gateway error with its JSON-RPC code (4018: "run this through command.dispatch") and its `data`: a
+ * canonical fence refusal (`revision_conflict`, `stale_generation`) names the session's current revision
+ * and execution generation there, which the next attempt has to present.
+ */
 export class HermesRpcError extends Error {
   constructor(
     message: string,
     readonly code: number | undefined,
+    readonly data?: unknown,
   ) {
     super(message);
   }
@@ -64,7 +69,7 @@ export function hermesCodec(): FrameCodec<string> {
     outcome: (frame) => {
       const error = frame.error as GatewayFrame["error"];
       return error
-        ? { error: new HermesRpcError(error.message ?? `hermes error ${error.code ?? ""}`.trim(), error.code) }
+        ? { error: new HermesRpcError(error.message ?? `hermes error ${error.code ?? ""}`.trim(), error.code, error.data) }
         : { value: frame.result };
     },
   };

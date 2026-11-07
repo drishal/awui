@@ -1141,6 +1141,10 @@ class HermesLiveChat implements LiveChat {
       if (result?.confirm_required === true) throw new Error(str(result.confirm_message) || "That model needs confirmation");
       this.pickedKey = patch.model;
       this.models = null;
+      // The canonical mutation's reply names the route now in force (its model and provider). Take it at once:
+      // the chat reads the config straight after this call, and the session.info that names the new route comes
+      // later, so the picker showed the old model as if the switch had not happened.
+      if (str(result?.model)) this.applyInfo({ model: str(result?.model), ...(str(result?.provider) ? { provider: str(result?.provider) } : {}) });
     }
     if (patch.thinkingLevel !== undefined) {
       await this.live.request("config.set", { session_id: id, key: "reasoning", value: patch.thinkingLevel });
