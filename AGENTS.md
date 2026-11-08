@@ -70,7 +70,8 @@ src/shared/protocol.ts        Wire types and Zod request schemas: the only contr
 src/shared/html-render.ts     Agent-rendered pages: bootstrap markup, theme payload, frame-height math (no harness types).
 src/shared/approval.ts        Which requests are plain approvals, and their Approve/Deny answers (the card and push notes).
 src/server/
-  index.ts                    Startup: config, state-folder migration, registry, routes, listen, shutdown. Subcommands: `tui`, `tern`, `doctor`, `install tui|service`.
+  index.ts                    Startup: config, state-folder migration, registry, routes, listen, shutdown. A running server
+                              writes server.json (port, pid) into the state folder for clients that have no port. Subcommands: `tui`, `tern`, `doctor`, `install tui|service`.
   app.ts                      Every route (Express 5), SSE, error mapping. All /api routes but health/login/logout need auth.
   embedded.ts                 The binary's baked-in assets: embedded web bundle, extension sources, version; materializes extensions into state dir for `-e`.
   clients.ts                  The terminal clients behind the command line: `awui tui` (or the binary symlinked as `atui`) runs atui, `awui tern` the Tern client. In the binary they run in-process (the `awui:clients` module); from source under Bun.

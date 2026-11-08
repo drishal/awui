@@ -6,7 +6,7 @@
 //   cd apps/desktop && npm run smoke        (needs a display, or Xvfb :99)
 import { _electron as electron } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -50,15 +50,15 @@ const down = async (port) => {
   }
 };
 
-/** Launch the app against `port` with a throwaway state folder, and hand back the window. */
-async function launch(port, stateDir) {
+/** Launch the app with a throwaway state folder, and hand back the window. `port` is the shell's hint; without it the app must find the server itself. */
+async function launch(stateDir, port = null) {
   const app = await electron.launch({
     executablePath: electronPath,
     args: [appDir, "--no-sandbox", "--disable-gpu"],
     cwd: appDir,
     env: {
       ...process.env,
-      AWUI_DESKTOP_PORT: String(port),
+      ...(port === null ? {} : { AWUI_DESKTOP_PORT: String(port) }),
       // One throwaway home for both sides: the app's Electron profile and the
       // server's state folder, so a run never touches the real ones.
       XDG_STATE_HOME: stateDir,
@@ -113,7 +113,7 @@ async function main() {
   // 1. No server: the app starts one, opens it, and stops it on quit.
   const stateA = await mkdtemp(path.join(os.tmpdir(), "awui-desktop-a-"));
   const portA = 4799;
-  const a = await launch(portA, stateA);
+  const a = await launch(stateA, portA);
   const started = await until(() => health(portA), 25_000);
   check("it started a server when none was running", started?.ok === true);
   await checkWindow(a.app, a.page, a.errors, portA);
@@ -123,8 +123,9 @@ async function main() {
   await rm(stateA, { recursive: true, force: true });
 
   // 2. A server already running: the app attaches, and quitting leaves it alone.
+  // Outside the e2e shard blocks (4791, 4801+2, 4811+2) so this can run beside the suite.
   const stateB = await mkdtemp(path.join(os.tmpdir(), "awui-desktop-b-"));
-  const portB = 4801;
+  const portB = 4822;
   const server = spawn(binary, ["--port", String(portB)], {
     env: { ...process.env, XDG_STATE_HOME: stateB, AWUI_CONFIG_DIR: "", AWUI_HARNESSES: "fake" },
     stdio: "ignore",
@@ -132,7 +133,7 @@ async function main() {
   try {
     const up = await until(() => health(portB), 25_000);
     check("a server answers before the app opens", up?.ok === true);
-    const b = await launch(portB, stateB);
+    const b = await launch(stateB, portB);
     await checkWindow(b.app, b.page, b.errors, portB);
     await quit(b.app);
     const still = await until(() => health(portB), 5_000);
@@ -141,6 +142,33 @@ async function main() {
     server.kill("SIGTERM");
     await until(() => down(portB), 10_000);
     await rm(stateB, { recursive: true, force: true });
+  }
+
+  // 3. A server on a port outside the scanned range: the endpoint file it writes
+  // is how the shell finds it, and it must attach rather than start a second one.
+  // 4821, not 4813: shard 2's remote-login spec takes that port.
+  const stateC = await mkdtemp(path.join(os.tmpdir(), "awui-desktop-c-"));
+  const portC = 4821;
+  const serverC = spawn(binary, ["--port", String(portC)], {
+    env: { ...process.env, XDG_STATE_HOME: stateC, AWUI_CONFIG_DIR: "", AWUI_HARNESSES: "fake" },
+    stdio: "ignore",
+  });
+  try {
+    const up = await until(() => health(portC), 25_000);
+    check("a server outside the default port range answers", up?.ok === true);
+    const c = await launch(stateC); // no port hint: only the endpoint file says where it is
+    await checkWindow(c.app, c.page, c.errors, portC);
+    // A spawned server would rewrite the endpoint with its own pid; the one we
+    // started must still own it.
+    const endpoint = JSON.parse(await readFile(path.join(stateC, "awui", "server.json"), "utf8"));
+    check("it attached instead of starting a second server", endpoint.pid === serverC.pid, `endpoint pid ${endpoint.pid}, server pid ${serverC.pid}`);
+    await quit(c.app);
+    const still = await until(() => health(portC), 5_000);
+    check("quitting left that server running", still?.ok === true);
+  } finally {
+    serverC.kill("SIGTERM");
+    await until(() => down(portC), 10_000);
+    await rm(stateC, { recursive: true, force: true });
   }
 
   console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

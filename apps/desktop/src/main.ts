@@ -11,10 +11,10 @@
 // Quitting stops a server this app started and never touches one it attached to.
 import { app, BrowserWindow, Menu, Tray, desktopCapturer, dialog, nativeImage, session, shell, type MenuItemConstructorOptions } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DEFAULT_PORT, healthUrl, parseHealth, planLaunch, portsFrom, targetFromLink, targetUrl, titleCount, type Health, type Probe, type Target } from "../../../src/shared/desktop.js";
+import { DEFAULT_PORT, ENDPOINT_FILE, expandHome, healthUrl, parseEndpoint, parseHealth, planLaunch, portsFrom, targetFromLink, targetUrl, titleCount, type Endpoint, type Health, type Probe, type Target } from "../../../src/shared/desktop.js";
 
 /** Where a packaged app keeps the binary electron-builder put beside it. */
 const BIN_NAME = process.platform === "win32" ? "awui.exe" : "awui";
@@ -102,6 +102,40 @@ async function waitForHealth(port: number, child: ChildProcess): Promise<Health>
   throw new Error(`awui did not answer on port ${port} within ${START_TIMEOUT_MS / 1000}s`);
 }
 
+/** awui's state folder, as the server computes it (src/server/config.ts, stateBase). */
+function stateFolder(): string {
+  const explicit = process.env.AWUI_STATE_DIR;
+  // `~/state` is a value the server accepts. path.resolve alone would look in a literal `./~/state`.
+  if (explicit) return path.resolve(expandHome(explicit, os.homedir()));
+  const home = os.homedir();
+  const base = process.platform === "win32" ? process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local") : process.env.XDG_STATE_HOME || path.join(home, ".local", "state");
+  return path.join(base, "awui");
+}
+
+/** Where the running server said it listens, if it said. Stale after a crash — the caller probes. */
+async function publishedEndpoint(): Promise<Endpoint | null> {
+  try {
+    return parseEndpoint(await fs.readFile(path.join(stateFolder(), ENDPOINT_FILE), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** The AppImage's AppRun exports these; a spawned server must not inherit them. */
+const APPIMAGE_ENV = ["LD_LIBRARY_PATH", "LD_PRELOAD", "APPDIR", "APPIMAGE", "ARGV0", "OWD"];
+
+/**
+ * The server's environment: this process's, less what the AppImage wrapper set.
+ * AppRun puts Electron's own libraries on LD_LIBRARY_PATH, and a loader searches
+ * that before a binary's RUNPATH — so the server, and every harness it starts,
+ * could load Electron's copies of glibc's neighbours instead of their own.
+ */
+function serverEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const name of APPIMAGE_ENV) delete env[name];
+  return env;
+}
+
 /** The port to look at: awui's default, or one the user named for this app. */
 function basePort(): number {
   const wanted = Number(process.env.AWUI_DESKTOP_PORT ?? process.env.PORT ?? DEFAULT_PORT);
@@ -114,15 +148,34 @@ interface Server {
   child: ChildProcess | null;
 }
 
+/**
+ * The server this app started, set the moment it is spawned. Signal handlers read this
+ * rather than the `Server` ensureServer returns, so a signal during waitForHealth still
+ * reaps the child instead of leaving it holding the port.
+ */
+let ownedChild: ChildProcess | null = null;
+
+function stopOwned(): void {
+  ownedChild?.kill("SIGTERM");
+}
+
 /** Attach to a running server, or start one and wait for it. */
 async function ensureServer(): Promise<Server> {
-  const base = basePort();
+  // A server on a port config.yml chose is not in the default range: ask the one
+  // it published before scanning, and start on that port when it has gone.
+  const endpoint = await publishedEndpoint();
+  const base = endpoint?.port ?? basePort();
+  if (endpoint) {
+    const probe = await probePort(endpoint.port);
+    if (probe.state === "awui") return { base: `http://127.0.0.1:${endpoint.port}`, child: null };
+  }
   const launch = planLaunch(await probeAll(base));
   if (launch.action === "attach") return { base: `http://127.0.0.1:${launch.port}`, child: null };
   if (launch.action === "none") throw new Error(`ports ${base}–${base + portsFrom(base).length - 1} all belong to other programs; set AWUI_DESKTOP_PORT to a free one`);
 
   const command = serverCommand();
-  const child = spawn(command, ["--port", String(launch.port)], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  const child = spawn(command, ["--port", String(launch.port)], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env: serverEnv() });
+  ownedChild = child;
   child.stdout?.on("data", (chunk: Buffer) => remember(chunk.toString()));
   child.stderr?.on("data", (chunk: Buffer) => remember(chunk.toString()));
   child.on("error", (error) => remember(`awui: cannot run ${command}: ${error.message}`));
@@ -131,6 +184,7 @@ async function ensureServer(): Promise<Server> {
     await waitForHealth(launch.port, child);
   } catch (error) {
     child.kill("SIGTERM");
+    if (ownedChild === child) ownedChild = null;
     const tail = log.slice(-12).join("\n");
     throw new Error(`${error instanceof Error ? error.message : String(error)}${tail ? `\n\n${tail}` : ""}\n\nTried to run: ${command}`);
   }
@@ -250,6 +304,18 @@ async function main(): Promise<void> {
   // the first identity they see, and setting it later is too late.
   if (process.platform === "linux") app.commandLine.appendSwitch("class", "awui-desktop");
 
+  // A link that opened the app — macOS hands it over before `ready`, so the
+  // listener must exist now, and what it hears waits until a window can open it.
+  const queuedLinks: Target[] = [];
+  let deliver: ((target: Target) => void) | null = null;
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    const target = targetFromLink(url);
+    if (!target) return;
+    if (deliver) deliver(target);
+    else queuedLinks.push(target);
+  });
+
   // One app per machine: a second launch focuses the first, and its link (if any) opens there.
   if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -261,13 +327,27 @@ async function main(): Promise<void> {
   // awui's screenshot button asks for the screen; Electron needs a source to give it.
   session.defaultSession.setDisplayMediaRequestHandler(
     (_request, callback) => {
-      void desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
-        const first = sources[0];
-        callback(first ? { video: first } : {});
-      });
+      void desktopCapturer
+        .getSources({ types: ["screen"] })
+        .then((sources) => {
+          const first = sources[0];
+          callback(first ? { video: first } : {});
+        })
+        // A refused or failed capture must answer, or the page waits forever.
+        .catch(() => callback({}));
     },
     { useSystemPicker: true },
   );
+
+  // Before the spawn: a signal during startup must take the child with it. Electron
+  // does not turn SIGTERM into `before-quit`, so a handler registered only after
+  // ensureServer returns leaves the just-spawned server running.
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.on(signal, () => {
+      stopOwned();
+      app.quit();
+    });
+  }
 
   let server: Server;
   try {
@@ -320,18 +400,16 @@ async function main(): Promise<void> {
     const target = link ? targetFromLink(link) : null;
     open(target ?? { kind: "home" });
   });
-  app.on("open-url", (event, url) => {
-    event.preventDefault();
-    const target = targetFromLink(url);
-    if (target) open(target);
-  });
+  // Whatever arrived before the window existed, now that it does.
+  deliver = open;
+  for (const target of queuedLinks.splice(0)) open(target);
   if (app.isPackaged) app.setAsDefaultProtocolClient("awui");
 
   // Closing the window quits, as a browser tab would: the tray is a shortcut, not
   // a place to hide. A server this app started stops with it; an attached one is
   // someone else's (systemd) and keeps running.
   app.on("window-all-closed", () => app.quit());
-  app.on("before-quit", () => server.child?.kill("SIGTERM"));
+  app.on("before-quit", () => stopOwned());
 }
 
 void main();

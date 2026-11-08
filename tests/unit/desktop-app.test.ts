@@ -81,9 +81,15 @@ describe("what `install desktop` links", () => {
   });
 
   it("knows where a mac app and a Windows build keep their executable", () => {
-    expect(chooseArtifact(["mac-arm64", "mac-arm64/awui.app"], "darwin")).toBe(path.join("mac-arm64/awui.app", "Contents", "MacOS", "awui"));
+    // readdir lists the directory, never a path inside it.
+    expect(chooseArtifact(["mac-arm64", "builder-debug.yml"], "darwin")).toBe(path.join("mac-arm64", "awui.app", "Contents", "MacOS", "awui"));
+    expect(chooseArtifact(["awui.app"], "darwin")).toBe(path.join("awui.app", "Contents", "MacOS", "awui"));
     expect(chooseArtifact(["win-unpacked"], "win32")).toBe(path.join("win-unpacked", "awui-desktop.exe"));
-    expect(chooseArtifact(["mac-arm64"], "darwin")).toBeNull();
+    expect(chooseArtifact(["builder-debug.yml"], "darwin")).toBeNull();
+    // Both architectures present: the one for this arch, not whichever readdir listed first.
+    expect(chooseArtifact(["mac", "mac-arm64"], "darwin", "arm64")).toBe(path.join("mac-arm64", "awui.app", "Contents", "MacOS", "awui"));
+    expect(chooseArtifact(["mac-arm64", "mac"], "darwin", "x64")).toBe(path.join("mac", "awui.app", "Contents", "MacOS", "awui"));
+    expect(chooseArtifact(["mac-x64", "mac-arm64"], "darwin", "x64")).toBe(path.join("mac-x64", "awui.app", "Contents", "MacOS", "awui"));
   });
 });
 
@@ -113,6 +119,7 @@ describe("the application-menu entry", () => {
     expect(entry).toContain("Icon=awui");
     expect(entry).toContain("Terminal=false");
     expect(entry).toContain("StartupWMClass=awui-desktop");
+    expect(entry).toContain("MimeType=x-scheme-handler/awui;");
     expect(entry.endsWith("\n")).toBe(true);
   });
 

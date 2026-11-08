@@ -18,6 +18,8 @@ import "./assets.gen.js";
 import { installTui } from "./install-tui.js";
 import { installService } from "./install-service.js";
 import { installDesktop, installDesktopIcon, runDesktop } from "./desktop-app.js";
+import { ENDPOINT_FILE } from "../shared/desktop.js";
+import { writeJson } from "./state-file.js";
 import { clientCommand, runClient } from "./clients.js";
 import { runDoctor } from "./doctor.js";
 import { SessionMarks } from "./session-marks.js";
@@ -252,7 +254,12 @@ async function main(): Promise<void> {
     }
     process.exit(1);
   });
+  // A server on a configured port other than 4783 is invisible to a port scan of
+  // the defaults, so it says where it is. A stale file after a crash is fine: the
+  // reader still asks the port who it is (src/shared/desktop.ts, parseEndpoint).
+  const endpointFile = path.join(config.stateDir, ENDPOINT_FILE);
   server.listen(config.port, config.host, () => {
+    void writeJson(endpointFile, { port: config.port, host: config.host, pid: process.pid, version: pkg.version, startedAt: new Date().toISOString() });
     console.log(`awui ${pkg.version} listening on http://${config.host}:${config.port}`);
     console.log(`Local: http://127.0.0.1:${config.port}/ (no sign-in on this machine)`);
     for (const url of lanUrls) console.log(`LAN:   ${url}`);
@@ -293,6 +300,7 @@ async function main(): Promise<void> {
     } finally {
       clearTimeout(force);
     }
+    await fs.rm(endpointFile, { force: true }).catch(() => undefined);
     const left = liveOmpChildren();
     console.log(`awui: stopped (omp children left: ${left})`);
     process.exit(0);

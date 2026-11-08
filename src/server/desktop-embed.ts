@@ -13,6 +13,7 @@ import { createReadStream, createWriteStream, promises as fsp } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
+import { writeJson } from "./state-file.js";
 
 /** The last ten bytes of a binary that carries the app. */
 export const DESKTOP_MAGIC = "AWUIDESK01";
@@ -62,16 +63,46 @@ export function bundledDesktopName(platform: string = process.platform): string 
   return platform === "win32" ? "awui-desktop.exe" : "awui-desktop";
 }
 
+/** What the executable looked like when its app was extracted: a rebuild changes both. */
+interface Extracted {
+  size: number;
+  mtimeMs: number;
+}
+
+async function extractedMarker(file: string): Promise<Extracted | null> {
+  try {
+    const value = JSON.parse(await fsp.readFile(file, "utf8")) as Partial<Extracted>;
+    return typeof value.size === "number" && typeof value.mtimeMs === "number" ? { size: value.size, mtimeMs: value.mtimeMs } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function sizeOf(file: string): Promise<number | null> {
+  const stat = await fsp.stat(file).catch(() => null);
+  return stat?.size ?? null;
+}
+
 /**
- * The desktop app this binary carries, extracted into the state folder once per
- * version; null when it carries none (a source run, or a build without it).
+ * The desktop app this binary carries, extracted into the state folder once; null
+ * when it carries none (a source run, or a build without it).
+ *
+ * The copy lives in $state/app/<version>/, not in Electron's profile beside it:
+ * the profile is Chromium's to wipe. It is rewritten when the executable changed
+ * (size or mtime, recorded beside the copy) — a version alone is not enough, since
+ * two builds of one version can differ.
  */
 export async function bundledDesktop(execPath: string, stateDir: string, version: string): Promise<string | null> {
   const payload = await embeddedDesktopPayload(execPath);
   if (!payload) return null;
-  const target = path.join(stateDir, "desktop", version, bundledDesktopName());
-  const there = await fsp.stat(target).catch(() => null);
-  if (there?.size === payload.length) return target;
+  // Copies from before the move to $state/app/<version>. A missing tree is the common case.
+  await fsp.rm(path.join(stateDir, "desktop"), { recursive: true, force: true }).catch(() => undefined);
+  const target = path.join(stateDir, "app", version, bundledDesktopName());
+  const marker = `${target}.json`;
+  const source = await fsp.stat(execPath).catch(() => null);
+  const was = await extractedMarker(marker);
+  if (source && was && was.size === source.size && was.mtimeMs === source.mtimeMs && (await sizeOf(target)) === payload.length) return target;
   await extractDesktopPayload(execPath, payload, target);
+  if (source) await writeJson(marker, { size: source.size, mtimeMs: source.mtimeMs });
   return target;
 }

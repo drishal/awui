@@ -132,6 +132,11 @@ awui desktop           # start it — attaches to a running server, or starts on
 icon under `icons/hicolor/512x512/apps`, running `awui desktop`. macOS and
 Windows get theirs from the app bundle and the installer.
 
+A running server writes its port into `$XDG_STATE_HOME/awui/server.json` (with
+its pid), so a client that has the state folder but not the port can find it —
+that is how the desktop app attaches to a server on a port `config.yml` chose
+instead of starting a second one.
+
 `awui desktop` looks for the app in `AWUI_DESKTOP_BIN`, then the copy this
 binary carries, then the `awui-desktop` that `install desktop` linked, then any
 `awui-desktop` on the PATH, then this checkout's `apps/desktop` (a development

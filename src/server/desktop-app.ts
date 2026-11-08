@@ -95,15 +95,25 @@ export function findDesktop(search: DesktopSearch): DesktopLaunch | null {
  * Which file `install desktop` links, from the names in apps/desktop/release:
  * the AppImage (self-contained), else the unpacked app the build wrote.
  */
-export function chooseArtifact(files: string[], platform: string = process.platform): string | null {
-  if (platform === "darwin") {
-    const app = files.find((f) => f.startsWith("mac") && f.endsWith(".app"));
-    return app ? path.join(app, "Contents", "MacOS", "awui") : null;
-  }
+export function chooseArtifact(files: string[], platform: string = process.platform, arch: string = process.arch): string | null {
+  if (platform === "darwin") return macArtifact(files, arch);
   if (platform === "win32") return files.includes("win-unpacked") ? path.join("win-unpacked", desktopName(platform)) : null;
   const image = files.filter((f) => f.endsWith(".AppImage")).sort()[0];
   if (image) return image;
   return files.includes("linux-unpacked") ? path.join("linux-unpacked", desktopName(platform)) : null;
+}
+
+/**
+ * electron-builder writes `mac` (x64) and `mac-arm64`. When both are present, the
+ * directory for this arch wins; readdir order must not hand an arm64 binary to an
+ * x64 install. A bare `.app` is the other shape the build can leave.
+ */
+function macArtifact(files: string[], arch: string): string | null {
+  const named = `mac-${arch === "arm64" ? "arm64" : "x64"}`;
+  const dir = files.includes(named) ? named : arch !== "arm64" && files.includes("mac") ? "mac" : files.find((f) => f.startsWith("mac"));
+  if (dir) return path.join(dir, "awui.app", "Contents", "MacOS", "awui");
+  const app = files.find((f) => f.endsWith(".app"));
+  return app ? path.join(app, "Contents", "MacOS", "awui") : null;
 }
 
 /** The checkout root, walking up from this module to the package.json. */
@@ -227,6 +237,9 @@ export function desktopEntry(exec: string[]): string {
     "Icon=awui",
     "Terminal=false",
     "Categories=Development;Utility;",
+    // The scheme the packaged app registers, so a awui:// link in a browser or a
+    // chat opens through this entry (`Exec` carries %u).
+    "MimeType=x-scheme-handler/awui;",
     // The --class the app sets before Chromium starts, so the desktop links the
     // running window to this entry instead of showing a second, unnamed app.
     "StartupWMClass=awui-desktop",
@@ -263,7 +276,7 @@ export async function installDesktopIcon(opts: { stateDir: string }): Promise<vo
   }
   // A binary that carries the app is the entry's command, so the launcher keeps
   // working wherever the binary lives (it extracts the app again if it must).
-  const absolute = launch.how === "bundled with this awui" ? [process.execPath, "desktop"] : [launch.command, ...launch.args];
+  const absolute = launch.how === "bundled with this awui" ? [process.execPath, "desktop", "%u"] : [launch.command, ...launch.args, "%u"];
   const exec = menuCommand(absolute, onPath("awui", process.env));
 
   const { entry, icon } = desktopIconPaths(home);

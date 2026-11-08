@@ -1,7 +1,7 @@
 // The desktop app a binary can carry: the payload footer, and the one-time
 // extraction into the state folder.
 import { describe, expect, it } from "vitest";
-import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DESKTOP_MAGIC, bundledDesktop, embeddedDesktopPayload, extractDesktopPayload } from "../../src/server/desktop-embed.js";
@@ -51,7 +51,7 @@ describe("a binary that carries the desktop app", () => {
     const state = path.join(dir, "state");
 
     const extracted = await bundledDesktop(file, state, "0.0.1");
-    expect(extracted).toBe(path.join(state, "desktop", "0.0.1", "awui-desktop"));
+    expect(extracted).toBe(path.join(state, "app", "0.0.1", "awui-desktop"));
     expect((await stat(extracted!)).mode & 0o111).not.toBe(0);
     expect((await readFile(extracted!)).equals(payload)).toBe(true);
 
@@ -60,6 +60,35 @@ describe("a binary that carries the desktop app", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(await bundledDesktop(file, state, "0.0.1")).toBe(extracted);
     expect((await stat(extracted!)).mtimeMs).toBe(before);
+  });
+
+  it("re-extracts when the executable changed, not only when its version did", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "awui-embed-"));
+    const state = path.join(dir, "state");
+    const first = await executable(dir, Buffer.alloc(64, 1));
+    const extracted = await bundledDesktop(first, state, "0.0.1");
+    expect((await readFile(extracted!))[0]).toBe(1);
+    // Same version, same path, different build: a new payload of another length.
+    const second = await executable(dir, Buffer.alloc(128, 2));
+    const again = await bundledDesktop(second, state, "0.0.1");
+    expect(again).toBe(extracted);
+    expect((await readFile(again!))[0]).toBe(2);
+    expect((await readFile(again!)).length).toBe(128);
+  });
+
+  it("drops a legacy $state/desktop copy once the app lives under app/", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "awui-embed-"));
+    const payload = Buffer.from("app");
+    const file = await executable(dir, payload);
+    const state = path.join(dir, "state");
+    const legacy = path.join(state, "desktop", "0.0.1");
+    await mkdir(legacy, { recursive: true });
+    await writeFile(path.join(legacy, "awui-desktop"), "old");
+    const extracted = await bundledDesktop(file, state, "0.0.1");
+    expect(extracted).toBe(path.join(state, "app", "0.0.1", "awui-desktop"));
+    await expect(access(path.join(state, "desktop"))).rejects.toThrow();
+    const marker = JSON.parse(await readFile(`${extracted}.json`, "utf8")) as { size: number; mtimeMs: number };
+    expect(marker.size).toBe((await stat(file)).size);
   });
 
   it("extracts straight out of the executable's bytes", async () => {

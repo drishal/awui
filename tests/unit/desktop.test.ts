@@ -2,7 +2,7 @@
 // /api/health means, whether to attach to a running server or start one, and
 // the page a menu item or an awui:// link opens.
 import { describe, expect, it } from "vitest";
-import { healthUrl, parseHealth, planLaunch, portsFrom, targetFromLink, targetUrl, titleCount, type Probe } from "../../src/shared/desktop.js";
+import { expandHome, healthUrl, parseEndpoint, parseHealth, planLaunch, portsFrom, targetFromLink, targetUrl, titleCount, type Probe } from "../../src/shared/desktop.js";
 
 const probe = (port: number, state: Probe["state"]): Probe => ({ port, state });
 
@@ -53,10 +53,29 @@ describe("the desktop shell's view of the server", () => {
     expect(targetFromLink("not a url")).toBeNull();
   });
 
+  it("reads the endpoint a running server published", () => {
+    expect(parseEndpoint('{"port":5000,"host":"127.0.0.1","pid":42}')).toEqual({ port: 5000, host: "127.0.0.1", pid: 42 });
+    // A stale or foreign file names no usable port; the caller probes anyway.
+    expect(parseEndpoint('{"port":"5000"}')).toBeNull();
+    expect(parseEndpoint('{"port":0}')).toBeNull();
+    expect(parseEndpoint('{"port":70000}')).toBeNull();
+    expect(parseEndpoint("not json")).toBeNull();
+    expect(parseEndpoint('{"port":5000}')).toEqual({ port: 5000, host: "127.0.0.1", pid: 0 });
+  });
+
   it("counts what the title says needs you", () => {
     expect(titleCount("(2) awui")).toBe(2);
     expect(titleCount("(99+) awui")).toBe(99);
     expect(titleCount("awui")).toBe(0);
     expect(titleCount("awui (2)")).toBe(0);
+  });
+
+  it("expands a leading tilde the way the server does, and leaves other paths alone", () => {
+    expect(expandHome("~", "/home/me")).toBe("/home/me");
+    expect(expandHome("~/state", "/home/me")).toBe("/home/me/state");
+    expect(expandHome("~/", "/home/me")).toBe("/home/me");
+    expect(expandHome("~user/state", "/home/me")).toBe("~user/state");
+    expect(expandHome("/tmp/awui", "/home/me")).toBe("/tmp/awui");
+    expect(expandHome("~/state", "C:\\Users\\me")).toBe("C:\\Users\\me\\state");
   });
 });

@@ -53,7 +53,7 @@ the installed link, any `awui-desktop` on the PATH, and finally this checkout's
 `apps/desktop` through Electron — and starts the app detached, so the command
 returns.
 
-A binary that carries the app extracts it into `$XDG_STATE_HOME/awui/desktop/`
+A binary that carries the app extracts it into `$XDG_STATE_HOME/awui/app/<version>/`
 once, then runs it from there; that binary is ~257 MB instead of ~100 MB.
 
 From the package itself:

@@ -10,6 +10,40 @@
 /** awui's default port: the same one the server's `--port` falls back to. */
 export const DEFAULT_PORT = 4783;
 
+/**
+ * The file a running server writes into its state folder, so a client that has
+ * the folder but not the port (the desktop shell) can find it. A server on a
+ * configured port other than 4783 is invisible to a port scan of the defaults.
+ */
+export const ENDPOINT_FILE = "server.json";
+
+export interface Endpoint {
+  /** The port it listens on. */
+  port: number;
+  /** The host it bound: 127.0.0.1, or 0.0.0.0 for LAN. */
+  host: string;
+  /** The process that wrote the file; 0 when it did not say. */
+  pid: number;
+}
+
+/**
+ * Parse the endpoint file's body. Null when it is not one, or names no usable
+ * port — a stale file is expected after a crash, so the caller still has to ask
+ * the port who it is.
+ */
+export function parseEndpoint(body: string): Endpoint | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (typeof value !== "object" || value === null) return null;
+  const { port, host, pid } = value as { port?: unknown; host?: unknown; pid?: unknown };
+  if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) return null;
+  return { port, host: typeof host === "string" ? host : "127.0.0.1", pid: typeof pid === "number" ? pid : 0 };
+}
+
 /** How many ports a shell tries, from its base upward, before it gives up. */
 export const PORT_TRIES = 8;
 
@@ -131,4 +165,19 @@ export function titleCount(title: string): number {
   const match = /^\((\d+)\+?\)\s/.exec(title);
   if (!match?.[1]) return 0;
   return Number(match[1]) || 0;
+}
+
+/**
+ * Expand a leading `~` or `~/` against `home`. `~user` is left alone (not this
+ * account). A bare path is unchanged. The server and the desktop shell both use
+ * this, so `AWUI_STATE_DIR=~/state` names the same folder in both.
+ */
+export function expandHome(p: string, home: string): string {
+  if (p === "~") return home;
+  if (!p.startsWith("~/")) return p;
+  const rest = p.slice(2);
+  if (rest === "") return home;
+  const sep = home.includes("\\") && !home.includes("/") ? "\\" : "/";
+  const base = home.endsWith("/") || home.endsWith("\\") ? home.slice(0, -1) : home;
+  return `${base}${sep}${rest}`;
 }

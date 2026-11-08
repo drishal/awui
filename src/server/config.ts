@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { configDir, launchSettings, THEME_FILE, type UserConfig } from "./user-config.js";
-import { IS_WINDOWS, defaultStateDir } from "./platform-win.js";
+import { expandHome as expandTilde } from "../shared/desktop.js";
+import { defaultStateDir } from "./platform-win.js";
 
 export const DEFAULT_PORT = 4783;
 
@@ -38,9 +39,7 @@ export class ConfigError extends Error {}
 export const USERNAME_PATTERN = /^[A-Za-z0-9._@-]{1,64}$/;
 
 export function expandHome(p: string, home = homedir()): string {
-  if (p === "~") return home;
-  if (p.startsWith("~/")) return path.join(home, p.slice(2));
-  return p;
+  return expandTilde(p, home);
 }
 
 const portSchema = z.coerce
