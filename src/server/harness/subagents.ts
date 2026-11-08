@@ -13,6 +13,10 @@
 //    oh-my-opencode-slim's `subagent` ({ agent, description, prompt,
 //    background }): each runs a child session; the adapter reports its
 //    progress and result as rows keyed by that session's id.
+//  - Grok's `spawn_subagent` ({ description, prompt, background }): the child
+//    id, type, and model arrive on a later `subagent_spawned`, and the result
+//    on `subagent_finished`. The description is the label; the prompt is the
+//    child's own transcript. A retry is another child on the same call.
 // Transcript paths stay on the server (keyed by tool call and run), so the
 // browser can ask for a run's transcript but never names a file.
 import type { SubagentRun, SubagentsInfo } from "../../shared/protocol.js";
@@ -28,7 +32,7 @@ const MAX_FILES = 2_000;
 
 /** Whether a tool delegates to subagents. */
 export function isAgentTool(name: string): boolean {
-  return /^(task|subagent|agent|delegate|spawn_agents?)$/i.test(name);
+  return /^(task|subagent|agent|delegate|spawn_agents?|spawn_subagent)$/i.test(name);
 }
 
 const bound = (text: string) => (text.length > MAX_OUTPUT_CHARS ? `${text.slice(0, MAX_OUTPUT_CHARS)}\n…` : text);
@@ -50,13 +54,24 @@ export function transcriptFile(toolCallId: string, runId: string): string | null
   return files.get(`${toolCallId}/${runId}`) ?? null;
 }
 
+/**
+ * The brief a call's arguments carry. A named agent (Claude, pi, omp) puts the
+ * work in `prompt` or `task`. Grok's spawn has no agent yet: `description` is
+ * the label and `prompt` is the full brief, which the child's transcript holds.
+ */
+function brief(raw: Obj): string {
+  const named = str(raw.agent) ?? str(raw.subagent_type);
+  if (named) return str(raw.task) ?? str(raw.assignment) ?? str(raw.prompt) ?? str(raw.description) ?? "";
+  return str(raw.task) ?? str(raw.assignment) ?? str(raw.description) ?? str(raw.prompt) ?? "";
+}
+
 /** The runs a call's arguments describe, before anything has started. */
 export function runsFromArgs(args: unknown): SubagentsInfo | null {
   if (!isObj(args)) return null;
   const one = (raw: Obj, i: number): SubagentRun => ({
     id: str(raw.name) ?? str(raw.id) ?? String(i),
     agent: str(raw.agent) ?? str(raw.subagent_type) ?? "agent",
-    task: str(raw.task) ?? str(raw.assignment) ?? str(raw.prompt) ?? str(raw.description) ?? "",
+    task: brief(raw),
     status: "pending",
   });
   for (const [key, mode] of [
@@ -68,7 +83,7 @@ export function runsFromArgs(args: unknown): SubagentsInfo | null {
       return { mode, runs: list.filter(isObj).map(one), ...(args.async === true || args.background === true ? { background: true } : {}) };
     }
   }
-  if (str(args.agent) || str(args.subagent_type) || str(args.task) || str(args.prompt)) {
+  if (str(args.agent) || str(args.subagent_type) || str(args.task) || str(args.prompt) || str(args.description)) {
     // `background`: OpenCode's subagent tool (oh-my-opencode-slim) runs it on after the call returns.
     return { mode: "single", runs: [one(args, 0)], ...(args.async === true || args.background === true ? { background: true } : {}) };
   }

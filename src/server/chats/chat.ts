@@ -319,8 +319,24 @@ class EventReducer {
 
   /** Seed from the harness's stored history: its items and the title it knows. */
   load(items: ChatItem[], title: string | null): void {
-    for (const item of items) this.upsert(item);
+    for (const item of items) {
+      this.upsert(item);
+      this.noteLoadedId(item.id);
+    }
     this.title = title ?? this.firstUserText() ?? "";
+  }
+
+  /**
+   * History rows use the same `u1` / `a2` / `n3` ids `nextId` mints, and the
+   * counter starts at zero. A prompt sent after a resume would otherwise reuse
+   * `u1` and overwrite the first message in place, and the new thought would
+   * land in the first assistant row, above that turn's tool calls.
+   */
+  private noteLoadedId(id: string): void {
+    const match = /^[uan](\d+)$/.exec(id);
+    if (!match) return;
+    const n = Number(match[1]);
+    if (Number.isSafeInteger(n) && n > this.counter) this.counter = n;
   }
 
   apply(event: HarnessEvent): void {
@@ -400,12 +416,13 @@ class EventReducer {
       case "tool_update": {
         const item = this.get(`t:${event.toolCallId}`);
         if (!item || item.kind !== "tool") break;
-        const bounded = boundText(event.output);
+        // A subagent report after the call has returned must not wipe that result.
+        const bounded = event.keepOutput ? null : boundText(event.output);
         // Subagent progress replaces the last snapshot (it is not a patch).
         const runs = item.category === "agent" && event.details !== undefined ? runsFromDetails(event.toolCallId, event.details, item.subagents ?? null) : null;
         // A wait streams the jobs it waits on: their status, and omp's widget of their progress.
-        const jobs = event.details !== undefined ? this.callJobs(item, event.details, event.output) : null;
-        this.upsert({ ...item, output: bounded.text, truncated: bounded.truncated, ...(runs ? { subagents: runs } : {}), ...(jobs ? { jobs } : {}) });
+        const jobs = event.details !== undefined ? this.callJobs(item, event.details, event.keepOutput ? item.output : event.output) : null;
+        this.upsert({ ...item, ...(bounded ? { output: bounded.text, truncated: bounded.truncated } : {}), ...(runs ? { subagents: runs } : {}), ...(jobs ? { jobs } : {}) });
         this.dirtyTools.add(item.id);
         this.scheduleFlush();
         break;

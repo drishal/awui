@@ -4,7 +4,7 @@ import { applyReports, asyncReports, detailReports, notifyReports, runsFromArgs,
 
 describe("subagents", () => {
   it("knows delegation tools, and not todo lists", () => {
-    for (const name of ["task", "subagent", "Task", "Agent"]) expect(toolCategory(name), name).toBe("agent");
+    for (const name of ["task", "subagent", "Task", "Agent", "spawn_subagent"]) expect(toolCategory(name), name).toBe("agent");
     expect(toolCategory("todo_write")).toBe("other");
     expect(toolCategory("tasks_list")).not.toBe("agent");
   });
@@ -14,6 +14,12 @@ describe("subagents", () => {
     expect(runsFromArgs({ chain: [{ agent: "a", task: "x" }, { agent: "b", task: "{previous}" }] })?.mode).toBe("chain");
     expect(runsFromArgs({ context: "c", tasks: [{ name: "MethodContracts", agent: "scout", task: "read" }] })?.runs[0]).toMatchObject({ id: "MethodContracts", agent: "scout" });
     expect(runsFromArgs({ subagent_type: "general-purpose", description: "Find it", prompt: "Find the config loader" })?.runs[0]).toMatchObject({ agent: "general-purpose", task: "Find the config loader" });
+    // Grok's spawn has no agent yet: the description is the label, and the prompt is the child's transcript.
+    expect(runsFromArgs({ description: "Ping a subagent", prompt: "Reply with pong", background: true })).toEqual({
+      mode: "single",
+      background: true,
+      runs: [{ id: "0", agent: "agent", task: "Ping a subagent", status: "pending" }],
+    });
     expect(runsFromArgs({ action: "list" })).toBeNull();
   });
 

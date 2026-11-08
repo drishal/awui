@@ -6,6 +6,8 @@
 //   "tool"  a read_file call            "ask"   a Bash call that needs approval
 //   "diff"  a search_replace edit        "think" a thought before the answer
 //   "slow"  many small chunks (cancellable)   "fail"  accept the prompt, then error
+//   "subagent" a spawn_subagent call and its child session
+//   "subagentbg" the same, finishing after the tool has returned
 // Every prompt, set_config value, permission answer, and cancel is recorded in
 // $FAKE_GROK_STATE so a test can see what went out on the wire.
 import { randomUUID } from "node:crypto";
@@ -197,7 +199,19 @@ async function turn(id, text) {
   // The real CLI does not echo the prompt. "noecho" is that shape; anything else
   // still echoes, so a second user row in the chat is a bug.
   if (!text.includes("noecho")) send({ sessionUpdate: "user_message_chunk", content: [{ type: "text", text }] });
+  // The real CLI names this update; this build sends it only when asked.
+  if (text.includes("context")) send({ sessionUpdate: "usage_update", used: 2200, size: 500000 });
   writeSummary();
+
+  if (text.includes("unanswered")) {
+    // The turn ends on the wire long before the prompt request is answered: the
+    // shape that left a chat "running" for hours. turn_completed must settle it.
+    send({ sessionUpdate: "agent_message_chunk", content: [{ type: "text", text: "done but unanswered" }] });
+    send({ sessionUpdate: "turn_completed", usage: usage() });
+    writeSummary();
+    setTimeout(() => respond(id, { stopReason: "end_turn" }), 3000);
+    return;
+  }
 
   if (text.includes("fail")) {
     // Taken, then the turn errors: the send resolves, the run fails.
@@ -216,6 +230,66 @@ async function turn(id, text) {
   }
 
   if (text.includes("think")) send({ sessionUpdate: "agent_thought_chunk", content: [{ type: "text", text: "hmm" }] });
+
+  // "subagentbg" also contains "subagent", so it has to be told apart first.
+  if (text.includes("subagent")) {
+    const background = text.includes("subagentbg");
+    const callId = `call-sub-${++toolSeq}`;
+    const childId = "11111111-1111-4111-8111-111111111111";
+    send({
+      sessionUpdate: "tool_call",
+      toolCallId: callId,
+      title: "spawn_subagent",
+      rawInput: { description: "Ping a subagent", prompt: "Reply with pong", background },
+      _meta: { "x.ai/tool": { name: "spawn_subagent" } },
+    });
+    send({
+      sessionUpdate: "subagent_spawned",
+      subagent_id: childId,
+      child_session_id: childId,
+      parent_session_id: sessionId,
+      subagent_type: "general-purpose",
+      description: "Ping a subagent",
+      model: "opencode-go",
+    });
+    const childDir = path.join(group, childId);
+    mkdirSync(childDir, { recursive: true });
+    const childUpdates = [
+      { sessionUpdate: "user_message_chunk", content: { type: "text", text: "Reply with pong" } },
+      { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "pong" } },
+    ];
+    writeFileSync(
+      path.join(childDir, "updates.jsonl"),
+      `${childUpdates.map((update) => JSON.stringify({ timestamp: 1792245548, method: "session/update", params: { update } })).join("\n")}\n`,
+    );
+    writeFileSync(path.join(childDir, "summary.json"), `${JSON.stringify({ info: { id: childId, cwd }, generated_title: null }, null, 2)}\n`);
+    const metaDir = path.join(sessionDir, "subagents", childId);
+    mkdirSync(metaDir, { recursive: true });
+    writeFileSync(path.join(metaDir, "meta.json"), `${JSON.stringify({ parent_session_id: sessionId, child_session_id: childId, subagent_type: "general-purpose" })}\n`);
+    const finished = {
+      sessionUpdate: "subagent_finished",
+      subagent_id: childId,
+      child_session_id: childId,
+      status: "completed",
+      tool_calls: 0,
+      turns: 1,
+      duration_ms: 4776,
+      tokens_used: 11593,
+      output: "pong",
+      will_wake: false,
+    };
+    if (background) {
+      // The tool returns while the child is still going; the finish comes after.
+      send({ sessionUpdate: "tool_call_update", toolCallId: callId, status: "completed", content: [{ type: "text", text: "Subagent started in background." }] });
+      send(finished);
+    } else {
+      send(finished);
+      send({ sessionUpdate: "tool_call_update", toolCallId: callId, status: "completed", content: [{ type: "text", text: "pong" }] });
+    }
+    send({ sessionUpdate: "agent_message_chunk", content: [{ type: "text", text: "grok says pong" }] });
+    endTurn(id);
+    return;
+  }
 
   if (text.includes("tool")) {
     send({ sessionUpdate: "agent_message_chunk", content: [{ type: "text", text: "grok says " }] });

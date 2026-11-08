@@ -4,6 +4,7 @@
 import path from "node:path";
 import type { ChatItem, ToolItem } from "../../shared/protocol.js";
 import { boundText, editShape, isObj, stringifyArgs, toolCategory, toolPaths, toolSummary, type Obj } from "./agent-events.js";
+import { runsFromArgs, runsFromDetails, settleRuns } from "./subagents.js";
 import { lineDiff, resultDiff } from "./tool-diff.js";
 import type { HarnessUsage, StepUsage, UsageEntry } from "./types.js";
 
@@ -174,8 +175,31 @@ export type GrokFold =
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown; at: number }
   | { type: "tool_update"; toolCallId: string; output: string }
   | { type: "tool_end"; toolCallId: string; output: string; isError: boolean; details?: unknown; at: number }
-  | { type: "usage"; usage: UsageFold }
+  /** `turnEnded`: this usage came with `turn_completed`, the harness's end of a turn. */
+  | { type: "usage"; usage: UsageFold; turnEnded?: boolean }
+  /** ACP `usage_update`: the harness's own context occupancy, when it sends one. */
+  | { type: "context"; used: number; size: number }
   | { type: "notice"; text: string; at: number }
+  /**
+   * One child of a `spawn_subagent` call. The events name the child, not the
+   * tool call; `GrokSubagentBook` joins them. A finish omits the type and the
+   * label, which the spawn carried.
+   */
+  | {
+      type: "subagent";
+      phase: "spawned" | "finished";
+      childId: string;
+      agent?: string;
+      task?: string;
+      model?: string;
+      /** The CLI's word (`running`, `completed`, `failed`, `cancelled`). */
+      status: string;
+      error?: string;
+      toolCount?: number;
+      tokens?: number;
+      durationMs?: number;
+      output?: string;
+    }
   | { type: "ignore" };
 
 function planText(update: Obj): string {
@@ -238,11 +262,69 @@ export function foldSessionUpdate(update: unknown, at: number): GrokFold {
         cost: costUsd(usage.costUsdTicks),
         steps: typeof usage.modelCalls === "number" && Number.isFinite(usage.modelCalls) ? usage.modelCalls : 1,
       },
+      // The turn is over. `session/prompt` answers only at the end, and that answer
+      // can never come (a dropped response left a chat "running" for hours); this
+      // is the harness saying so on the wire, so it closes the turn too.
+      turnEnded: true,
     };
   }
+  if (kind === "usage_update") {
+    const used = finite(update.used);
+    const size = finite(update.size);
+    // Grok 1.0.77 names this update but does not write it into updates.jsonl.
+    // A build that does send it is the occupancy to trust, size included.
+    return size > 0 ? { type: "context", used, size } : { type: "ignore" };
+  }
+  if (kind === "subagent_spawned" || kind === "subagent_finished") return subagentFold(update, kind);
   if (kind === "plan") return { type: "notice", text: planText(update), at };
-  // hook_execution, background tasks, recaps, setup: noise, not conversation.
+  // hook_execution, background shell tasks, recaps, setup: noise, not conversation.
   return { type: "ignore" };
+}
+
+const MAX_SUBAGENT_ERROR = 2_000;
+const MAX_SUBAGENT_OUTPUT = 12_000;
+
+function clipText(value: unknown, max: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.length > max ? `${trimmed.slice(0, max)}\n…` : trimmed;
+}
+
+function countOf(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** `subagent_spawned` / `subagent_finished`. A child id that is not one of Grok's session ids is dropped. */
+function subagentFold(update: Obj, kind: "subagent_spawned" | "subagent_finished"): GrokFold {
+  const childId = typeof update.child_session_id === "string" ? update.child_session_id : typeof update.subagent_id === "string" ? update.subagent_id : "";
+  if (!isSessionId(childId)) return { type: "ignore" };
+  const agent = clipText(update.subagent_type, 80);
+  const task = clipText(update.description, 500);
+  const model = clipText(update.model, 80);
+  if (kind === "subagent_spawned") {
+    return { type: "subagent", phase: "spawned", childId, status: "running", ...(agent ? { agent } : {}), ...(task ? { task } : {}), ...(model ? { model } : {}) };
+  }
+  const error = clipText(update.error, MAX_SUBAGENT_ERROR);
+  const output = clipText(update.output, MAX_SUBAGENT_OUTPUT);
+  const toolCount = countOf(update.tool_calls);
+  const tokens = countOf(update.tokens_used);
+  const durationMs = countOf(update.duration_ms);
+  const status = typeof update.status === "string" && update.status.trim() ? update.status.trim() : "completed";
+  return {
+    type: "subagent",
+    phase: "finished",
+    childId,
+    status,
+    ...(agent ? { agent } : {}),
+    ...(task ? { task } : {}),
+    ...(model ? { model } : {}),
+    ...(error ? { error } : {}),
+    ...(output ? { output } : {}),
+    ...(toolCount !== undefined ? { toolCount } : {}),
+    ...(tokens !== undefined ? { tokens } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+  };
 }
 
 /** The update object inside a `session/update` or `_x.ai/session/update` frame, or null. */
@@ -287,6 +369,19 @@ export function emptyUsage(): HarnessUsage {
   return { turns: 0, steps: 0, input: 0, cachedInput: 0, cacheWrite: 0, output: 0, cost: 0 };
 }
 
+/**
+ * Tokens in the window after one turn.
+ * Grok's `inputTokens` already include `cachedReadTokens` (`totalTokens` is
+ * input plus output). Adding the cache again pushed a large turn past the
+ * window, and the ring clamped that to 100%. A payload whose cache is larger
+ * than its input reports the cache on top instead.
+ */
+export function contextTokens(step: StepUsage): number {
+  const cache = step.cacheRead + step.cacheWrite;
+  if (cache > step.input) return step.input + cache;
+  return step.input + step.output;
+}
+
 /** Add one turn. One unpriced turn makes the session total unpriced from then on. */
 export function addTurn(total: HarnessUsage, turn: UsageFold, incomplete: { value: boolean }): HarnessUsage {
   if (turn.cost === null) incomplete.value = true;
@@ -324,6 +419,136 @@ export function usageFromFolds(folds: GrokFold[]): { usage: HarnessUsage; entrie
   return { usage, entries, last };
 }
 
+interface SubagentRunState {
+  id: string;
+  agent: string;
+  task: string;
+  /** The CLI's word, which runsFromDetails maps onto the card's status. */
+  status: string;
+  model?: string;
+  toolCount?: number;
+  tokens?: number;
+  durationMs?: number;
+  error?: string;
+  output?: string;
+}
+
+interface SpawnToolState {
+  background: boolean;
+  ended: boolean;
+  /** The label from the call's arguments, used when the spawn event omits one. */
+  task: string;
+  runs: SubagentRunState[];
+}
+
+function spawnLabel(args: unknown): string {
+  if (!isObj(args)) return "";
+  const description = typeof args.description === "string" ? args.description.trim() : "";
+  if (description) return description.slice(0, 500);
+  const prompt = typeof args.prompt === "string" ? args.prompt.replace(/\s+/g, " ").trim() : "";
+  return prompt.slice(0, 200);
+}
+
+function isSpawn(name: string): boolean {
+  return name.toLowerCase() === "spawn_subagent";
+}
+
+/**
+ * Joins `subagent_spawned` / `subagent_finished` to the `spawn_subagent` call
+ * they belong to. The events carry the child session id and not the tool call
+ * id. A foreground call can retry (two children, one call). A background call
+ * returns before the child finishes, so the join survives the tool ending.
+ * The snapshot is the whole set of rows, which runsFromDetails folds.
+ */
+export class GrokSubagentBook {
+  private readonly tools = new Map<string, SpawnToolState>();
+  private readonly order: string[] = [];
+  private readonly childTool = new Map<string, string>();
+
+  /**
+   * Note a tool boundary, or fold one subagent event. Returns the call to
+   * update and a full progress/results snapshot, or null when this fold is
+   * not a subagent report.
+   */
+  ingest(fold: GrokFold): { toolCallId: string; details: Record<string, unknown> } | null {
+    if (fold.type === "tool_start") {
+      this.noteTool(fold.toolCallId, fold.name, fold.args);
+      return null;
+    }
+    if (fold.type === "tool_end") {
+      this.noteEnd(fold.toolCallId);
+      return null;
+    }
+    if (fold.type !== "subagent") return null;
+    const toolCallId = fold.phase === "finished" ? (this.childTool.get(fold.childId) ?? this.target()) : this.target();
+    if (!toolCallId) return null;
+    const tool = this.tools.get(toolCallId);
+    if (!tool) return null;
+    this.childTool.set(fold.childId, toolCallId);
+    const prior = tool.runs.find((run) => run.id === fold.childId);
+    const run: SubagentRunState = prior ?? { id: fold.childId, agent: fold.agent ?? "agent", task: fold.task ?? tool.task, status: fold.status };
+    if (fold.agent) run.agent = fold.agent;
+    if (fold.task) run.task = fold.task;
+    else if (!run.task) run.task = tool.task;
+    run.status = fold.status;
+    if (fold.model) run.model = fold.model;
+    if (fold.toolCount !== undefined) run.toolCount = fold.toolCount;
+    if (fold.tokens !== undefined) run.tokens = fold.tokens;
+    if (fold.durationMs !== undefined) run.durationMs = fold.durationMs;
+    if (fold.error) run.error = fold.error;
+    if (fold.output) run.output = fold.output;
+    if (!prior) tool.runs.push(run);
+    return this.snapshot(toolCallId);
+  }
+
+  private noteTool(toolCallId: string, name: string, args: unknown): void {
+    if (!isSpawn(name) || this.tools.has(toolCallId)) return;
+    const background = isObj(args) && (args.background === true || args.run_in_background === true);
+    this.tools.set(toolCallId, { background, ended: false, task: spawnLabel(args), runs: [] });
+    this.order.push(toolCallId);
+  }
+
+  private noteEnd(toolCallId: string): void {
+    const tool = this.tools.get(toolCallId);
+    if (tool) tool.ended = true;
+  }
+
+  /** The spawn still open, else the latest one (a finish racing the tool's own result). */
+  private target(): string | null {
+    for (let i = this.order.length - 1; i >= 0; i -= 1) {
+      const id = this.order[i];
+      const tool = id !== undefined ? this.tools.get(id) : undefined;
+      if (tool && !tool.ended) return id ?? null;
+    }
+    return this.order[this.order.length - 1] ?? null;
+  }
+
+  private snapshot(toolCallId: string): { toolCallId: string; details: Record<string, unknown> } | null {
+    const tool = this.tools.get(toolCallId);
+    if (!tool || tool.runs.length === 0) return null;
+    const rows = tool.runs.map((run, index) => {
+      const row: Record<string, unknown> = { id: run.id, index, agent: run.agent, task: run.task, status: run.status };
+      if (run.model) row.model = run.model;
+      if (run.toolCount !== undefined) row.toolCount = run.toolCount;
+      if (run.tokens !== undefined) row.tokens = run.tokens;
+      if (run.durationMs !== undefined) row.durationMs = run.durationMs;
+      if (run.error) row.error = run.error;
+      if (run.output) row.output = run.output;
+      return row;
+    });
+    const running = rows.filter((row) => row.status === "running" || row.status === "pending");
+    const done = rows.filter((row) => row.status !== "running" && row.status !== "pending");
+    return {
+      toolCallId,
+      details: {
+        ...(tool.background ? { background: true } : {}),
+        ...(running.length > 0 ? { progress: running } : {}),
+        ...(done.length > 0 ? { results: done } : {}),
+      },
+    };
+  }
+}
+
 function toolItem(fold: Extract<GrokFold, { type: "tool_start" }>): ToolItem {
   const category = toolCategory(fold.name);
   const edits = category === "edit" || category === "write";
@@ -343,11 +568,18 @@ function toolItem(fold: Extract<GrokFold, { type: "tool_start" }>): ToolItem {
   };
 }
 
+function attachSubagents(item: ToolItem, toolCallId: string, details: Record<string, unknown>): void {
+  const runs = runsFromDetails(toolCallId, details, item.subagents ?? null);
+  if (runs) item.subagents = runs;
+}
+
 /** Chat items for a stored transcript. A tool still running at the end of the file failed with the session. */
 export function itemsFromFolds(folds: GrokFold[]): ChatItem[] {
   const items: ChatItem[] = [];
   let assistant: Extract<ChatItem, { kind: "assistant" }> | null = null;
   const open = new Map<string, number>();
+  const toolAt = new Map<string, number>();
+  const subagents = new GrokSubagentBook();
   let n = 0;
   const closeAssistant = () => {
     if (assistant?.streaming) {
@@ -368,8 +600,20 @@ export function itemsFromFolds(folds: GrokFold[]): ChatItem[] {
       assistant[fold.field] += fold.delta;
     } else if (fold.type === "tool_start") {
       closeAssistant();
+      subagents.ingest(fold);
+      const started = toolItem(fold);
+      if (started.category === "agent") {
+        const runs = runsFromArgs(fold.args);
+        if (runs) started.subagents = runs;
+      }
       open.set(fold.toolCallId, items.length);
-      items.push(toolItem(fold));
+      toolAt.set(fold.toolCallId, items.length);
+      items.push(started);
+    } else if (fold.type === "subagent") {
+      const linked = subagents.ingest(fold);
+      const index = linked ? toolAt.get(linked.toolCallId) : undefined;
+      const item = index !== undefined ? items[index] : undefined;
+      if (linked && item && item.kind === "tool") attachSubagents(item, linked.toolCallId, linked.details);
     } else if (fold.type === "tool_update" || fold.type === "tool_end") {
       let index = open.get(fold.toolCallId);
       let item = index !== undefined ? items[index] : undefined;
@@ -380,8 +624,9 @@ export function itemsFromFolds(folds: GrokFold[]): ChatItem[] {
         item = toolItem(started);
         items.push(item);
         open.set(fold.toolCallId, index);
+        toolAt.set(fold.toolCallId, index);
       }
-      const bounded = boundText(fold.type === "tool_end" ? fold.output : fold.output);
+      const bounded = boundText(fold.output);
       if (fold.type === "tool_update") {
         item.output = bounded.text;
         item.truncated = bounded.truncated;
@@ -394,6 +639,10 @@ export function itemsFromFolds(folds: GrokFold[]): ChatItem[] {
       item.truncated = bounded.truncated;
       item.status = fold.isError ? "error" : "done";
       item.endedAt = fold.at;
+      // A background child keeps running after this result. An inline one that
+      // is still open failed with the call (its own finish never arrived).
+      subagents.ingest(fold);
+      if (item.subagents) item.subagents = settleRuns(item.subagents, bounded.text, fold.isError);
       open.delete(fold.toolCallId);
     } else if (fold.type === "notice") {
       items.push({ kind: "notice", id: `n${++n}`, level: "info", text: fold.text, at: fold.at });
@@ -404,6 +653,7 @@ export function itemsFromFolds(folds: GrokFold[]): ChatItem[] {
     if (item && item.kind === "tool" && item.status === "running") {
       item.status = "error";
       item.endedAt = item.at;
+      if (item.subagents && !item.subagents.background) item.subagents = settleRuns(item.subagents, item.output, true);
     }
   }
   closeAssistant();

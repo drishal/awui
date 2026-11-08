@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { GrokAdapter, liveGrokChildren } from "../../src/server/harness/grok.js";
-import { costUsd, foldsFromJsonl, itemsFromFolds } from "../../src/server/harness/grok-transcript.js";
+import { contextTokens, costUsd, foldSessionUpdate, foldsFromJsonl, GrokSubagentBook, itemsFromFolds } from "../../src/server/harness/grok-transcript.js";
 import type { LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
@@ -133,11 +133,62 @@ describe("the grok adapter (scripted CLI)", () => {
     expect(await live.getContextUsage()).toEqual({ tokens: 112, window: 256000, percent: 0 });
   });
 
+  it("takes the context window from usage_update when the CLI sends one", async () => {
+    const { chat, live } = await openChat();
+    await chat.send("context please", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "grok says context please"));
+    expect(await live.getContextUsage()).toEqual({ tokens: 2200, window: 500000, percent: 0 });
+  });
+
+  it("shows a spawn_subagent on the delegation card, and opens that child's transcript", async () => {
+    const { chat } = await openChat();
+    await chat.send("subagent please", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "grok says pong"));
+    const tool = toolItem(chat);
+    expect(tool).toMatchObject({
+      name: "spawn_subagent",
+      category: "agent",
+      status: "done",
+      output: "pong",
+      subagents: { runs: [{ id: "11111111-1111-4111-8111-111111111111", agent: "general-purpose", task: "Ping a subagent", status: "done", model: "opencode-go", tokens: 11593, durationMs: 4776, output: "pong", transcript: true }] },
+    });
+    const run = tool.subagents?.runs[0];
+    if (!run) throw new Error("expected a subagent run");
+    const transcript = await chat.subagentTranscript(tool.id, run.id);
+    expect(transcript.items.filter((item) => item.kind === "assistant").map((item) => item.kind === "assistant" && item.text)).toEqual(["pong"]);
+    const nativeId = chat.nativeId;
+    if (!nativeId) throw new Error("expected a session");
+    // Another session of this project, and a child this chat did not spawn, stay unread.
+    await expect(adapter.subagentTranscript({ nativeId: "22222222-2222-4222-8222-222222222222", cwd: project }, run)).resolves.toBeNull();
+    await expect(adapter.subagentTranscript({ nativeId, cwd: project }, { ...run, id: "33333333-3333-4333-8333-333333333333" })).resolves.toBeNull();
+  });
+
+  it("keeps a background subagent running after the tool returns, then records its answer", async () => {
+    const { chat } = await openChat();
+    await chat.send("subagentbg please", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "grok says pong"));
+    const tool = toolItem(chat);
+    expect(tool).toMatchObject({
+      status: "done",
+      output: "Subagent started in background.",
+      subagents: { background: true, runs: [{ status: "done", output: "pong", transcript: true }] },
+    });
+  });
+
   it("shows a tool call with its category, summary, and output", async () => {
     const { chat } = await openChat();
     await chat.send("use the tool", "normal");
     await until(() => chat.status === "idle" && toolItem(chat).status === "done");
     expect(toolItem(chat)).toMatchObject({ name: "read_file", category: "read", summary: "README.md", output: "file.txt", status: "done" });
+  });
+
+  it("settles a turn the harness finished on the wire when the prompt request is never answered", async () => {
+    const { chat } = await openChat();
+    await chat.send("unanswered", "normal");
+    // session/prompt answers only after three seconds: turn_completed is the only
+    // end of the turn here, so this settles well before that answer could.
+    await until(() => chat.status === "idle" && answered(chat, "done but unanswered"), 1500);
+    expect(chat.snapshot().items.some((i) => i.kind === "user" && i.text === "unanswered")).toBe(true);
   });
 
   it("turns Grok's permission request into a card in Grok's own words, and allows once", async () => {
@@ -235,8 +286,12 @@ describe("the grok adapter (scripted CLI)", () => {
     expect(await again.getUsage()).toMatchObject({ turns: 1, cost: 0.01 });
 
     await resumed.send("and again", "normal");
-    await until(() => resumed.status === "idle" && recorded("prompts").length === 2);
+    await until(() => resumed.status === "idle" && answered(resumed, "grok says and again"));
     expect(await again.getUsage()).toMatchObject({ turns: 2, cost: 0.02 });
+    // The new prompt is its own row. Reusing the loaded `u1` used to replace the first message, and the new thought landed in the first assistant row.
+    const users = resumed.snapshot().items.filter((item) => item.kind === "user").map((item) => (item.kind === "user" ? item.text : ""));
+    expect(users).toEqual(["hello there", "and again"]);
+    expect(resumed.snapshot().items.some((item) => item.kind === "assistant" && item.text.includes("grok says hello there"))).toBe(true);
   });
 
   it("lists a project's sessions, and gives a resume command for them", async () => {
@@ -322,8 +377,84 @@ describe("grok's session folds (no process)", () => {
     expect(items[1]).toMatchObject({ kind: "tool", status: "error" });
   });
 
+  it("marks turn_completed as the end of the turn", () => {
+    const folds = foldsFromJsonl([line({ sessionUpdate: "turn_completed", usage: { inputTokens: 1, outputTokens: 2 } })].join("\n"));
+    expect(folds[0]).toMatchObject({ type: "usage", turnEnded: true });
+  });
+
   it("prices a turn in dollars, and leaves an unpriced one null", () => {
     expect(costUsd(100000000)).toBe(0.01);
     expect(costUsd(0)).toBeNull();
+  });
+
+  it("does not add cache hits that are already inside input tokens", () => {
+    // Recorded from grok 1.0.77: totalTokens was input + output, and cachedRead was a subset of input.
+    expect(contextTokens({ input: 224866, output: 3037, cacheRead: 176768, cacheWrite: 0 })).toBe(227903);
+    // The scripted CLI reports cache on top of a small input. That sum stays.
+    expect(contextTokens({ input: 10, output: 12, cacheRead: 100, cacheWrite: 2 })).toBe(112);
+  });
+
+  it("reads a usage_update as the context occupancy", () => {
+    const folds = foldsFromJsonl([line({ sessionUpdate: "usage_update", used: 2200, size: 500000 })].join("\n"));
+    expect(folds[0]).toEqual({ type: "context", used: 2200, size: 500000 });
+  });
+
+  const spawn = (toolCallId: string, extra: Record<string, unknown> = {}) =>
+    line({
+      sessionUpdate: "tool_call",
+      toolCallId,
+      title: "spawn_subagent",
+      rawInput: { description: "Ping a subagent", prompt: "Reply with the single word pong", background: false, ...extra },
+      _meta: { "x.ai/tool": { name: "spawn_subagent" } },
+    });
+
+  it("folds a spawn and its retries onto one delegation card", () => {
+    const a = "11111111-1111-4111-8111-111111111111";
+    const b = "22222222-2222-4222-8222-222222222222";
+    const folds = foldsFromJsonl(
+      [
+        spawn("c1"),
+        line({ sessionUpdate: "subagent_spawned", child_session_id: a, subagent_type: "general-purpose", description: "Ping a subagent", model: "opencode-go" }),
+        line({ sessionUpdate: "subagent_finished", child_session_id: a, status: "failed", error: "expired key", tool_calls: 0, tokens_used: 0, duration_ms: 30 }),
+        line({ sessionUpdate: "subagent_spawned", child_session_id: b, subagent_type: "general-purpose", description: "Ping a subagent", model: "opencode-go" }),
+        line({ sessionUpdate: "subagent_finished", child_session_id: b, status: "cancelled", error: "Subagent was cancelled", tool_calls: 9, tokens_used: 80, duration_ms: 90 }),
+        line({ sessionUpdate: "tool_call_update", toolCallId: "c1", status: "failed", content: [{ type: "text", text: "expired key" }] }),
+      ].join("\n"),
+    );
+    const items = itemsFromFolds(folds);
+    const tool = items[0];
+    if (!tool || tool.kind !== "tool") throw new Error("expected a tool");
+    expect(tool).toMatchObject({ category: "agent", status: "error", name: "spawn_subagent" });
+    expect(tool.subagents?.runs.map((run) => [run.id, run.status, run.agent, run.task])).toEqual([
+      [a, "failed", "general-purpose", "Ping a subagent"],
+      [b, "stopped", "general-purpose", "Ping a subagent"],
+    ]);
+    expect(tool.subagents?.runs[1]).toMatchObject({ toolCount: 9, tokens: 80, durationMs: 90, error: "Subagent was cancelled", transcript: true });
+    expect(tool.subagents?.runs.some((run) => run.id === "0")).toBe(false);
+  });
+
+  it("keeps a background child's row after the tool's own result, including a finish read on resume", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const folds = foldsFromJsonl(
+      [
+        spawn("c1", { background: true, description: "Implement Grok harness" }),
+        line({ sessionUpdate: "subagent_spawned", child_session_id: id, subagent_type: "general-purpose", description: "Implement Grok harness", model: "opencode-go" }),
+        line({ sessionUpdate: "tool_call_update", toolCallId: "c1", status: "completed", content: [{ type: "text", text: "Subagent started in background." }] }),
+      ].join("\n"),
+    );
+    const midway = itemsFromFolds(folds);
+    expect(midway[0]).toMatchObject({ status: "done", output: "Subagent started in background.", subagents: { background: true, runs: [{ id, status: "running" }] } });
+    // Resume reads the file into the book, then the finish arrives live.
+    const book = new GrokSubagentBook();
+    for (const fold of folds) book.ingest(fold);
+    const late = foldSessionUpdate({ sessionUpdate: "subagent_finished", child_session_id: id, status: "completed", output: "pong", tool_calls: 2, tokens_used: 9, duration_ms: 4 }, 0);
+    const linked = book.ingest(late);
+    expect(linked).toMatchObject({ toolCallId: "c1", details: { background: true, results: [{ id, status: "completed", output: "pong", toolCount: 2 }] } });
+    const done = itemsFromFolds([...folds, late]);
+    expect(done[0]).toMatchObject({ output: "Subagent started in background.", subagents: { background: true, runs: [{ id, status: "done", output: "pong" }] } });
+  });
+
+  it("ignores a subagent event whose child id is not a session id", () => {
+    expect(foldSessionUpdate({ sessionUpdate: "subagent_spawned", child_session_id: "../escape", subagent_type: "general-purpose" }, 0)).toEqual({ type: "ignore" });
   });
 });

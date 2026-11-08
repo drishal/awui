@@ -16,6 +16,7 @@ import {
   type ChatConfig,
   type ChatItem,
   type ConfigPatch,
+  type SubagentRun,
   type ContextUsage,
   type HarnessCapabilities,
   type ImageAttachment,
@@ -31,11 +32,13 @@ import { PendingRequests, StderrTail, terminateChild } from "./child-process.js"
 import { DialogTracker, EventHub } from "./event-hub.js";
 import {
   addTurn,
+  contextTokens,
   emptyUsage,
   encodedCwd,
   firstPrompt,
   foldSessionUpdate,
   foldsFromJsonl,
+  GrokSubagentBook,
   isSessionId,
   itemsFromFolds,
   parseSummary,
@@ -350,12 +353,16 @@ class GrokLiveChat implements LiveChat {
   /** One unpriced turn makes the session total unpriced from then on. */
   private incomplete = { value: false };
   private lastTurn: UsageFold | null = null;
+  /** ACP `usage_update`, when the CLI sends one: it names the window itself. */
+  private contextUsage: { used: number; size: number } | null = null;
   /** The finished turn's tokens, for the empty assistant_end that closes it. */
   private turnStep: StepUsage | null = null;
   private turnOpen = false;
   private promptRpc: Promise<unknown> | null = null;
   private assistantOpen = false;
   private readonly openTools = new Set<string>();
+  /** Which spawn_subagent call each child belongs to, including ones loaded from the file. */
+  private readonly subagents = new GrokSubagentBook();
   private readonly permissionOptions = new Map<string, string[]>();
 
   constructor(
@@ -444,10 +451,14 @@ class GrokLiveChat implements LiveChat {
     const file = await this.adapter.sessionUpdates(this.cwd, nativeId);
     const text = file ? await readSessionText(file) : null;
     if (text === null) return;
-    const seeded = usageFromFolds(foldsFromJsonl(text));
+    const folds = foldsFromJsonl(text);
+    const seeded = usageFromFolds(folds);
     this.usage = seeded.usage;
     this.incomplete = { value: seeded.usage.cost === null };
     this.lastTurn = seeded.last;
+    // A background child can finish after resume. The replay is ignored, so the
+    // join between that child and its call has to come from the file.
+    for (const fold of folds) this.subagents.ingest(fold);
   }
 
   // ---- the child's frames -------------------------------------------------------
@@ -492,6 +503,7 @@ class GrokLiveChat implements LiveChat {
         // The tool call closes the text bubble; later words start a new one.
         this.assistantOpen = false;
         this.openTools.add(fold.toolCallId);
+        this.subagents.ingest(fold);
         this.emit({ type: "tool_start", toolCallId: fold.toolCallId, name: fold.name, args: fold.args });
         return;
       }
@@ -500,13 +512,27 @@ class GrokLiveChat implements LiveChat {
         return;
       case "tool_end": {
         this.openTools.delete(fold.toolCallId);
+        this.subagents.ingest(fold);
         this.emit({ type: "tool_end", toolCallId: fold.toolCallId, output: boundText(fold.output).text, isError: fold.isError, ...(fold.details ? { details: fold.details } : {}) });
+        return;
+      }
+      case "subagent": {
+        // The call may already hold its own result (a background child finishes
+        // later). The report updates the card and leaves that result in place.
+        const linked = this.subagents.ingest(fold);
+        if (linked) this.emit({ type: "tool_update", toolCallId: linked.toolCallId, output: "", keepOutput: true, details: linked.details });
         return;
       }
       case "usage":
         this.lastTurn = fold.usage;
         this.turnStep = fold.usage.step;
         this.usage = addTurn(this.usage, fold.usage, this.incomplete);
+        // turn_completed: the harness's own end of the turn. The prompt RPC's answer
+        // is the other path here and may never arrive; completeTurn is idempotent.
+        if (fold.turnEnded) this.completeTurn();
+        return;
+      case "context":
+        this.contextUsage = { used: fold.used, size: fold.size };
         return;
       case "notice":
         this.emit({ type: "notice", level: "info", text: fold.text });
@@ -576,11 +602,17 @@ class GrokLiveChat implements LiveChat {
   }
 
   async getContextUsage(): Promise<ContextUsage | null> {
+    // The CLI's own occupancy wins: its `size` is the window in force, which a
+    // model with two windows (256k and 500k) would otherwise leave us guessing.
+    const reported = this.contextUsage;
+    if (reported && reported.size > 0) {
+      return { tokens: reported.used, window: reported.size, percent: Math.round((100 * reported.used) / reported.size) };
+    }
     const own = this.model === null ? undefined : this.windows.get(this.model);
     const window = own ?? (this.windowsList.length > 0 ? Math.max(...this.windowsList) : null);
     if (window === null || window <= 0) return null;
     const turn = this.lastTurn;
-    const tokens = turn === null ? null : turn.step.input + turn.step.cacheRead + turn.step.cacheWrite;
+    const tokens = turn === null ? null : contextTokens(turn.step);
     return { tokens, window, percent: tokens === null ? null : Math.round((100 * tokens) / window) };
   }
 
@@ -637,7 +669,10 @@ class GrokLiveChat implements LiveChat {
     this.turnOpen = false;
     const step = this.turnStep;
     this.turnStep = null;
-    for (const id of [...this.openTools]) this.emit({ type: "tool_end", toolCallId: id, output: "", isError: true });
+    for (const id of [...this.openTools]) {
+      this.subagents.ingest({ type: "tool_end", toolCallId: id, output: "", isError: true, at: Date.now() });
+      this.emit({ type: "tool_end", toolCallId: id, output: "", isError: true });
+    }
     this.openTools.clear();
     this.assistantOpen = false;
     // Empty text: the streamed bubble stays; this only closes the turn and counts it.
@@ -848,6 +883,34 @@ export class GrokAdapter implements HarnessAdapter {
     if (!dir) return null;
     const file = path.join(dir, "updates.jsonl");
     return (await fs.stat(file).catch(() => null))?.isFile() ? file : null;
+  }
+
+  /**
+   * A subagent's conversation. The child is its own session beside the parent,
+   * and the parent's `subagents/<id>/meta.json` is what proves this chat spawned
+   * it. Anything else is refused, including another session of the same project.
+   */
+  async subagentTranscript(chat: { nativeId: string; cwd: string }, run: SubagentRun): Promise<ChatItem[] | null> {
+    if (!isSessionId(chat.nativeId) || !isSessionId(run.id)) return null;
+    const parent = await this.findSession(chat.cwd, chat.nativeId);
+    if (!parent) return null;
+    const metaFile = path.join(parent, "subagents", run.id, "meta.json");
+    // The proof of ownership is a small record. A huge stand-in is not one.
+    const metaStat = await fs.stat(metaFile).catch(() => null);
+    if (!metaStat?.isFile() || metaStat.size > 64 * 1024) return null;
+    const metaText = await fs.readFile(metaFile, "utf8").catch(() => null);
+    if (metaText === null) return null;
+    let meta: unknown;
+    try {
+      meta = JSON.parse(metaText);
+    } catch {
+      return null;
+    }
+    if (!isObj(meta) || meta.parent_session_id !== chat.nativeId || meta.child_session_id !== run.id) return null;
+    const file = await this.sessionUpdates(chat.cwd, run.id);
+    if (!file) return null;
+    const text = await readSessionText(file);
+    return text === null ? null : itemsFromFolds(foldsFromJsonl(text));
   }
 
   /** The first prompt of a session with no generated title, from the jsonl head only. */

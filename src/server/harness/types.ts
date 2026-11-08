@@ -108,7 +108,7 @@ export type HarnessEvent =
   | { type: "assistant_delta"; field: "text" | "thinking"; delta: string }
   | { type: "assistant_end"; text: string; thinking: string; error?: string; usage?: StepUsage }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
-  | { type: "tool_update"; toolCallId: string; output: string; details?: unknown }
+  | { type: "tool_update"; toolCallId: string; output: string; details?: unknown; /** Leave the call's own output alone. A subagent's report can arrive after that result is already on the row. */ keepOutput?: boolean }
   /** Background subagents reporting back (omp's async-result): which runs finished, and how. */
   | { type: "subagent_reports"; reports: AgentReport[] }
   /** Background jobs reporting in (omp's async-result, Claude's task_notification, bg_task's exit event): every call holding one shows it. */

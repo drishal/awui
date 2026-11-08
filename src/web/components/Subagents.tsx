@@ -16,6 +16,9 @@ export const ChatIdContext = createContext<string | null>(null);
 
 const REFRESH_MS = 2_000;
 
+/** omp names a run (CrookedThrush). A launch index or a session id is not a name. */
+const namedRun = (id: string) => !/^\d+$/.test(id) && !/^[0-9a-f-]{36}$/i.test(id);
+
 const firstLine = (text: string) =>
   text
     .split("\n")
@@ -65,7 +68,7 @@ function RunRow({ run, onOpen }: { run: SubagentRun; onOpen: () => void }) {
     <li className={`run is-${run.status}${open ? " is-open" : ""}`}>
       <button type="button" className="run-head" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <RunStatus status={run.status} />
-        {!/^\d+$/.test(run.id) ? <span className="run-name">{run.id}</span> : null}
+        {namedRun(run.id) ? <span className="run-name">{run.id}</span> : null}
         <span className="run-agent">{run.agent}</span>
         <span className="run-task">{firstLine(run.task)}</span>
         {facts.length > 0 ? <span className="run-meta">{dotted(facts)}</span> : null}
@@ -218,9 +221,9 @@ function TranscriptPanel({ toolId, run, renderItem, onClose }: { toolId: string;
         <header className="run-panel-head">
           <RunStatus status={run.status} size={15} />
           <div className="run-panel-title">
-            <strong>{/^\d+$/.test(run.id) ? run.agent : run.id}</strong>
+            <strong>{namedRun(run.id) ? run.id : run.agent}</strong>
             <span>
-              {dotted([run.agent !== run.id && !/^\d+$/.test(run.id) ? run.agent : null, run.model, ...facts])}
+              {dotted([namedRun(run.id) && run.agent !== run.id ? run.agent : null, run.model, ...facts])}
             </span>
           </div>
           <button type="button" className="icon-btn" aria-label="Close" onClick={close}>
