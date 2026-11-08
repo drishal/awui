@@ -14,6 +14,7 @@ import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu }
 import { blanks, matchPrompts, nextBlank, promptGist } from "../prompt-blanks.js";
 import { managePrompts, useSavedPrompts } from "../saved-prompts.js";
 import { IconArrowUp, IconChevronDown, IconImage, IconLink, IconPlan, IconPlus, IconSpark, IconScreen, IconStash, IconStop, IconTerminal, IconX, Spinner } from "../icons.js";
+import { draftImages, saveDraftImages } from "../draft-images.js";
 import { dataUrl, imageFiles, type PendingImage, pendingImage, prepareImage } from "../images.js";
 import { addQuestion, dropHint, insertReference, matchProjectFile, MAX_CHOICES, otherFiles, uploadProblem } from "../file-drop.js";
 import { UploadError, uploadToProject } from "../upload.js";
@@ -100,7 +101,9 @@ export function Composer({
   const [folded, setFolded] = useState<FoldedRequest | null>(null);
   const { git, direnv, at: gitAt, refresh: refreshGit } = useGitStatus(chat.chatId, chat.status);
   const [gitOpen, setGitOpen] = useState(false);
-  const [images, setImages] = useState<PendingImage[]>([]);
+  // Images are per chat like the text draft: the composer remounts on a tab switch
+  // (App.tsx keys it by chatId), and a draft's pictures must come back with it.
+  const [images, setImages] = useState<PendingImage[]>(() => draftImages(chat.chatId));
   const [imageError, setImageError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
   // A big pasted blob the user chose to send as a file instead of inline text.
@@ -141,6 +144,10 @@ export function Composer({
   useEffect(() => {
     save(draftKey, text);
   }, [draftKey, text]);
+
+  useEffect(() => {
+    saveDraftImages(chat.chatId, images);
+  }, [chat.chatId, images]);
 
   const tooLong = text.length > maxChars;
 
