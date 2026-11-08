@@ -38,12 +38,15 @@ import { PendingRequests, StderrTail, terminateChild } from "./child-process.js"
 import {
   GatewaySocket,
   HermesRpcError,
-  gatewayEndpoint,
   gatewayTicket,
+  gatewayVerdict,
+  grantFromAttach,
   hermesCodec,
   type GatewayEndpoint,
   type GatewayFrame,
+  type GatewayGrant,
   type GatewayLink,
+  type GatewayVerdict,
 } from "./hermes-gateway.js";
 import { CanonicalChatLink } from "./hermes-canonical.js";
 import { versionLabel } from "./version.js";
@@ -66,6 +69,8 @@ const READY_TIMEOUT_MS = 30_000;
 const PROBE_TTL_MS = 60_000;
 /** How long a discovered gateway endpoint is trusted: its port and instance change only on a restart. */
 const ENDPOINT_TTL_MS = 15_000;
+/** How long discovery waits out an owner that says it is `starting`, as that owner's own clients do. */
+const STARTING_WAIT_MS = 4_000;
 /** Rows one transcript read from the store returns: a longer chat is answered by the gateway, which is not cut. */
 const STORED_TRANSCRIPT_ROWS = 4000;
 /** Hermes's effort ladder (agent/reasoning_effort.py); the route clamps to what it accepts. */
@@ -1324,15 +1329,25 @@ export class HermesAdapter implements HarnessAdapter {
     throw new Error("Hermes cannot take a handoff: it can only record turns by running them");
   }
 
-  /** The home's owner, cached for a moment: every chat and probe would otherwise identify afresh. */
-  private endpointCache: { at: number; home: string; endpoint: GatewayEndpoint | null } | null = null;
+  /**
+   * The home's owner, cached for a moment: every chat and probe would otherwise ask
+   * afresh. The verdict is what discovery reports and what an attach dials, so the two
+   * never disagree about which owner they are describing.
+   */
+  private verdictCache: { at: number; home: string; verdict: GatewayVerdict } | null = null;
+  /** Whether this CLI has `gateway attach --json`: null until asked, false once it says no. */
+  private attachSupport: boolean | null = null;
+
+  private async verdict(home: string, fresh = false): Promise<GatewayVerdict> {
+    const cached = this.verdictCache;
+    if (!fresh && cached && cached.home === home && Date.now() - cached.at < ENDPOINT_TTL_MS) return cached.verdict;
+    const verdict = await gatewayVerdict(home);
+    this.verdictCache = { at: Date.now(), home, verdict };
+    return verdict;
+  }
 
   private async endpoint(home: string, fresh = false): Promise<GatewayEndpoint | null> {
-    const cached = this.endpointCache;
-    if (!fresh && cached && cached.home === home && Date.now() - cached.at < ENDPOINT_TTL_MS) return cached.endpoint;
-    const endpoint = await gatewayEndpoint(home);
-    this.endpointCache = { at: Date.now(), home, endpoint };
-    return endpoint;
+    return (await this.verdict(home, fresh)).endpoint;
   }
 
   /**
@@ -1343,7 +1358,13 @@ export class HermesAdapter implements HarnessAdapter {
   async openProbe(cwd: string, onRequest: (frame: GatewayFrame) => void): Promise<GatewayLink> {
     if (!this.options.command) {
       const home = await this.resolveAgentDir();
-      const link = await this.attach(home, (endpoint, ticket) => GatewaySocket.open(endpoint, ticket, () => undefined, onRequest));
+      // Probes speak the same verbs on both wires, so a grant's socket serves them as is.
+      const link = await this.attachVia(
+        home,
+        (endpoint, ticket) => GatewaySocket.open(endpoint, ticket, () => undefined, onRequest),
+        (grant) => GatewaySocket.openGrant(grant, () => undefined, onRequest),
+        false,
+      );
       if (link) return link;
     }
     const { command, args, env } = await this.spawnSpec();
@@ -1352,9 +1373,11 @@ export class HermesAdapter implements HarnessAdapter {
 
   /**
    * The connection one chat runs on: the home's gateway, which is where its sessions
-   * live and what every other Hermes surface sees. When none answers, the bootstrap
-   * upstream's own clients use starts one (`hermes gateway ensure`: an unmanaged daemon
-   * that idles out), so a chat never needs the stdio entry point Hermes 2026.9.24
+   * live and what every other Hermes surface sees. When none answers, the CLI's own
+   * public attach step (`hermes gateway attach --json --recover`) starts one, or
+   * replaces the older code an update left running, and hands back the URL and ticket
+   * for it; an older CLI gets `hermes gateway ensure` and the home's control socket
+   * instead. Either way a chat never needs the stdio entry point Hermes 2026.9.24
    * retired — a wire change lands in the canonical shim (hermes-canonical.ts), not in
    * every call site. The stdio child remains only for a home no gateway can run
    * against at all.
@@ -1362,8 +1385,12 @@ export class HermesAdapter implements HarnessAdapter {
   async openChatLink(cwd: string, onEvent: (params: Obj) => void, onRequest: (frame: GatewayFrame) => void): Promise<GatewayLink> {
     if (!this.options.command) {
       const home = await this.resolveAgentDir();
-      if (!(await this.endpoint(home))) await this.ensureGateway();
-      const link = await this.attach(home, (endpoint, ticket) => CanonicalChatLink.open(endpoint, ticket, onEvent, onRequest));
+      const link = await this.attachVia(
+        home,
+        (endpoint, ticket) => CanonicalChatLink.open(endpoint, ticket, onEvent, onRequest),
+        (grant) => CanonicalChatLink.openGrant(grant, onEvent, onRequest),
+        true,
+      );
       if (link) return link;
       const owner = await gatewayOwner(home);
       if (owner !== null) throw new Error(`a Hermes gateway (pid ${owner}) owns this Hermes home but is not answering on its control socket yet; awui cannot run a chat against it`);
@@ -1372,11 +1399,119 @@ export class HermesAdapter implements HarnessAdapter {
     return track(new HermesRpc(command, args, env, cwd, onEvent, onRequest));
   }
 
-  /** `hermes gateway ensure`: this home's gateway, started when none answers (it idles out on its own). */
-  private async ensureGateway(): Promise<void> {
+  /**
+   * The home's owner through whichever door is open: the control socket's ticket (cheap,
+   * and the documented path on POSIX), else the CLI's grant. Null when neither has one.
+   * Only a chat recovers — a start may bring an owner up — while a read (a probe, a
+   * transcript) asks the CLI to discover and never to start one.
+   *
+   * A ticket refusal throws on the socket path's second try (the owner answered, then said
+   * no). That must not skip the grant: `hermes gateway attach` is the door for an owner
+   * that refuses the ticket verb. The refusal is rethrown only when every door failed.
+   */
+  private async attachVia(
+    home: string,
+    dial: (endpoint: GatewayEndpoint, ticket: string) => Promise<GatewayLink>,
+    dialGrant: (grant: GatewayGrant) => Promise<GatewayLink>,
+    recover: boolean,
+  ): Promise<GatewayLink | null> {
+    let refused: unknown = null;
+    const link = await this.attach(home, dial).catch((error: unknown) => {
+      refused = error;
+      return null;
+    });
+    if (link) return link;
+    const grant = recover ? await this.ensureGateway() : await this.attachGrant(false);
+    if (grant) return track(await dialGrant(grant));
+    if (recover) {
+      const again = await this.attach(home, dial).catch((error: unknown) => {
+        refused = error;
+        return null;
+      });
+      if (again) return again;
+    }
+    if (refused) throw refused;
+    return null;
+  }
+
+  /** The status a grant makes: available, its version from the commit it names (attach carries no version line). */
+  private availableFromGrant(grant: GatewayGrant, warnings: string[], overrides: HarnessDiscovery["overrides"]): HarnessDiscovery {
+    const sha = grant.endpoint.codeSha;
+    const label = versionLabel(sha ? sha.slice(0, 8) : "unknown");
+    // The command reports the CLI's commit beside the owner's: a difference means a gateway
+    // that outlived `hermes update`, running old code until it is restarted.
+    if (grant.clientCodeSha && sha && grant.clientCodeSha !== sha) {
+      warnings.push("the Hermes gateway is running older code than the install on disk: restart it (`hermes gateway restart`)");
+    }
+    return { available: true, ...label, ...(sha ? { versionDetail: `gateway ${sha.slice(0, 8)}` } : {}), warnings, overrides };
+  }
+
+  /**
+   * `hermes gateway attach --json`: the CLI's own public attach step (Hermes 0.23.0+1278
+   * and later, and what its TUI and desktop run). One command answers with the owner's
+   * URL, the subprotocols, a single-use ticket and its endpoint, so a client that cannot
+   * use the home's control socket still gets in — Windows' named pipe (whose SID Python
+   * checks and this process cannot), a home whose rendezvous is not the documented shape,
+   * or an owner that refuses the ticket verb. `recover` starts a gateway when none serves
+   * the home, or replaces one an update left behind.
+   */
+  private async attachGrant(recover: boolean): Promise<GatewayGrant | null> {
+    if (this.options.command) return null;
+    if (this.attachSupport === false) return null;
+    const args = ["gateway", "attach", "--json", ...(recover ? ["--recover", "--timeout", "60"] : [])];
+    try {
+      const { stdout } = await run(this.cliCommand, args, { timeout: recover ? 75_000 : 30_000 });
+      const grant = grantFromAttach(stdout);
+      // A successful run that did not print a grant (extra lines, a shape that moved) is not
+      // "this CLI has no such command". Remembering false would skip every later --recover.
+      if (grant) this.attachSupport = true;
+      return grant;
+    } catch (error) {
+      // A verdict that is not attachable still prints its JSON line, on a non-zero exit.
+      const failure = error as { stdout?: string; stderr?: string };
+      const grant = grantFromAttach(failure.stdout ?? "");
+      if (grant) {
+        this.attachSupport = true;
+        return grant;
+      }
+      // Only "this CLI is older than the verb" is remembered: every other failure may pass.
+      if (/not a `hermes gateway` command/.test(String(failure.stderr ?? ""))) this.attachSupport = false;
+      return null;
+    }
+  }
+
+  /**
+   * Wait out a `starting` owner, as its own clients do: bounded, so a wedged start still gets a verdict.
+   */
+  private async awaitReady(home: string): Promise<GatewayVerdict> {
+    const deadline = Date.now() + STARTING_WAIT_MS;
+    let verdict = await this.verdict(home, true);
+    while (verdict.state === "starting" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      verdict = await this.verdict(home, true);
+    }
+    return verdict;
+  }
+
+  /**
+   * Start or recover this home's gateway, and hand back the grant when the CLI minted
+   * one. `attach --json --recover` is that path on a CLI that has the verb (Hermes
+   * 0.23.0+1278): it starts an owner when none serves the home, replaces the older code
+   * an update left running, and mints the ticket in the same call. An older CLI says the
+   * command does not exist, and gets `ensure` — harmless when another client just started one.
+   */
+  private async ensureGateway(): Promise<GatewayGrant | null> {
+    const grant = await this.attachGrant(true);
+    if (grant) {
+      this.verdictCache = null;
+      return grant;
+    }
+    // The grant path did not answer: an older CLI without the verb, or a start it could not
+    // finish. `ensure` is the fallback that has always worked, and a no-op beside a live owner.
     await run(this.cliCommand, ["gateway", "ensure", "--json", "--timeout", "60"], { timeout: 75_000 }).catch(() => undefined);
     // A new owner may be serving now; the cached "nobody answers" is stale.
-    this.endpointCache = null;
+    this.verdictCache = null;
+    return null;
   }
 
   /** Attach to the home's owner through `dial`, or null when there is none (or it went away mid-handshake). */
@@ -1390,7 +1525,7 @@ export class HermesAdapter implements HarnessAdapter {
         const ticket = await gatewayTicket(home, endpoint);
         return track(await dial(endpoint, ticket));
       } catch (error) {
-        this.endpointCache = null;
+        this.verdictCache = null;
         if (attempt === 1) throw error;
       }
     }
@@ -1415,22 +1550,44 @@ export class HermesAdapter implements HarnessAdapter {
     const home = await this.resolveAgentDir();
     // A gateway that owns the home is the authority: chats and session rows both come
     // from it, and it is what upstream's clients attach to (see hermes-gateway.ts).
-    const endpoint = await this.endpoint(home, true);
+    let verdict = await this.verdict(home, true);
+    // An owner that says it is starting is seconds from answering: its own clients wait for
+    // it, and so does this one — long enough to cover a boot, short enough that a wedged
+    // start still produces a verdict that says so.
+    if (verdict.state === "starting") verdict = await this.awaitReady(home);
+    const endpoint = verdict.endpoint;
     if (endpoint) {
       // Attached: its version is the one serving this home, and the CLI on PATH may be older,
       // newer, or absent. Session rows, models, and chats all come from the gateway —
       // the canonical wire is what upstream's own surfaces run on (see hermes-canonical.ts).
       const label = versionLabel(endpoint.version ?? "unknown");
       const detail = endpoint.version && endpoint.codeSha ? `${endpoint.version} · gateway ${endpoint.codeSha.slice(0, 8)}` : undefined;
+      // A gateway outlives `hermes update`: it keeps serving the code it booted while the
+      // install on disk moves on. Chats still work; the fix is a restart, and only it says so.
+      if (verdict.installCodeSha && endpoint.codeSha && verdict.installCodeSha !== endpoint.codeSha) {
+        warnings.push("the Hermes gateway is running older code than the install on disk: restart it (`hermes gateway restart`)");
+      }
       return { available: true, ...label, ...(detail ? { versionDetail: detail } : {}), warnings, overrides };
     }
     const owner = await gatewayOwner(home);
+    // Nothing in the rendezvous answered — a named pipe this process cannot check, a home
+    // whose pointer is gone, an owner that refuses the ticket verb. The CLI can still say
+    // whether one is attachable and where. `attach --json` without `--recover` only
+    // discovers, never starts a gateway, which is what makes this safe in a status check.
+    if (!verdict.attachable) {
+      const grant = await this.attachGrant(false);
+      if (grant) return this.availableFromGrant(grant, warnings, overrides);
+    }
     if (owner !== null) {
-      // Someone holds the home but does not answer on its control socket (still starting,
-      // or wedged). A gateway child of ours would be refused, so name what is wrong.
+      // Someone holds the home but does not serve it (wedged, restarting, or an update
+      // fence). The owner's own verdict says which when it can; the pid is the last resort.
+      // Its `detail` is not repeated: that text can name paths, and a status reason never does.
+      // The owner's `message` is `gateway <state>: <reason>` then one line per remedy; the
+      // first line is the verdict, and the remedy lines belong in a terminal, not a menu row.
+      const said = (verdict.message ?? "").split("\n")[0]?.trim() || (verdict.state !== "absent" ? `gateway ${verdict.state}: ${verdict.reasonCode}` : null);
       return {
         available: false,
-        reason: `a Hermes gateway (pid ${owner}) owns the Hermes home but is not answering on its control socket yet`,
+        reason: said ? `a Hermes gateway (pid ${owner}) owns the Hermes home but is not serving it: ${said}` : `a Hermes gateway (pid ${owner}) owns the Hermes home but is not answering on its control socket yet`,
         warnings,
         overrides,
       };
@@ -1619,7 +1776,12 @@ export class HermesAdapter implements HarnessAdapter {
     const stored = await this.storedTranscript(req, true);
     if (stored) return stored;
     const home = await this.resolveAgentDir();
-    const link = await this.attach(home, (endpoint, ticket) => CanonicalChatLink.open(endpoint, ticket, () => undefined, () => undefined));
+    const link = await this.attachVia(
+      home,
+      (endpoint, ticket) => CanonicalChatLink.open(endpoint, ticket, () => undefined, () => undefined),
+      (grant) => CanonicalChatLink.openGrant(grant, () => undefined, () => undefined),
+      false,
+    );
     if (!link) return null;
     try {
       const result = await link.request<Obj>("session.history", { session_id: req.nativeId });

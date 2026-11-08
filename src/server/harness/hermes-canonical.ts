@@ -19,7 +19,7 @@
 // keeps seeing it.
 import { randomUUID } from "node:crypto";
 import { isObj, type Obj } from "./agent-events.js";
-import { GatewaySocket, HermesRpcError, type GatewayEndpoint, type GatewayFrame, type GatewayLink } from "./hermes-gateway.js";
+import { GatewaySocket, HermesRpcError, type GatewayEndpoint, type GatewayFrame, type GatewayGrant, type GatewayLink } from "./hermes-gateway.js";
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -121,6 +121,18 @@ export class CanonicalChatLink implements GatewayLink {
   static async open(endpoint: GatewayEndpoint, ticket: string, onEvent: (params: Obj) => void, onRequest: (frame: GatewayFrame) => void): Promise<CanonicalChatLink> {
     const link = new CanonicalChatLink(onEvent, onRequest);
     link.socket = await GatewaySocket.open(endpoint, ticket, (params) => link.onEvent(params), (frame) => link.onRequest(frame));
+    return link;
+  }
+
+  /**
+   * The same link, over a grant `hermes gateway attach --json` minted: the owner's URL and
+   * ticket as the command printed them. The shim sits over it exactly as over the socket
+   * path — a granted connection speaks the same canonical wire, so a chat that came in
+   * through the CLI is translated like any other.
+   */
+  static async openGrant(grant: GatewayGrant, onEvent: (params: Obj) => void, onRequest: (frame: GatewayFrame) => void): Promise<CanonicalChatLink> {
+    const link = new CanonicalChatLink(onEvent, onRequest);
+    link.socket = await GatewaySocket.openGrant(grant, (params) => link.onEvent(params), (frame) => link.onRequest(frame));
     return link;
   }
 

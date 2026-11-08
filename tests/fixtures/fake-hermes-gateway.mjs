@@ -1,18 +1,30 @@
 #!/usr/bin/env node
 // A scripted Hermes gateway for attach tests. It serves the two things a client needs
-// to attach — the home's control socket (`identify`, `session-ticket`) and the
-// `/api/ws` JSON-RPC transport, admitted by a ticket subprotocol — and puts one
+// to attach — the home's control socket (`resolve-profile` / `identify`, `session-ticket`)
+// and the `/api/ws` JSON-RPC transport, admitted by a ticket subprotocol — and puts one
 // scripted `tui_gateway` child (fake-hermes.mjs, the same scripts) behind each
 // connection. So a test drives the real client path without a real Hermes:
-// identify → ticket → upgrade → frames.
+// resolve-profile → ticket → upgrade → frames.
 //
 // Usage: fake-hermes-gateway.mjs <home>   (prints "ready" on stdout once listening;
 // FAKE_HERMES_STATE is passed to the child, as the stdio fake reads it.)
+//
+// Modes, all through the environment, for the edges of the public contract:
+//   FAKE_HERMES_RENDEZVOUS=pointer   listen in a private temp dir and publish
+//                                    `gateway.sock.path` instead of `gateway.sock`
+//   FAKE_HERMES_RESOLVE=0            an older gateway: no `resolve-profile`, only `identify`
+//   FAKE_HERMES_VERDICT=starting     says `starting` for 600 ms after launch, then ready
+//   FAKE_HERMES_VERDICT=incompatible an owner that cannot be attached to
+//   FAKE_HERMES_RESTART_WAIT=refuse  refuses ticket parameters carrying `restart_wait`
+//   FAKE_HERMES_TICKET=refuse        refuses session-ticket unless params.via is `cli`
+//                                    (the stand-in `gateway attach` sends that; a client does not)
+//   FAKE_HERMES_INSTALL_SHA=…        `install_code_sha`, for the gateway-outlived-an-update warning
 import { createHash, randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -20,8 +32,18 @@ const home = process.argv[2];
 if (!home) throw new Error("usage: fake-hermes-gateway.mjs <home>");
 
 const instanceId = process.env.FAKE_HERMES_INSTANCE ?? "fake-instance";
+const rendezvous = process.env.FAKE_HERMES_RENDEZVOUS ?? "direct";
+const speaksResolve = process.env.FAKE_HERMES_RESOLVE !== "0";
+const configuredVerdict = process.env.FAKE_HERMES_VERDICT ?? "ready";
+const refusesRestartWait = process.env.FAKE_HERMES_RESTART_WAIT === "refuse";
+const refusesClientTicket = process.env.FAKE_HERMES_TICKET === "refuse";
+const launchedAt = Date.now();
 const tickets = new Map();
-const controlPath = path.join(home, "gateway.sock");
+const hash = (text) => createHash("sha256").update(text).digest("hex").slice(0, 16);
+
+/** The private directory a `gateway.sock.path` pointer aims into (0700, as the contract wants). */
+const pointerDir = path.join(os.tmpdir(), `hermes-gw-${hash(path.resolve(home))}`);
+const controlPath = rendezvous === "pointer" ? path.join(pointerDir, "control.sock") : path.join(home, "gateway.sock");
 
 /**
  * What the client sent over the canonical wire, one array in `FAKE_HERMES_STATE.canonical.json`
@@ -362,7 +384,7 @@ server.on("upgrade", (req, socket) => {
   }, close));
 });
 
-// ── The control socket: identify, session-ticket ─────────────────────────────
+// ── The control socket: resolve-profile, identify, session-ticket ────────────
 const control = net.createServer((peer) => {
   let data = "";
   peer.on("data", (chunk) => {
@@ -375,32 +397,88 @@ const control = net.createServer((peer) => {
     } catch {
       // Answered below as an unknown verb.
     }
+    recordControl(request.verb, request.params);
     const reply = (result, error) =>
       peer.end(`${JSON.stringify({ ok: error === undefined, protocol: 1, id: request.id ?? 1, ...(error === undefined ? { result } : { error }) })}\n`);
-    if (request.verb === "identify") reply(identify());
+    if (request.verb === "resolve-profile" && speaksResolve) reply(resolveVerdict());
+    else if (request.verb === "identify") reply(identify());
     else if (request.verb === "session-ticket") {
       const params = request.params ?? {};
-      if (params.instance_id !== instanceId || params.purpose !== "interactive" || params.profile_id !== home) reply(undefined, "invalid bootstrap parameters");
+      if (refusesClientTicket && params.via !== "cli") reply(undefined, "PermissionError: ticket refused");
+      else if (refusesRestartWait && params.restart_wait !== undefined) reply(undefined, "PermissionError: invalid bootstrap parameters");
+      else if (params.instance_id !== instanceId || params.purpose !== "interactive" || params.profile_id !== home) reply(undefined, "invalid bootstrap parameters");
       else {
         const ticket = randomBytes(32).toString("base64url");
         tickets.set(ticket, { profileId: params.profile_id, instanceId });
         reply({ ticket, expires_in_seconds: 30, instance_id: instanceId, profile_id: params.profile_id, runtime_protocol: 1 });
       }
-    } else reply(undefined, `unknown verb: ${String(request.verb)}`);
+    } else reply(undefined, `unknown verb: '${String(request.verb)}' (supported_verbs: identify, session-ticket${speaksResolve ? ", resolve-profile" : ""})`);
   });
   peer.on("error", () => undefined);
 });
 
-function identify() {
+/** What a client sent over the control socket, one array in `FAKE_HERMES_STATE.control.json`. */
+function recordControl(verb, params) {
+  const stateFile = process.env.FAKE_HERMES_STATE;
+  if (!stateFile) return;
+  const file = `${stateFile}.control.json`;
+  let calls = [];
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    if (Array.isArray(parsed)) calls = parsed;
+  } catch {
+    // No recording yet.
+  }
+  const temp = `${file}.${process.pid}.tmp`;
+  writeFileSync(temp, JSON.stringify([...calls, { verb, params: params ?? null }]));
+  renameSync(temp, file);
+}
+
+/** The endpoint both `identify` and `resolve-profile` describe. */
+function endpointFields() {
   const port = server.address()?.port ?? 0;
   return {
+    profile_id: home,
+    instance_id: instanceId,
+    capabilities: ["session-authority-v1", "event-replay-v1"],
+    code_sha: "fakesha1234",
+    code_version: "1.2.3",
+    api_origin: `http://127.0.0.1:${port}`,
+    ws_url: `ws://127.0.0.1:${port}/api/ws`,
+    ws_protocol: "hermes-gateway-v1",
+    ticket_protocol_prefix: "hermes-gateway-ticket.",
+  };
+}
+
+/** `resolve-profile`'s answer: the verdict, the endpoint, and what install is on disk. */
+function resolveVerdict() {
+  // "starting" is a real state, and the one discovery waits out: hold it briefly, then serve.
+  const settled = Date.now() - launchedAt > 600;
+  const state = configuredVerdict === "starting" && settled ? "ready" : configuredVerdict;
+  const attachable = state === "ready" || state === "draining";
+  return {
+    resolve_protocol: 1,
+    state,
+    reason_code: attachable ? "ready" : state,
+    detail: attachable ? "the gateway is ready" : `the gateway is ${state}`,
+    attachable,
+    update_fenced: state === "incompatible",
+    control: "self",
+    endpoint: attachable ? endpointFields() : null,
+    install_code_sha: process.env.FAKE_HERMES_INSTALL_SHA ?? "fakesha1234",
+    ...(attachable ? {} : { message: `gateway ${state}: ${state}\nthe scripted owner is ${state}` }),
+  };
+}
+
+function identify() {
+  return {
     runtime_protocol: 1,
-    state: "ready",
+    state: configuredVerdict === "starting" ? (Date.now() - launchedAt > 600 ? "ready" : "starting") : configuredVerdict,
     served_profiles: [{ profile_id: home, home }],
     capabilities: ["session-authority-v1", "event-replay-v1"],
     authority_epoch: 1,
     instance_id: instanceId,
-    api_origin: `http://127.0.0.1:${port}`,
+    api_origin: `http://127.0.0.1:${server.address()?.port ?? 0}`,
     supervisor: "none",
     code_version: "1.2.3",
     code_sha: "fakesha1234",
@@ -413,7 +491,22 @@ server.listen(0, "127.0.0.1", () => {
   } catch {
     // Nothing stale there.
   }
+  if (rendezvous === "pointer") {
+    mkdirSync(pointerDir, { recursive: true, mode: 0o700 });
+    try {
+      unlinkSync(path.join(home, "gateway.sock"));
+    } catch {
+      // No direct socket to retire.
+    }
+  }
   control.listen(controlPath, () => {
+    if (rendezvous === "pointer") writeFileSync(path.join(home, "gateway.sock.path"), controlPath, { mode: 0o600 });
+    // The real owner's rendezvous, and its pid record: a `gateway.sock` only this user can
+    // reach (0600, as `hermes gateway` creates it), and `gateway.pid` naming the owner.
+    chmodSync(controlPath, 0o600);
+    writeFileSync(path.join(home, "gateway.pid"), JSON.stringify({ pid: process.pid }));
+    // Where this owner's socket really is, for a stand-in `hermes gateway attach` to reach.
+    if (process.env.FAKE_HERMES_STATE) writeFileSync(`${process.env.FAKE_HERMES_STATE}.sock.txt`, controlPath);
     process.on("exit", () => {
       try {
         unlinkSync(controlPath);

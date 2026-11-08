@@ -1,10 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { HermesAdapter, liveHermesLinks } from "../../src/server/harness/hermes.js";
+import { gatewayVerdict } from "../../src/server/harness/hermes-gateway.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
 
@@ -16,6 +17,8 @@ import { tempDir } from "../helpers/app.js";
 // instead of quietly passing.
 const gatewayScript = path.join(import.meta.dirname, "..", "fixtures", "fake-hermes-gateway.mjs");
 chmodSync(gatewayScript, 0o755);
+const attachScript = path.join(import.meta.dirname, "..", "fixtures", "fake-hermes-attach.mjs");
+chmodSync(attachScript, 0o755);
 
 let home: string;
 let project: string;
@@ -288,6 +291,231 @@ describe("a Hermes home whose gateway is running", () => {
     // Another folder is not this workspace's to open.
     expect(await adapter.readTranscript({ cwd: "/", nativeId: "refused-webui" })).toBeNull();
     await expect(adapter.openChat({ cwd: project, resumeNativeId: "refused-webui" })).rejects.toThrow(/source webui/);
+  });
+});
+
+describe("the public control-socket contract", () => {
+  /** The control verbs the scripted owner was asked, in order (see fake-hermes-gateway.mjs). */
+  const controlCalls = (): { verb: string; params: Record<string, unknown> | null }[] => {
+    try {
+      const calls = JSON.parse(readFileSync(`${state}.control.json`, "utf8"));
+      return Array.isArray(calls) ? calls : [];
+    } catch {
+      return [];
+    }
+  };
+
+  /** Replace the scripted gateway with one in another mode. */
+  async function respawn(env: Record<string, string>) {
+    await new Promise<void>((resolve) => {
+      if (!gateway) return resolve();
+      gateway.once("exit", () => resolve());
+      gateway.kill("SIGKILL");
+    });
+    gateway = spawn(process.execPath, [gatewayScript, home], { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "inherit"] });
+    await new Promise<void>((resolve, reject) => {
+      gateway?.stdout?.once("data", () => resolve());
+      setTimeout(() => reject(new Error("the scripted gateway did not start")), 8_000);
+    });
+    // The home keeps the previous owner's pid record; this one is the owner now.
+    writeFileSync(path.join(home, "gateway.pid"), JSON.stringify({ pid: gateway.pid }));
+  }
+
+  it("takes its verdict from resolve-profile and dials the URL the owner names", async () => {
+    const found = await adapter.discover();
+    expect(found).toMatchObject({ available: true, version: "1.2.3" });
+    expect(controlCalls().filter((call) => call.verb === "resolve-profile")).toHaveLength(1);
+    // The verb that older gateways answer is not consulted when the owner has the newer one.
+    expect(controlCalls().some((call) => call.verb === "identify")).toBe(false);
+    const { chat } = await openChat();
+    await chat.send("hello there", "normal");
+    await until(() => chat.status === "idle");
+    expect(chat.snapshot().items.find((i) => i.kind === "assistant")).toMatchObject({ text: "hermes says hello there" });
+  });
+
+  it("reads a crashed owner's leftover socket as no gateway, not as one that refuses", async () => {
+    // SIGKILL leaves the socket file behind, exactly as a crashed gateway does.
+    gateway?.kill("SIGKILL");
+    gateway = null;
+    await until(() => existsSync(path.join(home, "gateway.sock")));
+    const deadline = Date.now() + 5_000;
+    let verdict = await gatewayVerdict(home);
+    while (verdict.state !== "absent" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      verdict = await gatewayVerdict(home);
+    }
+    expect(verdict).toMatchObject({ state: "absent", attachable: false, endpoint: null });
+  });
+
+  it("finds the owner through gateway.sock.path when it serves from a private temp directory", async () => {
+    await respawn({ FAKE_HERMES_RENDEZVOUS: "pointer" });
+    expect(existsSync(path.join(home, "gateway.sock"))).toBe(false);
+    const found = await adapter.discover();
+    expect(found).toMatchObject({ available: true, version: "1.2.3" });
+    const live = await adapter.openChat({ cwd: project });
+    expect(live.nativeId).toBe("20261002_120000_fake1");
+    await live.dispose();
+  });
+
+  it("still attaches to a gateway older than resolve-profile, through identify", async () => {
+    await respawn({ FAKE_HERMES_RESOLVE: "0" });
+    const found = await adapter.discover();
+    expect(found).toMatchObject({ available: true, version: "1.2.3" });
+    expect(controlCalls().some((call) => call.verb === "identify")).toBe(true);
+    const { chat } = await openChat();
+    await chat.send("hello there", "normal");
+    await until(() => chat.status === "idle");
+    expect(chat.snapshot().items.find((i) => i.kind === "assistant")).toMatchObject({ text: "hermes says hello there" });
+  });
+
+  it("waits out an owner that says it is starting instead of reporting it unavailable", async () => {
+    await respawn({ FAKE_HERMES_VERDICT: "starting" });
+    // The scripted owner holds `starting` for 600 ms, well inside discovery's wait.
+    const found = await adapter.discover();
+    expect(found).toMatchObject({ available: true, version: "1.2.3" });
+  });
+
+  it("reports the owner's own verdict when it cannot be attached to", async () => {
+    await respawn({ FAKE_HERMES_VERDICT: "incompatible" });
+    const found = await adapter.discover();
+    expect(found.available).toBe(false);
+    expect((found as { reason?: string }).reason).toContain("gateway incompatible");
+  });
+
+  it("mints a ticket with restart_wait, and mints again without it when the owner refuses the key", async () => {
+    await respawn({ FAKE_HERMES_RESTART_WAIT: "refuse" });
+    const live = await adapter.openChat({ cwd: project });
+    await live.dispose();
+    const mints = controlCalls().filter((call) => call.verb === "session-ticket");
+    expect(mints.length).toBeGreaterThanOrEqual(2);
+    expect(mints[0]?.params).toMatchObject({ purpose: "interactive", restart_wait: "refuse" });
+    expect(mints[1]?.params?.restart_wait).toBeUndefined();
+  });
+
+  it("falls back to the CLI grant when the owner refuses the ticket verb", async () => {
+    await respawn({ FAKE_HERMES_TICKET: "refuse" });
+    const socketPath = readFileSync(`${state}.sock.txt`, "utf8").trim();
+    const launcher = path.join(home, "hermes-with-attach");
+    writeFileSync(launcher, `#!/bin/sh\ncase "$1 $2" in\n  "gateway attach") exec "${process.execPath}" "${attachScript}" "${socketPath}" "${home}" ;;\n  *) exit 1 ;;\nesac\n`);
+    chmodSync(launcher, 0o755);
+    const granted = new HermesAdapter({ launcher });
+    try {
+      const live = await granted.openChat({ cwd: project });
+      const ws: WorkspaceInfo = { id: "w", path: project, name: "proj" };
+      const chat = await Chat.open("c-grant", granted, ws, live);
+      await chat.send("hello there", "normal");
+      await until(() => chat.status === "idle");
+      expect(chat.snapshot().items.find((i) => i.kind === "assistant")).toMatchObject({ text: "hermes says hello there" });
+      // The client did ask the socket, and was refused; the grant is what got the chat in.
+      expect(controlCalls().some((call) => call.verb === "session-ticket" && call.params?.via !== "cli")).toBe(true);
+      await chat.dispose("Closed by user");
+    } finally {
+      await granted.shutdown();
+    }
+  });
+
+  it("still reports a ticket refusal when the CLI cannot grant one either", async () => {
+    await respawn({ FAKE_HERMES_TICKET: "refuse" });
+    await expect(adapter.openChat({ cwd: project })).rejects.toThrow(/ticket refused/);
+  });
+
+  it("attaches through `hermes gateway attach --json` when the home names no socket", async () => {
+    // The owner serves from a private temp root, and the home's pointer to it is gone: this
+    // process cannot find the control socket at all, which is the Windows case and the
+    // missing-pointer case. The CLI still can, and its grant is the way in.
+    await respawn({ FAKE_HERMES_RENDEZVOUS: "pointer" });
+    const socketPath = readFileSync(`${state}.sock.txt`, "utf8").trim();
+    rmSync(path.join(home, "gateway.sock.path"));
+    const launcher = path.join(home, "hermes-with-attach");
+    writeFileSync(
+      launcher,
+      `#!/bin/sh
+case "$1 $2" in
+  "gateway attach") exec "${process.execPath}" "${attachScript}" "${socketPath}" "${home}" ;;
+  *) exit 1 ;;
+esac
+`,
+    );
+    chmodSync(launcher, 0o755);
+    const granted = new HermesAdapter({ launcher });
+    try {
+      const found = await granted.discover();
+      expect(found).toMatchObject({ available: true });
+      expect((found as { versionDetail?: string }).versionDetail).toMatch(/^gateway \w{8}$/);
+      const live = await granted.openChat({ cwd: project });
+      const ws: WorkspaceInfo = { id: "w", path: project, name: "proj" };
+      const chat = await Chat.open("c3", granted, ws, live);
+      await chat.send("hello there", "normal");
+      await until(() => chat.status === "idle");
+      expect(chat.snapshot().items.find((i) => i.kind === "assistant")).toMatchObject({ text: "hermes says hello there" });
+      // The grant's socket speaks the canonical wire, so the chat's dialect shim must sit over
+      // it exactly as over the socket path: a raw connection would send stdio-shaped creates.
+      const create = canonical().find((call) => call.name === "session.create");
+      expect(create?.params).toMatchObject({ source: "gui", cwd: project });
+      expect(create?.params.request_id).toEqual(expect.any(String));
+      const submit = canonical().find((call) => call.name === "prompt.submit");
+      expect(submit?.params.input_id).toEqual(expect.any(String));
+      await chat.dispose("Closed by user");
+    } finally {
+      await granted.shutdown();
+    }
+  });
+
+  it("warns through the grant when the gateway outlived the CLI's update", async () => {
+    await respawn({ FAKE_HERMES_RENDEZVOUS: "pointer" });
+    const socketPath = readFileSync(`${state}.sock.txt`, "utf8").trim();
+    rmSync(path.join(home, "gateway.sock.path"));
+    const launcher = path.join(home, "hermes-with-attach");
+    writeFileSync(launcher, `#!/bin/sh\ncase "$1 $2" in\n  "gateway attach") FAKE_HERMES_CLIENT_SHA=updatedsha exec "${process.execPath}" "${attachScript}" "${socketPath}" "${home}" ;;\n  *) exit 1 ;;\nesac\n`);
+    chmodSync(launcher, 0o755);
+    const granted = new HermesAdapter({ launcher });
+    try {
+      const found = await granted.discover();
+      expect(found.available).toBe(true);
+      expect(found.warnings.join(" ")).toContain("hermes gateway restart");
+    } finally {
+      await granted.shutdown();
+    }
+  });
+
+  it("retries gateway attach when a successful run printed no grant", async () => {
+    await respawn({ FAKE_HERMES_RENDEZVOUS: "pointer" });
+    const socketPath = readFileSync(`${state}.sock.txt`, "utf8").trim();
+    rmSync(path.join(home, "gateway.sock.path"));
+    const count = path.join(home, "attach-n");
+    const launcher = path.join(home, "hermes-with-attach");
+    writeFileSync(
+      launcher,
+      `#!/bin/sh
+case "$1 $2" in
+  "gateway attach")
+    n=0
+    [ -f "${count}" ] && n=$(cat "${count}")
+    echo $((n + 1)) > "${count}"
+    if [ "$n" = "0" ]; then echo "not a grant"; exit 0; fi
+    exec "${process.execPath}" "${attachScript}" "${socketPath}" "${home}" ;;
+  *) exit 1 ;;
+esac
+`,
+    );
+    chmodSync(launcher, 0o755);
+    const granted = new HermesAdapter({ launcher });
+    try {
+      const first = await granted.discover();
+      expect(first.available).toBe(false);
+      const second = await granted.discover();
+      expect(second.available).toBe(true);
+      expect(Number(readFileSync(count, "utf8"))).toBeGreaterThanOrEqual(2);
+    } finally {
+      await granted.shutdown();
+    }
+  });
+
+  it("warns that the gateway outlived an update when the install on disk is newer", async () => {
+    await respawn({ FAKE_HERMES_INSTALL_SHA: "updatedsha" });
+    const found = await adapter.discover();
+    expect(found.available).toBe(true);
+    expect(found.warnings.join(" ")).toContain("hermes gateway restart");
   });
 });
 
