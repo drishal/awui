@@ -47,6 +47,7 @@ import type { ChatState } from "./chat-state.js";
 import { StatusWord } from "./components/StatusWord.js";
 import { chatIdFromHash, CONN_BANNER, setHash, STATUS_LABEL, useChatStream } from "./chat-stream.js";
 import { appCommand } from "./commands.js";
+import { mergeHarnesses, useHarnessRecheck } from "./harness-status.js";
 import { CommandPalette } from "./components/CommandPalette.js";
 import { Composer } from "./components/Composer.js";
 import { Conversation } from "./components/Conversation.js";
@@ -322,6 +323,9 @@ export function App() {
   }, [density]);
 
   const available = useMemo(() => boot?.harnesses.filter((h) => h.available) ?? [], [boot]);
+  // A harness that comes back after this page loaded (a Hermes gateway finishing its
+  // start, a CLI just installed) is asked about again instead of staying greyed out.
+  useHarnessRecheck(boot, (rows) => setBoot((prev) => (prev ? mergeHarnesses(prev, rows) : prev)));
   useEffect(() => {
     if (boot) applyHarnessAccents(boot.harnesses);
   }, [boot]);

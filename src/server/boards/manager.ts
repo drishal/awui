@@ -420,7 +420,7 @@ export class RoomManager implements BoardManager {
     if (this.bots.size >= BOARD_MAX_BOTS) throw new ChatError(409, "too_many_bots", `At most ${BOARD_MAX_BOTS} bot profiles are kept`);
     const adapter = this.deps.registry.get(input.harnessId);
     if (!adapter) throw new ChatError(404, "unknown_harness", "Unknown harness");
-    if (!this.deps.registry.isAvailable(adapter.id)) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is unavailable right now`);
+    if (!(await this.deps.registry.available(adapter.id))) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is unavailable right now`);
     if (input.permissionMode && !adapter.capabilities.supportsPermissionMode) throw new ChatError(422, "unsupported_setting", `${adapter.displayName} has no permission modes`);
     if (input.thinkingLevel && !adapter.capabilities.supportsThinkingLevel) throw new ChatError(422, "unsupported_setting", `${adapter.displayName} has no thinking levels`);
     const now = Date.now();
@@ -539,7 +539,7 @@ export class RoomManager implements BoardManager {
       const bot = this.requireBot(entry.botId);
       const adapter = this.deps.registry.get(bot.harnessId);
       if (!adapter) throw new ChatError(422, "unknown_harness", `${bot.name}'s harness is not registered`);
-      if (!this.deps.registry.isAvailable(adapter.id)) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is unavailable right now`);
+      if (!(await this.deps.registry.available(adapter.id))) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is unavailable right now`);
       const derived = handleFromName(bot.name);
       let handle = entry.handle ?? derived;
       if (handles.has(handle.toLowerCase())) {
@@ -649,7 +649,7 @@ export class RoomManager implements BoardManager {
     if (room.members.length >= BOARD_MAX_MEMBERS) throw new ChatError(409, "room_full", `A room holds at most ${BOARD_MAX_MEMBERS} bots`);
     const bot = this.requireBot(input.botId);
     const adapter = this.deps.registry.get(bot.harnessId);
-    if (!adapter || !this.deps.registry.isAvailable(adapter.id)) throw new ChatError(422, "harness_unavailable", `${bot.name}'s harness is unavailable right now`);
+    if (!adapter || !(await this.deps.registry.available(adapter.id))) throw new ChatError(422, "harness_unavailable", `${bot.name}'s harness is unavailable right now`);
     if (room.members.some((member) => member.handle.toLowerCase() === input.handle.toLowerCase())) throw new ChatError(409, "handle_taken", `@${input.handle} is already used in this room`);
     for (const id of input.consultants) {
       if (!room.members.some((member) => member.id === id)) throw new ChatError(400, "bad_consultants", "A consultation allowlist names a member that is not in this room");

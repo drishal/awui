@@ -130,7 +130,7 @@ export class BotSessionPoolImpl implements BotSessionPool {
   async invoke(req: BotInvokeRequest, sink: BotEventSink): Promise<BotRunHandle> {
     const adapter = this.registry.get(req.bot.harnessId);
     if (!adapter) throw new ChatError(422, "unknown_harness", `No harness "${req.bot.harnessId}" is registered`);
-    if (!this.registry.isAvailable(adapter.id)) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is unavailable right now`);
+    if (!(await this.registry.available(adapter.id))) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is unavailable right now`);
     const chat = await this.openChat(req, adapter);
     this.remember(req.room.id, req.member.id, chat);
 

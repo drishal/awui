@@ -14,6 +14,8 @@ import type { HarnessAdapter } from "./types.js";
 
 const fakeDelay = () => Number(process.env.AWUI_FAKE_DELAY_MS ?? 15);
 const fakeResumeDelay = () => Number(process.env.AWUI_FAKE_RESUME_MS ?? 0);
+/** How long a refused harness's verdict is trusted before a route asks it again (discovery can spawn a CLI). */
+const RECHECK_MS = 5_000;
 
 const factories: Record<string, (config: ServerConfig) => HarnessAdapter> = {
   pi: (config) => new PiAdapter(config.launch.pi),
@@ -54,6 +56,10 @@ export function assignAccents(adapters: HarnessAdapter[]): Map<HarnessId, string
 export class HarnessRegistry {
   private adapters = new Map<HarnessId, HarnessAdapter>();
   private statuses = new Map<HarnessId, HarnessStatus>();
+  /** When each status was last asked for: a route may re-ask, but not on every request. */
+  private checkedAt = new Map<HarnessId, number>();
+  /** A discovery already running, so a second tab joins it instead of spawning another CLI. */
+  private inflight = new Map<HarnessId, Promise<void>>();
 
   register(adapter: HarnessAdapter): void {
     this.adapters.set(adapter.id, adapter);
@@ -79,30 +85,72 @@ export class HarnessRegistry {
 
   async refreshStatus(): Promise<HarnessStatus[]> {
     const accents = assignAccents(this.list());
-    await Promise.all(
-      this.list().map(async (adapter) => {
-        const d = await adapter.discover().catch((error: unknown) => ({
-          available: false,
-          reason: `Discovery failed: ${error instanceof Error ? error.message : String(error)}`,
-          warnings: [],
-          overrides: {},
-        }));
-        this.statuses.set(adapter.id, {
-          id: adapter.id,
-          displayName: adapter.displayName,
-          available: d.available,
-          ...("version" in d && d.version ? { version: d.version } : {}),
-          ...("versionDetail" in d && d.versionDetail ? { versionDetail: d.versionDetail } : {}),
-          ...(d.reason ? { reason: d.reason } : {}),
-          warnings: d.warnings,
-          capabilities: adapter.capabilities,
-          overrides: d.overrides,
-          accent: accents.get(adapter.id) ?? "muted",
-          ...(adapter.setupCommand ? { setupCommand: adapter.setupCommand } : {}),
-        });
-      }),
-    );
+    await Promise.all(this.list().map((adapter) => this.discoverOne(adapter, accents)));
     return this.status();
+  }
+
+  /**
+   * Ask one harness again, at most once every `RECHECK_MS` unless forced. A harness can
+   * come back after this server booted — a Hermes gateway that finished starting, a CLI
+   * just installed — and holding the boot-time verdict would refuse it (or grey it out in
+   * the menu) until a restart. The throttle keeps a genuinely broken harness from
+   * spawning its CLI on every request. A discovery already running is shared: several
+   * tabs, a focus refresh, and a chat opening at once ask once.
+   */
+  async recheck(id: string, force = false): Promise<HarnessStatus | undefined> {
+    const adapter = this.get(id);
+    if (!adapter) return undefined;
+    const running = this.inflight.get(adapter.id);
+    if (running) {
+      await running;
+      return this.statuses.get(adapter.id);
+    }
+    if (!force && Date.now() - (this.checkedAt.get(adapter.id) ?? 0) < RECHECK_MS) return this.statuses.get(adapter.id);
+    await this.discoverOne(adapter, assignAccents(this.list()));
+    return this.statuses.get(adapter.id);
+  }
+
+  /**
+   * Whether a harness can be used right now, believing a cached "no" only after asking
+   * again (subject to `recheck`'s throttle, so a broken harness is not spawned per
+   * request). Routes that would refuse work gate on this rather than on `isAvailable`.
+   */
+  async available(id: string): Promise<boolean> {
+    if (this.statuses.get(asHarnessId(id))?.available === true) return true;
+    return (await this.recheck(id))?.available === true;
+  }
+
+  private discoverOne(adapter: HarnessAdapter, accents: Map<HarnessId, string>): Promise<void> {
+    const running = this.inflight.get(adapter.id);
+    if (running) return running;
+    const job = this.runDiscover(adapter, accents).finally(() => {
+      if (this.inflight.get(adapter.id) === job) this.inflight.delete(adapter.id);
+    });
+    this.inflight.set(adapter.id, job);
+    return job;
+  }
+
+  private async runDiscover(adapter: HarnessAdapter, accents: Map<HarnessId, string>): Promise<void> {
+    const d = await adapter.discover().catch((error: unknown) => ({
+      available: false,
+      reason: `Discovery failed: ${error instanceof Error ? error.message : String(error)}`,
+      warnings: [],
+      overrides: {},
+    }));
+    this.checkedAt.set(adapter.id, Date.now());
+    this.statuses.set(adapter.id, {
+      id: adapter.id,
+      displayName: adapter.displayName,
+      available: d.available,
+      ...("version" in d && d.version ? { version: d.version } : {}),
+      ...("versionDetail" in d && d.versionDetail ? { versionDetail: d.versionDetail } : {}),
+      ...(d.reason ? { reason: d.reason } : {}),
+      warnings: d.warnings,
+      capabilities: adapter.capabilities,
+      overrides: d.overrides,
+      accent: accents.get(adapter.id) ?? "muted",
+      ...(adapter.setupCommand ? { setupCommand: adapter.setupCommand } : {}),
+    });
   }
 
   status(): HarnessStatus[] {

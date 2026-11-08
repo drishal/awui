@@ -296,6 +296,14 @@ describe("chat lifecycle over HTTP + SSE", () => {
     expect((await agent.post("/api/chats/resume").send({ harnessId: "fake", workspaceId: ws.id, sessionId: "fake:unknown" })).status).toBe(404);
   });
 
+  it("rechecks one harness's status, so a harness that came back is not refused from a stale verdict", async () => {
+    const { agent } = await setup();
+    const status = await agent.get("/api/harnesses/fake/status");
+    expect(status.status).toBe(200);
+    expect(status.body).toMatchObject({ id: "fake", available: true });
+    expect((await agent.get("/api/harnesses/missing/status")).status).toBe(404);
+  });
+
   it("lists a harness's models for a folder before any chat exists", async () => {
     const { agent, ws } = await setup();
     const res = await agent.get(`/api/harnesses/fake/models?workspaceId=${ws.id}`);

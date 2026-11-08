@@ -490,17 +490,29 @@ export function createApp(deps: AppDeps) {
     if (!adapter) throw new ChatError(404, "unknown_harness", "Unknown harness");
     return adapter;
   };
-  const availableAdapter = (id: string) => {
+  // A harness can be installed and still unavailable (a Hermes gateway owning its home,
+  // say), and it can also come back after this server booted. So a cached "unavailable"
+  // is asked again before it refuses — the registry throttles that (registry.ts).
+  const availableAdapter = async (id: string) => {
     const adapter = adapterOr404(id);
+    if (await registry.available(adapter.id)) return adapter;
     const status = registry.status().find((s) => s.id === adapter.id);
-    // A harness can be installed and still unavailable (a Hermes gateway owning its
-    // home, say); discovery's reason is the only thing that says which it is.
-    if (status?.available !== true) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is unavailable${status?.reason ? `: ${status.reason}` : ""}`);
-    return adapter;
+    throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is unavailable${status?.reason ? `: ${status.reason}` : ""}`);
   };
 
+  // One harness's status, asked again. The harness menu asks about the rows it shows as
+  // blocked, so a gateway that finished starting (or a CLI just installed) stops being
+  // greyed out without a page reload. The registry throttles that ask (registry.ts): a
+  // signed-in device cannot force a discovery, including a Hermes CLI spawn, per request.
+  app.get("/api/harnesses/:id/status", async (req, res) => {
+    const adapter = adapterOr404(req.params.id);
+    const status = await registry.recheck(adapter.id);
+    if (!status) throw new ChatError(404, "unknown_harness", "Unknown harness");
+    res.json(status);
+  });
+
   app.get("/api/harnesses/:id/sessions", async (req, res) => {
-    const adapter = availableAdapter(req.params.id);
+    const adapter = await availableAdapter(req.params.id);
     const ws = await workspaces.get(String(req.query.workspaceId ?? ""));
     const problem = adapter.workspaceProblem(ws.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
@@ -530,7 +542,7 @@ export function createApp(deps: AppDeps) {
   // The models a chat in this workspace could start on, so the start screen can
   // offer one before any session exists. The same call a chat's own config makes.
   app.get("/api/harnesses/:id/models", async (req, res) => {
-    const adapter = availableAdapter(req.params.id);
+    const adapter = await availableAdapter(req.params.id);
     const ws = await workspaces.get(String(req.query.workspaceId ?? ""));
     const problem = adapter.workspaceProblem(ws.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
@@ -764,7 +776,7 @@ export function createApp(deps: AppDeps) {
   app.put("/api/routines", async (req, res) => {
     const input = body(routineSchema, req);
     await workspaces.get(input.workspaceId);
-    availableAdapter(input.harnessId);
+    await availableAdapter(input.harnessId);
     try {
       res.json(await routines.save(input));
     } catch (error) {
@@ -916,7 +928,7 @@ export function createApp(deps: AppDeps) {
 
   app.post("/api/chats", async (req, res) => {
     const input = body(createChatSchema, req);
-    const adapter = availableAdapter(input.harnessId);
+    const adapter = await availableAdapter(input.harnessId);
     const ws = await workspaces.get(input.workspaceId);
     const chat = await manager.create(adapter, ws);
     if (input.model || input.thinkingLevel) {
@@ -934,7 +946,7 @@ export function createApp(deps: AppDeps) {
 
   app.post("/api/chats/resume", async (req, res) => {
     const input = body(resumeChatSchema, req);
-    const adapter = availableAdapter(input.harnessId);
+    const adapter = await availableAdapter(input.harnessId);
     const prefix = `${adapter.id}:`;
     if (!input.sessionId.startsWith(prefix)) throw new ChatError(400, "wrong_harness", "Session belongs to another harness");
     const ws = await workspaces.get(input.workspaceId);
@@ -1254,7 +1266,7 @@ export function createApp(deps: AppDeps) {
 
   /** Continue `chat` in `harness`: a copy of its turns where the harness keeps them, else a fresh chat briefed with a summary. */
   const handoffChat = async (chat: Chat, harness: string, { through, prompt }: { through?: number; prompt?: string } = {}): Promise<Chat> => {
-    const target = availableAdapter(harness);
+    const target = await availableAdapter(harness);
     if (target.id === chat.adapter.id) throw new ChatError(400, "same_harness", "That chat is already in this harness");
     if (!chat.nativeId) throw new ChatError(409, "not_started", "This chat has no session to hand off yet");
     // Busy chats stop first (stop-here-continue-there); the source stays open
@@ -1300,12 +1312,12 @@ export function createApp(deps: AppDeps) {
     const moved = await handoffChat(chat, step.harness, step.prompt ? { prompt: step.prompt } : {});
     if (rest.length > 0) moved.setChain(rest, true);
   };
-  app.put("/api/chats/:id/chain", (req, res) => {
+  app.put("/api/chats/:id/chain", async (req, res) => {
     const { steps, resume } = body(chainSchema, req);
     const chat = manager.get(req.params.id);
     for (const step of steps) {
       if (step.kind !== "handoff") continue;
-      availableAdapter(step.harness);
+      await availableAdapter(step.harness);
       if (step.harness === chat.adapter.id) throw new ChatError(400, "same_harness", "A handoff goes to another harness");
     }
     chat.setChain(
