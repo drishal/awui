@@ -11,7 +11,7 @@
 // Every prompt, set_config value, permission answer, and cancel is recorded in
 // $FAKE_GROK_STATE so a test can see what went out on the wire.
 import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -122,7 +122,9 @@ function writeSummary() {
     updated_at: updatedAt ?? new Date().toISOString(),
     num_messages: messages,
   };
-  writeFileSync(path.join(sessionDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
+  // Atomically: a listing started right after the turn must never read a half-written file.
+  writeFileSync(path.join(sessionDir, "summary.json.tmp"), `${JSON.stringify(summary, null, 2)}\n`);
+  renameSync(path.join(sessionDir, "summary.json.tmp"), path.join(sessionDir, "summary.json"));
 }
 
 /** One session/update on the wire, and the same line in the session's jsonl unless `keep` is false (a replay). */
