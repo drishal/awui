@@ -65,6 +65,10 @@ export interface ConversationCx {
     fork: (through: number) => void;
     undo: (turn: Turn) => void;
     copy: (text: string) => void;
+    /** The turn as Markdown on the clipboard (the web UI's Copy turn). */
+    copyTurn: (turn: Turn) => void;
+    /** The turn's time as the waterfall overlay. */
+    timing: (turn: Turn) => void;
   };
 }
 
@@ -233,6 +237,27 @@ function jsonSection(key: string, label: string, value: object): Node {
   return ui.col({ key, gap: "xs" }, ui.text({ key: "label" }, span(label, "muted")), ui.json({ key: "json", value: value as Json, open: OPEN_DEPTH, aria: `${label} as JSON` }));
 }
 
+/** The head of a call's body for its hovercard: a dozen lines, cut hard in bytes so a huge output stays light. */
+function previewHead(text: string, lines = 12, chars = 1200): string {
+  const cut = text.split("\n").slice(0, lines).join("\n");
+  return cut.length > chars ? `${cut.slice(0, chars)}…` : cut;
+}
+
+/**
+ * What a tool row shows while the pointer rests on it: Tern has no hover event to fetch a file with, so
+ * this is the call's own body (its diff, its output, its command), bounded, never a request.
+ */
+function rowPreview(item: ToolItem, path: string | undefined): Node | null {
+  if (item.subagents) return null;
+  if (item.diff && item.diff.lines.length > 0) {
+    const lines = item.diff.lines.slice(0, 12);
+    return ui.diff({ text: unifiedDiff(path ?? "file", { lines, added: lines.filter((l) => l.kind === "add").length, removed: lines.filter((l) => l.kind === "del").length }) });
+  }
+  if (item.output.trim()) return item.category === "read" ? ui.code({ text: previewHead(item.output), ...(path ? { path } : {}) }) : ui.ansi({ text: previewHead(item.output) });
+  if (item.category === "command" && item.summary) return ui.code({ text: previewHead(item.summary, 6) });
+  return null;
+}
+
 /**
  * One tool call as Tern's `tool` row: icon, verb, target, facts, timer, and its output folded under it.
  * `now` is read only by the jobs a wait or list call shows; a live view always passes the cx's.
@@ -257,6 +282,7 @@ export function toolNode(item: ToolItem, workspace: string, age: ConversationCx[
   const took = !running && item.at !== undefined && item.endedAt !== undefined ? item.endedAt - item.at : undefined;
 
   const watchedJobs = item.jobs && item.jobs.length > 0 && item.category !== "command" ? chatJobs([item]) : null;
+  const hovercard = rowPreview(item, item.paths[0] ? shortPath(item.paths[0], workspace) : undefined);
   let body: Node | Node[] | null = null;
   let collapsed = !running;
   let preview: { lines: number } | { tail: number } | undefined;
@@ -308,6 +334,7 @@ export function toolNode(item: ToolItem, workspace: string, age: ConversationCx[
       ...(path ? { href: fileUrl(item.paths[0] as string, workspace) } : {}),
       ...(body ? { collapsible: true, collapsed: running ? false : collapsed } : {}),
       ...(preview ? { preview } : {}),
+      ...(hovercard ? { hovercard } : {}),
       ...(item.truncated ? { badges: [{ text: "cut", tone: "muted", title: "The output was cut to its head and tail" }] } : {}),
     },
     body,
@@ -457,6 +484,8 @@ function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
         ...(canBranch && caps.supportsFork && turn.through > 1 ? { "fork-before": () => cx.on.fork(turn.through - 1) } : {}),
         ...(canBranch && cx.chat.checkpoints.includes(turn.through) ? { "undo-files": () => cx.on.undo(turn) } : {}),
         "copy-prompt": () => cx.on.copy(prompt.text),
+        // The web UI's Copy turn as Markdown: the prompt, one line a call, the replies, the answer.
+        "copy-turn-as-markdown": () => cx.on.copyTurn(turn),
       },
     }),
     acts.length > 0 ? ui.row({ key: "acts", role: "awui.prompt-acts" }, acts) : null,
@@ -590,6 +619,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
       ui.row(
         { key: "acts", role: "awui.answer-acts" },
         ui.icon({ key: "copy", name: "copy", title: "Copy the answer", aria: "Copy the answer", onClick: () => cx.on.copy(answer.text) }),
+        ui.icon({ key: "timing", name: "clock", title: "Timing: every step, call, and subagent run", aria: "Timing", onClick: () => cx.on.timing(turn) }),
         turn.through > 0 && cx.chat.capabilities.supportsFork
           ? ui.icon({ key: "fork", name: "branch", title: "Fork: a new session through this answer", aria: "Fork", onClick: () => cx.on.fork(turn.through) })
           : null,

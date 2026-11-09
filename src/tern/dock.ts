@@ -11,6 +11,7 @@ import { accountName, tokens, windowLabel } from "../atui/format.js";
 import { optionsOf } from "../atui/requests.js";
 import type { Connection } from "../atui/client.js";
 import { selection, type Draft } from "./draft.js";
+import { draftSize } from "../web/token-estimate.js";
 
 /** The editor's node id, for focus and caret-anchored menus. */
 export const EDITOR_ID = "dock.d.comp.ed";
@@ -42,6 +43,8 @@ export interface DockCx {
   ghost: string;
   /** A prompt being edited: Enter replaces it. */
   editing: number | null;
+  /** A queued message being edited: Enter replaces it in the harness's queue. */
+  queueEdit: { field: "steering" | "followUp"; index: number } | null;
   /** The text typed for a question that wants text. */
   answer: Draft;
   /** The C-x prefix is waiting for its key. */
@@ -52,6 +55,8 @@ export interface DockCx {
     toggleTodos: (open: boolean) => void;
     send: () => void;
     stop: () => void;
+    /** The context chip: the window's fill and the session's spend. */
+    openContext: () => void;
     answer: (request: InteractionRequest, index: number) => void;
     submitText: (request: InteractionRequest) => void;
     cancel: (request: InteractionRequest) => void;
@@ -63,6 +68,8 @@ export interface DockCx {
     palette: () => void;
     dropStep: (index: number) => void;
     resumeChain: () => void;
+    editQueue: (field: "steering" | "followUp", index: number, text: string) => void;
+    removeQueue: (field: "steering" | "followUp", index: number) => void;
     focusEditor: () => void;
     focusAnswer: () => void;
     editDraft: (e: { from: number; to: number; text: string; cursor: number; len: number }) => void;
@@ -84,8 +91,9 @@ export function decorations(text: string): Array<{ from: number; to: number; s: 
 }
 
 /** What the composer asks for, by state: the web UI's placeholders. */
-export function placeholder(chat: ChatState | null, harness: HarnessStatus | null, editing: number | null): string {
+export function placeholder(chat: ChatState | null, harness: HarnessStatus | null, editing: number | null, queueEdit: DockCx["queueEdit"] = null): string {
   if (editing !== null) return `Edit message ${editing}: Enter runs it again, Esc keeps the original`;
+  if (queueEdit) return `Edit the queued ${queueEdit.field === "steering" ? "steering" : "follow-up"} message: Enter replaces it, Esc keeps it`;
   if (!chat) return harness ? `Message ${harness.displayName}… (/ commands, @ files, # saved prompts)` : "Message the agent…";
   if (chat.status === "running") return chat.capabilities.supportsSteer ? "Steer the agent…" : chat.capabilities.supportsFollowUp ? "Queue a follow-up…" : "The agent is working…";
   if (chat.status === "compacting") return "Compacting the context…";
@@ -212,8 +220,21 @@ function requestNode(r: InteractionRequest, cx: DockCx): Node {
 /** What runs next: steering and follow-ups the harness queued, and the server's chain. */
 function queueNode(chat: ChatState, cx: DockCx): Node | null {
   const rows: Node[] = [];
-  chat.queue.steering.forEach((t, i) => rows.push(ui.text({ key: `s${i}`, truncate: "end" }, span("↳ steer ", "accent"), t)));
-  chat.queue.followUp.forEach((t, i) => rows.push(ui.text({ key: `f${i}`, truncate: "end" }, span("⏵ next ", "accent"), t)));
+  // Where the harness can take its queue back, a queued message is edited or dropped before it runs (the web UI's rule).
+  const editable = chat.capabilities.supportsQueueEdit;
+  const queued = (key: string, field: "steering" | "followUp", index: number, text: string, prefix: string) =>
+    ui.row(
+      { key, gap: "sm", align: "center" },
+      ui.text({ key: "t", truncate: "end", grow: 1 }, span(prefix, "accent"), text),
+      editable
+        ? [
+            ui.icon({ key: "e", name: "pencil", title: "Edit this queued message", aria: "Edit the queued message", onClick: () => cx.on.editQueue(field, index, text) }),
+            ui.icon({ key: "x", name: "x", title: "Remove this queued message", aria: "Remove the queued message", onClick: () => cx.on.removeQueue(field, index) }),
+          ]
+        : null,
+    );
+  chat.queue.steering.forEach((t, i) => rows.push(queued(`s${i}`, "steering", i, t, "↳ steer ")));
+  chat.queue.followUp.forEach((t, i) => rows.push(queued(`f${i}`, "followUp", i, t, "⏵ next ")));
   chat.chain.forEach((step, i) => {
     const label = step.kind === "handoff" ? `hand off to ${step.harness}` : step.text;
     rows.push(
@@ -290,6 +311,9 @@ function composerNode(cx: DockCx): Node {
   const percent = chat?.context?.percent ?? null;
   const ready = cx.draft.text.trim() !== "";
   const sel = selection(cx.draft);
+  const size = draftSize(cx.draft.text, 0, chat?.context ?? null);
+  const sizeText = size ? span(size.label, size.near ? "warning" : "muted") : null;
+  const sizeContext = size && size.from !== null && size.to !== null ? span(`  ·  context ${Math.round(size.from)}% → ${Math.round(size.to)}%`, size.near ? "warning" : "dim") : null;
   return ui.col(
     { key: "comp", role: busy ? "awui.composer-busy" : "awui.composer" },
     ui.editor({
@@ -297,7 +321,7 @@ function composerNode(cx: DockCx): Node {
       text: cx.draft.text,
       cursor: cx.draft.cursor,
       ...(sel ? { anchor: cx.draft.anchor as number } : {}),
-      placeholder: placeholder(chat, cx.harness, cx.editing),
+      placeholder: placeholder(chat, cx.harness, cx.editing, cx.queueEdit),
       ...(cx.ghost ? { ghost: cx.ghost } : {}),
       decor: decorations(cx.draft.text),
       maxLines: 10,
@@ -309,6 +333,10 @@ function composerNode(cx: DockCx): Node {
       onUndo: cx.on.undoDraft,
       onSend: (e) => cx.on.sendText(e.text),
     }),
+    // The draft's size while it is worth mentioning (the web UI's row under the box), against the context.
+    size
+      ? ui.text({ key: "size", role: "awui.draft-size", title: size.near ? "Sending this would leave the context near its limit" : "The draft's size, estimated" }, sizeText, sizeContext)
+      : null,
     ui.row(
       { key: "chips", role: "awui.chips", justify: "between" },
       ui.row(
@@ -332,7 +360,7 @@ function composerNode(cx: DockCx): Node {
       ui.row(
         { key: "r", gap: "sm", align: "center" },
         percent !== null
-          ? ui.meter({ key: "ctx", style: "ring", value: percent / 100, thresholds: { warn: 0.65, bad: 0.9 }, label: `${Math.round(percent)}%`, title: `Context: ${Math.round(percent)}% of ${tokens(chat?.context?.window ?? 0)} tokens` })
+          ? ui.meter({ key: "ctx", style: "ring", value: percent / 100, thresholds: { warn: 0.65, bad: 0.9 }, label: `${Math.round(percent)}%`, title: `Context: ${Math.round(percent)}% of ${tokens(chat?.context?.window ?? 0)} tokens — click for the panel`, aria: `Context ${Math.round(percent)}% full`, onClick: cx.on.openContext })
           : null,
         busy && !ready
           ? html.button({ key: "go", class: "send stop", text: "■", title: "Stop (Esc Esc)", onClick: cx.on.stop })

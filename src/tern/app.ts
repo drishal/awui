@@ -9,10 +9,11 @@
 // view attached. The keys are atui's: C-k commands, C-x then a letter.
 import { appendFileSync } from "node:fs";
 import { createEffect, createMemo, createRoot, createSignal, on, onCleanup, untrack } from "solid-js";
-import { span, ui, html, type Key, type Node, type Session, type Surface } from "@stencil-hq/tern";
+import { blobId, span, ui, html, type Key, type Node, type Session, type Surface } from "@stencil-hq/tern";
 import type { HarnessStatus, InteractionRequest, SavedPrompt, SlashCommand } from "../shared/protocol.js";
 import type { ChatState } from "../web/chat-state.js";
 import { buildTurns, ago as agoMs } from "../web/turns.js";
+import { turnMarkdown } from "../web/turn-markdown.js";
 import { isBusy } from "../web/session-groups.js";
 import { phaseDelay, workingPhase } from "../web/working-phase.js";
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../web/commands.js";
@@ -27,6 +28,9 @@ import { conversation, firstFailedCall, headNode, PAGE_ID, PAGE_KEY, TURN_WINDOW
 import { ANSWER_ID, dock, EDITOR_ID, inputReady } from "./dock.js";
 import { AT_CARET, filterItems, menuNode, moveSelection, sessionRows, SHEETS, type Menu, type MenuItem, type MenuKind } from "./overlays.js";
 import { stepRange, USAGE_SCROLL_ID, usageNode, type UsageScreen } from "./usage.js";
+import { findHits } from "./find.js";
+import { TIMING_SCROLL_ID, timingNode } from "./timing.js";
+import { CONTEXT_SCROLL_ID, contextNode } from "./context.js";
 import { STYLESHEET, themeSheet } from "./look.js";
 import { startExamples, startHeading, startSetup } from "../web/start-screen.js";
 
@@ -58,6 +62,7 @@ const LEADER: Array<{ key: string; label: string }> = [
   { key: "z", label: "Put undone files back" },
   { key: "e", label: "Open or fold all work" },
   { key: "f", label: "Show failed calls" },
+  { key: "g", label: "Find in chat" },
   { key: "u", label: "Usage across chats" },
   { key: "y", label: "Copy the last answer" },
   { key: "q", label: "Quit" },
@@ -90,6 +95,14 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const [todosOpen, setTodosOpen] = createSignal(true);
     // The Usage screen: null while closed.
     const [usage, setUsage] = createSignal<UsageScreen | null>(null);
+    // The Timing overlay's turn (an index into the chat's turns): null while closed.
+    const [timing, setTiming] = createSignal<number | null>(null);
+    // The queued message being edited, and where it is in the harness's queue.
+    const [queueEdit, setQueueEdit] = createSignal<{ field: "steering" | "followUp"; index: number } | null>(null);
+    // The context panel over the composer's chip; "Compacted ✓" for a moment after a compaction ends.
+    const [contextOpen, setContextOpen] = createSignal(false);
+    const [compacted, setCompacted] = createSignal(false);
+    let compactedTimer: ReturnType<typeof setTimeout> | undefined;
     let recall: Recall | null = null;
     let lastEsc = 0;
     let lastCtrlC = 0;
@@ -114,15 +127,18 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       return a;
     };
 
-    // Prompt images go to Tern once each, as blobs; a frame names them by id.
+    // Prompt images go to Tern once each, as blobs; a frame names them by id. Tern keeps blobs across a
+    // client's restarts, so ask it first (a short wait, so a terminal that never answers still gets the bytes).
     const blobs = new Map<string, string | null>();
     const blobFor = (imageId: string, mimeType: string): string | null => {
       void blobTick();
       if (blobs.has(imageId)) return blobs.get(imageId) ?? null;
       blobs.set(imageId, null);
-      void app.image(imageId).then((bytes) => {
+      void app.image(imageId).then(async (bytes) => {
         if (!bytes || closed) return;
-        blobs.set(imageId, session.blob(bytes, mimeType));
+        const id = blobId(bytes);
+        const held = await Promise.race([session.blobs([id]), new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 250))]);
+        blobs.set(imageId, held.includes(id) ? id : session.blob(bytes, mimeType));
         setBlobTick((n) => n + 1);
       });
       return null;
@@ -146,6 +162,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           setPicked(null);
           setShown(TURN_WINDOW);
           setCommands(null);
+          setTiming(null);
+          setQueueEdit(null);
+          setContextOpen(false);
         },
       ),
     );
@@ -178,6 +197,20 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       ),
     );
     onCleanup(() => clearTimeout(phaseTimer));
+
+    // "Compacted ✓" for two seconds after a compaction ends, as the web UI's context chip shows it.
+    let wasCompacting = false;
+    createEffect(() => {
+      const compacting = app.chat()?.status === "compacting";
+      if (wasCompacting && !compacting) {
+        setCompacted(true);
+        clearTimeout(compactedTimer);
+        compactedTimer = setTimeout(() => setCompacted(false), 2000);
+      }
+      if (compacting) setCompacted(false);
+      wasCompacting = compacting;
+    });
+    onCleanup(() => clearTimeout(compactedTimer));
 
     const harness = (): HarnessStatus | null => app.harness();
 
@@ -322,6 +355,13 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
 
     const leaderItems = (): MenuItem[] => LEADER.map((k) => ({ id: k.key, label: k.label, value: `C-x ${k.key}` }));
 
+    /** The places the open find menu's query is in the chat, already the rows it shows (not filtered again). */
+    const findItems = (query: string): MenuItem[] => {
+      const c = app.chat();
+      if (!c) return [];
+      return findHits(buildTurns(c.items, c.status), PAGE_ID, query).map((hit, i) => ({ id: String(i), label: hit.label, detail: hit.detail, value: `turn ${hit.turn + 1}`, icon: "search" }));
+    };
+
     const paletteItems = (): MenuItem[] => {
       const c = app.chat();
       const idle = c ? !isBusy(c.status) : true;
@@ -341,7 +381,10 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (c && isBusy(c.status)) items.push({ id: "stop", label: "Stop the agent", value: "Esc Esc", icon: "stop" });
       items.push({ id: "x:e", label: allWork() ? "Fold all work" : "Open all work", value: "C-x e", icon: "expand" });
       if (c) items.push({ id: "x:f", label: "Show failed calls", value: "C-x f", icon: "x-circle", ...(c.items.some((i) => i.kind === "tool" && i.status === "error") ? {} : { disabled: "No call has failed in this chat" }) });
+      if (c) items.push({ id: "x:g", label: "Find in chat…", value: "C-x g", icon: "search", keywords: "search transcript" });
+      if (c && buildTurns(c.items, c.status).length > 0) items.push({ id: "timing", label: "Timing of the latest turn", icon: "clock", keywords: "waterfall speed slow" });
       items.push({ id: "x:u", label: "Usage", value: "C-x u", icon: "chart", keywords: "tokens cost limits spend" });
+      if (c) items.push({ id: "context", label: "Context and usage", icon: "gauge", keywords: "window tokens cache compact", ...(c.context ? {} : { disabled: "This harness has not reported the context yet" }) });
       if (c) items.push({ id: "x:y", label: "Copy the last answer", value: "C-x y", icon: "copy" });
       if (app.putBackable()) items.push({ id: "x:z", label: "Put the undone files back", value: "C-x z", icon: "undo" });
       if (c) items.push({ id: "web", label: "Copy this chat's link in the web UI", icon: "globe", keywords: "browser open" });
@@ -352,9 +395,10 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const menuItems = createMemo((): MenuItem[] => {
       const m = menu();
       if (!m) return caretItems();
-      const rows: Partial<Record<MenuKind, () => MenuItem[]>> = { palette: paletteItems, sessions: sessionItems, model: modelItems, thinking: thinkingItems, permission: permissionItems, harness: harnessItems, leader: leaderItems };
+      const rows: Partial<Record<MenuKind, () => MenuItem[]>> = { palette: paletteItems, sessions: sessionItems, model: modelItems, thinking: thinkingItems, permission: permissionItems, harness: harnessItems, find: () => findItems(m.query), leader: leaderItems };
       const all = rows[m.kind]?.() ?? [];
-      return SHEETS.has(m.kind) ? filterItems(all, m.query) : all;
+      // Find's rows are already the query's hits: filtering them again would drop a row whose label lacks a word.
+      return m.kind === "find" || !SHEETS.has(m.kind) ? all : filterItems(all, m.query);
     });
 
     const openMenu = (kind: MenuKind) => {
@@ -384,6 +428,46 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         if (text?.trim()) return text;
       }
       return null;
+    };
+
+    /** Opens the Timing overlay for the chat's turn at `index` (the palette's and an answer's clock icon). */
+    const openTiming = (index: number) => {
+      setLeader(false);
+      setMenu(null);
+      setUsage(null);
+      if (index >= 0) setTiming(index);
+    };
+
+    /** Opens the context panel over the composer's chip (the web UI's popover). */
+    const openContext = () => {
+      if (!app.chat()?.context) return say("This harness has not reported the context yet");
+      setLeader(false);
+      setMenu(null);
+      setUsage(null);
+      setTiming(null);
+      setContextOpen(true);
+    };
+
+    /** Replaces the harness's whole queue (the web UI's queue edit: an edited or removed message). */
+    const putQueue = (queue: { steering: string[]; followUp: string[] }) => {
+      const c = app.chat();
+      if (!c) return;
+      app.server.call(`/api/chats/${c.chatId}/queue`, { method: "PUT", body: queue }).catch((error: unknown) => say(error instanceof Error ? error.message : String(error), "error"));
+    };
+
+    /** Puts a queued message in the composer; Enter replaces it in the queue (Esc keeps it as it was). */
+    const editQueue = (field: "steering" | "followUp", index: number, text: string) => {
+      setQueueEdit({ field, index });
+      setDraft(draftState({ text, cursor: text.length, anchor: null }));
+      setFocus("editor");
+    };
+
+    const removeQueue = (field: "steering" | "followUp", index: number) => {
+      const c = app.chat();
+      if (!c) return;
+      const next = { steering: [...c.queue.steering], followUp: [...c.queue.followUp] };
+      next[field].splice(index, 1);
+      putQueue(next);
     };
 
     const toggleAllWork = () => {
@@ -459,6 +543,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           return toggleAllWork();
         case "f":
           return showFailed();
+        case "g":
+          return openMenu("find");
         case "u":
           return openUsage();
         case "y": {
@@ -485,6 +571,12 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           if (item.id.startsWith("x:")) return runLeader(item.id.slice(2));
           if (item.id === "stop") return app.stop();
           if (item.id === "permission") return openMenu("permission");
+          if (item.id === "timing") {
+            const c = app.chat();
+            if (c) openTiming(buildTurns(c.items, c.status).length - 1);
+            return;
+          }
+          if (item.id === "context") return openContext();
           if (item.id === "web") {
             // A program cannot open a browser through Tern (links open on a click), so the link goes to the clipboard.
             const c = app.chat();
@@ -509,6 +601,18 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         case "harness":
           if (item.id === harness()?.id) return;
           return app.chat() ? void app.handoff(item.id) : app.chooseHarness(item.id);
+        case "find": {
+          const c = app.chat();
+          if (!c) return;
+          const turns = buildTurns(c.items, c.status);
+          const hit = findHits(turns, PAGE_ID, m.query)[Number(item.id)];
+          if (!hit) return say("That match is gone");
+          // The turn's place in the window and its fold are drawn first: the reveal follows the frame that holds them.
+          setShown((n) => Math.max(n, turns.length - hit.turn));
+          if (hit.foldKey) setFolds((map) => new Map(map).set(hit.foldKey as string, true));
+          surface.reveal(hit.node, "start");
+          return;
+        }
         case "leader":
           return runLeader(item.id);
         default:
@@ -519,6 +623,21 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const sendDraft = async (text = draft().draft.text) => {
       const c = app.chat();
       const editing = app.editing();
+      const queued = queueEdit();
+      if (queued && c) {
+        if (!text.trim()) return say("A queued message cannot be empty", "error");
+        const next = { steering: [...c.queue.steering], followUp: [...c.queue.followUp] };
+        if (next[queued.field][queued.index] === undefined) {
+          setQueueEdit(null);
+          setDraft(draftState());
+          return say("That queued message already ran or was removed");
+        }
+        next[queued.field][queued.index] = text;
+        setDraft(draftState());
+        setQueueEdit(null);
+        putQueue(next);
+        return;
+      }
       if (editing && c) {
         if (!text.trim()) return;
         setDraft(draftState());
@@ -577,7 +696,10 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       on(
         () => app.editing(),
         (e) => {
-          if (e) setDraft((s) => setText(s, e.item.text));
+          if (e) {
+            setQueueEdit(null);
+            setDraft((s) => setText(s, e.item.text));
+          }
         },
       ),
     );
@@ -611,6 +733,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         checkpoints: c.checkpoints ?? [],
         chain: c.chain ?? [],
         chainPaused: c.chainPaused ?? null,
+        contextHistory: c.contextHistory ?? [],
       };
     });
 
@@ -675,6 +798,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
                 });
               },
               copy,
+              copyTurn: (turn) => copy(turnMarkdown(turn, c.workspace.path)),
+              timing: (turn) => openTiming(buildTurns(c.items, c.status).findIndex((t) => t.id === turn.id)),
             },
           }),
         );
@@ -693,6 +818,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         draft: draft().draft,
         ghost: ghost(),
         editing: app.editing()?.through ?? null,
+        queueEdit: queueEdit(),
         answer: answer().draft,
         leader: leader(),
         todosOpen: todosOpen(),
@@ -700,6 +826,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           toggleTodos: setTodosOpen,
           send: () => void sendDraft(),
           stop: app.stop,
+          openContext,
           answer: answerRequest,
           submitText,
           cancel: cancelRequest,
@@ -713,6 +840,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           resumeChain: () => setChain((c?.chain ?? []).map(({ id: _id, ...rest }) => rest), true),
           focusEditor: () => setFocus("editor"),
           focusAnswer: () => setFocus("answer"),
+          editQueue,
+          removeQueue,
           editDraft: (e) => setDraft((s) => applyEdit(s, e)),
           editAnswer: (e) => setAnswer((s) => applyEdit(s, e)),
           undoDraft: () => setDraft(undoDraft),
@@ -723,8 +852,12 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const layer: (Node | null)[] = [];
       const m = menu();
       const screen = usage();
-      // The Usage screen holds the keys: the composer's menu, whatever its text says, waits behind it.
-      const kind = screen ? null : (m?.kind ?? caretKind());
+      // The Timing overlay's turn, read again each frame so a run still going ends at this frame's now.
+      const timed = timing() !== null && c ? buildTurns(c.items, c.status)[timing() as number] : undefined;
+      // The context panel: over the chip, with the chat's figures and the draft as it is now.
+      const details = contextOpen() && c?.context ? contextNode({ chat: c, draft: draft().draft, compacted: compacted(), supports: (k) => session.caps.kinds.includes(k), on: { close: () => setContextOpen(false) } }) : undefined;
+      // The Usage, Timing, and context screens hold the keys: the composer's menu, whatever its text says, waits behind them.
+      const kind = screen || timed || details ? null : (m?.kind ?? caretKind());
       if (screen) {
         layer.push(
           usageNode({
@@ -736,6 +869,18 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             on: { close: () => setUsage(null) },
           }),
         );
+      } else if (timed) {
+        layer.push(
+          timingNode({
+            turn: timed,
+            workspace: c?.workspace.path ?? "",
+            now: Date.now(),
+            supports: (k) => session.caps.kinds.includes(k),
+            on: { close: () => setTiming(null) },
+          }),
+        );
+      } else if (details) {
+        layer.push(details);
       } else if (kind) {
         const items = menuItems();
         const shownMenu: Menu = m ?? { kind, query: "", selected: caretIndex() };
@@ -892,6 +1037,22 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (to) surface.scroll(USAGE_SCROLL_ID, to);
     };
 
+    /** The context panel's keys: Esc closes, the arrows and paging scroll its body. */
+    const onContextKey = (key: Key) => {
+      const { name, ctrl } = key;
+      if (name === "escape" || (ctrl && name === "g")) return setContextOpen(false);
+      const to = name === "up" || (ctrl && name === "p") ? "line-up" : name === "down" || (ctrl && name === "n") ? "line-down" : name === "page_up" ? "page-up" : name === "page_down" || name === "space" ? "page-down" : name === "home" ? "start" : name === "end" ? "end" : null;
+      if (to) surface.scroll(CONTEXT_SCROLL_ID, to);
+    };
+
+    /** The Timing overlay's keys: Esc closes, the arrows and paging scroll its table. */
+    const onTimingKey = (key: Key) => {
+      const { name, ctrl } = key;
+      if (name === "escape" || (ctrl && name === "g")) return setTiming(null);
+      const to = name === "up" || (ctrl && name === "p") ? "line-up" : name === "down" || (ctrl && name === "n") ? "line-down" : name === "page_up" ? "page-up" : name === "page_down" || name === "space" ? "page-down" : name === "home" ? "start" : name === "end" ? "end" : null;
+      if (to) surface.scroll(TIMING_SCROLL_ID, to);
+    };
+
     const onCaretMenuKey = (key: Key): boolean => {
       const items = caretItems();
       if (items.length === 0) return false;
@@ -938,6 +1099,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
 
       if (ctrl && name === "c") {
         if (usage()) return setUsage(null);
+        if (timing() !== null) return setTiming(null);
+        if (contextOpen()) return setContextOpen(false);
         if (menu()) return setMenu(null);
         if (draft().draft.text) return setDraft((s) => setText(s, ""));
         if (now - lastCtrlC < DOUBLE_MS * 2) return quit();
@@ -946,6 +1109,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       }
       const screen = usage();
       if (screen) return onUsageKey(key, screen);
+      if (timing() !== null) return onTimingKey(key);
+      if (contextOpen()) return onContextKey(key);
       if (leader()) {
         if (name === "escape" || (ctrl && name === "g")) return setLeader(false);
         return runLeader(key.text ?? name);
@@ -967,6 +1132,11 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (caretKind() && onCaretMenuKey(key)) return;
 
       if (name === "escape") {
+        if (queueEdit()) {
+          setQueueEdit(null);
+          setDraft(draftState());
+          return say("The queued message is unchanged");
+        }
         if (app.editing()) {
           app.setEditing(null);
           return setDraft(draftState());

@@ -365,7 +365,9 @@ describe("awui tern", () => {
     tern.type("\x0b");
     await until(() => tern.find("picker", "layer").length === 1, "the palette");
     tern.type("usage");
-    await until(() => ((tern.find("picker", "layer")[0]?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label).join() === "Usage", "the entry");
+    const labels = () => ((tern.find("picker", "layer")[0]?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label);
+    // "Usage" is first: "Context and usage" matches the same word, after it.
+    await until(() => labels()[0] === "Usage", "the entry");
     tern.type("\r");
     await until(() => open() && tiles().includes(shortTokens(tokensOf(report.totals))), "the report");
     expect(tern.find("picker", "layer")).toEqual([]);
@@ -494,6 +496,104 @@ describe("awui tern", () => {
     await until(() => shimmer() === "Writing", "the writing phase on the working line");
     await until(() => JSON.stringify(thought() ?? "").includes("Considering"), "the latest thought beside the phase");
   }, 20_000);
+
+  it("copies a turn as Markdown from its prompt's context menu", async () => {
+    client = await start();
+    const { tern, app, written, until } = client;
+    tern.type("tool please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: tool please"), "the answer");
+    const prompt = [...tern.nodes.values()].find((n) => n.p.role === "awui.prompt");
+    if (!prompt) throw new Error("the prompt row is missing");
+    tern.event({ ev: "action", id: prompt.id, act: "copy-turn-as-markdown" });
+    const clip = (): string | null => {
+      const seq = [...written].reverse().find((w) => w.startsWith("\x1b]52;c;"));
+      return seq ? Buffer.from(seq.slice(7, -2), "base64").toString("utf8") : null;
+    };
+    await until(() => clip() !== null, "the clipboard");
+    const text = clip() as string;
+    expect(text).toContain("## Prompt");
+    expect(text).toContain("tool please");
+    expect(text).toContain("## Answer");
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("finds a word in the chat and opens the fold that holds it", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("showcase\r");
+    await until(() => app.chat()?.status === "idle", "the run");
+    tern.type("\x18g");
+    await until(() => tern.find("picker", "layer").length === 1, "the find picker");
+    tern.type("triage");
+    await until(() => ((tern.find("picker", "layer")[0]?.p.items ?? []) as Array<{ label: string }>).length > 0, "the matches");
+    tern.type("\r");
+    await until(() => tern.reveals.length > 0, "the reveal");
+    expect(tern.reveals.at(-1)?.present).toBe(true);
+    expect(tern.reveals.at(-1)?.id).toMatch(new RegExp(`^main\\.page\\..*\\.w\\d+\\.items\\.`));
+    expect(tern.find("section").some((n) => String(n.p.role).startsWith("awui.fold") && n.p.collapsed === false)).toBe(true);
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("opens the Timing overlay from an answer's clock, and Esc closes it", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("tool please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: tool please"), "the answer");
+    const clock = [...tern.nodes.values()].find((n) => String(n.p.title).startsWith("Timing"));
+    if (!clock) throw new Error("the answer has no timing action");
+    tern.event({ ev: "action", id: clock.id, act: "click" });
+    await until(() => tern.nodes.has("layer.timing"), "the timing overlay");
+    expect(tern.text("layer")).toContain("Timing");
+    expect(tern.find("table", "layer")).toHaveLength(1);
+    expect(String(tern.nodes.get("layer.timing")?.p.meta)).toContain("from prompt to settle");
+    tern.type("\x1b");
+    await until(() => !tern.nodes.has("layer.timing"), "the overlay to close");
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("edits a queued message in the composer and puts it back in the queue", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    // A run waiting on an approval keeps the chat running, so a second prompt is steered and can be edited.
+    tern.type("ask please\r");
+    await until(() => tern.nodes.has("dock.d.req") && app.chat()?.status === "running", "the approval");
+    tern.type("queued one\r");
+    await until(() => app.chat()?.queue.steering[0] === "queued one", "the queued steer");
+    const edit = tern.find("icon", "dock").find((n) => n.p.title === "Edit this queued message");
+    if (!edit) throw new Error("no edit icon");
+    tern.event({ ev: "action", id: edit.id, act: "click" });
+    await until(() => tern.nodes.get("dock.d.comp.ed")?.p.text === "queued one", "the queued text in the box");
+    tern.type(" more\r");
+    await until(() => app.chat()?.queue.steering[0] === "queued one more", "the replaced queue");
+    expect(tern.text("dock")).toContain("queued one more");
+    tern.type("1");
+    await until(() => app.chat()?.status === "idle", "the approved run");
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("opens the context panel from the composer's ring, and Esc closes it", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("tool please\r");
+    await until(() => app.chat()?.status === "idle" && tern.nodes.has("dock.d.comp.chips.r.ctx"), "the filled context ring");
+    tern.event({ ev: "action", id: "dock.d.comp.chips.r.ctx", act: "click" });
+    await until(() => tern.nodes.has("layer.context"), "the context panel");
+    expect(tern.text("layer")).toContain("of context used");
+    expect(tern.nodes.get("layer.context")?.p.anchor).toEqual({ node: "dock.d.comp.chips.r.ctx", side: "above" });
+    tern.type("\x1b");
+    await until(() => !tern.nodes.has("layer.context"), "the panel to close");
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("shows the draft's size against the context once it is worth mentioning", async () => {
+    client = await start();
+    const { tern, until } = client;
+    tern.type("word ".repeat(220));
+    const size = () => [...tern.nodes.values()].find((n) => n.p.role === "awui.draft-size");
+    await until(() => size() !== undefined, "the size row");
+    expect(tern.text(size()?.id)).toContain("tokens");
+    expect(tern.errors).toEqual([]);
+  });
 
   it("quits with C-c C-c, and leaves the chat on the server", async () => {
     client = await start();

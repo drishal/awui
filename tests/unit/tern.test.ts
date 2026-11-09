@@ -10,6 +10,9 @@ import { applyEdit, draftState, editKey, lineStep, redo, setText, undo, wordStep
 import { filterItems, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
 import { askShape, decorations, dock, inputReady, placeholder, type DockCx } from "../../src/tern/dock.js";
 import { themeSheet } from "../../src/tern/look.js";
+import { findHits } from "../../src/tern/find.js";
+import { timingNode } from "../../src/tern/timing.js";
+import { contextNode } from "../../src/tern/context.js";
 import { conversation, firstFailedCall, foldHead, foldHeadSpans, PAGE_ID, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
 import { clientCommand, sourceRun } from "../../src/server/clients.js";
@@ -185,6 +188,29 @@ describe("the Tern dock", () => {
     expect(folded?.children.filter(Boolean)).toEqual([]);
   });
 
+
+  it("edits and removes a queued message where the harness can take its queue back", () => {
+    const queue = { steering: ["first"], followUp: ["second"] };
+    const rows = all(dock(dockCx({ queue, capabilities: { supportsQueueEdit: true } } as Partial<ChatState>)));
+    expect(rows.filter((n) => n.kind === "icon" && n.props.title === "Edit this queued message")).toHaveLength(2);
+    expect(rows.filter((n) => n.kind === "icon" && n.props.title === "Remove this queued message")).toHaveLength(2);
+    const readOnly = all(dock(dockCx({ queue, capabilities: { supportsQueueEdit: false } } as Partial<ChatState>)));
+    expect(readOnly.filter((n) => n.kind === "icon" && String(n.props.title).includes("queued message"))).toHaveLength(0);
+  });
+
+  it("says when the composer is editing a queued message, not just a prompt", () => {
+    expect(placeholder(null, null, null, { field: "steering", index: 0 })).toContain("queued steering message");
+    expect(placeholder(null, null, null, { field: "followUp", index: 1 })).toContain("queued follow-up message");
+  });
+
+  it("shows the draft's size and its share of the context once it is worth mentioning", () => {
+    const long = { text: "word ".repeat(500), cursor: 2500, anchor: null };
+    const row = all(dock(dockCx({ context: { percent: 10, window: 100_000, tokens: 10_000 } } as Partial<ChatState>, { draft: long }))).find((n) => n.props.role === "awui.draft-size");
+    expect(JSON.stringify(row)).toContain("tokens");
+    expect(JSON.stringify(row)).toContain("context");
+    const short = all(dock(dockCx({ context: { percent: 10, window: 100_000, tokens: 10_000 } } as Partial<ChatState>, { draft: { text: "hi", cursor: 2, anchor: null } })));
+    expect(short.some((n) => n.props.role === "awui.draft-size")).toBe(false);
+  });
 
   const request = (over: Partial<InteractionRequest>): InteractionRequest => ({ id: "r1", kind: "select", title: "Run command?", message: "npm test", options: ["Approve", "Deny"], createdAt: 1, ...over });
 
@@ -367,7 +393,7 @@ describe("the Tern conversation", () => {
     ];
     const chat = { chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status: "idle", items, capabilities: {}, checkpoints: [] } as unknown as ChatState;
     const noop = () => undefined;
-    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map(), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
+    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map(), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop, copyTurn: noop, timing: noop } };
     const [turn] = conversation(cx);
     const kinds = (n: Node): string[] => [n.kind, ...n.children.flatMap(kinds)];
     expect(kinds(turn as Node)).not.toContain("section");
@@ -384,7 +410,7 @@ describe("the Tern conversation", () => {
     ];
     const chat = { chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status: "idle", items, capabilities: {}, checkpoints: [] } as unknown as ChatState;
     const noop = () => undefined;
-    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map([["u1#0", true]]), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop } };
+    const cx: ConversationCx = { chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map([["u1#0", true]]), picked: null, blob: () => null, on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop, copyTurn: noop, timing: noop } };
     const all = (n: Node): Node[] => [n, ...n.children.flatMap(all)];
     const thought = conversation(cx).flatMap((n) => all(n as Node)).find((n) => n.kind === "tool" && n.props.name === "thinking");
     expect(thought?.props).toMatchObject({ title: "Thought", target: "Considering the config first", frame: "inline", collapsed: true });
@@ -413,7 +439,7 @@ describe("the Tern conversation", () => {
     const chatOf = (items: ChatItem[], status: ChatState["status"]) => ({ chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status, items, capabilities: {}, checkpoints: [] }) as unknown as ChatState;
     const cxOf = (chat: ChatState, over: Partial<ConversationCx> = {}): ConversationCx => ({
       chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map(), picked: null, blob: () => null,
-      on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop }, ...over,
+      on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop, copyTurn: noop, timing: noop }, ...over,
     });
     const buildTurnsOf = (chat: ChatState) => buildTurns(chat.items, chat.status);
     const reply = (id: string, text: string): ChatItem => ({ kind: "assistant", id, text, thinking: "", streaming: false });
@@ -533,5 +559,104 @@ describe("awui tern's command line", () => {
     expect(tern.entry).toBe(path.join(repo, "src", "tern", "main.ts"));
     expect(tern.bunArgs).toContain("--conditions=browser");
     expect(tern.needs).toBe(path.join("@stencil-hq", "tern"));
+  });
+});
+
+describe("the Tern find in chat", () => {
+  const items: ChatItem[] = [
+    { kind: "user", id: "u1", text: "please find the needle", images: [] } as unknown as ChatItem,
+    { kind: "tool", id: "t1", name: "bash", args: "{}", status: "done", output: "needle found", truncated: false, category: "search", summary: "grep needle", paths: [] },
+    { kind: "assistant", id: "a1", text: "The needle is here.", thinking: "", streaming: false, at: 10, endedAt: 20 },
+  ];
+  const turns = buildTurns(items, "idle");
+
+  it("lists the prompt, the row inside its fold, and the answer, each with the node to reveal", () => {
+    const hits = findHits(turns, "main.page", "needle");
+    const turn = turns[0] as Turn;
+    const prompt = hits.find((h) => h.node.endsWith(".ask.p"));
+    expect(prompt).toMatchObject({ node: `main.page.${turn.id}.ask.p`, fold: null, foldKey: null });
+    expect(prompt?.detail).toContain("needle");
+    const folded = hits.find((h) => h.fold === "w0");
+    expect(folded?.node).toBe(`main.page.${turn.id}.w0.items.t1`);
+    expect(folded?.foldKey).toBe(`${turn.id}#0`);
+    const answer = hits.find((h) => h.node === `main.page.${turn.id}.answer`);
+    expect(answer?.detail).toContain("needle");
+  });
+
+  it("finds nothing for a blank query, and cuts a long list", () => {
+    expect(findHits(turns, "main.page", "   ")).toEqual([]);
+    expect(findHits(turns, "main.page", "needle").length).toBeLessThanOrEqual(50);
+  });
+});
+
+describe("the Tern timing overlay", () => {
+  const noop = () => undefined;
+  const all = (n: Node): Node[] => [n, ...n.children.flatMap(all)];
+  const items: ChatItem[] = [
+    { kind: "user", id: "u1", text: "go", images: [] } as unknown as ChatItem,
+    { kind: "tool", id: "t1", name: "bash", args: "{}", status: "done", output: "", truncated: false, category: "command", summary: "npm test", paths: [], at: 1000, endedAt: 3100 },
+    { kind: "tool", id: "t2", name: "read", args: "{}", status: "done", output: "", truncated: false, category: "read", summary: "src/a.ts", paths: ["src/a.ts"], at: 3200, endedAt: 3600 },
+    { kind: "assistant", id: "a1", text: "Done.", thinking: "", streaming: false, at: 700, endedAt: 3700 },
+  ];
+  const [turn] = buildTurns(items, "idle");
+  const overlay = (t: Turn) => timingNode({ turn: t, workspace: "/w", now: 5000, supports: () => true, on: { close: noop } });
+
+  it("draws a table row per step and marks the slowest call", () => {
+    const node = all(overlay(turn as Turn));
+    const table = node.find((n) => n.kind === "table");
+    expect(table?.props.cols).toEqual(expect.arrayContaining([expect.objectContaining({ id: "name" }), expect.objectContaining({ id: "start" })]));
+    expect((table?.props.rows as Array<{ cells: Record<string, unknown> }>).length).toBe(3);
+    expect(JSON.stringify(table)).toContain("slowest");
+    expect(JSON.stringify(node.find((n) => n.kind === "overlay")?.props)).toContain("from prompt to settle");
+  });
+
+  it("says when the harness reported no times", () => {
+    const bare: ChatItem[] = [{ kind: "user", id: "u2", text: "go", images: [] } as unknown as ChatItem, { kind: "assistant", id: "a2", text: "ok", thinking: "", streaming: false }];
+    const [t] = buildTurns(bare, "idle");
+    const node = all(overlay(t as Turn));
+    expect(JSON.stringify(node)).toContain("did not report times");
+  });
+});
+
+describe("the Tern context panel", () => {
+  const noop = () => undefined;
+  const chat = {
+    chatId: "c",
+    status: "idle",
+    items: [],
+    pending: [],
+    queue: { steering: [], followUp: [] },
+    chain: [],
+    todos: [],
+    capabilities: { supportsCompact: true },
+    config: { model: "fake/echo", models: [{ key: "fake/echo", id: "echo", name: "Fake Echo" }] },
+    context: { tokens: 9200, window: 100_000, percent: 9.2, categories: [{ id: "system", label: "System prompt", tokens: 1200 }, { id: "messages", label: "Messages", tokens: 8000 }] },
+    contextHistory: [
+      { percent: 4, tokens: 4000 },
+      { percent: 7, tokens: 7000 },
+      { percent: 9.2, tokens: 9200 },
+    ],
+    usage: { turns: 2, steps: 3, input: 8000, cachedInput: 2000, cacheWrite: 0, output: 1500, cost: 0.02, llmMs: 4200, ttftMs: 700, tokensPerSecond: 36 },
+  } as unknown as ChatState;
+  const node = (over: Partial<ChatState> = {}, draft = { text: "word ".repeat(500), cursor: 2500, anchor: null }) =>
+    JSON.stringify(contextNode({ chat: { ...chat, ...over }, draft, compacted: false, supports: () => true, on: { close: noop } }));
+
+  it("shows the fill, its growth, the categories, the draft, and the session's spend", () => {
+    const text = node();
+    expect(text).toContain("of context used");
+    expect(text).toContain("9.2k / 100k");
+    expect(text).toContain("System prompt");
+    expect(text).toContain("Messages");
+    expect(text).toContain("Tokens this session");
+    expect(text).toContain("Cache hit");
+    expect(text).toContain("LLM time");
+    expect(text).toContain("tokens");
+  });
+
+  it("says when there is no context figure, and shows Compacted after a compaction", () => {
+    const none = JSON.stringify(contextNode({ chat: { ...chat, context: null } as unknown as ChatState, draft: { text: "", cursor: 0, anchor: null }, compacted: false, supports: () => true, on: { close: noop } }));
+    expect(none).toContain("has not reported the context");
+    const compacted = JSON.stringify(contextNode({ chat, draft: { text: "", cursor: 0, anchor: null }, compacted: true, supports: () => true, on: { close: noop } }));
+    expect(compacted).toContain("Compacted ✓");
   });
 });

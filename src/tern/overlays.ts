@@ -11,7 +11,7 @@ import { isBusy, placeOf, type Place } from "../web/session-groups.js";
 import { ago } from "../web/turns.js";
 import { EDITOR_ID } from "./dock.js";
 
-export type MenuKind = "palette" | "sessions" | "model" | "thinking" | "permission" | "harness" | "slash" | "skill" | "prompts" | "files" | "leader";
+export type MenuKind = "palette" | "sessions" | "model" | "thinking" | "permission" | "harness" | "find" | "slash" | "skill" | "prompts" | "files" | "leader";
 
 /** One row of a menu. */
 export interface MenuItem {
@@ -47,6 +47,7 @@ const TITLES: Record<MenuKind, string> = {
   thinking: "Thinking",
   permission: "Permissions",
   harness: "Harness",
+  find: "Find in chat",
   slash: "Commands",
   skill: "Skills",
   prompts: "Saved prompts",
@@ -61,6 +62,7 @@ const NOUNS: Record<MenuKind, string> = {
   thinking: "levels",
   permission: "modes",
   harness: "harnesses",
+  find: "matches",
   slash: "commands",
   skill: "skills",
   prompts: "prompts",
@@ -102,7 +104,7 @@ export function sessionRows(overview: SessionsOverview, at: { here: string | nul
 }
 
 /** Menus drawn as Tern's picker sheet (searchable); the rest are small lists. */
-export const SHEETS: ReadonlySet<MenuKind> = new Set(["palette", "sessions", "model", "thinking", "permission", "harness"]);
+export const SHEETS: ReadonlySet<MenuKind> = new Set(["palette", "sessions", "model", "thinking", "permission", "harness", "find"]);
 
 /** Menus whose query is what the composer holds after its trigger, not typed into the menu. */
 export const AT_CARET: ReadonlySet<MenuKind> = new Set(["slash", "skill", "prompts", "files"]);
@@ -181,16 +183,16 @@ function sheet(cx: MenuCx): Node {
     noun: NOUNS[menu.kind],
     query: menu.query,
     cursor: menu.query.length,
-    placeholder: menu.kind === "palette" ? "Type a command…" : `Search ${NOUNS[menu.kind]}…`,
+    placeholder: menu.kind === "palette" ? "Type a command…" : menu.kind === "find" ? "Type words to find in this chat…" : `Search ${NOUNS[menu.kind]}…`,
     items: rows,
     order,
     ...(selected ? { selected } : {}),
     current: items.filter((i) => i.current).map((i) => i.id),
     columns: items.some((i) => i.value) ? [{ id: "v", head: "", format: "dim", priority: 50 }] : [],
-    empty: `No ${NOUNS[menu.kind]} match`,
+    empty: menu.kind === "find" ? "Nothing in this chat matches" : `No ${NOUNS[menu.kind]} match`,
     actions: [
       { id: "close", label: "Close", keys: ["esc"] },
-      { id: "pick", label: menu.kind === "sessions" ? "Open" : "Choose", keys: ["enter"], primary: true },
+      { id: "pick", label: menu.kind === "sessions" ? "Open" : menu.kind === "find" ? "Go" : "Choose", keys: ["enter"], primary: true },
     ],
     onSelect: (e) => cx.on.select(items.findIndex((i) => i.id === e.item)),
     onActivate: (e) => {
