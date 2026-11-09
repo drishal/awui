@@ -23,11 +23,13 @@ browser ──HTTP/SSE──▶ Node server (127.0.0.1:4783) ──▶ HarnessAd
 
 ## Screenshots
 
-![A turn in a real session: the prompt, the work it took folded open over its thoughts and commands, and the answer](docs/screenshots/turn.png)
+![A turn: the prompt, the work it took folded open over its thoughts and commands, and the answer](docs/screenshots/turn.png)
 
-The start screen, a long session with its todo list and context ring, usage across chats, the
-palette, the file viewer, the light theme, and the phone layout are in
-[docs/screenshots/](docs/screenshots) — taken from real sessions with the Pi harness.
+The start screen, a turn's tool calls with one opened to its diff, a long session with its todo
+list and context ring, usage across chats, the palette, the file viewer, the light theme, and the
+phone layout are in
+[docs/screenshots/](docs/screenshots) — the built app driving the Pi harness, at a desktop's and
+a phone's size.
 
 ## Install and run
 
