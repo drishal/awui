@@ -303,6 +303,8 @@ export interface ToolItem {
   plan?: string;
   /** A shell call's exit code, when the harness reported one (OpenCode's shell result carries metadata.exit; Pi/omp/Claude bash results carry none). */
   exitCode?: number;
+  /** Pictures the call's result carried (a read of a screenshot), served at /api/images/<id> and opened full size like a prompt's. */
+  images?: ImageRef[];
   /**
    * Background jobs this call started or looked at (omp's backgrounded bash and `wait`, Claude Code's
    * run_in_background, the bg_task extension's spawn and status), as it last saw them; a job's later

@@ -290,6 +290,13 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
               </div>
             ) : (
               <div className="tool-body">
+                {/* A picture the call returned (a read of a screenshot): the same numbered thumbnails a prompt's
+                    images get, opening in the same viewer, since the row is where the call's result lives. */}
+                {item.images && item.images.length > 0 ? (
+                  <div className="tool-images">
+                    <SentImages images={item.images} />
+                  </div>
+                ) : null}
                 <ToolBody item={item} workspace={workspace} bare />
                 {/* Only when there is more than the panel shows: a short output is all here already. */}
                 {item.output && (item.truncated || item.output.split("\n").length > FULL_OUTPUT_LINES) ? (
@@ -399,16 +406,22 @@ export function ProcessItem({ item, workspace, thoughtOnly = false }: { item: Ch
   }
 }
 
-/** A prompt's images as numbered thumbnails, opening in the viewer. */
+/** A prompt's or a call's images as numbered thumbnails, opening in the viewer. */
 function SentImages({ images }: { images: ImageRef[] }) {
   const [viewing, setViewing] = useState<number | null>(null);
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({});
+  // A picture the server no longer holds (it keeps a budget of the newest, and a restart empties it) answers 404.
+  // Its thumbnail goes rather than standing there as a broken picture; with every one gone, the row shows none.
+  const [gone, setGone] = useState<ReadonlySet<number>>(new Set());
   const thumbs = useRef(new Map<number, HTMLElement>());
   const view = images.map((ref, i) => ({ src: `/api/images/${ref.id}`, width: sizes[i]?.width ?? null, height: sizes[i]?.height ?? null }));
+  const shown = images.map((_, i) => i).filter((i) => !gone.has(i));
+  if (shown.length === 0) return null;
   return (
     <>
-      <ul className={`sent-images${images.length === 1 ? " is-single" : ""}`} aria-label="Images">
-        {images.map((ref, i) => {
+      <ul className={`sent-images${shown.length === 1 ? " is-single" : ""}`} aria-label="Images">
+        {shown.map((i) => {
+          const ref = images[i] as ImageRef;
           const size = imageSize(view[i] as { width: number | null; height: number | null });
           return (
             <li key={`${i}:${ref.id}`} className="sent-image">
@@ -430,6 +443,7 @@ function SentImages({ images }: { images: ImageRef[] }) {
                     const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
                     setSizes((s) => (s[i] ? s : { ...s, [i]: { width, height } }));
                   }}
+                  onError={() => setGone((g) => (g.has(i) ? g : new Set(g).add(i)))}
                 />
               </button>
               <span className="image-label" aria-hidden="true">
@@ -440,7 +454,14 @@ function SentImages({ images }: { images: ImageRef[] }) {
           );
         })}
       </ul>
-      {viewing !== null ? <ImageViewer images={view} start={viewing} thumbnail={(i) => thumbs.current.get(i) ?? null} onClose={() => setViewing(null)} /> : null}
+      {viewing !== null ? (
+        <ImageViewer
+          images={shown.map((i) => view[i] as { src: string; width: number | null; height: number | null })}
+          start={Math.max(0, shown.indexOf(viewing))}
+          thumbnail={(at) => thumbs.current.get(shown[at] ?? -1) ?? null}
+          onClose={() => setViewing(null)}
+        />
+      ) : null}
     </>
   );
 }

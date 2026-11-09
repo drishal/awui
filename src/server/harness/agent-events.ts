@@ -1,7 +1,7 @@
 // Normalization for Pi-family agent events and transcript messages. omp is a
 // Pi fork and emits the same shapes over RPC, so both adapters share this.
 // Inputs are untyped on purpose: SDK and wire types never leave the adapters.
-import type { BackgroundJob, ChatItem, TodoItem, ToolCategory, ToolDiff, ToolItem } from "../../shared/protocol.js";
+import { MAX_IMAGES, type BackgroundJob, type ChatItem, type TodoItem, type ToolCategory, type ToolDiff, type ToolItem } from "../../shared/protocol.js";
 import { argsDiff, resultDiff } from "./tool-diff.js";
 import { imageRefs } from "../image-store.js";
 import { applyReports, asyncReports, detailReports, hasAgentCells, isAgentTool, notifyReports, runsFromArgs, runsFromDetails, settleRuns, type AgentReport } from "./subagents.js";
@@ -505,7 +505,10 @@ export function normalizeAgentEvent(event: unknown, settledType: string): Harnes
           ...(isObj(event.partialResult) && event.partialResult.details !== undefined ? { details: event.partialResult.details } : {}),
         },
       ];
-    case "tool_execution_end":
+    case "tool_execution_end": {
+      // A read of a picture answers with an image block; the picture is kept here so the row can show it,
+      // and the browser still only ever sees an id (/api/images/<id>).
+      const images = isObj(event.result) ? imageRefs(event.result.content).slice(0, MAX_IMAGES) : [];
       return [
         {
           type: "tool_end",
@@ -513,8 +516,10 @@ export function normalizeAgentEvent(event: unknown, settledType: string): Harnes
           output: toolResultText(event.result),
           isError: event.isError === true,
           ...(isObj(event.result) && event.result.details !== undefined ? { details: event.result.details } : {}),
+          ...(images.length > 0 ? { images } : {}),
         },
       ];
+    }
     case "queue_update": {
       const steering = Array.isArray(event.steering) ? event.steering.map(String) : [];
       const followUp = Array.isArray(event.followUp) ? event.followUp.map(String) : [];
@@ -679,6 +684,9 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
             if (exitCode !== null) tool.exitCode = exitCode;
             else delete tool.exitCode;
           }
+          // A picture the call returned (a read of a screenshot) rides on the row, so history shows it too.
+          const images = imageRefs(raw.content).slice(0, MAX_IMAGES);
+          if (images.length > 0) tool.images = images;
           const jobs = jobsFromCall(tool.name, toolArgs.get(String(raw.toolCallId)), raw.details, toolResultText(raw));
           if (jobs) {
             // A started job is stamped with its call's time; a later look (a wait, a list) says how it stands.

@@ -26,10 +26,17 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
  * cannot bloat a room record.
  */
 export function boundRunItems(items: ChatItem[], invocationId: string, max = BOARD_MAX_RUN_ITEMS): ChatItem[] {
-  if (items.length <= max) return items;
-  const head = items.slice(0, 100);
-  const tail = items.slice(-(max - 101));
-  const omitted = items.length - head.length - tail.length;
+  // A room keeps a portable projection, and a picture's id names bytes this process holds (image-store.ts re-reads
+  // them from a session file; a room has none). The row keeps its text; the thumbnail would only 404 after a restart.
+  const portable = items.map((item) => {
+    if (item.kind !== "tool" || !item.images) return item;
+    const { images: _pictures, ...rest } = item;
+    return rest;
+  });
+  if (portable.length <= max) return portable;
+  const head = portable.slice(0, 100);
+  const tail = portable.slice(-(max - 101));
+  const omitted = portable.length - head.length - tail.length;
   const marker: ChatItem = {
     kind: "notice",
     id: `${invocationId}:truncated`,

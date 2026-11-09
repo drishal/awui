@@ -113,7 +113,7 @@ export type HarnessEvent =
   | { type: "subagent_reports"; reports: AgentReport[] }
   /** Background jobs reporting in (omp's async-result, Claude's task_notification, bg_task's exit event): every call holding one shows it. */
   | { type: "job_reports"; jobs: BackgroundJob[] }
-  | { type: "tool_end"; toolCallId: string; output: string; isError: boolean; /** The result's structured side (Pi/omp `details`, Claude Code's tool_use_result). */ details?: unknown }
+  | { type: "tool_end"; toolCallId: string; output: string; isError: boolean; /** The result's structured side (Pi/omp `details`, Claude Code's tool_use_result). */ details?: unknown; /** Pictures the result carried (a read of a screenshot), already in the image store. */ images?: ImageRef[] }
   | { type: "busy" }
   | { type: "settled" }
   | { type: "compacting"; active: boolean }

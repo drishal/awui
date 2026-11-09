@@ -21,6 +21,7 @@
 //   "e2eprogress" run a Playwright suite whose line reporter prints its progress a test at a time, one failing
 //   "manycalls" twelve quick reads in a row (a run long enough to fold)
 //   "toolfail" a command call that fails (port in use), then the run carries on
+//   "imagecall" a read of a picture, whose result carries an image block
 //   "todolist" a rpiv-todo `todo` call whose result carries the whole numbered list (the status stack's source)
 //   "widethought" a call, thinking shaped like narration with a code line wider than the column, another call
 //   "moaref" a MoA turn's reference advice as Markdown notice folds, and its status line
@@ -57,6 +58,7 @@ import {
   type TodoItem,
 } from "../../shared/protocol.js";
 import { commandOutputEvents, extensionMessage, forkCutIndex, historyToItems, isObj, piTodos, usageEntries } from "./agent-events.js";
+import { rememberImage } from "../image-store.js";
 import { jobReports } from "./jobs.js";
 import { seedTranscript, toolRecordText, type HandoffSeed } from "./handoff.js";
 import type {
@@ -85,7 +87,19 @@ interface FakeCall {
   updateDetails?: Array<Record<string, unknown>>;
   /** The call failed: its result is an error. */
   isError?: boolean;
+  /** Pictures in the result (a read of a screenshot), as Pi-family content blocks send them. */
+  images?: Array<{ mimeType: string; data: string }>;
 }
+
+/** A 96×64 gradient, base64: what a read of a picture returns, so a row can show one without a file on disk. */
+const FAKE_PICTURE =
+  "iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAABgElEQVR42u2axU4YYRRGZ+aJkOL2oS1awV36DoXiTgvF3d2l" +
+  "r8i9DU0Ii9mwm5zkZJJvezM5OYs/StEPI1X9RpoG0vQz3Rn84AxlaNjI1EiWM5qtMSNH40auJnI1medM5WuqQNMFmil0Zouc" +
+  "OemXUazfRonmS7RQqoUy/THKtViupQpn+aOz8kmrRqXWqpz1am0YNdo0arVVq+06Z+ezs/tFe1+d/W/OQb0OjQYdGY06btRJ" +
+  "k06adWq06KxF563ORZtz2a4ro0PXRqduunRrdOvO6NF9jx56ncc+5+m7/kZBGARh+P8bMt/MiHPEz4hzxM+Ic8TPiHPETySN" +
+  "pN8r6SgIovAfwasv82UiaSSNpJE0JU1JI+kES5reiZ1IGkkjaSRNSVPSSDrBkqZ3YieSRtJIGklT0pQ0kk6wpOmd2ImkkTSS" +
+  "RtKUNCWNpBMsaXondiJpJI2kkTQlTUkjad5J806anwVJI2kkTUlT0kiad9K8k2YiaSSNpClpShpJJ2I+A0OQky/bHAHCAAAA" +
+  "AElFTkSuQmCC";
 
 const FAKE_MODELS: ModelInfo[] = [
   { key: "fake/echo", provider: "fake", id: "echo", name: "Fake Echo", reasoning: true, vision: true, levels: ["low", "high"] },
@@ -681,6 +695,18 @@ class FakeLiveChat implements LiveChat {
       if (/\bmanycalls\b/i.test(text)) {
         for (let n = 1; n <= 12; n++) await this.call({ name: "read", args: { path: `src/part-${n}.ts` }, output: `// part ${n}` }, signal);
       }
+      if (/\bimagecall\b/i.test(text)) {
+        // A read of a picture: Pi's read answers with a text line and an image block.
+        await this.call(
+          {
+            name: "read",
+            args: { path: "docs/screenshots/usage.png" },
+            output: "Read image file [image/png]",
+            images: [{ mimeType: "image/png", data: FAKE_PICTURE }],
+          },
+          signal,
+        );
+      }
       if (/\bbgjob\b/i.test(text)) {
         // omp: a backgrounded bash starts the job, a wait streams its widget, and an async-result says how it ended.
         const command = "npm run test:e2e:fast";
@@ -1119,8 +1145,18 @@ class FakeLiveChat implements LiveChat {
       await this.pause(signal, call.updates ? 10 : 2);
     }
     const details = call.details ? { details: call.details } : {};
-    this.record({ role: "toolResult", toolCallId, toolName: call.name, content: [{ type: "text", text: call.output }], isError: call.isError ?? false, ...details });
-    this.emit({ type: "tool_end", toolCallId, output: call.output, isError: call.isError ?? false, ...details });
+    const images = call.images ?? [];
+    this.record({
+      role: "toolResult",
+      toolCallId,
+      toolName: call.name,
+      content: [{ type: "text", text: call.output }, ...images.map((image) => ({ type: "image", mimeType: image.mimeType, data: image.data }))],
+      isError: call.isError ?? false,
+      ...details,
+    });
+    // A picture goes into the image store like any adapter's would; the event carries the reference, never the bytes.
+    const refs = images.map((image) => rememberImage(image.mimeType, image.data)).filter((ref) => ref !== null);
+    this.emit({ type: "tool_end", toolCallId, output: call.output, isError: call.isError ?? false, ...(refs.length > 0 ? { images: refs } : {}), ...details });
   }
 
   /**

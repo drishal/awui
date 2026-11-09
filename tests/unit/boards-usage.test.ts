@@ -67,6 +67,26 @@ describe("run item bounds", () => {
     expect(bounded[100]?.id).toBe("inv-1:truncated");
     expect(bounded[bounded.length - 1]?.id).toBe("n449");
   });
+
+  it("keeps a run's items portable: a picture's id names bytes this process holds, so the record keeps the text", () => {
+    const tool: ChatItem = {
+      kind: "tool",
+      id: "inv-1:t1",
+      name: "read",
+      args: "{}",
+      status: "done",
+      output: "Read image file [image/png]",
+      truncated: false,
+      category: "read",
+      summary: "docs/screenshots/usage.png",
+      paths: ["docs/screenshots/usage.png"],
+      images: [{ id: "0123456789abcdef0123456789abcdef", mimeType: "image/png" }],
+    };
+    const bounded = boundRunItems([tool], "inv-1");
+    expect(bounded).toHaveLength(1);
+    expect(bounded[0]).toMatchObject({ output: "Read image file [image/png]" });
+    expect((bounded[0] as { images?: unknown }).images).toBeUndefined();
+  });
 });
 
 describe("room usage and export", () => {

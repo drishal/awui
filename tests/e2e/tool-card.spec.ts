@@ -246,3 +246,43 @@ test("a running test command shows how far it has got, and the bar goes when it 
   await expect(page.locator(".answer-actions").last()).toBeVisible({ timeout: 20_000 });
   await expect(meter).toHaveCount(0);
 });
+
+test("a picture a call returned is drawn in its row, and opens full size in the viewer", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "imagecall");
+  const row = page.locator('[data-tool="read"]');
+  const head = row.locator(".tool-head");
+  if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
+  const thumb = row.getByRole("button", { name: "View image #1" });
+  await expect(thumb).toBeVisible();
+  await expect(thumb.locator("img")).toHaveAttribute("alt", "Image #1");
+  // The same viewer a prompt's images open in: a dialog named for the image, dismissed with Escape.
+  await thumb.click();
+  const viewer = page.getByRole("dialog", { name: "Image #1" });
+  await expect(viewer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+});
+
+test("an image the server no longer holds leaves no broken thumbnail behind", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "imagecall");
+  const openRow = async () => {
+    const head = page.locator('[data-tool="read"] .tool-head');
+    if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
+    return page.locator('[data-tool="read"]');
+  };
+  await expect((await openRow()).getByRole("button", { name: "View image #1" })).toBeVisible();
+  // The store keeps a budget of the newest pictures and empties on a restart; the answer then is a 404.
+  await page.route("**/api/images/**", (route) => route.abort());
+  await page.reload();
+  await expect(page.getByTestId("tool-row").first()).toBeVisible();
+  const row = await openRow();
+  await expect(row.locator("img")).toHaveCount(0);
+  await expect(row.getByRole("button", { name: "View image #1" })).toHaveCount(0);
+  // The call's own words stay: the row still says what it read and what came back.
+  await expect(row).toContainText("docs/screenshots/usage.png");
+  await expect(row).toContainText("Read image file");
+});

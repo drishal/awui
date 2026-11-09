@@ -375,6 +375,34 @@
   display: none;
 }
 
+/* A picture a call returned (a read of a screenshot): a thumbnail at the row's scale, left-aligned under the
+   sentence like the output is, and it opens full size in the same viewer a prompt's images use. A prompt's own
+   thumbnails are sized for a bubble; inside a tool tile they would be a hero image in a list of rows. */
+.tool-images {
+  padding: 8px 12px 0;
+}
+
+.tool-images .sent-images,
+.tool-images .sent-images.is-single {
+  justify-content: flex-start;
+  margin: 0;
+}
+
+.tool-images .sent-image,
+.tool-images .sent-images.is-single .sent-image {
+  width: 168px;
+  height: 112px;
+  max-height: none;
+}
+
+.tool-images .sent-image-open img,
+.tool-images .sent-images.is-single .sent-image-open img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+}
+
 .tool-body .io-section {
   padding-inline: 12px;
 }

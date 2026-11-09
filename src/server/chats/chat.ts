@@ -474,6 +474,7 @@ class EventReducer {
           ...(page ? { htmlRender: page } : {}),
           ...(exitCode !== null ? { exitCode } : {}),
           ...(jobs ? { jobs } : {}),
+          ...(event.images && event.images.length > 0 ? { images: event.images } : {}),
         });
         // A wait that saw a job end tells the call that started it too.
         if (jobs) this.applyJobReports(jobs.filter((j) => j.status !== "running"));
