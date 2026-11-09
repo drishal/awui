@@ -1,8 +1,8 @@
 # AGENTS.md
 
 Guidance for coding agents (Pi, omp, Hermes, Claude Code, Codex, OpenCode, …)
-working in this repository. The README is the user-facing manual; this file is
-how to change the code without breaking what the README promises. When the two
+working in this repository. The README is the landing page and `docs/` is the
+user-facing manual; this file is how to change the code without breaking what they promise. When the two
 disagree, the code is the truth: fix whichever is stale.
 
 ## What this is
@@ -180,6 +180,8 @@ tests/atui                    bun:test against a real server; helpers.tsx mounts
                               tern-fake.tsx is a stand-in Tern (handshake, frames applied to a document, acks).
 docs/harnesses.md             Adding or fixing a harness: the contract, capabilities, every file a new one touches, tests, pitfalls.
 docs/ui.md                    Finding and fixing a part of the web UI: regions → components → styles → e2e specs, tokens, a sandbox, measuring.
+docs/install.md, configuration.md, usage.md, terminal.md, architecture.md, security.md, theme.md, testing.md, credits.md
+                             The user guide the README points at: install (release, source, desktop, service), settings, the interface, the terminal clients, the harnesses, security, theming, tests, credits.
 scripts/                      dev.mjs (npm run dev), build-binary.ts, service.mjs, set-password.mjs, ui-shot.mjs (see Commands).
 design/                       App icon drafts. .todo/ is gitignored: private notes, never committed.
 ```
@@ -220,7 +222,7 @@ if every test passes.
 6. **Bounded payloads.** Tool output is cut to head and tail (16 KB), args to
    4 KB, diffs to 800 lines / 40 KB, transcripts read as head and tail past 8 MB.
    Anything new that carries harness output gets a bound.
-7. **Security model** (`security.ts`, README "Security"): local means loopback
+7. **Security model** (`security.ts`, `docs/security.md`): local means loopback
    peer *and* loopback Host *and* no proxy headers. Every new route goes under
    `/api` behind `requireAuth`; validate bodies with a Zod schema from
    `protocol.ts` via `body(schema, req)`; throw `ChatError(status, code, message)`.
@@ -371,7 +373,7 @@ and history (`historyToItems`) both.
 
 **A new setting.** Add it to `user-config.ts` (schema), `config.ts` (effective
 value), `settings.ts` (read/write, and whether it needs a restart),
-`SettingsDialog.tsx`, `config.example.yml`, and the README table.
+`SettingsDialog.tsx`, `config.example.yml`, and `docs/configuration.md`.
 
 **atui features.** State and server calls in `src/atui/state.ts`; keys in
 `ui/app.tsx` (the palette, the Ctrl+X leader, `LEADER_HELP`, `KEYS_HELP`, and
@@ -408,8 +410,9 @@ unit test; a `tests/atui` case that drives it by keys or clicks.
   The body says what changed and why, wrapped at ~76 columns; it can be left
   out when the subject says it all. Older commits use present-tense sentences
   ("Checkpoint restore takes file names literally"); new ones use this form.
-- **Update the README in the same commit** as the behaviour it describes
-  (features under "Using it", atui keys under "In a terminal", routes and
-  limits under "Security", tests under "Testing").
+- **Update the docs in the same commit** as the behaviour they describe
+  (features in `docs/usage.md`, atui keys in `docs/terminal.md`, routes and
+  limits in `docs/security.md`, tests in `docs/testing.md`; the README keeps
+  only the pitch, install, and a docs index).
 - Never commit `.todo/`, `dist/`, `test-results/`, secrets, or exported session
   transcripts.

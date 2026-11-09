@@ -129,7 +129,7 @@ Required:
 | `tests/unit/config-events.test.ts` | The default harness list. |
 | `tests/smoke/real-harness.test.ts` | One row in `harnesses`, a `SMOKE_<ID>_MODEL` if its model names differ, and its live-children counter. |
 | `config.example.yml` | The `<ID>_BIN` line and an example under `harnesses:`. |
-| `README.md` | The intro's list, the architecture diagram, Requirements, the `harnesses.<…>` and `AWUI_HARNESSES` / `*_BIN` rows, a `### <Name>` section (how it is driven, sessions, runs, decisions, config), the Config dirs table, Resume without waiting, and Testing. |
+| `README.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/testing.md` | The harness list in the pitch; a `## <Name>` section (how it is driven, sessions, runs, decisions, config) in architecture; its launch settings and config dir row in configuration; its tests in testing. |
 | `AGENTS.md` | The adapter list in the code map and the fixture list in Testing. |
 
 As needed, when the agent's tools or results look different from the others:
