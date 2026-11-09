@@ -268,8 +268,9 @@ try {
     const outfile = path.join(outDir, name.includes("windows") ? "awui.exe" : "awui");
     // Compile to a sibling and rename over the target: the running service's binary is
     // often this very file (the service's symlink points at dist/bin), and a page load
-    // mid-compile would read a torn one. rename(2) is atomic on POSIX.
-    const staged = `${outfile}.new`;
+    // mid-compile would read a torn one. rename(2) is atomic on POSIX. Bun appends
+    // `.exe` to a Windows target's outfile unless the name already ends with it.
+    const staged = name.includes("windows") ? `${outfile}.new.exe` : `${outfile}.new`;
     console.log(`compiling awui ${pkg.version} → ${name}`);
     await Bun.build({
       // Compile the built JS, not the TS source: the bundler already resolved it,
