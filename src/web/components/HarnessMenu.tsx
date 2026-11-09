@@ -138,7 +138,8 @@ export function HarnessMenu({
             {current.version}
           </span>
         ) : null}
-        <IconChevronDown size={12} />
+        {/* The chip needs no chevron: its tint says it opens; the sidebar row keeps one. */}
+        {variant === "row" ? <IconChevronDown size={12} /> : null}
       </button>
       {showMenu ? (
         <div
