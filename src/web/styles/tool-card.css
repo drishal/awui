@@ -164,7 +164,43 @@
 .process-card .process-body > .process-step,
 .process-card .process-body > .notice-row,
 .process-card .process-body > .request-row {
-  padding-inline: 12px;
+  padding-inline: 10px 12px;
+}
+
+/* A thought (or a notice) inside the card is a row of the same list, not a pill in a box: its lead takes
+   the 20px slot a call's chip takes, and its words start where a call's sentence starts (+40). */
+.process-card .process-body > .process-step .drow-lead,
+.process-card .process-body > .drow .drow-lead,
+.process-card .process-body > .notice-row .drow-lead,
+.process-card .process-body > .request-row .drow-lead {
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+}
+
+.process-card .process-body > .process-step .drow-body,
+.process-card .process-body > .drow .drow-body,
+.process-card .process-body > .notice-row .drow-body {
+  padding: 2px 0 8px 30px;
+}
+
+/* A reply the agent put inside the fold lines up with the sentences beside it. */
+.process-card .process-body > .process-step .process-text {
+  padding: 2px 0 4px 30px;
+}
+
+/* Open, a row inside the card shows its body under the line and flips its chevron; a tinted rounded
+   surface in there reads as a box in a box, so the fill goes and the words carry the state. */
+.process-card .process-body .drow.is-open > .drow-head {
+  background: none;
+  border-radius: 0;
+  color: var(--text-2);
+}
+
+/* Its focus ring hugs the card's edge instead of floating a rounded pill inside it. */
+.process-card .process-body .drow-head:focus-visible {
+  outline-offset: -2px;
+  border-radius: var(--r-sm);
 }
 
 .process-card .process-body > * + * {
