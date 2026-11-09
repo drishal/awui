@@ -43,6 +43,7 @@ cd awui
 npm ci
 npm run build:binary               # → dist/bin/<platform>/awui (inside devenv shell; no desktop app)
 npm run build:desktop              # the same binary, carrying the desktop app too (~257 MB vs ~95 MB)
+npm run build:desktop --electron   # the same, and package the desktop app from apps/desktop first
 cp dist/bin/linux-x64/awui ~/.local/bin/awui   # macOS: dist/bin/darwin-arm64/awui; Windows: dist/bin/windows-x64/awui.exe
 awui                 # web UI + API on http://127.0.0.1:4783
 awui tui             # the terminal client (also `awui install tui` for an `atui` command)
@@ -102,7 +103,7 @@ then restart. Other devices get a sign-in form; this machine still opens directl
 | `npm run test:e2e:fast` | The same suite as two shards at once, each with its own port and state (~6 min) |
 | `npm run smoke` | Opt-in checks against the real installed Pi, omp, Hermes, Claude Code, Grok Build, and DeepSeek Harness (see [Testing](#testing)) |
 | `npm run build` / `npm start` | Production build, then a single process serving UI and API |
-| `npm run build:binary` / `npm run build:desktop` | Compile the self-contained binary into `dist/bin/<platform>`; the desktop one appends this platform's packaged app (`--with-desktop`). `bun run scripts/build-binary.ts --all` cross-compiles every target (never with the desktop app). Run inside `devenv shell`. |
+| `npm run build:binary` / `npm run build:desktop` | Compile the self-contained binary into `dist/bin/<platform>`; the desktop one appends this platform's packaged app (`--with-desktop`). `--electron` packages `apps/desktop` from source first, so a change to the shell itself ships too; without it the AppImage already in `apps/desktop/release` is reused. `bun run scripts/build-binary.ts --all` cross-compiles every target (never with the desktop app). Run inside `devenv shell`. |
 | `npm run desktop` | The optional desktop app from a checkout (`apps/desktop`; `npm ci` there once first) |
 
 ### Desktop app (optional)
@@ -150,6 +151,13 @@ A binary can carry the app itself:
 npm run build:desktop   # ~257 MB instead of ~95 MB
 awui desktop            # "bundled with this awui"
 ```
+
+`npm run build:desktop --electron` packages `apps/desktop` from source first, so a
+change to the shell (tray, menus, how it finds or starts a server) ships in the
+same run; plain `build:desktop` reuses the AppImage already in
+`apps/desktop/release` and so only carries server and web changes. Either way the
+restart is one `systemctl --user restart awui`, and the next `awui desktop`
+re-extracts the carried app into `$XDG_STATE_HOME/awui/app/<version>/`.
 
 The payload is appended to the executable (the trick an AppImage plays with its
 own filesystem) and extracted into the state folder on first use, so one binary

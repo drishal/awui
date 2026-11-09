@@ -42,7 +42,7 @@ Match the task to a guide before opening code:
 | `npm ci` | Install. Never `npm -g`, never `npx playwright install` (see Environment). |
 | `npm run dev` | Backend under `tsx watch` plus Vite on http://127.0.0.1:5173 (proxies `/api` to the backend's port). |
 | `npm run build` | `vite build` → `dist/web`, then `tsc -p tsconfig.server.json` → `dist/server`. The server entry is `dist/server/server/index.js`. |
-| `npm run build:binary` / `npm run build:desktop` | The compiled binary in `dist/bin/<platform>`; `build:desktop` appends the packaged desktop app so `awui desktop` carries it (~257 MB vs ~95 MB). Run inside `devenv shell`. |
+| `npm run build:binary` / `npm run build:desktop` | The compiled binary in `dist/bin/<platform>`; `build:desktop` appends the packaged desktop app so `awui desktop` carries it (~257 MB vs ~95 MB). It reuses the AppImage already in `apps/desktop/release`; `npm run build:desktop --electron` packages that app from source first (one command for a server-plus-shell change). Run inside `devenv shell`. |
 | `npm start` / `bin/awui` | Run the built server. |
 | `bin/atui` (`npm run atui`) | Run the terminal client under Bun (from a checkout; the binary runs it as `awui tui`). Needs a running server. |
 | `npm run typecheck` | Four projects: server, web, tests, atui. **Run it before every commit.** |

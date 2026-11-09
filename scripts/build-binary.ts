@@ -5,6 +5,8 @@
 //
 //   bun run scripts/build-binary.ts            # this machine's platform
 //   bun run scripts/build-binary.ts --all      # every target (CI/release)
+//   bun run scripts/build-binary.ts --with-desktop             # carry the packaged app
+//   bun run scripts/build-binary.ts --with-desktop --electron  # package it from source first
 //
 // Pipeline: `npm run build` (dist/server + dist/web), bundle the clients, generate
 // the embedded asset module, then compile. The generated module's import runs
@@ -31,6 +33,23 @@ const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 process.chdir(root);
 
 const ALL = process.argv.includes("--all");
+
+/** A build flag from argv, or npm's own form of it: `npm run build:desktop --electron` reaches the script as npm_config_electron=true, not as an argument. */
+function flag(name: string): boolean {
+  const env = process.env[`npm_config_${name.replace(/-/g, "_")}`];
+  return process.argv.includes(`--${name}`) || (env !== undefined && env !== "" && env !== "false" && env !== "0");
+}
+
+/**
+ * `--electron` (`npm run build:desktop --electron`): package the desktop app from
+ * apps/desktop's current source before embedding it. Without it this script embeds
+ * whatever AppImage already sits in apps/desktop/release — right after a server or
+ * web change, wrong after a change under apps/desktop/src, which that AppImage
+ * predates (the shell would keep running the old tray, menus, and server-start
+ * logic). Implies `--with-desktop`: there is no reason to package the app and not
+ * carry it.
+ */
+const ELECTRON = flag("electron");
 /**
  * `--with-desktop` (`npm run build:desktop`): append the packaged desktop app to
  * this platform's binary, so `awui desktop` needs no separate download or build.
@@ -38,7 +57,7 @@ const ALL = process.argv.includes("--all");
  * where a loader ignores it (an AppImage's own trick) and
  * src/server/desktop-embed.ts finds it again.
  */
-const WITH_DESKTOP = process.argv.includes("--with-desktop");
+const WITH_DESKTOP = ELECTRON || flag("with-desktop");
 if (WITH_DESKTOP && ALL) {
   console.error("--with-desktop builds this platform's app into this platform's binary; it cannot ride in --all's cross-compiled ones");
   process.exit(64);
@@ -58,14 +77,44 @@ async function desktopPayload(): Promise<string> {
   return path.join(release, image);
 }
 
+/** The packaging script apps/desktop has for this platform. */
+function desktopDistScript(): string {
+  const script = ({ linux: "dist:linux", darwin: "dist:mac", win32: "dist:win" } as Record<string, string | undefined>)[process.platform];
+  if (!script) throw new Error(`no desktop packaging script for ${process.platform}`);
+  return script;
+}
+
+/**
+ * `--electron` packages from apps/desktop, so its own toolchain (electron-builder,
+ * which npm ci there installs) has to be present. Checked before the server build,
+ * so a missing one fails in a second instead of after a minute of compiling.
+ */
+function requireDesktopCheckout(): void {
+  const bin = path.join(root, "apps", "desktop", "node_modules", ".bin", "electron-builder");
+  if (!existsSync(bin)) throw new Error("apps/desktop is not installed; run:\n  npm --prefix apps/desktop ci");
+}
+
 // Resolved before the build, so a missing app fails in a second rather than after
-// the server is built and compiled.
-const DESKTOP_PAYLOAD = WITH_DESKTOP
+// the server is built and compiled. `--electron` has nothing to embed yet — it
+// packages the app below, once the binary the app carries beside itself exists —
+// so only its toolchain is checked here.
+const DESKTOP_PAYLOAD = WITH_DESKTOP && !ELECTRON
   ? await desktopPayload().catch((error: unknown) => {
       console.error(`build:desktop: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(64);
     })
   : null;
+if (ELECTRON) {
+  try {
+    // The app is packaged per platform (dist:mac, dist:win too), but only the Linux
+    // AppImage is a single file to carry; say so before a multi-minute package run.
+    if (process.platform !== "linux") throw new Error("--electron carries the app inside the binary, and only the Linux AppImage is packaged as one file so far; package this platform's app with `npm --prefix apps/desktop run dist:<platform>` instead");
+    requireDesktopCheckout();
+  } catch (error) {
+    console.error(`build:desktop: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(64);
+  }
+}
 
 // The embeds read from dist/: build the server and web bundle first.
 await $`npm run build`;
@@ -254,6 +303,28 @@ try {
   }
 } finally {
   await Bun.write(assetPath, stubSource);
+}
+
+// `--electron`: package the app now, from apps/desktop's source. `stage:bin` inside
+// it copies the bare binary this run just wrote into the app's resources — the one
+// a packaged app starts beside itself when no server is up, so it must be this
+// build, not last week's. Then the AppImage it produced rides in the CLI's binary.
+if (ELECTRON) {
+  const name = `${process.platform}-${process.arch}`;
+  const outfile = path.join(root, "dist", "bin", name, process.platform === "win32" ? "awui.exe" : "awui");
+  const script = desktopDistScript();
+  console.log(`packaging the desktop app (apps/desktop → ${script}); its resources/awui is the binary just built`);
+  await $`npm --prefix apps/desktop run ${script}`;
+  const payload = await desktopPayload();
+  // Append to a copy and rename it over: the service's symlink points at this file,
+  // and rewriting it in place would hand a restart that lands mid-append a torn
+  // executable. rename(2) swaps the finished one in atomically.
+  const staged = `${outfile}.new`;
+  await $`cp -f ${outfile} ${staged}`;
+  await appendDesktop(staged, payload);
+  await $`mv -f ${staged} ${outfile}`;
+  console.log(`  → ${outfile} carries ${path.basename(payload)}`);
+  console.log("  restart the service and relaunch the app to use it: `awui desktop` re-extracts the carried copy on launch");
 }
 
 console.log("done.");

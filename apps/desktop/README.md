@@ -90,6 +90,13 @@ npm run stage:bin    # copy dist/bin/<platform>-<arch>/awui into resources/
 npm run dist:linux   # AppImage   (dist:mac → dmg+zip, dist:win → nsis)
 ```
 
+From the repo root, `npm run build:desktop --electron` runs all of it — the
+server build, this package step (with `resources/awui` the binary it just
+built), and the append of the resulting AppImage to the CLI's binary — so a
+change under `apps/desktop/src` reaches `awui desktop` in one command. Plain
+`npm run build:desktop` skips the package step and re-embeds whatever AppImage
+is already in `release/`.
+
 `stage:bin` is what makes the app self-contained; without it you get the *light*
 build, which attaches to an awui that is already installed. Artifacts land in
 `release/`.
