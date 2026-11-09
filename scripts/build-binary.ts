@@ -8,6 +8,11 @@
 //   bun run scripts/build-binary.ts --with-desktop             # carry the packaged app
 //   bun run scripts/build-binary.ts --with-desktop --electron  # package it from source first
 //
+// When ~/.local/bin exists, the built binary for this machine is linked there as
+// `awui`, so `npm run build:binary` leaves a runnable command on the PATH. Only a
+// link into this checkout's dist/ is replaced; a file or a link elsewhere is the
+// user's and is left alone. `--no-link` (or AWUI_NO_LINK=1, or CI) skips it.
+//
 // Pipeline: `npm run build` (dist/server + dist/web), bundle the clients, generate
 // the embedded asset module, then compile. The generated module's import runs
 // registerEmbeddedAssets() at startup, so the server serves the web bundle from
@@ -17,7 +22,7 @@
 // no Bun and no fetched copy, and its clients always match its server.
 import { $, type CompileTarget } from "bun";
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, lstat, mkdir, readdir, readFile, readlink, rename, rm, stat, symlink } from "node:fs/promises";
 // The footer the runtime looks for (src/server/desktop-embed.ts): one definition,
 // so the build and the reader cannot drift.
 import { DESKTOP_MAGIC } from "../src/server/desktop-embed.ts";
@@ -25,6 +30,7 @@ import { DESKTOP_MAGIC } from "../src/server/desktop-embed.ts";
 // Bun (its "types" condition first), and this script runs under `bun run` only
 // (the plugin's node build throws on Bun.build), so the file path is safe.
 import { createSolidTransformPlugin } from "../node_modules/@opentui/solid/scripts/solid-plugin.js";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -328,4 +334,37 @@ if (ELECTRON) {
   console.log("  restart the service and relaunch the app to use it: `awui desktop` re-extracts the carried copy on launch");
 }
 
+/**
+ * Put the binary this run built on the PATH when the user keeps a `~/.local/bin`.
+ * A stale link into `dist/` is repointed; anything else there is not ours to touch.
+ */
+async function linkOnPath(): Promise<void> {
+  if (process.platform === "win32" || process.argv.includes("--no-link") || process.env.AWUI_NO_LINK === "1" || (process.env.CI !== undefined && process.env.CI !== "" && process.env.CI !== "false")) return;
+  const home = process.env.HOME || os.homedir();
+  const bin = path.join(home, ".local", "bin");
+  if (!existsSync(bin) || !(await stat(bin)).isDirectory()) return;
+  const platformName = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
+  const built = path.join(root, "dist", "bin", platformName, "awui");
+  if (!existsSync(built)) return;
+  const link = path.join(bin, "awui");
+  const existing = await lstat(link).catch(() => null);
+  if (existing?.isSymbolicLink()) {
+    const target = await readlink(link).catch(() => "");
+    const resolved = path.resolve(bin, target);
+    if (resolved !== built && !resolved.startsWith(`${path.join(root, "dist")}${path.sep}`)) {
+      console.log(`awui: left ${link} alone (it points to ${resolved})`);
+      return;
+    }
+  } else if (existing) {
+    console.log(`awui: left ${link} alone (a file, not a link; remove it to let the build link there)`);
+    return;
+  }
+  const tmp = `${link}.${process.pid}.tmp`;
+  await rm(tmp, { force: true });
+  await symlink(built, tmp);
+  await rename(tmp, link);
+  console.log(`awui: linked ${link} → ${path.relative(home, built)}`);
+}
+
+await linkOnPath();
 console.log("done.");
