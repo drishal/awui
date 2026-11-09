@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { chatWidthSchema, densitySchema, themeChoiceSchema, type ChatWidth, type Density, type ThemeChoice } from "../shared/protocol.js";
+import { chatWidthSchema, densitySchema, themeChoiceSchema, toolStyleSchema, type ChatWidth, type Density, type ThemeChoice, type ToolStyle } from "../shared/protocol.js";
 import { IS_WINDOWS, defaultConfigDir } from "./platform-win.js";
 
 export const CONFIG_FILE = "config.yml";
@@ -26,6 +26,8 @@ export interface UiSettings {
   chatWidth: ChatWidth | null;
   /** Shared row and gap density; null: comfortable. */
   density: Density | null;
+  /** How a turn's work is drawn; null: cards. */
+  toolStyle: ToolStyle | null;
   /** Work with herdr (config.yml's `herdr`, or AWUI_HERDR): atui reads it to report its chats to a herdr pane. */
   herdr: boolean;
 }
@@ -63,6 +65,8 @@ const schema = z
     chat_width: chatWidthSchema.optional(),
     /** Shared density of the web UI's rows and gaps: comfortable (today's look) or compact. */
     density: densitySchema.optional(),
+    /** How a turn's work is drawn: the card (today's look), or the flat line list older versions drew. */
+    tool_style: toolStyleSchema.optional(),
     /** Work with herdr (herdr.ts, atui/herdr.ts); on unless false. */
     herdr: z.boolean().optional(),
     /** Herdr's API socket, when not the default session's (file-only; HERDR_SOCKET_PATH wins). */
@@ -196,6 +200,7 @@ export function uiSettings(c: UserConfig | undefined, env: NodeJS.ProcessEnv = p
     textScale: c?.text_scale ?? null,
     chatWidth: c?.chat_width ?? null,
     density: c?.density ?? null,
+    toolStyle: c?.tool_style ?? null,
     herdr: herdrEnabled(c, env),
   };
 }

@@ -8,6 +8,7 @@ import type { AssistantItem, ChatItem, ChatStatus, ImageRef, NoticeItem, Request
 import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronUp, IconClock, IconCopy, IconEdit, IconFile, IconFork, IconImage, IconInfo, IconLink, IconRefresh, IconSearch, IconSpark, IconUndo, IconWarning, IconX, RaySpinner, Spinner, ToolIcon } from "../icons.js";
 import { promptLink } from "../prompt-link.js";
 import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
+import { useToolStyle } from "../tool-style.js";
 import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, latestThought, modelName, modelSwitches, relativePath, sameChangeStat, saysSomething, segmentStartsOpen, toolLabel, type ChangeStat, type Turn, workAfterSegment, workSegments, type WorkSegment } from "../turns.js";
 import { useNow } from "../hooks.js";
 import { callTime, toolSentence } from "../tool-sentence.js";
@@ -174,6 +175,7 @@ const RetryContext = createContext<{ mode: RetryMode; send: (text: string) => vo
 const STATUS_WORD = { running: "running", done: "done", error: "failed" } as const;
 
 const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; workspace: string }) {
+  const lines = useToolStyle() === "lines";
   const failed = item.status === "error";
   const running = item.status === "running";
   // Stopwatch: ticks while the call runs and stays as the call's duration once
@@ -228,7 +230,14 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
               setOpen((v) => !v);
             }}
           >
-            <KindChip kind={kind} running={running} />
+            {lines ? (
+              // The line skin: the icon alone, no chip around it, as the flat list drew it.
+              <span className="tool-plain-lead" aria-hidden="true">
+                {running ? <Spinner size={13} /> : failed ? <IconAlertCircle size={14} /> : <ToolIcon category={item.category} size={14} />}
+              </span>
+            ) : (
+              <KindChip kind={kind} running={running} />
+            )}
             <span className="tool-sentence">
               <span className="tool-verb">{sentence.verb}</span>
               {sentence.target ? <> <span className={sentence.code ? "tool-target is-code" : "tool-target"}>{sentence.target}</span></> : null}
@@ -892,6 +901,7 @@ function ProcessFold({
   place?: "first" | "middle" | "last";
 }) {
   const folds = useContext(FoldContext);
+  const lines = useToolStyle() === "lines";
   // Keyed by the stretch of work it holds; a turn's only fold is the turn (Find opens it by that id).
   const foldId = segment?.key ?? turn.id;
   const items = segment?.items ?? turn.process;
@@ -963,7 +973,7 @@ function ProcessFold({
     <div ref={root} className={`process process-card${open || single ? " is-open" : ""}${single ? " is-single" : ""}${live ? " is-live" : ""}${failedCalls > 0 ? " has-failed" : ""}`}>
       {single ? null : <div className="process-bar">
         <button type="button" className="process-head" aria-expanded={open} aria-controls={bodyId} onClick={() => onToggle(foldId, open)} data-testid="process-toggle">
-          {stack.shown.length > 0 ? (
+          {!lines && stack.shown.length > 0 ? (
             <span className="kind-stack" data-testid="kind-stack" aria-hidden="true">
               {stack.shown.map((kind) => (
                 <KindChip key={kind.key} kind={kind} />
@@ -982,8 +992,15 @@ function ProcessFold({
             {toolCount > 0 ? (
               <span className="process-counts" title={countSummary(segment?.counts ?? turn.counts)}>
                 {label ? <Dot /> : null}
-                {/* The number rolls like the stopwatch; the words beside it do not. */}
-                Used <Rolling text={String(toolCount)} /> {toolCount === 1 ? "tool" : "tools"}
+                {lines ? (
+                  // The line skin's old wording: what the run ran, by kind ("3 commands, 1 edit").
+                  countSummary(segment?.counts ?? turn.counts)
+                ) : (
+                  <>
+                    {/* The number rolls like the stopwatch; the words beside it do not. */}
+                    Used <Rolling text={String(toolCount)} /> {toolCount === 1 ? "tool" : "tools"}
+                  </>
+                )}
               </span>
             ) : null}
           </span>

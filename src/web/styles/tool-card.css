@@ -679,3 +679,79 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---- the line skin: the same folds and rows, drawn flat -----------------------
+   `tool_style: lines` in config.yml (Settings → Tool calls) keeps every behaviour
+   the card has: a run's fold opens, folds away as its reply lands, springs on
+   expand, keeps its failure tally, and an opened call shows its output panel and
+   its pictures. What it drops is the card: no surface, no corner, no kind stack.
+   The header names what the run ran ("Worked for 11s · 4 commands") over a plain
+   list of lines, the way versions before the card drew it. */
+:root[data-tool-style="lines"] .process-card {
+  overflow: visible;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+:root[data-tool-style="lines"] .process-card .process-head {
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 2px 5px;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  background: none;
+  color: var(--text-2);
+}
+
+:root[data-tool-style="lines"] .process-card .process-head:hover {
+  background: none;
+  color: var(--text);
+}
+
+:root[data-tool-style="lines"] .process-card .process-body {
+  border-top: 0;
+  padding: 4px 0 0;
+}
+
+/* The card's gutter goes with it: the lines start where the header's words do. */
+:root[data-tool-style="lines"] .process-card .process-body > .drow,
+:root[data-tool-style="lines"] .process-card .process-body > .process-step,
+:root[data-tool-style="lines"] .process-card .process-body > .notice-row,
+:root[data-tool-style="lines"] .process-card .process-body > .request-row {
+  padding-inline: 2px;
+}
+
+/* An opened line does not become a tile; its hover fill is the only change. */
+:root[data-tool-style="lines"] .tool-row.is-open > .tool-line,
+:root[data-tool-style="lines"] .drow.is-open > .drow-head {
+  background: none;
+}
+
+/* The old list's line reads as one sentence: the facts and the time follow the words, a dot apart,
+   instead of being pushed to the tile's far edge. The status column stays on the right, in line. */
+:root[data-tool-style="lines"] .tool-sentence {
+  flex: 0 1 auto;
+}
+
+:root[data-tool-style="lines"] .tool-status {
+  margin-left: auto;
+}
+
+/* The bare icon takes the chip's slot, so the sentences still line up in one column. */
+:root[data-tool-style="lines"] .tool-plain-lead {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  color: var(--muted-text);
+}
+
+/* An opened call's output keeps its code surface, inset under the sentence it belongs to. */
+:root[data-tool-style="lines"] .tool-body {
+  margin: 2px 0 6px 30px;
+  border-radius: var(--r-sm);
+}

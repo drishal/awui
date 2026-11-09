@@ -123,4 +123,60 @@ test.describe("shared look in config.yml", () => {
     expect(readFileSync(configFile, "utf8")).not.toContain("density");
     await expect(page.locator("html")).not.toHaveAttribute("data-density", "compact");
   });
+
+  test("tool_style lines draws a run flat, keeps the folds, and leaves no setting behind", async ({ page }) => {
+    const { base, configFile } = ctx as NonNullable<typeof ctx>;
+    // A finished run of calls to look at, made through the API.
+    const project = path.join(path.dirname(path.dirname(configFile)), "workspaces", "proj");
+    const opened = await page.request.post(`${base}/api/workspaces/open`, { data: { path: project } });
+    const workspaceId = ((await opened.json()) as { id: string }).id;
+    const created = await page.request.post(`${base}/api/chats`, { data: { harnessId: "fake", workspaceId } });
+    const chatId = (JSON.parse(await created.text()) as { chatId: string }).chatId;
+    await page.request.post(`${base}/api/chats/${chatId}/messages`, { data: { text: "showcase", mode: "normal" } });
+
+    await page.goto(`${base}/#chat=${chatId}`);
+    const toggle = page.getByTestId("process-toggle").last();
+    // Cards are the default: an icon stack and "Used N tools".
+    await expect(toggle).toContainText("Used 9 tools");
+    await expect(toggle.getByTestId("kind-stack")).toBeVisible();
+
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    const row = settings.getByRole("group", { name: "Tool calls" });
+    await expect(row.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "true");
+    await row.getByRole("button", { name: "Lines" }).click();
+    await settings.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
+    expect(readFileSync(configFile, "utf8")).toContain("tool_style: lines");
+    await settings.getByRole("button", { name: "Close" }).click();
+
+    // Applies at once: no card surface, no icon stack, and the run's counts in words.
+    await expect(page.locator("html")).toHaveAttribute("data-tool-style", "lines");
+    await expect(toggle).not.toContainText("Used");
+    await expect(toggle).toContainText(/^Worked for \d+s · /);
+    await expect(page.getByTestId("kind-stack")).toHaveCount(0);
+    await expect(toggle).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    // The finished turn still starts folded, opens with the same rows, and the icon is bare.
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator('[data-tool="bash"] .tool-sentence')).toHaveText("Ran npm test -- --run tool-diff");
+    await expect(page.locator(".kind-chip")).toHaveCount(0);
+    // The old line's reading order: the facts follow the words instead of being pushed to the edge.
+    const grepRow = page.locator('[data-tool="grep"]');
+    const grepBox = (await grepRow.boundingBox()) ?? { x: 0, width: 0, y: 0, height: 0 };
+    const factsBox = (await grepRow.locator(".tool-facts").boundingBox()) ?? { x: 0, width: 0, y: 0, height: 0 };
+    expect(factsBox.x).toBeLessThan(grepBox.x + grepBox.width / 2);
+    // And on the next page load.
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-tool-style", "lines");
+
+    // Back to cards leaves no setting behind.
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await settings.getByRole("group", { name: "Tool calls" }).getByRole("button", { name: "Cards" }).click();
+    await settings.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
+    expect(readFileSync(configFile, "utf8")).not.toContain("tool_style");
+    await expect(page.locator("html")).not.toHaveAttribute("data-tool-style", "lines");
+  });
 });

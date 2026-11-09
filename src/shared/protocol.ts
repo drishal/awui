@@ -708,6 +708,9 @@ export type ChatWidth = z.infer<typeof chatWidthSchema>;
 /** How tight the web UI's rows and gaps sit: today's look, or tighter sidebar rows, turns, tool rows, composer, and tab strip. */
 export const densitySchema = z.enum(["comfortable", "compact"]);
 export type Density = z.infer<typeof densitySchema>;
+/** How a turn's work is drawn: the card that groups a run's calls as one tile, or the flat line list older versions drew. */
+export const toolStyleSchema = z.enum(["cards", "lines"]);
+export type ToolStyle = z.infer<typeof toolStyleSchema>;
 
 export interface Bootstrap {
   version: string;
@@ -720,7 +723,7 @@ export interface Bootstrap {
   home: string;
   theme: { active: string; problem?: string };
   /** From config.yml: the shared look (theme null lets theme.yml decide, scale null is 100%). Re-read on every page load. */
-  ui: { theme: ThemeChoice | null; textScale: number | null; chatWidth: ChatWidth | null; density: Density | null; autocollapseSidebar: boolean; showStatusBar: boolean; herdr: boolean };
+  ui: { theme: ThemeChoice | null; textScale: number | null; chatWidth: ChatWidth | null; density: Density | null; toolStyle: ToolStyle | null; autocollapseSidebar: boolean; showStatusBar: boolean; herdr: boolean };
   pairing: { urls: string[] };
   limits: { maxMessageChars: number };
 }
@@ -1158,6 +1161,8 @@ export interface ServerSettingsValues {
   chatWidth: ChatWidth | null;
   /** null is comfortable. */
   density: Density | null;
+  /** null is cards. */
+  toolStyle: ToolStyle | null;
   autocollapseSidebar: boolean;
   /** Show the bar under the conversation (connection, harness, model, folder, version). */
   showStatusBar: boolean;
@@ -1197,6 +1202,7 @@ export const settingsPatchSchema = z
     textScale: z.number().min(0.5).max(2).nullable().optional(),
     chatWidth: chatWidthSchema.nullable().optional(),
     density: densitySchema.nullable().optional(),
+    toolStyle: toolStyleSchema.nullable().optional(),
     autocollapseSidebar: z.boolean().optional(),
     showStatusBar: z.boolean().optional(),
     herdr: z.boolean().optional(),

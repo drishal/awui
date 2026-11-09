@@ -33,11 +33,13 @@ auth:
 # text_scale sizes the conversation (1 = 100%); chat_width sets how wide it
 # runs: comfortable (960 px), wide (1400 px), or full (the whole pane);
 # density is comfortable or compact (tighter sidebar rows, turns, tool rows,
-# composer, and tab strip; phones keep their touch sizes).
+# composer, and tab strip; phones keep their touch sizes); tool_style is cards
+# (a run's calls grouped as one card) or lines (the flat list older versions drew).
 theme: system
 # text_scale: 1.1
 # chat_width: wide
 # density: compact
+# tool_style: lines
 
 # Fold the sidebar away in narrow windows (below 1200 px; phones use the
 # drawer anyway). A sidebar you collapsed yourself stays collapsed.

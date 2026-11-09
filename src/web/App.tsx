@@ -56,6 +56,7 @@ import { LimitsSummary } from "./components/LimitsMeter.js";
 import { Loader } from "./components/Loader.js";
 import { LoginForm } from "./components/LoginForm.js";
 import { StartScreen } from "./components/StartScreen.js";
+import { ToolStyleContext } from "./tool-style.js";
 import { Sidebar, type MarkChange } from "./components/Sidebar.js";
 import { SidebarResizer } from "./components/SidebarResizer.js";
 import { StatusBar } from "./components/StatusBar.js";
@@ -321,6 +322,13 @@ export function App() {
     if (density === "compact") document.documentElement.setAttribute("data-density", "compact");
     else document.documentElement.removeAttribute("data-density");
   }, [density]);
+  // The tool-call skin is an attribute too (tool-card.css flattens the card under it); the rows that
+  // say different words read the same choice from ToolStyleContext.
+  const toolStyle = boot?.ui.toolStyle ?? "cards";
+  useEffect(() => {
+    if (toolStyle === "lines") document.documentElement.setAttribute("data-tool-style", "lines");
+    else document.documentElement.removeAttribute("data-tool-style");
+  }, [toolStyle]);
 
   const available = useMemo(() => boot?.harnesses.filter((h) => h.available) ?? [], [boot]);
   // A harness that comes back after this page loaded (a Hermes gateway finishing its
@@ -1383,7 +1391,7 @@ export function App() {
   const chooseTheme = async (theme: ThemeChoice) => {
     try {
       const next = await api<ServerSettings>("/api/settings", { method: "PUT", body: { theme } });
-      setBoot((b) => (b ? { ...b, ui: { ...b.ui, theme: next.values.theme, textScale: next.values.textScale, chatWidth: next.values.chatWidth, density: next.values.density, autocollapseSidebar: next.values.autocollapseSidebar } } : b));
+      setBoot((b) => (b ? { ...b, ui: { ...b.ui, theme: next.values.theme, textScale: next.values.textScale, chatWidth: next.values.chatWidth, density: next.values.density, toolStyle: next.values.toolStyle, autocollapseSidebar: next.values.autocollapseSidebar } } : b));
     } catch (e) {
       fail(e);
     }
@@ -1601,6 +1609,7 @@ export function App() {
   const headerTitle = chat ? chat.title || "New chat" : harnessId === "awui" || !workspace ? "" : workspace.name;
 
   return (
+    <ToolStyleContext.Provider value={toolStyle}>
     <div
       className={`app${collapsed ? " is-collapsed" : ""}${sidebarToggling ? " is-toggling" : ""}${boot && !boot.ui.showStatusBar ? " no-status-bar" : ""}`}
       style={{ ["--sidebar-w" as string]: `${sidebarWidth}px` }}
@@ -2249,6 +2258,7 @@ export function App() {
       {searchOpen && searchWorkspace ? <ProjectSearch workspace={searchWorkspace} onClose={() => setSearchOpen(false)} /> : null}
       {pairOpen ? <PairDialog urls={boot.pairing.urls} username={boot.auth.username} onClose={() => setPairOpen(false)} /> : null}
     </div>
+    </ToolStyleContext.Provider>
   );
 }
 

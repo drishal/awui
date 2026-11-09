@@ -47,6 +47,7 @@ describe("settings", () => {
       textScale: null,
       chatWidth: null,
       density: null,
+      toolStyle: null,
       autocollapseSidebar: true,
       showStatusBar: true,
       herdr: true,
@@ -80,6 +81,12 @@ describe("settings", () => {
     expect(readFileSync(file, "utf8")).not.toContain("density");
     expect(settingsPatchSchema.safeParse({ density: "tiny" }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ density: "compact" }).success).toBe(true);
+    // The tool-call skin, the same way round: cards is the default, lines the other choice.
+    expect(writeSettings(ctx, { toolStyle: "lines" }).values.toolStyle).toBe("lines");
+    expect(readFileSync(file, "utf8")).toContain("tool_style: lines");
+    expect(writeSettings(ctx, { toolStyle: null }).values.toolStyle).toBeNull();
+    expect(readFileSync(file, "utf8")).not.toContain("tool_style");
+    expect(settingsPatchSchema.safeParse({ toolStyle: "tiles" }).success).toBe(false);
   });
 
   it("keeps the password write-only and refuses to listen beyond this machine without a login", () => {

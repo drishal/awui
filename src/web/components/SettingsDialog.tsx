@@ -5,7 +5,7 @@
 // the device making it), and what takes a restart says so, with a Restart
 // button when systemd supervises.
 import { useEffect, useState, type CSSProperties } from "react";
-import type { Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice } from "../../shared/protocol.js";
+import type { Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { FormRow } from "./FormRow.js";
@@ -99,6 +99,7 @@ interface Draft {
   textScale: number;
   chatWidth: ChatWidth;
   density: Density;
+  toolStyle: ToolStyle;
   autocollapseSidebar: boolean;
   showStatusBar: boolean;
   herdr: boolean;
@@ -118,6 +119,7 @@ function draftOf(v: ServerSettingsValues): Draft {
     textScale: v.textScale ?? 1,
     chatWidth: v.chatWidth ?? "comfortable",
     density: v.density ?? "comfortable",
+    toolStyle: v.toolStyle ?? "cards",
     autocollapseSidebar: v.autocollapseSidebar,
     showStatusBar: v.showStatusBar,
     herdr: v.herdr,
@@ -144,6 +146,9 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   if (width !== v.chatWidth) p.chatWidth = width;
   const density = d.density === "comfortable" ? null : d.density;
   if (density !== v.density) p.density = density;
+  // Cards are the default: saved as no setting at all.
+  const toolStyle = d.toolStyle === "cards" ? null : d.toolStyle;
+  if (toolStyle !== v.toolStyle) p.toolStyle = toolStyle;
   if (d.autocollapseSidebar !== v.autocollapseSidebar) p.autocollapseSidebar = d.autocollapseSidebar;
   if (d.showStatusBar !== v.showStatusBar) p.showStatusBar = d.showStatusBar;
   if (d.herdr !== v.herdr) p.herdr = d.herdr;
@@ -220,6 +225,7 @@ export function SettingsDialog({
         patch.textScale !== undefined ||
         patch.chatWidth !== undefined ||
         patch.density !== undefined ||
+        patch.toolStyle !== undefined ||
         patch.autocollapseSidebar !== undefined ||
         patch.showStatusBar !== undefined ||
         patch.herdr !== undefined
@@ -229,6 +235,7 @@ export function SettingsDialog({
           textScale: next.values.textScale,
           chatWidth: next.values.chatWidth,
           density: next.values.density,
+          toolStyle: next.values.toolStyle,
           autocollapseSidebar: next.values.autocollapseSidebar,
           showStatusBar: next.values.showStatusBar,
           ...(patch.herdr !== undefined ? { herdr: next.values.herdr } : {}),
@@ -444,6 +451,21 @@ export function SettingsDialog({
                     { value: "compact", label: "Compact" },
                   ]}
                   onChange={(density) => update({ density })}
+                />
+              </FormRow>
+              <FormRow
+                label="Tool calls"
+                desc={draft.toolStyle === "lines" ? "Each call its own line under the run's counts, with no card around them." : "A run's calls grouped as one card, with a mark per call and an opened call's output under it."}
+              >
+                <Segmented<ToolStyle>
+                  label="Tool calls"
+                  value={draft.toolStyle}
+                  disabled={!editable}
+                  options={[
+                    { value: "cards", label: "Cards", title: "One card per run" },
+                    { value: "lines", label: "Lines", title: "A line per call" },
+                  ]}
+                  onChange={(toolStyle) => update({ toolStyle })}
                 />
               </FormRow>
             </div>
