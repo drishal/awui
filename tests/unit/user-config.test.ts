@@ -97,7 +97,7 @@ herdr_socket: ~/run/herdr.sock
   it("refuses launch settings it cannot honour", () => {
     // Hermes's gateway has no command line to add to; a typo'd harness or key is named.
     expect(() => readUserConfig(folder("harnesses:\n  hermes:\n    args: [-v]\n"))).toThrow(/harnesses\.hermes/);
-    expect(() => readUserConfig(folder("harnesses:\n  codex:\n    command: codex\n"))).toThrow(/harnesses/);
+    expect(() => readUserConfig(folder("harnesses:\n  cursor:\n    command: cursor\n"))).toThrow(/harnesses/);
     expect(() => readUserConfig(folder("harnesses:\n  pi:\n    comand: pi\n"))).toThrow(/harnesses\.pi/);
     expect(() => readUserConfig(folder('harnesses:\n  pi:\n    command: "pi\\nrm"\n'))).toThrow(/control characters/);
     expect(() => readUserConfig(folder("harnesses:\n  pi:\n    command: ''\n"))).toThrow(/harnesses\.pi\.command/);

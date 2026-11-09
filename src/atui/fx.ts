@@ -162,6 +162,8 @@ const SPINNERS: Record<string, string[]> = {
   hermes: ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"],
   // OpenCode's square mark, turning.
   opencode: ["▖", "▘", "▝", "▗"],
+  // Codex's ring, turning.
+  codex: ["▙", "▛", "▜", "▟"],
   // DeepSeek Harness's spark, turning.
   dsh: ["✦", "✧", "✶", "✷"],
 };

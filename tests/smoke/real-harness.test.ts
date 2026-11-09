@@ -14,6 +14,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { ClaudeAdapter, liveClaudeChildren } from "../../src/server/harness/claude.js";
+import { CodexAdapter, liveCodexChildren } from "../../src/server/harness/codex.js";
 import { DshAdapter, liveDshChildren } from "../../src/server/harness/dsh.js";
 import { GrokAdapter, liveGrokChildren } from "../../src/server/harness/grok.js";
 import { HermesAdapter, liveHermesLinks } from "../../src/server/harness/hermes.js";
@@ -52,6 +53,7 @@ const harnesses: Array<[string, () => HarnessAdapter, string | undefined]> = [
   ["omp", () => new OmpAdapter({ agentDir: null, sessionDir: null, home: homedir() }), model],
   ["hermes", () => new HermesAdapter(), model],
   ["claude", () => new ClaudeAdapter({ home: homedir() }), process.env.SMOKE_CLAUDE_MODEL],
+  ["codex", () => new CodexAdapter({ home: homedir() }), process.env.SMOKE_CODEX_MODEL],
   ["grok", () => new GrokAdapter({ home: homedir() }), process.env.SMOKE_GROK_MODEL],
   // The ACP profile must be installed (and compose the providers a session records, to resume it).
   ["dsh", () => new DshAdapter({ home: homedir() }), process.env.SMOKE_DSH_MODEL],
@@ -76,6 +78,7 @@ for (const [name, make, model] of harnesses) {
       expect(liveOmpChildren()).toBe(0);
       expect(liveHermesLinks()).toBe(0);
       expect(liveClaudeChildren()).toBe(0);
+      expect(liveCodexChildren()).toBe(0);
       expect(liveGrokChildren()).toBe(0);
       expect(liveDshChildren()).toBe(0);
     }, 60_000);
@@ -112,6 +115,7 @@ for (const [name, make, model] of harnesses) {
       await adapter.shutdown();
       expect(liveOmpChildren()).toBe(0);
       expect(liveClaudeChildren()).toBe(0);
+      expect(liveCodexChildren()).toBe(0);
       expect(liveGrokChildren()).toBe(0);
       expect(liveDshChildren()).toBe(0);
     }, 180_000);

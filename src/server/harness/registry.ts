@@ -2,6 +2,7 @@
 import { asHarnessId, HARNESS_ACCENTS, type HarnessId, type HarnessStatus } from "../../shared/protocol.js";
 import type { ServerConfig } from "../config.js";
 import { ClaudeAdapter } from "./claude.js";
+import { CodexAdapter } from "./codex.js";
 import { DshAdapter } from "./dsh.js";
 import { FakeAdapter } from "./fake.js";
 import { GrokAdapter } from "./grok.js";
@@ -22,6 +23,7 @@ const factories: Record<string, (config: ServerConfig) => HarnessAdapter> = {
   omp: (config) => new OmpAdapter({ agentDir: config.ompAgentDir, sessionDir: config.ompSessionDir, home: config.home, ...config.launch.omp }),
   hermes: (config) => new HermesAdapter(config.launch.hermes?.command ? { launcher: config.launch.hermes.command } : {}),
   claude: (config) => new ClaudeAdapter({ home: config.home, ...config.launch.claude }),
+  codex: (config) => new CodexAdapter({ home: config.home, ...config.launch.codex }),
   opencode: (config) => new OpenCodeAdapter(config.launch.opencode?.command ? { command: config.launch.opencode.command } : {}),
   grok: (config) => new GrokAdapter({ home: config.home, ...config.launch.grok }),
   dsh: (config) => new DshAdapter({ home: config.home, stateDir: config.stateDir, ...config.launch.dsh }),

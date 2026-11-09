@@ -30,7 +30,7 @@ describe("loadConfig", () => {
     const c = loadConfig({ HOME: "/home/x" });
     expect(c.port).toBe(4783);
     expect(c.host).toBe("127.0.0.1");
-    expect(c.harnesses).toEqual(["pi", "omp", "hermes", "claude", "opencode", "grok", "dsh", "awui"]);
+    expect(c.harnesses).toEqual(["pi", "omp", "hermes", "claude", "codex", "opencode", "grok", "dsh", "awui"]);
   });
 
   it("binds 127.0.0.1 unless HOST=0.0.0.0, and rejects anything else", () => {

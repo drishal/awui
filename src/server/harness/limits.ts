@@ -131,3 +131,43 @@ export function ompLimits(json: unknown, at = Date.now()): LimitAccount[] {
   }
   return accounts;
 }
+
+/** A Codex window's length as its name: 10080 minutes → "7 days". */
+function codexWindowLabel(minutes: number): string {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "limit";
+  if (minutes < 60) return `${Math.round(minutes)} minutes`;
+  if (minutes < 1440) {
+    const hours = Math.round(minutes / 60);
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+  const days = Math.round(minutes / 1440);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
+/**
+ * Codex's `account/rateLimits/read` (and the `account/rateLimits/updated`
+ * notification): the plan's two windows, a used percentage each. Codex names no
+ * account, so one row stands for the CLI's login.
+ */
+export function codexLimits(snapshot: Obj, at = Date.now()): LimitAccount {
+  const windows: LimitWindow[] = [];
+  for (const key of ["primary", "secondary"]) {
+    const window = isObj(snapshot[key]) ? (snapshot[key] as Obj) : null;
+    if (!window) continue;
+    if (num(window.usedPercent) === null && num(window.windowDurationMins) === null) continue;
+    windows.push({
+      label: codexWindowLabel(num(window.windowDurationMins) ?? 0),
+      used: share((num(window.usedPercent) ?? 0) / 100),
+      resetsAt: epochMs(window.resetsAt),
+    });
+  }
+  return {
+    id: "codex",
+    source: "Codex",
+    provider: "OpenAI",
+    ...(str(snapshot.planType) ? { plan: str(snapshot.planType) } : {}),
+    windows,
+    limited: str(snapshot.rateLimitReachedType) !== "" || snapshot.spendControlReached === true,
+    at,
+  };
+}

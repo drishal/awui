@@ -153,6 +153,8 @@ export function toolCategory(name: string): ToolCategory {
   const n = name.toLowerCase();
   // A todo list is no file: todo_write is not a write.
   if (/todo/.test(n)) return "other";
+  // Codex's stdin writer is a shell call, not a file write ("write" would file it as one).
+  if (n === "write_stdin") return "command";
   if (isAgentTool(name)) return "agent";
   if (/web|fetch|browse|url|http/.test(n)) return "web";
   if (/(^|_)(edit|ast_edit|apply_patch|patch|multi_?edit|str_replace|replace)($|_)/.test(n)) return "edit";

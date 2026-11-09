@@ -212,6 +212,23 @@ function parseStructuredPatch(hunks: unknown[]): ToolDiff | null {
 
 const allAdded = (content: string): ToolDiff | null => finish(splitLines(content).map((text, i) => ({ kind: "add" as const, text, line: i + 1 })));
 
+const allDeleted = (content: string): ToolDiff | null => finish(splitLines(content).map((text, i) => ({ kind: "del" as const, text, line: i + 1 })));
+
+/** Codex's fileChange changes: a hunk for an update, the whole content for an add or a delete. */
+function parseFileChanges(changes: unknown[]): ToolDiff | null {
+  const lines: DiffLine[] = [];
+  for (const change of changes) {
+    if (!isObj(change) || typeof change.path !== "string") continue;
+    const kind = isObj(change.kind) ? change.kind.type : undefined;
+    const body = typeof change.diff === "string" ? change.diff : "";
+    const part = kind === "add" ? allAdded(body) : kind === "delete" ? allDeleted(body) : parseUnified(body);
+    if (!part) continue;
+    if (lines.length > 0) lines.push({ kind: "gap", text: "" });
+    lines.push({ kind: "hunk", text: change.path }, ...part.lines);
+  }
+  return finish(lines);
+}
+
 /** omp's hashline patch: `[path#hash]` or `@@ path` headers, range lines, `+` additions, `-` removals, `~` kept lines. */
 function parseOmpPatch(input: string): ToolDiff | null {
   const out: DiffLine[] = [];
@@ -273,6 +290,10 @@ export function resultDiff(details: unknown, output: string): ToolDiff | null {
   if (isObj(details)) {
     if (typeof details.diff === "string" && details.diff.trim()) {
       const diff = parseNumbered(details.diff) ?? parseUnified(details.diff);
+      if (diff) return diff;
+    }
+    if (Array.isArray(details.changes) && details.changes.length > 0) {
+      const diff = parseFileChanges(details.changes);
       if (diff) return diff;
     }
     if (Array.isArray(details.structuredPatch) && details.structuredPatch.length > 0) {

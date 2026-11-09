@@ -61,16 +61,18 @@ herdr: true
 # show this, since a command is a program the server runs). command: its
 # executable instead of the name on PATH. args: added to every chat's command
 # line (not Hermes's, whose chats run its gateway; never the Awui harness's).
-# PI_BIN, OMP_BIN, HERMES_BIN, CLAUDE_BIN, OPENCODE_BIN, GROK_BIN, and DSH_BIN win over command.
+# PI_BIN, OMP_BIN, HERMES_BIN, CLAUDE_BIN, CODEX_BIN, OPENCODE_BIN, GROK_BIN, and DSH_BIN win over command.
 # OpenCode takes no args either: its chats share one `opencode serve`. Grok takes
-# both command and args; its args go before the mode name `stdio`, and DSH's after
-# `--profile acp`.
+# both command and args; its args go before the mode name `stdio`, Codex's after
+# `app-server`, and DSH's after `--profile acp`.
 # harnesses:
 #   pi:
 #     command: ~/code/pi/bin/pi
 #   claude:
 #     args: [--add-dir, /srv/docs]   # passed as they are: no shell, so no ~
 #     # --allow-dangerously-skip-permissions also offers Bypass (asks nothing) in the permission picker
+#   codex:                                 # chats run `codex app-server`
+#     command: ~/code/codex/bin/codex
 #   grok:
 #     command: ~/code/grok/bin/grok
 #   dsh:                                  # chats run `dsh --profile acp`
