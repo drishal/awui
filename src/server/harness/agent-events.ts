@@ -4,7 +4,7 @@
 import type { BackgroundJob, ChatItem, TodoItem, ToolCategory, ToolDiff, ToolItem } from "../../shared/protocol.js";
 import { argsDiff, resultDiff } from "./tool-diff.js";
 import { imageRefs } from "../image-store.js";
-import { applyReports, asyncReports, detailReports, isAgentTool, notifyReports, runsFromArgs, runsFromDetails, settleRuns, type AgentReport } from "./subagents.js";
+import { applyReports, asyncReports, detailReports, hasAgentCells, isAgentTool, notifyReports, runsFromArgs, runsFromDetails, settleRuns, type AgentReport } from "./subagents.js";
 import { htmlRenderRef, isHtmlRenderCall } from "./render-token.js";
 import { planFromArgs } from "./plans.js";
 import { applyJobReports, jobReports, jobsFromCall } from "./jobs.js";
@@ -666,7 +666,7 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
             Object.assign(tool, reported ? editShape(reported, null) : tool.diff ? {} : editShape(null, bounded.text));
             if (tool.status === "error") delete tool.diffStat;
           }
-          if (tool.category === "agent") {
+          if (tool.category === "agent" || hasAgentCells(raw.details)) {
             const runs = runsFromDetails(String(raw.toolCallId), raw.details, tool.subagents ?? null);
             if (runs) tool.subagents = settleRuns(runs, bounded.text, tool.status === "error");
           }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { historyToItems, toolCategory } from "../../src/server/harness/agent-events.js";
-import { applyReports, asyncReports, detailReports, notifyReports, runsFromArgs, runsFromDetails, settleRuns, transcriptFile, transcriptRecords } from "../../src/server/harness/subagents.js";
+import { applyReports, asyncReports, detailReports, hasAgentCells, notifyReports, runsFromArgs, runsFromDetails, settleRuns, transcriptFile, transcriptRecords } from "../../src/server/harness/subagents.js";
 
 describe("subagents", () => {
   it("knows delegation tools, and not todo lists", () => {
@@ -108,6 +108,60 @@ describe("subagents", () => {
       { role: "custom", customType: "async-result", display: true, content: '<task-result id="Quick" agent="scout" status="failed">', details: { jobs: [] } },
     ]);
     expect(items[0]).toMatchObject({ kind: "tool", category: "agent", subagents: { background: true, runs: [{ id: "Quick", status: "failed" }] } });
+  });
+
+  it("folds the agents omp's eval cell spawned, live and at its end", () => {
+    // Recorded from omp 18.18.1: the call is `eval`, and the agents are its cells' statusEvents.
+    const agentRow = (id: string, status: string, over: object) => ({
+      index: 0,
+      id,
+      agent: "task",
+      status,
+      task: `Complete assignment thoroughly:\n\nReply with exactly ${id === "probe-one" ? "ONE" : "TWO"}.`,
+      assignment: `Reply with exactly ${id === "probe-one" ? "ONE" : "TWO"}.`,
+      recentTools: [{ tool: "bash", args: "sleep 6" }],
+      toolCount: 1,
+      tokens: 8433,
+      cost: 0.0013,
+      durationMs: 10074,
+      resolvedModel: "opencode-go/deepseek-v4.1-flash:high",
+      op: "agent",
+      ...over,
+    });
+    const cell = (statusEvents: object[], status = "running") => ({
+      language: "python",
+      languages: ["python"],
+      cells: [{ index: 0, title: "probe-one / probe-two", code: "h1 = agent(…)", language: "python", output: "", status, statusEvents }],
+    });
+    expect(hasAgentCells(cell([agentRow("probe-one", "running", {})]))).toBe(true);
+    // A cell with no agents, and details of other shapes, are not this.
+    expect(hasAgentCells({ language: "python", cells: [{ index: 0, status: "running" }] })).toBe(false);
+    expect(hasAgentCells({ results: [] })).toBe(false);
+
+    const live = runsFromDetails("eval1", cell([agentRow("probe-one", "running", {}), agentRow("probe-two", "running", {})]), null);
+    expect(live).toMatchObject({ mode: "parallel" });
+    expect(live?.runs.map((r) => [r.id, r.status, r.transcript, r.model])).toEqual([
+      ["probe-one", "running", true, "opencode-go/deepseek-v4.1-flash:high"],
+      ["probe-two", "running", true, "opencode-go/deepseek-v4.1-flash:high"],
+    ]);
+    expect(live?.runs[0]?.activity).toEqual(["bash sleep 6"]);
+
+    // An agent's answer arrives through `yield`, not an output field of its row.
+    const done = runsFromDetails("eval1", cell([agentRow("probe-one", "completed", { extractedToolData: { yield: [{ data: { reply: "ONE" }, status: "success" }] } }), agentRow("probe-two", "completed", { extractedToolData: { yield: [{ data: "TWO", status: "success" }] } })], "complete"), live);
+    expect(done?.runs.map((r) => [r.status, r.output, r.tokens])).toEqual([
+      ["done", '{\n  "reply": "ONE"\n}', 8433],
+      ["done", "TWO", 8433],
+    ]);
+    expect(settleRuns(done as NonNullable<typeof done>, "['ONE', 'TWO']", false)).toEqual(done);
+
+    // Two cells run one after another, and a reload reads the same rows off the transcript.
+    const two = runsFromDetails("eval2", { cells: [{ statusEvents: [agentRow("a", "completed", {})] }, { statusEvents: [agentRow("b", "completed", {})] }] }, null);
+    expect(two?.mode).toBe("chain");
+    const items = historyToItems([
+      { role: "assistant", content: [{ type: "toolCall", id: "t9", name: "eval", arguments: { language: "py", code: "h1 = agent(…)" } }] },
+      { role: "toolResult", toolCallId: "t9", content: [{ type: "text", text: "['ONE']" }], details: cell([agentRow("probe-one", "completed", {})], "complete") },
+    ]);
+    expect(items[0]).toMatchObject({ kind: "tool", category: "command", subagents: { runs: [{ id: "probe-one", status: "done" }] } });
   });
 
   it("reads pi-subagents' transcript records, skipping the launcher's audit copy", () => {

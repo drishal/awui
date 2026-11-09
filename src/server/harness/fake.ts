@@ -606,6 +606,7 @@ class FakeLiveChat implements LiveChat {
       if (/\bedit\b/i.test(text)) await this.tool("edit", signal);
       if (/\bshowcase\b/i.test(text)) for (const call of this.showcase()) await this.call(call, signal);
       if (/\bsubagents\b/i.test(text)) await this.subagents(signal);
+      if (/\bevalagents\b/i.test(text)) await this.evalAgents(signal);
       if (/\binterleaved\b/i.test(text)) {
         // A reply to the user, then a command, then the answer: the reply is not process text.
         await this.reply("this is reply block 1", signal);
@@ -1051,6 +1052,54 @@ class FakeLiveChat implements LiveChat {
     const details = { mode: "parallel", results };
     this.record({ role: "toolResult", toolCallId, toolName: "subagent", content: [{ type: "text", text: output }], isError: false, details });
     this.emit({ type: "tool_end", toolCallId, output, isError: false, details });
+  }
+
+  /**
+   * omp's eval spawning agents from inside a cell: the call is a code run, and
+   * its cells' `statusEvents[]` carry the agents (`op: "agent"`, the label as
+   * the id), live and at the end, with each answer under `extractedToolData`.
+   */
+  private async evalAgents(signal: AbortSignal): Promise<void> {
+    const toolCallId = randomUUID();
+    const code = 'h1 = agent("Reply with exactly ONE.", label="probe-one")\nh2 = agent("Reply with exactly TWO.", label="probe-two")\nprint(wait([h1, h2], raise_errors=False))';
+    const args = { language: "py", code, title: "probe-one / probe-two" };
+    const rows = (status0: string, status1: string) => [
+      {
+        index: 0,
+        id: "probe-one",
+        agent: "task",
+        status: status0,
+        task: "Complete assignment thoroughly:\n\nReply with exactly ONE.",
+        assignment: "Reply with exactly ONE.",
+        recentTools: [{ tool: "bash", args: "sleep 6" }],
+        toolCount: 1,
+        tokens: 8433,
+        cost: 0.0013,
+        durationMs: 10074,
+        resolvedModel: "opencode-go/deepseek-v4.1-flash:high",
+      },
+      { index: 0, id: "probe-two", agent: "task", status: status1, task: "Complete assignment thoroughly:\n\nReply with exactly TWO.", assignment: "Reply with exactly TWO.", toolCount: status1 === "running" ? 0 : 2, tokens: status1 === "running" ? 0 : 17864, durationMs: 22945, resolvedModel: "opencode-go/deepseek-v4.1-flash:high" },
+    ];
+    const details = (statuses: [string, string], output: string) => ({
+      language: "python",
+      languages: ["python"],
+      cells: [{ index: 0, title: "probe-one / probe-two", code, language: "python", output, status: statuses.every((s) => s === "completed") ? "complete" : "running", statusEvents: rows(...statuses) }],
+    });
+    this.emit({ type: "assistant_start", model: this.model });
+    this.record({ role: "assistant", content: [{ type: "toolCall", id: toolCallId, name: "eval", arguments: args }], stopReason: "toolUse" });
+    this.emit({ type: "assistant_end", text: "", thinking: "" });
+    this.emit({ type: "tool_start", toolCallId, name: "eval", args });
+    await this.pause(signal, 2);
+    this.emit({ type: "tool_update", toolCallId, output: "", details: details(["running", "running"], "") });
+    await this.pause(signal, 12);
+    this.emit({ type: "tool_update", toolCallId, output: "", details: details(["completed", "running"], "") });
+    await this.pause(signal, 12);
+    const answers = ["ONE", "TWO"];
+    const settled = details(["completed", "completed"], JSON.stringify(answers));
+    for (const [i, row] of (settled.cells[0]?.statusEvents ?? []).entries()) Object.assign(row, { extractedToolData: { yield: [{ data: { reply: answers[i] }, status: "success" }] } });
+    const output = settled.cells[0]?.output ?? "";
+    this.record({ role: "toolResult", toolCallId, toolName: "eval", content: [{ type: "text", text: output }], isError: false, details: settled });
+    this.emit({ type: "tool_end", toolCallId, output, isError: false, details: settled });
   }
 
   private async call(call: FakeCall, signal: AbortSignal): Promise<void> {

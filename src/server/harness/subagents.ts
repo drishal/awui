@@ -125,6 +125,49 @@ function lastAnswer(messages: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * omp's eval cells: an `agent()` in the cell's code spawns an agent, so the call
+ * that runs it is a code run, not a delegation tool. Each cell's `statusEvents[]`
+ * carries one row per agent (`op: "agent"`, its label as the id), live while the
+ * cell runs and settled at its end. A cell without agents folds to nothing.
+ */
+function evalCells(details: Obj): { rows: Obj[]; cells: number } | null {
+  const cells = (Array.isArray(details.cells) ? details.cells : []).filter(isObj);
+  if (cells.length === 0) return null;
+  const rows: Obj[] = [];
+  let withAgents = 0;
+  for (const cell of cells) {
+    const events = Array.isArray(cell.statusEvents) ? cell.statusEvents.filter(isObj) : [];
+    // A cell's shell steps sit in the same list; only an agent row names an agent and its own id.
+    const agents = events.filter((e) => str(e.id) !== undefined && str(e.agent) !== undefined && (str(e.op) === undefined || str(e.op) === "agent"));
+    if (agents.length > 0) withAgents += 1;
+    rows.push(...agents);
+  }
+  return withAgents > 0 ? { rows, cells: withAgents } : null;
+}
+
+/** Whether a call's details hold agents a non-delegation tool launched (omp's eval). */
+export function hasAgentCells(details: unknown): boolean {
+  return isObj(details) && Array.isArray(details.cells) && evalCells(details) !== null;
+}
+
+/** The answer omp's eval agent reports through `yield`: its rows keep no output field. */
+function yieldedAnswer(raw: Obj): string | undefined {
+  const data = raw.extractedToolData;
+  if (!isObj(data) || !Array.isArray(data.yield)) return undefined;
+  const entries = data.yield.filter(isObj);
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const value = (entries[i] as Obj).data;
+    if (typeof value === "string") {
+      const text = value.trim();
+      if (text) return text;
+      continue;
+    }
+    if (value !== undefined) return JSON.stringify(value, null, 2);
+  }
+  return undefined;
+}
+
 /** One progress or result row as a run, over what was known before. */
 function merge(prior: SubagentRun | undefined, row: Obj, fallbackId: string): SubagentRun {
   const progress = isObj(row.progress) ? row.progress : {};
@@ -133,9 +176,9 @@ function merge(prior: SubagentRun | undefined, row: Obj, fallbackId: string): Su
   // pi-subagents redacts the brief in its details; the arguments' copy stays.
   // omp wraps the brief ("Complete assignment thoroughly: …") and keeps the original as `assignment`.
   const task = str(row.assignment) ?? (str(row.task) && !/^\[prompt redacted\]/.test(String(row.task)) ? String(row.task) : (prior?.task ?? ""));
-  const output = str(row.finalOutput) ?? str(row.output) ?? str(row.result) ?? lastAnswer(row.messages);
+  const output = str(row.finalOutput) ?? str(row.output) ?? str(row.result) ?? lastAnswer(row.messages) ?? yieldedAnswer(row);
   const tokens = num(row.tokens) ?? num(progress.tokens) ?? (num(usage.input) !== undefined ? (num(usage.input) ?? 0) + (num(usage.output) ?? 0) : undefined);
-  const model = str(row.model) ?? str(progress.model) ?? prior?.model;
+  const model = str(row.model) ?? str(progress.model) ?? str(row.resolvedModel) ?? prior?.model;
   const run: SubagentRun = {
     id: fallbackId,
     agent: str(row.agent) ?? prior?.agent ?? "agent",
@@ -174,7 +217,9 @@ export function runsFromDetails(toolCallId: string, details: unknown, prior: Sub
   // Results are authoritative; progress fills in runs that have no result yet.
   const results = Array.isArray(details.results) ? details.results.filter(isObj) : [];
   const progress = Array.isArray(details.progress) ? details.progress.filter(isObj) : [];
-  if (results.length === 0 && progress.length === 0) return prior;
+  // Agents launched inside omp's eval cells report as the cell's own rows.
+  const cells = results.length === 0 && progress.length === 0 ? evalCells(details) : null;
+  if (results.length === 0 && progress.length === 0 && !cells) return prior;
   const keyOf = (row: Obj, i: number) => str(row.id) ?? (num(row.index) !== undefined ? String(row.index) : String(i));
   const seen = new Set<string>();
   for (const [i, row] of results.entries()) {
@@ -182,6 +227,7 @@ export function runsFromDetails(toolCallId: string, details: unknown, prior: Sub
     rows.push(row);
   }
   for (const [i, row] of progress.entries()) if (!seen.has(keyOf(row, i))) rows.push(row);
+  for (const [i, row] of (cells?.rows ?? []).entries()) if (!seen.has(keyOf(row, i))) rows.push(row);
 
   const before = prior?.runs ?? [];
   const used = new Set<SubagentRun>();
@@ -199,8 +245,10 @@ export function runsFromDetails(toolCallId: string, details: unknown, prior: Sub
   // Runs the arguments named that no row mentions yet stay as they were.
   for (const r of before) if (!used.has(r) && !runs.some((x) => x.id === r.id)) runs.push(r);
   const asyncState = isObj(details.async) ? details.async : null;
+  // Eval's cells run one after another; agents inside one cell were launched together.
+  const mode = str(details.mode) ?? (cells ? (cells.cells > 1 ? "chain" : "parallel") : prior?.mode);
   return {
-    ...(str(details.mode) ? { mode: String(details.mode) } : prior?.mode ? { mode: prior.mode } : {}),
+    ...(mode ? { mode } : {}),
     ...(asyncState || details.background === true || prior?.background ? { background: true } : {}),
     runs,
   };

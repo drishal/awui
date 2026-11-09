@@ -21,6 +21,8 @@ export interface ToolKind {
 export function toolKind(item: Extract<ChatItem, { kind: "tool" }>): ToolKind {
   const server = /^mcp__(.+?)__/.exec(item.name)?.[1];
   if (server) return { key: `mcp:${server}`, category: item.category, server };
+  // Agents win over the call's own kind: omp's eval spawns them from inside code.
+  if (item.subagents) return { key: "agent", category: "agent" };
   if (item.category === "command" && toolFacts(item).kind === "test") return { key: "test", category: "command", test: true };
   if (isPlanCall(item.name, item.plan !== undefined)) return { key: "plan", category: item.category, plan: true };
   return { key: item.category, category: item.category };

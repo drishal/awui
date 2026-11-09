@@ -33,7 +33,7 @@ import { MAX_CONTEXT_HISTORY } from "../../shared/protocol.js";
 import { promises as fs } from "node:fs";
 import { boundText, editShape, exitCodeOf, historyToItems, NO_RESULT_TEXT, stringifyArgs, toolCategory, toolPaths, toolSummary } from "../harness/agent-events.js";
 import { argsDiff, resultDiff } from "../harness/tool-diff.js";
-import { applyReports, detailReports, runsFromArgs, runsFromDetails, settleRuns, transcriptFile, transcriptRecords, type AgentReport } from "../harness/subagents.js";
+import { applyReports, detailReports, hasAgentCells, runsFromArgs, runsFromDetails, settleRuns, transcriptFile, transcriptRecords, type AgentReport } from "../harness/subagents.js";
 import { applyJobReports, jobsFromCall, mergeJob } from "../harness/jobs.js";
 import { htmlRenderRef, isHtmlRenderCall } from "../harness/render-token.js";
 import { planFromArgs } from "../harness/plans.js";
@@ -418,8 +418,9 @@ class EventReducer {
         if (!item || item.kind !== "tool") break;
         // A subagent report after the call has returned must not wipe that result.
         const bounded = event.keepOutput ? null : boundText(event.output);
-        // Subagent progress replaces the last snapshot (it is not a patch).
-        const runs = item.category === "agent" && event.details !== undefined ? runsFromDetails(event.toolCallId, event.details, item.subagents ?? null) : null;
+        // Subagent progress replaces the last snapshot (it is not a patch). An eval
+        // call is not a delegation tool, but its cells carry the agents they spawned.
+        const runs = event.details !== undefined && (item.category === "agent" || hasAgentCells(event.details)) ? runsFromDetails(event.toolCallId, event.details, item.subagents ?? null) : null;
         // A wait streams the jobs it waits on: their status, and omp's widget of their progress.
         const jobs = event.details !== undefined ? this.callJobs(item, event.details, event.keepOutput ? item.output : event.output) : null;
         this.upsert({ ...item, ...(bounded ? { output: bounded.text, truncated: bounded.truncated } : {}), ...(runs ? { subagents: runs } : {}), ...(jobs ? { jobs } : {}) });
@@ -452,7 +453,7 @@ class EventReducer {
         // The harness's own diff beats the arguments' one; with neither, its output's own count.
         const reported = edits ? resultDiff(event.details, event.output) : null;
         const settled: ToolItem = { ...base, ...(!edits ? {} : reported ? editShape(reported, null) : base.diff ? {} : editShape(null, bounded.text)) };
-        if (settled.category === "agent") {
+        if (settled.category === "agent" || (event.details !== undefined && hasAgentCells(event.details))) {
           const runs = runsFromDetails(event.toolCallId, event.details, settled.subagents ?? null);
           if (runs) settled.subagents = settleRuns(runs, event.output, event.isError);
         }

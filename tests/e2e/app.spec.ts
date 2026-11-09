@@ -1483,6 +1483,27 @@ test("subagents show live, then their answers, and open their own transcripts", 
   await expect(panel).toBeHidden();
 });
 
+test("an eval call's spawned agents are its card's runs", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "spawn two with evalagents");
+  // The call is a code run, yet the agents it started are its rows, live and open.
+  const row = page.locator('[data-testid="tool-row"][data-tool="eval"]');
+  await expect(row.locator(".run-status.is-running")).toHaveCount(2);
+  await expect(row.locator(".tool-sentence")).toHaveText("Running 2 agents: task");
+  await expect(page.getByTestId("job-progress")).toContainText(/2 running agents/);
+  await expect(page.locator(".answer-actions")).toBeVisible({ timeout: 20000 });
+  await openFold(page);
+  const head = row.getByRole("button").first();
+  if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
+  await expect(row.locator(".tool-sentence")).toHaveText("Ran 2 agents: task");
+  await expect(row.locator(".tool-card-meta")).toHaveText("2/2 done");
+  await expect(row.locator(".run-name")).toHaveText(["probe-one", "probe-two"]);
+  await row.locator(".run-head").first().click();
+  // The answer comes from the eval agent's own `yield`.
+  await expect(row.locator(".run-output")).toContainText('"ONE"');
+});
+
 test("a chat's link opens it in its own project, in a browser that never chose one", async ({ page, browser }) => {
   await signInAndOpen(page, "beta");
   await newChat(page);

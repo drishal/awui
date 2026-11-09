@@ -193,6 +193,12 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   // Agents seen working start open, so their progress shows as it happens; so does a wait on jobs.
   // (A wait learns its jobs from its first update, after it is drawn: its name is what says so at the start.)
   const [open, setOpen] = useState((Boolean(item.subagents) || watchedJobs !== null || /^(wait|await)$/i.test(item.name)) && live);
+  const [toggled, setToggled] = useState(false);
+  // A call that spawns agents from inside itself (omp's eval) only says so once they start: open it then,
+  // unless the user has already chosen for this row.
+  useEffect(() => {
+    if (!toggled && running && item.subagents) setOpen(true);
+  }, [toggled, running, item.subagents]);
   // The full-output sheet, which follows the item as its output streams in.
   const [full, setFull] = useState(false);
   const retry = useContext(RetryContext);
@@ -212,7 +218,16 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
     <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} data-testid="tool-row" data-tool={item.name} data-status={item.status}>
       <div className="drow tool-line">
         <div className="tool-row-line">
-          <button type="button" className="drow-head tool-head" aria-expanded={open} aria-label={label} onClick={() => setOpen((v) => !v)}>
+          <button
+            type="button"
+            className="drow-head tool-head"
+            aria-expanded={open}
+            aria-label={label}
+            onClick={() => {
+              setToggled(true);
+              setOpen((v) => !v);
+            }}
+          >
             <KindChip kind={kind} running={running} />
             <span className="tool-sentence">
               <span className="tool-verb">{sentence.verb}</span>
