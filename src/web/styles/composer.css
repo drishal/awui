@@ -1138,6 +1138,46 @@
   color: var(--muted-text);
 }
 
+/* The popover's foot: the full view. It goes to a dialog, so it is a plain row
+   with an arrow, not a disclosure. */
+.usage-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  background: none;
+  color: var(--muted-text);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.usage-more:hover {
+  color: var(--text);
+}
+
+/* The chip's full view: the sections at a comfortable width, the turn's
+   waterfall under them, and the whole thing one scroller. */
+.dialog.usage-details {
+  width: min(780px, calc(100vw - 32px));
+}
+
+.usage-details .dialog-body {
+  color: var(--text-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One scroller: the dialog's, never a waterfall that scrolls inside it too. */
+.usage-details .timing-rows {
+  max-height: none;
+  overflow: visible;
+}
+
 /* The divider above the card: drag it up for a taller prompt box. */
 .composer-resize {
   height: 10px;

@@ -1,9 +1,12 @@
-// One background job as a card: what it is for, its command, its id and kind,
-// a clock while it runs (its time once it ends), and its progress. omp hands a
-// widget of its own (meters, stats, a spark of a count over time, a grid of
-// passes and failures, a headline number), drawn here in the theme; a job
-// without one shows a test run's progress read from its output, when it has
-// printed one. Drawn above the composer and inside the wait call that watches it.
+// One background job: what it is for, its command, its id and kind, a clock
+// while it runs (its time once it ends), and its progress. omp hands a widget of
+// its own (meters, stats, a spark of a count over time, a grid of passes and
+// failures, a headline number), drawn here in the theme; a job without one shows
+// a test run's progress read from its output, when it has printed one.
+//
+// Full above the composer, which is the one place live progress belongs; flat in
+// the thread, where every call that watched the job would otherwise repeat the
+// same bar — and run its own clock — once per call.
 import { useMemo, type CSSProperties } from "react";
 import type { JobBlock, JobTone } from "../../shared/protocol.js";
 import { useNow } from "../hooks.js";
@@ -98,17 +101,20 @@ function Block({ block }: { block: JobBlock }) {
 
 const STATUS_WORD: Record<ChatJob["status"], string> = { running: "Running", done: "Done", failed: "Failed", stopped: "Stopped" };
 
-export function JobCard({ job }: { job: ChatJob }) {
+export function JobCard({ job, variant = "full" }: { job: ChatJob; variant?: "full" | "flat" }) {
   const running = job.status === "running";
   const now = useNow(running);
   const elapsed = jobElapsed(job, now);
   const widget = job.widget;
+  // Flat: the head alone. The progress it would repeat is above the composer, and a
+  // thread can hold a dozen calls that looked at the same job.
+  const flat = variant === "flat";
   // A job without a widget of its own may still be a test run that printed its progress.
-  const progress = useMemo(() => (!widget?.blocks.length && job.output ? testProgress(job.output) : null), [widget, job.output]);
+  const progress = useMemo(() => (!flat && !widget?.blocks.length && job.output ? testProgress(job.output) : null), [flat, widget, job.output]);
   const title = job.title ?? widget?.title ?? null;
   const stage = widget?.stage && widget.stage !== title ? widget.stage : null;
   return (
-    <div className={`job-card is-${job.status}`} data-testid="job-card" data-job={job.id}>
+    <div className={`job-card is-${job.status}${flat ? " is-flat" : ""}`} data-testid="job-card" data-job={job.id}>
       <div className="job-head">
         <span className="job-mark" role="img" aria-label={STATUS_WORD[job.status]}>
           {running ? <Spinner size={13} /> : job.status === "done" ? <IconCheck size={13} draw /> : job.status === "stopped" ? <IconStop size={12} /> : <IconX size={13} />}
@@ -122,12 +128,12 @@ export function JobCard({ job }: { job: ChatJob }) {
         <code className="job-id">{job.id}</code>
         {elapsed !== undefined ? <span className="job-time">{formatDuration(elapsed)}</span> : null}
       </div>
-      {title ? (
+      {title && !flat ? (
         <div className="job-command" title={job.label}>
           <span aria-hidden="true">{job.kind === "task" ? "task" : "$"}</span> {job.label}
         </div>
       ) : null}
-      {widget && widget.blocks.length > 0 ? (
+      {flat ? null : widget && widget.blocks.length > 0 ? (
         <div className="job-widget">
           {widget.blocks.map((block, i) => (
             <Block key={i} block={block} />
@@ -136,7 +142,7 @@ export function JobCard({ job }: { job: ChatJob }) {
       ) : progress ? (
         <TestMeter progress={progress} live={running} />
       ) : null}
-      {stage ? <div className="job-stage">{stage}</div> : null}
+      {stage && !flat ? <div className="job-stage">{stage}</div> : null}
       {job.status === "failed" && job.exitCode !== undefined ? <div className="job-stage is-failed">exit {job.exitCode}</div> : null}
     </div>
   );

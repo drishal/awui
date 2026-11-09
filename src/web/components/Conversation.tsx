@@ -294,7 +294,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
             ) : watchedJobs ? (
               <div className="tool-jobs">
                 {watchedJobs.map((job) => (
-                  <JobCard key={job.id} job={job} />
+                  <JobCard key={job.id} job={job} variant="flat" />
                 ))}
               </div>
             ) : (
@@ -701,8 +701,7 @@ function Answer({
   onRestore,
   timing = null,
   turnMarkdown,
-  turn,
-  workspace,
+  onTiming,
 }: {
   item: AssistantItem;
   through: number;
@@ -715,11 +714,10 @@ function Answer({
   timing?: string | null;
   /** The whole turn (prompt, work, answer) as Markdown, for pasting into an issue; null where there is no prompt to copy it with. */
   turnMarkdown?: (() => string) | null;
-  /** The turn, for its Timing view (a waterfall of every step and call); left out where there is no turn to time. */
-  turn?: Turn;
-  workspace?: string;
+  /** Opens the turn's Timing view. Absent where there is no turn to time. */
+  onTiming?: () => void;
 }) {
-  const [timingOpen, setTimingOpen] = useState(false);
+
   const copyTurn = () => navigator.clipboard?.writeText(turnMarkdown?.() ?? "");
   const [sheet, setSheet] = useState(false);
   const press = useLongPress(() => {
@@ -732,14 +730,14 @@ function Answer({
     ...(turnMarkdown ? [{ label: "Copy turn as Markdown", icon: <IconFile size={16} />, run: () => void copyTurn() }] : []),
     // Selecting a passage to quote is fiddly on a phone; this quotes the whole reply.
     { label: "Quote in message", icon: <IconEdit size={16} />, run: () => addToDraft(asQuote(item.text)) },
-    ...(turn ? [{ label: "Timing", icon: <IconClock size={16} />, run: () => setTimingOpen(true) }] : []),
+    ...(onTiming ? [{ label: "Timing", icon: <IconClock size={16} />, run: onTiming }] : []),
     ...(canFork ? [{ label: "Fork from here", icon: <IconFork size={16} />, run: () => onFork(through) }] : []),
     ...(canRestore ? [{ label: "Undo file changes from here", icon: <IconUndo size={16} />, run: () => onRestore(through) }] : []),
   ];
   return (
     <div className={`answer${arrival}${item.streaming ? " is-streaming" : ""}`} data-testid="answer" {...press}>
       {sheet ? <ActionSheet title={timing ? `Reply · ${timing}` : "Reply"} actions={sheetActions} onClose={() => setSheet(false)} /> : null}
-      {timingOpen && turn ? <TurnTiming turn={turn} workspace={workspace ?? ""} onClose={() => setTimingOpen(false)} /> : null}
+
       {item.text ? <Markdown text={item.text} allowRun={!item.streaming} streaming={item.streaming} /> : null}
       {item.streaming && !item.text ? <span className="typing" aria-label="Writing">…</span> : null}
       {stopped ? <span className="stopped-pill">Stopped</span> : null}
@@ -756,8 +754,8 @@ function Answer({
               onCopy={copyTurn}
             />
           ) : null}
-          {turn ? (
-            <button type="button" className="ghost-icon" aria-label="Timing" title="Timing: when each step and call of this turn ran" onClick={() => setTimingOpen(true)}>
+          {onTiming ? (
+            <button type="button" className="ghost-icon" aria-label="Timing" title="Timing: when each step and call of this turn ran" onClick={onTiming}>
               <IconClock size={14} />
             </button>
           ) : null}
@@ -1175,6 +1173,9 @@ const TurnView = memo(function TurnView({
   /** What "Ask to retry" does, for the latest turn only (null: no button). */
   retry: { mode: RetryMode; send: (text: string) => void } | null;
 }) {
+  const [timingOpen, setTimingOpen] = useState(false);
+  const openTiming = () => setTimingOpen(true);
+  const timingDialog = timingOpen ? <TurnTiming turn={turn} workspace={workspace} onClose={() => setTimingOpen(false)} /> : null;
   if (!turn.prompt) {
     // What comes before any prompt (startup notices, or what a compaction kept): plain rows, no fold, and the
     // reply among them in its place (buildTurns takes it out of the process, so it is drawn here or not at all).
@@ -1187,6 +1188,7 @@ const TurnView = memo(function TurnView({
         {[...turn.workAfter, ...turn.errors, ...turn.after].map((item) => (
           <ProcessItem key={item.id} item={item} workspace={workspace} />
         ))}
+        {timingDialog}
       </section>
     );
   }
@@ -1217,7 +1219,7 @@ const TurnView = memo(function TurnView({
         <PlanCard key={p.id} plan={p.plan} onImplement={onImplement} />
       ))}
       {turn.answer ? (
-        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timingLabel(turnTiming(turn))} turnMarkdown={() => turnMarkdownOf(turn, workspace)} turn={turn} workspace={workspace} />
+        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timingLabel(turnTiming(turn))} turnMarkdown={() => turnMarkdownOf(turn, workspace)} onTiming={openTiming} />
       ) : null}
       {afterWork ? (
         <div className="turn-work-after" data-testid="work-after">
@@ -1243,6 +1245,7 @@ const TurnView = memo(function TurnView({
           ))}
         </div>
       ) : null}
+      {timingDialog}
     </section>
     </RetryContext.Provider>
   );

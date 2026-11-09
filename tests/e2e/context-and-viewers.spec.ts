@@ -1,7 +1,7 @@
 // Presence in the header (how many devices have a chat open) and the context panel
 // (its sparkline and its hover). Each test opens its own chat.
 import { expect, test } from "@playwright/test";
-import { openChat, send, sendAndWait, signInAndOpen } from "./helpers.js";
+import { newChat, openChat, send, sendAndWait, signInAndOpen } from "./helpers.js";
 
 test("a second page on the same chat shows '2 devices' in the header, and it goes away again", async ({ page, context }) => {
   await signInAndOpen(page);
@@ -56,4 +56,29 @@ test("the context panel draws how the context grew, with a name a screen reader 
   await page.getByTestId("context-ring").click();
   const panel = page.getByRole("dialog", { name: "Context and usage" });
   await expect(panel.getByRole("img", { name: /^Context per turn: \d+% … \d+%/ })).toBeVisible();
+});
+
+test("'Show more' opens the chip's full view: the sections wide, the space left, and the turn's own timing", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "showcase");
+  await page.getByTestId("context-ring").click();
+  const peek = page.getByRole("dialog", { name: "Context and usage" });
+  await peek.getByTestId("usage-more").click();
+  const full = page.getByRole("dialog", { name: "Context, usage, and timing" });
+  await expect(full).toBeVisible();
+  // The peek gives way to it, with the same sections and the two the dialog adds.
+  await expect(peek).toHaveCount(0);
+  await expect(full.getByTestId("context-headline")).toBeVisible();
+  await expect(full.locator(".usage-row", { hasText: "Free space" })).toHaveCount(1);
+  // The turn's own waterfall: rows on an axis, the slowest call marked.
+  await expect(full.getByTestId("timing")).toBeVisible();
+  await expect(full.getByRole("listitem").first()).toBeVisible();
+  await expect(full.getByTestId("timing-slowest")).toHaveCount(1);
+  await expect(full.locator(".timing-axis .timing-tick").first()).toHaveText("0");
+  await page.keyboard.press("Escape");
+  await expect(full).toHaveCount(0);
+  // The chip is still there, and its peek did not come back with it.
+  await expect(page.getByTestId("context-ring")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });

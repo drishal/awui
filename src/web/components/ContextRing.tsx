@@ -2,16 +2,21 @@
 // whole picture, in DeepSeek Harness's sections: what fills the context
 // window, the session's tokens, and model timing. On a phone the popover is
 // the same body drawn as a bottom sheet (Dialog); the desktop keeps the
-// anchored popover. Hidden until the harness reports a percentage. Beside it, the
-// draft's estimated size once it is worth a mention (token-estimate.ts), which stays
+// anchored popover. Its foot opens the full view — the same sections at a
+// dialog's width, plus the space left and the latest turn's time (TimingView).
+// Hidden until the harness reports a percentage. Beside it, the draft's
+// estimated size once it is worth a mention (token-estimate.ts), which stays
 // even where the ring is hidden; the panel adds what sending it does to the context.
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ContextCategory, ContextPoint, ContextUsage, SessionUsage } from "../../shared/protocol.js";
+import type { ChatItem, ChatStatus, ContextCategory, ContextPoint, ContextUsage, SessionUsage } from "../../shared/protocol.js";
 import { coarse } from "../gestures.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { sparkline, SPARK_H, SPARK_W } from "../sparkline.js";
 import { type DraftSize, draftRow, draftSize, draftWarning } from "../token-estimate.js";
+import { buildTurns, type Turn } from "../turns.js";
 import { Dialog } from "./Dialog.js";
+import { IconChevronRight } from "../icons.js";
+import { TimingView } from "./TimingView.js";
 import { Dot } from "./Dot.js";
 import { Rolling } from "./Rolling.js";
 
@@ -83,8 +88,39 @@ function Row({
 /** A share of the window as the headline writes it. */
 const share = (pct: number) => (pct < 1 ? "<1%" : `${Math.round(pct)}%`);
 
-/** The popover's sections. Drawn inside the desktop's anchored panel and inside the phone's bottom sheet alike. */
-function UsageBody({ context, usage, draft, canCompact, history, compacting, compacted }: { context: ContextUsage; usage: SessionUsage | null; draft: DraftSize | null; canCompact: boolean; history: ContextPoint[]; compacting: boolean; compacted: boolean }) {
+/**
+ * The sections. Drawn in the anchored popover, the phone's bottom sheet, and the
+ * full dialog alike; `onShowMore` adds the popover's foot, and `details` the two
+ * parts only the dialog has room for.
+ */
+function UsageBody({
+  context,
+  usage,
+  draft,
+  canCompact,
+  history,
+  compacting,
+  compacted,
+  onShowMore,
+  details,
+  turn,
+  workspace,
+}: {
+  context: ContextUsage;
+  usage: SessionUsage | null;
+  draft: DraftSize | null;
+  canCompact: boolean;
+  history: ContextPoint[];
+  compacting: boolean;
+  compacted: boolean;
+  /** The compact view's foot: opens the full dialog. */
+  onShowMore?: (() => void) | undefined;
+  /** The full dialog: the space left in the window, and the latest turn's time. */
+  details: boolean;
+  /** The latest turn of the chat, for its waterfall; null where there is none (or none with times). */
+  turn: Turn | null;
+  workspace: string;
+}) {
   const pct = Math.max(0, Math.min(100, context.percent ?? 0));
   const categories = context.categories?.filter((x) => x.tokens > 0) ?? [];
   // Looking at a row (hover or focus) puts that part in the headline and dims the others.
@@ -140,6 +176,9 @@ function UsageBody({ context, usage, draft, canCompact, history, compacting, com
             state={compacting && x.id === "messages" ? "busy" : look !== null && look !== x.id ? "dim" : undefined}
           />
         ))}
+        {details && context.tokens !== null ? (
+          <Row label="Free space" value={compact(context.window - context.tokens)} title={`${full(context.window - context.tokens)} tokens left of ${full(context.window)}`} />
+        ) : null}
         {compacted ? (
           <p className="usage-note usage-compacted" role="status" data-testid="compacted">
             Compacted ✓
@@ -183,16 +222,87 @@ function UsageBody({ context, usage, draft, canCompact, history, compacting, com
           {!timed ? <p className="usage-note">Timing is measured from runs this server watches.</p> : null}
         </section>
       ) : null}
+
+      {details ? (
+        <section className="usage-section" aria-label="This turn">
+          <div className="usage-head">
+            <span>This turn</span>
+          </div>
+          {turn ? <TimingView turn={turn} workspace={workspace} /> : <p className="usage-note" data-testid="usage-timing-empty">No times reported for this chat yet.</p>}
+        </section>
+      ) : null}
+
+      {onShowMore ? (
+        <button type="button" className="usage-more" data-testid="usage-more" onClick={onShowMore}>
+          Show more
+          <IconChevronRight size={13} />
+        </button>
+      ) : null}
     </>
   );
 }
 
+/** The chip's full view: mounted only while it is open, so a closed chip never folds the chat into turns. */
+function ContextDetails({
+  context,
+  usage,
+  draft,
+  canCompact,
+  history,
+  compacting,
+  compacted,
+  timing,
+  onClose,
+}: {
+  context: ContextUsage;
+  usage: SessionUsage | null;
+  draft: DraftSize | null;
+  canCompact: boolean;
+  history: ContextPoint[];
+  compacting: boolean;
+  compacted: boolean;
+  timing: { items: ChatItem[]; status: ChatStatus; workspace: string } | null;
+  onClose: () => void;
+}) {
+  const items = timing?.items;
+  const status = timing?.status;
+  const turn = useMemo(() => {
+    if (!items || !status) return null;
+    const turns = buildTurns(items, status);
+    return turns[turns.length - 1] ?? null;
+  }, [items, status]);
+  return (
+    <Dialog title="Context, usage, and timing" onClose={onClose} className="usage-details">
+      <UsageBody context={context} usage={usage} draft={draft} canCompact={canCompact} history={history} compacting={compacting} compacted={compacted} details turn={turn} workspace={timing?.workspace ?? ""} />
+    </Dialog>
+  );
+}
+
 /** `draft` is the composer's text and image count, for the figure of what sending adds; `canCompact` whether the harness can answer a full window with Compact. */
-export function ContextRing({ context, usage, draft, canCompact, history, compacting }: { context: ContextUsage | null; usage: SessionUsage | null; draft: { text: string; images: number }; canCompact: boolean; history: ContextPoint[]; compacting: boolean }) {
+export function ContextRing({
+  context,
+  usage,
+  draft,
+  canCompact,
+  history,
+  compacting,
+  timing,
+}: {
+  context: ContextUsage | null;
+  usage: SessionUsage | null;
+  draft: { text: string; images: number };
+  canCompact: boolean;
+  history: ContextPoint[];
+  compacting: boolean;
+  /** The chat's items and status, for the full view's turn timing; null where there is no chat to time. */
+  timing: { items: ChatItem[]; status: ChatStatus; workspace: string } | null;
+}) {
   const [open, setOpen] = useState(false);
+  const [details, setDetails] = useState(false);
   const { render: showPop, leaving } = useLeave(open);
   const wrap = useRef<HTMLDivElement>(null);
   const pop = useRef<HTMLDivElement>(null);
+  const ring = useRef<HTMLButtonElement>(null);
 
   useDismiss(wrap, open, () => setOpen(false), { escape: true });
 
@@ -245,11 +355,13 @@ export function ContextRing({ context, usage, draft, canCompact, history, compac
   const c = 2 * Math.PI * r;
   const tone = pct >= 90 ? "danger" : pct >= 70 ? "warn" : "ok";
   const detail = `${Math.round(pct)}% of context used${context.tokens !== null ? ` · ${compact(context.tokens)} / ${compact(context.window)} tokens` : ""}`;
+  const peek = { context, usage, draft: size, canCompact, history, compacting, compacted, details: false as const, turn: null, workspace: "" };
 
   return (
     <div className="context-ring-wrap" ref={wrap}>
       {figure}
       <button
+        ref={ring}
         type="button"
         className={`context-ring tone-${tone}`}
         aria-label={detail}
@@ -266,13 +378,24 @@ export function ContextRing({ context, usage, draft, canCompact, history, compac
       </button>
       {showPop && !coarse() ? (
         <div className={`usage-pop${leaving ? " is-leaving" : ""}`} ref={pop} role="dialog" aria-label="Context and usage" data-testid="usage-panel">
-          <UsageBody context={context} usage={usage} draft={size} canCompact={canCompact} history={history} compacting={compacting} compacted={compacted} />
+          <UsageBody {...peek} onShowMore={() => { setOpen(false); setDetails(true); }} />
         </div>
       ) : null}
       {open && coarse() ? (
         <Dialog title="Context and usage" onClose={() => setOpen(false)} className="usage-sheet">
-          <UsageBody context={context} usage={usage} draft={size} canCompact={canCompact} history={history} compacting={compacting} compacted={compacted} />
+          <UsageBody {...peek} onShowMore={() => { setOpen(false); setDetails(true); }} />
         </Dialog>
+      ) : null}
+      {/* The dialog closed on its own terms: focus comes back to the chip, since the foot that opened it is gone. */}
+      {details ? (
+        <ContextDetails
+          {...peek}
+          timing={timing}
+          onClose={() => {
+            setDetails(false);
+            ring.current?.focus();
+          }}
+        />
       ) : null}
     </div>
   );

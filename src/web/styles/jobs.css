@@ -1,7 +1,8 @@
 /* ---- background jobs (JobCard.tsx) --------------------------------------------- */
 /* A job is a small card: a mark, what it is for, its headline number, its id and clock on one line,
    the command under it, then its progress as the harness drew it (meters, stats, a spark, a grid).
-   The card's left edge carries its state: the info colour while it runs, then green or red. */
+   The card's left edge carries its state: the info colour while it runs, then green or red.
+   Above the composer it is that card; in the thread it is one flat line (see the end of this file). */
 
 .job-list {
   display: flex;
@@ -340,4 +341,33 @@
   height: 10px;
   border-radius: 3px;
   background: var(--tone, color-mix(in srgb, var(--text) 14%, transparent));
+}
+
+/* In the thread: a line, not a card. The progress lives above the composer, which
+   is always in view, and a thread can hold a dozen calls that looked at the same
+   job — as many copies of the same bar, each with its own clock. The edge keeps
+   the state; the travelling light does not. */
+.job-card.is-flat {
+  gap: 0;
+  padding: 3px 0 3px 9px;
+  background: none;
+  box-shadow: none;
+  animation: none;
+}
+
+.job-card.is-flat.is-failed {
+  background: none;
+}
+
+.job-card.is-flat::before,
+.job-card.is-flat.is-running::before {
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  background: var(--job-edge);
+  animation: none;
+}
+
+.job-card.is-flat .job-id {
+  display: none;
 }
