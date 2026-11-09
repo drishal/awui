@@ -695,7 +695,8 @@
 }
 
 :root[data-tool-style="lines"] .process-card .process-head {
-  gap: 8px;
+  /* The same 10px a tool row's head uses, so a live run's mark shares the rows' status column. */
+  gap: 10px;
   min-height: 30px;
   padding: 0 2px 5px;
   border-bottom: 1px solid var(--hairline);
@@ -738,6 +739,15 @@
   margin-left: auto;
 }
 
+/* A tool row is wrapped in .tool-row, so the body gutter above never reaches it, and the card's
+   10px/12px padding left its icon and chevron inboard of the header and of a thought. The 2px
+   inset is the header's. The head's own 10px gap is the space a thought's lead margin already
+   uses, so the sentence starts where "Thought" does — an extra margin on the icon would stack
+   on that gap and shove the sentence right. */
+:root[data-tool-style="lines"] .tool-head {
+  padding: 3px 2px;
+}
+
 /* The bare icon takes the chip's slot, so the sentences still line up in one column. */
 :root[data-tool-style="lines"] .tool-plain-lead {
   display: inline-flex;
@@ -746,12 +756,23 @@
   justify-content: center;
   width: 20px;
   height: 20px;
-  margin-right: 8px;
   color: var(--muted-text);
 }
 
-/* An opened call's output keeps its code surface, inset under the sentence it belongs to. */
+/* The card places Ask to retry at 62px: 12px of head padding plus the chevron, the gap, the
+   status, and the gap. Lines padding is 2px, so the same stack sits 10px closer to the edge. */
+:root[data-tool-style="lines"] .tool-retry {
+  right: 52px;
+}
+
+/* An opened call's output keeps its code surface, inset under the sentence it belongs to
+   (2px of head padding, the 20px icon, the 10px gap). */
 :root[data-tool-style="lines"] .tool-body {
-  margin: 2px 0 6px 30px;
+  margin: 2px 0 6px 32px;
   border-radius: var(--r-sm);
+}
+
+/* The body is already under the sentence, so the card's side padding would shift a picture. */
+:root[data-tool-style="lines"] .tool-images {
+  padding-inline: 0;
 }

@@ -167,6 +167,35 @@ test.describe("shared look in config.yml", () => {
     const grepBox = (await grepRow.boundingBox()) ?? { x: 0, width: 0, y: 0, height: 0 };
     const factsBox = (await grepRow.locator(".tool-facts").boundingBox()) ?? { x: 0, width: 0, y: 0, height: 0 };
     expect(factsBox.x).toBeLessThan(grepBox.x + grepBox.width / 2);
+
+    // A thought and a call share the header's edges: the icon column, the words, and the chevron.
+    await page.request.post(`${base}/api/chats/${chatId}/messages`, { data: { text: "widethought", mode: "normal" } });
+    const fold = page.getByTestId("process-toggle").last();
+    await expect(fold).toContainText(/command/);
+    if ((await fold.getAttribute("aria-expanded")) !== "true") await fold.click();
+    await expect(fold).toHaveAttribute("aria-expanded", "true");
+    const thought = page.getByTestId("thought-row").last();
+    const call = page.locator('[data-tool="bash"]').last();
+    await expect(thought).toContainText("Thought");
+    await expect(call.locator(".tool-sentence")).toContainText("udevadm");
+    const box = async (locator: ReturnType<typeof fold.locator>) => {
+      const b = await locator.boundingBox();
+      expect(b, locator.toString()).toBeTruthy();
+      return b as { x: number; y: number; width: number; height: number };
+    };
+    const [label, thoughtLead, thoughtTitle, toolLead, sentence, headChevron, toolChevron] = await Promise.all([
+      box(fold.locator(".process-label")),
+      box(thought.locator(".drow-lead")),
+      box(thought.locator(".drow-title")),
+      box(call.locator(".tool-plain-lead")),
+      box(call.locator(".tool-sentence")),
+      box(fold.locator(".process-chevron")),
+      box(call.locator(".tool-chevron")),
+    ]);
+    expect(Math.abs(label.x - thoughtLead.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(thoughtLead.x - toolLead.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(thoughtTitle.x - sentence.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(headChevron.x + headChevron.width - (toolChevron.x + toolChevron.width))).toBeLessThanOrEqual(1);
     // And on the next page load.
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-tool-style", "lines");
