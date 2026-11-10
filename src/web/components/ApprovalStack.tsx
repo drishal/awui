@@ -159,7 +159,7 @@ export function ApprovalStack({
                 <IconStop size={12} /> {stopping ? "Stopping…" : "Stop"}
               </button>
               <span className="approval-spacer" />
-              <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => onAnswer(request, { kind: "cancel" })}>
+              <button type="button" className="btn" disabled={busy} onClick={() => onAnswer(request, { kind: "cancel" })}>
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" disabled={busy}>
@@ -173,9 +173,10 @@ export function ApprovalStack({
               <IconStop size={12} /> {stopping ? "Stopping…" : "Stop"}
             </button>
             <span className="approval-spacer" />
+            {/* Bordered: Deny is a real choice beside Approve, not a dismiss link. */}
             <button
               type="button"
-              className="btn btn-ghost"
+              className="btn"
               disabled={busy}
               onClick={() => answers && onAnswer(request, answers.deny)}
             >
