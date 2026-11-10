@@ -26,6 +26,7 @@ export function HarnessMenu({
   triggerText,
   disabled = false,
   ariaKeyShortcuts,
+  hint,
   onPick,
 }: {
   choices: HarnessChoice[];
@@ -40,6 +41,8 @@ export function HarnessMenu({
   disabled?: boolean;
   /** What a key press on the trigger does (the start screen's agent chip: Enter opens the menu). */
   ariaKeyShortcuts?: string;
+  /** What choosing one does, said on hover and under the open menu's heading rather than as standing copy. */
+  hint?: string;
   onPick: (harnessId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -124,6 +127,7 @@ export function HarnessMenu({
         className={variant === "row" ? "harness-row" : "pill-select harness-chip"}
         style={harnessColor(currentId ?? undefined)}
         aria-label={label}
+        {...(hint ? { title: hint } : {})}
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={!canOpen}
@@ -152,6 +156,7 @@ export function HarnessMenu({
           onKeyDown={onListKey}
         >
           <div className="harness-menu-head">{menuLabel}</div>
+          {hint ? <p className="harness-menu-hint">{hint}</p> : null}
           {choices.map((c, i) => (
             <div
               key={c.harness.id}

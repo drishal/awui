@@ -1144,6 +1144,7 @@ export function Sidebar(props: {
           menuLabel="Harness"
           currentId={props.harnessId}
           choices={props.harnesses.map((h) => ({ harness: h, blocked: h.available ? null : (h.reason ?? "Not available") }))}
+          hint="Filters the list; new chats start with this agent."
           onPick={props.onHarness}
         />
         {current?.warnings.map((w) => (
@@ -1151,7 +1152,6 @@ export function Sidebar(props: {
             {w}
           </p>
         ))}
-        <p className="sidebar-note harness-note">Filters the list; new chats start with this agent.</p>
 
         <div className="sessions">
           <div className="sessions-head">

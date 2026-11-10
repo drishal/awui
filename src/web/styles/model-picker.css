@@ -510,8 +510,15 @@ button.harness-chip:disabled {
   padding: 6px 8px 4px;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: var(--muted-text);
+}
+
+.harness-menu-hint {
+  margin: 0 8px 6px;
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--muted-text);
 }
 
