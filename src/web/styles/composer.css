@@ -675,7 +675,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 6px;
-    border-radius: 999px;
+    border-radius: var(--r-panel);
   }
 
   .composer-card.is-folded:focus-within {
