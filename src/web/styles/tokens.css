@@ -57,7 +57,7 @@
   --surface: #f9fafb;
   --surface-2: #eef1f5;
   --selection: #dbe7fd;
-  --border: #e1e5ee;
+  --border: #d9dee7;
   --control-border: #8a9099;
   --text: #0f1115;
   --text-2: #43454a;
@@ -78,22 +78,25 @@
   --thinking: #6d4fc2;
   --rare: #8a5a00;
   --shadow-strength: 0.08;
+  /* How much of the text colour a hairline takes: a dark page needs a little more for a
+     1px edge to read (a base16 theme inherits whichever scheme it is). */
+  --hairline-mix: 10%;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #151517;
-    --surface: #1b1b1c;
-    --surface-2: #2c2c2e;
+    --bg: #141416;
+    --surface: #1b1b1f;
+    --surface-2: #26262b;
     --selection: #34415b;
-    --border: #2c2c2e;
+    --border: #313137;
     --control-border: #67707a;
     --text: #f5f6f7;
     --text-2: #cfd3d6;
     --muted: #979da6;
     --inverse-bg: #f5f6f7;
-    --inverse-fg: #151517;
+    --inverse-fg: #141416;
     --accent: #7aaaff;
     --accent-fg: #0f1115;
     --accent-hover: #a3c4ff;
@@ -108,22 +111,23 @@
     --thinking: #b69cff;
     --rare: #d29922;
     --shadow-strength: 0.32;
+    --hairline-mix: 13%;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #151517;
-  --surface: #1b1b1c;
-  --surface-2: #2c2c2e;
+  --bg: #141416;
+  --surface: #1b1b1f;
+  --surface-2: #26262b;
   --selection: #34415b;
-  --border: #2c2c2e;
+  --border: #313137;
   --control-border: #67707a;
   --text: #f5f6f7;
   --text-2: #cfd3d6;
   --muted: #979da6;
   --inverse-bg: #f5f6f7;
-  --inverse-fg: #151517;
+  --inverse-fg: #141416;
   --accent: #7aaaff;
   --accent-fg: #0f1115;
   --accent-hover: #a3c4ff;
@@ -138,6 +142,7 @@
   --thinking: #b69cff;
   --rare: #d29922;
   --shadow-strength: 0.32;
+  --hairline-mix: 13%;
 }
 
 :root[data-theme="light"] {
@@ -156,8 +161,8 @@
   /* Muted as text: 4.5:1 against the page, cards, and chips. `--muted` stays the
      dimmer chrome colour (icons, hairlines); a theme file overrides both. */
   --muted-text: var(--muted);
-  --hairline: color-mix(in srgb, var(--text) 10%, transparent);
-  --hairline-strong: color-mix(in srgb, var(--text) 18%, transparent);
+  --hairline: color-mix(in srgb, var(--text) var(--hairline-mix), transparent);
+  --hairline-strong: color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 8%), transparent);
   --hover: color-mix(in srgb, var(--text) 6%, transparent);
   --active: color-mix(in srgb, var(--text) 10%, transparent);
   --bubble: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
