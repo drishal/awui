@@ -84,6 +84,9 @@
   /* How much of the text colour a hairline takes: a dark page needs a little more for a
      1px edge to read (a base16 theme inherits whichever scheme it is). */
   --hairline-mix: 10%;
+  /* How much lighter than its surface a raised face (a segmented control's chosen pill) is: a light
+     page lifts it with a shadow on white, a dark one has to lighten it or it sinks below its track. */
+  --raise-mix: 0%;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -115,6 +118,7 @@
     --rare: #d29922;
     --shadow-strength: 0.32;
     --hairline-mix: 13%;
+    --raise-mix: 11%;
   }
 }
 
@@ -146,6 +150,7 @@
   --rare: #d29922;
   --shadow-strength: 0.32;
   --hairline-mix: 13%;
+  --raise-mix: 11%;
 }
 
 :root[data-theme="light"] {
@@ -170,6 +175,7 @@
   --active: color-mix(in srgb, var(--text) 10%, transparent);
   --bubble: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
   --card: color-mix(in srgb, var(--surface) 55%, var(--bg));
+  --raised: color-mix(in srgb, var(--text) var(--raise-mix), var(--surface));
   --code-bg: color-mix(in srgb, var(--surface-2) 45%, var(--bg));
   --shadow-soft: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.8)), 0 6px 22px rgb(0 0 0 / var(--shadow-strength));
   --shadow-float: 0 2px 6px rgb(0 0 0 / var(--shadow-strength)), 0 16px 40px rgb(0 0 0 / calc(var(--shadow-strength) * 1.4));
