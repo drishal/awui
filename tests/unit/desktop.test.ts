@@ -2,7 +2,7 @@
 // /api/health means, whether to attach to a running server or start one, and
 // the page a menu item or an awui:// link opens.
 import { describe, expect, it } from "vitest";
-import { expandHome, healthUrl, parseEndpoint, parseHealth, planLaunch, portsFrom, targetFromLink, targetUrl, titleCount, type Probe } from "../../src/shared/desktop.js";
+import { expandHome, healthUrl, noteTarget, parseBackground, parseEndpoint, parseHealth, parseNotes, planLaunch, portsFrom, targetFromLink, targetUrl, titleCount, type Probe } from "../../src/shared/desktop.js";
 
 const probe = (port: number, state: Probe["state"]): Probe => ({ port, state });
 
@@ -77,5 +77,32 @@ describe("the desktop shell's view of the server", () => {
     expect(expandHome("~user/state", "/home/me")).toBe("~user/state");
     expect(expandHome("/tmp/awui", "/home/me")).toBe("/tmp/awui");
     expect(expandHome("~/state", "C:\\Users\\me")).toBe("C:\\Users\\me\\state");
+  });
+
+  it("reads the server's notes field by field and opens a note's room, else its chat", () => {
+    const answer = parseNotes(JSON.stringify({ now: 42, notes: [
+      { id: "1", kind: "done", chatId: "c1", sessionId: null, title: "Fix tests", body: "All green", at: 1 },
+      { id: "2", kind: "ask", chatId: "", roomId: "r1", title: "Room", body: "Approve?", at: 2 },
+      { id: 3, kind: "done", chatId: "c2", title: "bad id", body: "" },
+      "junk",
+    ] }));
+    expect(answer?.now).toBe(42);
+    expect(answer?.notes.map((n) => n.id)).toEqual(["1", "2"]);
+    expect(noteTarget(answer!.notes[0]!)).toEqual({ kind: "chat", chatId: "c1" });
+    expect(noteTarget(answer!.notes[1]!)).toEqual({ kind: "room", roomId: "r1" });
+    expect(noteTarget({ id: "t", kind: "done", chatId: "", title: "awui", body: "test" })).toBeNull();
+    expect(parseNotes("<html>")).toBeNull();
+    expect(parseNotes('{"notes":[]}')).toBeNull();
+    expect(targetUrl("http://127.0.0.1:4783", { kind: "chat", chatId: "c 1" })).toBe("http://127.0.0.1:4783/#chat=c%201");
+    expect(targetUrl("http://127.0.0.1:4783", { kind: "room", roomId: "r1" })).toBe("http://127.0.0.1:4783/#room=r1");
+    // Only the app's own notes open a chat: a link cannot.
+    expect(targetFromLink("awui://chat?id=c1")).toBeNull();
+  });
+
+  it("reads desktop_background from the settings answer, and nothing else", () => {
+    expect(parseBackground('{"values":{"desktopBackground":false}}')).toBe(false);
+    expect(parseBackground('{"values":{"desktopBackground":true}}')).toBe(true);
+    expect(parseBackground('{"values":{}}')).toBeNull();
+    expect(parseBackground("nope")).toBeNull();
   });
 });

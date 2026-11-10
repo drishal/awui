@@ -6,7 +6,7 @@
 //   cd apps/desktop && npm run smoke        (needs a display, or Xvfb :99)
 import { _electron as electron } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -17,7 +17,10 @@ const appDir = path.resolve(here, "..");
 const repo = path.resolve(appDir, "../..");
 const electronPath = createRequire(import.meta.url)("electron");
 const binary = path.join(repo, "dist", "bin", `${process.platform}-${process.arch}`, process.platform === "win32" ? "awui.exe" : "awui");
-
+// Packaged shell exercises resources/awui and its sibling external runtime, not
+// only the checkout's top-level binary (which had hidden missing-runtime paths).
+const unpacked = path.join(appDir, "release", process.platform === "win32" ? "win-unpacked" : process.platform === "darwin" ? "mac" : "linux-unpacked");
+const packagedElectron = path.join(unpacked, process.platform === "win32" ? "awui-desktop.exe" : "awui-desktop");
 let failures = 0;
 function check(what, ok, detail = "") {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}${detail ? ` — ${detail}` : ""}`);
@@ -52,9 +55,10 @@ const down = async (port) => {
 
 /** Launch the app with a throwaway state folder, and hand back the window. `port` is the shell's hint; without it the app must find the server itself. */
 async function launch(stateDir, port = null) {
+  const packaged = process.platform === "linux" && (await import("node:fs").then((fs) => fs.existsSync(packagedElectron)));
   const app = await electron.launch({
-    executablePath: electronPath,
-    args: [appDir, "--no-sandbox", "--disable-gpu"],
+    executablePath: packaged ? packagedElectron : electronPath,
+    args: packaged ? ["--no-sandbox", "--disable-gpu"] : [appDir, "--no-sandbox", "--disable-gpu"],
     cwd: appDir,
     env: {
       ...process.env,
@@ -66,11 +70,19 @@ async function launch(stateDir, port = null) {
       AWUI_HARNESSES: "fake",
     },
   });
+  // Watched from the start: Playwright disposes the process handle once the app exits.
+  const state = { exited: false };
+  app.process().once("exit", () => (state.exited = true));
   const page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  return { app, page, errors };
+  return { app, page, errors, state };
+}
+
+/** Close the window the way its close button does. */
+async function closeWindow(app) {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close()).catch(() => {});
 }
 
 /** Quit the way a person does — the app's own quit path, not a kill. */
@@ -117,6 +129,11 @@ async function main() {
   const started = await until(() => health(portA), 25_000);
   check("it started a server when none was running", started?.ok === true);
   await checkWindow(a.app, a.page, a.errors, portA);
+  // desktop_background is on by default: the close button hides the window, and the app and its server keep going.
+  await closeWindow(a.app);
+  const hidden = await until(() => a.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && !w.isVisible())), 5_000);
+  check("closing the window hid it to the tray", hidden === true);
+  check("a hidden window keeps the server it started", (await health(portA).catch(() => null))?.ok === true);
   await quit(a.app);
   const gone = await until(() => down(portA), 10_000);
   check("quitting stopped the server it started", gone === true);
@@ -126,8 +143,11 @@ async function main() {
   // Outside the e2e shard blocks (4791, 4801+2, 4811+2) so this can run beside the suite.
   const stateB = await mkdtemp(path.join(os.tmpdir(), "awui-desktop-b-"));
   const portB = 4822;
+  // This server says desktop_background: false, so closing the window quits the app.
+  const configB = await mkdtemp(path.join(os.tmpdir(), "awui-desktop-b-config-"));
+  await writeFile(path.join(configB, "config.yml"), "desktop_background: false\n");
   const server = spawn(binary, ["--port", String(portB)], {
-    env: { ...process.env, XDG_STATE_HOME: stateB, AWUI_CONFIG_DIR: "", AWUI_HARNESSES: "fake" },
+    env: { ...process.env, XDG_STATE_HOME: stateB, AWUI_CONFIG_DIR: configB, AWUI_HARNESSES: "fake" },
     stdio: "ignore",
   });
   try {
@@ -135,6 +155,9 @@ async function main() {
     check("a server answers before the app opens", up?.ok === true);
     const b = await launch(stateB, portB);
     await checkWindow(b.app, b.page, b.errors, portB);
+    await closeWindow(b.app);
+    const exited = await until(async () => b.state.exited, 10_000);
+    check("with desktop_background off, closing the window quit the app", exited === true);
     await quit(b.app);
     const still = await until(() => health(portB), 5_000);
     check("quitting left the server it attached to running", still?.ok === true);
@@ -142,6 +165,7 @@ async function main() {
     server.kill("SIGTERM");
     await until(() => down(portB), 10_000);
     await rm(stateB, { recursive: true, force: true });
+    await rm(configB, { recursive: true, force: true });
   }
 
   // 3. A server on a port outside the scanned range: the endpoint file it writes

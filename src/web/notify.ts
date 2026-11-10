@@ -21,6 +21,9 @@ const PAGE_POLL_MS = 10_000;
 
 const supported = () => typeof window !== "undefined" && "Notification" in window;
 
+/** Inside the awui desktop app, whose main process shows the server's notes natively (apps/desktop/src/main.ts). */
+const inDesktopApp = () => typeof navigator !== "undefined" && / Electron\//.test(navigator.userAgent);
+
 function keyBytes(b64url: string): Uint8Array<ArrayBuffer> {
   const raw = atob(b64url.replace(/-/g, "+").replace(/_/g, "/"));
   const bytes = new Uint8Array(new ArrayBuffer(raw.length));
@@ -138,7 +141,8 @@ export function useNotifications(enabled: boolean, onOpen: (note: PushNote) => v
   }, []);
 
   useEffect(() => {
-    if (state.mode !== "page") return;
+    // The desktop app shows these itself, even with its window hidden to the tray.
+    if (state.mode !== "page" || inDesktopApp()) return;
     let cursor: number | null = null;
     let stopped = false;
     const poll = async () => {

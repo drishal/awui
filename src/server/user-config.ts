@@ -59,6 +59,8 @@ const schema = z
     autocollapse_sidebar: z.boolean().optional(),
     /** Show the bar under the conversation; on unless false. */
     show_status_bar: z.boolean().optional(),
+    /** The desktop app keeps running in the tray when its window closes; on unless false. */
+    desktop_background: z.boolean().optional(),
     /** Shared chat text size (a scale on the 14.5px base); null when unset. */
     text_scale: z.number().min(0.5).max(2).optional(),
     /** Shared conversation width: comfortable (960px), wide (1400px), or full. */

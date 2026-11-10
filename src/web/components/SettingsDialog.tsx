@@ -103,6 +103,7 @@ interface Draft {
   autocollapseSidebar: boolean;
   showStatusBar: boolean;
   herdr: boolean;
+  desktopBackground: boolean;
 }
 
 function draftOf(v: ServerSettingsValues): Draft {
@@ -123,6 +124,7 @@ function draftOf(v: ServerSettingsValues): Draft {
     autocollapseSidebar: v.autocollapseSidebar,
     showStatusBar: v.showStatusBar,
     herdr: v.herdr,
+    desktopBackground: v.desktopBackground,
   };
 }
 
@@ -152,6 +154,7 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   if (d.autocollapseSidebar !== v.autocollapseSidebar) p.autocollapseSidebar = d.autocollapseSidebar;
   if (d.showStatusBar !== v.showStatusBar) p.showStatusBar = d.showStatusBar;
   if (d.herdr !== v.herdr) p.herdr = d.herdr;
+  if (d.desktopBackground !== v.desktopBackground) p.desktopBackground = d.desktopBackground;
   return p;
 }
 
@@ -482,6 +485,19 @@ export function SettingsDialog({
               </FormRow>
               <FormRow label="Work with herdr" desc="Mark the sessions open in its panes, and let atui in a pane report its chats." toggle>
                 <Switch label="Work with herdr" checked={draft.herdr} disabled={field("herdr")} onChange={(herdr) => update({ herdr })} />
+              </FormRow>
+            </div>
+          </section>
+
+          <section className="form-section" aria-labelledby="settings-desktop">
+            <h3 id="settings-desktop">Desktop app</h3>
+            <div className="form-card">
+              <FormRow
+                label="Keep running in the background"
+                desc="Closing the window hides it to the tray, so finished runs and approvals still notify you. Quit from the tray or with Ctrl+Q. Off: closing the window quits the app."
+                toggle
+              >
+                <Switch label="Keep running in the background" checked={draft.desktopBackground} disabled={!editable} onChange={(desktopBackground) => update({ desktopBackground })} />
               </FormRow>
             </div>
           </section>

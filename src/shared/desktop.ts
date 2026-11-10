@@ -112,7 +112,14 @@ export function planLaunch(probes: Probe[]): Launch {
 }
 
 /** What a menu item, a tray item, or an `awui://` link opens. */
-export type Target = { kind: "home" } | { kind: "new" } | { kind: "sessions" } | { kind: "prompt"; text: string };
+export type Target =
+  | { kind: "home" }
+  | { kind: "new" }
+  | { kind: "sessions" }
+  | { kind: "prompt"; text: string }
+  /** A notification's chat or room. Never made from an `awui://` link: only the app's own notes open these. */
+  | { kind: "chat"; chatId: string }
+  | { kind: "room"; roomId: string };
 
 /**
  * The page a target opens, in the query grammar the web app already reads
@@ -129,6 +136,59 @@ export function targetUrl(base: string, target: Target): string {
       return `${base}/?sessions=1`;
     case "prompt":
       return `${base}/?prompt=${encodeURIComponent(target.text)}`;
+    // The hashes the service worker opens for a clicked note (public/sw.js).
+    case "chat":
+      return `${base}/#chat=${encodeURIComponent(target.chatId)}`;
+    case "room":
+      return `${base}/#room=${encodeURIComponent(target.roomId)}`;
+  }
+}
+
+/** The fields of a server note (protocol.ts PushNote) the desktop shows and opens. */
+export interface DesktopNote {
+  id: string;
+  kind: string;
+  chatId: string;
+  roomId?: string;
+  title: string;
+  body: string;
+}
+
+/** `GET /api/notifications`'s answer, checked field by field: the shell trusts no shape it did not see. */
+export function parseNotes(text: string): { notes: DesktopNote[]; now: number } | null {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof doc !== "object" || doc === null) return null;
+  const { notes, now } = doc as { notes?: unknown; now?: unknown };
+  if (!Array.isArray(notes) || typeof now !== "number") return null;
+  const out: DesktopNote[] = [];
+  for (const n of notes) {
+    if (typeof n !== "object" || n === null) continue;
+    const { id, kind, chatId, roomId, title, body } = n as Record<string, unknown>;
+    if (typeof id !== "string" || typeof kind !== "string" || typeof chatId !== "string" || typeof title !== "string" || typeof body !== "string") continue;
+    out.push({ id, kind, chatId, ...(typeof roomId === "string" && roomId ? { roomId } : {}), title: title.slice(0, 200), body: body.slice(0, 500) });
+  }
+  return { notes: out, now };
+}
+
+/** Where clicking a note goes: its room, else its chat, else just the window. */
+export function noteTarget(note: DesktopNote): Target | null {
+  if (note.roomId) return { kind: "room", roomId: note.roomId };
+  if (note.chatId) return { kind: "chat", chatId: note.chatId };
+  return null;
+}
+
+/** `GET /api/settings`'s `desktopBackground`; null when the answer does not say. */
+export function parseBackground(text: string): boolean | null {
+  try {
+    const value = (JSON.parse(text) as { values?: { desktopBackground?: unknown } }).values?.desktopBackground;
+    return typeof value === "boolean" ? value : null;
+  } catch {
+    return null;
   }
 }
 

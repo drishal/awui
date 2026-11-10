@@ -11,6 +11,14 @@ plumbing:
 
 - a window that survives a reload, with external links opened in your browser;
 - a tray (Open, New chat, Sessions, Quit);
+- running in the background: closing the window hides it to the tray (Settings →
+  Desktop app, `desktop_background` in config.yml, on by default) and the app
+  keeps going. Quit from the tray or with `Ctrl+Q`; with the setting off, closing
+  the window quits. On a desktop with no tray, launching the app again brings
+  the hidden window back;
+- native notifications while the window is hidden or out of focus — a finished
+  run, an error, an approval — read from the server's `/api/notifications`;
+  clicking one opens that chat or room;
 - no menu bar over the window — the window is the app. The menu still exists for
   its accelerators (`Cmd/Ctrl+N`, `Cmd/Ctrl+Shift+O`, `Cmd/Ctrl+R`, zoom,
   fullscreen) and Alt reveals it on Linux and Windows; macOS keeps its usual
@@ -30,7 +38,8 @@ PATH). Attaching always wins over a free port, because two servers over one stat
 folder would both hold the same session files.
 
 Quitting stops a server this app started and **never** touches one it attached
-to — a systemd unit keeps running, as it would when a browser tab closes.
+to — a systemd unit keeps running, as it would when a browser tab closes. Hiding
+the window to the tray is not quitting: a server it started keeps running too.
 
 ## Run it
 
@@ -56,6 +65,13 @@ returns.
 A binary that carries the app extracts it into `$XDG_STATE_HOME/awui/app/<version>/`
 once, then runs it from there; that binary is ~257 MB instead of ~100 MB.
 
+A second `awui desktop` sends an activation signal to the existing app instead of
+spawning another Electron process. Linux serializes cold starts until the native
+PID owner is published, then reuses it; macOS and Windows use Electron's native
+handoff. Repeat activation restores/focuses without reloading the current chat.
+These changes do not affect an older Electron app already running, so quit and
+relaunch it after rebuilding. The separate awui server and its runs outlive it.
+
 From the package itself:
 
 ```bash
@@ -75,6 +91,7 @@ once — it downloads the runtime for this platform.
 
 ```bash
 npm run smoke     # needs a display, or Xvfb: DISPLAY=:99 npm run smoke
+npm test          # compile, then repeated real desktop-child spawn/activation checks
 ```
 
 Playwright drives the real Electron binary and checks the whole contract: a
@@ -94,12 +111,17 @@ From the repo root, `npm run build:desktop --electron` runs all of it — the
 server build, this package step (with `resources/awui` the binary it just
 built), and the append of the resulting AppImage to the CLI's binary — so a
 change under `apps/desktop/src` reaches `awui desktop` in one command. Plain
-`npm run build:desktop` skips the package step and re-embeds whatever AppImage
-is already in `release/`.
+`npm run build:desktop` checks the shell-source/package fingerprint recorded with
+an existing AppImage. It repackages when those changed, and otherwise reuses the
+matching artifact. If necessary it installs the pinned toolchain automatically.
+No first-time seed AppImage is required. `--electron` forces a fresh shell build
+even when the recorded source still matches.
 
 `stage:bin` is what makes the app self-contained; without it you get the *light*
-build, which attaches to an awui that is already installed. Artifacts land in
-`release/`.
+build, which attaches to an awui that is already installed. The sibling
+`resources/node_modules/playwright-core` is copied literally by `extraFiles`
+into the packaged resource directory, not treated as Electron's own dependency.
+Artifacts land in `release/`.
 
 The `.deb` leg is off by default: electron-builder's fpm does not run on NixOS.
 `npx electron-builder --linux deb` builds one where fpm works.
@@ -116,5 +138,6 @@ recommended Linux route — an AppImage is not).
 | `src/main.ts` | The whole shell: attach-or-start, window, tray, menu, links, quit. |
 | `../../src/shared/desktop.ts` | What it decides without a window (health, ports, URLs, title count) — pure, unit-tested. |
 | `scripts/smoke.mjs` | The Playwright check above. |
-| `scripts/stage-binary.mjs` | Copies the platform binary into `resources/` for packaging. |
+| `scripts/stage-binary.mjs` | Atomically stages the bare embedded server and its sibling `playwright-core` runtime. |
+| `scripts/check-packaged.mjs` | Starts that resource-external packaged server from an unrelated working directory; catches missing external runtime paths before packaging. |
 | `electron-builder.yml` | Targets, icons, the `awui://` scheme, the Linux `.desktop` entry. |

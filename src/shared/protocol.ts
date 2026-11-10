@@ -1203,6 +1203,8 @@ export interface ServerSettingsValues {
   showStatusBar: boolean;
   /** Work with herdr: mark the sessions open in its panes, and let atui report to them. */
   herdr: boolean;
+  /** The desktop app: closing its window hides it to the tray (notes keep coming) instead of quitting. */
+  desktopBackground: boolean;
 }
 
 /** Settings that take effect only when the server restarts. */
@@ -1241,6 +1243,7 @@ export const settingsPatchSchema = z
     autocollapseSidebar: z.boolean().optional(),
     showStatusBar: z.boolean().optional(),
     herdr: z.boolean().optional(),
+    desktopBackground: z.boolean().optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>;

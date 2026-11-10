@@ -3,18 +3,20 @@
 // loads the same bundle a browser does, with no preload and no Node in the
 // renderer, so awui's security model (loopback Host, loopback peer, no proxy
 // headers) is exactly what it is in a tab. What it adds is desktop plumbing: a
-// tray, a menu, awui:// links, and a server it can start when none is running.
+// tray it can keep running in, native notifications, a menu, awui:// links, and
+// a server it can start when none is running.
 //
 // It never starts a second server beside one that is already up: two processes
 // over one state folder would both hold the same session files (AGENTS.md rule
 // 2), so attaching beats any free port (src/shared/desktop.ts, planLaunch).
 // Quitting stops a server this app started and never touches one it attached to.
-import { app, BrowserWindow, Menu, Tray, desktopCapturer, dialog, nativeImage, session, shell, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, Menu, Notification, Tray, desktopCapturer, dialog, nativeImage, session, shell, type MenuItemConstructorOptions } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DEFAULT_PORT, ENDPOINT_FILE, expandHome, healthUrl, parseEndpoint, parseHealth, planLaunch, portsFrom, targetFromLink, targetUrl, titleCount, type Endpoint, type Health, type Probe, type Target } from "../../../src/shared/desktop.js";
+import { drainActivationRequests, publishDesktopOwner } from "./activation.js";
+import { DEFAULT_PORT, ENDPOINT_FILE, expandHome, healthUrl, noteTarget, parseBackground, parseEndpoint, parseHealth, parseNotes, planLaunch, portsFrom, targetFromLink, targetUrl, titleCount, type DesktopNote, type Endpoint, type Health, type Probe, type Target } from "../../../src/shared/desktop.js";
 
 /** Where a packaged app keeps the binary electron-builder put beside it. */
 const BIN_NAME = process.platform === "win32" ? "awui.exe" : "awui";
@@ -22,6 +24,10 @@ const BIN_NAME = process.platform === "win32" ? "awui.exe" : "awui";
 const START_TIMEOUT_MS = 20_000;
 /** The last lines a child printed, for the failure dialog. */
 const LOG_LINES = 60;
+/** How often the app asks the server for new notes (a local, cheap read). */
+const NOTES_POLL_MS = 5_000;
+/** Notes shown from one poll at most; a burst past it is old news by the time it is read. */
+const NOTES_PER_POLL = 5;
 
 const log: string[] = [];
 function remember(text: string): void {
@@ -266,13 +272,13 @@ function buildMenu(open: (target: Target) => void, reload: () => void): Menu {
   return Menu.buildFromTemplate(items);
 }
 
-/** The tray: the app's state at a glance, and a way back in. */
-function createTray(win: BrowserWindow, open: (target: Target) => void): Tray {
+/** The tray: the app's state at a glance, and a way back in (to a window hidden there, too). */
+function createTray(open: (target: Target | null) => void): Tray {
   const tray = new Tray(nativeImage.createFromPath(path.join(appRoot(), "assets", "icon.png")));
   tray.setToolTip("awui");
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Open awui", click: () => { win.show(); win.focus(); } },
+      { label: "Open awui", click: () => open(null) },
       { type: "separator" },
       { label: "New chat", click: () => open({ kind: "new" }) },
       { label: "Sessions", click: () => open({ kind: "sessions" }) },
@@ -280,7 +286,7 @@ function createTray(win: BrowserWindow, open: (target: Target) => void): Tray {
       { role: "quit" },
     ]),
   );
-  tray.on("click", () => { win.show(); win.focus(); });
+  tray.on("click", () => open(null));
   return tray;
 }
 
@@ -316,11 +322,35 @@ async function main(): Promise<void> {
     else queuedLinks.push(target);
   });
 
-  // One app per machine: a second launch focuses the first, and its link (if any) opens there.
-  if (!app.requestSingleInstanceLock()) {
-    app.quit();
+  // CLI launches check the published POSIX PID *before* spawning Electron, so
+  // an AppImage wrapper cannot create a second window or renderer for repeats.
+  // Native locking remains the fallback for direct desktop launches and all
+  // Windows/macOS behavior; SIGUSR1 is used only with this live POSIX owner.
+  const nativeInstance = !app.requestSingleInstanceLock();
+  if (nativeInstance) {
+    app.exit(0);
     return;
   }
+  let activate: ((target: Target | null) => void) | null = null;
+  let releaseOwner: (() => Promise<void>) | null = null;
+  if (process.platform === "linux") {
+    const profile = path.join(stateFolder(), "desktop");
+    releaseOwner = await publishDesktopOwner(profile);
+    // The only request: return focus to this app's existing window. Process
+    // identity is explicitly checked before each signal on the launcher side.
+    process.on("SIGUSR1", () => void drainActivationRequests(profile, (link) => {
+      const target = link ? targetFromLink(link) : null;
+      activate?.(link ? (target ?? { kind: "home" }) : null);
+    }));
+  }
+  let quitting = false;
+  app.on("will-quit", async (event) => {
+    if (quitting || !releaseOwner) return;
+    event.preventDefault();
+    quitting = true;
+    if (releaseOwner) await releaseOwner();
+    app.quit();
+  });
 
   await app.whenReady();
 
@@ -361,15 +391,39 @@ async function main(): Promise<void> {
   let win: BrowserWindow | null = null;
   let tray: Tray | null = null;
 
-  const open = (target: Target): void => {
+  // Only a real quit (the tray, Ctrl+Q, a signal) lets the window close; with
+  // desktop_background on, the close button hides it and the app keeps running.
+  let exiting = false;
+  app.on("before-quit", () => {
+    exiting = true;
+  });
+  // config.yml's desktop_background, asked when the window closes so a change in
+  // Settings applies at once; the last answer stands when the server cannot say.
+  let background = true;
+  const readBackground = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${server.base}/api/settings`, { signal: AbortSignal.timeout(1500), redirect: "error" });
+      const value = res.ok ? parseBackground(await res.text()) : null;
+      if (value !== null) background = value;
+    } catch {
+      // keep the last answer
+    }
+    return background;
+  };
+  void readBackground();
+
+  const open = (target: Target | null): void => {
     if (!win || win.isDestroyed()) {
-      win = createWindow(server, target);
+      win = createWindow(server, target ?? { kind: "home" });
       wire(win);
       return;
     }
+    win.restore();
     win.show();
     win.focus();
-    void win.loadURL(targetUrl(server.base, target));
+    // An ordinary repeat shortcut activates this app's current chat. Only a
+    // specific URL should navigate away from it (new, sessions, a targeted link).
+    if (target) void win.loadURL(targetUrl(server.base, target));
   };
 
   const wire = (window: BrowserWindow): void => {
@@ -379,14 +433,58 @@ async function main(): Promise<void> {
       if (count > 0 && !window.isFocused()) window.flashFrame(true);
       if (process.platform === "darwin") app.dock?.setBadge(count > 0 ? String(count) : "");
     });
+    window.on("close", (event) => {
+      if (exiting) return;
+      event.preventDefault();
+      void readBackground().then((keep) => {
+        if (window.isDestroyed()) return;
+        if (keep) window.hide();
+        else app.quit();
+      });
+    });
     window.on("closed", () => {
       win = null;
     });
   };
 
+  activate = open;
+  if (process.platform === "linux") await drainActivationRequests(path.join(stateFolder(), "desktop"), (link) => open(link ? (targetFromLink(link) ?? { kind: "home" }) : null));
   win = createWindow(server, { kind: "home" });
   wire(win);
-  tray = createTray(win, open);
+  tray = createTray(open);
+  // macOS: the dock icon brings back a window hidden by its close button.
+  app.on("activate", () => open(null));
+
+  // The server's notes (a finished run, an error, an approval) as native
+  // notifications while the window is hidden or not in front. The page leaves
+  // them to the app here (src/web/notify.ts), so one note is never shown twice.
+  const shown = new Set<Notification>();
+  const notify = (note: DesktopNote): void => {
+    const n = new Notification({ title: note.title || "awui", body: note.body, icon: path.join(appRoot(), "assets", "icon.png"), urgency: note.kind === "ask" ? "critical" : "normal" });
+    // Held until it closes: a collected Notification loses its click handler.
+    shown.add(n);
+    n.on("click", () => {
+      shown.delete(n);
+      open(noteTarget(note));
+    });
+    n.on("close", () => shown.delete(n));
+    n.show();
+  };
+  let cursor = Date.now();
+  const pollNotes = async (): Promise<void> => {
+    try {
+      const res = await fetch(`${server.base}/api/notifications?since=${cursor}`, { signal: AbortSignal.timeout(3000), redirect: "error" });
+      const answer = res.ok ? parseNotes(await res.text()) : null;
+      if (!answer) return;
+      cursor = answer.now;
+      const watching = win !== null && !win.isDestroyed() && win.isVisible() && win.isFocused();
+      if (watching || !Notification.isSupported()) return;
+      for (const note of answer.notes.slice(-NOTES_PER_POLL)) notify(note);
+    } catch {
+      // the server is restarting or busy: the next poll asks from the same cursor
+    }
+  };
+  setInterval(() => void pollNotes(), NOTES_POLL_MS);
   Menu.setApplicationMenu(buildMenu(open, () => win?.webContents.reload()));
 
   // A link that opened the app the first time, and one handed to a later launch.
@@ -405,9 +503,9 @@ async function main(): Promise<void> {
   for (const target of queuedLinks.splice(0)) open(target);
   if (app.isPackaged) app.setAsDefaultProtocolClient("awui");
 
-  // Closing the window quits, as a browser tab would: the tray is a shortcut, not
-  // a place to hide. A server this app started stops with it; an attached one is
-  // someone else's (systemd) and keeps running.
+  // With desktop_background off, closing the window quits, as a browser tab would.
+  // A server this app started stops with it; an attached one is someone else's
+  // (systemd) and keeps running.
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", () => stopOwned());
 }

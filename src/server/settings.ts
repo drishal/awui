@@ -92,6 +92,7 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
     autocollapseSidebar: c.autocollapse_sidebar ?? true,
     showStatusBar: c.show_status_bar ?? true,
     herdr: c.herdr ?? true,
+    desktopBackground: c.desktop_background ?? true,
   };
 }
 
@@ -188,6 +189,7 @@ export function writeSettings(ctx: SettingsContext, patch: SettingsPatch, who: R
   if (patch.autocollapseSidebar !== undefined) set(["autocollapse_sidebar"], patch.autocollapseSidebar);
   if (patch.showStatusBar !== undefined) set(["show_status_bar"], patch.showStatusBar);
   if (patch.herdr !== undefined) set(["herdr"], patch.herdr);
+  if (patch.desktopBackground !== undefined) set(["desktop_background"], patch.desktopBackground);
   const auth = doc.getIn(["auth"]) as { items?: unknown[] } | undefined;
   if (auth && Array.isArray(auth.items) && auth.items.length === 0) doc.deleteIn(["auth"]);
 

@@ -81,6 +81,21 @@ test.describe("shared look in config.yml", () => {
     expect(scale).toBe("1.22");
   });
 
+  test("the desktop app's background switch saves desktop_background to config.yml", async ({ page }) => {
+    const { base, configFile } = ctx as NonNullable<typeof ctx>;
+    await page.goto(`${base}/`);
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    const keep = settings.getByRole("switch", { name: "Keep running in the background" });
+    await expect(keep).toBeChecked();
+    await keep.click();
+    await settings.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
+    expect(readFileSync(configFile, "utf8")).toContain("desktop_background: false");
+    await expect(keep).not.toBeChecked();
+  });
+
   test("density compact sets the attribute, tightens a session row, and comes back on reload", async ({ page }) => {
     const { base, configFile } = ctx as NonNullable<typeof ctx>;
     // One session for the sidebar to draw, made through the API (this server has its own project folder).

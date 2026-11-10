@@ -49,6 +49,11 @@ autocollapse_sidebar: true
 # version. false hides it (phones hide it anyway).
 show_status_bar: true
 
+# The desktop app: closing its window hides it to the tray, so finished runs
+# and approvals still notify you; quit from the tray or with Ctrl+Q. false
+# makes closing the window quit the app. Read each time the window closes.
+desktop_background: true
+
 # Work with herdr (herdr.dev) when it runs: mark the sessions open in its
 # panes, and let atui in a herdr pane report its chats there. Applies on the
 # next page load (atui on its next start).
