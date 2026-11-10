@@ -350,6 +350,11 @@
   font-weight: 600;
 }
 
+/* Under the Needs you heading the word says nothing the heading does not, and it took the title's room. */
+.needs-group .session-asking {
+  display: none;
+}
+
 /* A session a herdr pane runs (not this server): its dot follows what herdr says the agent does. */
 /* The herdr marker is a diamond, not a word: the row's title keeps the width,
    and the tooltip (and the label) name the pane. */
