@@ -43,9 +43,9 @@
 }
 
 .sb-path {
-  max-width: 48ch;
-  direction: rtl;
-  text-align: left;
+  max-width: 32ch;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
 }
 
 .sb-spacer {

@@ -55,9 +55,14 @@ export function StatusBar({
       ) : chat && harnessName ? (
         <span className="sb-item">{dotted([harnessName, model, chat.config.thinkingLevel])}</span>
       ) : null}
-      {room ? <span className="sb-item sb-path" title={room.workspace}>{room.workspace}</span> : chat ? <span className="sb-item sb-path" title={chat.workspace.path}>{chat.workspace.path}</span> : null}
+      {room ? <span className="sb-item sb-path" title={room.workspace}>{folderName(room.workspace)}</span> : chat ? <span className="sb-item sb-path" title={chat.workspace.path}>{folderName(chat.workspace.path)}</span> : null}
       <span className="sb-spacer" />
       <span className="sb-item">v{version}</span>
     </footer>
   );
+}
+
+/** The project's folder name: the full path is a long, mostly repeated string in a bar this small, so it is the hover text. */
+function folderName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
