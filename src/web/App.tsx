@@ -488,6 +488,8 @@ export function App() {
 
   const changes = useMemo(() => (chat ? collectChanges(chat.items, chat.workspace.path) : []), [chat?.items, chat?.workspace.path]);
   const changedFiles = changes.length;
+  /** The header's chat menu is shown (a live chat, not a room); phones fold the header's tools into it. */
+  const chatMenu = chat !== null && !room.roomId && chat.status !== "disposed";
 
   // Runs the shown chat finished: the limits meter re-reads after each.
   const [settledRuns, setSettledRuns] = useState(0);
@@ -1937,8 +1939,9 @@ export function App() {
               <IconEdit size={14} /> <span className="review-label">Review</span> <span className="review-count">{changedFiles}</span>
             </button>
           ) : null}
-          {workspace && !room.roomId ? <button type="button" className="icon-btn" aria-label="Terminal" title="Open a project terminal" onClick={() => openTool("terminal")}><IconTerminal size={16} /></button> : null}
-          {workspace && !room.roomId ? <button type="button" className="icon-btn" aria-label="GitHub and pull requests" title="Push or create a pull request" onClick={() => openTool("github")}><IconBranch size={16} /></button> : null}
+          {/* On a phone these two fold into the chat menu when there is one (header-tool), so the title keeps its room. */}
+          {workspace && !room.roomId ? <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="Terminal" title="Open a project terminal" onClick={() => openTool("terminal")}><IconTerminal size={16} /></button> : null}
+          {workspace && !room.roomId ? <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="GitHub and pull requests" title="Push or create a pull request" onClick={() => openTool("github")}><IconBranch size={16} /></button> : null}
           {wide && !room.roomId && (chat || side) ? (
             <button
               type="button"
@@ -1954,7 +1957,7 @@ export function App() {
           <button type="button" className="icon-btn palette-open" aria-label="Commands" title={`Commands (${shortcutHint("palette")})`} onClick={() => setPaletteOpen(true)}>
             <IconSearch size={16} />
           </button>
-          {chat && !room.roomId && chat.status !== "disposed" ? (
+          {chatMenu ? (
             <div className="menu">
               <button type="button" className="icon-btn" aria-label="Chat actions" aria-expanded={menuOpen} aria-haspopup="menu" onClick={() => setMenuOpen((v) => !v)}>
                 <IconMore size={18} />
@@ -1996,6 +1999,34 @@ export function App() {
                         Search and commands
                       </button>
                     </li>
+                    {workspace ? (
+                      <>
+                        <li role="none" className="menu-phone-only">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuOpen(false);
+                              openTool("terminal");
+                            }}
+                          >
+                            Terminal
+                          </button>
+                        </li>
+                        <li role="none" className="menu-phone-only">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuOpen(false);
+                              openTool("github");
+                            }}
+                          >
+                            GitHub and pull requests
+                          </button>
+                        </li>
+                      </>
+                    ) : null}
                     {chat.checkpoints.length > 0 ? (
                       <li role="none">
                         <button

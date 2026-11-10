@@ -150,9 +150,10 @@ body {
     background: var(--hairline-strong);
   }
 
-  /* The tab strip moves into the drawer; Search into the chat menu. */
+  /* The tab strip moves into the drawer; Search, Terminal and GitHub into the chat menu. */
   .main > .tab-strip,
-  .chat-header .palette-open {
+  .chat-header .palette-open,
+  .chat-header .header-tool {
     display: none;
   }
 
