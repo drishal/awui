@@ -7,7 +7,7 @@
 // leaves a binary that carries this very app, and packaging that would nest the
 // app inside itself (a 169 MB AppImage becoming 322 MB, and so on). The server
 // the app starts never needs the payload — only the CLI does.
-import { copyFile, mkdir, open, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,10 +48,23 @@ async function bareLength(file) {
 await mkdir(path.dirname(to), { recursive: true });
 const bytes = await readFile(from);
 const bare = await bareLength(from);
-if (bare < bytes.length) {
-  await writeFile(to, bytes.subarray(0, bare));
-  console.log(`awui-desktop: staged ${from} → resources/${name} (desktop payload stripped, ${(bare / 1_048_576).toFixed(0)} MB)`);
-} else {
-  await copyFile(from, to);
-  console.log(`awui-desktop: staged ${from} → resources/${name}`);
-}
+await mkdir(path.dirname(to), { recursive: true });
+const content = bare < bytes.length ? bytes.subarray(0, bare) : bytes;
+// A foreground running app-server on Linux keeps its executable mapped, making
+// copyFile/truncate unportable across package rebuilds. Rename the finished copy
+// over its inode instead; existing children retain it, later starts use the new one.
+const temporary = `${to}.${process.pid}.tmp`;
+await writeFile(temporary, content, { mode: 0o755 });
+await open(temporary, "r").then((handle) => handle.sync().finally(() => handle.close()));
+await rename(temporary, to);
+console.log(`awui-desktop: staged ${from} → resources/${name}${bare < bytes.length ? ` (payload stripped, ${(bare / 1_048_576).toFixed(0)} MB)` : ""}`);
+
+// src/server/binary-runtime.ts resolves CommonJS providers beside this exact
+// server executable. The root build's sibling node_modules is not inherited by
+// the unpacked Electron app, nor by any AppImage extracted outside this repo.
+const provider = path.join(repo, "node_modules", "playwright-core");
+if (!existsSync(provider)) throw new Error("awui-desktop: required playwright-core provider is missing; run npm ci at the repository root");
+await cp(provider, path.join(appDir, "resources", "node_modules", "playwright-core"), {
+  recursive: true,
+  filter: (source) => !source.split(path.sep).includes("vite"),
+});

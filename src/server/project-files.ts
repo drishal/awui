@@ -11,7 +11,7 @@ import { git } from "./git.js";
 const MAX_FILES = 50_000;
 const WALK_DEPTH = 8;
 const CACHE_MS = 15_000;
-const SKIP = new Set(["node_modules", "dist", "build", "target", ".git", ".direnv", ".devenv", ".venv", "__pycache__", ".next", ".cache"]);
+const SKIP = new Set(["node_modules", "dist", "build", "target", ".git", ".direnv", ".devenv", ".venv", "__pycache__", ".next", ".cache", ".awui"]);
 
 const cache = new Map<string, { at: number; files: Promise<string[]> }>();
 
@@ -36,7 +36,9 @@ async function walk(root: string): Promise<string[]> {
 async function load(root: string): Promise<string[]> {
   try {
     const listed = await git(["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, timeoutMs: 10_000 });
-    const files = [...new Set(listed.split("\0").filter(Boolean))];
+    // awui's managed-worktree records are control data, not project files an
+    // agent should read by default; other servers' ignored .awui dirs stay out.
+    const files = [...new Set(listed.split("\0").filter(Boolean))].filter((file) => file !== ".awui" && !file.startsWith(".awui/"));
     return files.slice(0, MAX_FILES);
   } catch {
     return walk(root);

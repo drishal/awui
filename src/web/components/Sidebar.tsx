@@ -656,7 +656,7 @@ function ProjectGroupView({
           type="button"
           className="icon-btn project-new"
           aria-label={`New chat in ${workspace.name}`}
-          title={`New chat in ${workspace.name}`}
+          title={`New chat in ${workspace.name} in a new tab`}
           disabled={!canStartChat}
           onClick={() => onNewChat(workspace)}
         >
@@ -763,7 +763,7 @@ function FocusedHeader({
         <span className="group-count">{total}</span>
         <IconChevronDown size={12} className="group-chevron" />
       </button>
-      <button type="button" className="icon-btn project-new" aria-label={`New chat in ${workspace.name}`} title={`New chat in ${workspace.name}`} disabled={!canStartChat} onClick={() => onNewChat(workspace)}>
+      <button type="button" className="icon-btn project-new" aria-label={`New chat in ${workspace.name}`} title={`New chat in ${workspace.name} in a new tab`} disabled={!canStartChat} onClick={() => onNewChat(workspace)}>
         <IconPlus size={13} />
       </button>
       {showMenu ? (

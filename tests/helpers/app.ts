@@ -16,6 +16,7 @@ import { Security } from "../../src/server/security.js";
 import type { InteractionRequest, PushNote } from "../../src/shared/protocol.js";
 import { ThemeStore } from "../../src/server/theme.js";
 import { Workspaces } from "../../src/server/workspaces.js";
+import { TerminalManager } from "../../src/server/terminal.js";
 
 export const USER = "alice";
 export const PASS = "correct horse battery";
@@ -62,6 +63,8 @@ export async function makeTestApp(options: {
   withSettings?: boolean;
   /** Keep file checkpoints (in this test's own folder). */
   withCheckpoints?: boolean;
+  /** Start tests needing a real PTY lifecycle; shuts down in close(). */
+  withTerminal?: boolean;
   /** Herdr's panes (a stand-in socket's); none otherwise, whatever herdr runs on this machine. */
   herdr?: Herdr;
 } = {}): Promise<TestApp> {
@@ -87,6 +90,7 @@ export async function makeTestApp(options: {
   });
   const manager = new ChatManager();
   const stateDir = path.join(root, ".state");
+  const terminals = options.withTerminal ? new TerminalManager() : undefined;
   const boardNotes: TestApp["boardNotes"] = [];
   const boards = new RoomManager({
     registry,
@@ -112,6 +116,7 @@ export async function makeTestApp(options: {
     webDir: null,
     heartbeatMs: options.heartbeatMs ?? 20_000,
     stateDir,
+    ...(terminals ? { terminals } : {}),
     boards,
     ...(options.herdr ? { herdr: options.herdr } : {}),
     ...(options.withCheckpoints ? { checkpointsDir: path.join(root, ".state", "checkpoints") } : {}),
@@ -134,6 +139,7 @@ export async function makeTestApp(options: {
   const port = (server.address() as AddressInfo).port;
   manager.render = { baseUrl: `http://127.0.0.1:${port}` };
   const close = async () => {
+    terminals?.shutdown();
     await boards.shutdown();
     await manager.shutdown();
     server.closeAllConnections();
@@ -155,12 +161,13 @@ export interface SseMessage {
 }
 
 /** Minimal SSE reader for tests. */
-export function openSse(t: TestApp, chatId: string, cookie: string, lastEventId?: number) {
+export function openSse(t: TestApp, chatId: string, cookie: string, lastEventId?: number, resource?: string) {
   const messages: SseMessage[] = [];
+  const url = resource ?? `/api/chats/${chatId}/events`;
   let ended = false;
   const query = lastEventId !== undefined ? `?lastEventId=${lastEventId}` : "";
   const req = http.get(
-    { host: "127.0.0.1", port: t.port, path: `/api/chats/${chatId}/events${query}`, headers: { cookie } },
+    { host: "127.0.0.1", port: t.port, path: `${url}${query}`, headers: { cookie } },
     (res) => {
       let buf = "";
       res.setEncoding("utf8");

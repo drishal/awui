@@ -1,13 +1,107 @@
 /* ---- a chat beside the main one ---------------------------------------------------------- */
 
 .chat-split {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
 }
 
+.chat-split.is-split {
+  grid-template-columns: var(--main-split-width, minmax(0, 1fr)) 9px minmax(0, 1fr);
+}
+
+.chat-split.is-split.has-work-panel {
+  grid-template-columns: var(--main-split-width, minmax(0, 1fr)) 9px minmax(360px, 1.6fr) minmax(320px, 1fr);
+  transition: grid-template-columns 0.16s var(--ease-out);
+}
+
+.chat-split.is-split.has-work-panel.is-dragging {
+  transition: none;
+}
+
 .chat-split > .chat-body {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.split-resize {
+  position: relative;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  outline-offset: 2px;
+}
+
+.split-resize::before {
+  content: "";
+  position: absolute;
+  inset: 0 -16px;
+}
+
+@media (pointer: coarse) {
+  .split-resize::before {
+    inset: 0 -23px;
+  }
+}
+
+.split-resize::after {
+  content: "";
+  position: absolute;
+  inset: 0 4px;
+  background: var(--hairline-strong);
+}
+
+.split-resize:hover::after,
+.split-resize:focus-visible::after,
+.chat-split.is-dragging .split-resize::after {
+  background: var(--accent);
+}
+
+.chat-split.has-work-panel:not(.is-split) {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 46%);
+}
+
+.split-resize {
+  grid-column: 2;
+}
+
+.work-panel-slot {
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--hairline);
+}
+
+.chat-split.has-work-panel.is-split .work-panel-slot {
+  grid-column: 3;
+}
+
+.chat-split.has-work-panel.is-split .side-pane {
+  grid-column: 4;
+}
+
+.work-panel-slot > .terminal-window {
+  width: 100%;
+  min-width: 320px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-split.has-work-panel {
+    transition: none;
+  }
+}
+/* A work panel has its own surface, not an unbounded overlay over the conversation. */
+.chat-split.has-work-panel > .chat-body,
+.chat-split.has-work-panel > .side-pane {
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  /* A phone's terminal is already a bottom sheet; GitHub keeps a native dialog. */
+  .chat-split.is-github.has-work-panel > .chat-body {
+    visibility: hidden;
+  }
 }
 
 .split-toggle.is-on {

@@ -17,10 +17,9 @@ import {
   useRooms,
 } from "./rooms.js";
 import { oldestSeq } from "./room-state.js";
-import { RoomView } from "./components/RoomView.js";
 import { BotEditor } from "./components/BotEditor.js";
 import { RoomEditor } from "./components/RoomEditor.js";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type {
   SessionMarkState,
   ChatSnapshot,
@@ -49,7 +48,8 @@ import { chatIdFromHash, CONN_BANNER, setHash, STATUS_LABEL, useChatStream } fro
 import { appCommand } from "./commands.js";
 import { mergeHarnesses, useHarnessRecheck } from "./harness-status.js";
 import { CommandPalette } from "./components/CommandPalette.js";
-import { Composer } from "./components/Composer.js";
+import { Dialog } from "./components/Dialog.js";
+import { Composer, releasePastes } from "./components/Composer.js";
 import { Conversation } from "./components/Conversation.js";
 import { UpdateBanner } from "./components/UpdateBanner.js";
 import { LimitsSummary } from "./components/LimitsMeter.js";
@@ -67,9 +67,7 @@ import { ShortcutSheet } from "./components/ShortcutSheet.js";
 import { ChatSearch } from "./components/ChatSearch.js";
 import { FileViewer } from "./components/FileViewer.js";
 import { SavedPromptsDialog } from "./components/SavedPromptsDialog.js";
-import { UsageDialog } from "./components/UsageDialog.js";
 import { SidePane } from "./components/SidePane.js";
-import { TimelineDialog } from "./components/TimelineDialog.js";
 import { useManagePrompts } from "./saved-prompts.js";
 import { setPreviewWorkspace, useFileRequests, type FileRequest } from "./file-bus.js";
 import { isShortcutsKey, shortcutHint } from "./shortcuts.js";
@@ -85,9 +83,7 @@ import { HerdrDialog } from "./components/HerdrDialog.js";
 import { collectChanges } from "./review.js";
 import { copyResumeCommand, useResumeCommand } from "./resume-command.js";
 import { chatMarkdown, downloadText, exportFileName } from "./export.js";
-import { RoutinesDialog } from "./components/RoutinesDialog.js";
-import { SettingsDialog } from "./components/SettingsDialog.js";
-import { IconEdit, IconGauge, IconMenu, IconMore, IconSearch, IconSidebar, IconSplit } from "./icons.js";
+import { IconEdit, IconGauge, IconMenu, IconMore, IconSearch, IconSidebar, IconSplit, IconTerminal, IconBranch } from "./icons.js";
 import { applyHarnessAccents, harnessColor } from "./harness-colors.js";
 import { moveTab, pinnedCount, setPinned } from "./tab-order.js";
 import { closeTab, draftTab, findTab, loadTabs, markUnread, placeChat, placeTab, runningChats, saveTabs, syncActive, type Tab, type TabState } from "./tabs.js";
@@ -96,12 +92,29 @@ import { useNotifications } from "./notify.js";
 import { isPaletteKey, type PaletteItem } from "./palette.js";
 import { isBusy, wakeLabel } from "./session-groups.js";
 import { pendingImage, sentAttachments, type PendingImage } from "./images.js";
+import { useSplitLayout } from "./split-layout.js";
 import { useSessions } from "./sessions.js";
 import { useSidebarLayout } from "./sidebar-layout.js";
 import { forgetWorkspace, load, rememberWorkspace, save } from "./storage.js";
 import { themeModeOf, useTheme } from "./theme.js";
 import { retryMode } from "./tool-retry.js";
 
+// Heavy auxiliary panels load on first use, keeping the chat/streaming hot path small.
+const SettingsDialog = lazy(() => import("./components/SettingsDialog.js").then((m) => ({ default: m.SettingsDialog })));
+const UsageDialog = lazy(() => import("./components/UsageDialog.js").then((m) => ({ default: m.UsageDialog })));
+const TimelineDialog = lazy(() => import("./components/TimelineDialog.js").then((m) => ({ default: m.TimelineDialog })));
+const RoutinesDialog = lazy(() => import("./components/RoutinesDialog.js").then((m) => ({ default: m.RoutinesDialog })));
+const RoomView = lazy(() => import("./components/RoomView.js").then((m) => ({ default: m.RoomView })));
+const WorktreePicker = lazy(() => import("./components/WorktreePicker.js").then((m) => ({ default: m.WorktreePicker })));
+const CompareDialog = lazy(() => import("./components/CompareDialog.js").then((m) => ({ default: m.CompareDialog })));
+const TerminalPanel = lazy(() => import("./components/TerminalPanel.js").then((m) => ({ default: m.TerminalPanel })));
+const GitHubPanel = lazy(() => import("./components/GitHubPanel.js").then((m) => ({ default: m.GitHubPanel })));
+
+// Panels on-demand: a desktop with a dozen idle tabs doesn't need code for every
+// project workflow unless someone actually opens one of these dialogs.
+function LazyPanel({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<Loader label="Opening…" />}>{children}</Suspense>;
+}
 export function App() {
   const { banner, setBanner, fail } = useBanner();
   const { themeInfo, initTheme, setThemeMode } = useTheme();
@@ -212,12 +225,19 @@ export function App() {
   /** Bumped when a folder is picked from the start screen: its box takes the focus again. */
   const [startFocus, setStartFocus] = useState(0);
 
+  const [worktreeOpen, setWorktreeOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [toolPanel, setToolPanel] = useState<null | "terminal" | "github">(null);
+  const [toolWorkspace, setToolWorkspace] = useState<WorkspaceInfo | null>(null);
+  const openTool = (kind: "terminal" | "github", ws = workspace) => { setToolWorkspace(ws); setToolPanel(kind); };
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [opening, setOpening] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [closingChat, setClosingChat] = useState<ChatState | null>(null);
+  const [closingBusy, setClosingBusy] = useState(false);
   const [pairOpen, setPairOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** A session open in a herdr pane, being opened here: the choice to make first. */
@@ -244,8 +264,15 @@ export function App() {
   const [timelineOpen, setTimelineOpen] = useState(false);
   /** A chat beside the main one (SidePane): what it starts on (null: its picker); `n` remounts it for a new one. */
   const [side, setSide] = useState<{ initial: ChatSnapshot | null; n: number } | null>(null);
+  // Main/side are positions, not distinct chat lifetimes. The side composer uses
+  // the same draft identity in either position; moving it must not remount or
+  // discard an unsent image/file attachment. Quotes still target main.
   // Two chats side by side need the room: below this the pane is not offered (and one open closes).
   const [wide, setWide] = useState(() => window.matchMedia(SPLIT_QUERY).matches);
+  const splitViewport = useRef<HTMLDivElement>(null);
+  const split = useSplitLayout(splitViewport, toolPanel === "terminal");
+  const mainDraft = useRef<(() => void) | null>(null);
+  const sideDraft = useRef<(() => void) | null>(null);
   useEffect(() => {
     const query = window.matchMedia(SPLIT_QUERY);
     const on = () => setWide(query.matches);
@@ -544,7 +571,7 @@ export function App() {
     }
   };
 
-  const openWorkspace = async (path: string) => {
+  const openWorkspace = async (path: string): Promise<boolean> => {
     setPickerError(null);
     try {
       const ws = await api<WorkspaceInfo>("/api/workspaces/open", { body: { path } });
@@ -556,9 +583,11 @@ export function App() {
         setDrawerOpen(false);
         setStartFocus((n) => n + 1);
       }
+      return true;
     } catch (e) {
       if (e instanceof ApiError && e.code === "missing_project") setRecent(forgetWorkspace(path));
       setPickerError(errorText(e));
+      return false;
     }
   };
 
@@ -627,7 +656,7 @@ export function App() {
    * (the start screen without a tab, a project's +). Kept here, so a create that lands
    * after the user switched tabs fills that same tab in from the background. */
   const startTabKey = useRef<string | null>(null);
-  /** A project's +: that project's folder on the start screen, with nothing started yet. */
+  /** A project's +: a fresh draft tab in that folder, preserving the shown chat. */
   const startIn = async (ws: WorkspaceInfo) => {
     try {
       await enterWorkspace(ws);
@@ -635,7 +664,7 @@ export function App() {
       fail(e);
       return;
     }
-    showStart();
+    newTab();
     setStartFocus((n) => n + 1);
   };
 
@@ -723,11 +752,14 @@ export function App() {
       return false;
     }
     const token = beginOpen(null);
+    // Start ownership belongs to this submission, not whichever view next consumes the shared draft key.
+    const originKey = startTabKey.current;
+    const startHarness = harnessId;
     setStartBusy(true);
     setBanner(null);
     try {
       const ws = await enterWorkspace(target);
-      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId, workspaceId: ws.id, ...(startModel ? { model: startModel } : {}), ...(startThinking ? { thinkingLevel: startThinking } : {}) } });
+      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId: startHarness, workspaceId: ws.id, ...(startModel ? { model: startModel } : {}), ...(startThinking ? { thinkingLevel: startThinking } : {}) } });
       // A create is never undone by the user going elsewhere while it ran (a tab
       // switch, another open): the chat keeps its tab and its prompt, landing in
       // the background below. startingRef already guarantees one create at a time,
@@ -743,7 +775,8 @@ export function App() {
       } catch (e) {
         // The chat exists but has no message: open it with the text as its draft, so the words are not lost.
         save(`draft.${snapshot.chatId}`, text);
-        showChat(snapshot);
+        if (token === nav.current) showChat(snapshot);
+        else setTabState((current) => placeChat(current, snapshot, { background: true, ...(originKey ? { forKey: originKey } : {}) }));
         fail(e);
         return false;
       }
@@ -755,7 +788,7 @@ export function App() {
         // The user went elsewhere while the harness spawned: the chat keeps its tab —
         // the draft that sent it, else a background one after the view — and does not
         // steal the screen or get dropped for the detour.
-        const from = startTabKey.current;
+        const from = originKey;
         // The create snapshot predates the message: read it back once the run has
         // taken it, so the background tab carries its title (and items) at once.
         const fresh = await api<ChatSnapshot>(`/api/chats/${snapshot.chatId}`).catch(() => snapshot);
@@ -822,10 +855,15 @@ export function App() {
       setChat(null);
       setHash(null);
       setBanner(null);
+      const draftWorkspace = overview.workspaces.find((w) => w.path === tab.workspacePath);
+      if (draftWorkspace) {
+        try { await enterWorkspace(draftWorkspace); } catch (error) { fail(error); }
+      } else {
+        fail(new Error("Choose that folder again to start the chat"));
+      }
       return;
     }
     const token = beginOpen(splashFor(tab));
-    setOpening(true);
     setBanner(null);
     try {
       if (tab.chatId) {
@@ -914,16 +952,42 @@ export function App() {
   };
 
   const closeTabAt = (index: number) => {
-    const before = tabsRef.current;
-    const closing = before.tabs[index];
+    const closing = tabsRef.current.tabs[index];
     if (!closing) return;
+    if (!closing.chatId) finishClosedTab(closing);
+    else if (closing.chatId === chat?.chatId) void closeChat(chat);
+    else void closeBackgroundTab(closing, closing.chatId);
+  };
+  // A background tab may have no cached state, so a busy one is fetched before
+  // the confirm dialog: a running turn is never stopped without asking.
+  const closeBackgroundTab = async (closing: Tab, chatId: string) => {
+    try {
+      const cached = tabCache.current.get(closing.key);
+      if (isBusy(cached?.status ?? tabStatus(closing))) {
+        const state = cached ?? (await api<ChatSnapshot>(`/api/chats/${chatId}`));
+        if (isBusy(state.status)) {
+          setClosingChat(state);
+          return;
+        }
+      }
+      await disposeChat(chatId);
+      for (const paste of releasePastes(chatId)) await api(`/api/chats/${chatId}/pastes/${paste.id}`, { method: "DELETE" }).catch(() => undefined);
+      finishClosedTab(closing);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) finishClosedTab(closing);
+      else fail(e);
+    }
+  };
+  const finishClosedTab = (closing: Tab) => {
     if (closing.chatId || closing.sessionId) closedTabs.current = [...closedTabs.current.filter((t) => t.key !== closing.key), closing].slice(-10);
     tabCache.current.delete(closing.key);
-    const after = closeTab(before, index);
-    // Updated now, not at the next render: activateTab below reads it.
+    const before = tabsRef.current;
+    const after = closeTab(before, before.tabs.findIndex((t) => t.key === closing.key));
+    if (after === before) return;
     tabsRef.current = after;
     setTabState(after);
-    if (index !== before.active) return;
+    const oldActive = before.tabs[before.active];
+    if (oldActive && after.tabs[after.active]?.key === oldActive.key) return;
     const next = after.tabs[after.active];
     if (next) activateTab(after.active);
     else {
@@ -1004,10 +1068,12 @@ export function App() {
       fail(e);
     }
   };
-  /** Swap the two: the chat beside comes to the main pane, and the main one goes beside. */
+  /** Swap the two: the mounted side pane adopts the former main, then both targets change. */
   const makeMain = (beside: ChatState) => {
     const was = chat;
-    setSide((v) => ({ initial: was && was.status !== "disposed" ? was : null, n: (v?.n ?? 0) + 1 }));
+    mainDraft.current?.();
+    sideDraft.current?.();
+    setSide((v) => v ? { initial: was && was.status !== "disposed" ? was : null, n: v.n + 1 } : v);
     setWorkspace(beside.workspace);
     showChat(beside);
   };
@@ -1405,6 +1471,12 @@ export function App() {
     const idle = chat ? chat.status === "idle" || chat.status === "error" : false;
     const waitIdle = idle ? undefined : "Wait until the agent is idle";
     items.push({ id: "new", section: "Actions", label: "New chat", hint: workspace?.name, run: () => showStart() });
+    if (workspace) {
+      items.push({ id: "worktrees", section: "Project", label: "Worktrees…", hint: "Create or open an isolated checkout", searchOnly: true, run: () => setWorktreeOpen(true) });
+      items.push({ id: "terminal", section: "Project", label: "Terminal", hint: workspace.name, searchOnly: true, run: () => openTool("terminal") });
+      items.push({ id: "github", section: "Project", label: "GitHub and pull requests…", hint: workspace.name, searchOnly: true, run: () => openTool("github") });
+      items.push({ id: "compare", section: "Project", label: "Compare agents in isolated worktrees…", disabled: available.length < 2 ? "Need two available harnesses" : undefined, searchOnly: true, run: () => setCompareOpen(true) });
+    }
     items.push({
       id: "new-tab",
       section: "Actions",
@@ -1429,7 +1501,7 @@ export function App() {
         run: () => setTimelineOpen(true),
       });
       items.push({ id: "export", section: "Actions", label: "Export as Markdown", disabled: hasPrompt ? undefined : "Nothing to export yet", run: exportChat });
-      items.push({ id: "close", section: "Actions", label: "Close chat", run: () => void closeChat() });
+      items.push({ id: "close", section: "Actions", label: isBusy(chat.status) ? "Stop and close chat" : "Close chat", run: () => void closeChat() });
     }
     items.push({
       id: "beside",
@@ -1539,23 +1611,60 @@ export function App() {
     return items;
   };
 
-  const closeChat = async () => {
+  const closeChat = async (snapshot = chat) => {
     setMenuOpen(false);
-    if (!chat) return;
-    // Closed on purpose: the server's "gone" must not bring it back through its tab.
-    resumedGone.current.add(chat.chatId);
-    const index = tabsRef.current.tabs.findIndex((t) => t.chatId === chat.chatId);
+    if (!snapshot) return;
+    if (isBusy(snapshot.status)) {
+      setClosingChat(snapshot);
+      return;
+    }
+    await disposeAndClose(snapshot);
+  };
+
+  /** Dispose a chat. One the server no longer has (reaped idle, or a restart) is already closed. */
+  const disposeChat = async (chatId: string) => {
     try {
-      await api(`/api/chats/${chat.chatId}/dispose`, { body: {} });
-    } catch {
-      // already gone
+      await api(`/api/chats/${chatId}/dispose`, { body: {} });
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404)) throw e;
     }
-    if (index >= 0) closeTabAt(index);
-    else {
-      setChat(null);
-      setHash(null);
+  };
+
+  const disposeAndClose = async (snapshot: ChatState) => {
+    setClosingBusy(true);
+    resumedGone.current.add(snapshot.chatId);
+    try {
+      // A genuine failure is not an "already gone" success: keep the tab and
+      // pending request visible so the user can resolve or retry it.
+      await disposeChat(snapshot.chatId);
+      setClosingChat(null);
+      for (const paste of releasePastes(snapshot.chatId)) {
+        await api(`/api/chats/${snapshot.chatId}/pastes/${paste.id}`, { method: "DELETE" }).catch(() => undefined);
+      }
+      const index = tabsRef.current.tabs.findIndex((t) => t.chatId === snapshot.chatId);
+      if (index >= 0) finishClosedTab(tabsRef.current.tabs[index]!);
+      else {
+        if (snapshot.chatId === chat?.chatId) {
+          setChat(null);
+          setHash(null);
+        }
+      }
+      void refreshSessions();
+      const title = snapshot.title || "New chat";
+      if (snapshot.sessionId) {
+        const s = overview.sessions.find((item) => item.id === snapshot.sessionId);
+        if (s) toasts.push({
+          key: `closed:${snapshot.chatId}`,
+          text: `“${title}” closed. The harness kept its session file.`,
+          action: { label: "Reopen session", run: () => void openSession(s, { workspace: snapshot.workspace }) },
+          ms: 30_000,
+        });
+      }
+    } catch (e) {
+      fail(e);
+    } finally {
+      setClosingBusy(false);
     }
-    void refreshSessions();
   };
 
   // ---- render ---------------------------------------------------------------------------
@@ -1722,8 +1831,9 @@ export function App() {
         onClose={() => setDrawerOpen(false)}
         onCollapse={() => collapseSidebar(true)}
       />
-      {routinesOpen && boot ? <RoutinesDialog harnesses={available} workspaces={overview.workspaces} onClose={() => setRoutinesOpen(false)} /> : null}
+      {routinesOpen && boot ? <Suspense fallback={<Loader label="Opening routines…" />}><RoutinesDialog harnesses={available} workspaces={overview.workspaces} onClose={() => setRoutinesOpen(false)} /></Suspense> : null}
       {settingsOpen ? (
+        <Suspense fallback={<Loader label="Opening settings…" />}>
         <SettingsDialog
           scheme={themeInfo?.source === "file" ? { name: themeInfo.name } : null}
           onPair={() => {
@@ -1741,6 +1851,7 @@ export function App() {
           onUiSaved={(ui) => setBoot((b) => (b ? { ...b, ui: { ...b.ui, ...ui } } : b))}
           onClose={() => setSettingsOpen(false)}
         />
+        </Suspense>
       ) : null}
 
       <main className="main">
@@ -1819,6 +1930,8 @@ export function App() {
               <IconEdit size={14} /> <span className="review-label">Review</span> <span className="review-count">{changedFiles}</span>
             </button>
           ) : null}
+          {workspace && !room.roomId ? <button type="button" className="icon-btn" aria-label="Terminal" title="Open a project terminal" onClick={() => openTool("terminal")}><IconTerminal size={16} /></button> : null}
+          {workspace && !room.roomId ? <button type="button" className="icon-btn" aria-label="GitHub and pull requests" title="Push or create a pull request" onClick={() => openTool("github")}><IconBranch size={16} /></button> : null}
           {wide && !room.roomId && (chat || side) ? (
             <button
               type="button"
@@ -1904,7 +2017,7 @@ export function App() {
                     ) : null}
                     <li role="none">
                       <button type="button" role="menuitem" onClick={() => void closeChat()}>
-                        Close chat
+                        {isBusy(chat.status) ? "Stop and close chat" : "Close chat"}
                       </button>
                     </li>
                   </ul>
@@ -1919,7 +2032,15 @@ export function App() {
             {CONN_BANNER[conn]}…
           </div>
         ) : null}
-        <UpdateBanner />
+        {closingChat ? <Dialog title="Stop and close chat" onClose={() => { if (!closingBusy) setClosingChat(null) }}>
+        <p>This stops {isBusy(closingChat.status) ? "the running turn and " : ""}closes the chat. Tools already ran may have changed files; closing never reverts those changes.</p>
+        <p className="muted">The harness keeps its session file. You can reopen the session from the next notice or the sidebar.</p>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-quiet" disabled={closingBusy} onClick={() => setClosingChat(null)}>Keep chat open</button>
+          <button type="button" className="btn btn-danger" disabled={closingBusy} onClick={() => void disposeAndClose(closingChat)}>Stop and close</button>
+        </div>
+      </Dialog> : null}
+      <UpdateBanner />
         {chat && chat.config.models.length === 0 && chat.capabilities.supportsModelSelection ? (
           <div className="banner banner-warning">
             {chatHarness?.setupCommand ? (
@@ -1945,9 +2066,14 @@ export function App() {
           </div>
         ) : null}
 
-        <div className={`chat-split${side ? " is-split" : ""}`}>
+        <div
+          ref={splitViewport}
+          className={`chat-split${side ? " is-split" : ""}${toolPanel && toolWorkspace ? ` has-work-panel is-${toolPanel}` : ""}${split.dragging ? " is-dragging" : ""}`}
+          style={split.style}
+        >
           <div className="chat-body" data-pane="main">
             {room.roomId ? (
+              <Suspense fallback={<Loader label="Opening room…" />}>
               <RoomView
                 key={room.roomId}
                 roomId={room.roomId}
@@ -1972,6 +2098,7 @@ export function App() {
                 onEditBot={(botId) => setBotEditor({ botId })}
                 onLeave={() => openRoomHash(null)}
               />
+              </Suspense>
             ) : chat && !hasPrompt ? (
               <div className="hero">
                 <div className="hero-inner">
@@ -2010,6 +2137,7 @@ export function App() {
                     onAnswer={answer}
                     onConfig={configure}
                     onHandoff={(id, draft) => handoffChat(id, draft)}
+                    draftTransfer={mainDraft}
                     onNewChat={() => void newChat(chat.workspace, { newTab: true })}
                     limits={limits}
                   />
@@ -2095,20 +2223,42 @@ export function App() {
             )}
             {splash ? <SwitchSplash target={splash.target} leaving={splash.leaving} /> : null}
           </div>
+          {side ? <div
+            ref={split.ref}
+            className="split-resize"
+            role="separator"
+            aria-label="Resize chat panes"
+            aria-orientation="vertical"
+            aria-valuemin={toolPanel === "terminal" ? 30 : 25}
+            aria-valuemax={toolPanel === "terminal" ? 50 : 75}
+            aria-valuenow={split.value}
+            aria-valuetext={`Main chat ${split.value}%`}
+            tabIndex={0}
+            title="Drag to resize · arrows · Shift for large steps · Enter to reset"
+            onPointerDown={split.start}
+            onPointerMove={split.move}
+            onPointerUp={split.end}
+            onPointerCancel={split.end}
+            onLostPointerCapture={split.end}
+            onKeyDown={split.key}
+            onDoubleClick={split.toggle}
+          /> : null}
+          {toolPanel && toolWorkspace ? <div className="work-panel-slot"><LazyPanel>{toolPanel === "terminal" ? <TerminalPanel workspace={toolWorkspace} onClose={() => setToolPanel(null)} /> : <GitHubPanel workspace={toolWorkspace} onClose={() => setToolPanel(null)} />}</LazyPanel></div> : null}
           {side ? (
             <SidePane
-              key={side.n}
               initial={side.initial}
+              generation={side.n}
               overview={overview}
               harnesses={boot.harnesses}
               maxChars={boot.limits.maxMessageChars}
               limits={limits}
-              main={{ chatId: chat?.chatId ?? null, sessionId: chat?.sessionId ?? null }}
+              main={{ chatId: chat?.chatId ?? null, sessionId: chat?.sessionId ?? null, snapshot: chat }}
               openSnapshot={async (s) => {
                 const target = overview.workspaces.find((w) => w.id === s.workspaceId);
                 if (!target) throw new Error("That chat's project is not open on the server");
                 return (await fetchSession(s, target)).snapshot;
               }}
+              draftRef={sideDraft}
               onMakeMain={makeMain}
               onClose={() => setSide(null)}
               onSignedOut={() => setSignedOut(true)}
@@ -2140,7 +2290,16 @@ export function App() {
         version={boot.version}
       />
 
-      {pickerOpen ? <WorkspacePicker recent={recent} onOpen={(p) => void openWorkspace(p)} onClose={() => setPickerOpen(false)} error={pickerError} /> : null}
+      {pickerOpen ? <WorkspacePicker worktrees={workspace && !room.roomId ? () => setWorktreeOpen(true) : undefined} recent={recent} onOpen={async (p) => { await openWorkspace(p); }} onClose={() => setPickerOpen(false)} error={pickerError} /> : null}
+      {worktreeOpen && workspace ? <LazyPanel><WorktreePicker workspace={workspace} onOpen={async (path) => { await openWorkspace(path); }} onCompare={() => setCompareOpen(true)} onClose={() => setWorktreeOpen(false)} /></LazyPanel> : null}
+      {compareOpen && workspace ? <LazyPanel><CompareDialog workspace={workspace} harnesses={boot.harnesses} initialHarness={harnessId} initialModel={startModel} onClose={() => setCompareOpen(false)} onDone={(snapshots) => {
+        const first = snapshots[0];
+        if (first) showChat(first, { newTab: true });
+        const second = snapshots[1];
+        if (second && first) setSide((current) => ({ initial: second, n: (current?.n ?? 0) + 1 }));
+        for (const snapshot of snapshots.slice(2)) setTabState((current) => placeChat(current, snapshot, { newTab: true, background: true }));
+      }} /></LazyPanel> : null}
+
       {roomEditor ? (
         <RoomEditor
           room={roomEditor.mode === "edit" ? room.state?.room ?? null : null}
@@ -2230,6 +2389,7 @@ export function App() {
       {shortcutsOpen ? <ShortcutSheet onClose={() => setShortcutsOpen(false)} /> : null}
       {promptsOpen ? <SavedPromptsDialog {...promptsOpen} onClose={() => setPromptsOpen(null)} /> : null}
       {timelineOpen && chat ? (
+        <Suspense fallback={<Loader label="Opening file timeline…" />}>
         <TimelineDialog
           key={chat.chatId}
           chatId={chat.chatId}
@@ -2239,9 +2399,12 @@ export function App() {
           }}
           onClose={() => setTimelineOpen(false)}
         />
+        </Suspense>
       ) : null}
       {usageOpen ? (
+        <Suspense fallback={<Loader label="Opening usage…" />}>
         <UsageDialog harnesses={boot.harnesses} limits={limits} onOpenSession={(s, ws) => void openSession(s, ws ? { workspace: ws } : {})} onClose={() => setUsageOpen(false)} />
+        </Suspense>
       ) : null}
       {viewer && searchWorkspace ? <FileViewer workspace={searchWorkspace} request={viewer.request} changes={chat ? changes : []} onClose={() => setViewer(null)} /> : null}
       {chatSearch !== null ? (

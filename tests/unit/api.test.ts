@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { approvalAnswers } from "../../src/shared/approval.js";
@@ -47,6 +47,20 @@ describe("bootstrap and workspaces", () => {
     expect((await agent.post("/api/workspaces/open").send({ path: path.join(t.root, "escape") })).status).toBe(403);
     expect((await agent.post("/api/workspaces/open").send({ path: path.join(t.root, "missing") })).status).toBe(404);
   });
+
+  it("refuses an opened project replaced by a link outside the roots", async () => {
+    const { agent, ws, t } = await setup();
+    const outside = tempDir("awui-outside-replaced-");
+    writeFileSync(path.join(outside, "secret.txt"), "outside");
+    const original = ws.path;
+    const moved = path.join(t.root, "moved-project");
+    renameSync(original, moved);
+    symlinkSync(outside, original);
+    expect((await agent.get(`/api/workspaces/${ws.id}/file`).query({ path: "secret.txt" })).status).toBe(403);
+    expect((await agent.post(`/api/workspaces/${ws.id}/upload`).query({ name: "other.txt" }).send("not allowed")).status).toBe(403);
+    expect((await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).status).toBe(403);
+    await expect(t.workspaces.get(ws.id)).rejects.toMatchObject({ status: 403, code: "outside_roots" });
+  }, 20_000);
 
   it("allows a blocked .envrc through the workspace route and refuses when there is none", async () => {
     let hasDirenv = true;

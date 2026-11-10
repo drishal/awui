@@ -76,7 +76,7 @@ describe("a binary that carries the desktop app", () => {
     expect((await readFile(again!)).length).toBe(128);
   });
 
-  it("drops a legacy $state/desktop copy once the app lives under app/", async () => {
+  it("drops a legacy $state/desktop copy but keeps the Electron profile and launch records beside it", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "awui-embed-"));
     const payload = Buffer.from("app");
     const file = await executable(dir, payload);
@@ -84,9 +84,13 @@ describe("a binary that carries the desktop app", () => {
     const legacy = path.join(state, "desktop", "0.0.1");
     await mkdir(legacy, { recursive: true });
     await writeFile(path.join(legacy, "awui-desktop"), "old");
+    await mkdir(path.join(state, "desktop", "Local Storage"), { recursive: true });
+    await writeFile(path.join(state, "desktop", "owner.json"), "{}");
     const extracted = await bundledDesktop(file, state, "0.0.1");
     expect(extracted).toBe(path.join(state, "app", "0.0.1", "awui-desktop"));
-    await expect(access(path.join(state, "desktop"))).rejects.toThrow();
+    await expect(access(legacy)).rejects.toThrow();
+    await access(path.join(state, "desktop", "Local Storage"));
+    await access(path.join(state, "desktop", "owner.json"));
     const marker = JSON.parse(await readFile(`${extracted}.json`, "utf8")) as { size: number; mtimeMs: number };
     expect(marker.size).toBe((await stat(file)).size);
   });

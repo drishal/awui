@@ -60,6 +60,22 @@ const formatTokens = (n: number): string => (n >= 1_000_000 ? `${(n / 1_000_000)
 
 const coarsePointer = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
+const draftPastes = new Map<string, PasteAttachment[]>();
+
+/** An executor owns deliberate closing and pane transfer; render lifecycles do not delete files. */
+export function releasePastes(chatId: string): PasteAttachment[] {
+  const pastes = draftPastes.get(chatId) ?? [];
+  draftPastes.delete(chatId);
+  return pastes;
+}
+
+/** Needed before the position changes; only a real exchange asks for it. */
+interface MutableDraftRef {
+  current: (() => void) | null;
+}
+
+/** Let React coordinate delivery; no file cleanup during effect remount. */
+
 export function Composer({
   chat,
   harnesses,
@@ -74,6 +90,7 @@ export function Composer({
   onHandoff,
   onNewChat,
   limits,
+  draftTransfer,
   side = false,
 }: {
   chat: ChatState;
@@ -91,7 +108,8 @@ export function Composer({
   onNewChat?: () => void;
   /** The subscriptions' limits: where a stop on a usage limit learns when it resets. */
   limits?: UsageLimits | null;
-  /** The chat beside the main one: text sent to "the draft" from elsewhere (a quote, a mention) goes to the main composer, not here too. */
+  /** The mounted destination uses this to publish its current draft for explicit swap. */
+  draftTransfer?: React.MutableRefObject<(() => void) | null>;
   side?: boolean;
 }) {
   const draftKey = `draft.${chat.chatId}`;
@@ -107,7 +125,15 @@ export function Composer({
   const [imageError, setImageError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
   // A big pasted blob the user chose to send as a file instead of inline text.
-  const [pastes, setPastes] = useState<PasteAttachment[]>([]);
+  const [pastes, setPastes] = useState<PasteAttachment[]>(() => releasePastes(chat.chatId));
+  useEffect(() => {
+    if (!draftTransfer) return;
+    draftTransfer.current = () => {
+      draftPastes.set(chat.chatId, pastes);
+      save(`draft.${chat.chatId}`, text);
+      saveDraftImages(chat.chatId, images);
+    };
+  }, [draftTransfer, chat.chatId, text, images, pastes]);
   // The oversized paste awaiting the user's choice (inline vs file).
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [pasteBusy, setPasteBusy] = useState(false);
@@ -148,6 +174,10 @@ export function Composer({
   useEffect(() => {
     saveDraftImages(chat.chatId, images);
   }, [chat.chatId, images]);
+
+  useEffect(() => {
+    draftPastes.set(chat.chatId, pastes);
+  }, [chat.chatId, pastes]);
 
   const tooLong = text.length > maxChars;
 
@@ -794,7 +824,11 @@ export function Composer({
                     type="button"
                     className="composer-image-remove"
                     aria-label={`Remove paste #${i + 1}`}
-                    onClick={() => setPastes((current) => current.filter((x) => x.id !== paste.id))}
+                    onClick={() => {
+                      setPastes((current) => current.filter((x) => x.id !== paste.id));
+                      // Never delete a paste that was already accepted: the agent reads the path later.
+                      void api(`/api/chats/${chat.chatId}/pastes/${paste.id}`, { method: "DELETE" }).catch((e) => setImageError(errorText(e)));
+                    }}
                   >
                     <IconX size={11} />
                   </button>

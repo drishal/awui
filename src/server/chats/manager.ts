@@ -8,6 +8,7 @@ import type { HarnessAdapter, LiveChat } from "../harness/types.js";
 import { Chat, ChatError, errorMessage, type ChatOwner } from "./chat.js";
 import { ChatCheckpoints, type Checkpoints } from "../checkpoints.js";
 import { prepareSpawnEnv } from "../direnv.js";
+import { noteChatDisposed, noteSessionOfChat } from "../overview-events.js";
 
 const IDLE_DISPOSE_MS = 30 * 60_000;
 const REAP_INTERVAL_MS = 60_000;
@@ -107,9 +108,11 @@ export class ChatManager {
       return;
     }
     this.bySession.set(k, chat.chatId);
+    noteSessionOfChat(chat);
   }
 
   private forget(chat: Chat): void {
+    noteChatDisposed(chat);
     this.chats.delete(chat.chatId);
     for (const [k, id] of this.bySession) if (id === chat.chatId) this.bySession.delete(k);
   }

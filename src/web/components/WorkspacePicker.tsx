@@ -7,12 +7,14 @@ import { Dialog } from "./Dialog.js";
 
 export function WorkspacePicker({
   recent,
+  worktrees,
   onOpen,
   onClose,
   error,
 }: {
   recent: string[];
-  onOpen: (path: string) => void;
+  worktrees?: () => void;
+  onOpen: (path: string) => void | Promise<void>;
   onClose: () => void;
   error: string | null;
 }) {
@@ -44,6 +46,7 @@ export function WorkspacePicker({
   return (
     <Dialog title="Choose a project folder" onClose={onClose} className="dialog-wide">
       {error ? <p className="notice notice-error">{error}</p> : null}
+      {worktrees ? <div className="picker-work-tools"><button type="button" className="btn btn-small" onClick={worktrees}>Worktrees</button><span className="muted">Create or reopen an isolated checkout.</span></div> : null}
       {recent.length > 0 ? (
         <section className="picker-section">
           <h3>Recent</h3>

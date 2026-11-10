@@ -5,7 +5,7 @@
 // One core serves both resources — a chat (/api/chats/:id/events, frames named
 // `chat`) and a Board room (/api/rooms/:id/events, frames named `room`) — which
 // differ only in URL, frame name, gone-probe, and which frame ends the stream.
-import type { ChatEvent, RoomEvent } from "../shared/protocol.js";
+import type { ChatEvent, OverviewEvent, RoomEvent } from "../shared/protocol.js";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
@@ -198,6 +198,22 @@ export class ChatStream extends ReconnectingStream<ChatEvent> {
         terminal: (event) => event.type === "disposed",
       },
       chatId,
+      handlers,
+      from,
+    );
+  }
+}
+
+/** Lightweight session/room metadata stream: no transcript is sent on it. */
+export class OverviewStream extends ReconnectingStream<OverviewEvent> {
+  constructor(handlers: StreamHandlers<OverviewEvent>, from: number | null = null) {
+    super(
+      {
+        eventName: "chat",
+        url: (_id, lastId) => `/api/overview/events${lastId !== null ? `?lastEventId=${lastId}` : ""}`,
+        probe: () => "/api/sessions",
+      },
+      "overview",
       handlers,
       from,
     );

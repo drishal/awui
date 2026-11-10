@@ -21,8 +21,9 @@
 // `awui tui` and `awui tern` (src/server/clients.ts) import it, so a binary needs
 // no Bun and no fetched copy, and its clients always match its server.
 import { $, type CompileTarget } from "bun";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { appendFile, lstat, mkdir, readdir, readFile, readlink, rename, rm, stat, symlink } from "node:fs/promises";
+import { appendFile, cp, lstat, mkdir, readdir, readFile, readlink, rename, rm, stat, symlink } from "node:fs/promises";
 // The footer the runtime looks for (src/server/desktop-embed.ts): one definition,
 // so the build and the reader cannot drift.
 import { DESKTOP_MAGIC } from "../src/server/desktop-embed.ts";
@@ -47,13 +48,11 @@ function flag(name: string): boolean {
 }
 
 /**
- * `--electron` (`npm run build:desktop --electron`): package the desktop app from
- * apps/desktop's current source before embedding it. Without it this script embeds
- * whatever AppImage already sits in apps/desktop/release — right after a server or
- * web change, wrong after a change under apps/desktop/src, which that AppImage
- * predates (the shell would keep running the old tray, menus, and server-start
- * logic). Implies `--with-desktop`: there is no reason to package the app and not
- * carry it.
+ * `--electron` (`npm run build:desktop --electron`): force a desktop app package
+ * from current source before embedding it. Normal cached-artifact validation uses
+ * desktop src/assets/scripts/packaging fingerprints recorded with that artifact;
+ * otherwise the app is rebuilt automatically rather than reusing stale shell code.
+ * Implies `--with-desktop`: there is no reason to package the app and not carry it.
  */
 const ELECTRON = flag("electron");
 /**
@@ -69,18 +68,15 @@ if (WITH_DESKTOP && ALL) {
   process.exit(64);
 }
 
-/** The single-file desktop build for this platform: today, the Linux AppImage. */
-async function desktopPayload(): Promise<string> {
+/** A packaged AppImage if there is one, otherwise the build step creates it. */
+async function desktopPayload(): Promise<string | null> {
   if (process.platform !== "linux") {
     throw new Error(`--with-desktop needs a single-file desktop build; only the Linux AppImage is packaged as one so far (this is ${process.platform})`);
   }
   const release = path.join(root, "apps", "desktop", "release");
   const images = existsSync(release) ? (await readdir(release)).filter((f) => f.endsWith(".AppImage")).sort() : [];
   const image = images.at(-1);
-  if (!image) {
-    throw new Error(`no AppImage in ${release}; package the desktop app first:\n  cd apps/desktop && npm ci && npm run dist:linux`);
-  }
-  return path.join(release, image);
+  return image ? path.join(release, image) : null;
 }
 
 /** The packaging script apps/desktop has for this platform. */
@@ -95,32 +91,76 @@ function desktopDistScript(): string {
  * which npm ci there installs) has to be present. Checked before the server build,
  * so a missing one fails in a second instead of after a minute of compiling.
  */
-function requireDesktopCheckout(): void {
+async function requireDesktopCheckout(): Promise<void> {
   const bin = path.join(root, "apps", "desktop", "node_modules", ".bin", "electron-builder");
-  if (!existsSync(bin)) throw new Error("apps/desktop is not installed; run:\n  npm --prefix apps/desktop ci");
+  if (!existsSync(bin)) {
+    console.log("apps/desktop lacks electron-builder; installing its pinned toolchain");
+    await $`npm --prefix apps/desktop ci`;
+  }
+  if (!existsSync(bin)) throw new Error("apps/desktop could not install its pinned electron-builder toolchain");
 }
 
-// Resolved before the build, so a missing app fails in a second rather than after
-// the server is built and compiled. `--electron` has nothing to embed yet — it
-// packages the app below, once the binary the app carries beside itself exists —
-// so only its toolchain is checked here.
+async function filesUnder(directory: string): Promise<string[]> {
+  if (!existsSync(directory)) return [];
+  const result: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) result.push(...await filesUnder(file));
+    else if (entry.isFile()) result.push(file);
+  }
+  return result.sort();
+}
+
+/** Changes to the shell, not just the binary's embedded web bundle, invalidate its AppImage. */
+async function desktopSourceFingerprint(): Promise<string> {
+  const base = path.join(root, "apps", "desktop");
+  const files = [
+    ...await filesUnder(path.join(base, "src")),
+    ...await filesUnder(path.join(base, "assets")),
+    ...await filesUnder(path.join(base, "scripts")),
+    ...["package.json", "package-lock.json", "electron-builder.yml", "tsconfig.json"].map((file) => path.join(base, file)),
+  ];
+  const hash = createHash("sha256");
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    hash.update(path.relative(base, file));
+    hash.update(await readFile(file));
+  }
+  return hash.digest("hex");
+}
+
+// Reuse the cached artifact only if the source fingerprint recorded at its
+// packaging time matches. Never infer freshness from mtimes (a source checkout
+// may be older than a stale binary) or from an equality hashed into itself.
 const DESKTOP_PAYLOAD = WITH_DESKTOP && !ELECTRON
-  ? await desktopPayload().catch((error: unknown) => {
+  ? await (async () => {
+    const artifact = await desktopPayload();
+    if (!artifact) return null;
+    const recorded = await readFile(path.join(path.dirname(artifact), "source.json"), "utf8")
+      .then((body) => (JSON.parse(body) as { fingerprint?: unknown }).fingerprint)
+      .catch(() => null);
+    if (recorded === await desktopSourceFingerprint()) return artifact;
+    console.log("desktop source or packaging settings changed; rebuilding the Electron app");
+    return null;
+  })().catch((error: unknown) => {
       console.error(`build:desktop: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(64);
     })
   : null;
-if (ELECTRON) {
+const BUILD_ELECTRON = ELECTRON || (WITH_DESKTOP && DESKTOP_PAYLOAD === null);
+if (BUILD_ELECTRON) {
   try {
     // The app is packaged per platform (dist:mac, dist:win too), but only the Linux
     // AppImage is a single file to carry; say so before a multi-minute package run.
     if (process.platform !== "linux") throw new Error("--electron carries the app inside the binary, and only the Linux AppImage is packaged as one file so far; package this platform's app with `npm --prefix apps/desktop run dist:<platform>` instead");
-    requireDesktopCheckout();
+    await requireDesktopCheckout();
   } catch (error) {
     console.error(`build:desktop: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(64);
   }
 }
+
+const DESKTOP_FINGERPRINT = WITH_DESKTOP ? await desktopSourceFingerprint() : null;
 
 // The embeds read from dist/: build the server and web bundle first.
 await $`npm run build`;
@@ -296,6 +336,7 @@ try {
           },
         },
       ],
+      external: ["playwright-core"],
       compile: { target: target as CompileTarget, outfile: staged },
       define: {
         AWUI_EMBEDDED: "true",
@@ -305,6 +346,11 @@ try {
       },
     });
     if (DESKTOP_PAYLOAD) await appendDesktop(staged, DESKTOP_PAYLOAD);
+    // The pinned Chromium backend is external so its ordinary CommonJS loader
+    // can resolve lazy transports without bundling their optional dependencies.
+    // It downloads nothing here: a preview uses only an installed browser (the
+    // devenv Playwright browser, an explicit executable path, or the usual cache).
+    await cp(path.join(root, "node_modules", "playwright-core"), path.join(outDir, "node_modules", "playwright-core"), { recursive: true, filter: (source) => !source.split(path.sep).includes("vite") });
     await Bun.$`mv -f ${staged} ${outfile}`;
     console.log(`  → ${outfile}`);
   }
@@ -312,17 +358,21 @@ try {
   await Bun.write(assetPath, stubSource);
 }
 
-// `--electron`: package the app now, from apps/desktop's source. `stage:bin` inside
+// A forced shell build, or a missing/stale/outdated-source AppImage: package it
+// now from the current sources. `stage:bin` inside
 // it copies the bare binary this run just wrote into the app's resources — the one
 // a packaged app starts beside itself when no server is up, so it must be this
 // build, not last week's. Then the AppImage it produced rides in the CLI's binary.
-if (ELECTRON) {
+const packagedApp = BUILD_ELECTRON;
+if (packagedApp) {
   const name = `${process.platform}-${process.arch}`;
   const outfile = path.join(root, "dist", "bin", name, process.platform === "win32" ? "awui.exe" : "awui");
   const script = desktopDistScript();
   console.log(`packaging the desktop app (apps/desktop → ${script}); its resources/awui is the binary just built`);
   await $`npm --prefix apps/desktop run ${script}`;
+  await Bun.write(path.join(root, "apps", "desktop", "release", "source.json"), JSON.stringify({ fingerprint: DESKTOP_FINGERPRINT }) + "\n");
   const payload = await desktopPayload();
+  if (!payload) throw new Error(`apps/desktop package did not produce an AppImage in apps/desktop/release`);
   // Append to a copy and rename it over: the service's symlink points at this file,
   // and rewriting it in place would hand a restart that lands mid-append a torn
   // executable. rename(2) swaps the finished one in atomically.

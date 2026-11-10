@@ -23,7 +23,13 @@ extraResources:
   - from: resources
     to: .
     filter:
-      - "awui*"
+      - "awui"
+
+# The provider is not an Electron app dependency, but its server's own sibling
+# CJS runtime. Copy it literally, bypassing dependency-pruning semantics.
+extraFiles:
+  - from: resources/node_modules
+    to: resources/node_modules
 
 protocols:
   - name: awui

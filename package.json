@@ -2,7 +2,16 @@
   "name": "awui",
   "version": "0.0.1",
   "private": true,
-  "description": "awui: a local, private web UI (and atui, its terminal client) for the Pi, omp, Hermes, and Claude Code coding-agent harnesses",
+  "description": "Local, private coding-agent control for pi, omp, Hermes, Claude Code, Codex, OpenCode, Grok Build and DeepSeek Harness, with awui/atui/Tern clients",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drishal/awui.git"
+  },
+  "homepage": "https://github.com/drishal/awui#readme",
+  "bugs": {
+    "url": "https://github.com/drishal/awui/issues"
+  },
+  "keywords": ["coding-agent", "pi", "omp", "hermes", "claude-code", "codex", "opencode", "grok", "deepseek-harness", "terminal", "local-first"],
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -30,11 +39,15 @@
     "desktop": "npm --prefix apps/desktop run start"
   },
   "dependencies": {
+    "@lydell/node-pty": "^1.2.0-beta.18",
     "@opentui/core": "0.5.17",
     "@opentui/solid": "0.5.17",
     "@stencil-hq/tern": "0.2.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "express": "5.2.1",
     "helmet": "8.3.0",
+    "playwright-core": "1.63.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "10.1.0",

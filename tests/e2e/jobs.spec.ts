@@ -37,6 +37,9 @@ test("a background job shows its progress above the composer and in the wait tha
   await expect(page.getByTestId("background-jobs").getByRole("progressbar").first()).toBeVisible();
   // Reported done: the card says so, and the command's row says it ran in the background.
   await expect(page.locator(".answer-actions").last()).toBeVisible({ timeout: 20_000 });
+  // The finished turn may have folded its calls before actions become visible:
+  // verify the visible done row itself, not a folded-away process stretch.
+  await openFold(page);
   await expect(page.locator('[data-tool="wait"] .tool-sentence')).toHaveText("Waited on bg_1: Running the e2e suite");
   await expect(page.locator('[data-tool="bash"] .tool-fact')).toHaveText("in background · bg_1");
   await expect(card.getByRole("img", { name: "Done" })).toBeVisible();

@@ -1,6 +1,6 @@
 # Credits
 
-The interface borrows patterns, not code, from four MIT-licensed projects:
+The interface borrows patterns, not code, from five MIT-licensed projects:
 
 - **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (© 2026 DeepSeek):
   - plain answers with user bubbles;
@@ -26,7 +26,11 @@ The interface borrows patterns, not code, from four MIT-licensed projects:
   - ↑ prompt recall, list continuation, and the prompt stash in the composer;
   - find in chat and search in project;
   - the proposed-plan card, the usage-limit recovery banner, and editing queued messages;
-  - the session hover card, prompt links, and the count of what needs you in the title.
+  - the session hover card, prompt links, and the count of what needs you in the title;
+  - an agent-page visual self-check, with a screenshot its caller can inspect rather than an editable artifact host.
+- **[MonoCode](https://github.com/nickkies/monocode)** (© 2026 Nick): isolated work trees for independent agent comparisons, explicit project terminal recovery, and choosing which adoptable result to keep.
+
+The built binary uses Bun's native `Bun.Terminal`; source/Node uses `@lydell/node-pty` (both native PTY/ConPTY), while xterm and the Fit addon render a workspace's interactive shell inside a separately trusted iframe. Playwright provides isolated Chromium screenshot capture. These are actual runtime dependencies, not concept-only borrowings; their installed package licenses remain distinct.
 
 ## Not included (by design)
 

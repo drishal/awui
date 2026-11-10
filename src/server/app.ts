@@ -37,6 +37,12 @@ import {
   patchConfigSchema,
   renameSchema,
   settingsPatchSchema,
+  terminalCreateSchema,
+  terminalWriteSchema,
+  htmlRenderPreviewSchema,
+  worktreeCreateSchema,
+  compareStartSchema,
+  gitHubPrSchema,
   resumeChatSchema,
   herdrFocusSchema,
   rewindSchema,
@@ -74,14 +80,14 @@ import {
 import { approvalAnswers } from "../shared/approval.js";
 import { ChatError, errorMessage, type Chat } from "./chats/chat.js";
 import type { BoardManager } from "./boards/types.js";
-import { storedImage } from "./image-store.js";
+import { storedImage, rememberImage } from "./image-store.js";
 import { isHtmlRenderId, readHtmlRender, saveHtmlRender } from "./html-render.js";
 import type { ChatManager } from "./chats/manager.js";
 import type { HarnessRegistry } from "./harness/registry.js";
 import type { HarnessAdapter, NativeSessionSummary } from "./harness/types.js";
 import { briefPrompt, isEmptySeed, toSeed } from "./harness/handoff.js";
 import { sniffImage } from "./images.js";
-import { resolvePaste, storePaste } from "./paste-store.js";
+import { deletePaste, resolvePaste, storePaste } from "./paste-store.js";
 import { projectFiles, searchFiles } from "./project-files.js";
 import { searchProject } from "./project-search.js";
 import type { Security } from "./security.js";
@@ -109,6 +115,12 @@ import { shellLine } from "./shell-line.js";
 import type { Workspaces } from "./workspaces.js";
 import { allowEnvrc, direnvState, prepareSpawnEnv } from "./direnv.js";
 import { ModelCatalog } from "./model-catalog.js";
+import { overviewEvents } from "./overview-events.js";
+import type { TerminalManager } from "./terminal.js";
+import { ManagedWorktrees, worktreeProblem, type WorktreeInfo } from "./worktrees.js";
+import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest } from "./github.js";
+import { previewHtmlRender, PreviewError } from "./render-preview.js";
+
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
 export const RECENT_SESSIONS_PER_HARNESS = 200;
@@ -123,6 +135,8 @@ export interface AppDeps {
   theme: ThemeStore;
   pairingUrls: string[];
   webDir: string | null;
+  /** Interactive PTYs share server lifetime; tests intentionally have none unless requested. */
+  terminals?: TerminalManager;
   /** Where config.yml lives; its browser settings are re-read on every page load. */
   configDir?: string | null;
   /** The Settings dialog's view of config.yml; without it the settings routes answer 404. */
@@ -236,15 +250,15 @@ export function createApp(deps: AppDeps) {
   // it loaded to notice a deploy (the binary embeds the bundle; a source run has
   // dist/web). "dev" when neither exists, which the client then ignores.
   const build = buildIdOf(embeddedWeb()?.get("/index.html")?.text ?? (deps.webDir ? readIndexHtml(deps.webDir) : null));
+
   const app = express();
   app.disable("x-powered-by");
   app.set("etag", false);
-
   // The render-doc page serves its own CSP header (see the route below); the global
   // helmet CSP would add a *second* one and the browser enforces the stricter, which
   // would forbid that page's own framing from the same origin. So helmet skips it.
   app.use((req, res, next) => {
-    if (req.path.startsWith("/api/render/") && req.path.endsWith("/doc")) return next();
+    if ((req.path.startsWith("/api/render/") && req.path.endsWith("/doc")) || req.path === "/terminal-shell.html") return next();
     helmet({
       contentSecurityPolicy: {
         useDefaults: false,
@@ -421,6 +435,187 @@ export function createApp(deps: AppDeps) {
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     if (bytes.length === 0) throw new ChatError(400, "empty_file", "That file is empty");
     res.status(201).json(await writeProjectFile(ws.path, name, bytes));
+  });
+
+  // The trusted terminal renderer is deliberately its own document. xterm writes
+  // inline grid styles, which cannot satisfy the main page's nonce-free 'self' style.
+  // Keep it away from agent output; production never adds unsafe-inline to the app.
+  app.get("/terminal-shell.html", (_req, res, next) => {
+    res.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'; sandbox allow-scripts allow-same-origin");
+    next();
+  });
+
+  // Workspace tools: every operation goes through Workspaces.get(), which
+  // revalidates a project that may have been renamed or replaced by a symlink.
+  const trees = new ManagedWorktrees();
+  app.get("/api/workspaces/:id/worktrees", async (req, res) => {
+    res.json({ worktrees: await trees.list(await workspaces.get(req.params.id)) });
+  });
+  app.post("/api/workspaces/:id/worktrees", async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const input = body(worktreeCreateSchema, req);
+      try {
+      const info = await trees.create(ws, input.name, input.base);
+      res.status(201).json({ ...info, workspace: await workspaces.open(info.path) });
+    } catch (error) {
+      throw worktreeProblem(error) ?? error;
+    }
+  });
+  app.delete("/api/workspaces/:id/worktrees/:treeId", async (req, res) => {
+    await trees.prune(await workspaces.get(req.params.id), req.params.treeId).catch((error: unknown) => {
+      throw worktreeProblem(error) ?? error;
+    });
+    res.json({ ok: true });
+  });
+
+  // Backend previews are requested by a signed-in contributor of an owning chat.
+  // No free-form URL is accepted and external network is blocked in the renderer.
+  app.post("/api/chats/:id/html-render/:renderId/preview", async (req, res) => {
+    if (!deps.stateDir) throw new ChatError(404, "render_off", "HTML preview is not wired on this server");
+    const chat = manager.get(req.params.id);
+    const id = req.params.renderId;
+    if (!isHtmlRenderId(id) || !chat.ownsHtmlRender(id)) throw new ChatError(404, "render_missing", "That page is not in this chat");
+    const html = await readHtmlRender(deps.stateDir, id);
+    if (!html) throw new ChatError(404, "render_missing", "That page is no longer in the render store");
+    const theme = body(htmlRenderPreviewSchema, req);
+    const preview = await previewHtmlRender(html, theme.theme, theme.appearance).catch((error: unknown) => {
+      if (error instanceof PreviewError) throw new ChatError(error.code === "browser_missing" ? 503 : 422, error.code, error.message);
+      throw error;
+    });
+    const stored = rememberImage("image/png", preview.image.toString("base64"));
+    if (!stored) throw new ChatError(422, "preview_failed", "The browser produced no image for this page");
+    res.json({ id: stored.id, url: `/api/images/${stored.id}`, console: preview.console, width: preview.width, height: preview.height });
+  });
+
+  // A signed-in project's interactive terminal. The input route has no command
+  // parameter at all: a PTY is not a shell-exec API, and every create spawns the
+  // user's own interactive shell in their validated project.
+  app.post("/api/workspaces/:id/terminal", async (req, res) => {
+    if (!deps.terminals) throw new ChatError(404, "terminal_off", "The interactive terminal is not wired on this server");
+    const ws = await workspaces.get(req.params.id);
+    const input = body(terminalCreateSchema, req);
+    const session = await deps.terminals.create(ws, input.cols, input.rows);
+    res.status(201).json(session);
+  });
+  for (const action of ["write", "resize"] as const) {
+    app.post(`/api/workspaces/:id/terminal/:termId/${action}`, async (req, res) => {
+      if (!deps.terminals) throw new ChatError(404, "terminal_off", "The interactive terminal is not wired");
+      const ws = await workspaces.get(req.params.id);
+      if (action === "write") {
+        const input = body(terminalWriteSchema, req);
+        deps.terminals.write(ws, req.params.termId, input.data);
+      } else {
+        const input = body(terminalCreateSchema, req);
+        deps.terminals.resize(ws, req.params.termId, input.cols, input.rows);
+      }
+      res.json({ ok: true });
+    });
+  }
+  app.get("/api/workspaces/:id/terminal/:termId/events", async (req, res) => {
+    const terminals = deps.terminals;
+    if (!terminals) throw new ChatError(404, "terminal_off", "The interactive terminal is not wired");
+    let closed = false;
+    res.on("close", () => void (closed = true));
+    const ws = await workspaces.get(req.params.id);
+    if (closed) return;
+    // Headers go out with the first frame, not before: an unknown or evicted terminal
+    // must answer a plain 404 (EventSource then stops), not an empty stream it retries forever.
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-store, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+      res.write("retry: 2000\n\n");
+    };
+    let heartbeat: NodeJS.Timeout | undefined;
+    const unsubscribe = terminals.subscribe(ws, req.params.termId, {
+      onOutput: (text) => {
+        if (closed) return;
+        start();
+        res.write(`event: terminal\ndata: ${JSON.stringify({ text })}\n\n`);
+      },
+      onExit: (code, signal) => {
+        if (closed) return;
+        closed = true;
+        clearInterval(heartbeat);
+        start();
+        res.write(`event: exit\ndata: ${JSON.stringify({ code, signal })}\n\n`);
+        res.end();
+      },
+    });
+    const stop = () => {
+      closed = true;
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+    if (closed) {
+      stop();
+      return;
+    }
+    start();
+    heartbeat = setInterval(() => { if (!closed) res.write("event: heartbeat\ndata: {}\n\n"); }, deps.heartbeatMs ?? 20_000);
+    res.on("close", stop);
+  });
+  app.delete("/api/workspaces/:id/terminal/:termId", async (req, res) => {
+    if (!deps.terminals) throw new ChatError(404, "terminal_off", "The interactive terminal is not wired");
+    deps.terminals.close(await workspaces.get(req.params.id), req.params.termId);
+    res.json({ ok: true });
+  });
+
+  // GitHub: author use their own gh/git login, never a credential the web app can see.
+  app.get("/api/workspaces/:id/github", async (req, res) => {
+    res.json(await githubStatus(await workspaces.get(req.params.id)));
+  });
+  app.post("/api/workspaces/:id/github/push", async (req, res) => {
+    res.json(await pushBranch(await workspaces.get(req.params.id)));
+  });
+  app.post("/api/workspaces/:id/github/pr", async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const input = body(gitHubPrSchema, req);
+    res.status(201).json(await createPullRequest(ws, input.base, input.title, input.body));
+  });
+  app.get("/api/workspaces/:id/github/pr", async (req, res) => {
+    res.json({ pr: await currentPullRequest(await workspaces.get(req.params.id)) });
+  });
+  app.get("/api/workspaces/:id/github/checks", async (req, res) => {
+    res.json({ checks: await pullRequestChecks(await workspaces.get(req.params.id)) });
+  });
+
+  app.post("/api/compare", async (req, res) => {
+    const input = body(compareStartSchema, req);
+    const parent = await workspaces.get(input.workspaceId);
+    const availableChoices = input.choices.filter((choice) => registry.isAvailable(choice.harnessId));
+    if (availableChoices.length !== input.choices.length) throw new ChatError(422, "harness_unavailable", "Every chosen harness must be available before a comparison starts");
+    // Everything that can be checked up front is, so a bad request starts nothing.
+    // Past that, a partial fan-out is a useful result: each failure is reported
+    // beside the chats that did start, never as a 500 that orphans them.
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(input.name)) throw new ChatError(400, "bad_name", "The task prefix takes lowercase letters, digits, and hyphens");
+    const harnessIds = input.choices.map((choice) => choice.harnessId);
+    if (new Set(harnessIds).size !== harnessIds.length) throw new ChatError(400, "duplicate_harness", "Each harness can run once in a comparison");
+    const planned = input.choices.map((choice) => {
+      const adapter = registry.get(choice.harnessId);
+      if (!adapter) throw new ChatError(404, "unknown_harness", "Unknown harness");
+      const suffix = choice.harnessId.replace(/[^a-z0-9-]/g, "-");
+      return { choice, adapter, slug: `${input.name.slice(0, Math.max(1, 63 - suffix.length))}-${suffix}`.slice(0, 64) };
+    });
+    const results: Array<{ harnessId: string; tree: WorktreeInfo | null; workspace: WorkspaceInfo | null; chat?: Chat; error?: string }> = [];
+    for (const { choice, adapter, slug } of planned) {
+      let tree: WorktreeInfo | null = null;
+      let ws: WorkspaceInfo | null = null;
+      try {
+        tree = await trees.create(parent, slug, input.base).catch((error: unknown) => {
+          throw worktreeProblem(error) ?? error;
+        });
+        ws = await workspaces.open(tree.path);
+        const chat = await manager.create(adapter, ws);
+        if (choice.model) await chat.setConfig({ model: choice.model });
+        await chat.send(input.prompt, "normal");
+        results.push({ harnessId: choice.harnessId, tree, workspace: ws, chat });
+      } catch (error) {
+        results.push({ harnessId: choice.harnessId, tree, workspace: ws, error: errorMessage(error) });
+      }
+    }
+    res.status(201).json({ results: results.map(({ harnessId, tree, workspace, chat, error }) => ({ harnessId, tree, workspace, snapshot: chat?.snapshot() ?? null, error })) });
   });
 
   // Usage across sessions (usage-report.ts): the sidebar's sessions' calls, read from the harnesses' files.
@@ -701,6 +896,40 @@ export function createApp(deps: AppDeps) {
   };
   app.get("/api/sessions", async (req, res) => {
     res.json(await listSessions(typeof req.query.path === "string" && req.query.path ? req.query.path : null));
+  });
+
+  // Only live metadata: titles/status/pending count and the room summary.
+  // A replay gap sends one snapshot marker; the client then takes the ordinary
+  // full lists. No transcripts or board records are fused into this stream.
+  app.get("/api/overview/events", (req, res) => {
+    const last = parseLastEventId(req.headers["last-event-id"] ?? req.query.lastEventId);
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.write("retry: 2000\n\n");
+    let closed = false;
+    const unsubscribe = overviewEvents.subscribe({
+      send: (id, event) => {
+        if (!closed) res.write(`id: ${id}\nevent: chat\ndata: ${JSON.stringify(event)}\n\n`);
+      },
+      close: () => {
+        if (!closed) {
+          closed = true;
+          res.end();
+        }
+      },
+    }, last);
+    const heartbeat = setInterval(() => {
+      if (!closed) res.write("event: heartbeat\ndata: {}\n\n");
+    }, deps.heartbeatMs ?? 20_000);
+    req.on("close", () => {
+      closed = true;
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
   });
 
   // Search every chat (chat-search.ts): the sidebar's sessions, newest first,
@@ -1075,6 +1304,11 @@ export function createApp(deps: AppDeps) {
     const chat = manager.get(req.params.id);
     const { text } = body(uploadPasteSchema, req);
     res.status(201).json(await storePaste(chat.chatId, text));
+  });
+  app.delete("/api/chats/:id/pastes/:pasteId", async (req, res) => {
+    const chat = manager.get(req.params.id);
+    await deletePaste(chat.chatId, req.params.pasteId);
+    res.json({ ok: true });
   });
 
   app.post("/api/chats/:id/messages", async (req, res) => {

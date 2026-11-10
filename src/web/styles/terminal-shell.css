@@ -1,0 +1,5 @@
+html, body, #terminal { height: 100%; margin: 0; overflow: hidden; background: var(--surface-2); }
+body { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+#terminal { width: 100%; }
+#terminal .xterm { height: 100%; padding: 6px; }
+#terminal .xterm-viewport { overflow-y: auto; }

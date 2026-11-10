@@ -43,6 +43,7 @@ import type { HarnessAdapter, HarnessEvent, HarnessUsage, LiveChat } from "../ha
 import type { ChatCheckpoints, CheckpointHost } from "../checkpoints.js";
 import { REWIND_COMMAND } from "../harness/rewind-extension.js";
 import { CONTINUE_TEXT } from "../../shared/limit-stop.js";
+import { noteChat, noteSessionOfChat } from "../overview-events.js";
 
 export class ChatError extends Error {
   constructor(
@@ -968,6 +969,8 @@ export class Chat implements CheckpointHost {
     if (event.type === "user_message" || event.type === "assistant_end") this.lastActivity = this.talkedAt = Date.now();
     this.lastSeen = Date.now();
     this.reducer.apply(event.type === "user_message" ? this.withSentImages(event) : event);
+    if (event.type === "user_message" || event.type === "session" || event.type === "title" || event.type === "request" || event.type === "request_cancelled") noteChat(this);
+    if (event.type === "session") noteSessionOfChat(this);
     if (event.type === "user_message") this.checkpoints?.onUserTurn(event.text, event.command === true);
   }
 
@@ -999,6 +1002,7 @@ export class Chat implements CheckpointHost {
     const before = this.status;
     this.status = status;
     this.reducer.emit({ type: "status", status });
+    noteChat(this);
     if (status === "running") this.onRunStart?.(this);
     // A run that ends on its own moves the chain on; one that fails stops it until you say.
     if (!this.quiet && before === "running" && status === "idle") this.chainSoon();

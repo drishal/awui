@@ -60,6 +60,12 @@ banners-dialogs.css), so search rather than guess.
 | A chat beside the main one | `SidePane.tsx` | `side-pane.css` | `unified.spec.ts` |
 | Notice cards (finished, needs you, Undo): stacked, fanned on hover, swiped away on a phone | `ToastStack.tsx` (`toast-stack.ts`) | `toasts.css` | `toasts-and-swipes.spec.ts`, `tabs.spec.ts` |
 | Board rooms: sidebar section, room view (run cards, nested consultations, approvals), editors | `RoomList.tsx`, `RoomView.tsx`, `RoomConversation.tsx`, `BotRun.tsx`, `RoomComposer.tsx`, `RoomMembers.tsx`, `BotEditor.tsx`, `RoomEditor.tsx` (fold: `room-state.ts`; stream: `use-room-stream.ts` over `stream.ts`'s shared core; mentions: `room-mentions.ts`) | `board.css` | `board.spec.ts` |
+| Project tools: worktrees and isolated comparison | `WorktreePicker.tsx`, `CompareDialog.tsx`; checkout lifecycle and metadata in server `worktrees.ts`; root lookup revalidation in `workspaces.ts` | `worktrees.css`, `banners-dialogs.css` | `worktrees.test.ts`, `workspace-features.test.ts`, `api.test.ts` |
+| Terminal: interactive workspace PTY | `TerminalPanel.tsx` and `terminal-shell.ts` (its iframe document) in the web client; `server/terminal.ts` lifecycle/replay | `terminal.css`, `terminal-shell.css` | `terminal-state.test.ts`, `workspace-features.test.ts` |
+| GitHub push, existing/new PR, checks | `GitHubPanel.tsx`, server `github.ts` | `github.css` | `github-workflow.test.ts` |
+| Live session and room metadata | `sessions.ts`, `rooms.ts`, `overview-stream.ts`, shared `overview-events.ts` | `SessionOverviewEvent` in `shared/protocol.ts`; server `overview-events.ts` | `overview-stream.test.ts`, `overview-events.test.ts` |
+| Agent-rendered page visual preview | `HtmlRenderFrame.tsx`, server `render-preview.ts` | `subagents.css`, bounded in-memory Chromium only | `render-preview.test.ts`, `workspace-features.test.ts` |
+| Heavy auxiliary dialogs | `SettingsDialog.tsx`, `UsageDialog.tsx`, `TimelineDialog.tsx`, `RoutinesDialog.tsx`, board and project tools loaded through App.tsx's lazy boundaries | their area stylesheets; desktop chunks load only on open | build + relevant feature specs |
 | Phones: drawer, sheets, long press, row swipe actions | `ActionSheet.tsx`, `gestures.ts` (`useRowSwipe` in `Sidebar.tsx`'s rows) | `phones.css`, `responsive.css`, `sidebar.css` | `phone.spec.ts`, `toasts-and-swipes.spec.ts` |
 | Motion and the ripple (turn entrance, streaming caret, start-screen mark) | `ripple.ts`, `arrivals.ts` | `motion.css`, `ripple.css` | `app.spec.ts`, `motion.spec.ts` |
 

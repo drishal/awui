@@ -1,20 +1,20 @@
-// The sidebar's session list: refreshes that can never apply out of order (a
-// sequence ref drops stale replies), a debounce when the open chat settles,
-// and a poll while some *other* chat is working off-screen.
+// The sidebar's session list: full fetched rows, with immediate live metadata
+// for the chat states driving background tab and needs-you indicators.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Bootstrap, SessionMarkState, SessionsOverview, WorkspaceInfo } from "../shared/protocol.js";
+import type { Bootstrap, OverviewEvent, SessionMarkState, SessionsOverview, WorkspaceInfo } from "../shared/protocol.js";
 import { api, errorText } from "./api.js";
 import type { ChatState } from "./chat-state.js";
-import { isBusy } from "./session-groups.js";
+import { useOverviewStream } from "./overview-stream.js";
+import { mergeSessionOverview } from "../shared/overview-events.js";
 
-/** How often the session list refreshes while a chat other than the open one is working. */
-const BACKGROUND_POLL_MS = 3000;
+/** How often the session list refreshes while a herdr pane reports work. */
+const HERDR_POLL_MS = 3000;
 
+/** The App shares one event stream: its callback ref updates this overview and useRooms' summary list. */
 export function useSessions({ boot, workspace, chat }: { boot: Bootstrap | null; workspace: WorkspaceInfo | null; chat: ChatState | null }) {
   const [overview, setOverview] = useState<SessionsOverview>({ workspaces: [], sessions: [], errors: [] });
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState(false);
-
   // Every harness, every project; the sidebar filters by harness and groups by project.
   const sessionsRequest = useRef(0);
   const refreshSessions = useCallback(async () => {
@@ -50,15 +50,26 @@ export function useSessions({ boot, workspace, chat }: { boot: Bootstrap | null;
     };
   }, [settleKey, refreshSessions]);
 
-  // Runs in other chats have no stream here: poll while any is working so its spinner stops on time
-  // (a herdr pane's too, so its mark follows what herdr says).
-  const chatId = chat?.chatId ?? null;
-  const backgroundBusy = overview.sessions.some((s) => (isBusy(s.status) && s.liveChatId !== chatId) || s.herdr?.status === "working" || s.herdr?.status === "blocked");
+  // The overview stream carries awui's own chats, not herdr's panes: poll while
+  // one is working so its sidebar mark follows what herdr reports.
+  const herdrBusy = overview.sessions.some((s) => s.herdr?.status === "working" || s.herdr?.status === "blocked");
   useEffect(() => {
-    if (!backgroundBusy) return;
-    const timer = window.setInterval(() => void refreshSessions(), BACKGROUND_POLL_MS);
+    if (!herdrBusy) return;
+    const timer = window.setInterval(() => void refreshSessions(), HERDR_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [backgroundBusy, refreshSessions]);
+  }, [herdrBusy, refreshSessions]);
+
+  useOverviewStream((event) => {
+    if (event.type === "snapshot") {
+      void refreshSessions();
+      return;
+    }
+    setOverview((current) => {
+      const next = mergeSessionOverview(current, event);
+      if (next.refresh) void refreshSessions();
+      return next.overview;
+    });
+  });
 
   /** Show a pin or archive at once; the server's answer replaces it (a later refresh agrees). */
   const markSession = useCallback((sessionId: string, mark: SessionMarkState) => {

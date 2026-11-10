@@ -115,6 +115,15 @@ export interface ProjectSession extends SessionSummary {
   workspaceId: string;
 }
 
+/** One isolated workspace managed by awui. */
+export interface WorktreeInfo {
+  id: string;
+  path: string;
+  branch: string;
+  base: string;
+  createdAt: number;
+}
+
 /** A project folder's place in its git repository, for the order of the sidebar's projects. */
 export interface Checkout {
   /** Opaque, and the same for every worktree of one repository. */
@@ -126,6 +135,26 @@ export interface Checkout {
 }
 
 /** The sidebar's list: recent sessions from every project, plus all of the current one's. */
+/** A lightweight status change for one native chat. Contains no transcript. */
+export interface SessionOverviewEvent {
+  type: "session";
+  nativeId: string;
+  harnessId: string;
+  workspaceId: string;
+  title: string;
+  updatedAt: string | null;
+  messageCount?: number;
+  liveChatId?: string;
+  status?: ChatStatus;
+  asking?: true;
+  disposed?: true;
+}
+/** The overview is metadata only. A snapshot asks the client to reload the full ordinary overview. */
+export type OverviewEvent =
+  | SessionOverviewEvent
+  | { type: "room"; room: RoomSummary }
+  | { type: "snapshot" };
+
 export interface SessionsOverview {
   /** Every project referenced by `sessions`, and the current project. */
   workspaces: WorkspaceInfo[];
@@ -731,6 +760,12 @@ export interface Bootstrap {
 export const MAX_MESSAGE_CHARS = 100_000;
 
 export const openWorkspaceSchema = z.object({ path: z.string().min(1).max(4096) });
+export const worktreeCreateSchema = z.object({ name: z.string().trim().min(1).max(64), base: z.string().trim().min(1).max(256) });
+export const terminalCreateSchema = z.object({ cols: z.number().int().min(10).max(400).default(100), rows: z.number().int().min(4).max(120).default(30) });
+export const terminalWriteSchema = z.object({ data: z.string().max(16_384) });
+export const htmlRenderPreviewSchema = z.object({ theme: z.record(z.string().regex(/^--[a-z0-9-]+$/), z.string().max(1000).refine((value) => !/[;{}]/.test(value))).refine((value) => Object.keys(value).length <= 32), appearance: z.enum(["light", "dark"]) });
+export const gitHubPrSchema = z.object({ base: z.string().trim().min(1).max(120), title: z.string().trim().min(1).max(200), body: z.string().max(20_000).default("") });
+export const compareStartSchema = z.object({ workspaceId: z.string().min(1).max(128), name: z.string().trim().min(1).max(64), base: z.string().trim().min(1).max(256), prompt: z.string().min(1).max(MAX_MESSAGE_CHARS), choices: z.array(z.object({ harnessId: z.string().min(1).max(64), model: z.string().min(1).max(512).optional() }).strict()).min(2).max(4) });
 /** Allow a project's .envrc (direnv allow), within the workspace roots. */
 export const direnvAllowSchema = z.object({ workspaceId: z.string().min(1).max(128) });
 export const createChatSchema = z.object({

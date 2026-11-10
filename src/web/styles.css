@@ -51,3 +51,6 @@
 @import "./styles/timing.css";
 @import "./styles/board.css";
 @import "./styles/jobs.css";
+@import "./styles/worktrees.css";
+@import "./styles/terminal.css";
+@import "./styles/github.css";

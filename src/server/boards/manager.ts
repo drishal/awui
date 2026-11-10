@@ -37,6 +37,7 @@ import { RoomScheduler, type ActiveTurn } from "./scheduler.js";
 import { TurnRunner, type RecordDraft, type TurnRunnerHost } from "./turn-runner.js";
 import { addUsage, createTurnBudget, emptyUsage, markExpired, type TurnBudget } from "./budget.js";
 import { BotSessionPoolImpl } from "./sessions.js";
+import { noteRoom } from "../overview-events.js";
 import type {
   BoardDeps,
   BoardManager,
@@ -115,7 +116,12 @@ export class RoomManager implements BoardManager {
   private readonly deps: BoardDeps;
   private readonly store: BoardStoreImpl;
   private readonly pool: BotSessionPoolImpl;
-  private readonly events = new RoomEventLogImpl();
+  // Streamed items and deltas never change a summary (status, pending, activity come from records and the scheduler).
+  private readonly events = new RoomEventLogImpl((roomId, event) => {
+    if (event.type !== "item" && event.type !== "delta") this.summarySoon(roomId);
+  });
+  /** Rooms whose overview summary is due: one recompute per room per tick, however many events landed. */
+  private readonly summariesDue = new Set<string>();
   private readonly bots = new Map<string, StoredBot>();
   private readonly rooms = new Map<string, StoredRoom>();
   private readonly schedulers = new Map<string, RoomScheduler>();
@@ -1067,6 +1073,21 @@ export class RoomManager implements BoardManager {
     }
     const text = `${lines.join("\n").trim()}\n`;
     return text.length > MAX_EXPORT_CHARS ? `${text.slice(0, MAX_EXPORT_CHARS)}\n\n[export truncated]\n` : text;
+  }
+
+  /**
+   * Publish a room's summary to the overview stream after it emitted, whether or not
+   * anyone is viewing it, so the sidebar follows turns and approvals in other rooms.
+   * Computed from the room's own records and scheduler, never a harness projection.
+   */
+  private summarySoon(roomId: string): void {
+    if (this.summariesDue.has(roomId)) return;
+    this.summariesDue.add(roomId);
+    setImmediate(() => {
+      this.summariesDue.delete(roomId);
+      const room = this.rooms.get(roomId);
+      if (room) void this.roomSummary(room).then(noteRoom).catch(() => undefined);
+    });
   }
 
   async subscribe(roomId: string, subscriber: RoomSubscriber, lastEventId?: number): Promise<() => void> {

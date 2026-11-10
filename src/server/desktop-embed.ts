@@ -84,6 +84,21 @@ async function sizeOf(file: string): Promise<number | null> {
 }
 
 /**
+ * Copies from before the move to $state/app/<version> sat in $state/desktop/<version>.
+ * That folder is now Electron's profile and the launch owner/lock, so only the old
+ * version folders holding an extracted app go; a missing tree is the common case.
+ */
+async function removeLegacyCopies(dir: string): Promise<void> {
+  const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const folder = path.join(dir, entry.name);
+    if ((await sizeOf(path.join(folder, bundledDesktopName()))) === null) continue;
+    await fsp.rm(folder, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+/**
  * The desktop app this binary carries, extracted into the state folder once; null
  * when it carries none (a source run, or a build without it).
  *
@@ -95,8 +110,7 @@ async function sizeOf(file: string): Promise<number | null> {
 export async function bundledDesktop(execPath: string, stateDir: string, version: string): Promise<string | null> {
   const payload = await embeddedDesktopPayload(execPath);
   if (!payload) return null;
-  // Copies from before the move to $state/app/<version>. A missing tree is the common case.
-  await fsp.rm(path.join(stateDir, "desktop"), { recursive: true, force: true }).catch(() => undefined);
+  await removeLegacyCopies(path.join(stateDir, "desktop"));
   const target = path.join(stateDir, "app", version, bundledDesktopName());
   const marker = `${target}.json`;
   const source = await fsp.stat(execPath).catch(() => null);

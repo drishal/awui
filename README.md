@@ -28,7 +28,7 @@ Open http://127.0.0.1:4783. macOS and Windows builds are unsigned, so the system
 
 ### From source
 
-You need Node 22.19+, npm, and Bun 1.3+ for the build (on NixOS, `devenv shell`). This builds the same self-contained binary the releases ship, and links it into `~/.local/bin` when that folder exists.
+You need Node 22.19+, npm, and Bun 1.3.14+ for the build (Bun 1.3.5+ supplies the compiled terminal's native PTY; the minimum client version remains Bun 1.3.14). On NixOS use `devenv shell`. This builds the same self-contained binary the releases ship, and links it into `~/.local/bin` when that folder exists.
 
 ```bash
 git clone https://github.com/drishal/awui.git
@@ -58,7 +58,7 @@ From a checkout:
 npm --prefix apps/desktop ci      # once: Electron and its packager
 npm run desktop                   # run the app (attaches to the server on :4783)
 npm run build:desktop             # a binary that carries the app
-npm run build:desktop --electron  # package the app from source first
+npm run build:desktop --electron  # force rebuilding the desktop shell itself
 ```
 
 macOS and Windows desktop packages exist (`npm --prefix apps/desktop run dist:mac` or `dist:win`), but only the Linux AppImage is a single file awui's binary can carry today.

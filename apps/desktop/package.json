@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "npm run build && electron .",
     "smoke": "node scripts/smoke.mjs",
+    "test": "npm run build && node --test test/activation.mjs",
     "stage:bin": "node scripts/stage-binary.mjs",
     "dist": "npm run build && npm run stage:bin && electron-builder",
     "dist:linux": "npm run build && npm run stage:bin && electron-builder --linux",

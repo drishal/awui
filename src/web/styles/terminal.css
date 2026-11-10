@@ -1,0 +1,129 @@
+/* ---- the workspace's own terminal (T3 Code's in-app terminal) -------------
+   A right-side window on a desktop (half the pane, the head in the surface's
+   colour, the xterm grid filling the rest) and a bottom sheet on a phone. All
+   colours come from the app's tokens; xterm's own theme is computed in
+   TerminalPanel.tsx from the same tokens, so a theme switch re-derives it. */
+
+.terminal-window {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(50%, 720px);
+  min-width: 320px;
+  height: 100%;
+  border-left: 1px solid var(--hairline);
+  background: var(--surface);
+}
+
+.terminal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface);
+}
+
+.terminal-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.terminal-title h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-status {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted-text);
+}
+
+.terminal-status::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--hairline-strong);
+}
+
+.terminal-body {
+  flex: 1;
+  min-height: 0;
+  padding: 6px;
+}
+
+/* xterm fills the pane; the grid's own colours are the theme's (computed). */
+.terminal-shell {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.terminal-view {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+
+.terminal-view .xterm,
+.terminal-view .xterm-viewport {
+  height: 100%;
+  border-radius: var(--r-sm);
+}
+
+.terminal-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.terminal-empty p {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  /* A phone: a bottom sheet over the conversation, full width, most of the
+     screen, rising in like the dialogs (styles/phones.css). */
+  .terminal-window {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 55;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 86%;
+    border: 0;
+    border-top: 1px solid var(--hairline);
+    border-radius: var(--r-md) var(--r-md) 0 0;
+    animation: rise-in var(--dur-spring) var(--spring);
+    box-shadow: 0 -8px 24px rgb(0 0 0 / var(--shadow-strength));
+  }
+
+  .terminal-head {
+    padding: 10px 8px 10px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-window {
+    animation: none;
+  }
+}

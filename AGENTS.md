@@ -42,7 +42,7 @@ Match the task to a guide before opening code:
 | `npm ci` | Install. Never `npm -g`, never `npx playwright install` (see Environment). |
 | `npm run dev` | Backend under `tsx watch` plus Vite on http://127.0.0.1:5173 (proxies `/api` to the backend's port). |
 | `npm run build` | `vite build` → `dist/web`, then `tsc -p tsconfig.server.json` → `dist/server`. The server entry is `dist/server/server/index.js`. |
-| `npm run build:binary` / `npm run build:desktop` | The compiled binary in `dist/bin/<platform>`; `build:desktop` appends the packaged desktop app so `awui desktop` carries it (~257 MB vs ~95 MB). It reuses the AppImage already in `apps/desktop/release`; `npm run build:desktop --electron` packages that app from source first (one command for a server-plus-shell change). Run inside `devenv shell`. |
+| `npm run build:binary` / `npm run build:desktop` | The compiled binary in `dist/bin/<platform>`; `build:desktop` appends this platform's packaged desktop app, creating the AppImage when missing (installing its locked toolchain if necessary). It uses a matching-sidecar binary rather than nesting the previous app. `--electron` explicitly refreshes both, for `apps/desktop/src` changes. Run inside `devenv shell`. |
 | `npm start` / `bin/awui` | Run the built server. |
 | `bin/atui` (`npm run atui`) | Run the terminal client under Bun (from a checkout; the binary runs it as `awui tui`). Needs a running server. |
 | `npm run typecheck` | Four projects: server, web, tests, atui. **Run it before every commit.** |
@@ -71,12 +71,14 @@ src/shared/html-render.ts     Agent-rendered pages: bootstrap markup, theme payl
 src/shared/approval.ts        Which requests are plain approvals, and their Approve/Deny answers (the card and push notes).
 src/server/
   index.ts                    Startup: config, state-folder migration, registry, routes, listen, shutdown. A running server
-                              writes server.json (port, pid) into the state folder for clients that have no port. Subcommands: `tui`, `tern`, `doctor`, `install tui|service`.
-  app.ts                      Every route (Express 5), SSE, error mapping. All /api routes but health/login/logout need auth.
+                              writes server.json (port, pid) into the state folder for clients that have no port. Subcommands: `desktop`, `tui`, `tern`, `doctor`, `install tui|desktop|service`.
+
+  app.ts                      Every route (Express 5), SSE, error mapping. All /api routes but health/login/logout need auth. POST /api/render additionally requires AWUI_RENDER_TOKEN; trusted /terminal-shell.html is a web entry that reuses those origin/message checks for the PTY iframe.
   embedded.ts                 The binary's baked-in assets: embedded web bundle, extension sources, version; materializes extensions into state dir for `-e`.
   clients.ts                  The terminal clients behind the command line: `awui tui` (or the binary symlinked as `atui`) runs atui, `awui tern` the Tern client. In the binary they run in-process (the `awui:clients` module); from source under Bun.
   clients-module.d.ts         The `awui:clients` module's types: the binary's bundled terminal clients (scripts/build-binary.ts bundles src/atui/embed.ts as it).
   install-tui.ts              `awui install tui`: the `~/.local/bin/atui` symlink (to the binary, which carries atui, or the checkout's bin/atui); retires the old fetched copy.
+  platform-win.ts             Native Windows process/env rules (shared by harness adapters and PTY lifecycle).
   install-service.ts          `awui install service`: the binary + systemd unit (or Windows Run key), plus the `atui` link beside it.
   desktop-app.ts              `awui desktop` / `awui install desktop` / `awui desktop --install-icon`: finds the optional Electron
                               app (env, the copy the binary carries, ~/.local/bin link, PATH, a checkout's apps/desktop), starts it
@@ -86,7 +88,7 @@ src/server/
   assets.gen.ts               Checked-in stub replaced by the generated embed map at binary-build time.
   config.ts, user-config.ts   Environment + ~/.config/awui/config.yml → ServerConfig. settings.ts edits config.yml for the Settings dialog.
   security.ts, auth.ts        Host/Origin/Tailscale checks, local vs remote, scrypt logins, signed cookies, lockout.
-  workspaces.ts               WORKSPACE_ROOTS confinement (realpath), folder browsing.
+
   chats/chat.ts               One live chat: the EventReducer folds HarnessEvents into ChatItems, the event log, SSE fan-out, commands.
   chats/manager.ts            Chat registry; one live writer per native session; idle reaping. An internal owner (Board rooms) marks a chat as driven, not the user's.
   boards/                     Board rooms, web-only: store.ts (strict atomic persistence, JSONL room records), manager.ts (CRUD + the ownership oracle ordinary surfaces filter by), events.ts (room SSE), scheduler.ts (one active turn per room, serial), turn-runner.ts (direct responders, one bounded consultation round), sessions.ts (bot session pool over ChatManager-owned chats), context.ts/consult.ts/budget.ts (pure envelope, control-document parser, caps).
@@ -107,7 +109,20 @@ src/server/
   html-render.ts              Agent-rendered pages under the state folder, addressed by id, one owner chat each.
   harness/handoff.ts          Cross-harness handoff: portable seed transcript and the briefing prompt.
   harness/deferred.ts         Resume-without-waiting: show the file's transcript while the harness starts.
-  checkpoints.ts              Per-prompt work-tree snapshots in a shadow git repo; turn undo.
+  checkpoints.ts             Per-prompt work-tree snapshots in a shadow git repo; turn undo.
+  workspaces.ts              Realpath confinement for folder browse and every project lookup, refusing outside-root replacements.
+  worktrees.ts               Managed isolated Git checkouts under `<project>/.awui/worktrees`, with per-workspace lock root and atomic metadata; prune refuses a dirty tree.
+  terminal.ts, terminal-backend.ts  Bounded project PTYs: real @lydell/node-pty for source/Node, Bun.Terminal in the compiled app. Validated cwd, process-tree kill on last disconnect/server exit, 1 MiB replay, 60 s exit retention. Never a shell-pipe wrapper; only explicit interactive shells.
+  binary-runtime.ts          Browser preview's CommonJS package beside the executable. The trusted PTY page is src/web/terminal-shell.html, not a server module.
+  render-preview.ts          Authenticated bounded Chromium capture of an agent's own stored page; in-memory fixed-origin rendering, no other network/fetch/cookies/storage, timeout, console cap and certainly no app frame sharing.
+  github.ts                  Bounded local gh/git workflows: existing-PR lookup, explicit push, PR create, normalized checks; never reads or sends credentials to a browser.
+  overview-events.ts         Bounded live metadata-only stream for chat status and room summaries (500 events max, no transcripts). UI shares one EventSource per tab with fallback full refresh; native IDs remain harness-scoped and disposed clear live/asking status.
+  paste-store.ts             1 MiB file-backed large pastes in /tmp, seven-day retention, delete-on-unsent and bounded expiry sweep; agent reads actual retained file paths.
+  routines.ts, routines-timer.ts, routine-runner.ts  Server-owned scheduled prompts: bounded store, one due claim before launch, next-slot retry across overlap failures.
+  direnv.ts                  Project .envrc evaluation for harness spawns and explicit terminal semantics, isolated/cached by validated project directory.
+  git-actions.ts, checkouts.ts, session-order.ts   Stage/unstage/commit action guards, branch/worktree grouping, hand-ordered session arrays.
+  project-upload.ts          One new file into a validated workspace root, exclusive create, 8 MB route cap.
+  harness/jobs.ts, child-process.ts, event-hub.ts   Background worker state, bounded child RPC lifecycle and event buffering.
   git.ts, git-status.ts       Hardened git runner; the composer's git row.
   image-store.ts, notify.ts, limits.ts, session-marks.ts, run-command.ts, state-file.ts   Side features (see their header comments).
   project-files.ts            A project's files for @mention pickers (git ls-files, else a bounded walk).
@@ -150,6 +165,15 @@ src/web/                      React 19 + Vite client. App.tsx is the shell; comp
   usage.ts                    Usage across chats, for drawing: short numbers, the cache's share, day labels, bars by harness.
   highlight.ts, file-bus.ts   The file viewer's colours (a small tokenizer, no dependency); opening it from any path on the page.
   shortcuts.ts                Every key the app answers: the shortcut sheet's table, and the palette's hints.
+  split-layout.ts             Main/side width ratio and pointer/keyboard separator. Saved only when settled; preserves editor and attached-file identity during Make main, not a transcript store.
+  overview-stream.ts          One EventSource per tab (reference-counted) for lightweight session statuses and room summaries; reconnect/full-refresh on gap.
+  shared/overview-events.ts  Shared reconciliation: known rows patched in place, unknown ids cause full refresh; asking cleared only by a current snapshot/delta.
+  components/WorktreePicker.tsx, CompareDialog.tsx  Git-checkout creation/reopen/dirty-safe prune, and one-prompt isolated fan-out with independent chat streams.
+  styles/worktrees.css, terminal.css, github.css  Project work panels and native GitHub action styles.
+  terminal-shell.ts (document entry)  An isolated xterm document under a separate intentional inline-style CSP: builds a real PTY and uses direct origin messages for lifecycle and resize, never command forwarding.
+  components/TerminalPanel.tsx  Bounded child iframe header/status only; server always uses TerminalManager, and makeTestApp's terminal creation needs explicit withTerminal:true.
+  components/GitHubPanel.tsx  Existing/current PR display, explicit push and bounded PR create/checks.
+  components/HtmlRenderFrame.tsx  Agent-page theme, explicit bounded caller-owned preview screenshot, and capped console text served by server/render-preview.ts.
 src/atui/                     The terminal client (Bun + OpenTUI + Solid). state.ts is the app state; ui/ the components.
   format.ts, neat.ts, vim.ts  Pure formatting and key logic, unit-tested from tests/unit.
   herdr.ts                    In a herdr pane: what the pane reports (pure) and the reporter main.tsx feeds.
@@ -171,8 +195,13 @@ extensions/eval-python.ts     An awui-harness extension registering eval_python:
 extensions/acp-flow.mjs       A DSH Cordis plugin, loaded per chat by a --patch overlay: runs the stock ACP bridge inside it and streams live text as _acp-flow/assistant_stream.
 contrib/                      systemd unit and home-manager modules (templates; users copy them).
 apps/desktop/                 The optional desktop app: an Electron shell that attaches to a running server or starts one.
-                              src/main.ts is the whole shell; what it decides without a window is src/shared/desktop.ts
-                              (pure, unit-tested). It loads the served page — never a second copy of the UI.
+                              src/main.ts publishes its native PID via src/activation.ts; server/desktop-instance.ts
+                              holds the CLI launch mutex through that publication: repeat Linux invocations
+                              wake the existing window instead of spawning again. Other platforms use native handoff.
+                              test/activation.mjs asserts concurrent CLI child spawn counts, signal focus and restart.
+                              It loads the served page — never a second copy of the UI. Its bundled server needs
+                              resources/node_modules/playwright-core staged by scripts/stage-binary.mjs, included
+                              explicitly in electron-builder.yml's extraResources. check-packaged.mjs starts it standalone.
 tests/unit                    Vitest. tests/helpers/app.ts builds a real app with fake adapters (makeTestApp).
 tests/fixtures                Scripted stand-ins: fake-omp.mjs, fake-hermes.mjs, fake-claude.mjs, fake-codex.mjs, fake-grok.mjs, fake-dsh.mjs, themes/.
 tests/e2e                     Playwright. global-setup.ts starts the built server with AWUI_HARNESSES=fake,fake-b.
@@ -303,7 +332,7 @@ if every test passes.
   `agents.json` in `$AWUI_E2E_HERDR` (calls land in `calls.jsonl`); the atui test
   server runs with `AWUI_HERDR=0`. Never point a test at the developer's herdr.
 - **Scripted CLIs** (`tests/fixtures/fake-omp.mjs`, `fake-hermes.mjs`,
-  `fake-claude.mjs`, `fake-codex.mjs`, `fake-opencode.mjs`, `fake-grok.mjs`, `fake-dsh.mjs`) speak each harness's real wire protocol
+  `fake-claude.mjs`, `fake-codex.mjs`, `fake-opencode.mjs`, `fake-grok.mjs`, `fake-dsh.mjs`, `fake-hermes-attach.mjs`, `fake-hermes-gateway.mjs`) speak each harness's real wire protocol
   (OpenCode's is an HTTP server with OpenCode 2's routes and event stream; DSH's writes
   v4 concatenated-zstd session logs). Adapter changes
   get a test against one of them; record new frames from the real CLI rather

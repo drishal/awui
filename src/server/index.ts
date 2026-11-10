@@ -17,12 +17,13 @@ import { embeddedVersion, extractEmbeddedExtensions, isEmbedded } from "./embedd
 import "./assets.gen.js";
 import { installTui } from "./install-tui.js";
 import { installService } from "./install-service.js";
-import { installDesktop, installDesktopIcon, runDesktop } from "./desktop-app.js";
+import { desktopHelp, installDesktop, installDesktopIcon, runDesktop } from "./desktop-app.js";
 import { ENDPOINT_FILE } from "../shared/desktop.js";
 import { writeJson } from "./state-file.js";
 import { clientCommand, runClient } from "./clients.js";
 import { runDoctor } from "./doctor.js";
 import { SessionMarks } from "./session-marks.js";
+import { TerminalManager } from "./terminal.js";
 import { Routines } from "./routines.js";
 import { startDue } from "./routines-timer.js";
 import { runRoutine } from "./routine-runner.js";
@@ -34,6 +35,7 @@ import { ThemeStore } from "./theme.js";
 import { Herdr, herdrSocketPath } from "./herdr.js";
 import { configDir, configEnv, herdrEnabled, migrateConfigDir, readUserConfig, UserConfigError } from "./user-config.js";
 import { Workspaces } from "./workspaces.js";
+import { cleanupPastes } from "./paste-store.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 /** Bad settings (EX_CONFIG): retrying cannot help, so supervisors should not restart on it. */
@@ -180,6 +182,9 @@ async function main(): Promise<void> {
     );
   }, 30_000);
   routineTimer.unref();
+  await cleanupPastes().catch(() => undefined);
+  const pasteCleanupTimer = setInterval(() => void cleanupPastes().catch(() => undefined), 24 * 60 * 60_000);
+  pasteCleanupTimer.unref();
   const order = await SessionOrder.open(config.stateDir);
   const prompts = await SavedPrompts.open(config.stateDir);
   const limits = await Limits.open(registry, config.stateDir);
@@ -199,6 +204,7 @@ async function main(): Promise<void> {
   const lanUrls = config.host === "0.0.0.0" ? sampleLanHosts().ipv4.map((ip) => `http://${ip}:${config.port}/`) : [];
   const pairingUrls = [...lanUrls, ...config.allowedHosts.map((h) => `https://${h}/`)];
   const webDir = process.env.AWUI_WEB_DIR ?? (root === null ? null : path.join(root, "dist", "web"));
+  const terminals = new TerminalManager();
   const app = createApp({
     version: pkg.version,
     home: config.home,
@@ -220,6 +226,7 @@ async function main(): Promise<void> {
     boards,
     checkpointsDir: path.join(config.stateDir, "checkpoints"),
     stateDir: config.stateDir,
+    terminals,
     settings: {
       configDir: config.configDir,
       running: {
@@ -290,7 +297,9 @@ async function main(): Promise<void> {
       process.exit(0);
     }, 5_000);
     clearInterval(routineTimer);
+    clearInterval(pasteCleanupTimer);
     server.close();
+    terminals.shutdown();
     for (const socket of sockets) socket.destroy();
     try {
       // Rooms first: their schedulers may still reach chats the manager is about to close.
@@ -396,6 +405,10 @@ if (client) {
     process.exit(EXIT_CONFIG);
   }
   const rest = args.slice(1);
+  if (rest.includes("--help") || rest.includes("help")) {
+    await desktopHelp({ stateDir });
+    process.exit(0);
+  }
   const wantsIcon = rest.includes("--install-icon");
   const work = wantsIcon ? installDesktopIcon({ stateDir }) : runDesktop({ args: rest.filter((a) => a !== "--install-icon"), stateDir });
   work.catch((error: unknown) => {

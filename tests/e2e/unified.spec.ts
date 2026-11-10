@@ -2,7 +2,7 @@
 // search across every chat, the file viewer, saved prompts, usage, the split
 // view, the checkpoint timeline, and chained follow-ups.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { newChat, openChat, sendAndWait, signInAndOpen, expectDraft } from "./helpers.js";
@@ -198,6 +198,7 @@ test("Usage shows the plan limits, then adds up the calls by day, harness, and m
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
 });
 
+
 test("a chat opens beside the main one, streams and takes messages there, and swaps with Make main", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await signInAndOpen(page);
@@ -216,13 +217,41 @@ test("a chat opens beside the main one, streams and takes messages there, and sw
   await expect(side.getByTestId("side-status")).toHaveText("Working");
   await expect(side.getByTestId("turn")).toHaveCount(2);
   await expect(side.getByTestId("side-status")).toHaveText("Idle", { timeout: 20_000 });
+  await side.getByRole("textbox", { name: "Message" }).fill("draft stays with its chat while swapping");
+  const separator = page.getByRole("separator", { name: "Resize chat panes", exact: true });
+  await separator.focus();
+  const widthBefore = (await page.locator('[data-pane="main"]').boundingBox())?.width ?? 0;
+  await separator.press("ArrowRight");
+  await expect.poll(async () => (await page.locator('[data-pane="main"]').boundingBox())?.width ?? 0).toBeGreaterThan(widthBefore + 10);
+  await separator.press("Enter");
   // The main chat did not move, and its URL still names it.
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("the right one");
   const hash = await page.evaluate(() => location.hash);
   await side.getByRole("button", { name: "Make main" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("the left one");
   await expect(side.getByRole("heading", { level: 2 })).toHaveText("the right one");
-  expect(await page.evaluate(() => location.hash)).not.toBe(hash);
+  await expectDraft(page.locator('[data-pane="main"]').getByRole("textbox", { name: "Message" })).toBe("draft stays with its chat while swapping");
+  // A real server-issued paste and its original native chat id travel together,
+  // not through a text-only mock. Remove is explicitly draft-only, not a route echo.
+  const origin = await page.evaluate(() => location.hash.slice(6));
+  await page.locator('[data-pane="main"]').getByRole("textbox", { name: "Message" }).click();
+  await page.locator('[data-pane="main"]').getByRole("textbox", { name: "Message" }).evaluate((el) => {
+    const transfer = new DataTransfer();
+    transfer.setData("text/plain", "with real pasted file\n".repeat(800));
+    (el as HTMLElement).dispatchEvent(new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }));
+  });
+  await page.getByRole("group", { name: "Large paste" }).getByRole("button", { name: "Attach as file" }).click();
+  await page.locator('[data-pane="main"]').getByRole("button", { name: "Remove paste #1" }).waitFor();
+  await side.getByRole("button", { name: "Make main", exact: true }).click();
+  await expect(side.getByRole("button", { name: "Remove paste #1" })).toBeVisible();
+  const removedPath = await side.locator(".paste-label").getAttribute("title");
+  expect(removedPath).toMatch(new RegExp(`/awui-pastes/${origin}/.+\\.txt$`));
+  expect(existsSync(removedPath!)).toBe(true);
+  await side.getByRole("button", { name: "Remove paste #1" }).click();
+  await expect(side.getByRole("button", { name: "Remove paste #1" })).toHaveCount(0);
+  expect(existsSync(removedPath!)).toBe(false);
+  // The second Make main restores the original main chat identity, never a second writer.
+  expect(await page.evaluate(() => location.hash)).toBe(hash);
   await side.getByRole("button", { name: "Close the chat beside" }).click();
   await expect(side).toHaveCount(0);
 });

@@ -6,13 +6,14 @@
 // `awui desktop --install-icon` writes the application-menu entry and its icon
 // under $XDG_DATA_HOME, so the launcher lists the app like any other.
 import { spawn } from "node:child_process";
-import { existsSync, promises as fs, realpathSync } from "node:fs";
+import { constants as fsConstants, existsSync, promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ChatError } from "./chats/chat.js";
 import { bundledDesktop } from "./desktop-embed.js";
 import { embeddedVersion, embeddedWeb } from "./embedded.js";
+import { launchExclusive } from "./desktop-instance.js";
 
 export interface DesktopLaunch {
   command: string;
@@ -137,10 +138,12 @@ export async function runDesktop(opts: { args: string[]; stateDir: string }): Pr
       "the desktop app is not installed, and this awui does not carry one. Build it with `cd apps/desktop && npm ci && npm run dist:linux && awui install desktop`, or build awui with `--with-desktop` (see apps/desktop/README.md).",
     );
   }
+  if (process.platform === "linux") {
+    await launchExclusive(opts.stateDir, opts.args, () => spawnOrphan(launch.command, [...launch.args, ...opts.args]));
+    console.log(`awui desktop: ${launch.command} (${launch.how})`);
+    return;
+  }
   const child = spawn(launch.command, [...launch.args, ...opts.args], { detached: true, stdio: "ignore", windowsHide: true });
-  // An exec that never happened (no file, no permission) arrives on the child after
-  // spawn returns: wait for it, so a failed launch is an error and not a line of
-  // false hope. A process that starts and dies later is the app's own business.
   const failed = await new Promise<Error | null>((resolve) => {
     child.once("spawn", () => resolve(null));
     child.once("error", (error) => resolve(error));
@@ -148,6 +151,44 @@ export async function runDesktop(opts: { args: string[]; stateDir: string }): Pr
   if (failed) throw new ChatError(500, "desktop_failed", `cannot run ${launch.command}: ${failed.message}`);
   child.unref();
   console.log(`awui desktop: ${launch.command} (${launch.how})`);
+}
+
+/**
+ * Start `command` as a grandchild that this process does not parent, and return its pid.
+ * The launcher stays alive until the app registers, and a sandboxing wrapper (NixOS's
+ * appimage-run is bubblewrap with --die-with-parent) arms PR_SET_PDEATHSIG against its
+ * parent in that window: were that parent this CLI, the app would be killed as it exits.
+ */
+async function spawnOrphan(command: string, args: string[]): Promise<number> {
+  try {
+    await fs.access(command, fsConstants.X_OK);
+  } catch (error) {
+    throw new ChatError(500, "desktop_failed", `cannot run ${command}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const shell = spawn("/bin/sh", ["-c", '"$0" "$@" </dev/null >/dev/null 2>&1 & echo $!', command, ...args], { detached: true, stdio: ["ignore", "pipe", "ignore"] });
+  let out = "";
+  shell.stdout.setEncoding("utf8").on("data", (chunk: string) => (out += chunk));
+  const failed = await new Promise<Error | null>((resolve) => {
+    shell.once("error", (error) => resolve(error));
+    shell.once("close", () => resolve(null));
+  });
+  const pid = Number(out.trim());
+  if (failed || !Number.isSafeInteger(pid) || pid <= 0) throw new ChatError(500, "desktop_failed", `cannot run ${command}: ${failed?.message ?? "no process started"}`);
+  return pid;
+}
+
+/** Show the desktop command and the artifact it will select, without launching it. */
+export async function desktopHelp(opts: { stateDir: string }): Promise<void> {
+  console.log(`Usage:
+  awui desktop                  Launch the optional app (or start a server for it)
+  awui desktop --install-icon   Add the application-menu entry and icon
+  awui desktop --help           Show this help
+  awui install desktop         Install the awui-desktop command
+  npm run build:desktop         Build the server and its packaged app automatically`);
+  const bundled = await bundledDesktop(process.execPath, opts.stateDir, embeddedVersion ?? "dev");
+  const launch = findDesktop({ root: checkoutRoot(), home: os.homedir(), bundled });
+  if (launch) console.log(`App: ${launch.command} (${launch.how})`);
+  else console.log("No desktop app is currently selected. Run `npm run build:desktop` first.");
 }
 
 /** `awui install desktop`: link the app this binary carries, or the one a checkout built, as `awui-desktop`. */

@@ -52,6 +52,33 @@ body {
     min-height: 44px;
   }
 
+  .quick-chip,
+  .project-new {
+    min-height: 36px;
+  }
+
+  .rooms-group .room-group-actions .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .session-tab-close {
+    width: 28px;
+    height: 28px;
+    /* Compact tab visuals with a wider actual touch target. */
+    margin: -4px;
+    padding: 4px;
+  }
+
+  .prompt-actions .ghost-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .sidebar .icon-btn:focus-visible {
+    outline-offset: -2px;
+  }
+
   /* No hover on a phone: the actions under a message stay visible, not faint (a long press opens them as a sheet too). */
   .prompt-actions,
   .answer-actions {

@@ -1,7 +1,7 @@
-// The pasted-blob attachment route: an oversized composer paste goes to the
-// server as a file under /tmp and the sent prompt references the path. The
+// The pasted-blob attachment route: oversized text stays as a file under /tmp
+// for seven days so agents may re-read it, then expires; unsent files delete now. The
 // client may only reference ids the server itself issued.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, utimesSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ChatSnapshot } from "../../src/shared/protocol.js";
 import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
@@ -45,6 +45,19 @@ describe("paste attachments", () => {
     const user = items.find((i) => i.kind === "user");
     expect(user?.text).toContain(pasted.path);
     expect(user?.text).toContain("summarise the paste");
+  });
+
+  it("deletes unused drafts and expires a weekly paste after the agent's read window", async () => {
+    const { agent, chat } = await setup();
+    const unused = (await agent.post(`/api/chats/${chat.chatId}/pastes`).send({ text: "throw me away" })).body as { id: string; path: string };
+    expect((await agent.delete(`/api/chats/${chat.chatId}/pastes/${unused.id}`)).status).toBe(200);
+    expect(existsSync(unused.path)).toBe(false);
+    const kept = (await agent.post(`/api/chats/${chat.chatId}/pastes`).send({ text: "read later" })).body as { id: string; path: string };
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60_000);
+    utimesSync(kept.path, eightDaysAgo, eightDaysAgo);
+    const expired = await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "read it again", attachments: [{ id: kept.id }] });
+    expect(expired.status).toBe(410);
+    expect(expired.body.error).toContain("expired");
   });
 
   it("refuses attachments ids the server did not issue or from another chat", async () => {

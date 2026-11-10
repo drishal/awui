@@ -179,7 +179,7 @@ test("New chat opens the folder picker over the start screen, and the picked fol
   await expect(tabs(page)).toHaveCount(1);
 });
 
-test("a project's + shows the start screen in that folder and starts nothing", async ({ page }) => {
+test("a project's + opens its start screen in a new tab, without replacing the shown history", async ({ page }) => {
   await signInAndOpen(page);
   await sendAndWait(page, "a chat in alpha");
   await signInAndOpen(page, "beta");
@@ -191,8 +191,12 @@ test("a project's + shows the start screen in that folder and starts nothing", a
   await page.getByRole("button", { name: "New chat in alpha" }).click();
   await expect(page.getByRole("heading", { name: /What should Fake do in alpha\?/ })).toBeVisible();
   await expect(page.getByTestId("user-prompt")).toHaveCount(0);
-  await expect(tabs(page)).toHaveCount(before);
+  await expect(tabs(page)).toHaveCount(before + 1);
   await expect(page.getByRole("textbox", { name: box })).toBeFocused();
+  await page.getByRole("tablist", { name: "Open chats" }).getByRole("tab", { name: /a chat in beta/ }).click();
+  await expect(page.getByTestId("user-prompt")).toHaveText(["a chat in beta"]);
+  await page.getByRole("tablist", { name: "Open chats" }).getByRole("tab", { name: /Fake New chat/ }).click();
+  await expect(page.getByRole("heading", { name: /What should Fake do in alpha\?/ })).toBeVisible();
   await sendAndWait(page, "second chat in alpha");
   await expect(page.getByTestId("user-prompt")).toHaveText(["second chat in alpha"]);
 });

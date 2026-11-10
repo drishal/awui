@@ -321,6 +321,19 @@ describe("the public control-socket contract", () => {
     writeFileSync(path.join(home, "gateway.pid"), JSON.stringify({ pid: gateway.pid }));
   }
 
+  it("keeps generation 1 when a live event reaches the link before the create response", async () => {
+    await respawn({ FAKE_HERMES_EARLY_START: "1" });
+    const { chat } = await openChat();
+    await chat.send("hold please", "normal");
+    await turnStarted(chat);
+    await chat.send("use the other file", "steer");
+    // A snapshot adopted after this event still has generation 0; the later
+    // execution's fence must not be rolled back by that response.
+    const steer = canonical().filter((call) => call.name === "session.steer");
+    expect(steer.at(-1)?.params.execution_generation).toBeGreaterThanOrEqual(1);
+    await until(() => chat.status === "idle");
+  });
+
   it("takes its verdict from resolve-profile and dials the URL the owner names", async () => {
     const found = await adapter.discover();
     expect(found).toMatchObject({ available: true, version: "1.2.3" });

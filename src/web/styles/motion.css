@@ -208,6 +208,21 @@
   animation: fade-in 0.22s ease;
 }
 
+/* Exit is a short inert phase, so Escape/click never strands focus or accepts actions. */
+.dialog[open].is-leaving {
+  pointer-events: none;
+  animation: dialog-out var(--dur-hover) var(--ease-out) forwards;
+}
+.dialog[open].is-leaving::backdrop {
+  animation: fade-out var(--dur-hover) ease-out forwards;
+}
+@keyframes dialog-out {
+  to { opacity: 0; transform: translateY(8px); }
+}
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+
 @media (max-width: 819px) {
   .model-pop,
   .model-pop.is-below {

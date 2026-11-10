@@ -19,6 +19,9 @@ export class RoomEventLogImpl implements RoomEventLog {
   private readonly logs = new Map<string, RoomLog>();
   private readonly subscribers = new Map<string, Set<RoomSubscriber>>();
 
+  /** `onEmit`: told of every room that emitted, viewed or not (the overview's room summaries). */
+  constructor(private readonly onEmit?: (roomId: string, event: RoomEvent) => void) {}
+
   private log(roomId: string): RoomLog {
     let log = this.logs.get(roomId);
     if (!log) {
@@ -42,6 +45,7 @@ export class RoomEventLogImpl implements RoomEventLog {
     log.entries.push({ id, event });
     if (log.entries.length > MAX_LOG_EVENTS) log.entries.splice(0, log.entries.length - MAX_LOG_EVENTS);
     for (const subscriber of this.subscribers.get(roomId) ?? []) subscriber.send(id, event);
+    this.onEmit?.(roomId, event);
   }
 
   /** Whether a cursor is still inside the replay window (the manager takes a snapshot only otherwise). */

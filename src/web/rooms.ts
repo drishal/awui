@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "./api.js";
 import type { BotProfile, InteractionAnswer, RoomInfo, RoomRecord, RoomSnapshot, RoomSummary, RoomTurnView } from "../shared/protocol.js";
 import { BOARD_HISTORY_PAGE } from "../shared/protocol.js";
+import { mergeRoomOverview } from "../shared/overview-events.js";
+import { useOverviewStream } from "./overview-stream.js";
 
 export interface RoomMessageBody {
   text: string;
@@ -140,9 +142,6 @@ export function downloadRoomExport(roomId: string): void {
   a.remove();
 }
 
-/** Rooms change on the server (a run starts, a bot asks something); the list polls only while the page is visible. */
-const ROOMS_REFRESH_MS = 15_000;
-
 export function useRooms(onSignedOut: () => void) {
   const [rooms, setRooms] = useState<RoomSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -169,17 +168,16 @@ export function useRooms(onSignedOut: () => void) {
     }
   }, []);
 
+  useOverviewStream((event) => {
+    if (event.type === "snapshot") void refresh();
+    else if (event.type === "room") setRooms((current) => mergeRoomOverview(current ?? [], event));
+    if (event.type === "room") setError(null);
+  });
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, ROOMS_REFRESH_MS);
     const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-    };
+    return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
 
   return { rooms, error, loading, refresh };

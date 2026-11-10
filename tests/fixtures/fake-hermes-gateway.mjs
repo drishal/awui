@@ -254,6 +254,13 @@ server.on("upgrade", (req, socket) => {
         });
       case "session.create":
         session.cwd = params.cwd ?? session.cwd;
+        if (process.env.FAKE_HERMES_EARLY_START === "1") {
+          // Real attached owners can forward a running execution before the create result.
+          // The snapshot is older than that execution's live generation, so losing this event breaks all fences.
+          session.sessionId = "4242";
+          session.generation += 1;
+          send({ jsonrpc: "2.0", method: "event", params: { type: "message.start", session_id: session.sessionId, execution_generation: session.generation } });
+        }
         return callChild(id, "session.create", { cwd: params.cwd, title: params.title }, snapshot);
       case "session.resume":
         // The real gateway's refusal for a session it lists but will not mount (source webui).

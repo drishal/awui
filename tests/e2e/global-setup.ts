@@ -40,6 +40,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     (call) => appendFileSync(path.join(herdrDir, "calls.jsonl"), `${JSON.stringify(call)}\n`),
   );
   const server: ChildProcess = spawn(process.execPath, ["dist/server/server/index.js"], {
+    // Inherit neither caller's git workdir nor /tmp used to drive live live.
+    cwd: path.resolve(import.meta.dirname, "..", ".."),
     env: {
       ...process.env,
       HERDR_SOCKET_PATH: path.join(herdrDir, "herdr.sock"),

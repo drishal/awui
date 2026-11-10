@@ -21,7 +21,7 @@ awui tern            # in a Tern pane: awui drawn natively by Tern
 
 The binary carries both terminal clients: `awui tui` is atui and `awui tern` is the Tern client, bundled at build time, so a binary needs no Bun and no fetched copy, and its clients always match its server. `awui install tui` puts an `atui` command on your PATH — a symlink to the binary, which acts as atui when run under that name.
 
-`bun run scripts/build-binary.ts --all` cross-compiles every target. State goes to `$XDG_STATE_HOME/awui`, so a binary and a source run share one config and one set of sessions.
+`bun run scripts/build-binary.ts --all` cross-compiles every target. State goes to `$XDG_STATE_HOME/awui`, so a binary and source run share one config and one set of sessions. Build with `--no-link`, or set `AWUI_NO_LINK=1` / `CI`, to leave PATH links alone. `awui install desktop` links an already built desktop app; `awui desktop --install-icon` adds the XDG menu entry. The bundled terminal uses Bun's native PTY and doesn't load a module alongside the app. The optional agent-page screenshot preview needs an installed Chromium browser and its small `node_modules/playwright-core` runtime beside `awui` (included in `dist/bin/<platform>`), so keep that directory intact rather than copying only the executable. BiDi is not loaded for this preview transport and is not required by it.
 
 `awui install service` puts the binary at `~/.local/bin/awui` and writes a systemd user unit, `~/.config/systemd/user/awui.service`, that runs it and starts with your session; a leftover `agent-web-ui.service` from before the rename is retired first, so the two never share the port. It also puts `atui` beside the binary. Add `--link` to symlink the binary instead of copying it — what a dev checkout wants, so a rebuild is live after `systemctl --user restart awui`. Running `bin/awui install service --link` from a checkout installs the binary the build wrote, not the node running the script.
 
@@ -65,13 +65,13 @@ then restart. Other devices get a sign-in form; this machine still opens directl
 |---|---|
 | `npm run dev` | Backend under `tsx watch` plus Vite on :5173, proxying `/api`. Prints a `Dev UI: http://127.0.0.1:5173/` link. |
 | `npm run set-password` | Alternative to `auth.password`: sets the login for other devices, storing a salted scrypt hash only. Changing it signs every device out. |
-| `npm run typecheck` | Strict TypeScript for server, web, and tests |
-| `npm test` | Vitest unit and integration tests. Uses only fake and scripted harnesses, so no model tokens are spent. |
-| `npm run test:e2e` | Builds, then runs Playwright (Chromium) against the fake harnesses (~12 min) |
-| `npm run test:e2e:fast` | The same suite as two shards at once, each with its own port and state (~6 min) |
+| `npm run typecheck` | Strict TypeScript for server, web, tests, and atui (four projects) |
+| `npm test` | Vitest integration plus scripts; `tests/smoke` opts itself out unless `SMOKE=1`. No model tokens by default. |
+| `npm run test:e2e` | Builds, then runs Playwright (Chromium) against the fake harnesses (roughly 12 min, depends on host load) |
+| `npm run test:e2e:fast` | The same suite in two shards with distinct ports and state folders (roughly 6 min under similar load) |
 | `npm run smoke` | Opt-in checks against the real installed Pi, omp, Hermes, Claude Code, Grok Build, and DeepSeek Harness (see [Testing](testing.md)) |
 | `npm run build` / `npm start` | Production build, then a single process serving UI and API |
-| `npm run build:binary` / `npm run build:desktop` | Compile the self-contained binary into `dist/bin/<platform>`; the desktop one appends this platform's packaged app (`--with-desktop`). `--electron` packages `apps/desktop` from source first, so a change to the shell itself ships too; without it the AppImage already in `apps/desktop/release` is reused. `bun run scripts/build-binary.ts --all` cross-compiles every target (never with the desktop app). Run inside `devenv shell`. |
+| `npm run build:binary` / `npm run build:desktop` | Compile into `dist/bin/<platform>`. `build:desktop` carries the packaged AppImage. It refreshes a stale or missing shell from source automatically, reuses a source-matched AppImage otherwise, and pins the build toolchain if needed. `--electron` forces repackaging before append. Run inside devenv shell. |
 | `npm run desktop` | The optional desktop app from a checkout (`apps/desktop`; `npm ci` there once first) |
 
 ## Desktop app (optional)
@@ -101,7 +101,8 @@ awui desktop           # start it — attaches to a running server, or starts on
 `awui desktop --install-icon` puts it in the application menu: an entry at
 `$XDG_DATA_HOME/applications/awui.desktop` (default `~/.local/share`) and the
 icon under `icons/hicolor/512x512/apps`, running `awui desktop`. macOS and
-Windows get theirs from the app bundle and the installer.
+Windows get theirs from the app bundle and the installer. To see this command and
+which app it will choose, without launching anything, use `awui desktop --help`.
 
 A running server writes its port into `$XDG_STATE_HOME/awui/server.json` (with
 its pid), so a client that has the state folder but not the port can find it —
@@ -111,7 +112,13 @@ instead of starting a second one.
 `awui desktop` looks for the app in `AWUI_DESKTOP_BIN`, then the copy this
 binary carries, then the `awui-desktop` that `install desktop` linked, then any
 `awui-desktop` on the PATH, then this checkout's `apps/desktop` (a development
-run through Electron). It starts the app detached and returns.
+run through Electron). A repeated launch
+activates the existing window without reloading its chat. On Linux, the launcher
+waits for the first native owner to register, then wakes that process; repeat
+invocations do not create a second Electron app. The first launch waits until
+that owner registration completes; subsequent launches return immediately.
+Close and relaunch the desktop app itself after updating its shell: restarting
+only the server cannot replace an already-running Electron process.
 
 A binary can carry the app itself:
 
@@ -120,12 +127,18 @@ npm run build:desktop   # ~257 MB instead of ~95 MB
 awui desktop            # "bundled with this awui"
 ```
 
-`npm run build:desktop --electron` packages `apps/desktop` from source first, so a
-change to the shell (tray, menus, how it finds or starts a server) ships in the
-same run; plain `build:desktop` reuses the AppImage already in
-`apps/desktop/release` and so only carries server and web changes. Either way the
-restart is one `systemctl --user restart awui`, and the next `awui desktop`
-re-extracts the carried app into `$XDG_STATE_HOME/awui/app/<version>/`.
+`build:desktop` fingerprints desktop sources, scripts, and packaging config so a
+changed shell or dependency layout repackages rather than leaving stale code. The
+internal server and its sibling provider stay included together in the AppImage.
+
+```bash
+npm run build:desktop           # host binary + matching desktop app, linked as awui when ~/.local/bin exists
+systemctl --user restart awui   # apply the newly built service binary; do this for your own running service
+awui desktop                     # extract/run the app carried by this binary
+```
+
+If you change `apps/desktop/src`, use `npm run build:desktop --electron` instead —
+it forces the desktop shell package to update too.
 
 The payload is appended to the executable (the trick an AppImage plays with its
 own filesystem) and extracted into the state folder on first use, so one binary

@@ -965,11 +965,25 @@ class FakeLiveChat implements LiveChat {
     this.emit({ type: "assistant_end", text: "", thinking });
   }
 
+  /** A true file write kept beside the tool's deterministic diff scenarios. */
+  private async editScenario(): Promise<FakeCall> {
+    const file = path.join(this.session.cwd, "src", "app.ts");
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const before = await fs.readFile(file, "utf8").catch(() => null);
+    // Edit the tracked example without erasing the user's original file content.
+    // Fresh worktrees still get a real write so comparison/isolation tests exercise disk, _not_ harness JSON.
+    const text = before?.includes("const b = 1;")
+      ? before.replace("const b = 1;", "const changed = true;")
+      : `${before?.endsWith("\n") ? before : `${before ?? ""}\n`}// Managed by the fake harness's edit command.\nexport const changed = true;\n`;
+    await fs.writeFile(file, text);
+    return { name: "edit", args: { path: file, oldText: "a", newText: "b" }, output: "Edited src/app.ts (+1 -1)" };
+  }
+
   private async tool(kind: "read" | "big" | "edit", signal: AbortSignal): Promise<void> {
     const big = kind === "big";
     await this.call(
       kind === "edit"
-        ? { name: "edit", args: { path: `${this.session.cwd}/src/app.ts`, oldText: "a", newText: "b" }, output: "Edited src/app.ts (+1 -1)" }
+        ? await this.editScenario()
         : { name: "read", args: { path: "README.md" }, output: big ? "x".repeat(200_000) : "# Fake README\nhello" },
       signal,
     );

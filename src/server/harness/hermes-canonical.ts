@@ -111,6 +111,8 @@ export class CanonicalChatLink implements GatewayLink {
   /** The snapshot's `info` (model, cwd, title, …), kept for a caller that only reads. */
   private info: Obj = {};
   private readonly controls = new Map<string, Control>();
+  /** Owner events may precede the create/resume response that first identifies this session. */
+  private earlyFences: { sessionId: string; type: string; revision: number; generation: number } | null = null;
 
   private constructor(
     private readonly onEventOuter: (params: Obj) => void,
@@ -277,6 +279,14 @@ export class CanonicalChatLink implements GatewayLink {
       revision: num(snapshot.revision) ?? 0,
       generation: num(snapshot.execution_generation) ?? 0,
     };
+    // The owner can send running-execution events while adopting the new viewer.
+    // A snapshot's older fences must never roll these newer values backwards.
+    const early = this.earlyFences;
+    this.earlyFences = null;
+    if (early && (!early.sessionId || early.sessionId === this.session.sessionId)) {
+      this.session.generation = Math.max(this.session.generation, early.generation);
+      if ((early.type === "session.info" || early.type === "session.updated") && early.revision > this.session.revision) this.session.revision = early.revision;
+    }
     this.rows = projectSnapshot(snapshot);
     // A resume over a live session returns a new subscription (the old one is a stale
     // viewer now). Detach names no end_reason: that field closes the conversation, and
@@ -309,6 +319,7 @@ export class CanonicalChatLink implements GatewayLink {
       target = num(users[num(params.truncate_before_user_ordinal) ?? 0]?.row_id);
     }
     if (target !== null) await this.mutate("rewind", { target_message_id: target }, true);
+    // The receipt fences the queued prompt, which the owner may only later start.
     const receipt = await this.socket.request<Obj>("prompt.submit", {
       session_id: session.sessionId,
       text: str(params.text),
@@ -316,7 +327,7 @@ export class CanonicalChatLink implements GatewayLink {
       queued: params.queued !== false,
     });
     const generation = num(receipt?.execution_generation);
-    if (generation !== null) session.generation = generation;
+    if (generation !== null) session.generation = Math.max(session.generation, generation);
     return receipt ?? {};
   }
 
@@ -430,15 +441,25 @@ export class CanonicalChatLink implements GatewayLink {
    * `session.updated`. Without this, every model or reasoning change after a turn was refused as stale.
    */
   private adoptEventFences(type: string, params: Obj, payload: Obj): void {
+    const generation = num(params.execution_generation) ?? num(payload.execution_generation);
+    const payloadRevision = num(payload.revision);
+    if (!this.session) {
+      this.earlyFences = {
+        sessionId: str(params.session_id),
+        type,
+        revision: Math.max(this.earlyFences?.revision ?? 0, payloadRevision ?? 0),
+        generation: Math.max(this.earlyFences?.generation ?? 0, generation ?? 0),
+      };
+      return;
+    }
     const session = this.session;
-    if (!session) return;
     const sid = str(params.session_id);
     if (sid && sid !== session.sessionId) return;
-    const generation = num(params.execution_generation) ?? num(payload.execution_generation);
     if (generation !== null && generation > session.generation) session.generation = generation;
     const revision = num(payload.revision);
-    if (revision === null) return;
-    if (type === "session.info" || (type === "session.updated" && revision > session.revision)) session.revision = Math.max(session.revision, revision);
+    const latestRevision = revision;
+    if (latestRevision === null) return;
+    if (type === "session.info" || (type === "session.updated" && latestRevision > session.revision)) session.revision = Math.max(session.revision, latestRevision);
   }
 
   private onRequest(frame: GatewayFrame): void {

@@ -5,7 +5,7 @@
 // (Fork, Undo, Edit or Retry where the harness cannot replace a prompt in
 // place) is the main pane's: Make main swaps the two. Empty, it lists the
 // sessions to pick one from.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSnapshot, HarnessStatus, ProjectSession, SessionsOverview, UsageLimits } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { chatActions } from "../chat-actions.js";
@@ -79,11 +79,13 @@ function Picker({
 
 export function SidePane({
   initial,
+  generation,
   overview,
   harnesses,
   maxChars,
   limits,
   main,
+  draftRef,
   openSnapshot,
   onMakeMain,
   onClose,
@@ -91,11 +93,15 @@ export function SidePane({
 }: {
   /** A chat to show at once (Open beside); none: the picker. */
   initial: ChatSnapshot | null;
+  /** Bumped each time `initial` is handed over again; with a null `initial` it returns the pane to its picker. */
+  generation: number;
   overview: SessionsOverview;
   harnesses: HarnessStatus[];
   maxChars: number;
   limits: UsageLimits | null;
-  main: { chatId: string | null; sessionId: string | null };
+  main: { chatId: string | null; sessionId: string | null; snapshot: ChatSnapshot | null };
+  /** Register the still-mounted side editor's bounded draft save handler. */
+  draftRef: { current: (() => void) | null };
   /** A session's chat, live or resumed (App's fetchSession). */
   openSnapshot: (s: ProjectSession) => Promise<ChatSnapshot>;
   /** Swap: this chat to the main pane (and the main one here). */
@@ -106,20 +112,35 @@ export function SidePane({
   const { chat, setChat, conn } = useChatStream({ onSignedOut, hash: false });
   const [opening, setOpening] = useState<ProjectSession | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A slow earlier pick must not replace the chat the user picked next.
+  const picking = useRef(0);
   useEffect(() => {
     if (initial) setChat(initial);
-  }, [initial]);
+    else {
+      picking.current += 1;
+      setOpening(null);
+      setChat(null);
+    }
+  }, [initial, generation]);
+  useEffect(() => () => void (picking.current += 1), []);
 
   const pick = async (s: ProjectSession) => {
+    const seq = ++picking.current;
     setOpening(s);
     setError(null);
     try {
-      setChat(await openSnapshot(s));
+      const snapshot = await openSnapshot(s);
+      if (seq === picking.current) setChat(snapshot);
     } catch (e) {
-      setError(errorText(e));
+      if (seq === picking.current) setError(errorText(e));
     } finally {
-      setOpening(null);
+      if (seq === picking.current) setOpening(null);
     }
+  };
+  const clear = () => {
+    picking.current += 1;
+    setOpening(null);
+    setChat(null);
   };
 
   const fail = (e: unknown) => setError(errorText(e));
@@ -170,7 +191,7 @@ export function SidePane({
           </button>
         ) : null}
         {chat ? (
-          <button type="button" className="icon-btn" aria-label="Pick another chat beside" title="Pick another chat" onClick={() => setChat(null)}>
+          <button type="button" className="icon-btn" aria-label="Pick another chat beside" title="Pick another chat" onClick={clear}>
             <IconSearch size={15} />
           </button>
         ) : null}
@@ -232,6 +253,7 @@ export function SidePane({
             {actions ? (
               <Composer
                 key={chat.chatId}
+                draftTransfer={draftRef}
                 side
                 chat={chat}
                 harnesses={harnesses}

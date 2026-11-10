@@ -87,16 +87,12 @@ export class Workspaces {
     return info;
   }
 
-  /** Look up an opened workspace and confirm it still exists. */
+  /** Look up an opened workspace and revalidate it: a directory replaced by a link must not escape the approved roots. */
   async get(id: string): Promise<WorkspaceInfo> {
     const info = this.byId.get(id);
     if (!info) throw new ChatError(404, "unknown_workspace", "Open the workspace again");
-    try {
-      const stat = await fs.stat(info.path);
-      if (!stat.isDirectory()) throw new Error();
-    } catch {
-      throw new ChatError(404, "missing_project", "The project folder no longer exists");
-    }
+    const real = await this.resolve(info.path);
+    if (real !== info.path) throw new ChatError(403, "outside_roots", "The project folder changed; open its new location again");
     return this.remember(info);
   }
 

@@ -27,7 +27,9 @@ async function makeRoom(page: Page, room: string, bots: string[]) {
 /** Send a message to the open room and wait for the turn to settle back to Idle. */
 async function sendAndWait(page: Page, text: string) {
   const box = page.getByLabel("Message the room");
-  await box.fill(text);
+  await box.focus();
+  await box.click();
+  await box.pressSequentially(text);
   await page.getByRole("button", { name: "Send to the room" }).click();
   await expect
     .poll(() => page.getByTestId("room-status").textContent(), { timeout: 30_000 })

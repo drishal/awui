@@ -1,0 +1,15 @@
+/* Project checkout and comparison dialogs: forms keep their hierarchy without nested cards. */
+.worktree-create { display: grid; gap: 10px; margin-bottom: 16px; }
+.worktree-create label, .compare-prompt { color: var(--text-2); font-size: 13px; }
+.worktree-create .input { margin-top: 5px; width: 100%; }
+.worktree-actions, .picker-work-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 16px; }
+.worktree-list { display: grid; gap: 6px; list-style: none; padding: 0; }
+.worktree-row { display: flex; align-items: center; gap: 8px; }
+.worktree-row .picker-item { flex: 1; min-width: 0; }
+.compare-harnesses { border: 0; margin: 0 0 16px; padding: 0; }
+.compare-harnesses legend { margin-bottom: 8px; color: var(--text-2); font-size: 13px; }
+.compare-harnesses { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.compare-harnesses legend { width: 100%; }
+#compare-prompt, .compare-prompt { width: 100%; resize: vertical; margin: 12px 0; font: var(--chat-font)/1.5 var(--font-sans); }
+.dialog-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+@media (max-width: 640px) { .worktree-row { align-items: stretch; } .worktree-row .btn { min-height: 44px; } }

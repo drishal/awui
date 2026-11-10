@@ -8,6 +8,7 @@
 // the thread.
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { HtmlRenderRef } from "../../shared/protocol.js";
+import { api, errorText } from "../api.js";
 import { HTML_RENDER_COLUMN_WIDTH, htmlRenderFrameHeight, htmlRenderThemeFragment, readHtmlRenderContentHeight, type HtmlRenderTheme } from "../../shared/html-render.js";
 
 const THEME_VAR_NAMES = ["--bg", "--surface", "--surface-2", "--border", "--text", "--text-2", "--muted", "--accent", "--accent-hover", "--link", "--ok", "--danger", "--warn", "--info", "--orange", "--thinking", "--font-sans", "--font-mono"] as const;
@@ -45,9 +46,28 @@ export const HtmlRenderFrame = memo(function HtmlRenderFrame({ chatId, render }:
   // of its own script runs; the src is fixed for the frame's life, so a theme
   // change is posted, not navigated to.
   const src = useMemo(() => `/api/chats/${chatId}/html-render/${render.id}${htmlRenderThemeFragment(readTheme())}`, [chatId, render.id]);
+  const theme = useHtmlRenderTheme();
+  const [preview, setPreview] = useState<{ url: string; console: string[] } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const capture = async () => {
+    setPreviewBusy(true); setPreviewError(null);
+    try {
+      const result = await api<{ url: string; console: string[] }>(`/api/chats/${chatId}/html-render/${render.id}/preview`, { method: "POST", body: { theme: theme.variables, appearance: theme.appearance } });
+      setPreview(result);
+    } catch (e) { setPreviewError(errorText(e)); }
+    finally { setPreviewBusy(false); }
+  };
   return (
-    <div className="html-render" style={{ height }}>
-      <HtmlRenderDocument src={src} title={render.title} onWidth={setWidth} onContentHeight={setContentHeight} />
+    <div className="html-render-block">
+      <div className="html-render-tools">
+        <button type="button" className="btn btn-small btn-ghost" disabled={previewBusy} onClick={() => void capture()}>{previewBusy ? "Checking appearance…" : "Check appearance"}</button>
+      </div>
+      {previewError ? <p className="notice notice-error">{previewError}</p> : null}
+      {preview ? <figure className="render-preview"><img src={preview.url} alt={`Preview of ${render.title || "rendered page"}`} />{preview.console.length > 0 ? <pre>{preview.console.join("\n")}</pre> : null}</figure> : null}
+      <div className="html-render" style={{ height }}>
+        <HtmlRenderDocument src={src} title={render.title} onWidth={setWidth} onContentHeight={setContentHeight} />
+      </div>
     </div>
   );
 });

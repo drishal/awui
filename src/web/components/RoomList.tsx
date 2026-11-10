@@ -45,7 +45,7 @@ export function RoomList({
   const choseOpen = useRef(load<boolean | null>("roomsOpen", null) !== null);
   const now = useNow(true, 60_000);
   const live = (rooms ?? []).filter((r) => !r.archived).sort(sortRooms);
-  const archived = (rooms ?? []).filter((r) => !r.archived).sort(sortRooms);
+  const archived = (rooms ?? []).filter((r) => r.archived).sort(sortRooms);
   const pendingOf = (list: RoomSummary[]) => list.reduce((n, r) => n + r.pendingCount, 0);
   const pending = pendingOf(live);
   useEffect(() => {

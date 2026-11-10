@@ -37,7 +37,18 @@ src/server/
   harness/opencode-messages.ts  OpenCode's messages, models, forms, and permissions in awui's terms
   harness/render-extension.ts  the render_html extension's file + the -e args that load it
   harness/render-token.ts   render tool names + a result's reference, with its spoof guard
-  harness/fake.ts           deterministic adapter for tests
+  harness/codex.ts          Codex adapter (`codex app-server`) with rollout/session folding
+  harness/grok.ts           Grok adapter (`grok agent --no-leader stdio`)
+  harness/dsh.ts            DeepSeek Harness ACP adapter, with concatenated-zstd transcript reading
+  harness/awui.ts           Read-only Awui chat harness (browse + eval/render), own agent directory
+  boards/                   Durable rooms, portraits, per-room event replay, one serial active turn per room and one native owner per bot
+  overview-events.ts        Metadata-only live sessions and room updates, 500-event replay; no second transcript projection
+  workspaces.ts             Every workspace lookup resolves roots again so directory symlink replacement cannot escape confinement
+  worktrees.ts              Project-owned isolated checkouts and durable metadata, serialized mutations; no forced dirty-tree removal
+  terminal.ts               Bounded PTY lifetime, replay buffer, cleanup on last client detachment, server shutdown
+  github.ts                 Bounded explicit gh/git user-authenticated PR, push, and check operations
+  render-preview.ts         Isolated headless screenshot of an agent-owned stored render in the authenticated preview route
+  harness/fake.ts           deterministic adapter, including awaited real edits for workspace-isolation tests
   html-render.ts            the page store under the state folder, addressed by id, per-chat
   chats/chat.ts             one live chat: state fold, event log, SSE fan-out, commands
   chats/manager.ts          chat registry, one live writer per native session
@@ -49,9 +60,24 @@ src/server/
   clients.ts                the terminal clients behind the command line: `awui tui` (or the binary as `atui`) and `awui tern`
   clients-module.d.ts       the `awui:clients` module the binary's build bundles (the two clients' entry points)
   install-tui.ts            `awui install tui`: the `atui` symlink (the binary carries the client itself)
-src/web/                    React + Vite client
+src/web/                    React + Vite client: App shell and streaming conversation; auxiliary dialogs lazy-load
+  overview-stream.ts        One shared EventSource per browser tab, with fallback refresh of normal lists
+  components/WorktreePicker.tsx and CompareDialog.tsx  Managed-workspace chooser and isolated multi-harness comparison
+  terminal-shell.ts        Trusted xterm UI in its own iframe, because the DOM terminal requires inline grid styles; docs/security.md explains the narrowly scoped boundary
+  components/TerminalPanel.tsx  Header and lifecycle only; messages come only from untrusted-authenticated terminal transport
+  components/GitHubPanel.tsx  Current/new PR forms and actual server-backed status
+  components/HtmlRenderFrame.tsx  Inline page theme plus explicit bounded screenshot capture
+src/atui/                  The Bun/OpenTUI terminal client (not a PTY server)
+src/tern/                  The Tern pane surface, sharing atui state without owning the terminal process
 ```
 
+**Project isolation.** `Workspaces.open` and every `Workspaces.get` re-resolve the realpath; a replaced project directory cannot quietly point elsewhere and remain an approved workspace. `ManagedWorktrees` creates separate real checkouts under `.awui/worktrees` inside that validated project, serializes create/prune/metadata updates per root, and uses checked atomic metadata writes (`state-file.ts:writeJsonChecked`, preserving unrelated existing stores' write behavior). The native session file stays in its harness's own store and is not cloned into a backing db.
+
+**Status versus transcript.** `/api/overview/events` holds only arrivals that are useful offscreen: chat native id, title, live status and pending question, and room summary. Its replay is bounded at 500 lightweight items and never includes harness text or tool output. The browser opens one refcounted connection through `stream.ts` on the first `useSessions`/`useRooms` mount and closes when both are gone; stale snapshot marker events trigger fallback `/api/sessions` and `/api/rooms` reads (while harness files remain source of truth). Board `RoomManager.subscribe` reuses the room's event log to derive summaries: it never rebuilds native harness streams or mutates their states from a projection.
+
+**Interactive terminal versus harness.** PTYs do not share an agent run's lifetime. They stop once the final viewer disconnects or on server shutdown, have 1 MiB replay, and retain natural exit for 60 s. xterm's necessary DOM-inline layout belongs only in `/terminal-shell.html`, whose source/script is awui's own code. The main web bundle never broadens `style-src 'self'` to accommodate it; agent HTML owns a distinct opaque iframe sandbox independent of this trusted shell. Source/Node calls use a maintained native node-pty backed provider (`@lydell/node-pty`); the Bun executable uses its built-in `Bun.Terminal` to avoid external native-module loading in its virtual filesystem. `terminal-backend.ts` implements one `ProjectPty` interface: write, dimensions, output, exit/pid and kill, never shell command evaluation. A detached viewer kills the live child; it does not leave a hidden terminal process running. Bun.Terminal is POSIX-only here and the Windows binary reports that specific provider limitation without weakening harness access or silently substituting pipes.
+
+**Native artifacts.** Previewing an agent's saved page uses an authenticated headless Chromium request bound to that render id. Its memory-only document has blocked cookies/service workers, fixed origin, and all other requests aborted. Screenshots are real PNG bytes through the bounded in-memory image store and console is captioned, with no arbitrary URL renderer.
 **Resume without waiting.** Opening an old Pi, omp, Claude Code, Codex, Grok, or DeepSeek Harness session shows its transcript straight from the session file (`readTranscript`, a few milliseconds) and starts the harness behind it; the status reads *Starting* until it is up, usually under a second. A prompt or model change made meanwhile goes through once it is. If the harness starts working on its own as it comes up (an extension picking a task back up, as Pi's background-tasks does when it reconciles a job that died with the last process), the chat shows *Working* with Stop, not *Idle*, and a warning above the work says nothing was sent from here. Hermes keeps its history behind its gateway, so its sessions open when the gateway is ready (a session the gateway will not mount still shows its transcript from `state.db`); OpenCode's are read through its server. Session listings are warmed at startup, and Hermes's are served from cache while they refresh.
 
 **Single writer.** `chatId → live session` and `harnessId + native session id → chatId` mean the same session is never opened twice in this process. For omp that also means never two child processes. A second tab or device attaches to the existing chat as another SSE subscriber. **Another terminal or process running `pi`/`omp`/`hermes` is not locked out.** Avoid driving the same session from a terminal while it is open here.
@@ -189,7 +215,7 @@ Each live chat runs the **installed** `dsh` as `dsh --profile acp`, one child pe
 
 ## Approvals and extension dialogs
 
-Tool approvals come from omp's `tools.approvalMode` (`always-ask` | `write` | `yolo`, as configured; this app never changes it or passes `--auto-approve`). Dialogs come from Pi or omp extensions (`select`, `confirm`, `input`, `editor`). Both become one `interaction_request`:
+Every harness keeps its own approval protocol (omp's `tools.approvalMode`, Pi/omp extension dialogs, Claude Code `can_use_tool`, Codex `requestApproval`, OpenCode permissions/forms, and Grok/DSH `session/request_permission`). The adapter translates them to one `InteractionRequest` without inventing grants. Pi and omp can also present `select`, `confirm`, `input`, and `editor` dialogs in this shared shape:
 
 - It takes over the composer and stays in the conversation as a card that records the outcome.
 - Pending requests are part of the SSE snapshot, so they survive reconnects and show on every attached device. The **first answer wins**; a later answer gets `409`.
