@@ -368,7 +368,8 @@
   color: var(--muted-text);
 }
 
-@media (max-width: 520px) {
+/* Only the narrowest screens drop the word: a 390px phone has room for "5 new". */
+@media (max-width: 360px) {
   .git-count-label {
     display: none;
   }
