@@ -160,11 +160,16 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const mentionQuery = createMemo(() => mentionAt(draft().draft.text)?.query);
     const toastId = createMemo(() => app.toasts().at(-1)?.id);
 
+    // The turns a chat was drawn with when it opened: they draw still, and only later turns animate in.
+    let loadedTurns: Set<string> | null = null;
+    const arrived = (turnId: string): boolean => loadedTurns !== null && !loadedTurns.has(turnId);
+
     // A new chat starts its own folds, window, and timers.
     createEffect(
       on(
         chatId,
         () => {
+          loadedTurns = null;
           ages.clear();
           setFolds(new Map());
           setAllWork(null);
@@ -790,9 +795,11 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         main.push(headNode(null, app.boot()?.harnesses.find((x) => x.id === opening.harnessId) ?? null, opening.title, false));
         main.push(ui.row({ key: "opening", gap: "sm", align: "center" }, ui.spinner({ key: "s" }), ui.shimmer({ key: "t", text: `Opening ${opening.title}…` })));
       } else if (c) {
+        loadedTurns ??= new Set(buildTurns(c.items, c.status).map((t) => t.id));
         main.push(headNode(c, h, c.workspace.name, c.pending.length > 0));
         main.push(
           ...conversation({
+            arrived,
             chat: c,
             harness: h,
             webUrl: opts.url,

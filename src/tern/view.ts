@@ -55,6 +55,11 @@ export interface ConversationCx {
   folds: ReadonlyMap<string, boolean>;
   /** The turn whose prompt shows its actions. */
   picked: string | null;
+  /**
+   * Whether a turn arrived while this chat was on screen (not drawn with it when it opened): only those
+   * animate in, as the web UI's `is-arriving` rows do, so a resume or a tab switch draws still.
+   */
+  arrived?: (turnId: string) => boolean;
   /** A prompt image's blob id once Tern has it; asks for it (and re-renders) when not. */
   blob: (imageId: string, mimeType: string) => string | null;
   on: {
@@ -716,7 +721,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
     );
   }
   for (const n of turn.after) parts.push(ui.text({ key: n.id, role: "awui.after" }, span(n.text, n.level === "error" ? "error" : "muted")));
-  return ui.col({ key: turn.id, role: "awui.turn", gap: "md" }, parts);
+  return ui.col({ key: turn.id, role: cx.arrived?.(turn.id) ? "awui.turn-new" : "awui.turn", gap: "md" }, parts);
 }
 
 /** The chat's header: title, harness, state, project. */

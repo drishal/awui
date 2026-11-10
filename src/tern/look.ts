@@ -51,6 +51,9 @@ export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "li
 
 /** A colour that follows the theme sheet's harness colour, mixed into the pane's ink. */
 const HARNESS = "var(--awui-harness, var(--accent))";
+/** The web UI's easings (motion.css): eased out for what streams in, a slight overshoot for what you just did. */
+const EASE_OUT = "cubic-bezier(0.16, 1, 0.3, 1)";
+const SPRING = "cubic-bezier(0.34, 1.4, 0.64, 1)";
 const INK = "var(--t1, currentColor)";
 const tint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 
@@ -165,6 +168,37 @@ export const STYLESHEET = `
 .answer .n { color: var(--t4); margin-right: 6px; }
 /* An approval is a tool row's ask panel. Tern draws an Enter keycap on Allow; Enter sends the composer here, so none is shown. */
 [data-role='awui.approval'] .sf-tool-ask-btn .sf-kbd, [data-role='awui.approval'] .sf-tool-ask-btn .kbd { display: none; }
+
+/*
+ * Motion, after the web UI's (styles/motion.css): short and eased out, with what you just did landing on a
+ * spring. A turn that arrives while the chat is on screen (awui.turn-new; one drawn with the chat stays
+ * awui.turn) rises in: its prompt on the spring, its reply eased, each call sliding into the open card, a new
+ * kind of tool popping into the head's stack. A fold or a call's body exists only while open, so it unfurls
+ * from under its head as it opens (a program gets no exit hook, so closing is Tern's own). Chevrons turn on
+ * the spring, and a fold that settles, a composer that starts or stops, a status dot, and the chips change
+ * colour smoothly. Tern zeroes it all under the system's Reduce Motion; its own setting (.sf-still) is ours.
+ */
+@keyframes awui-rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes awui-slide { from { opacity: 0; transform: translateY(-3px); } }
+@keyframes awui-row { from { opacity: 0; transform: translateY(-4px); max-height: 0; } to { max-height: 120px; } }
+@keyframes awui-unfurl { from { opacity: 0; transform: translateY(-8px); clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 -24px 0); } }
+@keyframes awui-pop { from { opacity: 0; transform: scale(0.4) rotate(-30deg); } }
+[data-role='awui.turn-new'] [data-role='awui.prompt'] { animation: awui-rise 0.38s ${SPRING}; }
+[data-role='awui.turn-new'] [data-role='awui.prompt-time'] { animation: awui-rise 0.38s ${EASE_OUT}; }
+[data-role='awui.turn-new'] [data-role^='awui.fold'] { animation: awui-slide 0.22s ${EASE_OUT}; }
+[data-role='awui.turn-new'] [data-role='awui.reply'] { animation: awui-rise 0.18s ${EASE_OUT}; }
+[data-role='awui.turn-new'] [data-role='awui.calls'] > * { animation: awui-row 0.28s ${EASE_OUT}; }
+[data-role='awui.turn-new'] [data-role='awui.kinds'] .sf-icon { animation: awui-pop 0.38s ${SPRING}; }
+[data-role='awui.turn-new'] [data-role='awui.answer-acts'], [data-role='awui.turn-new'] [data-role='awui.changed'] { animation: awui-slide 0.22s ${EASE_OUT}; }
+[data-role^='awui.fold'] > .sf-section-body { animation: awui-unfurl 0.28s ${SPRING}; }
+[data-role='awui.calls'] .sf-tool-body { animation: awui-unfurl 0.24s ${SPRING}; }
+[data-role='awui.request'] { animation: awui-rise 0.38s ${SPRING}; }
+[data-role='awui.page'] .sf-chev, [data-role='awui.dock'] .sf-chev { transition: transform 0.38s ${SPRING}; }
+[data-role^='awui.fold'] { transition: border-color 0.4s ${EASE_OUT}, background-color 0.4s ${EASE_OUT}; }
+[data-role^='awui.composer'] { transition: border-color 0.3s ${EASE_OUT}; }
+.state::before { transition: color 0.3s ${EASE_OUT}; }
+.chip, .pick, .answer, .send, [data-role='awui.prompt'], [data-role='awui.git'] { transition: background-color 0.12s ${EASE_OUT}, color 0.12s ${EASE_OUT}; }
+.sf-still [data-role^='awui.'], .sf-still [data-role^='awui.'] * { animation: none !important; transition: none !important; }
 
 /* Tabs along the top, when there are two or more. */
 [data-role='awui.tabs'] { margin-bottom: -6px; }
