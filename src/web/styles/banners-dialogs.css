@@ -377,6 +377,7 @@
   border: 1px solid var(--hairline-strong);
   border-bottom-width: 2px;
   border-radius: var(--r-xs);
+  background: var(--hover);
   font: 500 11px/16px var(--font-sans);
   text-align: center;
   color: var(--muted-text);
