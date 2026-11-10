@@ -249,6 +249,11 @@ export interface HarnessAdapter {
   readUsage?(req: { cwd: string; nativeId: string }): Promise<UsageEntry[] | null>;
   /** The subscription limits of every account the harness is signed in to (omp's `usage`). */
   usageLimits?(): Promise<LimitAccount[]>;
+  /**
+   * Whether another process of this harness holds the session right now (omp's session
+   * lease), so a resume here would make a second writer. False when it cannot tell.
+   */
+  heldElsewhere?(nativeId: string): Promise<boolean>;
   /** Kill helper processes; called on server shutdown. */
   /** Where a subagent's transcript lives when its result did not say (omp's runs; pi-subagents' background ones), or null. */
   subagentTranscriptFile?(chat: { nativeId: string; cwd: string }, run: SubagentRun): Promise<string | null>;

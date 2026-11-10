@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
-import { firstPrompt, lastMessageAt, liveOmpChildren, OmpAdapter, ompVersionWarning } from "../../src/server/harness/omp.js";
+import { firstPrompt, heldSessions, lastMessageAt, liveOmpChildren, OmpAdapter, ompVersionWarning } from "../../src/server/harness/omp.js";
 import type { LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
@@ -394,5 +394,19 @@ describe("firstPrompt", () => {
     expect(firstPrompt(jsonl)).toBe("list the last 5 commits");
     expect(firstPrompt(JSON.stringify({ type: "message", message: { role: "user", content: [{ type: "image" }] } }))).toBeNull();
     expect(firstPrompt(JSON.stringify({ type: "message", message: { role: "user", content: "y".repeat(200) } }))).toHaveLength(80);
+  });
+
+  it("asks omp's session lease whether another omp holds a session, and says no when it cannot tell", async () => {
+    const held = new OmpAdapter({ command: script, agentDir: null, sessionDir: null, home, env: { ...process.env, FAKE_OMP_STATE: state, FAKE_OMP_HELD: "01a1c595-held" } });
+    expect(await held.heldElsewhere("01a1c595-held")).toBe(true);
+    expect(await held.heldElsewhere("01a1c595-free")).toBe(false);
+    const missing = new OmpAdapter({ command: path.join(home, "no-such-omp"), agentDir: null, sessionDir: null, home, env: process.env });
+    expect(await missing.heldElsewhere("01a1c595-held")).toBe(false);
+    // Recorded from omp 18.18.6: held while an omp runs it, empty once it exits.
+    expect(heldSessions('{"held":["01a1c595-bded-7294-9358-d6ac8bd845ea"],"unknown":[]}')).toEqual(["01a1c595-bded-7294-9358-d6ac8bd845ea"]);
+    expect(heldSessions('{"held":[],"unknown":[]}')).toEqual([]);
+    expect(heldSessions("Unknown action: lease")).toEqual([]);
+    await held.shutdown();
+    await missing.shutdown();
   });
 });

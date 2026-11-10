@@ -1189,6 +1189,10 @@ export function createApp(deps: AppDeps) {
         throw new ChatError(409, "open_in_herdr", `This session is open in herdr (pane ${pane.paneId}, ${pane.status}): opening it here as well would run a second ${adapter.displayName} on the same session`);
       }
     }
+    // The harness itself says another of its processes owns the session (omp's lease: an omp in a terminal).
+    if (!manager.liveChatFor(adapter.id, nativeId) && (await adapter.heldElsewhere?.(nativeId))) {
+      throw new ChatError(409, "session_held", `This session is open in another ${adapter.displayName}: close that one first, or opening it here would run a second ${adapter.displayName} on the same session`);
+    }
     const chat = await manager.resume(adapter, ws, nativeId);
     res.json(chat.snapshot());
   });

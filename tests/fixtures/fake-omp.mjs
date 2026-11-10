@@ -57,6 +57,15 @@ if (args[0] === "--version") {
   process.exit(0);
 }
 
+// `omp session lease --json -- <id>...`, as omp 18.18.6 prints it. $FAKE_OMP_HELD names the
+// sessions "another omp" holds (comma-separated); every other id is simply not held.
+if (args[0] === "session" && args[1] === "lease") {
+  const held = new Set((process.env.FAKE_OMP_HELD ?? "").split(",").filter(Boolean));
+  const ids = args.slice(args.indexOf("--") + 1);
+  console.log(JSON.stringify({ held: ids.filter((id) => held.has(id)), unknown: [] }));
+  process.exit(0);
+}
+
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("close", () => process.exit(0));
 

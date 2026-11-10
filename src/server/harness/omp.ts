@@ -5,9 +5,12 @@
 // session listing, so listing uses a short-lived `omp acp` process and ACP's
 // `session/list`. Protocol types below are hand-written from omp 18.4.5's
 // src/modes/rpc/rpc-types.ts and kept deliberately loose; 18.4.10 only adds
-// commands and an opt-in `ask` dialog, so nothing used here changed. Newer
-// minors are assumed additive and stay quiet; an older build or a new major
-// line is reported by ompVersionWarning().
+// commands and an opt-in `ask` dialog, so nothing used here changed. Checked
+// again against 18.18.6: the ready frame, get_state, and the session lease
+// (`omp session lease --json`, which a resume asks so it never makes a second
+// writer) answer as written here; its HTML-form `ask` tool is not offered in RPC
+// mode, so no chat here sees one. Newer minors are assumed additive and stay
+// quiet; an older build or a new major line is reported by ompVersionWarning().
 import { type ChildProcessWithoutNullStreams } from "node:child_process";
 import { execHarness, spawnHarness } from "../platform-win.js";
 import { promises as fs } from "node:fs";
@@ -73,6 +76,18 @@ export function ompVersionWarning(version: string, writtenFor = "18.4.10"): stri
   return null;
 }
 const READY_TIMEOUT_MS = 30_000;
+/** How long a resume waits for `omp session lease` before going on without its answer. */
+const LEASE_TIMEOUT_MS = 5_000;
+
+/** `omp session lease --json`'s `held` ids ({"held": [...], "unknown": [...]}, as omp 18.18.6 prints it); none when it says nothing usable. */
+export function heldSessions(stdout: string): string[] {
+  try {
+    const held = (JSON.parse(stdout) as { held?: unknown }).held;
+    return Array.isArray(held) ? held.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
 const LISTER_IDLE_MS = 60_000;
 const CONTEXT_REPORT_TIMEOUT_MS = 5_000;
 /** omp's protocol v2 ceiling for one reassembled frame. */
@@ -613,6 +628,21 @@ export class OmpAdapter implements HarnessAdapter {
 
   env(renderEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     return { ...buildOmpEnv(this.options.env ?? process.env, this.options.agentDir, this.options.sessionDir), ...renderEnv };
+  }
+
+  /**
+   * `omp session lease`: the sessions a running omp owns, asked without taking one over
+   * (omp 18.14.1 on). An older omp, a slow answer, or an unreadable one is "cannot tell",
+   * which never blocks a resume.
+   */
+  async heldElsewhere(nativeId: string): Promise<boolean> {
+    if (!/^[\w.-]{1,128}$/.test(nativeId)) return false;
+    try {
+      const { stdout } = await execHarness(this.cliCommand, ["session", "lease", "--json", "--", nativeId], { timeout: LEASE_TIMEOUT_MS, env: this.env(), maxBuffer: 64 * 1024 });
+      return heldSessions(stdout).includes(nativeId);
+    } catch {
+      return false;
+    }
   }
 
   /** Every signed-in account's limits; omp asks each provider, which takes a few seconds. */
