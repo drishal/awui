@@ -7,7 +7,9 @@
 // here, so nothing re-renders to make time pass. Pure apart from the
 // handlers it attaches, which call back into the app: the clock (`now`) and
 // the live phase's wording come in through ConversationCx, never read here.
-import { span, ui, html, type Json, type Node, type Span } from "@stencil-hq/tern";
+import { span, ui, html, type IconName, type Json, type Node, type PropsOf, type Span } from "@stencil-hq/tern";
+import { formatFullWhen, formatWhen } from "../web/turn-time.js";
+import { iconStack, toolKind, toolKinds, type ToolKind } from "../web/tool-kinds.js";
 import type { AssistantItem, ChatItem, HarnessStatus, JobBlock, JobTone, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../shared/protocol.js";
 import { buildTurns, countSummary, formatDuration, latestThought, segmentStartsOpen, workAfterSegment, workSegments, type Turn, type WorkSegment } from "../web/turns.js";
 import { isBusy } from "../web/session-groups.js";
@@ -72,13 +74,43 @@ export interface ConversationCx {
   };
 }
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+/** When the prompt was sent, quiet under its pill as the web UI shows it ("3:41 pm", "Mon 3:41 pm"); nothing when unknown. */
+function promptTime(prompt: UserItem): Node | null {
+  if (prompt.at === undefined) return null;
+  return ui.text({ key: "when", role: "awui.prompt-time", title: formatFullWhen(prompt.at) }, formatWhen(prompt.at));
+}
+
+/**
+ * A phone's long-press menu (`actions.hold`) with the same entries as the right-click one. Tern 0.9.14
+ * lists them on a long press and sends the pick as an action event with that name, which the node's
+ * onMenu handler of the same name answers; SDK 0.2.0's types predate `hold`, hence the casts above.
+ */
+export function holdMenu(names: string[]): { actions: { hold: string[] } } {
+  return { actions: { hold: names } };
+}
+
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** A finished call shows how long it took only past this, as the web UI's rows do (a "0.2s" on every quick read is noise). */
 const TOOK_AFTER_MS = 1500;
 
 /** Tern's tool icons are picked by name: our categories in its words. */
 const TOOL_NAMES: Record<ToolItem["category"], string> = { read: "read", edit: "edit", write: "write", command: "bash", search: "grep", web: "web", agent: "task", other: "" };
+
+/** The name a call's row is drawn under (Tern picks its icon by it): a todo or plan call wears the checklist, as the web UI's row does. */
+function rowName(item: ToolItem): string {
+  if (toolKind(item).plan) return "todo";
+  return TOOL_NAMES[item.category] || item.name;
+}
+
+/** A kind's glyph in the fold head's icon stack, Tern's nearest to the web UI's (tool-kinds.ts). */
+function kindIcon(kind: ToolKind): IconName {
+  if (kind.server) return "plug";
+  if (kind.test) return "run";
+  if (kind.plan) return "list-checks";
+  const icons: Record<ToolItem["category"], IconName> = { read: "doc", edit: "pen", write: "file-plus", command: "terminal", search: "search", web: "globe", agent: "agent", other: "plug" };
+  return icons[kind.category];
+}
 
 function toolStatus(item: ToolItem): "running" | "done" | "error" {
   return item.status;
@@ -321,7 +353,7 @@ export function toolNode(item: ToolItem, workspace: string, age: ConversationCx[
   return ui.tool(
     {
       key: item.id,
-      name: TOOL_NAMES[item.category] || item.name,
+      name: rowName(item),
       title: sentence.verb,
       ...(target ? { target } : {}),
       targetKind,
@@ -450,6 +482,29 @@ export function foldHeadSpans(turn: Turn, segment: WorkSegment, place: "first" |
   return spans;
 }
 
+/**
+ * The fold's head as the web UI's card header draws it: the kinds of tool the stretch used as a stack of
+ * round icons ("+N" past three), the words, and the turn's +/− at the right edge.
+ */
+export function foldHeadNode(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only"): Node {
+  const spans = foldHeadSpans(turn, segment, place);
+  const stat = spans.filter((s) => s.s === "ins" || s.s === "del").map((s) => span(s.t.trim(), s.s));
+  const words = spans.filter((s) => s.s !== "ins" && s.s !== "del");
+  const { shown, more } = iconStack(toolKinds(segment.items));
+  return ui.row(
+    { key: "head", role: "awui.work-head", align: "center", gap: "sm" },
+    shown.length > 0
+      ? ui.row(
+          { key: "kinds", role: "awui.kinds", align: "center" },
+          shown.map((k) => ui.icon({ key: k.key, name: kindIcon(k), title: k.server ?? k.category })),
+          more > 0 ? ui.text({ key: "more", role: "awui.kinds-more" }, `+${more}`) : null,
+        )
+      : null,
+    ui.text({ key: "t", grow: 1, truncate: "end" }, words),
+    stat.length > 0 ? ui.text({ key: "s", role: "awui.work-stat" }, stat.flatMap((s, i) => (i > 0 ? [" ", s] : [s]))) : null,
+  );
+}
+
 /** The prompt: a pill, its images, and (picked) the things a past prompt offers. */
 function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
   const picked = cx.picked === turn.id;
@@ -470,6 +525,14 @@ function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
     const blob = cx.blob(ref.id, ref.mimeType);
     return blob ? ui.image({ key: `img${i}`, blob, alt: "An image sent with the prompt", h: 120 }) : null;
   });
+  const menu = {
+    ...(canBranch && !isBusy(cx.chat.status) ? { retry: () => cx.on.retry(turn), edit: () => cx.on.edit(turn) } : {}),
+    ...(canBranch && caps.supportsFork && turn.through > 1 ? { "fork-before": () => cx.on.fork(turn.through - 1) } : {}),
+    ...(canBranch && cx.chat.checkpoints.includes(turn.through) ? { "undo-files": () => cx.on.undo(turn) } : {}),
+    "copy-prompt": () => cx.on.copy(prompt.text),
+    // The web UI's Copy turn as Markdown: the prompt, one line a call, the replies, the answer.
+    "copy-turn-as-markdown": () => cx.on.copyTurn(turn),
+  };
   return ui.col(
     { key: "ask", role: "awui.ask" },
     images.some(Boolean) ? ui.row({ key: "imgs", gap: "sm" }, images) : null,
@@ -479,15 +542,10 @@ function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
       text: prompt.text,
       title: canBranch ? "Click for Retry, Edit, Fork, Undo, and Copy" : "",
       onClick: () => cx.on.pick(picked ? null : turn.id),
-      onMenu: {
-        ...(canBranch && !isBusy(cx.chat.status) ? { retry: () => cx.on.retry(turn), edit: () => cx.on.edit(turn) } : {}),
-        ...(canBranch && caps.supportsFork && turn.through > 1 ? { "fork-before": () => cx.on.fork(turn.through - 1) } : {}),
-        ...(canBranch && cx.chat.checkpoints.includes(turn.through) ? { "undo-files": () => cx.on.undo(turn) } : {}),
-        "copy-prompt": () => cx.on.copy(prompt.text),
-        // The web UI's Copy turn as Markdown: the prompt, one line a call, the replies, the answer.
-        "copy-turn-as-markdown": () => cx.on.copyTurn(turn),
-      },
-    }),
+      onMenu: menu,
+      ...holdMenu(Object.keys(menu)),
+    } as PropsOf<"text">),
+    promptTime(prompt),
     acts.length > 0 ? ui.row({ key: "acts", role: "awui.prompt-acts" }, acts) : null,
     !prompt.text.trim() && (prompt.imageCount ?? 0) > 0 && !images.some(Boolean) ? ui.text({ key: "n", role: "awui.prompt-meta" }, plural(prompt.imageCount ?? 0, "image")) : null,
   );
@@ -559,12 +617,12 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
           {
             key: `w${i}`,
             role: live ? "awui.fold-live" : "awui.fold",
-            head: foldHeadSpans(turn, segment, place),
+            head: foldHeadNode(turn, segment, place),
             collapsible: true,
             collapsed: !open,
             onToggle: (e) => cx.on.fold(key, !e.collapsed),
           },
-          ui.col({ key: "items", gap: "sm" }, children),
+          ui.col({ key: "items", role: "awui.calls" }, children),
         ),
       );
     }
@@ -586,7 +644,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
   }
 
   const answer = turn.answer;
-  if (answer?.text.trim()) parts.push(ui.md({ key: "answer", role: "awui.reply", stream: answer.streaming, actions: { menu: ["copy"] } }, answer.text));
+  if (answer?.text.trim()) parts.push(ui.md({ key: "answer", role: "awui.reply", stream: answer.streaming, actions: { menu: ["copy"], ...holdMenu(["copy"]).actions } } as PropsOf<"md">, answer.text));
   // Work the agent did after writing its reply: its own fold below it.
   const after = workAfterSegment(turn);
   if (after) {
@@ -601,12 +659,12 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
         {
           key: "after",
           role: turn.live ? "awui.fold-live" : "awui.fold",
-          head: foldHeadSpans(turn, after, "last"),
+          head: foldHeadNode(turn, after, "last"),
           collapsible: true,
           collapsed: !open,
           onToggle: (e) => cx.on.fold(after.key, !e.collapsed),
         },
-        ui.col({ key: "items", gap: "sm" }, children),
+        ui.col({ key: "items", role: "awui.calls" }, children),
       ),
     );
   }
@@ -619,6 +677,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
       ui.row(
         { key: "acts", role: "awui.answer-acts" },
         ui.icon({ key: "copy", name: "copy", title: "Copy the answer", aria: "Copy the answer", onClick: () => cx.on.copy(answer.text) }),
+        ui.icon({ key: "markdown", name: "markdown", title: "Copy the turn as Markdown", aria: "Copy the turn as Markdown", onClick: () => cx.on.copyTurn(turn) }),
         ui.icon({ key: "timing", name: "clock", title: "Timing: every step, call, and subagent run", aria: "Timing", onClick: () => cx.on.timing(turn) }),
         turn.through > 0 && cx.chat.capabilities.supportsFork
           ? ui.icon({ key: "fork", name: "branch", title: "Fork: a new session through this answer", aria: "Fork", onClick: () => cx.on.fork(turn.through) })
@@ -631,13 +690,30 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
   }
   if (!turn.live && turn.changedFiles.length > 0) {
     const ws = cx.chat.workspace.path;
-    const files: (string | Span)[] = [span(`Changed ${plural(turn.changedFiles.length, "file")} `, "muted")];
+    // The web UI's row: a pen, the count, the paths in mono, and the turn's +/− with the file count at the right.
+    const files: (string | Span)[] = [span(`Changed ${plural(turn.changedFiles.length, "file")} · `, "muted")];
     turn.changedFiles.slice(0, 6).forEach((f, i) => {
       if (i > 0) files.push(span(", ", "dim"));
       files.push(span(shortPath(f, ws), "path", { href: fileUrl(f, ws) }));
     });
     if (turn.changedFiles.length > 6) files.push(span(` and ${turn.changedFiles.length - 6} more`, "dim"));
-    parts.push(ui.text({ key: "changed", role: "awui.changed" }, files));
+    const stat = turn.changeStat;
+    parts.push(
+      ui.row(
+        { key: "changed", role: "awui.changed", align: "center", gap: "sm" },
+        ui.icon({ key: "i", name: "pen" }),
+        ui.text({ key: "t", grow: 1, truncate: "end" }, files),
+        stat
+          ? ui.text(
+              { key: "s", role: "awui.work-stat" },
+              span(`+${stat.added}`, "ins"),
+              " ",
+              span(`−${stat.removed}`, "del"),
+              span(` · ${plural(stat.files, "file")}`, "muted"),
+            )
+          : null,
+      ),
+    );
   }
   for (const n of turn.after) parts.push(ui.text({ key: n.id, role: "awui.after" }, span(n.text, n.level === "error" ? "error" : "muted")));
   return ui.col({ key: turn.id, role: "awui.turn", gap: "md" }, parts);
@@ -648,13 +724,17 @@ export function headNode(chat: ChatState | null, harness: HarnessStatus | null, 
   const status = chat?.status ?? "idle";
   const busy = isBusy(status);
   const state = asks ? "Needs you" : chat?.gone ? chat.gone : STATUS_LABEL[status];
-  const stateClass = asks ? "state asks" : status === "error" ? "state failed" : busy ? "state busy" : "state";
-  return ui.row(
+  const stateClass = asks ? "state asks" : status === "error" ? "state failed" : busy ? "state busy" : status === "idle" && !chat?.gone ? "state idle" : "state";
+  // The web UI's header: the title on its own line, the harness, state, and project under it.
+  return ui.col(
     { key: "head", role: "awui.head" },
-    ui.text({ key: "title", role: "awui.title", text: chat?.title || "New chat", truncate: "end", grow: 1 }),
-    harness ? html.span({ key: "harness", class: "harness", text: harness.displayName }) : null,
-    html.span({ key: "state", class: stateClass, text: state }),
-    project ? ui.text({ key: "project" }, span(project, "muted")) : null,
+    ui.text({ key: "title", role: "awui.title", text: chat?.title || "New chat", truncate: "end" }),
+    ui.row(
+      { key: "meta", role: "awui.head-meta" },
+      harness ? html.span({ key: "harness", class: "harness", text: harness.displayName }) : null,
+      html.span({ key: "state", class: stateClass, text: state }),
+      project ? ui.text({ key: "project" }, span(project, "muted")) : null,
+    ),
   );
 }
 

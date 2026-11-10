@@ -48,6 +48,28 @@ export const DARK: Theme = {
   rare: "#d29922",
 };
 
+/** The web UI's built-in light palette (styles/tokens.css), for a light Tern pane with no theme file. */
+export const LIGHT: Theme = {
+  bg: "#ffffff",
+  surface: "#f9fafb",
+  surface2: "#eef1f5",
+  border: "#e1e5ee",
+  selection: "#dbe7fd",
+  text: "#0f1115",
+  text2: "#43454a",
+  muted: "#61666b",
+  accent: "#4176e6",
+  accentFg: "#ffffff",
+  link: "#2f5fcc",
+  ok: "#15803d",
+  warn: "#b45309",
+  danger: "#c81e1e",
+  info: "#0369a1",
+  orange: "#c2410c",
+  thinking: "#6d4fc2",
+  rare: "#8a5a00",
+};
+
 const TOKENS: Record<keyof Theme, string> = {
   bg: "--bg",
   surface: "--surface",

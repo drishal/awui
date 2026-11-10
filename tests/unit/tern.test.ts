@@ -16,7 +16,7 @@ import { contextNode } from "../../src/tern/context.js";
 import { conversation, firstFailedCall, foldHead, foldHeadSpans, PAGE_ID, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
 import { clientCommand, sourceRun } from "../../src/server/clients.js";
-import { DARK } from "../../src/atui/theme.js";
+import { DARK, LIGHT } from "../../src/atui/theme.js";
 import { buildTurns, type Turn, type WorkSegment } from "../../src/web/turns.js";
 
 const key = (name: string, over: Partial<Key> = {}): Key => ({ name, ctrl: false, alt: false, shift: false, meta: false, ...(name.length === 1 ? { text: name } : {}), ...over });
@@ -277,7 +277,13 @@ describe("the Tern theme sheet", () => {
     expect(themeSheet(DARK, "#ff0000", "dark", true)).toContain(`--t1: ${DARK.text}`);
     expect(themeSheet(DARK, "#ff0000", "dark", false)).not.toContain("--t1");
     expect(themeSheet(DARK, "#ff0000", "dark", false)).toContain("--awui-harness: #ff0000");
-    expect(themeSheet(DARK, "#ff0000", null, true)).not.toContain("--t1");
+  });
+
+  it("wears the web UI's built-in palette for the pane's appearance when there is no theme file", () => {
+    expect(themeSheet(DARK, "#ff0000", null, true)).toContain(`--accent: ${DARK.accent}`);
+    expect(themeSheet(DARK, "#ff0000", null, true)).toContain(`--sf-c-link: ${DARK.link}`);
+    expect(themeSheet(DARK, "#ff0000", null, false)).toContain(`--accent: ${LIGHT.accent}`);
+    expect(themeSheet(DARK, "#ff0000", null, false)).toContain(`--t1: ${LIGHT.text}`);
   });
 });
 
@@ -453,7 +459,9 @@ describe("the Tern conversation", () => {
       expect(quiet.map((n) => n.props.collapsed)).toEqual([true, false]);
       const failed = folds(cxOf(chatOf(twoStretches({ status: "error" }), "running")));
       expect(failed.map((n) => n.props.collapsed)).toEqual([false, false]);
-      expect(JSON.stringify(failed[0]?.props.head)).toContain("1 failed");
+      // The head is a node of its own (the icon stack, the words, the +/−), sent as the fold's child keyed `head`.
+      const head = failed[0]?.children.find((c) => c.props.key === "head");
+      expect(JSON.stringify(head)).toContain("1 failed");
     });
 
     it("lets a fold the user toggled stay as they left it, and opens nothing in a settled turn", () => {

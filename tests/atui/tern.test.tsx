@@ -327,7 +327,8 @@ describe("awui tern", () => {
     tern.type("toolfail\r");
     await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: toolfail"), "the failing run");
     const fold = tern.find("section").filter((n) => n.p.role === "awui.fold").at(-1) as { id: string; p: Record<string, unknown> };
-    expect(JSON.stringify(fold.p.head)).toContain("1 failed");
+    // The head is a node of its own (the icon stack, the words, the +/−); the prop names it by id.
+    expect(tern.text(String(fold.p.head))).toContain("1 failed");
     expect(fold.p.collapsed).toBe(true);
     const row = () => tern.find("tool", fold.id).find((n) => n.p.status === "error");
     expect(row()).toBeDefined();

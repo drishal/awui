@@ -6,34 +6,47 @@
 // shapes our own roles (`awui.*`) and `el` classes, and colours come from
 // Tern's variables (--t1…, --l1…, --accent) and the theme sheet's (--awui-*), so a
 // light pane, a dark one, and a base16 scheme all read right.
-import type { Theme } from "../atui/theme.js";
+import { DARK, LIGHT, type Theme } from "../atui/theme.js";
 
 /**
  * The theme as a stylesheet. Tern 0.9 has no program palette (SDK 0.1's `palette` verb is gone), so the
  * pane's colours are Tern's own variables set on our two roots, which every node of the chat sits under.
  * A theme file is one scheme, dark or light: its colours are used whole in the pane's matching appearance
  * (`dark` is Tern's, and a new sheet is sent when it changes), and the other keeps Tern's own, since a
- * dark scheme's fills would be dark blotches on a light pane. Without a theme file only the harness's
- * colour is ours. `--awui-harness` and `--awui-thinking` are not Tern's: the sheet below reads them.
+ * dark scheme's fills would be dark blotches on a light pane. Without a theme file the web UI's own
+ * built-in palette for the pane's appearance is used, so both clients wear the same accent, ink, and
+ * status colours. Tern's pane background stays its own: a program sheet cannot paint the region itself.
+ * `--awui-harness` and `--awui-thinking` are not Tern's: the sheet below reads them.
  */
 export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "light" | null, dark: boolean): string {
-  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${theme.thinking}`];
-  const scheme =
-    polarity && (polarity === "dark") === dark
-      ? [
-          `--t1: ${theme.text}`,
-          `--t2: ${theme.text2}`,
-          `--t3: ${theme.muted}`,
-          `--t4: ${theme.muted}`,
-          `--accent: ${theme.accent}`,
-          `--sf-accent: ${theme.accent}`,
-          `--sf-c-accent: ${theme.accent}`,
-          `--ok: ${theme.ok}`,
-          `--warn: ${theme.warn}`,
-          `--bad: ${theme.danger}`,
-        ]
-      : [];
-  return `[data-role='awui.page'], [data-role='awui.dock'] { ${[...own, ...scheme].join("; ")}; }\n`;
+  const scheme = polarity ? ((polarity === "dark") === dark ? theme : null) : dark ? DARK : LIGHT;
+  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${(scheme ?? theme).thinking}`];
+  const vars = scheme
+    ? [
+        `--t1: ${scheme.text}`,
+        `--t2: ${scheme.text2}`,
+        `--t3: ${scheme.muted}`,
+        `--t4: ${scheme.muted}`,
+        `--accent: ${scheme.accent}`,
+        `--accent-ink: ${scheme.accent}`,
+        `--sf-accent: ${scheme.accent}`,
+        `--sf-c-accent: ${scheme.accent}`,
+        // Links, paths, and list bullets otherwise follow Tern's own theme (its omp tokens), not the web UI's.
+        `--sf-c-link: ${scheme.link}`,
+        `--sf-c-path: ${scheme.text}`,
+        `--omp-mdLink: ${scheme.link}`,
+        `--omp-mdListBullet: ${scheme.muted}`,
+        `--ok: ${scheme.ok}`,
+        `--sf-c-success: ${scheme.ok}`,
+        `--sf-c-ins: ${scheme.ok}`,
+        `--warn: ${scheme.warn}`,
+        `--sf-c-warning: ${scheme.warn}`,
+        `--bad: ${scheme.danger}`,
+        `--sf-c-error: ${scheme.danger}`,
+        `--sf-c-del: ${scheme.danger}`,
+      ]
+    : [];
+  return `[data-role='awui.page'], [data-role='awui.dock'] { ${[...own, ...vars].join("; ")}; }\n`;
 }
 
 /** A colour that follows the theme sheet's harness colour, mixed into the pane's ink. */
@@ -47,13 +60,15 @@ export const STYLESHEET = `
 [data-role='awui.page'] .md { font-family: var(--sans); }
 [data-role='awui.dock'] { width: 100%; max-width: 792px; margin: 0 auto; font-family: var(--sans); gap: 8px; }
 
-/* The header: title, harness badge, status, project. */
-[data-role='awui.head'] { align-items: center; gap: 10px; padding: 2px 0 6px; border-bottom: 1px solid ${tint(8)}; }
-[data-role='awui.title'] { font-weight: 600; }
+/* The header: the title on its own line, then the harness badge, status, and project, as the web UI's. */
+[data-role='awui.head'] { gap: 4px; padding: 2px 0 10px; border-bottom: 1px solid ${tint(8)}; }
+[data-role='awui.head-meta'] { align-items: center; gap: 10px; }
+[data-role='awui.title'] { font-weight: 600; font-size: 1.15em; }
 .harness { border-radius: 999px; padding: 1px 9px; font-size: 0.86em; color: ${HARNESS}; background: ${tint(18, HARNESS)}; }
 .harness.big { padding: 3px 12px; font-size: 1em; }
 .state { font-size: 0.86em; color: var(--t3); }
 .state::before { content: '●'; margin-right: 5px; color: var(--t4); }
+.state.idle::before { color: var(--ok); }
 .state.busy::before { color: ${HARNESS}; }
 .state.asks::before { color: var(--warn); }
 .state.failed::before { color: var(--bad); }
@@ -63,19 +78,48 @@ export const STYLESHEET = `
 [data-role='awui.prompt'] { align-self: flex-end; max-width: 82%; padding: 9px 15px; border-radius: 18px; background: ${tint(11)}; }
 [data-role='awui.prompt'].sf-act:hover { background: ${tint(15)}; }
 [data-role='awui.prompt-acts'] { gap: 2px; }
-[data-role='awui.prompt-acts'] .sf-icon, [data-role='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 3px; border-radius: 6px; }
+[data-role='awui.prompt-acts'] .sf-icon, [data-role='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 5px; border-radius: 7px; }
 [data-role='awui.prompt-acts'] .sf-icon:hover, [data-role='awui.answer-acts'] .sf-icon:hover { color: var(--t1); background: ${tint(9)}; }
 [data-role='awui.prompt-meta'] { font-size: 0.82em; color: var(--t4); }
+[data-role='awui.prompt-time'] { font-size: 0.8em; color: var(--t4); padding-right: 6px; }
 
-/* The work between a prompt and its answer, folded to one quiet line with a hairline under it. */
-[data-role^='awui.fold'] { padding-bottom: 6px; border-bottom: 1px solid ${tint(8)}; }
-[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 0.92em; }
+/*
+ * The work between a prompt and its answer, as the web UI's card: a rounded frame whose head carries the
+ * kinds of tool used (a stack of round icons), the words, and the +/− at the right; open, the calls follow
+ * under a hairline, one divided row each with a round icon chip and the facts pushed to the right edge.
+ */
+[data-role^='awui.fold'] { border: 1px solid ${tint(10)}; border-radius: 12px; background: ${tint(2)}; }
+[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 0.92em; padding: 4px 12px; }
+[data-role='awui.fold-live'] { border-color: ${tint(28, HARNESS)}; }
 [data-role='awui.fold-live'] > .sf-section-head { color: var(--t2); }
-[data-role='awui.thought'] > .sf-section-head { color: var(--t3); font-style: italic; }
+[data-role^='awui.fold'] > .sf-section-head .sf-head { flex: 1 1 auto; min-width: 0; }
+[data-role='awui.work-head'] { width: 100%; }
+[data-role='awui.kinds'] { gap: 3px; }
+[data-role='awui.kinds'] .sf-icon { padding: 2px; border-radius: 999px; color: var(--t2); background: ${tint(12)}; }
+[data-role='awui.kinds'] .sf-icon svg { width: 11px; height: 11px; }
+[data-role='awui.kinds-more'] { margin-left: 8px; font-size: 0.85em; color: var(--t3); }
+[data-role='awui.work-stat'] { font-family: var(--mono, monospace); font-size: 0.88em; white-space: nowrap; padding-right: 4px; }
+[data-role='awui.calls'] { gap: 0; border-top: 1px solid ${tint(8)}; }
+[data-role='awui.calls'] > * { padding: 2px 12px; }
+[data-role='awui.calls'] > * + * { border-top: 1px solid ${tint(6)}; }
+[data-role^='awui.fold'] > .sf-section-body { margin: 0; padding: 0; border: 0; }
+[data-role^='awui.fold'] > .sf-section-body::before { display: none; }
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-ic { width: 19px; height: 19px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--t2); background: ${tint(9)}; }
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-ic svg { width: 12px; height: 12px; }
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-title { font-weight: 500; font-family: var(--sans); }
+/* The row's line is a flex row ending in a spacer: the facts go after it, to the right edge, as the web UI's. */
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-sp { order: 1; }
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-meta { order: 2; font-family: var(--sans); color: var(--t3); }
+[data-role='awui.calls'] .sf-tool.st-done .sf-tool-st { color: var(--ok); }
+/* A thought reads as the web UI's: the word, then the reasoning's title, both quiet and in the reading font. */
+[data-role='awui.thought'] .sf-tool-title { font-weight: 400; color: var(--t3); }
+[data-role='awui.thought'] .sf-tool-target { font-family: var(--sans); color: var(--t3); }
 [data-role='awui.thought'] .md { color: var(--t3); }
 [data-role='awui.note'] { color: var(--t3); font-size: 0.92em; }
-[data-role='awui.answer-acts'] { gap: 2px; margin-top: -8px; }
+[data-role='awui.answer-acts'] { gap: 10px; margin-top: -6px; }
 [data-role='awui.changed'] { font-size: 0.88em; color: var(--t3); }
+[data-role='awui.changed'] .sf-icon { color: var(--t3); }
+[data-role='awui.changed'] .sf-t-path { font-family: var(--mono, monospace); color: var(--t2); }
 [data-role='awui.working'] { color: var(--t2); }
 [data-role='awui.after'] { color: var(--t3); font-size: 0.9em; }
 [data-role='awui.render'] { border-radius: 12px; }

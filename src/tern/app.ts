@@ -9,7 +9,7 @@
 // view attached. The keys are atui's: C-k commands, C-x then a letter.
 import { appendFileSync } from "node:fs";
 import { createEffect, createMemo, createRoot, createSignal, on, onCleanup, untrack } from "solid-js";
-import { blobId, span, ui, html, type Key, type Node, type Session, type Surface } from "@stencil-hq/tern";
+import { blobId, span, ui, html, type Key, type Node, type PropsOf, type Session, type Surface } from "@stencil-hq/tern";
 import type { HarnessStatus, InteractionRequest, SavedPrompt, SlashCommand } from "../shared/protocol.js";
 import type { ChatState } from "../web/chat-state.js";
 import { buildTurns, ago as agoMs } from "../web/turns.js";
@@ -24,7 +24,7 @@ import { accentOf } from "../atui/theme.js";
 import { applyMention, ghostCompletion, mentionAt, notifySequence } from "../atui/assist.js";
 import { optionsOf } from "../atui/requests.js";
 import { applyEdit, draftState, editKey, insert, lineStep, moveTo, setText, undo as undoDraft, type DraftState } from "./draft.js";
-import { conversation, firstFailedCall, headNode, PAGE_ID, PAGE_KEY, TURN_WINDOW } from "./view.js";
+import { conversation, firstFailedCall, headNode, PAGE_ID, PAGE_KEY, plural, TURN_WINDOW } from "./view.js";
 import { ANSWER_ID, dock, EDITOR_ID, inputReady } from "./dock.js";
 import { AT_CARET, filterItems, menuNode, moveSelection, sessionRows, SHEETS, type Menu, type MenuItem, type MenuKind } from "./overlays.js";
 import { stepRange, USAGE_SCROLL_ID, usageNode, type UsageScreen } from "./usage.js";
@@ -60,6 +60,7 @@ const LEADER: Array<{ key: string; label: string }> = [
   { key: "h", label: "Harness or hand off" },
   { key: "c", label: "Compact the context" },
   { key: "z", label: "Put undone files back" },
+  { key: "o", label: "Open what the last notice is about" },
   { key: "e", label: "Open or fold all work" },
   { key: "f", label: "Show failed calls" },
   { key: "g", label: "Find in chat" },
@@ -67,6 +68,9 @@ const LEADER: Array<{ key: string; label: string }> = [
   { key: "y", label: "Copy the last answer" },
   { key: "q", label: "Quit" },
 ];
+
+/** How long a background chat's toast waits for the terminal notification of the same news to be shown first. */
+const NOTICE_AFTER_OSC_MS = 400;
 
 const base64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
 
@@ -90,7 +94,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const [commands, setCommands] = createSignal<SlashCommand[] | null>(null);
     const [saved, setSaved] = createSignal<SavedPrompt[] | null>(null);
     const [files, setFiles] = createSignal<string[]>([]);
-    const [notice, setNotice] = createSignal<{ n: number; text: string; tone: "success" | "info" | "error" } | null>(null);
+    const [notice, setNotice] = createSignal<Notice | null>(null);
     const [blobTick, setBlobTick] = createSignal(0);
     const [todosOpen, setTodosOpen] = createSignal(true);
     // The Usage screen: null while closed.
@@ -110,7 +114,12 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     let closed = false;
     let quit: () => void = () => undefined;
 
-    const say = (text: string, tone: "success" | "info" | "error" = "info") => setNotice({ n: ++noticeN, text, tone });
+    // The latest notice's action (open that chat), for C-x o: the toast's button from the keyboard, and after it is gone.
+    let lastAction: NoticeAction | null = null;
+    const say = (text: string, tone: "success" | "info" | "error" = "info", action?: NoticeAction) => {
+      if (action?.key === "o") lastAction = action;
+      setNotice({ n: ++noticeN, text, tone, ...(action ? { action } : {}) });
+    };
 
     // AWUI_TERN_LOG=<file> keeps every key and event the client reads, Tern's errors, and any view that failed, one JSON line each.
     const log = process.env.AWUI_TERN_LOG ? (line: unknown) => appendFileSync(process.env.AWUI_TERN_LOG as string, `${JSON.stringify(line)}\n`) : null;
@@ -387,6 +396,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (c) items.push({ id: "context", label: "Context and usage", icon: "gauge", keywords: "window tokens cache compact", ...(c.context ? {} : { disabled: "This harness has not reported the context yet" }) });
       if (c) items.push({ id: "x:y", label: "Copy the last answer", value: "C-x y", icon: "copy" });
       if (app.putBackable()) items.push({ id: "x:z", label: "Put the undone files back", value: "C-x z", icon: "undo" });
+      if (lastAction) items.push({ id: "x:o", label: `${lastAction.label}: what the last notice is about`, value: "C-x o", icon: "open" });
       if (c) items.push({ id: "web", label: "Copy this chat's link in the web UI", icon: "globe", keywords: "browser open" });
       items.push({ id: "x:q", label: "Quit (the chat keeps running on the server)", value: "C-x q", icon: "log-out" });
       return items;
@@ -539,6 +549,11 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           return void app.compact();
         case "z":
           return void app.putBack();
+        case "o": {
+          const action = lastAction;
+          lastAction = null;
+          return action ? action.run() : say("No notice to act on");
+        }
         case "e":
           return toggleAllWork();
         case "f":
@@ -711,7 +726,24 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         () => {
           const t = app.toasts().at(-1);
           if (t) {
-            setNotice({ n: ++noticeN, text: `${t.kind === "asking" ? "Needs you" : t.kind === "failed" ? "Failed" : "Done"}: ${t.title}`, tone: t.kind === "failed" ? "error" : "info" });
+            // Its button opens that chat, as clicking the web UI's notification does.
+            const open = (): void => {
+              app.dismissToast(t.id);
+              setNotice(null);
+              const s = app.overview().sessions.find((x) => x.id === t.sessionId);
+              if (s) void app.openSession(s);
+            };
+            // A moment after the terminal notification the same news sends (notifySequence): Tern shows that one as
+            // a toast too, and the later toast replaces the earlier, so this one, with its button, is what stays.
+            setTimeout(() => {
+              if (closed) return;
+              say(`${t.kind === "asking" ? "Needs you" : t.kind === "failed" ? "Failed" : "Done"}: ${t.title}`, t.kind === "failed" ? "error" : "info", {
+                name: "open",
+                label: t.kind === "asking" ? "Answer" : "Open",
+                key: "o",
+                run: open,
+              });
+            }, NOTICE_AFTER_OSC_MS);
           }
         },
       ),
@@ -794,7 +826,21 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
                 void app.checkpointPreview(turn.through).then((p) => {
                   if (!p) return;
                   if (p.files.length === 0) return say("Nothing to put back: the files are as they were");
-                  void app.restoreFiles(turn.through, p.files.map((f) => f.path));
+                  void app.restoreFiles(turn.through, p.files.map((f) => f.path)).then((done) => {
+                    if (!done) return;
+                    // The toast's own button puts them back (C-x z still does), in place of the banner that only names the key.
+                    app.setBanner(null);
+                    const n = p.files.length;
+                    say(`Undid changes to ${plural(n, "file")} from message ${turn.through} on; the agent was not told`, "info", {
+                      name: "put-back",
+                      label: "Put back",
+                      key: "z",
+                      run: () => {
+                        setNotice(null);
+                        void app.putBack();
+                      },
+                    });
+                  });
                 });
               },
               copy,
@@ -920,7 +966,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         );
       }
       const n = notice();
-      if (n) layer.push(ui.toast({ key: `n${n.n}`, text: n.text, tone: n.tone === "error" ? "error" : n.tone === "success" ? "success" : "info" }));
+      if (n) layer.push(noticeToast(n));
       if (banner) layer.push(ui.toast({ key: `b${banner.text}`, text: banner.text, tone: banner.level === "error" ? "error" : "info" }));
 
       return {
@@ -1214,4 +1260,30 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
 }
 
 /** A notification through the terminal, for a background session's news (Tern files it in its inbox). */
+/** A button on a notice: an action name, its label, the C-x key that does the same, and what a press does. */
+interface NoticeAction {
+  name: string;
+  label: string;
+  key: "o" | "z";
+  run: () => void;
+}
+interface Notice {
+  n: number;
+  text: string;
+  tone: "success" | "info" | "error";
+  action?: NoticeAction;
+}
+
+/**
+ * A notice as Tern's toast: a button for what it offers (`action`, `label`, answered by onAction; Tern
+ * 0.9.14 draws it and keeps the toast up longer, SDK 0.2.0's ToastProps predate the two) and, as its
+ * `sub` line, the C-x key that does the same from the keyboard.
+ */
+function noticeToast(n: Notice): Node {
+  const tone = n.tone === "error" ? "error" : n.tone === "success" ? "success" : "info";
+  const button = n.action ? { action: n.action.name, label: n.action.label, onAction: { [n.action.name]: n.action.run } } : {};
+  const hint = n.action ? { sub: `C-x ${n.action.key}: ${n.action.label.toLowerCase()}` } : {};
+  return ui.toast({ key: `n${n.n}`, text: n.text, tone, ...hint, ...button } as PropsOf<"toast">);
+}
+
 export const notify = (write: (s: string) => void) => (title: string, body: string) => write(notifySequence(process.env, title, body));
