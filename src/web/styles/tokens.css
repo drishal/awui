@@ -165,12 +165,18 @@
   --code-bg: color-mix(in srgb, var(--surface-2) 45%, var(--bg));
   --shadow-soft: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.8)), 0 6px 22px rgb(0 0 0 / var(--shadow-strength));
   --shadow-float: 0 2px 6px rgb(0 0 0 / var(--shadow-strength)), 0 16px 40px rgb(0 0 0 / calc(var(--shadow-strength) * 1.4));
+  /* One short scale: a radius says what a thing is, not how soft it feels. Controls
+     (buttons, chips, segmented choices, pickers) share --r-control; in-page tiles take
+     --r-md; menus and docks --r-lg; dialogs and the prompt bubble --r-xl; the composer
+     and approval card --r-panel. Round (999px / 50%) is kept for what is a dot or a
+     single glyph: send, switches, status dots, the context ring. */
   --r-xs: 4px;
   --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
-  --r-xl: 20px;
-  --r-panel: 24px;
+  --r-control: 8px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --r-xl: 14px;
+  --r-panel: 16px;
   --col: 960px;
   /* The conversation's own width (Settings → Chat width); drawers keep --col. */
   --chat-col: var(--col);

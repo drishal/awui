@@ -87,8 +87,12 @@ a literal colour.
   `--muted`, `--accent`, `--link`, `--ok`, `--warn`, `--danger`; derived
   `--hairline`, `--hairline-strong`, `--hover`, `--active`. A harness's colour
   is `--harness`, set per element by `harnessColor()` from its `accent`.
-- **Radii:** `--r-xs` 4, `--r-sm` 8, `--r-md` 12, `--r-lg` 16, `--r-xl` 20,
-  `--r-panel` 24 (px). Pills and round buttons use `999px` / `50%`.
+- **Radii:** `--r-xs` 4, `--r-sm` 8, `--r-control` 8, `--r-md` 10, `--r-lg` 12,
+  `--r-xl` 14, `--r-panel` 16 (px). A radius says what a thing is: controls
+  (buttons, chips, segmented choices, pickers) take `--r-control`, in-page tiles
+  `--r-md`, menus and docks `--r-lg`, dialogs and the prompt bubble `--r-xl`, the
+  composer and approval card `--r-panel`. `999px` / `50%` is only for a dot or a
+  single glyph (send, switches, status dots, the context ring).
 - **Widths:** `--col` 960 px (review drawers), `--chat-col` (the conversation
   and composer; config.yml's `chat_width`), `--sidebar-w`.
 - **Density:** `--row-h`, `--head-h`, `--section-gap`, `--gap-turn`, `--gap-process`,
@@ -98,8 +102,8 @@ a literal colour.
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
   a literal, for a new row height or gap.
 - **Text:** `--chat-font` = 14.5 px × `--chat-scale` (config.yml's text size).
-- **Control sizes:** the composer's row is 32 px tall on every screen, every
-  control in it round (the composer is the exception to `phones.css` raising
+- **Control sizes:** the composer's row is 32 px tall on every screen, its
+  chips and icon buttons at `--r-control` and Send round (the composer is the exception to `phones.css` raising
   touch targets to 36–44 px elsewhere: a phone keeps its one slim row). Keep
   a row of controls one height: mismatched heights and radii are what makes a
   part "look off".

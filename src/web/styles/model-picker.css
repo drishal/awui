@@ -13,7 +13,7 @@
   max-width: 230px;
   padding: 0 10px 0 12px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-control);
   background: var(--hover);
   color: var(--text-2);
   font-size: 13px;
@@ -461,7 +461,7 @@ button.harness-chip {
   height: 32px;
   padding: 0 12px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-control);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;

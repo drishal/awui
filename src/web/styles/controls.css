@@ -8,7 +8,7 @@
   min-height: 34px;
   padding: 0 14px;
   border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
+  border-radius: var(--r-control);
   background: transparent;
   color: var(--text);
   font-size: 14px;
@@ -315,7 +315,7 @@
   position: relative;
   display: inline-flex;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: var(--r-control);
   background: var(--hover);
 }
 
@@ -325,7 +325,7 @@
   z-index: 1;
   padding: 4px 13px;
   border: 0;
-  border-radius: 999px;
+  border-radius: calc(var(--r-control) - 2px);
   background: none;
   color: var(--muted-text);
   font: inherit;
@@ -345,7 +345,7 @@
   position: absolute;
   top: 3px;
   bottom: 3px;
-  border-radius: 999px;
+  border-radius: calc(var(--r-control) - 2px);
   background: var(--card);
   box-shadow: var(--shadow-soft);
   pointer-events: none;

@@ -351,7 +351,7 @@
   width: 32px;
   height: 32px;
   margin-left: -6px;
-  border-radius: 50%;
+  border-radius: var(--r-control);
 }
 
 /* The attach button's glyph: an image on desktop, a + on a phone (the
@@ -363,7 +363,7 @@
 .composer-bar .composer-capture {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--r-control);
 }
 
 .composer-input {
@@ -659,7 +659,7 @@
     height: 32px;
     min-height: 32px;
     justify-content: center;
-    border-radius: 999px;
+    border-radius: var(--r-control);
   }
 }
 
@@ -823,7 +823,7 @@
   align-items: center;
   height: 32px;
   max-width: 210px;
-  border-radius: 999px;
+  border-radius: var(--r-control);
   background: var(--hover);
   color: var(--text-2);
 }
@@ -835,7 +835,7 @@
   height: 100%;
   padding: 0 26px 0 12px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-control);
   background: transparent;
   font-size: 13px;
   font-weight: 500;
@@ -876,7 +876,7 @@
   height: 32px;
   padding: 0 13px;
   border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
+  border-radius: var(--r-control);
   background: transparent;
   font-size: 13px;
   font-weight: 600;
