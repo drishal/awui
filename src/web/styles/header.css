@@ -1,10 +1,12 @@
 /* ---- header ------------------------------------------------------------------ */
 
+/* Tall enough for a chat's title and its status line, so the header (and everything under it) does not
+   jump 7px when a chat replaces the start screen, whose header has the title alone. */
 .chat-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 54px;
+  min-height: 61px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--hairline);
 }
