@@ -436,9 +436,10 @@
   padding: 4px 0 18px;
 }
 
+/* The label and note start on the card's edge below them, not 4px inside it. */
 .form-section h3 {
   margin: 0;
-  padding: 0 4px;
+  padding: 0;
   font-size: var(--label-size);
   font-weight: 600;
   letter-spacing: var(--label-tracking);
@@ -453,7 +454,7 @@
 
 .form-section > .form-note {
   margin-top: -4px;
-  padding: 0 4px;
+  padding: 0;
   font-size: 12.5px;
 }
 
