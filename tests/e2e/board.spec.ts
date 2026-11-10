@@ -135,7 +135,8 @@ test("stop cancels a slow turn and the message queued behind it", async ({ page 
   // A second message queues behind the running turn; Stop must cancel it too, or it would charge later.
   await box.fill("queued behind");
   await page.getByRole("button", { name: "Send to the room" }).click();
-  await expect(page.getByText("Queued")).toBeVisible({ timeout: 10_000 });
+  // Exact: the queued message's own text and the composer's queue note also contain "queued".
+  await expect(page.getByText("Queued", { exact: true })).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: "Stop the room's work" }).click();
   // The stopped turn clears the active slot, so the room is Idle again; the run itself says Stopped.
   await expect
