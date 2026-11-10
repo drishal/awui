@@ -115,7 +115,8 @@ export function WorkspacePicker({
         <label htmlFor="typed-path">Or type a path</label>
         <div className="picker-type-row">
           <input id="typed-path" className="input" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="~/projects/app" autoComplete="off" spellCheck={false} />
-          <button type="submit" className="btn">
+          {/* The typed path's Open becomes the dialog's primary action once there is a path to open. */}
+          <button type="submit" className={typed.trim() ? "btn btn-primary" : "btn"}>
             Open
           </button>
         </div>
