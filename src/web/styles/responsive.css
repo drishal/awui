@@ -118,7 +118,7 @@
 
   .composer-card {
     padding: 8px 8px 6px 12px;
-    border-radius: 20px;
+    border-radius: var(--r-panel);
   }
 
   .pill-select {

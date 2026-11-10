@@ -1622,7 +1622,7 @@
   transform: translateX(-50%);
   padding: 6px 12px 6px 14px;
   border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
+  border-radius: var(--r-control);
   background: var(--card);
   color: var(--text-2);
   font-size: 13px;
