@@ -328,14 +328,17 @@
   color: var(--muted-text);
 }
 
+/* The last rows fade into the dialog's edge instead of being cut by it, which says "more below";
+   the bottom padding is the fade's height, so the final row is clear of it once scrolled to. */
 .palette-list {
   flex: 1;
   min-height: 0;
   margin: 0;
-  padding: 0 6px 6px;
+  padding: 0 6px 16px;
   list-style: none;
   overflow-y: auto;
   overscroll-behavior: contain;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
 }
 
 /* A row reads "label  detail ……… keys": the detail (a project, a provider, "tokens, cost") follows the
