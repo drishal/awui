@@ -833,6 +833,15 @@
   overflow-wrap: anywhere;
 }
 
+/* A thought's paragraphs sit 0.6em apart, near an answer's 0.7em at its larger size, not a full blank line. */
+.thought-body > p {
+  margin: 0;
+}
+
+.thought-body > p + p {
+  margin-top: 0.6em;
+}
+
 .request-outcome {
   font-family: var(--font-sans);
   font-weight: 600;

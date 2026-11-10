@@ -151,7 +151,9 @@ const ThoughtRow = memo(function ThoughtRow({ thinking, streaming }: { thinking:
       testId="thought-row"
     >
       <div className="thought-body" ref={body}>
-        {thinking}
+        {/* Drawn as plain text, a blank line between paragraphs would be a whole 1.6-line row, twice an answer's
+            paragraph gap; as paragraphs the gap is a margin, and single line breaks inside one still show. */}
+        {thinking.split(/\n\s*\n/).filter((p) => p.trim()).map((p, i) => <p key={i}>{p}</p>)}
       </div>
     </DisclosureRow>
   );

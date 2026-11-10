@@ -79,6 +79,14 @@ test("thinking shaped like narration folds as a Thought, and its wide line wraps
   await expect(thought.locator(".collapse.is-settled")).toHaveCount(1);
   const [cardWidth, bodyWidth] = await Promise.all([card.evaluate((el) => el.clientWidth), body.evaluate((el) => el.getBoundingClientRect().width)]);
   expect(bodyWidth).toBeLessThanOrEqual(cardWidth);
+  // Its blank lines are paragraph breaks with a margin between, not a whole empty line of text each.
+  await expect(body.locator("p")).toHaveCount(4);
+  const { gap, lineHeight } = await body.evaluate((el) => {
+    const [first, second] = [...el.querySelectorAll("p")];
+    return { gap: second!.getBoundingClientRect().top - first!.getBoundingClientRect().bottom, lineHeight: parseFloat(getComputedStyle(el).lineHeight) };
+  });
+  expect(gap).toBeGreaterThan(0);
+  expect(gap).toBeLessThan(lineHeight);
 });
 
 test("a failed call tints its row with the reason, opens its card, and the tally goes to it", async ({ page }) => {
