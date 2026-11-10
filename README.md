@@ -33,6 +33,14 @@ You need Node 22.19+, npm, and Bun 1.3.14+ for the build (Bun 1.3.5+ supplies th
 ```bash
 git clone https://github.com/drishal/awui.git
 cd awui
+./setup.sh               # asks, builds, links ~/.local/bin/awui, enables the user service
+./setup.sh --update      # later: git pull, rebuild, relink, restart the service when no chat is live
+./setup.sh --desktop     # add (or repair) the desktop app; the first run asks too, and skips it by default
+```
+
+`setup.sh` builds inside `devenv shell` when the checkout has devenv. By hand, the same is:
+
+```bash
 npm ci
 npm run build:binary     # → dist/bin/<platform>-<arch>/awui
 awui

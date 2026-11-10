@@ -4,6 +4,8 @@
 
 A self-contained `awui` binary runs the whole thing with no Node on the machine — the server, the web bundle, and the harness extensions are all embedded. Take one from the [releases page](https://github.com/drishal/awui/releases), or build it from a checkout:
 
+`./setup.sh` in a checkout does all of the below for you: it asks, builds (inside `devenv shell` when there is one), links `~/.local/bin/awui`, and enables the user service, with the desktop app only if you say so (`./setup.sh --desktop` adds or repairs it later). If `awui` is already on your PATH it stops and points you at `./setup.sh --update`, which pulls, rebuilds (with the desktop app when the install has it), puts the link back in place (a copied binary is moved aside to `awui.bak`), and restarts the service, asking first when chats are live, since a restart stops them. By hand:
+
 ```bash
 git clone https://github.com/drishal/awui.git
 cd awui
