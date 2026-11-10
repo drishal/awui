@@ -100,15 +100,28 @@
   padding: 0 12px 8px;
 }
 
-/* The icon stack: one chip per kind of tool, overlapping, each ringed in the card's colour. */
+/* The icon stack: one glyph per kind of tool, side by side and bare (overlapping ringed discs
+   read as a smudge at this size), the rest counted as plain text. An MCP server's monogram
+   keeps its tinted disc: the hue is what tells two servers apart. */
 .kind-stack {
   display: inline-flex;
   flex: none;
   align-items: center;
+  gap: 1px;
 }
 
-.kind-stack .kind-chip + .kind-chip {
-  margin-left: -6px;
+.kind-stack .kind-chip:not(.is-server) {
+  width: 18px;
+  background: none;
+  box-shadow: none;
+  color: var(--muted-text);
+}
+
+.kind-stack .kind-more {
+  width: auto;
+  padding-left: 3px;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .kind-chip {
