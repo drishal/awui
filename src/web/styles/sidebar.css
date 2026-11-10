@@ -759,16 +759,28 @@ button.all-projects .group-count {
   align-items: center;
   height: 18px;
   padding: 0 7px;
-  border-radius: 999px;
+  border-radius: var(--r-xs);
   font-size: 11px;
   font-weight: 600;
   background: var(--hover);
   color: var(--text-2);
 }
 
+/* The harness drawn as the sidebar's chip draws it: a quiet tag with the harness's colour as a dot, not a tinted
+   pill in a second style. */
 .badge-harness {
-  background: color-mix(in srgb, var(--harness, var(--muted)) 16%, transparent);
-  color: var(--harness, var(--text-2));
+  gap: 5px;
+  padding-left: 6px;
+  color: var(--text-2);
+}
+
+.badge-harness::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--harness, var(--muted));
 }
 
 /* Resize handle on the sidebar's right edge. */
