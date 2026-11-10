@@ -1074,10 +1074,11 @@
   grid-template-columns: minmax(3.2ch, max-content) 20px minmax(0, 1fr);
 }
 
+/* Full muted text, not faded further: a reviewer reads these to find the line, and at 70% they fell
+   below AA on the dark diff tints. */
 .diff-no {
   padding: 0 4px 0 10px;
   color: var(--muted-text);
-  opacity: 0.7;
   text-align: right;
   font-variant-numeric: tabular-nums;
   user-select: none;
