@@ -567,6 +567,12 @@
   }
 }
 
+/* Open, a running row (or a waiting approval) spins in this same status column just below the header:
+   one spinner says the run is going, two stacked say it twice. Hidden, not removed, so nothing moves. */
+.process-card.is-open:has(.process-body .spinner) .process-head .process-status:not(.is-done) .rays {
+  visibility: hidden;
+}
+
 /* The working mark: eight rays that fade one after another (no rotation), then, when the run
    settles in view, a check that draws itself (a one-unit path whose dash is pulled back; B7's 360 ms
    and 80 ms delay). Switched off by the reduced-motion rule: the rays then sit lit, the check drawn. */
