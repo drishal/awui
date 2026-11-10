@@ -142,13 +142,13 @@
   transition: transform 0.12s ease;
 }
 
-/* Each section is its own bubble inside the stack card. */
-.stack-body > .stack-queue,
-.stack-body > .stack-list,
-.stack-body > .stack-group {
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
+/* The card is the one surface: its sections sit flat on it, split by a hairline,
+   rather than each being a bordered bubble inside a bordered card. */
+.stack-body > .stack-queue + *,
+.stack-body > .stack-list + *,
+.stack-body > .stack-group + * {
+  padding-top: 6px;
+  border-top: 1px solid var(--hairline);
 }
 
 .stack-body > .stack-queue,
@@ -167,7 +167,7 @@
 }
 
 /* Alone, the row is the stack's bubble: no card around it, at the card's width and radius. */
-.status-stack.is-base-only > .git-row {
+.status-stack.is-base-only .git-row {
   width: 100%;
   min-height: 32px;
   margin: 0;
@@ -190,8 +190,16 @@
   text-align: left;
 }
 
-.status-stack:not(.is-base-only) > .git-row {
-  margin-top: 4px;
+/* Under the card's sections the row is the card's foot: flat, full width, a hairline above,
+   its hover reaching the card's rounded bottom edge. */
+.status-stack:not(.is-base-only) .git-row {
+  width: 100%;
+  min-height: 32px;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  border-radius: 0 0 calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px);
+  background: none;
 }
 
 .git-row:hover {
@@ -223,6 +231,8 @@
 .stack-top > .direnv-row {
   width: 100%;
   margin: 0;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ok) 8%, transparent);
 }
 
 .status-stack.is-base-only > .direnv-row {
