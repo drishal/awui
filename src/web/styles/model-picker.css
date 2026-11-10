@@ -454,23 +454,36 @@
   margin-left: auto;
 }
 
+/* The same quiet chip as the model, thinking, and permission ones beside it: the harness's
+   colour is its dot, not a fill, so the agent's name does not outrank the settings. */
 button.harness-chip {
   justify-content: center;
-  gap: 4px;
+  gap: 7px;
   min-width: 32px;
   height: 32px;
-  padding: 0 12px;
+  padding: 0 12px 0 11px;
   border: 0;
   border-radius: var(--r-control);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  background: color-mix(in srgb, var(--harness, var(--muted)) 16%, transparent);
-  color: var(--harness, var(--text-2));
+  background: var(--hover);
+  color: var(--text-2);
 }
 
-button.harness-chip:hover:not(:disabled) {
-  background: var(--hover-strong, var(--hover));
+button.harness-chip::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--harness, var(--muted));
+}
+
+button.harness-chip:hover:not(:disabled),
+button.harness-chip[aria-expanded="true"] {
+  background: var(--active);
+  color: var(--text);
 }
 
 button.harness-chip:disabled {
