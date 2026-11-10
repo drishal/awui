@@ -82,7 +82,8 @@
     position: fixed;
     inset: 0;
     z-index: 39;
-    background: rgb(0 0 0 / 0.4);
+    /* Follows the theme's shadow strength: a fixed 40% black barely dims a dark page (light 0.33, dark 0.57). */
+    background: rgb(0 0 0 / calc(var(--shadow-strength) + 0.25));
   }
 
   .drawer-open,
