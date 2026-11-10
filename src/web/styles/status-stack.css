@@ -40,8 +40,24 @@
   background: var(--hairline-strong);
 }
 
-.stack-ridge:hover .ridge-bar {
+.stack-ridge:hover .ridge-bar,
+.stack-ridge:focus-visible .ridge-bar {
   background: var(--muted);
+}
+
+/* With a mouse the grip shows only when it is wanted: always on, a bar centred on the dock's top edge read as
+   a break in its border. Touch keeps it, since there is no hover to find it by. */
+@media (hover: hover) {
+  .ridge-bar {
+    opacity: 0;
+    transition: opacity var(--dur-hover) ease;
+  }
+
+  .stack-ridge:hover .ridge-bar,
+  .stack-ridge:focus-visible .ridge-bar,
+  .status-stack:hover .ridge-bar {
+    opacity: 1;
+  }
 }
 
 .stack-body {
