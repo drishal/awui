@@ -1082,7 +1082,7 @@
 /* Full muted text, not faded further: a reviewer reads these to find the line, and at 70% they fell
    below AA on the dark diff tints. */
 .diff-no {
-  padding: 0 4px 0 10px;
+  padding: 0 4px 0 12px;
   color: var(--muted-text);
   text-align: right;
   font-variant-numeric: tabular-nums;
