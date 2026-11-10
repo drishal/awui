@@ -488,8 +488,10 @@
   box-sizing: border-box;
   width: 10px;
   height: 10px;
-  border: 1.5px solid currentColor;
-  border-right-color: transparent;
+  /* An arc over a faint track: a bare three-quarter ring reads as the letter C when still
+     (a screenshot, reduced motion). */
+  border: 1.5px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
   border-radius: 50%;
   color: var(--accent);
   animation: spin 0.9s linear infinite;
