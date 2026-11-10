@@ -1522,19 +1522,19 @@ export function App() {
     items.push({ id: "usage", section: "Actions", label: "Usage across chats", hint: "tokens, cost", keywords: "spend dashboard stats", run: () => setUsageOpen(true) });
     items.push({ id: "routines", section: "Actions", label: "Routines…", hint: "scheduled prompts", keywords: "schedule cron jobs recurring", run: () => setRoutinesOpen(true) });
     items.push({ id: "reload-app", section: "Actions", label: "Reload the app", hint: "after an update", keywords: "refresh update deploy new build", run: () => void reloadApp() });
-    items.push({ id: "prompts", section: "Actions", label: "Saved prompts…", hint: "#", keywords: "templates snippets", run: () => setPromptsOpen({}) });
+    items.push({ id: "prompts", section: "Actions", label: "Saved prompts…", hint: "#", keys: true, keywords: "templates snippets", run: () => setPromptsOpen({}) });
     items.push({ id: "open-file", section: "Actions", label: "Open a file…", hint: searchWorkspace?.name, keywords: "view read go to", disabled: searchWorkspace ? undefined : "Choose a project first", run: () => setViewer({ request: null }) });
-    items.push({ id: "search-all", section: "Actions", label: "Search every chat", hint: shortcutHint("history-search"), keywords: "history find", run: () => setChatSearch("") });
+    items.push({ id: "search-all", section: "Actions", label: "Search every chat", hint: shortcutHint("history-search"), keys: true, keywords: "history find", run: () => setChatSearch("") });
     items.push({
       id: "search",
       section: "Actions",
       label: "Search in project",
-      hint: shortcutHint("search"),
+      hint: shortcutHint("search"), keys: true,
       disabled: searchWorkspace ? undefined : "Choose a project first",
       run: () => setSearchOpen(true),
     });
     items.push({ id: "folder", section: "Actions", label: "Choose project folder…", run: () => setPickerOpen(true) });
-    items.push({ id: "reopen", section: "Actions", label: "Reopen closed tab", hint: shortcutHint("reopen"), disabled: closedTabs.current.length ? undefined : "No tab closed yet", searchOnly: true, run: reopenClosedTab });
+    items.push({ id: "reopen", section: "Actions", label: "Reopen closed tab", hint: shortcutHint("reopen"), keys: true, disabled: closedTabs.current.length ? undefined : "No tab closed yet", searchOnly: true, run: reopenClosedTab });
     const shownTab = tabState.tabs[tabState.active];
     if (shownTab) {
       items.push({
@@ -1547,11 +1547,11 @@ export function App() {
         run: () => pinTabAt(tabState.active, !shownTab.pinned),
       });
     }
-    items.push({ id: "back", section: "Actions", label: "Back to the previous chat", hint: shortcutHint("back"), searchOnly: true, disabled: visits.current.at > 0 ? undefined : "Nothing before this", run: () => stepVisits(-1) });
-    items.push({ id: "forward", section: "Actions", label: "Forward to the next chat", hint: shortcutHint("forward"), searchOnly: true, disabled: visits.current.at < visits.current.list.length - 1 ? undefined : "Nothing after this", run: () => stepVisits(1) });
+    items.push({ id: "back", section: "Actions", label: "Back to the previous chat", hint: shortcutHint("back"), keys: true, searchOnly: true, disabled: visits.current.at > 0 ? undefined : "Nothing before this", run: () => stepVisits(-1) });
+    items.push({ id: "forward", section: "Actions", label: "Forward to the next chat", hint: shortcutHint("forward"), keys: true, searchOnly: true, disabled: visits.current.at < visits.current.list.length - 1 ? undefined : "Nothing after this", run: () => stepVisits(1) });
     items.push({ id: "sidebar", section: "Actions", label: collapsed ? "Show sidebar" : "Hide sidebar", searchOnly: true, run: () => collapseSidebar(!collapsed) });
     items.push({ id: "settings", section: "Actions", label: "Settings", run: () => setSettingsOpen(true) });
-    items.push({ id: "shortcuts", section: "Actions", label: "Keyboard shortcuts", hint: shortcutHint("shortcuts"), keywords: "keys help", run: () => setShortcutsOpen(true) });
+    items.push({ id: "shortcuts", section: "Actions", label: "Keyboard shortcuts", hint: shortcutHint("shortcuts"), keys: true, keywords: "keys help", run: () => setShortcutsOpen(true) });
     items.push({ id: "pair", section: "Actions", label: "Pair a phone", searchOnly: true, run: () => setPairOpen(true) });
 
     // Pinned first, then newest; the eight at the top show before anything is typed.

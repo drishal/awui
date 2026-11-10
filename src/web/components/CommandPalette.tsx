@@ -115,7 +115,15 @@ export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClo
                   onClick={() => run(item)}
                 >
                   <span className="palette-label">{item.label}</span>
-                  {item.hint ? <span className="palette-hint">{item.hint}</span> : null}
+                  {item.hint && item.keys ? (
+                    <span className="palette-keys">
+                      {item.hint.split(/(?<=.)\+(?=.)/).map((key, k) => (
+                        <kbd key={k}>{key}</kbd>
+                      ))}
+                    </span>
+                  ) : item.hint ? (
+                    <span className="palette-hint">{item.hint}</span>
+                  ) : null}
                   {item.current ? <IconCheck size={14} className="palette-check" /> : null}
                 </div>
               </li>

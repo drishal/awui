@@ -9,6 +9,8 @@ export interface PaletteItem {
   label: string;
   /** Right-aligned detail: a project, a provider, a shortcut. */
   hint?: string;
+  /** The hint is a key combination ("Ctrl+Shift+H", "#"): drawn as keycaps, not as words. */
+  keys?: boolean;
   /** Matched but never shown: a session's harness, a model's id. */
   keywords?: string;
   /** Listed only once something is typed (every model, older sessions). */

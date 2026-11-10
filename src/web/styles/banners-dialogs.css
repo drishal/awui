@@ -356,6 +356,29 @@
   color: var(--muted-text);
 }
 
+/* Shortcuts as keycaps, one per key, so a combination reads as keys rather than as another word of detail. */
+.palette-keys {
+  flex: none;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.palette-keys kbd {
+  min-width: 20px;
+  padding: 1px 5px;
+  border: 1px solid var(--hairline-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--r-xs);
+  font: 500 11px/16px var(--font-sans);
+  text-align: center;
+  color: var(--muted-text);
+}
+
+/* The keyboard's row: the selected fill (the hover tint was too faint to follow on a dark card). */
+.palette-option.is-active {
+  background: var(--active);
+}
+
 .palette-check {
   flex: none;
   color: var(--accent);
