@@ -101,8 +101,7 @@
 }
 
 /* The icon stack: one glyph per kind of tool, side by side and bare (overlapping ringed discs
-   read as a smudge at this size), the rest counted as plain text. An MCP server's monogram
-   keeps its tinted disc: the hue is what tells two servers apart. */
+   read as a smudge at this size), the rest counted as plain text. */
 .kind-stack {
   display: inline-flex;
   flex: none;
@@ -112,9 +111,6 @@
 
 .kind-stack .kind-chip:not(.is-server) {
   width: 18px;
-  background: none;
-  box-shadow: none;
-  color: var(--muted-text);
 }
 
 .kind-stack .kind-more {
@@ -124,16 +120,16 @@
   font-weight: 500;
 }
 
+/* A call's kind, in a row and in the stack: a bare muted glyph, like the rest of the app's icons. Only an
+   MCP server's monogram keeps a tinted square, since its hue is what tells two servers apart. */
 .kind-chip {
   display: inline-grid;
   flex: none;
   place-items: center;
   width: 20px;
   height: 20px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text) 9%, var(--card));
-  box-shadow: 0 0 0 1.5px var(--card);
-  color: var(--text-2);
+  border-radius: var(--r-xs);
+  color: var(--muted-text);
   font-size: 10px;
   font-weight: 600;
   line-height: 1;
@@ -145,6 +141,8 @@
 }
 
 .kind-chip.is-server {
+  width: 18px;
+  height: 18px;
   color: var(--text);
 }
 
