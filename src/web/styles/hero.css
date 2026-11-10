@@ -58,7 +58,7 @@
   font-size: 24px;
   font-weight: 600;
   text-align: center;
-  letter-spacing: -0.01em;
+  letter-spacing: calc(var(--tracking-tight) * 1.4);
 }
 
 .hero-project {

@@ -18,6 +18,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 600;
+  letter-spacing: var(--tracking-tight);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
