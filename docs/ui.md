@@ -90,8 +90,8 @@ a literal colour.
 - **Radii:** `--r-xs` 4, `--r-sm` 8, `--r-control` 8, `--r-md` 10, `--r-lg` 12,
   `--r-xl` 14, `--r-panel` 16 (px). A radius says what a thing is: controls
   (buttons, chips, segmented choices, pickers) take `--r-control`, in-page tiles
-  `--r-md`, menus and docks `--r-lg`, dialogs and the prompt bubble `--r-xl`, the
-  composer and approval card `--r-panel`. `999px` / `50%` is only for a dot or a
+  `--r-md`, menus `--r-lg`, dialogs and the prompt bubble `--r-xl`, the
+  composer, the status dock over it (at its width), and the approval card `--r-panel`. `999px` / `50%` is only for a dot or a
   single glyph (send, switches, status dots, the context ring).
 - **Widths:** `--col` 960 px (review drawers), `--chat-col` (the conversation
   and composer; config.yml's `chat_width`), `--sidebar-w`.

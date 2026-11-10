@@ -2,10 +2,12 @@
 
 /* The card grows open when something arrives and shrinks away when the last thing goes (Collapse.tsx, on
    the spring), its surface fading in and out with it; hiding it with the ridge folds its body the same way. */
+/* The composer's width and radius, so the two stack as one column with one edge rather than a narrower
+   card perched on a wider one. */
 .status-stack {
-  margin: 0 8px 6px;
+  margin: 0 0 6px;
   border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-panel);
   background: var(--surface);
   transition:
     background-color 0.29s var(--ease-out),
@@ -198,7 +200,7 @@
   margin: 0;
   border: 0;
   border-top: 1px solid var(--hairline);
-  border-radius: 0 0 calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px);
+  border-radius: 0 0 calc(var(--r-panel) - 1px) calc(var(--r-panel) - 1px);
   background: none;
 }
 
