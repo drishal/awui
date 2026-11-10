@@ -98,6 +98,7 @@ import { useSidebarLayout } from "./sidebar-layout.js";
 import { forgetWorkspace, load, rememberWorkspace, save } from "./storage.js";
 import { themeModeOf, useTheme } from "./theme.js";
 import { retryMode } from "./tool-retry.js";
+import { plainTitle } from "./plain-title.js";
 
 // Heavy auxiliary panels load on first use, keeping the chat/streaming hot path small.
 const SettingsDialog = lazy(() => import("./components/SettingsDialog.js").then((m) => ({ default: m.SettingsDialog })));
@@ -462,7 +463,7 @@ export function App() {
     askingIds,
     tabState.tabs.flatMap((t) => (t.unread && t.chatId ? [t.chatId] : [])),
   );
-  const pageTitle = titleWith(attention, chat ? `${chat.title || "New chat"} · awui` : "awui");
+  const pageTitle = titleWith(attention, chat ? `${plainTitle(chat.title) || "New chat"} · awui` : "awui");
   useEffect(() => {
     document.title = pageTitle;
   }, [pageTitle]);
@@ -1721,7 +1722,7 @@ export function App() {
   const heading = splash && !splash.leaving ? splash.target : null;
   // The app's name is the sidebar's; the header names what is open, or nothing on
   // the start screen (its own heading is right below).
-  const headerTitle = chat ? chat.title || "New chat" : harnessId === "awui" || !workspace ? "" : workspace.name;
+  const headerTitle = chat ? plainTitle(chat.title) || "New chat" : harnessId === "awui" || !workspace ? "" : workspace.name;
 
   return (
     <ToolStyleContext.Provider value={toolStyle}>
@@ -1763,7 +1764,7 @@ export function App() {
                         setDrawerOpen(false);
                       }}
                     >
-                      <span className="drawer-tab-title">{tab.title || "New chat"}</span>
+                      <span className="drawer-tab-title">{plainTitle(tab.title) || "New chat"}</span>
                       <span className="drawer-tab-harness">{boot.harnesses.find((h) => h.id === tab.harnessId)?.displayName ?? tab.harnessId}</span>
                     </button>
                     {tab.pinned ? null : (

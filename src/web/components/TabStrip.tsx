@@ -17,6 +17,7 @@ import { clampDrag, dropSlot, slideOf, type TabRect } from "../tab-order.js";
 import type { Tab } from "../tabs.js";
 import { SlidingIndicator } from "./SlidingIndicator.js";
 import { WorkingRing } from "./WorkingRing.js";
+import { plainTitle } from "../plain-title.js";
 
 export function TabStrip({
   tabs,
@@ -170,7 +171,7 @@ export function TabStrip({
               tabIndex={selected ? 0 : -1}
               className={`session-tab${selected ? " is-active" : ""}${tab.unread ? " is-unread" : ""}${tab.pinned ? " is-pinned" : ""}${lifted ? " is-lifted" : ""}`}
               style={{ ...harnessColor(tab.harnessId), ...(shift !== 0 ? { transform: `translateX(${shift}px)` } : {}) }}
-              title={`${tab.title} · ${name}${tab.pinned ? " · pinned" : ""}`}
+              title={`${plainTitle(tab.title)} · ${name}${tab.pinned ? " · pinned" : ""}`}
               onClick={() => {
                 if (swallowClick.current) swallowClick.current = false;
                 else onActivate(i);
@@ -198,7 +199,7 @@ export function TabStrip({
               onKeyDown={(e) => onKey(e, i)}
             >
               {working ? <WorkingRing harnessId={tab.harnessId} colored /> : <span className="harness-dot" role="img" aria-label={name} />}
-              <span className="session-tab-title">{tab.title}</span>
+              <span className="session-tab-title">{plainTitle(tab.title)}</span>
               {tab.unread ? <span className="session-tab-unread" role="img" aria-label="Finished while away" /> : null}
               {tab.pinned ? null : (
                 <button

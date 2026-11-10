@@ -26,6 +26,7 @@ import { ProjectIconDialog } from "./ProjectIconDialog.js";
 import { setProjectIcon, useProjectIcons } from "../project-icons.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
+import { plainTitle } from "../plain-title.js";
 
 /** Sessions shown per project before "Show N more". */
 const VISIBLE_CURRENT = 8;
@@ -409,7 +410,7 @@ function SessionRow({
         ) : (
           <span className="harness-dot" style={harnessColor(s.harnessId)} role="img" aria-label={harnessName} title={harnessName} />
         )}
-        <span className="session-title">{s.title}</span>
+        <span className="session-title">{plainTitle(s.title)}</span>
         {s.unread ? <span className="session-unread" role="img" aria-label="Unread" title="Unread" /> : null}
         <span className="session-meta">
           {project ? <span className="session-project">{project}</span> : null}
