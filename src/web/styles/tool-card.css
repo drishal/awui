@@ -535,6 +535,14 @@
 
 }
 
+/* A phone's header has room for its words or its icons, not both: "Worked for 1s · Used 9 tools" stays whole,
+   and the rows below still carry each call's icon. */
+@media (max-width: 480px) {
+  .process-card .kind-stack {
+    display: none;
+  }
+}
+
 /* The working phase in the header ("Thinking", "Running npm test", "Writing"): a new one rises in
    as the old one is replaced. It shimmers on its own, since the label's shimmer cannot clip a
    layer that moves. */
