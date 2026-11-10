@@ -653,13 +653,16 @@
   gap: 1px;
 }
 
-/* Outlined rather than filled, so a row's hover (the same --hover) still shows inside it. */
-.picker-scroll {
-  max-height: 40dvh;
-  overflow-y: auto;
+/* Both lists outlined rather than filled, so a row's hover (the same --hover) still shows inside them. */
+.picker-box {
   padding: 4px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
+}
+
+.picker-scroll {
+  max-height: 40dvh;
+  overflow-y: auto;
 }
 
 .picker-item {
@@ -704,6 +707,11 @@
 .picker-folder > .icon {
   flex: none;
   color: var(--muted-text);
+}
+
+/* A root's path lines up with its name, past the folder icon and its gap. */
+.picker-under-icon {
+  padding-left: 22px;
 }
 
 .picker-folder > span {

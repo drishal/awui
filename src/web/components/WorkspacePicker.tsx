@@ -51,7 +51,7 @@ export function WorkspacePicker({
       {recent.length > 0 ? (
         <section className="picker-section">
           <h3>Recent</h3>
-          <ul className="picker-list">
+          <ul className="picker-list picker-box">
             {recent.map((p) => (
               <li key={p}>
                 <button type="button" className="picker-item" onClick={() => onOpen(p)} title={p}>
@@ -86,17 +86,22 @@ export function WorkspacePicker({
           )}
         </div>
         {browseError ? <p className="notice notice-error">{browseError}</p> : null}
-        <ul className="picker-list picker-scroll" aria-label="Folders">
-          {entries.map((e) => (
-            <li key={e.path}>
-              <button type="button" className="picker-item" onClick={() => void browse(e.path)} title={e.path}>
-                <span className="picker-name picker-folder">
-                  <IconFolder size={14} />
-                  <span>{e.name}</span>
-                </span>
-              </button>
-            </li>
-          ))}
+        <ul className="picker-list picker-box picker-scroll" aria-label="Folders">
+          {entries.map((e) => {
+            // A workspace root comes named by its whole path: name it by its folder, as Recent does, with the path under it.
+            const rooted = e.name.includes("/") || e.name.includes("\\");
+            return (
+              <li key={e.path}>
+                <button type="button" className="picker-item" onClick={() => void browse(e.path)} title={e.path}>
+                  <span className="picker-name picker-folder">
+                    <IconFolder size={14} />
+                    <span>{rooted ? (e.name.split(/[\\/]/).filter(Boolean).pop() ?? e.name) : e.name}</span>
+                  </span>
+                  {rooted ? <span className="picker-path picker-under-icon">{e.name}</span> : null}
+                </button>
+              </li>
+            );
+          })}
           {listing && entries.length === 0 ? <li className="muted picker-empty">No folders here</li> : null}
         </ul>
       </section>
