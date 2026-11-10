@@ -1,7 +1,7 @@
 # awui settings: copy to ~/.config/awui/config.yml.
 # Every key is optional. Restart the server after changing port, host, auth,
 # or the lists (systemctl --user restart awui); theme, text_scale, chat_width,
-# density, autocollapse_sidebar, and herdr apply on the next page load. Environment
+# density, tool_style, font, autocollapse_sidebar, and herdr apply on the next page load. Environment
 # variables (PORT, HOST, AUTH_USERNAME, ...) win over this file.
 
 # Port for the UI and API (1024-65535).
@@ -34,12 +34,15 @@ auth:
 # runs: comfortable (960 px), wide (1400 px), or full (the whole pane);
 # density is comfortable or compact (tighter sidebar rows, turns, tool rows,
 # composer, and tab strip; phones keep their touch sizes); tool_style is cards
-# (a run's calls grouped as one card) or lines (the flat list older versions drew).
+# (a run's calls grouped as one card) or lines (the flat list older versions drew);
+# font is bundled (Inter and JetBrains Mono, shipped with awui, the same on every
+# device) or system (each device's own fonts).
 theme: system
 # text_scale: 1.1
 # chat_width: wide
 # density: compact
 # tool_style: lines
+# font: system
 
 # Fold the sidebar away in narrow windows (below 1200 px; phones use the
 # drawer anyway). A sidebar you collapsed yourself stays collapsed.

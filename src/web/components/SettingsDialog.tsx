@@ -5,7 +5,7 @@
 // the device making it), and what takes a restart says so, with a Restart
 // button when systemd supervises.
 import { useEffect, useState, type CSSProperties } from "react";
-import type { Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle } from "../../shared/protocol.js";
+import type { Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle, UiFont } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { FormRow } from "./FormRow.js";
@@ -100,11 +100,15 @@ interface Draft {
   chatWidth: ChatWidth;
   density: Density;
   toolStyle: ToolStyle;
+  font: UiFont;
   autocollapseSidebar: boolean;
   showStatusBar: boolean;
   herdr: boolean;
   desktopBackground: boolean;
 }
+
+/** The font tokens.css ships as the default (public/fonts), named where the Font setting offers it. */
+const BUNDLED_FONT = "Inter";
 
 function draftOf(v: ServerSettingsValues): Draft {
   return {
@@ -121,6 +125,7 @@ function draftOf(v: ServerSettingsValues): Draft {
     chatWidth: v.chatWidth ?? "comfortable",
     density: v.density ?? "comfortable",
     toolStyle: v.toolStyle ?? "cards",
+    font: v.font ?? "bundled",
     autocollapseSidebar: v.autocollapseSidebar,
     showStatusBar: v.showStatusBar,
     herdr: v.herdr,
@@ -151,6 +156,9 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   // Cards are the default: saved as no setting at all.
   const toolStyle = d.toolStyle === "cards" ? null : d.toolStyle;
   if (toolStyle !== v.toolStyle) p.toolStyle = toolStyle;
+  // The bundled font is the default: saved as no setting at all.
+  const font = d.font === "bundled" ? null : d.font;
+  if (font !== v.font) p.font = font;
   if (d.autocollapseSidebar !== v.autocollapseSidebar) p.autocollapseSidebar = d.autocollapseSidebar;
   if (d.showStatusBar !== v.showStatusBar) p.showStatusBar = d.showStatusBar;
   if (d.herdr !== v.herdr) p.herdr = d.herdr;
@@ -229,6 +237,7 @@ export function SettingsDialog({
         patch.chatWidth !== undefined ||
         patch.density !== undefined ||
         patch.toolStyle !== undefined ||
+        patch.font !== undefined ||
         patch.autocollapseSidebar !== undefined ||
         patch.showStatusBar !== undefined ||
         patch.herdr !== undefined
@@ -239,6 +248,7 @@ export function SettingsDialog({
           chatWidth: next.values.chatWidth,
           density: next.values.density,
           toolStyle: next.values.toolStyle,
+          font: next.values.font,
           autocollapseSidebar: next.values.autocollapseSidebar,
           showStatusBar: next.values.showStatusBar,
           ...(patch.herdr !== undefined ? { herdr: next.values.herdr } : {}),
@@ -469,6 +479,18 @@ export function SettingsDialog({
                     { value: "lines", label: "Lines", title: "A line per call" },
                   ]}
                   onChange={(toolStyle) => update({ toolStyle })}
+                />
+              </FormRow>
+              <FormRow label="Font" desc={draft.font === "system" ? "This device's own system font, as other apps here use." : `${BUNDLED_FONT}, shipped with awui, so every device reads the same.`}>
+                <Segmented<UiFont>
+                  label="Font"
+                  value={draft.font}
+                  disabled={!editable}
+                  options={[
+                    { value: "bundled", label: BUNDLED_FONT, title: "Shipped with awui" },
+                    { value: "system", label: "System", title: "This device's font" },
+                  ]}
+                  onChange={(font) => update({ font })}
                 />
               </FormRow>
             </div>

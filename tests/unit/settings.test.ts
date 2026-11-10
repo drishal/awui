@@ -48,6 +48,7 @@ describe("settings", () => {
       chatWidth: null,
       density: null,
       toolStyle: null,
+      font: null,
       autocollapseSidebar: true,
       showStatusBar: true,
       herdr: true,
@@ -88,6 +89,12 @@ describe("settings", () => {
     expect(readFileSync(file, "utf8")).toContain("tool_style: lines");
     expect(writeSettings(ctx, { toolStyle: null }).values.toolStyle).toBeNull();
     expect(readFileSync(file, "utf8")).not.toContain("tool_style");
+    // The font the same: the bundled one is the default, the system font the other choice.
+    expect(writeSettings(ctx, { font: "system" }).values.font).toBe("system");
+    expect(readFileSync(file, "utf8")).toContain("font: system");
+    expect(writeSettings(ctx, { font: null }).values.font).toBeNull();
+    expect(readFileSync(file, "utf8")).not.toContain("font:");
+    expect(settingsPatchSchema.safeParse({ font: "comic" }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ toolStyle: "tiles" }).success).toBe(false);
   });
 

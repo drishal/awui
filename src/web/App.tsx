@@ -356,6 +356,12 @@ export function App() {
     if (toolStyle === "lines") document.documentElement.setAttribute("data-tool-style", "lines");
     else document.documentElement.removeAttribute("data-tool-style");
   }, [toolStyle]);
+  // The system font is an attribute as well: tokens.css points the font stacks back at the device's own.
+  const uiFont = boot?.ui.font ?? null;
+  useEffect(() => {
+    if (uiFont === "system") document.documentElement.setAttribute("data-font", "system");
+    else document.documentElement.removeAttribute("data-font");
+  }, [uiFont]);
 
   const available = useMemo(() => boot?.harnesses.filter((h) => h.available) ?? [], [boot]);
   // A harness that comes back after this page loaded (a Hermes gateway finishing its
@@ -1457,7 +1463,7 @@ export function App() {
   const chooseTheme = async (theme: ThemeChoice) => {
     try {
       const next = await api<ServerSettings>("/api/settings", { method: "PUT", body: { theme } });
-      setBoot((b) => (b ? { ...b, ui: { ...b.ui, theme: next.values.theme, textScale: next.values.textScale, chatWidth: next.values.chatWidth, density: next.values.density, toolStyle: next.values.toolStyle, autocollapseSidebar: next.values.autocollapseSidebar } } : b));
+      setBoot((b) => (b ? { ...b, ui: { ...b.ui, theme: next.values.theme, textScale: next.values.textScale, chatWidth: next.values.chatWidth, density: next.values.density, toolStyle: next.values.toolStyle, font: next.values.font, autocollapseSidebar: next.values.autocollapseSidebar } } : b));
     } catch (e) {
       fail(e);
     }

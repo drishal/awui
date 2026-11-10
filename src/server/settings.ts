@@ -89,6 +89,7 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
     chatWidth: c.chat_width ?? null,
     density: c.density ?? null,
     toolStyle: c.tool_style ?? null,
+    font: c.font ?? null,
     autocollapseSidebar: c.autocollapse_sidebar ?? true,
     showStatusBar: c.show_status_bar ?? true,
     herdr: c.herdr ?? true,
@@ -186,6 +187,7 @@ export function writeSettings(ctx: SettingsContext, patch: SettingsPatch, who: R
   if (patch.chatWidth !== undefined) set(["chat_width"], patch.chatWidth);
   if (patch.density !== undefined) set(["density"], patch.density);
   if (patch.toolStyle !== undefined) set(["tool_style"], patch.toolStyle);
+  if (patch.font !== undefined) set(["font"], patch.font);
   if (patch.autocollapseSidebar !== undefined) set(["autocollapse_sidebar"], patch.autocollapseSidebar);
   if (patch.showStatusBar !== undefined) set(["show_status_bar"], patch.showStatusBar);
   if (patch.herdr !== undefined) set(["herdr"], patch.herdr);

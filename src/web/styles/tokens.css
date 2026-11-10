@@ -13,10 +13,46 @@
   unicode-range: U+E000-F8FF, U+E0000-E0FFF, U+23E0-23FF, U+F0000-FFFFD, U+100000-10FFFD;
 }
 
+/* The UI's own type, shipped with the app (public/fonts, SIL OFL 1.1) so every machine
+   reads the same: Inter for text, JetBrains Mono for code and measurements. Both are
+   variable on weight and subset to Latin, punctuation, arrows, and symbols; a character
+   outside the range falls through to the next family in the stack. Settings → Font
+   (config.yml `font: system`) sets data-font="system" and points the stacks back at the
+   device's own fonts below; a theme.yml `fonts:` entry still goes first (theme.ts). */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Inter.woff2") format("woff2");
+  unicode-range: U+0000-024F, U+0259, U+02B0-02FF, U+0300-036F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-215F, U+2190-21FF, U+2200-23FF, U+25A0-27BF, U+FB00-FB06;
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Inter-Italic.woff2") format("woff2");
+  unicode-range: U+0000-024F, U+0259, U+02B0-02FF, U+0300-036F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-215F, U+2190-21FF, U+2200-23FF, U+25A0-27BF, U+FB00-FB06;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: local("JetBrains Mono"), url("/fonts/JetBrainsMono.woff2") format("woff2");
+  unicode-range: U+0000-024F, U+0259, U+02B0-02FF, U+0300-036F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-215F, U+2190-21FF, U+2200-27BF;
+}
+
 :root {
   color-scheme: light;
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif, "Symbols Nerd Font Mono", "Symbols Nerd Font";
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace, "Symbols Nerd Font Mono", "Symbols Nerd Font";
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif, "Symbols Nerd Font Mono", "Symbols Nerd Font";
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace, "Symbols Nerd Font Mono", "Symbols Nerd Font";
+  /* Inter's own dynamic-metrics curve tightens it as it grows (about -0.015em at 20 px):
+     headings and titles use this; body sizes keep the font's spacing. */
+  --tracking-tight: -0.014em;
   --bg: #ffffff;
   --surface: #f9fafb;
   --surface-2: #eef1f5;
@@ -106,6 +142,13 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
+}
+
+/* Settings → Font: System. The device's own fonts, as before the bundled ones. */
+:root[data-font="system"] {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif, "Symbols Nerd Font Mono", "Symbols Nerd Font";
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace, "Symbols Nerd Font Mono", "Symbols Nerd Font";
+  --tracking-tight: normal;
 }
 
 :root {
@@ -215,7 +258,9 @@ a {
 }
 
 code,
-pre {
+pre,
+kbd,
+samp {
   font-family: var(--font-mono);
 }
 
