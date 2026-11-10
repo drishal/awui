@@ -338,8 +338,10 @@
   overscroll-behavior: contain;
 }
 
+/* A row reads "label  detail ……… keys": the detail (a project, a provider, "tokens, cost") follows the
+   label in muted text, and the right edge is kept for keycaps alone, so words never pose as shortcuts. */
 .palette-label {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -347,13 +349,19 @@
 }
 
 .palette-hint {
-  flex: none;
-  max-width: 40%;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--muted-text);
+}
+
+.palette-keys,
+.palette-check {
+  margin-left: auto;
 }
 
 /* Shortcuts as keycaps, one per key, so a combination reads as keys rather than as another word of detail. */
