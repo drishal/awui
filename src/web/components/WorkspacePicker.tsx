@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BrowseResult } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
+import { IconFolder } from "../icons.js";
 import { Dialog } from "./Dialog.js";
 
 export function WorkspacePicker({
@@ -53,7 +54,7 @@ export function WorkspacePicker({
           <ul className="picker-list">
             {recent.map((p) => (
               <li key={p}>
-                <button type="button" className="picker-item" onClick={() => onOpen(p)}>
+                <button type="button" className="picker-item" onClick={() => onOpen(p)} title={p}>
                   <span className="picker-name">{p.split("/").filter(Boolean).pop() ?? p}</span>
                   <span className="picker-path">{p}</span>
                 </button>
@@ -88,10 +89,10 @@ export function WorkspacePicker({
         <ul className="picker-list picker-scroll" aria-label="Folders">
           {entries.map((e) => (
             <li key={e.path}>
-              <button type="button" className="picker-item" onClick={() => void browse(e.path)}>
-                <span className="picker-name">
-                  <span aria-hidden="true">📁 </span>
-                  {e.name}
+              <button type="button" className="picker-item" onClick={() => void browse(e.path)} title={e.path}>
+                <span className="picker-name picker-folder">
+                  <IconFolder size={14} />
+                  <span>{e.name}</span>
                 </span>
               </button>
             </li>

@@ -629,12 +629,13 @@
   gap: 1px;
 }
 
+/* Outlined rather than filled, so a row's hover (the same --hover) still shows inside it. */
 .picker-scroll {
   max-height: 40dvh;
   overflow-y: auto;
   padding: 4px;
+  border: 1px solid var(--hairline);
   border-radius: var(--r-md);
-  background: var(--hover);
 }
 
 .picker-item {
@@ -655,10 +656,36 @@
   background: var(--hover);
 }
 
+/* One line: a long root reads as a wall of text when wrapped; the full path is the row's title. */
+.picker-name,
 .picker-path {
-  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-path {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
   color: var(--muted-text);
-  overflow-wrap: anywhere;
+}
+
+.picker-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.picker-folder > .icon {
+  flex: none;
+  color: var(--muted-text);
+}
+
+.picker-folder > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .picker-empty {
