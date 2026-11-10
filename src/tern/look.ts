@@ -56,12 +56,23 @@ const EASE_OUT = "cubic-bezier(0.16, 1, 0.3, 1)";
 const SPRING = "cubic-bezier(0.34, 1.4, 0.64, 1)";
 const INK = "var(--t1, currentColor)";
 const tint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+/**
+ * The pane's own background as a solid colour (the terminal's, which a Tern theme sets), for what floats over
+ * the scrolling conversation: the dock. A tint over transparent lets the text scrolling under it show through.
+ */
+const SOLID = "var(--tv-bg, var(--panel, var(--page)))";
+/** A tint laid on the solid background, so a card in the dock is opaque. */
+const solidTint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%, ${SOLID})`;
 
 /** The sheet, under one name so a later send replaces it. Reading width as the web UI's thread. */
 export const STYLESHEET = `
 [data-role='awui.page'] { width: 100%; max-width: 780px; margin: 0 auto; font-family: var(--sans); gap: 18px; }
 [data-role='awui.page'] .md { font-family: var(--sans); }
-[data-role='awui.dock'] { width: 100%; max-width: 792px; margin: 0 auto; font-family: var(--sans); gap: 8px; }
+/*
+ * The dock floats over the conversation as it scrolls: a solid backdrop (blurred too, for a translucent
+ * window whose background is itself see-through) so what scrolls under it never shows through its cards.
+ */
+[data-role='awui.dock'] { width: 100%; max-width: 792px; margin: 0 auto; font-family: var(--sans); gap: 8px; padding-top: 6px; background: ${SOLID}; backdrop-filter: blur(24px); }
 
 /* The header: the title on its own line, then the harness badge, status, and project, as the web UI's. */
 [data-role='awui.head'] { gap: 4px; padding: 2px 0 10px; border-bottom: 1px solid ${tint(8)}; }
@@ -92,7 +103,12 @@ export const STYLESHEET = `
  * under a hairline, one divided row each with a round icon chip and the facts pushed to the right edge.
  */
 [data-role^='awui.fold'] { border: 1px solid ${tint(10)}; border-radius: 12px; background: ${tint(2)}; }
-[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 0.92em; padding: 4px 12px; }
+/* A closed card is as tall as an open card's row and in the same text size, as the web UI's are. */
+[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 1em; padding: 6px 12px !important; min-height: 30px; }
+/* Tern's head hover is a pill 3 px wider than its section on each side: inside the card, it fills the frame
+   exactly instead, rounded with it (the top corners while open, all four when the card is closed). */
+[data-role^='awui.fold'] > .sf-section-head { margin: 0 !important; border-radius: 11px 11px 0 0; }
+[data-role^='awui.fold'].collapsed > .sf-section-head { border-radius: 11px; }
 [data-role='awui.fold-live'] { border-color: ${tint(28, HARNESS)}; }
 [data-role='awui.fold-live'] > .sf-section-head { color: var(--t2); }
 [data-role^='awui.fold'] > .sf-section-head .sf-head { flex: 1 1 auto; min-width: 0; }
@@ -103,7 +119,11 @@ export const STYLESHEET = `
 [data-role='awui.kinds-more'] { margin-left: 8px; font-size: 0.85em; color: var(--t3); }
 [data-role='awui.work-stat'] { font-family: var(--mono, monospace); font-size: 0.88em; white-space: nowrap; padding-right: 4px; }
 [data-role='awui.calls'] { gap: 0; border-top: 1px solid ${tint(8)}; }
-[data-role='awui.calls'] > * { padding: 2px 12px; }
+[data-role='awui.calls'] > * { padding: 0; }
+/* The row's head carries the padding, so its hover lights the whole row edge to edge, as the web UI's rows do,
+   not Tern's inset pill; the last closed row rounds with the card's bottom corners. */
+[data-role='awui.calls'] .sf-tool-head { margin: 0 !important; padding: 4px 12px !important; border-radius: 0 !important; }
+[data-role='awui.calls'] > :last-child.collapsed .sf-tool-head { border-radius: 0 0 11px 11px !important; }
 [data-role='awui.calls'] > * + * { border-top: 1px solid ${tint(6)}; }
 [data-role^='awui.fold'] > .sf-section-body { margin: 0; padding: 0; border: 0; }
 [data-role^='awui.fold'] > .sf-section-body::before { display: none; }
@@ -138,10 +158,10 @@ export const STYLESHEET = `
 [data-role='awui.recent'] { width: 100%; max-width: 560px; }
 
 /* The dock: queued steps, the git row, the composer card, the status strip. */
-[data-role='awui.queue'] { gap: 4px; padding: 6px 12px; border-radius: 12px; background: ${tint(5)}; font-size: 0.9em; }
-[data-role='awui.git'] { align-items: center; gap: 10px; padding: 3px 11px; border-radius: 10px; background: ${tint(6)}; font-size: 0.86em; color: var(--t2); }
+[data-role='awui.queue'] { gap: 4px; padding: 6px 12px; border-radius: 12px; background: ${solidTint(5)}; font-size: 0.9em; }
+[data-role='awui.git'] { align-items: center; gap: 10px; padding: 3px 11px; border-radius: 10px; background: ${solidTint(6)}; font-size: 0.86em; color: var(--t2); }
 [data-role='awui.git'].sf-act:hover { background: ${tint(9)}; }
-[data-role^='awui.composer'] { gap: 6px; padding: 9px 10px 8px; border-radius: 18px; background: ${tint(7)}; border: 1px solid ${tint(10)}; }
+[data-role^='awui.composer'] { gap: 6px; padding: 9px 10px 8px; border-radius: 18px; background: ${solidTint(7)}; border: 1px solid ${tint(10)}; }
 [data-role='awui.composer-busy'] { border-color: ${tint(40, HARNESS)}; }
 [data-role^='awui.composer'] .sf-editor { background: transparent; box-shadow: none; border: 0; outline: 0; padding-left: 4px; }
 [data-role='awui.chips'] { align-items: center; gap: 6px; }
@@ -152,13 +172,13 @@ export const STYLESHEET = `
 .chip.caution { color: var(--warn); background: ${tint(14, 'var(--warn)')}; }
 
 /* The todo card over the composer, as the web UI's status stack. */
-[data-role='awui.todos'] { border-radius: 14px; }
+[data-role='awui.todos'] { border-radius: 14px; background: ${solidTint(4)} !important; }
 .send { border-radius: 999px; min-width: 26px; padding: 2px 8px; text-align: center; color: var(--t1); background: ${tint(16)}; }
 .send.ready { color: var(--page, #000); background: ${INK}; }
 .send.stop { color: var(--page, #000); background: ${HARNESS}; }
 
 /* An approval or a question from the agent, above the composer. */
-[data-role='awui.request'] { gap: 8px; padding: 12px 14px; border-radius: 16px; background: ${tint(7)}; border: 1px solid ${tint(30, 'var(--warn)')}; }
+[data-role='awui.request'] { gap: 8px; padding: 12px 14px; border-radius: 16px; background: ${solidTint(7)}; border: 1px solid ${tint(30, 'var(--warn)')}; }
 [data-role='awui.request-title'] { font-weight: 600; }
 [data-role='awui.request-buttons'] { gap: 6px; flex-wrap: wrap; }
 .answer { border-radius: 9px; padding: 3px 12px; background: ${tint(9)}; color: var(--t1); }
