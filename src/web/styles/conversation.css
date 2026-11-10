@@ -1017,9 +1017,9 @@
   grid-column: 1 / -1;
   margin-top: 4px;
   color: var(--muted-text);
-  font-size: 11px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
 

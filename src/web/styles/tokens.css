@@ -53,6 +53,9 @@
   /* Inter's own dynamic-metrics curve tightens it as it grows (about -0.015em at 20 px):
      headings and titles use this; body sizes keep the font's spacing. */
   --tracking-tight: -0.014em;
+  /* Small uppercase section labels (Recent, Todos, Actions…): one size and tracking everywhere. */
+  --label-size: 11px;
+  --label-tracking: 0.05em;
   --bg: #ffffff;
   --surface: #f9fafb;
   --surface-2: #eef1f5;

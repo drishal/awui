@@ -44,9 +44,9 @@
 
 .command-menu-head {
   padding: 8px 8px 4px;
-  font-size: 11px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   color: var(--muted-text);
 }
@@ -748,9 +748,9 @@
 .config-section-title {
   margin: 2px 0 6px;
   color: var(--muted-text);
-  font-size: 12px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
 

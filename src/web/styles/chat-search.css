@@ -186,9 +186,9 @@
   gap: 3px;
   min-width: 46px;
   color: var(--muted-text);
-  font-size: 11px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
 

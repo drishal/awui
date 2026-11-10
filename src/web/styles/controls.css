@@ -439,9 +439,9 @@
 .form-section h3 {
   margin: 0;
   padding: 0 4px;
-  font-size: 12px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   color: var(--muted-text);
 }

@@ -102,6 +102,9 @@ a literal colour.
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
   a literal, for a new row height or gap.
 - **Text:** `--chat-font` = 14.5 px × `--chat-scale` (config.yml's text size).
+  A small uppercase section label (Recent, Todos, Actions) is 600 weight at
+  `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat
+  title, dialog titles, the start screen) take `--tracking-tight`.
 - **Control sizes:** the composer's row is 32 px tall on every screen, its
   chips and icon buttons at `--r-control` and Send round (the composer is the exception to `phones.css` raising
   touch targets to 36–44 px elsewhere: a phone keeps its one slim row). Keep

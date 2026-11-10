@@ -148,9 +148,9 @@
 .run-panel-brief h4 {
   margin: 0 0 4px;
   color: var(--muted-text);
-  font-size: 11px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
 

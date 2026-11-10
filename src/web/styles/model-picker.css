@@ -128,9 +128,9 @@
   justify-content: space-between;
   padding: 9px 8px 4px;
   background: var(--card);
-  font-size: 11px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   color: var(--muted-text);
 }
@@ -521,9 +521,9 @@ button.harness-chip:disabled {
 
 .harness-menu-head {
   padding: 6px 8px 4px;
-  font-size: 11px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   color: var(--muted-text);
 }

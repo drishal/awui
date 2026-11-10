@@ -357,9 +357,9 @@
 
 .date-divider {
   padding: var(--section-pad-top) 10px 3px;
-  font-size: 11px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   color: var(--muted-text);
 }

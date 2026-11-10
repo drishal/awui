@@ -615,9 +615,9 @@
 
 .picker-section h3 {
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   color: var(--muted-text);
 }
@@ -878,9 +878,9 @@
 
 .routines-form h3 {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   color: var(--muted-text);
 }

@@ -14,9 +14,9 @@
   gap: 6px;
   padding: 8px 14px 0;
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
 
