@@ -165,7 +165,7 @@ export function RoomList({
 /** Rooms glyph in the house 16px stroke style (a room of two seats). */
 function IconRooms() {
   return (
-    <svg className="icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg className="icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
       <path d="M2.5 3.5h11v9h-11z" />
       <path d="M5 7.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM11 7.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
       <path d="M3.5 10.5c.5-1.2 2.5-1.2 3 0M9.5 10.5c.5-1.2 2.5-1.2 3 0" />
