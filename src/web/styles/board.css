@@ -567,6 +567,13 @@
   border-left: 2px solid color-mix(in srgb, var(--accent) 30%, var(--hairline));
 }
 
+/* The consultant's answer is an aside under the fold's head: the chat's small size and the second text tone, so the
+   requester's own answer stays the loudest thing in the turn. */
+.consult-body .answer {
+  font-size: var(--chat-small);
+  color: var(--text-2);
+}
+
 /* The question is quoted, not said: quieter and slanted, so the consultant's run under it reads as the reply. */
 .consult-question {
   margin: 0;
