@@ -211,6 +211,29 @@ describe("delegated tasks", () => {
     expect(children).toHaveLength(1);
   });
 
+  it("starts one child when two calls with the same clientRequestId are in flight together", async () => {
+    const { app, agent, token } = await setup();
+    const [one, two] = await Promise.all([
+      call(agent, token, "delegate_task", { brief: "check the lockfile", clientRequestId: "round-2" }),
+      call(agent, token, "delegate_task", { brief: "check the lockfile", clientRequestId: "round-2" }),
+    ]);
+    expect(one.status).toBe(200);
+    expect(two.status).toBe(200);
+    expect(two.body.data.taskId).toBe(one.body.data.taskId);
+    expect(app.manager.list().filter((c) => c.lineage?.taskId === one.body.data.taskId)).toHaveLength(1);
+  });
+
+  it("will not hand a restricted chat's work to a harness that has no permission modes", async () => {
+    const { app, agent, token } = await setup();
+    // fake-b stands in for a harness (Hermes, say) whose sessions cannot be held to a mode.
+    const other = app.registry.get("fake-b");
+    if (!other) throw new Error("fake-b is not registered");
+    (other.capabilities as { supportsPermissionMode: boolean }).supportsPermissionMode = false;
+    const res = await call(agent, token, "delegate_task", { brief: "edit things", harness: "fake-b" });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("mode_escalation_denied");
+  });
+
   it("refuses past the chat's live-task cap", async () => {
     const { agent, token } = await setup();
     // Each child parks on an approval, so none of them settles while the cap is counted.

@@ -185,6 +185,23 @@ export class Orchestrator {
     };
   }
 
+  /** The task an earlier call with this request id already started, when there is one. */
+  private repeatOf(caller: Chat, clientRequestId: string | undefined): StoredTask | undefined {
+    if (!clientRequestId) return undefined;
+    return this.tasks.find((task) => task.parentChatId === caller.chatId && task.clientRequestId === clientRequestId);
+  }
+
+  /** Depth and count limits for a new task from `caller`; throws the 429 that names the limit hit. */
+  private checkRoom(caller: Chat, depth: number): void {
+    if (depth > MAX_DEPTH) throw new ChatError(429, "max_depth", `Delegation stops at ${MAX_DEPTH} levels; this chat is already at its limit`);
+    if (this.liveTasks() >= MAX_LIVE_TASKS) throw new ChatError(429, "too_many_tasks", `This server already runs ${MAX_LIVE_TASKS} delegated tasks`);
+    const mine = this.tasks.filter((task) => task.parentChatId === caller.chatId);
+    if (mine.filter((task) => task.state !== "result_available").length >= MAX_CHILDREN_PER_CHAT) {
+      throw new ChatError(429, "too_many_tasks", `A chat may run ${MAX_CHILDREN_PER_CHAT} delegated tasks at once`);
+    }
+    if (mine.length >= MAX_TASKS_PER_CHAT) throw new ChatError(429, "too_many_tasks", `A chat may start ${MAX_TASKS_PER_CHAT} delegated tasks`);
+  }
+
   private async delegate(
     caller: Chat,
     args: {
@@ -205,18 +222,10 @@ export class Orchestrator {
       throw new ChatError(403, "caller_read_only", `${caller.adapter.displayName} is a read-only surface and cannot delegate work`);
     }
     // A repeated request is the same task, never a second child.
-    if (args.clientRequestId) {
-      const prior = this.tasks.find((task) => task.parentChatId === caller.chatId && task.clientRequestId === args.clientRequestId);
-      if (prior) return this.delegateOutput(prior);
-    }
+    const repeat = this.repeatOf(caller, args.clientRequestId);
+    if (repeat) return this.delegateOutput(repeat);
     const depth = (caller.lineage?.depth ?? 0) + 1;
-    if (depth > MAX_DEPTH) throw new ChatError(429, "max_depth", `Delegation stops at ${MAX_DEPTH} levels; this chat is already at its limit`);
-    if (this.liveTasks() >= MAX_LIVE_TASKS) throw new ChatError(429, "too_many_tasks", `This server already runs ${MAX_LIVE_TASKS} delegated tasks`);
-    const mine = this.tasks.filter((task) => task.parentChatId === caller.chatId);
-    if (mine.filter((task) => task.state !== "result_available").length >= MAX_CHILDREN_PER_CHAT) {
-      throw new ChatError(429, "too_many_tasks", `A chat may run ${MAX_CHILDREN_PER_CHAT} delegated tasks at once`);
-    }
-    if (mine.length >= MAX_TASKS_PER_CHAT) throw new ChatError(429, "too_many_tasks", `A chat may start ${MAX_TASKS_PER_CHAT} delegated tasks`);
+    this.checkRoom(caller, depth);
 
     const bot = args.profile === undefined ? undefined : await this.findProfile(args.profile);
     const harnessId = args.harness ?? bot?.harnessId ?? caller.adapter.id;
@@ -260,6 +269,11 @@ export class Orchestrator {
       clientRequestId: args.clientRequestId ?? null,
       wake: { pendingSince: null, deliveredAt: null, attempts: 0, skipped: null },
     };
+    // The checks above ran before several awaits, so two calls in flight could both pass them:
+    // ask again here, where nothing can interleave before the record is added.
+    const again = this.repeatOf(caller, args.clientRequestId);
+    if (again) return this.delegateOutput(again);
+    this.checkRoom(caller, depth);
     // The record lands before anything is spawned, so a crash mid-spawn leaves a row the
     // next load marks interrupted instead of work nobody knows about.
     this.tasks.unshift(task);
@@ -576,10 +590,18 @@ export class Orchestrator {
   private permissionModeFor(caller: Chat, adapter: HarnessAdapter, requested: string | undefined): string | undefined {
     const config = caller.snapshot().config;
     const parentMode = config.permissionMode ?? null;
-    if (requested === undefined) return parentMode !== null && adapter.capabilities.supportsPermissionMode ? parentMode : undefined;
-    if (!adapter.capabilities.supportsPermissionMode) throw new ChatError(400, "unsupported", `${adapter.displayName} has no permission modes`);
     const modes = config.permissionModes ?? [];
     const rank = (id: string) => modes.findIndex((mode) => mode.id === id);
+    // A harness without permission modes cannot be held to the caller's: only a caller already in
+    // its broadest mode (or with none to speak of) may hand work to one, or the child would be freer.
+    if (!adapter.capabilities.supportsPermissionMode) {
+      if (parentMode !== null && modes.length > 1 && rank(parentMode) < modes.length - 1) {
+        throw new ChatError(403, "mode_escalation_denied", `${adapter.displayName} has no permission modes, so it cannot be held to this chat's ${parentMode} mode`);
+      }
+      if (requested !== undefined) throw new ChatError(400, "unsupported", `${adapter.displayName} has no permission modes`);
+      return undefined;
+    }
+    if (requested === undefined) return parentMode ?? undefined;
     const parentRank = parentMode === null ? -1 : rank(parentMode);
     const wantedRank = rank(requested);
     if (parentRank < 0 || wantedRank < 0 || wantedRank > parentRank) {
