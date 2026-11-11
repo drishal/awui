@@ -781,6 +781,12 @@ export class Chat implements CheckpointHost {
    * posts back as `renderToken`, minted here so the child env and the lookup agree.
    */
   render?: { token: string; baseUrl: string };
+  /**
+   * Where this chat's child calls its orchestration tools, and the token that names this
+   * chat. Minted with the spawn and stamped by the manager; it expires (a resume mints a
+   * new one) and is never persisted, so a restart drops it.
+   */
+  orchestration?: { token: string; baseUrl: string; expiresAt: number };
 
   private readonly log = new EventLog();
   private readonly timing = new Timing();

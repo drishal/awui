@@ -1299,6 +1299,7 @@ export class HermesAdapter implements HarnessAdapter {
     supportsQueueEdit: false,
     supportsPermissionMode: false,
     supportsResumeCommand: false,
+    readOnlyHarness: false,
     jobsSurviveRestart: false,
   };
   private probes = new Map<string, { at: number; models: ModelInfo[]; userDefined: Set<string>; defaultKey: string }>();

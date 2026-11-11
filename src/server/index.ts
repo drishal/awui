@@ -165,6 +165,8 @@ async function main(): Promise<void> {
   // Chats' render tools always post back over loopback, even when the server
   // also serves the LAN: the page stays on the machine the project is on.
   manager.render = { baseUrl: `http://127.0.0.1:${config.port}` };
+  // The orchestration tools call back the same way, for the same reason.
+  manager.orchestration = { baseUrl: `http://127.0.0.1:${config.port}` };
   const marks = await SessionMarks.open(config.stateDir);
   const routines = await Routines.open(config.stateDir);
 

@@ -1115,6 +1115,7 @@ export class DshAdapter implements HarnessAdapter {
     // DSH's permission presets are its own config, which awui never writes.
     supportsPermissionMode: false,
     supportsResumeCommand: false,
+    readOnlyHarness: false,
     jobsSurviveRestart: false,
   };
   private modelCache: ModelInfo[] = [];

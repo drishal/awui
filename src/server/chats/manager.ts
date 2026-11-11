@@ -12,9 +12,28 @@ import { noteChatDisposed, noteSessionOfChat } from "../overview-events.js";
 
 const IDLE_DISPOSE_MS = 30 * 60_000;
 const REAP_INTERVAL_MS = 60_000;
+/**
+ * How long a chat's orchestration token works: long enough for a day's work, short
+ * enough that a leaked one goes stale. Restarting the chat (a resume) mints a new one,
+ * and an expired token answers a clear error rather than silently failing tool calls.
+ */
+const ORCH_TOKEN_TTL_MS = 12 * 60 * 60_000;
+
+/** One tool family's token and the environment that carries it to the child. */
+interface ChatTools {
+  token: string;
+  env: NodeJS.ProcessEnv;
+}
 
 function key(harnessId: string, nativeId: string): string {
   return `${harnessId}\u0000${nativeId}`;
+}
+
+/** Both tool families' variables as one environment for the spawn; nothing at all when neither is wired. */
+function toolEnvFor(tools: { render?: ChatTools; orchestration?: ChatTools } | undefined): NodeJS.ProcessEnv | undefined {
+  if (!tools) return undefined;
+  const env = { ...tools.render?.env, ...tools.orchestration?.env };
+  return Object.keys(env).length > 0 ? env : undefined;
 }
 
 export class ChatManager {
@@ -30,10 +49,16 @@ export class ChatManager {
   onRunStart?: (chat: Chat) => void;
   /**
    * The origin a chat's child POSTs its HTML page to (loopback). When set,
-   * `renderFor` mints each chat a token in `AWUI_RENDER_URL`/`AWUI_RENDER_TOKEN`
+   * `toolsFor` mints each chat a token in `AWUI_RENDER_URL`/`AWUI_RENDER_TOKEN`
    * and stamps it on the chat, so a render POST can be matched back to its chat.
    */
   render?: { baseUrl: string };
+  /**
+   * The origin a chat's child calls its orchestration tools on (loopback, as `render`
+   * is). When set, every chat that may use them is spawned with its own token in
+   * `AWUI_ORCH_URL`/`AWUI_ORCH_TOKEN`, stamped on the chat so a call names one chat.
+   */
+  orchestration?: { baseUrl: string };
   /** Any chat finished a run, failed, or asks for an answer. */
   onNews?: (chat: Chat, kind: PushNote["kind"], body: string, request?: InteractionRequest) => void;
   /** A chat's chain reached a handoff step (Chat.onChainHandoff). */
@@ -58,16 +83,39 @@ export class ChatManager {
     return undefined;
   }
 
+  /** The chat whose child was spawned with this orchestration token, when one is live. */
+  chatForOrchToken(token: string): Chat | undefined {
+    for (const chat of this.chats.values()) {
+      if (chat.orchestration?.token === token) return chat;
+    }
+    return undefined;
+  }
+
   /**
-   * The env a chat's child needs for its render tool, and the token that
-   * stamps it: one random token per chat, in `AWUI_RENDER_URL`/`AWUI_RENDER_TOKEN`,
-   * so a render POST can be matched back to the chat that spawned the caller.
-   * `null` when render is not wired (no origin) or the capability is off.
+   * The env a chat's child needs for its tools, and the token that stamps each family:
+   * one random token per chat per family, so a call can be matched back to the chat that
+   * spawned the caller. A family is left out when its origin is not wired, when the
+   * adapter cannot host the tool, or (orchestration) when the harness is a read-only
+   * surface that must never be armed with it.
    */
-  private renderFor(adapter: HarnessAdapter): { token: string; env: NodeJS.ProcessEnv } | null {
-    if (!this.render || !adapter.capabilities.supportsHtmlRender) return null;
-    const token = randomBytes(16).toString("hex");
-    return { token, env: { AWUI_RENDER_TOKEN: token, AWUI_RENDER_URL: `${this.render.baseUrl}/api/render` } };
+  private toolsFor(adapter: HarnessAdapter): { render?: ChatTools; orchestration?: ChatTools } {
+    const tools: { render?: ChatTools; orchestration?: ChatTools } = {};
+    if (this.render && adapter.capabilities.supportsHtmlRender) {
+      const token = randomBytes(16).toString("hex");
+      tools.render = { token, env: { AWUI_RENDER_TOKEN: token, AWUI_RENDER_URL: `${this.render.baseUrl}/api/render` } };
+    }
+    if (this.orchestration && !adapter.capabilities.readOnlyHarness) {
+      const token = randomBytes(16).toString("hex");
+      tools.orchestration = { token, env: { AWUI_ORCH_TOKEN: token, AWUI_ORCH_URL: `${this.orchestration.baseUrl}/api/orchestration` } };
+    }
+    return tools;
+  }
+
+  /** Stamp the tokens on a chat whose child is running: how a call is matched back to it. */
+  private stampTools(chat: Chat, tools: { render?: ChatTools; orchestration?: ChatTools } | undefined): void {
+    if (!tools) return;
+    if (tools.render && this.render) chat.render = { token: tools.render.token, baseUrl: this.render.baseUrl };
+    if (tools.orchestration && this.orchestration) chat.orchestration = { token: tools.orchestration.token, baseUrl: this.orchestration.baseUrl, expiresAt: Date.now() + ORCH_TOKEN_TTL_MS };
   }
 
   list(): Chat[] {
@@ -120,18 +168,18 @@ export class ChatManager {
   async create(adapter: HarnessAdapter, workspace: WorkspaceInfo, owner?: ChatOwner): Promise<Chat> {
     const problem = adapter.workspaceProblem(workspace.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
-    // A board-owned chat gets no render token: room-scoped HTML render needs its own ownership route first.
-    const render = owner ? undefined : this.renderFor(adapter);
+    // A board-owned chat gets neither token: a room's scope for these tools is its own question.
+    const tools = owner ? undefined : this.toolsFor(adapter);
     let live;
     try {
       // The project's .envrc is evaluated off the event loop first; the spawn then finds it cached.
       await prepareSpawnEnv(workspace.path);
-      live = await adapter.openChat({ cwd: workspace.path, toolEnv: render?.env });
+      live = await adapter.openChat({ cwd: workspace.path, toolEnv: toolEnvFor(tools) });
     } catch (error) {
       throw new ChatError(502, "harness_init_failed", `${adapter.displayName} failed to start: ${errorMessage(error)}`);
     }
     const chat = await this.load(adapter, workspace, live, owner);
-    if (render && this.render) chat.render = { token: render.token, baseUrl: this.render.baseUrl };
+    this.stampTools(chat, tools);
     this.register(chat);
     return chat;
   }
@@ -172,8 +220,10 @@ export class ChatManager {
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
     const open = (async () => {
       // A board-owned chat gets no render token: room-scoped HTML render needs its own ownership route first.
-      const render = owner ? undefined : this.renderFor(adapter);
-      const req = { cwd: workspace.path, resumeNativeId: nativeId, toolEnv: render?.env };
+      // A board-owned chat gets neither token: a room's scope for these tools is its own question.
+      const tools = owner ? undefined : this.toolsFor(adapter);
+      // A resume is a chat restart, so its orchestration token is minted afresh with a new lifetime.
+      const req = { cwd: workspace.path, resumeNativeId: nativeId, toolEnv: toolEnvFor(tools) };
       // From the file when the adapter can read it: the chat shows now and the
       // harness starts behind it; the file read also proves the session is this project's.
       const transcript = adapter.readTranscript ? await adapter.readTranscript({ cwd: workspace.path, nativeId }).catch(() => null) : null;
@@ -196,7 +246,7 @@ export class ChatManager {
         }
       }
       const chat = await this.load(adapter, workspace, live, owner);
-      if (render && this.render) chat.render = { token: render.token, baseUrl: this.render.baseUrl };
+      this.stampTools(chat, tools);
       this.register(chat);
       return chat;
     })();

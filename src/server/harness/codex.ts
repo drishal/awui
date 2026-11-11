@@ -1147,6 +1147,7 @@ export class CodexAdapter implements HarnessAdapter {
     supportsQueueEdit: true,
     supportsPermissionMode: true,
     supportsResumeCommand: true,
+    readOnlyHarness: false,
     jobsSurviveRestart: false,
   };
   private modelCache: ModelProbe | null = null;

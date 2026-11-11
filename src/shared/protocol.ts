@@ -30,6 +30,12 @@ export interface HarnessCapabilities {
   supportsResumeCommand: boolean;
   /** A backgrounded job outlives the harness process that started it (Claude Code's task files). Without this, a job reloaded from a transcript as still running is reconciled to stopped, because the new process no longer holds it. */
   jobsSurviveRestart: boolean;
+  /**
+   * The harness is a read-only surface by design (awui denies its child the write and exec
+   * tools). It never gets the orchestration tools and is never a delegation target: a child
+   * handed to it would carry the very tools it exists to deny.
+   */
+  readOnlyHarness: boolean;
 }
 
 export interface HarnessStatus {
@@ -1221,6 +1227,13 @@ export interface SessionMarkState {
 }
 export const compactSchema = z.object({ instructions: z.string().max(10_000).optional() });
 export const answerSchema = z.object({ answer: interactionAnswerSchema });
+
+/**
+ * One orchestration tool call from a chat's harness child: the tool's name and the
+ * arguments the model produced. The per-tool schema lives in orchestration/tools.ts,
+ * which validates `args`; this checks only the envelope.
+ */
+export const orchCallSchema = z.object({ tool: z.string().min(1).max(64), args: z.unknown().optional() }).strict();
 
 export type SendMode = z.infer<typeof sendMessageSchema>["mode"];
 

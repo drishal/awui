@@ -24,6 +24,7 @@ import {
   checkpointCompareSchema,
   type CheckpointComparison,
   continueAtSchema,
+  orchCallSchema,
   compactSchema,
   createChatSchema,
   fileViewSchema,
@@ -122,6 +123,7 @@ import type { TerminalManager } from "./terminal.js";
 import { ManagedWorktrees, worktreeProblem, type WorktreeInfo } from "./worktrees.js";
 import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest } from "./github.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
+import { callTool, ORCH_TOOLS } from "./orchestration/tools.js";
 
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
@@ -314,6 +316,55 @@ export function createApp(deps: AppDeps) {
     const saved = await saveHtmlRender(stateDir, { html, title: req.body?.title, height: req.body?.height });
     if (!saved) throw new ChatError(400, "bad_render", "Empty or oversized HTML document");
     res.json({ id: saved.id, url: `/api/chats/${chat.chatId}/html-render/${saved.id}` });
+  });
+
+  // The orchestration tools in a chat's harness child call back here to delegate, watch, or
+  // read another chat. Like /api/render these routes sit before requireAuth and
+  // authenticate with the random token the child was spawned with (`AWUI_ORCH_TOKEN`,
+  // a header) rather than a cookie: the token names the one chat the call speaks for, so a
+  // signed-in device elsewhere cannot mint one or reach another chat's tasks through it.
+  const orchCaller = (req: Request): Chat => {
+    if (!manager.orchestration) throw new ChatError(404, "orch_off", "Orchestration is not wired on this server");
+    const token = req.get("x-awui-orch-token") ?? "";
+    const chat = token !== "" ? manager.chatForOrchToken(token) : undefined;
+    if (!chat) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+    // Board-owned chats never get a token, and must not borrow one through this route either.
+    if (chat.owner) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+    // A token is good for 12 hours; a chat restart (a resume) mints a fresh one.
+    if ((chat.orchestration?.expiresAt ?? 0) <= Date.now()) throw new ChatError(401, "orch_token_expired", "This chat's tool token expired; restart the chat to get a new one");
+    return chat;
+  };
+
+  /**
+   * The bridges read `{ ok: false, code, message }`, not the server's `{ error, code }`, so
+   * both routes answer a ChatError in their own shape: same status and code, one field
+   * named for the model that will read it. Anything else goes to the server's mapping.
+   */
+  const orchFailed = (res: Response, error: unknown): boolean => {
+    if (!(error instanceof ChatError)) return false;
+    res.status(error.status).json({ ok: false, code: error.code, message: error.message });
+    return true;
+  };
+
+  /** The tool catalogue, fetched once by each bridge: one description, one parameter schema. */
+  app.get("/api/orchestration/tools", async (req, res) => {
+    try {
+      orchCaller(req);
+      res.json({ tools: ORCH_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })) });
+    } catch (error) {
+      if (!orchFailed(res, error)) throw error;
+    }
+  });
+
+  app.post("/api/orchestration/call", express.json({ limit: "512kb" }), async (req, res) => {
+    try {
+      const chat = orchCaller(req);
+      const input = body(orchCallSchema, req);
+      const out = await callTool(input.tool, input.args ?? {}, { chat, registry, workspaces, boards: deps.boards });
+      res.json({ ok: true, text: out.text, data: out.data });
+    } catch (error) {
+      if (!orchFailed(res, error)) throw error;
+    }
   });
 
   app.use("/api", security.requireAuth, (_req, res, next) => {

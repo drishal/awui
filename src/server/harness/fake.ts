@@ -202,6 +202,7 @@ export class FakeAdapter implements HarnessAdapter {
       supportsQueueEdit: true,
       supportsPermissionMode: true,
       supportsResumeCommand: true,
+      readOnlyHarness: false,
       jobsSurviveRestart: false,
       ...options.capabilities,
     };

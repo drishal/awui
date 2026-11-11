@@ -60,6 +60,8 @@ export class AwuiAdapter extends PiAdapter {
     supportsPermissionMode: false,
     supportsResumeCommand: false,
     jobsSurviveRestart: false,
+    // The containment is the point: a delegated child would be handed the write and exec tools this chat denies.
+    readOnlyHarness: true,
   };
   // A distinct accent so the harness menu tells it apart from Pi.
   protected override accentToken = "thinking";

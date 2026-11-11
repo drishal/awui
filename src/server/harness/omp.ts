@@ -615,6 +615,7 @@ export class OmpAdapter implements HarnessAdapter {
     supportsQueueEdit: true,
     supportsPermissionMode: false,
     supportsResumeCommand: false,
+    readOnlyHarness: false,
     jobsSurviveRestart: false,
   };
   private lister: AcpLister;

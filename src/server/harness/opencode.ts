@@ -785,6 +785,7 @@ export class OpenCodeAdapter implements HarnessAdapter {
     supportsQueueEdit: true,
     supportsPermissionMode: false,
     supportsResumeCommand: false,
+    readOnlyHarness: false,
     jobsSurviveRestart: false,
   };
   readonly server: OpenCodeServer;

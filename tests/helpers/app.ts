@@ -138,6 +138,7 @@ export async function makeTestApp(options: {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
   manager.render = { baseUrl: `http://127.0.0.1:${port}` };
+  manager.orchestration = { baseUrl: `http://127.0.0.1:${port}` };
   const close = async () => {
     terminals?.shutdown();
     await boards.shutdown();

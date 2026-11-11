@@ -926,6 +926,7 @@ export class ClaudeAdapter implements HarnessAdapter {
     supportsPermissionMode: true,
     supportsResumeCommand: true,
     // Backgrounded Bash lives in a task file the CLI keeps across restarts; the file is the truth.
+    readOnlyHarness: false,
     jobsSurviveRestart: true,
   };
   /** Per project: the models are the account's, but the default comes from the project's own settings too. */
