@@ -200,7 +200,7 @@ export function RoomComposer({
                 ))}
               </>
             ) : lead ? (
-              <span className="muted" title="Without an @mention, a message goes to the lead">To {lead.name}</span>
+              <span title="Without an @mention, a message goes to the lead">To {lead.name}</span>
             ) : (
               <span className="room-warning">No lead selected</span>
             )}

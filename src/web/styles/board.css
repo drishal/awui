@@ -276,7 +276,7 @@
   overscroll-behavior: contain;
   /* The chat's thread: its top inset, its thin scrollbar with the gutter kept, and turns spaced by their own
      padding (var(--gap-turn)) rather than a second gap on top of it. */
-  padding: 8px var(--room-gutter) 24px;
+  padding: 8px var(--room-gutter) 44px;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -460,6 +460,13 @@
 /* The requester's answer after a consultation starts clear of the fold's rail, under its own speaker line. */
 .bot-run-fold + .bot-run-body {
   padding-top: 12px;
+}
+
+/* An earlier turn's lone copy glyph waits for hover, as an earlier chat answer's row does. */
+@media (hover: hover) {
+  .room-turn:not(:last-child) .answer-actions {
+    opacity: 0;
+  }
 }
 
 .bot-run:hover .answer-actions,
@@ -748,8 +755,9 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
-  font-size: 12px;
-  color: var(--muted-text);
+  font-size: 12.5px;
+  /* Where a message goes is the one fact the composer's foot carries, so it reads a step above the meta grey. */
+  color: var(--text-2);
 }
 
 .room-composer-actions {
