@@ -543,6 +543,12 @@
   }
 }
 
+/* Open, the rows below carry their own glyphs, so the header's stack only repeats the first of them. The
+   card keeps it while closed, where it is the one hint of what the run did. */
+.process-card.is-open:not(.is-live) .kind-stack {
+  display: none;
+}
+
 /* The working phase in the header ("Thinking", "Running npm test", "Writing"): a new one rises in
    as the old one is replaced. It shimmers on its own, since the label's shimmer cannot clip a
    layer that moves. */
