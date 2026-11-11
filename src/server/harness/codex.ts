@@ -117,9 +117,9 @@ function modeOf(approval: unknown, sandbox: unknown): string {
 }
 
 /** The command line that gives a chat render_html: awui's MCP server, and only that. */
-function renderMcpConfig(renderEnv: NodeJS.ProcessEnv | undefined): string[] {
+function renderMcpConfig(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
   const server = renderHtmlMcpServer();
-  if (!server || !renderEnv?.AWUI_RENDER_URL || !renderEnv.AWUI_RENDER_TOKEN) return [];
+  if (!server || !toolEnv?.AWUI_RENDER_URL || !toolEnv.AWUI_RENDER_TOKEN) return [];
   // The CLI runs on Node; a compiled awui binary is not one, so then the Node on PATH runs the server.
   const node = process.versions.bun ? "node" : process.execPath;
   const base = `mcp_servers.${HTML_RENDER_MCP_SERVER}`;
@@ -129,9 +129,9 @@ function renderMcpConfig(renderEnv: NodeJS.ProcessEnv | undefined): string[] {
     "-c",
     `${base}.args=${JSON.stringify([server])}`,
     "-c",
-    `${base}.env.AWUI_RENDER_URL=${JSON.stringify(renderEnv.AWUI_RENDER_URL)}`,
+    `${base}.env.AWUI_RENDER_URL=${JSON.stringify(toolEnv.AWUI_RENDER_URL)}`,
     "-c",
-    `${base}.env.AWUI_RENDER_TOKEN=${JSON.stringify(renderEnv.AWUI_RENDER_TOKEN)}`,
+    `${base}.env.AWUI_RENDER_TOKEN=${JSON.stringify(toolEnv.AWUI_RENDER_TOKEN)}`,
   ];
 }
 
@@ -349,7 +349,7 @@ class CodexLiveChat implements LiveChat {
     private readonly resumeId: string | null,
     models: ModelInfo[],
     /** The chat's render endpoint (AWUI_RENDER_URL/TOKEN), for render_html's MCP server. */
-    private readonly renderEnv?: NodeJS.ProcessEnv,
+    private readonly toolEnv?: NodeJS.ProcessEnv,
     /** The catalog's own default: what a thread or session naming an unusable model switches to. */
     private readonly catalogDefault: string | null = null,
     /** The model to start a new thread on, when the config's own is unusable here. */
@@ -380,7 +380,7 @@ class CodexLiveChat implements LiveChat {
   }
 
   async start(): Promise<void> {
-    const args = ["app-server", ...renderMcpConfig(this.renderEnv), ...this.adapter.extraArgs];
+    const args = ["app-server", ...renderMcpConfig(this.toolEnv), ...this.adapter.extraArgs];
     const rpc = new CodexRpc(this.adapter.cliCommand, args, this.adapter.childEnv(), this.cwd, (frame) => this.onFrame(frame));
     this.rpc = rpc;
     rpc.onExit((message) => {
@@ -1373,7 +1373,7 @@ export class CodexAdapter implements HarnessAdapter {
     const probe = await this.probeModels(req.cwd).catch(() => null);
     const configured = probe?.configuredModel ?? "";
     const usable = probe && configured && !probe.models.some((m) => m.key === configured) ? probe.defaultModel.model : null;
-    const chat = new CodexLiveChat(this, req.cwd, req.resumeNativeId ?? null, probe?.models ?? [], req.renderEnv, probe?.defaultModel.model ?? null, usable);
+    const chat = new CodexLiveChat(this, req.cwd, req.resumeNativeId ?? null, probe?.models ?? [], req.toolEnv, probe?.defaultModel.model ?? null, usable);
     await chat.start();
     return chat;
   }

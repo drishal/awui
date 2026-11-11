@@ -614,8 +614,8 @@ export class PiAdapter implements HarnessAdapter {
     return text === null ? null : { items: historyToItems(branchMessages(text)), title: meta.name || null };
   }
 
-  protected spawnEnv(cwd: string, renderEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...process.env, ...renderEnv };
+  protected spawnEnv(cwd: string, toolEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env, ...toolEnv };
     env[SESSION_DIR_ENV] ??= defaultSessionDir(cwd, process.env[AGENT_DIR_ENV] ?? defaultAgentDir());
     return env;
   }
@@ -699,7 +699,7 @@ export class PiAdapter implements HarnessAdapter {
     }
     const args = ["--mode", "rpc", ...this.toolArgs(), ...this.extensionArgs(), ...this.launchArgs(), "--session-dir", this.sessionDirFor(req.cwd, await this.resolveAgentDir())];
     if (req.resumeNativeId) args.push("--session", req.resumeNativeId);
-    const chat = new PiLiveChat(this.cliCommand, args, this.spawnEnv(req.cwd, req.renderEnv), req.cwd);
+    const chat = new PiLiveChat(this.cliCommand, args, this.spawnEnv(req.cwd, req.toolEnv), req.cwd);
     await chat.start();
     return chat;
   }

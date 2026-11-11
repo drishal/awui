@@ -84,12 +84,12 @@ const USAGE_PROBE_ARGS = ["--no-session-persistence", "--strict-mcp-config", "--
  * and that one tool allowed without a prompt, since it only publishes a page
  * into this chat. None without an endpoint or the server's file.
  */
-function renderMcpArgs(renderEnv: NodeJS.ProcessEnv | undefined): string[] {
+function renderMcpArgs(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
   const server = renderHtmlMcpServer();
-  if (!server || !renderEnv?.AWUI_RENDER_URL || !renderEnv.AWUI_RENDER_TOKEN) return [];
+  if (!server || !toolEnv?.AWUI_RENDER_URL || !toolEnv.AWUI_RENDER_TOKEN) return [];
   // The CLI runs on Node; a compiled awui binary is not one, so then the Node on PATH runs the server.
   const node = process.versions.bun ? "node" : process.execPath;
-  const config = { mcpServers: { [HTML_RENDER_MCP_SERVER]: { type: "stdio", command: node, args: [server], env: { AWUI_RENDER_URL: renderEnv.AWUI_RENDER_URL, AWUI_RENDER_TOKEN: renderEnv.AWUI_RENDER_TOKEN } } } };
+  const config = { mcpServers: { [HTML_RENDER_MCP_SERVER]: { type: "stdio", command: node, args: [server], env: { AWUI_RENDER_URL: toolEnv.AWUI_RENDER_URL, AWUI_RENDER_TOKEN: toolEnv.AWUI_RENDER_TOKEN } } } };
   return ["--mcp-config", JSON.stringify(config), "--allowedTools", HTML_RENDER_MCP_TOOL];
 }
 
@@ -346,7 +346,7 @@ class ClaudeLiveChat implements LiveChat {
     private readonly cwd: string,
     private readonly resumeId: string | null,
     /** The chat's render endpoint (AWUI_RENDER_URL/TOKEN), for render_html's MCP server. */
-    private readonly renderEnv?: NodeJS.ProcessEnv,
+    private readonly toolEnv?: NodeJS.ProcessEnv,
   ) {
     this.sessionId = resumeId ?? randomUUID();
   }
@@ -369,7 +369,7 @@ class ClaudeLiveChat implements LiveChat {
   }
 
   async start(): Promise<void> {
-    const args = [...STREAM_ARGS, ...renderMcpArgs(this.renderEnv), ...this.adapter.extraArgs, ...(this.resumeId ? ["--resume", this.resumeId] : ["--session-id", this.sessionId])];
+    const args = [...STREAM_ARGS, ...renderMcpArgs(this.toolEnv), ...this.adapter.extraArgs, ...(this.resumeId ? ["--resume", this.resumeId] : ["--session-id", this.sessionId])];
     const rpc = new ClaudeRpc(this.adapter.cliCommand, args, this.adapter.childEnv(), this.cwd, (frame) => this.onFrame(frame));
     this.rpc = rpc;
     rpc.onExit((message) => {
@@ -1162,7 +1162,7 @@ export class ClaudeAdapter implements HarnessAdapter {
   }
 
   async openChat(req: OpenChatRequest): Promise<LiveChat> {
-    const chat = new ClaudeLiveChat(this, req.cwd, req.resumeNativeId ?? null, req.renderEnv);
+    const chat = new ClaudeLiveChat(this, req.cwd, req.resumeNativeId ?? null, req.toolEnv);
     await chat.start();
     return chat;
   }

@@ -35,8 +35,8 @@ afterEach(async () => {
 
 const ws = (): WorkspaceInfo => ({ id: "w", path: project, name: "proj" });
 
-async function openChat(resumeNativeId?: string, renderEnv?: NodeJS.ProcessEnv) {
-  const live = await adapter.openChat({ cwd: project, ...(resumeNativeId ? { resumeNativeId } : {}), ...(renderEnv ? { renderEnv } : {}) });
+async function openChat(resumeNativeId?: string, toolEnv?: NodeJS.ProcessEnv) {
+  const live = await adapter.openChat({ cwd: project, ...(resumeNativeId ? { resumeNativeId } : {}), ...(toolEnv ? { toolEnv } : {}) });
   open.push(live);
   return { live, chat: await Chat.open(`c${open.length}`, adapter, ws(), live) };
 }

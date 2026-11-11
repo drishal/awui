@@ -121,8 +121,8 @@ export class AwuiAdapter extends PiAdapter {
   }
 
   /** The child denies the writing tools; it never defers to the user's PI_CODING_AGENT_DIR. */
-  protected override spawnEnv(cwd: string, renderEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-    const env = super.spawnEnv(cwd, renderEnv);
+  protected override spawnEnv(cwd: string, toolEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    const env = super.spawnEnv(cwd, toolEnv);
     delete env[AGENT_DIR_ENV]; // the flag/env seam knows the isolated agent dir; don't leak the user's
     env[AGENT_DIR_ENV] = path.join(this.stateDir, "awui-agent");
     return env;

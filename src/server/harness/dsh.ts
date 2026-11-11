@@ -513,10 +513,10 @@ class DshLiveChat implements LiveChat {
     private readonly adapter: DshAdapter,
     private readonly cwd: string,
     resumeId: string | null,
-    renderEnv: NodeJS.ProcessEnv | undefined,
+    toolEnv: NodeJS.ProcessEnv | undefined,
   ) {
     this.resumeId = resumeId;
-    this.mcpServers = adapter.mcpServers(renderEnv);
+    this.mcpServers = adapter.mcpServers(toolEnv);
   }
 
   get nativeId(): string | null {
@@ -1295,18 +1295,18 @@ export class DshAdapter implements HarnessAdapter {
   }
 
   /** The MCP servers a chat's ACP session mounts: awui's render_html, when it was given a token. */
-  mcpServers(renderEnv: NodeJS.ProcessEnv | undefined): unknown[] {
+  mcpServers(toolEnv: NodeJS.ProcessEnv | undefined): unknown[] {
     const server = renderHtmlMcpServer();
     const node = nodeForMcp();
-    if (!server || !node || !renderEnv?.AWUI_RENDER_URL || !renderEnv.AWUI_RENDER_TOKEN) return [];
+    if (!server || !node || !toolEnv?.AWUI_RENDER_URL || !toolEnv.AWUI_RENDER_TOKEN) return [];
     return [
       {
         name: HTML_RENDER_MCP_SERVER,
         command: node,
         args: [server],
         env: [
-          { name: "AWUI_RENDER_URL", value: renderEnv.AWUI_RENDER_URL },
-          { name: "AWUI_RENDER_TOKEN", value: renderEnv.AWUI_RENDER_TOKEN },
+          { name: "AWUI_RENDER_URL", value: toolEnv.AWUI_RENDER_URL },
+          { name: "AWUI_RENDER_TOKEN", value: toolEnv.AWUI_RENDER_TOKEN },
         ],
       },
     ];
@@ -1484,7 +1484,7 @@ export class DshAdapter implements HarnessAdapter {
   }
 
   async openChat(req: OpenChatRequest): Promise<LiveChat> {
-    const chat = new DshLiveChat(this, req.cwd, req.resumeNativeId ?? null, req.renderEnv);
+    const chat = new DshLiveChat(this, req.cwd, req.resumeNativeId ?? null, req.toolEnv);
     await chat.start();
     return chat;
   }

@@ -626,8 +626,8 @@ export class OmpAdapter implements HarnessAdapter {
     this.lister = new AcpLister(this.cliCommand, () => this.env(), options.home);
   }
 
-  env(renderEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-    return { ...buildOmpEnv(this.options.env ?? process.env, this.options.agentDir, this.options.sessionDir), ...renderEnv };
+  env(toolEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    return { ...buildOmpEnv(this.options.env ?? process.env, this.options.agentDir, this.options.sessionDir), ...toolEnv };
   }
 
   /**
@@ -893,7 +893,7 @@ export class OmpAdapter implements HarnessAdapter {
   async openChat(req: OpenChatRequest): Promise<LiveChat> {
     const problem = this.workspaceProblem(req.cwd);
     if (problem) throw new Error(problem);
-    const chat = new OmpLiveChat(this.cliCommand, () => this.env(), req.cwd, req.renderEnv, this.options.args);
+    const chat = new OmpLiveChat(this.cliCommand, () => this.env(), req.cwd, req.toolEnv, this.options.args);
     await chat.start(req.resumeNativeId ?? null);
     return chat;
   }
@@ -928,7 +928,7 @@ class OmpLiveChat implements LiveChat {
     private readonly command: string,
     private readonly env: () => NodeJS.ProcessEnv,
     private readonly cwd: string,
-    private readonly renderEnv?: NodeJS.ProcessEnv,
+    private readonly toolEnv?: NodeJS.ProcessEnv,
     private readonly extraArgs: string[] = [],
   ) {}
 
@@ -953,7 +953,7 @@ class OmpLiveChat implements LiveChat {
     const rpc = new OmpRpc(
       this.command,
       args,
-      { ...this.env(), ...this.renderEnv },
+      { ...this.env(), ...this.toolEnv },
       this.cwd,
       (frame) => {
         if (generation === this.generation) this.onFrame(frame);

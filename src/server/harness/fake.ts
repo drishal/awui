@@ -323,7 +323,7 @@ export class FakeAdapter implements HarnessAdapter {
       session = { nativeId: randomUUID(), cwd: req.cwd, title: "", messages: [], updatedAt: new Date() };
       this.sessions.set(session.nativeId, session);
     }
-    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode, this.stopDelayMs, req.renderEnv);
+    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode, this.stopDelayMs, req.toolEnv);
   }
 
   async shutdown(): Promise<void> {}
@@ -348,7 +348,7 @@ class FakeLiveChat implements LiveChat {
     private readonly modes: boolean,
     /** A stop that waits this long before biting, for the teardown-bound test. */
     private readonly stopDelayMs = 0,
-    private readonly renderEnv?: NodeJS.ProcessEnv,
+    private readonly toolEnv?: NodeJS.ProcessEnv,
   ) {}
 
   get nativeId(): string {
@@ -1194,8 +1194,8 @@ class FakeLiveChat implements LiveChat {
     const height = 160;
     let output = "Rendered (no endpoint; page not stored)";
     let details: Record<string, unknown> | undefined;
-    const url = this.renderEnv?.AWUI_RENDER_URL;
-    const token = this.renderEnv?.AWUI_RENDER_TOKEN;
+    const url = this.toolEnv?.AWUI_RENDER_URL;
+    const token = this.toolEnv?.AWUI_RENDER_TOKEN;
     if (url && token) {
       try {
         const response = await fetch(url, {

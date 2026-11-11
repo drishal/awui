@@ -126,7 +126,7 @@ export class ChatManager {
     try {
       // The project's .envrc is evaluated off the event loop first; the spawn then finds it cached.
       await prepareSpawnEnv(workspace.path);
-      live = await adapter.openChat({ cwd: workspace.path, renderEnv: render?.env });
+      live = await adapter.openChat({ cwd: workspace.path, toolEnv: render?.env });
     } catch (error) {
       throw new ChatError(502, "harness_init_failed", `${adapter.displayName} failed to start: ${errorMessage(error)}`);
     }
@@ -173,7 +173,7 @@ export class ChatManager {
     const open = (async () => {
       // A board-owned chat gets no render token: room-scoped HTML render needs its own ownership route first.
       const render = owner ? undefined : this.renderFor(adapter);
-      const req = { cwd: workspace.path, resumeNativeId: nativeId, renderEnv: render?.env };
+      const req = { cwd: workspace.path, resumeNativeId: nativeId, toolEnv: render?.env };
       // From the file when the adapter can read it: the chat shows now and the
       // harness starts behind it; the file read also proves the session is this project's.
       const transcript = adapter.readTranscript ? await adapter.readTranscript({ cwd: workspace.path, nativeId }).catch(() => null) : null;
