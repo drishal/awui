@@ -1116,15 +1116,17 @@
   box-shadow: inset 2px 0 0 var(--danger);
 }
 
+/* The sign and number take the row's hue toward the text colour: plain --ok on the added row's tint measured 3.9:1
+   in light, the faintest text in the card. */
 .diff-line.is-add .diff-sign,
 .diff-line.is-add .diff-no {
-  color: var(--ok);
+  color: color-mix(in srgb, var(--ok) 70%, var(--text));
   opacity: 1;
 }
 
 .diff-line.is-del .diff-sign,
 .diff-line.is-del .diff-no {
-  color: var(--danger);
+  color: color-mix(in srgb, var(--danger) 70%, var(--text));
   opacity: 1;
 }
 
