@@ -229,7 +229,8 @@ describe("board runs", () => {
       const room = await makeRoom(a, ws.id, [{ botId: lead.id, handle: "atlas" }]);
       await send(a, room.room.id, "hello");
       await waitRecords(a, room.room.id, (s) => s.activeTurn === null && botRuns(s).length === 1);
-      expect(t.boardNotes.some((note) => note.kind === "done" && note.roomId === room.room.id)).toBe(true);
+      // The settled runtime is durable before the note goes out, so the note can land a moment after the turn clears.
+      await expect.poll(() => t.boardNotes.some((note) => note.kind === "done" && note.roomId === room.room.id)).toBe(true);
       await send(a, room.room.id, "ask");
       const asking = await waitRecords(a, room.room.id, (s) => s.pending.length > 0);
       expect(t.boardNotes.some((note) => note.kind === "ask" && note.request?.id === asking.pending[0]?.id)).toBe(true);
@@ -422,6 +423,9 @@ describe("board runs", () => {
       await t.boards.shutdown();
       const fresh = new RoomManager({ registry: t.registry, workspaces: t.workspaces, chats: t.manager, stateDir: t.stateDir, log: () => undefined });
       await fresh.start();
+      // The turn finished before the restart, so the saved runtime must not claim it was still active.
+      const restored = await fresh.roomSnapshot(room.room.id);
+      expect(restored.records.filter((record) => record.kind === "notice" && /interrupted/.test(record.text))).toHaveLength(0);
       await fresh.postMessage(room.room.id, { text: "after restart", mentions: [] });
       const started = Date.now();
       for (;;) {

@@ -855,9 +855,11 @@ export class RoomManager implements BoardManager {
     if (state === "stopped" && !active.view.stopReason) active.view.stopReason = "Stopped";
     scheduler.update(active.view, active.stored.clientId);
     this.liveRuns.delete(room.id);
+    // Settle the scheduler before saving: persisted while the active turn was still set, a
+    // restarted server would report this finished turn as interrupted.
+    scheduler.finish();
     await this.persistRuntime(room.id);
     this.emitTurn(room.id, active.view);
-    scheduler.finish();
     this.events.emit(room.id, { type: "queue", queued: this.queuedViews(room, scheduler) });
     const handles = active.directMemberIds
       .map((id) => room.members.find((member) => member.id === id)?.handle)
@@ -946,12 +948,13 @@ export class RoomManager implements BoardManager {
     const scheduler = this.scheduler(roomId);
     // Late callbacks from the stopped turn compare this and drop themselves.
     scheduler.generation += 1;
-    const hadActive = scheduler.active !== null;
-    if (scheduler.active) {
-      scheduler.active.view.state = "stopping";
-      scheduler.update(scheduler.active.view, scheduler.active.stored.clientId);
+    const active = scheduler.active;
+    const hadActive = active !== null;
+    if (active) {
+      active.view.state = "stopping";
+      scheduler.update(active.view, active.stored.clientId);
       await this.persistRuntime(roomId);
-      this.emitTurn(roomId, scheduler.active.view);
+      this.emitTurn(roomId, active.view);
     }
     const queued = [...scheduler.queued];
     scheduler.queued = [];
