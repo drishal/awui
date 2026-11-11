@@ -132,9 +132,13 @@ answer bounded to 4 000 characters. A child that raises a **question** becomes
 child's ordinary `done` or `error` push note is suppressed — the parent agent is told instead — but
 a question's note still goes out, since the user is the only one who can answer it. A child whose
 own delegates are still running is `waiting_for_children`, not finished. `task_cancel`
-marks the task, stops its own delegates first, aborts the chat with a five-second cap, closes
-it when nobody is watching, and is idempotent: a second cancel returns the same record. A
-chat a user has open is never closed out from under them.
+stops the task's whole subtree: depth first, every live task its child chat started (and theirs,
+down to the delegation cap) is stopped before the chat that started it, each awaited with the
+same five-second cap, then the task's own chat is aborted and closed when nobody is watching. It
+is idempotent — a second cancel returns the same record — and a child that will not stop in five
+seconds answers `cancel_timeout` (504) while the record still says the task was cancelled, so a
+partial stop is never reported as a clean one. A chat a user has open is never closed out from
+under them.
 
 **Finish delivery.** A parent agent that did not wait for its child is woken with the result. On a
 terminal state (`done`, `failed`, or `interrupted` by a restart) with `notify: "wake"`, the task's
@@ -239,7 +243,7 @@ All are `ChatError`s with the status shown, answered in the bridges' envelope
 | `workspace_unsupported` | 422 | the harness cannot open that project |
 | `task_not_running` | 409 | the task is not in a state this call applies to, or its chat is closed |
 | `cannot_send` | 409 | the child chat cannot take that message |
-| `cancel_timeout` | 504 | the child would not settle in time |
+| `cancel_timeout` | 504 | a cancelled task's chat did not settle within five seconds; the record still says cancelled |
 
 ## At-least-once
 

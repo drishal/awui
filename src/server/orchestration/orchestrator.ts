@@ -210,11 +210,9 @@ export class Orchestrator {
     }
     task.cancelRequestedAt = Date.now();
     task.generation += 1;
-    // Depth first: a task's own delegates stop before the chat that started them.
-    const chat = this.childChat(task);
-    const below = chat ? this.tasks.filter((t) => this.ownTaskOf(t, chat) && t.state !== "result_available") : [];
-    await Promise.all(below.map((child) => this.stopTask(child)));
-    const settled = await this.stopTask(task);
+    // Depth first: everything the task's chat started stops before the chat itself.
+    const belowSettled = await this.stopSubtree(task, 0);
+    const settled = (await this.stopTask(task)) && belowSettled;
     const text = `Cancelled task ${task.id} (${task.title}). Its chat is ${settled ? "stopped" : "still stopping"}.`;
     if (!settled) throw new ChatError(504, "cancel_timeout", `${text} It did not settle within ${CANCEL_SETTLE_MS / 1000}s`);
     return { text, data: { task: viewOf(task) } };
@@ -539,7 +537,9 @@ export class Orchestrator {
    */
   private async settleParent(childTask: StoredTask): Promise<void> {
     const parent = this.tasks.find((task) => this.startedFrom(task, { chatId: childTask.parentChatId, sessionId: childTask.parentSessionId }));
-    if (!parent || parent.state === "result_available") return;
+    // A parent whose cancel (or wall clock) is already under way is being recorded by that, not here:
+    // the last delegate settling under it must not turn a requested cancel into a "done".
+    if (!parent || parent.state === "result_available" || parent.cancelRequestedAt !== null) return;
     const chat = this.childChat(parent);
     if (!chat || chat.status !== "idle") return;
     const running = this.tasks.filter((task) => this.ownTaskOf(task, chat) && task.state !== "result_available");
@@ -667,8 +667,28 @@ export class Orchestrator {
     if (changed) void this.persist().catch((error: unknown) => this.deps.log(`orchestration: could not record read results: ${errorMessage(error)}`));
   }
 
-  /** Stop one task's child chat: abort, then close it when nobody is watching, then mark it cancelled. */
-  private async stopTask(task: StoredTask): Promise<boolean> {
+  /**
+   * Stop every live task the given task's chat started, deepest first, each awaited with the same
+   * five-second cap a cancel uses. The walk stops at the delegation cap, where no delegate can
+   * exist, so a corrupted record cannot make it recurse for ever.
+   */
+  private async stopSubtree(task: StoredTask, depth: number): Promise<boolean> {
+    const chat = this.childChat(task);
+    if (!chat || depth >= this.limits.maxDepth) return true;
+    let settled = true;
+    for (const below of this.tasks.filter((t) => this.ownTaskOf(t, chat) && t.state !== "result_available")) {
+      if (!(await this.stopSubtree(below, depth + 1))) settled = false;
+      if (!(await this.stopTask(below))) settled = false;
+    }
+    return settled;
+  }
+
+  /**
+   * Stop one task's child chat: abort, then close it when nobody is watching, then record how it
+   * ended. `ending` is how the caller wants it recorded: a cancel by the parent, or (the wall
+   * clock) a failure with the reason, which the parent reads as any other error.
+   */
+  private async stopTask(task: StoredTask, ending: { outcome: "cancelled" | "failed"; error: string } = { outcome: "cancelled", error: "Cancelled by the parent" }): Promise<boolean> {
     // Our own watcher counts as a viewer, so it goes first: the count below is the user's.
     this.stopWatching(task.id);
     const chat = this.childChat(task);
@@ -678,7 +698,7 @@ export class Orchestrator {
       // A user watching the child keeps it open: closing it would take the page away.
       if (settled && chat.subscriberCount === 0) await chat.dispose("Delegated task cancelled").catch((error: unknown) => this.deps.log(`orchestration: could not close ${chat.chatId}: ${errorMessage(error)}`));
     }
-    await this.finish(task, "cancelled", "Cancelled by the parent");
+    await this.finish(task, ending.outcome, ending.error);
     return settled;
   }
 

@@ -626,3 +626,42 @@ describe("turned off", () => {
     expect(catalogue.body).toMatchObject({ code: "orch_off" });
   });
 });
+
+describe("cancel cascade", () => {
+  it("cancels a task's own delegates before the task itself", async () => {
+    const { app, agent, token } = await setup();
+    const child = await delegate(agent, token, { brief: "slow review of the parser" });
+    const grandchild = await delegate(agent, tokenOf(app, child.childChatId as string), { brief: "slow review of the lexer" });
+    // Record the order the child chats are stopped in: the deeper one must go first.
+    const order: string[] = [];
+    for (const id of [child.childChatId, grandchild.childChatId]) {
+      const chat = app.manager.get(id as string);
+      const abort = chat.abort.bind(chat);
+      chat.abort = async () => {
+        order.push(chat.chatId);
+        return abort();
+      };
+    }
+    const cancelled = await call(agent, token, "task_cancel", { taskId: child.taskId });
+    expect(cancelled.status).toBe(200);
+    expect(order).toEqual([grandchild.childChatId, child.childChatId]);
+    // Both records are terminal, and a second cancel is the same answer.
+    expect(taskRecords(app).filter((task) => task.state === "result_available").map((task) => task.id)).toEqual(expect.arrayContaining([child.taskId, grandchild.taskId]));
+    const again = await call(agent, token, "task_cancel", { taskId: child.taskId });
+    expect(again.status).toBe(200);
+    expect((again.body.data as { task: DelegatedTaskView }).task).toMatchObject({ state: "result_available", outcome: "cancelled" });
+  });
+
+  it("answers cancel_timeout when a stuck child will not stop, and records the cancel anyway", async () => {
+    const { app, agent, token } = await setup({ fakeStopDelayMs: 6_000 });
+    const started = await delegate(agent, token, { brief: "slow work on the parser" });
+    const cancelled = await call(agent, token, "task_cancel", { taskId: started.taskId });
+    expect(cancelled.status).toBe(504);
+    expect(cancelled.body).toMatchObject({ ok: false, code: "cancel_timeout" });
+    expect(cancelled.body.message).toContain("still stopping");
+    // The record is honest about the half-stopped state: nothing claims to be running.
+    const status = await call(agent, token, "task_status", { taskId: started.taskId });
+    expect((status.body.data as { tasks: DelegatedTaskView[] }).tasks[0]).toMatchObject({ state: "result_available", outcome: "cancelled" });
+    expect(taskRecords(app).find((task) => task.id === started.taskId)?.state).toBe("result_available");
+  });
+});
