@@ -960,6 +960,12 @@
 
 /* The ring sweeps as context grows instead of snapping between percent steps.
    stroke-dasharray is animatable; the reduced-motion rule kills it. */
+/* The pie's empty disc: dark needs more of it (--raise-mix is 0% light, 15% dark) or the track vanishes and a
+   small share reads as a spinner. */
+.context-ring circle:first-child {
+  fill-opacity: calc(20% + var(--raise-mix) * 0.6);
+}
+
 .context-ring circle:last-child {
   transition: stroke-dasharray 0.3s var(--ease-out);
 }
