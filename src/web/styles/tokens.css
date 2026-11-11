@@ -118,7 +118,7 @@
     --rare: #d29922;
     --shadow-strength: 0.32;
     --hairline-mix: 13%;
-    --raise-mix: 11%;
+    --raise-mix: 15%;
   }
 }
 
@@ -150,7 +150,7 @@
   --rare: #d29922;
   --shadow-strength: 0.32;
   --hairline-mix: 13%;
-  --raise-mix: 11%;
+  --raise-mix: 15%;
 }
 
 :root[data-theme="light"] {

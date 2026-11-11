@@ -348,7 +348,8 @@
   bottom: 3px;
   border-radius: calc(var(--r-control) - 2px);
   background: var(--raised);
-  box-shadow: var(--shadow-soft);
+  /* A hairline edge as well as the lift: on a dark page a shadow barely shows, and the choice must not rest on text weight alone. */
+  box-shadow: inset 0 0 0 1px var(--hairline), var(--shadow-soft);
   pointer-events: none;
   transition:
     left var(--dur-lag, var(--dur-spring)) var(--spring),
