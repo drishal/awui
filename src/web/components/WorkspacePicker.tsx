@@ -94,12 +94,11 @@ export function WorkspacePicker({
               Open this folder
             </button>
           </div>
-        ) : (
-          // Before the first listing lands, the list below is the workspace roots themselves.
-          <h3>Workspace roots</h3>
-        )}
+        ) : null}
         {browseError ? <p className="notice notice-error">{browseError}</p> : null}
-        <ul className="picker-list picker-box picker-scroll" aria-label="Folders">
+        {/* At the top the list is the workspace roots themselves. It says so to a screen reader; on screen a second
+            label straight under "Browse" only repeated it. */}
+        <ul className="picker-list picker-box picker-scroll" aria-label={listing?.path ? "Folders" : "Workspace roots"}>
           {entries.map((e) => {
             // A workspace root comes named by its whole path: name it by its folder, as Recent does, with the path under it.
             const rooted = e.name.includes("/") || e.name.includes("\\");
