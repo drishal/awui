@@ -108,23 +108,25 @@ Not taken: DeepSeek's suggestion to keep the model chip visible in a phone's fol
 
 Members: Claude Opus 5.5 (Claude Pro), DeepSeek V4.1 Flash (OpenCode Go), and a third seat held by Grok 4.7 (xAI) in rounds 1–2. In round 3 Grok failed three times on xAI capacity, and the seat moved to Muse Spark 1.3 (OpenCode Go) at the user's request, since the xAI weekly limit was close. The repo is public and the frames are synthetic, so Muse Spark's training on prompts exposes nothing private. Each member scored the same screenshots (desktop and phone, dark and light) on their own, read-only.
 
-| Delegate | Round 1 | Round 2 | Round 3 | Round 4 | Round 5 |
-| --- | --- | --- | --- | --- | --- |
-| Claude Opus 5.5 | 7/10 | 8.3/10 | 8.6/10 | 8.8/10 | 9.0/10 |
-| DeepSeek V4.1 Flash | 6.5/10 | 8.5/10 | 8.6/10 | no score | 9.0/10 |
-| Third seat | 6.8/10 (Grok 4.7) | 8.3/10 (Grok 4.7) | 8.6/10 (Muse Spark 1.3) | 8.7/10 (Muse Spark 1.3) | 8.9/10 (Muse Spark 1.3) |
+| Delegate | Round 1 | Round 2 | Round 3 | Round 4 | Round 5 | Round 6 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Claude Opus 5.5 | 7/10 | 8.3/10 | 8.6/10 | 8.8/10 | 9.0/10 | 9.1/10 |
+| DeepSeek V4.1 Flash | 6.5/10 | 8.5/10 | 8.6/10 | no score | 9.0/10 | 9.1/10 |
+| Third seat | 6.8/10 (Grok 4.7) | 8.3/10 (Grok 4.7) | 8.6/10 (Muse Spark 1.3) | 8.7/10 (Muse Spark 1.3) | 8.9/10 (Muse Spark 1.3) | 9.0/10 (Muse Spark 1.3) |
 
 DeepSeek's round-4 run had not finished after about 20 minutes, by which time that round's fixes had landed. It was cancelled, and DeepSeek reviews round 5 on the new frames, so round 4 has no DeepSeek score.
 
 Dimension scores per round (Hier / Type / Space+Radius / Icons / Consist / Read):
 
-| Delegate | Round 1 | Round 2 | Round 3 | Round 4 | Round 5 |
-| --- | --- | --- | --- | --- | --- |
-| Claude Opus 5.5 | 6.5 / 6 / 7 / 6.5 / 6.5 / 7.5 | 8.5 / 8.8 / 8.2 / 8.2 / 8.0 / 8.6 | 8.7 / 8.8 / 8.6 / 8.6 / 8.4 / 8.7 | 9.0 / 8.8 / 8.7 / 8.4 / 8.4 / 8.7 | 9.1 / 9.0 / 8.8 / 9.0 / 8.9 / 9.1 |
-| DeepSeek V4.1 Flash | 6 / 6 / 5 / 5 / 5.5 / 7 | 8.5 / 8.8 / 8.6 / 8.7 / 8.3 / 8.9 | 8.7 / 8.8 / 8.3 / 8.8 / 8.5 / 8.9 | no score | 9.2 / 9.0 / 8.9 / 8.9 / 8.9 / 9.0 |
-| Third seat | 6.5 / 5.5 / 6.0 / 6.5 / 6.5 / 7.5 (Grok) | 8.6 / 8.7 / 8.3 / 8.4 / 8.2 / 8.1 (Grok) | 9.0 / 9.0 / 8.5 / 9.0 / 8.5 / 9.0 (Muse Spark) | 8.6 / 9.0 / 8.6 / 9.0 / 8.6 / 9.2 (Muse Spark) | 9.0 / 9.2 / 8.8 / 9.0 / 8.7 / 9.1 (Muse Spark) |
+| Delegate | Round 1 | Round 2 | Round 3 | Round 4 | Round 5 | Round 6 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Claude Opus 5.5 | 6.5 / 6 / 7 / 6.5 / 6.5 / 7.5 | 8.5 / 8.8 / 8.2 / 8.2 / 8.0 / 8.6 | 8.7 / 8.8 / 8.6 / 8.6 / 8.4 / 8.7 | 9.0 / 8.8 / 8.7 / 8.4 / 8.4 / 8.7 | 9.1 / 9.0 / 8.8 / 9.0 / 8.9 / 9.1 | 9.1 / 9.0 / 9.0 / 8.9 / 9.0 / 9.1 |
+| DeepSeek V4.1 Flash | 6 / 6 / 5 / 5 / 5.5 / 7 | 8.5 / 8.8 / 8.6 / 8.7 / 8.3 / 8.9 | 8.7 / 8.8 / 8.3 / 8.8 / 8.5 / 8.9 | no score | 9.2 / 9.0 / 8.9 / 8.9 / 8.9 / 9.0 | 9.2 / 9.1 / 9.1 / 9.0 / 8.9 / 9.2 |
+| Third seat | 6.5 / 5.5 / 6.0 / 6.5 / 6.5 / 7.5 (Grok) | 8.6 / 8.7 / 8.3 / 8.4 / 8.2 / 8.1 (Grok) | 9.0 / 9.0 / 8.5 / 9.0 / 8.5 / 9.0 (Muse Spark) | 8.6 / 9.0 / 8.6 / 9.0 / 8.6 / 9.2 (Muse Spark) | 9.0 / 9.2 / 8.8 / 9.0 / 8.7 / 9.1 (Muse Spark) | 9.0 / 9.0 / 9.2 / 9.0 / 8.7 / 9.0 (Muse Spark) |
 
 Round 3 gave 8.6 from all three. Round 4 found nothing made worse. Its findings are fixed under "Round 4" above, except the start screen's single chip, which is kept on purpose. In round 5 Opus and DeepSeek cleared the bar (9.0 overall, nothing under 8.5) and Muse Spark gave 8.9, naming the diff gap, the pie's dark disc and Stop's affordance as what kept it under 9. Those are fixed under "Round 5".
+
+**Round 6 meets the goal:** Opus 9.1, DeepSeek 9.1, Muse Spark 9.0 overall, and the lowest dimension anywhere is Muse Spark's consistency at 8.7. None found a regression beyond the two noted under "Notes and trade-offs".
 
 ## Screenshots
 
@@ -147,6 +149,7 @@ Earlier rounds' runs are in the commits they belong to; the round-3 numbers were
 
 ## Notes and trade-offs
 
+- **Round 6's leftovers, not taken** (each reviewer called them minor and none blocks the bar): a short fade above the Settings footer, since the last row can be cut at the hairline (Opus, DeepSeek); a taller fade on the phone dock so a whole row dissolves rather than a few pixels of glyph tops (Opus, DeepSeek); a chevron on the composer's harness chip, like its neighbours (DeepSeek); a larger or no Stop glyph on the approval card (DeepSeek); a stronger Stop outline (Muse Spark).
 - **atui's theme** (`src/atui/theme.ts`) still uses the old dark colours. The terminal client was out of scope.
 - **The font setting is per server** (config.yml), like the other look settings. A `theme.yml` `fonts:` entry still goes first in the stacks either way.
 - **The harness dot on every session row** stays. Opus suggested showing it only when the list mixes harnesses. It doubles as the slot the working ring takes, and the docs describe it as the harness legend, so removing it would change layout and behaviour for a small gain.
