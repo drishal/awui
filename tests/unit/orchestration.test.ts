@@ -505,14 +505,61 @@ describe("finish delivery", () => {
       await orchestration.registered(parent);
       await sleep(300);
       expect(parent.snapshot().items.filter((item) => item.kind === "user").map((item) => item.text).filter((text) => text.includes("[awui delegate beef"))).toHaveLength(1);
-      const store = JSON.parse(readFileSync(file, "utf8")) as { tasks: Array<{ id: string; state: string; outcome: string; wake: { pendingSince: number | null; deliveredAt: number | null } }> };
+      // The ledger is stamped on disk, so a restart would not deliver it again.
+      type Ledger = { tasks: Array<{ id: string; state: string; outcome: string; wake: { pendingSince: number | null; deliveredAt: number | null } }> };
+      const read = () => {
+        try {
+          return JSON.parse(readFileSync(file, "utf8")) as Ledger;
+        } catch {
+          return null;
+        }
+      };
+      await waitUntil(() => read()?.tasks[0]?.wake.pendingSince === null, 4000, "the delivered wake's record");
+      const store = read() as Ledger;
       expect(store.tasks[0]).toMatchObject({ state: "result_available", outcome: "interrupted" });
-      expect(store.tasks[0]?.wake.pendingSince).toBeNull();
       expect(typeof store.tasks[0]?.wake.deliveredAt).toBe("number");
     } finally {
       await manager.shutdown();
     }
   });
 
+  it("keeps a child's done note off the phone, and sends its question", async () => {
+    const { app, agent, token } = await setup();
+    const done = await delegate(agent, token, { brief: "check the changelog" });
+    await call(agent, token, "thread_wait", { taskIds: [done.taskId], waitMs: 10_000 });
+    let notes = (await agent.get("/api/notifications?since=0")).body.notes as PushNote[];
+    expect(notes.some((note) => note.chatId === done.childChatId)).toBe(false);
+
+    const asking = await delegate(agent, token, { brief: "ask before reviewing the parser" });
+    await waitUntil(() => app.manager.get(asking.childChatId as string).snapshot().pending.length > 0, 8000, "the child's approval");
+    notes = (await agent.get("/api/notifications?since=0")).body.notes as PushNote[];
+    expect(notes.find((note) => note.chatId === asking.childChatId)?.kind).toBe("ask");
+  });
 });
 
+describe("question routing", () => {
+  it("ends a wait with the question's title, never its body", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "quiz described the settings question" });
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    expect(waited.status).toBe(200);
+    const data = waited.body.data as { tasks: DelegatedTaskView[]; pendingRequest?: { taskId: string; requestId: string | null; title: string } };
+    expect(data.tasks[0]).toMatchObject({ id: started.taskId, state: "waiting_for_user" });
+    expect(data.pendingRequest).toMatchObject({ taskId: started.taskId, title: "Settings" });
+    expect(data.pendingRequest?.requestId).toBeTruthy();
+    expect(waited.body.text).toContain('Task ' + started.taskId + ' is asking: "Settings"');
+    // The request's own message is for the user, not for the parent agent.
+    expect(waited.body.text).not.toContain("Should the theme and the text size both move");
+  });
+
+  it("does not end a wait on an approval the user already sees", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "ask before reviewing the parser" });
+    const began = Date.now();
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 600 });
+    expect(Date.now() - began).toBeGreaterThanOrEqual(550);
+    const data = waited.body.data as { tasks: DelegatedTaskView[]; pendingRequest?: unknown };
+    expect(data.tasks[0]?.state).toBe("working");
+    expect(data.pendingRequest).toBeUndefined();
+  });
+});

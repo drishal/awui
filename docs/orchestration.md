@@ -123,8 +123,10 @@ delegate nor host a child.
 goes idle (or errors) with nothing pending is finished: `done` or `failed`, with its last
 answer bounded to 4 000 characters. A child that raises a **question** becomes
 `waiting_for_user` and a parent's `thread_wait` returns at once with the question's title; an
-**approval** does not end the wait, because the user already sees the approval card. A child
-whose own delegates are still running is `waiting_for_children`, not finished. `task_cancel`
+**approval** does not end the wait, because the user already sees the approval card. A
+child's ordinary `done` or `error` push note is suppressed — the parent agent is told instead — but
+a question's note still goes out, since the user is the only one who can answer it. A child whose
+own delegates are still running is `waiting_for_children`, not finished. `task_cancel`
 marks the task, stops its own delegates first, aborts the chat with a five-second cap, closes
 it when nobody is watching, and is idempotent: a second cancel returns the same record. A
 chat a user has open is never closed out from under them.

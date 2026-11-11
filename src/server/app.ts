@@ -237,6 +237,10 @@ export function createApp(deps: AppDeps) {
   manager.onNews = (chat, kind, text, request) => {
     // A board-owned chat's runs are the room's business: the room sends its own notes.
     if (chat.owner) return;
+    // A delegated child's finished or failed run is the parent agent's news, not the phone's: the
+    // orchestrator wakes the parent with it. An ask (a question or an approval) still reaches the
+    // user, who is the only one who can answer it.
+    if (chat.lineage !== undefined && kind !== "ask") return;
     // The user already watches this chat on some connected client, visibly focused: the note would reach for a screen it is on.
     if (presence.viewed({ chatId: chat.chatId })) return;
     // An approval's note carries its two answers, so the notification's own buttons can send one.
