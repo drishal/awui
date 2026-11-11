@@ -1728,8 +1728,8 @@ export function Conversation({
         onBeforeGo={leaveEnd}
       />
       {showJump ? (
-        <button type="button" className="jump" onClick={jump}>
-          Jump to latest <IconChevronDown size={14} />
+        <button type="button" className="jump" aria-label="Jump to latest" title="Jump to latest" onClick={jump}>
+          <IconChevronDown size={16} />
         </button>
       ) : null}
     </div>

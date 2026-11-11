@@ -438,13 +438,13 @@
 }
 
 .jump {
-  animation: rise-in-centered var(--dur-spring) var(--spring);
+  animation: rise-in-corner var(--dur-spring) var(--spring);
 }
 
-@keyframes rise-in-centered {
+@keyframes rise-in-corner {
   from {
     opacity: 0;
-    transform: translate(-50%, 14px);
+    transform: translateY(14px);
   }
 }
 

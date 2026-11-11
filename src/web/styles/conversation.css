@@ -33,10 +33,12 @@
   background: transparent;
 }
 
+/* Room under the last line for the "Jump to latest" pill, which floats 10px above this edge: without it the
+   pill sits on the last row of a diff or a reply when the chat is scrolled to its end. */
 .thread {
   max-width: var(--chat-col);
   margin: 0 auto;
-  padding: 8px 20px 28px;
+  padding: 8px 20px 44px;
 }
 
 .turn {
@@ -1611,21 +1613,22 @@
   font-style: italic;
 }
 
+/* A round-cornered chevron button, not a worded pill: a 128px chip on the way down the thread sat on a line
+   of the last card. At 34px it fits the pane's margin beside the column, over padding rather than text. */
 .jump {
   position: absolute;
-  left: 50%;
-  bottom: 10px;
+  right: 16px;
+  bottom: 14px;
   z-index: 5;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  transform: translateX(-50%);
-  padding: 6px 12px 6px 14px;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--r-control);
   background: var(--card);
   color: var(--text-2);
-  font-size: 13px;
   box-shadow: var(--shadow-soft);
 }
 
