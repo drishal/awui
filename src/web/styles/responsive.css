@@ -97,8 +97,14 @@
     padding: 6px 10px;
   }
 
+  /* The project stays on a phone, shortened, so the header still says where the chat runs. */
+  .chat-sub {
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
   .chat-path {
-    display: none;
+    max-width: 12ch;
   }
 
   .thread {
