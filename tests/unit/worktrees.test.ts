@@ -260,6 +260,25 @@ describe(".worktreeinclude seeding", () => {
     expect(existsSync(path.join(t.path, "secrets", "escape"))).toBe(false);
   });
 
+  it("will not write through a symlink the base ref's tree holds where the project has a real folder", async () => {
+    const { ws: w, root } = ws();
+    const outside = path.join(path.dirname(root), `awui-outside-${Math.random().toString(36).slice(2, 8)}`);
+    mkdirSync(outside);
+    dirs.push(outside);
+    git(root, "checkout", "-qb", "evil");
+    symlinkSync(outside, path.join(root, "foo"));
+    git(root, "add", "foo");
+    git(root, "commit", "-qm", "foo is a link");
+    git(root, "checkout", "-q", "-");
+    mkdirSync(path.join(root, "foo"));
+    writeFileSync(path.join(root, "foo", "x"), "from the project\n");
+    writeFileSync(path.join(root, ".worktreeinclude"), "foo/x\n");
+    const t = await new ManagedWorktrees().create(w, "through-link", "evil");
+    expect(t.seeded.copied).toEqual([]);
+    expect(t.seeded.skipped).toEqual([{ path: "foo/x", reason: "outside the new tree" }]);
+    expect(existsSync(path.join(outside, "x"))).toBe(false);
+  });
+
   it("bounds the work: past 50 entries and past the byte budget entries are skipped, not copied", async () => {
     const { ws: w, root } = ws();
     const lines: string[] = ["big.bin"];

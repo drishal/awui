@@ -328,6 +328,9 @@ async function seedWorktree(root: string, dest: string): Promise<WorktreeSeedRep
     if (!stat.isFile() && !stat.isDirectory()) { skip(walk, entry.path, "not a regular file"); continue; }
     try {
       await fs.mkdir(path.dirname(to), { recursive: true });
+      // The source is confined above; the destination must be too. A base ref's own tree can hold a symlink where the
+      // project has a real folder, and writing through it would leave the new checkout.
+      if (!isWithin(await fs.realpath(dest), await fs.realpath(path.dirname(to)))) { skip(walk, entry.path, "outside the new tree"); continue; }
       if (entry.link) {
         // A relative target keeps the link valid if the project folder moves.
         await fs.symlink(path.relative(dest, real), to);
