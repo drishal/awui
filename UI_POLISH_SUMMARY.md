@@ -115,6 +115,17 @@ Requested after round 6: rooms looked unlike the rest of the app. Tool calls wer
 - **Consultations** stay a fold titled "A asked B". The requester's answer after it no longer gets an extra "synthesis" frame.
 - Verified on the fake harness's new `roomwork` scenario and on a real room of DeepSeek V4.1 Flash and Muse Spark bots through pi, in dark, light and on a phone. Board e2e 7/7; full e2e 225 passed. Frames: `.todo/ui-polish/rooms/` (`room1` fake, `real2`/`real3` real models).
 
+### Board rooms, round 7 (rooms only)
+
+The redesign above had never been scored. A rooms-only council round judged it against the chat's frames: Opus 8.3, DeepSeek 8.7, Muse Spark 8.8, with the same three complaints: the room's column did not sit on the chat's, a bot that consulted showed two speaker lines, and the header band was a second header. Fixes, in four rounds of review and fix (7, 7b, 7c, plus a last fix):
+
+- **One column.** The transcript, topic, approvals, queue and composer take the chat's text edges (measured within 1 px), its thin stable scrollbar, its top inset, and its turn spacing and 44 px bottom room. The composer is the chat's height and says "To Lead"; its status row collapses when empty.
+- **One speaker per consulting bot.** A bot's request, the consultation folds, and its final answer share one speaker line. Its usage (tokens · cost · time) moved into the answer's action row, shown on hover like a chat's timing.
+- **The header is the pane header.** Status, bot count, spend and project sit on the subtitle line; Members (outlined like Review), Edit and Export (icon buttons) sit beside the title. The room's own band is gone.
+- **Quieter marks.** A settled run's "✓ Done" shows on hover; the Room tag, status and @handles use the meta tones; the speaker line has dots between role, harness and model; the consultation rail is tinted toward the accent with a quoted question; the consultant's answer is a step below the requester's.
+
+Scores per round (overall; the last round's frames predate its final two fixes): round 7b Opus 8.8, DeepSeek 8.8, Muse Spark 8.7; round 7c Opus 8.8, DeepSeek 8.8, Muse Spark 8.7. No member reached the 9.0 bar for rooms. What still held them back: the room's one-icon action row against the chat's five, a phone composer that keeps a second row ("To Lead") the chat drops, and the full-size speaker line inside a fold. Not taken: the echoed text in the fake agent's replies (test content, not UI), per-run "Done" always visible, and the chat's prompt actions on a room's prompt.
+
 ### Tern parity
 
 The Tern client (`awui tern`) draws the same chat natively from one stylesheet (`src/tern/look.ts`) and the web UI's pure modules, so the polish above is carried over where Tern lets a program shape it. This list tracks each web change against Tern.
