@@ -680,3 +680,44 @@ describe("the wall clock", () => {
     await waitUntil(() => taskRecords(app).find((record) => record.id === started.taskId)?.wake.skipped === "read by the parent", 4_000, "the ledger's read mark");
   });
 });
+
+describe("budgets", () => {
+  it("refuses more than callsPerMinute calls from one chat, then lets it call again", async () => {
+    const { agent, token } = await setup({ orchestrationLimits: { callsPerMinute: 3 } });
+    for (let i = 0; i < 3; i++) expect((await call(agent, token, "task_status", {})).status).toBe(200);
+    const over = await call(agent, token, "task_status", {});
+    expect(over.status).toBe(429);
+    expect(over.body).toMatchObject({ ok: false, code: "too_many_calls" });
+    expect(over.body.message).toContain("try again in");
+    // A minute later the window has moved past those calls.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 61_000);
+      expect((await call(agent, token, "task_status", {})).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips a wake and says so when wakes are off", async () => {
+    const { app, agent, chat, token } = await setup({ orchestrationLimits: { wakeParents: false } });
+    const started = await delegate(agent, token, { brief: "check the changelog" });
+    // Reading the result does not overwrite the reason: there was never a pending report.
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    await sleep(3000);
+    expect(reportPrompts(app, chat.chatId)).toEqual([]);
+    expect(taskRecords(app).find((task) => task.id === started.taskId)?.wake).toMatchObject({ pendingSince: null, skipped: "wakes are off" });
+  });
+
+  it("spends a parent's hourly wake budget, and its results stay readable", async () => {
+    const { app, agent, chat, token } = await setup({ orchestrationLimits: { maxWakesPerHour: 1 } });
+    await delegate(agent, token, { brief: "check the changelog", title: "First" });
+    await waitUntil(() => reportPrompts(app, chat.chatId).length === 1, 8_000, "the first report");
+    const second = await delegate(agent, token, { brief: "check the lockfile", title: "Second" });
+    await waitUntil(() => taskRecords(app).some((task) => task.id === second.taskId && task.wake.skipped === "wake budget used up"), 10_000, "the second report to be skipped");
+    expect(reportPrompts(app, chat.chatId)).toHaveLength(1);
+    // The budget only silences the prompt: the parent can still ask, and gets the result.
+    const read = await call(agent, token, "task_status", { taskId: second.taskId });
+    expect((read.body.data as { tasks: DelegatedTaskView[] }).tasks[0]).toMatchObject({ state: "result_available", outcome: "done" });
+  });
+});

@@ -71,6 +71,10 @@ export class Orchestrator {
   private readonly flushingWakes = new Set<string>();
   /** One wall-clock timer per running task: a run nobody stops must not run for days. */
   private readonly clocks = new Map<string, NodeJS.Timeout>();
+  /** Each chat's recent call times, for the per-minute budget. */
+  private readonly callTimes = new Map<string, number[]>();
+  /** Wake prompts delivered per parent in the last hour, keyed as the ledger's pending reports are. */
+  private readonly wakeTimes = new Map<string, number[]>();
   constructor(private readonly deps: OrchestratorDeps) {
     this.store = new TaskStore(deps.file);
   }
@@ -86,6 +90,7 @@ export class Orchestrator {
     if (!tool) throw new ChatError(400, "unknown_tool", `No such tool: ${name}`);
     if (!this.limits.enabled) throw new ChatError(404, "orch_off", "Orchestration is turned off in config.yml (orchestration.enabled)");
     await this.ready();
+    this.countCall(caller.chatId);
     const args = rawArgs ?? {};
     switch (name) {
       case "list_profiles":
@@ -299,6 +304,26 @@ export class Orchestrator {
   private repeatOf(caller: Chat, clientRequestId: string | undefined): StoredTask | undefined {
     if (!clientRequestId) return undefined;
     return this.tasks.find((task) => task.parentChatId === caller.chatId && task.clientRequestId === clientRequestId);
+  }
+
+  /**
+   * A chat's tool calls in the last minute: a loop that spins must be answered with a wait, not
+   * with an unbounded run of delegations. A sliding window, so a burst cannot outrun it.
+   */
+  private countCall(chatId: string): void {
+    const now = Date.now();
+    const limit = this.limits.callsPerMinute;
+    const recent = (this.callTimes.get(chatId) ?? []).filter((at) => now - at < 60_000);
+    const oldest = recent[0];
+    if (recent.length >= limit && oldest !== undefined) {
+      this.callTimes.set(chatId, recent);
+      const wait = Math.max(1, Math.ceil((oldest + 60_000 - now) / 1000));
+      throw new ChatError(429, "too_many_calls", `This chat has made ${limit} tool calls in the last minute; try again in ${wait}s`);
+    }
+    recent.push(now);
+    this.callTimes.set(chatId, recent);
+    // Chat ids are minted per open, so a long-lived server would otherwise keep one row per chat ever opened.
+    if (this.callTimes.size > 200) for (const [id, times] of this.callTimes) if (!times.some((at) => now - at < 60_000)) this.callTimes.delete(id);
   }
 
   /** Depth and count limits for a new task from `caller`; throws the 429 that names the limit hit. */
@@ -597,6 +622,11 @@ export class Orchestrator {
       task.wake.skipped = "cancelled by the parent";
       return;
     }
+    // Wakes turned off in config.yml: the task still finishes and stays readable, it is just quiet.
+    if (!this.limits.wakeParents) {
+      task.wake.skipped = "wakes are off";
+      return;
+    }
     task.wake.pendingSince = Date.now();
     task.wake.deliveredAt = null;
     task.wake.attempts = 0;
@@ -634,6 +664,19 @@ export class Orchestrator {
       const pending = this.tasks.filter((task) => task.state === "result_available" && task.wake.pendingSince !== null && task.wake.skipped === null && this.wakeKeyOf(task) === key);
       const first = pending[0];
       if (!first) return;
+      const limits = this.limits;
+      // The switch and the budget are checked here, at the one place a report leaves: a task queued
+      // while wakes were on is not sent after they are turned off.
+      if (!limits.wakeParents) {
+        this.skipWakes(pending, "wakes are off");
+        return;
+      }
+      const recent = this.wakeTimesIn(key, Date.now());
+      if (recent.length >= limits.maxWakesPerHour) {
+        this.wakeTimes.set(key, recent);
+        this.skipWakes(pending, "wake budget used up");
+        return;
+      }
       const parent = this.parentChatOf(first);
       if (!parent || parent.status === "disposed") return;
       const mode = this.wakeMode(parent);
@@ -653,6 +696,9 @@ export class Orchestrator {
         task.wake.deliveredAt = now;
         task.wake.skipped = null;
       }
+      // The budget's window counts the prompts actually sent, not the reports they carried.
+      recent.push(now);
+      this.wakeTimes.set(key, recent);
       await this.persist().catch((error: unknown) => this.deps.log(`orchestration: could not record delivered reports: ${errorMessage(error)}`));
     } finally {
       this.flushingWakes.delete(key);
@@ -673,6 +719,24 @@ export class Orchestrator {
     void this.persist().catch((error: unknown) => this.deps.log(`orchestration: could not record undelivered reports: ${errorMessage(error)}`));
     const first = tasks[0];
     if (retry && first) this.scheduleFlush(this.wakeKeyOf(first), WAKE_RETRY_MS);
+  }
+
+  /** The wake prompts one parent received in the last hour: the budget's sliding window. */
+  private wakeTimesIn(key: string, now: number): number[] {
+    return (this.wakeTimes.get(key) ?? []).filter((at) => now - at < 3_600_000);
+  }
+
+  /**
+   * Reports that will not be delivered, with the reason the record keeps. The result is not lost:
+   * the parent's own task_status or thread_wait still answers, and the ledger says why it was quiet.
+   */
+  private skipWakes(tasks: StoredTask[], why: string): void {
+    for (const task of tasks) {
+      task.wake.pendingSince = null;
+      task.wake.skipped = why.slice(0, 200);
+    }
+    this.deps.log(`orchestration: did not deliver ${tasks.length} report(s): ${why}`);
+    void this.persist().catch((error: unknown) => this.deps.log(`orchestration: could not record skipped reports: ${errorMessage(error)}`));
   }
 
   /**

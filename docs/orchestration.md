@@ -166,6 +166,18 @@ twice. That is the right trade for a result the parent waits on, and why a repor
 message rather than a stream. A report the parent would not take is retried twice, then marked
 `skipped` with the reason, so nothing spins.
 
+**Wakes are budgeted.** `wakeParents: false` turns delivery off: a finished task's report is marked
+`skipped` as `wakes are off` and nothing is sent. With wakes on, `maxWakesPerHour` caps the wake
+prompts one parent receives in an hour (a prompt carrying three reports counts once); past it, its
+reports are marked `skipped` as `wake budget used up`. Neither silences the result itself:
+`task_status`, `thread_wait`, and `thread_read` answer exactly as before, and the task's record says
+why the parent was not woken.
+
+**Calls are budgeted too.** `callsPerMinute` is a sliding one-minute window per calling chat on
+`POST /api/orchestration/call`, whatever the tool. Over it, the call answers `too_many_calls` (429)
+with how long to wait, so a looping agent gets a clear answer instead of an unbounded run of
+delegations.
+
 ## The task record
 
 Records live in `$XDG_STATE_HOME/awui/orchestration/tasks.json` (mode 0600, written whole
@@ -245,6 +257,7 @@ All are `ChatError`s with the status shown, answered in the bridges' envelope
 | `mode_escalation_denied` | 403 | a permission mode broader than the caller's own |
 | `max_depth` | 429 | the caller is already as deep as delegation goes |
 | `too_many_tasks` | 429 | a per-chat, per-server, or depth cap |
+| `too_many_calls` | 429 | this chat went past `callsPerMinute`; the message says when to retry |
 | `unknown_harness` | 422 | no such harness |
 | `harness_unavailable` | 422 | that harness cannot start right now |
 | `unknown_profile` | 422 | no such bot profile |
