@@ -91,6 +91,12 @@
   flex: 1;
 }
 
+/* Stop stays apart from the answer, on the left, but drawn as a button: as bare red text beside a bordered Deny and a
+   filled Approve it read as a status label. Its outline takes the danger hue faintly, so it still yields to them. */
+.approval-actions .btn-danger-text {
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
 .approval-chip {
   padding: 1px 7px;
   border-radius: 999px;
