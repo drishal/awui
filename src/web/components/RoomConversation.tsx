@@ -1,14 +1,16 @@
-// The room's transcript: user messages with the bots they addressed, then one
-// card per direct run in rank order, with each consultation folded under the
-// requester it belongs to. Nothing here invents a speaker: a consultation is
-// titled with the two real members, and its consultant's card is the run.
+// The room's transcript, drawn like a chat: the user's messages as the chat's
+// bubbles (with the bots they addressed under them), then each direct run in
+// rank order as a speaker line over a chat turn, with each consultation folded
+// under the requester it belongs to. Nothing here invents a speaker: a
+// consultation is titled with the two real members, and its consultant's
+// block is the run.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ChatItem, RoomInfo, RoomMemberView, RoomRecord } from "../../shared/protocol.js";
 import { findMember } from "../room-state.js";
 import { formatWhen } from "../turn-time.js";
 import { IconChevronDown, IconInfo, IconWarning, Spinner } from "../icons.js";
 import { BotRun } from "./BotRun.js";
-import { ProcessItem } from "./Conversation.js";
+import { RunTranscript } from "./Conversation.js";
 import { Collapse } from "./Collapse.js";
 
 const PIN_DISTANCE_PX = 96;
@@ -94,10 +96,8 @@ export function RoomConversation({
                   <Spinner size={12} /> Working
                 </span>
               </header>
-              <div className="bot-run-items">
-                {run.items.map((item) => (
-                  <ProcessItem key={item.id} item={item} workspace={workspace} />
-                ))}
+              <div className="bot-run-body">
+                <RunTranscript items={run.items} live workspace={workspace} />
               </div>
             </div>
           </section>
@@ -160,13 +160,8 @@ function TurnGroup({ group, room, workspace, harnessName }: { group: Group; room
           );
           break;
         }
-        const after = consultationsBefore(group.records, record.memberId, record.seq).length;
-        rows.push(
-          <div key={record.id} className="room-run-block">
-            {after > 0 ? <p className="room-synthesis">{member(record.memberId)?.name ?? "The requester"} answered again after {after} {after === 1 ? "consultation" : "consultations"}.</p> : null}
-            <BotRun record={record} member={member(record.memberId)} harnessName={harnessName} workspace={workspace} />
-          </div>,
-        );
+        // A requester's answer after its consultations needs no note of its own: its speaker line under the fold says it.
+        rows.push(<BotRun key={record.id} record={record} member={member(record.memberId)} harnessName={harnessName} workspace={workspace} />);
         break;
       }
       case "consultation":
@@ -195,43 +190,44 @@ function runsForConsult(records: RoomRecord[], consultId: string): RunRecord[] {
   return records.filter((r): r is RunRecord => r.kind === "bot_run" && r.consultOf === consultId);
 }
 
-function consultationsBefore(records: RoomRecord[], memberId: string, seq: number): ConsultRecord[] {
-  return records.filter((r): r is ConsultRecord => r.kind === "consultation" && r.fromMemberId === memberId && r.seq < seq);
-}
-
 function UserMessage({ record, member }: { record: Extract<RoomRecord, { kind: "user" }>; member: (id: string) => RoomMemberView | null }) {
   const addressed = record.mentions.map((id) => ({
     handle: member(id)?.handle ?? "removed",
     name: member(id)?.name ?? "a removed member",
   }));
+  // The chat's own bubble, with the time and who it went to under it where the chat puts a prompt's time.
   return (
-    <div className="room-user" data-testid="room-user-message">
-      <div className="room-user-meta">
-        <span className="room-user-you">You</span>
-        <span title={formatWhen(record.at)}>{formatWhen(record.at)}</span>
-        {addressed.length > 0 ? (
-          <span className="room-mentions" aria-label={`Addressed to ${addressed.map((a) => a.name).join(", ")}`}>
-            {addressed.map((a, i) => (
-              <span key={`${record.id}:${i}`} className="room-mention-chip" title={a.name}>
-                @{a.handle}
-              </span>
-            ))}
-          </span>
-        ) : (
-          <span className="room-mentions muted">to the lead</span>
-        )}
+    <div className="turn-prompt room-user" data-testid="room-user-message">
+      <div className="bubble-stack">
+        <div className="bubble">
+          <span className="bubble-text">{record.text}</span>
+        </div>
+        <div className="room-user-meta">
+          <span title={formatWhen(record.at)}>{formatWhen(record.at)}</span>
+          {addressed.length > 0 ? (
+            <span className="room-mentions" aria-label={`Addressed to ${addressed.map((a) => a.name).join(", ")}`}>
+              {addressed.map((a, i) => (
+                <span key={`${record.id}:${i}`} className="room-mention" title={a.name}>
+                  @{a.handle}
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span className="room-mentions">to the lead</span>
+          )}
+        </div>
       </div>
-      <div className="room-user-text">{record.text}</div>
     </div>
   );
 }
 
+/** A room notice in the chat's own notice style: a line with its icon, tinted by level, not a filled band. */
 function RoomNotice({ record }: { record: Extract<RoomRecord, { kind: "notice" }> }) {
   return (
-    <p className={`room-notice is-${record.level}`} role={record.level === "error" ? "alert" : undefined}>
-      {record.level === "info" ? <IconInfo size={13} /> : <IconWarning size={13} />}
-      <span>{record.text}</span>
-    </p>
+    <div className={`notice-row notice-${record.level}`} role={record.level === "error" ? "alert" : undefined}>
+      <span className="notice-icon">{record.level === "info" ? <IconInfo size={14} /> : <IconWarning size={14} />}</span>
+      <span className="notice-text">{record.text}</span>
+    </div>
   );
 }
 

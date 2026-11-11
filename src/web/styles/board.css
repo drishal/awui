@@ -311,24 +311,22 @@
   text-align: center;
 }
 
+/* A turn reads like a chat's: no rule between turns, the same breathing room under each. */
 .room-turn {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   padding-bottom: var(--gap-turn);
-  border-bottom: 1px solid var(--hairline);
 }
 
 .room-turn:last-child {
-  border-bottom: 0;
   padding-bottom: 0;
 }
 
-.room-user {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+/* The user's message is the chat's bubble (.turn-prompt, .bubble); the time and who it went to sit under it,
+   where a chat puts a prompt's time. */
+.room-user.turn-prompt {
+  padding: 4px 0 0;
 }
 
 .room-user-meta {
@@ -337,21 +335,23 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+  padding-right: 4px;
   font-size: 11.5px;
   color: var(--muted-text);
-}
-
-.room-user-you {
-  font-weight: 600;
-  color: var(--text-2);
 }
 
 .room-mentions {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
+.room-mention {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* The composer's addressed bots keep their chips. */
 .room-mention-chip {
   display: inline-flex;
   align-items: center;
@@ -363,86 +363,23 @@
   font-weight: 500;
 }
 
-.room-user-text {
-  max-width: min(100%, 72ch);
-  padding: 8px 12px;
-  border-radius: var(--r-md);
-  background: var(--bubble);
-  color: var(--text);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.room-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 0;
-  padding: 5px 10px;
-  border-radius: var(--r-sm);
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--text-2);
-  background: var(--card);
-}
-
-.room-notice.is-warning {
-  color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
-}
-
-.room-notice.is-error {
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
-}
-
-.room-run-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.room-synthesis {
-  margin: 0;
-  font-size: 11.5px;
-  color: var(--muted-text);
-  font-style: italic;
-}
-
-/* ---- a bot's run ---- */
+/* ---- a bot's run: a speaker line over a chat turn, no card ---- */
 .bot-run {
   --bot-accent: var(--accent);
-  border: 1px solid var(--hairline);
-  border-left: 3px solid var(--bot-accent);
-  border-radius: var(--r-sm);
-  background: var(--card);
-  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-.bot-run.is-nested {
-  margin-top: 6px;
-  background: transparent;
-}
-
-.bot-run.is-running {
-  border-color: color-mix(in srgb, var(--bot-accent) 30%, var(--hairline));
-}
-
-.bot-run.is-failed {
-  border-left-color: var(--danger);
-}
-
-.bot-run.is-stopped {
-  border-left-color: var(--warn);
-}
-
+/* Who spoke, quietly: the bot's dot and name, then one muted run of harness, model and level. Its state stays
+   muted once done; only a run that works, failed, or was stopped takes a colour. */
 .bot-run-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
-  font-size: 12.5px;
+  gap: 8px;
+  min-width: 0;
+  min-height: 22px;
+  font-size: 13px;
 }
 
 .bot-dot {
@@ -454,38 +391,47 @@
 }
 
 .bot-name {
+  flex: none;
   font-weight: 600;
   color: var(--text);
 }
 
-.bot-role,
-.bot-handle,
-.bot-setting {
-  color: var(--muted-text);
-  font-size: 11.5px;
-}
-
-.bot-role {
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--hover);
+.bot-detail {
+  flex: none;
   color: var(--text-2);
+  font-size: 12px;
+}
+
+.bot-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.bot-settings > * + *::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--muted-text);
 }
 
 .bot-setting {
-  padding: 0 5px;
-  border-radius: var(--r-xs);
-  background: var(--code-bg);
-  font-family: var(--font-mono);
-  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bot-status {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 4px;
   margin-left: auto;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted-text);
 }
 
@@ -501,47 +447,43 @@
   color: var(--warn);
 }
 
-.bot-run-items {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-process);
+/* The run itself is the chat's turn body: its fold and answer bring their own spacing. The answer's actions show
+   on hover or focus, as under a chat's earlier answers. */
+.bot-run-body {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.bot-run:hover .answer-actions,
+.bot-run:focus-within .answer-actions {
+  opacity: 1;
 }
 
 .bot-run-waiting {
-  margin: 8px 0 0;
-  font-size: 12px;
+  margin: 4px 0 0;
+  font-size: var(--chat-small);
   color: var(--muted-text);
 }
 
 .bot-run-error {
-  margin: 8px 0 0;
-  font-size: 12.5px;
+  margin: 4px 0 0;
+  font-size: var(--chat-small);
   color: var(--danger);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .bot-run-foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px solid var(--hairline);
+  margin-top: 2px;
   font-size: 11.5px;
   color: var(--muted-text);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- a consultation, folded under its requester ---- */
+/* A disclosure line like a chat's fold ("Lead asked Critic · answered"), its body indented on a hairline. */
 .consult {
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--r-sm);
-  padding: 2px 10px 8px;
-}
-
-.consult.is-failed,
-.consult.is-refused {
-  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  min-width: 0;
 }
 
 .consult-head {
@@ -550,14 +492,18 @@
   gap: 7px;
   width: 100%;
   min-height: var(--drow-h);
-  padding: 4px 0;
+  padding: 2px 0;
   border: 0;
   background: none;
   color: var(--text-2);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--chat-small);
   text-align: left;
   cursor: pointer;
+}
+
+.consult-head:hover .consult-who {
+  color: var(--text);
 }
 
 .consult-head:focus-visible {
@@ -567,12 +513,9 @@
 }
 
 .consult-chevron {
-  transition: transform 120ms ease;
-  color: var(--muted);
-}
-
-.consult.is-open .consult-chevron {
-  transform: rotate(0deg);
+  flex: none;
+  transition: transform var(--dur-enter) var(--ease-out);
+  color: var(--muted-text);
 }
 
 .consult:not(.is-open) .consult-chevron {
@@ -580,17 +523,20 @@
 }
 
 .consult-who {
-  font-weight: 600;
-  color: var(--text);
+  font-weight: 500;
+  color: var(--text-2);
 }
 
 .consult-outcome {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: auto;
-  font-size: 11px;
   color: var(--muted-text);
+}
+
+.consult-outcome::before {
+  content: "·";
+  margin-right: 3px;
 }
 
 .consult-outcome.is-failed,
@@ -599,24 +545,26 @@
 }
 
 .consult-body {
-  padding: 2px 0 2px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 0 6px;
+  padding: 2px 0 2px 16px;
+  border-left: 1px solid var(--hairline);
 }
 
 .consult-question {
-  margin: 4px 0 8px;
-  padding: 6px 10px;
-  border-left: 2px solid var(--hairline-strong);
-  background: var(--code-bg);
-  border-radius: 0 var(--r-xs) var(--r-xs) 0;
-  font-size: 12.5px;
-  line-height: 1.5;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--chat-small);
+  line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .consult-reason {
-  margin: 0 0 8px;
-  font-size: 12px;
+  margin: 0;
+  font-size: var(--chat-small);
   color: var(--warn);
 }
 
