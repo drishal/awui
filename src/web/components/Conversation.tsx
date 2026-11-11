@@ -1144,6 +1144,88 @@ function turnUnchanged(a: Turn, b: Turn): boolean {
   );
 }
 
+/** A turn after its prompt: the work folded into "Worked for …" lines, the pages and plans it made, the answer, any
+    work after the answer, its errors and changed files. Chats draw it under the prompt; a Board room draws each bot's
+    run with it alone (RunTranscript), so a room reads like a chat. */
+function TurnBody({
+  turn,
+  open,
+  onToggle,
+  workspace,
+  canFork,
+  onFork,
+  canRestore,
+  onRestore,
+  onImplement,
+  onTiming,
+}: {
+  turn: Turn;
+  open: boolean;
+  onToggle: (id: string, open: boolean) => void;
+  workspace: string;
+  canFork: boolean;
+  onFork: (through: number) => void;
+  canRestore: boolean;
+  onRestore: (through: number) => void;
+  onImplement: (() => void) | null;
+  /** Opens the turn's Timing view; absent where there is none (a room's run). */
+  onTiming?: () => void;
+}) {
+  const hasProcess = turn.process.length > 0 || Boolean(turn.answer?.thinking);
+  const chatId = useContext(ChatIdContext);
+  const segments = hasProcess ? workSegments(turn) : [];
+  const split = segments.some((segment) => segment.reply !== null);
+  // Work the agent did after writing its reply draws below it, as its own fold.
+  const afterWork = workAfterSegment(turn);
+  return (
+    <>
+      {split ? (
+        <SegmentedWork turn={turn} segments={segments} open={open} onToggle={onToggle} workspace={workspace} />
+      ) : hasProcess ? (
+        // With work after the reply, this fold holds only what came before it, so its counts are its own.
+        <ProcessFold turn={turn} open={open} onToggle={onToggle} workspace={workspace} {...(afterWork ? { segment: segments[0], place: "first" as const } : {})} />
+      ) : null}
+      {turn.renders.length > 0 && chatId !== null ? (
+        <div className="turn-renders">
+          {turn.renders.map((render) => (
+            <HtmlRenderFrame key={render.id} chatId={chatId} render={render} />
+          ))}
+        </div>
+      ) : null}
+      {turn.plans.map((p) => (
+        <PlanCard key={p.id} plan={p.plan} onImplement={onImplement} />
+      ))}
+      {turn.answer ? (
+        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timingLabel(turnTiming(turn))} turnMarkdown={turn.prompt ? () => turnMarkdownOf(turn, workspace) : null} {...(onTiming ? { onTiming } : {})} />
+      ) : null}
+      {afterWork ? (
+        <div className="turn-work-after" data-testid="work-after">
+          <ProcessFold turn={turn} open={open} onToggle={onToggle} workspace={workspace} segment={afterWork} place="last" />
+        </div>
+      ) : null}
+      {!hasProcess && !turn.answer && turn.live ? (
+        <div className="process is-live">
+          <span className="process-head is-static">
+            <Spinner size={13} />
+            <span className="process-label">Working</span>
+          </span>
+        </div>
+      ) : null}
+      {turn.errors.map((item) => (
+        <NoticeRow key={item.id} item={item} />
+      ))}
+      {turn.changedFiles.length > 0 && !turn.live ? <ChangedFiles files={turn.changedFiles} workspace={workspace} stat={turn.changeStat} /> : null}
+      {turn.after.length > 0 ? (
+        <div className="turn-after">
+          {turn.after.map((item) => (
+            <NoticeRow key={item.id} item={item} />
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 const TurnView = memo(function TurnView({
   turn,
   open,
@@ -1194,64 +1276,38 @@ const TurnView = memo(function TurnView({
       </section>
     );
   }
-  const hasProcess = turn.process.length > 0 || Boolean(turn.answer?.thinking);
-  const chatId = useContext(ChatIdContext);
-  const segments = hasProcess ? workSegments(turn) : [];
-  const split = segments.some((segment) => segment.reply !== null);
-  // Work the agent did after writing its reply draws below it, as its own fold.
-  const afterWork = workAfterSegment(turn);
   return (
     <RetryContext.Provider value={retry}>
     <section className="turn" id={`turn-${turn.id}`} data-turn-id={turn.id} data-testid="turn">
       <UserPrompt item={turn.prompt} through={turn.through} canBranch={canBranch} hasCheckpoint={hasCheckpoint} actions={promptActions} />
-      {split ? (
-        <SegmentedWork turn={turn} segments={segments} open={open} onToggle={onToggle} workspace={workspace} />
-      ) : hasProcess ? (
-        // With work after the reply, this fold holds only what came before it, so its counts are its own.
-        <ProcessFold turn={turn} open={open} onToggle={onToggle} workspace={workspace} {...(afterWork ? { segment: segments[0], place: "first" as const } : {})} />
-      ) : null}
-      {turn.renders.length > 0 && chatId !== null ? (
-        <div className="turn-renders">
-          {turn.renders.map((render) => (
-            <HtmlRenderFrame key={render.id} chatId={chatId} render={render} />
-          ))}
-        </div>
-      ) : null}
-      {turn.plans.map((p) => (
-        <PlanCard key={p.id} plan={p.plan} onImplement={onImplement} />
-      ))}
-      {turn.answer ? (
-        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timingLabel(turnTiming(turn))} turnMarkdown={() => turnMarkdownOf(turn, workspace)} onTiming={openTiming} />
-      ) : null}
-      {afterWork ? (
-        <div className="turn-work-after" data-testid="work-after">
-          <ProcessFold turn={turn} open={open} onToggle={onToggle} workspace={workspace} segment={afterWork} place="last" />
-        </div>
-      ) : null}
-      {!hasProcess && !turn.answer && turn.live ? (
-        <div className="process is-live">
-          <span className="process-head is-static">
-            <Spinner size={13} />
-            <span className="process-label">Working</span>
-          </span>
-        </div>
-      ) : null}
-      {turn.errors.map((item) => (
-        <NoticeRow key={item.id} item={item} />
-      ))}
-      {turn.changedFiles.length > 0 && !turn.live ? <ChangedFiles files={turn.changedFiles} workspace={workspace} stat={turn.changeStat} /> : null}
-      {turn.after.length > 0 ? (
-        <div className="turn-after">
-          {turn.after.map((item) => (
-            <NoticeRow key={item.id} item={item} />
-          ))}
-        </div>
-      ) : null}
+      <TurnBody turn={turn} open={open} onToggle={onToggle} workspace={workspace} canFork={canFork} onFork={onFork} canRestore={canRestore} onRestore={onRestore} onImplement={onImplement} onTiming={openTiming} />
       {timingDialog}
     </section>
     </RetryContext.Provider>
   );
 });
+
+/**
+ * One run's items drawn as a chat turn without its prompt: the thinking and tool calls folded into one "Worked for …"
+ * line that is open while the run works and folds away when it settles, then the reply as prose. A Board room draws
+ * each bot's run with it, so the room reads like a chat instead of a log. Forking, restoring and timing belong to a
+ * chat's own session, so a run offers none of them.
+ */
+export function RunTranscript({ items, live, workspace }: { items: ChatItem[]; live: boolean; workspace: string }) {
+  const turns = useMemo(() => buildTurns(items, live ? "running" : "idle"), [items, live]);
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  // As in a chat: `open` is what the fold shows now, so a fold that was following its run flips from what it showed.
+  const onToggle = useCallback((id: string, open: boolean) => setOverrides((prev) => ({ ...prev, [id]: !open })), []);
+  return (
+    <FoldContext.Provider value={overrides}>
+      {turns.map((turn) => (
+        <TurnBody key={turn.id} turn={turn} open={overrides[turn.id] ?? turn.live} onToggle={onToggle} workspace={workspace} canFork={false} onFork={ignoreThrough} canRestore={false} onRestore={ignoreThrough} onImplement={null} />
+      ))}
+    </FoldContext.Provider>
+  );
+}
+
+const ignoreThrough = (_through: number) => {};
 
 export function Conversation({
   chatId,
