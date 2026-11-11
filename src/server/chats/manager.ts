@@ -54,7 +54,6 @@ export class ChatManager {
    */
   render?: { baseUrl: string };
   /**
-  /**
    * The origin a chat's child calls its orchestration tools on (loopback, as `render`
    * is). When set, every chat that may use them is spawned with its own token in
    * `AWUI_ORCH_URL`/`AWUI_ORCH_TOKEN`, stamped on the chat so a call names one chat.
