@@ -118,9 +118,10 @@ test("a consultation round nests under its requester and the requester answers p
   await expect(asker.getByText(/May consult 1 member/)).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press("Escape");
   await sendAndWait(page, "consult");
-  // One consultation record, and three runs: the control turn, the consultant, the synthesis.
+  // One consultation record and two speakers: the requester (its control turn and synthesis share one
+  // speaker line around the fold) and the consultant inside the fold.
   await expect(page.getByTestId("consultation")).toHaveCount(1);
-  await expect(page.getByTestId("bot-run")).toHaveCount(3);
+  await expect(page.getByTestId("bot-run")).toHaveCount(2);
   const statuses = page.getByTestId("bot-run-status");
   await expect(statuses.first()).toHaveText("Done");
 });

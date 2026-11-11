@@ -1158,6 +1158,7 @@ function TurnBody({
   onRestore,
   onImplement,
   onTiming,
+  timing,
 }: {
   turn: Turn;
   open: boolean;
@@ -1170,6 +1171,8 @@ function TurnBody({
   onImplement: (() => void) | null;
   /** Opens the turn's Timing view; absent where there is none (a room's run). */
   onTiming?: () => void;
+  /** Replaces the answer row's quiet timing line (a room's run puts its usage there); absent, the turn's own timing. */
+  timing?: string | null;
 }) {
   const hasProcess = turn.process.length > 0 || Boolean(turn.answer?.thinking);
   const chatId = useContext(ChatIdContext);
@@ -1196,7 +1199,7 @@ function TurnBody({
         <PlanCard key={p.id} plan={p.plan} onImplement={onImplement} />
       ))}
       {turn.answer ? (
-        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timingLabel(turnTiming(turn))} turnMarkdown={turn.prompt ? () => turnMarkdownOf(turn, workspace) : null} {...(onTiming ? { onTiming } : {})} />
+        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timing !== undefined ? timing : timingLabel(turnTiming(turn))} turnMarkdown={turn.prompt ? () => turnMarkdownOf(turn, workspace) : null} {...(onTiming ? { onTiming } : {})} />
       ) : null}
       {afterWork ? (
         <div className="turn-work-after" data-testid="work-after">
@@ -1293,15 +1296,27 @@ const TurnView = memo(function TurnView({
  * each bot's run with it, so the room reads like a chat instead of a log. Forking, restoring and timing belong to a
  * chat's own session, so a run offers none of them.
  */
-export function RunTranscript({ items, live, workspace }: { items: ChatItem[]; live: boolean; workspace: string }) {
+export function RunTranscript({ items, live, workspace, meta }: { items: ChatItem[]; live: boolean; workspace: string; /** The run's usage line, shown where a chat answer shows its timing. */ meta?: string | null }) {
   const turns = useMemo(() => buildTurns(items, live ? "running" : "idle"), [items, live]);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   // As in a chat: `open` is what the fold shows now, so a fold that was following its run flips from what it showed.
   const onToggle = useCallback((id: string, open: boolean) => setOverrides((prev) => ({ ...prev, [id]: !open })), []);
   return (
     <FoldContext.Provider value={overrides}>
-      {turns.map((turn) => (
-        <TurnBody key={turn.id} turn={turn} open={overrides[turn.id] ?? turn.live} onToggle={onToggle} workspace={workspace} canFork={false} onFork={ignoreThrough} canRestore={false} onRestore={ignoreThrough} onImplement={null} />
+      {turns.map((turn, i) => (
+        <TurnBody
+          key={turn.id}
+          turn={turn}
+          open={overrides[turn.id] ?? turn.live}
+          onToggle={onToggle}
+          workspace={workspace}
+          canFork={false}
+          onFork={ignoreThrough}
+          canRestore={false}
+          onRestore={ignoreThrough}
+          onImplement={null}
+          {...(meta !== undefined && i === turns.length - 1 ? { timing: meta } : {})}
+        />
       ))}
     </FoldContext.Provider>
   );

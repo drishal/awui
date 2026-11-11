@@ -3,13 +3,14 @@
 // rank order as a speaker line over a chat turn, with each consultation folded
 // under the requester it belongs to. Nothing here invents a speaker: a
 // consultation is titled with the two real members, and its consultant's
-// block is the run.
+// block is the run. A bot that consults is one speaker: its request, the
+// folds, and its answer after them share one speaker line.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ChatItem, RoomInfo, RoomMemberView, RoomRecord } from "../../shared/protocol.js";
 import { findMember } from "../room-state.js";
 import { formatWhen } from "../turn-time.js";
 import { IconChevronDown, IconInfo, IconWarning, Spinner } from "../icons.js";
-import { BotRun } from "./BotRun.js";
+import { BotRun, type RunSegment } from "./BotRun.js";
 import { RunTranscript } from "./Conversation.js";
 import { Collapse } from "./Collapse.js";
 
@@ -126,14 +127,26 @@ function groupByTurn(records: RoomRecord[]): Group[] {
 
 function TurnGroup({ group, room, workspace, harnessName }: { group: Group; room: RoomInfo; workspace: string; harnessName: (id: string) => string }) {
   const member = (id: string) => findMember(room, id);
-  const consultations = group.records.filter((r): r is ConsultRecord => r.kind === "consultation");
-  const byConsult = new Map(consultations.map((c) => [c.id, c]));
-  // The consultation a consultant's run answers, if its record is in this group.
-  const consultsFor = (run: RunRecord) => (run.consultOf ? byConsult.get(run.consultOf) ?? null : null);
-  const shownConsults = new Set<string>();
+  const records = group.records;
+  const consultIds = new Set(records.filter((r) => r.kind === "consultation").map((r) => r.id));
+  const fold = (consult: ConsultRecord) => (
+    <ConsultationFold
+      key={consult.id}
+      consult={consult}
+      runs={runsForConsult(records, consult.id)}
+      from={member(consult.fromMemberId)}
+      to={member(consult.toMemberId)}
+      room={room}
+      workspace={workspace}
+      harnessName={harnessName}
+    />
+  );
+  // Records already drawn inside an earlier speaker's turn.
+  const drawn = new Set<string>();
 
   const rows: ReactNode[] = [];
-  for (const record of group.records) {
+  records.forEach((record, at) => {
+    if (drawn.has(record.id)) return;
     switch (record.kind) {
       case "user":
         rows.push(<UserMessage key={record.id} record={record} member={member} />);
@@ -142,47 +155,38 @@ function TurnGroup({ group, room, workspace, harnessName }: { group: Group; room
         rows.push(<RoomNotice key={record.id} record={record} />);
         break;
       case "bot_run": {
-        const consult = consultsFor(record);
-        if (consult && shownConsults.has(consult.id)) break;
-        if (consult) {
-          shownConsults.add(consult.id);
-          rows.push(
-            <ConsultationFold
-              key={consult.id}
-              consult={consult}
-              runs={runsForConsult(group.records, consult.id)}
-              from={member(consult.fromMemberId)}
-              to={member(consult.toMemberId)}
-              room={room}
-              workspace={workspace}
-              harnessName={harnessName}
-            />,
-          );
-          break;
+        // A consultant's run draws inside its consultation's fold.
+        if (record.consultOf && consultIds.has(record.consultOf)) break;
+        // A bot that consults speaks once: its first run, the consultations it asked for, and the run that answers after them.
+        const segments: RunSegment[] = [{ run: record }];
+        let head: RunRecord = record;
+        let asked = false;
+        for (const next of records.slice(at + 1)) {
+          if (next.kind === "consultation" && next.fromMemberId === record.memberId) {
+            segments.push({ key: next.id, node: fold(next) });
+            drawn.add(next.id);
+            asked = true;
+          } else if (next.kind === "bot_run" && next.consultOf) {
+            continue;
+          } else if (next.kind === "bot_run" && asked && next.memberId === record.memberId) {
+            segments.push({ run: next });
+            drawn.add(next.id);
+            head = next;
+            asked = false;
+          } else if (next.kind !== "notice") {
+            break;
+          }
         }
-        // A requester's answer after its consultations needs no note of its own: its speaker line under the fold says it.
-        rows.push(<BotRun key={record.id} record={record} member={member(record.memberId)} harnessName={harnessName} workspace={workspace} />);
+        const waiting = head === record && segments.some((part) => "node" in part && records.some((r) => r.kind === "consultation" && r.id === part.key && r.outcome === "requested"));
+        rows.push(<BotRun key={record.id} record={head} segments={segments} waiting={waiting} member={member(record.memberId)} harnessName={harnessName} workspace={workspace} />);
         break;
       }
       case "consultation":
-        // A consultation whose consultant never ran (refused/failed, or still running).
-        if (shownConsults.has(record.id)) break;
-        shownConsults.add(record.id);
-        rows.push(
-          <ConsultationFold
-            key={record.id}
-            consult={record}
-            runs={runsForConsult(group.records, record.id)}
-            from={member(record.fromMemberId)}
-            to={member(record.toMemberId)}
-            room={room}
-            workspace={workspace}
-            harnessName={harnessName}
-          />,
-        );
+        // A consultation whose requester's run is not in this group.
+        rows.push(fold(record));
         break;
     }
-  }
+  });
   return <section className="room-turn">{rows}</section>;
 }
 
