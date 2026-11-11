@@ -105,8 +105,8 @@ src/server/
   harness/claude-sessions.ts  Claude Code's session files.
   harness/tool-diff.ts        Every harness's edit result → one DiffLine[] shape.
   harness/subagents.ts        Delegation calls (omp task, pi-subagents, Claude Task) → SubagentRun[].
-  harness/render-extension.ts The render_html extension's file and the -e args that load it (Pi/omp).
-  harness/render-token.ts     render tool names; a result's details.htmlRender → HtmlRenderRef, spoof-guarded.
+  harness/render-extension.ts The render_html and orchestration extensions' files, the -e args that load them (Pi/omp), and the orchestration MCP server's file.
+  harness/render-token.ts     render and orchestration tool names (MCP names from the catalogue); a render result's details.htmlRender → HtmlRenderRef, spoof-guarded.
   html-render.ts              Agent-rendered pages under the state folder, addressed by id, one owner chat each.
   harness/handoff.ts          Cross-harness handoff: portable seed transcript and the briefing prompt.
   harness/deferred.ts         Resume-without-waiting: show the file's transcript while the harness starts.
@@ -192,6 +192,8 @@ src/tern/                     The Tern client (`awui tern`): atui's state (atui/
 extensions/rewind-to.ts       A Pi/omp extension the server loads into its children (-e) for in-place Edit/Retry.
 extensions/render-html.ts     A Pi/omp extension registering render_html, which publishes an HTML page into the chat.
 extensions/render-html-mcp.mjs  The same tool as an MCP server (stdio JSON-RPC, no dependencies), for Claude Code.
+extensions/orchestrate.ts     A Pi/omp extension registering the orchestration tools from the server's catalogue (delegate_task, thread_wait, …).
+extensions/orchestrate-mcp.mjs  The same tools as an MCP server, for Claude Code, Codex, and DSH.
 extensions/eval-python.ts     An awui-harness extension registering eval_python: runs a snippet in a scratch tmp dir (no workspace).
 extensions/acp-flow.mjs       A DSH Cordis plugin, loaded per chat by a --patch overlay: runs the stock ACP bridge inside it and streams live text as _acp-flow/assistant_stream.
 contrib/                      systemd unit and home-manager modules (templates; users copy them).
@@ -319,7 +321,9 @@ if every test passes.
   (twelve quick reads, a run long enough to fold),
   `widethought` (two calls with narrated thinking between, a code line in it
   far wider than the column), `moaref` (a MoA turn's reference advice as
-  Markdown folds, with the fan-out on the status line), and the Board scenarios
+  Markdown folds, with the fan-out on the status line), `delegate` (delegate a
+  task through the real orchestration endpoint, then wait for it: a child chat
+  appears), and the Board scenarios
   `consult` (a valid control document on the first invocation, a plain answer
   once its consultation result comes back), `consult-bad`, `consult-unknown`,
   `consult-self`, `consult-dup` (malformed, off-allowlist, self, repeated),

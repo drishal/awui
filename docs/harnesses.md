@@ -90,6 +90,29 @@ settled                               only when the agent says the run is over
 fatal                                 the child died or the session cannot continue
 ```
 
+## Where awui's own tools are injected
+
+Beyond the agent's own tools, awui gives some chats two families of its own: `render_html`
+(publish a page into the chat) and the orchestration tools (`delegate_task`, `task_status`,
+`task_cancel`, `thread_send`, `thread_read`, `thread_wait`, `list_profiles`). Neither is
+defined twice: the tool catalogue is `src/server/orchestration/tools.ts` (orchestration) and
+the extension/MCP pair in `extensions/` (render). A child reaches them by the transport its
+harness has:
+
+| Transport | Harnesses | What awui adds to the spawn |
+|---|---|---|
+| `-e` extension | Pi, omp (and the awui harness, which gets `eval_python` instead of the orchestration tools) | `orchestrateExtensionArgs(toolEnv)` / `renderHtmlExtensionArgs()`, resolved by `harness/render-extension.ts` (the binary's materialized copy, else the repo's `extensions/` file) |
+| stdio MCP server | Claude Code, Codex, DeepSeek Harness | one config object with two servers: `awui` (`extensions/render-html-mcp.mjs`) and `awui-orchestrate` (`extensions/orchestrate-mcp.mjs`); Claude Code also gets their `mcp__<server>__<tool>` names in `--allowedTools` |
+| none | Hermes, OpenCode, Grok Build | their adapters mount no MCP server for awui today, so they are left unwired rather than invented |
+
+Each family is injected only when the chat was given its own two variables (`AWUI_RENDER_URL`/
+`AWUI_RENDER_TOKEN`, `AWUI_ORCH_URL`/`AWUI_ORCH_TOKEN`), which `ChatManager` mints per chat
+and never for a read-only harness or a Board-owned chat. So the gate is the token, not the
+harness: a new adapter needs no code to have the tools withheld, and its own `-e`/MCP wiring
+is what arms them. `harness/render-token.ts` holds the MCP names (from the catalogue) so an
+allow list cannot drift from what is served, and `scripts/build-binary.ts`'s `EXTENSIONS`
+list is what the compiled binary carries.
+
 ## 3. Capabilities: declare only what works
 
 Each flag hides or shows something; declaring one the agent cannot honour

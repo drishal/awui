@@ -26,6 +26,7 @@
 //   "widethought" a call, thinking shaped like narration with a code line wider than the column, another call
 //   "moaref" a MoA turn's reference advice as Markdown notice folds, and its status line
 //   "noticefold" a reply, an extension's notice, then a second reply (a tool-less stretch between replies)
+//   "delegate" delegate a task through the real orchestration endpoint, then wait for it (a child chat appears)
 //
 // Board rooms drive this adapter through the real server. A Board invocation is
 // recognised by the prompt envelope's "## Current request" section, and its
@@ -823,6 +824,7 @@ class FakeLiveChat implements LiveChat {
         await this.call({ name: "ExitPlanMode", args: { plan }, output: "User has approved your plan." }, signal);
       }
       if (/\brender\b|\bhtmlrender\b/i.test(text)) await this.render(signal);
+      if (/\bdelegate\b/i.test(text)) await this.delegate(signal);
       if (/\bratelimit\b/i.test(text)) {
         // A stop on a usage limit, worded as Claude Code words it (the reset as an epoch after "|").
         const error = `Claude AI usage limit reached|${Math.floor(Date.now() / 1000) + 3600}`;
@@ -1216,6 +1218,43 @@ class FakeLiveChat implements LiveChat {
       }
     }
     await this.call({ name: "render_html", args: { html, title, height }, output, ...(details ? { details } : {}) }, signal);
+  }
+
+  /**
+   * A delegation through the real endpoint when the chat was given one
+   * (AWUI_ORCH_URL/TOKEN): delegate_task starts a real child chat on this same
+   * fake adapter, and thread_wait reports it — the whole loop the extension and
+   * the MCP bridge make, without a model. The child's brief names no scenario
+   * word, so it answers a plain echo and finishes.
+   */
+  private async delegate(signal: AbortSignal): Promise<void> {
+    const url = this.toolEnv?.AWUI_ORCH_URL;
+    const token = this.toolEnv?.AWUI_ORCH_TOKEN;
+    const orch = async (tool: string, args: Record<string, unknown>): Promise<{ text: string; data: Record<string, unknown> | null; isError: boolean }> => {
+      if (!url || !token) return { text: "No orchestration endpoint; nothing was delegated", data: null, isError: true };
+      try {
+        const response = await fetch(`${url}/call`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Awui-Orch-Token": token },
+          body: JSON.stringify({ tool, args }),
+          signal,
+        });
+        const body = (await response.json()) as { ok?: boolean; text?: string; data?: unknown; code?: string; message?: string };
+        if (body.ok === true) return { text: body.text ?? "", data: typeof body.data === "object" && body.data !== null ? (body.data as Record<string, unknown>) : null, isError: false };
+        return { text: `${body.code ?? `HTTP ${response.status}`}: ${body.message ?? "the call failed"}`, data: null, isError: true };
+      } catch (error) {
+        return { text: `Orchestration failed: ${error instanceof Error ? error.message : String(error)}`, data: null, isError: true };
+      }
+    };
+    const started = await orch("delegate_task", { brief: "Reply with the word child.", role: "test", title: "Fake delegated task" });
+    await this.call(
+      { name: "delegate_task", args: { brief: "Reply with the word child.", role: "test", title: "Fake delegated task" }, output: started.text, ...(started.isError ? { isError: true } : {}) },
+      signal,
+    );
+    const taskId = typeof started.data?.taskId === "string" ? started.data.taskId : null;
+    if (!taskId) return;
+    const waited = await orch("thread_wait", { taskIds: [taskId], waitMs: 20_000 });
+    await this.call({ name: "thread_wait", args: { taskIds: [taskId], waitMs: 20_000 }, output: waited.text, ...(waited.isError ? { isError: true } : {}) }, signal);
   }
 
   private ask(signal: AbortSignal, tool = "read"): Promise<boolean> {

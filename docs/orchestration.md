@@ -29,6 +29,26 @@ A read-only harness (`awui`) is never given the token: a delegated child of it w
 handed the write and exec tools that chat exists to deny, so it is neither armed with the
 tools nor accepted as a delegation target. Board-owned chats get no token either.
 
+### How the tools reach the agent
+
+Awui injects them two ways, and both repeat nothing: the names, descriptions, and
+parameter schemas are fetched from `GET /tools` once at startup, so
+`orchestration/tools.ts` is still the one definition.
+
+| Harness | How | File |
+|---|---|---|
+| Pi, omp | an extension loaded with `-e`, one `registerTool` per catalogue entry | `extensions/orchestrate.ts` |
+| Claude Code, Codex, DeepSeek Harness | a second stdio MCP server (`awui-orchestrate`) beside `render_html`'s `awui` | `extensions/orchestrate-mcp.mjs` |
+| Hermes, OpenCode, Grok Build | not wired: none of them mounts an MCP server for awui today | — |
+
+The extension refuses to load without both variables, so a stray copy in a project's
+extensions folder stays inert; the MCP server registers no tool without them.
+
+Claude Code is also given the tools in `--allowedTools` (as `mcp__awui-orchestrate__<tool>`),
+because its MCP tools need an allow rule to run without a prompt; Codex and DSH take the
+server alone. Every injected name comes from the catalogue, so an allow list cannot drift
+from what is served.
+
 ## Endpoints
 
 Both are mounted before `requireAuth` (like `/api/render`): they authenticate by the
