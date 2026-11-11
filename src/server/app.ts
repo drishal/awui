@@ -237,6 +237,10 @@ export function createApp(deps: AppDeps) {
   manager.onNews = (chat, kind, text, request) => {
     // A board-owned chat's runs are the room's business: the room sends its own notes.
     if (chat.owner) return;
+    // A delegated child's finished or failed run is the parent agent's news, not the phone's: the
+    // orchestrator wakes the parent with it. An ask (a question or an approval) still reaches the
+    // user, who is the only one who can answer it.
+    if (chat.lineage !== undefined && kind !== "ask") return;
     // The user already watches this chat on some connected client, visibly focused: the note would reach for a screen it is on.
     if (presence.viewed({ chatId: chat.chatId })) return;
     // An approval's note carries its two answers, so the notification's own buttons can send one.
@@ -269,6 +273,8 @@ export function createApp(deps: AppDeps) {
   // what it is; the load starts here and marks what the last process left running.
   manager.lineageFor = (chat) => orchestration.lineageOf(chat);
   manager.tasksFor = (chat) => orchestration.tasksFor(chat);
+  // A parent that was closed when a report was written (or when the last process died) gets it here.
+  manager.onRegistered = (chat) => void orchestration.registered(chat).catch((error: unknown) => log(`orchestration: could not deliver a report: ${errorMessage(error)}`));
   void orchestration.start().catch((error: unknown) => log(`orchestration: could not load task records: ${errorMessage(error)}`));
   // What this process serves as the web bundle: a page compares it with the build
   // it loaded to notice a deploy (the binary embeds the bundle; a source run has

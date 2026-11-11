@@ -9,13 +9,14 @@
 // generation first, which drops late events from the run that was stopped.
 import { randomBytes } from "node:crypto";
 import { isApproval } from "../../shared/approval.js";
-import { MAX_DELEGATED_TASKS, type ChatItem, type ChatLineage, type ChatStatus, type DelegatedTaskView, type InteractionRequest } from "../../shared/protocol.js";
+import { MAX_DELEGATED_TASKS, type ChatItem, type ChatLineage, type ChatStatus, type DelegatedTaskView, type InteractionRequest, type SendMode } from "../../shared/protocol.js";
 import type { BoardManager } from "../boards/types.js";
 import { ChatError, errorMessage, type Chat } from "../chats/chat.js";
 import type { ChatManager } from "../chats/manager.js";
 import type { HarnessRegistry } from "../harness/registry.js";
 import type { HarnessAdapter } from "../harness/types.js";
 import type { Workspaces } from "../workspaces.js";
+import { readPage } from "./read.js";
 import { TaskStore } from "./store.js";
 import {
   DEFAULT_WAIT_MS,
@@ -29,11 +30,14 @@ import {
   MAX_TASKS_PER_CHAT,
   taskCancelSchema,
   taskStatusSchema,
+  threadReadSchema,
+  threadSendSchema,
   threadWaitSchema,
   type ToolContext,
   type ToolOutput,
 } from "./tools.js";
-import { firstLine, MAX_ERROR_CHARS, MAX_RESULT_CHARS, MAX_TITLE_CHARS, viewOf, type StoredTask } from "./types.js";
+import { formatElapsed, firstLine, MAX_ERROR_CHARS, MAX_RESULT_CHARS, MAX_TITLE_CHARS, viewOf, type StoredTask } from "./types.js";
+import { MAX_WAKE_ATTEMPTS, WAKE_COALESCE_MS, WAKE_RETRY_MS, wakeReport } from "./wake.js";
 
 /** How long a cancel waits for the child to settle before it says so. */
 const CANCEL_SETTLE_MS = 5_000;
@@ -59,6 +63,10 @@ export class Orchestrator {
   /** Callers parked in thread_wait, by task id. */
   private readonly waiters = new Map<string, Set<() => void>>();
 
+  /** One coalescing timer per parent, so a burst of finishes arrives as one message. */
+  private readonly wakeTimers = new Map<string, NodeJS.Timeout>();
+  /** Parents whose report is being written right now: a second flush must not send it twice. */
+  private readonly flushingWakes = new Set<string>();
   constructor(private readonly deps: OrchestratorDeps) {
     this.store = new TaskStore(deps.file);
   }
@@ -80,6 +88,10 @@ export class Orchestrator {
         return this.cancel(caller, taskCancelSchema.parse(args));
       case "thread_wait":
         return this.wait(caller, threadWaitSchema.parse(args));
+      case "thread_send":
+        return this.threadSend(caller, threadSendSchema.parse(args));
+      case "thread_read":
+        return this.threadRead(caller, threadReadSchema.parse(args));
       default:
         throw new ChatError(400, "unknown_tool", `${name} is not wired on this server yet`);
     }
@@ -112,6 +124,13 @@ export class Orchestrator {
       task.asking = null;
       task.activity = null;
       task.result = { finalText: task.result?.finalText ?? "", error: "the server restarted before this task settled", usage: task.result?.usage ?? null };
+      // The parent never learned how this ended, so a wake-notified task is queued again — written
+      // here, before anything is sent — and delivered when the parent is next open.
+      if (task.notify === "wake") {
+        task.wake.pendingSince = now;
+        task.wake.skipped = null;
+        task.wake.attempts = 0;
+      }
       interrupted = true;
     }
     this.tasks = tasks;
@@ -142,6 +161,19 @@ export class Orchestrator {
     await this.store.write(this.tasks);
   }
 
+  /**
+   * A chat was registered: opened, created, or resumed. A parent with reports still undelivered —
+   * because it was closed when they were written, or because the last process died — gets them now.
+   * The manager calls this for every chat, so a reopened parent never misses a result.
+   */
+  async registered(chat: Chat): Promise<void> {
+    await this.ready();
+    const waiting = this.tasks.filter((task) => task.state === "result_available" && task.wake.pendingSince !== null && task.wake.skipped === null && this.ownTaskOf(task, chat));
+    if (waiting.length === 0) return;
+    // Nothing to coalesce with: the wait already happened, so the window is over.
+    this.scheduleFlush(this.wakeKeyOf(waiting[0] as StoredTask), 0);
+  }
+
   // ---- the tools ----------------------------------------------------------
 
   private async listProfiles(caller: Chat, args: { workspaceId?: string }): Promise<ToolOutput> {
@@ -151,18 +183,24 @@ export class Orchestrator {
   private async status(caller: Chat, args: { taskId?: string }): Promise<ToolOutput> {
     if (args.taskId) {
       const task = this.ownTask(caller, args.taskId);
+      this.consume([task]);
       return { text: this.describe([task]), data: { tasks: [viewOf(task)] } };
     }
     const mine = this.viewsFor(caller.chatId, caller.sessionId).slice(0, 50);
     if (mine.length === 0) return { text: "This chat has not delegated any tasks.", data: { tasks: [] } };
     const tasks = mine.map((view) => this.tasks.find((task) => task.id === view.id)).filter((task): task is StoredTask => task !== undefined);
+    this.consume(tasks);
     return { text: this.describe(tasks), data: { tasks: mine } };
   }
 
   private async cancel(caller: Chat, args: { taskId: string }): Promise<ToolOutput> {
     const task = this.ownTask(caller, args.taskId);
     // Idempotent: a finished task is returned as it stands.
-    if (task.state === "result_available") return { text: `Task ${task.id} already finished (${task.outcome}).`, data: { task: viewOf(task) } };
+    // Idempotent: a finished task is returned as it stands, and asking is reading it.
+    if (task.state === "result_available") {
+      this.consume([task]);
+      return { text: `Task ${task.id} already finished (${task.outcome}).`, data: { task: viewOf(task) } };
+    }
     task.cancelRequestedAt = Date.now();
     task.generation += 1;
     // Depth first: a task's own delegates stop before the chat that started them.
@@ -179,10 +217,75 @@ export class Orchestrator {
     const tasks = args.taskIds.map((id) => this.ownTask(caller, id));
     await this.waitFor(tasks, args.waitMs ?? DEFAULT_WAIT_MS);
     const pendingRequest = this.pendingQuestion(tasks);
+    // The parent has the results now: no wake would still be news.
+    this.consume(tasks);
     return {
       text: this.describe(tasks, pendingRequest),
       data: { tasks: tasks.map(viewOf), ...(pendingRequest ? { pendingRequest } : {}) },
     };
+  }
+
+  /**
+   * Talk to the child's chat: steered into the run it is in, or as a prompt when it is idle. A task
+   * that had finished goes back to work — a new generation, so nothing from the old run can answer
+   * for it — and is watched again: one result per settle.
+   */
+  private async threadSend(caller: Chat, args: { taskId: string; text: string }): Promise<ToolOutput> {
+    const task = this.ownTask(caller, args.taskId);
+    const child = this.childChat(task);
+    if (!child || child.status === "disposed") {
+      throw new ChatError(409, "task_not_running", `Task ${task.id}'s chat is closed; its session can be resumed as an ordinary chat, but nothing is listening now`);
+    }
+    const caps = child.adapter.capabilities;
+    const busy = child.status === "running" || child.status === "stopping" || child.status === "compacting";
+    const mode: SendMode = !busy ? "normal" : caps.supportsSteer ? "steer" : "followUp";
+    if (busy && !caps.supportsSteer && !caps.supportsFollowUp) throw new ChatError(409, "cannot_send", `${child.adapter.displayName} cannot take a message mid-run`);
+    const revived = task.state === "result_available";
+    if (revived) {
+      this.stopWatching(task.id);
+      task.generation += 1;
+      task.state = "working";
+      task.outcome = null;
+      task.endedAt = null;
+      task.asking = null;
+      task.activity = null;
+      task.result = null;
+      task.cancelRequestedAt = null;
+      task.wake = { pendingSince: null, deliveredAt: null, attempts: 0, skipped: null };
+      task.childSessionId = child.sessionId ?? task.childSessionId;
+      // Watch before the prompt: a quick run can settle before send() returns.
+      this.watch(task, child);
+    }
+    try {
+      await child.send(args.text, mode);
+    } catch (error) {
+      throw new ChatError(409, "cannot_send", `Task ${task.id}'s chat refused the message: ${errorMessage(error)}`);
+    }
+    if (revived) this.changed(task);
+    const queued = mode === "steer" ? "steered" : "sent";
+    const text =
+      mode === "steer"
+        ? `Steered into task ${task.id}'s run (${child.status}).`
+        : `Sent to task ${task.id}; it is ${task.state} again. Wait with thread_wait(["${task.id}"]), read with thread_read("${task.id}").`;
+    return { text, data: { queued, state: task.state } };
+  }
+
+  /** The child's chat as the parent reads it: a bounded page of what it said and did. */
+  private async threadRead(caller: Chat, args: { taskId: string; before?: number; limit?: number }): Promise<ToolOutput> {
+    const task = this.ownTask(caller, args.taskId);
+    const items = await this.childItems(task);
+    const head = `Task ${task.id} · ${task.state}${task.outcome ? ` (${task.outcome})` : ""} · ${task.harnessId} — "${task.title}"`;
+    if (items === null) {
+      // The chat is gone and its harness keeps no file to read: what the record holds is all there is.
+      const result = task.result?.finalText ? `\n\nIts last answer:\n${task.result.finalText}` : "";
+      const error = task.result?.error ? `\n\nIts error: ${task.result.error}` : "";
+      return {
+        text: `${head}\n\nThis chat is closed and its transcript cannot be read without opening it. Resume the session to see it.${result}${error}`,
+        data: { task: viewOf(task), items: [], truncated: true },
+      };
+    }
+    const page = readPage(items, args);
+    return { text: `${head}\n\n${page.text}`, data: { task: viewOf(task), items: page.items, truncated: page.truncated } };
   }
 
   /** The task an earlier call with this request id already started, when there is one. */
@@ -414,6 +517,8 @@ export class Orchestrator {
       usage: child?.snapshot().usage ?? null,
     };
     this.stopWatching(task.id);
+    // Queued before the write, so the record says a report is owed even if this process dies now.
+    this.queueWake(task);
     await this.persist().catch((problem: unknown) => this.deps.log(`orchestration: could not record task ${task.id}: ${errorMessage(problem)}`));
     this.announce(task);
     this.wakeWaiters(task.id);
@@ -433,6 +538,126 @@ export class Orchestrator {
     const running = this.tasks.filter((task) => this.ownTaskOf(task, chat) && task.state !== "result_available");
     if (running.length > 0) return;
     await this.finish(parent, "done", null);
+  }
+
+  // ---- delivery -----------------------------------------------------------
+
+  /**
+   * Queue the report a finished task owes its parent, before anything is sent: the record is
+   * durable, so a crash between the write and the send retries on the next start (at-least-once).
+   * A cancel is the parent's own doing and a `notify: "none"` task is not news, so neither queues.
+   */
+  private queueWake(task: StoredTask): void {
+    if (task.notify !== "wake" || task.wake.pendingSince !== null || task.wake.skipped !== null) return;
+    if (task.outcome === "cancelled") {
+      task.wake.skipped = "cancelled by the parent";
+      return;
+    }
+    task.wake.pendingSince = Date.now();
+    task.wake.deliveredAt = null;
+    task.wake.attempts = 0;
+    this.scheduleFlush(this.wakeKeyOf(task), WAKE_COALESCE_MS);
+  }
+
+  /** One timer per parent: reports queued inside its window flush together, and a second timer would only wait. */
+  private scheduleFlush(key: string, delayMs: number): void {
+    if (this.wakeTimers.has(key)) return;
+    const timer = setTimeout(() => {
+      void this.flushWakes(key);
+    }, delayMs);
+    timer.unref?.();
+    this.wakeTimers.set(key, timer);
+  }
+
+  /** A task's parent, keyed by the session that outlives the chat: a reopened parent is still the same one. */
+  private wakeKeyOf(task: StoredTask): string {
+    return task.parentSessionId !== null ? `s:${task.parentSessionId}` : `c:${task.parentChatId}`;
+  }
+
+  private parentChatOf(task: StoredTask): Chat | undefined {
+    return this.deps.chats.list().find((chat) => chat.chatId === task.parentChatId || (task.parentSessionId !== null && chat.sessionId === task.parentSessionId));
+  }
+
+  /**
+   * Send every report queued for one parent as one bounded prompt. A parent that is not open keeps
+   * its reports: they are delivered when it next registers, never twice from here.
+   */
+  private async flushWakes(key: string): Promise<void> {
+    this.wakeTimers.delete(key);
+    if (this.flushingWakes.has(key)) return;
+    this.flushingWakes.add(key);
+    try {
+      const pending = this.tasks.filter((task) => task.state === "result_available" && task.wake.pendingSince !== null && task.wake.skipped === null && this.wakeKeyOf(task) === key);
+      const first = pending[0];
+      if (!first) return;
+      const parent = this.parentChatOf(first);
+      if (!parent || parent.status === "disposed") return;
+      const mode = this.wakeMode(parent);
+      if (mode === null) {
+        this.failWakes(pending, `${parent.adapter.displayName} cannot take a message while it runs`);
+        return;
+      }
+      try {
+        await parent.send(wakeReport(pending), mode);
+      } catch (error) {
+        this.failWakes(pending, errorMessage(error));
+        return;
+      }
+      const now = Date.now();
+      for (const task of pending) {
+        task.wake.pendingSince = null;
+        task.wake.deliveredAt = now;
+        task.wake.skipped = null;
+      }
+      await this.persist().catch((error: unknown) => this.deps.log(`orchestration: could not record delivered reports: ${errorMessage(error)}`));
+    } finally {
+      this.flushingWakes.delete(key);
+    }
+  }
+
+  /** A report the parent would not take: retried twice, then marked skipped so it never spins. */
+  private failWakes(tasks: StoredTask[], why: string): void {
+    let retry = false;
+    for (const task of tasks) {
+      task.wake.attempts += 1;
+      if (task.wake.attempts >= MAX_WAKE_ATTEMPTS) {
+        task.wake.pendingSince = null;
+        task.wake.skipped = why.slice(0, 200);
+      } else retry = true;
+    }
+    this.deps.log(`orchestration: could not deliver ${tasks.length} report(s): ${why}`);
+    void this.persist().catch((error: unknown) => this.deps.log(`orchestration: could not record undelivered reports: ${errorMessage(error)}`));
+    const first = tasks[0];
+    if (retry && first) this.scheduleFlush(this.wakeKeyOf(first), WAKE_RETRY_MS);
+  }
+
+  /**
+   * How the parent can take a report now: a steer into its run, a follow-up when it holds a request
+   * of its own (a steer would be lost), or an ordinary prompt when it is idle. Null when its
+   * harness offers neither queue and it is busy.
+   */
+  private wakeMode(chat: Chat): SendMode | null {
+    const busy = chat.status === "running" || chat.status === "stopping" || chat.status === "compacting";
+    if (!busy) return "normal";
+    const caps = chat.adapter.capabilities;
+    if (chat.pendingCount > 0) return caps.supportsFollowUp ? "followUp" : null;
+    if (caps.supportsSteer) return "steer";
+    return caps.supportsFollowUp ? "followUp" : null;
+  }
+
+  /**
+   * A result the parent has just read (thread_wait, task_status, task_cancel): a wake would tell it
+   * what it already knows, so the ledger records the read instead of a delivery.
+   */
+  private consume(tasks: StoredTask[]): void {
+    let changed = false;
+    for (const task of tasks) {
+      if (task.state !== "result_available" || task.wake.pendingSince === null || task.wake.skipped !== null) continue;
+      task.wake.pendingSince = null;
+      task.wake.skipped = "read by the parent";
+      changed = true;
+    }
+    if (changed) void this.persist().catch((error: unknown) => this.deps.log(`orchestration: could not record read results: ${errorMessage(error)}`));
   }
 
   /** Stop one task's child chat: abort, then close it when nobody is watching, then mark it cancelled. */
@@ -458,7 +683,7 @@ export class Orchestrator {
   }
 
   private announce(task: StoredTask): void {
-    const parent = this.deps.chats.list().find((chat) => chat.chatId === task.parentChatId || (task.parentSessionId !== null && chat.sessionId === task.parentSessionId));
+    const parent = this.parentChatOf(task);
     if (!parent) return;
     this.attach(parent);
     parent.announce({ type: "task", task: viewOf(task) });
@@ -563,6 +788,22 @@ export class Orchestrator {
     return this.deps.chats.list().find((chat) => chat.chatId === task.childChatId);
   }
 
+  /**
+   * A child's items: the live chat's when it is open, else the harness's own session file (the way a
+   * resumed chat shows itself before its harness is up, read only, never started). Null when the
+   * chat is gone and its harness keeps nothing readable, which is all a caller can be told.
+   */
+  private async childItems(task: StoredTask): Promise<ChatItem[] | null> {
+    const child = this.childChat(task);
+    if (child && child.status !== "disposed") return child.snapshot().items;
+    const session = task.childSessionId;
+    const prefix = `${task.harnessId}:`;
+    const adapter = this.deps.registry.get(task.harnessId);
+    if (session === null || !session.startsWith(prefix) || !adapter?.readTranscript) return null;
+    const read = await adapter.readTranscript({ cwd: task.workspacePath, nativeId: session.slice(prefix.length) }).catch(() => null);
+    return read?.items ?? null;
+  }
+
   private stopWatching(taskId: string): void {
     this.watchers.get(taskId)?.();
     this.watchers.delete(taskId);
@@ -662,14 +903,6 @@ export class Orchestrator {
   }
 }
 
-/** "4m12s", "38s", "1h04m": how long a task has run, short enough for a status row. */
-function formatElapsed(ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m${String(seconds % 60).padStart(2, "0")}s`;
-  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {

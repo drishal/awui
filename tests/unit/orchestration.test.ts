@@ -1,14 +1,17 @@
 // The orchestration surface: one token per live chat (minted with the spawn, 12 hours
 // long, never for a read-only harness or a board-owned chat), the tool catalogue both
 // bridges fetch, and the durable delegation behind it — a child chat with lineage, a
-// record in the state folder, the settle watcher, and the caps. thread_send and
-// thread_read ship with the delivery step and still answer unknown_tool.
-import { mkdirSync, writeFileSync } from "node:fs";
+// record in the state folder, the settle watcher, the caps, thread_read and thread_send, and the
+// wake ledger that reports a finished child back to a parent (coalesced, then delivered once).
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import type { ChatSnapshot, DelegatedTaskView, WorkspaceInfo } from "../../src/shared/protocol.js";
+import type { ChatItem, ChatSnapshot, DelegatedTaskView, PushNote, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
+import { HarnessRegistry } from "../../src/server/harness/registry.js";
+import { Orchestrator } from "../../src/server/orchestration/orchestrator.js";
+import { Workspaces } from "../../src/server/workspaces.js";
 import { makeTestApp, openSse, signedIn, tempDir, type TestApp } from "../helpers/app.js";
 import { makeBot } from "../helpers/board.js";
 
@@ -63,15 +66,15 @@ describe("orchestration surface", () => {
     expect(expired.body).toMatchObject({ ok: false, code: "orch_token_expired" });
   });
 
-  it("serves an unknown tool and an unwired one as an error the bridges can read", async () => {
+  it("serves an unknown tool as an error the bridges can read, and a task that is not this chat's", async () => {
     const { agent, token } = await setup();
     const unknown = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "steal_everything", args: {} });
     expect(unknown.status).toBe(400);
     expect(unknown.body).toMatchObject({ ok: false, code: "unknown_tool" });
-    // thread_send and thread_read ship with the delivery step: defined, not served yet.
-    const unwired = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "thread_send", args: { taskId: "abcd", text: "x" } });
-    expect(unwired.status).toBe(400);
-    expect(unwired.body).toMatchObject({ ok: false, code: "unknown_tool" });
+    // A tool that exists answers about a task id it does not know, not with an unknown tool.
+    const missing = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "thread_send", args: { taskId: "abcd", text: "x" } });
+    expect(missing.status).toBe(404);
+    expect(missing.body).toMatchObject({ ok: false, code: "unknown_task" });
     // Arguments are validated before dispatch: a wait with no tasks is a bad request.
     const invalid = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "thread_wait", args: { taskIds: [] } });
     expect(invalid.status).toBe(400);
@@ -288,5 +291,266 @@ describe("delegated tasks", () => {
     expect(app.manager.list().some((c) => c.lineage !== undefined)).toBe(false);
     const parentSnap = (await agent.get(`/api/chats/${chat.chatId}`)).body as ChatSnapshot;
     expect(parentSnap.delegated).toBeUndefined();
+  });
+});
+
+/** Wait until `check` holds, or fail: the timers here are real, so every wait has a cap. */
+async function waitUntil(check: () => boolean, timeoutMs = 8000, what = "condition"): Promise<void> {
+  const start = Date.now();
+  while (!check()) {
+    if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** The report prompts the orchestrator delivered into a chat, oldest first. */
+function reportPrompts(app: TestApp, chatId: string): string[] {
+  return app.manager
+    .get(chatId)
+    .snapshot()
+    .items.flatMap((item) => (item.kind === "user" && item.text.includes("[awui delegate") ? [item.text] : []));
+}
+
+describe("thread_read", () => {
+  it("reads a child's transcript just described, newest last and in pages", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "tool read the readme" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+
+    const read = await call(agent, token, "thread_read", { taskId: started.taskId });
+    expect(read.status).toBe(200);
+    const page = read.body.data as { task: DelegatedTaskView; items: ChatItem[]; truncated: boolean };
+    expect(page.task).toMatchObject({ id: started.taskId, outcome: "done" });
+    // Reading order: the prompt first, then the call the child made, then its answer.
+    expect(page.items[0]?.kind).toBe("user");
+    expect(page.items.some((item) => item.kind === "tool")).toBe(true);
+    expect(page.items[page.items.length - 1]?.kind).toBe("assistant");
+    expect(page.truncated).toBe(false);
+    expect(read.body.text).toContain(`Task ${started.taskId}`);
+    expect(read.body.text).toContain("Tool read");
+
+    // Two items at a time: the older ones are left out, and `before` walks back through them.
+    const newest = await call(agent, token, "thread_read", { taskId: started.taskId, limit: 2 });
+    const newestPage = newest.body.data as { items: ChatItem[]; truncated: boolean };
+    expect(newestPage.items).toHaveLength(2);
+    expect(newestPage.truncated).toBe(true);
+    expect(newestPage.items.map((item) => item.id)).toEqual(page.items.slice(-2).map((item) => item.id));
+    const older = await call(agent, token, "thread_read", { taskId: started.taskId, limit: 2, before: 2 });
+    const olderPage = older.body.data as { items: ChatItem[]; truncated: boolean };
+    expect(olderPage.items.map((item) => item.id)).toEqual(page.items.slice(-4, -2).map((item) => item.id));
+    // Once the first page reaches the start, there is nothing more to ask for.
+    const whole = await call(agent, token, "thread_read", { taskId: started.taskId, limit: 200 });
+    expect((whole.body.data as { truncated: boolean }).truncated).toBe(false);
+  });
+
+  it("reads a closed child's chat from the harness's file, and says so when there is none", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "explain the build" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    const child = app.manager.get(started.childChatId as string);
+    const session = child.sessionId;
+    await agent.post(`/api/chats/${child.chatId}/dispose`).send({});
+
+    // The chat is gone, but the fake keeps the session it wrote: the read comes from there.
+    const closed = await call(agent, token, "thread_read", { taskId: started.taskId });
+    expect(closed.status).toBe(200);
+    expect(closed.body.text).toContain("Echo: explain the build");
+    expect((closed.body.data as { items: ChatItem[] }).items.length).toBeGreaterThan(0);
+
+    // No file either: the record's own answer is all a parent can be given, and it says so.
+    if (session) app.fake.sessions.delete(session.slice("fake:".length));
+    const missing = await call(agent, token, "thread_read", { taskId: started.taskId });
+    expect(missing.status).toBe(200);
+    const data = missing.body.data as { items: ChatItem[]; truncated: boolean };
+    expect(data.items).toEqual([]);
+    expect(data.truncated).toBe(true);
+    expect(missing.body.text).toContain("cannot be read");
+    expect(missing.body.text).toContain("Echo: explain the build");
+  });
+});
+
+describe("thread_send", () => {
+  it("steers a running child, then revives a finished one for a second result", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "slow review of the parser" });
+    const steered = await call(agent, token, "thread_send", { taskId: started.taskId, text: "also check the lexer" });
+    expect(steered.status).toBe(200);
+    expect(steered.body.data).toMatchObject({ queued: "steered", state: "working" });
+
+    // The run it was in carries the steer: the child answers it before settling.
+    const first = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    expect((first.body.data as { tasks: DelegatedTaskView[] }).tasks[0]?.result?.finalText).toContain("Steered: also check the lexer");
+
+    // A finished task goes back to work, and this settle replaces the old result.
+    const revived = await call(agent, token, "thread_send", { taskId: started.taskId, text: "and the changelog" });
+    expect(revived.body.data).toMatchObject({ queued: "sent", state: "working" });
+    const second = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    const task = (second.body.data as { tasks: DelegatedTaskView[] }).tasks[0] as DelegatedTaskView;
+    expect(task).toMatchObject({ state: "result_available", outcome: "done" });
+    expect(task.result?.finalText).toContain("Echo: and the changelog");
+  });
+
+  it("refuses a task whose chat is closed", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "check the lockfile" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    await agent.post(`/api/chats/${started.childChatId}/dispose`).send({});
+    const refused = await call(agent, token, "thread_send", { taskId: started.taskId, text: "one more thing" });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({ ok: false, code: "task_not_running" });
+  });
+});
+
+describe("finish delivery", () => {
+  it("wakes an idle parent with one bounded report", async () => {
+    const { app, agent, chat, token } = await setup();
+    const started = await delegate(agent, token, { brief: "check the changelog", title: "Changelog check" });
+    await waitUntil(() => reportPrompts(app, chat.chatId).length > 0, 8000, "the parent's report");
+    const reports = reportPrompts(app, chat.chatId);
+    expect(reports).toHaveLength(1);
+    const report = reports[0] as string;
+    expect(report).toMatch(/^\[awui delegate [0-9a-f]{4} · done · fake · /);
+    expect(report).toContain(started.taskId);
+    expect(report).toContain('"Changelog check"');
+    expect(report).toContain("Echo: check the changelog");
+    expect(report).toContain(`thread_read("${started.taskId}") for more`);
+    expect(report.length).toBeLessThanOrEqual(6000);
+  });
+
+  it("coalesces three near-simultaneous finishes into one message", async () => {
+    const { app, agent, chat, token } = await setup();
+    const tasks = [];
+    for (const role of ["one", "two", "three"]) tasks.push(await delegate(agent, token, { brief: `check the lockfile ${role}`, title: `Check ${role}` }));
+    await waitUntil(() => reportPrompts(app, chat.chatId).length > 0, 8000, "one report for three tasks");
+    // Nothing more arrives: the window closed after the first report carried all three.
+    await sleep(600);
+    const reports = reportPrompts(app, chat.chatId);
+    expect(reports).toHaveLength(1);
+    for (const task of tasks) expect(reports[0]).toContain(`[awui delegate ${task.taskId} ·`);
+  });
+
+  it("does not wake a parent that read the result itself", async () => {
+    const { app, agent, chat, token } = await setup();
+    const started = await delegate(agent, token, { brief: "check the changelog" });
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    expect((waited.body.data as { tasks: DelegatedTaskView[] }).tasks[0]?.outcome).toBe("done");
+    // Past the coalescing window: the read was the delivery, so nothing is sent.
+    await sleep(3000);
+    expect(reportPrompts(app, chat.chatId)).toEqual([]);
+    const store = JSON.parse(readFileSync(path.join(app.stateDir, "orchestration", "tasks.json"), "utf8")) as { tasks: Array<{ id: string; wake: { pendingSince: number | null; skipped: string | null } }> };
+    expect(store.tasks.find((task) => task.id === started.taskId)?.wake).toMatchObject({ pendingSince: null, skipped: "read by the parent" });
+  });
+
+  it("delivers a restart's interrupted report once, when its parent registers", async () => {
+    const root = tempDir("awui-orch-restart-");
+    mkdirSync(path.join(root, "proj"));
+    const manager = new ChatManager();
+    const registry = new HarnessRegistry();
+    const fake = new FakeAdapter();
+    registry.register(fake);
+    await registry.refreshStatus();
+    const { workspaces } = await Workspaces.create([root], root);
+    const workspace: WorkspaceInfo = { id: "w1", path: path.join(root, "proj"), name: "proj" };
+    try {
+      const parent = await manager.create(fake, workspace);
+      expect(parent.sessionId).not.toBeNull();
+      const file = path.join(root, ".state", "orchestration", "tasks.json");
+      mkdirSync(path.dirname(file), { recursive: true });
+      // A record the last process left mid-run: its child died with that process.
+      writeFileSync(
+        file,
+        JSON.stringify({
+          schemaVersion: 1,
+          tasks: [
+            {
+              id: "beef",
+              parentChatId: "gone",
+              childChatId: null,
+              title: "Parser work",
+              harnessId: "fake",
+              model: null,
+              role: "",
+              profile: null,
+              depth: 1,
+              state: "working",
+              outcome: null,
+              createdAt: Date.now() - 60_000,
+              endedAt: null,
+              activity: null,
+              result: null,
+              asking: null,
+              workspacePath: workspace.path,
+              parentTitle: "Parent",
+              parentSessionId: parent.sessionId,
+              childSessionId: "fake:gone-session",
+              generation: 0,
+              cancelRequestedAt: null,
+              notify: "wake",
+              clientRequestId: null,
+              wake: { pendingSince: null, deliveredAt: null, attempts: 0, skipped: null },
+            },
+          ],
+        }),
+      );
+      const orchestration = new Orchestrator({ chats: manager, registry, workspaces, file, log: () => undefined });
+      await orchestration.start();
+      await orchestration.registered(parent);
+      await waitUntil(() => parent.snapshot().items.some((item) => item.kind === "user" && item.text.includes("[awui delegate beef")), 4000, "the interrupted report");
+      const report = parent.snapshot().items.flatMap((item) => (item.kind === "user" ? [item.text] : [])).find((text) => text.includes("[awui delegate beef"));
+      expect(report).toContain("interrupted");
+      expect(report).toContain("restarted before this task settled");
+      // Registering again (another tab, a resume) is not a second delivery.
+      await orchestration.registered(parent);
+      await sleep(300);
+      expect(parent.snapshot().items.filter((item) => item.kind === "user").map((item) => item.text).filter((text) => text.includes("[awui delegate beef"))).toHaveLength(1);
+      const store = JSON.parse(readFileSync(file, "utf8")) as { tasks: Array<{ id: string; state: string; outcome: string; wake: { pendingSince: number | null; deliveredAt: number | null } }> };
+      expect(store.tasks[0]).toMatchObject({ state: "result_available", outcome: "interrupted" });
+      expect(store.tasks[0]?.wake.pendingSince).toBeNull();
+      expect(typeof store.tasks[0]?.wake.deliveredAt).toBe("number");
+    } finally {
+      await manager.shutdown();
+    }
+  });
+
+  it("keeps a child's done note off the phone, and sends its question", async () => {
+    const { app, agent, token } = await setup();
+    const done = await delegate(agent, token, { brief: "check the changelog" });
+    await call(agent, token, "thread_wait", { taskIds: [done.taskId], waitMs: 10_000 });
+    let notes = (await agent.get("/api/notifications?since=0")).body.notes as PushNote[];
+    expect(notes.some((note) => note.chatId === done.childChatId)).toBe(false);
+
+    const asking = await delegate(agent, token, { brief: "ask before reviewing the parser" });
+    await waitUntil(() => app.manager.get(asking.childChatId as string).snapshot().pending.length > 0, 8000, "the child's approval");
+    notes = (await agent.get("/api/notifications?since=0")).body.notes as PushNote[];
+    expect(notes.find((note) => note.chatId === asking.childChatId)?.kind).toBe("ask");
+  });
+});
+
+describe("question routing", () => {
+  it("ends a wait with the question's title, never its body", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "quiz described the settings question" });
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    expect(waited.status).toBe(200);
+    const data = waited.body.data as { tasks: DelegatedTaskView[]; pendingRequest?: { taskId: string; requestId: string | null; title: string } };
+    expect(data.tasks[0]).toMatchObject({ id: started.taskId, state: "waiting_for_user" });
+    expect(data.pendingRequest).toMatchObject({ taskId: started.taskId, title: "Settings" });
+    expect(data.pendingRequest?.requestId).toBeTruthy();
+    expect(waited.body.text).toContain('Task ' + started.taskId + ' is asking: "Settings"');
+    // The request's own message is for the user, not for the parent agent.
+    expect(waited.body.text).not.toContain("Should the theme and the text size both move");
+  });
+
+  it("does not end a wait on an approval the user already sees", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "ask before reviewing the parser" });
+    const began = Date.now();
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 600 });
+    expect(Date.now() - began).toBeGreaterThanOrEqual(550);
+    const data = waited.body.data as { tasks: DelegatedTaskView[]; pendingRequest?: unknown };
+    expect(data.tasks[0]?.state).toBe("working");
+    expect(data.pendingRequest).toBeUndefined();
   });
 });
