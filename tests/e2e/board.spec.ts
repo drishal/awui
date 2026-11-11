@@ -168,3 +168,17 @@ test("the room exports as Markdown", async ({ page }) => {
   await page.getByRole("button", { name: "Export room as Markdown" }).click();
   expect((await download).suggestedFilename()).toMatch(/\.md$/);
 });
+
+test("a room opens in its own tab named after it, and closing that tab shows the start screen", async ({ page }) => {
+  await makeBot(page, "Tab Lead");
+  await makeRoom(page, "Tab Room", ["Tab Lead"]);
+  const strip = page.getByRole("tablist", { name: "Open tabs" });
+  const tab = strip.getByRole("tab", { name: /Tab Room/ });
+  await expect(tab).toBeVisible();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveTitle(/Tab Room/);
+  await page.getByRole("button", { name: "Close Tab Room" }).click();
+  await expect(page.getByTestId("room-view")).toHaveCount(0);
+  await expect(tab).toHaveCount(0);
+  await expect(page).toHaveTitle("awui");
+});

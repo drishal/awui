@@ -5,7 +5,7 @@ import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helper
 
 const box = "Message";
 const folderChip = (page: import("@playwright/test").Page) => page.getByRole("button", { name: /^Folder: / });
-const tabs = (page: import("@playwright/test").Page) => page.getByRole("tablist", { name: "Open chats" }).getByRole("tab");
+const tabs = (page: import("@playwright/test").Page) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab");
 
 test("a fresh browser lands on the start screen: a box, and a folder chip asking for one", async ({ page }) => {
   await page.goto("/");
@@ -193,9 +193,9 @@ test("a project's + opens its start screen in a new tab, without replacing the s
   await expect(page.getByTestId("user-prompt")).toHaveCount(0);
   await expect(tabs(page)).toHaveCount(before + 1);
   await expect(page.getByRole("textbox", { name: box })).toBeFocused();
-  await page.getByRole("tablist", { name: "Open chats" }).getByRole("tab", { name: /a chat in beta/ }).click();
+  await page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: /a chat in beta/ }).click();
   await expect(page.getByTestId("user-prompt")).toHaveText(["a chat in beta"]);
-  await page.getByRole("tablist", { name: "Open chats" }).getByRole("tab", { name: /Fake New chat/ }).click();
+  await page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: /Fake New chat/ }).click();
   await expect(page.getByRole("heading", { name: /What should Fake do in alpha\?/ })).toBeVisible();
   await sendAndWait(page, "second chat in alpha");
   await expect(page.getByTestId("user-prompt")).toHaveText(["second chat in alpha"]);

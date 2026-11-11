@@ -8,7 +8,7 @@ import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helper
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
 const chip = (page: Page, name: RegExp) => sidebar(page).getByRole("group", { name: "Filter sessions" }).getByRole("button", { name });
 const row = (page: Page, title: string) => sidebar(page).locator(".session-item", { hasText: title });
-const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open chats" }).getByRole("tab", { name: new RegExp(title) });
+const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: new RegExp(title) });
 const search = (page: Page) => sidebar(page).getByRole("searchbox", { name: "Search sessions" });
 
 test("Running lists only the chats that are working, and Clear filter brings the rest back", async ({ page }) => {

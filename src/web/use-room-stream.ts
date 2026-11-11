@@ -1,7 +1,8 @@
-// The live room stream: a room is not a tab, so the URL hash opens one
-// (#room=<id>) and this hook streams it with the same snapshot/reconnect rules
-// as a chat. Events arrive in bursts and fold once per animation frame; a
-// switched room's late frame can never land in the new room's state.
+// The live room stream: a room opens in a tab like a chat, and the URL hash opens
+// one (#room=<id>); this hook streams the hash's room with the same
+// snapshot/reconnect rules as a chat. Events arrive in bursts and fold once per
+// animation frame; a switched room's late frame can never land in the new room's
+// state.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RoomEvent, RoomRecord } from "../shared/protocol.js";
 import { applyEvents, prependRecords, type RoomState } from "./room-state.js";
@@ -13,12 +14,17 @@ export function roomIdFromHash(): string | null {
   return m?.[1] ?? null;
 }
 
-/** Navigate to a room (or away from one with null); Back returns to whatever was shown before. */
-export function openRoomHash(roomId: string | null): void {
+/**
+ * Navigate to a room (or away from one with null). `push` (the default) adds a
+ * history entry, so Back returns to whatever was shown before; switching tabs
+ * passes false to rewrite the current entry instead. Leaving a room always
+ * replaces, so the room's entry never comes back empty.
+ */
+export function openRoomHash(roomId: string | null, { push = true }: { push?: boolean } = {}): void {
   const next = roomId ? `#room=${roomId}` : "";
   if (window.location.hash === next) return;
-  if (roomId) history.pushState(null, "", `${window.location.pathname}${next}`);
-  else history.replaceState(null, "", window.location.pathname);
+  if (roomId && push) history.pushState(null, "", `${window.location.pathname}${next}`);
+  else history.replaceState(null, "", `${window.location.pathname}${next}`);
   // pushState/replaceState do not fire hashchange, and the hash is this target's only source of truth.
   window.dispatchEvent(new HashChangeEvent("hashchange"));
 }

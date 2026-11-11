@@ -1,10 +1,10 @@
-// The app shell: bootstrap and sign-in, the tabs of open chats, the sidebar,
-// the conversation and its header, the composer, and every dialog. It owns
-// which chat is shown (the URL's #chat=, chat-stream.ts streams it over SSE)
-// and which room (the URL's #room=, use-room-stream.ts streams it); rooms do
-// not open as tabs. It hands each region its data and callbacks; the regions
-// themselves live in components/ and draw from props. docs/ui.md maps which
-// part is where.
+// The app shell: bootstrap and sign-in, the tabs of open chats and rooms, the
+// sidebar, the conversation and its header, the composer, and every dialog. It
+// owns which chat is shown (the URL's #chat=, chat-stream.ts streams it over
+// SSE) and which room (the URL's #room=, use-room-stream.ts streams it); a room
+// opens in a tab of its own beside the chats'. It hands each region its data
+// and callbacks; the regions themselves live in components/ and draw from
+// props. docs/ui.md maps which part is where.
 import { openRoomHash, roomIdFromHash, TURN_STATUS_LABEL, useRoomStream } from "./use-room-stream.js";
 import {
   answerRoomRequest as postRoomAnswer,
@@ -86,7 +86,7 @@ import { chatMarkdown, downloadText, exportFileName } from "./export.js";
 import { IconEdit, IconGauge, IconMenu, IconMore, IconSearch, IconSidebar, IconSplit, IconTerminal, IconBranch } from "./icons.js";
 import { applyHarnessAccents, harnessColor } from "./harness-colors.js";
 import { moveTab, pinnedCount, setPinned } from "./tab-order.js";
-import { closeTab, draftTab, findTab, loadTabs, markUnread, placeChat, placeTab, runningChats, saveTabs, syncActive, type Tab, type TabState } from "./tabs.js";
+import { closeTab, draftTab, findRoomTab, findTab, loadTabs, markUnread, placeChat, placeRoomTab, placeTab, runningChats, saveTabs, syncActive, syncRoomTitles, type Tab, type TabState } from "./tabs.js";
 import { useLimits } from "./limits.js";
 import { useNotifications } from "./notify.js";
 import { isPaletteKey, type PaletteItem } from "./palette.js";
@@ -115,6 +115,20 @@ const GitHubPanel = lazy(() => import("./components/GitHubPanel.js").then((m) =>
 // project workflow unless someone actually opens one of these dialogs.
 function LazyPanel({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<Loader label="Opening…" />}>{children}</Suspense>;
+}
+
+/** The tab Back shows when a room has no remembered chat tab: the nearest non-room tab, else none. */
+function nonRoomTabToShow(state: TabState, remembered: string | null): number {
+  const named = remembered ? state.tabs.findIndex((t) => t.key === remembered && !t.roomId) : -1;
+  if (named >= 0) return named;
+  if (state.active < 0) return state.tabs.findIndex((t) => !t.roomId);
+  for (let d = 1; d <= state.tabs.length; d += 1) {
+    const right = state.active + d;
+    if (right < state.tabs.length && !state.tabs[right]?.roomId) return right;
+    const left = state.active - d;
+    if (left >= 0 && !state.tabs[left]?.roomId) return left;
+  }
+  return -1;
 }
 export function App() {
   const { banner, setBanner, fail } = useBanner();
@@ -158,11 +172,34 @@ export function App() {
     openedWhileNarrow,
   } = useSidebarLayout();
 
-  /** A room is a target, not a tab: opening one navigates (Back returns to what was shown). */
-  const openRoom = (id: string) => {
-    openRoomHash(id);
+  /**
+   * Open a room in a tab of its own and show it. The chats' tabs stay where they
+   * are; an already-open room's tab is switched to. `push` adds a Back entry
+   * unless the room's hash is already the URL's (a deep link, a reload).
+   */
+  const openRoom = (id: string, { title, push = true }: { title?: string; push?: boolean } = {}) => {
+    rememberShown();
+    // Back from a room returns to the tab it was opened from.
+    const current = tabsRef.current.tabs[tabsRef.current.active];
+    if (current && !current.roomId) {
+      originTabKey.current = current.key;
+      lastNonRoomTabKey.current = current.key;
+    }
+    const existingAt = findRoomTab(tabsRef.current, id);
+    const name = title ?? roomsList?.find((r) => r.id === id)?.name ?? (room.state?.room.id === id ? room.state.room.name : undefined) ?? tabsRef.current.tabs[existingAt]?.title ?? "Room";
+    const next = placeRoomTab(tabsRef.current, { roomId: id, title: name });
+    tabsRef.current = next;
+    setTabState(next);
+    beginOpen(null);
+    setOpening(false);
+    setChat(null);
+    setBanner(null);
     setDrawerOpen(false);
+    openRoomHash(id, { push: push && roomIdFromHash() !== id });
   };
+  /** The tab a room was opened from, and the last non-room tab shown: Back leaves a room for one of them. */
+  const originTabKey = useRef<string | null>(null);
+  const lastNonRoomTabKey = useRef<string | null>(null);
   /** Leave the room for whatever the user asked for next (a chat, a project, the start screen). */
   const leaveRoom = () => {
     if (!room.roomId) return;
@@ -387,6 +424,11 @@ export function App() {
   const tabsRef = useRef(tabState);
   tabsRef.current = tabState;
   useEffect(() => saveTabs(tabState), [tabState]);
+  // Back out of a room returns to the last chat tab shown, whatever else moved.
+  useEffect(() => {
+    const tab = tabState.tabs[tabState.active];
+    if (tab && !tab.roomId) lastNonRoomTabKey.current = tab.key;
+  }, [tabState]);
   /** Each tab's chat as last shown: switching back shows it at once, and the stream replays what it missed. */
   const tabCache = useRef(new Map<string, ChatState>());
   const chatRef = useRef(chat);
@@ -414,7 +456,7 @@ export function App() {
     if (chat) return;
     setTabState((st) => {
       const tab = st.tabs[st.active];
-      if (!tab || tab.chatId !== null || tab.sessionId !== null) return st;
+      if (!tab || tab.roomId || tab.chatId !== null || tab.sessionId !== null) return st;
       const harness = harnessId ?? tab.harnessId;
       const path = workspace?.path ?? tab.workspacePath;
       if (harness === tab.harnessId && path === tab.workspacePath) return st;
@@ -423,6 +465,19 @@ export function App() {
       return { ...st, tabs };
     });
   }, [chat, harnessId, workspace?.path]);
+
+  // A room's tab is named after the room: the snapshot can land after the click,
+  // and a rename or a refreshed list renames the tab in place.
+  useEffect(() => {
+    const id = room.roomId;
+    const name = room.state?.room.name;
+    if (!id || !name) return;
+    setTabState((st) => syncRoomTitles(st, [{ id, name }]));
+  }, [room.roomId, room.state?.room.name]);
+  useEffect(() => {
+    if (!roomsList) return;
+    setTabState((st) => syncRoomTitles(st, roomsList));
+  }, [roomsList]);
 
   /** Background notices (a run finished, a question waiting) and mark changes' Undo, stacked. */
   const toasts = useToasts();
@@ -463,7 +518,10 @@ export function App() {
     askingIds,
     tabState.tabs.flatMap((t) => (t.unread && t.chatId ? [t.chatId] : [])),
   );
-  const pageTitle = titleWith(attention, chat ? `${plainTitle(chat.title) || "New chat"} · awui` : "awui");
+  // The browser tab follows what is shown: a room's name, a chat's title, or awui.
+  const shownTab = tabState.tabs[tabState.active];
+  const roomName = room.roomId ? plainTitle(room.state?.room.name ?? (shownTab?.roomId ? shownTab.title : "")) : "";
+  const pageTitle = titleWith(attention, room.roomId ? `${roomName || "Room"} · awui` : chat ? `${plainTitle(chat.title) || "New chat"} · awui` : "awui");
   useEffect(() => {
     document.title = pageTitle;
   }, [pageTitle]);
@@ -603,6 +661,8 @@ export function App() {
   /** Show a chat: in its own tab when it has one, else in the shown tab, or a new tab with `newTab`. */
   /** `keepDrawer`: a tab reattaching (on load, or switched to) leaves the drawer as it is; picking a chat closes it. */
   const showChat = (snapshot: ChatSnapshot, { newTab = false, keepDrawer = false }: { newTab?: boolean; keepDrawer?: boolean } = {}) => {
+    // A chat shown while a room's tab was active leaves the room first (its hash would outlive it).
+    if (room.roomId) leaveRoom();
     rememberShown();
     setTabState((st) => placeChat(st, snapshot, { newTab }));
     setChat(snapshot);
@@ -855,6 +915,13 @@ export function App() {
    * holds the chat (a restart, or the idle reaper). A tab with neither is dropped.
    */
   const loadTab = async (tab: Tab) => {
+    // A room's tab shows its room; a stale one (its tab gone from the strip) reopens it.
+    if (tab.roomId) {
+      const at = findRoomTab(tabsRef.current, tab.roomId);
+      if (at >= 0) activateTab(at);
+      else openRoom(tab.roomId, { title: tab.title, push: false });
+      return;
+    }
     if (!tab.chatId && !tab.sessionId) {
       // A draft tab (the strip's +): the start screen is what it shows, and it is not a
       // stale tab to close when its chat is gone.
@@ -910,9 +977,24 @@ export function App() {
   };
 
   const activateTab = (index: number) => {
-    leaveRoom();
     const tab = tabsRef.current.tabs[index];
-    if (!tab) return;
+    if (!tab) {
+      leaveRoom();
+      return;
+    }
+    // A room's tab shows its room through the hash, with no chat to load.
+    if (tab.roomId) {
+      if (index === tabsRef.current.active && room.roomId === tab.roomId) return;
+      rememberShown();
+      setTabState((st) => ({ active: index, tabs: st.tabs.map((t, i) => (i === index && t.unread ? { ...t, unread: undefined } : t)) }));
+      beginOpen(null);
+      setOpening(false);
+      setChat(null);
+      setBanner(null);
+      openRoomHash(tab.roomId, { push: false });
+      return;
+    }
+    leaveRoom();
     if (index === tabsRef.current.active && chat?.chatId === tab.chatId) return;
     rememberShown();
     setTabState((st) => ({ active: index, tabs: st.tabs.map((t, i) => (i === index && t.unread ? { ...t, unread: undefined } : t)) }));
@@ -963,6 +1045,17 @@ export function App() {
   const closeTabAt = (index: number) => {
     const closing = tabsRef.current.tabs[index];
     if (!closing) return;
+    // A room's tab closes locally: there is no chat to dispose, and the shown
+    // room's hash must go before its neighbour (or the start screen) takes over.
+    if (closing.roomId) {
+      // The hash may already name the page's room before the hook's state catches up.
+      if (closing.roomId === room.roomId || closing.roomId === roomIdFromHash()) {
+        openRoomHash(null);
+        setChat(null);
+      }
+      finishClosedTab(closing);
+      return;
+    }
     if (!closing.chatId) finishClosedTab(closing);
     else if (closing.chatId === chat?.chatId) void closeChat(chat);
     else void closeBackgroundTab(closing, closing.chatId);
@@ -1006,6 +1099,40 @@ export function App() {
     }
   };
 
+  // Browser Back/Forward: the URL names the target, so the tabs follow it. Each
+  // hash write in this app uses pushState/replaceState plus a synthetic
+  // hashchange, which fires no popstate, so only real traversal reaches here.
+  const popHandler = useRef<() => void>(() => {});
+  popHandler.current = () => {
+    const hashRoom = roomIdFromHash();
+    if (hashRoom) {
+      const at = findRoomTab(tabsRef.current, hashRoom);
+      if (at >= 0) activateTab(at);
+      else openRoom(hashRoom, { push: false });
+      return;
+    }
+    const hashChat = chatIdFromHash();
+    if (hashChat) {
+      const at = tabsRef.current.tabs.findIndex((t) => t.chatId === hashChat);
+      if (at >= 0) {
+        activateTab(at);
+        return;
+      }
+    }
+    // No room in the URL any more: a room tab leaves for the chat tab it came
+    // from (or the nearest one), and only the start screen is left when there is none.
+    const active = tabsRef.current.tabs[tabsRef.current.active];
+    if (!active?.roomId) return;
+    const fallback = nonRoomTabToShow(tabsRef.current, lastNonRoomTabKey.current ?? originTabKey.current);
+    if (fallback >= 0) activateTab(fallback);
+    else showStart();
+  };
+  useEffect(() => {
+    const onPop = () => popHandler.current();
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   // Back and forward through the chats shown (Ctrl+[ and Ctrl+], as in an editor).
   const visits = useRef<{ list: Tab[]; at: number; moving: boolean }>({ list: [], at: -1, moving: false });
   useEffect(() => {
@@ -1046,13 +1173,17 @@ export function App() {
     void loadTab({ ...tab, chatId: null });
   }, [chat?.gone]);
 
-  // On load, the shown tab reattaches unless the URL already names a chat or a room.
+  // On load, the shown tab reattaches unless the URL already names a chat; a room
+  // hash (a deep link) or a room tab restores that room instead.
   const restored = useRef(false);
   useEffect(() => {
     if (!boot || restored.current) return;
     restored.current = true;
+    const hashRoom = roomIdFromHash();
     const tab = tabsRef.current.tabs[tabsRef.current.active];
-    if (tab && !chatIdFromHash() && !roomIdFromHash()) void loadTab(tab);
+    if (hashRoom) openRoom(hashRoom, { push: false });
+    else if (tab?.roomId && !chatIdFromHash()) openRoom(tab.roomId, { title: tab.title, push: false });
+    else if (tab && !chatIdFromHash()) void loadTab(tab);
   }, [boot]);
 
   // Opening a chat while a room is shown leaves the room: the URL names one target,
@@ -1767,7 +1898,7 @@ export function App() {
                       }}
                     >
                       <span className="drawer-tab-title">{plainTitle(tab.title) || "New chat"}</span>
-                      <span className="drawer-tab-harness">{boot.harnesses.find((h) => h.id === tab.harnessId)?.displayName ?? tab.harnessId}</span>
+                      <span className="drawer-tab-harness">{tab.roomId ? "Room" : (boot.harnesses.find((h) => h.id === tab.harnessId)?.displayName ?? tab.harnessId)}</span>
                     </button>
                     {tab.pinned ? null : (
                       <button type="button" className="icon-btn drawer-tab-close" aria-label={`Close tab ${tab.title || "New chat"}`} onClick={() => closeTabAt(i)}>
@@ -2134,7 +2265,16 @@ export function App() {
                 onNotice={(text) => setBanner({ level: "info", text })}
                 onNewBot={() => setBotEditor({ botId: null })}
                 onEditBot={(botId) => setBotEditor({ botId })}
-                onLeave={() => openRoomHash(null)}
+                onLeave={() => {
+                  // The room is gone: close its tab, or clear the hash when no tab names it.
+                  const at = room.roomId ? findRoomTab(tabsRef.current, room.roomId) : -1;
+                  if (at >= 0) closeTabAt(at);
+                  else {
+                    openRoomHash(null);
+                    setChat(null);
+                    setTabState((st) => ({ ...st, active: -1 }));
+                  }
+                }}
               />
               </Suspense>
             ) : chat && !hasPrompt ? (
@@ -2345,7 +2485,7 @@ export function App() {
           workspaces={boardWorkspaces}
           onCreated={(snapshot) => {
             void refreshRooms();
-            openRoom(snapshot.room.id);
+            openRoom(snapshot.room.id, { title: snapshot.room.name });
           }}
           onSaved={applyRoom}
           onNewBot={() => setBotEditor({ botId: null })}

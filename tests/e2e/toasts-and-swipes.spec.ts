@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
 
 const cards = (page: Page) => page.getByTestId("notice");
-const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open chats" }).getByRole("tab", { name: new RegExp(title) });
+const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: new RegExp(title) });
 
 /** Two chats left running in the background, and a third shown, so both finish "while away". */
 async function twoFinishInTheBackground(page: Page, tag: string): Promise<void> {

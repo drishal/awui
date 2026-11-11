@@ -4,8 +4,8 @@ import { expect, type Page, test } from "@playwright/test";
 import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
 
 const prompts = (page: Page) => page.getByTestId("user-prompt");
-const tabs = (page: Page) => page.getByRole("tablist", { name: "Open chats" }).getByRole("tab");
-const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open chats" }).getByRole("tab", { name: new RegExp(title) });
+const tabs = (page: Page) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab");
+const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: new RegExp(title) });
 /** + on the strip: a tab at once, showing the start screen; the first send fills it in. */
 async function newTab(page: Page): Promise<void> {
   await page.getByRole("button", { name: "New chat in a new tab" }).click();
@@ -57,7 +57,7 @@ test("a new tab closes like any other, and the start screen comes back when the 
   await tabs(page).last().getByRole("button", { name: /^Close / }).click();
   await tabs(page).last().getByRole("button", { name: /^Close / }).click();
   await tabs(page).last().getByRole("button", { name: /^Close / }).click();
-  await expect(page.getByRole("tablist", { name: "Open chats" })).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "Open tabs" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: /^What should .* (do in|work on)/ })).toBeVisible();
 });
 
@@ -366,7 +366,7 @@ test("Copy resume command puts the line that resumes a session in a terminal on 
   const banner = page.getByRole("status").filter({ hasText: "Copied: cd " });
   await expect(banner).toContainText("close the chat here first");
   await banner.getByRole("button", { name: "Close chat" }).click();
-  await expect(page.getByRole("tablist", { name: "Open chats" }).getByRole("tab", { name: /resume me in a terminal/ })).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: /resume me in a terminal/ })).toHaveCount(0);
   // Its row copies the same line, without the warning now that nothing here has it open.
   await page.evaluate(() => navigator.clipboard.writeText(""));
   await showSidebar(page);

@@ -251,7 +251,7 @@ test("the page title and favicon count a chat that finished out of sight", async
   await page.getByRole("button", { name: "New chat in a new tab" }).click();
   await expect(page).toHaveTitle(/^\(1\) /, { timeout: 20_000 });
   await expect.poll(() => page.locator('link[rel="icon"]').first().getAttribute("href")).toMatch(/^data:image\/png/);
-  await page.getByRole("tablist", { name: "Open chats" }).getByRole("tab", { name: /slow please for the title/ }).click();
+  await page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: /slow please for the title/ }).click();
   await expect(page).not.toHaveTitle(/^\(\d+\) /);
 });
 

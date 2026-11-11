@@ -1,8 +1,9 @@
-// Session tabs above the conversation (Hermes Desktop's): one per open chat,
-// harness-coloured, a working ring while it runs and a dot when a run
-// finished out of sight. Closing a tab only hides it; the chat keeps running
-// on the server. Keys: ←/→ (Home/End) move, Alt+Shift+←/→ reorder, Enter opens,
-// Delete closes. The browser owns Ctrl+T/W/Tab, so the strip claims none of them.
+// Session tabs above the conversation (Hermes Desktop's): one per open chat or
+// Board room, harness-coloured for a chat, a working ring while it runs and a
+// dot when a run finished out of sight. Closing a tab only hides it; the chat
+// keeps running on the server. Keys: ←/→ (Home/End) move, Alt+Shift+←/→ reorder,
+// Enter opens, Delete closes. The browser owns Ctrl+T/W/Tab, so the strip claims
+// none of them.
 // A tab drags sideways to reorder (pointer events, so touch works too; a few px of
 // slack keep a click a click) and pins from its right-click menu: a pinned tab sits
 // at the left, narrow, with no ✕, and survives Delete and middle-click. The drag
@@ -11,7 +12,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { ChatStatus } from "../../shared/protocol.js";
 import { harnessColor } from "../harness-colors.js";
-import { IconPin, IconPlus, IconX } from "../icons.js";
+import { IconPin, IconPlus, IconRooms, IconX } from "../icons.js";
 import { isBusy } from "../session-groups.js";
 import { clampDrag, dropSlot, slideOf, type TabRect } from "../tab-order.js";
 import type { Tab } from "../tabs.js";
@@ -152,12 +153,14 @@ export function TabStrip({
 
   return (
     <div className="tab-strip">
-      <div className={`tab-list${drag ? " is-dragging" : ""}`} role="tablist" aria-label="Open chats" ref={strip}>
+      <div className={`tab-list${drag ? " is-dragging" : ""}`} role="tablist" aria-label="Open tabs" ref={strip}>
         {tabs.map((tab, i) => {
           const status = statusOf(tab);
           const working = isBusy(status);
           const selected = i === active;
           const name = harnessName(tab.harnessId);
+          // A room's tab says "Room" where a chat's names its harness.
+          const kind = tab.roomId ? "Room" : name;
           // The lifted tab goes where the pointer took it; the ones it passes slide a tab's width aside.
           const lifted = drag !== null && drag.from === i;
           const shift = !drag ? 0 : lifted ? drag.dx : slideOf(i, drag.from, drag.to) * drag.width;
@@ -169,9 +172,9 @@ export function TabStrip({
               data-tab-key={tab.key}
               aria-selected={selected}
               tabIndex={selected ? 0 : -1}
-              className={`session-tab${selected ? " is-active" : ""}${tab.unread ? " is-unread" : ""}${tab.pinned ? " is-pinned" : ""}${lifted ? " is-lifted" : ""}`}
+              className={`session-tab${selected ? " is-active" : ""}${tab.unread ? " is-unread" : ""}${tab.pinned ? " is-pinned" : ""}${tab.roomId ? " session-tab-room" : ""}${lifted ? " is-lifted" : ""}`}
               style={{ ...harnessColor(tab.harnessId), ...(shift !== 0 ? { transform: `translateX(${shift}px)` } : {}) }}
-              title={`${plainTitle(tab.title)} · ${name}${tab.pinned ? " · pinned" : ""}`}
+              title={`${plainTitle(tab.title)} · ${kind}${tab.pinned ? " · pinned" : ""}`}
               onClick={() => {
                 if (swallowClick.current) swallowClick.current = false;
                 else onActivate(i);
@@ -198,7 +201,13 @@ export function TabStrip({
               }}
               onKeyDown={(e) => onKey(e, i)}
             >
-              {working ? <WorkingRing harnessId={tab.harnessId} colored /> : <span className="harness-dot" role="img" aria-label={name} />}
+              {tab.roomId ? (
+                <IconRooms size={13} className="session-tab-room-icon" />
+              ) : working ? (
+                <WorkingRing harnessId={tab.harnessId} colored />
+              ) : (
+                <span className="harness-dot" role="img" aria-label={name} />
+              )}
               <span className="session-tab-title">{plainTitle(tab.title)}</span>
               {tab.unread ? <span className="session-tab-unread" role="img" aria-label="Finished while away" /> : null}
               {tab.pinned ? null : (

@@ -1,7 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatSnapshot } from "../../src/shared/protocol.js";
 import { setPinned } from "../../src/web/tab-order.js";
-import { closeTab, findTab, markUnread, NO_TABS, placeChat, placeTab, runningChats, syncActive, type Tab, type TabState } from "../../src/web/tabs.js";
+import {
+  closeTab,
+  findRoomTab,
+  findTab,
+  loadTabs,
+  markUnread,
+  NO_TABS,
+  placeChat,
+  placeRoomTab,
+  placeTab,
+  runningChats,
+  saveTabs,
+  syncActive,
+  syncRoomTitles,
+  type Tab,
+  type TabState,
+} from "../../src/web/tabs.js";
 
 const snap = (chatId: string, sessionId: string | null = `fake:${chatId}`, title = chatId) =>
   ({ chatId, sessionId, harnessId: "fake", workspace: { id: "w", path: "/p", name: "p" }, title }) as unknown as ChatSnapshot;
@@ -104,5 +120,82 @@ describe("session tabs", () => {
 
   it("counts runs as running, not a harness that is starting", () => {
     expect([...runningChats([{ liveChatId: "a", status: "running" }, { liveChatId: "b", status: "starting" }, { liveChatId: "c", status: "compacting" }, { status: "running" }, { liveChatId: "d", status: "idle" }])]).toEqual(["a", "c"]);
+  });
+});
+
+const roomTab = (key: string, roomId: string, title = roomId): Tab => ({ key, chatId: null, sessionId: null, harnessId: "", workspacePath: "", title, roomId });
+
+describe("room tabs", () => {
+  it("opens a room in a tab of its own after the shown chat, leaving the chats where they are", () => {
+    const chats = placeChat(placeChat(NO_TABS, snap("a")), snap("b"), { newTab: true });
+    const s = placeRoomTab(chats, { roomId: "r1", title: "Room One" });
+    expect(s.tabs.map((t) => t.chatId ?? t.roomId)).toEqual(["a", "b", "r1"]);
+    expect(s.active).toBe(2);
+    expect(s.tabs[2]).toMatchObject({ chatId: null, sessionId: null, harnessId: "", workspacePath: "", title: "Room One", roomId: "r1" });
+    // The chats' own tabs are untouched.
+    expect(s.tabs.slice(0, 2)).toEqual(chats.tabs);
+    // After the pinned group, on the start screen too (active -1 puts it first).
+    const pinned = placeChat(NO_TABS, snap("a"));
+    const pinnedState = setPinned(pinned, 0, true);
+    expect(placeRoomTab({ ...pinnedState, active: -1 }, { roomId: "r1", title: "One" }).active).toBe(1);
+  });
+
+  it("switches to an open room's tab, renaming it, and never matches it as a chat", () => {
+    let s = placeRoomTab(placeChat(NO_TABS, snap("a")), { roomId: "r1", title: "Old" });
+    s = placeChat(s, snap("b"), { newTab: true });
+    expect(s.active).toBe(2);
+    const again = placeRoomTab(s, { roomId: "r1", title: "New" });
+    expect(again.tabs).toHaveLength(3);
+    expect([again.active, again.tabs[1]?.title]).toEqual([1, "New"]);
+    expect(findRoomTab(again, "r1")).toBe(1);
+    expect(findRoomTab(again, "missing")).toBe(-1);
+    // Room tabs carry no chat or session, so neither chat nor session matching sees them.
+    expect(findTab(again, { chatId: null, sessionId: null })).toBe(-1);
+    expect(findTab(again, { chatId: "a", sessionId: null })).toBe(0);
+    const shown = { ...again, active: 1 };
+    expect(syncActive(shown, snap("zzz"))).toBe(shown);
+  });
+
+  it("renames room tabs from a room list or a rename, and is a no-op when nothing changed", () => {
+    const s = placeRoomTab(placeRoomTab(placeChat(NO_TABS, snap("a")), { roomId: "r1", title: "One" }), { roomId: "r2", title: "Two" });
+    expect(s.tabs.map((t) => t.title)).toEqual(["a", "One", "Two"]);
+    const renamed = syncRoomTitles(s, [{ id: "r1", name: "Uno" }]);
+    expect(renamed.tabs.map((t) => t.title)).toEqual(["a", "Uno", "Two"]);
+    expect(syncRoomTitles(renamed, [{ id: "r1", name: "Uno" }, { id: "r2", name: "Two" }])).toBe(renamed);
+    // A room the list no longer names, or a chat tab, keeps its title.
+    expect(syncRoomTitles(renamed, [{ id: "missing", name: "Nope" }])).toBe(renamed);
+  });
+
+  it("closes a room tab and hands the view to its neighbour like any tab", () => {
+    const s = placeRoomTab(placeChat(NO_TABS, snap("a")), { roomId: "r1", title: "One" });
+    const after = closeTab(s, 1);
+    expect(after.tabs.map((t) => t.chatId ?? t.roomId)).toEqual(["a"]);
+    expect(after.active).toBe(0);
+  });
+});
+
+describe("room tabs kept per device", () => {
+  const store = new Map<string, string>();
+  vi.stubGlobal("window", {
+    localStorage: {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    },
+  });
+  afterEach(() => store.clear());
+
+  it("round-trips a room tab's roomId and title, and keeps it the shown tab", () => {
+    const s = placeRoomTab(placeChat(NO_TABS, snap("a")), { roomId: "r1", title: "Room One" });
+    saveTabs(s);
+    const back = loadTabs();
+    expect(back.tabs).toHaveLength(2);
+    expect(back.tabs[1]).toMatchObject({ key: s.tabs[1]?.key, chatId: null, sessionId: null, harnessId: "", workspacePath: "", title: "Room One", roomId: "r1" });
+    expect(back.active).toBe(1);
+  });
+
+  it("reads a room tab stored before its room's title was known", () => {
+    store.set("awui.tabs.v1", JSON.stringify({ tabs: [roomTab("t1", "r1", "Room")], active: 0 }));
+    expect(loadTabs().tabs[0]).toMatchObject({ roomId: "r1", title: "Room" });
   });
 });

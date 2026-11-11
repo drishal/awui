@@ -1,14 +1,14 @@
 // The sidebar's Rooms section: Board's rooms beside ordinary chats, with what
 // each one is doing (idle, queued, working, waiting for you), how many
-// approvals are pending, and an archived fold. Opening a room is navigation
-// (#room=<id>), not a tab.
+// approvals are pending, and an archived fold. Opening a room opens a tab of
+// its own (#room=<id>) beside the chats' tabs.
 import { useEffect, useRef, useState } from "react";
 import type { RoomSummary } from "../../shared/protocol.js";
 import { useNow } from "../hooks.js";
 import { load, save } from "../storage.js";
 import { ago } from "../turns.js";
 import { shortTokens, tokensOf } from "../usage.js";
-import { IconArchive, IconChevronDown, IconPlus, IconRefresh } from "../icons.js";
+import { IconArchive, IconChevronDown, IconPlus, IconRefresh, IconRooms } from "../icons.js";
 
 const STATUS_LABEL: Record<RoomSummary["status"], string> = {
   idle: "Idle",
@@ -67,7 +67,7 @@ export function RoomList({
       <div className="project-head" role="group" aria-label="Rooms">
         <button type="button" className="project-toggle" aria-expanded={open} onClick={toggle}>
           <IconChevronDown size={12} className="group-chevron" />
-          <IconRooms />
+          <IconRooms size={14} />
           <span className="project-name">Rooms</span>
           {live.length > 0 ? <span className="group-count">{live.length}</span> : null}
           {pending > 0 ? (
@@ -159,16 +159,5 @@ export function RoomList({
         </ul>
       ) : null}
     </li>
-  );
-}
-
-/** Rooms glyph in the house 16px stroke style (a room of two seats). */
-function IconRooms() {
-  return (
-    <svg className="icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-      <path d="M2.5 3.5h11v9h-11z" />
-      <path d="M5 7.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM11 7.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
-      <path d="M3.5 10.5c.5-1.2 2.5-1.2 3 0M9.5 10.5c.5-1.2 2.5-1.2 3 0" />
-    </svg>
   );
 }

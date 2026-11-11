@@ -64,6 +64,16 @@
   height: 7px;
 }
 
+/* A room's tab has no harness: a quiet rooms glyph in the dot's place, accented on the shown tab. */
+.session-tab-room .session-tab-room-icon {
+  flex: none;
+  color: var(--muted-text);
+}
+
+.session-tab-room.is-active .session-tab-room-icon {
+  color: var(--accent);
+}
+
 .session-tab-title {
   flex: 1;
   min-width: 0;

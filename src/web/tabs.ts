@@ -1,7 +1,9 @@
-// Session tabs (Hermes Desktop's): the chats open in this browser, one of them
-// shown. Pure list logic here; App wires it to chat loading. A tab remembers
-// its live chat and its session, so it can reattach to the chat while the
-// server holds it and resume the session from the harness once it does not.
+// Session tabs (Hermes Desktop's): the chats and Board rooms open in this
+// browser, one of them shown. Pure list logic here; App wires it to chat and
+// room loading. A chat tab remembers its live chat and its session, so it can
+// reattach to the chat while the server holds it and resume the session from
+// the harness once it does not. A room tab names a room instead and keeps the
+// chats' tabs where they are.
 import type { ChatSnapshot, ChatStatus } from "../shared/protocol.js";
 import { load, save } from "./storage.js";
 import { keepGroups, pinnedCount } from "./tab-order.js";
@@ -16,6 +18,12 @@ export interface Tab {
   harnessId: string;
   workspacePath: string;
   title: string;
+  /**
+   * A Board room shown instead of a chat: its `chatId` and `sessionId` are null,
+   * `harnessId` and `workspacePath` are "", and the shown room's `#room=` hash
+   * follows this tab's activation.
+   */
+  roomId?: string;
   /** A run finished while another tab was shown. */
   unread?: boolean;
   /** Kept at the left of the strip, narrow, and not closed by a stray key or middle-click. */
@@ -56,6 +64,46 @@ export function draftTab(harnessId: string, workspacePath: string): Omit<Tab, "k
 /** The tab already holding this chat or session, if any. */
 export function findTab(state: TabState, chat: { chatId: string | null; sessionId: string | null }): number {
   return state.tabs.findIndex((t) => (chat.chatId !== null && t.chatId === chat.chatId) || (chat.sessionId !== null && t.sessionId === chat.sessionId));
+}
+
+/** The tab already showing this room, if any. */
+export function findRoomTab(state: TabState, roomId: string): number {
+  return state.tabs.findIndex((t) => t.roomId === roomId);
+}
+
+/**
+ * Put a room on screen in a tab of its own: an open room's tab is switched to
+ * and renamed, otherwise a new tab goes after the shown one, never among the
+ * pinned ones. Rooms are never swapped into a chat's tab. `active` -1 (the
+ * start screen) puts the new tab first, as `placeTab` does.
+ */
+export function placeRoomTab(state: TabState, room: { roomId: string; title: string }): TabState {
+  const existing = findRoomTab(state, room.roomId);
+  if (existing >= 0) {
+    const was = state.tabs[existing] as Tab;
+    if (was.title === room.title && state.active === existing && !was.unread) return state;
+    const tabs = state.tabs.slice();
+    tabs[existing] = { ...was, title: room.title, unread: undefined };
+    return { tabs, active: existing };
+  }
+  const at = Math.max(state.active + 1, pinnedCount(state.tabs));
+  const tab: Tab = { key: newKey(), chatId: null, sessionId: null, harnessId: "", workspacePath: "", title: room.title, roomId: room.roomId };
+  const tabs = [...state.tabs.slice(0, at), tab, ...state.tabs.slice(at)];
+  return { tabs, active: at };
+}
+
+/** Rename the tabs of these rooms; the same state back when none changed. */
+export function syncRoomTitles(state: TabState, rooms: ReadonlyArray<{ id: string; name: string }>): TabState {
+  const names = new Map(rooms.map((r) => [r.id, r.name]));
+  let changed = false;
+  const tabs = state.tabs.map((t) => {
+    if (!t.roomId) return t;
+    const name = names.get(t.roomId);
+    if (name === undefined || name === t.title) return t;
+    changed = true;
+    return { ...t, title: name };
+  });
+  return changed ? { tabs, active: state.active } : state;
 }
 
 /**

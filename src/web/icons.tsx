@@ -367,3 +367,12 @@ export const IconAlertCircle = (p: IconProps) => (
     <path d="M8 4.75v4M8 11.2v.05" />
   </Svg>
 );
+
+/** Rooms glyph in the house 16px stroke style (a room of two seats). */
+export const IconRooms = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.5 3.5h11v9h-11z" />
+    <path d="M5 7.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM11 7.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
+    <path d="M3.5 10.5c.5-1.2 2.5-1.2 3 0M9.5 10.5c.5-1.2 2.5-1.2 3 0" />
+  </Svg>
+);
