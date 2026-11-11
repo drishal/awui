@@ -222,6 +222,8 @@
   width: 100%;
   min-height: 32px;
   margin: 0;
+  /* The sections' rows sit 14px in (the body's 6 plus a row's 8); the foot's icon and count line up with theirs. */
+  padding: 0 14px;
   border: 0;
   border-top: 1px solid var(--hairline);
   border-radius: 0 0 calc(var(--r-panel) - 1px) calc(var(--r-panel) - 1px);
