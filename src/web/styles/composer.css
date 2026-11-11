@@ -2,9 +2,12 @@
 
 .composer {
   width: 100%;
+  /* The thread's scroller reserves its scrollbar's 8px, which lifts a centred thread 4px left of the pane's
+     centre. The extra width and the wider right padding here put the composer and the dock on that same
+     column, so their card edges land on the cards above them. */
   max-width: calc(var(--chat-col) + 8px);
   margin: 0 auto;
-  padding: 4px 16px calc(14px + env(safe-area-inset-bottom));
+  padding: 4px 28px calc(14px + env(safe-area-inset-bottom)) 20px;
 }
 
 .composer-card {
