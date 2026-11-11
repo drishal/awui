@@ -343,6 +343,14 @@
 
 /* A row reads "label  detail ……… keys": the detail (a project, a provider, "tokens, cost") follows the
    label in muted text, and the right edge is kept for keycaps alone, so words never pose as shortcuts. */
+.palette-text {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 .palette-label {
   flex: 0 1 auto;
   min-width: 0;

@@ -114,15 +114,17 @@ export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClo
                   onPointerMove={() => !item.disabled && i !== active && setActive(i)}
                   onClick={() => run(item)}
                 >
-                  <span className="palette-label">{item.label}</span>
+                  {/* Label and detail share one baseline: centred on their own, the smaller detail rode high. */}
+                  <span className="palette-text">
+                    <span className="palette-label">{item.label}</span>
+                    {item.hint && !item.keys ? <span className="palette-hint">{item.hint}</span> : null}
+                  </span>
                   {item.hint && item.keys ? (
                     <span className="palette-keys">
                       {item.hint.split(/(?<=.)\+(?=.)/).map((key, k) => (
                         <kbd key={k}>{key}</kbd>
                       ))}
                     </span>
-                  ) : item.hint ? (
-                    <span className="palette-hint">{item.hint}</span>
                   ) : null}
                   {item.current ? <IconCheck size={14} className="palette-check" /> : null}
                 </div>
