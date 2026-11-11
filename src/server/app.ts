@@ -56,6 +56,7 @@ import {
   sessionOrderSchema,
   pushSubscriptionSchema,
   pushTestSchema,
+  presenceSchema,
   putBackSchema,
   restoreSchema,
   type CheckpointPreview,
@@ -103,6 +104,7 @@ import { SavedPrompts } from "./saved-prompts.js";
 import { Routines } from "./routines.js";
 import { Limits } from "./limits.js";
 import { Notifier, pushEndpointProblem } from "./notify.js";
+import { PresenceTable } from "./presence.js";
 import { ChatSearcher, type SearchTarget } from "./chat-search.js";
 import { readMedia, viewFile } from "./file-view.js";
 import { writeProjectFile } from "./project-upload.js";
@@ -154,6 +156,8 @@ export interface AppDeps {
   limits?: Limits;
   /** Notes and Web Push for devices that turned notifications on; in memory when absent. */
   notifier?: Notifier;
+  /** Which connected client visibly focuses which chat or room, so its notifications are not sent; in memory when absent. */
+  presence?: PresenceTable;
   /** Where file checkpoints live (shadow repositories, and each session's list of them); none when absent. */
   checkpointsDir?: string | null;
   /** The server state folder, where agent-rendered HTML pages are stored. */
@@ -222,6 +226,7 @@ export function createApp(deps: AppDeps) {
   const limits = deps.limits ?? Limits.inMemory(registry);
   manager.onLimits = (account) => limits.report(account);
   const notifier = deps.notifier ?? Notifier.inMemory();
+  const presence = deps.presence ?? PresenceTable.inMemory();
   const modelCatalog = deps.modelCatalog ?? new ModelCatalog(deps.stateDir ? path.join(deps.stateDir, "model-catalog.json") : null);
   const chatSearcher = new ChatSearcher();
   const usageReader = new UsageReader();
@@ -229,6 +234,8 @@ export function createApp(deps: AppDeps) {
   manager.onNews = (chat, kind, text, request) => {
     // A board-owned chat's runs are the room's business: the room sends its own notes.
     if (chat.owner) return;
+    // The user already watches this chat on some connected client, visibly focused: the note would reach for a screen it is on.
+    if (presence.viewed({ chatId: chat.chatId })) return;
     // An approval's note carries its two answers, so the notification's own buttons can send one.
     const answers = request ? approvalAnswers(request) : null;
     notifier.notify({
@@ -979,6 +986,13 @@ export function createApp(deps: AppDeps) {
     const raw = typeof req.query.since === "string" && /^\d{1,15}$/.test(req.query.since) ? Number(req.query.since) : null;
     const now = Date.now();
     res.json({ notes: notifier.since(raw ?? now - 120_000), now });
+  });
+  // Presence: which chat or room each connected client visibly focuses, so a note for
+  // a target the user already watches is not sent (presence.ts). Ids and flags only.
+  app.post("/api/presence", (req, res) => {
+    const report = body(presenceSchema, req);
+    presence.report(report.clientId, { chatId: report.chatId ?? null, roomId: report.roomId ?? null }, report.visible, report.focused);
+    res.json({ ok: true });
   });
 
   app.get("/api/limits", async (req, res) => {

@@ -1132,6 +1132,17 @@ export type ConfigPatch = { model?: string; thinkingLevel?: string; permissionMo
 export const renameSchema = z.object({ name: z.string().trim().min(1).max(200) });
 export const pushSubscriptionSchema = z.object({ endpoint: z.string().url().max(2048) });
 export const pushTestSchema = z.object({ endpoint: z.string().url().max(2048).optional() });
+/** A web client's presence report: which chat or room this tab shows, and whether the user visibly sees it. */
+export const presenceSchema = z
+  .object({
+    clientId: z.string().min(1).max(64),
+    chatId: z.string().max(128).nullable().optional(),
+    roomId: z.string().max(128).nullable().optional(),
+    visible: z.boolean(),
+    focused: z.boolean(),
+  })
+  .refine((v) => v.chatId == null || v.roomId == null, { message: "one target at a time" });
+export type PresenceReport = z.infer<typeof presenceSchema>;
 
 export const restoreSchema = z.object({
   /** The files to put back: some or all of what the preview listed. */

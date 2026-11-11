@@ -89,6 +89,7 @@ import { moveTab, pinnedCount, setPinned } from "./tab-order.js";
 import { closeTab, draftTab, findRoomTab, findTab, loadTabs, markUnread, placeChat, placeRoomTab, placeTab, runningChats, saveTabs, syncActive, syncRoomTitles, type Tab, type TabState } from "./tabs.js";
 import { useLimits } from "./limits.js";
 import { useNotifications } from "./notify.js";
+import { usePresenceReporting } from "./presence.js";
 import { isPaletteKey, type PaletteItem } from "./palette.js";
 import { isBusy, wakeLabel } from "./session-groups.js";
 import { pendingImage, sentAttachments, type PendingImage } from "./images.js";
@@ -1314,6 +1315,8 @@ export function App() {
   openNoteRef.current = openNote;
   const { notify, toggleNotify, testNotify } = useNotifications(Boolean(boot), (note) => void openNoteRef.current(note));
 
+  // The server skips a notification for a chat or room some tab visibly focuses (src/server/presence.ts).
+  usePresenceReporting(Boolean(boot), room.roomId ? null : chatId, room.roomId ?? null);
   const send = async (text: string, mode: SendMode, images: ImageAttachment[] = [], options: { compactFirst?: boolean; attachments?: string[] } = {}): Promise<boolean> => {
     if (!chat) return false;
     const command = mode === "normal" && images.length === 0 && (options.attachments?.length ?? 0) === 0 ? appCommand(text) : null;

@@ -31,6 +31,7 @@ import { SessionOrder } from "./session-order.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { Limits } from "./limits.js";
 import { Notifier, roomPushNote } from "./notify.js";
+import { PresenceTable } from "./presence.js";
 import { ThemeStore } from "./theme.js";
 import { Herdr, herdrSocketPath } from "./herdr.js";
 import { configDir, configEnv, herdrEnabled, migrateConfigDir, readUserConfig, UserConfigError } from "./user-config.js";
@@ -195,6 +196,7 @@ async function main(): Promise<void> {
   const limits = await Limits.open(registry, config.stateDir);
   limits.warm();
   const notifier = await Notifier.open(config.stateDir, (m) => console.error(`awui: ${m}`));
+  const presence = PresenceTable.inMemory();
   // Board rooms: load their durable state before any route exists, and mark
   // work interrupted by the previous process as interrupted (nothing paid resumes).
   const boards = new RoomManager({
@@ -203,7 +205,11 @@ async function main(): Promise<void> {
     chats: manager,
     stateDir: config.stateDir,
     log: (m) => console.error(`awui: boards: ${m}`),
-    notify: (note) => void notifier.notify(roomPushNote(note)),
+    // The room's own notes respect presence like a chat's do (app.ts).
+    notify: (note) => {
+      if (presence.viewed({ roomId: note.roomId })) return;
+      void notifier.notify(roomPushNote(note));
+    },
   });
   await boards.start();
   const lanUrls = config.host === "0.0.0.0" ? sampleLanHosts().ipv4.map((ip) => `http://${ip}:${config.port}/`) : [];
@@ -228,6 +234,7 @@ async function main(): Promise<void> {
     prompts,
     limits,
     notifier,
+    presence,
     boards,
     checkpointsDir: path.join(config.stateDir, "checkpoints"),
     stateDir: config.stateDir,
