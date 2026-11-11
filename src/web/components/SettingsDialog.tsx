@@ -429,9 +429,7 @@ export function SettingsDialog({
                     style={{ "--slider-fill": `${SCALE_MAX <= SCALE_MIN ? 0 : Math.min(100, Math.max(0, ((draft.textScale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100))}%` } as CSSProperties}
                     onChange={(e) => update({ textScale: Number(e.target.value) })}
                   />
-                  <output className="text-slider-value" aria-live="off">
-                    {Math.round(draft.textScale * 100)}%
-                  </output>
+                  {/* The reset slot sits before the value, so the value ends on the controls' right edge whether or not the slot is filled. */}
                   <span className="text-slider-reset">
                     {draft.textScale !== 1 ? (
                       <button type="button" className="ghost-icon" aria-label="Reset text size" title="Reset to 100%" disabled={!editable} onClick={() => update({ textScale: 1 })}>
@@ -439,6 +437,9 @@ export function SettingsDialog({
                       </button>
                     ) : null}
                   </span>
+                  <output className="text-slider-value" aria-live="off">
+                    {Math.round(draft.textScale * 100)}%
+                  </output>
                 </div>
               </FormRow>
               <FormRow label="Chat width" desc={WIDTH_NOTE[draft.chatWidth]}>
