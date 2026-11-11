@@ -2,9 +2,10 @@
 .settings-dialog .dialog-body {
   max-height: min(84dvh, 820px);
   overflow-y: auto;
-  /* Rows fade out at the bottom edge rather than being cut (as in the palette); the body's own
-     18px bottom padding keeps the last row clear of the fade. */
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+  /* Rows fade out at the bottom edge rather than being cut (as in the palette). The fade is taller than a
+     row, and the padding under the last row matches it, so a row is never cut through its text. */
+  padding-bottom: 40px;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
 }
 
 .settings-form {
