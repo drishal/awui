@@ -39,6 +39,7 @@
 //   "consult-fail"  a consultant whose run fails
 //   "consult-ask"   a consultant whose harness raises a confirm request
 //   "roomtwice"     a short answer naming the bot, so two addressed bots differ
+//   "roomwork"      a thought, a read and a command, then a reply with its own thinking (a run as a chat turn)
 //   "usagevary"     different token counts per model, and a null cost for fake/slow
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -855,6 +856,14 @@ class FakeLiveChat implements LiveChat {
   /** Board scenarios: the words live in the envelope's current-request section, never in the charter. */
   private async boardTurn(task: string, envelope: string, signal: AbortSignal): Promise<void> {
     const { name, handle, permitted } = boardIdentity(envelope);
+    if (/\broomwork\b/i.test(task)) {
+      // A run with work before its reply, so a room shows the chat's fold over the answer.
+      await this.think(`Looking at what ${name} was asked before answering.`, signal);
+      await this.call({ name: "read", args: { path: "README.md" }, output: "# Fake README\nhello" }, signal);
+      await this.call({ name: "bash", args: { command: "git log --oneline -3" }, output: "a1b2c3d first\nd4e5f6a second\n0a1b2c3 third" }, signal);
+      await this.reply(`${name} (@${handle}) read the README and the last three commits; nothing blocks the plan.`, signal);
+      return;
+    }
     if (/\broomtwice\b/i.test(task)) {
       await this.say(`Answer from ${name} (@${handle}) about: ${task.slice(0, 80)}`, signal);
       return;
