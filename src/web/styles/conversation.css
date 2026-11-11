@@ -1649,7 +1649,8 @@
   padding: 0 calc(max(0px, (100% - 8px - var(--chat-col)) / 2) + 20px);
   border: 0;
   border-bottom: 1px solid var(--hairline);
-  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  /* Nearly opaque: at 84% the row under the bar showed through the 13px text on a phone. */
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   color: var(--text-2);
