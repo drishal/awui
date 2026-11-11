@@ -113,6 +113,24 @@ The web UI, region by region. The terminal clients are in [In a terminal](termin
 
 TUI-only slash commands are not emulated. New, Resume, Rename, Compact, model, thinking, and tools are the web actions.
 
+## The headless CLI
+
+`awui run` drives the server that is already running, so a script, a cron job, or an editor hook can use the agents without a browser:
+
+```bash
+answer=$(awui run --wait "Run the tests and fix what fails")   # stdout is the answer; the chat id goes to stderr
+id=$(awui run --project ~/code/app "Add a test for parseEndpoint")
+awui send "$id" "Now do the same for parseCommand"
+awui wait "$id" --timeout 120
+awui chats --json
+```
+
+`--harness <id>` picks the agent (else the server's first available one, the web-only Awui chat surface last), `--project <path>` the project (else the current folder), and `--model <id>` the model. It is a thin client of the same JSON API the browser and atui use: it finds the server the way the desktop shell does (`$AWUI_URL`, else the port in `<state folder>/server.json`, else `127.0.0.1:4783`), needs no sign-in on this machine, never starts a server, and writes nothing to the state folder. The run is the server's, so it keeps going when the command exits.
+
+Without `--wait`, `run` prints the chat id and returns as soon as the harness accepted the prompt. With `--wait` it waits until the run settles (an hour at most) and prints the answer on stdout, with the chat id on stderr so `answer=$(awui run --wait "…")` takes the answer alone; `--json` prints one object instead, `{"chatId", "status", "answer", "error"?, "usage"?}`. `send` adds a prompt to a chat that is open there and returns once it was accepted; `wait` waits for that chat and prints its answer. `chats` lists the chats open on the server — one tab-separated line each (`chatId`, status, harness, title), or `--json` — and nothing that is only a session file on disk, since nothing can be sent to it without opening it first.
+
+Exit codes: **0** the run settled, **1** it failed or the server refused (the reason on stderr), **2** the command line was wrong, **3** the run had not settled when `--wait` or `wait` gave up — the run itself still goes on. `awui run --help` lists the flags.
+
 ## The Awui harness
 
 **The Awui harness** is a chat surface in the harness dropdown, web UI only (atui omits it). For reading, asking, and computing, never editing the project: it is a `pi` child with pi's four writing/executing tools denied (`--exclude-tools bash,edit,write,powershell`), so a chat there can read, search the web, and use read-only MCP servers, but cannot edit files or run shell commands. Two awui extensions give it the chat-surface extras: `render_html` publishes a page (a chart, table, or mockup) into the thread — it writes only to awui's own render store, never the workspace — and [`eval_python`](../extensions/eval-python.ts) runs a short snippet in a throwaway tmp dir (stateless, timeout-capped, output-bounded), so it can compute without touching the project. It keeps its own agent directory and per-project sessions under awui's state folder — never the user's `~/.pi/agent` — and declares no fork/rewind capability. Its sidebar shows a flat, dated chat history (Pinned, Today, Yesterday, each day this week, Older), Claude.ai-style, instead of projects; the project tree belongs to the coding harnesses. `Settings → Awui harness` edits the providers it can call (name, base URL, API kind, key — stored only in its own `models.json`, the key never shown back); the `litellm` provider is seeded from `~/.pi/agent/models.json` the first time and never overwritten after that.

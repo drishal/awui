@@ -60,6 +60,7 @@ src/server/
   clients.ts                the terminal clients behind the command line: `awui tui` (or the binary as `atui`) and `awui tern`
   clients-module.d.ts       the `awui:clients` module the binary's build bundles (the two clients' entry points)
   install-tui.ts            `awui install tui`: the `atui` symlink (the binary carries the client itself)
+  cli-run.ts                `awui run|send|wait|chats`: a thin client of a running server, found by server.json; no harness is started
 src/web/                    React + Vite client: App shell and streaming conversation; auxiliary dialogs lazy-load
   overview-stream.ts        One shared EventSource per browser tab, with fallback refresh of normal lists
   components/WorktreePicker.tsx and CompareDialog.tsx  Managed-workspace chooser and isolated multi-harness comparison

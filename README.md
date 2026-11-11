@@ -85,6 +85,7 @@ macOS and Windows desktop packages exist (`npm --prefix apps/desktop run dist:ma
 | [Install, desktop, service, Windows](docs/install.md) | the long install guide and autostart |
 | [Configuration](docs/configuration.md) | `config.yml`, environment, herdr |
 | [Using awui](docs/usage.md) | the interface, turn by turn |
+| [Headless CLI](docs/usage.md#the-headless-cli) | `awui run`, `send`, `wait`, `chats` from a script |
 | [In a terminal](docs/terminal.md) | `atui` and `awui tern` |
 | [Harnesses](docs/harnesses.md) | adding or fixing a harness |
 | [Architecture](docs/architecture.md) | how each agent is driven, adapters, approvals |

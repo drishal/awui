@@ -22,6 +22,7 @@ import { ENDPOINT_FILE } from "../shared/desktop.js";
 import { writeJson } from "./state-file.js";
 import { clientCommand, runClient } from "./clients.js";
 import { runDoctor } from "./doctor.js";
+import { runHeadlessCli } from "./cli-run.js";
 import { SessionMarks } from "./session-marks.js";
 import { TerminalManager } from "./terminal.js";
 import { Routines } from "./routines.js";
@@ -344,6 +345,10 @@ Usage:
   awui tui [options]     atui, awui in the terminal (also \`atui\`; awui tui --help)
   awui tern [options]    awui drawn natively in a Tern pane (also awui --tern; awui tern --help)
   awui doctor [--json]   Check the setup (config, harnesses, state folder, port) and print a report; exit 1 on a problem
+  awui run "<prompt>"    Start a chat on a running server and print its id (--wait prints the answer; run --help)
+  awui send <chatId> "<prompt>"  Send another prompt to a chat that is open there
+  awui wait <chatId>     Wait for that chat's run to settle and print its answer [--timeout <seconds>]
+  awui chats [--json]    List the chats open on the running server
   awui desktop [args]    The optional desktop app (Electron): attaches to a running server, or starts one
                          [--install-icon: add it to the application menu (~/.local/share/applications)]
   awui install tui       Put the \`atui\` command on the PATH (~/.local/bin/atui, a link to this awui)
@@ -399,6 +404,15 @@ if (client) {
   });
 } else if (args[0] === "doctor") {
   runDoctor(args.slice(1)).then(
+    (code) => process.exit(code),
+    (error: unknown) => {
+      console.error(`awui: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    },
+  );
+} else if (args[0] === "run" || args[0] === "send" || args[0] === "wait" || args[0] === "chats") {
+  // The headless CLI (cli-run.ts): a client of a server that is already running, so it starts no harness.
+  runHeadlessCli(args, { env: process.env, out: (line) => process.stdout.write(`${line}\n`), err: (line) => process.stderr.write(`${line}\n`) }).then(
     (code) => process.exit(code),
     (error: unknown) => {
       console.error(`awui: ${error instanceof Error ? error.message : String(error)}`);
