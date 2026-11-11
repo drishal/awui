@@ -195,6 +195,9 @@
 /* While an approval waits, its card is the column's one surface above the composer: the git row drops its
    bubble and reads as the status line it is, instead of a second bar stacked on the card. */
 .composer:has(.approval-card) .status-stack.is-base-only .git-row {
+  /* Shorter, and its icon on the card's 14px content edge, so it sits on the card as its caption, not loose above it. */
+  min-height: 24px;
+  padding: 0 14px;
   border: 0;
   background: none;
   border-radius: var(--r-control);
