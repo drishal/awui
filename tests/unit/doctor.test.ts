@@ -17,6 +17,7 @@ const healthy: DoctorInput = {
   portProbe: { kind: "free" },
   remote: { exposed: false, credentials: false },
   herdr: { enabled: false, socket: "/h.sock", exists: false },
+  orchestration: { enabled: true, maxChildrenPerChat: 4, maxDepth: 2, maxLiveTasks: 12, missingBridges: [] },
   windows: false,
   embedded: false,
 };
@@ -64,6 +65,17 @@ describe("doctor", () => {
     expect(by(checks, "Bun")).toMatchObject({ ok: true, detail: "not needed (the binary carries the terminal clients)" });
   });
 
+  it("reports the delegation surface, and warns when its bridges are missing", () => {
+    expect(by(evaluate(healthy), "Orchestration")).toMatchObject({ ok: true, detail: "on (max 4 children per chat, depth 2, 12 live tasks)" });
+    // Turned off in config.yml: a note, not a problem.
+    const off = by(evaluate({ ...healthy, orchestration: { ...healthy.orchestration, enabled: false } }), "Orchestration");
+    expect(off).toMatchObject({ ok: true, detail: "off (orchestration.enabled is false in config.yml)" });
+    // On but unloadable: the server is fine and no agent is given the tools, which is a warning.
+    const missing = by(evaluate({ ...healthy, orchestration: { ...healthy.orchestration, missingBridges: ["extensions/orchestrate.ts", "extensions/orchestrate-mcp.mjs"] } }), "Orchestration");
+    expect(missing.ok).toBe("warn");
+    expect(missing.detail).toContain("extensions/orchestrate.ts");
+    expect(render(evaluate({ ...healthy, orchestration: { ...healthy.orchestration, missingBridges: ["extensions/orchestrate.ts"] } }))).toContain("! Orchestration");
+  });
   it("reports a config error and never a secret", () => {
     const checks = evaluate({ ...healthy, configError: "config.yml: port must be a number" });
     expect(by(checks, "Config")).toMatchObject({ ok: false });

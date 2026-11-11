@@ -12,6 +12,7 @@ import { herdrSocketPath } from "./herdr.js";
 import { HarnessRegistry } from "./harness/registry.js";
 import { configDir, configEnv, herdrEnabled, readUserConfig, type UserConfig } from "./user-config.js";
 import { IS_WINDOWS } from "./platform-win.js";
+import { orchestrateExtension, orchestrateMcpServer } from "./harness/render-extension.js";
 import { Workspaces } from "./workspaces.js";
 import type { HarnessStatus } from "../shared/protocol.js";
 
@@ -42,6 +43,8 @@ export interface DoctorInput {
   portProbe: PortProbe;
   remote: { exposed: boolean; credentials: boolean };
   herdr: { enabled: boolean; socket: string; exists: boolean };
+  /** The delegation surface: its switch and caps, and the bridge files a chat's child would be given. */
+  orchestration: { enabled: boolean; maxChildrenPerChat: number; maxDepth: number; maxLiveTasks: number; missingBridges: string[] };
   /** Native Windows host: mode bits are not enforceable, so the state-folder mode is not a failure. */
   windows: boolean;
   /** This process is the compiled binary: the terminal clients are built in, so Bun is not needed for them. */
@@ -122,6 +125,13 @@ export function evaluate(i: DoctorInput): Check[] {
         : { name: "herdr", ok: "warn", detail: `enabled but no socket at ${i.herdr.socket}` },
     );
   }
+  // The delegation surface: a chat's child reaches it through two files awui loads into the
+  // harness (pi/omp's extension, or the MCP bridge), so one that cannot be found is a warning
+  // even though the server itself is fine.
+  const o = i.orchestration;
+  if (!o.enabled) out.push({ name: "Orchestration", ok: true, detail: "off (orchestration.enabled is false in config.yml)" });
+  else if (o.missingBridges.length > 0) out.push({ name: "Orchestration", ok: "warn", detail: `on, but ${o.missingBridges.join(" and ")} cannot be found, so no chat's agent gets the tools` });
+  else out.push({ name: "Orchestration", ok: true, detail: `on (max ${o.maxChildrenPerChat} children per chat, depth ${o.maxDepth}, ${o.maxLiveTasks} live tasks)` });
   return out;
 }
 
@@ -150,6 +160,18 @@ async function probePort(host: string, port: number): Promise<PortProbe> {
     if (code === "ECONNREFUSED") return { kind: "free" };
     return { kind: "other", detail: code ?? (error instanceof Error ? error.message : String(error)) };
   }
+}
+
+/**
+ * The two files a chat's child needs for the orchestration tools: pi/omp load `orchestrate.ts`
+ * with `-e`, and Claude Code, Codex, and DSH start `orchestrate-mcp.mjs` as an MCP server. A
+ * missing one is what the doctor reports: the feature is on, but no agent can reach it.
+ */
+function missingOrchestrationBridges(): string[] {
+  const missing: string[] = [];
+  if (orchestrateExtension() === null) missing.push("extensions/orchestrate.ts");
+  if (orchestrateMcpServer() === null) missing.push("extensions/orchestrate-mcp.mjs");
+  return missing;
 }
 
 function bunVersion(): string | null {
@@ -206,6 +228,7 @@ export async function gather(env: NodeJS.ProcessEnv = process.env): Promise<Doct
     portProbe: await probePort(config.host, config.port),
     remote: { exposed, credentials: config.login !== null || existsSync(config.credentialsFile) },
     herdr: { enabled: herdrEnabled(userConfig, env), socket, exists: existsSync(socket) },
+    orchestration: { ...config.orchestration, missingBridges: missingOrchestrationBridges() },
     windows: IS_WINDOWS,
     embedded: isEmbedded,
   };

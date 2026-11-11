@@ -51,6 +51,11 @@ because its MCP tools need an allow rule to run without a prompt; Codex and DSH 
 server alone. Every injected name comes from the catalogue, so an allow list cannot drift
 from what is served.
 
+`awui doctor` prints one line for all of it:
+`✓ Orchestration: on (max 4 children per chat, depth 2, 12 live tasks)`, `!` when the surface is
+on but `extensions/orchestrate.ts` or `extensions/orchestrate-mcp.mjs` cannot be found (so no
+agent would be given the tools), and a plain `off` when config.yml has turned it off.
+
 ## Endpoints
 
 Both are mounted before `requireAuth` (like `/api/render`): they authenticate by the
