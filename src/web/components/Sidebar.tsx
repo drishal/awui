@@ -796,9 +796,9 @@ function FocusedHeader({
 
 /**
  * The focused project (Hermes Desktop's one-folder view): a header that names it (and switches
- * project), an "All projects" row that goes back, then its sessions of the selected harness in
- * date sections. The sections reuse the unscoped list's row (session-sublist, history-group), so
- * it reads the same; the rows keep their open, mark, and drag moves.
+ * project), a back button to every folder, then its sessions of the selected harness in date
+ * sections. The sections reuse the unscoped list's row (session-sublist, history-group), so it
+ * reads the same; the rows keep their open, mark, and drag moves.
  */
 function FocusedProjectView({
   focused,
@@ -913,9 +913,6 @@ function FocusedProjectView({
   return (
     <li className="project-group is-open is-current focus-group">
       <FocusedHeader workspace={workspace} {...(checkout ? { checkout } : {})} total={total} canStartChat={canStartChat} onNewChat={onNewChat} onShowAll={onShowAll} onFocus={onFocus} scope={scope} />
-      <button type="button" className="show-more all-projects" onClick={onShowAll}>
-        <IconChevronLeft size={13} /> All projects
-      </button>
       <ul className="session-sublist">
         {sections.length === 0 ? <li className="sidebar-note">No past sessions here yet</li> : rows}
         {hidden > 0 ? (

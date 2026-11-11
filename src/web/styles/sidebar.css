@@ -718,16 +718,6 @@
   text-align: left;
 }
 
-/* The back row returns to every folder: a quiet line above the sessions. */
-button.all-projects {
-  color: var(--text-2);
-  font-weight: 500;
-  min-height: 28px;
-}
-
-button.all-projects .group-count {
-  margin-left: auto;
-}
 .pinned-group .session-sublist {
   border-left-color: transparent;
 }
