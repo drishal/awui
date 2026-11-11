@@ -104,6 +104,36 @@ Not a UI change: two reviewers saw a focus ring on Approve in light and none in 
 
 Not taken: DeepSeek's suggestion to keep the model chip visible in a phone's folded composer (a layout change to the phone composer, not polish), and to set the status bar's project apart with a folder glyph.
 
+### Board rooms (`145088d`, `aebf41d`, `e7ce965`)
+
+Requested after round 6: rooms looked unlike the rest of the app. Tool calls were drawn as raw rows, a bot's reply was mixed in with its thinking, and the bubbles followed none of the chat's tokens.
+
+- **A bot's run is a chat turn.** `RunTranscript` (split out of `TurnView` as `TurnBody`) draws a run's items with `buildTurns`: the chat's work fold with its kinds and "Worked for…" label, then the answer as Markdown below it. Thinking and calls stay inside the fold, so the reply stands on its own.
+- **The speaker line** is the bot's name and handle, with the harness's name in the meta's grey. The second dot is gone. A bot's accent defaults to its harness colour, so an unset accent matches its sidebar mark.
+- **The user's message** is the chat's prompt bubble (`--r-xl`), with the time and its @mentions (or "to the lead") under it where a chat puts a prompt's time.
+- **Notices** use the chat's notice row: an icon and a tinted line, not a filled band.
+- **Consultations** stay a fold titled "A asked B". The requester's answer after it no longer gets an extra "synthesis" frame.
+- Verified on the fake harness's new `roomwork` scenario and on a real room of DeepSeek V4.1 Flash and Muse Spark bots through pi, in dark, light and on a phone. Board e2e 7/7; full e2e 225 passed. Frames: `.todo/ui-polish/rooms/` (`room1` fake, `real2`/`real3` real models).
+
+### Tern parity
+
+The Tern client (`awui tern`) draws the same chat natively from one stylesheet (`src/tern/look.ts`) and the web UI's pure modules, so the polish above is carried over where Tern lets a program shape it. This list tracks each web change against Tern.
+
+Ported:
+- **Radius scale:** chips, start-screen picks, answer buttons and the prompt's action icons are 8 px (`--r-control`), not pills. Every dock card (todos, queue, request, composer) shares the 16 px panel radius. The prompt bubble is 14 px (`--r-xl`). Send and dots stay round.
+- **Quiet harness labels:** the header's harness is a colour dot and its name, with no tinted pill (the web header's tag). The composer's harness chip is a chip like its neighbours, marked by a dot instead of a tinted fill.
+- **Bare tool glyphs:** the card head's kinds and each row's icon lose their discs.
+- **Approval:** Deny is a bordered neutral button beside the solid Allow, not red text. (Tern's own ask panel, used for plain approvals, already drew it neutral.)
+- **Git row:** a caption under the dock cards, with no bubble of its own.
+- **Titles without Markdown markers:** the header, window title, tabs, session sheet, recent list and notices use `plainTitle`.
+- **Thinking level capitalised:** the chip and status strip use `levelTitle` ("Low", "High").
+- **Status strip:** shows the project's folder name, not a home-relative path cut off mid-segment.
+- **Answered approvals in a card:** keep the rows' inset instead of touching the card's edge.
+
+Not applicable, because Tern owns them: fonts and heading tracking (Tern's `--sans`), spacing between blocks, the diff's colours, spinners and the working ring, scrollbars, dialogs, the palette and settings (Tern's sheets and its own settings), and the sidebar (Tern has none). Board rooms are web-only for now, so the room redesign has no Tern counterpart yet. When rooms come to Tern, the room is already drawn with `buildTurns` and the chat's fold, so the same view functions apply.
+
+Frames: `.todo/ui-polish/tern/` holds `before-*` and `after-*` for a tool-heavy chat and a pending approval, dark and light, shot in a headless `tern serve`.
+
 ## Council review
 
 Members: Claude Opus 5.5 (Claude Pro), DeepSeek V4.1 Flash (OpenCode Go), and a third seat held by Grok 4.7 (xAI) in rounds 1–2. In round 3 Grok failed three times on xAI capacity, and the seat moved to Muse Spark 1.3 (OpenCode Go) at the user's request, since the xAI weekly limit was close. The repo is public and the frames are synthetic, so Muse Spark's training on prompts exposes nothing private. Each member scored the same screenshots (desktop and phone, dark and light) on their own, read-only.
