@@ -266,6 +266,7 @@
 .chat-sub .badge-room {
   padding: 0;
   background: none;
+  color: var(--text-2);
 }
 
 /* ---- transcript ---- */
@@ -342,7 +343,7 @@
 }
 
 .room-mention {
-  color: var(--text-2);
+  color: var(--muted-text);
   font-weight: 500;
 }
 
@@ -408,6 +409,10 @@
   font-size: 12px;
 }
 
+.bot-detail + .bot-settings::before {
+  content: "·";
+}
+
 .bot-settings > * + *::before {
   content: "·";
   margin-right: 6px;
@@ -460,13 +465,6 @@
 /* The requester's answer after a consultation starts clear of the fold's rail, under its own speaker line. */
 .bot-run-fold + .bot-run-body {
   padding-top: 12px;
-}
-
-/* An earlier turn's lone copy glyph waits for hover, as an earlier chat answer's row does. */
-@media (hover: hover) {
-  .room-turn:not(:last-child) .answer-actions {
-    opacity: 0;
-  }
 }
 
 .bot-run:hover .answer-actions,
