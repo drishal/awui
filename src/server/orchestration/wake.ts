@@ -45,5 +45,8 @@ export function wakeReport(tasks: StoredTask[]): string {
     budget -= block.length + 2;
     if (budget <= 0) break;
   }
+  // A task left out is marked delivered with the rest, so the message must say it exists.
+  const left = tasks.length - blocks.length;
+  if (left > 0) blocks.push(`[${left} more finished task${left === 1 ? "" : "s"} did not fit here: ask task_status for them]`);
   return blocks.join("\n\n");
 }
