@@ -1,12 +1,12 @@
 // The orchestration surface: one token per live chat (minted with the spawn, 12 hours
 // long, never for a read-only harness or a board-owned chat), the tool catalogue both
 // bridges fetch, and the durable delegation behind it — a child chat with lineage, a
-// record in the state folder, the settle watcher, and the caps. thread_send and
-// thread_read ship with the delivery step and still answer unknown_tool.
+// record in the state folder, the settle watcher, the caps, and thread_read: a bounded page of the
+// child's chat, from the live chat or from the harness's own session file.
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import type { ChatSnapshot, DelegatedTaskView, WorkspaceInfo } from "../../src/shared/protocol.js";
+import type { ChatItem, ChatSnapshot, DelegatedTaskView, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
 import { makeTestApp, openSse, signedIn, tempDir, type TestApp } from "../helpers/app.js";
@@ -290,3 +290,62 @@ describe("delegated tasks", () => {
     expect(parentSnap.delegated).toBeUndefined();
   });
 });
+
+describe("thread_read", () => {
+  it("reads a child's transcript just described, newest last and in pages", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "tool read the readme" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+
+    const read = await call(agent, token, "thread_read", { taskId: started.taskId });
+    expect(read.status).toBe(200);
+    const page = read.body.data as { task: DelegatedTaskView; items: ChatItem[]; truncated: boolean };
+    expect(page.task).toMatchObject({ id: started.taskId, outcome: "done" });
+    // Reading order: the prompt first, then the call the child made, then its answer.
+    expect(page.items[0]?.kind).toBe("user");
+    expect(page.items.some((item) => item.kind === "tool")).toBe(true);
+    expect(page.items[page.items.length - 1]?.kind).toBe("assistant");
+    expect(page.truncated).toBe(false);
+    expect(read.body.text).toContain(`Task ${started.taskId}`);
+    expect(read.body.text).toContain("Tool read");
+
+    // Two items at a time: the older ones are left out, and `before` walks back through them.
+    const newest = await call(agent, token, "thread_read", { taskId: started.taskId, limit: 2 });
+    const newestPage = newest.body.data as { items: ChatItem[]; truncated: boolean };
+    expect(newestPage.items).toHaveLength(2);
+    expect(newestPage.truncated).toBe(true);
+    expect(newestPage.items.map((item) => item.id)).toEqual(page.items.slice(-2).map((item) => item.id));
+    const older = await call(agent, token, "thread_read", { taskId: started.taskId, limit: 2, before: 2 });
+    const olderPage = older.body.data as { items: ChatItem[]; truncated: boolean };
+    expect(olderPage.items.map((item) => item.id)).toEqual(page.items.slice(-4, -2).map((item) => item.id));
+    // Once the first page reaches the start, there is nothing more to ask for.
+    const whole = await call(agent, token, "thread_read", { taskId: started.taskId, limit: 200 });
+    expect((whole.body.data as { truncated: boolean }).truncated).toBe(false);
+  });
+
+  it("reads a closed child's chat from the harness's file, and says so when there is none", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "explain the build" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    const child = app.manager.get(started.childChatId as string);
+    const session = child.sessionId;
+    await agent.post(`/api/chats/${child.chatId}/dispose`).send({});
+
+    // The chat is gone, but the fake keeps the session it wrote: the read comes from there.
+    const closed = await call(agent, token, "thread_read", { taskId: started.taskId });
+    expect(closed.status).toBe(200);
+    expect(closed.body.text).toContain("Echo: explain the build");
+    expect((closed.body.data as { items: ChatItem[] }).items.length).toBeGreaterThan(0);
+
+    // No file either: the record's own answer is all a parent can be given, and it says so.
+    if (session) app.fake.sessions.delete(session.slice("fake:".length));
+    const missing = await call(agent, token, "thread_read", { taskId: started.taskId });
+    expect(missing.status).toBe(200);
+    const data = missing.body.data as { items: ChatItem[]; truncated: boolean };
+    expect(data.items).toEqual([]);
+    expect(data.truncated).toBe(true);
+    expect(missing.body.text).toContain("cannot be read");
+    expect(missing.body.text).toContain("Echo: explain the build");
+  });
+});
+

@@ -6,9 +6,9 @@ surface is a small fixed set of tools, identical for every harness, served by th
 process that runs the chats.
 
 This page describes the surface, its limits, and its error codes. Status: the token
-surface, the catalogue, `list_profiles`, and delegation itself (start, watch, wait, cancel)
-are live; `thread_send` and `thread_read` are defined and answer `unknown_tool` until the
-finish-delivery step, and the wake ledger is recorded but not yet delivered.
+surface, the catalogue, `list_profiles`, delegation itself (start, watch, wait, cancel), and
+`thread_read` are live; `thread_send` and the delivery of a finished child's report are later
+steps.
 
 ## How a chat's agent reaches it
 
@@ -73,7 +73,7 @@ line the model reads, composed on the server so the wording exists once.
 | `task_status` | `taskId` (omitted: every task this chat started) | yes |
 | `task_cancel` | `taskId` (idempotent) | yes |
 | `thread_send` | `taskId`, `text` | not yet |
-| `thread_read` | `taskId`, `before`, `limit` (≤200) | not yet |
+| `thread_read` | `taskId`, `before`, `limit` (≤200, default 40) | yes |
 | `thread_wait` | `taskIds` (1–4), `waitMs` (default 55 000, max 110 000) | yes |
 | `list_profiles` | `workspaceId` | yes |
 
@@ -81,6 +81,18 @@ line the model reads, composed on the server so the wording exists once.
 harness at its default model — `{ id, source, name, harnessId, harnessName, available,
 model, provider, thinkingLevel, permissionMode, role, note }` — with how many delegation
 levels and tasks are left.
+
+## Reading a child's chat
+
+`thread_read` answers with a page of the child's own chat: `{ task, items, truncated }`, its items
+oldest first, plus the same page as the text a model reads. The page counts from the newest item
+backwards — `limit` (default 40, at most 200) caps it, `before` skips that many of the newest — so a
+parent pages back through a long run. Each item's text goes through the same 16 KB bound the server
+puts on tool output, image references are dropped (the image count stays), and the page stops before
+the rendered text passes 24 000 characters; `truncated` says more is left, and the text names the
+`before` value that reads it. A child chat that was closed or reaped is read from the harness's own
+session file when the harness can read one; otherwise the answer carries what the task record holds
+and says the transcript needs the chat reopened.
 
 ## A delegation
 

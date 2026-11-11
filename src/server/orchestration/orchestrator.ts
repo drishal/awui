@@ -16,6 +16,7 @@ import type { ChatManager } from "../chats/manager.js";
 import type { HarnessRegistry } from "../harness/registry.js";
 import type { HarnessAdapter } from "../harness/types.js";
 import type { Workspaces } from "../workspaces.js";
+import { readPage } from "./read.js";
 import { TaskStore } from "./store.js";
 import {
   DEFAULT_WAIT_MS,
@@ -29,6 +30,7 @@ import {
   MAX_TASKS_PER_CHAT,
   taskCancelSchema,
   taskStatusSchema,
+  threadReadSchema,
   threadWaitSchema,
   type ToolContext,
   type ToolOutput,
@@ -80,6 +82,8 @@ export class Orchestrator {
         return this.cancel(caller, taskCancelSchema.parse(args));
       case "thread_wait":
         return this.wait(caller, threadWaitSchema.parse(args));
+      case "thread_read":
+        return this.threadRead(caller, threadReadSchema.parse(args));
       default:
         throw new ChatError(400, "unknown_tool", `${name} is not wired on this server yet`);
     }
@@ -142,6 +146,7 @@ export class Orchestrator {
     await this.store.write(this.tasks);
   }
 
+
   // ---- the tools ----------------------------------------------------------
 
   private async listProfiles(caller: Chat, args: { workspaceId?: string }): Promise<ToolOutput> {
@@ -161,6 +166,7 @@ export class Orchestrator {
 
   private async cancel(caller: Chat, args: { taskId: string }): Promise<ToolOutput> {
     const task = this.ownTask(caller, args.taskId);
+    // Idempotent: a finished task is returned as it stands.
     // Idempotent: a finished task is returned as it stands.
     if (task.state === "result_available") return { text: `Task ${task.id} already finished (${task.outcome}).`, data: { task: viewOf(task) } };
     task.cancelRequestedAt = Date.now();
@@ -183,6 +189,25 @@ export class Orchestrator {
       text: this.describe(tasks, pendingRequest),
       data: { tasks: tasks.map(viewOf), ...(pendingRequest ? { pendingRequest } : {}) },
     };
+  }
+
+
+  /** The child's chat as the parent reads it: a bounded page of what it said and did. */
+  private async threadRead(caller: Chat, args: { taskId: string; before?: number; limit?: number }): Promise<ToolOutput> {
+    const task = this.ownTask(caller, args.taskId);
+    const items = await this.childItems(task);
+    const head = `Task ${task.id} · ${task.state}${task.outcome ? ` (${task.outcome})` : ""} · ${task.harnessId} — "${task.title}"`;
+    if (items === null) {
+      // The chat is gone and its harness keeps no file to read: what the record holds is all there is.
+      const result = task.result?.finalText ? `\n\nIts last answer:\n${task.result.finalText}` : "";
+      const error = task.result?.error ? `\n\nIts error: ${task.result.error}` : "";
+      return {
+        text: `${head}\n\nThis chat is closed and its transcript cannot be read without opening it. Resume the session to see it.${result}${error}`,
+        data: { task: viewOf(task), items: [], truncated: true },
+      };
+    }
+    const page = readPage(items, args);
+    return { text: `${head}\n\n${page.text}`, data: { task: viewOf(task), items: page.items, truncated: page.truncated } };
   }
 
   /** The task an earlier call with this request id already started, when there is one. */
@@ -435,6 +460,7 @@ export class Orchestrator {
     await this.finish(parent, "done", null);
   }
 
+
   /** Stop one task's child chat: abort, then close it when nobody is watching, then mark it cancelled. */
   private async stopTask(task: StoredTask): Promise<boolean> {
     // Our own watcher counts as a viewer, so it goes first: the count below is the user's.
@@ -563,6 +589,22 @@ export class Orchestrator {
     return this.deps.chats.list().find((chat) => chat.chatId === task.childChatId);
   }
 
+  /**
+   * A child's items: the live chat's when it is open, else the harness's own session file (the way a
+   * resumed chat shows itself before its harness is up, read only, never started). Null when the
+   * chat is gone and its harness keeps nothing readable, which is all a caller can be told.
+   */
+  private async childItems(task: StoredTask): Promise<ChatItem[] | null> {
+    const child = this.childChat(task);
+    if (child && child.status !== "disposed") return child.snapshot().items;
+    const session = task.childSessionId;
+    const prefix = `${task.harnessId}:`;
+    const adapter = this.deps.registry.get(task.harnessId);
+    if (session === null || !session.startsWith(prefix) || !adapter?.readTranscript) return null;
+    const read = await adapter.readTranscript({ cwd: task.workspacePath, nativeId: session.slice(prefix.length) }).catch(() => null);
+    return read?.items ?? null;
+  }
+
   private stopWatching(taskId: string): void {
     this.watchers.get(taskId)?.();
     this.watchers.delete(taskId);
@@ -661,6 +703,7 @@ export class Orchestrator {
     return [head, ...body].join("\n");
   }
 }
+
 
 /** "4m12s", "38s", "1h04m": how long a task has run, short enough for a status row. */
 function formatElapsed(ms: number): string {
