@@ -36,6 +36,13 @@
   color: var(--muted-text);
 }
 
+/* The harness tag on the header's second line keeps its colour dot but not its chip: a filled pill there
+   competes with the tab highlighted above it. */
+.chat-sub .badge-harness {
+  padding: 0;
+  background: none;
+}
+
 .chat-path {
   max-width: 30ch;
   overflow: hidden;
