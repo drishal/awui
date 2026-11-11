@@ -620,7 +620,7 @@ export function createApp(deps: AppDeps) {
 
   // Usage across sessions (usage-report.ts): the sidebar's sessions' calls, read from the harnesses' files.
   app.get("/api/usage", async (req, res) => {
-    const { days, tz } = usageReportSchema.parse(req.query);
+    const { days, tz, refresh } = usageReportSchema.parse(req.query);
     const overview = await listSessions(null);
     const byId = new Map(overview.workspaces.map((w) => [w.id, w]));
     const unreadable = new Set<string>();
@@ -634,7 +634,7 @@ export function createApp(deps: AppDeps) {
       }
       return { session, read: () => adapter.readUsage?.({ cwd: ws.path, nativeId: session.id.slice(prefix.length) }) ?? Promise.resolve(null) };
     });
-    res.json(await usageReader.report(targets, { days, tz, workspaces: overview.workspaces, unreadable: [...unreadable] }));
+    res.json(await usageReader.report(targets, { days, tz, workspaces: overview.workspaces, unreadable: [...unreadable], refresh: refresh === "1" }));
   });
 
   // Saved prompts (saved-prompts.ts): every device and atui share them.
@@ -981,8 +981,8 @@ export function createApp(deps: AppDeps) {
     res.json({ notes: notifier.since(raw ?? now - 120_000), now });
   });
 
-  app.get("/api/limits", async (_req, res) => {
-    res.json(await limits.get());
+  app.get("/api/limits", async (req, res) => {
+    res.json(await limits.get(req.query.refresh === "1"));
   });
 
   app.post("/api/sessions/marks", async (req, res) => {

@@ -10,7 +10,7 @@ import type { HarnessStatus, ProjectSession, UsageLimits, UsageReport, UsageTota
 import { api, errorText } from "../api.js";
 import { harnessColor } from "../harness-colors.js";
 import { heatMonths, heatmapCells, heatStep, type HeatMetric } from "../heatmap.js";
-import { Spinner } from "../icons.js";
+import { IconRefresh, Spinner } from "../icons.js";
 import { ago } from "../turns.js";
 import { cacheShare, dayBars, dayLabels, dollars, shortTokens, tokensOf } from "../usage.js";
 import { Dialog } from "./Dialog.js";
@@ -140,11 +140,13 @@ function Heatmap({ byDay }: { byDay: UsageReport["byDay"] }) {
 export function UsageDialog({
   harnesses,
   limits,
+  onRefresh,
   onOpenSession,
   onClose,
 }: {
   harnesses: HarnessStatus[];
   limits: UsageLimits | null;
+  onRefresh: () => Promise<void>;
   onOpenSession: (s: ProjectSession, ws: WorkspaceInfo | undefined) => void;
   onClose: () => void;
 }) {
@@ -155,10 +157,15 @@ export function UsageDialog({
   /** The range switch's row, for the sliding pill. */
   const rangesRef = useRef<HTMLDivElement>(null);
 
+  /** Token reports refresh when the range changes; explicit refreshes increment this. */
+  const [refreshed, setRefreshed] = useState(0);
+
   useEffect(() => {
     let live = true;
     setBusy(true);
-    api<UsageReport>(`/api/usage?days=${days}&tz=${new Date().getTimezoneOffset()}`).then(
+    const report = api<UsageReport>(`/api/usage?days=${days}&tz=${new Date().getTimezoneOffset()}${refreshed > 0 ? "&refresh=1" : ""}`);
+    const read = refreshed > 0 ? Promise.all([onRefresh(), report]).then(([, r]) => r) : report;
+    read.then(
       (r) => {
         if (!live) return;
         setReport(r);
@@ -174,7 +181,7 @@ export function UsageDialog({
     return () => {
       live = false;
     };
-  }, [days]);
+  }, [days, refreshed, onRefresh]);
 
   const name = (id: string) => harnesses.find((h) => h.id === id)?.displayName ?? id;
   const bars = useMemo(() => (report ? dayBars(report) : []), [report]);
@@ -198,6 +205,16 @@ export function UsageDialog({
             {/* The chosen selection's pill glides to it (SlidingIndicator). */}
             <SlidingIndicator target={rangesRef} active={RANGES.indexOf(days)} of="button" className="segmented-pill" />
           </div>
+          <button
+            type="button"
+            className="icon-btn usage-refresh"
+            aria-label="Refresh usage"
+            title="Refresh plan limits and usage"
+            disabled={busy}
+            onClick={() => setRefreshed((n) => n + 1)}
+          >
+            <IconRefresh size={14} />
+          </button>
           {busy ? (
             <span className="usage-busy muted">
               <Spinner size={12} /> Reading sessions…

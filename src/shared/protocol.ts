@@ -817,6 +817,8 @@ export interface ProjectSearch {
 export const usageReportSchema = z.object({
   days: z.coerce.number().int().min(1).max(365).default(30),
   tz: z.coerce.number().int().min(-840).max(840).default(0),
+  /** "1": bypass the report's session cache (the panel's Refresh). */
+  refresh: z.enum(["0", "1"]).default("0"),
 });
 
 /** Tokens and cost over some calls. */

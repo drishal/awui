@@ -43,10 +43,10 @@ export class Limits {
     void this.poll();
   }
 
-  async get(): Promise<UsageLimits> {
+  /** Ordinary reads keep a current answer at once and refresh a stale one behind them; `refresh` waits for current answers. */
+  async get(refresh = false): Promise<UsageLimits> {
     if (!this.polled) await this.poll();
-    // A stale reading is served at once while a fresh one is read behind it: the meter
-    // refreshes every few minutes, and each of those used to wait out the whole poll.
+    else if (refresh) await this.poll();
     else if (Date.now() - this.polled.at > POLL_MS) void this.poll();
     const polled = this.polled ?? { accounts: [], errors: [] };
     const byId = new Map<string, LimitAccount>();

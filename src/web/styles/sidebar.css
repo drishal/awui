@@ -112,26 +112,6 @@
   min-height: 0;
 }
 
-/* Usage limits (sidebar footer): folded to one line with the fullest window. */
-/* The fullest limit, in the sidebar's Usage row. */
-.limits-top {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.limits-top.is-warn {
-  color: var(--warn);
-}
-
-.limits-top.is-full {
-  color: var(--danger);
-}
-
 /* The Usage panel's limits: a card per account. */
 .limits-grid {
   display: grid;

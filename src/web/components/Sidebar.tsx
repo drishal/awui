@@ -977,7 +977,7 @@ export function Sidebar(props: {
   onSettings: () => void;
   /** Drag handle on the right edge (wide screens). */
   resizer?: React.ReactNode;
-  /** Under the session list: the usage limits meter. */
+  /** Under the session list: the Usage panel's entry point. */
   footer?: React.ReactNode;
   /** Above the sessions on a phone: the open tabs (the tab strip is hidden there). */
   tabs?: React.ReactNode;

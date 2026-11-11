@@ -173,9 +173,10 @@ test("Usage shows the plan limits, then adds up the calls by day, harness, and m
   await signInAndOpen(page);
   await newChat(page);
   await sendAndWait(page, "spend some tokens on the usage report");
-  // One row in the sidebar: Usage, with the fullest limit.
-  const row = page.getByRole("button", { name: /^Usage/ });
-  await expect(row).toContainText("Claude 7 days · 86%");
+  // One row in the sidebar: Usage opens every subscription's limits, not one misleading summary.
+  const row = page.getByRole("button", { name: "Usage", exact: true });
+  await expect(row).toHaveText("Usage");
+  await expect(page.locator(".limits-top")).toHaveCount(0);
   await row.click();
   const usage = page.getByRole("dialog", { name: "Usage" });
   const limits = usage.getByRole("region", { name: "Plan limits" });
@@ -183,9 +184,23 @@ test("Usage shows the plan limits, then adds up the calls by day, harness, and m
   await expect(limits.getByRole("meter")).toHaveCount(4);
   await expect(limits.locator(".limits-account").nth(1)).toContainText("SuperGrok Weekly Credits");
   await expect(limits.locator(".limits-account").nth(1)).toContainText("GrokChat (Weekly)");
-  await expect(usage.locator(".usage-card").first()).toContainText(/Tokens\s*[\d.]+k?/);
+  await usage.getByRole("button", { name: "7 days" }).click();
+  const refresh = usage.getByRole("button", { name: "Refresh usage", exact: true });
+  await expect(refresh).toBeVisible();
+  await expect(refresh).toBeEnabled();
+  await expect(usage.getByRole("region", { name: "Tokens by day" }).locator(".usage-day")).toHaveCount(7);
+  await expect(refresh).toBeEnabled();
+  await Promise.all([
+    page.waitForRequest((r) => new URL(r.url()).pathname === "/api/limits" && new URL(r.url()).searchParams.get("refresh") === "1"),
+    page.waitForRequest((r) => new URL(r.url()).pathname === "/api/usage" && new URL(r.url()).searchParams.get("refresh") === "1"),
+    refresh.click(),
+  ]);
+  await expect(refresh).toBeEnabled();
+  await usage.getByRole("button", { name: "30 days" }).click();
   await expect(usage.getByRole("region", { name: "Tokens by day" }).locator(".usage-day")).toHaveCount(30);
   await usage.getByRole("button", { name: "7 days" }).click();
+  await expect(usage.getByRole("region", { name: "Tokens by day" }).locator(".usage-day")).toHaveCount(7);
+  await expect(usage.locator(".usage-card").first()).toContainText(/Tokens\s*[\d.]+k?/);
   await expect(usage.getByRole("region", { name: "Tokens by day" }).locator(".usage-day")).toHaveCount(7);
   await expect(usage.getByRole("region", { name: "By harness" })).toContainText("Fake");
   await expect(usage.getByRole("region", { name: "By model" })).toContainText("echo");

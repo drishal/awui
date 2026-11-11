@@ -1,20 +1,9 @@
 // Subscription limits (Claude Code's five-hour and weekly windows, every
-// account omp is signed in to), in two places: one line in the sidebar's Usage
-// row, the fullest window, and a card per account at the top of the Usage
+// account omp is signed in to): a card per account at the top of the Usage
 // panel, a bar per window with when it resets.
 import type { UsageLimits } from "../../shared/protocol.js";
-import { accountName, level, percent, resetsIn, tightest } from "../limits.js";
+import { accountName, level, percent, resetsIn } from "../limits.js";
 import { dotted } from "./Dot.js";
-
-/** The fullest window in one line ("Claude 7 days · 86%"), coloured by how full; null with no limits. */
-export function LimitsSummary({ limits }: { limits: UsageLimits | null }) {
-  const top = limits ? tightest(limits.accounts) : null;
-  if (!limits || !top) return null;
-  const anyLimited = limits.accounts.some((a) => a.limited);
-  return (
-    <span className={`limits-top is-${level(top.window.used, anyLimited)}`}>{anyLimited ? "Limited" : dotted([`${accountName(top.account)} ${top.window.label}`, percent(top.window.used)])}</span>
-  );
-}
 
 /** Every account's windows, a card each. */
 export function LimitsPanel({ limits }: { limits: UsageLimits | null }) {

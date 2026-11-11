@@ -44,6 +44,13 @@
   gap: 12px;
 }
 
+.usage-refresh {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+
 .usage-busy {
   display: inline-flex;
   align-items: center;

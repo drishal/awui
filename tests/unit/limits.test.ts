@@ -4,7 +4,7 @@ import { HarnessRegistry } from "../../src/server/harness/registry.js";
 import type { HarnessAdapter } from "../../src/server/harness/types.js";
 import { Limits } from "../../src/server/limits.js";
 import type { LimitAccount } from "../../src/shared/protocol.js";
-import { level, resetsIn, tightest } from "../../src/web/limits.js";
+import { level, resetsIn } from "../../src/web/limits.js";
 
 // As Claude Code 2.x prints it on a run (stream-json).
 const claudeInfo = {
@@ -79,9 +79,7 @@ describe("subscription limits", () => {
     expect(xai?.windows.map((w) => w.label)).toEqual(["SuperGrok Weekly Credits", "GrokChat (Weekly)", "Monthly"]);
   });
 
-  it("picks the fullest window, grades it, and says when it resets", () => {
-    const top = tightest([...ompLimits(ompJson), claudeLimits(claudeInfo)]);
-    expect([top?.account.id, top?.window.label]).toEqual(["claude", "7 days"]);
+  it("grades a window by how full it is and says when it resets", () => {
     expect([level(0.5), level(0.75), level(0.95), level(0.1, true)]).toEqual(["ok", "warn", "full", "full"]);
     const now = Date.UTC(2026, 9, 7, 12);
     expect(resetsIn(now + 40 * 60_000, now)).toBe("in 40m");
@@ -121,15 +119,16 @@ describe("subscription limits", () => {
       registry.isAvailable = () => true;
       const limits = Limits.inMemory(registry);
       expect((await limits.get()).accounts[0]?.windows[0]?.used).toBe(0.1);
-      // Past the poll interval, with the next poll slow: the old reading comes back without waiting for it.
-      vi.setSystemTime(Date.now() + 61_000);
       reading = 0.2;
+      expect((await limits.get(true)).accounts[0]?.windows[0]?.used).toBe(0.2);
+      vi.setSystemTime(Date.now() + 61_000);
       slow = true;
-      expect((await limits.get()).accounts[0]?.windows[0]?.used).toBe(0.1);
+      expect((await limits.get()).accounts[0]?.windows[0]?.used).toBe(0.2);
+      reading = 0.3;
       slow = false;
       (release as (() => void) | null)?.();
       await vi.advanceTimersByTimeAsync(0);
-      expect((await limits.get()).accounts[0]?.windows[0]?.used).toBe(0.2);
+      expect((await limits.get()).accounts[0]?.windows[0]?.used).toBe(0.3);
     } finally {
       vi.useRealTimers();
     }

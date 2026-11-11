@@ -1,5 +1,5 @@
-// Subscription limits in words and numbers: whose account, the fullest window, how full, when it
-// resets. Pure, with no React, so the web sidebar meter (limits.ts re-exports these) and the
+// Subscription limits in words and numbers: whose account, how full each window is, and when it
+// resets. Pure, with no React, so the web Usage panel (limits.ts re-exports these) and the
 // terminal clients (the Tern client's Usage screen) word a limit the same way.
 import type { LimitAccount, LimitWindow } from "../shared/protocol.js";
 
@@ -15,18 +15,6 @@ const PROVIDERS: Record<string, string> = {
 export function accountName(a: LimitAccount): string {
   const provider = PROVIDERS[a.provider] ?? a.provider;
   return a.source === "Claude Code" ? "Claude" : provider;
-}
-
-/** The fullest window: what the collapsed meter shows. */
-export function tightest(accounts: LimitAccount[]): { account: LimitAccount; window: LimitWindow } | null {
-  let best: { account: LimitAccount; window: LimitWindow } | null = null;
-  for (const account of accounts) {
-    for (const window of account.windows) {
-      if (window.used === null) continue;
-      if (!best || window.used > (best.window.used ?? 0)) best = { account, window };
-    }
-  }
-  return best;
 }
 
 export function level(used: number | null, limited = false): "ok" | "warn" | "full" {

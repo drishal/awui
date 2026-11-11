@@ -52,7 +52,6 @@ import { Dialog } from "./components/Dialog.js";
 import { Composer, releasePastes } from "./components/Composer.js";
 import { Conversation } from "./components/Conversation.js";
 import { UpdateBanner } from "./components/UpdateBanner.js";
-import { LimitsSummary } from "./components/LimitsMeter.js";
 import { Loader } from "./components/Loader.js";
 import { LoginForm } from "./components/LoginForm.js";
 import { StartScreen } from "./components/StartScreen.js";
@@ -557,7 +556,7 @@ export function App() {
     if (status === "idle" && shownStatus.current === "running") setSettledRuns((n) => n + 1);
     shownStatus.current = status;
   }, [chat?.status]);
-  const limits = useLimits(Boolean(boot), settledRuns);
+  const { limits, refresh: refreshLimits } = useLimits(Boolean(boot), settledRuns);
 
   const tabStatus = (tab: Tab) =>
     chat && tab.chatId === chat.chatId ? chat.status : (overview.sessions.find((x) => x.liveChatId !== undefined && x.liveChatId === tab.chatId)?.status ?? null);
@@ -1878,7 +1877,6 @@ export function App() {
           >
             <IconGauge size={13} />
             <span className="usage-link-label">Usage</span>
-            <LimitsSummary limits={limits} />
           </button>
         }
         tabs={
@@ -2581,7 +2579,7 @@ export function App() {
       ) : null}
       {usageOpen ? (
         <Suspense fallback={<Loader label="Opening usage…" />}>
-        <UsageDialog harnesses={boot.harnesses} limits={limits} onOpenSession={(s, ws) => void openSession(s, ws ? { workspace: ws } : {})} onClose={() => setUsageOpen(false)} />
+        <UsageDialog harnesses={boot.harnesses} limits={limits} onRefresh={refreshLimits} onOpenSession={(s, ws) => void openSession(s, ws ? { workspace: ws } : {})} onClose={() => setUsageOpen(false)} />
         </Suspense>
       ) : null}
       {viewer && searchWorkspace ? <FileViewer workspace={searchWorkspace} request={viewer.request} changes={chat ? changes : []} onClose={() => setViewer(null)} /> : null}

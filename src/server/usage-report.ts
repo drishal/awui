@@ -117,12 +117,12 @@ export function buildReport(
 export class UsageReader {
   private cache = new Map<string, { version: string; entries: UsageEntry[] | null }>();
 
-  private async entriesOf(target: UsageTarget): Promise<UsageEntry[] | null> {
+  private async entriesOf(target: UsageTarget, refresh: boolean): Promise<UsageEntry[] | null> {
     if (!target.read) return null;
     const { session } = target;
     const version = `${session.updatedAt ?? ""}`;
     const hit = this.cache.get(session.id);
-    if (hit && hit.version === version && !session.liveChatId) return hit.entries;
+    if (hit && hit.version === version && !session.liveChatId && !refresh) return hit.entries;
     const entries = await target.read().catch(() => null);
     this.cache.delete(session.id);
     this.cache.set(session.id, { version, entries });
@@ -130,7 +130,7 @@ export class UsageReader {
     return entries;
   }
 
-  async report(targets: UsageTarget[], opts: { days: number; tz: number; workspaces: WorkspaceInfo[]; unreadable: string[]; now?: number; budgetMs?: number }): Promise<UsageReport> {
+  async report(targets: UsageTarget[], opts: { days: number; tz: number; workspaces: WorkspaceInfo[]; unreadable: string[]; refresh?: boolean; now?: number; budgetMs?: number }): Promise<UsageReport> {
     const now = opts.now ?? Date.now();
     const since = rangeStart(now, opts.days, opts.tz);
     // A session last active before the range made no call in it.
@@ -148,7 +148,7 @@ export class UsageReader {
           return;
         }
         const target = inRange[next++] as UsageTarget;
-        const entries = await this.entriesOf(target);
+        const entries = await this.entriesOf(target, opts.refresh === true);
         scanned += 1;
         if (entries && entries.length > 0) read.push({ session: target.session, entries });
       }

@@ -1,7 +1,7 @@
 // Usage across sessions: each harness's calls read from its file shape, added
 // up by day (in the browser's zone), harness, model, and session.
 import { afterEach, describe, expect, it } from "vitest";
-import { asHarnessId, type ChatSnapshot, type ProjectSession, type UsageReport } from "../../src/shared/protocol.js";
+import { asHarnessId, type ChatSnapshot, type ProjectSession, type UsageReport, usageReportSchema } from "../../src/shared/protocol.js";
 import { usageEntries } from "../../src/server/harness/agent-events.js";
 import { usageOfEntries } from "../../src/server/harness/claude-sessions.js";
 import { fileMessages } from "../../src/server/harness/session-files.js";
@@ -100,9 +100,16 @@ describe("usage, added up", () => {
     expect([first.scanned, first.total, reads]).toEqual([1, 1, 1]);
     await reader.report([target(session("a"))], { days: 7, tz: 0, now: NOW, workspaces: [], unreadable: [] });
     expect(reads).toBe(1);
+    const refreshed = await reader.report([target(session("a"))], { days: 7, tz: 0, now: NOW, workspaces: [], unreadable: [], refresh: true });
+    expect([reads, refreshed.totals.calls]).toEqual([2, 1]);
     const slow = Array.from({ length: 20 }, (_, i) => ({ session: session(`s${i}`), read: () => new Promise<UsageEntry[]>((r) => setTimeout(() => r([]), 30)) }));
     const cut = await reader.report(slow, { days: 7, tz: 0, now: NOW, workspaces: [], unreadable: [], budgetMs: 40 });
     expect(cut.truncated).toBe(true);
+  });
+
+  it("validates an explicit report refresh", () => {
+    expect(usageReportSchema.safeParse({ refresh: "true" }).success).toBe(false);
+    expect(usageReportSchema.parse({ refresh: "1" }).refresh).toBe("1");
   });
 
   it("answers the route from real chats, in tokens and dollars", async () => {
