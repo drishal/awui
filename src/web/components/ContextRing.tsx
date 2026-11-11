@@ -370,9 +370,10 @@ export function ContextRing({
         data-testid="context-ring"
         onClick={() => setOpen((v) => !v)}
       >
+        {/* A meter, not a loader: square ends on the arc (the spinner's are round) over a clearly drawn track. */}
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeOpacity="0.45" strokeWidth="2" />
-          <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray={`${(pct / 100) * c} ${c}`} strokeLinecap="round" transform="rotate(-90 8 8)" />
+          <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2" />
+          <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray={`${(pct / 100) * c} ${c}`} strokeLinecap="butt" transform="rotate(-90 8 8)" />
         </svg>
         <span className="context-pct">{Math.round(pct)}%</span>
       </button>
