@@ -370,7 +370,11 @@ export function createApp(deps: AppDeps) {
   /** The tool catalogue, fetched once by each bridge: one description, one parameter schema. */
   app.get("/api/orchestration/tools", async (req, res) => {
     try {
-      orchCaller(req);
+      // The catalogue is the same for every chat and a starting child asks for it before its chat
+      // exists, so a token minted for a child that is still starting is enough here (calls are not).
+      const token = req.get("x-awui-orch-token") ?? "";
+      if (!manager.orchestration) throw new ChatError(404, "orch_off", "Orchestration is not wired on this server");
+      if (token === "" || !manager.knowsOrchToken(token)) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
       res.json({ tools: ORCH_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })) });
     } catch (error) {
       if (!orchFailed(res, error)) throw error;

@@ -94,6 +94,20 @@ export class ChatManager {
     return undefined;
   }
 
+  /**
+   * Tokens minted for a child that is still starting. The child's bridge fetches the tool catalogue
+   * the moment it loads, before the chat exists to be stamped, so the catalogue (which names nothing
+   * of any chat) is served to a reserved token too. A call still needs the stamped chat.
+   */
+  private readonly reservedOrch = new Map<string, number>();
+
+  /** Whether this token was minted for a child that has not been stamped yet (or is live): enough to read the catalogue. */
+  knowsOrchToken(token: string): boolean {
+    const until = this.reservedOrch.get(token);
+    if (until !== undefined && until > Date.now()) return true;
+    return this.chatForOrchToken(token) !== undefined;
+  }
+
   /** The chat whose child was spawned with this orchestration token, when one is live. */
   chatForOrchToken(token: string): Chat | undefined {
     for (const chat of this.chats.values()) {
@@ -118,6 +132,9 @@ export class ChatManager {
     if (this.orchestration && !adapter.capabilities.readOnlyHarness) {
       const token = randomBytes(16).toString("hex");
       tools.orchestration = { token, env: { AWUI_ORCH_TOKEN: token, AWUI_ORCH_URL: `${this.orchestration.baseUrl}/api/orchestration` } };
+      // Held for a minute: long enough for the child to start, short enough that a failed spawn leaves nothing.
+      this.reservedOrch.set(token, Date.now() + 60_000);
+      for (const [held, until] of this.reservedOrch) if (until <= Date.now()) this.reservedOrch.delete(held);
     }
     return tools;
   }
@@ -126,6 +143,7 @@ export class ChatManager {
   private stampTools(chat: Chat, tools: { render?: ChatTools; orchestration?: ChatTools } | undefined): void {
     if (!tools) return;
     if (tools.render && this.render) chat.render = { token: tools.render.token, baseUrl: this.render.baseUrl };
+    if (tools.orchestration) this.reservedOrch.delete(tools.orchestration.token);
     if (tools.orchestration && this.orchestration) chat.orchestration = { token: tools.orchestration.token, baseUrl: this.orchestration.baseUrl, expiresAt: Date.now() + ORCH_TOKEN_TTL_MS };
   }
 

@@ -112,6 +112,31 @@ describe("orchestration surface", () => {
     expect(res.body.text).toContain(`Critic · Fake · fake/slow · review`);
   });
 
+  it("serves the catalogue to a child's token while its chat is still starting", async () => {
+    // A bridge fetches the catalogue the moment it loads, before the manager has a chat to stamp.
+    const manager = new ChatManager();
+    manager.orchestration = { baseUrl: "http://127.0.0.1:1" };
+    const project = tempDir("awui-early-");
+    mkdirSync(path.join(project, "proj"));
+    const workspace: WorkspaceInfo = { id: "w1", path: path.join(project, "proj"), name: "proj" };
+    let knewDuringSpawn: boolean | null = null;
+    class Probe extends FakeAdapter {
+      override async openChat(req: Parameters<FakeAdapter["openChat"]>[0]) {
+        const token = req.toolEnv?.AWUI_ORCH_TOKEN ?? "";
+        knewDuringSpawn = token !== "" && manager.knowsOrchToken(token) && manager.chatForOrchToken(token) === undefined;
+        return super.openChat(req);
+      }
+    }
+    try {
+      const chat = await manager.create(new Probe({ id: "probe" }), workspace);
+      expect(knewDuringSpawn).toBe(true);
+      expect(manager.knowsOrchToken("0".repeat(32))).toBe(false);
+      expect(manager.chatForOrchToken(chat.orchestration?.token ?? "")).toBe(chat);
+    } finally {
+      await manager.shutdown();
+    }
+  });
+
   it("gives a read-only harness no orchestration token", async () => {
     // The adapter-level rule the awui harness declares: a child of it would carry the write and exec tools it denies.
     const manager = new ChatManager();
