@@ -5,10 +5,7 @@ same project, on any installed harness — and then watch it, wait for it, or st
 surface is a small fixed set of tools, identical for every harness, served by the same
 process that runs the chats.
 
-This page describes the surface, its limits, and its error codes. Status: the token
-surface, the catalogue, `list_profiles`, delegation itself (start, watch, wait, cancel),
-`thread_read`, and `thread_send` are live; the delivery of a finished child's report to its parent
-is a later step.
+This page describes the surface, its limits, and its error codes.
 
 ## How a chat's agent reaches it
 
@@ -113,8 +110,8 @@ delegate again, because depth is what multiplies cost.
 
 `delegate_task` also takes a harness, a saved bot `profile` (its harness, model, and
 permission mode), `model`, `thinkingLevel`, `permissionMode`, `role` (a label), `title`, a
-`workspaceId` (an *open* project by id, never a path), `notify` (`wake` by default, recorded
-for the delivery step), and `clientRequestId` (a repeat returns the same task instead of
+`workspaceId` (an *open* project by id, never a path), `notify` (`wake` by default: the parent
+is woken with the result), and `clientRequestId` (a repeat returns the same task instead of
 spawning a second child).
 
 A child inherits the caller's permission mode. An explicit one must rank at or below the
@@ -132,6 +129,32 @@ marks the task, stops its own delegates first, aborts the chat with a five-secon
 it when nobody is watching, and is idempotent: a second cancel returns the same record. A
 chat a user has open is never closed out from under them.
 
+**Finish delivery.** A parent agent that did not wait for its child is woken with the result. On a
+terminal state (`done`, `failed`, or `interrupted` by a restart) with `notify: "wake"`, the task's
+wake ledger gets a `pendingSince` — written to the record *before* anything is sent — and reports
+queued for the same parent within 2 500 ms flush as **one** prompt, so a council's three results
+arrive as one message. The prompt is bounded (6 000 characters in all, the child's final answer
+4 000 of them) and looks like this:
+
+```
+[awui delegate ab12 · done · pi · 4m12s]
+"Parser review"
+Echo: the lexer table is fine; the parser's recovery path is not.
+thread_read("ab12") for more; thread_send("ab12", …) to continue it.
+```
+
+It is delivered as a **steer** while the parent runs, a **follow-up** when the parent holds a
+question of its own (a steer would be lost), and an ordinary prompt when the parent is idle. A
+result the parent read itself — `thread_wait`, `task_status`, or `task_cancel` returned it — is
+never delivered: the ledger records the read instead (`skipped`). A cancelled task is never
+reported back, because the parent is the one who stopped it. A parent that is not open keeps its
+reports: they are delivered when it next opens or resumes, once.
+
+Delivery is **at-least-once**: a crash between the send and the stamp can deliver the same report
+twice. That is the right trade for a result the parent waits on, and why a report is one bounded
+message rather than a stream. A report the parent would not take is retried twice, then marked
+`skipped` with the reason, so nothing spins.
+
 ## The task record
 
 Records live in `$XDG_STATE_HOME/awui/orchestration/tasks.json` (mode 0600, written whole
@@ -142,8 +165,9 @@ the file, because the child's harness session is the source of truth: losing a r
 parent's pointer to work that still exists. A task names its two chats both by chat id and
 by harness session id, because a chat id is minted on every open: a reopened child keeps its
 lineage chip and a reopened parent its panel. A server restart marks every unfinished task
-`interrupted` with the reason; nothing is resumed automatically, and the child's session is
-still there to resume by hand.
+`interrupted` with the reason and queues its report again (`notify: "wake"`), so the parent learns
+when it next opens; nothing is resumed automatically, and the child's session is still there to
+resume by hand.
 
 ## Limits
 
@@ -185,15 +209,14 @@ All are `ChatError`s with the status shown, answered in the bridges' envelope
 | `harness_unavailable` | 422 | that harness cannot start right now |
 | `unknown_profile` | 422 | no such bot profile |
 | `workspace_unsupported` | 422 | the harness cannot open that project |
-| `task_not_running` | 409 | the task is not in a state this call applies to |
+| `task_not_running` | 409 | the task is not in a state this call applies to, or its chat is closed |
 | `cannot_send` | 409 | the child chat cannot take that message |
 | `cancel_timeout` | 504 | the child would not settle in time |
 
-## At-least-once, and what that means so far
+## At-least-once
 
-Finish delivery is designed to be at-least-once: a report is written *pending* before the
-parent is woken, so a crash in that window retries it on the next start, and a crash between
-the send and the stamp can deliver the same report twice. That is the right trade for a
-result the parent is waiting on, and it is why a report is one bounded message rather than a
-stream. Today only the ledger field (`wake`) exists on the record; the coalescing send ships
-with the delivery step, so nothing is delivered twice yet.
+A report is written *pending* before the parent is woken, so a crash in that window retries it on
+the next start, and a crash between the send and the stamp can deliver the same report twice. A
+reopened parent gets whatever is still queued once. That is the trade for a result the parent is
+waiting on, and it is why a report is one bounded message rather than a stream. `task_status` and
+`thread_wait` are always the exact answer; a repeated wake only repeats what they would say.

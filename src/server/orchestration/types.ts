@@ -142,3 +142,12 @@ export function firstLine(text: string, limit = MAX_ACTIVITY_CHARS): string | nu
   if (!line) return null;
   return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
 }
+
+/** "4m12s", "38s", "1h04m": how long a task has run, short enough for a status row or a wake envelope. */
+export function formatElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m${String(seconds % 60).padStart(2, "0")}s`;
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+}

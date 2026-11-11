@@ -269,6 +269,8 @@ export function createApp(deps: AppDeps) {
   // what it is; the load starts here and marks what the last process left running.
   manager.lineageFor = (chat) => orchestration.lineageOf(chat);
   manager.tasksFor = (chat) => orchestration.tasksFor(chat);
+  // A parent that was closed when a report was written (or when the last process died) gets it here.
+  manager.onRegistered = (chat) => void orchestration.registered(chat).catch((error: unknown) => log(`orchestration: could not deliver a report: ${errorMessage(error)}`));
   void orchestration.start().catch((error: unknown) => log(`orchestration: could not load task records: ${errorMessage(error)}`));
   // What this process serves as the web bundle: a page compares it with the build
   // it loaded to notice a deploy (the binary embeds the bundle; a source run has

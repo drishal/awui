@@ -69,6 +69,11 @@ export class ChatManager {
    */
   lineageFor?: (chat: Chat) => ChatLineage | undefined;
   tasksFor?: (chat: Chat) => DelegatedTaskView[];
+  /**
+   * A chat was registered (opened, created, or resumed). The orchestrator delivers reports still
+   * owed to a parent here: they were written while it was closed, or by the process before this one.
+   */
+  onRegistered?: (chat: Chat) => void;
 
   constructor(private readonly idleDisposeMs = IDLE_DISPOSE_MS) {
     this.reaper = setInterval(() => void this.reap(), REAP_INTERVAL_MS);
@@ -154,6 +159,8 @@ export class ChatManager {
       void chat.checkpoints.start();
     }
     if (chat.nativeId) this.claimSession(chat);
+    // Last, so whatever the chat reads from the records is already stamped on it.
+    this.onRegistered?.(chat);
   }
 
   private claimSession(chat: Chat): void {

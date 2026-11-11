@@ -1,14 +1,17 @@
 // The orchestration surface: one token per live chat (minted with the spawn, 12 hours
 // long, never for a read-only harness or a board-owned chat), the tool catalogue both
 // bridges fetch, and the durable delegation behind it — a child chat with lineage, a
-// record in the state folder, the settle watcher, the caps, thread_read (a bounded page of the
-// child's chat) and thread_send (a steer into its run, or a revival of a finished task).
-import { mkdirSync, writeFileSync } from "node:fs";
+// record in the state folder, the settle watcher, the caps, thread_read and thread_send, and the
+// wake ledger that reports a finished child back to a parent (coalesced, then delivered once).
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import type { ChatItem, ChatSnapshot, DelegatedTaskView, WorkspaceInfo } from "../../src/shared/protocol.js";
+import type { ChatItem, ChatSnapshot, DelegatedTaskView, PushNote, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
+import { HarnessRegistry } from "../../src/server/harness/registry.js";
+import { Orchestrator } from "../../src/server/orchestration/orchestrator.js";
+import { Workspaces } from "../../src/server/workspaces.js";
 import { makeTestApp, openSse, signedIn, tempDir, type TestApp } from "../helpers/app.js";
 import { makeBot } from "../helpers/board.js";
 
@@ -291,6 +294,25 @@ describe("delegated tasks", () => {
   });
 });
 
+/** Wait until `check` holds, or fail: the timers here are real, so every wait has a cap. */
+async function waitUntil(check: () => boolean, timeoutMs = 8000, what = "condition"): Promise<void> {
+  const start = Date.now();
+  while (!check()) {
+    if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** The report prompts the orchestrator delivered into a chat, oldest first. */
+function reportPrompts(app: TestApp, chatId: string): string[] {
+  return app.manager
+    .get(chatId)
+    .snapshot()
+    .items.flatMap((item) => (item.kind === "user" && item.text.includes("[awui delegate") ? [item.text] : []));
+}
+
 describe("thread_read", () => {
   it("reads a child's transcript just described, newest last and in pages", async () => {
     const { agent, token } = await setup();
@@ -380,3 +402,117 @@ describe("thread_send", () => {
     expect(refused.body).toMatchObject({ ok: false, code: "task_not_running" });
   });
 });
+
+describe("finish delivery", () => {
+  it("wakes an idle parent with one bounded report", async () => {
+    const { app, agent, chat, token } = await setup();
+    const started = await delegate(agent, token, { brief: "check the changelog", title: "Changelog check" });
+    await waitUntil(() => reportPrompts(app, chat.chatId).length > 0, 8000, "the parent's report");
+    const reports = reportPrompts(app, chat.chatId);
+    expect(reports).toHaveLength(1);
+    const report = reports[0] as string;
+    expect(report).toMatch(/^\[awui delegate [0-9a-f]{4} · done · fake · /);
+    expect(report).toContain(started.taskId);
+    expect(report).toContain('"Changelog check"');
+    expect(report).toContain("Echo: check the changelog");
+    expect(report).toContain(`thread_read("${started.taskId}") for more`);
+    expect(report.length).toBeLessThanOrEqual(6000);
+  });
+
+  it("coalesces three near-simultaneous finishes into one message", async () => {
+    const { app, agent, chat, token } = await setup();
+    const tasks = [];
+    for (const role of ["one", "two", "three"]) tasks.push(await delegate(agent, token, { brief: `check the lockfile ${role}`, title: `Check ${role}` }));
+    await waitUntil(() => reportPrompts(app, chat.chatId).length > 0, 8000, "one report for three tasks");
+    // Nothing more arrives: the window closed after the first report carried all three.
+    await sleep(600);
+    const reports = reportPrompts(app, chat.chatId);
+    expect(reports).toHaveLength(1);
+    for (const task of tasks) expect(reports[0]).toContain(`[awui delegate ${task.taskId} ·`);
+  });
+
+  it("does not wake a parent that read the result itself", async () => {
+    const { app, agent, chat, token } = await setup();
+    const started = await delegate(agent, token, { brief: "check the changelog" });
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    expect((waited.body.data as { tasks: DelegatedTaskView[] }).tasks[0]?.outcome).toBe("done");
+    // Past the coalescing window: the read was the delivery, so nothing is sent.
+    await sleep(3000);
+    expect(reportPrompts(app, chat.chatId)).toEqual([]);
+    const store = JSON.parse(readFileSync(path.join(app.stateDir, "orchestration", "tasks.json"), "utf8")) as { tasks: Array<{ id: string; wake: { pendingSince: number | null; skipped: string | null } }> };
+    expect(store.tasks.find((task) => task.id === started.taskId)?.wake).toMatchObject({ pendingSince: null, skipped: "read by the parent" });
+  });
+
+  it("delivers a restart's interrupted report once, when its parent registers", async () => {
+    const root = tempDir("awui-orch-restart-");
+    mkdirSync(path.join(root, "proj"));
+    const manager = new ChatManager();
+    const registry = new HarnessRegistry();
+    const fake = new FakeAdapter();
+    registry.register(fake);
+    await registry.refreshStatus();
+    const { workspaces } = await Workspaces.create([root], root);
+    const workspace: WorkspaceInfo = { id: "w1", path: path.join(root, "proj"), name: "proj" };
+    try {
+      const parent = await manager.create(fake, workspace);
+      expect(parent.sessionId).not.toBeNull();
+      const file = path.join(root, ".state", "orchestration", "tasks.json");
+      mkdirSync(path.dirname(file), { recursive: true });
+      // A record the last process left mid-run: its child died with that process.
+      writeFileSync(
+        file,
+        JSON.stringify({
+          schemaVersion: 1,
+          tasks: [
+            {
+              id: "beef",
+              parentChatId: "gone",
+              childChatId: null,
+              title: "Parser work",
+              harnessId: "fake",
+              model: null,
+              role: "",
+              profile: null,
+              depth: 1,
+              state: "working",
+              outcome: null,
+              createdAt: Date.now() - 60_000,
+              endedAt: null,
+              activity: null,
+              result: null,
+              asking: null,
+              workspacePath: workspace.path,
+              parentTitle: "Parent",
+              parentSessionId: parent.sessionId,
+              childSessionId: "fake:gone-session",
+              generation: 0,
+              cancelRequestedAt: null,
+              notify: "wake",
+              clientRequestId: null,
+              wake: { pendingSince: null, deliveredAt: null, attempts: 0, skipped: null },
+            },
+          ],
+        }),
+      );
+      const orchestration = new Orchestrator({ chats: manager, registry, workspaces, file, log: () => undefined });
+      await orchestration.start();
+      await orchestration.registered(parent);
+      await waitUntil(() => parent.snapshot().items.some((item) => item.kind === "user" && item.text.includes("[awui delegate beef")), 4000, "the interrupted report");
+      const report = parent.snapshot().items.flatMap((item) => (item.kind === "user" ? [item.text] : [])).find((text) => text.includes("[awui delegate beef"));
+      expect(report).toContain("interrupted");
+      expect(report).toContain("restarted before this task settled");
+      // Registering again (another tab, a resume) is not a second delivery.
+      await orchestration.registered(parent);
+      await sleep(300);
+      expect(parent.snapshot().items.filter((item) => item.kind === "user").map((item) => item.text).filter((text) => text.includes("[awui delegate beef"))).toHaveLength(1);
+      const store = JSON.parse(readFileSync(file, "utf8")) as { tasks: Array<{ id: string; state: string; outcome: string; wake: { pendingSince: number | null; deliveredAt: number | null } }> };
+      expect(store.tasks[0]).toMatchObject({ state: "result_available", outcome: "interrupted" });
+      expect(store.tasks[0]?.wake.pendingSince).toBeNull();
+      expect(typeof store.tasks[0]?.wake.deliveredAt).toBe("number");
+    } finally {
+      await manager.shutdown();
+    }
+  });
+
+});
+
