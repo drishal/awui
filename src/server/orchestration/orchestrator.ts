@@ -82,6 +82,7 @@ export class Orchestrator {
   async run(name: string, rawArgs: unknown, caller: Chat): Promise<ToolOutput> {
     const tool = findTool(name);
     if (!tool) throw new ChatError(400, "unknown_tool", `No such tool: ${name}`);
+    if (!this.limits.enabled) throw new ChatError(404, "orch_off", "Orchestration is turned off in config.yml (orchestration.enabled)");
     await this.ready();
     const args = rawArgs ?? {};
     switch (name) {

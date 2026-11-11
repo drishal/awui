@@ -54,11 +54,14 @@ export class ChatManager {
    */
   render?: { baseUrl: string };
   /**
+  /**
    * The origin a chat's child calls its orchestration tools on (loopback, as `render`
    * is). When set, every chat that may use them is spawned with its own token in
    * `AWUI_ORCH_URL`/`AWUI_ORCH_TOKEN`, stamped on the chat so a call names one chat.
+   * `enabled` reads config.yml's switch at each spawn (index.ts), so turning it off leaves the
+   * next child with no tools at all instead of tools that answer orch_off.
    */
-  orchestration?: { baseUrl: string };
+  orchestration?: { baseUrl: string; enabled?: () => boolean };
   /** Any chat finished a run, failed, or asks for an answer. */
   onNews?: (chat: Chat, kind: PushNote["kind"], body: string, request?: InteractionRequest) => void;
   /** A chat's chain reached a handoff step (Chat.onChainHandoff). */
@@ -129,9 +132,11 @@ export class ChatManager {
       const token = randomBytes(16).toString("hex");
       tools.render = { token, env: { AWUI_RENDER_TOKEN: token, AWUI_RENDER_URL: `${this.render.baseUrl}/api/render` } };
     }
-    if (this.orchestration && !adapter.capabilities.readOnlyHarness) {
+    // Off in config.yml means no tools at all for the next child, not tools that can only say no.
+    const surface = this.orchestration;
+    if (surface && (surface.enabled?.() ?? true) && !adapter.capabilities.readOnlyHarness) {
       const token = randomBytes(16).toString("hex");
-      tools.orchestration = { token, env: { AWUI_ORCH_TOKEN: token, AWUI_ORCH_URL: `${this.orchestration.baseUrl}/api/orchestration` } };
+      tools.orchestration = { token, env: { AWUI_ORCH_TOKEN: token, AWUI_ORCH_URL: `${surface.baseUrl}/api/orchestration` } };
       // Held for a minute: long enough for the child to start, short enough that a failed spawn leaves nothing.
       this.reservedOrch.set(token, Date.now() + 60_000);
       for (const [held, until] of this.reservedOrch) if (until <= Date.now()) this.reservedOrch.delete(held);

@@ -350,8 +350,16 @@ export function createApp(deps: AppDeps) {
   // authenticate with the random token the child was spawned with (`AWUI_ORCH_TOKEN`,
   // a header) rather than a cookie: the token names the one chat the call speaks for, so a
   // signed-in device elsewhere cannot mint one or reach another chat's tasks through it.
-  const orchCaller = (req: Request): Chat => {
+  /**
+   * The surface answers only when it is wired and config.yml has not turned it off. The switch is
+   * read now, not at startup: the Settings dialog's checkbox takes effect within a couple of seconds.
+   */
+  const orchOn = (): void => {
     if (!manager.orchestration) throw new ChatError(404, "orch_off", "Orchestration is not wired on this server");
+    if (!orchestrationLimits().enabled) throw new ChatError(404, "orch_off", "Orchestration is turned off in config.yml (orchestration.enabled)");
+  };
+  const orchCaller = (req: Request): Chat => {
+    orchOn();
     const token = req.get("x-awui-orch-token") ?? "";
     const chat = token !== "" ? manager.chatForOrchToken(token) : undefined;
     if (!chat) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
@@ -379,7 +387,7 @@ export function createApp(deps: AppDeps) {
       // The catalogue is the same for every chat and a starting child asks for it before its chat
       // exists, so a token minted for a child that is still starting is enough here (calls are not).
       const token = req.get("x-awui-orch-token") ?? "";
-      if (!manager.orchestration) throw new ChatError(404, "orch_off", "Orchestration is not wired on this server");
+      orchOn();
       if (token === "" || !manager.knowsOrchToken(token)) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
       res.json({ tools: ORCH_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })) });
     } catch (error) {

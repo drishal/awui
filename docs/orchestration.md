@@ -26,6 +26,11 @@ A read-only harness (`awui`) is never given the token: a delegated child of it w
 handed the write and exec tools that chat exists to deny, so it is neither armed with the
 tools nor accepted as a delegation target. Board-owned chats get no token either.
 
+`orchestration: enabled: false` (or the Settings dialog's **Agents delegate to other agents**
+switch) turns the whole surface off: the next chat is spawned with no token, so its agent never
+sees the tools, and every call and catalogue request answers `orch_off`. Chats already open keep
+their token until they restart, but their calls are refused too.
+
 ### How the tools reach the agent
 
 Awui injects them two ways, and both repeat nothing: the names, descriptions, and
@@ -214,7 +219,7 @@ All are `ChatError`s with the status shown, answered in the bridges' envelope
 
 | Code | Status | When |
 |---|---|---|
-| `orch_off` | 404 | this server is not wired for orchestration |
+| `orch_off` | 404 | this server is not wired for orchestration, or `orchestration.enabled` is false |
 | `bad_orch_token` | 401 | no live chat holds that token |
 | `orch_token_expired` | 401 | the chat's 12 hours are up; restart the chat |
 | `unknown_tool` | 400 | no tool by that name (or not served yet on this server) |

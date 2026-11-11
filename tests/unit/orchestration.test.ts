@@ -608,3 +608,21 @@ describe("question routing", () => {
   });
 });
 
+describe("turned off", () => {
+  it("gives no tools and answers orch_off when it is turned off", async () => {
+    const app = await makeTestApp({ orchestrationLimits: { enabled: false } });
+    t = app;
+    const agent = await signedIn(app);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: app.project })).body as WorkspaceInfo;
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    // No token is minted, so the child is spawned with no tools at all.
+    expect(app.manager.get(chat.chatId).orchestration).toBeUndefined();
+    // Every route says why, whatever token is offered, and the catalogue is refused too.
+    const refused = await agent.post("/api/orchestration/call").set("x-awui-orch-token", "0".repeat(32)).send({ tool: "list_profiles", args: {} });
+    expect(refused.status).toBe(404);
+    expect(refused.body).toMatchObject({ ok: false, code: "orch_off" });
+    const catalogue = await agent.get("/api/orchestration/tools").set("x-awui-orch-token", "0".repeat(32));
+    expect(catalogue.status).toBe(404);
+    expect(catalogue.body).toMatchObject({ code: "orch_off" });
+  });
+});

@@ -186,10 +186,11 @@ async function main(): Promise<void> {
   // Chats' render tools always post back over loopback, even when the server
   // also serves the LAN: the page stays on the machine the project is on.
   manager.render = { baseUrl: `http://127.0.0.1:${config.port}` };
-  // The orchestration tools call back the same way, for the same reason. Its limits come from
-  // config.yml, read again as it changes, so a changed number needs no restart.
+  // The orchestration tools call back the same way, for the same reason. Its limits (and its
+  // on/off switch) come from config.yml, read again as it changes, so `enabled: false` leaves the
+  // next child spawned with no tools at all and every call answering orch_off.
   const orchLimits = orchestrationSetting(config.configDir, settings?.config);
-  manager.orchestration = { baseUrl: `http://127.0.0.1:${config.port}` };
+  manager.orchestration = { baseUrl: `http://127.0.0.1:${config.port}`, enabled: () => orchLimits().enabled };
   const marks = await SessionMarks.open(config.stateDir);
   const routines = await Routines.open(config.stateDir);
 
