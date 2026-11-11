@@ -8,6 +8,14 @@
   mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
 }
 
+/* With the sticky Save bar the bar is the bottom edge: rows slide under its own fade, and a mask here would fade
+   the Save button itself. */
+.settings-dialog .dialog-body:has(.settings-form > .settings-foot) {
+  /* No padding under the bar either, or rows show through the gap between it and the dialog's edge. */
+  padding-bottom: 0;
+  mask-image: none;
+}
+
 .settings-form {
   display: flex;
   flex-direction: column;
