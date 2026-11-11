@@ -75,6 +75,24 @@ const schema = z
     font: uiFontSchema.optional(),
     /** Work with herdr (herdr.ts, atui/herdr.ts); on unless false. */
     herdr: z.boolean().optional(),
+    /**
+     * The orchestration surface's bounds (limits.ts holds the defaults and what each one means).
+     * Every number is re-read while the server runs, so none of them needs a restart.
+     */
+    orchestration: z
+      .object({
+        enabled: z.boolean().optional(),
+        maxChildrenPerChat: z.number().int().min(1).max(32).optional(),
+        maxTasksPerChat: z.number().int().min(1).max(500).optional(),
+        maxLiveTasks: z.number().int().min(1).max(64).optional(),
+        maxDepth: z.number().int().min(0).max(4).optional(),
+        taskWallClockMs: z.number().int().min(60_000).max(24 * 60 * 60_000).optional(),
+        wakeParents: z.boolean().optional(),
+        maxWakesPerHour: z.number().int().min(0).max(1000).optional(),
+        callsPerMinute: z.number().int().min(1).max(6000).optional(),
+      })
+      .strict()
+      .optional(),
     /** Herdr's API socket, when not the default session's (file-only; HERDR_SOCKET_PATH wins). */
     herdr_socket: z.string().trim().min(1).max(4096).optional(),
     /** How each harness's CLI starts: its executable, and arguments for every chat child. File-only (see HarnessLaunch). */

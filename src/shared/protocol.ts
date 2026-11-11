@@ -1317,6 +1317,8 @@ export interface ServerSettingsValues {
   showStatusBar: boolean;
   /** Work with herdr: mark the sessions open in its panes, and let atui report to them. */
   herdr: boolean;
+  /** Agents may delegate work to other agent chats (config.yml's `orchestration.enabled`). */
+  orchestrationEnabled: boolean;
   /** The desktop app: closing its window hides it to the tray (notes keep coming) instead of quitting. */
   desktopBackground: boolean;
 }
@@ -1358,6 +1360,7 @@ export const settingsPatchSchema = z
     autocollapseSidebar: z.boolean().optional(),
     showStatusBar: z.boolean().optional(),
     herdr: z.boolean().optional(),
+    orchestrationEnabled: z.boolean().optional(),
     desktopBackground: z.boolean().optional(),
   })
   .strict();

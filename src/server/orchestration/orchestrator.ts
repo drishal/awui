@@ -24,10 +24,6 @@ import {
   findTool,
   listProfiles,
   listProfilesSchema,
-  MAX_CHILDREN_PER_CHAT,
-  MAX_DEPTH,
-  MAX_LIVE_TASKS,
-  MAX_TASKS_PER_CHAT,
   taskCancelSchema,
   taskStatusSchema,
   threadReadSchema,
@@ -36,6 +32,7 @@ import {
   type ToolContext,
   type ToolOutput,
 } from "./tools.js";
+import type { OrchestrationLimits } from "./limits.js";
 import { formatElapsed, firstLine, MAX_ERROR_CHARS, MAX_RESULT_CHARS, MAX_TITLE_CHARS, viewOf, type StoredTask } from "./types.js";
 import { MAX_WAKE_ATTEMPTS, WAKE_COALESCE_MS, WAKE_RETRY_MS, wakeReport } from "./wake.js";
 
@@ -52,6 +49,11 @@ export interface OrchestratorDeps {
   /** `<stateDir>/orchestration/tasks.json`; null keeps the records in memory only (tests). */
   file: string | null;
   log: (message: string) => void;
+  /**
+   * The limits in force now: config.yml's `orchestration:` block, read at each use (index.ts), so a
+   * changed number applies without a restart. Tests hand in a fixed set.
+   */
+  limits: () => OrchestrationLimits;
 }
 
 export class Orchestrator {
@@ -69,6 +71,11 @@ export class Orchestrator {
   private readonly flushingWakes = new Set<string>();
   constructor(private readonly deps: OrchestratorDeps) {
     this.store = new TaskStore(deps.file);
+  }
+
+  /** The limits in force for this call: read every time, so a file change applies without a restart. */
+  private get limits(): OrchestrationLimits {
+    return this.deps.limits();
   }
 
   /** Run one tool call as `caller`. The tool's own schema validates the arguments first. */
@@ -295,13 +302,14 @@ export class Orchestrator {
 
   /** Depth and count limits for a new task from `caller`; throws the 429 that names the limit hit. */
   private checkRoom(caller: Chat, depth: number): void {
-    if (depth > MAX_DEPTH) throw new ChatError(429, "max_depth", `Delegation stops at ${MAX_DEPTH} levels; this chat is already at its limit`);
-    if (this.liveTasks() >= MAX_LIVE_TASKS) throw new ChatError(429, "too_many_tasks", `This server already runs ${MAX_LIVE_TASKS} delegated tasks`);
+    const limits = this.limits;
+    if (depth > limits.maxDepth) throw new ChatError(429, "max_depth", `Delegation stops at ${limits.maxDepth} levels; this chat is already at its limit`);
+    if (this.liveTasks() >= limits.maxLiveTasks) throw new ChatError(429, "too_many_tasks", `This server already runs ${limits.maxLiveTasks} delegated tasks`);
     const mine = this.tasks.filter((task) => task.parentChatId === caller.chatId);
-    if (mine.filter((task) => task.state !== "result_available").length >= MAX_CHILDREN_PER_CHAT) {
-      throw new ChatError(429, "too_many_tasks", `A chat may run ${MAX_CHILDREN_PER_CHAT} delegated tasks at once`);
+    if (mine.filter((task) => task.state !== "result_available").length >= limits.maxChildrenPerChat) {
+      throw new ChatError(429, "too_many_tasks", `A chat may run ${limits.maxChildrenPerChat} delegated tasks at once`);
     }
-    if (mine.length >= MAX_TASKS_PER_CHAT) throw new ChatError(429, "too_many_tasks", `A chat may start ${MAX_TASKS_PER_CHAT} delegated tasks`);
+    if (mine.length >= limits.maxTasksPerChat) throw new ChatError(429, "too_many_tasks", `A chat may start ${limits.maxTasksPerChat} delegated tasks`);
   }
 
   private async delegate(
@@ -457,7 +465,6 @@ export class Orchestrator {
     });
     this.watchers.set(task.id, unsubscribe);
   }
-
   private async onStatus(task: StoredTask, child: Chat, status: ChatStatus): Promise<void> {
     if (status === "disposed") {
       await this.finish(task, "cancelled", "The chat was closed");
@@ -762,13 +769,14 @@ export class Orchestrator {
   }
 
   private remainingDepth(caller: Chat): number {
-    return Math.max(0, MAX_DEPTH - (caller.lineage?.depth ?? 0));
+    return Math.max(0, this.limits.maxDepth - (caller.lineage?.depth ?? 0));
   }
 
   private remainingTasks(caller: Chat): number {
+    const limits = this.limits;
     const mine = this.tasks.filter((task) => this.ownTaskOf(task, caller));
     const live = mine.filter((task) => task.state !== "result_available").length;
-    return Math.max(0, Math.min(MAX_CHILDREN_PER_CHAT - live, MAX_TASKS_PER_CHAT - mine.length, MAX_LIVE_TASKS - this.liveTasks()));
+    return Math.max(0, Math.min(limits.maxChildrenPerChat - live, limits.maxTasksPerChat - mine.length, limits.maxLiveTasks - this.liveTasks()));
   }
 
   private liveTasks(): number {

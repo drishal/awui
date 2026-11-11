@@ -1,7 +1,8 @@
 # awui settings: copy to ~/.config/awui/config.yml.
 # Every key is optional. Restart the server after changing port, host, auth,
 # or the lists (systemctl --user restart awui); theme, text_scale, chat_width,
-# density, tool_style, font, autocollapse_sidebar, and herdr apply on the next page load. Environment
+# density, tool_style, font, autocollapse_sidebar, and herdr apply on the next page load, and orchestration
+# every couple of seconds. Environment
 # variables (PORT, HOST, AUTH_USERNAME, ...) win over this file.
 
 # Port for the UI and API (1024-65535).
@@ -64,6 +65,21 @@ herdr: true
 # herdr's API socket, for a named herdr session (read at startup; the default
 # session's is found by itself).
 # herdr_socket: ~/.config/herdr/sessions/work/herdr.sock
+
+# Agents delegating work to other agents: a chat's agent can hand a task to
+# another agent chat, watch it, stop it, and read the result back. Read again
+# every couple of seconds, so a change needs no restart; the Settings dialog
+# shows only the on/off switch. docs/orchestration.md says what each one does.
+# orchestration:
+#   enabled: true            # false: no agent is given the tools at all
+#   maxChildrenPerChat: 4    # tasks one chat may run at once
+#   maxTasksPerChat: 32      # tasks one chat may ever start
+#   maxLiveTasks: 12         # tasks this server runs at once
+#   maxDepth: 2              # 2 lets a child delegate once, and stops at grandchildren
+#   taskWallClockMs: 2700000 # 45 min: a task still working is stopped and failed
+#   wakeParents: true        # wake the parent's agent with a finished child's result
+#   maxWakesPerHour: 20      # wake prompts one parent may receive in an hour
+#   callsPerMinute: 60       # tool calls one chat may make in a minute
 
 # How each harness's CLI starts (read at startup; the Settings dialog does not
 # show this, since a command is a program the server runs). command: its

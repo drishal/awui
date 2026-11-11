@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { configDir, configEnv, launchSettings, migrateConfigDir, readUserConfig, uiSettings, UserConfigError } from "../../src/server/user-config.js";
+import { orchestrationLimits } from "../../src/server/config.js";
+import { DEFAULT_ORCHESTRATION_LIMITS } from "../../src/server/orchestration/limits.js";
 import { tempDir } from "../helpers/app.js";
 
 function folder(yaml?: string, mode = 0o644): string {
@@ -102,6 +104,20 @@ herdr_socket: ~/run/herdr.sock
     expect(() => readUserConfig(folder("harnesses:\n  pi:\n    comand: pi\n"))).toThrow(/harnesses\.pi/);
     expect(() => readUserConfig(folder('harnesses:\n  pi:\n    command: "pi\\nrm"\n'))).toThrow(/control characters/);
     expect(() => readUserConfig(folder("harnesses:\n  pi:\n    command: ''\n"))).toThrow(/harnesses\.pi\.command/);
+  });
+
+  it("takes the orchestration limits, over the defaults, and refuses what it cannot honour", () => {
+    const read = readUserConfig(folder("orchestration:\n  enabled: false\n  maxDepth: 1\n  callsPerMinute: 30\n  taskWallClockMs: 600000\n"));
+    expect(orchestrationLimits(read?.config)).toEqual({ ...DEFAULT_ORCHESTRATION_LIMITS, enabled: false, maxDepth: 1, callsPerMinute: 30, taskWallClockMs: 600_000 });
+    // Nothing in the file, and an empty block, are the built-in defaults.
+    expect(orchestrationLimits(undefined)).toEqual(DEFAULT_ORCHESTRATION_LIMITS);
+    expect(orchestrationLimits({})).toEqual(DEFAULT_ORCHESTRATION_LIMITS);
+    expect(orchestrationLimits(readUserConfig(folder("orchestration: {}\n"))?.config)).toEqual(DEFAULT_ORCHESTRATION_LIMITS);
+    // Out of range and misspelled keys are named, like every other setting.
+    expect(() => readUserConfig(folder("orchestration:\n  maxDepth: 9\n"))).toThrow(/orchestration\.maxDepth/);
+    expect(() => readUserConfig(folder("orchestration:\n  maxChildrenPerChat: 0\n"))).toThrow(/orchestration\.maxChildrenPerChat/);
+    expect(() => readUserConfig(folder("orchestration:\n  taskWallClockMs: 1000\n"))).toThrow(/orchestration\.taskWallClockMs/);
+    expect(() => readUserConfig(folder("orchestration:\n  tasksPerChat: 4\n"))).toThrow(/orchestration/);
   });
 
   it("names the bad key instead of guessing", () => {

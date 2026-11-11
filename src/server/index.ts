@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { createApp, RECENT_SESSIONS_PER_HARNESS } from "./app.js";
 import { ChatManager } from "./chats/manager.js";
 import { RoomManager } from "./boards/manager.js";
-import { ConfigError, loadConfig, migrateStateDir } from "./config.js";
+import { ConfigError, loadConfig, migrateStateDir, orchestrationLimits } from "./config.js";
+import type { OrchestrationLimits } from "./orchestration/limits.js";
 import { liveOmpChildren } from "./harness/omp.js";
 import { HarnessRegistry } from "./harness/registry.js";
 import { hashPassword, loadCredentials, PasswordAuth } from "./auth.js";
@@ -35,7 +36,7 @@ import { Notifier, roomPushNote } from "./notify.js";
 import { PresenceTable } from "./presence.js";
 import { ThemeStore } from "./theme.js";
 import { Herdr, herdrSocketPath } from "./herdr.js";
-import { configDir, configEnv, herdrEnabled, migrateConfigDir, readUserConfig, UserConfigError } from "./user-config.js";
+import { configDir, configEnv, herdrEnabled, migrateConfigDir, readUserConfig, UserConfigError, type UserConfig } from "./user-config.js";
 import { Workspaces } from "./workspaces.js";
 import { cleanupPastes } from "./paste-store.js";
 
@@ -70,6 +71,26 @@ function herdrSetting(dir: string | null, initial: Parameters<typeof herdrEnable
       // A config.yml broken since startup keeps the last good answer; startup logged the file's problems.
     }
     return on;
+  };
+}
+
+/**
+ * config.yml's `orchestration:`, read again at most every two seconds: its numbers (depth, caps,
+ * the wall clock, the call and wake budgets) and its on/off switch apply without a restart, the way
+ * `herdr` does. A file broken since startup keeps the last good answer.
+ */
+function orchestrationSetting(dir: string | null, initial: UserConfig | undefined): () => OrchestrationLimits {
+  let limits = orchestrationLimits(initial);
+  let at = Date.now();
+  return () => {
+    if (Date.now() - at < 2000) return limits;
+    at = Date.now();
+    try {
+      limits = orchestrationLimits(readUserConfig(dir)?.config);
+    } catch {
+      // Startup logged the file's problems, and the last good answer is better than none.
+    }
+    return limits;
   };
 }
 
@@ -165,7 +186,9 @@ async function main(): Promise<void> {
   // Chats' render tools always post back over loopback, even when the server
   // also serves the LAN: the page stays on the machine the project is on.
   manager.render = { baseUrl: `http://127.0.0.1:${config.port}` };
-  // The orchestration tools call back the same way, for the same reason.
+  // The orchestration tools call back the same way, for the same reason. Its limits come from
+  // config.yml, read again as it changes, so a changed number needs no restart.
+  const orchLimits = orchestrationSetting(config.configDir, settings?.config);
   manager.orchestration = { baseUrl: `http://127.0.0.1:${config.port}` };
   const marks = await SessionMarks.open(config.stateDir);
   const routines = await Routines.open(config.stateDir);
@@ -241,6 +264,7 @@ async function main(): Promise<void> {
     boards,
     checkpointsDir: path.join(config.stateDir, "checkpoints"),
     stateDir: config.stateDir,
+    orchestrationLimits: orchLimits,
     terminals,
     settings: {
       configDir: config.configDir,

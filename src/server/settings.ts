@@ -94,6 +94,7 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
     showStatusBar: c.show_status_bar ?? true,
     herdr: c.herdr ?? true,
     desktopBackground: c.desktop_background ?? true,
+    orchestrationEnabled: c.orchestration?.enabled ?? true,
   };
 }
 
@@ -194,6 +195,13 @@ export function writeSettings(ctx: SettingsContext, patch: SettingsPatch, who: R
   if (patch.desktopBackground !== undefined) set(["desktop_background"], patch.desktopBackground);
   const auth = doc.getIn(["auth"]) as { items?: unknown[] } | undefined;
   if (auth && Array.isArray(auth.items) && auth.items.length === 0) doc.deleteIn(["auth"]);
+  // On is the default: the switch saves as no key at all, and the block goes when nothing else is in it.
+  if (patch.orchestrationEnabled !== undefined) {
+    if (patch.orchestrationEnabled) doc.deleteIn(["orchestration", "enabled"]);
+    else doc.setIn(["orchestration", "enabled"], false);
+  }
+  const orch = doc.getIn(["orchestration"]) as { items?: unknown[] } | undefined;
+  if (orch && Array.isArray(orch.items) && orch.items.length === 0) doc.deleteIn(["orchestration"]);
 
   let next: UserConfig;
   try {

@@ -173,18 +173,39 @@ resume by hand.
 
 ## Limits
 
-| Limit | Default |
-|---|---|
-| Brief or follow-up | 32 000 characters |
-| Tasks waited on at once | 4 |
-| A wait's own duration | 55 000 ms (at most 110 000) |
-| Delegation depth | 2 (a grandchild may not delegate) |
-| Children per chat | 4 |
-| Tasks per chat | 32 |
-| Live tasks server-wide | 12 |
-| Profiles listed | 64 |
+One call's own bounds are fixed (they are what a model can ask for in one message); the delegation
+caps come from `config.yml` and are read again while the server runs, so a change applies without a
+restart. The Settings dialog's **Agents delegate to other agents** switch is `enabled`.
 
-The delegation caps are constants today; moving them into `config.yml` is a later step.
+```yaml
+orchestration:
+  enabled: true             # false: no agent is given the tools at all
+  maxChildrenPerChat: 4     # tasks one chat may run at once
+  maxTasksPerChat: 32       # tasks one chat may ever start (finished ones count)
+  maxLiveTasks: 12          # tasks this server runs at once, across chats
+  maxDepth: 2               # 2 lets a child delegate once, and stops at grandchildren
+  taskWallClockMs: 2700000  # 45 min: a task still working is stopped and recorded failed
+  wakeParents: true         # wake a parent's agent with a finished child's result
+  maxWakesPerHour: 20       # wake prompts one parent may receive in an hour
+  callsPerMinute: 60        # tool calls one chat may make in a minute
+```
+
+| Limit | Default | Where |
+|---|---|---|
+| Brief or follow-up | 32 000 characters | fixed |
+| Tasks waited on at once | 4 | fixed |
+| A wait's own duration | 55 000 ms (at most 110 000) | fixed |
+| Profiles listed | 64 | fixed |
+| Delegation depth | 2 (a grandchild may not delegate) | `maxDepth` |
+| Children per chat | 4 | `maxChildrenPerChat` |
+| Tasks per chat | 32 | `maxTasksPerChat` |
+| Live tasks server-wide | 12 | `maxLiveTasks` |
+| A task's wall clock | 45 minutes | `taskWallClockMs` |
+| Tool calls per chat per minute | 60 | `callsPerMinute` |
+| Wake prompts per parent per hour | 20 | `maxWakesPerHour` |
+
+A number out of range, or an unknown key in the block, stops the server with the key named, like
+every other setting.
 
 ## Error codes
 

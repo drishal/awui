@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { configDir, launchSettings, THEME_FILE, type UserConfig } from "./user-config.js";
+import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "./orchestration/limits.js";
 import { expandHome as expandTilde } from "../shared/desktop.js";
 import { defaultStateDir } from "./platform-win.js";
 
@@ -30,6 +31,8 @@ export interface ServerConfig {
   harnesses: string[];
   /** Each harness's executable and extra chat arguments (launchSettings); empty: names on PATH. */
   launch: ReturnType<typeof launchSettings>;
+  /** The orchestration surface's bounds: config.yml's `orchestration:` over the defaults (orchestrationLimits). */
+  orchestration: OrchestrationLimits;
   home: string;
 }
 
@@ -102,6 +105,25 @@ export function migrateStateDir(stateDir: string): "moved" | null {
   }
 }
 
+/**
+ * The orchestration surface's bounds: config.yml's `orchestration:` block over the defaults in
+ * orchestration/limits.ts. The server reads this again while it runs (index.ts), so a changed
+ * number applies without a restart.
+ */
+export function orchestrationLimits(c: UserConfig | undefined): OrchestrationLimits {
+  const o = c?.orchestration;
+  return {
+    enabled: o?.enabled ?? DEFAULT_ORCHESTRATION_LIMITS.enabled,
+    maxChildrenPerChat: o?.maxChildrenPerChat ?? DEFAULT_ORCHESTRATION_LIMITS.maxChildrenPerChat,
+    maxTasksPerChat: o?.maxTasksPerChat ?? DEFAULT_ORCHESTRATION_LIMITS.maxTasksPerChat,
+    maxLiveTasks: o?.maxLiveTasks ?? DEFAULT_ORCHESTRATION_LIMITS.maxLiveTasks,
+    maxDepth: o?.maxDepth ?? DEFAULT_ORCHESTRATION_LIMITS.maxDepth,
+    taskWallClockMs: o?.taskWallClockMs ?? DEFAULT_ORCHESTRATION_LIMITS.taskWallClockMs,
+    wakeParents: o?.wakeParents ?? DEFAULT_ORCHESTRATION_LIMITS.wakeParents,
+    maxWakesPerHour: o?.maxWakesPerHour ?? DEFAULT_ORCHESTRATION_LIMITS.maxWakesPerHour,
+    callsPerMinute: o?.callsPerMinute ?? DEFAULT_ORCHESTRATION_LIMITS.callsPerMinute,
+  };
+}
 /** `file`: config.yml's settings that are not environment variables (the harnesses' launch). */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, file?: UserConfig): ServerConfig {
   const home = homedir();
@@ -144,6 +166,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, file?: UserConf
     ompSessionDir: env.OMP_SESSION_DIR ? path.resolve(expandHome(env.OMP_SESSION_DIR, home)) : null,
     harnesses: list(env.AWUI_HARNESSES).length > 0 ? list(env.AWUI_HARNESSES) : ["pi", "omp", "hermes", "claude", "codex", "opencode", "grok", "dsh", "awui"],
     launch: launchSettings(file, env, home),
+    orchestration: orchestrationLimits(file),
     home,
   };
 }

@@ -53,6 +53,7 @@ describe("settings", () => {
       showStatusBar: true,
       herdr: true,
       desktopBackground: true,
+      orchestrationEnabled: true,
     });
   });
 
@@ -96,6 +97,24 @@ describe("settings", () => {
     expect(readFileSync(file, "utf8")).not.toContain("font:");
     expect(settingsPatchSchema.safeParse({ font: "comic" }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ toolStyle: "tiles" }).success).toBe(false);
+  });
+
+  it("saves the orchestration switch and leaves the rest of its block alone", () => {
+    const { ctx, file } = setup(`${FILE}orchestration:\n  enabled: true\n  maxDepth: 1\n`);
+    const off = writeSettings(ctx, { orchestrationEnabled: false });
+    expect(readFileSync(file, "utf8")).toContain("orchestration:\n  enabled: false\n  maxDepth: 1");
+    expect(off.values.orchestrationEnabled).toBe(false);
+    // The numbers are read while the server runs, so the switch needs no restart either.
+    expect(off.restartPending).toEqual([]);
+    // Back on is the default, saved as no key at all: the maxDepth written by hand stays.
+    const on = writeSettings(ctx, { orchestrationEnabled: true });
+    expect(on.values.orchestrationEnabled).toBe(true);
+    expect(readFileSync(file, "utf8")).toContain("orchestration:\n  maxDepth: 1\n");
+    expect(readFileSync(file, "utf8")).not.toContain("enabled");
+    // A block holding nothing else goes with the switch.
+    const bare = setup(`${FILE}orchestration:\n  enabled: false\n`);
+    writeSettings(bare.ctx, { orchestrationEnabled: true });
+    expect(readFileSync(bare.file, "utf8")).not.toContain("orchestration");
   });
 
   it("keeps the password write-only and refuses to listen beyond this machine without a login", () => {

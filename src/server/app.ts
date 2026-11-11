@@ -125,6 +125,7 @@ import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, current
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
 import { Orchestrator } from "./orchestration/orchestrator.js";
 import { ORCH_TOOLS } from "./orchestration/tools.js";
+import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "./orchestration/limits.js";
 
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
@@ -171,6 +172,8 @@ export interface AppDeps {
   herdr?: Herdr;
   /** Board rooms; without one the board routes answer 404 and ownership filtering is a no-op. */
   boards?: BoardManager;
+  /** The orchestration surface's bounds, read at each use; config.yml's `orchestration:` (none: the defaults). */
+  orchestrationLimits?: () => OrchestrationLimits;
   log?: (message: string) => void;
 }
 
@@ -261,12 +264,15 @@ export function createApp(deps: AppDeps) {
   };
   const log = deps.log ?? ((m: string) => console.error(m));
   // Delegated tasks: one record store in the state folder, shared by every chat in this process.
+  // The limits come from config.yml, read at each use, so a changed number needs no restart.
+  const orchestrationLimits = deps.orchestrationLimits ?? (() => DEFAULT_ORCHESTRATION_LIMITS);
   const orchestration = new Orchestrator({
     chats: manager,
     registry,
     workspaces,
     ...(deps.boards ? { boards: deps.boards } : {}),
     file: deps.stateDir ? path.join(deps.stateDir, "orchestration", "tasks.json") : null,
+    limits: orchestrationLimits,
     log,
   });
   // Chats read their lineage and their tasks from the records, so a resumed chat still knows

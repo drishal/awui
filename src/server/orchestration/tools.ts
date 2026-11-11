@@ -20,14 +20,6 @@ export const MAX_WAIT_TASKS = 4;
 /** A wait's own cap: under a proxy's idle timeout, over a quick tool call. */
 export const MAX_WAIT_MS = 110_000;
 export const DEFAULT_WAIT_MS = 55_000;
-/**
- * Delegation caps. They are constants until the settings step puts them in config.yml;
- * depth is the one that matters most, because a tree of agents multiplies cost.
- */
-export const MAX_DEPTH = 2;
-export const MAX_CHILDREN_PER_CHAT = 4;
-export const MAX_TASKS_PER_CHAT = 32;
-export const MAX_LIVE_TASKS = 12;
 /** Profiles one call may list, and the note a bot contributes. */
 export const MAX_PROFILES = 64;
 export const MAX_PROFILE_NOTE_CHARS = 120;

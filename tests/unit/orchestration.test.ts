@@ -5,12 +5,14 @@
 // wake ledger that reports a finished child back to a parent (coalesced, then delivered once).
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import type { ChatItem, ChatSnapshot, DelegatedTaskView, PushNote, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
 import { HarnessRegistry } from "../../src/server/harness/registry.js";
 import { Orchestrator } from "../../src/server/orchestration/orchestrator.js";
+import { DEFAULT_ORCHESTRATION_LIMITS } from "../../src/server/orchestration/limits.js";
+import { formatElapsed } from "../../src/server/orchestration/types.js";
 import { Workspaces } from "../../src/server/workspaces.js";
 import { makeTestApp, openSse, signedIn, tempDir, type TestApp } from "../helpers/app.js";
 import { makeBot } from "../helpers/board.js";
@@ -23,8 +25,8 @@ afterEach(async () => {
 
 const TOOL_NAMES = ["delegate_task", "task_status", "task_cancel", "thread_send", "thread_read", "thread_wait", "list_profiles"];
 
-async function setup() {
-  const app = await makeTestApp();
+async function setup(options: Parameters<typeof makeTestApp>[0] = {}) {
+  const app = await makeTestApp(options);
   t = app;
   const agent = await signedIn(app);
   const ws = (await agent.post("/api/workspaces/open").send({ path: app.project })).body as WorkspaceInfo;
@@ -338,6 +340,23 @@ function reportPrompts(app: TestApp, chatId: string): string[] {
     .items.flatMap((item) => (item.kind === "user" && item.text.includes("[awui delegate") ? [item.text] : []));
 }
 
+/** One task record as the store's file keeps it: what a limit test reads back from disk. */
+interface StoredRecord {
+  id: string;
+  state: string;
+  outcome: string | null;
+  wake: { pendingSince: number | null; skipped: string | null };
+  result: { error: string | null } | null;
+}
+
+function taskRecords(app: TestApp): StoredRecord[] {
+  try {
+    return (JSON.parse(readFileSync(path.join(app.stateDir, "orchestration", "tasks.json"), "utf8")) as { tasks: StoredRecord[] }).tasks;
+  } catch {
+    return [];
+  }
+}
+
 describe("thread_read", () => {
   it("reads a child's transcript just described, newest last and in pages", async () => {
     const { agent, token } = await setup();
@@ -519,7 +538,7 @@ describe("finish delivery", () => {
           ],
         }),
       );
-      const orchestration = new Orchestrator({ chats: manager, registry, workspaces, file, log: () => undefined });
+      const orchestration = new Orchestrator({ chats: manager, registry, workspaces, file, limits: () => DEFAULT_ORCHESTRATION_LIMITS, log: () => undefined });
       await orchestration.start();
       await orchestration.registered(parent);
       await waitUntil(() => parent.snapshot().items.some((item) => item.kind === "user" && item.text.includes("[awui delegate beef")), 4000, "the interrupted report");
@@ -588,3 +607,4 @@ describe("question routing", () => {
     expect(data.pendingRequest).toBeUndefined();
   });
 });
+

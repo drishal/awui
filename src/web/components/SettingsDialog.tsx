@@ -104,6 +104,7 @@ interface Draft {
   autocollapseSidebar: boolean;
   showStatusBar: boolean;
   herdr: boolean;
+  orchestrationEnabled: boolean;
   desktopBackground: boolean;
 }
 
@@ -129,6 +130,7 @@ function draftOf(v: ServerSettingsValues): Draft {
     autocollapseSidebar: v.autocollapseSidebar,
     showStatusBar: v.showStatusBar,
     herdr: v.herdr,
+    orchestrationEnabled: v.orchestrationEnabled,
     desktopBackground: v.desktopBackground,
   };
 }
@@ -162,7 +164,8 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   if (d.autocollapseSidebar !== v.autocollapseSidebar) p.autocollapseSidebar = d.autocollapseSidebar;
   if (d.showStatusBar !== v.showStatusBar) p.showStatusBar = d.showStatusBar;
   if (d.herdr !== v.herdr) p.herdr = d.herdr;
-  if (d.desktopBackground !== v.desktopBackground) p.desktopBackground = d.desktopBackground;
+  if (d.orchestrationEnabled !== v.orchestrationEnabled) p.orchestrationEnabled = d.orchestrationEnabled;
+  if (d.desktopBackground !== v.desktopBackground) p.desktopBackground = v.desktopBackground;
   return p;
 }
 
@@ -508,6 +511,16 @@ export function SettingsDialog({
               </FormRow>
               <FormRow label="Work with herdr" desc="Mark the sessions open in its panes, and let atui in a pane report its chats." toggle>
                 <Switch label="Work with herdr" checked={draft.herdr} disabled={field("herdr")} onChange={(herdr) => update({ herdr })} />
+              </FormRow>
+            </div>
+          </section>
+
+          <section className="form-section" aria-labelledby="settings-agents">
+            <h3 id="settings-agents">Agents</h3>
+            <p className="form-note">The limits behind it — tasks per chat, how deep delegation goes, the wall clock, the call and wake budgets — live in config.yml under orchestration.</p>
+            <div className="form-card">
+              <FormRow label="Agents delegate to other agents" desc="A chat's agent can hand a task to another agent chat, watch it, stop it, and read the result back. Off: no chat is given the tools." toggle>
+                <Switch label="Agents delegate to other agents" checked={draft.orchestrationEnabled} disabled={!editable} onChange={(orchestrationEnabled) => update({ orchestrationEnabled })} />
               </FormRow>
             </div>
           </section>

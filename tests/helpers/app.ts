@@ -17,6 +17,7 @@ import type { InteractionRequest, PushNote } from "../../src/shared/protocol.js"
 import { ThemeStore } from "../../src/server/theme.js";
 import { Workspaces } from "../../src/server/workspaces.js";
 import { TerminalManager } from "../../src/server/terminal.js";
+import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "../../src/server/orchestration/limits.js";
 
 export const USER = "alice";
 export const PASS = "correct horse battery";
@@ -67,6 +68,8 @@ export async function makeTestApp(options: {
   withTerminal?: boolean;
   /** Herdr's panes (a stand-in socket's); none otherwise, whatever herdr runs on this machine. */
   herdr?: Herdr;
+  /** The orchestration surface's limits, over the built-in defaults (config.yml's `orchestration:`). */
+  orchestrationLimits?: Partial<OrchestrationLimits>;
 } = {}): Promise<TestApp> {
   const root = tempDir();
   const project = path.join(root, "proj");
@@ -79,6 +82,9 @@ export async function makeTestApp(options: {
   );
   await registry.refreshStatus();
   const { workspaces } = await Workspaces.create([root], root);
+  // The orchestration limits this app runs under, as config.yml's `orchestration:` block would set them.
+  const orchLimits: OrchestrationLimits = { ...DEFAULT_ORCHESTRATION_LIMITS, ...options.orchestrationLimits };
+  const orchestrationLimits = () => orchLimits;
   const lan = options.lanHosts ? new Set(options.lanHosts) : null;
   const security = new Security({
     port: 4783,
@@ -116,6 +122,7 @@ export async function makeTestApp(options: {
     webDir: null,
     heartbeatMs: options.heartbeatMs ?? 20_000,
     stateDir,
+    orchestrationLimits,
     ...(terminals ? { terminals } : {}),
     boards,
     ...(options.herdr ? { herdr: options.herdr } : {}),
@@ -138,7 +145,7 @@ export async function makeTestApp(options: {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
   manager.render = { baseUrl: `http://127.0.0.1:${port}` };
-  manager.orchestration = { baseUrl: `http://127.0.0.1:${port}` };
+  manager.orchestration = { baseUrl: `http://127.0.0.1:${port}`, enabled: () => orchLimits.enabled };
   const close = async () => {
     terminals?.shutdown();
     await boards.shutdown();
