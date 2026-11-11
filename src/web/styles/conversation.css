@@ -1158,7 +1158,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 1px 12px;
+  padding: 4px 12px;
   color: var(--muted-text);
   font-family: var(--font-sans);
   font-size: 11px;
@@ -1168,7 +1168,7 @@
 .diff-gap::after {
   content: "";
   flex: 1;
-  border-top: 1px dashed var(--hairline-strong);
+  border-top: 1px solid var(--hairline);
 }
 
 .diff-more {
