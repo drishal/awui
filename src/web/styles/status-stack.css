@@ -70,6 +70,13 @@
   padding: 0 6px 6px;
 }
 
+/* A phone keeps the conversation the larger part of the screen: the dock shows about three rows and scrolls the rest. */
+@media (max-width: 600px) {
+  .stack-body {
+    max-height: 22vh;
+  }
+}
+
 .stack-queue,
 .stack-list {
   margin: 0;
