@@ -1,12 +1,12 @@
 // ManagedWorktrees against a real tmp git repo: names validated, trees added
 // and removed through real git, records kept in the project's `.awui`.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readlinkSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
-import { ManagedWorktrees } from "../../src/server/worktrees.js";
+import { ManagedWorktrees, parseWorktreeInclude } from "../../src/server/worktrees.js";
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd, encoding: "utf8" });
@@ -173,5 +173,110 @@ describe("managed worktrees", () => {
     git(unmerged.path, "commit", "-qm", "work");
     await svc.prune(w, unmerged.id);
     expect(git(root, "branch", "--list", unmerged.branch)).toContain(unmerged.branch);
+  });
+});
+
+describe(".worktreeinclude seeding", () => {
+  it("parses sections: plain lines copy, [link] links, [copy] returns, comments and blanks skipped", () => {
+    expect(parseWorktreeInclude("# lead comment\n\n.env\n.vscode/\n[link]\nnode_modules\n[copy]\n.envrc\n")).toEqual([
+      { path: ".env", link: false },
+      { path: ".vscode", link: false },
+      { path: "node_modules", link: true },
+      { path: ".envrc", link: false },
+    ]);
+  });
+
+  it("seeds nothing when there is no include file", async () => {
+    const { ws: w } = ws();
+    const svc = new ManagedWorktrees();
+    const t = await svc.create(w, "plain", "HEAD");
+    expect(t.seeded).toEqual({ copied: [], linked: [], skipped: [], more: 0 });
+  });
+
+  it("copies gitignored files and folders into the new tree and reports them", async () => {
+    const { ws: w, root } = ws();
+    writeFileSync(path.join(root, ".env"), "SECRET=1\n");
+    mkdirSync(path.join(root, ".vscode"));
+    writeFileSync(path.join(root, ".vscode", "settings.json"), "{}\n");
+    writeFileSync(path.join(root, ".worktreeinclude"), "# secrets and editor state\n.env\n.vscode/\n");
+    const svc = new ManagedWorktrees();
+    const t = await svc.create(w, "seeded", "HEAD");
+    expect(t.seeded.copied).toEqual([".env", ".vscode"]);
+    expect(t.seeded.linked).toEqual([]);
+    expect(t.seeded.skipped).toEqual([]);
+    expect(readFileSync(path.join(t.path, ".env"), "utf8")).toBe("SECRET=1\n");
+    expect(readFileSync(path.join(t.path, ".vscode", "settings.json"), "utf8")).toBe("{}\n");
+  });
+
+  it("symlinks [link] entries instead of copying them", async () => {
+    const { ws: w, root } = ws();
+    writeFileSync(path.join(root, ".env"), "SECRET=1\n");
+    mkdirSync(path.join(root, "vendor"));
+    writeFileSync(path.join(root, "vendor", "lib.js"), "export {};\n");
+    writeFileSync(path.join(root, ".worktreeinclude"), ".env\n[link]\nvendor\n");
+    const svc = new ManagedWorktrees();
+    const t = await svc.create(w, "linked", "HEAD");
+    expect(t.seeded.copied).toEqual([".env"]);
+    expect(t.seeded.linked).toEqual(["vendor"]);
+    const target = readlinkSync(path.join(t.path, "vendor"));
+    expect(path.isAbsolute(target)).toBe(false);
+    expect(statSync(path.join(t.path, "vendor")).isDirectory()).toBe(true);
+    expect(path.resolve(t.path, target)).toBe(path.join(root, "vendor"));
+  });
+
+  it("never overwrites the checkout's own files and skips missing entries", async () => {
+    const { ws: w } = ws();
+    writeFileSync(path.join(w.path, ".worktreeinclude"), "app.ts\ngone.txt\n");
+    const svc = new ManagedWorktrees();
+    const t = await svc.create(w, "kept", "HEAD");
+    expect(t.seeded.copied).toEqual([]);
+    expect(t.seeded.skipped).toEqual([
+      { path: "app.ts", reason: "already exists" },
+      { path: "gone.txt", reason: "missing" },
+    ]);
+    expect(readFileSync(path.join(t.path, "app.ts"), "utf8")).toBe("const a = 1;\n");
+  });
+
+  it("refuses .., absolute paths, and sources or children that escape the project", async () => {
+    const { ws: w, root } = ws();
+    writeFileSync(path.join(root, ".env"), "SECRET=1\n");
+    mkdirSync(path.join(root, "secrets"));
+    writeFileSync(path.join(root, "secrets", "key"), "k\n");
+    symlinkSync("..", path.join(root, "up-link"));
+    symlinkSync(path.dirname(root), path.join(root, "sibling-link"));
+    symlinkSync(path.dirname(root), path.join(root, "secrets", "escape"));
+    writeFileSync(path.join(root, ".worktreeinclude"), "../outside\n/etc/passwd\n.env\nup-link\nsibling-link\nsecrets\n");
+    const svc = new ManagedWorktrees();
+    const t = await svc.create(w, "confined", "HEAD");
+    expect(t.seeded.copied).toEqual([".env", "secrets"]);
+    expect(t.seeded.skipped).toEqual([
+      { path: "../outside", reason: "outside the project" },
+      { path: "/etc/passwd", reason: "outside the project" },
+      { path: "up-link", reason: "outside the project" },
+      { path: "sibling-link", reason: "outside the project" },
+      { path: "secrets/escape", reason: "outside the project" },
+    ]);
+    expect(readFileSync(path.join(t.path, "secrets", "key"), "utf8")).toBe("k\n");
+    expect(existsSync(path.join(t.path, "secrets", "escape"))).toBe(false);
+  });
+
+  it("bounds the work: past 50 entries and past the byte budget entries are skipped, not copied", async () => {
+    const { ws: w, root } = ws();
+    const lines: string[] = ["big.bin"];
+    writeFileSync(path.join(root, "big.bin"), Buffer.alloc(21 * 1024 * 1024, 0));
+    for (let i = 0; i < 51; i++) {
+      writeFileSync(path.join(root, `f${i}.txt`), "x".repeat(5));
+      lines.push(`f${i}.txt`);
+    }
+    writeFileSync(path.join(root, ".worktreeinclude"), `${lines.join("\n")}\n`);
+    const svc = new ManagedWorktrees();
+    const t = await svc.create(w, "bounded", "HEAD");
+    expect(t.seeded.copied).toHaveLength(50);
+    expect(t.seeded.copied).toEqual(Array.from({ length: 50 }, (_, i) => `f${i}.txt`));
+    expect(t.seeded.skipped).toEqual([
+      { path: "big.bin", reason: "over the copy budget" },
+      { path: "f50.txt", reason: "too many entries" },
+    ]);
+    expect(existsSync(path.join(t.path, "big.bin"))).toBe(false);
   });
 });

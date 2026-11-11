@@ -2483,7 +2483,7 @@ export function App() {
       />
 
       {pickerOpen ? <WorkspacePicker worktrees={workspace && !room.roomId ? () => setWorktreeOpen(true) : undefined} recent={recent} onOpen={async (p) => { await openWorkspace(p); }} onClose={() => setPickerOpen(false)} error={pickerError} /> : null}
-      {worktreeOpen && workspace ? <LazyPanel><WorktreePicker workspace={workspace} onOpen={async (path) => { await openWorkspace(path); }} onCompare={() => setCompareOpen(true)} onClose={() => setWorktreeOpen(false)} /></LazyPanel> : null}
+      {worktreeOpen && workspace ? <LazyPanel><WorktreePicker workspace={workspace} onOpen={async (path) => { await openWorkspace(path); }} onCompare={() => setCompareOpen(true)} onClose={() => setWorktreeOpen(false)} onSeeded={(text) => toasts.push({ key: "worktree-seeded", text, ms: 8000 })} /></LazyPanel> : null}
       {compareOpen && workspace ? <LazyPanel><CompareDialog workspace={workspace} harnesses={boot.harnesses} initialHarness={harnessId} initialModel={startModel} onClose={() => setCompareOpen(false)} onDone={(snapshots) => {
         const first = snapshots[0];
         if (first) showChat(first, { newTab: true });

@@ -1,15 +1,17 @@
 // Select or create an isolated Git checkout. Worktree paths stay server-owned;
 // choosing one just hands its workspace to the ordinary start/resume flow.
 import { useEffect, useState } from "react";
-import type { WorktreeInfo, WorkspaceInfo } from "../../shared/protocol.js";
+import type { WorktreeInfo, WorktreeSeedReport, WorkspaceInfo } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
+import { worktreeSeedSummary } from "../worktree-seed.js";
 
-export function WorktreePicker({ workspace, onOpen, onClose, onCompare }: {
+export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded }: {
   workspace: WorkspaceInfo;
   onOpen(path: string): Promise<void>;
   onClose(): void;
   onCompare(): void;
+  onSeeded(text: string): void;
 }) {
   const [trees, setTrees] = useState<WorktreeInfo[]>([]);
   const [name, setName] = useState("");
@@ -28,7 +30,9 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare }: {
     setBusy(true);
     setError(null);
     try {
-      const tree = await api<WorktreeInfo>(`/api/workspaces/${workspace.id}/worktrees`, { body: { name, base } });
+      const tree = await api<WorktreeInfo & { seeded: WorktreeSeedReport }>(`/api/workspaces/${workspace.id}/worktrees`, { body: { name, base } });
+      const seeded = worktreeSeedSummary(tree.seeded);
+      if (seeded) onSeeded(seeded);
       await onOpen(tree.path);
       onClose();
     } catch (e) { setError(errorText(e)); }

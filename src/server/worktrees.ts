@@ -2,10 +2,13 @@
 // name → `.awui/worktrees/<slug>-<hex>`, the trees recorded in the project's
 // own `.awui/worktrees.json`. Git runs through the server's runner with none
 // of the environment's GIT_* pointing it elsewhere, no prompts, no hooks.
+// A checked-in `.worktreeinclude` seeds each new tree at once: gitignored
+// files and small folders copied, large folders (under `[link]`) symlinked,
+// every path confined to the project the way workspaces.ts confines itself.
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { WorkspaceInfo } from "../shared/protocol.js";
+import type { WorkspaceInfo, WorktreeCreated, WorktreeSeedReport } from "../shared/protocol.js";
 import { isWithin } from "./workspaces.js";
 import { ChatError } from "./chats/chat.js";
 import { git } from "./git.js";
@@ -24,7 +27,8 @@ export interface WorktreeInfo {
 
 export interface WorktreeService {
   list(ws: WorkspaceInfo): Promise<WorktreeInfo[]>;
-  create(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeInfo>;
+  list(ws: WorkspaceInfo): Promise<WorktreeInfo[]>;
+  create(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeCreated>;
   prune(ws: WorkspaceInfo, id: string): Promise<void>;
 }
 
@@ -122,11 +126,11 @@ export class ManagedWorktrees implements WorktreeService {
     return out;
   }
 
-  async create(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeInfo> {
+  async create(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeCreated> {
     return serial(ws, () => this.createOne(ws, name, base));
   }
 
-  private async createOne(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeInfo> {
+  private async createOne(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeCreated> {
     const s = slug(name);
     if (!s || s !== name.trim() || !SLUG_PATTERN.test(s)) throw new Error("bad_name");
     if (RESERVED[s]) throw new Error("reserved_name");
@@ -170,7 +174,10 @@ export class ManagedWorktrees implements WorktreeService {
       await git(["worktree", "remove", "--force", "--", dest], { cwd: ws.path }).catch(() => undefined);
       throw err;
     }
-    return info;
+    // Seeding never fails the create: a broken include file or an unreadable
+    // entry is reported entry by entry, and the tree is usable regardless.
+    const seeded = await seedWorktree(ws.path, dest).catch((): WorktreeSeedReport => ({ copied: [], linked: [], skipped: [{ path: INCLUDE_FILE, reason: "could not be read" }], more: 0 }));
+    return { ...info, seeded };
   }
 
   /** Remove a managed tree by id: its work tree must be clean (`.awui` aside), then git removes it with no --force. */
@@ -209,4 +216,128 @@ export class ManagedWorktrees implements WorktreeService {
     // one, which stays for the user to merge or delete, so no committed work is lost.
     await git(["branch", "-d", "--", tree.branch], { cwd: ws.path }).catch(() => undefined);
   }
+}
+
+/**
+ * `.worktreeinclude`, checked in at the project root, makes a new worktree
+ * usable at once. Plain lines name gitignored files or folders copied into
+ * the tree (`.env`, `.vscode/`); under a `[link]` section (until a `[copy]`
+ * line) they are symlinked instead, for large folders such as `node_modules`.
+ * Paths are project-relative, one per line, `#` comments and blank lines
+ * ignored. Every entry is confined the way workspaces.ts confines itself:
+ * `..` and absolute paths are refused outright, and a source — or anything
+ * inside a copied folder — whose realpath leaves the project is skipped.
+ * Copies are bounded (50 entries, 20 MB, 2000 files, depth 16) and never
+ * overwrite anything the fresh checkout already has.
+ */
+
+const INCLUDE_FILE = ".worktreeinclude";
+const MAX_INCLUDE_ENTRIES = 50;
+const MAX_SEED_BYTES = 20 * 1024 * 1024;
+const MAX_SEED_FILES = 2000;
+/** Stops a symlink cycle inside a copied folder from recursing for ever. */
+const MAX_SEED_DEPTH = 16;
+/** The report stays a bounded payload: past 100 skips only a count is carried. */
+const MAX_REPORTED_SKIPS = 100;
+
+export interface WorktreeIncludeEntry {
+  path: string;
+  link: boolean;
+}
+
+/** Parse the include file's text into entries with their mode; section headers are exact. */
+export function parseWorktreeInclude(text: string): WorktreeIncludeEntry[] {
+  const entries: WorktreeIncludeEntry[] = [];
+  let link = false;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line === "[link]") { link = true; continue; }
+    if (line === "[copy]") { link = false; continue; }
+    entries.push({ path: line.replace(/\/+$/, ""), link });
+  }
+  return entries;
+}
+
+interface SeedWalk {
+  root: string;
+  bytes: number;
+  files: number;
+  report: WorktreeSeedReport;
+}
+
+const pathTaken = async (p: string): Promise<boolean> => {
+  try { await fs.lstat(p); return true; } catch { return false; }
+};
+
+/** The project-relative text a line carries: absolute paths and any `..` segment are refused outright. */
+const escapes = (entry: string): boolean => path.isAbsolute(entry) || entry.split("/").includes("..");
+
+function skip(walk: SeedWalk, p: string, reason: string): void {
+  if (walk.report.skipped.length >= MAX_REPORTED_SKIPS) walk.report.more += 1;
+  else walk.report.skipped.push({ path: p, reason });
+}
+
+/** Copy one file into the new tree under the budget; false when it was skipped. */
+async function copyFileEntry(walk: SeedWalk, from: string, to: string, rel: string): Promise<boolean> {
+  if (walk.files >= MAX_SEED_FILES || walk.bytes >= MAX_SEED_BYTES) { skip(walk, rel, "over the copy budget"); return false; }
+  const size = (await fs.stat(from)).size;
+  if (walk.bytes + size > MAX_SEED_BYTES) { skip(walk, rel, "over the copy budget"); return false; }
+  await fs.copyFile(from, to, fs.constants.COPYFILE_EXCL);
+  walk.bytes += size;
+  walk.files += 1;
+  return true;
+}
+
+/** Copy one realpath-checked source into the new tree, walking folders with the budget in hand; false when the entry itself was skipped. */
+async function copyEntry(walk: SeedWalk, from: string, to: string, rel: string, depth: number): Promise<boolean> {
+  const stat = await fs.stat(from);
+  if (stat.isFile()) return copyFileEntry(walk, from, to, rel);
+  if (!stat.isDirectory()) { skip(walk, rel, "not a regular file"); return false; }
+  if (depth > MAX_SEED_DEPTH) { skip(walk, rel, "nested too deep"); return false; }
+  await fs.mkdir(to, { recursive: true });
+  for (const item of await fs.readdir(from, { withFileTypes: true })) {
+    const childRel = rel ? `${rel}/${item.name}` : item.name;
+    let childFrom = path.join(from, item.name);
+    if (item.isSymbolicLink()) {
+      // A link inside a copied folder is dereferenced, never carried over:
+      // only targets that stay in the project are copied, the rest skipped.
+      try { childFrom = await fs.realpath(childFrom); } catch { skip(walk, childRel, "missing"); continue; }
+      if (!isWithin(walk.root, childFrom)) { skip(walk, childRel, "outside the project"); continue; }
+    }
+    await copyEntry(walk, childFrom, path.join(to, item.name), childRel, depth + 1);
+  }
+  return true;
+}
+
+/** Seed one new tree from the project's `.worktreeinclude`, reporting what was copied, linked, and skipped. */
+async function seedWorktree(root: string, dest: string): Promise<WorktreeSeedReport> {
+  const report: WorktreeSeedReport = { copied: [], linked: [], skipped: [], more: 0 };
+  let text: string;
+  try { text = await fs.readFile(path.join(root, INCLUDE_FILE), "utf8"); } catch { return report; }
+  const walk: SeedWalk = { root, bytes: 0, files: 0, report };
+  for (const entry of parseWorktreeInclude(text)) {
+    if (report.copied.length + report.linked.length >= MAX_INCLUDE_ENTRIES) { skip(walk, entry.path, "too many entries"); continue; }
+    if (escapes(entry.path)) { skip(walk, entry.path, "outside the project"); continue; }
+    let real: string;
+    try { real = await fs.realpath(path.join(root, entry.path)); } catch { skip(walk, entry.path, "missing"); continue; }
+    if (!isWithin(root, real)) { skip(walk, entry.path, "outside the project"); continue; }
+    const to = path.join(dest, entry.path);
+    if (await pathTaken(to)) { skip(walk, entry.path, "already exists"); continue; }
+    const stat = await fs.stat(real);
+    if (!stat.isFile() && !stat.isDirectory()) { skip(walk, entry.path, "not a regular file"); continue; }
+    try {
+      await fs.mkdir(path.dirname(to), { recursive: true });
+      if (entry.link) {
+        // A relative target keeps the link valid if the project folder moves.
+        await fs.symlink(path.relative(dest, real), to);
+        report.linked.push(entry.path);
+      } else {
+        if (await copyEntry(walk, real, to, entry.path, 1)) report.copied.push(entry.path);
+      }
+    } catch {
+      skip(walk, entry.path, entry.link ? "could not be linked" : "could not be copied");
+    }
+  }
+  return report;
 }

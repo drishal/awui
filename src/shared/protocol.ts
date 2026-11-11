@@ -124,6 +124,21 @@ export interface WorktreeInfo {
   createdAt: number;
 }
 
+/** What a new managed worktree was seeded with, from the project's checked-in `.worktreeinclude`. */
+export interface WorktreeSeedReport {
+  /** Gitignored files and small folders copied into the new tree. */
+  copied: string[];
+  /** Large gitignored folders symlinked into the new tree. */
+  linked: string[];
+  /** Entries the file listed that were not seeded, each with why. */
+  skipped: Array<{ path: string; reason: string }>;
+  /** Skipped entries past the report's cap that are not listed. */
+  more: number;
+}
+
+/** One created worktree together with what was seeded into it (the create response only). */
+export type WorktreeCreated = WorktreeInfo & { seeded: WorktreeSeedReport };
+
 /** A project folder's place in its git repository, for the order of the sidebar's projects. */
 export interface Checkout {
   /** Opaque, and the same for every worktree of one repository. */
