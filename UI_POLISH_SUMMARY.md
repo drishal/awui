@@ -68,40 +68,76 @@ The round-3 findings that were plainly defects, plus the three regressions DeepS
 
 Trade-off: the jump control lost its words. Its name is still announced and shown on hover, but it is no longer self-describing at a glance. A 128px chip that never covers text does not fit the pane's margin.
 
+### Round 4
+
+Before the round, the smaller round-3 leftovers:
+- **Settings slider** (`0af7cbc`): its value ends on the controls' right edge; the reset slot sits between the slider and the value.
+- **Dock foot** (`c202053`): the git row is inset 14px, like the rows above it.
+- **"+N"** (`c58ebf9`): says on hover what it counts.
+- **Light card edge** (`1fccdb9`): a tool card's ring takes three points more of the text colour.
+
+After Opus's and Muse Spark's round-4 reviews:
+- **Diff line numbers** (`cd89c07`): every row is its own grid, and each sized its own number column, so line 9's code started a digit left of line 11's. The column now takes the widest number's width on every row.
+- **Context ring** (`26876ee`, then `bdcd021`): first square arc ends, which didn't show at 16px, then a pie. A faint disc with the used share filled in looks like no loader.
+- **Folder picker** (`f931746`): "Workspace roots" no longer sits straight under "Browse" in the same style. The list carries it as its accessible name.
+- **Segmented choice in dark** (`69d544b`): the raised pill is lighter (`--raise-mix` 15%) and has a hairline edge, so the choice doesn't rest on text weight.
+- **Approval caption** (`31708e6`): the git row above an approval card is shorter and inset to the card's content edge, so it reads as the card's caption.
+- **Phone dock** (`855472e`): below 600px the dock shows about three rows and scrolls the rest, rather than taking a quarter of the screen.
+- **Settings Save bar** (`f7f790a`), a regression from the round-2/3 fade. The mask covered the whole scrolling body, sticky Save bar included, so on a server with a settings folder the Save button itself was faded. The screenshots never showed it, because the sandbox ran without a settings folder. When the bar is present it is now the bottom edge, with no mask and no padding under it. The sandbox now runs with a settings folder, so the frames show the bar.
+
+Kept on purpose: the start screen's single "model · level" chip. Opus and Muse Spark asked for the chat's two chips there too. The start screen picks the level in the model picker's footer, from the chosen model's own levels (omp's efforts differ per model), and e2e drives it there, so splitting it is a behaviour change rather than polish.
+
+### Round 5
+
+All three scored 9.0 or 8.9 and found nothing made worse. What they still raised:
+- **Settings footer** (`d79e41b`): the sticky Save bar is a modal footer, edge to edge over a hairline, with a bottom gutter matching the sides.
+- **Phone dock** (`b708dae`, `5035a22`): 22vh was taller than the todo list, so round 4's cap never applied. It is now `min(15vh, 128px)`, and the cut-off row fades out rather than being sliced through its text.
+- **Diff gap** (`6e7fc88`): the skipped-lines marker is a solid hairline; the dashed one read as a glitch.
+- **Palette rows** (`1314afa`): label and detail share a baseline. Centred apart, the smaller detail rode a pixel or two high.
+- **Phone header** (`d45ad67`): keeps the project, shortened to 12 characters, rather than dropping it.
+- **Diff colours** (`4b46af3`): the sign and number mix their hue toward the text colour. Plain `--ok` on the added row's tint was 3.9:1 in light.
+- **Disabled primary** (`8f4f84f`): a faint fill with a muted label instead of half opacity, which left Settings' unusable Save the heaviest thing in its row.
+- **Context pie** (`529c646`): the empty disc is stronger in dark, where it nearly vanished.
+- **Stop** (`5aff4ab`): still apart from Deny and Approve, on the left, but with a faint danger outline, so it reads as a button and not a status label.
+
+Not a UI change: two reviewers saw a focus ring on Approve in light and none in dark. The capture script's clean-up clicks left focus behind in one scheme only. Frames are now shot unfocused, plus a crop of each card with Approve keyboard-focused, and the ring shows in both.
+
+Not taken: DeepSeek's suggestion to keep the model chip visible in a phone's folded composer (a layout change to the phone composer, not polish), and to set the status bar's project apart with a folder glyph.
+
 ## Council review
 
 Members: Claude Opus 5.5 (Claude Pro), DeepSeek V4.1 Flash (OpenCode Go), and a third seat held by Grok 4.7 (xAI) in rounds 1–2. In round 3 Grok failed three times on xAI capacity, and the seat moved to Muse Spark 1.3 (OpenCode Go) at the user's request, since the xAI weekly limit was close. The repo is public and the frames are synthetic, so Muse Spark's training on prompts exposes nothing private. Each member scored the same screenshots (desktop and phone, dark and light) on their own, read-only.
 
-| Delegate | Round 1 | Round 2 | Round 3 |
-| --- | --- | --- | --- |
-| Claude Opus 5.5 | 7/10 | 8.3/10 | 8.6/10 |
-| DeepSeek V4.1 Flash | 6.5/10 | 8.5/10 | 8.6/10 |
-| Third seat | 6.8/10 (Grok 4.7) | 8.3/10 (Grok 4.7) | 8.6/10 (Muse Spark 1.3) |
+| Delegate | Round 1 | Round 2 | Round 3 | Round 4 | Round 5 |
+| --- | --- | --- | --- | --- | --- |
+| Claude Opus 5.5 | 7/10 | 8.3/10 | 8.6/10 | 8.8/10 | 9.0/10 |
+| DeepSeek V4.1 Flash | 6.5/10 | 8.5/10 | 8.6/10 | no score | 9.0/10 |
+| Third seat | 6.8/10 (Grok 4.7) | 8.3/10 (Grok 4.7) | 8.6/10 (Muse Spark 1.3) | 8.7/10 (Muse Spark 1.3) | 8.9/10 (Muse Spark 1.3) |
+
+DeepSeek's round-4 run had not finished after about 20 minutes, by which time that round's fixes had landed. It was cancelled, and DeepSeek reviews round 5 on the new frames, so round 4 has no DeepSeek score.
 
 Dimension scores per round (Hier / Type / Space+Radius / Icons / Consist / Read):
 
-| Delegate | Round 1 | Round 2 | Round 3 |
-| --- | --- | --- | --- |
-| Claude Opus 5.5 | 6.5 / 6 / 7 / 6.5 / 6.5 / 7.5 | 8.5 / 8.8 / 8.2 / 8.2 / 8.0 / 8.6 | 8.7 / 8.8 / 8.6 / 8.6 / 8.4 / 8.7 |
-| DeepSeek V4.1 Flash | 6 / 6 / 5 / 5 / 5.5 / 7 | 8.5 / 8.8 / 8.6 / 8.7 / 8.3 / 8.9 | 8.7 / 8.8 / 8.3 / 8.8 / 8.5 / 8.9 |
-| Third seat | 6.5 / 5.5 / 6.0 / 6.5 / 6.5 / 7.5 (Grok) | 8.6 / 8.7 / 8.3 / 8.4 / 8.2 / 8.1 (Grok) | 9.0 / 9.0 / 8.5 / 9.0 / 8.5 / 9.0 (Muse Spark) |
+| Delegate | Round 1 | Round 2 | Round 3 | Round 4 | Round 5 |
+| --- | --- | --- | --- | --- | --- |
+| Claude Opus 5.5 | 6.5 / 6 / 7 / 6.5 / 6.5 / 7.5 | 8.5 / 8.8 / 8.2 / 8.2 / 8.0 / 8.6 | 8.7 / 8.8 / 8.6 / 8.6 / 8.4 / 8.7 | 9.0 / 8.8 / 8.7 / 8.4 / 8.4 / 8.7 | 9.1 / 9.0 / 8.8 / 9.0 / 8.9 / 9.1 |
+| DeepSeek V4.1 Flash | 6 / 6 / 5 / 5 / 5.5 / 7 | 8.5 / 8.8 / 8.6 / 8.7 / 8.3 / 8.9 | 8.7 / 8.8 / 8.3 / 8.8 / 8.5 / 8.9 | no score | 9.2 / 9.0 / 8.9 / 8.9 / 8.9 / 9.0 |
+| Third seat | 6.5 / 5.5 / 6.0 / 6.5 / 6.5 / 7.5 (Grok) | 8.6 / 8.7 / 8.3 / 8.4 / 8.2 / 8.1 (Grok) | 9.0 / 9.0 / 8.5 / 9.0 / 8.5 / 9.0 (Muse Spark) | 8.6 / 9.0 / 8.6 / 9.0 / 8.6 / 9.2 (Muse Spark) | 9.0 / 9.2 / 8.8 / 9.0 / 8.7 / 9.1 (Muse Spark) |
 
-### Still open from round 3
-
-All three gave 8.6. Everything they named as a defect is fixed above; this is what is left, and what round 4 starts from:
-- **"+5" in the card header has no unit** (Muse Spark).
-- **Smaller** (from both): the context ring reads as a spinner; the settings slider's value stops short of the controls' edge; the chat header isn't on the conversation column; the git row's inset is 8px where the todos' is 14px; light card rings are faint.
+Round 3 gave 8.6 from all three. Round 4 found nothing made worse. Its findings are fixed under "Round 4" above, except the start screen's single chip, which is kept on purpose. In round 5 Opus and DeepSeek cleared the bar (9.0 overall, nothing under 8.5) and Muse Spark gave 8.9, naming the diff gap, the pie's dark disc and Stop's affordance as what kept it under 9. Those are fixed under "Round 5".
 
 ## Screenshots
 
-Kept locally in `.todo/ui-polish/` (gitignored, not committed). `before/` holds the frames from the start, `round2/` and `round3/` the council rounds, and `round4/` the frames of this pass, all under the same names:
+Kept locally in `.todo/ui-polish/` (gitignored, not committed). `before/` holds the frames from the start, and `round2/` to `round6/` the frames each council round judged, all under the same names:
 `{dark,light}-1-chat`, `-2-tools`, `-3-approval`, `-4-folder`, `-5-hero`, `-6-settings` (and `-6-settings-top`), `-7-palette`, `-phone-1-chat`, `-phone-2-drawer`. They come from a sandbox server with fake agents (port 4795), so the paths and messages are synthetic.
 
 Round 4's frames differ from earlier rounds in one way worth knowing: the sandbox needs `XDG_CONFIG_HOME` pointed inside its own folder. Without it the server reads the developer's `~/.config/awui/theme.yml` and every frame comes out in their custom base16 theme instead of the app's own light or dark palette.
 
 ## Checks
 
-On this pass's tip (the twelve commits above):
+On round 4's tip (`f7f790a`): typecheck passes; `npm test` 1414 passed, 22 skipped; e2e both shards pass, 225 passed and 7 skipped, with no failures and no reruns. The same held on `26876ee`, the tip that round 4 judged.
+
+On the pass before round 4 (the twelve commits under "Before round 4"):
 
 - `npm run typecheck`: passes (server, web, tests, atui).
 - `npm test`: 1413 passed, 22 skipped, 1 failed. The failure is `render-preview`, which needs a Chromium from the dev shell; it passes when `PLAYWRIGHT_BROWSERS_PATH` is set.
