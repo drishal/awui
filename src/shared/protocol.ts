@@ -893,6 +893,11 @@ export const routineCadenceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("weekly"), weekday: z.number().int().min(0).max(6), hour: z.number().int().min(0).max(23), minute: z.number().int().min(0).max(59) }),
 ]);
 
+/** A routine's precheck is one command line; longer than this is a typo, not a guard. */
+export const MAX_PRECHECK_CHARS = 500;
+/** Why the last slot was skipped or failed, as the list shows it. */
+export const MAX_RUN_DETAIL_CHARS = 300;
+
 /** What the Routines dialog saves: a prompt on a cadence, in a project, on a harness. */
 export const routineSchema = z.object({
   id: z.string().min(1).max(64).optional(),
@@ -901,18 +906,28 @@ export const routineSchema = z.object({
   harnessId: z.string().min(1).max(64),
   workspaceId: z.string().min(1).max(64),
   cadence: routineCadenceSchema,
+  /** A shell command run in the project before a due run; a non-zero exit skips it. Empty = none. */
+  precheck: z.string().trim().max(MAX_PRECHECK_CHARS).default(""),
   enabled: z.boolean().default(true),
 });
 // What the dialog sends: `enabled` and `id` are optional here and filled in by the
 // schema on parse, so a caller need not spell out the defaults.
 export type RoutineInput = z.input<typeof routineSchema>;
 
-/** A saved routine: its input, plus the id and the times the server keeps. */
-export interface Routine extends Omit<RoutineInput, "enabled"> {
+/** How a routine's last due slot ended: a chat started, a precheck skipped it, or the start threw. */
+export type RoutineOutcome = "launched" | "skipped" | "failed";
+
+/** A saved routine: its input, plus the id, the times, and the last outcome the server keeps. */
+export interface Routine extends Omit<RoutineInput, "enabled" | "precheck"> {
   id: string;
   enabled: boolean;
+  precheck: string;
   nextRunAt: number;
   lastRunAt: number | null;
+  /** Null before the first run (or from a file written before outcomes were kept). */
+  lastRunOutcome: RoutineOutcome | null;
+  /** The exit code or reason behind a skip, bounded; null when there is nothing to say. */
+  lastRunDetail: string | null;
 }
 
 export interface FileView {

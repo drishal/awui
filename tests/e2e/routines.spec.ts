@@ -13,11 +13,13 @@ test("a routine is created, listed with its cadence, switched off, and deleted",
 
   await dialog.getByLabel("Routine name").fill("Nightly");
   await dialog.getByLabel("Prompt").fill("Review today's commits");
+  await dialog.getByLabel("Precheck command").fill("git diff --quiet HEAD");
   await dialog.getByRole("button", { name: "Add routine" }).click();
   const list = dialog.getByRole("list", { name: "Routines" });
   await expect(list).toContainText("Nightly");
   await expect(list).toContainText("every day at 09:00");
   await expect(list).toContainText("next");
+  await expect(list).toContainText("precheck: git diff --quiet HEAD");
 
   // Off, then gone.
   await dialog.getByLabel("Enable Nightly").uncheck();

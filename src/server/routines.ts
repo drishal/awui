@@ -1,25 +1,47 @@
 // The routines this server keeps: a prompt on a cadence, in a project, on a
 // harness, in $XDG_STATE_HOME/awui/routines.json. nextRunAt is stored rather than
 // derived on read, because the timer asks what is due now; saving, editing, and
-// running a routine recompute it from shared/routine-schedule.ts.
+// running a routine recompute it from shared/routine-schedule.ts. The last
+// outcome is stored too, so the list can say why a slot skipped without a chat.
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { type Routine, type RoutineInput, routineSchema } from "../shared/protocol.js";
+import { MAX_RUN_DETAIL_CHARS, type Routine, type RoutineInput, type RoutineOutcome, routineSchema } from "../shared/protocol.js";
 import { nextRunAt } from "../shared/routine-schedule.js";
 import { isObj, readJson, writeJson } from "./state-file.js";
 
 export const MAX_ROUTINES = 50;
+
+const OUTCOMES: readonly RoutineOutcome[] = ["launched", "skipped", "failed"];
+
+/** A stored outcome, or null for a file written before outcomes were kept (and for a hand-edited one). */
+function outcomeOf(raw: unknown): RoutineOutcome | null {
+  return OUTCOMES.includes(raw as RoutineOutcome) ? (raw as RoutineOutcome) : null;
+}
+
+/** Why the last slot skipped or failed: one bounded line, or null. Anything else in the file is dropped. */
+function detailOf(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.trim().slice(0, MAX_RUN_DETAIL_CHARS);
+  return text || null;
+}
 
 /** A stored routine, kept only when it still validates (a hand-edited file loses nothing else). */
 function clean(raw: unknown): Routine | null {
   if (!isObj(raw)) return null;
   const parsed = routineSchema.safeParse(raw);
   if (!parsed.success) return null;
-  const { id, nextRunAt: at, lastRunAt } = raw as { id?: unknown; nextRunAt?: unknown; lastRunAt?: unknown };
+  const { id, nextRunAt: at, lastRunAt, lastRunOutcome, lastRunDetail } = raw as { id?: unknown; nextRunAt?: unknown; lastRunAt?: unknown; lastRunOutcome?: unknown; lastRunDetail?: unknown };
   if (typeof id !== "string" || !id) return null;
   if (typeof at !== "number" || !Number.isFinite(at)) return null;
   if (lastRunAt !== null && typeof lastRunAt !== "number") return null;
-  return { ...parsed.data, id, nextRunAt: at, lastRunAt: (lastRunAt as number | null) ?? null };
+  return {
+    ...parsed.data,
+    id,
+    nextRunAt: at,
+    lastRunAt: (lastRunAt as number | null) ?? null,
+    lastRunOutcome: outcomeOf(lastRunOutcome),
+    lastRunDetail: detailOf(lastRunDetail),
+  };
 }
 
 export class Routines {
@@ -64,6 +86,8 @@ export class Routines {
       id: existing?.id ?? randomUUID(),
       nextRunAt: nextRunAt(parsed.cadence, now),
       lastRunAt: existing?.lastRunAt ?? null,
+      lastRunOutcome: existing?.lastRunOutcome ?? null,
+      lastRunDetail: existing?.lastRunDetail ?? null,
     };
     this.byId.set(routine.id, routine);
     await this.persist();
@@ -81,6 +105,19 @@ export class Routines {
     const routine = this.byId.get(id);
     if (!routine) return undefined;
     const next: Routine = { ...routine, lastRunAt: at, nextRunAt: nextRunAt(routine.cadence, at) };
+    this.byId.set(id, next);
+    await this.persist();
+    return next;
+  }
+
+  /**
+   * What the claimed slot came to. markRan already moved the times (a skip gets its
+   * next slot too); this only says how it ended, so the list can show a skipped precheck.
+   */
+  async markOutcome(id: string, outcome: RoutineOutcome, detail: string | null = null): Promise<Routine | undefined> {
+    const routine = this.byId.get(id);
+    if (!routine) return undefined;
+    const next: Routine = { ...routine, lastRunOutcome: outcome, lastRunDetail: detailOf(detail) };
     this.byId.set(id, next);
     await this.persist();
     return next;

@@ -56,6 +56,14 @@ The **Settings** dialog (gear left of the collapse button) edits the same file: 
 
 omp is a Pi fork and reads the **same variable names** (`PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`). Any `PI_*` value in this server's environment belongs to Pi and is stripped from omp children. `OMP_AGENT_DIR` and `OMP_SESSION_DIR` are mapped onto omp's names for the child only. Overrides are reported as set/unset only. The app writes inside `~/.pi` or `~/.omp` only to add a new session file for a fork or handoff, inside `~/.claude` only for a fork's new file, never inside `~/.hermes`, `~/.codex`, or `~/.grok`, and the browser never sees agent dirs or session file paths.
 
+## Routines
+
+A routine (the palette's *Routines…*) is stored in `routines.json` in the state folder, not in `config.yml`: a prompt, a project, a harness, a cadence, an optional precheck, the next run, and how the last slot ended.
+
+The precheck is one command line (at most 500 characters) run through the host's shell in the routine's project folder, before a due run and instead of it when it fails. It gets the environment a harness spawned in that project gets, so an allowed `.envrc` applies ([Project environment](usage.md)), and its arguments are the user's own line: awui hands the line to the shell as one argument and adds nothing to it. Exit 0 lets the run start. A non-zero exit skips that slot — no chat opens, no harness starts — recording the exit code and the first line of its output (the output awui keeps is bounded to 4 KB, and the list shows one line). A precheck still running after 30 s is cut short and skips the slot, as does a shell that cannot start, each with its reason. Either way the slot is used up as a normal run's would be, so the next attempt waits for the cadence.
+
+awui records `lastRunOutcome` (`launched`, `skipped`, or `failed`) and a bounded `lastRunDetail` beside the routine, and the dialog's list shows both; a file written before these fields existed still loads, with no outcome. Editing a routine keeps them.
+
 ## With herdr
 
 [herdr](https://herdr.dev) is a terminal workspace manager for coding agents: workspaces, tabs, and panes, with each pane's agent and whether it is working, blocked on you, or done (herdr's own hooks for Pi, omp, Claude Code, and Hermes tell it, and `herdr integration install <harness>` sets them up). awui works with it both ways, through herdr's JSON socket, and does nothing where herdr does not run. `herdr: false` in `config.yml`, or the Settings dialog's checkbox, turns it off.

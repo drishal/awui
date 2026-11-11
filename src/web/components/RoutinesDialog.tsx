@@ -12,12 +12,21 @@ import { Dialog } from "./Dialog.js";
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 type Kind = RoutineCadence["kind"];
 
+/** How the last slot ended, in the list's words: "ran 09:00", "skipped 09:00 — precheck exited 1". */
+function outcomeText(routine: Routine): string {
+  const at = routine.lastRunAt ? new Date(routine.lastRunAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  const verb = routine.lastRunOutcome === "launched" ? "ran" : routine.lastRunOutcome === "skipped" ? "skipped" : "failed to start";
+  const when = at ? `${verb} ${at}` : verb;
+  return routine.lastRunDetail ? `${when} — ${routine.lastRunDetail}` : when;
+}
+
 export function RoutinesDialog({ harnesses, workspaces, onClose }: { harnesses: HarnessStatus[]; workspaces: WorkspaceInfo[]; onClose: () => void }) {
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [precheck, setPrecheck] = useState("");
   const [harnessId, setHarnessId] = useState(harnesses[0]?.id ?? "");
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? "");
   const [kind, setKind] = useState<Kind>("daily");
@@ -48,9 +57,10 @@ export function RoutinesDialog({ harnesses, workspaces, onClose }: { harnesses: 
     setBusy(true);
     setError(null);
     try {
-      await api<Routine>("/api/routines", { method: "PUT", body: { name: name.trim(), prompt: prompt.trim(), harnessId, workspaceId, cadence: cadence() } });
+      await api<Routine>("/api/routines", { method: "PUT", body: { name: name.trim(), prompt: prompt.trim(), harnessId, workspaceId, cadence: cadence(), precheck: precheck.trim() } });
       setName("");
       setPrompt("");
+      setPrecheck("");
       await load();
     } catch (failure) {
       setError(errorText(failure));
@@ -66,7 +76,7 @@ export function RoutinesDialog({ harnesses, workspaces, onClose }: { harnesses: 
     // truth rather than leaving the row saying something the server does not.
     setRoutines((current) => current?.map((r) => (r.id === routine.id ? { ...r, enabled } : r)) ?? current);
     try {
-      await api("/api/routines", { method: "PUT", body: { id: routine.id, name: routine.name, prompt: routine.prompt, harnessId: routine.harnessId, workspaceId: routine.workspaceId, cadence: routine.cadence, enabled } });
+      await api("/api/routines", { method: "PUT", body: { id: routine.id, name: routine.name, prompt: routine.prompt, harnessId: routine.harnessId, workspaceId: routine.workspaceId, cadence: routine.cadence, precheck: routine.precheck, enabled } });
       await load();
     } catch (failure) {
       setError(errorText(failure));
@@ -101,6 +111,16 @@ export function RoutinesDialog({ harnesses, workspaces, onClose }: { harnesses: 
                   <span className="routine-when">
                     {cadenceLabel(routine.cadence)} · next {new Date(routine.nextRunAt).toLocaleString()}
                   </span>
+                  {routine.precheck ? (
+                    <span className="routine-precheck" title={routine.precheck}>
+                      precheck: {routine.precheck}
+                    </span>
+                  ) : null}
+                  {routine.lastRunOutcome ? (
+                    <span className={`routine-outcome routine-outcome-${routine.lastRunOutcome}`} title={routine.lastRunDetail ?? undefined}>
+                      {outcomeText(routine)}
+                    </span>
+                  ) : null}
                 </label>
                 <button type="button" className="icon-btn" aria-label={`Delete ${routine.name}`} onClick={() => void remove(routine)}>
                   <IconX size={13} />
@@ -120,6 +140,7 @@ export function RoutinesDialog({ harnesses, workspaces, onClose }: { harnesses: 
           <h3>New routine</h3>
           <input className="input" aria-label="Routine name" placeholder="Nightly review" value={name} onChange={(e) => setName(e.target.value)} />
           <textarea className="input" aria-label="Prompt" rows={3} placeholder="Review today's commits and list what needs me." value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+          <input className="input" aria-label="Precheck command" placeholder="Optional precheck command: run in the project first, a non-zero exit skips this run" value={precheck} onChange={(e) => setPrecheck(e.target.value)} />
           <div className="routines-picks">
             <label>
               Project

@@ -899,6 +899,25 @@
   font-size: 12px;
 }
 
+/* The precheck as saved, and how the last slot ended: both one line, cut short. */
+.routine-precheck,
+.routine-outcome {
+  color: var(--muted-text);
+  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routine-precheck {
+  font-family: var(--font-mono);
+}
+
+.routine-outcome-failed {
+  color: var(--danger);
+}
+
 .routines-form {
   display: flex;
   flex-direction: column;

@@ -175,7 +175,12 @@ async function main(): Promise<void> {
       async (routine) => {
         const adapter = registry.get(routine.harnessId);
         if (!adapter) throw new Error(`no ${routine.harnessId} adapter`);
-        await runRoutine(routine, await workspaces.get(routine.workspaceId), adapter, manager);
+        const ran = await runRoutine(routine, await workspaces.get(routine.workspaceId), adapter, manager);
+        if (ran.chat) return { outcome: "launched" };
+        // Skipped before any chat: the precheck said there is nothing to do. The slot
+        // is used up either way (the claim above said so), and the list says why.
+        console.log(`awui: routine "${routine.name}" skipped: ${ran.detail ?? "precheck failed"}`);
+        return { outcome: "skipped", detail: ran.detail };
       },
       Date.now(),
       (routine, error) => console.error(`awui: routine "${routine.name}" did not start: ${error instanceof Error ? error.message : String(error)}`),

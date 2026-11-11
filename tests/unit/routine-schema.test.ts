@@ -27,6 +27,13 @@ describe("a routine's shape", () => {
     expect(routineSchema.safeParse({ ...base, cadence: { kind: "monthly", day: 1 } }).success).toBe(false);
   });
 
+  it("carries no precheck by default, and trims the one given", () => {
+    const cadence = { kind: "hourly", minute: 0 };
+    expect(routineSchema.parse({ ...base, cadence }).precheck).toBe("");
+    expect(routineSchema.parse({ ...base, cadence, precheck: "  git diff --quiet  " }).precheck).toBe("git diff --quiet");
+    expect(routineSchema.safeParse({ ...base, cadence, precheck: "x".repeat(501) }).success).toBe(false);
+  });
+
   it("keeps the id when it is editing one", () => {
     const parsed = routineSchema.parse({ ...base, id: "r-1", cadence: { kind: "hourly", minute: 5 }, enabled: false });
     expect(parsed.id).toBe("r-1");

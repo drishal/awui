@@ -42,4 +42,12 @@ describe("the routines routes", () => {
     expect((await agent.put("/api/routines").send(body({ workspaceId: "no-such-project" }))).status).toBe(404);
     expect((await agent.put("/api/routines").send(body({ harnessId: "nope" }))).status).toBe(404);
   });
+
+  it("keeps a precheck, and refuses one longer than a command line", async () => {
+    const { agent, body } = await setUp();
+    const created = (await agent.put("/api/routines").send(body({ precheck: "  git diff --quiet HEAD  " })).expect(200)).body as { id: string; precheck: string; lastRunOutcome: string | null };
+    expect(created.precheck).toBe("git diff --quiet HEAD");
+    expect(created.lastRunOutcome).toBeNull();
+    expect((await agent.put("/api/routines").send(body({ precheck: "x".repeat(501) }))).status).toBe(400);
+  });
 });

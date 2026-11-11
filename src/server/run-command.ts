@@ -1,7 +1,8 @@
-// "Run" on a shell code block in an answer (T3 Code's): one command line, run
-// in the chat's project folder by the shell its fence names, with a time
-// limit and a cap on what is kept of the output. Any signed-in device may do
-// this, as it may already ask the agent to.
+// One bounded shell spawn in a project folder, used twice: "Run" on a shell code
+// block in an answer (T3 Code's), where the shell is the fence's and the limit a
+// minute; and a routine's precheck (routine-precheck.ts), where the shell is the
+// host's and the limit is short. The command is the user's own line, handed to an
+// interpreter as one argument — never spliced into a shell string here.
 //
 // The fences that reach here are POSIX shells (bash/sh/zsh/fish — see
 // code-blocks.ts); a Windows host has none of those on PATH. runCommand maps
@@ -28,7 +29,22 @@ function shellFor(shell: RunShell): [string, string] {
   return [SHELLS[shell], "-c"];
 }
 
+/** What a shell spawn takes beyond its command: the host interpreter, the limit, and how much output is kept. */
+export interface ShellLimits {
+  /** Omitted means "sh": the host's own shell, for a command the user did not word for a particular one. */
+  shell?: RunShell;
+  timeoutMs: number;
+  maxOutput: number;
+}
+
+/** "Run" on a code block: that fence's shell, a minute, and 100 KB of output. */
 export function runCommand(command: string, shell: RunShell, cwd: string): Promise<RunResult> {
+  return runShellCommand(command, cwd, { shell, timeoutMs: TIMEOUT_MS, maxOutput: MAX_OUTPUT });
+}
+
+/** One command line through the host's shell, with the limits the caller sets. */
+export function runShellCommand(command: string, cwd: string, limits: ShellLimits): Promise<RunResult> {
+  const { timeoutMs, maxOutput } = limits;
   return new Promise((resolve) => {
     const started = Date.now();
     let output = "";
@@ -37,17 +53,17 @@ export function runCommand(command: string, shell: RunShell, cwd: string): Promi
     // One decoder per stream: a character split across chunks stays whole.
     const decoders = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
     const take = (decoder: StringDecoder) => (chunk: Buffer) => {
-      if (output.length >= MAX_OUTPUT) {
+      if (output.length >= maxOutput) {
         truncated = true;
         return;
       }
       output += decoder.write(chunk);
-      if (output.length > MAX_OUTPUT) {
-        output = output.slice(0, MAX_OUTPUT);
+      if (output.length > maxOutput) {
+        output = output.slice(0, maxOutput);
         truncated = true;
       }
     };
-    const [bin, flag] = shellFor(shell);
+    const [bin, flag] = shellFor(limits.shell ?? "sh");
     // detached is POSIX-only (it starts a new process group for the group kill
     // below); Windows has no groups here, and the kill goes through taskkill.
     const env = IS_WINDOWS ? process.env : envForSpawn(cwd).env;
@@ -68,12 +84,12 @@ export function runCommand(command: string, shell: RunShell, cwd: string): Promi
       timedOut = true;
       kill("SIGTERM");
       setTimeout(() => kill("SIGKILL"), 2000).unref();
-    }, TIMEOUT_MS);
+    }, timeoutMs);
     child.stdout.on("data", take(decoders.out));
     child.stderr.on("data", take(decoders.err));
     child.on("error", (error) => {
       clearTimeout(timer);
-      resolve({ exitCode: null, output: `${shell}: ${error.message}`, truncated: false, timedOut: false, durationMs: Date.now() - started });
+      resolve({ exitCode: null, output: `${bin}: ${error.message}`, truncated: false, timedOut: false, durationMs: Date.now() - started });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
