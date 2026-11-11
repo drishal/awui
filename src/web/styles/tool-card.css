@@ -10,8 +10,9 @@
   overflow: hidden;
   border-radius: var(--r-md);
   background: var(--card);
+  /* A little firmer than a hairline: on a light page a 10% edge on a near-white card all but dissolved. */
   box-shadow:
-    inset 0 0 0 1px var(--hairline),
+    inset 0 0 0 1px color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 3%), transparent),
     0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.4));
 }
 
