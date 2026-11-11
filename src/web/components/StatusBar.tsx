@@ -4,6 +4,7 @@
 // connection, its name and turn state, its workspace); the room is never
 // faked into a ChatState.
 import type { ChatState } from "../chat-state.js";
+import { levelTitle } from "../config-summary.js";
 import type { ConnectionState } from "../stream.js";
 import { dotted } from "./Dot.js";
 
@@ -53,7 +54,7 @@ export function StatusBar({
       {room ? (
         <span className="sb-item">{dotted([room.name, room.status])}</span>
       ) : chat && harnessName ? (
-        <span className="sb-item">{dotted([harnessName, model, chat.config.thinkingLevel])}</span>
+        <span className="sb-item">{dotted([harnessName, model, chat.config.thinkingLevel ? levelTitle(chat.config.thinkingLevel) : null])}</span>
       ) : null}
       {room ? <span className="sb-item sb-path" title={room.workspace}>{folderName(room.workspace)}</span> : chat ? <span className="sb-item sb-path" title={chat.workspace.path}>{folderName(chat.workspace.path)}</span> : null}
       <span className="sb-spacer" />

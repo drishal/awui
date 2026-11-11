@@ -10,7 +10,7 @@ type SummaryChat = {
 };
 
 /** A thinking level as a person reads it: "max" → "Max". */
-function levelTitle(level: string): string {
+export function levelTitle(level: string): string {
   return level.charAt(0).toUpperCase() + level.slice(1);
 }
 

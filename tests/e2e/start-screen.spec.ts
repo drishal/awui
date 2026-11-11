@@ -65,7 +65,7 @@ test("the start screen picks the model the chat starts on", async ({ page }) => 
   await signInAndOpen(page);
   // The chip reads its list from the harness for this folder; until a pick it names the harness's own default.
   const picker = page.locator(".start-screen").getByTestId("model-picker");
-  await expect(picker).toHaveAccessibleName("Model: Fake Echo · low");
+  await expect(picker).toHaveAccessibleName("Model: Fake Echo · Low");
   await picker.click();
   const dialog = page.getByRole("dialog", { name: "Choose a model" });
   await dialog.getByRole("combobox", { name: "Search models" }).fill("slow");
@@ -88,7 +88,7 @@ test("the start screen's thinking level carries into the chat", async ({ page })
   await thinking.getByRole("button", { name: "high", exact: true }).click();
   await expect(thinking.getByRole("button", { name: "high", exact: true })).toHaveAttribute("aria-pressed", "true");
   // The chip says the level picked here, not the harness's default one.
-  await expect(page.locator(".start-screen").getByTestId("model-picker")).toHaveAccessibleName("Model: Fake Echo · high");
+  await expect(page.locator(".start-screen").getByTestId("model-picker")).toHaveAccessibleName("Model: Fake Echo · High");
   // The footer offers the chosen model's own levels, and a model that does not take the picked one drops it,
   // rather than starting a chat the harness refuses.
   await dialog.getByRole("combobox", { name: "Search models" }).fill("gpt-5.5");

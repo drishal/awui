@@ -6,6 +6,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Reac
 import type { ModelInfo } from "../../shared/protocol.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { IconCheck, IconChevronDown, IconRefresh, IconSearch, Spinner } from "../icons.js";
+import { levelTitle } from "../config-summary.js";
 import { groupModels, type ModelGroup } from "../model-search.js";
 import { morphClip } from "../model-morph.js";
 import { load, save } from "../storage.js";
@@ -93,7 +94,7 @@ export function ModelPicker({
   const footerLevels = currentModel?.levels?.length ? currentModel.levels : (levels ?? []);
   // The reasoning word: a level picked in this picker's own footer (the start screen) says itself; with none, only
   // the harness's own default names its level. A chat's chip leaves the level to its own Thinking row.
-  const reasoningLabel = onThinking && thinking ? thinking : !current && currentModel?.reasoning ? (defaultModel?.thinkingLevel ?? null) : null;
+  const reasoningLabel = onThinking && thinking ? levelTitle(thinking) : !current && currentModel?.reasoning && defaultModel?.thinkingLevel ? levelTitle(defaultModel.thinkingLevel) : null;
   const label = nameLabel ? (reasoningLabel ? `${nameLabel} · ${reasoningLabel}` : nameLabel) : (current ?? emptyLabel);
   const chipLabel = triggerLabel ?? shortName(label);
 

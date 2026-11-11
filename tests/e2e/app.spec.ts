@@ -548,7 +548,7 @@ test("model and thinking changes apply while idle", async ({ page }) => {
   await expect(page.getByTestId("model-picker")).toHaveAccessibleName("Model: Fake Slow");
   await expect(page.getByTestId("thinking-picker")).toHaveAccessibleName("Thinking: high");
   await expect(page.getByTestId("connection")).toContainText("Connected");
-  await expect(page.locator(".status-bar")).toContainText("Fake · Fake Slow · high");
+  await expect(page.locator(".status-bar")).toContainText("Fake · Fake Slow · High");
   // A click on the track jumps to the nearest stop: the weakest, at its left end.
   await page.getByTestId("thinking-picker").click();
   // The panel unfurls from its chip on a spring: measure the track once it has landed.

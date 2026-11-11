@@ -7,13 +7,12 @@
 // popover say so.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useDismiss, useLeave } from "../hooks.js";
+import { levelTitle } from "../config-summary.js";
 import { IconChevronDown } from "../icons.js";
 import { clipBand } from "./ModelPicker.js";
 
 /** Quiet time after the last step before the level is sent. */
 const SETTLE_MS = 350;
-
-const title = (level: string) => level.charAt(0).toUpperCase() + level.slice(1);
 
 export function ThinkingPicker({
   levels,
@@ -142,8 +141,8 @@ export function ThinkingPicker({
         onClick={() => (open ? close() : setOpen(true))}
       >
         <span className="pill-label">
-          {title(current ?? "default")}
-          {sent ? ` → ${title(sent)}` : ""}
+          {levelTitle(current ?? "default")}
+          {sent ? ` → ${levelTitle(sent)}` : ""}
         </span>
         <IconChevronDown size={12} />
       </button>
@@ -153,9 +152,9 @@ export function ThinkingPicker({
           <div className={`model-pop effort-pop${below ? " is-below" : ""}${leaving ? " is-leaving" : ""}`} role="dialog" aria-label="Thinking effort">
             <div className="effort-head">
               <span className="effort-label">Effort</span>
-              <span className="effort-value">{title(shown)}</span>
+              <span className="effort-value">{levelTitle(shown)}</span>
             </div>
-            {sent && shown === current ? <p className="effort-note">Sends {title(sent)} on this route</p> : null}
+            {sent && shown === current ? <p className="effort-note">Sends {levelTitle(sent)} on this route</p> : null}
             <div className="effort-ends" aria-hidden="true">
               <span>Faster</span>
               <span>Smarter</span>
@@ -183,7 +182,7 @@ export function ThinkingPicker({
               >
                 <span className="effort-fill" />
                 {levels.map((level, i) => (
-                  <span key={level} className={`effort-stop${i <= value ? " is-passed" : ""}`} style={{ ["--at" as string]: last > 0 ? i / last : 0 }} title={title(level)} />
+                  <span key={level} className={`effort-stop${i <= value ? " is-passed" : ""}`} style={{ ["--at" as string]: last > 0 ? i / last : 0 }} title={levelTitle(level)} />
                 ))}
                 <span className="effort-thumb" />
               </div>
