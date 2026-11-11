@@ -1,13 +1,12 @@
-// One room, whole: its header (topic, workspace, status, spend), the live
-// transcript, the approvals its bots raised, the queue of messages waiting,
+// One room, whole: its topic line, the live transcript, the approvals its bots raised, the queue of messages waiting,
 // the roster drawer, and the composer. Data and mutations come from App; this
-// component decides only how the room is drawn.
+// component decides only how the room is drawn. The room's status, spend and
+// Members/Edit/Export live in the pane header (RoomHeader.tsx), where a chat
+// keeps its own, so the transcript starts right under it as a chat's does.
 import { useState } from "react";
 import type { BotProfile, Bootstrap, InteractionAnswer, InteractionRequest, RoomInfo } from "../../shared/protocol.js";
 import { isLiveTurn, liveInvocations, type RoomState } from "../room-state.js";
 import { ROOM_CONN_LABEL, TURN_STATUS_LABEL } from "../use-room-stream.js";
-import { dollars, shortTokens, tokensOf } from "../usage.js";
-import { IconAgents, IconArchive, IconEdit, IconGauge } from "../icons.js";
 import { ApprovalStack } from "./ApprovalStack.js";
 import { RoomComposer } from "./RoomComposer.js";
 import { RoomConversation } from "./RoomConversation.js";
@@ -26,9 +25,9 @@ export function RoomView({
   onStop,
   onCancelQueued,
   onLoadOlder,
-  onEditRoom,
+  membersOpen,
+  onCloseMembers,
   onRoom,
-  onExport,
   onNotice,
   onNewBot,
   onEditBot,
@@ -48,15 +47,15 @@ export function RoomView({
   onStop: () => void;
   onCancelQueued: (turnId: string) => void;
   onLoadOlder: () => Promise<void>;
-  onEditRoom: () => void;
+  /** The members sheet, opened from the header's Members button. */
+  membersOpen: boolean;
+  onCloseMembers: () => void;
   onRoom: (room: RoomInfo) => void;
-  onExport: () => void;
   onNotice: (text: string) => void;
   onNewBot: () => void;
   onEditBot: (botId: string) => void;
   onLeave: () => void;
 }) {
-  const [membersOpen, setMembersOpen] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   if (!state) {
@@ -85,8 +84,6 @@ export function RoomView({
   const active = isLiveTurn(state.activeTurn) ? state.activeTurn : null;
   const busy = active !== null || state.queued.length > 0;
   const stopping = state.activeTurn?.state === "stopping";
-  const status = active ? TURN_STATUS_LABEL[active.state] ?? active.state : state.queued.length > 0 ? `${state.queued.length} queued` : "Idle";
-  const tokens = tokensOf(state.usage);
   const pendingRequests = state.pending;
   const firstPending = pendingRequests[0] ?? null;
   const pendingMember = firstPending ? state.room.members.find((m) => m.id === firstPending.memberId) ?? null : null;
@@ -111,42 +108,7 @@ export function RoomView({
 
   return (
     <div className="room-view" data-testid="room-view" data-room={roomId}>
-      <header className="room-header">
-        <div className="room-head-main">
-          <div className="room-sub">
-            {room.archived ? (
-              <span className="room-tag is-archived">
-                <IconArchive size={12} /> Archived
-              </span>
-            ) : null}
-            <span className={`room-status is-${active ? active.state : busy ? "queued" : "idle"}`} data-testid="room-status">
-              {status}
-            </span>
-            <span className="room-workspace" title="Every bot runs in this project">
-              {room.workspaceName}
-            </span>
-            <span className="room-member-count">
-              <IconAgents size={12} /> {room.members.length} {room.members.length === 1 ? "bot" : "bots"}
-            </span>
-            <span className="room-spend-head" title="Usage over this room's invocations">
-              <IconGauge size={12} /> {shortTokens(tokens)} tokens
-              {state.usage.cost !== null ? ` · ${dollars(state.usage.cost, true)}` : state.usage.unpriced > 0 ? " · cost unavailable" : ""}
-            </span>
-          </div>
-          {room.topic ? <p className="room-topic">{room.topic}</p> : null}
-        </div>
-        <div className="room-head-actions">
-          <button type="button" className="btn btn-small" aria-label="Room members" aria-expanded={membersOpen} onClick={() => setMembersOpen(true)}>
-            <IconAgents size={14} /> Members
-          </button>
-          <button type="button" className="btn btn-small btn-ghost" aria-label="Edit room" onClick={onEditRoom}>
-            <IconEdit size={14} /> Edit
-          </button>
-          <button type="button" className="btn btn-small btn-ghost" aria-label="Export room as Markdown" onClick={onExport}>
-            Export
-          </button>
-        </div>
-      </header>
+      {room.topic ? <p className="room-topic">{room.topic}</p> : null}
 
       {state.gone ? (
         <div className="banner banner-error" role="alert">
@@ -249,7 +211,7 @@ export function RoomView({
           onNotice={onNotice}
           onNewBot={onNewBot}
           onEditBot={onEditBot}
-          onClose={() => setMembersOpen(false)}
+          onClose={onCloseMembers}
         />
       ) : null}
     </div>

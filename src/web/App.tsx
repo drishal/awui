@@ -19,6 +19,7 @@ import {
 import { oldestSeq } from "./room-state.js";
 import { BotEditor } from "./components/BotEditor.js";
 import { RoomEditor } from "./components/RoomEditor.js";
+import { RoomHeadActions, RoomHeadSub } from "./components/RoomHeader.js";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type {
   SessionMarkState,
@@ -156,6 +157,8 @@ export function App() {
   const { bots: botsList, refresh: refreshBots } = useBots(() => setSignedOut(true));
   /** The room dialog: creating one, or editing the shown room. */
   const [roomEditor, setRoomEditor] = useState<{ mode: "create" } | { mode: "edit" } | null>(null);
+  // The members sheet opens from the pane header, so the header owns whether it is open.
+  const [roomMembersOpen, setRoomMembersOpen] = useState(false);
   /** The bot profile dialog: an id, or null for a new one. */
   const [botEditor, setBotEditor] = useState<{ botId: string | null } | null>(null);
   const {
@@ -2022,8 +2025,13 @@ export function App() {
                 <h1>{room.state?.room.name ?? "Room"}</h1>
                 <div className="chat-sub">
                   <span className="badge badge-room">Room</span>
-                  {room.state ? <span className="chat-path">{room.state.room.workspaceName}</span> : null}
                   {room.state?.room.archived ? <span className="room-tag is-archived">Archived</span> : null}
+                  {room.state ? <RoomHeadSub state={room.state} /> : null}
+                  {room.state ? (
+                    <span className="chat-path" title="Every bot runs in this project">
+                      {room.state.room.workspaceName}
+                    </span>
+                  ) : null}
                 </div>
               </>
             ) : heading ? (
@@ -2063,6 +2071,16 @@ export function App() {
               </>
             )}
           </div>
+          {room.roomId && room.state ? (
+            <RoomHeadActions
+              membersOpen={roomMembersOpen}
+              onMembers={() => setRoomMembersOpen(true)}
+              onEdit={() => setRoomEditor({ mode: "edit" })}
+              onExport={() => {
+                if (room.roomId) downloadRoomExport(room.roomId);
+              }}
+            />
+          ) : null}
           {chat && !room.roomId && changedFiles > 0 ? (
             <button type="button" className="btn btn-small review-open" title="Review the changes and comment on them" onClick={() => setReviewOpen(true)}>
               <IconEdit size={14} /> <span className="review-label">Review</span> <span className="review-count">{changedFiles}</span>
@@ -2255,11 +2273,9 @@ export function App() {
                 onStop={stopRoom}
                 onCancelQueued={cancelQueuedInRoom}
                 onLoadOlder={loadOlderRoomRecords}
-                onEditRoom={() => setRoomEditor({ mode: "edit" })}
+                membersOpen={roomMembersOpen}
+                onCloseMembers={() => setRoomMembersOpen(false)}
                 onRoom={applyRoom}
-                onExport={() => {
-                  if (room.roomId) downloadRoomExport(room.roomId);
-                }}
                 onNotice={(text) => setBanner({ level: "info", text })}
                 onNewBot={() => setBotEditor({ botId: null })}
                 onEditBot={(botId) => setBotEditor({ botId })}

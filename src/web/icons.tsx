@@ -121,6 +121,11 @@ export const IconArrowUp = (p: IconProps) => (
     <path d="M8 13V3M3.75 7.25L8 3l4.25 4.25" />
   </Svg>
 );
+export const IconDownload = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 2.75v7.5M4.75 7L8 10.25 11.25 7M3 13.25h10" />
+  </Svg>
+);
 export const IconStop = (p: IconProps) => (
   <Svg {...p}>
     <rect x="4.25" y="4.25" width="7.5" height="7.5" rx="1.5" fill="currentColor" stroke="none" />
