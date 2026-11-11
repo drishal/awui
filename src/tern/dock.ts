@@ -5,6 +5,7 @@
 import { span, ui, html, type Node, type Span } from "@stencil-hq/tern";
 import type { GitStatus, HarnessStatus, InteractionRequest, UsageLimits } from "../shared/protocol.js";
 import type { ChatState } from "../web/chat-state.js";
+import { levelTitle } from "../web/config-summary.js";
 import { isBusy } from "../web/session-groups.js";
 import { blanks } from "../web/prompt-blanks.js";
 import { accountName, tokens, windowLabel } from "../atui/format.js";
@@ -346,7 +347,7 @@ function composerNode(cx: DockCx): Node {
         caps?.supportsModelSelection ? html.button({ key: "m", class: "chip", text: `${modelLabel ?? "Model"} ⌄`, title: "Model (C-x m)", onClick: cx.on.pickModel }) : null,
         // The effort glyph goes inside the chip, before its level, as the web UI's thinking chip draws it.
         caps?.supportsThinkingLevel
-          ? html.button({ key: "t", class: "chip think", title: "Thinking (C-x t)", onClick: cx.on.pickThinking }, level ? ui.effort({ key: "e", level }) : null, `${level ?? "Thinking"} ⌄`)
+          ? html.button({ key: "t", class: "chip think", title: "Thinking (C-x t)", onClick: cx.on.pickThinking }, level ? ui.effort({ key: "e", level }) : null, `${level ? levelTitle(level) : "Thinking"} ⌄`)
           : null,
         // The web UI's permission pill: the mode in force, open mid-run too; a mode that asks nothing is marked.
         chat?.capabilities.supportsPermissionMode && config?.permissionModes?.length
@@ -375,7 +376,7 @@ function statusNode(cx: DockCx): Node {
   const chat = cx.chat;
   const config = chat?.config;
   const model = config?.models.find((m) => m.key === config.model || m.id === config.model)?.name ?? config?.model;
-  const what = [cx.harness?.displayName, model, config?.thinkingLevel].filter(Boolean).join(" · ");
+  const what = [cx.harness?.displayName, model, config?.thinkingLevel ? levelTitle(config.thinkingLevel) : null].filter(Boolean).join(" · ");
   const tight = (cx.limits?.accounts ?? [])
     .flatMap((a) => a.windows.filter((w) => w.used !== null).map((w) => ({ a, w })))
     .sort((x, y) => (y.w.used ?? 0) - (x.w.used ?? 0))[0];

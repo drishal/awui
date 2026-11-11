@@ -14,6 +14,7 @@ import type { HarnessStatus, InteractionRequest, SavedPrompt, SlashCommand } fro
 import type { ChatState } from "../web/chat-state.js";
 import { buildTurns, ago as agoMs } from "../web/turns.js";
 import { turnMarkdown } from "../web/turn-markdown.js";
+import { plainTitle } from "../web/plain-title.js";
 import { isBusy } from "../web/session-groups.js";
 import { phaseDelay, workingPhase } from "../web/working-phase.js";
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../web/commands.js";
@@ -241,7 +242,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     createEffect(() => {
       const c = app.chat();
       const asks = (c?.pending.length ?? 0) > 0;
-      const title = `${asks ? "◆ " : isBusy(c?.status) ? "● " : ""}${c?.title || "awui"}`.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
+      const title = `${asks ? "◆ " : isBusy(c?.status) ? "● " : ""}${c?.title ? plainTitle(c.title) : "awui"}`.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
       opts.write(`\x1b]2;${title}\x1b\\`);
     });
 
@@ -742,7 +743,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             // a toast too, and the later toast replaces the earlier, so this one, with its button, is what stays.
             setTimeout(() => {
               if (closed) return;
-              say(`${t.kind === "asking" ? "Needs you" : t.kind === "failed" ? "Failed" : "Done"}: ${t.title}`, t.kind === "failed" ? "error" : "info", {
+              say(`${t.kind === "asking" ? "Needs you" : t.kind === "failed" ? "Failed" : "Done"}: ${plainTitle(t.title)}`, t.kind === "failed" ? "error" : "info", {
                 name: "open",
                 label: t.kind === "asking" ? "Answer" : "Open",
                 key: "o",
@@ -785,7 +786,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             key: "tabs",
             role: "awui.tabs",
             active: tabs.tabs[tabs.active]?.key ?? "",
-            items: tabs.tabs.map((t) => ({ id: t.key, label: t.unread ? [span(t.title || "New chat"), span(" ●", "accent")] : t.title || "New chat" })),
+            items: tabs.tabs.map((t) => ({ id: t.key, label: t.unread ? [span(t.title ? plainTitle(t.title) : "New chat"), span(" ●", "accent")] : t.title ? plainTitle(t.title) : "New chat" })),
             onSelect: (e) => void app.switchTab(tabs.tabs.findIndex((t) => t.key === e.item)),
           }),
         );
@@ -867,7 +868,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         connected: app.conn() !== "reconnecting",
         version: opts.version,
         typeahead: typeahead(),
-        project: app.workspace()?.path.replace(process.env.HOME ?? "\u0000", "~") ?? null,
+        // The folder's name, as the web status bar shows it: the whole path is long and mostly repeated in a strip this small.
+        project: app.workspace()?.path.split(/[\\/]/).filter(Boolean).pop() ?? null,
         draft: draft().draft,
         ghost: ghost(),
         editing: app.editing()?.through ?? null,
@@ -1019,7 +1021,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
                   if (s) void app.openSession(s);
                 },
               },
-              recent.map((s, i) => ui.item({ key: `s${i}`, label: s.title || "Untitled", detail: app.boot()?.harnesses.find((x) => x.id === s.harnessId)?.displayName ?? s.harnessId, value: s.updatedAt ? agoMs(new Date(s.updatedAt).getTime()) : "", icon: "session" })),
+              recent.map((s, i) => ui.item({ key: `s${i}`, label: s.title ? plainTitle(s.title) : "Untitled", detail: app.boot()?.harnesses.find((x) => x.id === s.harnessId)?.displayName ?? s.harnessId, value: s.updatedAt ? agoMs(new Date(s.updatedAt).getTime()) : "", icon: "session" })),
             )
           : null,
         ui.text({ key: "keys" }, span("Enter sends · C-k commands · C-x s sessions · C-x q quits", "dim")),

@@ -9,6 +9,7 @@ import type { IconName, PickerGroup, PickerItem } from "@stencil-hq/tern";
 import type { ProjectSession, SessionsOverview } from "../shared/protocol.js";
 import { isBusy, placeOf, type Place } from "../web/session-groups.js";
 import { ago } from "../web/turns.js";
+import { plainTitle } from "../web/plain-title.js";
 import { EDITOR_ID } from "./dock.js";
 
 export type MenuKind = "palette" | "sessions" | "model" | "thinking" | "permission" | "harness" | "find" | "slash" | "skill" | "prompts" | "files" | "leader";
@@ -92,7 +93,7 @@ export function sessionRows(overview: SessionsOverview, at: { here: string | nul
     const project = names.get(s.workspaceId);
     return {
       id: s.id,
-      label: s.title || "Untitled",
+      label: s.title ? plainTitle(s.title) : "Untitled",
       // A herdr pane runs it: opening it shows that pane first (state.ts openSession).
       detail: `${at.harnessName(s.harnessId)}${s.herdr ? ` · in herdr, ${s.herdr.status}` : ""}${place !== "project" && project ? ` · ${project}` : ""}`,
       value: s.updatedAt ? ago(time(s), now) : "",

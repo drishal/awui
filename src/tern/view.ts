@@ -13,6 +13,7 @@ import { iconStack, toolKind, toolKinds, type ToolKind } from "../web/tool-kinds
 import type { AssistantItem, ChatItem, HarnessStatus, JobBlock, JobTone, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../shared/protocol.js";
 import { buildTurns, countSummary, formatDuration, latestThought, segmentStartsOpen, workAfterSegment, workSegments, type Turn, type WorkSegment } from "../web/turns.js";
 import { isBusy } from "../web/session-groups.js";
+import { plainTitle } from "../web/plain-title.js";
 import { chatJobs, jobElapsed, jobStart, type ChatJob } from "../web/jobs.js";
 import { OPEN_DEPTH, parseJsonContainer } from "../web/json-tree.js";
 import type { ChatState } from "../web/chat-state.js";
@@ -733,7 +734,7 @@ export function headNode(chat: ChatState | null, harness: HarnessStatus | null, 
   // The web UI's header: the title on its own line, the harness, state, and project under it.
   return ui.col(
     { key: "head", role: "awui.head" },
-    ui.text({ key: "title", role: "awui.title", text: chat?.title || "New chat", truncate: "end" }),
+    ui.text({ key: "title", role: "awui.title", text: chat?.title ? plainTitle(chat.title) : "New chat", truncate: "end" }),
     ui.row(
       { key: "meta", role: "awui.head-meta" },
       harness ? html.span({ key: "harness", class: "harness", text: harness.displayName }) : null,
