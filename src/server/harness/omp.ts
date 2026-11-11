@@ -39,7 +39,7 @@ import { PendingRequests, StderrTail, terminateChild } from "./child-process.js"
 import { branchMessages, fileMessages, forkSessionText, seedSessionText, sessionFileTimestamp, uuidv7 } from "./session-files.js";
 import { ompLimits } from "./limits.js";
 import { rewindExtension, rewindExtensionArgs, rewindWithExtension } from "./rewind-extension.js";
-import { renderHtmlExtension, renderHtmlExtensionArgs } from "./render-extension.js";
+import { orchestrateExtensionArgs, renderHtmlExtension, renderHtmlExtensionArgs } from "./render-extension.js";
 import { versionLabel } from "./version.js";
 import { EventHub } from "./event-hub.js";
 import { seedTranscript, type HandoffSeed } from "./handoff.js";
@@ -949,7 +949,7 @@ class OmpLiveChat implements LiveChat {
   /** Spawn the omp child with its normal tool set (no --tools); stale-child events are ignored. */
   async start(resumeId: string | null): Promise<void> {
     const generation = ++this.generation;
-    const args = ["--mode", "rpc-ui", ...rewindExtensionArgs(), ...renderHtmlExtensionArgs(), ...this.extraArgs, "--cwd", this.cwd];
+    const args = ["--mode", "rpc-ui", ...rewindExtensionArgs(), ...renderHtmlExtensionArgs(), ...orchestrateExtensionArgs(this.toolEnv), ...this.extraArgs, "--cwd", this.cwd];
     if (resumeId) args.push("--resume", resumeId);
     const rpc = new OmpRpc(
       this.command,

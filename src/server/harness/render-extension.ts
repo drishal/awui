@@ -1,11 +1,13 @@
-// The render_html extension (extensions/render-html.ts) that awui's Pi and
-// omp children load with -e: it registers an agent tool which POSTs a
-// self-contained HTML page to the chat's render endpoint and returns the
-// page's id in the tool result's `details`, so the adapter can attach it to
-// the tool card. Claude Code has no extension API; it gets the same tool from
-// awui's MCP server instead. The extension activates only when the child was
-// spawned with AWUI_RENDER_URL and AWUI_RENDER_TOKEN, so loading it anywhere
-// else registers nothing.
+// The agent tools awui injects into its harness children, and the files that carry
+// them. render_html: extensions/render-html.ts, which awui's Pi and omp children load
+// with -e; it registers an agent tool which POSTs a self-contained HTML page to the
+// chat's render endpoint and returns the page's id in the tool result's `details`, so
+// the adapter can attach it to the tool card. The orchestration tools
+// (extensions/orchestrate.ts) reach the same Pi and omp children the same way. Claude
+// Code, Codex, and DSH have no extension API; they get both families from awui's MCP
+// servers instead (extensions/*-mcp.mjs). Every extension activates only when the child
+// was spawned with its own two variables, so loading one anywhere else registers
+// nothing.
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,4 +70,42 @@ export function evalPythonExtension(): string | null {
 export function evalPythonExtensionArgs(): string[] {
   const file = evalPythonExtension();
   return file ? ["-e", file] : [];
+}
+
+/** The MCP server name Claude Code, Codex, and DSH are given for the orchestration tools, beside render_html's `awui`. */
+export const ORCH_MCP_SERVER = "awui-orchestrate";
+
+let foundOrch: string | null | undefined;
+let foundOrchMcp: string | null | undefined;
+
+/** The walk up from this module for one of the repo's extensions/ files, when the binary embedded no copy of it. */
+function findExtensionFile(name: string): string | null {
+  for (let dir = path.dirname(fileURLToPath(import.meta.url)); ; dir = path.dirname(dir)) {
+    const file = path.join(dir, "extensions", name);
+    if (existsSync(file)) return file;
+    if (path.dirname(dir) === dir) return null;
+  }
+}
+
+/** The orchestration extension file: the materialized embedded copy in the binary, else the repo path. */
+export function orchestrateExtension(): string | null {
+  if (foundOrch !== undefined) return foundOrch;
+  return (foundOrch = extractedExtensionPath("orchestrate.ts") ?? findExtensionFile("orchestrate.ts"));
+}
+
+/**
+ * The CLI arguments that load the orchestration tools, or none when the extension is missing
+ * or the child was not given a token: a chat without one has no tools to call, so the
+ * extension would only load to register nothing.
+ */
+export function orchestrateExtensionArgs(toolEnv?: NodeJS.ProcessEnv): string[] {
+  if (!toolEnv?.AWUI_ORCH_TOKEN) return [];
+  const file = orchestrateExtension();
+  return file ? ["-e", file] : [];
+}
+
+/** The orchestration MCP server (for Claude Code, Codex, and DSH): embedded copy in the binary, else the repo path. */
+export function orchestrateMcpServer(): string | null {
+  if (foundOrchMcp !== undefined) return foundOrchMcp;
+  return (foundOrchMcp = extractedExtensionPath("orchestrate-mcp.mjs") ?? findExtensionFile("orchestrate-mcp.mjs"));
 }

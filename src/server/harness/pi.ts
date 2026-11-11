@@ -31,7 +31,7 @@ import { PendingRequests, StderrTail, terminateChild } from "./child-process.js"
 import { seedTranscript, type HandoffSeed } from "./handoff.js";
 import { branchMessages, fileMessages, seedSessionText, sessionFileTimestamp, uuidv7 } from "./session-files.js";
 import { rewindExtension, rewindExtensionArgs, rewindWithExtension } from "./rewind-extension.js";
-import { renderHtmlExtension, renderHtmlExtensionArgs } from "./render-extension.js";
+import { orchestrateExtensionArgs, renderHtmlExtension, renderHtmlExtensionArgs } from "./render-extension.js";
 import { versionLabel } from "./version.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import type {
@@ -698,7 +698,7 @@ export class PiAdapter implements HarnessAdapter {
       const found = (await listSessionFiles(dir)).some((m) => m.id === req.resumeNativeId);
       if (!found) throw new Error("Session not found in Pi's session list");
     }
-    const args = ["--mode", "rpc", ...this.toolArgs(), ...this.extensionArgs(), ...this.launchArgs(), "--session-dir", this.sessionDirFor(req.cwd, await this.resolveAgentDir())];
+    const args = ["--mode", "rpc", ...this.toolArgs(), ...this.extensionArgs(req.toolEnv), ...this.launchArgs(), "--session-dir", this.sessionDirFor(req.cwd, await this.resolveAgentDir())];
     if (req.resumeNativeId) args.push("--session", req.resumeNativeId);
     const chat = new PiLiveChat(this.cliCommand, args, this.spawnEnv(req.cwd, req.toolEnv), req.cwd);
     await chat.start();
@@ -710,9 +710,9 @@ export class PiAdapter implements HarnessAdapter {
     return this.extraArgs;
   }
 
-  /** The extensions a chat child loads: Edit/Retry's rewind, and render_html. Subclasses cut this back. */
-  protected extensionArgs(): string[] {
-    return [...rewindExtensionArgs(), ...renderHtmlExtensionArgs()];
+  /** The extensions a chat child loads: Edit/Retry's rewind, render_html, and (given a token) the orchestration tools. Subclasses cut this back. */
+  protected extensionArgs(toolEnv?: NodeJS.ProcessEnv): string[] {
+    return [...rewindExtensionArgs(), ...renderHtmlExtensionArgs(), ...orchestrateExtensionArgs(toolEnv)];
   }
 
   /** Tool allow/deny flags; full pi allows everything. The awui variant denies the writers here. */
