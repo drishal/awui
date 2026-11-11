@@ -3,7 +3,7 @@
 // terminal, a read under its file, a search under its pattern, a fetch under
 // its URL, and anything else as its arguments' key-value rows. Each sits in
 // one card with a header naming what it touched.
-import { createContext, Fragment, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { DiffLine, ToolDiff, ToolItem } from "../../shared/protocol.js";
 import { IconCheck, IconCircle, IconDot, IconFile, IconGlobe, IconSearch, IconTerminal, IconX } from "../icons.js";
 import { parseJsonContainer } from "../json-tree.js";
@@ -134,9 +134,17 @@ export function DiffView({
   const [all, setAll] = useState(expanded);
   const marks = useMemo(() => wordMarks(diff.lines), [diff.lines]);
   const numbered = diff.lines.some((l) => l.line !== undefined);
+  // Every row is its own grid, so the number column takes one width from the widest number: otherwise line 9's
+  // code started a digit left of line 11's.
+  const digits = useMemo(() => Math.max(2, ...diff.lines.map((l) => String(l.line ?? "").length)), [diff.lines]);
   const shown = all ? diff.lines : diff.lines.slice(0, FOLDED_LINES);
   return (
-    <div className={`diff${numbered ? " is-numbered" : ""}${onLine ? " is-commentable" : ""}`} role="table" aria-label="Changes">
+    <div
+      className={`diff${numbered ? " is-numbered" : ""}${onLine ? " is-commentable" : ""}`}
+      role="table"
+      aria-label="Changes"
+      style={numbered ? ({ "--diff-digits": digits } as CSSProperties) : undefined}
+    >
       {shown.map((l, i) =>
         l.kind === "gap" ? (
           <div className="diff-gap" role="row" key={i}>

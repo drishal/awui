@@ -1077,8 +1077,9 @@
   min-width: 0;
 }
 
+/* A fixed gutter (the widest number, set by DiffView, plus .diff-no's 16px of padding), the same on every row. */
 .diff.is-numbered .diff-line {
-  grid-template-columns: minmax(3.2ch, max-content) 20px minmax(0, 1fr);
+  grid-template-columns: calc(var(--diff-digits, 3) * 1ch + 16px) 20px minmax(0, 1fr);
 }
 
 /* Full muted text, not faded further: a reviewer reads these to find the line, and at 70% they fell
