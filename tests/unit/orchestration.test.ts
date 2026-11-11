@@ -665,3 +665,18 @@ describe("cancel cascade", () => {
     expect(taskRecords(app).find((task) => task.id === started.taskId)?.state).toBe("result_available");
   });
 });
+
+describe("the wall clock", () => {
+  it("stops a task that passes its wall clock, and records the reason", async () => {
+    const { app, agent, token } = await setup({ chunkDelayMs: 50, orchestrationLimits: { taskWallClockMs: 2_000 } });
+    const started = await delegate(agent, token, { brief: "slow work on the parser" });
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 15_000 });
+    const task = (waited.body.data as { tasks: DelegatedTaskView[] }).tasks[0] as DelegatedTaskView;
+    expect(task.state).toBe("result_available");
+    // Nobody asked for this stop, so it is a failure with the configured wall clock in the words.
+    expect(task.outcome).toBe("failed");
+    expect(task.result?.error).toBe(`wall clock exceeded (${formatElapsed(2_000)})`);
+    // The wait read the failure itself, so the ledger records the read instead of a second report.
+    await waitUntil(() => taskRecords(app).find((record) => record.id === started.taskId)?.wake.skipped === "read by the parent", 4_000, "the ledger's read mark");
+  });
+});

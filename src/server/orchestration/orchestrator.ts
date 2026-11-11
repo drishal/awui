@@ -69,6 +69,8 @@ export class Orchestrator {
   private readonly wakeTimers = new Map<string, NodeJS.Timeout>();
   /** Parents whose report is being written right now: a second flush must not send it twice. */
   private readonly flushingWakes = new Set<string>();
+  /** One wall-clock timer per running task: a run nobody stops must not run for days. */
+  private readonly clocks = new Map<string, NodeJS.Timeout>();
   constructor(private readonly deps: OrchestratorDeps) {
     this.store = new TaskStore(deps.file);
   }
@@ -427,6 +429,9 @@ export class Orchestrator {
   // ---- the watcher --------------------------------------------------------
 
   private watch(task: StoredTask, child: Chat): void {
+    // The wall clock starts with the watch and restarts with a revived task: the child is at work.
+    this.clearWallClock(task.id);
+    this.armWallClock(task);
     const generation = task.generation;
     const unsubscribe = child.subscribe({
       send: (_id, event) => {
@@ -464,6 +469,38 @@ export class Orchestrator {
     });
     this.watchers.set(task.id, unsubscribe);
   }
+
+  /**
+   * A task nobody stops must not run for ever. Past the configured wall clock it is stopped the way
+   * a cancel stops it — the same abort, the same cap — but recorded `failed` with the reason, so
+   * the parent can tell it apart from its own cancel. Unref'd: a pending clock never keeps the
+   * process alive. A task a restart marked interrupted is never armed, because it is not running.
+   */
+  private armWallClock(task: StoredTask): void {
+    const ms = this.limits.taskWallClockMs;
+    const timer = setTimeout(() => {
+      this.clocks.delete(task.id);
+      // Only a task at work: one waiting on the user, or on its own delegates, is not the wall clock's business.
+      if (task.state !== "working") return;
+      task.cancelRequestedAt = Date.now();
+      task.generation += 1;
+      const error = `wall clock exceeded (${formatElapsed(ms)})`;
+      void (async () => {
+        const belowSettled = await this.stopSubtree(task, 0);
+        const settled = (await this.stopTask(task, { outcome: "failed", error })) && belowSettled;
+        if (!settled) this.deps.log(`orchestration: task ${task.id} passed its wall clock and its chat is still stopping`);
+      })().catch((problem: unknown) => this.deps.log(`orchestration: could not stop task ${task.id} at its wall clock: ${errorMessage(problem)}`));
+    }, ms);
+    timer.unref?.();
+    this.clocks.set(task.id, timer);
+  }
+
+  private clearWallClock(taskId: string): void {
+    const timer = this.clocks.get(taskId);
+    if (timer) clearTimeout(timer);
+    this.clocks.delete(taskId);
+  }
+
   private async onStatus(task: StoredTask, child: Chat, status: ChatStatus): Promise<void> {
     if (status === "disposed") {
       await this.finish(task, "cancelled", "The chat was closed");
@@ -696,7 +733,7 @@ export class Orchestrator {
     if (chat) {
       settled = await Promise.race([chat.abort().then(() => true), sleep(CANCEL_SETTLE_MS).then(() => false)]);
       // A user watching the child keeps it open: closing it would take the page away.
-      if (settled && chat.subscriberCount === 0) await chat.dispose("Delegated task cancelled").catch((error: unknown) => this.deps.log(`orchestration: could not close ${chat.chatId}: ${errorMessage(error)}`));
+      if (settled && chat.subscriberCount === 0) await chat.dispose(ending.outcome === "failed" ? "Delegated task stopped" : "Delegated task cancelled").catch((error: unknown) => this.deps.log(`orchestration: could not close ${chat.chatId}: ${errorMessage(error)}`));
     }
     await this.finish(task, ending.outcome, ending.error);
     return settled;
@@ -832,9 +869,11 @@ export class Orchestrator {
     return read?.items ?? null;
   }
 
+  /** Stop watching a task: it settled, or was cancelled. Its wall clock goes with the watcher. */
   private stopWatching(taskId: string): void {
     this.watchers.get(taskId)?.();
     this.watchers.delete(taskId);
+    this.clearWallClock(taskId);
   }
 
   private newTaskId(): string {

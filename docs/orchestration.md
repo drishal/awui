@@ -216,6 +216,14 @@ orchestration:
 A number out of range, or an unknown key in the block, stops the server with the key named, like
 every other setting.
 
+**The wall clock.** A task still `working` after `taskWallClockMs` is stopped the way a cancel stops
+it — its subtree first, then its own chat with the five-second cap — and recorded `failed` with the
+error `wall clock exceeded (45m)`, so the parent can tell it from a cancel it asked for; a
+wake-notified parent is told. The timer is per task, unref'd, cleared when the task settles, and
+started again by a `thread_send` that revives it. A task a restart marked interrupted is not
+running, so it is never timed, and one waiting on you or on its own children is not the clock's
+business.
+
 ## Error codes
 
 All are `ChatError`s with the status shown, answered in the bridges' envelope
