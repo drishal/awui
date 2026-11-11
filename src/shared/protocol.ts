@@ -672,6 +672,50 @@ export interface GitStatus {
   removed: number;
 }
 
+/** How a delegated task stands. `waiting_for_children` is a child whose own delegates still run. */
+export type DelegatedState = "working" | "waiting_for_user" | "waiting_for_children" | "result_available";
+/** How it ended; null while it has not. */
+export type DelegatedOutcome = "done" | "failed" | "cancelled" | "interrupted";
+
+/** How many of a chat's delegated tasks a snapshot carries. */
+export const MAX_DELEGATED_TASKS = 20;
+
+/**
+ * One delegated task as the browser sees it. The child is an ordinary chat, so its
+ * transcript is its own; this view carries only what a parent's panel needs, and a
+ * result is bounded (the full answer is in the child chat).
+ */
+export interface DelegatedTaskView {
+  id: string;
+  parentChatId: string;
+  childChatId: string | null;
+  title: string;
+  harnessId: HarnessId;
+  model: string | null;
+  role: string;
+  /** The bot profile the child was started from, if any. */
+  profile: string | null;
+  depth: number;
+  state: DelegatedState;
+  outcome: DelegatedOutcome | null;
+  createdAt: number;
+  endedAt: number | null;
+  /** The child's last answer line while it works (≤300 chars). */
+  activity: string | null;
+  /** Bounded to 4 000 chars; the child's full transcript is its own chat. */
+  result: { finalText: string; error: string | null; usage: SessionUsage | null } | null;
+  /** A child waiting on an answer: its request's title, never the request body. */
+  asking: string | null;
+}
+
+/** A chat another agent delegated: which task, and where in the tree. */
+export interface ChatLineage {
+  kind: "delegate";
+  taskId: string;
+  parentChatId: string;
+  parentTitle: string | null;
+  depth: number;
+}
 export interface ChatSnapshot {
   chatId: string;
   harnessId: HarnessId;
@@ -706,6 +750,13 @@ export interface ChatSnapshot {
   contextHistory: ContextPoint[];
   generation: number;
   lastEventId: number;
+  /**
+   * The tasks this chat delegated, newest first, at most 20: the panel's rows, fed live by
+   * `task` events. Absent when the chat delegates nothing (the common case).
+   */
+  delegated?: DelegatedTaskView[];
+  /** Set when another agent delegated this chat: what the header's lineage chip reads. */
+  lineage?: ChatLineage;
 }
 
 /** How many context readings a chat keeps (server) and a client mirrors. */
@@ -734,6 +785,8 @@ export type ChatEvent =
   | { type: "todos"; todos: TodoItem[] }
   | { type: "checkpoints"; turns: number[] }
   | { type: "chain"; chain: ChainStep[]; paused: string | null }
+  /** One of this chat's delegated tasks changed: a panel row updates without polling. */
+  | { type: "task"; task: DelegatedTaskView }
   | { type: "disposed"; reason: string };
 
 export interface ThemeInfo {

@@ -1,15 +1,15 @@
-// The orchestration surface's foundations: one token per live chat (minted with the
-// spawn, 12 hours long, never for a read-only harness or a board-owned chat), the tool
-// catalogue both bridges fetch, and the call endpoint. At this stage only list_profiles
-// is served; the delegation tools are defined and answer unknown_tool until the durable
-// task store lands.
-import { mkdirSync } from "node:fs";
+// The orchestration surface: one token per live chat (minted with the spawn, 12 hours
+// long, never for a read-only harness or a board-owned chat), the tool catalogue both
+// bridges fetch, and the durable delegation behind it — a child chat with lineage, a
+// record in the state folder, the settle watcher, and the caps. thread_send and
+// thread_read ship with the delivery step and still answer unknown_tool.
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import type { ChatSnapshot, WorkspaceInfo } from "../../src/shared/protocol.js";
+import type { ChatSnapshot, DelegatedTaskView, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
-import { makeTestApp, signedIn, tempDir, type TestApp } from "../helpers/app.js";
+import { makeTestApp, openSse, signedIn, tempDir, type TestApp } from "../helpers/app.js";
 import { makeBot } from "../helpers/board.js";
 
 let t: TestApp | null = null;
@@ -68,7 +68,8 @@ describe("orchestration surface", () => {
     const unknown = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "steal_everything", args: {} });
     expect(unknown.status).toBe(400);
     expect(unknown.body).toMatchObject({ ok: false, code: "unknown_tool" });
-    const unwired = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "delegate_task", args: { brief: "x" } });
+    // thread_send and thread_read ship with the delivery step: defined, not served yet.
+    const unwired = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "thread_send", args: { taskId: "abcd", text: "x" } });
     expect(unwired.status).toBe(400);
     expect(unwired.body).toMatchObject({ ok: false, code: "unknown_tool" });
     // Arguments are validated before dispatch: a wait with no tasks is a bad request.
@@ -125,5 +126,144 @@ describe("orchestration surface", () => {
     } finally {
       await manager.shutdown();
     }
+  });
+});
+
+type Agent = Awaited<ReturnType<typeof signedIn>>;
+
+/** One tool call as the chat's child would make it. */
+function call(agent: Agent, token: string, tool: string, args: unknown) {
+  return agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool, args });
+}
+
+/** The token a live chat's child carries (every chat the manager spawned has one). */
+function tokenOf(app: TestApp, chatId: string): string {
+  const token = app.manager.list().find((c) => c.chatId === chatId)?.orchestration?.token;
+  if (!token) throw new Error(`chat ${chatId} has no orchestration token`);
+  return token;
+}
+
+async function delegate(agent: Agent, token: string, args: Record<string, unknown>) {
+  const res = await call(agent, token, "delegate_task", args);
+  if (res.status !== 200) throw new Error(`delegate failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.data as { taskId: string; childChatId: string | null; state: string };
+}
+
+describe("delegated tasks", () => {
+  it("spawns an ordinary child chat with lineage, and the parent's panel sees it live", async () => {
+    const { app, agent, chat, token } = await setup();
+    const sse = openSse(app, chat.chatId, agent.cookie);
+    await sse.waitFor(() => sse.chatEvents().some((e) => e.type === "snapshot"));
+
+    const started = await delegate(agent, token, { brief: "summarise the readme", title: "Summariser" });
+    expect(started.childChatId).not.toBeNull();
+    const childId = started.childChatId as string;
+    expect(app.manager.list().some((c) => c.chatId === childId)).toBe(true);
+
+    // The child is openable like any chat and carries the lineage chip's data.
+    const childSnap = (await agent.get(`/api/chats/${childId}`)).body as ChatSnapshot;
+    expect(childSnap.lineage).toEqual({ kind: "delegate", taskId: started.taskId, parentChatId: chat.chatId, parentTitle: null, depth: 1 });
+    expect(childSnap.chatId).toBe(childId);
+
+    // The parent is told by a task event, and its snapshot carries the row.
+    await sse.waitFor(() => sse.chatEvents().some((e) => e.type === "task"));
+    const parentSnap = (await agent.get(`/api/chats/${chat.chatId}`)).body as ChatSnapshot;
+    expect(parentSnap.delegated?.[0]).toMatchObject({ id: started.taskId, parentChatId: chat.chatId, childChatId: childId, harnessId: "fake", title: "Summariser", depth: 1 });
+    sse.close();
+  });
+
+  it("waits for the child's answer and returns it", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "explain the build" });
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    expect(waited.status).toBe(200);
+    const task = (waited.body.data as { tasks: DelegatedTaskView[] }).tasks[0] as DelegatedTaskView;
+    expect(task).toMatchObject({ id: started.taskId, state: "result_available", outcome: "done", asking: null });
+    expect(task.result?.finalText).toContain("Echo: explain the build");
+    expect(task.result?.error).toBeNull();
+
+    // task_status on the same task says the same thing, and an unknown id is a 404.
+    const status = await call(agent, token, "task_status", { taskId: started.taskId });
+    expect((status.body.data as { tasks: DelegatedTaskView[] }).tasks[0]?.outcome).toBe("done");
+    expect((await call(agent, token, "task_status", { taskId: "ffff" })).status).toBe(404);
+  });
+
+  it("cancels a running child, and a second cancel is the same answer", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "slow work on the parser" });
+    const first = await call(agent, token, "task_cancel", { taskId: started.taskId });
+    expect(first.status).toBe(200);
+    const cancelled = (first.body.data as { task: DelegatedTaskView }).task;
+    expect(cancelled).toMatchObject({ state: "result_available", outcome: "cancelled" });
+    const second = await call(agent, token, "task_cancel", { taskId: started.taskId });
+    expect(second.status).toBe(200);
+    expect((second.body.data as { task: DelegatedTaskView }).task).toEqual(cancelled);
+    // Nobody was watching, so the child chat was closed rather than left running.
+    expect(app.manager.list().some((c) => c.chatId === started.childChatId)).toBe(false);
+  });
+
+  it("returns the same task for a repeated clientRequestId", async () => {
+    const { app, agent, token } = await setup();
+    const one = await delegate(agent, token, { brief: "check the lockfile", clientRequestId: "round-1" });
+    const two = await delegate(agent, token, { brief: "check the lockfile", clientRequestId: "round-1" });
+    expect(two.taskId).toBe(one.taskId);
+    const children = app.manager.list().filter((c) => c.lineage?.taskId === one.taskId);
+    expect(children).toHaveLength(1);
+  });
+
+  it("refuses past the chat's live-task cap", async () => {
+    const { agent, token } = await setup();
+    // Each child parks on an approval, so none of them settles while the cap is counted.
+    for (let i = 0; i < 4; i++) await delegate(agent, token, { brief: `ask before reviewing number ${i}` });
+    const fifth = await call(agent, token, "delegate_task", { brief: "ask before reviewing number 5" });
+    expect(fifth.status).toBe(429);
+    expect(fifth.body).toMatchObject({ ok: false, code: "too_many_tasks" });
+  });
+
+  it("refuses a grandchild that would go past the depth cap", async () => {
+    const { app, agent, token } = await setup();
+    const child = await delegate(agent, token, { brief: "first level" });
+    const grandchild = await delegate(agent, tokenOf(app, child.childChatId as string), { brief: "second level" });
+    // The grandchild is depth 2: it may not delegate again.
+    const deeper = await call(agent, tokenOf(app, grandchild.childChatId as string), "delegate_task", { brief: "third level" });
+    expect(deeper.status).toBe(429);
+    expect(deeper.body).toMatchObject({ ok: false, code: "max_depth" });
+  });
+
+  it("keeps the lineage and the parent's task list across a close and a resume", async () => {
+    const { app, agent, ws, chat, token } = await setup();
+    const started = await delegate(agent, token, { brief: "check the changelog" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    const child = app.manager.list().find((c) => c.chatId === started.childChatId);
+    if (!child?.sessionId) throw new Error("the child chat was never given a session");
+    const childSession = child.sessionId;
+    const parentSession = app.manager.list().find((c) => c.chatId === chat.chatId)?.sessionId;
+    await agent.post(`/api/chats/${child.chatId}/dispose`).send({});
+    await agent.post(`/api/chats/${chat.chatId}/dispose`).send({});
+
+    // Both are ordinary sessions: resuming one re-reads what the records say it is.
+    const resumedChild = (await agent.post("/api/chats/resume").send({ harnessId: "fake", workspaceId: ws.id, sessionId: childSession })).body as ChatSnapshot;
+    expect(resumedChild.chatId).not.toBe(child.chatId);
+    expect(resumedChild.lineage).toMatchObject({ kind: "delegate", taskId: started.taskId, depth: 1 });
+    if (parentSession) {
+      const resumedParent = (await agent.post("/api/chats/resume").send({ harnessId: "fake", workspaceId: ws.id, sessionId: parentSession })).body as ChatSnapshot;
+      expect(resumedParent.delegated?.map((task) => task.id)).toContain(started.taskId);
+    }
+  });
+
+  it("fails the call when the task record cannot be written", async () => {
+    const { app, agent, token, chat } = await setup();
+    // A file where the store's folder goes: every write fails, so nothing may report success.
+    mkdirSync(app.stateDir, { recursive: true });
+    writeFileSync(path.join(app.stateDir, "orchestration"), "");
+    const before = app.manager.list().length;
+    const res = await call(agent, token, "delegate_task", { brief: "should never start" });
+    expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({ ok: false, code: "store_failed" });
+    // No child was spawned for a task that was never recorded.
+    expect(app.manager.list().length).toBe(before);
+    expect(app.manager.list().some((c) => c.lineage !== undefined)).toBe(false);
+    const parentSnap = (await agent.get(`/api/chats/${chat.chatId}`)).body as ChatSnapshot;
+    expect(parentSnap.delegated).toBeUndefined();
   });
 });

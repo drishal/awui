@@ -8,10 +8,12 @@ import type {
   ChainStep,
   ChatConfig,
   ChatEvent,
+  ChatLineage,
   ChatItem,
   ChatSnapshot,
   ChatStatus,
   ConfigPatch,
+  DelegatedTaskView,
   ContextPoint,
   ContextUsage,
   ImageAttachment,
@@ -787,6 +789,17 @@ export class Chat implements CheckpointHost {
    * new one) and is never persisted, so a restart drops it.
    */
   orchestration?: { token: string; baseUrl: string; expiresAt: number };
+  /**
+   * Set when another agent delegated this chat (orchestrator.ts stamps it once, right after
+   * the spawn). Deliberately not `owner`: an owned chat is hidden from ordinary routes, and
+   * a delegated child is one the user paid for and can open like any other.
+   */
+  lineage?: ChatLineage;
+  /**
+   * The tasks this chat delegated, newest first and bounded, as the snapshot carries them.
+   * Installed by the orchestrator the first time this chat delegates; absent otherwise.
+   */
+  delegated?: () => DelegatedTaskView[];
 
   private readonly log = new EventLog();
   private readonly timing = new Timing();
@@ -918,7 +931,18 @@ export class Chat implements CheckpointHost {
       contextHistory: [...this.contextHistory],
       generation: this.generation,
       lastEventId: this.log.lastEventId,
+      ...(this.delegated ? { delegated: this.delegated() } : {}),
+      ...(this.lineage ? { lineage: this.lineage } : {}),
     };
+  }
+
+  /**
+   * Put one event on this chat's stream from outside the harness (a delegated task's
+   * state): the same fan-out a harness event takes, so a viewer sees it live.
+   */
+  announce(event: ChatEvent): void {
+    if (this.status === "disposed") return;
+    this.reducer.emit(event);
   }
 
   /**

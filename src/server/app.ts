@@ -123,7 +123,8 @@ import type { TerminalManager } from "./terminal.js";
 import { ManagedWorktrees, worktreeProblem, type WorktreeInfo } from "./worktrees.js";
 import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest } from "./github.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
-import { callTool, ORCH_TOOLS } from "./orchestration/tools.js";
+import { Orchestrator } from "./orchestration/orchestrator.js";
+import { ORCH_TOOLS } from "./orchestration/tools.js";
 
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
@@ -255,6 +256,20 @@ export function createApp(deps: AppDeps) {
     if (chat.sessionId) marks.wake(chat.sessionId);
   };
   const log = deps.log ?? ((m: string) => console.error(m));
+  // Delegated tasks: one record store in the state folder, shared by every chat in this process.
+  const orchestration = new Orchestrator({
+    chats: manager,
+    registry,
+    workspaces,
+    ...(deps.boards ? { boards: deps.boards } : {}),
+    file: deps.stateDir ? path.join(deps.stateDir, "orchestration", "tasks.json") : null,
+    log,
+  });
+  // Chats read their lineage and their tasks from the records, so a resumed chat still knows
+  // what it is; the load starts here and marks what the last process left running.
+  manager.lineageFor = (chat) => orchestration.lineageOf(chat);
+  manager.tasksFor = (chat) => orchestration.tasksFor(chat);
+  void orchestration.start().catch((error: unknown) => log(`orchestration: could not load task records: ${errorMessage(error)}`));
   // What this process serves as the web bundle: a page compares it with the build
   // it loaded to notice a deploy (the binary embeds the bundle; a source run has
   // dist/web). "dev" when neither exists, which the client then ignores.
@@ -360,7 +375,7 @@ export function createApp(deps: AppDeps) {
     try {
       const chat = orchCaller(req);
       const input = body(orchCallSchema, req);
-      const out = await callTool(input.tool, input.args ?? {}, { chat, registry, workspaces, boards: deps.boards });
+      const out = await orchestration.run(input.tool, input.args ?? {}, chat);
       res.json({ ok: true, text: out.text, data: out.data });
     } catch (error) {
       if (!orchFailed(res, error)) throw error;

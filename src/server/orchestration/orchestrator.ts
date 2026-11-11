@@ -1,0 +1,657 @@
+// The front door of the orchestration surface: it turns a tool call from a chat's harness
+// child into a durable delegated task, watches the child chat to a terminal state, and
+// keeps the record in the state folder. A child is an ordinary chat — openable, listed,
+// resumable — so this module owns only the cross-chat bookkeeping (which task belongs to
+// which chat, how it ended, what to tell the parent), never a transcript of its own.
+//
+// One watcher per running task subscribes to the child's stream and unsubscribes at
+// settle, so an idle child can be reaped like any other chat. A cancel bumps the task's
+// generation first, which drops late events from the run that was stopped.
+import { randomBytes } from "node:crypto";
+import { isApproval } from "../../shared/approval.js";
+import { MAX_DELEGATED_TASKS, type ChatItem, type ChatLineage, type ChatStatus, type DelegatedTaskView, type InteractionRequest } from "../../shared/protocol.js";
+import type { BoardManager } from "../boards/types.js";
+import { ChatError, errorMessage, type Chat } from "../chats/chat.js";
+import type { ChatManager } from "../chats/manager.js";
+import type { HarnessRegistry } from "../harness/registry.js";
+import type { HarnessAdapter } from "../harness/types.js";
+import type { Workspaces } from "../workspaces.js";
+import { TaskStore } from "./store.js";
+import {
+  DEFAULT_WAIT_MS,
+  delegateTaskSchema,
+  findTool,
+  listProfiles,
+  listProfilesSchema,
+  MAX_CHILDREN_PER_CHAT,
+  MAX_DEPTH,
+  MAX_LIVE_TASKS,
+  MAX_TASKS_PER_CHAT,
+  taskCancelSchema,
+  taskStatusSchema,
+  threadWaitSchema,
+  type ToolContext,
+  type ToolOutput,
+} from "./tools.js";
+import { firstLine, MAX_ERROR_CHARS, MAX_RESULT_CHARS, MAX_TITLE_CHARS, viewOf, type StoredTask } from "./types.js";
+
+/** How long a cancel waits for the child to settle before it says so. */
+const CANCEL_SETTLE_MS = 5_000;
+/** A task's last answer line is announced only when the line itself changes. */
+const ACTIVITY_LINE = 300;
+
+export interface OrchestratorDeps {
+  chats: ChatManager;
+  registry: HarnessRegistry;
+  workspaces: Workspaces;
+  boards?: BoardManager;
+  /** `<stateDir>/orchestration/tasks.json`; null keeps the records in memory only (tests). */
+  file: string | null;
+  log: (message: string) => void;
+}
+
+export class Orchestrator {
+  private readonly store: TaskStore;
+  private tasks: StoredTask[] = [];
+  private loading: Promise<void> | null = null;
+  /** One unsubscribe per running task, taken at settle so the child can be reaped. */
+  private readonly watchers = new Map<string, () => void>();
+  /** Callers parked in thread_wait, by task id. */
+  private readonly waiters = new Map<string, Set<() => void>>();
+
+  constructor(private readonly deps: OrchestratorDeps) {
+    this.store = new TaskStore(deps.file);
+  }
+
+  /** Run one tool call as `caller`. The tool's own schema validates the arguments first. */
+  async run(name: string, rawArgs: unknown, caller: Chat): Promise<ToolOutput> {
+    const tool = findTool(name);
+    if (!tool) throw new ChatError(400, "unknown_tool", `No such tool: ${name}`);
+    await this.ready();
+    const args = rawArgs ?? {};
+    switch (name) {
+      case "list_profiles":
+        return this.listProfiles(caller, listProfilesSchema.parse(args));
+      case "delegate_task":
+        return this.delegate(caller, delegateTaskSchema.parse(args));
+      case "task_status":
+        return this.status(caller, taskStatusSchema.parse(args));
+      case "task_cancel":
+        return this.cancel(caller, taskCancelSchema.parse(args));
+      case "thread_wait":
+        return this.wait(caller, threadWaitSchema.parse(args));
+      default:
+        throw new ChatError(400, "unknown_tool", `${name} is not wired on this server yet`);
+    }
+  }
+
+  // ---- the store ----------------------------------------------------------
+
+  private ready(): Promise<void> {
+    this.loading ??= this.load();
+    return this.loading;
+  }
+
+  /**
+   * Read the records once. A task the last process was still running cannot be resumed —
+   * its child chat died with that process — so it is marked interrupted with the reason.
+   * Nothing is restarted: the child's session file is still there, resumable as an
+   * ordinary chat by whoever wants the work to go on.
+   */
+  private async load(): Promise<void> {
+    const { tasks, dropped } = await this.store.read();
+    if (dropped > 0) this.deps.log(`orchestration: dropped ${dropped} malformed task record(s)`);
+    const now = Date.now();
+    let interrupted = false;
+    for (const task of tasks) {
+      // Waiting for a user, the children, or its own run: none of it survives the restart.
+      if (task.state === "result_available") continue;
+      task.state = "result_available";
+      task.outcome = "interrupted";
+      task.endedAt = now;
+      task.asking = null;
+      task.activity = null;
+      task.result = { finalText: task.result?.finalText ?? "", error: "the server restarted before this task settled", usage: task.result?.usage ?? null };
+      interrupted = true;
+    }
+    this.tasks = tasks;
+    if (interrupted) await this.store.write(this.tasks).catch((error: unknown) => this.deps.log(`orchestration: could not record interrupted tasks: ${errorMessage(error)}`));
+  }
+
+  /**
+   * The lineage a stored record gives the chat it started: a resumed or reaped child keeps
+   * its chip, which is why the manager asks on every registration.
+   */
+  lineageOf(chat: Chat): ChatLineage | undefined {
+    const task = this.tasks.find((t) => this.startedFrom(t, chat));
+    if (!task) return undefined;
+    return { kind: "delegate", taskId: task.id, parentChatId: task.parentChatId, parentTitle: task.parentTitle, depth: task.depth };
+  }
+
+  /** This chat's delegated tasks, for a chat the manager is registering (a reopened parent). */
+  tasksFor(chat: Chat): DelegatedTaskView[] {
+    return this.viewsFor(chat.chatId, chat.sessionId);
+  }
+
+  /** Load the records and mark what the last process left running: called once at startup. */
+  async start(): Promise<void> {
+    await this.ready();
+  }
+
+  private async persist(): Promise<void> {
+    await this.store.write(this.tasks);
+  }
+
+  // ---- the tools ----------------------------------------------------------
+
+  private async listProfiles(caller: Chat, args: { workspaceId?: string }): Promise<ToolOutput> {
+    return listProfiles(this.context(caller), args, { remainingDepth: this.remainingDepth(caller), remainingTasks: this.remainingTasks(caller) });
+  }
+
+  private async status(caller: Chat, args: { taskId?: string }): Promise<ToolOutput> {
+    if (args.taskId) {
+      const task = this.ownTask(caller, args.taskId);
+      return { text: this.describe([task]), data: { tasks: [viewOf(task)] } };
+    }
+    const mine = this.viewsFor(caller.chatId, caller.sessionId).slice(0, 50);
+    if (mine.length === 0) return { text: "This chat has not delegated any tasks.", data: { tasks: [] } };
+    const tasks = mine.map((view) => this.tasks.find((task) => task.id === view.id)).filter((task): task is StoredTask => task !== undefined);
+    return { text: this.describe(tasks), data: { tasks: mine } };
+  }
+
+  private async cancel(caller: Chat, args: { taskId: string }): Promise<ToolOutput> {
+    const task = this.ownTask(caller, args.taskId);
+    // Idempotent: a finished task is returned as it stands.
+    if (task.state === "result_available") return { text: `Task ${task.id} already finished (${task.outcome}).`, data: { task: viewOf(task) } };
+    task.cancelRequestedAt = Date.now();
+    task.generation += 1;
+    // Depth first: a task's own delegates stop before the chat that started them.
+    const chat = this.childChat(task);
+    const below = chat ? this.tasks.filter((t) => this.ownTaskOf(t, chat) && t.state !== "result_available") : [];
+    await Promise.all(below.map((child) => this.stopTask(child)));
+    const settled = await this.stopTask(task);
+    const text = `Cancelled task ${task.id} (${task.title}). Its chat is ${settled ? "stopped" : "still stopping"}.`;
+    if (!settled) throw new ChatError(504, "cancel_timeout", `${text} It did not settle within ${CANCEL_SETTLE_MS / 1000}s`);
+    return { text, data: { task: viewOf(task) } };
+  }
+
+  private async wait(caller: Chat, args: { taskIds: string[]; waitMs?: number }): Promise<ToolOutput> {
+    const tasks = args.taskIds.map((id) => this.ownTask(caller, id));
+    await this.waitFor(tasks, args.waitMs ?? DEFAULT_WAIT_MS);
+    const pendingRequest = this.pendingQuestion(tasks);
+    return {
+      text: this.describe(tasks, pendingRequest),
+      data: { tasks: tasks.map(viewOf), ...(pendingRequest ? { pendingRequest } : {}) },
+    };
+  }
+
+  private async delegate(
+    caller: Chat,
+    args: {
+      brief: string;
+      harness?: string;
+      profile?: string;
+      model?: string;
+      thinkingLevel?: string;
+      permissionMode?: string;
+      role?: string;
+      title?: string;
+      workspaceId?: string;
+      notify?: "wake" | "none";
+      clientRequestId?: string;
+    },
+  ): Promise<ToolOutput> {
+    if (caller.adapter.capabilities.readOnlyHarness) {
+      throw new ChatError(403, "caller_read_only", `${caller.adapter.displayName} is a read-only surface and cannot delegate work`);
+    }
+    // A repeated request is the same task, never a second child.
+    if (args.clientRequestId) {
+      const prior = this.tasks.find((task) => task.parentChatId === caller.chatId && task.clientRequestId === args.clientRequestId);
+      if (prior) return this.delegateOutput(prior);
+    }
+    const depth = (caller.lineage?.depth ?? 0) + 1;
+    if (depth > MAX_DEPTH) throw new ChatError(429, "max_depth", `Delegation stops at ${MAX_DEPTH} levels; this chat is already at its limit`);
+    if (this.liveTasks() >= MAX_LIVE_TASKS) throw new ChatError(429, "too_many_tasks", `This server already runs ${MAX_LIVE_TASKS} delegated tasks`);
+    const mine = this.tasks.filter((task) => task.parentChatId === caller.chatId);
+    if (mine.filter((task) => task.state !== "result_available").length >= MAX_CHILDREN_PER_CHAT) {
+      throw new ChatError(429, "too_many_tasks", `A chat may run ${MAX_CHILDREN_PER_CHAT} delegated tasks at once`);
+    }
+    if (mine.length >= MAX_TASKS_PER_CHAT) throw new ChatError(429, "too_many_tasks", `A chat may start ${MAX_TASKS_PER_CHAT} delegated tasks`);
+
+    const bot = args.profile === undefined ? undefined : await this.findProfile(args.profile);
+    const harnessId = args.harness ?? bot?.harnessId ?? caller.adapter.id;
+    const adapter = this.deps.registry.get(harnessId);
+    if (!adapter) throw new ChatError(422, "unknown_harness", `No harness called ${harnessId}`);
+    if (adapter.capabilities.readOnlyHarness) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is a read-only surface and cannot host a delegated task`);
+    if (!(await this.deps.registry.available(adapter.id))) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is not available right now`);
+    // An open project by id, never a path: the caller's own unless it names another.
+    const workspace = args.workspaceId === undefined ? caller.workspace : await this.deps.workspaces.get(args.workspaceId);
+    const problem = adapter.workspaceProblem(workspace.path);
+    if (problem) throw new ChatError(422, "workspace_unsupported", problem);
+    const permissionMode = this.permissionModeFor(caller, adapter, args.permissionMode ?? bot?.permissionMode ?? undefined);
+    const model = args.model ?? bot?.model ?? undefined;
+    const thinkingLevel = args.thinkingLevel ?? bot?.thinkingLevel ?? undefined;
+    const title = (args.title ?? firstLine(args.brief, MAX_TITLE_CHARS) ?? `Task in ${workspace.name}`).slice(0, MAX_TITLE_CHARS);
+
+    const task: StoredTask = {
+      id: this.newTaskId(),
+      parentChatId: caller.chatId,
+      childChatId: null,
+      title,
+      harnessId: adapter.id,
+      model: model ?? null,
+      role: (args.role ?? bot?.role ?? "").slice(0, 64),
+      profile: bot?.id ?? null,
+      depth,
+      state: "working",
+      outcome: null,
+      createdAt: Date.now(),
+      endedAt: null,
+      activity: null,
+      result: null,
+      asking: null,
+      workspacePath: workspace.path,
+      parentTitle: caller.title || null,
+      parentSessionId: caller.sessionId,
+      childSessionId: null,
+      generation: 0,
+      cancelRequestedAt: null,
+      notify: args.notify ?? "wake",
+      clientRequestId: args.clientRequestId ?? null,
+      wake: { pendingSince: null, deliveredAt: null, attempts: 0, skipped: null },
+    };
+    // The record lands before anything is spawned, so a crash mid-spawn leaves a row the
+    // next load marks interrupted instead of work nobody knows about.
+    this.tasks.unshift(task);
+    try {
+      await this.persist();
+    } catch (error) {
+      this.tasks = this.tasks.filter((t) => t !== task);
+      throw new ChatError(500, "store_failed", `Could not record the task: ${errorMessage(error)}`);
+    }
+
+    // The parent lists its tasks from here on, so even a spawn that fails is a row it can see.
+    this.attach(caller);
+    let child: Chat;
+    try {
+      child = await this.deps.chats.create(adapter, workspace);
+    } catch (error) {
+      await this.finish(task, "failed", errorMessage(error));
+      return this.delegateOutput(task);
+    }
+    task.childChatId = child.chatId;
+    task.childSessionId = child.sessionId;
+    child.lineage = { kind: "delegate", taskId: task.id, parentChatId: caller.chatId, parentTitle: caller.title || null, depth };
+    try {
+      if (model !== undefined || thinkingLevel !== undefined || permissionMode !== undefined) {
+        await child.setConfig({
+          ...(model !== undefined ? { model } : {}),
+          ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
+          ...(permissionMode !== undefined ? { permissionMode } : {}),
+        });
+      }
+      // Watch before the prompt: the run can settle before send() returns.
+      this.watch(task, child);
+      await child.send(args.brief, "normal");
+    } catch (error) {
+      await this.finish(task, "failed", errorMessage(error));
+      return this.delegateOutput(task);
+    }
+    this.announce(task);
+    return this.delegateOutput(task);
+  }
+
+  // ---- the watcher --------------------------------------------------------
+
+  private watch(task: StoredTask, child: Chat): void {
+    const generation = task.generation;
+    const unsubscribe = child.subscribe({
+      send: (_id, event) => {
+        // Work from a run the caller has since cancelled arrives late; it must not move the task.
+        if (task.generation !== generation) return;
+        switch (event.type) {
+          case "status":
+            void this.onStatus(task, child, event.status);
+            return;
+          case "request":
+            // An approval reaches the user already; only a real question ends the parent's wait.
+            if (isApproval(event.request)) return;
+            task.state = "waiting_for_user";
+            task.asking = event.request.title.slice(0, 200);
+            this.changed(task);
+            return;
+          // Resolved or cancelled: either way the child is no longer asking, and carries on.
+          case "request_resolved":
+            if (task.state !== "waiting_for_user") return;
+            task.state = "working";
+            task.asking = null;
+            this.changed(task);
+            return;
+          case "disposed":
+            void this.finish(task, "cancelled", "The chat was closed");
+            return;
+          case "item":
+            this.noteActivity(task, event.item);
+            return;
+          default:
+            return;
+        }
+      },
+      close: () => undefined,
+    });
+    this.watchers.set(task.id, unsubscribe);
+  }
+
+  private async onStatus(task: StoredTask, child: Chat, status: ChatStatus): Promise<void> {
+    if (status === "disposed") {
+      await this.finish(task, "cancelled", "The chat was closed");
+      return;
+    }
+    if (status === "idle" || status === "error") {
+      // A child still asking is not finished; neither is one whose own delegates are running.
+      if (child.pendingCount > 0) return;
+      const running = this.tasks.filter((t) => this.ownTaskOf(t, child) && t.state !== "result_available");
+      if (running.length > 0) {
+        if (task.state !== "waiting_for_children") {
+          task.state = "waiting_for_children";
+          this.changed(task);
+        }
+        return;
+      }
+      await this.finish(task, status === "error" ? "failed" : "done", status === "error" ? this.errorOf(child) : null);
+      return;
+    }
+    // running, compacting, stopping, starting: the child is at work.
+    if (task.state !== "working") {
+      task.state = "working";
+      task.asking = null;
+      this.changed(task);
+    }
+  }
+
+  /** The child's latest answer line, announced only when it changes: the panel's activity row. */
+  private noteActivity(task: StoredTask, item: ChatItem): void {
+    if (task.state === "result_available" || item.kind !== "assistant") return;
+    const line = firstLine(item.text, ACTIVITY_LINE);
+    if (!line || line === task.activity) return;
+    task.activity = line;
+    this.announce(task);
+  }
+
+  // ---- state changes ------------------------------------------------------
+
+  /**
+   * A task reached a terminal state. `outcome` says how; `error` is what a caller reads
+   * when it failed. The record is written before the parent is told, so a crash in
+   * between leaves a task the parent can still ask about.
+   */
+  private async finish(task: StoredTask, outcome: "done" | "failed" | "cancelled" | "interrupted", error: string | null = null): Promise<void> {
+    if (task.state === "result_available") return;
+    const child = this.childChat(task);
+    task.childSessionId = child?.sessionId ?? task.childSessionId;
+    task.state = "result_available";
+    task.outcome = outcome;
+    task.endedAt = Date.now();
+    task.asking = null;
+    task.activity = null;
+    task.result = {
+      finalText: child ? (this.lastAnswer(child)?.slice(0, MAX_RESULT_CHARS) ?? "") : "",
+      error: error === null ? null : error.slice(0, MAX_ERROR_CHARS),
+      usage: child?.snapshot().usage ?? null,
+    };
+    this.stopWatching(task.id);
+    await this.persist().catch((problem: unknown) => this.deps.log(`orchestration: could not record task ${task.id}: ${errorMessage(problem)}`));
+    this.announce(task);
+    this.wakeWaiters(task.id);
+    // A parent whose last delegate just finished has half-finished work until it runs again.
+    await this.settleParent(task);
+  }
+
+  /**
+   * A task that was still waiting for its own delegates may be finished now: the child
+   * chat is idle and nothing under it is live. One level here, the walk generalizes.
+   */
+  private async settleParent(childTask: StoredTask): Promise<void> {
+    const parent = this.tasks.find((task) => this.startedFrom(task, { chatId: childTask.parentChatId, sessionId: childTask.parentSessionId }));
+    if (!parent || parent.state === "result_available") return;
+    const chat = this.childChat(parent);
+    if (!chat || chat.status !== "idle") return;
+    const running = this.tasks.filter((task) => this.ownTaskOf(task, chat) && task.state !== "result_available");
+    if (running.length > 0) return;
+    await this.finish(parent, "done", null);
+  }
+
+  /** Stop one task's child chat: abort, then close it when nobody is watching, then mark it cancelled. */
+  private async stopTask(task: StoredTask): Promise<boolean> {
+    // Our own watcher counts as a viewer, so it goes first: the count below is the user's.
+    this.stopWatching(task.id);
+    const chat = this.childChat(task);
+    let settled = true;
+    if (chat) {
+      settled = await Promise.race([chat.abort().then(() => true), sleep(CANCEL_SETTLE_MS).then(() => false)]);
+      // A user watching the child keeps it open: closing it would take the page away.
+      if (settled && chat.subscriberCount === 0) await chat.dispose("Delegated task cancelled").catch((error: unknown) => this.deps.log(`orchestration: could not close ${chat.chatId}: ${errorMessage(error)}`));
+    }
+    await this.finish(task, "cancelled", "Cancelled by the parent");
+    return settled;
+  }
+
+  /** Remember a rare state change (not an activity tick), tell the parent, and write it. */
+  private changed(task: StoredTask): void {
+    void this.persist().catch((error: unknown) => this.deps.log(`orchestration: could not record task ${task.id}: ${errorMessage(error)}`));
+    this.announce(task);
+    this.wakeWaiters(task.id);
+  }
+
+  private announce(task: StoredTask): void {
+    const parent = this.deps.chats.list().find((chat) => chat.chatId === task.parentChatId || (task.parentSessionId !== null && chat.sessionId === task.parentSessionId));
+    if (!parent) return;
+    this.attach(parent);
+    parent.announce({ type: "task", task: viewOf(task) });
+  }
+
+  /** Install the snapshot's task list on a parent the first time it delegates (or is first seen). */
+  private attach(chat: Chat): void {
+    if (!chat.delegated) chat.delegated = () => this.viewsFor(chat.chatId, chat.sessionId);
+  }
+
+  /** A chat id is minted per open, so a reopened chat is matched by its harness session too. */
+  private ownTaskOf(task: StoredTask, chat: Chat): boolean {
+    return task.parentChatId === chat.chatId || (task.parentSessionId !== null && task.parentSessionId === chat.sessionId);
+  }
+
+  private startedFrom(task: StoredTask, chat: { chatId: string; sessionId: string | null }): boolean {
+    return task.childChatId === chat.chatId || (task.childSessionId !== null && task.childSessionId === chat.sessionId);
+  }
+
+  private viewsFor(chatId: string, sessionId: string | null): DelegatedTaskView[] {
+    return this.tasks
+      .filter((task) => task.parentChatId === chatId || (sessionId !== null && task.parentSessionId === sessionId))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, MAX_DELEGATED_TASKS)
+      .map(viewOf);
+  }
+
+  // ---- waiting ------------------------------------------------------------
+
+  private static reports(task: StoredTask): boolean {
+    return task.state === "result_available" || task.state === "waiting_for_user";
+  }
+
+  /** Park until every task is finished or asking, or the cap passes. No timer per task. */
+  private waitFor(tasks: StoredTask[], waitMs: number): Promise<void> {
+    if (tasks.every((task) => Orchestrator.reports(task))) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const ids = tasks.map((task) => task.id);
+      const done = () => {
+        clearTimeout(timer);
+        for (const id of ids) this.waiters.get(id)?.delete(wake);
+        resolve();
+      };
+      const wake = () => {
+        if (tasks.every((task) => Orchestrator.reports(task))) done();
+      };
+      const timer = setTimeout(done, Math.max(0, waitMs));
+      timer.unref?.();
+      for (const id of ids) {
+        const set = this.waiters.get(id) ?? new Set<() => void>();
+        set.add(wake);
+        this.waiters.set(id, set);
+      }
+      // A task can have moved between the first check and this registration.
+      wake();
+    });
+  }
+
+  private wakeWaiters(taskId: string): void {
+    for (const wake of [...(this.waiters.get(taskId) ?? [])]) wake();
+  }
+
+  /** The question a waiting child raised, by title only: a request body is not the parent's business. */
+  private pendingQuestion(tasks: StoredTask[]): { taskId: string; requestId: string | null; title: string } | null {
+    const task = tasks.find((t) => t.state === "waiting_for_user");
+    if (!task) return null;
+    const request: InteractionRequest | undefined = this.childChat(task)
+      ?.snapshot()
+      .pending.find((r) => !isApproval(r));
+    return { taskId: task.id, requestId: request?.id ?? null, title: request?.title ?? task.asking ?? "A question" };
+  }
+
+  // ---- helpers ------------------------------------------------------------
+
+  private context(caller: Chat): ToolContext {
+    return { chat: caller, registry: this.deps.registry, workspaces: this.deps.workspaces, boards: this.deps.boards };
+  }
+
+  private remainingDepth(caller: Chat): number {
+    return Math.max(0, MAX_DEPTH - (caller.lineage?.depth ?? 0));
+  }
+
+  private remainingTasks(caller: Chat): number {
+    const mine = this.tasks.filter((task) => this.ownTaskOf(task, caller));
+    const live = mine.filter((task) => task.state !== "result_available").length;
+    return Math.max(0, Math.min(MAX_CHILDREN_PER_CHAT - live, MAX_TASKS_PER_CHAT - mine.length, MAX_LIVE_TASKS - this.liveTasks()));
+  }
+
+  private liveTasks(): number {
+    return this.tasks.filter((task) => task.state !== "result_available").length;
+  }
+
+  private ownTask(caller: Chat, taskId: string): StoredTask {
+    const task = this.tasks.find((t) => t.id === taskId);
+    if (!task) throw new ChatError(404, "unknown_task", `No task ${taskId}`);
+    if (!this.ownTaskOf(task, caller)) throw new ChatError(403, "not_your_task", `Task ${taskId} belongs to another chat`);
+    return task;
+  }
+
+  private childChat(task: StoredTask): Chat | undefined {
+    if (task.childChatId === null) return undefined;
+    return this.deps.chats.list().find((chat) => chat.chatId === task.childChatId);
+  }
+
+  private stopWatching(taskId: string): void {
+    this.watchers.get(taskId)?.();
+    this.watchers.delete(taskId);
+  }
+
+  private newTaskId(): string {
+    for (;;) {
+      const id = randomBytes(2).toString("hex");
+      if (!this.tasks.some((task) => task.id === id)) return id;
+    }
+  }
+
+  private async findProfile(idOrName: string) {
+    const bots = this.deps.boards ? await this.deps.boards.listBots() : [];
+    const bot = bots.find((b) => b.id === idOrName) ?? bots.find((b) => b.name.toLowerCase() === idOrName.toLowerCase());
+    if (!bot) throw new ChatError(422, "unknown_profile", `No saved bot profile called ${idOrName}`);
+    return bot;
+  }
+
+  /**
+   * A child inherits the caller's permission mode; an explicit one must rank at or below
+   * the caller's own, by the order the caller's harness lists its modes (broadest last).
+   * A mode the caller does not have cannot be ranked, and is never granted.
+   */
+  private permissionModeFor(caller: Chat, adapter: HarnessAdapter, requested: string | undefined): string | undefined {
+    const config = caller.snapshot().config;
+    const parentMode = config.permissionMode ?? null;
+    if (requested === undefined) return parentMode !== null && adapter.capabilities.supportsPermissionMode ? parentMode : undefined;
+    if (!adapter.capabilities.supportsPermissionMode) throw new ChatError(400, "unsupported", `${adapter.displayName} has no permission modes`);
+    const modes = config.permissionModes ?? [];
+    const rank = (id: string) => modes.findIndex((mode) => mode.id === id);
+    const parentRank = parentMode === null ? -1 : rank(parentMode);
+    const wantedRank = rank(requested);
+    if (parentRank < 0 || wantedRank < 0 || wantedRank > parentRank) {
+      throw new ChatError(403, "mode_escalation_denied", `${requested} is not at or below this chat's own ${parentMode ?? "no"} permission mode`);
+    }
+    return requested;
+  }
+
+  /** The child's error notice, or a plain line when it only set its status. */
+  private errorOf(child: Chat): string {
+    const items = child.snapshot().items;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      if (item?.kind === "assistant" && item.error) return item.error;
+      if (item?.kind === "notice" && item.level === "error") return item.text;
+    }
+    return "The harness reported an error";
+  }
+
+  private lastAnswer(child: Chat): string | null {
+    const items = child.snapshot().items;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      if (item?.kind === "assistant" && item.text.trim() !== "") return item.text;
+      if (item?.kind === "user") return null;
+    }
+    return null;
+  }
+
+  private delegateOutput(task: StoredTask): ToolOutput {
+    const data = { taskId: task.id, childChatId: task.childChatId, state: task.state, outcome: task.outcome, ...(task.result ? { result: task.result } : {}) };
+    if (task.state === "result_available") return { text: `Task ${task.id} did not start.\n${this.describe([task])}`, data };
+    return {
+      text:
+        `Delegated task ${task.id} is ${task.state} in a fresh ${task.harnessId} chat${task.model ? ` (${task.model})` : ""}: "${task.title}". ` +
+        `Wait with thread_wait(["${task.id}"]) or check task_status; thread_read("${task.id}") shows its transcript.`,
+      data,
+    };
+  }
+
+  private describe(tasks: StoredTask[], pending?: { taskId: string; title: string } | null): string {
+    const lines = tasks.map((task) => this.describeOne(task));
+    if (pending) lines.push(`Task ${pending.taskId} is asking: "${pending.title}". The user sees the question too; relay it or answer through the child chat.`);
+    return lines.join("\n\n");
+  }
+
+  private describeOne(task: StoredTask): string {
+    const head = `Task ${task.id} · ${task.state}${task.outcome ? ` (${task.outcome})` : ""} · ${task.harnessId}${task.model ? ` ${task.model}` : ""}${task.role ? ` · ${task.role}` : ""} · ${formatElapsed((task.endedAt ?? Date.now()) - task.createdAt)}`;
+    const body = [`"${task.title}"`];
+    if (task.result) {
+      if (task.result.finalText) body.push(task.result.finalText);
+      if (task.result.error) body.push(`Error: ${task.result.error}`);
+      if (task.state === "result_available") body.push(`thread_read("${task.id}") for more; thread_send("${task.id}", …) to continue it.`);
+    } else if (task.activity) {
+      body.push(task.activity);
+    }
+    return [head, ...body].join("\n");
+  }
+}
+
+/** "4m12s", "38s", "1h04m": how long a task has run, short enough for a status row. */
+function formatElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m${String(seconds % 60).padStart(2, "0")}s`;
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+  });
+}

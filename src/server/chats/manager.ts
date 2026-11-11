@@ -2,7 +2,7 @@
 // native session: `harnessId + nativeId -> chatId`. Another terminal or
 // process running the same harness is NOT locked out (documented in README).
 import { randomBytes, randomUUID } from "node:crypto";
-import type { InteractionRequest, LimitAccount, PushNote, WorkspaceInfo } from "../../shared/protocol.js";
+import type { ChatLineage, DelegatedTaskView, InteractionRequest, LimitAccount, PushNote, WorkspaceInfo } from "../../shared/protocol.js";
 import { DeferredLiveChat } from "../harness/deferred.js";
 import type { HarnessAdapter, LiveChat } from "../harness/types.js";
 import { Chat, ChatError, errorMessage, type ChatOwner } from "./chat.js";
@@ -63,6 +63,12 @@ export class ChatManager {
   onNews?: (chat: Chat, kind: PushNote["kind"], body: string, request?: InteractionRequest) => void;
   /** A chat's chain reached a handoff step (Chat.onChainHandoff). */
   onChainHandoff?: Chat["onChainHandoff"];
+  /**
+   * The orchestration record a chat belongs to, as the orchestrator knows it: a delegated
+   * child keeps its lineage chip across a reap or a restart, and a reopened parent its panel.
+   */
+  lineageFor?: (chat: Chat) => ChatLineage | undefined;
+  tasksFor?: (chat: Chat) => DelegatedTaskView[];
 
   constructor(private readonly idleDisposeMs = IDLE_DISPOSE_MS) {
     this.reaper = setInterval(() => void this.reap(), REAP_INTERVAL_MS);
@@ -138,6 +144,10 @@ export class ChatManager {
       if (!this.onChainHandoff) throw new Error("Handoffs cannot run here");
       await this.onChainHandoff(c, step, rest);
     };
+    // A delegated child's lineage and a parent's task list live in the orchestrator's records,
+    // not in the chat: stamp them here so a resumed chat shows what it is.
+    chat.lineage = this.lineageFor?.(chat);
+    if (this.tasksFor && this.tasksFor(chat).length > 0) chat.delegated = () => this.tasksFor?.(chat) ?? [];
     // Board-owned chats take no ordinary per-prompt checkpoints; a room-level design comes later.
     if (this.checkpoints && !chat.owner) {
       chat.checkpoints = new ChatCheckpoints(this.checkpoints.service, chat, this.checkpoints.sessionsDir);

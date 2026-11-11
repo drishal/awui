@@ -2,13 +2,14 @@
 // another harness, watch it, talk to it, and read the result back. This file is the one
 // place a tool is defined — the Pi/omp/awui extension and the MCP bridge both fetch this
 // catalogue from GET /api/orchestration/tools, so a name, a description, and a parameter
-// schema exist once. The server validates a call's arguments with the same entry's Zod
-// schema (a bridge forwards what the model sent and decides nothing itself), which is why
-// the schemas live here rather than in protocol.ts: no browser ever sees them.
+// schema exist once. Each tool also has a Zod schema here, applied by orchestrator.ts
+// before any work starts: a bridge forwards what the model sent and decides nothing
+// itself, which is also why these schemas live here and not in protocol.ts (no browser
+// ever sees them).
 import { z } from "zod";
 import type { BotProfile } from "../../shared/protocol.js";
 import type { BoardManager } from "../boards/types.js";
-import { ChatError, type Chat } from "../chats/chat.js";
+import type { Chat } from "../chats/chat.js";
 import type { HarnessRegistry } from "../harness/registry.js";
 import type { Workspaces } from "../workspaces.js";
 
@@ -65,12 +66,11 @@ export const threadWaitSchema = z
   .object({ taskIds: z.array(taskId).min(1).max(MAX_WAIT_TASKS), waitMs: z.number().int().min(0).max(MAX_WAIT_MS).optional() })
   .strict();
 
-/** One tool as the bridges register it: JSON Schema for the model, Zod for the server. */
+/** One tool as the bridges register it: the name, the words the model reads, and JSON Schema for its arguments. */
 export interface OrchTool {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
-  argSchema: z.ZodType;
 }
 
 const object = (properties: Record<string, unknown>, required: string[] = []): Record<string, unknown> => ({
@@ -110,7 +110,6 @@ export const ORCH_TOOLS: OrchTool[] = [
       },
       ["brief"],
     ),
-    argSchema: delegateTaskSchema,
   },
   {
     name: "task_status",
@@ -118,13 +117,11 @@ export const ORCH_TOOLS: OrchTool[] = [
       "Report how your delegated tasks stand: state, harness and model, how long they have run, their last line, and their result once finished. " +
       "With a taskId, that one task alone.",
     parameters: object({ taskId: stringProperty("The task to report; omit it to list every task this chat started.") }),
-    argSchema: taskStatusSchema,
   },
   {
     name: "task_cancel",
     description: "Stop one of your delegated tasks: its run is aborted and the tasks below it cancelled first. Idempotent: a finished task comes back unchanged.",
     parameters: object({ taskId: stringProperty("The task to stop.") }, ["taskId"]),
-    argSchema: taskCancelSchema,
   },
   {
     name: "thread_send",
@@ -132,7 +129,6 @@ export const ORCH_TOOLS: OrchTool[] = [
       "Send more text to a delegated task's chat, continuing where it left off: steered into a running turn, or sent as a new prompt when it is idle. " +
       "After a task reported its result, this puts it back to work.",
     parameters: object({ taskId: stringProperty("The task to talk to."), text: stringProperty("What to send the child.", MAX_DELEGATE_BRIEF_CHARS) }, ["taskId", "text"]),
-    argSchema: threadSendSchema,
   },
   {
     name: "thread_read",
@@ -145,7 +141,6 @@ export const ORCH_TOOLS: OrchTool[] = [
       },
       ["taskId"],
     ),
-    argSchema: threadReadSchema,
   },
   {
     name: "thread_wait",
@@ -160,7 +155,6 @@ export const ORCH_TOOLS: OrchTool[] = [
       },
       ["taskIds"],
     ),
-    argSchema: threadWaitSchema,
   },
   {
     name: "list_profiles",
@@ -168,7 +162,6 @@ export const ORCH_TOOLS: OrchTool[] = [
       "List the workers you can delegate to: this project's saved bot profiles and one entry per installed harness at its default model. " +
       "Use it to pick a harness, model, and provider — a council picks distinct providers from this list.",
     parameters: object({ workspaceId: stringProperty("Project id to list for; defaults to this chat's project.") }),
-    argSchema: listProfilesSchema,
   },
 ];
 
@@ -188,6 +181,7 @@ export interface ToolProfile {
   note: string | null;
 }
 
+/** What a listing tool needs to answer: the calling chat, and what this server knows about it. */
 export interface ToolContext {
   /** The chat whose child is calling: every call is authorized as this one chat. */
   chat: Chat;
@@ -206,21 +200,6 @@ export function findTool(name: string): OrchTool | undefined {
   return ORCH_TOOLS.find((tool) => tool.name === name);
 }
 
-/**
- * Run one tool call. Arguments are validated here with the catalogue's schema: a bridge
- * forwards the model's JSON untouched, so this is the only place a call is checked.
- */
-export async function callTool(name: string, rawArgs: unknown, ctx: ToolContext): Promise<ToolOutput> {
-  const tool = findTool(name);
-  if (!tool) throw new ChatError(400, "unknown_tool", `No such tool: ${name}`);
-  const args = tool.argSchema.parse(rawArgs ?? {});
-  switch (tool.name) {
-    case "list_profiles":
-      return listProfiles(ctx, args as { workspaceId?: string });
-    default:
-      throw new ChatError(400, "unknown_tool", `${name} is not wired on this server yet`);
-  }
-}
 
 /** A model key is `provider/id`, so its provider is the part before the first slash. */
 function providerOf(model: string | null): string | null {
@@ -256,7 +235,12 @@ async function botProfile(bot: BotProfile, registry: HarnessRegistry): Promise<T
   };
 }
 
-async function listProfiles(ctx: ToolContext, args: { workspaceId?: string }): Promise<ToolOutput> {
+/** Every worker this project offers, with what a delegation from this chat still has room for. */
+export async function listProfiles(
+  ctx: ToolContext,
+  args: { workspaceId?: string },
+  limits: { remainingDepth: number; remainingTasks: number },
+): Promise<ToolOutput> {
   const workspace = args.workspaceId ? await ctx.workspaces.get(args.workspaceId) : ctx.chat.workspace;
   const bots = ctx.boards ? await ctx.boards.listBots() : [];
   const profiles: ToolProfile[] = [];
@@ -279,8 +263,7 @@ async function listProfiles(ctx: ToolContext, args: { workspaceId?: string }): P
       note: null,
     });
   }
-  const remainingDepth = MAX_DEPTH;
-  const remainingTasks = Math.min(MAX_CHILDREN_PER_CHAT, MAX_TASKS_PER_CHAT, MAX_LIVE_TASKS);
+  const { remainingDepth, remainingTasks } = limits;
   const lines = profiles.map((p) => {
     const parts = [p.id, p.name, p.harnessName];
     if (p.model) parts.push(p.model);
