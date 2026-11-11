@@ -380,7 +380,8 @@
   border: 1px solid var(--hairline-strong);
   border-bottom-width: 2px;
   border-radius: var(--r-xs);
-  background: var(--hover);
+  /* A whisper of fill: enough to read as a key on a dark card, not enough to pull the eye off the label. */
+  background: color-mix(in srgb, var(--text) 4%, transparent);
   font: 500 11px/16px var(--font-sans);
   text-align: center;
   color: var(--muted-text);
