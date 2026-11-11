@@ -6,6 +6,25 @@ import { api, errorText } from "../api.js";
 import { IconFolder } from "../icons.js";
 import { Dialog } from "./Dialog.js";
 
+/** A folder in either list: its name past the folder glyph, the place it sits under it (mono), the full
+    path on hover. Both lists draw it the same way, so their names and paths start on one line. */
+function FolderRow({ name, under, title, onOpen }: { name: string; under?: string; title: string; onOpen: () => void }) {
+  return (
+    <li>
+      <button type="button" className="picker-item" onClick={onOpen} title={title}>
+        <span className="picker-name picker-folder">
+          <IconFolder size={14} />
+          <span>{name}</span>
+        </span>
+        {under ? <span className="picker-path picker-under-icon">{under}</span> : null}
+      </button>
+    </li>
+  );
+}
+
+/** The last segment of a path: what a folder is called. */
+const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+
 export function WorkspacePicker({
   recent,
   worktrees,
@@ -53,12 +72,7 @@ export function WorkspacePicker({
           <h3>Recent</h3>
           <ul className="picker-list picker-box">
             {recent.map((p) => (
-              <li key={p}>
-                <button type="button" className="picker-item" onClick={() => onOpen(p)} title={p}>
-                  <span className="picker-name">{p.split("/").filter(Boolean).pop() ?? p}</span>
-                  <span className="picker-path">{p}</span>
-                </button>
-              </li>
+              <FolderRow key={p} name={folderName(p)} under={p} title={p} onOpen={() => onOpen(p)} />
             ))}
           </ul>
         </section>
@@ -70,37 +84,26 @@ export function WorkspacePicker({
             <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} /> Show hidden
           </label>
         </div>
-        <div className="picker-location">
-          {listing?.path ? (
-            <>
-              <button type="button" className="btn btn-small" onClick={() => void browse(listing.parent ?? undefined)}>
-                ↑ Up
-              </button>
-              <code className="picker-current">{listing.path}</code>
-              <button type="button" className="btn btn-small btn-primary" onClick={() => onOpen(listing.path as string)}>
-                Open this folder
-              </button>
-            </>
-          ) : (
-            <span className="muted">Workspace roots</span>
-          )}
-        </div>
+        {listing?.path ? (
+          <div className="picker-location">
+            <button type="button" className="btn btn-small" onClick={() => void browse(listing.parent ?? undefined)}>
+              ↑ Up
+            </button>
+            <code className="picker-current">{listing.path}</code>
+            <button type="button" className="btn btn-small btn-primary" onClick={() => onOpen(listing.path as string)}>
+              Open this folder
+            </button>
+          </div>
+        ) : (
+          // Before the first listing lands, the list below is the workspace roots themselves.
+          <h3>Workspace roots</h3>
+        )}
         {browseError ? <p className="notice notice-error">{browseError}</p> : null}
         <ul className="picker-list picker-box picker-scroll" aria-label="Folders">
           {entries.map((e) => {
             // A workspace root comes named by its whole path: name it by its folder, as Recent does, with the path under it.
             const rooted = e.name.includes("/") || e.name.includes("\\");
-            return (
-              <li key={e.path}>
-                <button type="button" className="picker-item" onClick={() => void browse(e.path)} title={e.path}>
-                  <span className="picker-name picker-folder">
-                    <IconFolder size={14} />
-                    <span>{rooted ? (e.name.split(/[\\/]/).filter(Boolean).pop() ?? e.name) : e.name}</span>
-                  </span>
-                  {rooted ? <span className="picker-path picker-under-icon">{e.name}</span> : null}
-                </button>
-              </li>
-            );
+            return <FolderRow key={e.path} name={rooted ? folderName(e.name) : e.name} {...(rooted ? { under: e.name } : {})} title={e.path} onOpen={() => void browse(e.path)} />;
           })}
           {listing && entries.length === 0 ? <li className="muted picker-empty">No folders here</li> : null}
         </ul>

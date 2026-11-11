@@ -626,7 +626,10 @@
   margin-top: 12px;
 }
 
-.picker-section h3 {
+/* Section and field labels: one style, as everywhere else in the app, whether the label heads a list or
+   names the place the list is. */
+.picker-section h3,
+.picker-section > label {
   margin: 0 0 6px;
   font-size: var(--label-size);
   font-weight: 600;
@@ -736,10 +739,6 @@
   padding: 8px 10px;
 }
 
-.picker-type label {
-  font-size: 13px;
-  color: var(--muted-text);
-}
 
 .picker-type-row {
   display: flex;
