@@ -42,6 +42,9 @@ const record = (key, value) => {
   writeFileSync(statePath, JSON.stringify(state));
 };
 
+// What awui spawned this child with: the `-c` overrides a test asserts on.
+record("args", argv);
+
 const out = (frame) => process.stdout.write(`${JSON.stringify(frame)}\n`);
 const respond = (id, result) => out({ id, result });
 const fail = (id, code, message) => out({ id, error: { code, message } });

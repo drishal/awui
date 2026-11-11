@@ -45,7 +45,8 @@ import {
 } from "./claude-sessions.js";
 import { claudeTaskReport } from "./jobs.js";
 import { claudeLimits, claudeUsageLimits } from "./limits.js";
-import { renderHtmlMcpServer } from "./render-extension.js";
+import { orchestrateMcpServer, ORCH_MCP_SERVER, renderHtmlMcpServer } from "./render-extension.js";
+import { orchestrationMcpToolNames } from "./render-token.js";
 import { HTML_RENDER_MCP_SERVER, HTML_RENDER_MCP_TOOL, splitRenderMarker } from "./render-token.js";
 import { versionLabel } from "./version.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
@@ -79,18 +80,31 @@ const USAGE_PROBE_ARGS = ["--no-session-persistence", "--strict-mcp-config", "--
  * starts), and permission prompts answered over stdio by this host.
  */
 /**
- * The CLI arguments that give a chat render_html: awui's MCP server, started
- * with the chat's render endpoint (the user's own MCP servers still load),
- * and that one tool allowed without a prompt, since it only publishes a page
- * into this chat. None without an endpoint or the server's file.
+ * The CLI arguments that give a chat awui's tools: its MCP servers (render_html,
+ * and the orchestration tools when the chat has a token), started with that
+ * chat's endpoints (the user's own MCP servers still load), and those tools
+ * allowed without a prompt, since they only publish a page into this chat or
+ * delegate work from it. None without a server's file or its token.
  */
-function renderMcpArgs(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
-  const server = renderHtmlMcpServer();
-  if (!server || !toolEnv?.AWUI_RENDER_URL || !toolEnv.AWUI_RENDER_TOKEN) return [];
+function toolsMcpArgs(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
   // The CLI runs on Node; a compiled awui binary is not one, so then the Node on PATH runs the server.
   const node = process.versions.bun ? "node" : process.execPath;
-  const config = { mcpServers: { [HTML_RENDER_MCP_SERVER]: { type: "stdio", command: node, args: [server], env: { AWUI_RENDER_URL: toolEnv.AWUI_RENDER_URL, AWUI_RENDER_TOKEN: toolEnv.AWUI_RENDER_TOKEN } } } };
-  return ["--mcp-config", JSON.stringify(config), "--allowedTools", HTML_RENDER_MCP_TOOL];
+  const servers: Record<string, unknown> = {};
+  const allowed: string[] = [];
+  const render = renderHtmlMcpServer();
+  if (render && toolEnv?.AWUI_RENDER_URL && toolEnv.AWUI_RENDER_TOKEN) {
+    servers[HTML_RENDER_MCP_SERVER] = { type: "stdio", command: node, args: [render], env: { AWUI_RENDER_URL: toolEnv.AWUI_RENDER_URL, AWUI_RENDER_TOKEN: toolEnv.AWUI_RENDER_TOKEN } };
+    allowed.push(HTML_RENDER_MCP_TOOL);
+  }
+  const orchestrate = orchestrateMcpServer();
+  if (orchestrate && toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
+    servers[ORCH_MCP_SERVER] = { type: "stdio", command: node, args: [orchestrate], env: { AWUI_ORCH_URL: toolEnv.AWUI_ORCH_URL, AWUI_ORCH_TOKEN: toolEnv.AWUI_ORCH_TOKEN } };
+    allowed.push(...orchestrationMcpToolNames());
+  }
+  if (Object.keys(servers).length === 0) return [];
+  // Claude Code takes the list comma-separated in one argument (`--allowedTools <tools...>` is variadic,
+  // and the flags after it must not be swallowed).
+  return ["--mcp-config", JSON.stringify({ mcpServers: servers }), "--allowedTools", allowed.join(",")];
 }
 
 /** Claude Code's permission modes, in the order its own Shift+Tab cycle and docs give them. */
@@ -369,7 +383,7 @@ class ClaudeLiveChat implements LiveChat {
   }
 
   async start(): Promise<void> {
-    const args = [...STREAM_ARGS, ...renderMcpArgs(this.toolEnv), ...this.adapter.extraArgs, ...(this.resumeId ? ["--resume", this.resumeId] : ["--session-id", this.sessionId])];
+    const args = [...STREAM_ARGS, ...toolsMcpArgs(this.toolEnv), ...this.adapter.extraArgs, ...(this.resumeId ? ["--resume", this.resumeId] : ["--session-id", this.sessionId])];
     const rpc = new ClaudeRpc(this.adapter.cliCommand, args, this.adapter.childEnv(), this.cwd, (frame) => this.onFrame(frame));
     this.rpc = rpc;
     rpc.onExit((message) => {

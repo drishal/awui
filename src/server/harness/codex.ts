@@ -43,7 +43,7 @@ import {
 } from "./codex-transcript.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import { HTML_RENDER_MCP_SERVER, splitRenderMarker } from "./render-token.js";
-import { renderHtmlMcpServer } from "./render-extension.js";
+import { ORCH_MCP_SERVER, orchestrateMcpServer, renderHtmlMcpServer } from "./render-extension.js";
 import { codexLimits } from "./limits.js";
 import { versionLabel } from "./version.js";
 import type {
@@ -116,23 +116,31 @@ function modeOf(approval: unknown, sandbox: unknown): string {
   return "auto";
 }
 
-/** The command line that gives a chat render_html: awui's MCP server, and only that. */
-function renderMcpConfig(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
-  const server = renderHtmlMcpServer();
-  if (!server || !toolEnv?.AWUI_RENDER_URL || !toolEnv.AWUI_RENDER_TOKEN) return [];
+/**
+ * The command line that gives a chat awui's MCP servers: render_html, and the
+ * orchestration tools when the chat has a token. One `mcp_servers.<name>` block
+ * each, and nothing else (the user's own servers are not on this child).
+ */
+function toolsMcpConfig(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
   // The CLI runs on Node; a compiled awui binary is not one, so then the Node on PATH runs the server.
   const node = process.versions.bun ? "node" : process.execPath;
-  const base = `mcp_servers.${HTML_RENDER_MCP_SERVER}`;
-  return [
-    "-c",
-    `${base}.command=${JSON.stringify(node)}`,
-    "-c",
-    `${base}.args=${JSON.stringify([server])}`,
-    "-c",
-    `${base}.env.AWUI_RENDER_URL=${JSON.stringify(toolEnv.AWUI_RENDER_URL)}`,
-    "-c",
-    `${base}.env.AWUI_RENDER_TOKEN=${JSON.stringify(toolEnv.AWUI_RENDER_TOKEN)}`,
-  ];
+  const args: string[] = [];
+  const server = (name: string, file: string, env: Record<string, string | undefined>): void => {
+    const base = `mcp_servers.${name}`;
+    args.push("-c", `${base}.command=${JSON.stringify(node)}`, "-c", `${base}.args=${JSON.stringify([file])}`);
+    for (const [key, value] of Object.entries(env)) {
+      if (value !== undefined) args.push("-c", `${base}.env.${key}=${JSON.stringify(value)}`);
+    }
+  };
+  const render = renderHtmlMcpServer();
+  if (render && toolEnv?.AWUI_RENDER_URL && toolEnv.AWUI_RENDER_TOKEN) {
+    server(HTML_RENDER_MCP_SERVER, render, { AWUI_RENDER_URL: toolEnv.AWUI_RENDER_URL, AWUI_RENDER_TOKEN: toolEnv.AWUI_RENDER_TOKEN });
+  }
+  const orchestrate = orchestrateMcpServer();
+  if (orchestrate && toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
+    server(ORCH_MCP_SERVER, orchestrate, { AWUI_ORCH_URL: toolEnv.AWUI_ORCH_URL, AWUI_ORCH_TOKEN: toolEnv.AWUI_ORCH_TOKEN });
+  }
+  return args;
 }
 
 /** The prompt's text and pictures as Codex's user input; an image travels as a data URL. */
@@ -380,7 +388,7 @@ class CodexLiveChat implements LiveChat {
   }
 
   async start(): Promise<void> {
-    const args = ["app-server", ...renderMcpConfig(this.toolEnv), ...this.adapter.extraArgs];
+    const args = ["app-server", ...toolsMcpConfig(this.toolEnv), ...this.adapter.extraArgs];
     const rpc = new CodexRpc(this.adapter.cliCommand, args, this.adapter.childEnv(), this.cwd, (frame) => this.onFrame(frame));
     this.rpc = rpc;
     rpc.onExit((message) => {

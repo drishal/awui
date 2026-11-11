@@ -102,6 +102,16 @@ describe("omp adapter (scripted omp)", () => {
     expect(args.indexOf("--no-skills")).toBeLessThan(args.indexOf("--cwd"));
   });
 
+  it("loads the orchestration extension only for a child that was given a chat token", async () => {
+    await openChat();
+    const plain = readState().spawns[0]?.args ?? [];
+    expect(plain.some((a: string) => a.endsWith("extensions/orchestrate.ts"))).toBe(false);
+    const live = await adapter.openChat({ cwd: project, toolEnv: { AWUI_ORCH_URL: "http://127.0.0.1:4783/api/orchestration", AWUI_ORCH_TOKEN: "t0ken" } });
+    open.push(live);
+    const armed = readState().spawns.at(-1)?.args ?? [];
+    expect(armed.some((a: string) => a.endsWith("extensions/orchestrate.ts"))).toBe(true);
+  });
+
   it("replaces a past prompt in place through the rewind-to extension it starts omp with", async () => {
     const { chat, live } = await openChat();
     expect(readState().spawns[0]?.args.some((a: string) => a.endsWith("extensions/rewind-to.ts"))).toBe(true);

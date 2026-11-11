@@ -61,7 +61,7 @@ import {
   type DshUsage,
 } from "./dsh-transcript.js";
 import { HTML_RENDER_MCP_SERVER, htmlRenderRef, splitRenderMarker } from "./render-token.js";
-import { renderHtmlMcpServer } from "./render-extension.js";
+import { ORCH_MCP_SERVER, orchestrateMcpServer, renderHtmlMcpServer } from "./render-extension.js";
 import { versionLabel } from "./version.js";
 import type {
   HarnessAdapter,
@@ -1295,22 +1295,39 @@ export class DshAdapter implements HarnessAdapter {
     return path.join(this.sessionsRoot(), projectKey(cwd));
   }
 
-  /** The MCP servers a chat's ACP session mounts: awui's render_html, when it was given a token. */
+  /**
+   * The MCP servers a chat's ACP session mounts: awui's render_html, and the
+   * orchestration tools, each when the chat was given that family's token.
+   */
   mcpServers(toolEnv: NodeJS.ProcessEnv | undefined): unknown[] {
-    const server = renderHtmlMcpServer();
     const node = nodeForMcp();
-    if (!server || !node || !toolEnv?.AWUI_RENDER_URL || !toolEnv.AWUI_RENDER_TOKEN) return [];
-    return [
-      {
+    if (!node) return [];
+    const servers: unknown[] = [];
+    const render = renderHtmlMcpServer();
+    if (render && toolEnv?.AWUI_RENDER_URL && toolEnv.AWUI_RENDER_TOKEN) {
+      servers.push({
         name: HTML_RENDER_MCP_SERVER,
         command: node,
-        args: [server],
+        args: [render],
         env: [
           { name: "AWUI_RENDER_URL", value: toolEnv.AWUI_RENDER_URL },
           { name: "AWUI_RENDER_TOKEN", value: toolEnv.AWUI_RENDER_TOKEN },
         ],
-      },
-    ];
+      });
+    }
+    const orchestrate = orchestrateMcpServer();
+    if (orchestrate && toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
+      servers.push({
+        name: ORCH_MCP_SERVER,
+        command: node,
+        args: [orchestrate],
+        env: [
+          { name: "AWUI_ORCH_URL", value: toolEnv.AWUI_ORCH_URL },
+          { name: "AWUI_ORCH_TOKEN", value: toolEnv.AWUI_ORCH_TOKEN },
+        ],
+      });
+    }
+    return servers;
   }
 
   rememberModels(models: ModelInfo[]): void {

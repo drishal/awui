@@ -97,6 +97,27 @@ describe("the codex adapter (scripted app-server)", () => {
     expect(calls("thread/start")[0]?.params).toMatchObject({ approvalPolicy: "on-request", sandbox: "workspace-write", cwd: project });
   });
 
+  it("gives app-server awui's MCP servers only when the chat has their tokens", async () => {
+    await openChat();
+    const plain = recorded("args").at(-1) as string[];
+    expect(plain.some((a) => a.startsWith("mcp_servers."))).toBe(false);
+    const tokens = { AWUI_RENDER_URL: "http://127.0.0.1:4783/api/render", AWUI_RENDER_TOKEN: "r0ken", AWUI_ORCH_URL: "http://127.0.0.1:4783/api/orchestration", AWUI_ORCH_TOKEN: "t0ken" };
+    const live = await adapter.openChat({ cwd: project, toolEnv: tokens });
+    open.push(live);
+    const args = recorded("args").at(-1) as string[];
+    const overrides = args.filter((a, i) => args[i - 1] === "-c");
+    expect(overrides).toEqual([
+      `mcp_servers.awui.command=${JSON.stringify(process.execPath)}`,
+      `mcp_servers.awui.args=${JSON.stringify([path.join(import.meta.dirname, "..", "..", "extensions", "render-html-mcp.mjs")])}`,
+      `mcp_servers.awui.env.AWUI_RENDER_URL=${JSON.stringify(tokens.AWUI_RENDER_URL)}`,
+      `mcp_servers.awui.env.AWUI_RENDER_TOKEN=${JSON.stringify(tokens.AWUI_RENDER_TOKEN)}`,
+      `mcp_servers.awui-orchestrate.command=${JSON.stringify(process.execPath)}`,
+      `mcp_servers.awui-orchestrate.args=${JSON.stringify([path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs")])}`,
+      `mcp_servers.awui-orchestrate.env.AWUI_ORCH_URL=${JSON.stringify(tokens.AWUI_ORCH_URL)}`,
+      `mcp_servers.awui-orchestrate.env.AWUI_ORCH_TOKEN=${JSON.stringify(tokens.AWUI_ORCH_TOKEN)}`,
+    ]);
+  });
+
   it("starts on a model the account can run when the config names one it cannot", async () => {
     // As a free ChatGPT account with a paid model in config.toml: Codex fails every turn with modelNotFound.
     const paid = new CodexAdapter({ command: script, home, env: { ...process.env, CODEX_HOME: codexHome, FAKE_CODEX_HOME: codexHome, FAKE_CODEX_STATE: state, FAKE_CODEX_CONFIG_MODEL: "ghost-model" } });

@@ -78,6 +78,28 @@ describe("claude adapter (scripted CLI)", () => {
     expect(recorded("inits")).toHaveLength(2);
   });
 
+  it("gives the CLI awui's MCP servers only when the chat has their tokens", async () => {
+    await openChat();
+    expect((recorded("args").at(-1) as string[]).includes("--mcp-config")).toBe(false);
+    const tokens = { AWUI_RENDER_URL: "http://127.0.0.1:4783/api/render", AWUI_RENDER_TOKEN: "r0ken", AWUI_ORCH_URL: "http://127.0.0.1:4783/api/orchestration", AWUI_ORCH_TOKEN: "t0ken" };
+    const live = await adapter.openChat({ cwd: project, toolEnv: tokens });
+    open.push(live);
+    const args = recorded("args").at(-1) as string[];
+    const config = JSON.parse(args[args.indexOf("--mcp-config") + 1] ?? "{}") as { mcpServers: Record<string, { args: string[]; env: Record<string, string> }> };
+    expect(Object.keys(config.mcpServers)).toEqual(["awui", "awui-orchestrate"]);
+    expect(config.mcpServers["awui-orchestrate"]).toEqual({
+      type: "stdio",
+      command: process.execPath,
+      args: [path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs")],
+      env: { AWUI_ORCH_URL: tokens.AWUI_ORCH_URL, AWUI_ORCH_TOKEN: tokens.AWUI_ORCH_TOKEN },
+    });
+    // Both families are allowed without a prompt: one comma-separated argument, as the CLI documents it.
+    const allowed = (args[args.indexOf("--allowedTools") + 1] ?? "").split(",");
+    expect(allowed).toContain("mcp__awui__render_html");
+    expect(allowed).toContain("mcp__awui-orchestrate__delegate_task");
+    expect(allowed).toContain("mcp__awui-orchestrate__thread_wait");
+  });
+
   it("opens with a session id of its own, then streams a turn with thinking and usage", async () => {
     const { chat, live } = await openChat();
     expect(live.nativeId).toMatch(/^[0-9a-f-]{36}$/);

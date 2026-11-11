@@ -13,12 +13,21 @@
 // the reference through here so they agree.
 import { HTML_RENDER_MAX_HEIGHT, HTML_RENDER_MIN_HEIGHT, type HtmlRenderRef } from "../../shared/protocol.js";
 import { htmlRenderTitle } from "../../shared/html-render.js";
-import { RENDER_TOOL_NAME } from "./render-extension.js";
+import { ORCH_TOOLS } from "../orchestration/tools.js";
+import { ORCH_MCP_SERVER, RENDER_TOOL_NAME } from "./render-extension.js";
 
 /** The MCP server Claude Code is given. */
 export const HTML_RENDER_MCP_SERVER = "awui";
 /** The MCP tool as Claude Code names it (mcp__<server>__<tool>); Pi and omp's extension registers plain `render_html`. */
 export const HTML_RENDER_MCP_TOOL = `mcp__${HTML_RENDER_MCP_SERVER}__${RENDER_TOOL_NAME}`;
+/**
+ * The orchestration tools as an MCP client names them (`mcp__awui-orchestrate__<tool>`),
+ * from the catalogue itself so the allow list cannot drift from what is served.
+ */
+export function orchestrationMcpToolNames(): string[] {
+  return ORCH_TOOLS.map((tool) => `mcp__${ORCH_MCP_SERVER}__${tool.name}`);
+}
+
 /** The same tool as other MCP clients write it. */
 const HTML_RENDER_MCP_DOTTED = `${HTML_RENDER_MCP_SERVER}.${RENDER_TOOL_NAME}`;
 

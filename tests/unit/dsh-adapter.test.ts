@@ -275,6 +275,23 @@ describe("the DeepSeek Harness adapter (scripted ACP app)", () => {
     ]);
   });
 
+  it("mounts the orchestration MCP server beside it when the chat has an orchestration token", async () => {
+    const { live } = await openChat(undefined, {
+      AWUI_RENDER_URL: "http://127.0.0.1:4783/api/render",
+      AWUI_RENDER_TOKEN: "r0ken",
+      AWUI_ORCH_URL: "http://127.0.0.1:4783/api/orchestration",
+      AWUI_ORCH_TOKEN: "t0ken",
+    });
+    expect(live.nativeId).toBeTruthy();
+    const mcps = recorded("mcps") as Array<Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>>;
+    expect(mcps.at(-1)?.map((server) => server.name)).toEqual(["awui", "awui-orchestrate"]);
+    expect(mcps.at(-1)?.[1]).toMatchObject({ args: [path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs")] });
+    expect(mcps.at(-1)?.[1]?.env).toEqual([
+      { name: "AWUI_ORCH_URL", value: "http://127.0.0.1:4783/api/orchestration" },
+      { name: "AWUI_ORCH_TOKEN", value: "t0ken" },
+    ]);
+  });
+
   it("leaves out a session whose own cwd is elsewhere", async () => {
     const { chat, live } = await openChat();
     await chat.send("mine", "normal");

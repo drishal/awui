@@ -52,6 +52,9 @@ const record = (key, value) => {
   writeFileSync(statePath, JSON.stringify(state));
 };
 
+// What awui spawned this child with: the MCP config and allow list a test asserts on.
+record("args", argv);
+
 const out = (frame) => process.stdout.write(`${JSON.stringify(frame)}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
