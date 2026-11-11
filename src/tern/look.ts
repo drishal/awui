@@ -78,8 +78,10 @@ export const STYLESHEET = `
 [data-role='awui.head'] { gap: 4px; padding: 2px 0 10px; border-bottom: 1px solid ${tint(8)}; }
 [data-role='awui.head-meta'] { align-items: center; gap: 10px; }
 [data-role='awui.title'] { font-weight: 600; font-size: 1.15em; }
-.harness { border-radius: 999px; padding: 1px 9px; font-size: 0.86em; color: ${HARNESS}; background: ${tint(18, HARNESS)}; }
-.harness.big { padding: 3px 12px; font-size: 1em; }
+/* The harness under the title: its colour dot and name, no chip, as the web header's tag (a filled pill there
+   competed with the title and the active tab). */
+.harness { font-size: 0.86em; color: var(--t2); }
+.harness::before { content: '●'; margin-right: 5px; color: ${HARNESS}; }
 .state { font-size: 0.86em; color: var(--t3); }
 .state::before { content: '●'; margin-right: 5px; color: var(--t4); }
 .state.idle::before { color: var(--ok); }
@@ -89,18 +91,19 @@ export const STYLESHEET = `
 
 /* A prompt: a pill on the right, as in the web UI. */
 [data-role='awui.ask'] { align-items: flex-end; gap: 4px; }
-[data-role='awui.prompt'] { align-self: flex-end; max-width: 82%; padding: 9px 15px; border-radius: 18px; background: ${tint(11)}; }
+[data-role='awui.prompt'] { align-self: flex-end; max-width: 82%; padding: 9px 15px; border-radius: 14px; background: ${tint(11)}; }
 [data-role='awui.prompt'].sf-act:hover { background: ${tint(15)}; }
 [data-role='awui.prompt-acts'] { gap: 2px; }
-[data-role='awui.prompt-acts'] .sf-icon, [data-role='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 5px; border-radius: 7px; }
+[data-role='awui.prompt-acts'] .sf-icon, [data-role='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 5px; border-radius: 8px; }
 [data-role='awui.prompt-acts'] .sf-icon:hover, [data-role='awui.answer-acts'] .sf-icon:hover { color: var(--t1); background: ${tint(9)}; }
 [data-role='awui.prompt-meta'] { font-size: 0.82em; color: var(--t4); }
 [data-role='awui.prompt-time'] { font-size: 0.8em; color: var(--t4); padding-right: 6px; }
 
 /*
  * The work between a prompt and its answer, as the web UI's card: a rounded frame whose head carries the
- * kinds of tool used (a stack of round icons), the words, and the +/− at the right; open, the calls follow
- * under a hairline, one divided row each with a round icon chip and the facts pushed to the right edge.
+ * kinds of tool used (a row of bare glyphs), the words, and the +/− at the right; open, the calls follow
+ * under a hairline, one divided row each with its glyph and the facts pushed to the right edge. Glyphs carry
+ * no discs, as the web UI's: overlapping filled circles in the head read as avatars.
  */
 [data-role^='awui.fold'] { border: 1px solid ${tint(10)}; border-radius: 12px; background: ${tint(2)}; }
 /* A closed card is as tall as an open card's row and in the same text size, as the web UI's are. */
@@ -114,8 +117,8 @@ export const STYLESHEET = `
 [data-role^='awui.fold'] > .sf-section-head .sf-head { flex: 1 1 auto; min-width: 0; }
 [data-role='awui.work-head'] { width: 100%; }
 [data-role='awui.kinds'] { gap: 3px; }
-[data-role='awui.kinds'] .sf-icon { padding: 2px; border-radius: 999px; color: var(--t2); background: ${tint(12)}; }
-[data-role='awui.kinds'] .sf-icon svg { width: 11px; height: 11px; }
+[data-role='awui.kinds'] .sf-icon { padding: 1px; color: var(--t3); background: none; }
+[data-role='awui.kinds'] .sf-icon svg { width: 13px; height: 13px; }
 [data-role='awui.kinds-more'] { margin-left: 8px; font-size: 0.85em; color: var(--t3); }
 [data-role='awui.work-stat'] { font-family: var(--mono, monospace); font-size: 0.88em; white-space: nowrap; padding-right: 4px; }
 [data-role='awui.calls'] { gap: 0; border-top: 1px solid ${tint(8)}; }
@@ -127,8 +130,8 @@ export const STYLESHEET = `
 [data-role='awui.calls'] > * + * { border-top: 1px solid ${tint(6)}; }
 [data-role^='awui.fold'] > .sf-section-body { margin: 0; padding: 0; border: 0; }
 [data-role^='awui.fold'] > .sf-section-body::before { display: none; }
-[data-role='awui.calls'] .sf-tool.inline .sf-tool-ic { width: 19px; height: 19px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--t2); background: ${tint(9)}; }
-[data-role='awui.calls'] .sf-tool.inline .sf-tool-ic svg { width: 12px; height: 12px; }
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-ic { width: 19px; height: 19px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--t3); background: none; }
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-ic svg { width: 14px; height: 14px; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-title { font-weight: 500; font-family: var(--sans); }
 /* The row's line is a flex row ending in a spacer: the facts go after it, to the right edge, as the web UI's. */
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-sp { order: 1; }
@@ -139,6 +142,8 @@ export const STYLESHEET = `
 [data-role='awui.thought'] .sf-tool-target { font-family: var(--sans); color: var(--t3); }
 [data-role='awui.thought'] .md { color: var(--t3); }
 [data-role='awui.note'] { color: var(--t3); font-size: 0.92em; }
+/* A note among a card's calls (an answered approval) keeps the rows' inset rather than touching the card's edge. */
+[data-role='awui.calls'] > [data-role='awui.note'] { padding: 4px 12px; }
 [data-role='awui.answer-acts'] { gap: 10px; margin-top: -6px; }
 [data-role='awui.changed'] { font-size: 0.88em; color: var(--t3); }
 [data-role='awui.changed'] .sf-icon { color: var(--t3); }
@@ -152,27 +157,31 @@ export const STYLESHEET = `
 [data-role='awui.brand'] { font-size: 1.6em; font-weight: 600; letter-spacing: 0.02em; font-family: var(--mono, monospace); color: ${HARNESS}; }
 [data-role='awui.start-title'] { font-size: 1.45em; font-weight: 600; text-align: center; }
 [data-role='awui.harnesses'] { gap: 8px; justify-content: center; flex-wrap: wrap; }
-.pick { border-radius: 999px; padding: 4px 13px; background: ${tint(7)}; color: var(--t2); }
+/* Controls are 8 px round, as the web UI's --r-control; only Send and dots stay circular. */
+.pick { border-radius: 8px; padding: 4px 13px; background: ${tint(7)}; color: var(--t2); }
 .pick:hover { background: ${tint(12)}; }
 .pick.on { color: ${HARNESS}; background: ${tint(18, HARNESS)}; }
 [data-role='awui.recent'] { width: 100%; max-width: 560px; }
 
 /* The dock: queued steps, the git row, the composer card, the status strip. */
-[data-role='awui.queue'] { gap: 4px; padding: 6px 12px; border-radius: 12px; background: ${solidTint(5)}; font-size: 0.9em; }
-[data-role='awui.git'] { align-items: center; gap: 10px; padding: 3px 11px; border-radius: 10px; background: ${solidTint(6)}; font-size: 0.86em; color: var(--t2); }
+[data-role='awui.queue'] { gap: 4px; padding: 6px 14px; border-radius: 16px; background: ${solidTint(5)}; font-size: 0.9em; }
+/* The git row is the composer's caption, not a bubble of its own: the web dock dropped its fill too. */
+[data-role='awui.git'] { align-items: center; gap: 10px; padding: 2px 14px; border-radius: 8px; font-size: 0.86em; color: var(--t3); }
 [data-role='awui.git'].sf-act:hover { background: ${tint(9)}; }
-[data-role^='awui.composer'] { gap: 6px; padding: 9px 10px 8px; border-radius: 18px; background: ${solidTint(7)}; border: 1px solid ${tint(10)}; }
+[data-role^='awui.composer'] { gap: 6px; padding: 9px 10px 8px; border-radius: 16px; background: ${solidTint(7)}; border: 1px solid ${tint(10)}; }
 [data-role='awui.composer-busy'] { border-color: ${tint(40, HARNESS)}; }
 [data-role^='awui.composer'] .sf-editor { background: transparent; box-shadow: none; border: 0; outline: 0; padding-left: 4px; }
 [data-role='awui.chips'] { align-items: center; gap: 6px; }
-.chip { border-radius: 999px; padding: 2px 10px; font-size: 0.86em; color: var(--t2); background: ${tint(8)}; }
+.chip { border-radius: 8px; padding: 2px 10px; font-size: 0.86em; color: var(--t2); background: ${tint(8)}; }
 .chip:hover { background: ${tint(13)}; color: var(--t1); }
 .chip.think { display: inline-flex; align-items: center; gap: 5px; }
-.chip.harness-chip { color: ${HARNESS}; background: ${tint(18, HARNESS)}; }
+/* The harness chip is a chip like its neighbours, told apart by its colour dot rather than a tinted fill. */
+.chip.harness-chip::before { content: '●'; margin-right: 5px; color: ${HARNESS}; }
 .chip.caution { color: var(--warn); background: ${tint(14, 'var(--warn)')}; }
 
 /* The todo card over the composer, as the web UI's status stack. */
-[data-role='awui.todos'] { border-radius: 14px; background: ${solidTint(4)} !important; }
+/* One panel radius for every dock card (todos, queue, request, composer), so they stack as one column. */
+[data-role='awui.todos'] { border-radius: 16px; background: ${solidTint(4)} !important; }
 .send { border-radius: 999px; min-width: 26px; padding: 2px 8px; text-align: center; color: var(--t1); background: ${tint(16)}; }
 .send.ready { color: var(--page, #000); background: ${INK}; }
 .send.stop { color: var(--page, #000); background: ${HARNESS}; }
@@ -181,10 +190,12 @@ export const STYLESHEET = `
 [data-role='awui.request'] { gap: 8px; padding: 12px 14px; border-radius: 16px; background: ${solidTint(7)}; border: 1px solid ${tint(30, 'var(--warn)')}; }
 [data-role='awui.request-title'] { font-weight: 600; }
 [data-role='awui.request-buttons'] { gap: 6px; flex-wrap: wrap; }
-.answer { border-radius: 9px; padding: 3px 12px; background: ${tint(9)}; color: var(--t1); }
+.answer { border-radius: 8px; padding: 3px 12px; background: ${tint(9)}; color: var(--t1); }
 .answer:hover { background: ${tint(15)}; }
 .answer.primary { color: var(--page, #000); background: ${INK}; }
-.answer.deny { color: var(--bad); }
+/* Deny is a bordered neutral choice beside the solid Allow, as the web card's, not a red word. */
+.answer.deny { color: var(--t1); background: transparent; box-shadow: inset 0 0 0 1px ${tint(18)}; }
+.answer.deny:hover { background: ${tint(9)}; }
 .answer .n { color: var(--t4); margin-right: 6px; }
 /* An approval is a tool row's ask panel. Tern draws an Enter keycap on Allow; Enter sends the composer here, so none is shown. */
 [data-role='awui.approval'] .sf-tool-ask-btn .sf-kbd, [data-role='awui.approval'] .sf-tool-ask-btn .kbd { display: none; }
