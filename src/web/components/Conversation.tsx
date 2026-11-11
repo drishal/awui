@@ -978,7 +978,7 @@ function ProcessFold({
               {stack.shown.map((kind) => (
                 <KindChip key={kind.key} kind={kind} />
               ))}
-              {stack.more > 0 ? <span className="kind-chip kind-more">+{stack.more}</span> : null}
+              {stack.more > 0 ? <span className="kind-chip kind-more" title={`${stack.more} more kinds of tool`}>+{stack.more}</span> : null}
             </span>
           ) : null}
           <span className="process-label">
