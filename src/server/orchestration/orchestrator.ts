@@ -9,7 +9,7 @@
 // generation first, which drops late events from the run that was stopped.
 import { randomBytes } from "node:crypto";
 import { isApproval } from "../../shared/approval.js";
-import { MAX_DELEGATED_TASKS, type ChatItem, type ChatLineage, type ChatStatus, type DelegatedTaskView, type InteractionRequest } from "../../shared/protocol.js";
+import { MAX_DELEGATED_TASKS, type ChatItem, type ChatLineage, type ChatStatus, type DelegatedTaskView, type InteractionRequest, type SendMode } from "../../shared/protocol.js";
 import type { BoardManager } from "../boards/types.js";
 import { ChatError, errorMessage, type Chat } from "../chats/chat.js";
 import type { ChatManager } from "../chats/manager.js";
@@ -30,6 +30,7 @@ import {
   MAX_TASKS_PER_CHAT,
   taskCancelSchema,
   taskStatusSchema,
+  threadSendSchema,
   threadReadSchema,
   threadWaitSchema,
   type ToolContext,
@@ -84,6 +85,8 @@ export class Orchestrator {
         return this.wait(caller, threadWaitSchema.parse(args));
       case "thread_read":
         return this.threadRead(caller, threadReadSchema.parse(args));
+      case "thread_send":
+        return this.threadSend(caller, threadSendSchema.parse(args));
       default:
         throw new ChatError(400, "unknown_tool", `${name} is not wired on this server yet`);
     }
@@ -191,6 +194,51 @@ export class Orchestrator {
     };
   }
 
+
+  /**
+   * Talk to the child's chat: steered into the run it is in, or as a prompt when it is idle. A task
+   * that had finished goes back to work — a new generation, so nothing from the old run can answer
+   * for it — and is watched again: one result per settle.
+   */
+  private async threadSend(caller: Chat, args: { taskId: string; text: string }): Promise<ToolOutput> {
+    const task = this.ownTask(caller, args.taskId);
+    const child = this.childChat(task);
+    if (!child || child.status === "disposed") {
+      throw new ChatError(409, "task_not_running", `Task ${task.id}'s chat is closed; its session can be resumed as an ordinary chat, but nothing is listening now`);
+    }
+    const caps = child.adapter.capabilities;
+    const busy = child.status === "running" || child.status === "stopping" || child.status === "compacting";
+    const mode: SendMode = !busy ? "normal" : caps.supportsSteer ? "steer" : "followUp";
+    if (busy && !caps.supportsSteer && !caps.supportsFollowUp) throw new ChatError(409, "cannot_send", `${child.adapter.displayName} cannot take a message mid-run`);
+    const revived = task.state === "result_available";
+    if (revived) {
+      this.stopWatching(task.id);
+      task.generation += 1;
+      task.state = "working";
+      task.outcome = null;
+      task.endedAt = null;
+      task.asking = null;
+      task.activity = null;
+      task.result = null;
+      task.cancelRequestedAt = null;
+      task.wake = { pendingSince: null, deliveredAt: null, attempts: 0, skipped: null };
+      task.childSessionId = child.sessionId ?? task.childSessionId;
+      // Watch before the prompt: a quick run can settle before send() returns.
+      this.watch(task, child);
+    }
+    try {
+      await child.send(args.text, mode);
+    } catch (error) {
+      throw new ChatError(409, "cannot_send", `Task ${task.id}'s chat refused the message: ${errorMessage(error)}`);
+    }
+    if (revived) this.changed(task);
+    const queued = mode === "steer" ? "steered" : "sent";
+    const text =
+      mode === "steer"
+        ? `Steered into task ${task.id}'s run (${child.status}).`
+        : `Sent to task ${task.id}; it is ${task.state} again. Wait with thread_wait(["${task.id}"]), read with thread_read("${task.id}").`;
+    return { text, data: { queued, state: task.state } };
+  }
 
   /** The child's chat as the parent reads it: a bounded page of what it said and did. */
   private async threadRead(caller: Chat, args: { taskId: string; before?: number; limit?: number }): Promise<ToolOutput> {

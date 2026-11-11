@@ -1,8 +1,8 @@
 // The orchestration surface: one token per live chat (minted with the spawn, 12 hours
 // long, never for a read-only harness or a board-owned chat), the tool catalogue both
 // bridges fetch, and the durable delegation behind it — a child chat with lineage, a
-// record in the state folder, the settle watcher, the caps, and thread_read: a bounded page of the
-// child's chat, from the live chat or from the harness's own session file.
+// record in the state folder, the settle watcher, the caps, thread_read (a bounded page of the
+// child's chat) and thread_send (a steer into its run, or a revival of a finished task).
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
@@ -63,15 +63,15 @@ describe("orchestration surface", () => {
     expect(expired.body).toMatchObject({ ok: false, code: "orch_token_expired" });
   });
 
-  it("serves an unknown tool and an unwired one as an error the bridges can read", async () => {
+  it("serves an unknown tool as an error the bridges can read, and a task that is not this chat's", async () => {
     const { agent, token } = await setup();
     const unknown = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "steal_everything", args: {} });
     expect(unknown.status).toBe(400);
     expect(unknown.body).toMatchObject({ ok: false, code: "unknown_tool" });
-    // thread_send and thread_read ship with the delivery step: defined, not served yet.
-    const unwired = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "thread_send", args: { taskId: "abcd", text: "x" } });
-    expect(unwired.status).toBe(400);
-    expect(unwired.body).toMatchObject({ ok: false, code: "unknown_tool" });
+    // A tool that exists answers about a task id it does not know, not with an unknown tool.
+    const missing = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "thread_send", args: { taskId: "abcd", text: "x" } });
+    expect(missing.status).toBe(404);
+    expect(missing.body).toMatchObject({ ok: false, code: "unknown_task" });
     // Arguments are validated before dispatch: a wait with no tasks is a bad request.
     const invalid = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "thread_wait", args: { taskIds: [] } });
     expect(invalid.status).toBe(400);
@@ -349,3 +349,34 @@ describe("thread_read", () => {
   });
 });
 
+describe("thread_send", () => {
+  it("steers a running child, then revives a finished one for a second result", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "slow review of the parser" });
+    const steered = await call(agent, token, "thread_send", { taskId: started.taskId, text: "also check the lexer" });
+    expect(steered.status).toBe(200);
+    expect(steered.body.data).toMatchObject({ queued: "steered", state: "working" });
+
+    // The run it was in carries the steer: the child answers it before settling.
+    const first = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    expect((first.body.data as { tasks: DelegatedTaskView[] }).tasks[0]?.result?.finalText).toContain("Steered: also check the lexer");
+
+    // A finished task goes back to work, and this settle replaces the old result.
+    const revived = await call(agent, token, "thread_send", { taskId: started.taskId, text: "and the changelog" });
+    expect(revived.body.data).toMatchObject({ queued: "sent", state: "working" });
+    const second = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    const task = (second.body.data as { tasks: DelegatedTaskView[] }).tasks[0] as DelegatedTaskView;
+    expect(task).toMatchObject({ state: "result_available", outcome: "done" });
+    expect(task.result?.finalText).toContain("Echo: and the changelog");
+  });
+
+  it("refuses a task whose chat is closed", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "check the lockfile" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    await agent.post(`/api/chats/${started.childChatId}/dispose`).send({});
+    const refused = await call(agent, token, "thread_send", { taskId: started.taskId, text: "one more thing" });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({ ok: false, code: "task_not_running" });
+  });
+});

@@ -6,9 +6,9 @@ surface is a small fixed set of tools, identical for every harness, served by th
 process that runs the chats.
 
 This page describes the surface, its limits, and its error codes. Status: the token
-surface, the catalogue, `list_profiles`, delegation itself (start, watch, wait, cancel), and
-`thread_read` are live; `thread_send` and the delivery of a finished child's report are later
-steps.
+surface, the catalogue, `list_profiles`, delegation itself (start, watch, wait, cancel),
+`thread_read`, and `thread_send` are live; the delivery of a finished child's report to its parent
+is a later step.
 
 ## How a chat's agent reaches it
 
@@ -72,7 +72,7 @@ line the model reads, composed on the server so the wording exists once.
 | `delegate_task` | `brief` (1–32 000 chars), `harness`, `profile`, `model`, `thinkingLevel`, `permissionMode`, `role`, `title`, `workspaceId`, `notify`, `clientRequestId` | yes |
 | `task_status` | `taskId` (omitted: every task this chat started) | yes |
 | `task_cancel` | `taskId` (idempotent) | yes |
-| `thread_send` | `taskId`, `text` | not yet |
+| `thread_send` | `taskId`, `text` (1–32 000 chars) | yes |
 | `thread_read` | `taskId`, `before`, `limit` (≤200, default 40) | yes |
 | `thread_wait` | `taskIds` (1–4), `waitMs` (default 55 000, max 110 000) | yes |
 | `list_profiles` | `workspaceId` | yes |
@@ -93,6 +93,13 @@ the rendered text passes 24 000 characters; `truncated` says more is left, and t
 `before` value that reads it. A child chat that was closed or reaped is read from the harness's own
 session file when the harness can read one; otherwise the answer carries what the task record holds
 and says the transcript needs the chat reopened.
+
+`thread_send` talks back to that chat: `{ queued, state }`, where `queued` is `steered` when the
+message went into the run the child was in (its harness supports steering) or `sent` when it became
+a prompt of its own, a follow-up while the child is busy. A task that had reported its result goes
+back to `working` with a fresh generation — so nothing from the old run can answer for the new one —
+and is watched again: one result per settle. A child whose chat was closed answers
+`task_not_running`; a harness that will not take the message answers `cannot_send`.
 
 ## A delegation
 
