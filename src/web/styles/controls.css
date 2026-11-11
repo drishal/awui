@@ -30,6 +30,14 @@
   color: var(--bg);
 }
 
+/* A primary with nothing to do steps back to a quiet fill with a legible label: halved, it stayed the heaviest
+   thing in its row (Settings' Save) and its label fell under 4:1. */
+.btn-primary:disabled {
+  opacity: 1;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--muted-text);
+}
+
 .btn-primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--text) 85%, var(--bg));
 }
