@@ -327,7 +327,8 @@
   border: 0;
   border-radius: calc(var(--r-control) - 2px);
   background: none;
-  color: var(--muted-text);
+  /* An option that is off still looks pressable: muted text read as a disabled control. */
+  color: var(--text-2);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
