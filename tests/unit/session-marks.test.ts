@@ -44,6 +44,18 @@ describe("session marks", () => {
     expect(["a", "b", "c"].map((id) => m.get(id))).toEqual([undefined, undefined, undefined]);
   });
 
+  it("remembers how a session began, and keeps it through a place, an undo, and a wake", async () => {
+    const m = SessionMarks.inMemory();
+    expect(await m.setOrigin("r", "routine")).toEqual({ origin: "routine" });
+    // A place sits beside the origin; an undo replaces the place, not where it came from.
+    expect(await m.set("r", { settled: true })).toEqual({ settled: true, origin: "routine" });
+    expect(await m.set("r", { replace: true })).toEqual({ origin: "routine" });
+    await m.set("r", { snoozedUntil: 9e12 });
+    m.wake("r");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(m.get("r")).toEqual({ origin: "routine" });
+  });
+
   it("wakes a settled or snoozed session, and leaves pins alone", async () => {
     const m = SessionMarks.inMemory();
     await m.set("a", { settled: true });

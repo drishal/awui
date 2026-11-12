@@ -1217,7 +1217,10 @@ export function createApp(deps: AppDeps) {
     for (const [id, s] of sessions) {
       const mark = marks.get(id);
       const pane = inHerdr?.get(id);
-      if (mark || pane) sessions.set(id, { ...s, ...mark, ...(pane ? { herdr: { paneId: pane.paneId, status: pane.status } } : {}) });
+      // A routine's origin is the mark; a delegated child's is in the orchestrator's records,
+      // so it survives a reap. Either one is metadata only: the sidebar hides by it.
+      const origin = mark?.origin ?? (manager.delegatedSession?.(s.harnessId, s.id.slice(s.harnessId.length + 1)) ? "agent" : undefined);
+      if (mark || pane || origin) sessions.set(id, { ...s, ...mark, ...(origin ? { origin } : {}), ...(pane ? { herdr: { paneId: pane.paneId, status: pane.status } } : {}) });
     }
     const checkouts: Record<string, Checkout> = {};
     await Promise.all(

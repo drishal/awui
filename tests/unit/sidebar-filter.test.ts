@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSession, SessionsOverview } from "../../src/shared/protocol.js";
 import { asHarnessId } from "../../src/shared/protocol.js";
-import { applyQuick, asQuickFilter, chipsShown, escapeClears, matchesQuick, quickCounts } from "../../src/web/sidebar-filter.js";
+import { applyHidden, applyQuick, asHideGroups, asQuickFilter, chipsShown, escapeClears, hideCounts, hiddenBy, HIDE_GROUPS, isSleeping, isOnDefaultBranch, matchesQuick, provenanceOf, quickCounts, SLEEPING_AFTER_MS } from "../../src/web/sidebar-filter.js";
 
 // Noon, local time: midnight is 12 hours behind it whatever the zone.
 const now = new Date(2026, 9, 27, 12, 0, 0).getTime();
@@ -95,5 +95,78 @@ describe("asQuickFilter", () => {
     expect(asQuickFilter("needs")).toBe("needs");
     expect(asQuickFilter("everything")).toBeNull();
     expect(asQuickFilter(3)).toBeNull();
+  });
+});
+
+// A repository's own tree on main, and a managed worktree on its task branch. Neither is
+// the helper's default workspace ("w"), so a plain session is on neither.
+const checkouts = {
+  main: { repo: "r", branch: "main", primary: true },
+  wt: { repo: "r", branch: "awui/fix-1234abcd", primary: false },
+};
+
+describe("what to hide", () => {
+  const ctx = { now, checkouts };
+
+  it("sleeping is quiet for a day: no live chat, no question, and no activity", () => {
+    expect(isSleeping(s("a", { updatedAt: new Date(now - SLEEPING_AFTER_MS - 1000).toISOString() }), now)).toBe(true);
+    // A live chat, even a quiet one, is not sleeping.
+    expect(isSleeping(s("a", { liveChatId: "c", updatedAt: at(30) }), now)).toBe(false);
+    // Neither is one waiting for an answer, nor one that just ran.
+    expect(isSleeping(s("a", { asking: true, updatedAt: at(30) }), now)).toBe(false);
+    expect(isSleeping(s("a", { updatedAt: at(2) }), now)).toBe(false);
+    // An undated session cannot be said to be sleeping.
+    expect(isSleeping(s("a", { updatedAt: null }), now)).toBe(false);
+  });
+
+  it("default branch means the repository's own tree on its trunk, not a worktree or a feature branch", () => {
+    expect(isOnDefaultBranch(s("a", { workspaceId: "main" }), checkouts)).toBe(true);
+    expect(isOnDefaultBranch(s("a", { workspaceId: "wt" }), checkouts)).toBe(false);
+    expect(isOnDefaultBranch(s("a", { workspaceId: "main" }), { main: { repo: "r", branch: "release", primary: true } })).toBe(false);
+    expect(isOnDefaultBranch(s("a", { workspaceId: "unknown" }), checkouts)).toBe(false);
+    expect(isOnDefaultBranch(s("a", { workspaceId: "main" }), undefined)).toBe(false);
+  });
+
+  it("reads an origin the server recorded, and never a live or on-screen session", () => {
+    const old = at(30);
+    expect(hiddenBy(s("a", { origin: "routine", updatedAt: old }), ["automation"], ctx)).toBe("automation");
+    expect(hiddenBy(s("a", { origin: "agent", updatedAt: old }), ["agent"], ctx)).toBe("agent");
+    expect(hiddenBy(s("a", { updatedAt: old }), ["agent"], ctx)).toBeNull();
+    // The session on screen stays whatever the toggles say.
+    expect(hiddenBy(s("a", { workspaceId: "main", updatedAt: old }), ["defaultBranch"], { ...ctx, keep: () => true })).toBeNull();
+    expect(hiddenBy(s("a", { updatedAt: at(1) }), HIDE_GROUPS, ctx)).toBeNull();
+  });
+
+  it("narrows the overview and counts what each toggle would take out", () => {
+    const list: SessionsOverview = {
+      ...overview,
+      sessions: [
+        s("quiet", { updatedAt: at(30) }),
+        s("routine", { origin: "routine", updatedAt: at(1) }),
+        s("main", { workspaceId: "main", updatedAt: at(1) }),
+        s("worktree", { workspaceId: "wt", updatedAt: at(1) }),
+      ],
+    };
+    expect(applyHidden(list, [], ctx)).toBe(list);
+    expect(applyHidden(list, ["sleeping"], ctx).sessions.map((x) => x.id)).toEqual(["routine", "main", "worktree"]);
+    expect(applyHidden(list, ["automation", "defaultBranch"], ctx).sessions.map((x) => x.id)).toEqual(["quiet", "worktree"]);
+    expect(hideCounts(list, ctx)).toEqual({ sleeping: 1, defaultBranch: 1, automation: 1, agent: 0 });
+    // The archived are already out of the list: they are no toggle's business.
+    expect(hideCounts({ ...list, sessions: [s("gone", { archived: true, origin: "routine" })] }, ctx)).toEqual({ sleeping: 0, defaultBranch: 0, automation: 0, agent: 0 });
+  });
+
+  it("says on hover how a row began, and nothing for an ordinary one", () => {
+    expect(provenanceOf(s("a", { updatedAt: at(1) }), ctx)).toBeNull();
+    expect(provenanceOf(s("a", { origin: "routine", updatedAt: at(1) }), ctx)).toBe("Started by a scheduled routine");
+    expect(provenanceOf(s("a", { origin: "agent", updatedAt: at(1) }), ctx)).toBe("Started by another agent");
+    expect(provenanceOf(s("a", { updatedAt: at(70) }), ctx)).toBe("Sleeping for 2 days");
+    expect(provenanceOf(s("a", { workspaceId: "main", updatedAt: at(1) }), ctx)).toBe("On main");
+    expect(provenanceOf(s("a", { origin: "routine", updatedAt: at(30) }), ctx)).toBe("Started by a scheduled routine · Sleeping for 1 day");
+  });
+
+  it("reads stored toggles leniently", () => {
+    expect(asHideGroups(["sleeping", "nonsense", "agent"])).toEqual(["sleeping", "agent"]);
+    expect(asHideGroups("sleeping")).toEqual([]);
+    expect(asHideGroups(null)).toEqual([]);
   });
 });

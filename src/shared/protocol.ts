@@ -111,8 +111,18 @@ export interface SessionSummary {
   /** A live chat waiting on an answer or an approval. */
   asking?: true;
   /** Open in a herdr pane (its harness run there, not by this server), and what herdr says it does. */
+  /**
+   * How this session began, when it was not a person's: a routine's slot started
+   * it, or another agent delegated it. The sidebar's hide toggles and hover cards
+   * read it. A routine's is a mark this server keeps; a delegated child's comes
+   * from the orchestration records.
+   */
+  origin?: SessionOrigin;
   herdr?: { paneId: string; status: HerdrStatus };
 }
+
+/** Who started a session that no person typed into. */
+export type SessionOrigin = "routine" | "agent";
 
 /** A herdr pane's agent: `done` is idle with a finish nobody has looked at yet. */
 export type HerdrStatus = "idle" | "done" | "working" | "blocked" | "unknown";

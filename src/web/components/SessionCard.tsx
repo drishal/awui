@@ -24,7 +24,7 @@ function preview(s: ProjectSession): Promise<SessionPreview | null> {
   return hit;
 }
 
-export function SessionCard({ s, anchor, harnessName, project, id }: { s: ProjectSession; anchor: DOMRect; harnessName: string; project: string; id: string }) {
+export function SessionCard({ s, anchor, harnessName, project, id, provenance }: { s: ProjectSession; anchor: DOMRect; harnessName: string; project: string; id: string; provenance?: string | null }) {
   const [data, setData] = useState<SessionPreview | null | undefined>(undefined);
   const card = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -46,6 +46,7 @@ export function SessionCard({ s, anchor, harnessName, project, id }: { s: Projec
         {data ? <span>{data.turns === 1 ? "1 turn" : `${data.turns} turns`}</span> : null}
         {model ? <span className="session-card-model">{model}</span> : null}
       </div>
+      {provenance ? <p className="session-card-provenance">{provenance}</p> : null}
       {data === undefined ? (
         <div className="session-card-loading muted">Loading…</div>
       ) : data === null ? (

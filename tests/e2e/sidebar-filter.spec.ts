@@ -89,3 +89,36 @@ test("Today shows today's sessions and is remembered after a reload", async ({ p
   await chip(page, /^Today \d+$/).click();
   await expect(chip(page, /^Today \d+$/)).toHaveAttribute("aria-pressed", "false");
 });
+
+test("Filters hides a chat on the default branch, keeps the one on screen, and remembers it", async ({ page }) => {
+  // gamma is the suite's only git repository, on main: its chats are "on the default branch".
+  await signInAndOpen(page, "gamma");
+  await newChat(page);
+  await sendAndWait(page, "settled on the default branch");
+  await page.getByRole("button", { name: "New chat in a new tab" }).click();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+  await sendAndWait(page, "the chat on screen for the hide filter");
+  await showSidebar(page);
+
+  const filters = sidebar(page).getByRole("button", { name: /^Filters/ });
+  await expect(row(page, "settled on the default branch")).toHaveCount(1);
+  await filters.click();
+  const hide = page.getByRole("group", { name: "Hide sessions" });
+  await hide.getByRole("checkbox", { name: /On the default branch/ }).check();
+  // The quiet one goes, the one on screen stays (so it can still be closed from here).
+  await expect(row(page, "settled on the default branch")).toHaveCount(0);
+  await expect(row(page, "the chat on screen for the hide filter")).toHaveCount(1);
+  await hide.getByRole("button", { name: "Show everything" }).click();
+  await expect(row(page, "settled on the default branch")).toHaveCount(1);
+
+  // The choice is kept per device like the chips are.
+  await hide.getByRole("checkbox", { name: /On the default branch/ }).check();
+  await expect(filters).toHaveAttribute("aria-label", "Filters, 1 hiding sessions");
+  await page.reload();
+  await showSidebar(page);
+  await expect(sidebar(page).getByRole("button", { name: /^Filters, 1 hiding sessions$/ })).toBeVisible();
+  // Back to showing everything, for the specs that share this server.
+  await sidebar(page).getByRole("button", { name: /^Filters, 1 hiding sessions$/ }).click();
+  await page.getByRole("group", { name: "Hide sessions" }).getByRole("checkbox", { name: /On the default branch/ }).uncheck();
+  await expect(row(page, "settled on the default branch")).toHaveCount(1);
+});

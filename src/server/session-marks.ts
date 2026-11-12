@@ -1,12 +1,19 @@
 // Pinned, archived, settled, and snoozed sessions: marks this server keeps for
 // every device, in its own state file. The harness's session files are never
 // touched. A session is in one place in the list: setting one of the four
-// clears the others (snoozing keeps nothing either).
+// clears the others (snoozing keeps nothing either). The same file remembers
+// how a session began (a routine's slot), which is the one origin only this
+// server can know: an agent-delegated child's comes from the orchestration
+// records instead.
 import path from "node:path";
-import type { SessionMarkState } from "../shared/protocol.js";
+import type { SessionMarkState, SessionOrigin } from "../shared/protocol.js";
 import { isObj, readJson, writeJson } from "./state-file.js";
 
-export type SessionMark = SessionMarkState;
+/** A mark as the file keeps it: a place (or none), seen or not, and how it began. */
+export interface SessionMark extends SessionMarkState {
+  /** Set by the server, never by a client: the marks route does not accept it. */
+  origin?: SessionOrigin;
+}
 
 export interface MarkChange {
   pinned?: boolean;
@@ -26,10 +33,11 @@ function clean(raw: Record<string, unknown>): SessionMark {
     ...(raw.settled === true ? { settled: true } : {}),
     ...(typeof raw.snoozedUntil === "number" && raw.snoozedUntil > 0 ? { snoozedUntil: raw.snoozedUntil } : {}),
     ...(raw.unread === true ? { unread: true } : {}),
+    ...(raw.origin === "routine" || raw.origin === "agent" ? { origin: raw.origin } : {}),
   };
 }
 
-const empty = (m: SessionMark) => !m.pinned && !m.archived && !m.settled && !m.snoozedUntil && !m.unread;
+const empty = (m: SessionMark) => !m.pinned && !m.archived && !m.settled && !m.snoozedUntil && !m.unread && !m.origin;
 
 export class SessionMarks {
   private readonly marks = new Map<string, SessionMark>();
@@ -59,7 +67,11 @@ export class SessionMarks {
 
   /** What a change makes of one session's current mark: replace wins, else the new place clears the others. */
   private merged(sessionId: string, change: MarkChange): SessionMark {
-    if (change.replace) return clean(change as Record<string, unknown>);
+    // An undo replaces the places, not where the session came from.
+    if (change.replace) {
+      const origin = this.marks.get(sessionId)?.origin;
+      return { ...clean(change as Record<string, unknown>), ...(origin ? { origin } : {}) };
+    }
     const next: SessionMark = { ...this.marks.get(sessionId) };
     const only = (keep: keyof SessionMark) => {
       for (const key of ["pinned", "archived", "settled", "snoozedUntil"] as const) if (key !== keep) delete next[key];
@@ -90,6 +102,14 @@ export class SessionMarks {
     return this.store(sessionId, this.merged(sessionId, change));
   }
 
+  /**
+   * Remember how a session began, once. The server's own wiring sets a routine's
+   * here (the marks route never takes an origin); a later call keeps the first.
+   */
+  setOrigin(sessionId: string, origin: SessionOrigin): Promise<SessionMark> {
+    const current = this.marks.get(sessionId) ?? {};
+    return this.store(sessionId, { ...current, origin });
+  }
   /**
    * One change applied to a whole selection, with one write: a loop of `set`
    * would rewrite the file per row and race its own snapshots.

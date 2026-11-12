@@ -294,6 +294,57 @@
   gap: 8px;
 }
 
+/* The hide menu: the same chip look, pushed to the group's end, and a small card of toggles. */
+.quick-filters .filter-chip {
+  margin-left: auto;
+}
+
+.filter-chip.is-on {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
+}
+
+.menu-list.filter-menu {
+  position: fixed;
+  width: min(280px, calc(100vw - 24px));
+  padding: 8px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filter-row:hover {
+  background: var(--hover);
+}
+
+.filter-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.menu-list .filter-clear {
+  margin-top: 4px;
+  border-top: 1px solid var(--hairline);
+  border-radius: 0 0 8px 8px;
+  padding-top: 9px;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
 .session-list,
 .session-sublist {
   list-style: none;

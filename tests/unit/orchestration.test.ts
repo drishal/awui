@@ -6,7 +6,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, afterEach, vi } from "vitest";
-import type { ChatItem, ChatSnapshot, DelegatedTaskView, PushNote, WorkspaceInfo } from "../../src/shared/protocol.js";
+import type { ChatItem, ChatSnapshot, DelegatedTaskView, PushNote, SessionsOverview, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
 import { HarnessRegistry } from "../../src/server/harness/registry.js";
@@ -200,6 +200,21 @@ describe("delegated tasks", () => {
     const parentSnap = (await agent.get(`/api/chats/${chat.chatId}`)).body as ChatSnapshot;
     expect(parentSnap.delegated?.[0]).toMatchObject({ id: started.taskId, parentChatId: chat.chatId, childChatId: childId, harnessId: "fake", title: "Summariser", depth: 1 });
     sse.close();
+  });
+
+  it("lists a delegated child's session with its origin, so the sidebar can hide agent-started work", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "summarise the readme" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    const child = app.manager.list().find((c) => c.chatId === started.childChatId);
+    if (!child?.sessionId) throw new Error("the child never got a session");
+    const overview = (await agent.get("/api/sessions").expect(200)).body as SessionsOverview;
+    expect(overview.sessions.find((s) => s.id === child.sessionId)?.origin).toBe("agent");
+    // A chat a person started carries no origin at all.
+    const own = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: (await agent.post("/api/workspaces/open").send({ path: app.project })).body.id })).body as ChatSnapshot;
+    const after = (await agent.get("/api/sessions").expect(200)).body as SessionsOverview;
+    const mine = after.sessions.find((s) => s.liveChatId === own.chatId);
+    expect(mine?.origin).toBeUndefined();
   });
 
   it("waits for the child's answer and returns it", async () => {

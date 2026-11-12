@@ -26,7 +26,11 @@ export interface ProjectGroup {
 /** A session's last activity (its last turn, else when it began), in ms; 0 when unknown. */
 export const recency = (s: ProjectSession): number => (s.updatedAt ? Date.parse(s.updatedAt) || 0 : 0);
 
+/** The branches a repository treats as its trunk: where a "default branch" chat runs. */
 const TRUNK_BRANCHES: ReadonlySet<string> = new Set(["main", "master", "trunk", "develop"]);
+
+/** Is this a branch a repository treats as its default (a detached HEAD is not). */
+export const isTrunkBranch = (branch: string | null | undefined): boolean => typeof branch === "string" && TRUNK_BRANCHES.has(branch);
 
 /** Inside a repository: the project you are in, then its main branch, then the other branches and worktrees. */
 const tier = (g: ProjectGroup): number => (g.current ? 0 : g.checkout?.branch && TRUNK_BRANCHES.has(g.checkout.branch) ? 1 : 2);

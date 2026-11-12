@@ -15,12 +15,13 @@ import type { UsageLimits } from "../../shared/protocol.js";
 import { limitResetAt } from "../../shared/limit-stop.js";
 import { coarse, useRowSwipe } from "../gestures.js";
 import { focusProject, groupByProject, historySections, isBusy, localeWeekStart, movedOrder, projectRows, sidebarSections, snoozeOptions, wakeLabel, type ProjectGroup } from "../session-groups.js";
-import { applyQuick, asQuickFilter, chipsShown, escapeClears, quickCounts, QUICK_LABELS, type QuickFilter } from "../sidebar-filter.js";
+import { applyHidden, applyQuick, asHideGroups, asQuickFilter, chipsShown, escapeClears, hideCounts, provenanceOf, quickCounts, QUICK_LABELS, type HideGroup, type QuickFilter } from "../sidebar-filter.js";
 import { load, save } from "../storage.js";
 import { harnessColor } from "../harness-colors.js";
 import { HarnessMenu } from "./HarnessMenu.js";
 import { WorkingRing } from "./WorkingRing.js";
 import { SessionCard } from "./SessionCard.js";
+import { SidebarFilters } from "./SidebarFilters.js";
 import { ProjectBadge } from "./ProjectBadge.js";
 import { ProjectIconDialog } from "./ProjectIconDialog.js";
 import { setProjectIcon, useProjectIcons } from "../project-icons.js";
@@ -310,6 +311,7 @@ function SessionRow({
   onMark,
   move,
   drag,
+  provenance,
 }: {
   s: ProjectSession;
   active: boolean;
@@ -317,6 +319,8 @@ function SessionRow({
   harnessName: string;
   /** Shown beside the title where the row is out of its project (the pinned list). */
   project?: string;
+  /** Why this row is where it is (a routine started it, it is quiet, on the default branch); its hover card says it. */
+  provenance?: string | null;
   /** `newTab`: Ctrl/⌘-click or middle-click, as in a browser. */
   onOpen: (newTab: boolean) => void;
   onMark: (change: MarkChange) => void;
@@ -461,7 +465,7 @@ function SessionRow({
           ))}
         </div>
       ) : null}
-      {cardAt && !menuAt ? <SessionCard s={s} anchor={cardAt} harnessName={harnessName} project={project ?? ""} id={cardId} /> : null}
+      {cardAt && !menuAt ? <SessionCard s={s} anchor={cardAt} harnessName={harnessName} project={project ?? ""} id={cardId} provenance={provenance ?? null} /> : null}
       {menuAt ? (
         <RowMenu
           s={s}
@@ -1004,9 +1008,18 @@ export function Sidebar(props: {
     setQuick(next);
     save("sidebarFilter", next);
   };
+  // The hide menu's toggles, kept per device like the chip: each takes a whole kind of
+  // session out of the list, and what it takes out is read from the row and its project.
+  const [hide, setHide] = useState<HideGroup[]>(() => asHideGroups(load<unknown>("sidebarHide", [])));
+  const pickHide = (next: HideGroup[]) => {
+    setHide(next);
+    save("sidebarHide", next);
+  };
+  const hideCtx = { now, keep: isActiveSession, ...(props.overview.checkouts ? { checkouts: props.overview.checkouts } : {}) };
+  const hideCount = useMemo(() => hideCounts(props.overview, hideCtx), [props.overview, now, props.activeSessionId, props.activeChatId]);
   const overview = useMemo(
-    () => applyQuick(props.overview, quick, now, isWorking),
-    [props.overview, quick, now, props.activeStatus, props.activeSessionId, props.activeChatId],
+    () => applyQuick(applyHidden(props.overview, hide, hideCtx), quick, now, isWorking),
+    [props.overview, quick, hide, now, props.activeStatus, props.activeSessionId, props.activeChatId],
   );
   const groupOptions = {
     currentId: props.workspace?.id ?? null,
@@ -1087,13 +1100,14 @@ export function Sidebar(props: {
       working={isWorking(s)}
       harnessName={names.get(s.harnessId) ?? s.harnessId}
       project={projectName(s)}
+      provenance={provenanceOf(s, hideCtx)}
       onOpen={(newTab) => props.onOpenSession(s, newTab)}
       onMark={(change) => props.onMarkSession(s, change)}
     />
   );
   // History rows carry no project label: a chat has no folder.
   const historyRow = (s: ProjectSession) => (
-    <SessionRow key={s.id} s={s} active={isActive(s)} working={isWorking(s)} harnessName={names.get(s.harnessId) ?? s.harnessId} onOpen={(newTab) => props.onOpenSession(s, newTab)} onMark={(change) => props.onMarkSession(s, change)} />
+    <SessionRow key={s.id} s={s} active={isActive(s)} working={isWorking(s)} harnessName={names.get(s.harnessId) ?? s.harnessId} provenance={provenanceOf(s, hideCtx)} onOpen={(newTab) => props.onOpenSession(s, newTab)} onMark={(change) => props.onMarkSession(s, change)} />
   );
 
   return (
@@ -1215,6 +1229,7 @@ export function Sidebar(props: {
                   {QUICK_LABELS[f]} <span className="quick-count">{quickCount[f]}</span>
                 </button>
               ))}
+              <SidebarFilters hide={hide} counts={hideCount} onChange={pickHide} />
             </div>
           ) : null}
           {props.onSearchAll && props.query.trim().length >= 2 ? (

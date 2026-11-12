@@ -210,7 +210,12 @@ async function main(): Promise<void> {
         const adapter = registry.get(routine.harnessId);
         if (!adapter) throw new Error(`no ${routine.harnessId} adapter`);
         const ran = await runRoutine(routine, await workspaces.get(routine.workspaceId), adapter, manager);
-        if (ran.chat) return { outcome: "launched" };
+        if (ran.chat) {
+          // Where the session came from, once the harness has assigned one: the sidebar's
+          // hide toggle needs it after this process is gone, and no client can set it.
+          if (ran.chat.sessionId) void marks.setOrigin(ran.chat.sessionId, "routine").catch((error: unknown) => console.error(`awui: could not record a routine's session: ${error instanceof Error ? error.message : String(error)}`));
+          return { outcome: "launched" };
+        }
         // Skipped before any chat: the precheck said there is nothing to do. The slot
         // is used up either way (the claim above said so), and the list says why.
         console.log(`awui: routine "${routine.name}" skipped: ${ran.detail ?? "precheck failed"}`);
