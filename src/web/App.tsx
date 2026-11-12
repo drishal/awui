@@ -27,6 +27,7 @@ import type {
   CheckpointPreview,
   CheckpointRestored,
   ConfigPatch,
+  DelegatedTaskView,
   ImageAttachment,
   InteractionAnswer,
   RoomInfo,
@@ -1221,6 +1222,31 @@ export function App() {
     showChat(beside);
   };
 
+  /**
+   * A delegated task's child chat, from the panel above the composer: beside this one where there
+   * is room (a child is a chat like any other), else in a tab of its own, since a phone has one
+   * column and no second pane to put it in.
+   */
+  const openDelegated = async (task: DelegatedTaskView) => {
+    if (task.childChatId === null) return;
+    try {
+      const snapshot = await api<ChatSnapshot>(`/api/chats/${task.childChatId}`);
+      if (wide) setSide((v) => ({ initial: snapshot, n: (v?.n ?? 0) + 1 }));
+      else showChat(snapshot, { newTab: true });
+    } catch (e) {
+      fail(e);
+    }
+  };
+
+  /** Stop a delegated task from the panel; the row changes when the server's `task` event lands. */
+  const cancelDelegated = async (task: DelegatedTaskView) => {
+    try {
+      await api(`/api/chats/${task.parentChatId}/tasks/${task.id}/cancel`, { body: {} });
+    } catch (e) {
+      fail(e);
+    }
+  };
+
   /** `workspace`: the session's project, when the caller knows it (a search reaches sessions the sidebar's list may not hold). */
   const openSession = async (
     s: ProjectSession,
@@ -2376,6 +2402,8 @@ export function App() {
                   onConfig={configure}
                   onHandoff={(id, draft) => handoffChat(id, draft)}
                   onNewChat={() => void newChat(chat.workspace, { newTab: true })}
+                  onOpenTask={(task) => void openDelegated(task)}
+                  onCancelTask={(task) => void cancelDelegated(task)}
                   limits={limits}
                 />
               </>

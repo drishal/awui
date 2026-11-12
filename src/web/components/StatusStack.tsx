@@ -20,6 +20,9 @@ import { TodoTree } from "./TodoTree.js";
 import { JobCard } from "./JobCard.js";
 import { Collapse } from "./Collapse.js";
 import type { ChatJob } from "../jobs.js";
+import { DelegatedTasks } from "./DelegatedTasks.js";
+import { tasksMeta } from "../delegated-tasks.js";
+import type { DelegatedTaskView } from "../../shared/protocol.js";
 
 function Group({
   title,
@@ -63,6 +66,9 @@ export function StatusStack({
   jobs = null,
   background = [],
   allJobs = [],
+  tasks = [],
+  onOpenTask,
+  onCancelTask,
 }: {
   chatId: string;
   /** The harness's own status line (`<harness>:status`), when it has one. */
@@ -89,6 +95,11 @@ export function StatusStack({
   background?: ChatJob[];
   /** Every job the chat knows, so a todo that names one can show its state. */
   allJobs?: ChatJob[];
+  /** The tasks this chat delegated to other agents (snapshot.delegated, kept current by `task` events). */
+  tasks?: DelegatedTaskView[];
+  /** Open a task's child chat; Cancel stops it. Both absent where there is no room for a third chat. */
+  onOpenTask?: (task: DelegatedTaskView) => void;
+  onCancelTask?: (task: DelegatedTaskView) => void;
 }) {
   const key = `stack.${chatId}`;
   const [hidden, setHidden] = useState(() => load<boolean>(key, false));
@@ -150,7 +161,10 @@ export function StatusStack({
   }, [queue, editing]);
   const jobsById = useMemo(() => new Map(allJobs.map((j) => [j.id, j])), [allJobs]);
   const runningJobs = background.filter((j) => j.status === "running").length;
-  const count = (background.length > 0 ? 1 : 0) + (jobs ? 1 : 0) + (notice ? 1 : 0) + queued.length + (todos.length > 0 ? 1 : 0) + (lost ? 1 : 0) + chain.length;
+  // A chat with no room for its tasks' rows (a pane beside the main one) still counts them, so the
+  // ridge does not hide what is running.
+  const showTasks = tasks.length > 0 && onOpenTask !== undefined && onCancelTask !== undefined;
+  const count = (background.length > 0 ? 1 : 0) + (jobs ? 1 : 0) + (notice ? 1 : 0) + queued.length + (todos.length > 0 ? 1 : 0) + (lost ? 1 : 0) + chain.length + (tasks.length > 0 ? 1 : 0);
   const empty = count === 0;
   // The card grows in when something first arrives and shrinks away when the last thing goes, showing what it
   // last held while it shrinks. One already there when the chat opens is simply there.
@@ -299,6 +313,11 @@ export function StatusStack({
                 ))}
               </ol>
             </div>
+          ) : null}
+          {showTasks ? (
+            <Group title="Delegated" meta={tasksMeta(tasks) ?? undefined} defaultOpen>
+              <DelegatedTasks tasks={tasks} harnessName={harnessName} onOpen={onOpenTask} onCancel={onCancelTask} />
+            </Group>
           ) : null}
           {todos.length > 0 ? (
             <Group title="Todos" meta={`${done}/${todos.length}`} defaultOpen>

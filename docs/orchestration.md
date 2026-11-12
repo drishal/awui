@@ -145,6 +145,19 @@ back to `working` with a fresh generation — so nothing from the old run can an
 and is watched again: one result per settle. A child whose chat was closed answers
 `task_not_running`; a harness that will not take the message answers `cannot_send`.
 
+## In the web UI
+
+A parent's tasks are drawn above its composer, in the status stack (`DelegatedTasks.tsx`): one row per
+task with a chip for how it stands (*Working*, *Waiting*, then the outcome), the title, the agent
+running it (`harness · model · role`), a clock, **Open** (the child chat beside the parent, or in its
+own tab on a phone) and **Cancel**. A task waiting on an answer says which question, by its title
+only. The rows come from the chat's snapshot and are kept current by its `task` events, so nothing
+polls; a reopened parent gets them back from the records, matched by its harness session.
+
+A delegated child carries a *Delegated by …* chip in its header (`LineageChip.tsx`), which opens the
+parent. The chip is the only mark of provenance: the child is an ordinary chat in every other way —
+in the sidebar, in search, in the tab strip.
+
 ## A delegation
 
 `delegate_task` returns at once with the task's id and the child chat's id; the work runs in

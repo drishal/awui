@@ -7,7 +7,7 @@
 // an image becomes an `@path` reference when the project has it (matched by
 // name: file-drop.ts), else offers to be added to the project first.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { type ChainStep, type ConfigPatch, IMAGE_MIME_TYPES, type HarnessStatus, type ImageAttachment, type InteractionAnswer, MAX_IMAGES, MAX_PASTE_BYTES, type PasteAttachment, type QueueState, type SendMode, type SlashCommand, type UsageLimits } from "../../shared/protocol.js";
+import { type ChainStep, type ConfigPatch, type DelegatedTaskView, IMAGE_MIME_TYPES, type HarnessStatus, type ImageAttachment, type InteractionAnswer, MAX_IMAGES, MAX_PASTE_BYTES, type PasteAttachment, type QueueState, type SendMode, type SlashCommand, type UsageLimits } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import type { ChatState } from "../chat-state.js";
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../commands.js";
@@ -92,6 +92,8 @@ export function Composer({
   limits,
   draftTransfer,
   side = false,
+  onOpenTask,
+  onCancelTask,
 }: {
   chat: ChatState;
   harnesses: HarnessStatus[];
@@ -111,6 +113,9 @@ export function Composer({
   /** The mounted destination uses this to publish its current draft for explicit swap. */
   draftTransfer?: React.MutableRefObject<(() => void) | null>;
   side?: boolean;
+  /** A delegated task's row: Open shows its child chat, Cancel stops it. The caller binds this chat's id. */
+  onOpenTask?: (task: DelegatedTaskView) => void;
+  onCancelTask?: (task: DelegatedTaskView) => void;
 }) {
   const draftKey = `draft.${chat.chatId}`;
   const [text, setText] = useState(() => load<string>(draftKey, ""));
@@ -726,6 +731,9 @@ export function Composer({
         jobs={jobs}
         background={background}
         allJobs={allJobs}
+        tasks={chat.delegated ?? []}
+        {...(onOpenTask ? { onOpenTask } : {})}
+        {...(onCancelTask ? { onCancelTask } : {})}
       />
       {gitOpen && git ? <GitPanel chatId={chat.chatId} git={git} at={gitAt} onRefresh={refreshGit} onClose={() => setGitOpen(false)} /> : null}
       {stopped && !busy && pending.length === 0 && !closed ? (

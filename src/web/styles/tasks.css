@@ -1,0 +1,173 @@
+/* ---- delegated tasks ------------------------------------------------------
+   The parent chat's rows in the status stack: a state chip, the task's title,
+   who runs it, a clock, and Open / Cancel. Flat rows like the queue's, so a
+   parent with three children working does not turn its composer into a table;
+   a row's line (what the child last said) opens under it. A phone keeps the
+   chip and the title on one line and lets the agent and the clock drop below. */
+.tasks {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-sans);
+  font-size: var(--chat-small);
+}
+
+.task-row {
+  /* Two columns: the row's own line, and its buttons at the end. A wrapping flex would drop the
+     buttons onto a line of their own on a phone, which reads as a second, unexplained row. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 8px;
+  padding: 5px 12px;
+  /* A new task grows into place rather than shifting the rows below in one frame. */
+  animation: task-in var(--dur-enter) var(--ease-out);
+}
+
+.task-row + .task-row {
+  border-top: 1px solid var(--hairline);
+}
+
+@keyframes task-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+/* The row's own line: the chip, the title, who runs the task, and the clock — one grid so the
+   parts line up whatever their length, and so a phone can drop the agent's name under the title
+   without shuffling the rest. */
+.task-head {
+  display: grid;
+  grid-column: 1;
+  grid-template-columns: auto auto minmax(0, 1fr) max-content auto;
+  grid-template-areas: "chev state title meta clock";
+  align-items: center;
+  gap: 0 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-chevron {
+  grid-area: chev;
+  color: var(--muted-text);
+  transform: rotate(-90deg);
+  transition: transform var(--dur-hover) var(--ease-out);
+}
+
+.task-head[aria-expanded="true"] .task-chevron {
+  transform: none;
+}
+
+.task-state {
+  grid-area: state;
+  padding: 1px 6px;
+  white-space: nowrap;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-control);
+  color: var(--muted-text);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+
+.task-state.is-working {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+
+.task-state.is-waiting_for_user,
+.task-state.is-waiting_for_children {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  color: var(--warn);
+}
+
+.task-state.is-done {
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+  color: var(--ok);
+}
+
+.task-state.is-failed,
+.task-state.is-cancelled,
+.task-state.is-interrupted {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
+}
+
+.task-title {
+  grid-area: title;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-meta {
+  grid-area: meta;
+  max-width: 40%;
+  color: var(--muted-text);
+  font-size: var(--label-size);
+  white-space: nowrap;
+}
+
+.task-clock {
+  grid-area: clock;
+  white-space: nowrap;
+  color: var(--muted-text);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--label-size);
+}
+
+.task-actions {
+  display: flex;
+  grid-column: 2;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-open {
+  color: var(--text-2);
+}
+
+.task-line {
+  grid-column: 1 / -1;
+  margin: 0 0 2px 24px;
+  overflow: hidden;
+  color: var(--muted-text);
+  font-size: var(--chat-small);
+  overflow-wrap: anywhere;
+}
+
+.task-more {
+  padding: 4px 12px;
+  font-size: var(--label-size);
+}
+
+@media (max-width: 640px) {
+  /* A phone: the title keeps the width, and the agent's name drops under it as its own line. */
+  .task-head {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "chev state title clock"
+      ".    .     meta  meta";
+    row-gap: 1px;
+  }
+
+  .task-meta {
+    max-width: 100%;
+  }
+
+  .task-line {
+    margin-left: 0;
+  }
+}
