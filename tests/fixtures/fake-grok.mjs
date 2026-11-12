@@ -8,6 +8,9 @@
 //   "slow"  many small chunks (cancellable)   "fail"  accept the prompt, then error
 //   "subagent" a spawn_subagent call and its child session
 //   "subagentbg" the same, finishing after the tool has returned
+//   "mcprender" awui's render_html as an MCP call (Grok's `server__tool` name),
+//               with its page reference on the result's last line
+//   "mcpusetool" the same call through Grok's `use_tool` dispatcher
 // Every prompt, set_config value, permission answer, and cancel is recorded in
 // $FAKE_GROK_STATE so a test can see what went out on the wire.
 import { randomUUID } from "node:crypto";
@@ -296,6 +299,33 @@ async function turn(id, text) {
     return;
   }
 
+  if (text.includes("mcprender") || text.includes("mcpusetool")) {
+    // awui's render_html MCP server as Grok reports a client server's call: the qualified
+    // `awui__render_html` name, or its `use_tool` dispatcher naming that key. The result's
+    // last line is the page reference the real server writes.
+    const callId = `call-mcp-${++toolSeq}`;
+    const args = { html: "<p>hi</p>", title: "Probe page", height: 300 };
+    const viaUseTool = text.includes("mcpusetool");
+    send({
+      sessionUpdate: "tool_call",
+      toolCallId: callId,
+      title: "render_html",
+      rawInput: viaUseTool ? { tool_name: "awui__render_html", tool_input: args } : args,
+      _meta: { "x.ai/tool": { name: viaUseTool ? "use_tool" : "awui__render_html" } },
+    });
+    await sleep(2);
+    const ref = JSON.stringify({ id: "0123456789abcdef0123456789abcdef", title: "Probe page", height: 300 });
+    send({
+      sessionUpdate: "tool_call_update",
+      toolCallId: callId,
+      status: "completed",
+      content: [{ type: "text", text: `Rendered "Probe page" into the chat.\nawui-html-render: ${ref}` }],
+    });
+    await sleep(2);
+    send({ sessionUpdate: "agent_message_chunk", content: [{ type: "text", text: `grok says ${text}` }] });
+    endTurn(id);
+    return;
+  }
   if (text.includes("tool")) {
     send({ sessionUpdate: "agent_message_chunk", content: [{ type: "text", text: "grok says " }] });
     const callId = `call-tool-${++toolSeq}`;

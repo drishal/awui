@@ -42,7 +42,7 @@ parameter schemas come from `GET /tools` (or the catalogue served from it), so
 | Pi, omp | an extension loaded with `-e`, one `registerTool` per catalogue entry | `extensions/orchestrate.ts` |
 | Claude Code, Codex, DeepSeek Harness | awui's own HTTP MCP endpoint, mounted per chat | `POST /api/orchestration/mcp` |
 | a DSH build whose ACP does not advertise `mcpCapabilities.http` | the stdio MCP server (`awui-orchestrate`), as a fallback | `extensions/orchestrate-mcp.mjs` |
-| Grok Build | the same stdio MCP server, passed as an ACP stdio entry on `session/new` and `session/load` | `extensions/orchestrate-mcp.mjs` |
+| Grok Build | the same stdio MCP server, passed as an ACP stdio entry on `session/new` and `session/load`; Grok calls a tool as `<server>__<tool>` (or through its `use_tool` dispatcher), which the adapter renames to `mcp__awui-orchestrate__<tool>` for the card | `extensions/orchestrate-mcp.mjs` |
 | Hermes, OpenCode | not wired: neither mounts an MCP server for awui today | — |
 
 Nothing is installed into a user's harness config, and no adapter asks the user to add a server:

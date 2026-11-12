@@ -801,7 +801,8 @@ export class GrokAdapter implements HarnessAdapter {
     supportsFork: false,
     supportsHandoff: false,
     supportsRewind: false,
-    supportsHtmlRender: false,
+    // render_html reaches Grok as awui's MCP server, mounted on the session when the chat has its token.
+    supportsHtmlRender: renderHtmlMcpServer() !== null && nodeForMcpServers() !== null,
     supportsQueueEdit: false,
     // Grok's permission mode is its own config, which awui never writes.
     supportsPermissionMode: false,

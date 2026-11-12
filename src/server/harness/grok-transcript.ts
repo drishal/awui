@@ -4,6 +4,8 @@
 import path from "node:path";
 import type { ChatItem, ToolItem } from "../../shared/protocol.js";
 import { boundText, editShape, isObj, stringifyArgs, toolCategory, toolPaths, toolSummary, type Obj } from "./agent-events.js";
+import { ORCH_MCP_SERVER } from "./render-extension.js";
+import { HTML_RENDER_MCP_SERVER, htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "./render-token.js";
 import { runsFromArgs, runsFromDetails, settleRuns } from "./subagents.js";
 import { lineDiff, resultDiff } from "./tool-diff.js";
 import type { HarnessUsage, StepUsage, UsageEntry } from "./types.js";
@@ -156,6 +158,32 @@ function toolName(update: Obj): string {
   return "tool";
 }
 
+/** awui's own MCP servers: the ones whose calls the rest of awui reads by name. */
+const AWUI_MCP_SERVERS: ReadonlySet<string> = new Set([HTML_RENDER_MCP_SERVER, ORCH_MCP_SERVER]);
+
+/** Grok's qualified MCP tool name: `<server>__<tool>`, the tool segment allowed to start with a digit. */
+const QUALIFIED_MCP_TOOL = /^([A-Za-z_][A-Za-z0-9_-]*)__([A-Za-z0-9][A-Za-z0-9_-]*)$/;
+
+/**
+ * How an MCP call reaches Grok: the qualified `server__tool` name, or the `use_tool`
+ * dispatcher with `{ tool_name, tool_input }`. awui's own servers' calls are renamed to
+ * the `mcp__server__tool` spelling the rest of awui reads (render-token.ts finds the
+ * render tool by it, tool-sentence.ts the orchestration tools), so a rendered page and a
+ * delegation keep their cards whichever spelling the build used; a user's own server
+ * keeps Grok's name. Every other call is returned as it came.
+ */
+function mcpCall(name: string, rawArgs: unknown): { name: string; args: unknown } {
+  const args = isObj(rawArgs) ? rawArgs : {};
+  const target = name === "use_tool" && typeof args.tool_name === "string" ? args.tool_name : name;
+  const match = QUALIFIED_MCP_TOOL.exec(target);
+  const server = match?.[1];
+  const tool = match?.[2];
+  if (server === undefined || tool === undefined) return { name, args: rawArgs ?? {} };
+  // The dispatcher carries the tool's own arguments in tool_input; a direct call carries them already.
+  const inner = name === "use_tool" && isObj(args.tool_input) ? args.tool_input : rawArgs ?? {};
+  return { name: AWUI_MCP_SERVERS.has(server) ? `mcp__${server}__${tool}` : target, args: inner };
+}
+
 function oneLine(text: string, max: number): string {
   return text.replace(/\s+/g, " ").trim().slice(0, max);
 }
@@ -229,7 +257,8 @@ export function foldSessionUpdate(update: unknown, at: number): GrokFold {
   }
   if (kind === "tool_call") {
     const toolCallId = typeof update.toolCallId === "string" && update.toolCallId ? update.toolCallId : "tool";
-    return { type: "tool_start", toolCallId, name: toolName(update), args: update.rawInput ?? {}, at };
+    const call = mcpCall(toolName(update), update.rawInput);
+    return { type: "tool_start", toolCallId, name: call.name, args: call.args, at };
   }
   if (kind === "tool_call_update") {
     const toolCallId = typeof update.toolCallId === "string" && update.toolCallId ? update.toolCallId : "tool";
@@ -237,8 +266,13 @@ export function foldSessionUpdate(update: unknown, at: number): GrokFold {
     const pieces = contentPieces(update.content);
     const output = pieces.text || (typeof update.rawOutput === "string" ? update.rawOutput : "");
     if (status === "completed" || status === "failed") {
-      const details = pieces.diff ? { diff: unifiedDiff(pieces.diff.path, pieces.diff.oldText, pieces.diff.newText) } : undefined;
-      return { type: "tool_end", toolCallId, output, isError: status === "failed", ...(details ? { details } : {}), at };
+      // An awui MCP server answers on its last line with the page's reference; the card shows the text without it.
+      const marked = splitRenderMarker(output);
+      const details = {
+        ...(pieces.diff ? { diff: unifiedDiff(pieces.diff.path, pieces.diff.oldText, pieces.diff.newText) } : {}),
+        ...marked.details,
+      };
+      return { type: "tool_end", toolCallId, output: marked.text, isError: status === "failed", ...(Object.keys(details).length > 0 ? { details } : {}), at };
     }
     // Progress frames add locations and args and often no text; skip the empty ones.
     return output ? { type: "tool_update", toolCallId, output } : { type: "ignore" };
@@ -580,6 +614,8 @@ export function itemsFromFolds(folds: GrokFold[]): ChatItem[] {
   const open = new Map<string, number>();
   const toolAt = new Map<string, number>();
   const subagents = new GrokSubagentBook();
+  /** Calls the render tool made, whose result carries a page the chat shows. */
+  const renderCalls = new Set<string>();
   let n = 0;
   const closeAssistant = () => {
     if (assistant?.streaming) {
@@ -602,6 +638,7 @@ export function itemsFromFolds(folds: GrokFold[]): ChatItem[] {
       closeAssistant();
       subagents.ingest(fold);
       const started = toolItem(fold);
+      if (isHtmlRenderCall(fold.name, fold.args)) renderCalls.add(fold.toolCallId);
       if (started.category === "agent") {
         const runs = runsFromArgs(fold.args);
         if (runs) started.subagents = runs;
@@ -635,6 +672,9 @@ export function itemsFromFolds(folds: GrokFold[]): ChatItem[] {
       const edits = item.category === "edit" || item.category === "write";
       const reported = edits ? resultDiff(fold.details, bounded.text) : null;
       if (!fold.isError && reported) Object.assign(item, editShape(reported, null));
+      // The live chat shows a page only for a call the render tool made; history agrees.
+      const page = renderCalls.delete(fold.toolCallId) ? htmlRenderRef(fold.details) : undefined;
+      if (page) item.htmlRender = page;
       item.output = bounded.text;
       item.truncated = bounded.truncated;
       item.status = fold.isError ? "error" : "done";

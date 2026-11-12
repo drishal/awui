@@ -163,6 +163,28 @@ describe("the grok adapter (scripted CLI)", () => {
     expect(JSON.stringify(chat.snapshot())).not.toContain(tokens.AWUI_RENDER_TOKEN);
   });
 
+  it("publishes the page a render_html MCP call returns, under Grok's name and through use_tool", async () => {
+    const { chat } = await openChat(undefined, tokens);
+    await chat.send("mcprender please", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "grok says mcprender please"));
+    const direct = toolItem(chat);
+    expect(direct).toMatchObject({
+      name: "mcp__awui__render_html",
+      status: "done",
+      htmlRender: { id: "0123456789abcdef0123456789abcdef", title: "Probe page", height: 300 },
+    });
+    // The marker line is the card's, not the model's text.
+    expect(direct.output).toBe('Rendered "Probe page" into the chat.');
+
+    await chat.send("mcpusetool please", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "grok says mcpusetool please"));
+    const items = chat.snapshot().items.filter((item) => item.kind === "tool");
+    const dispatched = items.at(-1);
+    expect(dispatched).toMatchObject({ name: "mcp__awui__render_html", htmlRender: { id: "0123456789abcdef0123456789abcdef" } });
+    // The dispatcher's own envelope is not the call's arguments: the card shows the tool's.
+    expect(JSON.parse(dispatched?.kind === "tool" ? dispatched.args : "null")).toEqual({ html: "<p>hi</p>", title: "Probe page", height: 300 });
+  });
+
   it("accepts a prompt the child never echoes, and does not paint an echo twice", async () => {
     const { chat } = await openChat();
     await chat.send("noecho please", "normal");
@@ -408,6 +430,29 @@ describe("the grok adapter (scripted CLI)", () => {
 
 describe("grok's session folds (no process)", () => {
   const line = (update: Record<string, unknown>) => JSON.stringify({ timestamp: 1792245548, method: "session/update", params: { update } });
+
+  it("resolves Grok's MCP naming to the one the rest of awui reads, and lifts a render result's page", () => {
+    // A client server's call, named the way Grok qualifies an MCP tool: `server__tool`.
+    const direct = foldSessionUpdate({ sessionUpdate: "tool_call", toolCallId: "t1", rawInput: { html: "<p>x</p>" }, _meta: { "x.ai/tool": { name: "awui__render_html" } } }, 1);
+    expect(direct).toMatchObject({ type: "tool_start", name: "mcp__awui__render_html", args: { html: "<p>x</p>" } });
+    // The same call through the `use_tool` dispatcher, which carries the arguments in tool_input.
+    const dispatched = foldSessionUpdate({ sessionUpdate: "tool_call", toolCallId: "t2", rawInput: { tool_name: "awui-orchestrate__delegate_task", tool_input: { task: "hi" } }, _meta: { "x.ai/tool": { name: "use_tool" } } }, 1);
+    expect(dispatched).toMatchObject({ type: "tool_start", name: "mcp__awui-orchestrate__delegate_task", args: { task: "hi" } });
+    // The user's own servers, and Grok's native tools, keep their names.
+    expect(foldSessionUpdate({ sessionUpdate: "tool_call", toolCallId: "t3", rawInput: { query: "x" }, _meta: { "x.ai/tool": { name: "github__search_repositories" } } }, 1)).toMatchObject({ name: "github__search_repositories", args: { query: "x" } });
+    expect(foldSessionUpdate({ sessionUpdate: "tool_call", toolCallId: "t4", rawInput: { target_file: "README.md" }, _meta: { "x.ai/tool": { name: "read_file" } } }, 1)).toMatchObject({ name: "read_file", args: { target_file: "README.md" } });
+    // The MCP server's last line is the page's reference, which the card takes and the text drops.
+    const done = foldSessionUpdate(
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "t1",
+        status: "completed",
+        content: [{ type: "text", text: 'Rendered "Probe page" into the chat.\nawui-html-render: {"id":"0123456789abcdef0123456789abcdef","title":"Probe page","height":300}' }],
+      },
+      2,
+    );
+    expect(done).toMatchObject({ type: "tool_end", output: 'Rendered "Probe page" into the chat.', isError: false, details: { htmlRender: { id: "0123456789abcdef0123456789abcdef", title: "Probe page", height: 300 } } });
+  });
 
   it("folds a diff block into a unified diff, and a tool that never finished into an error", () => {
     const folds = foldsFromJsonl(
