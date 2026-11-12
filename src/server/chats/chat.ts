@@ -284,6 +284,8 @@ class EventReducer {
   /** Sends waiting to be echoed that are not the user's own (delegation briefs, wakes); each marks
    *  the next user_message as agent-authored. Bounded so a lost echo cannot mark far later ones. */
   pendingAuthored = 0;
+  /** The accepted send awaiting its echo: a steer is a mid-run note, a drained follow-up a new turn. */
+  expectedMessage?: { text: string; mode: SendMode };
   private currentAssistant: string | null = null;
   private currentModel: string | undefined;
   private pendingDeltas: Array<{ itemId: string; field: "text" | "thinking" | "output"; append: string }> = [];
@@ -354,7 +356,8 @@ class EventReducer {
         this.finishStreaming();
         // A user_message while a run is going and its prompt has already echoed is an
         // interjection (a steer, or a follow-up draining); the chat draws it as a divider row.
-        const interjected = this.runPromptSeen && this.fx.status() === "running" && !event.command;
+        const interjected = this.runPromptSeen && this.expectedMessage?.mode === "steer" && !event.command;
+        if (!event.command) this.expectedMessage = undefined;
         this.runPromptSeen = true;
         // The first pending non-user mark names this one (a delegation brief, a wake report).
         const authored = !event.command && this.pendingAuthored > 0;
@@ -1181,6 +1184,7 @@ export class Chat implements CheckpointHost {
         if (!caps.supportsSteer) throw new ChatError(400, "unsupported", "This harness cannot steer");
         if (this.status !== "running") throw new ChatError(409, "not_running", "Nothing is running to steer");
         await this.checkpoints?.beforePrompt(text);
+        this.reducer.expectedMessage = { text, mode };
         await this.live.steer(text, images);
         return;
       case "followUp":
@@ -1202,10 +1206,12 @@ export class Chat implements CheckpointHost {
     await this.checkpoints?.beforePrompt(text);
     if (this.status !== "running") return;
     this.timing.markHandoff();
+    this.reducer.expectedMessage = { text, mode: "normal" };
     const busyBefore = this.reducer.busyCount();
     try {
       await this.live.prompt(text, images);
     } catch (error) {
+      this.reducer.expectedMessage = undefined;
       this.reducer.notice("error", `Prompt rejected: ${errorMessage(error)}`, true);
       this.quiet = true;
       // A harness that answered "already processing" says the run is going (its adapter sends the

@@ -33,7 +33,7 @@ test("the dashboard sorts chats into needs you, working, and done, and a card op
   await expect(column(page, "Done").getByTestId("dashboard-card").filter({ hasText: "finished chat for the dashboard" })).toContainText(/Echo: finished chat for the dashboard/);
 
   // The project filter narrows by name.
-  await page.getByRole("button", { name: "Project" }).click();
+  await page.getByRole("button", { name: "Project", exact: true }).click();
   await page.getByRole("option", { name: /^alpha/ }).click();
   await expect(column(page, "Done")).toContainText("finished chat for the dashboard");
 

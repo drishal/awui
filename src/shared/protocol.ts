@@ -405,7 +405,7 @@ export interface UserItem {
   /** The images themselves, when the harness kept them (in order; may be fewer than imageCount). */
   images?: ImageRef[];
   /** A "/" command the harness answered itself: no stored turn, so forks do not count it. */
-  /** Sent while a run was already going (a steer or a follow-up that executed): drawn as an interjection row, not a prompt bubble. */
+  /** Accepted as a steer after this turn's prompt: a mid-run note, not the next prompt bubble. */
   interjected?: boolean;
   /** Authored by another agent or the server (a delegation brief, a wake report, a routine), not typed here: drawn with a small provenance badge. */
   source?: "agent";

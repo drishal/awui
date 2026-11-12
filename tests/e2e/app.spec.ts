@@ -251,7 +251,8 @@ test("steer and follow-up while running, shown in the status stack", async ({ pa
   await box.fill("focus on tests");
   await page.getByRole("button", { name: "Steer" }).click();
   await expect(status(page)).toHaveText("Idle", { timeout: 20_000 });
-  await expect(prompts(page)).toHaveText(["slow work", "focus on tests", "then summarize"]);
+  await expect(prompts(page)).toHaveText(["slow work", "then summarize"]);
+  await expect(page.getByTestId("interjection-row")).toHaveText(["focus on tests"]);
   await expect(page.getByTestId("queue-row")).toHaveCount(0);
 });
 

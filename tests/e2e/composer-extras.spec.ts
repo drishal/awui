@@ -275,7 +275,7 @@ test("the prompt box can be dragged taller, and a reload keeps it", async ({ pag
   // The box comes back with the restored chat, which can take a moment under load.
   await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible({ timeout: 20_000 });
   await expect
-    .poll(async () => ((await page.getByRole("textbox", { name: "Message" }).boundingBox()) as { height: number }).height, { timeout: 20_000 })
+    .poll(async () => (await page.getByRole("textbox", { name: "Message" }).boundingBox())?.height ?? 0, { timeout: 20_000 })
     .toBeGreaterThan(tall - 6);
 });
 
