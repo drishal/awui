@@ -126,6 +126,7 @@ src/server/
   harness/jobs.ts, child-process.ts, event-hub.ts   Background worker state, bounded child RPC lifecycle and event buffering.
   git.ts, git-status.ts       Hardened git runner; the composer's git row.
   image-store.ts, notify.ts, limits.ts, session-marks.ts, run-command.ts, state-file.ts   Side features (see their header comments).
+  idempotency.ts             An `Idempotency-Key` on a mutating request: one answer per key, ten minutes, in memory.
   project-files.ts            A project's files for @mention pickers (git ls-files, else a bounded walk).
   project-search.ts           Search in project: bounded `git grep -F` (else a scan of project-files' walk).
   file-view.ts                The file viewer: one of the project's own files (project-files' list), realpath-confined, bounded.

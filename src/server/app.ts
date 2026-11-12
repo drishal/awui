@@ -84,6 +84,7 @@ import { ChatError, errorMessage, type Chat } from "./chats/chat.js";
 import type { BoardManager } from "./boards/types.js";
 import { storedImage, rememberImage } from "./image-store.js";
 import { isHtmlRenderId, readHtmlRender, saveHtmlRender } from "./html-render.js";
+import { Idempotency } from "./idempotency.js";
 import type { ChatManager } from "./chats/manager.js";
 import type { HarnessRegistry } from "./harness/registry.js";
 import type { HarnessAdapter, NativeSessionSummary } from "./harness/types.js";
@@ -288,6 +289,11 @@ export function createApp(deps: AppDeps) {
   // it loaded to notice a deploy (the binary embeds the bundle; a source run has
   // dist/web). "dev" when neither exists, which the client then ignores.
   const build = buildIdOf(embeddedWeb()?.get("/index.html")?.text ?? (deps.webDir ? readIndexHtml(deps.webDir) : null));
+  // Retried mutating requests: one answer per Idempotency-Key, kept for ten minutes in this
+  // process only. A key belongs to the session that sent it (local use is its own session).
+  const idempotency = new Idempotency({
+    who: (req, res) => (res.locals.local === true ? "local" : (security.sessionId(req, res.locals.authority as string) ?? "remote")),
+  });
 
   const app = express();
   app.disable("x-powered-by");
@@ -440,6 +446,12 @@ export function createApp(deps: AppDeps) {
     if (req.method === "POST" && /^\/workspaces\/[^/]+\/upload$/.test(req.path)) return next();
     return (req.method === "POST" && /^\/(?:chats|rooms)\/[^/]+\/messages$/.test(req.path) ? messageJson : textJson)(req, res, next);
   });
+
+  // A retried request whose answer was lost (a phone on a train) must not run twice: an
+  // `Idempotency-Key` on a mutating call replays the first answer (idempotency.ts). It comes
+  // after the body parsers, since the body it hashes is the parsed one, and it belongs to the
+  // device whose session sent the key rather than to the whole server.
+  app.use("/api", idempotency.handle);
 
   // A broken config.yml keeps the defaults here; the server logged why at startup.
   const browserSettings = () => {

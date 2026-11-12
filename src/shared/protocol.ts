@@ -846,6 +846,13 @@ export interface Bootstrap {
 
 export const MAX_MESSAGE_CHARS = 100_000;
 
+/**
+ * The request header that makes a mutating call safe to repeat: the same key and body
+ * replays the first answer instead of running again (server/idempotency.ts). In memory
+ * only, so it covers a retry within a few minutes, not a restart.
+ */
+export const IDEMPOTENCY_KEY_HEADER = "idempotency-key";
+
 export const openWorkspaceSchema = z.object({ path: z.string().min(1).max(4096) });
 export const worktreeCreateSchema = z.object({ name: z.string().trim().min(1).max(64), base: z.string().trim().min(1).max(256) });
 export const terminalCreateSchema = z.object({ cols: z.number().int().min(10).max(400).default(100), rows: z.number().int().min(4).max(120).default(30) });

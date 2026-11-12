@@ -200,6 +200,14 @@ export class Security {
     return this.session(req, authority, now) !== null;
   }
 
+  /**
+   * The request's session id, so state a session keeps (an idempotency key's owner) is not
+   * shared with another device. Null for a local request or a cookie minted before ids.
+   */
+  sessionId(req: Request, authority: string): string | null {
+    return this.session(req, authority)?.n ?? null;
+  }
+
   /** POST /api/login { username, password }. */
   login = async (req: Request, res: Response): Promise<void> => {
     res.setHeader("Cache-Control", "no-store");
