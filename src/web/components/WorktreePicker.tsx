@@ -26,6 +26,8 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded
   // The project's own awui.yml, if it has one: its base fills the form, its trust decides the rest.
   const [projectConfig, setProjectConfig] = useState<ProjectConfigStatus | null>(null);
   const [runSetup, setRunSetup] = useState(false);
+  /** The tree whose setup command is running now; every Set up is disabled meanwhile. */
+  const [settingUp, setSettingUp] = useState<string | null>(null);
   const [setupResult, setSetupResult] = useState<RunResult | null>(null);
   const refresh = async () => {
     try {
@@ -50,13 +52,13 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded
   const setupIn = async (tree: Pick<WorktreeInfo, "id" | "branch">) => {
     setError(null);
     setSetupResult(null);
-    setBusy(true);
+    setSettingUp(tree.id);
     try {
       const result = await api<RunResult>(`/api/workspaces/${workspace.id}/worktrees/${tree.id}/setup`, { method: "POST" });
       setSetupResult(result);
       onSeeded(setupSummary(tree.branch, result));
     } catch (e) { setError(errorText(e)); }
-    finally { setBusy(false); }
+    finally { setSettingUp(null); }
   };
   // One key per attempt: a create retried after its answer was lost (the same name and base)
   // must not make a second checkout, while a different name or base is a new one.
@@ -123,8 +125,8 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded
             <span className="picker-name">{tree.branch}</span><span className="picker-path">{tree.path}</span>
           </button>
           {canRunSetup(projectConfig) ? (
-            <button type="button" className="btn btn-small btn-ghost" title={busy ? "Running…" : `Run ${projectConfig?.config.setup ?? "the setup command"} in this worktree`} disabled={busy} onClick={() => void setupIn(tree)}>
-              Set up
+            <button type="button" className="btn btn-small btn-ghost" title={`Run ${projectConfig?.config.setup ?? "the setup command"} in this worktree`} disabled={settingUp !== null} onClick={() => void setupIn(tree)}>
+              {settingUp === tree.id ? "Running…" : "Set up"}
             </button>
           ) : null}
           <button type="button" className="btn btn-small btn-ghost" title="Remove this worktree only when git reports it clean" disabled={removing !== null} onClick={() => void (async () => {
