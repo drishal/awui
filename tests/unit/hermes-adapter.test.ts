@@ -68,6 +68,15 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(chat.snapshot().config).toMatchObject({ model: "fake/fake-model", thinkingLevel: "medium" });
   });
 
+  it("shows Hermes's own context figure, from the usage its session info carries", async () => {
+    const { chat, live } = await openChat();
+    await chat.send("hello there", "normal");
+    await until(() => chat.snapshot().context !== null);
+    // emitUsage's context_used / context_max / context_percent, as the gateway's usage model sends them.
+    expect(await live.getContextUsage()).toEqual({ tokens: 1200, window: 200000, percent: 1 });
+    expect(chat.snapshot().context).toEqual({ tokens: 1200, window: 200000, percent: 1 });
+  });
+
   it("replaces a past prompt in place, cutting the session at that message's row", async () => {
     const { chat, live } = await openChat();
     for (const text of ["one", "two", "three"]) {

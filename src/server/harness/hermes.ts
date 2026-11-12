@@ -548,6 +548,8 @@ class HermesLiveChat implements LiveChat {
   private sessionTitle: string | null = null;
   private info: Obj = {};
   private usage: Obj = {};
+  /** The context gauge, from whichever usage payload last named one (session.usage, session.info, message.complete). */
+  private context: ContextUsage | null = null;
   private todos: TodoItem[] = [];
   private models: ModelInfo[] | null = null;
   /** The catalog key a config.set asked for. A proxied pick can read back as the proxy ("litellm/x"),
@@ -637,6 +639,21 @@ class HermesLiveChat implements LiveChat {
     if (this.storedId) this.emit({ type: "session", nativeId: this.storedId });
   }
 
+  /**
+   * Hermes's context gauge, from any usage payload that names one. The gateway puts the
+   * same `tui_usage` projection on `session.usage`, on `session.info`, and on the turn's
+   * `message.complete` (`gateway/session_usage.py`), and the turn-ending one arrives after
+   * the settle this adapter reports — so reading only `session.info` left the ring a turn
+   * behind, or hidden for the whole first turn.
+   */
+  private noteContext(usage: unknown): void {
+    if (!isObj(usage)) return;
+    const used = num(usage.context_used);
+    const max = num(usage.context_max);
+    if (used === null || max === null || max <= 0) return;
+    this.context = { tokens: used, window: max, percent: num(usage.context_percent) ?? Math.min(100, (used / max) * 100) };
+  }
+
   private applyInfo(info: Obj): void {
     this.info = { ...this.info, ...info };
     const title = str(info.title);
@@ -644,7 +661,10 @@ class HermesLiveChat implements LiveChat {
       this.sessionTitle = title;
       this.emit({ type: "title", title });
     }
-    if (isObj(info.usage)) this.usage = info.usage;
+    if (isObj(info.usage)) {
+      this.usage = info.usage;
+      this.noteContext(info.usage);
+    }
     const model = str(info.model);
     const provider = str(info.provider);
     if (model || provider) {
@@ -782,6 +802,7 @@ class HermesLiveChat implements LiveChat {
         const error = status === "error" ? str(p.error) || str(p.failure_reason) || "The run failed" : undefined;
         const step = usageOf(p.usage);
         if (step) this.accumulateUsage(step);
+        this.noteContext(p.usage);
         // The gateway may have written the thought into the text itself (see splitReasoningBlock):
         // it belongs on the item's thinking, where this UI renders it as its own row.
         const answer = splitReasoningBlock(str(p.text), str(p.reasoning));
@@ -828,7 +849,10 @@ class HermesLiveChat implements LiveChat {
         this.applyInfo(p);
         break;
       case "session.usage":
-        if (isObj(p.usage)) this.usage = p.usage;
+        if (isObj(p.usage)) {
+          this.usage = p.usage;
+          this.noteContext(p.usage);
+        }
         break;
       case "session.title": {
         const title = str(p.title);
@@ -1003,10 +1027,7 @@ class HermesLiveChat implements LiveChat {
   }
 
   async getContextUsage(): Promise<ContextUsage | null> {
-    const used = num(this.usage.context_used);
-    const max = num(this.usage.context_max);
-    if (used === null || max === null || max <= 0) return null;
-    return { tokens: used, window: max, percent: num(this.usage.context_percent) ?? Math.min(100, (used / max) * 100) };
+    return this.context ? { ...this.context } : null;
   }
 
   async getUsage(): Promise<HarnessUsage | null> {
