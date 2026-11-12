@@ -108,11 +108,6 @@ function anchorWhere(anchor: ReviewAnchor): string {
   return anchor.side === "del" ? `${anchor.path} (removed line ${anchor.line})` : `${anchor.path}:${anchor.line}`;
 }
 
-/** The prompt one flat comment becomes: its line under it, in file order. */
-export function reviewPrompt(comments: ReviewComment[]): string {
-  const parts = comments.map((c) => `${anchorWhere(anchorOf(c.path, c.line))}\n    ${SIGN[c.line.kind]} ${c.line.text.trim()}\n${c.text.trim()}`);
-  return `Review comments on your changes:\n\n${parts.join("\n\n")}`;
-}
 
 /**
  * The batch an "send the comments" press becomes: every open thread, numbered so

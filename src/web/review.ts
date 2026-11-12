@@ -14,7 +14,6 @@ export {
   commentKey,
   hashLine,
   reanchor,
-  reviewPrompt,
   type FileChanges,
   type FileEdit,
   type LineRef,

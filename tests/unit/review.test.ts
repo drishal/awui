@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChatItem, DiffLine, ReviewThread, ToolItem } from "../../src/shared/protocol.js";
 import { anchorOf, batchPrompt, buildLineIndex, hashLine, reanchor } from "../../src/shared/review.js";
-import { collectChanges, commentKey, placeThreads, reviewPrompt, type FileChanges, type ReviewComment } from "../../src/web/review.js";
+import { collectChanges, commentKey, placeThreads, type FileChanges } from "../../src/web/review.js";
 
 /** One file with one edit's lines, as the panel's model has it. */
 const fileOf = (path: string, lines: DiffLine[]): FileChanges => ({ path, edits: [{ tool: { ...edit("e1", path, 1), diff: { lines, added: 1, removed: 0 } }, turn: 1 }], added: 1, removed: 0 });
@@ -47,17 +47,6 @@ describe("review", () => {
     ]);
   });
 
-  it("turns comments into one prompt naming each line", () => {
-    const files = collectChanges(items, "/p");
-    const lines = files[0]?.edits[0]?.tool.diff?.lines ?? [];
-    const comments: ReviewComment[] = [
-      { key: commentKey("e1", 1), path: "src/a.ts", line: lines[1] as never, text: "Call it with the config. " },
-      { key: commentKey("e1", 0), path: "src/a.ts", line: lines[0] as never, text: "Keep this one" },
-    ];
-    expect(reviewPrompt(comments)).toBe(
-      "Review comments on your changes:\n\nsrc/a.ts:4\n    + new();\nCall it with the config.\n\nsrc/a.ts (removed line 4)\n    - old\nKeep this one",
-    );
-  });
 
   it("hashes a line's trimmed text to 8 hex characters, the same everywhere", () => {
     expect(hashLine("  new();  ")).toBe(hashLine("new();"));
