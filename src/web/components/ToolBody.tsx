@@ -5,6 +5,7 @@
 // one card with a header naming what it touched.
 import { createContext, Fragment, useContext, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { DiffLine, ToolDiff, ToolItem } from "../../shared/protocol.js";
+import type { LineOrigin } from "../../shared/review.js";
 import { IconCheck, IconCircle, IconDot, IconFile, IconGlobe, IconSearch, IconTerminal, IconX } from "../icons.js";
 import { parseJsonContainer } from "../json-tree.js";
 import { relativePath } from "../turns.js";
@@ -117,11 +118,18 @@ function lineText(text: string, mark: [number, number] | undefined): ReactNode {
 
 const SIGN: Record<DiffLine["kind"], string> = { add: "+", del: "−", ctx: " ", hunk: "", gap: "" };
 
+/** What a gutter mark says, in words: the agent wrote this line, or someone changed it since. */
+const ORIGIN_TITLE: Record<LineOrigin, string> = {
+  agent: "Written by the agent in this chat, and still the same line",
+  changed: "The agent wrote this line, and it has been changed since (outside this chat's edits)",
+};
+
 export function DiffView({
   diff,
   expanded = false,
   onLine,
   notes,
+  origins,
 }: {
   diff: ToolDiff;
   /** Every line at once, without the "Show all" fold. */
@@ -130,6 +138,8 @@ export function DiffView({
   onLine?: (index: number, line: DiffLine) => void;
   /** Shown under a line, by its index. */
   notes?: ReadonlyMap<number, ReactNode>;
+  /** Where each line came from, by its index (the review panel's attribution): adds a gutter mark. */
+  origins?: ReadonlyMap<number, LineOrigin>;
 }) {
   const [all, setAll] = useState(expanded);
   const marks = useMemo(() => wordMarks(diff.lines), [diff.lines]);
@@ -140,7 +150,7 @@ export function DiffView({
   const shown = all ? diff.lines : diff.lines.slice(0, FOLDED_LINES);
   return (
     <div
-      className={`diff${numbered ? " is-numbered" : ""}${onLine ? " is-commentable" : ""}`}
+      className={`diff${numbered ? " is-numbered" : ""}${onLine ? " is-commentable" : ""}${origins ? " is-attributed" : ""}`}
       role="table"
       aria-label="Changes"
       style={numbered ? ({ "--diff-digits": digits } as CSSProperties) : undefined}
@@ -173,6 +183,7 @@ export function DiffView({
                   }
                 : {})}
             >
+              {origins ? <span className={`diff-origin is-${origins.get(i) ?? "none"}`} role="img" aria-label={origins.has(i) ? ORIGIN_TITLE[origins.get(i) as LineOrigin] : undefined} title={origins.has(i) ? ORIGIN_TITLE[origins.get(i) as LineOrigin] : undefined} /> : null}
               {numbered ? <span className="diff-no">{l.line ?? ""}</span> : null}
               <span className="diff-sign" aria-label={l.kind === "add" ? "added" : l.kind === "del" ? "removed" : undefined}>
                 {SIGN[l.kind]}

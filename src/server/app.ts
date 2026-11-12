@@ -65,6 +65,7 @@ import {
   createThreadSchema,
   replySchema,
   threadStatusSchema,
+  type AttributionSnapshot,
   reanchorSchema,
   secondOpinionSchema,
   sideThreadSchema,
@@ -124,6 +125,7 @@ import { SavedPrompts } from "./saved-prompts.js";
 import { Routines } from "./routines.js";
 import { ReviewProblem, ReviewThreads } from "./review-threads.js";
 import { SecondOpinions, reportExcerpt } from "./second-opinions.js";
+import { attributionSnapshot } from "./attribution.js";
 import { batchPrompt } from "../shared/review.js";
 import { Limits } from "./limits.js";
 import { Notifier, pushEndpointProblem } from "./notify.js";
@@ -1512,6 +1514,16 @@ export function createApp(deps: AppDeps) {
       throw error;
     }
   };
+
+  /**
+   * Where a chat's edited lines stand now: each edited file's present lines as hashes,
+   * bounded, for the diff gutter's attribution marks. The lines themselves came from the
+   * chat's own tool diffs, which a client already has; this only says which of them are
+   * still in the file.
+   */
+  app.get("/api/chats/:id/attribution", async (req, res) => {
+    res.json((await attributionSnapshot(manager.get(req.params.id))) satisfies AttributionSnapshot);
+  });
 
   app.get("/api/chats/:id/review-threads", (req, res) => {
     res.json({ threads: reviewThreads.list(req.params.id) });

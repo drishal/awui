@@ -129,3 +129,48 @@ export function batchPrompt(threads: ReviewThread[], stale?: ReadonlySet<string>
   const footer = `${open.length} open thread${open.length === 1 ? "" : "s"} sent${resolved > 0 ? `; ${resolved} resolved thread${resolved === 1 ? "" : "s"} not included` : ""}`;
   return `Review comments on your changes:\n\n${parts.join("\n\n")}\n\n(${footer})`;
 }
+
+/** Where a diff line came from: written by the agent in this chat, or changed by someone else since. */
+export type LineOrigin = "agent" | "changed";
+
+/**
+ * The agent's lines among a chat's edits: `add` lines are the agent's own (exact, from
+ * the tool's diff), and a `ctx` line is its too when an earlier edit of the same file
+ * added that text. `present` is the file's lines now, as hashes (the server reads them);
+ * a line the agent wrote that the file no longer has is `changed` — someone else edited
+ * it, or a command of theirs did, which nothing in the transcript records. Without
+ * `present`, nothing flips and every agent line reads `agent`: that is what the
+ * transcript's diffs can say on their own.
+ */
+export function attributeLines(files: FileChanges[], present: ReadonlyMap<string, ReadonlySet<string>> | null): Map<string, LineOrigin> {
+  const marks = new Map<string, LineOrigin>();
+  for (const file of files) {
+    const here = present?.get(file.path) ?? null;
+    const written = new Set<string>();
+    for (const edit of file.edits) {
+      const lines = edit.tool.diff?.lines ?? [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line || (line.kind !== "add" && line.kind !== "ctx")) continue;
+        const hash = hashLine(line.text);
+        const mine = line.kind === "add" || written.has(hash);
+        // A context line is the agent's only when one of its own additions put it there.
+        if (line.kind === "add") written.add(hash);
+        if (!mine) continue;
+        marks.set(commentKey(edit.tool.id, i), here !== null && !here.has(hash) ? "changed" : "agent");
+      }
+    }
+  }
+  return marks;
+}
+
+/** The lines a chat's edits wrote, per file, as hashes: what the server's present-file read is compared against. */
+export function agentHashes(files: FileChanges[]): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const file of files) {
+    const set = out.get(file.path) ?? new Set<string>();
+    for (const edit of file.edits) for (const line of edit.tool.diff?.lines ?? []) if (line.kind === "add") set.add(hashLine(line.text));
+    out.set(file.path, set);
+  }
+  return out;
+}

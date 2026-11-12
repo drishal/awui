@@ -130,6 +130,12 @@
   font-weight: 600;
 }
 
+.review-attribution {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
 .review-path code {
   min-width: 0;
   overflow: hidden;

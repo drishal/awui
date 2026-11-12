@@ -831,6 +831,22 @@ export interface CheckpointComparison {
   more: number;
 }
 
+/** How many of a chat's edited files the attribution read may look at, and how many of a file's lines it carries. */
+export const MAX_ATTRIBUTION_FILES = 12;
+export const MAX_ATTRIBUTION_LINES = 4_000;
+
+/**
+ * What the diff gutter needs to say where a line came from: for each file a chat's
+ * edits touched, the hashes of the file's lines as they are on disk now, so a line the
+ * agent wrote that the file no longer has reads as changed. `truncated` marks a file
+ * whose later lines were not read, where nothing is flipped.
+ */
+export interface AttributionSnapshot {
+  paths: Array<{ path: string; hashes: string[]; truncated: boolean }>;
+  /** The files left out of this read (over the count or line bound): their lines keep the transcript's own word. */
+  skipped: number;
+}
+
 /** One side of a file's git status: what was done to it in the index (staged) or the work tree. */
 export type GitFileState = "modified" | "added" | "deleted" | "renamed" | "copied" | "typechange" | "untracked" | "conflict";
 

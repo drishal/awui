@@ -1098,6 +1098,39 @@
   user-select: none;
 }
 
+/* Attribution: a leading gutter dot on the lines the agent wrote, and an amber ring on one
+   that has been changed since. The column is always there when the panel asks for marks,
+   so the numbers and signs stay aligned. */
+.diff.is-attributed .diff-line {
+  grid-template-columns: 12px 22px minmax(0, 1fr);
+}
+
+.diff.is-attributed.is-numbered .diff-line {
+  grid-template-columns: 12px calc(var(--diff-digits, 3) * 1ch + 16px) 20px minmax(0, 1fr);
+}
+
+.diff-origin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diff-origin::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.diff-origin.is-agent::before {
+  background: var(--link);
+}
+
+.diff-origin.is-changed::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--warn);
+}
+
 .diff-text {
   min-width: 0;
   padding-right: 12px;

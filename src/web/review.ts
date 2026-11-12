@@ -7,7 +7,9 @@ import { buildLineIndex, commentKey, reanchor, type FileChanges } from "../share
 import { buildTurns, relativePath } from "./turns.js";
 
 export {
+  agentHashes,
   anchorOf,
+  attributeLines,
   batchPrompt,
   buildLineIndex,
   commentable,
@@ -16,6 +18,7 @@ export {
   reanchor,
   type FileChanges,
   type FileEdit,
+  type LineOrigin,
   type LineRef,
   type Reanchor,
   type ReviewComment,

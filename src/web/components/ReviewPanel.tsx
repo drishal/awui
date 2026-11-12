@@ -8,6 +8,7 @@ import { ApiError, api, errorText } from "../api.js";
 import type { ChatItem, ChatSnapshot, ChatStatus, HarnessStatus, ProjectSession, ReviewSendResult, ReviewThread } from "../../shared/protocol.js";
 import { IconCheck, IconX } from "../icons.js";
 import { anchorOf, buildLineIndex, collectChanges, commentable, commentKey, placeThreads, reanchor, type PlacedThread, type ReviewComment } from "../review.js";
+import { useAttribution } from "../attribution.js";
 import { load, save } from "../storage.js";
 import { FileLink } from "./FileLink.js";
 import { DiffBadge, DiffView } from "./ToolBody.js";
@@ -91,6 +92,8 @@ export function ReviewPanel({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const files = useMemo(() => collectChanges(items, workspace), [items, workspace]);
+  // Which of these lines the agent wrote, and which have been changed outside this chat since.
+  const origins = useAttribution(chatId, files);
   const storageKey = `review.${chatId}`;
   const threadsPath = `/api/chats/${chatId}/review-threads`;
   const [threads, setThreads] = useState<ReviewThread[]>([]);
@@ -315,6 +318,15 @@ export function ReviewPanel({
                   <code>{f.path}</code>
                 </FileLink>
                 <DiffBadge added={f.added} removed={f.removed} />
+                {(() => {
+                  const counts = origins.byPath.get(f.path);
+                  if (!counts || counts.agent + counts.changed === 0) return null;
+                  return (
+                    <span className="review-attribution muted" data-testid="review-attribution" title="Lines this chat's edits wrote, and how many have changed since (marked with a dot in the gutter; a changed line gets an amber ring). Who changed a line outside this chat is not recorded here: an editor and a command of the agent's look the same">
+                      {counts.agent} from this chat{counts.changed > 0 ? ` · ${counts.changed} changed since` : ""}
+                    </span>
+                  );
+                })()}
               </h3>
               {f.edits.map(({ tool, turn }) => {
                 if (!tool.diff) return null;
@@ -347,6 +359,7 @@ export function ReviewPanel({
                       diff={tool.diff}
                       expanded
                       notes={notes}
+                      origins={origins.byTool.get(tool.id)}
                       onLine={(i, line) => {
                         if (!commentable(line)) return;
                         const key = commentKey(tool.id, i);
