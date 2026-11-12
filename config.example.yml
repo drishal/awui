@@ -117,3 +117,20 @@ herdr: true
 #     command: ~/code/deepseek-harness/bin/dsh
 #     # Install the ACP profile's bundle once, pinned to your dsh version:
 #     #   dsh plugin --profile acp add @deepseek-ai/dsh-acp-app@<version>
+#
+# Any other Agent Client Protocol agent: one entry per app, each a harness of its
+# own (see docs/harnesses.md, "Any ACP agent from config"). Up to 16; the id is a
+# lowercase slug and may not be one of the built-in harness ids. env values are
+# handed to the child and never read back to a browser; auth_method is the id the
+# agent advertises, not a secret.
+#   acp:
+#     - id: gemini
+#       name: Gemini CLI
+#       command: gemini                # ~/ is expanded
+#       args: [--acp]
+#       # env:
+#       #   GEMINI_API_KEY: ...
+#       # auth_method: oauth-personal
+#     - id: goose
+#       command: goose
+#       args: [acp]

@@ -1,6 +1,6 @@
 # awui
 
-awui is a local, private web UI for the coding agents you already use: **Pi**, **omp**, **Hermes**, **Claude Code**, **Codex**, **OpenCode**, **Grok Build**, and **DeepSeek Harness**.
+awui is a local, private web UI for the coding agents you already use: **Pi**, **omp**, **Hermes**, **Claude Code**, **Codex**, **OpenCode**, **Grok Build**, and **DeepSeek Harness** — plus any other [ACP](https://agentclientprotocol.com) agent (Gemini CLI, Qwen Code, Goose, Cline, …) from a few lines in `config.yml`.
 
 Each agent keeps its own models, logins, settings, tools, and session files. awui gives it one window — on your desktop, on your phone over Tailscale, or in a terminal with `atui` and `awui tern` — and adds what a terminal does not have: tabs, checkpoints, search across chats, review comments, usage, and notifications.
 

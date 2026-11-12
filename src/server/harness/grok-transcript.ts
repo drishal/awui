@@ -7,14 +7,12 @@ import { boundText, editShape, isObj, stringifyArgs, toolCategory, toolPaths, to
 import { ORCH_MCP_SERVER } from "./render-extension.js";
 import { HTML_RENDER_MCP_SERVER, htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "./render-token.js";
 import { runsFromArgs, runsFromDetails, settleRuns } from "./subagents.js";
-import { lineDiff, resultDiff } from "./tool-diff.js";
+import { resultDiff, unifiedDiff } from "./tool-diff.js";
 import type { HarnessUsage, StepUsage, UsageEntry } from "./types.js";
 
 /** Grok session ids are UUIDs. A path segment that fails this is not a session. */
 export const SESSION_ID = /^[0-9a-f-]{36}$/i;
 
-const MAX_DIFF_LINES = 800;
-const MAX_DIFF_CHARS = 40_000;
 const MAX_PLAN_CHARS = 500;
 
 export function isSessionId(id: string): boolean {
@@ -110,45 +108,6 @@ function contentPieces(content: unknown): { text: string; diff: DiffPiece | null
   return { text: texts.join("\n"), diff };
 }
 
-function splitLines(text: string): string[] {
-  if (text === "") return [];
-  const lines = text.split("\n");
-  if (lines[lines.length - 1] === "") lines.pop();
-  return lines;
-}
-
-/**
- * A unified diff parseUnified can read. Grok's tool results carry old/new text,
- * and the chat fold only understands a unified `details.diff`.
- */
-export function unifiedDiff(filePath: string, oldText: string, newText: string): string {
-  let oldLines = splitLines(oldText);
-  let newLines = splitLines(newText);
-  if (oldLines.length > MAX_DIFF_LINES) oldLines = oldLines.slice(0, MAX_DIFF_LINES);
-  if (newLines.length > MAX_DIFF_LINES) newLines = newLines.slice(0, MAX_DIFF_LINES);
-  const diff = lineDiff(oldLines, newLines);
-  const body: string[] = [];
-  let oldCount = 0;
-  let newCount = 0;
-  for (const line of diff) {
-    if (line.kind === "add") {
-      body.push(`+${line.text}`);
-      newCount += 1;
-    } else if (line.kind === "del") {
-      body.push(`-${line.text}`);
-      oldCount += 1;
-    } else if (line.kind === "ctx") {
-      body.push(` ${line.text}`);
-      oldCount += 1;
-      newCount += 1;
-    }
-    if (body.length >= MAX_DIFF_LINES) break;
-  }
-  const safe = filePath.replace(/[\r\n]/g, "");
-  let text = `--- a/${safe}\n+++ b/${safe}\n@@ -1,${oldCount} +1,${newCount} @@\n${body.join("\n")}`;
-  if (text.length > MAX_DIFF_CHARS) text = text.slice(0, MAX_DIFF_CHARS);
-  return text;
-}
 
 function toolName(update: Obj): string {
   const meta = isObj(update._meta) ? update._meta : null;

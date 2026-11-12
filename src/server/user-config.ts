@@ -42,6 +42,56 @@ const commandSchema = z
   .min(1)
   .max(4096)
   .refine((v) => !/[\u0000-\u001f]/.test(v), "must not hold control characters");
+/** Harness ids awui already ships: a config.yml ACP entry may not take one over. */
+export const BUILT_IN_HARNESS_IDS = ["pi", "omp", "hermes", "claude", "codex", "opencode", "grok", "dsh", "awui", "fake", "fake-b"] as const;
+
+/** An ACP agent's id: a slug, so it reads the same in a URL, an env list, and the sidebar. */
+const acpIdSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z0-9][a-z0-9-]{0,31}$/, "must be a slug: lowercase letters, digits, or '-', at most 32 characters, starting with a letter or digit");
+
+const envNameSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/, "must be a variable name: letters, digits, or '_', not starting with a digit");
+
+/**
+ * One ACP agent awui starts itself: any app that speaks the Agent Client
+ * Protocol over stdio (Gemini CLI, Qwen Code, Goose, Cline, …). Its own login,
+ * models, and session files stay the agent's; `env` is the only secret awui
+ * holds for it, and a value is never read back out to a browser.
+ */
+const acpAgentSchema = z
+  .object({
+    id: acpIdSchema,
+    /** What the menus call it; the id when config.yml does not say. */
+    name: z.string().trim().min(1).max(64).optional(),
+    command: commandSchema,
+    args: z.array(z.string().max(4096).refine((v) => !v.includes("\u0000"), "must not hold a NUL")).max(64).optional(),
+    env: z.record(envNameSchema, z.string().max(8192).refine((v) => !v.includes("\u0000"), "must not hold a NUL")).optional(),
+    /** The `authenticate` method to call, by the id the agent advertises; omitted leaves sign-in to the agent. */
+    auth_method: z.string().trim().min(1).max(128).optional(),
+  })
+  .strict();
+
+/** At most this many ACP agents: each is a harness in every menu and a child process per chat. */
+export const MAX_ACP_AGENTS = 16;
+
+const acpListSchema = z
+  .array(acpAgentSchema)
+  .max(MAX_ACP_AGENTS)
+  .superRefine((list, ctx) => {
+    const seen = new Set<string>();
+    for (const [index, entry] of list.entries()) {
+      if ((BUILT_IN_HARNESS_IDS as readonly string[]).includes(entry.id)) {
+        ctx.addIssue({ code: "custom", path: [index, "id"], message: `"${entry.id}" is one of awui's own harness ids` });
+      }
+      if (seen.has(entry.id)) ctx.addIssue({ code: "custom", path: [index, "id"], message: `"${entry.id}" is already defined` });
+      seen.add(entry.id);
+    }
+  });
+
 const launchSchema = z
   .object({
     command: commandSchema.optional(),
@@ -129,6 +179,8 @@ const schema = z
         hermes: z.object({ command: commandSchema.optional() }).strict().optional(),
         // OpenCode's chats share one `opencode serve`: no per-chat command line either.
         opencode: z.object({ command: commandSchema.optional() }).strict().optional(),
+        // Any other Agent Client Protocol app: one entry per agent, each registering a harness of its own.
+        acp: acpListSchema.optional(),
       })
       .strict()
       .optional(),

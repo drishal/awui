@@ -42,9 +42,71 @@ Then pick the adapter to copy, by transport:
 | The agent speaks | Copy | Notes |
 |---|---|---|
 | ACP (Agent Client Protocol) over stdio | `grok.ts` + `grok-transcript.ts` | The generic path. ACP has no steer or follow-up: declare both false. An app that replays no history (DSH) also needs a reader for its own session files: see `dsh.ts` + `dsh-transcript.ts`. |
+| ACP over stdio, with nothing awui-specific | `acp.ts` + `acp-updates.ts` | **No code at all**: a `harnesses.acp` entry in `config.yml` registers an adapter (`AcpAdapter`) under its own id. See [Any ACP agent](#any-acp-agent-from-config). |
 | Its own JSON lines over stdio, one child per chat | `pi.ts` (rpc mode), `claude.ts` (stream-json) | `omp.ts` is a Pi fork that strips Pi's `PI_*` variables from its child. |
 | One HTTP server shared by every chat | `opencode.ts` + `opencode-server.ts` + `opencode-messages.ts` | Start the server once, route its event stream by session. |
 | A gateway process that owns its home | `hermes.ts` + `hermes-gateway.ts` + `hermes-canonical.ts` | Attach to the owner; the stdio child is only the fallback. |
+
+## Any ACP agent from config
+
+An app awui has no adapter for still works when it speaks ACP over stdio:
+Gemini CLI (`gemini --acp`), Qwen Code, Goose, Cline, Kimi CLI, anything from the
+[ACP Registry](https://agentclientprotocol.com/get-started/registry), or your own
+client. One `harnesses.acp` entry registers an adapter
+(`src/server/harness/acp.ts`, on the shared client in `acp-client.ts` and the
+fold in `acp-updates.ts`); nothing is installed, and no session files are read
+or written:
+
+```yaml
+harnesses:
+  acp:
+    - id: gemini                      # a slug, unique, not a built-in harness id
+      name: Gemini CLI               # what the menus call it; the id when omitted
+      command: gemini                 # `~/` is expanded; the rest is the user's PATH
+      args: [--acp]
+      env:                            # extra environment for the child; values are never read back
+        GEMINI_API_KEY: ...
+      auth_method: oauth-personal     # optional: the id this agent advertises, never a secret
+```
+
+The agent's own login, models, and files stay its own: awui reads no credential
+and starts no sign-in except an `authenticate` call with the method you named.
+
+**What is detected, and from where.** `initialize` says whether a session can be
+resumed (`loadSession`, or `resume` under `sessionCapabilities`), whether a
+prompt may carry images, whether the agent takes MCP servers over HTTP, and which
+auth methods it offers. The session's `configOptions` say whether it lists models
+and reasoning levels, so those pills appear only after a chat has seen the
+table (ACP's handshake does not carry them); the model list is per session, so a
+brand-new workspace shows no picker until its first chat opens. `session/update`
+gives text and thought chunks, tool calls with their own `kind`, `locations`,
+`content` (including a `diff`), a `plan` (shown as a notice), `session_info_update`
+(a title), `usage_update` (the context ring's own figure), `available_commands_update`
+(the `/` menu) and `config_option_update` (a switched model or effort).
+`session/request_permission` becomes the usual approval card, with the agent's own
+option names and ids.
+
+**What is not there.** ACP has no steer, follow-up, rename, compact, or rewind, and
+awui does not invent them: those buttons stay off. The session modes an agent
+lists are its own (they can change what it may do, not how much it asks), so they
+are not the permission pill. The sidebar lists no sessions for an ACP agent
+(ACP v1 has no session list), Usage across chats has no rows, `supportsResumeCommand`
+is off (awui does not know the agent's own resume syntax), and a delegated
+subagent's transcript is not openable.
+
+**Resume.** A session resumes through `session/load` when the agent advertises
+`loadSession` (its replayed updates become the chat's history) or through
+`session/resume` when it advertises only that (the chat continues with no visible
+transcript, because the agent replays nothing). An agent that advertises neither
+refuses the resume with a reason, rather than starting a silent second session.
+
+**Limits.** At most 16 entries; each id is a lowercase slug and may not take a
+built-in harness's id; an entry may override at most 64 arguments and 64
+environment variables. `AWUI_HARNESSES` selects an ACP agent by its id too, so
+`AWUI_HARNESSES=fake,gemini` brings up exactly those two. Every payload is bounded
+like the rest of awui (tool output to 16 KB, args to 4 KB, diffs to 800 lines /
+40 KB), and an update kind this client does not know is noted once per chat and
+never crashes it.
 
 ## 2. The contract (`src/server/harness/types.ts`)
 

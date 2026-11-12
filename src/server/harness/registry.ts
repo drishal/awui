@@ -1,6 +1,7 @@
 // Adding a harness = one adapter file + one entry in `factories`.
 import { asHarnessId, HARNESS_ACCENTS, type HarnessId, type HarnessStatus } from "../../shared/protocol.js";
 import type { ServerConfig } from "../config.js";
+import { AcpAdapter } from "./acp.js";
 import { ClaudeAdapter } from "./claude.js";
 import { CodexAdapter } from "./codex.js";
 import { DshAdapter } from "./dsh.js";
@@ -71,8 +72,14 @@ export class HarnessRegistry {
     const registry = new HarnessRegistry();
     for (const name of config.harnesses) {
       const factory = factories[name];
-      if (!factory) throw new Error(`Unknown harness in AWUI_HARNESSES: ${name}`);
-      registry.register(factory(config));
+      if (factory) {
+        registry.register(factory(config));
+        continue;
+      }
+      // Not a built-in: config.yml's own ACP agents are harnesses under their own ids.
+      const agent = config.acp.find((entry) => entry.id === name);
+      if (!agent) throw new Error(`Unknown harness in AWUI_HARNESSES: ${name}`);
+      registry.register(new AcpAdapter(agent, { home: config.home, stateDir: config.stateDir }));
     }
     return registry;
   }

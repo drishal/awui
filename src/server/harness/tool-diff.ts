@@ -285,6 +285,40 @@ export function argsDiff(args: unknown): ToolDiff | null {
   return null;
 }
 
+/**
+ * A unified diff for a result that carries the file's old and new text rather
+ * than a patch (ACP's `diff` tool-call content). Bounded like every other
+ * diff, and shaped so `parseUnified` reads it back.
+ */
+export function unifiedDiff(filePath: string, oldText: string, newText: string): string {
+  let oldLines = splitLines(oldText);
+  let newLines = splitLines(newText);
+  if (oldLines.length > MAX_DIFF_LINES) oldLines = oldLines.slice(0, MAX_DIFF_LINES);
+  if (newLines.length > MAX_DIFF_LINES) newLines = newLines.slice(0, MAX_DIFF_LINES);
+  const diff = lineDiff(oldLines, newLines);
+  const body: string[] = [];
+  let oldCount = 0;
+  let newCount = 0;
+  for (const line of diff) {
+    if (line.kind === "add") {
+      body.push(`+${line.text}`);
+      newCount += 1;
+    } else if (line.kind === "del") {
+      body.push(`-${line.text}`);
+      oldCount += 1;
+    } else if (line.kind === "ctx") {
+      body.push(` ${line.text}`);
+      oldCount += 1;
+      newCount += 1;
+    }
+    if (body.length >= MAX_DIFF_LINES) break;
+  }
+  const safe = filePath.replace(/[\r\n]/g, "");
+  let text = `--- a/${safe}\n+++ b/${safe}\n@@ -1,${oldCount} +1,${newCount} @@\n${body.join("\n")}`;
+  if (text.length > MAX_DIFF_CHARS) text = text.slice(0, MAX_DIFF_CHARS);
+  return text;
+}
+
 /** The diff a harness reported with its result, if it reported one. */
 export function resultDiff(details: unknown, output: string): ToolDiff | null {
   if (isObj(details)) {

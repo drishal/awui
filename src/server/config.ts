@@ -27,9 +27,10 @@ export interface ServerConfig {
   stateDir: string;
   ompAgentDir: string | null;
   ompSessionDir: string | null;
-  /** Comma list selecting adapters; tests use `fake`. Default: pi,omp,hermes,claude,opencode,grok,awui. */
+  /** Comma list selecting adapters; tests use `fake`. Default: the built-ins, then config.yml's ACP agents. */
   harnesses: string[];
-  /** Each harness's executable and extra chat arguments (launchSettings); empty: names on PATH. */
+  /** config.yml's own ACP agents (`harnesses.acp`), each a harness under its own id (acpAgents). */
+  acp: AcpAgentConfig[];
   launch: ReturnType<typeof launchSettings>;
   /** The orchestration surface's bounds: config.yml's `orchestration:` over the defaults (orchestrationLimits). */
   orchestration: OrchestrationLimits;
@@ -144,6 +145,41 @@ export interface ClaudeSettings {
   entrypoint: string | null;
 }
 
+/** One ACP agent awui starts itself, as config.yml's `harnesses.acp` states it. */
+export interface AcpAgentConfig {
+  id: string;
+  /** What the menus call it; the id when config.yml names nothing else. */
+  name: string;
+  command: string;
+  args: string[];
+  /** Extra environment for the child. Values are never logged or sent to a browser. */
+  env: Record<string, string>;
+  /** The `authenticate` method to call when the agent asks for one, or null to leave sign-in to the agent. */
+  authMethod: string | null;
+}
+
+/**
+ * config.yml's ACP agents: id, name, command line, environment, and the auth
+ * method to call. A `~/` command is expanded the way a harness's own command is;
+ * nothing else is inferred, because the agent's own config is not awui's to read.
+ */
+export function acpAgents(c: UserConfig | undefined, home: string): AcpAgentConfig[] {
+  const out: AcpAgentConfig[] = [];
+  for (const entry of c?.harnesses?.acp ?? []) {
+    const raw = entry.command.trim();
+    const command = raw === "~" || raw.startsWith("~/") ? path.join(home, raw.slice(1)) : raw;
+    out.push({
+      id: entry.id,
+      name: entry.name?.trim() || entry.id,
+      command,
+      args: entry.args ?? [],
+      env: { ...(entry.env ?? {}) },
+      authMethod: entry.auth_method?.trim() || null,
+    });
+  }
+  return out;
+}
+
 export function claudeSettings(c: UserConfig | undefined): ClaudeSettings {
   return { subagentPromptCacheTtl: c?.claude?.subagent_prompt_cache_ttl ?? null, entrypoint: c?.claude?.entrypoint ?? null };
 }
@@ -151,6 +187,10 @@ export function claudeSettings(c: UserConfig | undefined): ClaudeSettings {
 /** `file`: config.yml's settings that are not environment variables (the harnesses' launch). */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, file?: UserConfig): ServerConfig {
   const home = homedir();
+  // config.yml's own ACP agents are harnesses too: named in AWUI_HARNESSES they win, else they join the built-ins.
+  const acp = acpAgents(file, home);
+  const named = list(env.AWUI_HARNESSES);
+  const harnessNames = named.length > 0 ? named : ["pi", "omp", "hermes", "claude", "codex", "opencode", "grok", "dsh", "awui", ...acp.map((agent) => agent.id)];
   let port = DEFAULT_PORT;
   if (env.PORT !== undefined && env.PORT !== "") {
     const parsed = portSchema.safeParse(env.PORT);
@@ -188,7 +228,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, file?: UserConf
     stateDir,
     ompAgentDir: env.OMP_AGENT_DIR ? path.resolve(expandHome(env.OMP_AGENT_DIR, home)) : null,
     ompSessionDir: env.OMP_SESSION_DIR ? path.resolve(expandHome(env.OMP_SESSION_DIR, home)) : null,
-    harnesses: list(env.AWUI_HARNESSES).length > 0 ? list(env.AWUI_HARNESSES) : ["pi", "omp", "hermes", "claude", "codex", "opencode", "grok", "dsh", "awui"],
+    harnesses: harnessNames,
+    acp,
     launch: launchSettings(file, env, home),
     orchestration: orchestrationLimits(file),
     claude: claudeSettings(file),

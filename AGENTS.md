@@ -103,7 +103,7 @@ src/server/
   boards/                     Board rooms, web-only: store.ts (strict atomic persistence, JSONL room records), manager.ts (CRUD + the ownership oracle ordinary surfaces filter by), events.ts (room SSE), scheduler.ts (one active turn per room, serial), turn-runner.ts (direct responders, one bounded consultation round), sessions.ts (bot session pool over ChatManager-owned chats), context.ts/consult.ts/budget.ts (pure envelope, control-document parser, caps).
   harness/types.ts            HarnessAdapter / LiveChat contract and the normalized HarnessEvent union.
   harness/registry.ts         One factory per harness; AWUI_HARNESSES selects them.
-  harness/{pi,omp,hermes,claude,codex,opencode,grok,dsh}.ts   The eight adapters; codex-transcript.ts folds Codex's rollout files for a resumed chat and Usage across chats; hermes-gateway.ts is the attach to Hermes's own gateway (its control socket's public contract: rendezvous, `resolve-profile`/`identify` verdict, `session-ticket`) and hermes-canonical.ts the canonical session wire presented as the dialect the chat speaks; grok-transcript.ts folds Grok's ACP session updates (live and on disk), and dsh-transcript.ts decodes DeepSeek Harness's concatenated-zstd session log and folds its ACP updates. fake.ts is the deterministic test adapter.
+  harness/{pi,omp,hermes,claude,codex,opencode,grok,dsh}.ts   The eight adapters; codex-transcript.ts folds Codex's rollout files for a resumed chat and Usage across chats; hermes-gateway.ts is the attach to Hermes's own gateway (its control socket's public contract: rendezvous, `resolve-profile`/`identify` verdict, `session-ticket`) and hermes-canonical.ts the canonical session wire presented as the dialect the chat speaks; grok-transcript.ts folds Grok's ACP session updates (live and on disk), and dsh-transcript.ts decodes DeepSeek Harness's concatenated-zstd session log and folds its ACP updates. acp-client.ts is the one ACP transport (Grok, DSH, and config.yml's own agents share it), acp.ts the adapter config.yml's `harnesses.acp` entries become, and acp-updates.ts the generic ACP update fold. fake.ts is the deterministic test adapter.
   harness/opencode-server.ts  OpenCode's one shared `opencode serve`: started when needed, awui's password, events by session.
   harness/opencode-messages.ts  OpenCode's messages, models, forms, permissions as awui's (pure, against recorded shapes).
   harness/opencode-tools.ts   awui's render and orchestration MCP servers registered per chat on the shared server, and the session rules that scope them.
@@ -218,7 +218,7 @@ apps/desktop/                 The optional desktop app: an Electron shell that a
                               resources/node_modules/playwright-core staged by scripts/stage-binary.mjs, included
                               explicitly in electron-builder.yml's extraResources. check-packaged.mjs starts it standalone.
 tests/unit                    Vitest. tests/helpers/app.ts builds a real app with fake adapters (makeTestApp).
-tests/fixtures                Scripted stand-ins: fake-omp.mjs, fake-hermes.mjs, fake-claude.mjs, fake-codex.mjs, fake-grok.mjs, fake-dsh.mjs, themes/.
+tests/fixtures                Scripted stand-ins: fake-omp.mjs, fake-hermes.mjs, fake-claude.mjs, fake-codex.mjs, fake-grok.mjs, fake-dsh.mjs, fake-acp.mjs, themes/.
 tests/e2e                     Playwright. global-setup.ts starts the built server with AWUI_HARNESSES=fake,fake-b.
 tests/atui                    bun:test against a real server; helpers.tsx mounts atui in the test renderer;
                               tern-fake.tsx is a stand-in Tern (handshake, frames applied to a document, acks).
@@ -350,7 +350,7 @@ if every test passes.
   `agents.json` in `$AWUI_E2E_HERDR` (calls land in `calls.jsonl`); the atui test
   server runs with `AWUI_HERDR=0`. Never point a test at the developer's herdr.
 - **Scripted CLIs** (`tests/fixtures/fake-omp.mjs`, `fake-hermes.mjs`,
-  `fake-claude.mjs`, `fake-codex.mjs`, `fake-opencode.mjs`, `fake-grok.mjs`, `fake-dsh.mjs`, `fake-hermes-attach.mjs`, `fake-hermes-gateway.mjs`) speak each harness's real wire protocol
+  `fake-claude.mjs`, `fake-codex.mjs`, `fake-opencode.mjs`, `fake-grok.mjs`, `fake-dsh.mjs`, `fake-hermes-attach.mjs`, `fake-hermes-gateway.mjs`, `fake-acp.mjs`) speak each harness's real wire protocol
   (OpenCode's is an HTTP server with OpenCode 2's routes and event stream, including the runtime
   MCP add/remove routes and its last-match-wins session permission rules, and it keeps its own pid
   in the state file so a test can end it and watch a chat register again; DSH's writes

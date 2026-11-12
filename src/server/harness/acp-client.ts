@@ -43,7 +43,11 @@ let exitHookInstalled = false;
 
 function track(child: ChildProcessWithoutNullStreams, label: string): void {
   children.set(child, label);
+  // `close` as well as `exit`: a child that never spawned (a wrong command) emits only error and close.
   child.once("exit", () => children.delete(child));
+  child.once("close", () => children.delete(child));
+  // A spawn that never produced a process emits only `error` (a wrong command), so it is gone too.
+  child.once("error", () => children.delete(child));
   if (!exitHookInstalled) {
     exitHookInstalled = true;
     process.once("exit", () => {
