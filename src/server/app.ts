@@ -127,6 +127,7 @@ import { checkoutOf } from "./checkouts.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { Routines } from "./routines.js";
 import { RoutineRuns } from "./routine-runs.js";
+import { RESUME_TEXT, ResumeIntents } from "./resume-intent.js";
 import { routineNote, runRoutine } from "./routine-runner.js";
 import { cadenceProblem } from "../shared/routine-schedule.js";
 import { deliveryKey, GITHUB_SIGNATURE_HEADER, HookGate, hookMatches, hookPrompt, MAX_HOOK_BODY, MAX_HOOKS_PER_HOUR, SIGNATURE_HEADER, signatureMatches } from "./routine-webhook.js";
@@ -205,6 +206,8 @@ export interface AppDeps {
   routines?: Routines;
   /** Routines' run history (a run's verdict, and the sessions it opened); in memory when absent. */
   routineRuns?: RoutineRuns;
+  /** Sessions that were running when the last process stopped; in memory when absent (nothing to resume). */
+  resumeIntents?: ResumeIntents;
   /** Subscription limits; in memory when absent. */
   limits?: Limits;
   /** Notes and Web Push for devices that turned notifications on; in memory when absent. */
@@ -288,6 +291,7 @@ export function createApp(deps: AppDeps) {
   const prompts = deps.prompts ?? SavedPrompts.inMemory();
   const routines = deps.routines ?? Routines.inMemory();
   const routineRuns = deps.routineRuns ?? RoutineRuns.inMemory();
+  const resumeIntents = deps.resumeIntents ?? ResumeIntents.inMemory();
   /**
    * Whether a session was opened by a routine: not the user's chat, so the session lists
    * leave it out (Usage still counts it) and only a run with something to say is a note.
@@ -1782,6 +1786,12 @@ export function createApp(deps: AppDeps) {
       throw new ChatError(409, "session_held", `This session is open in another ${adapter.displayName}: close that one first, or opening it here would run a second ${adapter.displayName} on the same session`);
     }
     const chat = await manager.resume(adapter, ws, nativeId);
+    // A run was going when the last process stopped: its child died with it, so this
+    // session carries the intent to carry on. One prompt, once, on the first open after
+    // the restart — a chat nobody reopens starts nothing.
+    if (chat.sessionId && (await resumeIntents.take(chat.sessionId))) {
+      void chat.send(RESUME_TEXT, "normal").catch((error: unknown) => log(`resume working: ${errorMessage(error)}`));
+    }
     res.json(chat.snapshot());
   });
 

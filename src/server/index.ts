@@ -30,6 +30,7 @@ import { runHeadlessCli } from "./cli-run.js";
 import { SessionMarks, staleSessions, type SweepCandidate } from "./session-marks.js";
 import { AgentStatuses } from "./agent-status.js";
 import { ProjectConfigTrust } from "./project-config.js";
+import { ResumeIntents } from "./resume-intent.js";
 import { TerminalManager } from "./terminal.js";
 import { Routines } from "./routines.js";
 import { RoutineRuns } from "./routine-runs.js";
@@ -205,6 +206,7 @@ async function main(): Promise<void> {
   const marks = await SessionMarks.open(config.stateDir);
   const agentStatuses = await AgentStatuses.open(path.join(config.stateDir, "agent-status.json"));
   const projectConfigTrust = await ProjectConfigTrust.open(path.join(config.stateDir, "project-config-trust.json"));
+  const resumeIntents = await ResumeIntents.open(config.stateDir);
   const routines = await Routines.open(config.stateDir);
   const routineRuns = await RoutineRuns.open(config.stateDir);
 
@@ -313,6 +315,7 @@ async function main(): Promise<void> {
     marks,
     agentStatuses,
     projectConfigTrust,
+    resumeIntents,
     routines,
     routineRuns,
     order,
@@ -406,6 +409,13 @@ async function main(): Promise<void> {
     terminals.shutdown();
     for (const socket of sockets) socket.destroy();
     try {
+      // A chat that is running right now loses its child with this process: record the intent
+      // to carry on, so the first open after the restart sends "Resume working." once.
+      const running = manager
+        .list()
+        .filter((chat) => !chat.owner && chat.sessionId && chat.status !== "idle" && chat.status !== "error" && chat.status !== "disposed")
+        .map((chat) => chat.sessionId as string);
+      if (running.length > 0) await resumeIntents.markMany(running).catch(() => undefined);
       // Rooms first: their schedulers may still reach chats the manager is about to close.
       await boards.shutdown();
       await manager.shutdown();

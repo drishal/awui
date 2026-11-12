@@ -315,8 +315,11 @@ export class ChatManager {
     const now = Date.now();
     for (const chat of this.chats.values()) {
       const idle = chat.status === "idle" || chat.status === "error";
-      // A chat waiting to continue after a usage limit stays open until it does.
-      if (idle && chat.continueAt === null && chat.subscriberCount === 0 && now - chat.lastSeen > this.idleDisposeMs) {
+      // The harness's own vetoes: a chat waiting on an answer or an approval (the child that can
+      // take the answer is the only place it goes), one whose chain has more to run, and one
+      // waiting to continue after a usage limit all stay open until they are done.
+      if (chat.pendingCount > 0 || chat.continueAt !== null || chat.chainLength > 0) continue;
+      if (idle && chat.subscriberCount === 0 && now - chat.lastSeen > this.idleDisposeMs) {
         await chat.dispose("Closed after being idle with no viewers").catch(() => undefined);
       }
     }

@@ -893,6 +893,11 @@ export class Chat implements CheckpointHost {
     return this.reducer.pendingIds().length;
   }
 
+  /** Steps the chain still holds (queued follow-ups and handoffs): work that a closed chat would lose. */
+  get chainLength(): number {
+    return this.chain.length;
+  }
+
   get subscriberCount(): number {
     return this.log.subscriberCount;
   }

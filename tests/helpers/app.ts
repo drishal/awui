@@ -20,6 +20,7 @@ import { TerminalManager } from "../../src/server/terminal.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "../../src/server/orchestration/limits.js";
 import { SecondOpinions } from "../../src/server/second-opinions.js";
 import type { RoutineRuns } from "../../src/server/routine-runs.js";
+import type { ResumeIntents } from "../../src/server/resume-intent.js";
 
 export const USER = "alice";
 export const PASS = "correct horse battery";
@@ -74,6 +75,8 @@ export async function makeTestApp(options: {
   orchestrationLimits?: Partial<OrchestrationLimits>;
   /** The routines' run history, when a test drives a routine itself (in memory otherwise). */
   routineRuns?: RoutineRuns;
+  /** The sessions a previous process left running, when a test drives the resume itself. */
+  resumeIntents?: ResumeIntents;
 } = {}): Promise<TestApp> {
   const root = tempDir();
   const project = path.join(root, "proj");
@@ -129,6 +132,7 @@ export async function makeTestApp(options: {
     secondOpinions: await SecondOpinions.open(stateDir),
     orchestrationLimits,
     ...(options.routineRuns ? { routineRuns: options.routineRuns } : {}),
+    ...(options.resumeIntents ? { resumeIntents: options.resumeIntents } : {}),
     ...(terminals ? { terminals } : {}),
     boards,
     ...(options.herdr ? { herdr: options.herdr } : {}),

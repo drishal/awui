@@ -39,3 +39,27 @@ describe("chat reaper", () => {
     await manager.shutdown();
   });
 });
+
+describe("what the reaper leaves alone", () => {
+  it("keeps a chat whose chain still has steps to run", async () => {
+    const adapter = new FakeAdapter({ chunkDelayMs: 1 });
+    const manager = new ChatManager(60_000);
+    const chat = await manager.create(adapter, { id: "w", path: "/p", name: "p" });
+    await chat.send("hello", "normal");
+    const until = Date.now() + 5_000;
+    while (chat.status !== "idle" && Date.now() < until) await new Promise((r) => setTimeout(r, 10));
+    expect(chat.status).toBe("idle");
+    chat.setChain([{ id: "step-1", kind: "send", text: "then do this" }]);
+    expect(chat.chainLength).toBe(1);
+    // Past the idle clock with no viewer: the queued step is work a closed chat would lose.
+    chat.lastSeen = Date.now() - 10 * 60_000;
+    const reap = () => (manager as unknown as { reap(): Promise<void> }).reap();
+    await reap();
+    expect(chat.status).not.toBe("disposed");
+    // With nothing queued it goes, as before.
+    chat.setChain([]);
+    await reap();
+    expect(chat.status).toBe("disposed");
+    await manager.shutdown();
+  });
+});
