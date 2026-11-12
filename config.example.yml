@@ -85,8 +85,15 @@ herdr: true
 # field). subagent_prompt_cache_ttl gives a chat another agent delegated the
 # prompt cache lifetime Claude Code gives its own subagents: 5m or 1h. Unset, a
 # delegated child keeps the main conversation's lifetime, as Claude Code does.
+# entrypoint names awui to Claude Code (CLAUDE_CODE_ENTRYPOINT). Unset, awui
+# removes the variable and the CLI labels the chat sdk-cli. Claude Code's own
+# labels (cli, sdk-*, claude-vscode, claude-desktop, claude-code) are refused.
+# Anthropic has not said whether a custom name is allowed
+# (github.com/anthropics/claude-code/issues/97074), so this stays off until you
+# turn it on, at your own risk.
 # claude:
 #   subagent_prompt_cache_ttl: 1h
+#   entrypoint: awui
 
 # How each harness's CLI starts (read at startup; the Settings dialog does not
 # show this, since a command is a program the server runs). command: its

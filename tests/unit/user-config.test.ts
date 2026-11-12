@@ -106,6 +106,17 @@ herdr_socket: ~/run/herdr.sock
     expect(() => readUserConfig(folder("harnesses:\n  pi:\n    command: ''\n"))).toThrow(/harnesses\.pi\.command/);
   });
 
+  it("takes a claude.entrypoint of awui's own, and refuses Claude Code's labels", async () => {
+    const { claudeSettings } = await import("../../src/server/config.js");
+    expect(claudeSettings(readUserConfig(folder("claude:\n  entrypoint: awui\n"))?.config).entrypoint).toBe("awui");
+    // Off unless asked for.
+    expect(claudeSettings(undefined).entrypoint).toBeNull();
+    expect(claudeSettings(readUserConfig(folder("claude:\n  subagent_prompt_cache_ttl: 1h\n"))?.config).entrypoint).toBeNull();
+    for (const bad of ["cli", "sdk-cli", "SDK-TS", "sdk-py", "sdk-anything", "claude-vscode", "claude-desktop", "claude-code", "has space", "9lives", "x".repeat(33)]) {
+      expect(() => readUserConfig(folder(`claude:\n  entrypoint: ${JSON.stringify(bad)}\n`)), bad).toThrow(/claude\.entrypoint/);
+    }
+  });
+
   it("takes the orchestration limits, over the defaults, and refuses what it cannot honour", () => {
     const read = readUserConfig(folder("orchestration:\n  enabled: false\n  maxDepth: 1\n  callsPerMinute: 30\n  taskWallClockMs: 600000\n"));
     expect(orchestrationLimits(read?.config)).toEqual({ ...DEFAULT_ORCHESTRATION_LIMITS, enabled: false, maxDepth: 1, callsPerMinute: 30, taskWallClockMs: 600_000 });

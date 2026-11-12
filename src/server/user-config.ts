@@ -49,6 +49,18 @@ const launchSchema = z
   })
   .strict();
 
+/**
+ * The labels Claude Code itself uses for `CLAUDE_CODE_ENTRYPOINT`. Claiming one would pass awui off as that
+ * client, so config.yml may not; an honest name of its own (`awui`) is the only thing it accepts.
+ */
+export const CLAUDE_BUILT_IN_ENTRYPOINTS = ["cli", "sdk-cli", "sdk-ts", "sdk-py", "claude-vscode", "claude-desktop", "claude-code"] as const;
+
+const claudeEntrypointSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z][A-Za-z0-9._-]{0,31}$/, "must be a plain name: letters, digits, '.', '_' or '-', at most 32 characters, starting with a letter")
+  .refine((v) => !(CLAUDE_BUILT_IN_ENTRYPOINTS as readonly string[]).includes(v.toLowerCase()) && !/^sdk-/i.test(v), "must not be one of Claude Code's own labels (cli, sdk-*, claude-vscode, claude-desktop, claude-code)");
+
 const schema = z
   .object({
     port: z.number().int().optional(),
@@ -95,9 +107,10 @@ const schema = z
       .optional(),
     /**
      * Claude Code's own settings (file-only: read at startup, no Settings dialog field). The prompt
-     * cache lifetime its subagents use, `5m` or `1h`, which a delegated child here is given too.
+     * cache lifetime its subagents use, `5m` or `1h`, which a delegated child here is given too, and an
+     * `entrypoint` name for `CLAUDE_CODE_ENTRYPOINT` (see ClaudeSettings.entrypoint).
      */
-    claude: z.object({ subagent_prompt_cache_ttl: z.enum(["5m", "1h"]).optional() }).strict().optional(),
+    claude: z.object({ subagent_prompt_cache_ttl: z.enum(["5m", "1h"]).optional(), entrypoint: claudeEntrypointSchema.optional() }).strict().optional(),
     /** Herdr's API socket, when not the default session's (file-only; HERDR_SOCKET_PATH wins). */
     herdr_socket: z.string().trim().min(1).max(4096).optional(),
     /** How each harness's CLI starts: its executable, and arguments for every chat child. File-only (see HarnessLaunch). */

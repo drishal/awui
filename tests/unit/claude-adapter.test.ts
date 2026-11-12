@@ -111,6 +111,14 @@ describe("claude adapter (scripted CLI)", () => {
     expect(new ClaudeAdapter({ command: script, home, env: { ...base, ENABLE_TOOL_SEARCH: "auto:100" } }).childEnv().ENABLE_TOOL_SEARCH).toBe("auto:100");
   });
 
+  it("names the client only when config.yml asks, and never passes on an inherited label", () => {
+    const base = { HOME: home, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), CLAUDE_CODE_ENTRYPOINT: "claude-vscode", CLAUDECODE: "1" };
+    const plain = new ClaudeAdapter({ command: script, home, env: base }).childEnv();
+    expect(plain.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
+    expect(plain.CLAUDECODE).toBeUndefined();
+    expect(new ClaudeAdapter({ command: script, home, env: base, entrypoint: "awui" }).childEnv().CLAUDE_CODE_ENTRYPOINT).toBe("awui");
+  });
+
   it("opens with a session id of its own, then streams a turn with thinking and usage", async () => {
     const { chat, live } = await openChat();
     expect(live.nativeId).toMatch(/^[0-9a-f-]{36}$/);

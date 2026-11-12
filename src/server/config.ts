@@ -135,10 +135,17 @@ export interface ClaudeSettings {
    * conversation's).
    */
   subagentPromptCacheTtl: "5m" | "1h" | null;
+  /**
+   * `claude.entrypoint`: a name of awui's own for the `CLAUDE_CODE_ENTRYPOINT` its Claude chats announce
+   * themselves with. null (the default): the variable is removed, so the CLI labels the chat `sdk-cli`.
+   * Never one of Claude Code's own labels (the schema refuses them). Anthropic has not said whether a custom
+   * name is allowed (anthropics/claude-code#97074), which is why it is opt-in.
+   */
+  entrypoint: string | null;
 }
 
 export function claudeSettings(c: UserConfig | undefined): ClaudeSettings {
-  return { subagentPromptCacheTtl: c?.claude?.subagent_prompt_cache_ttl ?? null };
+  return { subagentPromptCacheTtl: c?.claude?.subagent_prompt_cache_ttl ?? null, entrypoint: c?.claude?.entrypoint ?? null };
 }
 
 /** `file`: config.yml's settings that are not environment variables (the harnesses' launch). */
