@@ -312,6 +312,18 @@ test.describe("shared look in config.yml", () => {
     await settings.getByRole("button", { name: "Close" }).click();
   });
 
+  test("?settings=<section> opens Settings on that section", async ({ page }) => {
+    const { base } = ctx as NonNullable<typeof ctx>;
+    await page.goto(`${base}/?settings=network`);
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await expect(settings).toBeVisible();
+    await expect(settings.getByRole("tab", { name: "Network and sign-in" })).toHaveAttribute("aria-selected", "true");
+    await expect(settings.getByLabel("Port")).toBeVisible();
+    // Read once: the query is gone, so a reload does not open it again.
+    expect(page.url()).toBe(`${base}/`);
+    await settings.getByRole("button", { name: "Close" }).click();
+  });
+
   test("on a phone the rail is a list, and a section opens with a way back", async ({ page }) => {
     const { base } = ctx as NonNullable<typeof ctx>;
     await page.setViewportSize({ width: 390, height: 844 });

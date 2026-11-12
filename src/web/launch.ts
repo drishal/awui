@@ -2,9 +2,10 @@
 // (?new=1 a new chat, ?sessions=1 the session list), a share from another app
 // (?share=1: the service worker kept the shared text and images in its cache;
 // they go into the start screen's box when no chat is shown, else a new
-// chat's composer), and a prompt link (?prompt=…: its text goes to the same
-// place to be read; a link never sends). The query is dropped once read, so a
-// reload does not do it again.
+// chat's composer), a prompt link (?prompt=…: its text goes to the same
+// place to be read; a link never sends), and a link into Settings
+// (?settings=<section>: its sections are named in SettingsDialog.tsx). The
+// query is dropped once read, so a reload does not do it again.
 import { useEffect, useRef } from "react";
 import { addImagesToDraft, addLinkedPrompt, addToDraft } from "./draft-bus.js";
 import { prepareImage, type PendingImage } from "./images.js";
@@ -53,6 +54,8 @@ export function useLaunchActions(opts: {
   hasChat: boolean;
   newChat: () => Promise<unknown> | void;
   openSessions: () => void;
+  /** `?settings=<section>`: open Settings on that section ("" for the one last used). */
+  openSettings: (section: string) => void;
   seed: (seed: LaunchSeed) => void;
 }): void {
   const done = useRef(false);
@@ -65,16 +68,17 @@ export function useLaunchActions(opts: {
   useEffect(() => {
     if (!opts.booted || done.current) return;
     const params = new URLSearchParams(window.location.search);
-    const action = params.has("share") ? "share" : params.get("prompt") ? "prompt" : params.has("new") ? "new" : params.has("sessions") ? "sessions" : null;
+    const action = params.has("share") ? "share" : params.get("prompt") ? "prompt" : params.has("new") ? "new" : params.has("sessions") ? "sessions" : params.has("settings") ? "settings" : null;
     if (!action) {
       done.current = true;
       return;
     }
-    // A share only needs the app up while no chat is shown (the start screen takes it).
-    if (action !== "sessions" && opts.hasChat && !opts.ready) return;
+    // A share only needs the app up while no chat is shown (the start screen takes it); Settings needs no chat at all.
+    if (action !== "sessions" && action !== "settings" && opts.hasChat && !opts.ready) return;
     done.current = true;
     window.history.replaceState(window.history.state, "", window.location.pathname + window.location.hash);
     if (action === "sessions") return latest.current.openSessions();
+    if (action === "settings") return latest.current.openSettings(params.get("settings") ?? "");
     void (async () => {
       const shared = action === "share" ? await takeShare() : null;
       const linked = action === "prompt" ? linkedPrompt(params.get("prompt") ?? "") : null;

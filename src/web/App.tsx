@@ -283,6 +283,8 @@ export function App() {
   const [closingBusy, setClosingBusy] = useState(false);
   const [pairOpen, setPairOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The section a `?settings=<id>` link asked for; undefined opens the one this browser used last. */
+  const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
   /** A session open in a herdr pane, being opened here: the choice to make first. */
   const [herdrAsk, setHerdrAsk] = useState<{ s: ProjectSession & { herdr: NonNullable<ProjectSession["herdr"]> }; newTab: boolean; workspace?: WorkspaceInfo } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -912,7 +914,18 @@ export function App() {
   };
 
   // The installed app's shortcuts and shares (?new, ?sessions, ?share), and phones' swipe for the drawer.
-  useLaunchActions({ booted: Boolean(boot), ready: Boolean(boot && workspace && harnessId), hasChat: chat !== null, newChat: () => newChat(), openSessions: () => setDrawerOpen(true), seed: (s) => setStartSeed(s) });
+  useLaunchActions({
+    booted: Boolean(boot),
+    ready: Boolean(boot && workspace && harnessId),
+    hasChat: chat !== null,
+    newChat: () => newChat(),
+    openSessions: () => setDrawerOpen(true),
+    openSettings: (section) => {
+      setSettingsSection(section || undefined);
+      setSettingsOpen(true);
+    },
+    seed: (s) => setStartSeed(s),
+  });
   useEdgeSwipe(drawerOpen, setDrawerOpen);
 
   /**
@@ -2011,6 +2024,7 @@ export function App() {
         <Suspense fallback={<Loader label="Opening settings…" />}>
         <SettingsDialog
           scheme={themeInfo?.source === "file" ? { name: themeInfo.name } : null}
+          section={settingsSection}
           onPair={() => {
             setSettingsOpen(false);
             setPairOpen(true);
@@ -2024,7 +2038,10 @@ export function App() {
           onToggleNotify={toggleNotify}
           onTestNotify={testNotify}
           onUiSaved={(ui) => setBoot((b) => (b ? { ...b, ui: { ...b.ui, ...ui } } : b))}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            setSettingsOpen(false);
+            setSettingsSection(undefined);
+          }}
         />
         </Suspense>
       ) : null}

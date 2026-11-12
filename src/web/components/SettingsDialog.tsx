@@ -63,8 +63,9 @@ const isSection = (id: string | undefined): id is SectionId => SECTIONS.some((s)
 /** The section this browser opened Settings on last; a section a deep link names wins over it. */
 const LAST_SECTION = "settingsSection";
 
-/** The section to open on: the one this browser used last, else the first. */
-function openingSection(): SectionId {
+/** The section to open on: the one a link named, else the one this browser used last, else the first. */
+function openingSection(section: string | undefined): SectionId {
+  if (isSection(section)) return section;
   const last = loadStored<string>(LAST_SECTION, "");
   return isSection(last) ? last : "device";
 }
@@ -205,6 +206,7 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
 
 export function SettingsDialog({
   scheme,
+  section,
   onPair,
   signedInAs,
   onSignOut,
@@ -217,6 +219,8 @@ export function SettingsDialog({
 }: {
   /** A theme.yml is loaded: offer its scheme. */
   scheme: { name: string | null } | null;
+  /** The section to open on (a `?settings=<id>` link); the one last used otherwise. */
+  section?: string;
   onPair: () => void;
   signedInAs: string | null;
   onSignOut: () => void;
@@ -236,10 +240,10 @@ export function SettingsDialog({
   const [restarting, setRestarting] = useState(false);
   // The awui harness's own providers; null until loaded, false when the harness is off.
   const [awui, setAwui] = useState<AwuiSettingsState | null>(null);
-  const [active, setActive] = useState<SectionId>(openingSection);
+  const [active, setActive] = useState<SectionId>(() => openingSection(section));
   const [query, setQuery] = useState("");
   /** A phone shows the rail, then the section it was sent to; a wide screen shows both at once. */
-  const [detail, setDetail] = useState(false);
+  const [detail, setDetail] = useState(isSection(section));
   const pane = useRef<HTMLDivElement>(null);
   const rail = useRef<HTMLDivElement>(null);
   // What each row says, read from the page itself (every row carries data-settings-row), so the
