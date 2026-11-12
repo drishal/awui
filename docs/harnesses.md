@@ -120,7 +120,9 @@ list is what the compiled binary carries. OpenCode's names have a scheme of thei
 where the id is a hash of that chat's two tokens (a name becomes part of every tool name sent to
 the model, so it never holds the token itself) and the whole name stays under OpenCode's
 64-character limit. Its bridges are registered with `codemode: false`, so their tools are
-tools, not entries inside Code Mode's `execute`.
+tools, not entries inside Code Mode's `execute`. These are OpenCode's experimental routes, checked
+against OpenCode 2.2.7; an OpenCode without them costs only the tools — the chat runs on, and the
+server says why once, without a token.
 
 An MCP server awui hands a harness must arrive per chat, through the command line, the
 environment, or the session parameters the adapter already controls — never by writing to the
