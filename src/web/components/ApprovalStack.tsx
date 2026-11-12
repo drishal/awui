@@ -3,6 +3,7 @@
 // Hermes Desktop's stacked silhouettes when more requests are queued.
 import { useEffect, useRef, useState } from "react";
 import type { InteractionAnswer, InteractionRequest } from "../../shared/protocol.js";
+import { MAX_DENIAL_REASON_CHARS } from "../../shared/protocol.js";
 import { useNow } from "../hooks.js";
 import { IconCheck, IconStop, IconX } from "../icons.js";
 import type { FoldedRequest } from "../approval-fold.js";
@@ -91,12 +92,16 @@ export function ApprovalStack({
   pending: InteractionRequest[];
   busy: boolean;
   stopping: boolean;
-  onAnswer: (request: InteractionRequest, answer: InteractionAnswer) => void;
+  onAnswer: (request: InteractionRequest, answer: InteractionAnswer, denialReason?: string) => void;
   onStop: () => void;
 }) {
   const request = pending[0] as InteractionRequest;
   const [value, setValue] = useState(request.prefill ?? "");
-  useEffect(() => setValue(request.prefill ?? ""), [request.id, request.prefill]);
+  const [denialReason, setDenialReason] = useState("");
+  useEffect(() => {
+    setValue(request.prefill ?? "");
+    setDenialReason("");
+  }, [request.id, request.prefill]);
   const approval = isApproval(request);
   const [titleLine = "", ...restLines] = request.title.split("\n");
   const message = request.message?.trim() ?? "";
@@ -168,30 +173,44 @@ export function ApprovalStack({
             </div>
           </form>
         ) : approval ? (
-          <div className="approval-actions">
-            <button type="button" className="btn btn-ghost btn-danger-text" onClick={onStop} disabled={stopping}>
-              <IconStop size={12} /> {stopping ? "Stopping…" : "Stop"}
-            </button>
-            <span className="approval-spacer" />
-            {/* Bordered: Deny is a real choice beside Approve, not a dismiss link. */}
-            <button
-              type="button"
-              className="btn"
-              disabled={busy}
-              onClick={() => answers && onAnswer(request, answers.deny)}
-            >
-              Deny
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={busy}
-              autoFocus
-              onClick={() => answers && onAnswer(request, answers.approve)}
-            >
-              Approve
-            </button>
-          </div>
+          <>
+            <div className="approval-denial-reason">
+              <textarea
+                id={`denial-reason-${request.id}`}
+                className="input"
+                value={denialReason}
+                onChange={(e) => setDenialReason(e.target.value)}
+                maxLength={MAX_DENIAL_REASON_CHARS}
+                rows={2}
+                aria-label="Reason for denial (optional)"
+                placeholder="Reason for denial (optional) — sent with Deny"
+              />
+            </div>
+            <div className="approval-actions">
+              <button type="button" className="btn btn-ghost btn-danger-text" onClick={onStop} disabled={stopping}>
+                <IconStop size={12} /> {stopping ? "Stopping…" : "Stop"}
+              </button>
+              <span className="approval-spacer" />
+              {/* Bordered: Deny is a real choice beside Approve, not a dismiss link. */}
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() => answers && onAnswer(request, answers.deny, denialReason.trim() || undefined)}
+              >
+                Deny
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                autoFocus
+                onClick={() => answers && onAnswer(request, answers.approve)}
+              >
+                Approve
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <ChoiceList request={request} busy={busy} onAnswer={(a) => onAnswer(request, a)} />

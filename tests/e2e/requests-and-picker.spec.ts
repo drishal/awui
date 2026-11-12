@@ -23,8 +23,14 @@ test("a denied request folds into a line that says so", async ({ page }) => {
   await newChat(page);
   await send(page, "ask before reading");
   const card = page.getByTestId("approval-card");
+  await card.getByRole("textbox", { name: "Reason for denial (optional)" }).fill("Read instead of changing the file.");
   await card.getByRole("button", { name: "Deny" }).click();
   await expect(page.getByTestId("approval-folded")).toContainText("Denied: Allow tool: read");
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 15_000 });
+  await page.locator(".process-card").last().getByTestId("process-toggle").click();
+  await expect(page.getByTestId("request-row")).toContainText("Denied");
+  await page.getByTestId("request-row").getByRole("button").click();
+  await expect(page.getByTestId("request-row")).toContainText("Denial reason: Read instead of changing the file.");
 });
 
 test("a queued follow-up leaves the queue and becomes the next prompt", async ({ page }) => {

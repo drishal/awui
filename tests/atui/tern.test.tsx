@@ -262,6 +262,18 @@ describe("awui tern", () => {
     expect(tern.text("main")).toContain("Approved");
   });
 
+  it("takes an optional reason before sending a denial", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("ask please\r");
+    await until(() => tern.nodes.has("dock.d.req"), "the approval card");
+    tern.type("2");
+    await until(() => tern.text("dock").includes("Reason for denial (optional)"), "the reason editor");
+    tern.type("Use a read-only answer.\r");
+    await until(() => !tern.nodes.has("dock.d.req") && app.chat()?.status === "idle", "the denial to settle");
+    expect(app.chat()?.items.find((item) => item.kind === "request" && item.outcome === "Denied")).toMatchObject({ denialReason: "Use a read-only answer." });
+  });
+
   it("opens the palette with C-k and the / menu at the caret, and Tab completes", async () => {
     client = await start();
     const { tern, until } = client;

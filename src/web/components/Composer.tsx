@@ -112,7 +112,7 @@ export function Composer({
   onCompact?: () => void;
   /** Start a fresh session from this chat's transcript (the rotation offer); absent where the pane does not offer it. */
   onRotate?: () => void;
-  onAnswer: (requestId: string, answer: InteractionAnswer) => Promise<void>;
+  onAnswer: (requestId: string, answer: InteractionAnswer, denialReason?: string) => Promise<void>;
   onConfig: (patch: ConfigPatch) => Promise<void>;
   onRefreshModels: () => Promise<void>;
   onHandoff: (harnessId: string, draft: string) => Promise<void>;
@@ -816,9 +816,9 @@ export function Composer({
           busy={answering}
           stopping={stopping}
           onStop={onStop}
-          onAnswer={async (request, answer) => {
+          onAnswer={async (request, answer, denialReason) => {
             setAnswering(true);
-            await onAnswer(request.id, answer);
+            await onAnswer(request.id, answer, denialReason);
             setAnswering(false);
             setFolded(foldRequest(request, answer));
           }}

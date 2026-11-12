@@ -251,6 +251,19 @@ describe("atui", () => {
     await ui.until("Chose: Only text size");
   }, 30_000);
 
+  it("offers an optional explanation when denying an approval", async () => {
+    ui = await mount(path.join(server.root, "beta"));
+    await ui.type("please ask first");
+    ui.keys.pressEnter();
+    await ui.until("Waiting for approval");
+    ui.keys.pressKey("2");
+    await ui.until("Reason for denial (optional)");
+    await ui.type("Keep the file unchanged.");
+    ui.keys.pressEnter();
+    await idle(ui);
+    expect(ui.app.chat()?.items.find((item) => item.kind === "request" && item.outcome === "Denied")).toMatchObject({ denialReason: "Keep the file unchanged." });
+  }, 30_000);
+
   it("lists commands on /, completes with Tab, and runs the palette and the model picker", async () => {
     ui = await mount(path.join(server.root, "alpha"));
     await ui.type("hello");

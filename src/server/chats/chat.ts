@@ -45,6 +45,7 @@ import type { HarnessAdapter, HarnessEvent, HarnessUsage, LiveChat } from "../ha
 import type { ChatCheckpoints, CheckpointHost } from "../checkpoints.js";
 import { REWIND_COMMAND } from "../harness/rewind-extension.js";
 import { CONTINUE_TEXT } from "../../shared/limit-stop.js";
+import { isDenial } from "../../shared/approval.js";
 import { noteChat, noteSessionOfChat } from "../overview-events.js";
 
 export class ChatError extends Error {
@@ -284,7 +285,7 @@ class EventReducer {
   /** Sends waiting to be echoed that are not the user's own (delegation briefs, wakes); each marks
    *  the next user_message as agent-authored. Bounded so a lost echo cannot mark far later ones. */
   pendingAuthored = 0;
-  /** The accepted send awaiting its echo: a steer is a mid-run note, a drained follow-up a new turn. */
+  /** A steer accepted during this run opens an interjection; a follow-up drained into a new turn does not. */
   expectedMessage?: { text: string; mode: SendMode };
   private currentAssistant: string | null = null;
   private currentModel: string | undefined;
@@ -354,11 +355,10 @@ class EventReducer {
     switch (event.type) {
       case "user_message": {
         this.finishStreaming();
-        // A user_message while a run is going and its prompt has already echoed is an
-        // interjection (a steer, or a follow-up draining); the chat draws it as a divider row.
+        // A steer echoes mid-run as an interjection. A queued follow-up opens a fresh prompt once the harness drains it.
         const interjected = this.runPromptSeen && this.expectedMessage?.mode === "steer" && !event.command;
-        if (!event.command) this.expectedMessage = undefined;
         this.runPromptSeen = true;
+        if (!event.command) this.expectedMessage = undefined;
         // The first pending non-user mark names this one (a delegation brief, a wake report).
         const authored = !event.command && this.pendingAuthored > 0;
         if (authored) this.pendingAuthored -= 1;
@@ -678,12 +678,12 @@ class EventReducer {
     return [...this.pending.values()];
   }
 
-  resolveRequest(requestId: string, outcome: string): void {
+  resolveRequest(requestId: string, outcome: string, denialReason?: string): void {
     const request = this.pending.get(requestId);
     if (!request) return;
     this.pending.delete(requestId);
-    this.put({ kind: "request", id: `r:${requestId}`, request, outcome });
-    this.emit({ type: "request_resolved", requestId, outcome });
+    this.put({ kind: "request", id: `r:${requestId}`, request, outcome, ...(denialReason ? { denialReason } : {}) });
+    this.emit({ type: "request_resolved", requestId, outcome, ...(denialReason ? { denialReason } : {}) });
   }
 
   private firstUserText(): string | null {
@@ -826,7 +826,8 @@ export class Chat implements CheckpointHost {
    * Installed by the orchestrator the first time this chat delegates; absent otherwise.
    */
   delegated?: () => DelegatedTaskView[];
-
+  /** A denial with a corrective explanation. The orchestrator delivers this only to its own workers. */
+  onDenied?: (chat: Chat, request: InteractionRequest, reason: string) => void;
   private readonly log = new EventLog();
   private readonly timing = new Timing();
   private readonly reducer: EventReducer;
@@ -1484,10 +1485,11 @@ export class Chat implements CheckpointHost {
     return { run, items: historyToItems(messages) };
   }
 
-  answer(requestId: string, answer: InteractionAnswer): string {
+  answer(requestId: string, answer: InteractionAnswer, denialReason?: string): string {
     this.assertOpen();
     const request = this.reducer.pendingRequest(requestId);
     if (!request) throw new ChatError(409, "request_resolved", "This request was already answered or cancelled");
+    if (denialReason && !isDenial(request, answer)) throw new ChatError(400, "bad_denial_reason", "A reason belongs only with this approval's Deny answer");
     const outcome = describeAnswer(request, answer);
     // Synchronous check-deliver-resolve: the first answer wins, later ones see 409.
     const delivered = this.live.answer(requestId, answer);
@@ -1495,7 +1497,8 @@ export class Chat implements CheckpointHost {
       this.reducer.resolveRequest(requestId, "Cancelled");
       throw new ChatError(409, "request_resolved", "The harness no longer waits for this request");
     }
-    this.reducer.resolveRequest(requestId, outcome);
+    this.reducer.resolveRequest(requestId, outcome, denialReason);
+    if (denialReason) this.onDenied?.(this, request, denialReason);
     return outcome;
   }
 

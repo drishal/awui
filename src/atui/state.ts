@@ -556,11 +556,11 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     server.call(`/api/chats/${c.chatId}/abort`, { body: {} }).catch(fail);
   };
 
-  const answer = async (requestId: string, a: InteractionAnswer) => {
+  const answer = async (requestId: string, a: InteractionAnswer, denialReason?: string) => {
     const c = chat();
     if (!c) return;
     try {
-      await server.call(`/api/chats/${c.chatId}/requests/${encodeURIComponent(requestId)}`, { body: { answer: a } });
+      await server.call(`/api/chats/${c.chatId}/requests/${encodeURIComponent(requestId)}`, { body: { answer: a, ...(denialReason ? { denialReason } : {}) } });
     } catch (error) {
       if (error instanceof ServerError && error.status === 409) {
         setChat((prev) => (prev ? { ...prev, pending: prev.pending.filter((p) => p.id !== requestId) } : prev));

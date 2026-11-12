@@ -221,7 +221,7 @@ export interface BotEventSink {
   onStatus(status: "running" | "done" | "failed" | "stopped"): void;
   /** A request the bot's harness raised; the room surfaces it and only the user answers. */
   onRequest(request: InteractionRequest): void;
-  onRequestResolved(requestId: string, outcome: string): void;
+  onRequestResolved(requestId: string, outcome: string, denialReason?: string): void;
   /** The harness assigned the native session: persist the reference before anything else (a rejected promise fails the invocation). */
   onNativeSession(native: { harnessId: string; nativeId: string }): void | Promise<void>;
 }
@@ -266,7 +266,7 @@ export interface BotSessionPool {
   /** Drop one membership's live chat only (Reset session, member removal). Native files stay. */
   disposeMember(roomId: string, memberId: string): Promise<void>;
   /** Answer a pending harness request of this room; `requestId` is the namespaced `<invocationId>:<requestId>` the room carries. Returns the outcome wording. */
-  answer(roomId: string, requestId: string, answer: import("../../shared/protocol.js").InteractionAnswer): string;
+  answer(roomId: string, requestId: string, answer: InteractionAnswer, denialReason?: string): string;
 }
 
 // ---- the manager (manager.ts implements; what app.ts, index.ts, and tests see) --
@@ -315,7 +315,7 @@ export interface BoardManager {
   stop(roomId: string): Promise<void>;
   cancelQueued(roomId: string, turnId: string): Promise<RoomTurnView[]>;
   /** `requestId` is the namespaced `<invocationId>:<requestId>` the room pending list carries. */
-  answerRequest(roomId: string, requestId: string, answer: InteractionAnswer): Promise<void>;
+  answerRequest(roomId: string, requestId: string, answer: InteractionAnswer, denialReason?: string): Promise<void>;
   roomHistory(roomId: string, query: { before?: number; limit?: number }): Promise<RoomRecord[]>;
   roomUsage(roomId: string): Promise<BoardUsage & { byMember: Array<{ memberId: string; totals: BoardUsage }> }>;
   /** The whole room as Markdown, nested consultations included, from records only. */

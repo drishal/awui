@@ -43,7 +43,7 @@ export function RoomView({
   /** The room workspace's path, for tool rows and file links (the wire carries only its name). */
   workspacePath: string;
   onSend: (text: string, mentions: string[], clientId: string) => Promise<boolean>;
-  onAnswer: (requestId: string, answer: InteractionAnswer) => void;
+  onAnswer: (requestId: string, answer: InteractionAnswer, denialReason?: string) => void;
   onStop: () => void;
   onCancelQueued: (turnId: string) => void;
   onLoadOlder: () => Promise<void>;

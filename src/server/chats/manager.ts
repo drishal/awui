@@ -76,6 +76,8 @@ export class ChatManager {
    */
   delegatedSession?: (harnessId: string, nativeId: string) => boolean;
   tasksFor?: (chat: Chat) => DelegatedTaskView[];
+  /** A denial explanation belongs to this manager's delegated worker, not an arbitrary chat. */
+  onDenied?: Chat["onDenied"];
   /**
    * A chat was registered (opened, created, or resumed). The orchestrator delivers reports still
    * owed to a parent here: they were written while it was closed, or by the process before this one.
@@ -176,6 +178,7 @@ export class ChatManager {
     chat.onDisposed = (c) => this.forget(c);
     chat.onLimits = (account) => this.onLimits?.(account);
     chat.onNews = (c, kind, body, request) => this.onNews?.(c, kind, body, request);
+    chat.onDenied = (c, request, reason) => this.onDenied?.(c, request, reason);
     chat.onRunStart = (c) => this.onRunStart?.(c);
     chat.onChainHandoff = async (c, step, rest) => {
       if (!this.onChainHandoff) throw new Error("Handoffs cannot run here");

@@ -46,8 +46,9 @@ export interface DockCx {
   editing: number | null;
   /** A queued message being edited: Enter replaces it in the harness's queue. */
   queueEdit: { field: "steering" | "followUp"; index: number } | null;
-  /** The text typed for a question that wants text. */
+  /** The text typed for a question that wants text, or an optional denial reason. */
   answer: Draft;
+  denying: boolean;
   /** The C-x prefix is waiting for its key. */
   leader: boolean;
   /** The todo card is open (it starts open, as the web UI's does). */
@@ -59,6 +60,7 @@ export interface DockCx {
     /** The context chip: the window's fill and the session's spend. */
     openContext: () => void;
     answer: (request: InteractionRequest, index: number) => void;
+    submitDenial: (request: InteractionRequest) => void;
     submitText: (request: InteractionRequest) => void;
     cancel: (request: InteractionRequest) => void;
     pickHarness: () => void;
@@ -171,9 +173,9 @@ function approvalNode(r: InteractionRequest, shape: AskShape, cx: DockCx): Node 
 
 function requestNode(r: InteractionRequest, cx: DockCx): Node {
   const shape = askShape(r);
-  if (shape) return approvalNode(r, shape, cx);
+  if (shape && !cx.denying) return approvalNode(r, shape, cx);
   const options = optionsOf(r);
-  const text = r.kind === "input" || r.kind === "editor";
+  const text = cx.denying || r.kind === "input" || r.kind === "editor";
   const buttons = options.map((o, i) =>
     html.button(
       {
@@ -186,7 +188,10 @@ function requestNode(r: InteractionRequest, cx: DockCx): Node {
       o.label,
     ),
   );
-  if (text) {
+  if (cx.denying) {
+    buttons.length = 0;
+    buttons.push(html.button({ key: "deny", class: "answer deny", text: "Deny with reason ⏎", onClick: () => cx.on.submitDenial(r) }));
+  } else if (text) {
     buttons.push(html.button({ key: "ok", class: "answer primary", text: "Send ⏎", onClick: () => cx.on.submitText(r) }));
   }
   // An approval's Esc is its Deny, already a button; anything else can be skipped.
@@ -209,7 +214,7 @@ function requestNode(r: InteractionRequest, cx: DockCx): Node {
           text: cx.answer.text,
           cursor: cx.answer.cursor,
           ...(cx.answer.anchor !== null ? { anchor: cx.answer.anchor } : {}),
-          placeholder: r.placeholder ?? "Your answer",
+          placeholder: cx.denying ? "Reason for denial (optional)" : (r.placeholder ?? "Your answer"),
           onFocus: cx.on.focusAnswer,
           onEdit: cx.on.editAnswer,
         })

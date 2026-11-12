@@ -91,6 +91,17 @@
   flex: 1;
 }
 
+.approval-denial-reason {
+  margin: 10px 0;
+}
+
+.approval-denial-reason .input {
+  width: 100%;
+  min-height: 48px;
+  resize: vertical;
+  font-size: var(--chat-small);
+}
+
 /* Stop stays apart from the answer, on the left, but drawn as a button: as bare red text beside a bordered Deny and a
    filled Approve it read as a status label. Its outline takes the danger hue faintly, so it still yields to them. */
 .approval-actions .btn-danger-text {

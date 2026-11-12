@@ -378,7 +378,9 @@ function RequestRow({ item }: { item: RequestItem }) {
         }
         {...(tone ? { tone } : {})}
       >
-        <pre className="thought-body">{[item.request.title, item.request.message].filter(Boolean).join("\n\n")}</pre>
+        <pre className="thought-body">
+          {[item.request.title, item.request.message, item.denialReason ? `Denial reason: ${item.denialReason}` : undefined].filter(Boolean).join("\n\n")}
+        </pre>
       </DisclosureRow>
     </div>
   );

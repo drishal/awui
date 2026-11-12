@@ -19,3 +19,11 @@ export function approvalAnswers(r: InteractionRequest): { approve: InteractionAn
   const deny = r.options?.find((o) => o.toLowerCase() === "deny") ?? "Deny";
   return { approve: { kind: "select", value: approve }, deny: { kind: "select", value: deny } };
 }
+
+/** Whether an answer is the request's explicit Deny, rather than a cancel or another option. */
+export function isDenial(request: InteractionRequest, answer: InteractionAnswer): boolean {
+  const deny = approvalAnswers(request)?.deny;
+  if (!deny) return false;
+  if (answer.kind === "confirm") return deny.kind === "confirm" && !answer.confirmed;
+  return answer.kind === "select" && deny.kind === "select" && answer.value === deny.value;
+}

@@ -242,9 +242,9 @@ export function App() {
       return false;
     }
   };
-  const answerInRoom = (requestId: string, answer: InteractionAnswer) => {
+  const answerInRoom = (requestId: string, answer: InteractionAnswer, denialReason?: string) => {
     if (!room.roomId) return;
-    postRoomAnswer(room.roomId, requestId, answer).catch((e: unknown) => fail(e));
+    postRoomAnswer(room.roomId, requestId, answer, denialReason).catch((e: unknown) => fail(e));
   };
   const stopRoom = () => {
     if (!room.roomId) return;
@@ -1610,10 +1610,10 @@ export function App() {
       fail(e);
     }
   };
-  const answer = async (requestId: string, a: InteractionAnswer) => {
+  const answer = async (requestId: string, a: InteractionAnswer, denialReason?: string) => {
     if (!chat) return;
     try {
-      await api(`/api/chats/${chat.chatId}/requests/${encodeURIComponent(requestId)}`, { body: { answer: a } });
+      await api(`/api/chats/${chat.chatId}/requests/${encodeURIComponent(requestId)}`, { body: { answer: a, ...(denialReason ? { denialReason } : {}) } });
     } catch (e) {
       // 409 = already resolved (another client answered): drop the card and say
       // so quietly. Any other failure may still be pending: keep the card.

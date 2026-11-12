@@ -487,7 +487,41 @@ export class Orchestrator {
     return this.delegateOutput(task);
   }
 
-  // ---- the watcher --------------------------------------------------------
+  /** Which worker is being stopped and re-prompted for a denial; its intermediate idle is not a result. */
+  private readonly correcting = new Set<string>();
+
+  /** An explained denial becomes a fresh worker turn, never an edit to the harness's request or transcript. */
+  denied(chat: Chat, request: InteractionRequest, reason: string): void {
+    const task = this.tasks.find((candidate) => candidate.state !== "result_available" && this.startedFrom(candidate, chat));
+    // An explanation is always kept on the request's record; only live workers get an automatic corrective run.
+    if (!task || task.state === "result_available") return;
+    const title = request.title.split("\n")[0]?.slice(0, 200) ?? "this request";
+    const text = `The person denied “${title}” with this correction. Re-plan and retry only within the approved scope; otherwise explain what blocks you.\n\n${reason}`;
+    this.correcting.add(task.id);
+    task.state = "working";
+    task.asking = null;
+    this.changed(task);
+    void Promise.resolve().then(async () => {
+      // Outside the answer event: a harness may finish synchronously and finish the old task otherwise.
+      let sent = false;
+      try {
+        // Waits for the harness's settled event, then prompts. The marker keeps that intermediate idle internal.
+        await chat.send(text, "stopAndSend", [], { origin: "agent" });
+        sent = true;
+      } catch (error) {
+        chat.apply({ type: "notice", level: "error", text: `Could not deliver the denial correction: ${errorMessage(error)}`, ambient: true });
+        this.deps.log(`orchestration: could not deliver a denial correction: ${errorMessage(error)}`);
+      } finally {
+        this.correcting.delete(task.id);
+        // A failure leaves the worker readable, not spinning for ever or claiming the requested re-plan happened.
+        if (!sent && chat.status === "idle" && task.state !== "result_available") void this.finish(task, "failed", "The denial correction could not be delivered to the worker");
+        // A quick harness can emit settled before send's promise resolves; reconcile that settle now.
+        if (sent && chat.status === "idle" && task.state !== "result_available") {
+          await this.onStatus(task, chat, "idle").catch((error: unknown) => this.deps.log(`orchestration: could not settle corrected task: ${errorMessage(error)}`));
+        }
+      }
+    });
+  }
 
   private watch(task: StoredTask, child: Chat): void {
     // The wall clock starts with the watch and restarts with a revived task: the child is at work.
@@ -500,6 +534,7 @@ export class Orchestrator {
         if (task.generation !== generation) return;
         switch (event.type) {
           case "status":
+            if (event.status === "idle" && this.correcting.has(task.id)) return;
             void this.onStatus(task, child, event.status);
             return;
           case "request":

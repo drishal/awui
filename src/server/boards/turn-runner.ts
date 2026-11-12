@@ -41,7 +41,7 @@ export interface TurnRunnerHost {
   endLiveRun(recordId: string): void;
   notify(kind: "done" | "error" | "ask", title: string, body: string, request?: InteractionRequest): void;
   addPending(request: RoomPendingRequest): void;
-  removePending(requestId: string, outcome: string): void;
+  removePending(requestId: string, outcome: string, denialReason?: string): void;
   pendingCount(): number;
   /** The room's pending requests as [id, request] pairs: a settled run's are pruned by its invocation. */
   pendingEntries(): Array<[string, RoomPendingRequest]>;
@@ -170,8 +170,8 @@ export class TurnRunner {
         void host.updateTurn("waiting_for_user");
         host.notify("ask", host.room.name, `@${args.member.handle} asks: ${request.title}`, request);
       },
-      onRequestResolved: (requestId, outcome) => {
-        host.removePending(requestId, outcome);
+      onRequestResolved: (requestId, outcome, denialReason) => {
+        host.removePending(requestId, outcome, denialReason);
         if (host.pendingCount() === 0) void host.updateTurn("running");
       },
       onNativeSession: (native) => host.persistNative(args.member.id, native),

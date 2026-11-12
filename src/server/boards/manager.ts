@@ -937,9 +937,9 @@ export class RoomManager implements BoardManager {
         pendingForRoom().set(request.id, request);
         manager.events.emit(room.id, { type: "request", request });
       },
-      removePending: (requestId, outcome) => {
+      removePending: (requestId, outcome, denialReason) => {
         pendingForRoom().delete(requestId);
-        manager.events.emit(room.id, { type: "request_resolved", requestId, outcome });
+        manager.events.emit(room.id, { type: "request_resolved", requestId, outcome, ...(denialReason ? { denialReason } : {}) });
       },
       pendingCount: () => manager.pending.get(room.id)?.size ?? 0,
       pendingEntries: () => [...(manager.pending.get(room.id)?.entries() ?? [])],
@@ -1003,11 +1003,11 @@ export class RoomManager implements BoardManager {
     return queued;
   }
 
-  async answerRequest(roomId: string, requestId: string, answer: InteractionAnswer): Promise<void> {
+  async answerRequest(roomId: string, requestId: string, answer: InteractionAnswer, denialReason?: string): Promise<void> {
     this.requireRoom(roomId);
     const pending = this.pending.get(roomId)?.get(requestId);
     if (!pending) throw new ChatError(409, "request_resolved", "That request was already answered or cancelled");
-    this.pool.answer(roomId, requestId, answer);
+    this.pool.answer(roomId, requestId, answer, denialReason);
   }
 
   // ---- reading --------------------------------------------------------------

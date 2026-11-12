@@ -372,7 +372,10 @@ export function createApp(deps: AppDeps) {
   manager.delegatedSession = (harnessId, nativeId) => orchestration.isDelegatedSession(harnessId, nativeId);
   manager.tasksFor = (chat) => orchestration.tasksFor(chat);
   // A parent that was closed when a report was written (or when the last process died) gets it here.
-  manager.onRegistered = (chat) => void orchestration.registered(chat).catch((error: unknown) => log(`orchestration: could not deliver a report: ${errorMessage(error)}`));
+  manager.onRegistered = (chat) => {
+    void orchestration.registered(chat).catch((error: unknown) => log(`orchestration: could not deliver a report: ${errorMessage(error)}`));
+  };
+  manager.onDenied = (chat, request, reason) => orchestration.denied(chat, request, reason);
   void orchestration.start().catch((error: unknown) => log(`orchestration: could not load task records: ${errorMessage(error)}`));
   // What this process serves as the web bundle: a page compares it with the build
   // it loaded to notice a deploy (the binary embeds the bundle; a source run has
@@ -1614,8 +1617,8 @@ export function createApp(deps: AppDeps) {
     res.json({ queued: await board().cancelQueued(req.params.id, req.params.turnId) });
   });
   app.post("/api/rooms/:id/requests/:requestId/answer", async (req, res) => {
-    const { answer } = body(roomAnswerSchema, req);
-    await board().answerRequest(req.params.id, req.params.requestId, answer);
+    const { answer, denialReason } = body(roomAnswerSchema, req);
+    await board().answerRequest(req.params.id, req.params.requestId, answer, denialReason);
     res.json({ ok: true });
   });
   app.get("/api/rooms/:id/history", async (req, res) => {
@@ -2329,8 +2332,8 @@ export function createApp(deps: AppDeps) {
 
   app.post("/api/chats/:id/requests/:requestId", async (req, res) => {
     const chat = manager.get(req.params.id);
-    const { answer } = body(answerSchema, req);
-    const outcome = chat.answer(req.params.requestId, answer);
+    const { answer, denialReason } = body(answerSchema, req);
+    const outcome = chat.answer(req.params.requestId, answer, denialReason);
     res.json({ outcome });
   });
 

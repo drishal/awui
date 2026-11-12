@@ -197,7 +197,7 @@ export class BotSessionPoolImpl implements BotSessionPool {
           sink.onRequest({ ...event.request, id: `${req.invocationId}:${event.request.id}` });
           return;
         case "request_resolved":
-          sink.onRequestResolved(`${req.invocationId}:${event.requestId}`, event.outcome);
+          sink.onRequestResolved(`${req.invocationId}:${event.requestId}`, event.outcome, event.denialReason);
           return;
         case "title":
           if (event.sessionId) void persistNative().catch((error: unknown) => this.log(`boards: could not record a native session: ${errorMessage(error)}`));
@@ -327,14 +327,14 @@ export class BotSessionPoolImpl implements BotSessionPool {
     for (const [invocationId, live] of this.live) if (live.roomId === roomId && live.memberId === memberId) this.live.delete(invocationId);
   }
 
-  answer(roomId: string, requestId: string, answer: InteractionAnswer): string {
+  answer(roomId: string, requestId: string, answer: InteractionAnswer, denialReason?: string): string {
     const sep = requestId.indexOf(":");
     if (sep <= 0) throw new ChatError(404, "no_request", "No such request in this room");
     const invocationId = requestId.slice(0, sep);
     const raw = requestId.slice(sep + 1);
     const live = this.live.get(invocationId);
     if (!live || live.roomId !== roomId) throw new ChatError(409, "request_not_live", "That bot run is no longer waiting for an answer");
-    return live.chat.answer(raw, answer);
+    return live.chat.answer(raw, answer, denialReason);
   }
 
   /** Whether a membership has a run in flight right now (CRUD refuses changes then). */

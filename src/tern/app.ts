@@ -24,6 +24,7 @@ import type { Atui } from "../atui/state.js";
 import { accentOf } from "../atui/theme.js";
 import { applyMention, ghostCompletion, mentionAt, notifySequence } from "../atui/assist.js";
 import { optionsOf } from "../atui/requests.js";
+import { isDenial } from "../shared/approval.js";
 import { applyEdit, draftState, editKey, insert, lineStep, moveTo, setText, undo as undoDraft, type DraftState } from "./draft.js";
 import { conversation, firstFailedCall, headNode, PAGE_ID, PAGE_KEY, plural, TURN_WINDOW } from "./view.js";
 import { ANSWER_ID, dock, EDITOR_ID, inputReady } from "./dock.js";
@@ -83,6 +84,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const [draft, setDraft] = createSignal<DraftState>(draftState());
     const [typeahead, setTypeahead] = createSignal(true);
     const [answer, setAnswer] = createSignal<DraftState>(draftState());
+    const [denying, setDenying] = createSignal(false);
     const [focus, setFocus] = createSignal<"editor" | "answer">("editor");
     const [menu, setMenu] = createSignal<Menu | null>(null);
     const [caretIndex, setCaretIndex] = createSignal(0);
@@ -676,7 +678,23 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
 
     const answerRequest = (r: InteractionRequest, index: number) => {
       const o = optionsOf(r)[index];
-      if (o) void app.answer(r.id, o.answer);
+      if (!o) return;
+      if (isDenial(r, o.answer)) {
+        if (!denying()) setAnswer(draftState());
+        setDenying(true);
+        setFocus("answer");
+        return;
+      }
+      void app.answer(r.id, o.answer);
+    };
+    const submitDenial = (r: InteractionRequest) => {
+      const deny = optionsOf(r).find((o) => isDenial(r, o.answer));
+      if (!deny) return;
+      const reason = answer().draft.text.trim();
+      setDenying(false);
+      setAnswer(draftState());
+      setFocus("editor");
+      void app.answer(r.id, deny.answer, reason || undefined);
     };
     const submitText = (r: InteractionRequest) => {
       const value = answer().draft.text;
@@ -685,6 +703,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       void app.answer(r.id, r.kind === "editor" ? { kind: "editor", value } : { kind: "input", value });
     };
     const cancelRequest = (r: InteractionRequest) => {
+      setDenying(false);
       setAnswer(draftState());
       setFocus("editor");
       const opts = optionsOf(r);
@@ -706,6 +725,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         () => {
           const r = app.chat()?.pending[0];
           const wantsText = r && (r.kind === "input" || r.kind === "editor");
+          setDenying(false);
           setAnswer(draftState(wantsText && r.prefill ? { text: r.prefill, cursor: r.prefill.length, anchor: null } : undefined));
           setFocus(wantsText ? "answer" : "editor");
         },
@@ -875,6 +895,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         editing: app.editing()?.through ?? null,
         queueEdit: queueEdit(),
         answer: answer().draft,
+        denying: denying(),
         leader: leader(),
         todosOpen: todosOpen(),
         on: {
@@ -883,6 +904,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           stop: app.stop,
           openContext,
           answer: answerRequest,
+          submitDenial,
           submitText,
           cancel: cancelRequest,
           pickHarness: () => openMenu("harness"),
@@ -1129,6 +1151,17 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
 
     const onRequestKey = (key: Key, r: InteractionRequest): boolean => {
       const textual = r.kind === "input" || r.kind === "editor";
+      if (denying() && focus() === "answer") {
+        if (key.name === "enter" && !key.shift) return submitDenial(r), true;
+        if (key.name === "escape") {
+          setDenying(false);
+          setAnswer(draftState());
+          setFocus("editor");
+          return true;
+        }
+        if (key.name === "tab") return setFocus("editor"), true;
+        return false;
+      }
       if (textual && focus() === "answer") {
         if (key.name === "enter" && !key.shift && r.kind === "input") return submitText(r), true;
         if (key.name === "enter" && (key.ctrl || key.meta)) return submitText(r), true;

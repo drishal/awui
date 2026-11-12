@@ -710,6 +710,8 @@ export interface RequestItem {
   id: string;
   request: InteractionRequest;
   outcome?: string;
+  /** The person's explanation of a denial, bounded like the answer route (at most 4 000 chars). */
+  denialReason?: string;
   at?: number;
 }
 
@@ -1084,7 +1086,7 @@ export type ChatEvent =
   | { type: "config"; config: ChatConfig }
   | { type: "title"; title: string; sessionId: string | null }
   | { type: "request"; request: InteractionRequest }
-  | { type: "request_resolved"; requestId: string; outcome: string }
+  | { type: "request_resolved"; requestId: string; outcome: string; denialReason?: string }
   | { type: "extension_status"; key: string; text: string | null }
   | { type: "context"; context: ContextUsage | null }
   | { type: "viewers"; viewers: number }
@@ -1724,7 +1726,10 @@ export interface SessionMarkState {
   unread?: true;
 }
 export const compactSchema = z.object({ instructions: z.string().max(10_000).optional() });
-export const answerSchema = z.object({ answer: interactionAnswerSchema });
+/** A denial may explain the correction the agent should make. It is never a second implicit approval. */
+export const MAX_DENIAL_REASON_CHARS = 4_000;
+export const answerSchema = z.object({ answer: interactionAnswerSchema, denialReason: z.string().trim().min(1).max(MAX_DENIAL_REASON_CHARS).optional() }).strict();
+export const roomAnswerSchema = answerSchema;
 
 /**
  * One orchestration tool call from a chat's harness child: the tool's name and the
@@ -2076,7 +2081,7 @@ export type RoomEvent =
   | { type: "turn"; turn: RoomTurnView }
   | { type: "queue"; queued: RoomTurnView[] }
   | { type: "request"; request: RoomPendingRequest }
-  | { type: "request_resolved"; requestId: string; outcome: string }
+  | { type: "request_resolved"; requestId: string; outcome: string; denialReason?: string }
   | { type: "usage"; usage: BoardUsage }
   | { type: "room"; room: RoomInfo }
   | { type: "disposed"; reason: string };
@@ -2184,5 +2189,4 @@ export const roomMessageSchema = z.object({
   /** Idempotency key: a network retry must not post the user message twice. */
   clientId: z.string().min(1).max(128).optional(),
 }).strict();
-export const roomAnswerSchema = z.object({ answer: interactionAnswerSchema }).strict();
 export const roomHistoryQuery = z.object({ before: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(BOARD_HISTORY_PAGE).optional() });

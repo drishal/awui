@@ -117,8 +117,8 @@ export function cancelQueuedTurn(roomId: string, turnId: string): Promise<{ queu
   return api<{ queued: RoomTurnView[] }>(`/api/rooms/${enc(roomId)}/queue/${enc(turnId)}`, { method: "DELETE" });
 }
 
-export function answerRoomRequest(roomId: string, requestId: string, answer: InteractionAnswer): Promise<unknown> {
-  return api<unknown>(`/api/rooms/${enc(roomId)}/requests/${enc(requestId)}/answer`, { method: "POST", body: { answer } });
+export function answerRoomRequest(roomId: string, requestId: string, answer: InteractionAnswer, denialReason?: string): Promise<unknown> {
+  return api<unknown>(`/api/rooms/${enc(roomId)}/requests/${enc(requestId)}/answer`, { method: "POST", body: { answer, ...(denialReason ? { denialReason } : {}) } });
 }
 
 export function fetchHistory(roomId: string, before: number | null, limit = BOARD_HISTORY_PAGE): Promise<{ records: RoomRecord[] }> {
