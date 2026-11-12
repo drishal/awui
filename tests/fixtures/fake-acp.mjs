@@ -12,7 +12,8 @@
 //   "plan"    a plan update                     "usage" a usage_update
 //   "title"   a session_info_update             "commands" available_commands_update
 //   "config"  a config_option_update            "unknown" an update kind awui does not know
-//   "crash"   exit mid-run
+//   "crash"   exit mid-run                        "manyoptions" a permission card past awui's bounds
+//   "hugeframe" one stdout line past the bound
 // Every prompt, session handshake, config value, auth method, permission answer,
 // $FAKE_ACP_DIE_ON_INIT prints that text on stderr and exits 7 at `initialize`: an agent that
 // says something on stderr and dies, which a failure message must not repeat.
@@ -121,6 +122,27 @@ async function turn(id, text) {
       status: "completed",
       content: [{ type: "diff", path: "/tmp/notes.txt", oldText: "before\n", newText: "after\n" }],
     });
+  }
+
+  // A permission request past awui's bounds: 20 options, 300 characters in a title and in a name.
+  if (text.includes("manyoptions")) {
+    const toolCallId = `call-${++toolSeq}`;
+    const long = (lead) => `${lead} ${"x".repeat(300)}`;
+    send({ sessionUpdate: "tool_call", toolCallId, title: long("Pick one"), name: "pick_one", kind: "execute", status: "pending", rawInput: { step: "one" } });
+    const answer = await askClient("session/request_permission", {
+      sessionId,
+      toolCall: { toolCallId, title: long("Pick one") },
+      options: Array.from({ length: 20 }, (_, i) => ({ optionId: `option-${i}`, name: long(`Option ${i}`), kind: "allow_once" })),
+    });
+    record("permissionAnswers", answer?.result ?? answer);
+    respond(id, { stopReason: "end_turn" });
+    return;
+  }
+
+  // A line no ACP message can be: the client must stop reading and fail the request in flight.
+  if (text.includes("hugeframe")) {
+    process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "x".repeat(4 * 1024 * 1024 + 1) } } } })}\n}`);
+    return;
   }
 
   if (text.includes("ask")) {

@@ -148,6 +148,33 @@ describe("the ACP adapter (scripted agent)", () => {
     expect(toolItems(chat)[0]).toMatchObject({ status: "done", output: "build removed" });
   });
 
+  // A card is drawn from the agent's own words, so they are bounded, and the answer still names the
+  // option by its own id: the name is only what the user reads.
+  it("bounds a permission request's options and wording, and answers with the chosen option's id", async () => {
+    const { chat } = await openChat();
+    await chat.send("manyoptions please", "normal");
+    await until(() => chat.snapshot().pending.length === 1);
+    const card = chat.snapshot().pending[0];
+    const options = card?.kind === "select" ? (card.options ?? []) : [];
+    expect(options).toHaveLength(16);
+    expect(options.every((name) => name.length <= 200)).toBe(true);
+    expect(card?.kind === "select" ? card.title.length : 0).toBeLessThanOrEqual(200);
+    chat.answer(card?.id as string, { kind: "select", value: options[15] as string });
+    await until(() => chat.status === "idle" && recorded("permissionAnswers").length === 1);
+    expect(recorded("permissionAnswers")[0]).toEqual({ outcome: { outcome: "selected", optionId: "option-15" } });
+  });
+
+  // A line past the bound is no ACP message: the request in flight fails naming the bound, and the
+  // child is stopped rather than left writing into a pipe nobody reads.
+  it("fails a run whose child writes a line no ACP message can be", async () => {
+    const { chat } = await openChat();
+    await chat.send("hugeframe please", "normal");
+    await until(() => chat.snapshot().items.some((item) => item.kind === "notice"), 10_000);
+    const notice = chat.snapshot().items.find((item) => item.kind === "notice");
+    expect(notice?.kind === "notice" ? notice.text : "").toMatch(/longer than 4194304 characters/);
+    await until(() => liveAcpChildren() === 0);
+  });
+
   it("sends a refusal back as the agent's reject option, and the call shows as failed", async () => {
     const { chat } = await openChat();
     await chat.send("ask to run it", "normal");

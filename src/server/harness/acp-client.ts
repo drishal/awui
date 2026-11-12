@@ -5,10 +5,16 @@
 // command line, the app's own update vocabulary, its session files) stays in
 // each adapter.
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import readline from "node:readline";
 import { spawnHarness } from "../platform-win.js";
 import { isObj, type Obj } from "./agent-events.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
+
+
+/**
+ * One frame's longest allowed line: nothing ACP sends comes near it (a whole tool result rides in an
+ * update), and an agent that writes more is failing, not reporting.
+ */
+const MAX_FRAME_CHARS = 4 * 1024 * 1024;
 
 /**
  * The id a response frame answers, or null. A frame with `method` is a request
@@ -85,6 +91,8 @@ export class AcpClient {
   private readonly label: string;
   private readonly startLabel: string;
   private status: { code: number | null; signal: NodeJS.Signals | null } | null = null;
+  /** The child wrote a line no message of this protocol can be: it was stopped, and its stream is ignored. */
+  private tooLong = false;
   private readonly calls: PendingRequests<string>;
 
   constructor(private readonly options: AcpClientOptions) {
@@ -103,23 +111,27 @@ export class AcpClient {
     this.child = spawnHarness(options.command, options.args, { cwd: options.cwd, env: options.env, stdio: ["pipe", "pipe", "pipe"] });
     this.stderr = new StderrTail(this.child);
     track(this.child, options.key);
-    const rl = readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity });
-    rl.on("line", (line) => {
-      if (!line.trim()) return;
-      let frame: unknown;
-      try {
-        frame = JSON.parse(line);
-      } catch {
-        return;
+    // Split by hand rather than through `readline`, which buffers a line of any length: a frame past
+    // MAX_FRAME_CHARS is no ACP message, and buffering it would be the whole cost of reading it.
+    this.child.stdout.setEncoding("utf8");
+    let pending = "";
+    this.child.stdout.on("data", (chunk: string) => {
+      if (this.tooLong) return;
+      let start = 0;
+      for (;;) {
+        const at = chunk.indexOf("\n", start);
+        pending += chunk.slice(start, at < 0 ? chunk.length : at);
+        // Checked before the line is used: a chunk can carry the whole of one.
+        if (pending.length > MAX_FRAME_CHARS) {
+          this.failOnLongFrame();
+          return;
+        }
+        if (at < 0) return;
+        const line = pending;
+        pending = "";
+        start = at + 1;
+        if (line.trim()) this.readFrame(line);
       }
-      if (!isObj(frame)) return;
-      // The hook runs before any later line of this chunk is read: a response can
-      // change how the very next line must be handled.
-      if (this.calls.accept(frame)) {
-        options.onAnswered?.(frame);
-        return;
-      }
-      options.onFrame(frame);
     });
     this.child.stdin.on("error", () => undefined);
     const onExit = (detail: string) => {
@@ -137,6 +149,36 @@ export class AcpClient {
       this.status = { code, signal };
       onExit(`${this.label} exited (${signal ?? `code ${code}`})`);
     });
+  }
+
+  /** One line of the child's stdout: the response it answers, or a frame the adapter reads. */
+  private readFrame(line: string): void {
+    let frame: unknown;
+    try {
+      frame = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (!isObj(frame)) return;
+    // The hook runs before any later line of this chunk is read: a response can
+    // change how the very next line must be handled.
+    if (this.calls.accept(frame)) {
+      this.options.onAnswered?.(frame);
+      return;
+    }
+    this.options.onFrame(frame);
+  }
+
+  /**
+   * A child that writes a line past the bound is failing: its requests fail with a sentence naming
+   * the bound, and it is stopped. Nothing of the line is kept or repeated — the point of the bound
+   * is not to hold output that no protocol message could be.
+   */
+  private failOnLongFrame(): void {
+    if (this.tooLong) return;
+    this.tooLong = true;
+    this.calls.failAll(`${this.label} wrote a line longer than ${MAX_FRAME_CHARS} characters, which is no ACP message`);
+    void terminateChild(this.child).catch(() => undefined);
   }
 
   /**

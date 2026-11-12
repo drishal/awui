@@ -33,6 +33,9 @@ const MAX_UNKNOWN_NOTES = 5;
 const CLIENT_VERSION = embeddedVersion ?? "dev";
 /** ACP's protocol version this client speaks. */
 const PROTOCOL_VERSION = 1;
+/** A permission card shows at most this many of an agent's options, and no name or title longer than this. */
+const MAX_PERMISSION_OPTIONS = 16;
+const MAX_PERMISSION_TEXT = 200;
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -379,7 +382,8 @@ class AcpLiveChat implements LiveChat {
     const callId = str(toolCall.toolCallId);
     const options = (Array.isArray(params.options) ? params.options : [])
       .filter(isObj)
-      .map((option) => ({ optionId: str(option.optionId), name: str(option.name) || str(option.optionId) }))
+      .slice(0, MAX_PERMISSION_OPTIONS)
+      .map((option) => ({ optionId: str(option.optionId), name: oneLine(str(option.name) || str(option.optionId), MAX_PERMISSION_TEXT) }))
       .filter((option) => option.optionId);
     const requestId = `perm:${String(id)}`;
     if (options.length === 0) {
@@ -392,7 +396,9 @@ class AcpLiveChat implements LiveChat {
     const request: InteractionRequest = {
       id: requestId,
       kind: "select",
-      title: str(toolCall.title) || known?.name || "Allow this?",
+      // An agent's own wording, bounded: a card is drawn from it, and the id it answers with is
+      // the option's, not this name.
+      title: oneLine(str(toolCall.title) || known?.name || "Allow this?", MAX_PERMISSION_TEXT),
       message: inputLine(known?.args ?? toolCall.rawInput),
       // The agent's own words for its options; awui never renames them Approve/Deny.
       options: options.map((option) => option.name),
