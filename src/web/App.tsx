@@ -34,6 +34,7 @@ import type {
   ModelInfo,
   ProjectSession,
   PushNote,
+  RotateResult,
   SendMode,
   ServerSettings,
   ThemeChoice,
@@ -1570,6 +1571,16 @@ export function App() {
       fail(e);
     }
   };
+  /** A fresh session seeded from this chat's transcript (the rotation offer), opened beside as its own tab. */
+  const rotateChat = async () => {
+    if (!chat) return;
+    try {
+      showChat((await api<RotateResult>(`/api/chats/${chat.chatId}/rotate`, { body: {} })).snapshot, { newTab: true });
+    } catch (e) {
+      fail(e);
+    }
+  };
+
   const compact = async () => {
     setMenuOpen(false);
     if (!chat) return;
@@ -2438,6 +2449,7 @@ export function App() {
                   onRefreshModels={refreshModels}
                   onStop={stop}
                   onCompact={() => void compact()}
+                  onRotate={() => void rotateChat()}
                   onAnswer={answer}
                   onConfig={configure}
                   onHandoff={(id, draft) => handoffChat(id, draft)}

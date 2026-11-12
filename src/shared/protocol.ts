@@ -455,6 +455,14 @@ export interface ReviewSendResult {
   sent: number;
 }
 
+/**
+ * A rotation's answer: the fresh chat, ready to use. The old chat keeps running
+ * as it was (its own session file, untouched), so a client opens this one and
+ * leaves the other where it is.
+ */
+export interface RotateResult {
+  snapshot: ChatSnapshot;
+}
 /** Bounds for an agent-published HTML page (the harness's render tool). */
 export const HTML_RENDER_MIN_HEIGHT = 80;
 export const HTML_RENDER_MAX_HEIGHT = 2000;

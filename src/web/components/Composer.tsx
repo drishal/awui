@@ -35,7 +35,9 @@ import { CONTINUE_TEXT, limitStop } from "../../shared/limit-stop.js";
 import { LimitRecovery } from "./LimitRecovery.js";
 import { DirenvNote } from "./DirenvNote.js";
 import { ColdResumeHint } from "./ColdResumeHint.js";
+import { RotationHint } from "./RotationHint.js";
 import { COLD_RESUME_OFF_KEY, coldResumeHint, lastActivity } from "../cold-resume.js";
+import { ROTATION_OFF_KEY, chatRotation } from "../rotation.js";
 import { useDismiss, useLeave, useMediaQuery, useMorph, useNow } from "../hooks.js";
 import { composerFolded } from "../composer-fold.js";
 import { DirenvRow, GitPanel, GitRow } from "./GitStatusView.js";
@@ -87,6 +89,7 @@ export function Composer({
   onSend,
   onStop,
   onCompact,
+  onRotate,
   onAnswer,
   onConfig,
   onRefreshModels,
@@ -107,6 +110,8 @@ export function Composer({
   onStop: () => void;
   /** Compact this chat (the same route the palette's Compact context and /compact run); the cold-resume hint needs it. */
   onCompact?: () => void;
+  /** Start a fresh session from this chat's transcript (the rotation offer); absent where the pane does not offer it. */
+  onRotate?: () => void;
   onAnswer: (requestId: string, answer: InteractionAnswer) => Promise<void>;
   onConfig: (patch: ConfigPatch) => Promise<void>;
   onRefreshModels: () => Promise<void>;
@@ -238,6 +243,10 @@ export function Composer({
   // Cold resume (cold-resume.ts): offered when the chat sat idle past its prompt cache's expiry, never
   // run by itself. The minute tick is what shows it to a tab that has been sitting open.
   const [coldOff, setColdOff] = useState(() => load(COLD_RESUME_OFF_KEY, false));
+  // Rotation (rotation.ts): a fresh session seeded from this transcript once the context is nearly
+  // full. Offered only where the pane can open the new chat and the harness can seed one.
+  const [rotateOff, setRotateOff] = useState(() => load(ROTATION_OFF_KEY, false));
+  const rotate = onRotate ? chatRotation(chat, { off: rotateOff }) : null;
   const coldNow = useNow(!coldOff && caps.supportsCompact, 60_000);
   const cold = coldResumeHint({
     lastActivityAt: lastActivity(chat.items),
@@ -778,7 +787,18 @@ export function Composer({
         />
       ) : null}
       <DirenvNote chat={chat} />
-      {cold && onCompact && !busy && pending.length === 0 ? (
+      {rotate ? (
+        <RotationHint
+          hint={rotate}
+          busy={busy}
+          onRotate={() => onRotate?.()}
+          onDismiss={() => {
+            setRotateOff(true);
+            save(ROTATION_OFF_KEY, true);
+          }}
+        />
+      ) : null}
+      {cold && !rotate && onCompact && !busy && pending.length === 0 ? (
         <ColdResumeHint
           hint={cold}
           busy={busy}

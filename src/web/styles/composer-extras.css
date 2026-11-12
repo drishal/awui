@@ -113,9 +113,11 @@
   min-width: 12em;
 }
 
-/* Cold resume: the quiet frame the composer's .envrc note uses, without its warning colour: the
-   session is not broken, its prompt cache has simply gone cold, and compacting first is cheaper. */
-.cold-resume {
+/* Cold resume and rotation: the quiet frame the composer's .envrc note uses, without its warning
+   colour. Neither says the session is broken: one's prompt cache has gone cold and compacting
+   first is cheaper, the other's context window is nearly full and a fresh session is cheaper. */
+.cold-resume,
+.rotation-hint {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -130,7 +132,8 @@
   animation: rise-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.cold-resume-text {
+.cold-resume-text,
+.rotation-text {
   flex: 1;
   min-width: 12em;
   margin: 0;

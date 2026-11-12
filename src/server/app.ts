@@ -68,6 +68,7 @@ import {
   reanchorSchema,
   sendThreadsSchema,
   type ReviewSendResult,
+  type RotateResult,
   type ReviewThread,
   putBackSchema,
   type AcpAgentProbe,
@@ -1957,6 +1958,37 @@ export function createApp(deps: AppDeps) {
     res.status(201).json((await handoffChat(manager.get(req.params.id), harness, { ...(through ? { through } : {}), ...(prompt ? { prompt } : {}) })).snapshot());
   });
 
+
+  /**
+   * Free context rotation: a fresh session in the same harness, seeded from this
+   * chat's own transcript (the newest turns verbatim, one line per older one).
+   * The seed is a file the harness writes, so nothing is summed by a model, nothing
+   * is paid for, and this chat's session file is only read.
+   */
+  app.post("/api/chats/:id/rotate", async (req, res) => {
+    const chat = manager.get(req.params.id);
+    if (!chat.adapter.capabilities.supportsHandoff) {
+      throw new ChatError(400, "unsupported", `${chat.adapter.displayName} cannot start a session from a transcript: compact instead`);
+    }
+    if (chat.status !== "idle" && chat.status !== "error") throw new ChatError(409, "busy", "Wait until the agent is idle");
+    if (!chat.nativeId) throw new ChatError(409, "not_started", "This chat has no session to carry over yet");
+    const snap = chat.snapshot();
+    const seed = toSeed(snap.items, { title: snap.title, todos: snap.todos });
+    if (isEmptySeed(seed)) throw new ChatError(400, "empty_seed", "There is nothing to carry over yet");
+    let live;
+    try {
+      live = await chat.adapter.seedChat({ cwd: chat.workspace.path, seed });
+    } catch (error) {
+      throw new ChatError(502, "rotate_failed", `${chat.adapter.displayName} could not start a session from this transcript: ${errorMessage(error)}`);
+    }
+    const fresh = await manager.seedOpen(chat.adapter, chat.workspace, live);
+    // The fresh chat carries on as the same model and thinking level where the harness takes both.
+    const config: { model?: string; thinkingLevel?: string } = {};
+    if (chat.adapter.capabilities.supportsModelSelection && snap.config.model) config.model = snap.config.model;
+    if (chat.adapter.capabilities.supportsThinkingLevel && snap.config.thinkingLevel) config.thinkingLevel = snap.config.thinkingLevel;
+    if (Object.keys(config).length > 0) await fresh.setConfig(config).catch(() => undefined);
+    res.status(201).json({ snapshot: fresh.snapshot() } satisfies RotateResult);
+  });
   // The chain: what a chat runs after its run settles, kept here so it goes on with no browser open.
   manager.onChainHandoff = async (chat, step, rest) => {
     const moved = await handoffChat(chat, step.harness, step.prompt ? { prompt: step.prompt } : {});
