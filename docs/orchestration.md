@@ -184,8 +184,17 @@ it, because only the person may answer. The worker's task row reads *Waiting* wi
 title while its decision stands, and the parent's `thread_wait` reports it, exactly as it does for
 a harness question.
 
-## Skills
+| `resident_agent` | optional `name` (1–80 lowercase chars; required to create/query a purpose), `profile`, `workspaceId`, `prompt` (≤32 000 chars, required on first use), `note` (`key`,`text` ≤4 000), `forget` | yes |
 
+`resident_agent` names one ordinary native harness session for repeated responsibility. Its transcript stays with the harness; `residents.json` stores its id and bounded auxiliary notes. `note` adds a small fact for future continuity; `forget` removes it alone. Calls to a live busy session are refused rather than silently creating another writer.
+
+`(calling session, purpose)` is the identity. A separate owner can also request `reviewer`; it opens a distinct native session and cannot read this owner's notes. When the original caller reopens or resumes after disposal or restart, the harness's actual native session comes back. No arbitrary session switch is selected merely from a declared name.
+
+`completionGroup` on `delegate_task` (≤128 chars) delays the group's report until every named member settles. It is the same durable wake with bounded content, but holds earlier partial results until the last task; non-member reports keep their normal timing and semantics.
+
+`tasks.json` and `residents.json` have identity/result pointers only: at most 24 notes per caller-purpose (≤4 KiB each), filtered for credential-shaped content on save and load. Redaction is a defensive filter, not a blanket secret-detection guarantee; never rely on it to safely input secrets. This supplement lives outside the native transcript, never replaces it.
+
+## Skills
 Three skills turn the tools into common habits. Each is plain markdown under `skills/` at the
 repo root — `council`, `advisor`, `handoff` — and each is written for an agent in any harness to
 follow using only the tools above. Nothing is installed into a harness's own skill folder.

@@ -55,7 +55,8 @@ import { MAX_WAKE_ATTEMPTS, WAKE_COALESCE_MS, WAKE_RETRY_MS, wakeReport } from "
 import type { IntegrationReview } from "./review.js";
 import type { Heartbeats, StoredHeartbeat } from "../heartbeats.js";
 import { viewOf as heartbeatViewOf } from "../heartbeats.js";
-import { scheduleHeartbeatSchema } from "./tools.js";
+import { ResidentStore } from "./residents.js";
+import { scheduleHeartbeatSchema, residentAgentSchema } from "./tools.js";
 
 /** How long a cancel waits for the child to settle before it says so. */
 const CANCEL_SETTLE_MS = 5_000;
@@ -123,8 +124,11 @@ export class Orchestrator {
   private readonly noted = new Map<string, Set<string>>();
   /** Wake prompts delivered per parent in the last hour, keyed as the ledger's pending reports are. */
   private readonly wakeTimes = new Map<string, number[]>();
+  private readonly residents: ResidentStore;
+  private readonly residentOpen = new Map<string, Promise<unknown>>();
   constructor(private readonly deps: OrchestratorDeps) {
     this.store = new TaskStore(deps.file);
+    this.residents = new ResidentStore(deps.file ? deps.file.replace(/tasks\.json$/, "residents.json") : null);
     this.plans = new PlanStore(deps.file ? deps.file.replace(/tasks\.json$/, "plans.json") : null, (plan) => {
       const parent = this.deps.chats.peek(plan.parentChatId) ?? this.deps.chats.list().find((chat) => chat.sessionId !== null && chat.sessionId === plan.parentSessionId);
       parent?.announce({ type: "plan", plan: this.planView(plan) });
@@ -149,6 +153,8 @@ export class Orchestrator {
     switch (name) {
       case "list_profiles":
         return this.listProfiles(caller, listProfilesSchema.parse(args));
+      case "resident_agent":
+        return this.respondResident(caller, residentAgentSchema.parse(args));
       case "delegate_task":
         return this.delegate(caller, delegateTaskSchema.parse(args));
       case "plan_workers":
@@ -208,10 +214,90 @@ export class Orchestrator {
     };
   }
 
+  private async respondResident(caller: Chat, args: { name?: string; profile?: string; workspaceId?: string; prompt?: string; note?: { key: string; text: string }; forget?: string }): Promise<ToolOutput> {
+    if (args.name === undefined) {
+      const residents = this.residents.forOwner(caller).map((r) => ({ name: r.name, harnessId: r.harnessId, workspaceId: r.workspaceId, nativeId: r.nativeId, notes: r.notes }));
+      return { text: residents.length === 0 ? "No named resident agents found." : residents.map((r) => `${r.name} — ${r.harnessId} (${r.notes.length} notes)`).join("\n"), data: { residents } };
+    }
+    const name = args.name;
+    if (name === undefined) throw denial(400, "invalid_request", "A name is required when calling with no profile or prompt");
+    const key = `${caller.sessionId ?? caller.chatId}:${name}`;
+    const pending = this.residentOpen.get(key);
+    if (pending) throw denial(409, "cannot_send", `Resident ${args.name} is already starting`);
+    const work = this.openResident(caller, { ...args, name });
+    this.residentOpen.set(key, work);
+    try {
+      return await work;
+    } finally {
+      this.residentOpen.delete(key);
+    }
+  }
+
+  private async openResident(caller: Chat, args: { name: string; profile?: string; workspaceId?: string; prompt?: string; note?: { key: string; text: string }; forget?: string }): Promise<ToolOutput> {
+    const registry = this.deps.registry;
+    const existing = this.residents.byName(caller, args.name);
+    if (existing && !this.residents.owns(existing, caller)) throw denial(403, "not_your_task", `Resident ${args.name} belongs to another chat`);
+    let chat: Chat;
+    if (existing) {
+      const harness = registry.get(existing.harnessId);
+      if (!harness) throw denial(422, "harness_unavailable", `Resident ${args.name}'s harness is not installed`);
+      const workspace = await this.deps.workspaces.get(existing.workspaceId);
+      chat = await this.deps.chats.resume(harness, workspace, existing.nativeId);
+    } else {
+      if (!args.prompt) throw denial(422, "invalid_request", `Resident ${args.name} is not known; prompt is required on first use`);
+      const profile = args.profile ? await this.findProfile(args.profile) : undefined;
+      const harnessId = profile?.harnessId ?? caller.adapter.id;
+      const harness = registry.get(harnessId);
+      if (!harness || !(await registry.available(harnessId)) || harness.capabilities.readOnlyHarness) throw denial(422, "harness_unavailable", "The chosen harness cannot run this resident agent");
+      const ws = args.workspaceId ? await this.deps.workspaces.get(args.workspaceId) : caller.workspace;
+      const problem = harness.workspaceProblem(ws.path);
+      if (problem) throw denial(422, "workspace_unsupported", problem);
+      const permission = this.permissionModeFor(caller, harness, profile?.permissionMode ?? undefined);
+      chat = await this.deps.chats.create(harness, ws);
+      if (!chat.nativeId) {
+        await chat.dispose("Resident needs a named native session");
+        throw denial(409, "no_session", "The harness did not create a persistent native session");
+      }
+      const record = {
+        name: args.name, profile: profile?.id ?? null, harnessId, workspaceId: ws.id, workspacePath: ws.path,
+        ownerChatId: caller.chatId, ownerSessionId: caller.sessionId, nativeId: chat.nativeId, notes: [],
+      };
+      await this.residents.create(record).catch((error: unknown) => {
+        void chat.dispose("Resident identity could not be saved");
+        throw denial(500, "store_failed", errorMessage(error));
+      });
+      if (profile !== undefined || permission !== undefined) {
+        await chat.setConfig({ ...(profile?.model != null ? { model: profile.model } : {}), ...(profile?.thinkingLevel != null ? { thinkingLevel: profile.thinkingLevel } : {}), ...(permission !== undefined ? { permissionMode: permission } : {}) });
+      }
+      if (chat.adapter.capabilities.supportsRename) await chat.rename(args.name);
+    }
+    const record = this.residents.byName(caller, args.name);
+    if (!record || !this.residents.owns(record, caller)) throw denial(404, "unknown_task", `Resident ${args.name} was not saved`);
+    if (record.workspaceId !== (args.workspaceId ?? record.workspaceId)) throw denial(422, "workspace_unsupported", "A named resident remains in its original project");
+    if (args.note) await this.residents.write(record, args.note.key, args.note.text).catch((error: unknown) => { throw denial(500, "store_failed", errorMessage(error)); });
+    if (args.forget) await this.residents.forget(record, args.forget);
+    let prompted = false;
+    if (args.prompt !== undefined) {
+      if (!args.prompt.trim()) throw denial(422, "invalid_request", "A resident prompt may not be blank");
+      if (chat.pendingCount > 0 || chat.status !== "idle") throw denial(409, "cannot_send", `Resident ${args.name} is already busy; wait for it to settle before sending again`);
+      const memory = record.notes.map((note) => `${note.key}: ${note.text}`).join("\n");
+      const text = memory ? `${args.prompt}\n\n[awui resident memory, redacted]\n${memory}` : args.prompt;
+      await chat.send(text, "normal", [], { origin: "agent" });
+      prompted = true;
+    }
+    return {
+      text: prompted ? `Resident ${args.name} received its prompt on the same native session.` : `Resident ${args.name} exists in ${record.harnessId}; no model call was made.`,
+      data: { name: record.name, harnessId: record.harnessId, workspaceId: record.workspaceId, nativeId: record.nativeId, notes: record.notes, prompted },
+    };
+  }
+
   // ---- the store ----------------------------------------------------------
 
   private ready(): Promise<void> {
-    this.loading ??= this.load();
+    this.loading ??= (async () => {
+      await this.residents.ready();
+      await this.load();
+    })();
     return this.loading;
   }
 
@@ -811,6 +897,7 @@ export class Orchestrator {
       isolation?: "worktree";
       notify?: "wake" | "none";
       clientRequestId?: string;
+      completionGroup?: string;
       writeScope?: string[];
     },
   ): Promise<ToolOutput> {
@@ -892,6 +979,7 @@ export class Orchestrator {
       cancelRequestedAt: null,
       notify: args.notify ?? "wake",
       clientRequestId: args.clientRequestId ?? null,
+      completionGroup: args.completionGroup ?? null,
       wake: { pendingSince: null, deliveredAt: null, attempts: 0, skipped: null },
       isolation: iso === null ? null : { worktreeId: iso.worktreeId, branch: iso.branch, fork: iso.fork },
       reviewable: iso !== null,
@@ -1317,6 +1405,12 @@ export class Orchestrator {
       const pending = this.tasks.filter((task) => task.state === "result_available" && task.wake.pendingSince !== null && task.wake.skipped === null && this.wakeKeyOf(task) === key);
       const first = pending[0];
       if (!first) return;
+      if (this.groupMembersStillWorking(first, pending)) {
+        // Grouped reports explicitly wait for every member. All settle notifications
+        // eventually arrive through this same durable wake path.
+        this.scheduleFlush(this.wakeKeyOf(first), WAKE_RETRY_MS);
+        return;
+      }
       const limits = this.limits;
       // The switch and the budget are checked here, at the one place a report leaves: a task queued
       // while wakes were on is not sent after they are turned off.
@@ -1359,6 +1453,14 @@ export class Orchestrator {
   }
 
   /** A report the parent would not take: retried twice, then marked skipped so it never spins. */
+/** A related group's all-task barrier: other parents, siblings, and ordinary tasks never count. */
+  private groupMembersStillWorking(first: StoredTask, pending: StoredTask[]): boolean {
+    if (!first.completionGroup) return false;
+    return this.tasks.some((task) =>
+      task.completionGroup === first.completionGroup && task.parentChatId === first.parentChatId && task.parentSessionId === first.parentSessionId
+      && task.state !== "result_available");
+  }
+
   private failWakes(tasks: StoredTask[], why: string): void {
     let retry = false;
     for (const task of tasks) {

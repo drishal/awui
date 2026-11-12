@@ -57,6 +57,8 @@ export interface StoredTask extends DelegatedTaskView {
   /** Cancel bumps it; work arriving from an older generation is dropped. */
   generation: number;
   cancelRequestedAt: number | null;
+  /** One group whose result arrives together only when every member settles; server-only bookkeeping. */
+  completionGroup?: string | null;
   /** Wake the parent with the result (`wake`, the default) or report only when asked. */
   notify: "wake" | "none";
   clientRequestId: string | null;
@@ -104,6 +106,7 @@ export const storedTaskSchema = z.object({
   cancelRequestedAt: z.number().nullable(),
   notify: z.enum(["wake", "none"]),
   clientRequestId: z.string().max(128).nullable(),
+  completionGroup: z.string().max(128).nullable().optional(),
   wake: z.object({
     pendingSince: z.number().nullable(),
     deliveredAt: z.number().nullable(),

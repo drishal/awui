@@ -34,9 +34,19 @@ export const MAX_PROFILES = 64;
 export const MAX_PROFILE_NOTE_CHARS = 120;
 /** The write scope's bounds (scope.ts judges with them): globs one delegation may carry. */
 import { MAX_WRITE_SCOPE_GLOBS, MAX_GLOB_CHARS } from "./scope.js";
+import { residentName } from "./residents.js";
 export { MAX_WRITE_SCOPE_GLOBS, MAX_GLOB_CHARS };
 
 const taskId = z.string().regex(/^[0-9a-f]{4,16}$/);
+const nameSchema = z.string().transform((s: string) => residentName(s));
+export const residentAgentSchema = z.object({
+  name: nameSchema,
+  profile: z.string().min(1).max(128).optional(),
+  workspaceId: z.string().min(1).max(128).optional(),
+  prompt: z.string().max(MAX_DELEGATE_BRIEF_CHARS).optional(),
+  note: z.object({ key: z.string().trim().min(1).max(80), text: z.string().min(1).max(4_000) }).optional(),
+  forget: z.string().trim().min(1).max(80).optional(),
+}).strict();
 
 export const listProfilesSchema = z.object({ workspaceId: z.string().min(1).max(128).optional() }).strict();
 
@@ -54,6 +64,7 @@ export const delegateTaskSchema = z
     isolation: z.enum(["worktree"]).optional(),
     notify: z.enum(["wake", "none"]).optional(),
     clientRequestId: z.string().min(1).max(128).optional(),
+    completionGroup: z.string().min(1).max(128).optional(),
     writeScope: z.array(z.string().min(1).max(MAX_GLOB_CHARS)).max(MAX_WRITE_SCOPE_GLOBS).optional(),
   })
   .strict();
@@ -165,6 +176,7 @@ export const ORCH_TOOLS: OrchTool[] = [
         isolation: { type: "string", enum: ["worktree"], description: "Run the child in its own managed worktree of this project instead of your shared working tree, so its edits cannot collide with yours. Its finished work is recorded for review and applied into your checkout only after a person reviews it." },
         notify: { type: "string", enum: ["wake", "none"], description: "Wake this chat with the result when the child finishes (default), or report only when asked." },
         clientRequestId: stringProperty("A key for this request: sending it twice returns the same task instead of spawning another."),
+        completionGroup: stringProperty("Optional label: related delegated results wait for every group member before a single consolidated wake reaches the parent."),
         writeScope: {
           type: "array",
           items: { type: "string", maxLength: MAX_GLOB_CHARS },
@@ -174,6 +186,24 @@ export const ORCH_TOOLS: OrchTool[] = [
         },
       },
       ["brief"],
+    ),
+  },
+  {
+    name: "resident_agent",
+    description:
+      "Create or resume one named ordinary chat and send it the next prompt, rather than starting another agent chat for the same purpose. " +
+      "Its native session persists across reopen, hibernation, and a server restart; opening one session at a time avoids two writers. " +
+      "note saves a bounded short-lived fact for future turns, redacted for credential-shaped material; never copy a transcript or credentials into it. " +
+      "Omit prompt and name to list your own residencies, or supply forget to remove one note without hiding/deleting the agent's native historical session.",
+    parameters: object(
+      {
+        name: stringProperty("Stable lowercase purpose name, unique within your chat; optional only when listing residents.", 80),
+        profile: stringProperty("A saved bot/shared profile id (see list_profiles), with real harness/model/mode preferences matching the actual chat."),
+        workspaceId: stringProperty("Optional project identifier (defaults to this chat's project)."),
+        prompt: stringProperty("Send the next ordinary prompt to this named agent; it must be idle to avoid one session getting two writers.", MAX_DELEGATE_BRIEF_CHARS),
+        note: { type: "object", properties: { key: { type: "string", description: "A continuity key (1-80 chars)" }, text: { type: "string", description: "Small fact, redacted of credentials; future turns receive it" } }, required: ["key", "text"], additionalProperties: false, description: "Persist one bounded fact for this residency." },
+        forget: stringProperty("Forget this note key only; native transcript stays in its harness."),
+      },
     ),
   },
   {

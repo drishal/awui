@@ -14,7 +14,7 @@ afterEach(async () => {
   t = null;
 });
 
-const TOOL_NAMES = ["delegate_task", "task_review", "task_status", "plan_workers", "task_cancel", "thread_send", "thread_read", "thread_wait", "set_status", "request_decision", "list_profiles", "schedule_heartbeat"];
+const TOOL_NAMES = ["delegate_task", "resident_agent", "task_review", "task_status", "plan_workers", "task_cancel", "thread_send", "thread_read", "thread_wait", "set_status", "request_decision", "list_profiles", "schedule_heartbeat"];
 
 async function setup(options: Parameters<typeof makeTestApp>[0] = {}) {
   const app = await makeTestApp(options);
