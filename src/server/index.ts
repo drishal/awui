@@ -23,6 +23,7 @@ import { ENDPOINT_FILE } from "../shared/desktop.js";
 import { writeJson } from "./state-file.js";
 import { clientCommand, runClient } from "./clients.js";
 import { runDoctor } from "./doctor.js";
+import { runMcpBridge } from "./mcp-bridge.js";
 import { runHeadlessCli } from "./cli-run.js";
 import { SessionMarks } from "./session-marks.js";
 import { TerminalManager } from "./terminal.js";
@@ -389,6 +390,7 @@ Usage:
   awui install service   Install the binary for autostart: ~/.local/bin (with atui) + systemd on Linux/macOS,
                          a logon Scheduled Task on Windows
                          [--link symlinks it instead of copying (POSIX only), for a dev checkout]
+  awui mcp               awui's orchestration MCP server on stdio, for a harness config that names a program (Hermes)
 
 Flags:
   --port <n>             Listen port (default 4783; env PORT)
@@ -452,6 +454,13 @@ if (client) {
       process.exit(1);
     },
   );
+} else if (args[0] === "mcp") {
+  // awui's orchestration MCP server on this process's stdio, for a harness whose own
+  // config names a program (Hermes). Inert without a chat's two variables, by design.
+  runMcpBridge().catch((error: unknown) => {
+    console.error(`awui mcp: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
 } else if (args[0] === "desktop") {
   // The optional Electron app: the one this binary carries, else one installed or
   // built here. Started detached, so this command returns and the app outlives it.

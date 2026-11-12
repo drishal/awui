@@ -167,11 +167,15 @@ export function spawnHarness(command: string, args: string[], opts: SpawnOptions
  * The version/discovery probe counterpart to spawnHarness: the adapters run
  * `execFile(cli, ["--version"])` to decide a harness is installed, which hits
  * the same Windows batch-shim EINVAL. Same shell-only-for-.cmd rule.
+ *
+ * `closeStdin` ends the child's stdin at once, for a CLI that would otherwise
+ * wait on a prompt: with an open pipe and no answer it hangs until the timeout,
+ * where a closed one takes its own default (Hermes's `Save config anyway? [Y/n]`).
  */
 export function execHarness(
   command: string,
   args: string[],
-  opts: { timeout?: number; env?: NodeJS.ProcessEnv; maxBuffer?: number },
+  opts: { timeout?: number; env?: NodeJS.ProcessEnv; maxBuffer?: number; closeStdin?: boolean },
 ): Promise<ExecResult> {
   let resolve!: (r: ExecResult) => void;
   let reject!: (e: Error) => void;
@@ -183,13 +187,15 @@ export function execHarness(
     if (error) reject(error);
     else resolve({ stdout, stderr });
   };
-  if (IS_WINDOWS) {
-    const [argv0, prefix] = resolveWin(command, args);
-    // A wrapped line is already escaped for cmd: Node passes it verbatim (see spawnHarness).
-    execFile(argv0, prefix.length > 0 ? prefix : args, { encoding: "utf8", ...opts, ...(prefix.length > 0 ? { windowsVerbatimArguments: true } : {}) }, finish);
-    return promise;
-  }
-  execFile(command, args, { encoding: "utf8", ...opts }, finish);
+  const { closeStdin, ...execOpts } = opts;
+  const started = IS_WINDOWS
+    ? (() => {
+        const [argv0, prefix] = resolveWin(command, args);
+        // A wrapped line is already escaped for cmd: Node passes it verbatim (see spawnHarness).
+        return execFile(argv0, prefix.length > 0 ? prefix : args, { encoding: "utf8", ...execOpts, ...(prefix.length > 0 ? { windowsVerbatimArguments: true } : {}) }, finish);
+      })()
+    : execFile(command, args, { encoding: "utf8", ...execOpts }, finish);
+  if (closeStdin) started.stdin?.end();
   return promise;
 }
 
