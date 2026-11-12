@@ -308,6 +308,61 @@ export interface ToolDiff {
   removed: number;
 }
 
+/** Bounds for review threads (see docs/security.md). */
+export const MAX_REVIEW_NOTE_CHARS = 4_000;
+export const MAX_REVIEW_THREADS_PER_CHAT = 200;
+export const MAX_REVIEW_NOTES_PER_THREAD = 50;
+export const MAX_REANCHOR_MOVES = 200;
+/** The line text an anchor carries: one tool-diff line, as tool-diff.ts bounds it. */
+export const MAX_REVIEW_LINE_CHARS = 400;
+
+/**
+ * A comment pinned to one diff line. `text` and `hash` are the line as it was
+ * when the comment was written, so the pin can be found again after the agent
+ * edits the file: the hash of the line's trimmed text moves with it, and a pin
+ * with no match left is stale rather than lost.
+ */
+export interface ReviewAnchor {
+  /** Workspace-relative, no leading "/", no "..". */
+  path: string;
+  /** The line's side in the diff: added, removed, or context. */
+  side: "add" | "del" | "ctx";
+  /** The file line at pin time: the new side for add/ctx, the old side for del. */
+  line: number | null;
+  /** hashLine(text): 8 lowercase hex characters. */
+  hash: string;
+  /** The line's trimmed text at pin time, cut to MAX_REVIEW_LINE_CHARS. */
+  text: string;
+}
+
+/** One message in a thread: the original comment, then the replies, in order. */
+export interface ReviewNote {
+  id: string;
+  text: string;
+  at: number;
+}
+
+/** A line's comments as one conversation, open until resolved, kept until deleted. */
+export interface ReviewThread {
+  id: string;
+  /** The chat whose edits the thread reviews (it outlives the chat being open). */
+  chatId: string;
+  anchor: ReviewAnchor;
+  notes: ReviewNote[];
+  status: "open" | "resolved";
+  resolvedAt?: number;
+  /** The last batch of open threads that carried it. */
+  lastSentAt?: number;
+  createdAt: number;
+}
+
+/** What a send did: the chat the prompt went to, and how many threads it carried. */
+export interface ReviewSendResult {
+  accepted: true;
+  targetChatId: string;
+  sent: number;
+}
+
 /** Bounds for an agent-published HTML page (the harness's render tool). */
 export const HTML_RENDER_MIN_HEIGHT = 80;
 export const HTML_RENDER_MAX_HEIGHT = 2000;
@@ -1205,6 +1260,41 @@ export const patchConfigSchema = z
   });
 /** A chat's settings change: model and thinking only while idle, permission mode at any time. */
 export type ConfigPatch = { model?: string; thinkingLevel?: string; permissionMode?: string };
+
+/** A comment's line pin: a path inside the project, the side, the file line, and the line's hash. */
+const reviewAnchorSchema = z.object({
+  path: z
+    .string()
+    .min(1)
+    .max(1024)
+    .regex(/^(?!\/)(?!.*(^|\/)\.\.(\/|$)).+/, "A workspace-relative path with no .."),
+  side: z.enum(["add", "del", "ctx"]),
+  line: z.number().int().min(1).max(1_000_000).nullable(),
+  hash: z.string().regex(/^[0-9a-f]{8}$/),
+  text: z.string().max(MAX_REVIEW_LINE_CHARS),
+});
+export const createThreadSchema = z.object({ anchor: reviewAnchorSchema, text: z.string().trim().min(1).max(MAX_REVIEW_NOTE_CHARS) });
+export const replySchema = z.object({ text: z.string().trim().min(1).max(MAX_REVIEW_NOTE_CHARS) });
+export const threadStatusSchema = z.object({ status: z.enum(["open", "resolved"]) });
+/** Line moves one client's reconciliation pass found: the anchor's hash matched at another line. */
+export const reanchorSchema = z.object({
+  moves: z
+    .array(z.object({ id: z.string().uuid(), line: z.number().int().min(1).max(1_000_000) }))
+    .max(MAX_REANCHOR_MOVES),
+});
+/**
+ * Send the chat's open threads as one prompt. `stale` names the threads whose line
+ * no longer matches this client's diffs: the server composes the prompt, so the
+ * client has to say which pins it could not find (the prompt says so beside them).
+ */
+export const sendThreadsSchema = z.object({
+  target: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("chat"), chatId: z.string().min(1).max(256) }),
+    z.object({ kind: z.literal("new"), harnessId: z.string().min(1).max(64) }),
+  ]),
+  mode: z.enum(["normal", "followUp"]).optional(),
+  stale: z.array(z.string().uuid()).max(MAX_REVIEW_THREADS_PER_CHAT).default([]),
+});
 export const renameSchema = z.object({ name: z.string().trim().min(1).max(200) });
 export const pushSubscriptionSchema = z.object({ endpoint: z.string().url().max(2048) });
 export const pushTestSchema = z.object({ endpoint: z.string().url().max(2048).optional() });
