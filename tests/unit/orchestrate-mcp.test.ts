@@ -39,7 +39,7 @@ interface Message {
   result?: {
     protocolVersion?: string;
     capabilities?: unknown;
-    tools?: Array<{ name: string }>;
+    tools?: Array<{ name: string; inputSchema?: unknown }>;
     prompts?: Array<{ name: string; description?: string }>;
     messages?: Array<{ role: string; content: { type: string; text: string } }>;
     content?: Array<{ text: string }>;
@@ -109,9 +109,11 @@ describe("the orchestration MCP server", () => {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {}, prompts: {} },
       });
-      expect((await s.call("tools/list")).result?.tools).toEqual(TOOLS);
-      // Fetched once: a second listing comes from memory, not the endpoint.
-      expect((await s.call("tools/list")).result?.tools).toEqual(TOOLS);
+      // The catalogue keys its schema `parameters`; an MCP client validates `inputSchema`, and
+      // refuses a tool without it, so the bridge is where the two names meet.
+      expect((await s.call("tools/list")).result?.tools).toEqual(TOOLS.map(({ name, description, parameters }) => ({ name, description, inputSchema: parameters })));
+      // Fetched once: a second listing comes from memory (the same tools), not the endpoint.
+      expect((await s.call("tools/list")).result?.tools).toEqual(TOOLS.map(({ name, description, parameters }) => ({ name, description, inputSchema: parameters })));
       expect(stub.seen.filter((r) => r.path.endsWith("/tools"))).toHaveLength(1);
       // The skills come the same way: listed by name and description, fetched once, and the
       // prompt's message is exactly the text the server carries.

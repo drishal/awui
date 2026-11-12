@@ -58,10 +58,15 @@ function load(suffix, pick) {
   return pending;
 }
 
+/**
+ * The catalogue as MCP tools. REST names the parameter schema `parameters` (the Pi/omp extension's
+ * registerTool reads it); an MCP client validates `tools/list` against the protocol, where the
+ * schema must be `inputSchema`, and Claude Code and Codex drop a tool that lacks it.
+ */
 const catalogue = () =>
   load("/tools", (body) => {
     if (!Array.isArray(body?.tools)) throw new Error("the catalogue is not a tool list");
-    return body.tools;
+    return body.tools.map(({ name, description, parameters }) => ({ name, description, inputSchema: parameters }));
   });
 
 /** The three skills with their words, the route having read skills/<name>/SKILL.md. */
