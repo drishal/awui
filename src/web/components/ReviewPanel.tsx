@@ -1,23 +1,26 @@
 // Review: every file the agent edited or wrote in this chat, each edit's diff
-// in order, and comments on any line. The comments are kept per chat on this
-// device until they are sent, then go to the agent as one prompt.
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChatItem, DiffLine } from "../../shared/protocol.js";
-import { IconX } from "../icons.js";
-import { collectChanges, commentable, commentKey, reviewPrompt, type ReviewComment } from "../review.js";
+// in order, and a thread of comments on any line. The threads live on the server
+// (review-threads.ts), so they follow the line when the agent edits the file
+// again, survive the chat being closed, and ride in the next batch until they are
+// resolved. The panel only draws them and asks for changes.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ApiError, api, errorText } from "../api.js";
+import type { ChatItem, ReviewThread } from "../../shared/protocol.js";
+import { IconCheck, IconX } from "../icons.js";
+import { anchorOf, batchPrompt, buildLineIndex, collectChanges, commentable, commentKey, placeThreads, reanchor, type PlacedThread, type ReviewComment } from "../review.js";
 import { load, save } from "../storage.js";
 import { FileLink } from "./FileLink.js";
 import { DiffBadge, DiffView } from "./ToolBody.js";
 import { Dot } from "./Dot.js";
 
-interface Editing {
+/** The line an editor is open on: a new comment, or a reply in an existing thread. */
+interface Composing {
   key: string;
-  path: string;
-  line: DiffLine;
-  text: string;
+  anchor: ReviewThread["anchor"];
+  threadId?: string;
 }
 
-function NoteEditor({ initial, onSave, onCancel }: { initial: string; onSave: (text: string) => void; onCancel: () => void }) {
+function NoteEditor({ initial, label, onSubmit, onCancel }: { initial: string; label: string; onSubmit: (text: string) => void; onCancel: () => void }) {
   const [text, setText] = useState(initial);
   return (
     <div className="review-note is-editing">
@@ -25,7 +28,7 @@ function NoteEditor({ initial, onSave, onCancel }: { initial: string; onSave: (t
         className="input review-input"
         autoFocus
         rows={3}
-        aria-label="Comment"
+        aria-label={label}
         placeholder="What should change here?"
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -36,7 +39,7 @@ function NoteEditor({ initial, onSave, onCancel }: { initial: string; onSave: (t
             onCancel();
           } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim()) {
             e.preventDefault();
-            onSave(text);
+            onSubmit(text);
           }
         }}
       />
@@ -44,12 +47,20 @@ function NoteEditor({ initial, onSave, onCancel }: { initial: string; onSave: (t
         <button type="button" className="btn btn-small" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="btn btn-small btn-primary" disabled={!text.trim()} onClick={() => onSave(text)}>
-          Comment
+        <button type="button" className="btn btn-small btn-primary" disabled={!text.trim()} onClick={() => onSubmit(text)}>
+          {label}
         </button>
       </div>
     </div>
   );
+}
+
+/** How long ago a thread last went to an agent, in words. */
+function sentAgo(at: number): string {
+  const minutes = Math.max(1, Math.round((Date.now() - at) / 60_000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 }
 
 export function ReviewPanel({
@@ -74,44 +85,136 @@ export function ReviewPanel({
   const ref = useRef<HTMLDialogElement>(null);
   const files = useMemo(() => collectChanges(items, workspace), [items, workspace]);
   const storageKey = `review.${chatId}`;
-  const [comments, setComments] = useState<ReviewComment[]>(() => load<ReviewComment[]>(storageKey, []));
-  const [editing, setEditing] = useState<Editing | null>(null);
+  const threadsPath = `/api/chats/${chatId}/review-threads`;
+  const [threads, setThreads] = useState<ReviewThread[]>([]);
+  const [composing, setComposing] = useState<Composing | null>(null);
+  const [showResolved, setShowResolved] = useState(false);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fail = (e: unknown) => setError(errorText(e));
+  const replace = (thread: ReviewThread) => setThreads((list) => [thread, ...list.filter((t) => t.id !== thread.id)]);
+
+  /** The comments this device kept before threads: each becomes a thread, and the key is cleared once all are saved. */
+  const migrate = useCallback(async () => {
+    const legacy = load<ReviewComment[]>(storageKey, []);
+    if (legacy.length === 0) return;
+    let saved = 0;
+    for (const comment of legacy) {
+      if (!commentable(comment.line)) continue;
+      try {
+        await api<ReviewThread>(threadsPath, { body: { anchor: anchorOf(comment.path, comment.line), text: comment.text.trim() } });
+        saved++;
+      } catch (e) {
+        // A pin another device already made is not a loss; anything else keeps the key for the next open.
+        if (!(e instanceof ApiError) || e.code !== "duplicate") return;
+      }
+    }
+    save(storageKey, null);
+    if (saved > 0) setError(null);
+  }, [storageKey, threadsPath]);
+
+  const reload = useCallback(async () => {
+    try {
+      const body = await api<{ threads: ReviewThread[] }>(threadsPath);
+      setThreads(body.threads);
+    } catch (e) {
+      fail(e);
+    }
+  }, [threadsPath]);
 
   useEffect(() => {
     const el = ref.current;
     if (el && !el.open) el.showModal();
     return () => el?.close();
   }, []);
-  useEffect(() => save(storageKey, comments.length > 0 ? comments : null), [storageKey, comments]);
+  useEffect(() => {
+    void migrate().then(reload);
+  }, [migrate, reload]);
 
-  const byKey = new Map(comments.map((c) => [c.key, c]));
+  // A pin whose line moved comes back at its new number: one batched write per pass, and
+  // the local copy follows at once so the next pass has nothing to send.
+  useEffect(() => {
+    const index = buildLineIndex(files);
+    const moves: Array<{ id: string; line: number }> = [];
+    for (const thread of threads) {
+      const at = reanchor(thread.anchor, index);
+      if (at !== "stale" && at.line !== null && at.line !== thread.anchor.line) moves.push({ id: thread.id, line: at.line });
+    }
+    if (moves.length === 0) return;
+    const moved = new Map(moves.map((move) => [move.id, move.line]));
+    setThreads((list) => list.map((t) => (moved.has(t.id) ? { ...t, anchor: { ...t.anchor, line: moved.get(t.id) ?? t.anchor.line } } : t)));
+    // Best-effort: a failure leaves the pins where they are, and the next diff change tries again.
+    void api(`${threadsPath}/reanchor`, { body: { moves } }).catch(() => undefined);
+  }, [files, threads, threadsPath]);
+
+  const { placed, detached } = useMemo(() => placeThreads(files, threads), [files, threads]);
+  const open = threads.filter((t) => t.status === "open");
+  const resolved = threads.filter((t) => t.status === "resolved");
+  const staleIds = useMemo(() => new Set([...placed.values()].flat().concat(detached).filter((p) => p.stale).map((p) => p.thread.id)), [placed, detached]);
   const added = files.reduce((n, f) => n + f.added, 0);
   const removed = files.reduce((n, f) => n + f.removed, 0);
 
-  /** File order, then edit order, then line: how the prompt lists them. */
-  const ordered = () => {
-    const rank = new Map<string, number>();
-    let n = 0;
-    for (const f of files) for (const e of f.edits) for (let i = 0; i < (e.tool.diff?.lines.length ?? 0); i++) rank.set(commentKey(e.tool.id, i), n++);
-    return [...comments].sort((a, b) => (rank.get(a.key) ?? 1e9) - (rank.get(b.key) ?? 1e9));
+  const createThread = async (c: Composing, text: string) => {
+    setComposing(null);
+    try {
+      replace(await api<ReviewThread>(threadsPath, { body: { anchor: c.anchor, text: text.trim() } }));
+      setError(null);
+    } catch (e) {
+      fail(e);
+    }
   };
 
-  const saveNote = (e: Editing, text: string) => {
-    setComments((list) => [...list.filter((c) => c.key !== e.key), { key: e.key, path: e.path, line: e.line, text: text.trim() }]);
-    setEditing(null);
+  const reply = async (threadId: string, text: string) => {
+    setComposing(null);
+    try {
+      replace(await api<ReviewThread>(`${threadsPath}/${threadId}/notes`, { body: { text: text.trim() } }));
+      setError(null);
+    } catch (e) {
+      fail(e);
+    }
+  };
+
+  const setStatus = async (thread: ReviewThread, status: ReviewThread["status"]) => {
+    try {
+      replace(await api<ReviewThread>(`${threadsPath}/${thread.id}/status`, { body: { status } }));
+      setError(null);
+    } catch (e) {
+      fail(e);
+    }
+  };
+
+  const remove = async (thread: ReviewThread) => {
+    try {
+      await api(`${threadsPath}/${thread.id}`, { method: "DELETE" });
+      setThreads((list) => list.filter((t) => t.id !== thread.id));
+      setError(null);
+    } catch (e) {
+      fail(e);
+    }
   };
 
   const send = async () => {
     setSending(true);
-    const ok = await onSend(reviewPrompt(ordered()));
+    const ok = await onSend(batchPrompt(threads, staleIds));
     setSending(false);
-    if (ok) {
-      setComments([]);
-      onClose();
-    }
+    if (ok) onClose();
   };
 
+  const card = (entry: PlacedThread, key?: string) => (
+    <ThreadCard
+      key={entry.thread.id}
+      entry={entry}
+      replyOpen={composing?.threadId === entry.thread.id}
+      onReply={() => setComposing({ key: key ?? composing?.key ?? "", anchor: entry.thread.anchor, threadId: entry.thread.id })}
+      onStatus={(status) => void setStatus(entry.thread, status)}
+      onDelete={() => void remove(entry.thread)}
+      onSendReply={(text) => void reply(entry.thread.id, text)}
+      onCancelReply={() => setComposing(null)}
+    />
+  );
+
+  const visible = (entries: PlacedThread[] | undefined) => (entries ?? []).filter((e) => showResolved || e.thread.status === "open");
   return (
     <dialog
       ref={ref}
@@ -119,7 +222,7 @@ export function ReviewPanel({
       aria-label="Review changes"
       onCancel={(e) => {
         e.preventDefault();
-        if (editing) setEditing(null);
+        if (composing) setComposing(null);
         else onClose();
       }}
       onClick={(e) => {
@@ -140,6 +243,11 @@ export function ReviewPanel({
             <IconX size={16} />
           </button>
         </header>
+        {error ? (
+          <p className="review-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="review-files">
           {files.length === 0 ? <p className="review-empty muted">The agent has not edited any files in this chat.</p> : null}
           {files.map((f) => (
@@ -155,27 +263,16 @@ export function ReviewPanel({
                 const notes = new Map<number, React.ReactNode>();
                 tool.diff.lines.forEach((line, i) => {
                   const key = commentKey(tool.id, i);
-                  if (editing?.key === key) {
-                    notes.set(i, <NoteEditor key="edit" initial={editing.text} onSave={(text) => saveNote(editing, text)} onCancel={() => setEditing(null)} />);
-                  } else {
-                    const c = byKey.get(key);
-                    if (c) {
-                      notes.set(
-                        i,
-                        <div className="review-note" key="note">
-                          <p>{c.text}</p>
-                          <div className="review-note-actions">
-                            <button type="button" className="link-btn" onClick={() => setEditing({ key, path: c.path, line: c.line, text: c.text })}>
-                              Edit
-                            </button>
-                            <button type="button" className="link-btn" onClick={() => setComments((list) => list.filter((x) => x.key !== key))}>
-                              Remove
-                            </button>
-                          </div>
-                        </div>,
-                      );
-                    }
-                  }
+                  const cards = visible(placed.get(key));
+                  const here = composing?.key === key;
+                  if (cards.length === 0 && !here) return;
+                  notes.set(
+                    i,
+                    <div className="review-threads" key="threads">
+                      {cards.map((entry) => card(entry, key))}
+                      {here && composing ? <NoteEditor key="new" initial="" label="Comment" onSubmit={(text) => void createThread(composing, text)} onCancel={() => setComposing(null)} /> : null}
+                    </div>,
+                  );
                 });
                 return (
                   <div key={tool.id} className="review-edit">
@@ -195,7 +292,10 @@ export function ReviewPanel({
                       onLine={(i, line) => {
                         if (!commentable(line)) return;
                         const key = commentKey(tool.id, i);
-                        setEditing({ key, path: f.path, line, text: byKey.get(key)?.text ?? "" });
+                        const already = visible(placed.get(key))[0];
+                        // A line that already has a thread opens its reply box; an empty one starts a comment.
+                        if (already) setComposing({ key, anchor: already.thread.anchor, threadId: already.thread.id });
+                        else setComposing({ key, anchor: anchorOf(f.path, line) });
                       }}
                     />
                   </div>
@@ -203,27 +303,98 @@ export function ReviewPanel({
               })}
             </section>
           ))}
+          {visible(detached).length > 0 ? (
+            <section className="review-file" data-testid="review-detached">
+              <h3 className="review-path">
+                <span>Lines these changes no longer show</span>
+              </h3>
+              <div className="review-threads">{visible(detached).map((entry) => card(entry))}</div>
+            </section>
+          ) : null}
         </div>
         <footer className="review-foot">
           <span className="muted">
-            {comments.length === 0 ? "No comments yet" : `${comments.length} ${comments.length === 1 ? "comment" : "comments"}`}
+            {open.length === 0 && resolved.length === 0 ? "No comments yet" : `${open.length} open`}
+            {resolved.length > 0 ? ` · ${resolved.length} resolved` : null}
           </span>
-          {comments.length > 0 ? (
-            <button type="button" className="btn btn-small" onClick={() => setComments([])}>
-              Clear
+          {resolved.length > 0 ? (
+            <button type="button" className="btn btn-small" aria-pressed={showResolved} onClick={() => setShowResolved((on) => !on)}>
+              {showResolved ? "Open only" : "All"}
             </button>
           ) : null}
-          <button
-            type="button"
-            className="btn btn-small btn-primary"
-            disabled={comments.length === 0 || sending || sendBlocked !== null}
-            title={sendBlocked ?? undefined}
-            onClick={() => void send()}
-          >
-            {sendLabel}
+          <button type="button" className="btn btn-small btn-primary" disabled={open.length === 0 || sending || sendBlocked !== null} title={sendBlocked ?? undefined} onClick={() => void send()}>
+            {open.length > 1 ? `Send ${open.length} comments` : sendLabel}
           </button>
         </footer>
       </div>
     </dialog>
+  );
+}
+
+function ThreadCard({
+  entry,
+  replyOpen,
+  onReply,
+  onStatus,
+  onDelete,
+  onSendReply,
+  onCancelReply,
+}: {
+  entry: PlacedThread;
+  replyOpen: boolean;
+  onReply: () => void;
+  onStatus: (status: ReviewThread["status"]) => void;
+  onDelete: () => void;
+  onSendReply: (text: string) => void;
+  onCancelReply: () => void;
+}) {
+  const { thread, stale } = entry;
+  const [note, ...replies] = thread.notes;
+  if (thread.status === "resolved") {
+    return (
+      <div className="review-note is-resolved">
+        <p>
+          <IconCheck size={12} className="review-tick" />
+          <s>{note?.text}</s>
+          {replies.length > 0 ? <span className="muted"> +{replies.length}</span> : null}
+        </p>
+        <div className="review-note-actions">
+          <button type="button" className="link-btn" onClick={() => onStatus("open")}>
+            Reopen
+          </button>
+          <button type="button" className="link-btn" onClick={onDelete}>
+            Delete
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="review-note">
+      {note ? <p>{note.text}</p> : null}
+      {replies.map((r, i) => (
+        <p key={`${r.id}-${i}`} className="review-reply">
+          {r.text}
+        </p>
+      ))}
+      {stale ? <span className="review-stale">line changed since</span> : null}
+      {replyOpen ? <NoteEditor initial="" label="Reply" onSubmit={onSendReply} onCancel={onCancelReply} /> : null}
+      <div className="review-note-actions">
+        {thread.lastSentAt !== undefined ? (
+          <span className="muted review-sent" title={new Date(thread.lastSentAt).toLocaleString()}>
+            sent {sentAgo(thread.lastSentAt)}
+          </span>
+        ) : null}
+        <button type="button" className="link-btn" onClick={onReply}>
+          Reply
+        </button>
+        <button type="button" className="link-btn" onClick={() => onStatus("resolved")}>
+          Resolve
+        </button>
+        <button type="button" className="link-btn" onClick={onDelete}>
+          Delete
+        </button>
+      </div>
+    </div>
   );
 }

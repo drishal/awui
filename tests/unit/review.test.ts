@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChatItem, DiffLine, ReviewThread, ToolItem } from "../../src/shared/protocol.js";
 import { anchorOf, batchPrompt, buildLineIndex, hashLine, reanchor } from "../../src/shared/review.js";
-import { collectChanges, commentKey, reviewPrompt, type FileChanges, type ReviewComment } from "../../src/web/review.js";
+import { collectChanges, commentKey, placeThreads, reviewPrompt, type FileChanges, type ReviewComment } from "../../src/web/review.js";
 
 /** One file with one edit's lines, as the panel's model has it. */
 const fileOf = (path: string, lines: DiffLine[]): FileChanges => ({ path, edits: [{ tool: { ...edit("e1", path, 1), diff: { lines, added: 1, removed: 0 } }, turn: 1 }], added: 1, removed: 0 });
@@ -116,5 +116,25 @@ describe("review", () => {
       ].join("\n"),
     );
     expect(batchPrompt([thread("t1", { path: "src/a.ts", side: "add", line: 1, hash: "00000000", text: "x" }, ["One"])])).toContain("(1 open thread sent)");
+  });
+
+  it("draws a thread once, under the newest edit that still shows its line", () => {
+    const files = collectChanges(items, "/p");
+    const pinned = thread("t1", { path: "src/a.ts", side: "add", line: 4, hash: hashLine("  new();"), text: "  new();" }, ["Fix this"]);
+    const { placed, detached } = placeThreads(files, [pinned]);
+    // The same file was edited twice, and both edits show line 4: it is drawn on the later one only.
+    expect([...placed.keys()]).toEqual([commentKey("e3", 1)]);
+    expect(placed.get(commentKey("e3", 1))?.[0]?.line).toBe(4);
+    expect(detached).toEqual([]);
+  });
+
+  it("keeps a stale thread where it was pinned, and sets aside one whose path is gone", () => {
+    const files = collectChanges(items, "/p");
+    // Its text is in no diff any more: it stays on the line it was pinned to, marked changed.
+    const gone = thread("t1", { path: "src/a.ts", side: "del", line: 4, hash: "00000000", text: "was here" }, ["Drop this"]);
+    const elsewhere = thread("t2", { path: "src/z.ts", side: "add", line: 2, hash: hashLine("x"), text: "x" }, ["Also this"]);
+    const { placed, detached } = placeThreads(files, [gone, elsewhere]);
+    expect(placed.get(commentKey("e3", 0))?.map((p) => [p.line, p.stale])).toEqual([[4, true]]);
+    expect(detached.map((d) => [d.thread.id, d.stale])).toEqual([["t2", true]]);
   });
 });

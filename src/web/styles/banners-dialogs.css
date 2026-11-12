@@ -200,6 +200,55 @@
   margin-top: 6px;
 }
 
+/* A thread under a line: its notes in order, the reply box, and what may be done with it. */
+.review-threads {
+  display: flex;
+  flex-direction: column;
+}
+
+.review-note.is-resolved {
+  border-color: var(--hairline);
+  background: color-mix(in srgb, var(--ok) 5%, var(--card));
+}
+
+.review-note.is-resolved p {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.review-tick {
+  flex: none;
+  color: var(--ok);
+}
+
+.review-reply {
+  padding-left: 10px;
+  border-left: 2px solid var(--hairline);
+}
+
+/* A pin whose line the agent has since changed: it stays where it was and says so. */
+.review-stale {
+  display: inline-block;
+  margin-bottom: 4px;
+  color: var(--muted-text);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.review-sent {
+  margin-right: auto;
+  font-size: 12px;
+}
+
+.review-error {
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--danger);
+  font-size: 13px;
+}
+
 .review-foot {
   display: flex;
   align-items: center;
