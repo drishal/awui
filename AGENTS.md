@@ -323,7 +323,7 @@ if every test passes.
   far wider than the column), `moaref` (a MoA turn's reference advice as
   Markdown folds, with the fan-out on the status line), `delegate` (delegate a
   task through the real orchestration endpoint, then wait for it: a child chat
-  appears), and the Board scenarios
+  appears; with `slow`, the child runs on, so a panel's Cancel has a live row), and the Board scenarios
   `consult` (a valid control document on the first invocation, a plain answer
   once its consultation result comes back), `consult-bad`, `consult-unknown`,
   `consult-self`, `consult-dup` (malformed, off-allowlist, self, repeated),

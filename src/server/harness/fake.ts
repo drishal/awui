@@ -26,7 +26,8 @@
 //   "widethought" a call, thinking shaped like narration with a code line wider than the column, another call
 //   "moaref" a MoA turn's reference advice as Markdown notice folds, and its status line
 //   "noticefold" a reply, an extension's notice, then a second reply (a tool-less stretch between replies)
-//   "delegate" delegate a task through the real orchestration endpoint, then wait for it (a child chat appears)
+//   "delegate" delegate a task through the real orchestration endpoint, then wait for it (a child chat appears);
+//              with "slow" the child runs the slow script, so a running row can be cancelled
 //
 // Board rooms drive this adapter through the real server. A Board invocation is
 // recognised by the prompt envelope's "## Current request" section, and its
@@ -824,7 +825,7 @@ class FakeLiveChat implements LiveChat {
         await this.call({ name: "ExitPlanMode", args: { plan }, output: "User has approved your plan." }, signal);
       }
       if (/\brender\b|\bhtmlrender\b/i.test(text)) await this.render(signal);
-      if (/\bdelegate\b/i.test(text)) await this.delegate(signal);
+      if (/\bdelegate\b/i.test(text)) await this.delegate(signal, /\bslow\b/i.test(text));
       if (/\bratelimit\b/i.test(text)) {
         // A stop on a usage limit, worded as Claude Code words it (the reset as an epoch after "|").
         const error = `Claude AI usage limit reached|${Math.floor(Date.now() / 1000) + 3600}`;
@@ -1225,9 +1226,10 @@ class FakeLiveChat implements LiveChat {
    * (AWUI_ORCH_URL/TOKEN): delegate_task starts a real child chat on this same
    * fake adapter, and thread_wait reports it — the whole loop the extension and
    * the MCP bridge make, without a model. The child's brief names no scenario
-   * word, so it answers a plain echo and finishes.
+   * word, so it answers a plain echo and finishes; `slow` gives the child the
+   * slow script instead, so a panel's own Cancel has a running row to stop.
    */
-  private async delegate(signal: AbortSignal): Promise<void> {
+  private async delegate(signal: AbortSignal, slow = false): Promise<void> {
     const url = this.toolEnv?.AWUI_ORCH_URL;
     const token = this.toolEnv?.AWUI_ORCH_TOKEN;
     const orch = async (tool: string, args: Record<string, unknown>): Promise<{ text: string; data: Record<string, unknown> | null; isError: boolean }> => {
@@ -1246,9 +1248,10 @@ class FakeLiveChat implements LiveChat {
         return { text: `Orchestration failed: ${error instanceof Error ? error.message : String(error)}`, data: null, isError: true };
       }
     };
-    const started = await orch("delegate_task", { brief: "Reply with the word child.", role: "test", title: "Fake delegated task" });
+    const brief = slow ? "slow work on the parser" : "Reply with the word child.";
+    const started = await orch("delegate_task", { brief, role: "test", title: "Fake delegated task" });
     await this.call(
-      { name: "delegate_task", args: { brief: "Reply with the word child.", role: "test", title: "Fake delegated task" }, output: started.text, ...(started.isError ? { isError: true } : {}) },
+      { name: "delegate_task", args: { brief, role: "test", title: "Fake delegated task" }, output: started.text, ...(started.isError ? { isError: true } : {}) },
       signal,
     );
     const taskId = typeof started.data?.taskId === "string" ? started.data.taskId : null;
