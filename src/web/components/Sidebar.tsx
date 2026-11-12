@@ -8,6 +8,7 @@ import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, 
 import type { ChatStatus, Checkout, HarnessStatus, ProjectSession, RoomSummary, SessionsOverview, WorkspaceInfo } from "../../shared/protocol.js";
 import { RoomList } from "./RoomList.js";
 import { useDismiss, useLeave, useNow, useViewSlide } from "../hooks.js";
+import { projectScoped } from "../harness-policy.js";
 import { useHoverCard } from "../hover-card.js";
 import { IconArchive, IconCheck, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
 import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
@@ -1068,8 +1069,8 @@ export function Sidebar(props: {
     setLastCurrent(currentId);
     setFocus("auto");
   }
-  // The flat awui history has no projects to focus.
-  const focusId = props.harnessId === "awui" || focus === "all" ? null : focus === "auto" ? currentId : focus;
+  // A projectless harness's flat history has no projects to focus.
+  const focusId = !projectScoped(props.harnesses, props.harnessId ?? "") || focus === "all" ? null : focus === "auto" ? currentId : focus;
   const sessionList = useRef<HTMLUListElement>(null);
   useViewSlide(sessionList, focusId ?? "all");
   const focused = useMemo(() => {
@@ -1104,7 +1105,7 @@ export function Sidebar(props: {
     pinned.length === 0 &&
     needs.length === 0 &&
     working.length === 0 &&
-    (props.harnessId === "awui" ? historySections(overview, groupOptions).length === 0 : groups.every((g) => g.sessions.length === 0));
+    (!projectScoped(props.harnesses, props.harnessId ?? "") ? historySections(overview, groupOptions).length === 0 : groups.every((g) => g.sessions.length === 0));
   const sectionRow = (s: ProjectSession) => (
     <SessionRow
       key={s.id}
@@ -1306,7 +1307,7 @@ export function Sidebar(props: {
             {pinned.length > 0 ? (
               <SectionList className="pinned-group" testId="pinned-group" icon={<IconPin size={14} />} title="Pinned" sessions={pinned} row={(s) => sectionRow(s)} />
             ) : null}
-            {quickEmpty ? null : props.harnessId === "awui" ? (
+            {quickEmpty ? null : !projectScoped(props.harnesses, props.harnessId ?? "") ? (
               // The chat surface has no projects: a Claude.ai-style history, newest first by day.
               historySections(overview, groupOptions)
                 .filter((sec) => sec.label !== "Pinned")

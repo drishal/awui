@@ -683,6 +683,8 @@ export class GrokAdapter implements HarnessAdapter {
     supportsResumeCommand: true,
     readOnlyHarness: false,
     jobsSurviveRestart: false,
+    supportsProjectFolders: true,
+    webOnly: false,
   };
   private modelCache: { at: number; models: ModelInfo[]; current: string | null } | null = null;
   /** The listing child on its way: the list and the default are asked together, and share it. */

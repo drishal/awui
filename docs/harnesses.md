@@ -248,6 +248,8 @@ leaves a button that fails. Gate any server route on the flag too.
 | `supportsResumeCommand` | Copy resume command | `Sidebar.tsx`, `App.tsx`, `app.ts` |
 | `supportsHtmlRender` | awui's render tool is wired into the child | `chats/manager.ts` |
 | `supportsExtensions`, `supportsInteractiveRequests` | Declared for honesty; no client reads them today | — |
+| `supportsProjectFolders` | The project folder flow (start-screen pick, folder chip, project chip, grouped sidebar). False: runs on home, flat dated history | `App.tsx`, `StartScreen.tsx`, `Sidebar.tsx`, `SidePane.tsx`, `start-screen.ts` |
+| `webOnly` | The harness's chats only make sense on the web UI; atui omits it from its harness list | `atui/state.ts` |
 
 ## The context ring: the harness's own figure, or nothing
 

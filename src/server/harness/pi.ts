@@ -455,6 +455,8 @@ export class PiAdapter implements HarnessAdapter {
     supportsResumeCommand: false,
     readOnlyHarness: false,
     jobsSurviveRestart: false,
+    supportsProjectFolders: true,
+    webOnly: false,
   };
   get capabilities(): HarnessCapabilities {
     return this.capabilitySet;

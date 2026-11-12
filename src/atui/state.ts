@@ -220,8 +220,8 @@ export function createAtui(server: Server, opts: AtuiOptions) {
 
   const init = async () => {
     const b = await server.call<Bootstrap>("/api/bootstrap");
-    // The awui harness is the web UI's chat surface; a terminal omits it.
-    b.harnesses = b.harnesses.filter((h) => h.id !== "awui");
+    // A web-only harness (the awui chat surface) never appears in a terminal.
+    b.harnesses = b.harnesses.filter((h) => !h.capabilities.webOnly);
     const t = await server.call<ThemeInfo>("/api/theme").catch(() => null);
     batch(() => {
       setBoot(b);

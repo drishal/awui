@@ -31,6 +31,10 @@ export interface HarnessCapabilities {
   supportsResumeCommand: boolean;
   /** A backgrounded job outlives the harness process that started it (Claude Code's task files). Without this, a job reloaded from a transcript as still running is reconciled to stopped, because the new process no longer holds it. */
   jobsSurviveRestart: boolean;
+  /** Whether chats are scoped to a project folder the start screen offers (pick, recents, a project chip). False for a machine-wide chat surface (awui): it runs on the home workspace and keeps a flat, ungrouped history. */
+  supportsProjectFolders: boolean;
+  /** The harness's chats only make sense on the web UI; terminal clients (atui) omit it from their harness lists. */
+  webOnly: boolean;
   /**
    * The harness is a read-only surface by design (awui denies its child the write and exec
    * tools). It never gets the orchestration tools and is never a delegation target: a child

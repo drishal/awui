@@ -1162,6 +1162,8 @@ export class CodexAdapter implements HarnessAdapter {
     supportsResumeCommand: true,
     readOnlyHarness: false,
     jobsSurviveRestart: false,
+    supportsProjectFolders: true,
+    webOnly: false,
   };
   private modelCache: ModelProbe | null = null;
   private modelRead: Promise<ModelProbe> | null = null;

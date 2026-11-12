@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSnapshot, HarnessStatus, ProjectSession, SessionsOverview, UsageLimits } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
+import { projectScoped } from "../harness-policy.js";
 import { chatActions } from "../chat-actions.js";
 import { StatusWord } from "./StatusWord.js";
 import { STATUS_LABEL, useChatStream } from "../chat-stream.js";
@@ -44,7 +45,7 @@ function Picker({
     const q = query.trim().toLowerCase();
     const live = (s: ProjectSession) => (s.liveChatId ? (isBusy(s.status ?? "idle") ? 0 : 1) : 2);
     return overview.sessions
-      .filter((s) => s.harnessId !== "awui" && !s.archived && (!q || `${s.title} ${name(s.harnessId)} ${project(s.workspaceId)}`.toLowerCase().includes(q)))
+      .filter((s) => projectScoped(harnesses, s.harnessId) && !s.archived && (!q || `${s.title} ${name(s.harnessId)} ${project(s.workspaceId)}`.toLowerCase().includes(q)))
       .sort((a, b) => live(a) - live(b) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
       .slice(0, q ? 80 : PICKS);
   }, [overview, query]);

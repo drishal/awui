@@ -1253,8 +1253,9 @@ export function Composer({
                           <li className="then-menu-head muted" role="none">
                             Once the run is over, hand off to…
                           </li>
+                          {/* A read-only surface cannot host a handoff (the server's orchestration refusal says the same). */}
                           {harnesses
-                            .filter((h) => h.available && h.id !== chat.harnessId && h.id !== "awui")
+                            .filter((h) => h.available && h.id !== chat.harnessId && !h.capabilities.readOnlyHarness)
                             .map((h, i) => (
                               <li key={h.id} role="none">
                                 <button type="button" role="menuitem" autoFocus={i === 0} onClick={() => void addThen(h.id)}>

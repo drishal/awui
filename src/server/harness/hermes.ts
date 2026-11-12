@@ -1322,6 +1322,8 @@ export class HermesAdapter implements HarnessAdapter {
     supportsResumeCommand: false,
     readOnlyHarness: false,
     jobsSurviveRestart: false,
+    supportsProjectFolders: true,
+    webOnly: false,
   };
   private probes = new Map<string, { at: number; models: ModelInfo[]; userDefined: Set<string>; defaultKey: string }>();
   /** A catalog read on its way per project: the models route asks for the list and the default at once, which is one probe. */

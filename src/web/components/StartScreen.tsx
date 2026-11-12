@@ -10,6 +10,7 @@ import { useAddImagesToDraft } from "../draft-bus.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { IconArrowUp, IconChevronDown, IconFolder, IconImage, IconLink, IconPlus, IconX, Spinner } from "../icons.js";
 import { dataUrl, imageFiles, prepareImage, type PendingImage } from "../images.js";
+import { projectScoped } from "../harness-policy.js";
 import { recentForChip, startAction, startExamples, startHeading, startSendBlocked, startSetup, type StartSetup } from "../start-screen.js";
 import { HarnessMenu } from "./HarnessMenu.js";
 import { ModelPicker } from "./ModelPicker.js";
@@ -87,7 +88,10 @@ export function StartScreen({
   const heading = startHeading(setup());
   const blocked = startSendBlocked(setup());
   const name = harnesses.find((h) => h.id === harnessId)?.displayName ?? "the agent";
-  const awui = harnessId === "awui";
+  // The screen draws the harness's declared containment, not its name: a read-only
+  // surface gets the "never edits" copy, a projectless one hides the folder chip.
+  const readOnly = harnesses.find((h) => h.id === harnessId)?.capabilities.readOnlyHarness === true;
+  const projectless = !projectScoped(harnesses, harnessId ?? "");
   // The model chip is the composer's, before a chat exists: only a harness that can change models
   // has one, and only once its list has loaded (the fetch runs when the harness or folder changes).
   const showModel = harnesses.find((h) => h.id === harnessId)?.capabilities.supportsModelSelection === true && models.length > 0;
@@ -178,7 +182,7 @@ export function StartScreen({
           )}
         </h2>
         <p className="hero-sub muted">
-          {awui ? "It reads, searches, and computes — it never edits your files." : workspace ? "It runs with its normal tools, as you, in this folder." : "Choose the folder it should work in."}
+          {readOnly ? "It reads, searches, and computes — it never edits your files." : workspace ? "It runs with its normal tools, as you, in this folder." : "Choose the folder it should work in."}
         </p>
         <ul className="hero-examples" aria-label="Example prompts">
           {startExamples(harnessId).map((example) => (
@@ -315,7 +319,7 @@ export function StartScreen({
                     onThinking={onThinking}
                   />
                 ) : null}
-                {!awui ? <FolderChip workspace={workspace} recent={recent} onPick={onPickFolder} onOpen={onOpenRecent} /> : null}
+                {!projectless ? <FolderChip workspace={workspace} recent={recent} onPick={onPickFolder} onOpen={onOpenRecent} /> : null}
               </div>
               <div className="composer-actions">
                 {tooLong ? (

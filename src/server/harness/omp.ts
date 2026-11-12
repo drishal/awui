@@ -617,6 +617,8 @@ export class OmpAdapter implements HarnessAdapter {
     supportsResumeCommand: false,
     readOnlyHarness: false,
     jobsSurviveRestart: false,
+    supportsProjectFolders: true,
+    webOnly: false,
   };
   private lister: AcpLister;
   private sessionFiles = new SessionFiles(() => this.resolveSessionDir());

@@ -280,7 +280,8 @@ if every test passes.
 4. **Declare capabilities honestly** (`supportsSteer`, `supportsFollowUp`,
    `supportsThinkingLevel`, `supportsCompact`, `supportsExtensions`,
    `supportsInteractiveRequests`, `supportsRename`, `supportsModelSelection`,
-   `supportsFork`, `supportsHandoff`, `supportsRewind`, `supportsQueueEdit`). The UIs hide or disable
+   `supportsFork`, `supportsHandoff`, `supportsRewind`, `supportsQueueEdit`,
+   `supportsProjectFolders`, `webOnly`). The UIs hide or disable
    what is not declared; gate server routes on them too.
 5. **A run is finished only when the harness says it settled** (Pi's
    `agent_settled`, omp's `session_settled`, Hermes's and Claude's equivalents),

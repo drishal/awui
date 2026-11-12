@@ -208,6 +208,8 @@ export class FakeAdapter implements HarnessAdapter {
       supportsResumeCommand: true,
       readOnlyHarness: false,
       jobsSurviveRestart: false,
+      supportsProjectFolders: true,
+      webOnly: false,
       ...options.capabilities,
     };
   }

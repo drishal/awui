@@ -997,6 +997,8 @@ export class DshAdapter implements HarnessAdapter {
     supportsResumeCommand: false,
     readOnlyHarness: false,
     jobsSurviveRestart: false,
+    supportsProjectFolders: true,
+    webOnly: false,
   };
   private modelCache: ModelInfo[] = [];
   private version: string | null = null;

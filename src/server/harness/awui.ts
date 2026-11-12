@@ -18,8 +18,9 @@
 //     scratch tmp dir (a calc is fine; it is not given the workspace);
 //   - no rewind: in-place Edit needs the rewind extension, which stays off.
 //
-// The containment is honest in the capabilities the UI reads. Web-only: atui
-// omits it (see its list filter).
+// The containment is honest in the capabilities the UI reads: `webOnly` makes
+// atui omit it, and `supportsProjectFolders: false` keeps it off the project
+// start screen and its folder picker.
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { asHarnessId, type HarnessCapabilities } from "../../shared/protocol.js";
@@ -60,6 +61,9 @@ export class AwuiAdapter extends PiAdapter {
     supportsPermissionMode: false,
     supportsResumeCommand: false,
     jobsSurviveRestart: false,
+    // A machine-wide chat surface: no project folder, and only the web UI lists it.
+    supportsProjectFolders: false,
+    webOnly: true,
     // The containment is the point: a delegated child would be handed the write and exec tools this chat denies.
     readOnlyHarness: true,
   };

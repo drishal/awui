@@ -633,6 +633,8 @@ export class AcpAdapter implements HarnessAdapter {
     supportsResumeCommand: false,
     readOnlyHarness: false,
     jobsSurviveRestart: false,
+    supportsProjectFolders: true,
+    webOnly: false,
   };
   private catalog: ModelInfo[] = [];
   /** The last handshake's verdict, reused for a minute (see discover). */

@@ -4,7 +4,7 @@ import { recentForChip, startAction, startExamples, startHeading, startSendBlock
 
 const FAKE = { id: "fake", displayName: "Fake", available: true, reason: null };
 const FAKE_B = { id: "fake-b", displayName: "Fake B", available: false, reason: "fake-b is not installed." };
-const AWUI = { id: "awui", displayName: "Awui", available: true, reason: null };
+const AWUI = { id: "awui", displayName: "Awui", available: true, reason: null, capabilities: { supportsProjectFolders: false, webOnly: true } };
 
 const setup = (over: Partial<StartSetup> = {}): StartSetup => ({
   harnesses: [FAKE, FAKE_B],

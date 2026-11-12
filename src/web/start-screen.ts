@@ -2,12 +2,15 @@
 // does instead when the setup is not there (a folder to ask for, a harness to
 // wait on), and the words on it. Keep them here (with a unit test) and the
 // component that draws the screen stays thin.
+import { projectScoped } from "./harness-policy.js";
 
 export interface HarnessOf {
   id: string;
   displayName: string;
   available: boolean;
   reason?: string | null;
+  /** The capability bits the start screen's decisions read; missing bits read as an ordinary coding harness. */
+  capabilities?: { supportsProjectFolders: boolean; webOnly: boolean };
 }
 
 export interface StartSetup {
@@ -62,7 +65,8 @@ export function startSendBlocked(s: StartSetup): string | null {
 export function startAction(s: StartSetup): StartAction {
   const blocked = startSendBlocked(s);
   if (blocked) return { kind: "blocked", reason: blocked };
-  if (s.harnessId !== "awui" && !s.workspaceName) return { kind: "pick-folder" };
+  // A projectless surface (the awui harness) sends without asking for a folder.
+  if (projectScoped(s.harnesses, s.harnessId ?? "") && !s.workspaceName) return { kind: "pick-folder" };
   return { kind: "send" };
 }
 

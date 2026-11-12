@@ -99,6 +99,7 @@ import { useLimits } from "./limits.js";
 import { useNotifications } from "./notify.js";
 import { usePresenceReporting } from "./presence.js";
 import { isPaletteKey, type PaletteItem } from "./palette.js";
+import { projectScoped } from "./harness-policy.js";
 import { isBusy, wakeLabel } from "./session-groups.js";
 import { pendingImage, sentAttachments, type PendingImage } from "./images.js";
 import { useSplitLayout } from "./split-layout.js";
@@ -599,7 +600,7 @@ export function App() {
     title: tab.title || "Chat",
     harnessId: tab.harnessId,
     harnessName: boot?.harnesses.find((h) => h.id === tab.harnessId)?.displayName ?? tab.harnessId,
-    project: tab.harnessId === "awui" ? null : (tab.workspacePath.split("/").filter(Boolean).pop() ?? null),
+    project: projectScoped(boot?.harnesses ?? [], tab.harnessId) ? (tab.workspacePath.split("/").filter(Boolean).pop() ?? null) : null,
   });
   /** Start an open: later ones win. With a target, its loading screen shows until showChat. */
   const beginOpen = (target: SplashTarget | null): number => {
@@ -659,7 +660,7 @@ export function App() {
     save("harness", id);
     // The Awui harness has no projects; putting it on the home workspace keeps its
     // flat history from filtering to nothing under whatever coding workspace was last.
-    if (id === "awui" && workspace?.path !== boot?.home) {
+    if (!projectScoped(boot?.harnesses ?? [], id) && workspace?.path !== boot?.home) {
       void api<WorkspaceInfo>("/api/workspaces/open", { body: { path: boot?.home ?? "/" } }).then(setWorkspace).catch(() => undefined);
     }
   };
@@ -766,7 +767,7 @@ export function App() {
   /** The sidebar's New chat: the start screen, with the folder picker open over it. */
   const newChatInFolder = () => {
     showStart();
-    if (harnessId === "awui") return;
+    if (!projectScoped(boot?.harnesses ?? [], harnessId ?? "")) return;
     setPickerError(null);
     setPickerOpen(true);
   };
@@ -845,7 +846,7 @@ export function App() {
     // Two quick presses (a double Enter) must make one chat: the ref guards before state can re-render.
     if (!harnessId || startingRef.current) return false;
     startingRef.current = true;
-    const target = harnessId === "awui" && boot && boot.home ? ({ id: "__home", path: boot.home, name: "home" } as WorkspaceInfo) : workspace;
+    const target = !projectScoped(boot?.harnesses ?? [], harnessId ?? "") && boot && boot.home ? ({ id: "__home", path: boot.home, name: "home" } as WorkspaceInfo) : workspace;
     if (!target) {
       startingRef.current = false;
       return false;
@@ -915,7 +916,7 @@ export function App() {
   /** An immediate new chat (Ctrl+Alt+Enter from a composer): the start screen is the ordinary path, this one skips it. */
   const newChat = async (target: WorkspaceInfo | null = workspace, { newTab = false }: { newTab?: boolean } = {}) => {
     // The Awui harness's history is global; a new chat belongs on the home workspace, not wherever a coding chat left the picker.
-    if (harnessId === "awui" && boot && target?.path !== boot.home) {
+    if (!projectScoped(boot?.harnesses ?? [], harnessId ?? "") && boot && target?.path !== boot.home) {
       target = boot.home ? ({ id: "__home", path: boot.home, name: "home" } as WorkspaceInfo) : target;
     }
     if (!target || !harnessId) return;
@@ -1999,7 +2000,7 @@ export function App() {
   const heading = splash && !splash.leaving ? splash.target : null;
   // The app's name is the sidebar's; the header names what is open, or nothing on
   // the start screen (its own heading is right below).
-  const headerTitle = chat ? plainTitle(chat.title) || "New chat" : harnessId === "awui" || !workspace ? "" : workspace.name;
+  const headerTitle = chat ? plainTitle(chat.title) || "New chat" : !projectScoped(boot?.harnesses ?? [], harnessId ?? "") || !workspace ? "" : workspace.name;
 
   return (
     <ToolStyleContext.Provider value={toolStyle}>
@@ -2208,7 +2209,7 @@ export function App() {
                         {agentStatusText(chatStatusLine)}
                       </span>
                     ) : null}
-                    {chat.harnessId !== "awui" ? (
+                    {chat.capabilities.supportsProjectFolders ? (
                       <span className="chat-path" title={chat.workspace.path}>
                         {chat.workspace.name}
                       </span>
@@ -2458,7 +2459,7 @@ export function App() {
                     </div>
                   ) : null}
                   <h2 className="hero-title">
-                    {chat.harnessId === "awui" ? (
+                    {chat.capabilities.readOnlyHarness ? (
                       <>Ask anything</>
                     ) : (
                       <>
@@ -2466,7 +2467,7 @@ export function App() {
                       </>
                     )}
                   </h2>
-                  <p className="hero-sub muted">{chat.harnessId === "awui" ? "It reads, searches, and computes — it never edits your files." : "It runs with its normal tools, as you, in this folder."}</p>
+                  <p className="hero-sub muted">{chat.capabilities.readOnlyHarness ? "It reads, searches, and computes — it never edits your files." : "It runs with its normal tools, as you, in this folder."}</p>
                   {chat.gone ? <div className="banner banner-info">{chat.gone}</div> : null}
                   <Composer
                     key={chat.chatId}
@@ -2559,7 +2560,7 @@ export function App() {
                 onThinking={setStartThinking}
                 onModel={setStartModel}
                 onRefreshModels={refreshStartModels}
-                workspace={harnessId === "awui" ? null : workspace}
+                workspace={projectScoped(boot?.harnesses ?? [], harnessId ?? "") ? workspace : null}
                 recent={recent}
                 onPickFolder={() => {
                   setPickerError(null);
