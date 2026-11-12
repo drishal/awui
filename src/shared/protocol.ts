@@ -216,7 +216,11 @@ export interface RaceCleanupMember {
   removed: boolean;
   /** Its branch went too. */
   branchRemoved: boolean;
-  /** `running`, `uncommitted`, `unmerged`, `branch_kept`, `worktree_gone`, or `worktree_refused`. */
+  /**
+   * `running`, `uncommitted`, `moved` (its HEAD is no longer on the branch the record names),
+   * `unmerged` (its tree has commits the reference lacks, or git cannot count them),
+   * `branch_kept`, `worktree_gone`, `worktree_refused`, or `outside_project`.
+   */
   reason: string | null;
 }
 

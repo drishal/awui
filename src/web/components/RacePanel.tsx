@@ -25,6 +25,7 @@ function loserState(member: RaceMemberView): string {
 const CLEANUP_WORD: Record<string, string> = {
   running: "kept: still running",
   uncommitted: "kept: uncommitted work",
+  moved: "kept: its HEAD moved off the branch",
   unmerged: "kept: unmerged commits",
   branch_kept: "worktree removed, branch kept",
   worktree_gone: "worktree was already gone",

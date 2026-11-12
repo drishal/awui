@@ -192,9 +192,18 @@ async function existsDir(target: string): Promise<boolean> {
   }
 }
 
-/** Uncommitted work in a tree, `.awui` aside: what cleanup refuses to delete. */
+/**
+ * Uncommitted work in a tree, `.awui` aside: what cleanup refuses to delete. A `git
+ * status` that fails says nothing about the tree, so it counts as dirty: unknown is
+ * not safe.
+ */
 async function isDirty(tree: string): Promise<boolean> {
-  const status = await git(["status", "--porcelain"], { cwd: tree, ...READ }).catch(() => "");
+  let status: string;
+  try {
+    status = await git(["status", "--porcelain"], { cwd: tree, ...READ });
+  } catch {
+    return true;
+  }
   return status
     .split("\n")
     .map((line) => line.trim())
@@ -227,6 +236,21 @@ async function numstat(tree: string, fork: string): Promise<{ added: number; rem
 async function unmergedCount(root: string, branch: string, ref: string): Promise<number | null> {
   try {
     const out = await git(["rev-list", "--count", branch, `^${ref}`], { cwd: root, ...READ });
+    const count = Number(out.trim());
+    return Number.isInteger(count) ? count : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What a loser's own tree would lose: the commits its HEAD has that `ref` does not. Counted
+ * in the tree, from HEAD, rather than by the branch the record names, because the removal
+ * takes the tree as it stands now. Null when git cannot say, which is never "nothing to lose".
+ */
+async function unmergedInTree(tree: string, ref: string): Promise<number | null> {
+  try {
+    const out = await git(["rev-list", "--count", "HEAD", `^${ref}`], { cwd: tree, ...READ });
     const count = Number(out.trim());
     return Number.isInteger(count) ? count : null;
   } catch {
@@ -267,7 +291,11 @@ function forgetFigures(race: RaceRecord): void {
 export class Races {
   /** Newest first, as the panel lists them. */
   private readonly records: RaceRecord[] = [];
-  /** A race whose winner or cleanup is running: one at a time, so two clicks cannot both delete. */
+  /**
+   * Project roots with an apply or a cleanup running, so two of them can never interleave in
+   * one checkout. Keyed by project, not by race: two races in the same project write the same
+   * working tree.
+   */
   private readonly busy = new Set<string>();
 
   private constructor(
@@ -363,7 +391,7 @@ export class Races {
         view.added = added;
         view.removed = removed;
         view.files = files;
-        view.dirty = await isDirty(member.path).catch(() => false);
+        view.dirty = await isDirty(member.path);
         view.unmerged = race.winner?.chatId === member.chatId ? 0 : (await unmergedCount(project.root, member.branch, reference)) ?? undefined;
       }
       members.push(view);
@@ -403,11 +431,10 @@ export class Races {
   async pickWinner(race: RaceRecord, chatId: string, mode: "keep" | "apply", project: RaceProject): Promise<RaceWinnerResult> {
     const member = race.members.find((m) => m.chatId === chatId);
     if (!member) throw new ChatError(404, "no_member", "That chat is not in this comparison");
-    if (this.busy.has(race.id)) throw new ChatError(409, "busy", "This comparison is already being changed; try again in a moment");
     let applied = false;
     if (mode === "apply") {
       if (!member.fork) throw new ChatError(409, "no_fork_point", "This member's fork point was not recorded, so its changes cannot be applied");
-      this.busy.add(race.id);
+      this.lock(project.root);
       try {
         const status = await git(["status", "--porcelain", "--untracked-files=normal"], { cwd: project.root, ...READ });
         if (status.trim()) throw new ChatError(409, "dirty_checkout", "This project has uncommitted changes. Commit or stash them, then pick apply again; nothing was changed");
@@ -429,7 +456,7 @@ export class Races {
         });
         applied = true;
       } finally {
-        this.busy.delete(race.id);
+        this.busy.delete(project.root);
       }
     }
     const updated = await this.setWinner(race.id, chatId, mode);
@@ -441,14 +468,14 @@ export class Races {
   }
 
   /**
-   * Remove the losers' worktrees one at a time, and say what happened to each. A
-   * member still running, one with uncommitted work, or one whose branch has commits
-   * the winner (or the project) does not has its tree kept; a branch git refuses to
-   * delete is kept too, unless this request listed that member in `discard`.
+   * Remove the losers' worktrees one at a time, and say what happened to each. A member
+   * still running, one with uncommitted work, one whose HEAD is no longer on the branch
+   * the record names, or one whose tree has a commit the winner (or the project) does not
+   * has its tree kept; a branch git refuses to delete is kept too, unless this request
+   * listed that member in `discard`.
    */
   async cleanup(race: RaceRecord, discard: string[], project: RaceProject): Promise<RaceCleanupResult> {
-    if (this.busy.has(race.id)) throw new ChatError(409, "busy", "This comparison is already being cleaned up; try again in a moment");
-    this.busy.add(race.id);
+    this.lock(project.root);
     try {
       const reference = await referenceBranch(race, project.root);
       const results: RaceCleanupResult["results"] = [];
@@ -475,9 +502,18 @@ export class Races {
           results.push({ chatId: member.chatId, removed: false, branchRemoved: false, reason: "uncommitted" });
           continue;
         }
+        // `worktree remove` would take whatever is checked out there, so the branch the record
+        // names must be the one in the tree: a detached HEAD, or another branch, may hold
+        // commits that vanish with the folder and that no branch name here names.
+        const head = (await git(["symbolic-ref", "-q", "HEAD"], { cwd: member.path, ...READ, okExit: [1] }).catch(() => "")).trim();
+        if (head !== `refs/heads/${member.branch}`) {
+          results.push({ chatId: member.chatId, removed: false, branchRemoved: false, reason: "moved" });
+          continue;
+        }
         const discarded = discard.includes(member.chatId);
-        const unmerged = (await unmergedCount(project.root, member.branch, reference)) ?? 0;
-        if (unmerged > 0 && !discarded) {
+        // Unknown is not zero: a count git cannot give keeps the tree, as an unmerged one does.
+        const unmerged = await unmergedInTree(member.path, reference);
+        if (!discarded && (unmerged === null || unmerged > 0)) {
           results.push({ chatId: member.chatId, removed: false, branchRemoved: false, reason: "unmerged" });
           continue;
         }
@@ -499,8 +535,14 @@ export class Races {
       forgetFigures(updated);
       return { race: await this.view(updated, project), results };
     } finally {
-      this.busy.delete(race.id);
+      this.busy.delete(project.root);
     }
+  }
+
+  /** Take the project's write lock, or refuse: two applies (or an apply and a cleanup) in one checkout would interleave. */
+  private lock(root: string): void {
+    if (this.busy.has(root)) throw new ChatError(409, "busy", "This project is already applying or cleaning up a comparison; try again in a moment");
+    this.busy.add(root);
   }
 
   /** Which of the three a member's chat is in: working, settled, failed, or gone. */

@@ -38,23 +38,33 @@ interface Race {
   members: Array<{ chatId: string; tree: string; branch: string }>;
 }
 
-/** Compare two fake agents over one prompt, and read back the members the server just started. */
+/** One member as the compare route reports it: its chat and its worktree. */
+interface Started {
+  snapshot: { chatId: string } | null;
+  tree: { path: string; branch: string } | null;
+}
+
+/** Compare two fake agents over one prompt in an opened project, and read back the members it started. */
+async function compare(project: { app: TestApp; agent: Awaited<ReturnType<typeof signedIn>>; wsId: string }, prompt: string, name: string): Promise<Race> {
+  const res = await project.agent.post("/api/compare").send({ workspaceId: project.wsId, name, base: "HEAD", prompt, choices: [{ harnessId: "fake" }, { harnessId: "fake-b" }] });
+  expect(res.status).toBe(201);
+  const started = res.body.results as Started[];
+  return { ...project, raceId: String(res.body.raceId), members: started.map((result) => ({ chatId: String(result.snapshot?.chatId), tree: String(result.tree?.path), branch: String(result.tree?.branch) })) };
+}
+
+/** A project and its first comparison, for the tests that need one. */
 async function startRace(prompt: string): Promise<Race> {
   const app = await makeTestApp();
   apps.push(app);
   repo(app.project);
   const agent = await signedIn(app);
   const ws = (await agent.post("/api/workspaces/open").send({ path: app.project })).body as { id: string };
-  const res = await agent.post("/api/compare").send({ workspaceId: ws.id, name: "try", base: "HEAD", prompt, choices: [{ harnessId: "fake" }, { harnessId: "fake-b" }] });
-  expect(res.status).toBe(201);
-  const started = res.body.results as Array<{ snapshot: { chatId: string } | null; tree: { path: string; branch: string } | null }>;
-  return {
-    app,
-    agent,
-    raceId: String(res.body.raceId),
-    wsId: ws.id,
-    members: started.map((result) => ({ chatId: String(result.snapshot?.chatId), tree: String(result.tree?.path), branch: String(result.tree?.branch) })),
-  };
+  return compare({ app, agent, wsId: ws.id }, prompt, "try");
+}
+
+/** A second comparison in the same project, which shares that project's working tree. */
+function anotherRace(race: Race, prompt: string, name: string): Promise<Race> {
+  return compare({ app: race.app, agent: race.agent, wsId: race.wsId }, prompt, name);
 }
 
 /** Wait until every started chat settles (the fake's run ends). */
@@ -232,6 +242,25 @@ describe("race routes", () => {
     expect(readFileSync(path.join(race.app.project, "blob.bin"))).toEqual(binary);
   }, 30_000);
 
+  it("runs one write per project at a time, so two comparisons cannot apply at once", async () => {
+    const race = await startRace("edit");
+    const other = await anotherRace(race, "edit", "try2");
+    await settled(race);
+    await settled(other);
+    const [first] = two(race);
+    const [second] = two(other);
+    git(first.tree, "commit", "-qam", "first");
+    git(second.tree, "commit", "-qam", "second");
+    // Both requests reach the server before either finishes: the second finds the project locked.
+    const [one, two2] = await Promise.all([
+      race.agent.post(`/api/races/${race.raceId}/winner`).send({ chatId: first.chatId, mode: "apply" }),
+      race.agent.post(`/api/races/${other.raceId}/winner`).send({ chatId: second.chatId, mode: "apply" }),
+    ]);
+    expect([one.status, two2.status].sort()).toEqual([200, 409]);
+    const refused = one.status === 409 ? one : two2;
+    expect(refused.body.code).toBe("busy");
+  }, 40_000);
+
   it("refuses an apply whose checkout has moved past the fork point", async () => {
     const race = await startRace("edit");
     await settled(race);
@@ -278,6 +307,33 @@ describe("race routes", () => {
     const discarded = await cleanup([second.chatId]);
     expect(reasonFor(discarded, second.chatId)).toEqual({ chatId: second.chatId, removed: true, branchRemoved: true, reason: null });
     expect(git(race.app.project, "branch", "--list", second.branch).trim()).toBe("");
+  }, 30_000);
+
+  it("keeps a loser whose HEAD left its branch, even when the request would discard the branch", async () => {
+    const race = await startRace("edit");
+    await settled(race);
+    const [first] = two(race);
+    git(first.tree, "commit", "-qam", "its work");
+    git(first.tree, "checkout", "-q", "--detach");
+    const res = (await race.agent.post(`/api/races/${race.raceId}/cleanup`).send({ discard: [first.chatId] })).body as RaceCleanupResult;
+    expect(res.results.find((row) => row.chatId === first.chatId)?.reason).toBe("moved");
+    expect(existsSync(first.tree)).toBe(true);
+    expect(git(race.app.project, "branch", "--list", first.branch).trim()).not.toBe("");
+  }, 30_000);
+
+  it("keeps a loser when git cannot count what its tree would lose", async () => {
+    const race = await startRace("edit");
+    await settled(race);
+    const [first, second] = two(race);
+    // A winner whose recorded branch is gone: the reference cannot be resolved, so the count
+    // of commits the loser would lose is unknown, and unknown must never read as "none".
+    const kept = await race.agent.post(`/api/races/${race.raceId}/winner`).send({ chatId: second.chatId });
+    expect(kept.status).toBe(200);
+    git(race.app.project, "update-ref", "-d", `refs/heads/${second.branch}`);
+    git(first.tree, "checkout", "-q", "--", ".");
+    const res = (await race.agent.post(`/api/races/${race.raceId}/cleanup`).send({})).body as RaceCleanupResult;
+    expect(res.results.find((row) => row.chatId === first.chatId)?.reason).toBe("unmerged");
+    expect(existsSync(first.tree)).toBe(true);
   }, 30_000);
 
   it("leaves a member that is still running alone", async () => {
