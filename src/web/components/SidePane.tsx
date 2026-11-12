@@ -20,6 +20,7 @@ import { ago } from "../turns.js";
 import { Composer } from "./Composer.js";
 import { Conversation } from "./Conversation.js";
 import { Dot, dotted } from "./Dot.js";
+import { LineageChip } from "./LineageChip.js";
 
 /** Sessions the picker lists at first; a search reaches the rest. */
 const PICKS = 30;
@@ -88,6 +89,7 @@ export function SidePane({
   draftRef,
   openSnapshot,
   onMakeMain,
+  onOpenChat,
   onClose,
   onSignedOut,
 }: {
@@ -106,6 +108,8 @@ export function SidePane({
   openSnapshot: (s: ProjectSession) => Promise<ChatSnapshot>;
   /** Swap: this chat to the main pane (and the main one here). */
   onMakeMain: (chat: ChatState) => void;
+  /** Show another chat by id: a delegated child's parent, from its header's chip. */
+  onOpenChat: (chatId: string) => void;
   onClose: () => void;
   onSignedOut: () => void;
 }) {
@@ -173,6 +177,7 @@ export function SidePane({
               <span className={`status status-${chat.status}`} data-testid="side-status">
                 <StatusWord text={STATUS_LABEL[chat.status] ?? chat.status} />
               </span>
+              {chat.lineage ? <LineageChip lineage={chat.lineage} onOpen={onOpenChat} /> : null}
               {conn !== "connected" && conn !== "connecting" ? <span className="muted">
                   <Dot />
                   {conn}

@@ -69,6 +69,7 @@ import { ChatSearch } from "./components/ChatSearch.js";
 import { FileViewer } from "./components/FileViewer.js";
 import { SavedPromptsDialog } from "./components/SavedPromptsDialog.js";
 import { SidePane } from "./components/SidePane.js";
+import { LineageChip } from "./components/LineageChip.js";
 import { useManagePrompts } from "./saved-prompts.js";
 import { setPreviewWorkspace, useFileRequests, type FileRequest } from "./file-bus.js";
 import { isShortcutsKey, shortcutHint } from "./shortcuts.js";
@@ -1223,19 +1224,23 @@ export function App() {
   };
 
   /**
-   * A delegated task's child chat, from the panel above the composer: beside this one where there
-   * is room (a child is a chat like any other), else in a tab of its own, since a phone has one
-   * column and no second pane to put it in.
+   * Show another chat by id — a delegated child, or the parent a child names: beside this one where
+   * there is room (both are chats like any other), else in a tab of its own, since a phone has one
+   * column and there is no second pane to put it in.
    */
-  const openDelegated = async (task: DelegatedTaskView) => {
-    if (task.childChatId === null) return;
+  const openChatById = async (chatId: string) => {
     try {
-      const snapshot = await api<ChatSnapshot>(`/api/chats/${task.childChatId}`);
+      const snapshot = await api<ChatSnapshot>(`/api/chats/${chatId}`);
       if (wide) setSide((v) => ({ initial: snapshot, n: (v?.n ?? 0) + 1 }));
       else showChat(snapshot, { newTab: true });
     } catch (e) {
       fail(e);
     }
+  };
+
+  /** A delegated task's child chat, from the panel above the composer. */
+  const openDelegated = async (task: DelegatedTaskView) => {
+    if (task.childChatId !== null) await openChatById(task.childChatId);
   };
 
   /** Stop a delegated task from the panel; the row changes when the server's `task` event lands. */
@@ -2085,6 +2090,7 @@ export function App() {
                     <span className={`status status-${chat.status}`} data-testid="chat-status">
                       <StatusWord text={STATUS_LABEL[chat.status] ?? chat.status} />
                     </span>
+                    {chat.lineage ? <LineageChip lineage={chat.lineage} onOpen={(id) => void openChatById(id)} /> : null}
                     {chat.harnessId !== "awui" ? (
                       <span className="chat-path" title={chat.workspace.path}>
                         {chat.workspace.name}
@@ -2483,6 +2489,7 @@ export function App() {
               }}
               draftRef={sideDraft}
               onMakeMain={makeMain}
+              onOpenChat={(id) => void openChatById(id)}
               onClose={() => setSide(null)}
               onSignedOut={() => setSignedOut(true)}
             />
