@@ -165,7 +165,7 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   if (d.showStatusBar !== v.showStatusBar) p.showStatusBar = d.showStatusBar;
   if (d.herdr !== v.herdr) p.herdr = d.herdr;
   if (d.orchestrationEnabled !== v.orchestrationEnabled) p.orchestrationEnabled = d.orchestrationEnabled;
-  if (d.desktopBackground !== v.desktopBackground) p.desktopBackground = v.desktopBackground;
+  if (d.desktopBackground !== v.desktopBackground) p.desktopBackground = d.desktopBackground;
   return p;
 }
 
