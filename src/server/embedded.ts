@@ -49,7 +49,6 @@ export function embeddedWeb(): Map<string, EmbeddedWebFile> | null {
 }
 
 /** The embedded source of a harness extension by file name, or null in source runs. */
-/** The embedded source of a harness extension by file name, or null in source runs. */
 export function embeddedExtensionSource(name: string): string | null {
   return isEmbedded ? (extensionSources.get(name) ?? null) : null;
 }
