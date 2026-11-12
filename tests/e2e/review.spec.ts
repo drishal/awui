@@ -81,7 +81,9 @@ test("the batch goes to another chat of the same project, which receives one pro
   await dialog.getByRole("button", { name: "Send", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("Sent 1 comment to the second chat");
 
-  // The other chat got exactly one prompt, the batch the server composed.
+  // The other chat got exactly one prompt, the batch the server composed. The dialog is modal: close it first.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
   await showSidebar(page);
   await page.locator(".session", { hasText: "the second chat" }).first().click();
   await expect(prompts(page)).toHaveCount(2);

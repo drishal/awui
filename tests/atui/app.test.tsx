@@ -521,7 +521,8 @@ describe("atui", () => {
     expect(sent.text).toContain("1. src/app.ts");
     expect(sent.text).toContain("keep a");
     // The panel stays open with the thread still there; its notice is behind it, so Esc shows it.
-    expect(await ui.frame()).toContain("Esc close");
+    // The prompt reaches the chat before the send call itself answers, so wait out "Sending…".
+    await ui.until("Esc close");
     expect(await ui.frame()).toContain("✎ keep a");
     expect(await ui.frame()).toContain("1 open");
     ui.keys.pressEscape();
