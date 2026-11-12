@@ -174,19 +174,15 @@ function Card({ card, eager, names, harnessName, projectName, pr, onOpen, onOpen
           <span>{s.updatedAt ? ago(Date.parse(s.updatedAt)) : ""}</span>
           {s.asking ? <span className="dashboard-flag is-needs">needs you</span> : null}
           {s.origin === "agent" ? <span className="dashboard-flag">delegated</span> : null}
-          {badge ? (
-            <a className="dashboard-pr" href={badge.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-              {badge.words}
-            </a>
-          ) : null}
         </span>
         {s.agentStatus ? <span className={`dashboard-status is-${s.agentStatus.state}`}>{agentStatusText(s.agentStatus)}</span> : null}
-        {line === undefined ? null : line === null ? (
-          <span className="dashboard-line muted">No preview</span>
-        ) : (
-          <span className="dashboard-line">{line}</span>
-        )}
+        {line === undefined || line === null ? null : <span className="dashboard-line">{line}</span>}
       </button>
+      {badge ? (
+        <a className="dashboard-pr" href={badge.url} target="_blank" rel="noreferrer">
+          {badge.words}
+        </a>
+      ) : null}
       {card.children.length > 0 ? (
         <ul className="dashboard-children" aria-label={`Agents working under ${plainTitle(s.title)}`}>
           {card.children.map((child) => (

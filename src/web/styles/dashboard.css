@@ -17,7 +17,8 @@
 .dashboard-card-meta { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; color: var(--muted-text); font-size: 11px; }
 .dashboard-flag { padding: 0 5px; border-radius: 6px; background: var(--surface-2); }
 .dashboard-flag.is-needs { color: var(--warn); }
-.dashboard-pr { color: var(--link); text-decoration: none; }
+/* The pull-request badge sits under the card's button: a link may not nest in one. */
+.dashboard-pr { padding: 0 10px 6px; color: var(--link); font-size: 11px; text-decoration: none; }
 .dashboard-pr:hover { text-decoration: underline; }
 .dashboard-status { font-size: 12px; color: var(--muted-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-status.is-blocked { color: var(--warn); }

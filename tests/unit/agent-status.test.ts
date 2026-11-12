@@ -44,13 +44,19 @@ describe("an agent's status line", () => {
 
   it("drops the oldest lines past the cap, and ignores a malformed file entry", async () => {
     const file = tempFile();
-    writeFileSync(file, JSON.stringify({ "pi:gone": { state: "walking", comment: "", at: 1 }, "pi:kept": { state: "done", comment: "shipped", at: 2 } }));
+    // A full file, oldest first, with an entry this build cannot read at the front.
+    const full: Record<string, unknown> = { "pi:gone": { state: "walking", comment: "", at: 1 } };
+    for (let i = 0; i < MAX_STATUS_ENTRIES; i++) full[`pi:s${i}`] = { state: "done", comment: "", at: 2 };
+    writeFileSync(file, JSON.stringify(full));
     const store = await AgentStatuses.open(file);
     expect(store.get("pi:gone")).toBeUndefined();
-    expect(store.get("pi:kept")?.comment).toBe("shipped");
-    for (let i = 0; i < MAX_STATUS_ENTRIES + 3; i++) await store.set(`pi:s${i}`, "working", "");
-    expect(store.get("pi:kept")).toBeUndefined();
-    expect(store.get(`pi:s${MAX_STATUS_ENTRIES + 2}`)?.state).toBe("working");
+    expect(store.get("pi:s0")?.state).toBe("done");
+    // Three new lines push the oldest three out (the malformed entry never counted).
+    for (let i = 0; i < 3; i++) await store.set(`pi:new${i}`, "working", "");
+    expect(store.get("pi:s0")).toBeUndefined();
+    expect(store.get("pi:s3")?.state).toBe("done");
+    expect(store.get("pi:new2")?.state).toBe("working");
+    expect(Object.keys(JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>)).toHaveLength(MAX_STATUS_ENTRIES);
   });
 
   it("says the state in words, then the agent's own sentence", () => {

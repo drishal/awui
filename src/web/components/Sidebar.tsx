@@ -1024,9 +1024,15 @@ export function Sidebar(props: {
   };
   const hideCtx = { now, keep: isActiveSession, ...(props.overview.checkouts ? { checkouts: props.overview.checkouts } : {}) };
   const hideCount = useMemo(() => hideCounts(props.overview, hideCtx), [props.overview, now, props.activeSessionId, props.activeChatId]);
+  // What the list shows before the chip narrows it: the hidden kinds are already out, so
+  // the chip's counts agree with the rows.
+  const unhidden = useMemo(
+    () => applyHidden(props.overview, hide, hideCtx),
+    [props.overview, hide, now, props.activeSessionId, props.activeChatId],
+  );
   const overview = useMemo(
-    () => applyQuick(applyHidden(props.overview, hide, hideCtx), quick, now, isWorking),
-    [props.overview, quick, hide, now, props.activeStatus, props.activeSessionId, props.activeChatId],
+    () => applyQuick(unhidden, quick, now, isWorking),
+    [unhidden, quick, now, props.activeStatus, props.activeSessionId, props.activeChatId],
   );
   const groupOptions = {
     currentId: props.workspace?.id ?? null,
@@ -1048,8 +1054,8 @@ export function Sidebar(props: {
   );
   const { pinned, needs, working } = sections;
   const quickCount = useMemo(
-    () => quickCounts(props.overview, groupOptions, isWorking),
-    [props.overview, props.harnessId, props.activeStatus, props.activeSessionId, props.activeChatId, now],
+    () => quickCounts(unhidden, groupOptions, isWorking),
+    [unhidden, props.harnessId, props.activeStatus, props.activeSessionId, props.activeChatId, now],
   );
   const projectName = (s: ProjectSession) => overview.workspaces.find((w) => w.id === s.workspaceId)?.name ?? "";
 
