@@ -116,6 +116,7 @@ src/server/
   checkpoints.ts             Per-prompt work-tree snapshots in a shadow git repo; turn undo.
   workspaces.ts              Realpath confinement for folder browse and every project lookup, refusing outside-root replacements.
   worktrees.ts               Managed isolated Git checkouts under `<project>/.awui/worktrees`, with per-workspace lock root and atomic metadata; prune refuses a dirty tree.
+  races.ts                   A comparison recorded: each worktree member's fork point, live status, counts and one file's diff; picking a winner (keep, or apply into a clean checkout at the fork point, never committing) and cleaning up a loser git agrees to drop.
   terminal.ts, terminal-backend.ts  Bounded project PTYs: real @lydell/node-pty for source/Node, Bun.Terminal in the compiled app. Validated cwd, process-tree kill on last disconnect/server exit, 1 MiB replay, 60 s exit retention. Never a shell-pipe wrapper; only explicit interactive shells.
   binary-runtime.ts          Browser preview's CommonJS package beside the executable. The trusted PTY page is src/web/terminal-shell.html, not a server module.
   render-preview.ts          Authenticated bounded Chromium capture of an agent's own stored page; in-memory fixed-origin rendering, no other network/fetch/cookies/storage, timeout, console cap and certainly no app frame sharing.

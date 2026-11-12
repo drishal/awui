@@ -8,10 +8,11 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { ChatItem, ChatStatus, RaceFile, RaceMemberStatus, RaceMemberView, RaceSummary, WorkspaceInfo } from "../shared/protocol.js";
+import type { ChatItem, ChatStatus, RaceCleanupResult, RaceFile, RaceFileDiff, RaceMemberStatus, RaceMemberView, RaceSummary, RaceWinnerResult, WorkspaceInfo } from "../shared/protocol.js";
 import type { Chat } from "./chats/chat.js";
-import { ChatError } from "./chats/chat.js";
+import { ChatError, errorMessage } from "./chats/chat.js";
 import { git } from "./git.js";
+import { parseUnified } from "./harness/tool-diff.js";
 import { isObj, readJson, writeJsonChecked } from "./state-file.js";
 import { isWithin } from "./workspaces.js";
 import type { WorktreeService } from "./worktrees.js";
@@ -26,6 +27,8 @@ const MAX_PROMPT_CHARS = 2_000;
 const ANSWER_CHARS = 300;
 /** Files a member's view lists: past this the counts still add up, the list just stops. */
 const MAX_RACE_FILES = 200;
+/** A patch this route may write into a project; a larger one is merged by hand instead. */
+const MAX_PATCH_BYTES = 2 * 1024 * 1024;
 /** A member's git counts, reused for a moment so a panel's refresh does not re-run git per row. */
 const CACHE_TTL_MS = 5_000;
 const READ = { timeoutMs: 20_000 };
@@ -149,6 +152,35 @@ function cleanRecord(raw: unknown): RaceRecord | null {
   return record;
 }
 
+/** A relative path a caller named: no absolute paths, no `..`, nothing a shell would read specially. */
+function cleanRelative(raw: string): string {
+  if (!raw || raw.length > 4096 || raw.includes("\0") || raw.includes("\\")) throw new ChatError(400, "bad_path", "Name a file inside the worktree");
+  if (raw.startsWith("/") || raw.split("/").some((part) => part === "" || part === "." || part === "..")) throw new ChatError(400, "bad_path", "Paths are relative to the worktree, with no `..`");
+  return raw;
+}
+
+/** A member's path, resolved so a symlink cannot carry a read or a diff outside its worktree. */
+async function confine(tree: string, file: string): Promise<void> {
+  const full = path.join(tree, file);
+  if (!isWithin(tree, full)) throw new ChatError(400, "bad_path", "Paths stay inside the worktree");
+  const realTree = await fs.realpath(tree).catch(() => tree);
+  let real: string;
+  try {
+    real = await fs.realpath(full);
+  } catch {
+    // A file the agent deleted has a diff but no path to resolve: its folder must still be inside.
+    real = await fs.realpath(path.dirname(full)).catch(() => path.dirname(full));
+  }
+  if (!isWithin(realTree, real)) throw new ChatError(400, "bad_path", "Paths stay inside the worktree");
+}
+
+async function existsDir(target: string): Promise<boolean> {
+  try {
+    return (await fs.stat(target)).isDirectory();
+  } catch {
+    return false;
+  }
+}
 
 /** Uncommitted work in a tree, `.awui` aside: what cleanup refuses to delete. */
 async function isDirty(tree: string): Promise<boolean> {
@@ -218,9 +250,15 @@ function figuresFor(member: RaceRecordMember): Promise<{ added: number; removed:
   return value;
 }
 
+function forgetFigures(race: RaceRecord): void {
+  for (const member of race.members) figures.delete(`${member.chatId}:${member.fork}`);
+}
+
 export class Races {
   /** Newest first, as the panel lists them. */
   private readonly records: RaceRecord[] = [];
+  /** A race whose winner or cleanup is running: one at a time, so two clicks cannot both delete. */
+  private readonly busy = new Set<string>();
 
   private constructor(
     private readonly file: string | null,
@@ -270,6 +308,24 @@ export class Races {
     return record;
   }
 
+  /** Mark a winner and write it down; the apply itself is `pickWinner`'s. */
+  async setWinner(id: string, chatId: string, mode: "keep" | "apply"): Promise<RaceRecord> {
+    const race = this.required(id);
+    if (!race.members.some((member) => member.chatId === chatId)) throw new ChatError(404, "no_member", "That chat is not in this comparison");
+    race.winner = { chatId, mode, at: Date.now() };
+    await this.write();
+    return race;
+  }
+
+  /** Forget members a cleanup removed, and note that it ran. */
+  async dropMembers(id: string, chatIds: string[]): Promise<RaceRecord> {
+    const race = this.required(id);
+    race.members = race.members.filter((member) => !chatIds.includes(member.chatId));
+    race.cleanedAt = Date.now();
+    if (race.winner && !race.members.some((member) => member.chatId === race.winner?.chatId)) delete race.winner;
+    await this.write();
+    return race;
+  }
 
   /**
    * A race as the panel draws it. `project` adds what costs git: line counts, files,
@@ -315,6 +371,126 @@ export class Races {
     };
   }
 
+  /** One file of a member's worktree, against its fork point, bounded like a tool's diff. */
+  async diff(race: RaceRecord, chatId: string, file: string): Promise<RaceFileDiff> {
+    const member = race.members.find((m) => m.chatId === chatId);
+    if (!member) throw new ChatError(404, "no_member", "That chat is not in this comparison");
+    const wanted = cleanRelative(file);
+    if (!member.fork) throw new ChatError(409, "no_fork_point", "This member's fork point was not recorded");
+    if (!(await existsDir(member.path))) throw new ChatError(410, "worktree_gone", "This member's worktree is gone");
+    await confine(member.path, wanted);
+    const text = await git(["--literal-pathspecs", "diff", "--no-color", "-U3", member.fork, "--", wanted], { cwd: member.path, ...READ, okExit: [1] }).catch((error: unknown) => {
+      throw new ChatError(422, "git_failed", errorMessage(error));
+    });
+    return { path: wanted, diff: parseUnified(text) };
+  }
+
+  /**
+   * Pick a winner. `keep` only records it. `apply` also puts its changes against the
+   * fork point into the project's working tree, unstaged, and only when that checkout
+   * is clean and still at the fork point; nothing is committed, pushed, or moved.
+   */
+  async pickWinner(race: RaceRecord, chatId: string, mode: "keep" | "apply", project: RaceProject): Promise<RaceWinnerResult> {
+    const member = race.members.find((m) => m.chatId === chatId);
+    if (!member) throw new ChatError(404, "no_member", "That chat is not in this comparison");
+    if (this.busy.has(race.id)) throw new ChatError(409, "busy", "This comparison is already being changed; try again in a moment");
+    let applied = false;
+    if (mode === "apply") {
+      if (!member.fork) throw new ChatError(409, "no_fork_point", "This member's fork point was not recorded, so its changes cannot be applied");
+      this.busy.add(race.id);
+      try {
+        const status = await git(["status", "--porcelain", "--untracked-files=normal"], { cwd: project.root, ...READ });
+        if (status.trim()) throw new ChatError(409, "dirty_checkout", "This project has uncommitted changes. Commit or stash them, then pick apply again; nothing was changed");
+        const head = (await git(["rev-parse", "--verify", "--end-of-options", "HEAD"], { cwd: project.root, ...READ })).trim();
+        if (head !== member.fork) throw new ChatError(409, "head_moved", `The project's HEAD has moved past the fork point, so nothing was applied. Merge its branch \`${member.branch}\` by hand instead`);
+        const patch = await git(["diff", "--binary", "--no-color", member.fork], { cwd: member.path, ...READ }).catch((error: unknown) => {
+          throw new ChatError(422, "git_failed", errorMessage(error));
+        });
+        if (patch.trim() === "") throw new ChatError(409, "nothing_to_apply", "This member changed nothing against its fork point");
+        if (Buffer.byteLength(patch) > MAX_PATCH_BYTES) throw new ChatError(413, "patch_too_large", "This change is too large to apply from here; merge its branch by hand instead");
+        // A clean checkout at the fork point cannot conflict, so a plain apply is enough,
+        // and only a plain apply leaves the result unstaged (`--3way` writes the index).
+        await git(["apply", "--check", "-"], { cwd: project.root, ...READ, input: patch }).catch((error: unknown) => {
+          throw new ChatError(409, "apply_failed", `The patch does not apply: ${errorMessage(error)}`);
+        });
+        await git(["apply", "-"], { cwd: project.root, ...READ, input: patch }).catch((error: unknown) => {
+          throw new ChatError(409, "apply_failed", `The patch could not be written: ${errorMessage(error)}`);
+        });
+        applied = true;
+      } finally {
+        this.busy.delete(race.id);
+      }
+    }
+    const updated = await this.setWinner(race.id, chatId, mode);
+    forgetFigures(updated);
+    const instructions = applied
+      ? `Its changes are in this project's working tree, unstaged. Review them with git diff, then commit what you want; its branch \`${member.branch}\` stays as it was.`
+      : `Keep \`${member.branch}\` as the winner: merge it by hand, or pick apply to copy its changes into a clean checkout.`;
+    return { race: await this.view(updated, project), mode, applied, instructions };
+  }
+
+  /**
+   * Remove the losers' worktrees one at a time, and say what happened to each. A
+   * member still running, one with uncommitted work, or one whose branch has commits
+   * the winner (or the project) does not has its tree kept; a branch git refuses to
+   * delete is kept too, unless this request listed that member in `discard`.
+   */
+  async cleanup(race: RaceRecord, discard: string[], project: RaceProject): Promise<RaceCleanupResult> {
+    if (this.busy.has(race.id)) throw new ChatError(409, "busy", "This comparison is already being cleaned up; try again in a moment");
+    this.busy.add(race.id);
+    try {
+      const reference = await referenceBranch(race, project.root);
+      const results: RaceCleanupResult["results"] = [];
+      const gone: string[] = [];
+      for (const member of race.members) {
+        if (race.winner?.chatId === member.chatId) continue;
+        const status = this.statusOf(member.chatId);
+        if (status === "running") {
+          results.push({ chatId: member.chatId, removed: false, branchRemoved: false, reason: "running" });
+          continue;
+        }
+        if (!isWithin(project.root, member.path)) {
+          results.push({ chatId: member.chatId, removed: false, branchRemoved: false, reason: "outside_project" });
+          continue;
+        }
+        if (!(await existsDir(member.path))) {
+          gone.push(member.chatId);
+          results.push({ chatId: member.chatId, removed: true, branchRemoved: false, reason: "worktree_gone" });
+          await this.chats.close(member.chatId, "Its worktree was already gone, so its race chat was closed");
+          await project.trees.forget(project.ws, member.worktreeId).catch(() => undefined);
+          continue;
+        }
+        if (await isDirty(member.path)) {
+          results.push({ chatId: member.chatId, removed: false, branchRemoved: false, reason: "uncommitted" });
+          continue;
+        }
+        const discarded = discard.includes(member.chatId);
+        const unmerged = (await unmergedCount(project.root, member.branch, reference)) ?? 0;
+        if (unmerged > 0 && !discarded) {
+          results.push({ chatId: member.chatId, removed: false, branchRemoved: false, reason: "unmerged" });
+          continue;
+        }
+        // Plain `worktree remove`: git refuses a tree this record thought clean (a nested
+        // checkout, a lock), and that refusal keeps the work rather than forcing it away.
+        const removed = await git(["worktree", "remove", "--", member.path], { cwd: project.root, ...READ }).then(() => true).catch(() => false);
+        if (!removed) {
+          results.push({ chatId: member.chatId, removed: false, branchRemoved: false, reason: "worktree_refused" });
+          continue;
+        }
+        // `-d` refuses a branch with commits the reference lacks; `-D` only when the user ticked discard.
+        const branchRemoved = await git(["branch", discarded ? "-D" : "-d", "--", member.branch], { cwd: project.root, ...READ }).then(() => true).catch(() => false);
+        gone.push(member.chatId);
+        results.push({ chatId: member.chatId, removed: true, branchRemoved, reason: branchRemoved ? null : "branch_kept" });
+        await this.chats.close(member.chatId, "Its race worktree was removed");
+        await project.trees.forget(project.ws, member.worktreeId).catch(() => undefined);
+      }
+      const updated = gone.length > 0 ? await this.dropMembers(race.id, gone) : race;
+      forgetFigures(updated);
+      return { race: await this.view(updated, project), results };
+    } finally {
+      this.busy.delete(race.id);
+    }
+  }
 
   /** Which of the three a member's chat is in: working, settled, failed, or gone. */
   private statusOf(chatId: string): RaceMemberStatus {

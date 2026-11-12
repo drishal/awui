@@ -43,6 +43,9 @@ import {
   htmlRenderPreviewSchema,
   worktreeCreateSchema,
   compareStartSchema,
+  raceCleanupSchema,
+  raceDiffQuery,
+  raceWinnerSchema,
   gitHubPrSchema,
   resumeChatSchema,
   herdrFocusSchema,
@@ -692,6 +695,10 @@ export function createApp(deps: AppDeps) {
     if (!race) throw new ChatError(404, "no_race", "No such comparison; it may have been pruned");
     return race;
   };
+  const raceProject = async (race: RaceRecord) => {
+    const ws = await workspaces.get(race.workspaceId);
+    return { root: ws.path, ws, trees };
+  };
   app.get("/api/races", async (_req, res) => {
     // The record and each member's live status: no git per row, so fifty of them stay one cheap call.
     res.json({ races: await Promise.all(races.list().map((race) => races.view(race))) });
@@ -701,6 +708,21 @@ export function createApp(deps: AppDeps) {
     // A project that was closed or moved is not this race's to read: the record's bare view still answers.
     const project = await workspaces.get(race.workspaceId).then((ws) => ({ root: ws.path, ws, trees })).catch(() => undefined);
     res.json(await races.view(race, project));
+  });
+  app.get("/api/races/:id/members/:chatId/diff", async (req, res) => {
+    const race = raceOf(req.params.id);
+    const { path: file } = raceDiffQuery.parse(req.query);
+    res.json(await races.diff(race, req.params.chatId, file));
+  });
+  app.post("/api/races/:id/winner", async (req, res) => {
+    const race = raceOf(req.params.id);
+    const input = body(raceWinnerSchema, req);
+    res.json(await races.pickWinner(race, input.chatId, input.mode, await raceProject(race)));
+  });
+  app.post("/api/races/:id/cleanup", async (req, res) => {
+    const race = raceOf(req.params.id);
+    const input = body(raceCleanupSchema, req);
+    res.json(await races.cleanup(race, input.discard, await raceProject(race)));
   });
 
   // Backend previews are requested by a signed-in contributor of an owning chat.

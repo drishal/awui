@@ -30,6 +30,8 @@ export interface WorktreeService {
   list(ws: WorkspaceInfo): Promise<WorktreeInfo[]>;
   create(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeCreated>;
   prune(ws: WorkspaceInfo, id: string): Promise<void>;
+  /** Drop a tree's record after something else removed the checkout (a race's cleanup). */
+  forget(ws: WorkspaceInfo, id: string): Promise<void>;
 }
 
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -215,6 +217,17 @@ export class ManagedWorktrees implements WorktreeService {
     // The task branch goes too once its commits are merged; `-d` refuses an unmerged
     // one, which stays for the user to merge or delete, so no committed work is lost.
     await git(["branch", "-d", "--", tree.branch], { cwd: ws.path }).catch(() => undefined);
+  }
+
+  /** Drop a record whose checkout is already gone (a race's cleanup removed it): nothing to remove, nothing to break. */
+  async forget(ws: WorkspaceInfo, id: string): Promise<void> {
+    await serial(ws, async () => {
+      const meta = await loadMeta(ws);
+      const at = meta.findIndex((t) => t.id === id);
+      if (at < 0) return;
+      meta.splice(at, 1);
+      await writeJsonChecked(metaFile(ws), meta);
+    });
   }
 }
 

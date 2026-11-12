@@ -199,6 +199,38 @@ export interface RaceSummary {
   members: RaceMemberView[];
 }
 
+/** Picking a winner: mark it (keep), or also put its changes in the project's working tree (apply). */
+export interface RaceWinnerResult {
+  race: RaceSummary;
+  mode: "keep" | "apply";
+  /** Whether the winner's changes are in the project's working tree now. */
+  applied: boolean;
+  /** What to do next, in words a user can act on. */
+  instructions: string;
+}
+
+/** What a cleanup did to one member, or why it left it alone. */
+export interface RaceCleanupMember {
+  chatId: string;
+  /** Its worktree is gone. */
+  removed: boolean;
+  /** Its branch went too. */
+  branchRemoved: boolean;
+  /** `running`, `uncommitted`, `unmerged`, `branch_kept`, `worktree_gone`, or `worktree_refused`. */
+  reason: string | null;
+}
+
+export interface RaceCleanupResult {
+  race: RaceSummary;
+  results: RaceCleanupMember[];
+}
+
+/** One file of a race member's worktree, changed against the fork point. */
+export interface RaceFileDiff {
+  path: string;
+  /** Null when the file has no change against the fork point now. */
+  diff: ToolDiff | null;
+}
 
 /** A project folder's place in its git repository, for the order of the sidebar's projects. */
 export interface Checkout {
@@ -970,6 +1002,12 @@ export const terminalWriteSchema = z.object({ data: z.string().max(16_384) });
 export const htmlRenderPreviewSchema = z.object({ theme: z.record(z.string().regex(/^--[a-z0-9-]+$/), z.string().max(1000).refine((value) => !/[;{}]/.test(value))).refine((value) => Object.keys(value).length <= 32), appearance: z.enum(["light", "dark"]) });
 export const gitHubPrSchema = z.object({ base: z.string().trim().min(1).max(120), title: z.string().trim().min(1).max(200), body: z.string().max(20_000).default("") });
 export const compareStartSchema = z.object({ workspaceId: z.string().min(1).max(128), name: z.string().trim().min(1).max(64), base: z.string().trim().min(1).max(256), prompt: z.string().min(1).max(MAX_MESSAGE_CHARS), choices: z.array(z.object({ harnessId: z.string().min(1).max(64), model: z.string().min(1).max(512).optional() }).strict()).min(2).max(4) });
+/** Picking a race's winner: mark it, or also put its changes in the project's working tree. */
+export const raceWinnerSchema = z.object({ chatId: z.string().min(1).max(128), mode: z.enum(["keep", "apply"]).default("keep") });
+/** Cleaning up a race's losers: members whose unmerged branch the user chose to throw away. */
+export const raceCleanupSchema = z.object({ discard: z.array(z.string().min(1).max(128)).max(8).default([]) });
+/** One file of a race member's worktree, by its path in that worktree. */
+export const raceDiffQuery = z.object({ path: z.string().min(1).max(4096) });
 /** Allow a project's .envrc (direnv allow), within the workspace roots. */
 export const direnvAllowSchema = z.object({ workspaceId: z.string().min(1).max(128) });
 export const createChatSchema = z.object({
