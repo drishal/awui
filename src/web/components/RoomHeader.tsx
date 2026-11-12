@@ -7,7 +7,7 @@ import type { RoomState } from "../room-state.js";
 import { isLiveTurn } from "../room-state.js";
 import { TURN_STATUS_LABEL } from "../use-room-stream.js";
 import { dollars, shortTokens, tokensOf } from "../usage.js";
-import { IconAgents, IconDownload, IconEdit } from "../icons.js";
+import { IconAgents, IconDownload, IconEdit, IconLink } from "../icons.js";
 
 /** The subtitle's room facts: "● Idle · 2 bots · 30k tokens". The project and the Room tag are the header's own. */
 export function RoomHeadSub({ state }: { state: RoomState }) {
@@ -32,7 +32,7 @@ export function RoomHeadSub({ state }: { state: RoomState }) {
 }
 
 /** Members (the room's main control, worded like the chat's Review), then Edit and Export as the header's icon tools. */
-export function RoomHeadActions({ membersOpen, onMembers, onEdit, onExport }: { membersOpen: boolean; onMembers: () => void; onEdit: () => void; onExport: () => void }) {
+export function RoomHeadActions({ membersOpen, onMembers, onEdit, onExport, onCopyLink }: { membersOpen: boolean; onMembers: () => void; onEdit: () => void; onExport: () => void; onCopyLink: () => void }) {
   return (
     <>
       <button type="button" className="btn btn-small room-members-open" aria-label="Room members" aria-expanded={membersOpen} title="Who is in the room, the lead, and who may consult whom" onClick={onMembers}>
@@ -40,6 +40,9 @@ export function RoomHeadActions({ membersOpen, onMembers, onEdit, onExport }: { 
       </button>
       <button type="button" className="icon-btn" aria-label="Edit room" title="Edit the room: name, topic, project, members, and budgets" onClick={onEdit}>
         <IconEdit size={16} />
+      </button>
+      <button type="button" className="icon-btn" aria-label="Copy room link" title="Copy a link that opens this room again" onClick={onCopyLink}>
+        <IconLink size={16} />
       </button>
       <button type="button" className="icon-btn" aria-label="Export room as Markdown" title="Download the room as Markdown" onClick={onExport}>
         <IconDownload size={16} />

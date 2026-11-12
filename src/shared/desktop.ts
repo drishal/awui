@@ -194,8 +194,9 @@ export function parseBackground(text: string): boolean | null {
 
 /**
  * A `awui://` link as a target: `awui://new`, `awui://sessions`,
- * `awui://prompt?text=…`. Null for anything else, so a malformed link opens the
- * window instead of a blank page.
+ * `awui://prompt?text=…`, and the stable chat and room links (`awui://chat/<key>` names a
+ * live chat id or a namespaced session id; `awui://room/<id>` a room). Null for anything
+ * else, so a malformed link opens the window instead of a blank page.
  */
 export function targetFromLink(link: string): Target | null {
   let url: URL;
@@ -214,6 +215,15 @@ export function targetFromLink(link: string): Target | null {
     return text ? { kind: "prompt", text } : null;
   }
   if (what === "") return { kind: "home" };
+  // A chat or room link (the chat menu's Copy chat link, the room header's): the key is the
+  // stable one — a namespaced session id for a chat, the room's id — so a stale one is
+  // answered by the same resolver the web hash uses, and renders inert when it is gone.
+  const parts = url.pathname.split("/").filter(Boolean);
+  const key = (url.hostname ? parts[0] : parts[1]) ?? "";
+  // One segment only: a key is one opaque token, never a path.
+  const single = url.hostname ? parts.length === 1 : parts.length === 2;
+  if (what === "chat" && single && key && /^[\w.:+-]{1,160}$/.test(key)) return { kind: "chat", chatId: key };
+  if (what === "room" && single && key && /^[\w-]{1,64}$/.test(key)) return { kind: "room", roomId: key };
   return null;
 }
 

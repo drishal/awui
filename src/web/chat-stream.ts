@@ -5,13 +5,16 @@ import type { ChatEvent } from "../shared/protocol.js";
 import { applyEvents, type ChatState } from "./chat-state.js";
 import { ChatStream, type ConnectionState } from "./stream.js";
 
+/** What a chat link's `#chat=` names: a live chat's id, or the stable namespaced session id
+ * (`pi:<native>`), which survives the reopen that mints a new chat id (see chat-link.ts). */
 export function chatIdFromHash(): string | null {
-  const m = /^#chat=([\w-]{1,64})$/.exec(window.location.hash);
-  return m?.[1] ?? null;
+  if (!window.location.hash.startsWith("#chat=")) return null;
+  const key = decodeURIComponent(window.location.hash.slice("#chat=".length));
+  return /^[\w.:+-]{1,160}$/.test(key) ? key : null;
 }
 
 export function setHash(chatId: string | null): void {
-  const next = chatId ? `#chat=${chatId}` : "";
+  const next = chatId ? `#chat=${encodeURIComponent(chatId)}` : "";
   if (window.location.hash !== next) history.replaceState(null, "", `${window.location.pathname}${next}`);
 }
 

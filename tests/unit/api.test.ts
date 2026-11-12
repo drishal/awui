@@ -317,6 +317,27 @@ describe("chat lifecycle over HTTP + SSE", () => {
     expect((await agent.post("/api/chats/resume").send({ harnessId: "fake", workspaceId: ws.id, sessionId: "fake:unknown" })).status).toBe(404);
   });
 
+  it("resolves a chat link's key: its live chat id, its stable session id, or what opens a closed one", async () => {
+    const { agent, ws, t } = await setup();
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    const sse = openSse(t, chat.chatId, agent.cookie);
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "link me" });
+    await sse.waitFor(() => t.manager.get(chat.chatId).status === "idle");
+    sse.close();
+    // The live chat answers under its own id...
+    expect((await agent.get(`/api/chats/link/${chat.chatId}`)).body).toEqual({ chatId: chat.chatId });
+    // ...and under its stable session id, which a reopen moves to a new chat id.
+    const sessionId = `fake:${t.fake.sessions.keys().next().value}`;
+    expect((await agent.get(`/api/chats/link/${encodeURIComponent(sessionId)}`)).body).toEqual({ chatId: chat.chatId });
+    // A closed session resolves to what opens it, not to a live chat.
+    await agent.post(`/api/chats/${chat.chatId}/dispose`);
+    const closed = (await agent.get(`/api/chats/link/${encodeURIComponent(sessionId)}`)).body as { session: { id: string; harnessId: string; workspaceId: string; title: string; liveChatId: string | null } };
+    expect(closed.session).toMatchObject({ id: sessionId, harnessId: "fake", workspaceId: ws.id, liveChatId: null });
+    // A key nothing answers to is a 404 the client renders inert; a malformed one is a 400.
+    expect((await agent.get("/api/chats/link/fake:unknown")).status).toBe(404);
+    expect((await agent.get("/api/chats/link/bad%20key")).status).toBe(400);
+  });
+
   it("rechecks one harness's status, so a harness that came back is not refused from a stale verdict", async () => {
     const { agent } = await setup();
     const status = await agent.get("/api/harnesses/fake/status");

@@ -1866,6 +1866,24 @@ export function createApp(deps: AppDeps) {
     res.send(html);
   });
 
+  // A deep link's key (chat-stream.ts): a live chat's id, or the stable namespaced session id
+  // (`pi:<native>`), which survives the reopen that mints a new chat id. Answers what opens it;
+  // a key nothing knows is a 404 the client renders inert (the hash cleared, no error).
+  app.get("/api/chats/link/:key", async (req, res) => {
+    const key = String(req.params.key);
+    if (!/^[\w.:+-]{1,160}$/.test(key)) throw new ChatError(400, "bad_link", "Not a chat link key");
+    const direct = manager.peek(key);
+    if (direct && direct.status !== "disposed") return void res.json({ chatId: key });
+    const at = key.indexOf(":");
+    if (at > 0) {
+      const live = manager.liveChatFor(key.slice(0, at), key.slice(at + 1));
+      if (live && live.status !== "disposed") return void res.json({ chatId: live.chatId });
+    }
+    const session = (await listSessions(null)).sessions.find((s) => s.id === key);
+    if (session) return void res.json({ session: { id: session.id, harnessId: session.harnessId, workspaceId: session.workspaceId, title: session.title, liveChatId: session.liveChatId ?? null } });
+    throw new ChatError(404, "unknown_chat", "No chat or session answers to that link");
+  });
+
   app.get("/api/chats/:id", (req, res) => {
     res.json(manager.get(req.params.id).snapshot());
   });

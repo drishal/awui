@@ -2,10 +2,11 @@
 // login form, and the one-time side effects that ride along with the fetch
 // (theme, default harness, last project, chat named in the URL hash).
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
-import type { Bootstrap, ChatSnapshot, ThemeChoice, ThemeInfo, WorkspaceInfo } from "../shared/protocol.js";
+import type { Bootstrap, ThemeChoice, ThemeInfo, WorkspaceInfo } from "../shared/protocol.js";
 import { api, ApiError, errorText, onUnauthorized } from "./api.js";
 import type { ChatState } from "./chat-state.js";
 import { chatIdFromHash, setHash } from "./chat-stream.js";
+import { linkedSnapshot, resolveChatKey } from "./chat-link.js";
 import { forgetWorkspace, load, rememberWorkspace } from "./storage.js";
 import { fetchTheme } from "./theme.js";
 
@@ -52,12 +53,19 @@ export function useBootstrap(targets: BootstrapTargets) {
         const fromHash = chatIdFromHash();
         if (fromHash) {
           try {
-            const snapshot = await api<ChatSnapshot>(`/api/chats/${fromHash}`);
-            setChat(snapshot);
-            // A chat opened by its link (atui and awui tern print one) is in its own project: the sidebar shows that
-            // one, not whichever this browser last had (or "Choose a folder…" in a fresh one).
-            setWorkspace(snapshot.workspace);
-            setRecent(rememberWorkspace(snapshot.workspace.path));
+            // The key is a live chat's id or the stable session id (chat-link.ts): a link
+            // survives the reopen that minted a new chat id. Nothing answering renders inert.
+            const target = await resolveChatKey(fromHash);
+            const snapshot = target ? await linkedSnapshot(target) : null;
+            if (snapshot) {
+              setChat(snapshot);
+              // A chat opened by its link (atui and awui tern print one) is in its own project: the sidebar shows that
+              // one, not whichever this browser last had (or "Choose a folder…" in a fresh one).
+              setWorkspace(snapshot.workspace);
+              setRecent(rememberWorkspace(snapshot.workspace.path));
+            } else {
+              setHash(null);
+            }
           } catch {
             setHash(null);
           }

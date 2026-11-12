@@ -51,6 +51,7 @@ import { useBootstrap } from "./bootstrap.js";
 import type { ChatState } from "./chat-state.js";
 import { StatusWord } from "./components/StatusWord.js";
 import { chatIdFromHash, CONN_BANNER, setHash, STATUS_LABEL, useChatStream } from "./chat-stream.js";
+import { chatLink, chatLinkKey, linkedSnapshot, resolveChatKey } from "./chat-link.js";
 import { appCommand } from "./commands.js";
 import { mergeHarnesses, useHarnessRecheck } from "./harness-status.js";
 import { CommandPalette } from "./components/CommandPalette.js";
@@ -1161,11 +1162,15 @@ export function App() {
     }
     const hashChat = chatIdFromHash();
     if (hashChat) {
-      const at = tabsRef.current.tabs.findIndex((t) => t.chatId === hashChat);
+      const at = tabsRef.current.tabs.findIndex((t) => t.chatId === hashChat || t.sessionId === hashChat);
       if (at >= 0) {
         activateTab(at);
         return;
       }
+      // A key no open tab holds: resolve it (a live chat id, or the stable session id a
+      // reopen moved to a new chat id). A key nothing answers to renders inert.
+      void openChatKey(hashChat);
+      return;
     }
     // No room in the URL any more: a room tab leaves for the chat tab it came
     // from (or the nearest one), and only the start screen is left when there is none.
@@ -1307,6 +1312,20 @@ export function App() {
     } catch (e) {
       fail(e);
     }
+  };
+
+  /** A `#chat=` deep link's key: a live chat id, or the stable session id (chat-link.ts).
+   *  A key nothing answers to renders inert: the hash clears, the start screen shows, no error. */
+  const openChatKey = async (key: string) => {
+    const target = await resolveChatKey(key);
+    const snapshot = target ? await linkedSnapshot(target) : null;
+    if (!snapshot) {
+      setHash(null);
+      showStart();
+      return;
+    }
+    if (wide) setSide((v) => ({ initial: snapshot, n: (v?.n ?? 0) + 1 }));
+    else showChat(snapshot, { newTab: false });
   };
 
   /** A delegated task's child chat, from the panel above the composer. */
@@ -1767,6 +1786,14 @@ export function App() {
     if (chat && chat.status !== "disposed") {
       if (busy) items.push({ id: "stop", section: "Actions", label: "Stop", run: stop });
       if (chat.capabilities.supportsRename) items.push({ id: "rename", section: "Actions", label: "Rename chat", run: () => setRenameOpen(true) });
+      items.push({
+        id: "chat-link",
+        section: "Actions",
+        label: "Copy chat link",
+        hint: "opens this chat again, even after a reopen",
+        keywords: "share url deep link",
+        run: () => void navigator.clipboard?.writeText(chatLink(window.location.origin, chatLinkKey(chat))),
+      });
       if (chat.capabilities.supportsCompact) items.push({ id: "compact", section: "Actions", label: "Compact context", disabled: chat.status === "idle" ? undefined : "Wait until the agent is idle", run: () => void compact() });
       items.push({ id: "restart", section: "Actions", label: "Restart agent session", hint: "New process, same conversation", disabled: chat.status === "idle" || chat.status === "error" ? undefined : "Wait until the agent is idle", run: () => void restartChat() });
       items.push({ id: "review", section: "Actions", label: "Review changes", hint: changedFiles > 0 ? `${changedFiles} ${changedFiles === 1 ? "file" : "files"}` : undefined, disabled: changedFiles > 0 ? undefined : "No files changed yet", run: () => setReviewOpen(true) });
@@ -2232,6 +2259,9 @@ export function App() {
               onExport={() => {
                 if (room.roomId) downloadRoomExport(room.roomId);
               }}
+                onCopyLink={() => {
+                  if (room.roomId) void navigator.clipboard?.writeText(`${window.location.origin}/#room=${encodeURIComponent(room.roomId)}`);
+                }}
             />
           ) : null}
           {chat && !room.roomId && changedFiles > 0 ? (

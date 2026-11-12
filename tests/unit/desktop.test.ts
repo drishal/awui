@@ -106,3 +106,14 @@ describe("the desktop shell's view of the server", () => {
     expect(parseBackground("nope")).toBeNull();
   });
 });
+
+describe("chat and room links", () => {
+  it("maps the stable chat and room links, and refuses a malformed key", () => {
+    expect(targetFromLink("awui://chat/pi:9f8e7d6c")).toEqual({ kind: "chat", chatId: "pi:9f8e7d6c" });
+    expect(targetFromLink("awui:///chat/ab12cd34")).toEqual({ kind: "chat", chatId: "ab12cd34" });
+    expect(targetFromLink("awui://room/r1")).toEqual({ kind: "room", roomId: "r1" });
+    expect(targetFromLink("awui://chat/bad key")).toBeNull();
+    expect(targetFromLink("awui://chat/x/y")).toBeNull();
+    expect(targetFromLink("awui://room/")).toBeNull();
+  });
+});
