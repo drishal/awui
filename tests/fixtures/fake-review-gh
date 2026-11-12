@@ -1,0 +1,30 @@
+#!/usr/bin/env node
+// Deterministic gh for the guided-reading e2e. The record is test-owned: moving
+// a PR head changes metadata and the textual patch without any network call.
+import { readFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+const fixturePath = process.env.AWUI_TEST_PR_FIXTURE;
+if (!fixturePath) throw new Error("AWUI_TEST_PR_FIXTURE is required");
+const record = JSON.parse(readFileSync(fixturePath, "utf8"));
+if (args.includes("--version")) process.stdout.write("gh version 2.75.0\n");
+else if (args[0] === "auth" && args[1] === "status") process.exit(0);
+else if (args[0] === "pr" && args[1] === "checks") process.stdout.write("[]\n");
+else if (args[0] === "pr" && args[1] === "view") {
+  const fields = String(args[args.indexOf("--json") + 1]).split(",");
+  const output = {
+    url: record.url,
+    title: record.title,
+    state: "OPEN",
+    isDraft: false,
+    baseRefName: "main",
+    headRefName: "tour",
+    headRefOid: record.head,
+  };
+  process.stdout.write(JSON.stringify(Object.fromEntries(fields.filter((key) => key in output).map((key) => [key, output[key]]))) + "\n");
+} else if (args[0] === "pr" && args[1] === "diff" && args[2] === "42") {
+  process.stdout.write(record.diff);
+} else {
+  process.stderr.write(`unsupported gh invocation: ${args.join(" ")}\n`);
+  process.exit(1);
+}

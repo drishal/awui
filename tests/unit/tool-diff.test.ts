@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { argsDiff, lineDiff, parseNumbered, parseUnified, resultDiff } from "../../src/server/harness/tool-diff.js";
+import { parseUnified } from "../../src/shared/unified-diff.js";
+import { argsDiff, lineDiff, parseNumbered, resultDiff } from "../../src/server/harness/tool-diff.js";
 
 const shape = (lines: Array<{ kind: string; text: string; line?: number }>) => lines.map((l) => `${{ add: "+", del: "-", ctx: " ", hunk: "@", gap: "~" }[l.kind]}${l.line ?? ""}|${l.text}`);
 

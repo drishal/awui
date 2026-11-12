@@ -10,7 +10,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { CheckpointChange, CheckpointCompareFile, CheckpointComparison, CheckpointFile, CheckpointPoint } from "../shared/protocol.js";
 import { git } from "./git.js";
-import { parseUnified } from "./harness/tool-diff.js";
+import { parseUnified } from "../shared/unified-diff.js";
 import { isObj, readJson, writeJson } from "./state-file.js";
 
 /** Past this, the prompt goes without a checkpoint; the snapshot still finishes and warms the next one. */

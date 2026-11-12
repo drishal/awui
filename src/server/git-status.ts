@@ -7,7 +7,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { GitDiffSide, GitFile, GitFileDiff, GitFileState, GitStatus } from "../shared/protocol.js";
 import { git } from "./git.js";
-import { parseUnified } from "./harness/tool-diff.js";
+import { parseUnified } from "../shared/unified-diff.js";
 
 const MAX_FILES = 500;
 const MAX_UNTRACKED_BYTES = 512 * 1024;

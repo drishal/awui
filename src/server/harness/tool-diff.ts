@@ -5,6 +5,7 @@
 // none, the diff comes from the call's arguments (old/new text, a patch, a
 // file's new content).
 import type { DiffLine, ToolDiff } from "../../shared/protocol.js";
+import { parseUnified as normalizeUnified } from "../../shared/unified-diff.js";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -126,45 +127,8 @@ function foldContext(lines: DiffLine[]): DiffLine[] {
   return out;
 }
 
-/** A unified diff (`@@ -a,b +c,d @@` hunks); file headers dropped. */
-export function parseUnified(text: string): ToolDiff | null {
-  const out: DiffLine[] = [];
-  let oldNo: number | null = null;
-  let newNo: number | null = null;
-  for (const line of text.split("\n")) {
-    if (/^(---|\+\+\+) /.test(line) || /^(diff --git|index |new file mode|deleted file mode)/.test(line)) continue;
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@ ?(.*)$/.exec(line);
-    if (hunk) {
-      if (out.length > 0) out.push({ kind: "gap", text: "" });
-      oldNo = Number(hunk[1]);
-      newNo = Number(hunk[2]);
-      if (hunk[3]) out.push({ kind: "hunk", text: hunk[3] as string });
-      continue;
-    }
-    if (line.startsWith("@@")) {
-      out.push({ kind: "hunk", text: line.replace(/^@@\s*/, "") });
-      continue;
-    }
-    const sign = line[0];
-    const body = line.slice(1);
-    if (sign === "+") {
-      out.push({ kind: "add", text: body, ...(newNo !== null ? { line: newNo++ } : {}) });
-    } else if (sign === "-") {
-      out.push({ kind: "del", text: body, ...(oldNo !== null ? { line: oldNo++ } : {}) });
-    } else if (sign === " ") {
-      out.push({ kind: "ctx", text: body, ...(newNo !== null ? { line: newNo } : {}) });
-      if (oldNo !== null) oldNo += 1;
-      if (newNo !== null) newNo += 1;
-    } else if (line === "\\ No newline at end of file" || line === "") {
-      continue;
-    } else if (/^\*\*\* /.test(line)) {
-      // Codex/Hermes V4A patch headers: *** Update File: path
-      const file = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/.exec(line);
-      if (file) out.push({ kind: "hunk", text: file[1] as string });
-    }
-  }
-  return finish(out);
-}
+/** Shared bounded diff parsing used by harness adapters and the browser reader. */
+function parseUnified(text: string): ToolDiff | null { return normalizeUnified(text); }
 
 /**
  * Pi's and omp's numbered diff: `+12 text` / `-12 text` / ` 12 text` (Pi pads

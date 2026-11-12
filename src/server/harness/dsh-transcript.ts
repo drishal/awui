@@ -7,7 +7,8 @@ import { zstdDecompressSync } from "node:zlib";
 import type { ChatItem, ToolItem, ToolDiff } from "../../shared/protocol.js";
 import { boundText, editShape, isObj, stringifyArgs, toolCategory, toolPaths, toolSummary, type Obj } from "./agent-events.js";
 import { htmlRenderRef, splitRenderMarker } from "./render-token.js";
-import { lineDiff, parseUnified } from "./tool-diff.js";
+import { lineDiff } from "./tool-diff.js";
+import { parseUnified } from "../../shared/unified-diff.js";
 import type { HarnessUsage, StepUsage, UsageEntry } from "./types.js";
 
 /** A session id as DSH writes one: a bare UUID from the ACP app, `session-<uuid>` from the web app. */

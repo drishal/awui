@@ -7,6 +7,7 @@ import type { ChatSnapshot, PrStack, WorkspaceInfo } from "../../shared/protocol
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { IconBranch, IconRefresh } from "../icons.js";
+import { PrTour } from "./PrTour.js";
 
 interface Status {
   available: boolean;
@@ -23,16 +24,6 @@ interface Check {
   link: string | null;
 }
 
-interface Layer {
-  pr: number;
-  url: string;
-  title: string;
-  state: string;
-  baseBranch: string;
-  headBranch: string;
-  checks: Check[];
-}
-
 export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: WorkspaceInfo; chat: ChatSnapshot; onClose: () => void; onOpen: (chat: ChatSnapshot) => void }) {
   const [watching, setWatching] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
@@ -46,24 +37,24 @@ export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: W
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState<"load" | "push" | "pr" | "merge" | null>("load");
   const [stack, setStack] = useState<PrStack | null>(null);
-  /** The PR to stack above, and the stacked PR's own title/description. */
   const [above, setAbove] = useState("");
   const [stackTitle, setStackTitle] = useState("");
   const [stackBody, setStackBody] = useState("");
   const [stackPush, setStackPush] = useState(false);
+  const [tourPr, setTourPr] = useState<number | null>(null);
   const [mergeArchive, setMergeArchive] = useState(false);
 
   const refresh = async () => {
     setBusy("load");
     try {
-      // Status first: it carries the reason gh cannot be used, which the PR and
-      // checks calls would only turn into a bare failure.
+      // Status first: it carries the reason gh cannot be used, which the PR and checks calls would only turn into a bare failure.
       const next = await api<Status>(`/api/workspaces/${workspace.id}/github`);
       setStatus(next);
       setError(null);
       if (!next.available) {
         setChecks([]);
         setPrUrl(null);
+        setTourPr(null);
         return;
       }
       const [check, current] = await Promise.allSettled([
@@ -79,10 +70,17 @@ export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: W
       setWatchedUrl(mine?.watches[0]?.url ?? null);
       const failed = [check, current].find((r) => r.status === "rejected");
       if (failed) setError(errorText(failed.reason));
+      const actual = current.status === "fulfilled" ? current.value.pr?.url : undefined;
+      const match = /\/pull\/(\d+)$/.exec(actual ?? "");
+      setTourPr(match ? Number(match[1]) : null);
       setStack((await api<{ stacks: PrStack[] }>(`/api/workspaces/${workspace.id}/pr-stack`)).stacks[0] ?? null);
-    } catch (e) { setError(errorText(e)); }
-    finally { setBusy(null); }
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
   };
+
   useEffect(() => { void refresh(); }, [workspace.id]);
 
   const push = async () => {
@@ -102,7 +100,6 @@ export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: W
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(null); }
   };
-  // Stack this PR above #above: the server makes that PR's head branch the target.
   const stackOn = async () => {
     setBusy("pr"); setError(null);
     try {
@@ -113,7 +110,6 @@ export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: W
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(null); }
   };
-  // Start a stack on the explicit base typed in the form.
   const stackFrom = async () => {
     setBusy("pr"); setError(null);
     try {
@@ -124,7 +120,6 @@ export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: W
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(null); }
   };
-  // Merge bottom-up through gh; the refusal, when one comes, is the actionable error.
   const merge = async () => {
     if (!stack) return;
     setBusy("merge"); setError(null);
@@ -135,27 +130,45 @@ export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: W
       if (result.refusal) notes.push(`#${result.refusal.pr} could not be merged: ${result.refusal.message}`);
       for (const refusal of result.archiveRefusals) notes.push(`#${refusal.pr}'s checkout could not be archived: ${refusal.message}`);
       if (notes.length > 0) setError(notes.join(" · "));
-    } catch (e) { setError(errorText(e)); }
-    finally { setBusy(null); }
+    } catch (e) {
+      setError(errorText(e));
+    } finally { setBusy(null); }
   };
 
-  return (
-    <Dialog title={`GitHub for ${workspace.name}`} onClose={onClose} className="dialog-wide">
-      <div className="github-status">
-        <div><IconBranch size={16} /> <strong>{status?.branch ?? "Loading…"}</strong>{status?.upstream ? <span className="muted"> → {status.upstream}</span> : null}</div>
-        <button type="button" className="icon-btn" aria-label="Refresh GitHub status" disabled={busy !== null} onClick={() => void refresh()}><IconRefresh size={14} /></button>
-      </div>
-      {status?.upstream ? <p className="muted">{status.ahead === 0 ? "Everything recorded on the upstream branch." : `${status.ahead} local commit${status.ahead === 1 ? "" : "s"} not on upstream.`}</p> : <p className="muted">No upstream yet. The first push sets it to the current branch on origin.</p>}
-      {status?.remoteUrl ? <p className="muted github-remote">Remote: {status.remoteUrl}</p> : null}
-      {error ? <p className="notice notice-error">{error}</p> : null}
-      {status && !status.available ? <p className="notice notice-error">{status.reason ?? "GitHub is not available on this machine. Install gh and log in on the server."}</p> : null}
-      {prUrl ? <p className="notice notice-info">Pull request: <a href={prUrl} target="_blank" rel="noreferrer">{prUrl}</a></p> : null}
-      <div className="github-actions">
-        <button className="btn" disabled={busy !== null || !status?.available || !status.branch} onClick={() => void push()}>{busy === "push" ? "Pushing…" : "Push current branch"}</button>
-        <button className="btn btn-ghost" disabled={busy !== null || !status?.available} onClick={() => void refresh()}>{busy === "load" ? "Refreshing…" : "Refresh PR status"}</button>
-      </div>
+  // Keep the reading view connected to this project's real, server-confirmed PR.
+  // A refresh is intentionally available; it advances the cached head without any review claim.
+  const checkBody = checks.length === 0
+    ? <p className="muted">No reported checks are available for the current PR.</p>
+    : <ul className="github-checks">
+        {checks.map((check) => <li key={check.name}>
+          <span>{check.name}</span>
+          <span className={`github-check is-${check.state}`}>{check.state}</span>
+          {check.link ? <a href={check.link} target="_blank" rel="noreferrer">View</a> : null}
+        </li>)}
+      </ul>;
+
+  return <Dialog title={`GitHub for ${workspace.name}`} onClose={onClose} className="dialog-wide">
+    <div className="github-status">
+      <div><IconBranch size={16} /> <strong>{status?.branch ?? "Loading…"}</strong>{status?.upstream ? <span className="muted"> → {status.upstream}</span> : null}</div>
+      <button type="button" className="icon-btn" aria-label="Refresh GitHub status" disabled={busy !== null} onClick={() => void refresh()}><IconRefresh size={14} /></button>
+    </div>
+    {status?.upstream ? <p className="muted">{status.ahead === 0 ? "Everything recorded on the upstream branch." : `${status.ahead} local commit${status.ahead === 1 ? "" : "s"} not on upstream.`}</p> : <p className="muted">No upstream yet. The first push sets it to the current branch on origin.</p>}
+    {status?.remoteUrl ? <p className="muted github-remote">Remote: {status.remoteUrl}</p> : null}
+    {error ? <p className="notice notice-error">{error}</p> : null}
+    {status && !status.available ? <p className="notice notice-error">{status.reason ?? "GitHub is not available on this machine. Install gh and log in on the server."}</p> : null}
+    {prUrl ? <p className="notice notice-info">Pull request: <a href={prUrl} target="_blank" rel="noreferrer">{prUrl}</a></p> : null}
+    <div className="github-actions">
+      <button className="btn" disabled={busy !== null || !status?.available || !status.branch} onClick={() => void push()}>{busy === "push" ? "Pushing…" : "Push current branch"}</button>
+      <button className="btn btn-ghost" disabled={busy !== null || !status?.available} onClick={() => void refresh()}>{busy === "load" ? "Refreshing…" : "Refresh PR status"}</button>
+      <button className="btn btn-ghost" disabled={busy !== null || !status?.available || !prUrl} onClick={() => {
+        const match = /\/pull\/(\d+)$/.exec(prUrl ?? "");
+        if (match) setTourPr(Number(match[1]));
+        else setError("This pull-request URL has no readable PR number");
+      }}>Guided PR tour</button>
+    </div>
+    {tourPr !== null && prUrl ? <PrTour workspaceId={workspace.id} pr={tourPr} onClose={() => setTourPr(null)} /> : <>
       <h3>Checks</h3>
-      {checks.length === 0 ? <p className="muted">No reported checks are available for the current PR.</p> : <ul className="github-checks">{checks.map((check) => <li key={check.name}><span>{check.name}</span><span className={`github-check is-${check.state}`}>{check.state}</span>{check.link ? <a href={check.link} target="_blank" rel="noreferrer">View</a> : null}</li>)}</ul>}
+      {checkBody}
       {prUrl ? <section className="picker-section" aria-label="Pull request activity">
         <h3>Watch this PR</h3>
         <p className="muted">{watchedUrl === prUrl ? "This chat owns the watch. A real check or review change prompts it; repeated polls stay quiet." : "One opt-in watch for this chat. Activity goes to you here, never to another workspace chat."}</p>
@@ -186,10 +199,7 @@ export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: W
         </ul>
         <div className="github-actions">
           <button className="btn btn-primary" disabled={busy !== null || !stack.layers.some((l) => l.state === "OPEN" || l.state === "DRAFT")} onClick={() => void merge()}>{busy === "merge" ? "Merging stack…" : "Merge stack bottom-up"}</button>
-          <label className="worktree-setup-check">
-            <input type="checkbox" checked={mergeArchive} onChange={(e) => setMergeArchive(e.target.checked)} />
-            Archive checkouts whose PRs merge
-          </label>
+          <label className="worktree-setup-check"><input type="checkbox" checked={mergeArchive} onChange={(e) => setMergeArchive(e.target.checked)} />Archive checkouts whose PRs merge</label>
         </div>
       </> : null}
       <h3>Stack a new pull request</h3>
@@ -197,10 +207,7 @@ export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: W
       <label className="form-row">Stack above (PR number) <input className="input" value={above} onChange={(e) => setAbove(e.target.value)} maxLength={5} placeholder="42, empty to start a stack on the target branch" /></label>
       <label className="form-row">Title <input className="input" value={stackTitle} onChange={(e) => setStackTitle(e.target.value)} maxLength={200} placeholder="What this layer changes" /></label>
       <label className="form-row">Description <textarea className="input" rows={4} value={stackBody} onChange={(e) => setStackBody(e.target.value)} maxLength={20000} placeholder="Why this layer matters" /></label>
-      <label className="worktree-setup-check">
-        <input type="checkbox" checked={stackPush} onChange={(e) => setStackPush(e.target.checked)} />
-        Push the checked-out branch to origin first
-      </label>
+      <label className="worktree-setup-check"><input type="checkbox" checked={stackPush} onChange={(e) => setStackPush(e.target.checked)} />Push the checked-out branch to origin first</label>
       <div className="github-actions">
         <button className="btn btn-primary" disabled={busy !== null || !stackTitle.trim() || !above.trim()} onClick={() => void stackOn()}>{busy === "pr" ? "Creating pull request…" : "Stack above #N"}</button>
         <button className="btn btn-ghost" disabled={busy !== null || !stackTitle.trim() || !base.trim()} onClick={() => void stackFrom()}>Start a stack on {base || "the target branch"}</button>
@@ -212,6 +219,6 @@ export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: W
       <label className="form-row">Description <textarea className="input" rows={7} value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} placeholder="Why this change matters and how it was verified" /></label>
       <button className="btn btn-primary" disabled={busy !== null || !status?.available || !title.trim() || !base.trim()} onClick={() => void create()}>{busy === "pr" ? "Creating pull request…" : "Create pull request"}</button>
       {!status?.available ? <p className="muted">The server must have gh installed and an authenticated account configured. awui never reads those credentials.</p> : null}
-    </Dialog>
-  );
+    </>}
+  </Dialog>;
 }

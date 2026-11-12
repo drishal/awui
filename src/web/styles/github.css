@@ -24,4 +24,17 @@
 .dialog:has(.worker-plan-editor) { height: min(86dvh, 760px); }
 .worker-plan-editor { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .worker-plan-editor > form { min-height: 0; overflow-y: auto; padding-right: 4px; }
-.worker-plan-editor .dialog-actions { position: sticky; bottom: 0; margin-top: auto; background: var(--panel); }
+/* Order and status stay visible while one file's real diff is read at a time. */
+.pr-tour { display: grid; gap: 14px; margin-top: 12px; }
+.pr-tour-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.pr-tour-heading h3 { margin: 0 0 6px; }
+.pr-tour-heading p { max-width: 68ch; margin: 0; }
+.tour-step { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--hairline); }
+.tour-step > div { display: grid; gap: 4px; min-width: 0; }
+.tour-step strong { overflow-wrap: anywhere; font-size: 14px; }
+.tour-progress { color: var(--muted-text); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tour-nav { display: flex; flex-wrap: wrap; gap: 8px; }
+.pr-tour-body { min-width: 0; }
+.pr-tour .notice { margin: 0; }
+.github-dialog:has(.pr-tour) { height: min(88dvh, 820px); }
+@media (max-width: 560px) { .pr-tour-heading { display: grid; gap: 8px; } .pr-tour-heading > button { justify-self: start; } }

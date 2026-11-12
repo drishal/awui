@@ -1941,6 +1941,13 @@ export const prUnwatchSchema = prWatchSchema;
 export const prRepairSchema = prWatchSchema.extend({ harnessId: z.string().min(1).max(64).optional() });
 export type PrRepairInput = z.infer<typeof prRepairSchema>;
 
+export const prTourRequestSchema = z.object({ pr: z.coerce.number().int().min(1).max(99_999), regenerate: z.enum(["true", "false"]).default("false").transform((value) => value === "true") }).strict();
+
+export type { CodeBucket } from "./breakdown.js";
+import type { CodeBucket } from "./breakdown.js";
+export type TourFile = { path: string; bucket: CodeBucket; diff: ToolDiff | null; note?: string };
+export type Tour = { pr: number; title: string; files: TourFile[]; head: string; truncated: boolean };
+
 export type SendMode = z.infer<typeof sendMessageSchema>["mode"];
 
 /** config.yml's settings as the Settings dialog shows them; the password itself never leaves the server. */

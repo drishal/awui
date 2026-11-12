@@ -12,7 +12,7 @@ import type { ChatItem, ChatStatus, RaceCleanupResult, RaceFile, RaceFileDiff, R
 import type { Chat } from "./chats/chat.js";
 import { ChatError, errorMessage } from "./chats/chat.js";
 import { git, gitBuffer } from "./git.js";
-import { parseUnified } from "./harness/tool-diff.js";
+import { parseUnified } from "../shared/unified-diff.js";
 import { isObj, readJson, writeJsonChecked } from "./state-file.js";
 import { isWithin } from "./workspaces.js";
 import type { WorktreeService } from "./worktrees.js";

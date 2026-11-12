@@ -74,6 +74,7 @@ src/shared/approval.ts        Which requests are plain approvals, and their Appr
 src/shared/review.ts         Review pins (a line's hash, following it through later edits), the one prompt a batch of open
                               threads becomes, and the attribution rule (which lines a chat's own diffs wrote, and which
                               the file has since changed under).
+src/shared/unified-diff.ts   Bounded unified-diff parsing shared by server and browser diffs.
 src/shared/breakdown.ts      A changed file's pile (source, tests, generated) by glob, and the lines each pile holds: the
                               worktree/race card's chip, with the globs config.yml's `breakdown:` can replace.
 src/server/
@@ -136,7 +137,8 @@ src/server/
   stacks.ts                  Stacked pull requests per project: "stack above #N" makes the PR below's head the target, the ordered stack saved in the state folder, merge-through bottom-up with `gh pr merge --merge` only; per-layer status and checks from the same bounded gh calls.
   pr-watches.ts              Opt-in PR poller keyed by one chat's native session; dedupe, retries, actual gh check/run logs and per-session repair markers. Polling never invents a transcript; uses real workspace IDs.
   github.ts                  Bounded local gh/git workflows: existing-PR lookup, explicit push, PR create, PR detail by number, normalized checks; never reads or sends credentials to a browser.
-  overview-events.ts         Bounded live metadata-only stream for chat status and room summaries (500 events max, no transcripts). UI shares one EventSource per tab with fallback full refresh; native IDs remain harness-scoped and disposed clear live/asking status.
+  pr-tour.ts                  Bounded `gh pr diff` reading order and in-memory head-aware tour cache; no review/approve verdict or harness writer.
+  overview-events.ts          Bounded live metadata-only stream for chat status and room summaries (500 events max, no transcripts). UI shares one EventSource per tab with fallback full refresh; native IDs remain harness-scoped and disposed clear live/asking status.
   paste-store.ts             1 MiB file-backed large pastes in /tmp, seven-day retention, delete-on-unsent and bounded expiry sweep; agent reads actual retained file paths.
   routines.ts, routines-timer.ts, routine-runner.ts, routine-runs.ts  Server-owned scheduled prompts: bounded store, one due claim before launch, next-slot retry across overlap failures; a run is quiet (its verdict is posted, quiet, or failed, kept in the run history, and its session is hidden from the user's list).
   direnv.ts                  Project .envrc evaluation for harness spawns and explicit terminal semantics, isolated/cached by validated project directory.
@@ -217,6 +219,7 @@ src/web/                      React 19 + Vite client. App.tsx is the shell; comp
   terminal-shell.ts (document entry)  An isolated xterm document under a separate intentional inline-style CSP: builds a real PTY and uses direct origin messages for lifecycle and resize, never command forwarding.
   components/TerminalPanel.tsx  Bounded child iframe header/status only; server always uses TerminalManager, and makeTestApp's terminal creation needs explicit withTerminal:true.
   components/GitHubPanel.tsx  Existing/current PR display, explicit push and bounded PR create/checks.
+  components/PrTour.tsx       File-by-file PR reader: current diff, source/tests/generated/mechanical navigation, stale-head warning and explicit rebuild.
   components/HtmlRenderFrame.tsx  Agent-page theme, explicit bounded caller-owned preview screenshot, and capped console text served by server/render-preview.ts.
 src/atui/                     The terminal client (Bun + OpenTUI + Solid). state.ts is the app state; ui/ the components.
   format.ts, neat.ts, vim.ts  Pure formatting and key logic, unit-tested from tests/unit.

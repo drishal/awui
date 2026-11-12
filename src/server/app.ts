@@ -47,11 +47,12 @@ import {
   terminalWriteSchema,
   htmlRenderPreviewSchema,
   worktreeCreateSchema,
+  prTourRequestSchema,
+  prRepairSchema,
+  accountSelectionSchema,
   prCheckoutSchema,
   prWatchSchema,
   prUnwatchSchema,
-  prRepairSchema,
-  accountSelectionSchema,
   prStackCreateSchema,
   prStackMergeSchema,
   projectConfigTrustSchema,
@@ -182,6 +183,7 @@ import { PROJECT_CONFIG_FILE, projectConfigStatus, ProjectConfigTrust, readProje
 import { Races, raceChatsFor, type RaceRecord } from "./races.js";
 import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest, pullRequestDetail, mergePullRequest, runGh } from "./github.js";
 import { PrStacks } from "./stacks.js";
+import { readTour } from "./pr-tour.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
 import { Orchestrator } from "./orchestration/orchestrator.js";
 import { IntegrationReview, type IntegrationRecord, type ReviewProject } from "./orchestration/review.js";
@@ -1315,6 +1317,11 @@ export async function createApp(deps: AppDeps) {
   app.get("/api/workspaces/:id/github", requireGrant("chat.read"), async (req, res) => {
     res.json(await githubStatus(await workspaces.get(req.params.id)));
   });
+  app.get("/api/workspaces/:id/pr-tour", requireGrant("chat.read"), async (req, res) => {
+    const input = prTourRequestSchema.parse(req.query);
+    res.json(await readTour(await workspaces.get(req.params.id), input.pr, input.regenerate));
+  });
+
   app.get("/api/workspaces/:id/github/pr", requireGrant("chat.read"), async (req, res) => {
     res.json({ pr: await currentPullRequest(await workspaces.get(req.params.id)) });
   });
