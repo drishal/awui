@@ -403,6 +403,8 @@ export interface UserItem {
   /** The images themselves, when the harness kept them (in order; may be fewer than imageCount). */
   images?: ImageRef[];
   /** A "/" command the harness answered itself: no stored turn, so forks do not count it. */
+  /** Sent while a run was already going (a steer or a follow-up that executed): drawn as an interjection row, not a prompt bubble. */
+  interjected?: boolean;
   command?: true;
   /** Epoch ms when the harness recorded it, when known. */
   at?: number;

@@ -610,7 +610,9 @@ function UserPrompt({
     { label: "Copy prompt link", icon: <IconLink size={16} />, run: () => void copyLink() },
   ];
   return (
-    <div className={`turn-prompt${arrival}${editing ? " is-editing" : ""}`}>
+    // An interjection (sent while a run was going) is a divider row across the thread, not a
+    // prompt bubble: it is a note inside the run, drawn quiet with the rest of its meta.
+    <div className={`turn-prompt${item.interjected ? " is-interjection" : ""}${arrival}${editing ? " is-editing" : ""}`}>
       {sheet ? <ActionSheet title={item.at ? `Message · ${formatWhen(item.at)}` : "Message"} actions={sheetActions} onClose={() => setSheet(false)} /> : null}
       <div className="bubble-stack">
         {item.images?.length ? <SentImages images={item.images} /> : null}
@@ -627,7 +629,7 @@ function UserPrompt({
             }}
           />
         ) : (
-          <div ref={bubble} className={`bubble${long && !expanded ? " is-clamped" : ""}`} data-testid="user-prompt" {...press}>
+          <div ref={bubble} className={`${item.interjected ? "interjection" : "bubble"}${long && !expanded ? " is-clamped" : ""}`} data-testid={item.interjected ? "interjection-row" : "user-prompt"} {...press}>
             {quoteParts(item.text).map((part, i) =>
               part.quote ? (
                 <blockquote key={i} className="bubble-quote">

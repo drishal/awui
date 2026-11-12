@@ -278,6 +278,9 @@ class EventReducer {
   /** Each running call's raw arguments: a background job's start is read from them with its result. */
   private toolArgs = new Map<string, unknown>();
   private counter = 0;
+  /** This run's own prompt has echoed; a later user_message while the run goes is an interjection.
+   *  The Chat resets it when a run starts (its setStatus). */
+  runPromptSeen = false;
   private currentAssistant: string | null = null;
   private currentModel: string | undefined;
   private pendingDeltas: Array<{ itemId: string; field: "text" | "thinking" | "output"; append: string }> = [];
@@ -344,8 +347,12 @@ class EventReducer {
 
   apply(event: HarnessEvent): void {
     switch (event.type) {
-      case "user_message":
+      case "user_message": {
         this.finishStreaming();
+        // A user_message while a run is going and its prompt has already echoed is an
+        // interjection (a steer, or a follow-up draining); the chat draws it as a divider row.
+        const interjected = this.runPromptSeen && this.fx.status() === "running" && !event.command;
+        this.runPromptSeen = true;
         this.put({
           kind: "user",
           id: this.nextId("u"),
@@ -353,10 +360,12 @@ class EventReducer {
           ...(event.imageCount ? { imageCount: event.imageCount } : {}),
           ...(event.images?.length ? { images: event.images } : {}),
           ...(event.command ? { command: true as const } : {}),
+          ...(interjected ? { interjected: true as const } : {}),
           at: Date.now(),
         });
         if (!this.title && !event.command) this.setTitle(event.text.slice(0, 80));
         break;
+      }
       case "assistant_start":
         this.finishStreaming();
         this.currentModel = event.model;
@@ -1045,6 +1054,9 @@ export class Chat implements CheckpointHost {
     this.status = status;
     this.reducer.emit({ type: "status", status });
     noteChat(this);
+    // A fresh run's first echo is its prompt, not an interjection; anything the user sent while
+    // this run was already going (a steer, a follow-up that drains) echoes after it.
+    if (status === "running") this.reducer.runPromptSeen = false;
     if (status === "running") this.onRunStart?.(this);
     // A run that ends on its own moves the chain on; one that fails stops it until you say.
     if (!this.quiet && before === "running" && status === "idle") this.chainSoon();

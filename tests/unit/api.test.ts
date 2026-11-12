@@ -227,6 +227,13 @@ describe("chat lifecycle over HTTP + SSE", () => {
     }, 15_000);
     const texts = t.manager.get(chat.chatId).snapshot().items.filter((i) => i.kind === "user").map((i) => (i as { text: string }).text);
     expect(texts).toEqual(["slow one", "go left", "then this"]);
+    // A steer and a follow-up ran mid-run, so they read as interjections; the opening prompt is not one.
+    const flags = t.manager
+      .get(chat.chatId)
+      .snapshot()
+      .items.filter((i) => i.kind === "user")
+      .map((i) => (i.kind === "user" ? Boolean(i.interjected) : false));
+    expect(flags).toEqual([false, true, true]);
     sse.close();
   });
 
