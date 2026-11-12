@@ -855,8 +855,11 @@ export class RoomManager implements BoardManager {
     if (state === "stopped" && !active.view.stopReason) active.view.stopReason = "Stopped";
     scheduler.update(active.view, active.stored.clientId);
     this.liveRuns.delete(room.id);
-    // Settle the scheduler before saving: persisted while the active turn was still set, a
-    // restarted server would report this finished turn as interrupted.
+    // Settle the runtime on disk before the scheduler forgets the turn: a reader that sees
+    // no active turn (a snapshot, then a restart) must not find this finished turn still
+    // active in runtime.json. finish() clears it, and the write after it repairs one that
+    // a queueing post raced in with while the old turn was still set.
+    await this.store.saveRuntime(room.id, { ...scheduler.runtime(), activeTurnId: null });
     scheduler.finish();
     await this.persistRuntime(room.id);
     this.emitTurn(room.id, active.view);

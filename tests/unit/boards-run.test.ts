@@ -419,6 +419,10 @@ describe("board runs", () => {
       const room = await makeRoom(a, ws.id, [{ botId: lead.id, handle: "atlas" }]);
       await send(a, room.room.id, "hello");
       await waitRecords(a, room.room.id, (s) => s.activeTurn === null && botRuns(s).length === 1);
+      // A snapshot with no active turn must mean the saved runtime says so too: a restart
+      // reads runtime.json, so settling in memory ahead of the disk write reopens this race.
+      const saved = await new BoardStoreImpl({ dir: path.join(t.stateDir, "boards") }).readRuntime(room.room.id);
+      expect(saved?.activeTurnId).toBeNull();
       const oldNative = t.manager.list().find((chat) => chat.owner)?.nativeId as string;
       await t.boards.shutdown();
       const fresh = new RoomManager({ registry: t.registry, workspaces: t.workspaces, chats: t.manager, stateDir: t.stateDir, log: () => undefined });
