@@ -93,6 +93,11 @@ const schema = z
       })
       .strict()
       .optional(),
+    /**
+     * Claude Code's own settings (file-only: read at startup, no Settings dialog field). The prompt
+     * cache lifetime its subagents use, `5m` or `1h`, which a delegated child here is given too.
+     */
+    claude: z.object({ subagent_prompt_cache_ttl: z.enum(["5m", "1h"]).optional() }).strict().optional(),
     /** Herdr's API socket, when not the default session's (file-only; HERDR_SOCKET_PATH wins). */
     herdr_socket: z.string().trim().min(1).max(4096).optional(),
     /** How each harness's CLI starts: its executable, and arguments for every chat child. File-only (see HarnessLaunch). */

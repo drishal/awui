@@ -33,6 +33,8 @@ export interface ServerConfig {
   launch: ReturnType<typeof launchSettings>;
   /** The orchestration surface's bounds: config.yml's `orchestration:` over the defaults (orchestrationLimits). */
   orchestration: OrchestrationLimits;
+  /** config.yml's `claude:` block: what a delegated Claude child is spawned with beyond the defaults. */
+  claude: ClaudeSettings;
   home: string;
 }
 
@@ -124,6 +126,21 @@ export function orchestrationLimits(c: UserConfig | undefined): OrchestrationLim
     callsPerMinute: o?.callsPerMinute ?? DEFAULT_ORCHESTRATION_LIMITS.callsPerMinute,
   };
 }
+
+/** Claude Code's own settings, as config.yml's `claude:` block states them. */
+export interface ClaudeSettings {
+  /**
+   * `claude.subagent_prompt_cache_ttl`: the prompt cache lifetime (5 minutes or 1 hour) a delegated
+   * child is given, as Claude Code gives its own subagents. null: the CLI's default (the main
+   * conversation's).
+   */
+  subagentPromptCacheTtl: "5m" | "1h" | null;
+}
+
+export function claudeSettings(c: UserConfig | undefined): ClaudeSettings {
+  return { subagentPromptCacheTtl: c?.claude?.subagent_prompt_cache_ttl ?? null };
+}
+
 /** `file`: config.yml's settings that are not environment variables (the harnesses' launch). */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, file?: UserConfig): ServerConfig {
   const home = homedir();
@@ -167,6 +184,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, file?: UserConf
     harnesses: list(env.AWUI_HARNESSES).length > 0 ? list(env.AWUI_HARNESSES) : ["pi", "omp", "hermes", "claude", "codex", "opencode", "grok", "dsh", "awui"],
     launch: launchSettings(file, env, home),
     orchestration: orchestrationLimits(file),
+    claude: claudeSettings(file),
     home,
   };
 }

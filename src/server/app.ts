@@ -279,6 +279,7 @@ export function createApp(deps: AppDeps) {
   // Chats read their lineage and their tasks from the records, so a resumed chat still knows
   // what it is; the load starts here and marks what the last process left running.
   manager.lineageFor = (chat) => orchestration.lineageOf(chat);
+  manager.delegatedSession = (harnessId, nativeId) => orchestration.isDelegatedSession(harnessId, nativeId);
   manager.tasksFor = (chat) => orchestration.tasksFor(chat);
   // A parent that was closed when a report was written (or when the last process died) gets it here.
   manager.onRegistered = (chat) => void orchestration.registered(chat).catch((error: unknown) => log(`orchestration: could not deliver a report: ${errorMessage(error)}`));

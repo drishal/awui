@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
+import { ChatManager } from "../../src/server/chats/manager.js";
 import { ClaudeAdapter, liveClaudeChildren } from "../../src/server/harness/claude.js";
 import type { LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
@@ -387,6 +388,52 @@ describe("Claude plan limits", () => {
     const { claudeUsageLimits } = await import("../../src/server/harness/limits.js");
     expect(claudeUsageLimits({ rate_limits_available: false, rate_limits: null })).toBeNull();
     expect(claudeUsageLimits({ rate_limits_available: true, rate_limits: { five_hour: { utilization: 100, resets_at: null } } })?.limited).toBe(true);
+  });
+});
+
+describe("a delegated claude child", () => {
+  const delegatedAdapter = () =>
+    new ClaudeAdapter({
+      command: script,
+      home,
+      subagentPromptCacheTtl: "1h",
+      env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), FAKE_CLAUDE_STATE: state, CLAUDECODE: "1" },
+    });
+
+  it("takes the subagent prompt-cache lifetime the user set, and only when the chat was delegated", async () => {
+    await adapter.shutdown();
+    adapter = delegatedAdapter();
+    await openChat();
+    expect(recorded("env").at(-1)).toMatchObject({ CLAUDE_CODE_PROMPT_CACHE_TTL: null });
+    const live = await adapter.openChat({ cwd: project, delegated: true });
+    open.push(live);
+    expect(recorded("env").at(-1)).toMatchObject({ CLAUDE_CODE_PROMPT_CACHE_TTL: "1h" });
+  });
+
+  it("is spawned delegated by the manager, which is how an orchestration child is born", async () => {
+    await adapter.shutdown();
+    const manager = new ChatManager();
+    const spawned = delegatedAdapter();
+    try {
+      const chat = await manager.create(spawned, ws(), undefined, { delegated: true });
+      expect(recorded("env").at(-1)).toMatchObject({ CLAUDE_CODE_PROMPT_CACHE_TTL: "1h" });
+      await chat.dispose("test");
+    } finally {
+      await spawned.shutdown();
+    }
+  });
+
+  it("keeps a value the environment already carries", async () => {
+    const own = new ClaudeAdapter({
+      command: script,
+      home,
+      subagentPromptCacheTtl: "1h",
+      env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), FAKE_CLAUDE_STATE: state, CLAUDECODE: "1", CLAUDE_CODE_PROMPT_CACHE_TTL: "5m" },
+    });
+    const live = await own.openChat({ cwd: project, delegated: true });
+    open.push(live);
+    expect(recorded("env").at(-1)).toMatchObject({ CLAUDE_CODE_PROMPT_CACHE_TTL: "5m" });
+    await own.shutdown();
   });
 });
 

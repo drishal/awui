@@ -70,6 +70,11 @@ export class ChatManager {
    * child keeps its lineage chip across a reap or a restart, and a reopened parent its panel.
    */
   lineageFor?: (chat: Chat) => ChatLineage | undefined;
+  /**
+   * Whether a session is a delegated child's, for a resume: the chat does not exist yet, so its
+   * lineage cannot be read, and the orchestrator's records are what know it.
+   */
+  delegatedSession?: (harnessId: string, nativeId: string) => boolean;
   tasksFor?: (chat: Chat) => DelegatedTaskView[];
   /**
    * A chat was registered (opened, created, or resumed). The orchestrator delivers reports still
@@ -204,7 +209,7 @@ export class ChatManager {
     for (const [k, id] of this.bySession) if (id === chat.chatId) this.bySession.delete(k);
   }
 
-  async create(adapter: HarnessAdapter, workspace: WorkspaceInfo, owner?: ChatOwner): Promise<Chat> {
+  async create(adapter: HarnessAdapter, workspace: WorkspaceInfo, owner?: ChatOwner, spawn?: { delegated?: boolean }): Promise<Chat> {
     const problem = adapter.workspaceProblem(workspace.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
     // A board-owned chat gets neither token: a room's scope for these tools is its own question.
@@ -213,7 +218,7 @@ export class ChatManager {
     try {
       // The project's .envrc is evaluated off the event loop first; the spawn then finds it cached.
       await prepareSpawnEnv(workspace.path);
-      live = await adapter.openChat({ cwd: workspace.path, toolEnv: toolEnvFor(tools) });
+      live = await adapter.openChat({ cwd: workspace.path, toolEnv: toolEnvFor(tools), ...(spawn?.delegated ? { delegated: true } : {}) });
     } catch (error) {
       throw new ChatError(502, "harness_init_failed", `${adapter.displayName} failed to start: ${errorMessage(error)}`);
     }
@@ -262,7 +267,10 @@ export class ChatManager {
       // A board-owned chat gets neither token: a room's scope for these tools is its own question.
       const tools = owner ? undefined : this.toolsFor(adapter);
       // A resume is a chat restart, so its orchestration token is minted afresh with a new lifetime.
-      const req = { cwd: workspace.path, resumeNativeId: nativeId, toolEnv: toolEnvFor(tools) };
+      // A delegated child's session is still one (the orchestrator's record names it), so the child
+      // respawns the way it was spawned.
+      const delegated = this.delegatedSession?.(adapter.id, nativeId) === true;
+      const req = { cwd: workspace.path, resumeNativeId: nativeId, toolEnv: toolEnvFor(tools), ...(delegated ? { delegated: true } : {}) };
       // From the file when the adapter can read it: the chat shows now and the
       // harness starts behind it; the file read also proves the session is this project's.
       const transcript = adapter.readTranscript ? await adapter.readTranscript({ cwd: workspace.path, nativeId }).catch(() => null) : null;

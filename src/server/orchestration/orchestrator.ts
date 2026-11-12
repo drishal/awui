@@ -11,7 +11,7 @@ import { randomBytes } from "node:crypto";
 import { isApproval } from "../../shared/approval.js";
 import { MAX_DELEGATED_TASKS, type ChatItem, type ChatLineage, type ChatStatus, type DelegatedTaskView, type InteractionRequest, type SendMode } from "../../shared/protocol.js";
 import type { BoardManager } from "../boards/types.js";
-import { ChatError, errorMessage, type Chat } from "../chats/chat.js";
+import { ChatError, errorMessage, namespacedSessionId, type Chat } from "../chats/chat.js";
 import type { ChatManager } from "../chats/manager.js";
 import type { HarnessRegistry } from "../harness/registry.js";
 import type { HarnessAdapter } from "../harness/types.js";
@@ -160,6 +160,15 @@ export class Orchestrator {
     const task = this.tasks.find((t) => this.startedFrom(t, chat));
     if (!task) return undefined;
     return { kind: "delegate", taskId: task.id, parentChatId: task.parentChatId, parentTitle: task.parentTitle, depth: task.depth };
+  }
+
+  /**
+   * Whether this session started as a delegated child (a resumed child is still one). The manager
+   * asks before a respawn, when there is no chat yet to read a lineage from.
+   */
+  isDelegatedSession(harnessId: string, nativeId: string): boolean {
+    const sessionId = namespacedSessionId(harnessId, nativeId);
+    return this.tasks.some((task) => task.childSessionId === sessionId);
   }
 
   /** This chat's delegated tasks, for a chat the manager is registering (a reopened parent). */
@@ -442,7 +451,9 @@ export class Orchestrator {
     this.attach(caller);
     let child: Chat;
     try {
-      child = await this.deps.chats.create(adapter, workspace);
+      // Marked delegated: the child's own harness treats its subagents differently (Claude Code's
+      // prompt-cache lifetime), and it is spawned before the lineage record reaches the chat.
+      child = await this.deps.chats.create(adapter, workspace, undefined, { delegated: true });
     } catch (error) {
       await this.finish(task, "failed", errorMessage(error));
       return this.delegateOutput(task);

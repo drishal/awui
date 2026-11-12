@@ -22,7 +22,7 @@ const factories: Record<string, (config: ServerConfig) => HarnessAdapter> = {
   pi: (config) => new PiAdapter(config.launch.pi),
   omp: (config) => new OmpAdapter({ agentDir: config.ompAgentDir, sessionDir: config.ompSessionDir, home: config.home, ...config.launch.omp }),
   hermes: (config) => new HermesAdapter(config.launch.hermes?.command ? { launcher: config.launch.hermes.command } : {}),
-  claude: (config) => new ClaudeAdapter({ home: config.home, ...config.launch.claude }),
+  claude: (config) => new ClaudeAdapter({ home: config.home, ...(config.claude.subagentPromptCacheTtl ? { subagentPromptCacheTtl: config.claude.subagentPromptCacheTtl } : {}), ...config.launch.claude }),
   codex: (config) => new CodexAdapter({ home: config.home, ...config.launch.codex }),
   opencode: (config) => new OpenCodeAdapter(config.launch.opencode?.command ? { command: config.launch.opencode.command } : {}),
   grok: (config) => new GrokAdapter({ home: config.home, ...config.launch.grok }),

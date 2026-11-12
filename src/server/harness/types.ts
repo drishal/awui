@@ -105,6 +105,12 @@ export interface OpenChatRequest {
    * wired for this chat.
    */
   toolEnv?: NodeJS.ProcessEnv;
+  /**
+   * Spawned for a task another agent delegated (an orchestration child), not by the user: a
+   * harness that treats its own subagents differently then does so here too (Claude Code's
+   * subagent prompt-cache lifetime).
+   */
+  delegated?: boolean;
 }
 
 /** Normalized events every adapter emits. */

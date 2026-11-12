@@ -81,6 +81,13 @@ herdr: true
 #   maxWakesPerHour: 20      # wake prompts one parent may receive in an hour
 #   callsPerMinute: 60       # tool calls one chat may make in a minute
 
+# Claude Code's own settings awui passes on (read at startup; no Settings dialog
+# field). subagent_prompt_cache_ttl gives a chat another agent delegated the
+# prompt cache lifetime Claude Code gives its own subagents: 5m or 1h. Unset, a
+# delegated child keeps the main conversation's lifetime, as Claude Code does.
+# claude:
+#   subagent_prompt_cache_ttl: 1h
+
 # How each harness's CLI starts (read at startup; the Settings dialog does not
 # show this, since a command is a program the server runs). command: its
 # executable instead of the name on PATH. args: added to every chat's command

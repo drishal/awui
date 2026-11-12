@@ -158,6 +158,11 @@ export interface ClaudeOptions {
   command?: string;
   /** config.yml's extra arguments for every chat child (after the stream protocol's, which must stay). */
   args?: string[];
+  /**
+   * config.yml's `claude.subagent_prompt_cache_ttl`, when set: the prompt cache lifetime a
+   * delegated child gets, as Claude Code gives its own subagents. Absent means the CLI's default.
+   */
+  subagentPromptCacheTtl?: "5m" | "1h";
   home: string;
   env?: NodeJS.ProcessEnv;
 }
@@ -376,6 +381,8 @@ class ClaudeLiveChat implements LiveChat {
     private readonly resumeId: string | null,
     /** The chat's render endpoint (AWUI_RENDER_URL/TOKEN), for render_html's MCP server. */
     private readonly toolEnv?: NodeJS.ProcessEnv,
+    /** Started for a task another agent delegated (an orchestration child), not by the user. */
+    private readonly delegated = false,
   ) {
     this.sessionId = resumeId ?? randomUUID();
   }
@@ -397,9 +404,21 @@ class ClaudeLiveChat implements LiveChat {
     this.hub.emit(event);
   }
 
+  /**
+   * The child's environment. A delegated child is its own session, so Claude Code would give it
+   * the main conversation's cache lifetime; with `claude.subagent_prompt_cache_ttl` set it follows
+   * a native subagent's instead. A value already in the environment wins, as it does in the CLI.
+   */
+  private childEnv(): NodeJS.ProcessEnv {
+    const env = this.adapter.childEnv();
+    const ttl = this.adapter.subagentPromptCacheTtl;
+    if (!this.delegated || !ttl || env.CLAUDE_CODE_PROMPT_CACHE_TTL !== undefined) return env;
+    return { ...env, CLAUDE_CODE_PROMPT_CACHE_TTL: ttl };
+  }
+
   async start(): Promise<void> {
     const args = [...STREAM_ARGS, ...toolsMcpArgs(this.toolEnv), ...this.adapter.extraArgs, ...(this.resumeId ? ["--resume", this.resumeId] : ["--session-id", this.sessionId])];
-    const rpc = new ClaudeRpc(this.adapter.cliCommand, args, this.adapter.childEnv(), this.cwd, (frame) => this.onFrame(frame));
+    const rpc = new ClaudeRpc(this.adapter.cliCommand, args, this.childEnv(), this.cwd, (frame) => this.onFrame(frame));
     this.rpc = rpc;
     rpc.onExit((message) => {
       if (this.disposed) return;
@@ -1007,6 +1026,10 @@ export class ClaudeAdapter implements HarnessAdapter {
     return this.extraArgs.some((a) => BYPASS_FLAGS.includes(a));
   }
 
+  get subagentPromptCacheTtl(): "5m" | "1h" | undefined {
+    return this.options.subagentPromptCacheTtl;
+  }
+
   /**
    * The CLI's environment, minus the markers a parent Claude Code session sets. Tool search is
    * forced on: left at its default, Claude Code sends every MCP tool's schema in full on every
@@ -1230,7 +1253,7 @@ export class ClaudeAdapter implements HarnessAdapter {
   }
 
   async openChat(req: OpenChatRequest): Promise<LiveChat> {
-    const chat = new ClaudeLiveChat(this, req.cwd, req.resumeNativeId ?? null, req.toolEnv);
+    const chat = new ClaudeLiveChat(this, req.cwd, req.resumeNativeId ?? null, req.toolEnv, req.delegated === true);
     await chat.start();
     return chat;
   }
