@@ -1,6 +1,7 @@
 // What kinds of tools a run used, for the card header's icon stack: one chip per
 // kind in first-use order, an MCP server counting as a kind of its own, "+N" for
 // the rest. Also the monogram and hue an MCP server's chip wears. Pure.
+import { awuiOpenCodeFamily } from "../shared/awui-mcp.js";
 import type { ChatItem, ToolCategory } from "../shared/protocol.js";
 import { toolFacts } from "./tool-facts.js";
 import { isPlanCall, orchestrationTool } from "./tool-sentence.js";
@@ -23,7 +24,9 @@ export function toolKind(item: Extract<ChatItem, { kind: "tool" }>): ToolKind {
   // extension's plain names, or the MCP server's `mcp__awui-orchestrate__…`): it wears the agents
   // mark rather than its server's monogram.
   if (orchestrationTool(item.name)) return { key: "agent", category: "agent" };
-  const server = /^mcp__(.+?)__/.exec(item.name)?.[1];
+  // A server's tool, as Claude Code and Codex name them (`mcp__<server>__<tool>`) or as OpenCode
+  // does (`<server>_<tool>`); awui's own per-chat servers on OpenCode all read as "awui".
+  const server = /^mcp__(.+?)__/.exec(item.name)?.[1] ?? (awuiOpenCodeFamily(item.name) ? "awui" : undefined);
   if (server) return { key: `mcp:${server}`, category: item.category, server };
   // Agents win over the call's own kind: omp's eval spawns them from inside code.
   if (item.subagents) return { key: "agent", category: "agent" };

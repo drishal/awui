@@ -227,8 +227,11 @@ describe("the orchestration surface", () => {
   it("names the tool whichever bridge carried it, and nothing else", () => {
     expect(orchestrationTool("delegate_task")).toBe("delegate_task");
     expect(orchestrationTool("mcp__awui-orchestrate__thread_wait")).toBe("thread_wait");
-    // The render server's tool and an ordinary MCP tool are not the orchestration surface.
+    // OpenCode registers the same server per chat, so its name carries that chat's id.
+    expect(orchestrationTool("awui-o-0123456789abcdef_thread_wait")).toBe("thread_wait");
+    // The render server's tool, another chat's server, and an ordinary MCP tool are not it.
     expect(orchestrationTool("mcp__awui__render_html")).toBeUndefined();
+    expect(orchestrationTool("awui-r-0123456789abcdef_render_html")).toBeUndefined();
     expect(orchestrationTool("mcp__github__list_issues")).toBeUndefined();
     expect(orchestrationTool("read")).toBeUndefined();
   });

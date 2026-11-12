@@ -5,6 +5,7 @@
 // nothing is guessed, so a call this module cannot read shows just its time.
 // Pure, so the web tool card and its unit tests share it. atui keeps its own verb
 // table (neat.ts) because the terminal prints it differently.
+import { awuiOpenCodeTool } from "../shared/awui-mcp.js";
 import type { ToolItem } from "../shared/protocol.js";
 import { toolArgs, toolFacts } from "./tool-facts.js";
 import { formatSpan } from "./turn-time.js";
@@ -54,12 +55,12 @@ function mcpParts(name: string): { server: string; tool: string } | undefined {
 /** The awui orchestration surface's tools, as the extension registers them (src/server/orchestration/tools.ts). */
 export const ORCHESTRATION_TOOLS = ["delegate_task", "task_status", "task_cancel", "thread_send", "thread_read", "thread_wait", "list_profiles"] as const;
 
-/** The MCP server the same tools reach Claude Code, Codex, and DSH through. */
+/** The MCP server the same tools reach Claude Code, Codex, and DSH through; OpenCode registers one per chat (`awui-o-<id>_<tool>`). */
 const ORCH_MCP_PREFIX = "mcp__awui-orchestrate__";
 
-/** The orchestration tool a call names, plain or as `mcp__awui-orchestrate__<tool>`; undefined for anything else. */
+/** The orchestration tool a call names, plain, as `mcp__awui-orchestrate__<tool>`, or as OpenCode writes it; undefined for anything else. */
 export function orchestrationTool(name: string): string | undefined {
-  const bare = name.startsWith(ORCH_MCP_PREFIX) ? name.slice(ORCH_MCP_PREFIX.length) : name;
+  const bare = name.startsWith(ORCH_MCP_PREFIX) ? name.slice(ORCH_MCP_PREFIX.length) : (awuiOpenCodeTool(name, "orchestrate") ?? name);
   return (ORCHESTRATION_TOOLS as readonly string[]).includes(bare) ? bare : undefined;
 }
 

@@ -14,6 +14,12 @@ describe("toolKinds", () => {
     expect(kinds.map((k) => k.key)).toEqual(["mcp:linear", "mcp:github", "other"]);
     expect(kinds[0]?.server).toBe("linear");
   });
+  it("reads awui's per-chat servers on OpenCode as one awui chip", () => {
+    // OpenCode names a server's tool `<server>_<tool>`; the id is the chat's, the server is awui's.
+    expect(toolKinds([tool("awui-r-0123456789abcdef_render_html", "other")])[0]).toEqual({ key: "mcp:awui", category: "other", server: "awui" });
+    // A delegation through the same servers is still an agent call, not a chip.
+    expect(toolKinds([tool("awui-o-0123456789abcdef_delegate_task", "other")])[0]).toEqual({ key: "agent", category: "agent" });
+  });
   it("skips what is not a tool", () => {
     expect(toolKinds([{ kind: "notice", id: "n", level: "info", text: "x" }])).toEqual([]);
   });
