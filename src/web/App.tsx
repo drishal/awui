@@ -2361,6 +2361,7 @@ export function App() {
                     onSend={send}
                     onRefreshModels={refreshModels}
                     onStop={stop}
+                    onCompact={() => void compact()}
                     onAnswer={answer}
                     onConfig={configure}
                     onHandoff={(id, draft) => handoffChat(id, draft)}
@@ -2404,6 +2405,7 @@ export function App() {
                   onSend={send}
                   onRefreshModels={refreshModels}
                   onStop={stop}
+                  onCompact={() => void compact()}
                   onAnswer={answer}
                   onConfig={configure}
                   onHandoff={(id, draft) => handoffChat(id, draft)}

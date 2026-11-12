@@ -328,8 +328,9 @@ if every test passes.
   once its consultation result comes back), `consult-bad`, `consult-unknown`,
   `consult-self`, `consult-dup` (malformed, off-allowlist, self, repeated),
   `consult-slow`, `consult-fail`, `consult-ask` (an approval raised inside a
-  consultant), `roomtwice` (distinguishable output per member), `roomwork` (a thought and two calls before the reply), and `usagevary`
-  (different token counts, one call unpriced). Add a word there when a
+  consultant), `roomtwice` (distinguishable output per member), `roomwork` (a thought and two calls before the reply), `usagevary`
+  (different token counts, one call unpriced), and `coldcache` (a 260k-token session whose
+  prompt cache expired half an hour ago, for the composer's cold-resume hint). Add a word there when a
   feature needs a new scenario,
   rather than mocking deeper.
 - **herdr** is a stand-in socket (`tests/helpers/fake-herdr.ts`): unit tests give

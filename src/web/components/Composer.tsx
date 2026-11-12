@@ -34,6 +34,8 @@ import { loadStash, saveStash, stashDraft, takeFromStash, type StashEntry } from
 import { CONTINUE_TEXT, limitStop } from "../../shared/limit-stop.js";
 import { LimitRecovery } from "./LimitRecovery.js";
 import { DirenvNote } from "./DirenvNote.js";
+import { ColdResumeHint } from "./ColdResumeHint.js";
+import { COLD_RESUME_OFF_KEY, coldResumeHint, lastActivity } from "../cold-resume.js";
 import { useDismiss, useLeave, useMediaQuery, useMorph, useNow } from "../hooks.js";
 import { composerFolded } from "../composer-fold.js";
 import { DirenvRow, GitPanel, GitRow } from "./GitStatusView.js";
@@ -84,6 +86,7 @@ export function Composer({
   placeholder,
   onSend,
   onStop,
+  onCompact,
   onAnswer,
   onConfig,
   onRefreshModels,
@@ -102,6 +105,8 @@ export function Composer({
   placeholder?: string;
   onSend: (text: string, mode: SendMode, images: ImageAttachment[], options?: { compactFirst?: boolean; attachments?: string[] }) => Promise<boolean>;
   onStop: () => void;
+  /** Compact this chat (the same route the palette's Compact context and /compact run); the cold-resume hint needs it. */
+  onCompact?: () => void;
   onAnswer: (requestId: string, answer: InteractionAnswer) => Promise<void>;
   onConfig: (patch: ConfigPatch) => Promise<void>;
   onRefreshModels: () => Promise<void>;
@@ -226,6 +231,19 @@ export function Composer({
   const offerCompact = caps.supportsCompact && chat.context?.tokens != null && percent !== null && percent >= COMPACT_OFFER;
   const [compactChoice, setCompactChoice] = useState<boolean | null>(null);
   const compactFirst = offerCompact && (compactChoice ?? (percent ?? 0) >= COMPACT_DEFAULT);
+
+  // Cold resume (cold-resume.ts): offered when the chat sat idle past its prompt cache's expiry, never
+  // run by itself. The minute tick is what shows it to a tab that has been sitting open.
+  const [coldOff, setColdOff] = useState(() => load(COLD_RESUME_OFF_KEY, false));
+  const coldNow = useNow(!coldOff && caps.supportsCompact, 60_000);
+  const cold = coldResumeHint({
+    lastActivityAt: lastActivity(chat.items),
+    usage: chat.usage,
+    contextTokens: chat.context?.tokens ?? null,
+    supportsCompact: caps.supportsCompact,
+    off: coldOff,
+    now: coldNow,
+  });
 
   const submit = useCallback(
     async (mode: SendMode) => {
@@ -750,6 +768,17 @@ export function Composer({
         />
       ) : null}
       <DirenvNote chat={chat} />
+      {cold && onCompact && !busy && pending.length === 0 ? (
+        <ColdResumeHint
+          hint={cold}
+          busy={busy}
+          onCompact={() => onCompact?.()}
+          onDismiss={() => {
+            setColdOff(true);
+            save(COLD_RESUME_OFF_KEY, true);
+          }}
+        />
+      ) : null}
       {pending.length === 0 && folded ? <ApprovalFolded key={folded.id} folded={folded} onDone={() => setFolded(null)} /> : null}
       {pending.length > 0 ? (
         <ApprovalStack

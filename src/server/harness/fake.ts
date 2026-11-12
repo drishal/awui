@@ -392,12 +392,20 @@ class FakeLiveChat implements LiveChat {
     };
   }
 
+  /** True when a prompt asked for the "coldcache" scenario: a big session whose prompt cache expired. */
+  private get coldCache(): boolean {
+    return this.session.messages.some((m) => isObj(m) && m.role === "user" && typeof m.content === "string" && m.content.includes("coldcache"));
+  }
+
   async getContextUsage(): Promise<ContextUsage | null> {
     const categories = [
       { id: "system", label: "System prompt", tokens: 1500 },
       { id: "tools", label: "Tool definitions", tokens: 5200 },
       { id: "messages", label: "Messages", tokens: this.session.messages.length * 850 },
     ];
+    // "coldcache": a session as big as the ones the cold-resume hint is for (a Claude model's
+    // million-token window), so a browser test can see that hint without waiting out a cache.
+    if (this.coldCache) return { tokens: 260_000, window: 1_000_000, percent: 26, categories };
     const tokens = categories.reduce((sum, c) => sum + c.tokens, 0);
     return { tokens, window: 100_000, percent: Math.min(100, (tokens / 100_000) * 100), categories };
   }
@@ -405,6 +413,11 @@ class FakeLiveChat implements LiveChat {
   async getUsage(): Promise<HarnessUsage | null> {
     const role = (r: string) => this.session.messages.filter((m) => isObj(m) && m.role === r).length;
     const steps = role("assistant");
+    // "coldcache": the prompt cache Claude Code wrote expired half an hour ago.
+    if (this.coldCache) {
+      const expired = { promptCacheTtlMs: 300_000, promptCacheExpiresAt: Date.now() - 30 * 60_000 };
+      return { turns: role("user"), steps, input: steps * 1200, cachedInput: Math.max(0, steps - 1) * 900, cacheWrite: 0, output: steps * 40, cost: null, ...expired };
+    }
     // "usagevary" rooms report different counts per model, and one unpriced model, for aggregation and null-cost tests.
     const vary = this.session.messages.some((m) => isObj(m) && m.role === "user" && typeof m.content === "string" && m.content.includes("usagevary"));
     if (vary) {
