@@ -42,7 +42,8 @@ parameter schemas come from `GET /tools` (or the catalogue served from it), so
 | Pi, omp | an extension loaded with `-e`, one `registerTool` per catalogue entry | `extensions/orchestrate.ts` |
 | Claude Code, Codex, DeepSeek Harness | awui's own HTTP MCP endpoint, mounted per chat | `POST /api/orchestration/mcp` |
 | a DSH build whose ACP does not advertise `mcpCapabilities.http` | the stdio MCP server (`awui-orchestrate`), as a fallback | `extensions/orchestrate-mcp.mjs` |
-| Hermes, OpenCode, Grok Build | not wired: none of them mounts an MCP server for awui today | — |
+| Grok Build | the same stdio MCP server, passed as an ACP stdio entry on `session/new` and `session/load` | `extensions/orchestrate-mcp.mjs` |
+| Hermes, OpenCode | not wired: neither mounts an MCP server for awui today | — |
 
 Nothing is installed into a user's harness config, and no adapter asks the user to add a server:
 the harness gets its own entry per chat, from what the adapter already passes. Claude Code reads a
@@ -161,12 +162,12 @@ How an agent gets those words depends on the harness. Claude Code, Codex, and De
 receive them as **MCP prompts** from the same `awui-orchestrate` server that carries the tools
 (`prompts/list` and `prompts/get`), backed by `GET /api/orchestration/prompts`, which serves
 `skills/<name>/SKILL.md` itself; the compiled binary embeds the same three files, so a packaged
-awui offers them too. Whether a client shows MCP prompts as commands is **unverified** except for
-Claude Code, which documents them; Codex and DSH may only expose them programmatically. Pi and omp
-have a tools-only extension API and no prompt mechanism, and Hermes, OpenCode, and Grok Build are
-not wired to awui's tools at all — there the skill is a file: ask the agent to read
-`skills/council/SKILL.md` and follow it, or paste the text in. The file and the prompt are one
-source, so they cannot drift.
+awui offers them too. Grok Build gets that server too, as an ACP stdio entry on the session.
+Whether a client shows MCP prompts as commands is **unverified** except for Claude Code, which
+documents them; Codex, DSH, and Grok may only expose them programmatically. Pi and omp have a
+tools-only extension API and no prompt mechanism, and Hermes and OpenCode are not wired to awui's
+tools at all — there the skill is a file: ask the agent to read `skills/council/SKILL.md` and
+follow it, or paste the text in. The file and the prompt are one source, so they cannot drift.
 
 ## Reading a child's chat
 

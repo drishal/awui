@@ -109,3 +109,20 @@ export function orchestrateMcpServer(): string | null {
   if (foundOrchMcp !== undefined) return foundOrchMcp;
   return (foundOrchMcp = extractedExtensionPath("orchestrate-mcp.mjs") ?? findExtensionFile("orchestrate-mcp.mjs"));
 }
+
+/**
+ * An absolute Node to run awui's MCP server files, or null when there is none. A
+ * compiled awui binary is Bun, not Node, so the Node on PATH runs them there.
+ */
+export function nodeForMcpServers(): string | null {
+  if (!process.versions.bun) return process.execPath;
+  const names = process.platform === "win32" ? ["node.exe", "node"] : ["node"];
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}

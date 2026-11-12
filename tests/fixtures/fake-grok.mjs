@@ -136,7 +136,9 @@ function send(update, keep = true) {
   appendFileSync(path.join(sessionDir, "updates.jsonl"), `${JSON.stringify(line)}\n`);
 }
 
-function startSession(id) {
+function startSession(id, params) {
+  // The servers the client mounted, as it sent them: a test checks what went out on the wire.
+  record("mcpServers", { method: "session/new", servers: params?.mcpServers ?? null });
   sessionId = randomUUID();
   sessionDir = path.join(group, sessionId);
   mkdirSync(sessionDir, { recursive: true });
@@ -152,6 +154,7 @@ function startSession(id) {
 
 function loadSession(id, params) {
   const wanted = String(params.sessionId ?? "");
+  record("mcpServers", { method: "session/load", servers: params.mcpServers ?? null });
   const dir = path.join(group, wanted);
   if (!existsSync(path.join(dir, "summary.json"))) {
     fail(id, -32000, `unknown session ${wanted}`);
@@ -416,7 +419,7 @@ rl.on("line", (line) => {
       respond(frame.id, { protocolVersion: 1, promptCapabilities: { image: false }, modelState: modelState() });
       return;
     case "session/new":
-      startSession(frame.id);
+      startSession(frame.id, params);
       return;
     case "session/load":
       loadSession(frame.id, params);

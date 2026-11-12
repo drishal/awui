@@ -36,11 +36,14 @@ afterEach(async () => {
 
 const ws = (): WorkspaceInfo => ({ id: "w", path: project, name: "proj" });
 
-async function openChat(resumeNativeId?: string) {
-  const live = await adapter.openChat({ cwd: project, ...(resumeNativeId ? { resumeNativeId } : {}) });
+async function openChat(resumeNativeId?: string, toolEnv?: NodeJS.ProcessEnv) {
+  const live = await adapter.openChat({ cwd: project, ...(resumeNativeId ? { resumeNativeId } : {}), ...(toolEnv ? { toolEnv } : {}) });
   open.push(live);
   return { live, chat: await Chat.open(`c${open.length}`, adapter, ws(), live) };
 }
+
+/** What a chat's render and orchestration tokens are, as the server hands them to a child. */
+const tokens = { AWUI_RENDER_URL: "http://127.0.0.1:4783/api/render", AWUI_RENDER_TOKEN: "r0ken", AWUI_ORCH_URL: "http://127.0.0.1:4783/api/orchestration", AWUI_ORCH_TOKEN: "t0ken" };
 
 async function until(predicate: () => boolean, ms = 8000) {
   const start = Date.now();
@@ -109,6 +112,55 @@ describe("the grok adapter (scripted CLI)", () => {
       ["grok-4.5", "grok", ["low"]],
     ]);
     expect(config.thinkingLevels).toEqual(["high", "medium", "low"]);
+  });
+
+  it("mounts awui's MCP servers on the handshake only when the chat was given their tokens", async () => {
+    await openChat();
+    expect(recorded("mcpServers")).toEqual([{ method: "session/new", servers: [] }]);
+
+    await openChat(undefined, tokens);
+    const sent = recorded("mcpServers").at(-1) as { servers: Array<{ type: string; name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }> };
+    expect(sent.servers).toEqual([
+      {
+        type: "stdio",
+        name: "awui",
+        command: process.execPath,
+        args: [path.join(import.meta.dirname, "..", "..", "extensions", "render-html-mcp.mjs")],
+        env: [
+          { name: "AWUI_RENDER_URL", value: tokens.AWUI_RENDER_URL },
+          { name: "AWUI_RENDER_TOKEN", value: tokens.AWUI_RENDER_TOKEN },
+        ],
+      },
+      {
+        type: "stdio",
+        name: "awui-orchestrate",
+        command: process.execPath,
+        args: [path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs")],
+        env: [
+          { name: "AWUI_ORCH_URL", value: tokens.AWUI_ORCH_URL },
+          { name: "AWUI_ORCH_TOKEN", value: tokens.AWUI_ORCH_TOKEN },
+        ],
+      },
+    ]);
+    // Grok admits a server whose name starts with a letter, holds letters, digits, underscores and
+    // hyphens, and does not end in one underscore (that would make `server__tool` contain `___`).
+    for (const server of sent.servers) {
+      expect(server.name).toMatch(/^[A-Za-z][A-Za-z0-9_-]*[A-Za-z0-9]$/);
+      expect(server.name.includes("_")).toBe(false);
+    }
+  });
+
+  it("mounts the same servers when a session is loaded, and keeps their tokens off the child's own environment", async () => {
+    plantSession("5c1c9a54-6a6f-4a6f-8d1c-0e6d4f0a1b2c", project, { title: "A resume" });
+    const { chat } = await openChat("5c1c9a54-6a6f-4a6f-8d1c-0e6d4f0a1b2c", tokens);
+    const sent = recorded("mcpServers").at(-1) as { method: string; servers: Array<{ name: string; env: Array<{ name: string; value: string }> }> };
+    expect(sent.method).toBe("session/load");
+    expect(sent.servers.map((server) => server.name)).toEqual(["awui", "awui-orchestrate"]);
+    expect(sent.servers[0]?.env).toContainEqual({ name: "AWUI_RENDER_TOKEN", value: tokens.AWUI_RENDER_TOKEN });
+    // The token travels inside the server entry the CLI spawns, never in the CLI's own environment
+    // or a snapshot: a child that echoed either would leak it into a transcript.
+    expect(adapter.childEnv()).not.toHaveProperty("AWUI_RENDER_TOKEN");
+    expect(JSON.stringify(chat.snapshot())).not.toContain(tokens.AWUI_RENDER_TOKEN);
   });
 
   it("accepts a prompt the child never echoes, and does not paint an echo twice", async () => {

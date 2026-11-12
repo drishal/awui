@@ -30,6 +30,8 @@ import { embeddedVersion } from "../embedded.js";
 import { boundText, isObj, type Obj } from "./agent-events.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
+import { nodeForMcpServers, orchestrateMcpServer, ORCH_MCP_SERVER, renderHtmlMcpServer } from "./render-extension.js";
+import { HTML_RENDER_MCP_SERVER } from "./render-token.js";
 import {
   addTurn,
   contextTokens,
@@ -365,11 +367,17 @@ class GrokLiveChat implements LiveChat {
   private readonly subagents = new GrokSubagentBook();
   private readonly permissionOptions = new Map<string, string[]>();
 
+  /** awui's own MCP servers for this chat, sent with both session handshakes and with neither token empty. */
+  private readonly mcpServers: unknown[];
+
   constructor(
     private readonly adapter: GrokAdapter,
     private readonly cwd: string,
     private readonly resumeId: string | null,
-  ) {}
+    toolEnv?: NodeJS.ProcessEnv,
+  ) {
+    this.mcpServers = adapter.mcpServers(toolEnv);
+  }
 
   get nativeId(): string | null {
     return this.sessionId;
@@ -403,9 +411,10 @@ class GrokLiveChat implements LiveChat {
       const init = await rpc.request<Obj>("initialize", { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: "awui", version: CLIENT_VERSION } }, READY_TIMEOUT_MS);
       this.readInitialize(init);
       this.awaitingSession = true;
+      const params: Obj = { cwd: this.cwd, mcpServers: this.mcpServers };
       const result = this.resumeId
-        ? await rpc.request<Obj>("session/load", { sessionId: this.resumeId, cwd: this.cwd, mcpServers: [] }, READY_TIMEOUT_MS)
-        : await rpc.request<Obj>("session/new", { cwd: this.cwd, mcpServers: [] }, READY_TIMEOUT_MS);
+        ? await rpc.request<Obj>("session/load", { ...params, sessionId: this.resumeId }, READY_TIMEOUT_MS)
+        : await rpc.request<Obj>("session/new", params, READY_TIMEOUT_MS);
       // A load answers without an id: the one asked for is the session's.
       const nativeId = this.applySession(result, this.resumeId ?? str(result.sessionId));
       this.emit({ type: "session", nativeId });
@@ -827,6 +836,45 @@ export class GrokAdapter implements HarnessAdapter {
     return this.childEnv().GROK_HOME || path.join(this.options.home, ".grok");
   }
 
+  /**
+   * The MCP servers a chat's session mounts: awui's render_html, and the
+   * orchestration tools, each when the chat was given that family's token. stdio,
+   * run by a real Node (the MCP server files are Node programs, and a compiled
+   * awui binary is Bun), so nothing is asked of Grok's own HTTP client.
+   */
+  mcpServers(toolEnv: NodeJS.ProcessEnv | undefined): unknown[] {
+    const node = nodeForMcpServers();
+    if (!node) return [];
+    const servers: unknown[] = [];
+    const render = renderHtmlMcpServer();
+    if (render && toolEnv?.AWUI_RENDER_URL && toolEnv.AWUI_RENDER_TOKEN) {
+      servers.push({
+        type: "stdio",
+        name: HTML_RENDER_MCP_SERVER,
+        command: node,
+        args: [render],
+        env: [
+          { name: "AWUI_RENDER_URL", value: toolEnv.AWUI_RENDER_URL },
+          { name: "AWUI_RENDER_TOKEN", value: toolEnv.AWUI_RENDER_TOKEN },
+        ],
+      });
+    }
+    const orchestrate = orchestrateMcpServer();
+    if (orchestrate && toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
+      servers.push({
+        type: "stdio",
+        name: ORCH_MCP_SERVER,
+        command: node,
+        args: [orchestrate],
+        env: [
+          { name: "AWUI_ORCH_URL", value: toolEnv.AWUI_ORCH_URL },
+          { name: "AWUI_ORCH_TOKEN", value: toolEnv.AWUI_ORCH_TOKEN },
+        ],
+      });
+    }
+    return servers;
+  }
+
   async discover(): Promise<HarnessDiscovery> {
     const overrides = { GROK_HOME: this.childEnv().GROK_HOME ? "set" : "unset" } as const;
     try {
@@ -1083,7 +1131,7 @@ export class GrokAdapter implements HarnessAdapter {
   }
 
   async openChat(req: OpenChatRequest): Promise<LiveChat> {
-    const chat = new GrokLiveChat(this, req.cwd, req.resumeNativeId ?? null);
+    const chat = new GrokLiveChat(this, req.cwd, req.resumeNativeId ?? null, req.toolEnv);
     await chat.start();
     return chat;
   }
