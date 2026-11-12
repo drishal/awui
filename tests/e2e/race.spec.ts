@@ -60,7 +60,7 @@ test("a comparison records its members, shows a file's diff, keeps a winner, and
 
   // One row per agent, with what it changed against the point the branches forked from.
   await expect(panel.getByText(path.basename(dir))).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Pick Fake" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Pick Fake", exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Pick Fake B" })).toBeVisible();
   await expect(panel.getByText("finished").first()).toBeVisible({ timeout: 20_000 });
 
@@ -69,8 +69,8 @@ test("a comparison records its members, shows a file's diff, keeps a winner, and
   await expect(panel.getByText("const changed = true;")).toBeVisible();
 
   // Keeping a winner touches nothing; the cleanup step then lists the loser and why it stays.
-  await panel.getByRole("button", { name: "Pick Fake" }).click();
-  await expect(panel.getByText("Winner")).toBeVisible();
+  await panel.getByRole("button", { name: "Pick Fake", exact: true }).click();
+  await expect(panel.getByText("Winner", { exact: true })).toBeVisible();
   const cleanup = panel.getByRole("region", { name: "Clean up the losers" });
   await expect(cleanup).toBeVisible();
   await expect(cleanup.getByText("has uncommitted work").first()).toBeVisible();
@@ -84,7 +84,7 @@ test("a comparison records its members, shows a file's diff, keeps a winner, and
   const list = page.getByRole("dialog", { name: "Races" });
   await expect(list).toBeVisible();
   await list.getByRole("button", { name: new RegExp(path.basename(dir)) }).click();
-  await expect(list.getByText("Winner")).toBeVisible();
+  await expect(list.getByText("Winner", { exact: true })).toBeVisible();
 });
 
 test("the races panel is usable on a phone", async ({ page }) => {
