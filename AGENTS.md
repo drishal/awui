@@ -125,6 +125,7 @@ src/server/
   harness/deferred.ts         Resume-without-waiting: show the file's transcript while the harness starts.
   checkpoints.ts             Per-prompt work-tree snapshots in a shadow git repo; turn undo.
   workspaces.ts              Realpath confinement for folder browse and every project lookup, refusing outside-root replacements.
+  envelope.ts                 The hidden envelope: markers, escaping, and the visible remainder of a send that is one contract; Board consultations are the first user.
   worktrees.ts               Managed isolated Git checkouts under `<project>/.awui/worktrees`, with per-workspace lock root and atomic metadata; prune refuses a dirty tree.
   races.ts                   A comparison recorded: each worktree member's fork point, live status, counts and one file's diff; picking a winner (keep, or apply into a clean checkout at the fork point, never committing) and cleaning up a loser git agrees to drop.
   terminal.ts, terminal-backend.ts  Bounded project PTYs: real @lydell/node-pty for source/Node, Bun.Terminal in the compiled app. Validated cwd, process-tree kill on last disconnect/server exit, 1 MiB replay, 60 s exit retention. Never a shell-pipe wrapper; only explicit interactive shells.

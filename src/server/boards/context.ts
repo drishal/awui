@@ -5,6 +5,7 @@
 // envelope carries only the gap, with an explicit marker when the gap is cut.
 import { BOARD_CONTEXT_MAX_CHARS, BOARD_CONTEXT_MAX_RECORDS } from "../../shared/protocol.js";
 import { CONSULT_MARKER_BEGIN, CONSULT_MARKER_END, type StoredMembership, type StoredRoom } from "./types.js";
+import { escapeEnvelopeMarkers } from "../envelope.js";
 import { CONSULT_RESULTS_MARKER } from "./consult.js";
 import type { BotProfile, RoomRecord } from "../../shared/protocol.js";
 
@@ -42,19 +43,8 @@ export interface BuiltPrompt {
 
 /** One projected record cut to a readable size; a room is history, not a token dump. */
 const MAX_RECORD_CHARS = 4_000;
-/**
- * Markers inside remembered text are broken and marked as quoted, not live:
- * defense in depth beside the parser's scope (which only reads the responder's
- * own settled answer). The begin marker is escaped first; its replacement no
- * longer contains the end marker.
- */
-function escapeMarkers(text: string): string {
-  return text
-    .split(CONSULT_MARKER_BEGIN)
-    .join("<<<AWUI_BOARD_ CONTROL (quoted)")
-    .split(CONSULT_MARKER_END)
-    .join("AWUI_BOARD_ CONTROL (quoted)");
-}
+/** Markers inside remembered text are broken and marked as quoted, not live (envelope.ts). */
+const escapeMarkers = escapeEnvelopeMarkers;
 
 function cut(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;

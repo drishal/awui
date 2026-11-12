@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { buildInvocationPrompt } from "../../src/server/boards/context.js";
 import type { StoredBot, StoredMembership, StoredRoom } from "../../src/server/boards/types.js";
-import { CONSULT_MARKER_BEGIN } from "../../src/server/boards/types.js";
+import { ENVELOPE_BEGIN as CONSULT_MARKER_BEGIN } from "../../src/server/envelope.js";
 import type { RoomRecord } from "../../src/shared/protocol.js";
 
 const bot: StoredBot = {

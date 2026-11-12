@@ -78,7 +78,7 @@ import type {
   RecentNativeSession,
   UsageEntry,
 } from "./types.js";
-import { CONSULT_MARKER_BEGIN, CONSULT_MARKER_END } from "../boards/types.js";
+import { ENVELOPE_BEGIN as CONSULT_MARKER_BEGIN, ENVELOPE_END as CONSULT_MARKER_END } from "../envelope.js";
 import { CONSULT_RESULTS_MARKER } from "../boards/consult.js";
 
 interface FakeCall {

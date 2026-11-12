@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { makeTestApp } from "../helpers/app.js";
 import { agent, botRuns, makeBot, makeRoom, openProject, patchMember, send, snapshot, waitRecords } from "../helpers/board.js";
 import { authorizeConsultRequests, parseControlDocument } from "../../src/server/boards/consult.js";
-import { CONSULT_MARKER_BEGIN, CONSULT_MARKER_END } from "../../src/server/boards/types.js";
+import { ENVELOPE_BEGIN as CONSULT_MARKER_BEGIN, ENVELOPE_END as CONSULT_MARKER_END } from "../../src/server/envelope.js";
 import type { RoomRecord, RoomSnapshot } from "../../src/shared/protocol.js";
 
 function document(requests: unknown, extra = ""): string {

@@ -51,9 +51,8 @@ export type RoomMessageInput = z.infer<typeof roomMessageSchema>;
 
 // ---- the consultation protocol (§9) ----------------------------------------
 
-/** The exact envelope a direct responder's whole final answer must be to ask for help. */
-export const CONSULT_MARKER_BEGIN = "<<<AWUI_BOARD_CONTROL";
-export const CONSULT_MARKER_END = "AWUI_BOARD_CONTROL";
+/** The exact envelope a direct responder's whole final answer must be to ask for help (the shared hidden envelope, envelope.ts). */
+export { ENVELOPE_BEGIN as CONSULT_MARKER_BEGIN, ENVELOPE_END as CONSULT_MARKER_END } from "../envelope.js";
 /** One consult request as the control document carries it: a room handle and a bounded question. */
 export interface ConsultAsk {
   to: string;
