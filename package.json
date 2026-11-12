@@ -25,6 +25,7 @@
     "dev": "node scripts/dev.mjs",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.test.json && tsc -p tsconfig.atui.json",
     "test": "vitest run",
+    "test:orchestration-evals": "vitest run --reporter=verbose tests/evals/orchestration-replay.test.ts",
     "test:e2e": "npm run build && playwright test",
     "build": "vite build && tsc -p tsconfig.server.json",
     "build:binary": "bun run scripts/build-binary.ts",

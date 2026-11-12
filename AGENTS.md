@@ -255,6 +255,7 @@ apps/desktop/                 The optional desktop app: an Electron shell that a
                               resources/node_modules/playwright-core staged by scripts/stage-binary.mjs, included
                               explicitly in electron-builder.yml's extraResources. check-packaged.mjs starts it standalone.
 tests/unit                    Vitest. tests/helpers/app.ts builds a real app with fake adapters (makeTestApp).
+tests/evals                   Deterministic real-tool orchestration failure/repair replays: same-request dedup, scope guard, cancellation interrupt, blocked group wake, recovered interrupted once-only report.
 tests/fixtures                Scripted stand-ins: fake-omp.mjs, fake-hermes.mjs, fake-claude.mjs, fake-codex.mjs, fake-grok.mjs, fake-dsh.mjs, fake-acp.mjs, themes/.
 tests/e2e                     Playwright. global-setup.ts starts the built server with AWUI_HARNESSES=fake,fake-b.
 tests/atui                    bun:test against a real server; helpers.tsx mounts atui in the test renderer;
