@@ -98,6 +98,16 @@ describe("claude adapter (scripted CLI)", () => {
     expect(allowed).toContain("mcp__awui__render_html");
     expect(allowed).toContain("mcp__awui-orchestrate__delegate_task");
     expect(allowed).toContain("mcp__awui-orchestrate__thread_wait");
+    // Those schemas are deferred (tool search is on for every child), so loading one is allowed too.
+    expect(allowed).toContain("ToolSearch");
+    expect(recorded("env").at(-1)).toMatchObject({ ENABLE_TOOL_SEARCH: "true" });
+  });
+
+  it("turns tool search on for the child, and leaves a value the user set alone", () => {
+    const base = { HOME: home, CLAUDE_CONFIG_DIR: path.join(home, ".claude") };
+    expect(new ClaudeAdapter({ command: script, home, env: base }).childEnv()).toMatchObject({ ENABLE_TOOL_SEARCH: "true" });
+    // Claude Code's own words for "schemas in full": the user's choice is not a default to replace.
+    expect(new ClaudeAdapter({ command: script, home, env: { ...base, ENABLE_TOOL_SEARCH: "auto:100" } }).childEnv().ENABLE_TOOL_SEARCH).toBe("auto:100");
   });
 
   it("opens with a session id of its own, then streams a turn with thinking and usage", async () => {

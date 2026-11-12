@@ -52,8 +52,10 @@ const record = (key, value) => {
   writeFileSync(statePath, JSON.stringify(state));
 };
 
-// What awui spawned this child with: the MCP config and allow list a test asserts on.
+// What awui spawned this child with: the MCP config and allow list, and the two variables
+// awui sets for every chat child, which a test asserts on.
 record("args", argv);
+record("env", { ENABLE_TOOL_SEARCH: process.env.ENABLE_TOOL_SEARCH ?? null, CLAUDE_CODE_PROMPT_CACHE_TTL: process.env.CLAUDE_CODE_PROMPT_CACHE_TTL ?? null });
 
 const out = (frame) => process.stdout.write(`${JSON.stringify(frame)}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

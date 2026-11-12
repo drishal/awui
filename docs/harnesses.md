@@ -102,7 +102,7 @@ harness has:
 | Transport | Harnesses | What awui adds to the spawn |
 |---|---|---|
 | `-e` extension | Pi, omp (and the awui harness, which gets `eval_python` instead of the orchestration tools) | `orchestrateExtensionArgs(toolEnv)` / `renderHtmlExtensionArgs()`, resolved by `harness/render-extension.ts` (the binary's materialized copy, else the repo's `extensions/` file) |
-| stdio MCP server | Claude Code, Codex, DeepSeek Harness | one config object with two servers: `awui` (`extensions/render-html-mcp.mjs`) and `awui-orchestrate` (`extensions/orchestrate-mcp.mjs`); Claude Code also gets their `mcp__<server>__<tool>` names in `--allowedTools` |
+| stdio MCP server | Claude Code, Codex, DeepSeek Harness | one config object with two servers: `awui` (`extensions/render-html-mcp.mjs`) and `awui-orchestrate` (`extensions/orchestrate-mcp.mjs`); Claude Code also gets their `mcp__<server>__<tool>` names and `ToolSearch` in `--allowedTools`, and runs with its tool search forced on (`ENABLE_TOOL_SEARCH=true`), so those schemas are deferred and loaded on demand |
 | none | Hermes, OpenCode, Grok Build | their adapters mount no MCP server for awui today, so they are left unwired rather than invented |
 
 Each family is injected only when the chat was given its own two variables (`AWUI_RENDER_URL`/

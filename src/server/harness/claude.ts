@@ -102,6 +102,9 @@ function toolsMcpArgs(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
     allowed.push(...orchestrationMcpToolNames());
   }
   if (Object.keys(servers).length === 0) return [];
+  // With tool search on, Claude Code defers these schemas and the model loads one by name through
+  // ToolSearch; allow that call too, so loading awui's own tool never waits on an approval card.
+  allowed.push(TOOL_SEARCH_TOOL);
   // Claude Code takes the list comma-separated in one argument (`--allowedTools <tools...>` is variadic,
   // and the flags after it must not be swallowed).
   return ["--mcp-config", JSON.stringify({ mcpServers: servers }), "--allowedTools", allowed.join(",")];
@@ -132,6 +135,9 @@ function autoModeModels(raw: unknown[]): Set<string> {
   }
   return keys;
 }
+
+/** The built-in tool that loads a deferred MCP tool's schema on demand (Claude Code's tool search). */
+const TOOL_SEARCH_TOOL = "ToolSearch";
 
 const STREAM_ARGS = [
   "-p",
@@ -962,11 +968,19 @@ export class ClaudeAdapter implements HarnessAdapter {
     return this.extraArgs.some((a) => BYPASS_FLAGS.includes(a));
   }
 
-  /** The CLI's environment, minus the markers a parent Claude Code session sets. */
+  /**
+   * The CLI's environment, minus the markers a parent Claude Code session sets. Tool search is
+   * forced on: left at its default, Claude Code sends every MCP tool's schema in full on every
+   * turn while they fit under a share of the context window, which is what this chat's two
+   * servers (render_html and the orchestration tools) would cost. Deferred, the model loads the
+   * one it needs through ToolSearch. A value the user set — in their own environment, config.yml,
+   * or Claude's settings, whose `env` beats this one — is never replaced.
+   */
   childEnv(): NodeJS.ProcessEnv {
     const env = { ...(this.options.env ?? process.env) };
     delete env.CLAUDECODE;
     delete env.CLAUDE_CODE_ENTRYPOINT;
+    if (!env.ENABLE_TOOL_SEARCH?.trim()) env.ENABLE_TOOL_SEARCH = "true";
     return env;
   }
 
