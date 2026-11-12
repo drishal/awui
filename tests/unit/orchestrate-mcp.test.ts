@@ -146,9 +146,10 @@ describe("the orchestration MCP server", () => {
     try {
       await s.call("initialize", {});
       const refused = (await s.call("tools/call", { name: "task_status", arguments: { taskId: "ab12" } })).result;
-      expect(refused).toEqual({ content: [{ type: "text", text: "not_your_task: That task belongs to another chat" }], isError: true });
+      // The typed denial code rides beside the sentence, as it does on the HTTP endpoint.
+      expect(refused).toEqual({ content: [{ type: "text", text: "not_your_task: That task belongs to another chat" }], isError: true, structuredContent: { ok: false, code: "not_your_task", message: "That task belongs to another chat" } });
       const unwired = (await s.call("tools/call", { name: "task_status", arguments: { taskId: "ab12" } })).result;
-      expect(unwired).toEqual({ content: [{ type: "text", text: "unknown_tool: No such tool: thread_read" }], isError: true });
+      expect(unwired).toEqual({ content: [{ type: "text", text: "unknown_tool: No such tool: thread_read" }], isError: true, structuredContent: { ok: false, code: "unknown_tool", message: "No such tool: thread_read" } });
       expect((await s.call("nope")).error?.message).toMatch(/not found/);
       // A tool outside the catalogue never reaches the endpoint.
       expect((await s.call("tools/call", { name: "rm_rf", arguments: {} })).error?.message).toMatch(/Unknown tool/);
