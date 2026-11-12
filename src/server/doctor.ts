@@ -24,7 +24,7 @@ export interface Check {
 }
 
 /** What the port probe found: nothing, awui (its version), or something else. */
-export type PortProbe = { kind: "free" } | { kind: "awui"; version: string | null } | { kind: "other"; detail: string };
+export type PortProbe = { kind: "free" } | { kind: "awui"; version: string | null; /** The running server's own resource-pressure view; null when its health answer predates it. */ pressure?: "ok" | "warn" | null } | { kind: "other"; detail: string };
 
 export interface DoctorInput {
   /** The config problem (validation error text), or null when config.yml is absent or fine. */
@@ -114,6 +114,10 @@ export function evaluate(i: DoctorInput): Check[] {
         ? { name: "Port", ok: true, detail: `awui is running on ${where}${p.version ? ` (build ${p.version})` : ""}` }
         : { name: "Port", ok: false, detail: `${where} is held by something else (${p.detail})` },
   );
+  // The running server's own view of its machine (pressure.ts's sampler); absent when
+  // nothing is running here or the server predates the sampler.
+  if (p.kind === "awui" && p.pressure === "warn") out.push({ name: "Resource pressure", ok: "warn", detail: "the running server has sampled its machine hot for a while; answers may be slow" });
+  else if (p.kind === "awui" && p.pressure === "ok") out.push({ name: "Resource pressure", ok: true, detail: "the running server reports the machine at ease" });
   if (i.remote.exposed) {
     out.push(
       i.remote.credentials
@@ -158,9 +162,11 @@ async function probePort(host: string, port: number): Promise<PortProbe> {
   try {
     const res = await fetch(`http://${target}:${port}/api/health`, { signal: AbortSignal.timeout(1500) });
     // /api/health answers { ok, build }: build is the web bundle's id (a string, or null), not a release version.
-    const body = (await res.json().catch(() => null)) as { ok?: unknown; build?: unknown } | null;
+    const body = (await res.json().catch(() => null)) as { ok?: unknown; build?: unknown; pressure?: { state?: unknown } } | null;
     if (body && body.ok === true && "build" in body) {
-      return { kind: "awui", version: typeof body.build === "string" ? body.build : null };
+      // The running server's own view of its machine, when its health answer carries one.
+      const pressure = body.pressure?.state === "warn" ? "warn" : body.pressure?.state === "ok" ? "ok" : null;
+      return { kind: "awui", version: typeof body.build === "string" ? body.build : null, pressure };
     }
     return { kind: "other", detail: `HTTP ${res.status}, not awui` };
   } catch (error) {

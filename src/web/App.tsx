@@ -81,6 +81,7 @@ import { isShortcutsKey, shortcutHint } from "./shortcuts.js";
 import { attentionCount, badgedIcon, chime, primeAudio, titleWith } from "./attention.js";
 import { useEdgeSwipe } from "./gestures.js";
 import { useLaunchActions } from "./launch.js";
+import { useOverviewStream } from "./overview-stream.js";
 import { ToastStack, useToasts } from "./components/ToastStack.js";
 import { WorkspacePicker } from "./components/WorkspacePicker.js";
 import { PairDialog, RenameDialog } from "./dialogs.js";
@@ -510,6 +511,12 @@ export function App() {
   /** Background notices (a run finished, a question waiting) and mark changes' Undo, stacked. */
   const toasts = useToasts();
 
+  // The server's own machine (pressure.ts): one quiet toast when it runs hot for a while,
+  // one when it eases. A single event each, so nothing chatters.
+  useOverviewStream((event) => {
+    if (event.type !== "pressure") return;
+    toasts.push({ key: `pressure:${event.state}`, text: event.state === "warn" ? "The server is under resource pressure — answers may be slow" : "Resource pressure eased", ms: 9000 });
+  });
   // Background tabs: a tab whose run ended while another was shown gets a dot.
   // Only a run counts; a harness starting up (Starting → Idle) is no news.
   const busyBefore = useRef(new Set<string>());

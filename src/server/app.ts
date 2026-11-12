@@ -156,7 +156,8 @@ import { shellLine } from "./shell-line.js";
 import type { Workspaces } from "./workspaces.js";
 import { allowEnvrc, direnvState, prepareSpawnEnv } from "./direnv.js";
 import { ModelCatalog } from "./model-catalog.js";
-import { overviewEvents } from "./overview-events.js";
+import { notePressure, overviewEvents } from "./overview-events.js";
+import { PressureMonitor } from "./pressure.js";
 import type { TerminalManager } from "./terminal.js";
 import { ManagedWorktrees, worktreeProblem, type WorktreeInfo } from "./worktrees.js";
 import { PROJECT_CONFIG_FILE, projectConfigStatus, ProjectConfigTrust, readProjectConfig } from "./project-config.js";
@@ -231,6 +232,8 @@ export interface AppDeps {
   projectConfigTrust?: ProjectConfigTrust;
   /** The orchestration surface's bounds, read at each use; config.yml's `orchestration:` (none: the defaults). */
   orchestrationLimits?: () => OrchestrationLimits;
+  /** The server's own resource-pressure monitor; a fresh one, sampled on a cadence, when absent. A test passes its own quiet one. */
+  pressure?: PressureMonitor;
   log?: (message: string) => void;
 }
 
@@ -302,6 +305,17 @@ export function createApp(deps: AppDeps) {
   manager.onLimits = (account) => limits.report(account);
   const notifier = deps.notifier ?? Notifier.inMemory();
   const presence = deps.presence ?? PresenceTable.inMemory();
+  // The server's own machine, sampled on a cadence: a warning or a recovery is one quiet
+  // overview event (the client toasts it), and /api/health carries the state for the doctor.
+  // A test passes its own monitor, so nothing samples then.
+  const pressure = deps.pressure ?? new PressureMonitor();
+  const pressureTimer = deps.pressure
+    ? null
+    : setInterval(() => {
+        const verdict = pressure.push(PressureMonitor.read(), Date.now());
+        if (verdict) notePressure(verdict === "warn" ? "warn" : "ok");
+      }, 15_000);
+  pressureTimer?.unref();
   const modelCatalog = deps.modelCatalog ?? new ModelCatalog(deps.stateDir ? path.join(deps.stateDir, "model-catalog.json") : null);
   const chatSearcher = new ChatSearcher();
   const usageReader = new UsageReader();
@@ -402,7 +416,9 @@ export function createApp(deps: AppDeps) {
   app.use(security.trust);
 
   app.get("/api/health", (_req, res) => {
-    res.json({ ok: true, build });
+    // The pressure state rides here (no auth needed, nothing secret): `awui doctor` reads
+    // it while probing the port, as the machine's own view of the running server.
+    res.json({ ok: true, build, pressure: pressure.status() });
   });
 
   // Sign-in for other devices; reachable without a session.

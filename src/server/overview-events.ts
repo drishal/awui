@@ -61,6 +61,12 @@ export function noteSessionOfChat(chat: Chat): void {
   emitChat(chat, false);
 }
 
+
+/** The server's own machine: one event when it crosses into pressure and one when it eases. */
+export function notePressure(state: "warn" | "ok"): void {
+  log.emit({ type: "pressure", state });
+}
+
 export function noteChatDisposed(chat: Chat): void {
   if (chat.owner || chat.side) return;
   const nativeId = notes.get(chat) ?? chat.sessionId;

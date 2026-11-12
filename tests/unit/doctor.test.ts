@@ -93,3 +93,12 @@ describe("doctor", () => {
     expect(by(checks, "Config")).toMatchObject({ ok: false });
   });
 });
+
+describe("resource pressure", () => {
+  it("carries the running server's own view when the port is awui's", () => {
+    expect(by(evaluate({ ...healthy, portProbe: { kind: "awui", version: "1.2.3", pressure: "warn" } }), "Resource pressure").ok).toBe("warn");
+    expect(by(evaluate({ ...healthy, portProbe: { kind: "awui", version: "1.2.3", pressure: "ok" } }), "Resource pressure").ok).toBe(true);
+    // Nothing running here, or a server whose health answer predates the sampler.
+    expect(by(evaluate(healthy), "Resource pressure")).toBeUndefined();
+  });
+});

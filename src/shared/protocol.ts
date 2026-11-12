@@ -333,6 +333,8 @@ export type OverviewEvent =
   | SessionOverviewEvent
   | AgentStatusOverviewEvent
   | { type: "room"; room: RoomSummary }
+  /** The server's own machine: one event when it crosses into sustained pressure, one when it eases. */
+  | { type: "pressure"; state: "warn" | "ok" }
   | { type: "snapshot" };
 
 export interface SessionsOverview {

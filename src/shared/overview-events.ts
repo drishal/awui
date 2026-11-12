@@ -4,7 +4,7 @@ import type { OverviewEvent, ProjectSession, RoomSummary, SessionsOverview } fro
 
 export function mergeSessionOverview(overview: SessionsOverview, event: OverviewEvent): { overview: SessionsOverview; refresh: boolean } {
   if (event.type === "snapshot") return { overview, refresh: true };
-  if (event.type === "room") return { overview, refresh: false };
+  if (event.type === "room" || event.type === "pressure") return { overview, refresh: false };
   // An agent's status line patches its one row and touches nothing else: a chat that
   // has not persisted its session yet is not in the list, and its line waits for a refresh.
   if (event.type === "agent-status") {

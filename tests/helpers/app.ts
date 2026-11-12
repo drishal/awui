@@ -13,6 +13,7 @@ import { FakeAdapter } from "../../src/server/harness/fake.js";
 import { HarnessRegistry } from "../../src/server/harness/registry.js";
 import type { Herdr } from "../../src/server/herdr.js";
 import { Security } from "../../src/server/security.js";
+import { PressureMonitor } from "../../src/server/pressure.js";
 import type { InteractionRequest, PushNote } from "../../src/shared/protocol.js";
 import { ThemeStore } from "../../src/server/theme.js";
 import { Workspaces } from "../../src/server/workspaces.js";
@@ -128,6 +129,8 @@ export async function makeTestApp(options: {
     pairingUrls: [],
     webDir: null,
     heartbeatMs: options.heartbeatMs ?? 20_000,
+    // Nothing samples the machine in a test: the app under test gets a quiet monitor.
+    pressure: new PressureMonitor(),
     stateDir,
     secondOpinions: await SecondOpinions.open(stateDir),
     orchestrationLimits,
