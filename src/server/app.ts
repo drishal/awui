@@ -58,6 +58,13 @@ import {
   pushSubscriptionSchema,
   pushTestSchema,
   presenceSchema,
+  createThreadSchema,
+  replySchema,
+  threadStatusSchema,
+  reanchorSchema,
+  sendThreadsSchema,
+  type ReviewSendResult,
+  type ReviewThread,
   putBackSchema,
   restoreSchema,
   type CheckpointPreview,
@@ -104,6 +111,8 @@ import { SessionOrder } from "./session-order.js";
 import { checkoutOf } from "./checkouts.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { Routines } from "./routines.js";
+import { ReviewProblem, ReviewThreads } from "./review-threads.js";
+import { batchPrompt } from "../shared/review.js";
 import { Limits } from "./limits.js";
 import { Notifier, pushEndpointProblem } from "./notify.js";
 import { PresenceTable } from "./presence.js";
@@ -153,6 +162,8 @@ export interface AppDeps {
   heartbeatMs?: number;
   /** Pinned and archived sessions; in memory when absent. */
   marks?: SessionMarks;
+  /** Review threads (comments on diff lines); in memory when absent. */
+  reviewThreads?: ReviewThreads;
   /** Hand-made session orders; in memory when absent. */
   order?: SessionOrder;
   /** Saved prompts, for every device; in memory when absent (tests). */
@@ -229,6 +240,7 @@ function latest(saved: Date | null, talkedAt: number | null): string | null {
 export function createApp(deps: AppDeps) {
   const { registry, manager, workspaces, security, theme } = deps;
   const marks = deps.marks ?? SessionMarks.inMemory();
+  const reviewThreads = deps.reviewThreads ?? ReviewThreads.inMemory();
   const order = deps.order ?? SessionOrder.inMemory();
   const prompts = deps.prompts ?? SavedPrompts.inMemory();
   const routines = deps.routines ?? Routines.inMemory();
@@ -1359,6 +1371,75 @@ export function createApp(deps: AppDeps) {
     const owned = deps.boards !== undefined && manager.list().some((chat) => chat.chatId === req.params.id && chat.owner);
     if (owned) throw new ChatError(404, "chat_not_found", "No such chat");
     next();
+  });
+
+  // ---- Review threads: comments pinned to a chat's diff lines ---------------------
+  // A thread keys on the chat id alone, so a review outlives the chat being open (its
+  // comments are the record it happened) and only the send needs a live chat. The
+  // anchors carry the line's text and hash, so no route reads a diff.
+  const review = async <T>(run: () => Promise<T>): Promise<T> => {
+    try {
+      return await run();
+    } catch (error) {
+      if (error instanceof ReviewProblem) throw new ChatError(error.status, error.code, error.message);
+      throw error;
+    }
+  };
+
+  app.get("/api/chats/:id/review-threads", (req, res) => {
+    res.json({ threads: reviewThreads.list(req.params.id) });
+  });
+  app.post("/api/chats/:id/review-threads", async (req, res) => {
+    const { anchor, text } = body(createThreadSchema, req);
+    res.status(201).json(await review(() => reviewThreads.create(req.params.id, anchor, text)));
+  });
+  /** Line moves one client's reconciliation pass found: the pin's hash matched at another line. */
+  app.post("/api/chats/:id/review-threads/reanchor", async (req, res) => {
+    const { moves } = body(reanchorSchema, req);
+    res.json({ moved: await reviewThreads.move(req.params.id, moves) });
+  });
+  /**
+   * Every open thread of this chat as one prompt, to this chat, another chat of the
+   * same project, or a new one. While the target runs, the prompt queues as a
+   * follow-up where the harness has them; otherwise the send waits for an idle chat.
+   */
+  app.post("/api/chats/:id/review-threads/send", async (req, res) => {
+    const source = manager.get(req.params.id);
+    const input = body(sendThreadsSchema, req);
+    const threads = reviewThreads.list(source.chatId);
+    const open = threads.filter((t) => t.status === "open");
+    if (open.length === 0) throw new ChatError(400, "nothing_to_send", "There are no open comments to send");
+    const prompt = batchPrompt(threads, new Set(input.stale));
+    if (prompt.length > MAX_MESSAGE_CHARS) throw new ChatError(413, "prompt_too_long", `Those comments are ${prompt.length.toLocaleString("en-US")} characters; the limit is ${MAX_MESSAGE_CHARS.toLocaleString("en-US")}`);
+    let target: Chat;
+    let mode: "normal" | "followUp" = "normal";
+    if (input.target.kind === "chat") {
+      target = manager.get(input.target.chatId);
+      const busy = target.status !== "idle" && target.status !== "error";
+      // A follow-up only exists inside a run, so a stopping or compacting chat is still a wait.
+      if (busy) {
+        if (input.mode === "normal" || target.status !== "running" || !target.adapter.capabilities.supportsFollowUp) throw new ChatError(409, "chat_busy", "Wait until the agent is idle");
+        mode = "followUp";
+      }
+    } else {
+      const adapter = await availableAdapter(input.target.harnessId);
+      target = await manager.create(adapter, await workspaces.get(source.workspace.id));
+    }
+    await target.send(prompt, mode);
+    await reviewThreads.markSent(source.chatId, open.map((t) => t.id), Date.now());
+    res.status(202).json({ accepted: true, targetChatId: target.chatId, sent: open.length } satisfies ReviewSendResult);
+  });
+  app.post("/api/chats/:id/review-threads/:threadId/notes", async (req, res) => {
+    const { text } = body(replySchema, req);
+    res.status(201).json(await review(() => reviewThreads.addNote(req.params.id, req.params.threadId, text)));
+  });
+  app.post("/api/chats/:id/review-threads/:threadId/status", async (req, res) => {
+    const { status } = body(threadStatusSchema, req);
+    res.json(await review(() => reviewThreads.setStatus(req.params.id, req.params.threadId, status)));
+  });
+  app.delete("/api/chats/:id/review-threads/:threadId", async (req, res) => {
+    if (!(await reviewThreads.remove(req.params.id, req.params.threadId))) throw new ChatError(404, "no_thread", "No such comment thread");
+    res.json({ ok: true });
   });
 
   app.post("/api/chats", async (req, res) => {

@@ -31,6 +31,7 @@ import { startDue } from "./routines-timer.js";
 import { runRoutine } from "./routine-runner.js";
 import { SessionOrder } from "./session-order.js";
 import { SavedPrompts } from "./saved-prompts.js";
+import { ReviewThreads } from "./review-threads.js";
 import { Limits } from "./limits.js";
 import { Notifier, roomPushNote } from "./notify.js";
 import { PresenceTable } from "./presence.js";
@@ -220,6 +221,7 @@ async function main(): Promise<void> {
   pasteCleanupTimer.unref();
   const order = await SessionOrder.open(config.stateDir);
   const prompts = await SavedPrompts.open(config.stateDir);
+  const reviewThreads = await ReviewThreads.open(config.stateDir);
   const limits = await Limits.open(registry, config.stateDir);
   limits.warm();
   const notifier = await Notifier.open(config.stateDir, (m) => console.error(`awui: ${m}`));
@@ -259,6 +261,7 @@ async function main(): Promise<void> {
     routines,
     order,
     prompts,
+    reviewThreads,
     limits,
     notifier,
     presence,
