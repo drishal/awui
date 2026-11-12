@@ -105,7 +105,8 @@ harness has:
 | stdio MCP server | Claude Code, Codex, DeepSeek Harness (only for `render_html`, or for the orchestration tools on a DSH build that does not advertise `mcpCapabilities.http`) | `awui` (`extensions/render-html-mcp.mjs`) and, when they cannot connect over HTTP, `awui-orchestrate` (`extensions/orchestrate-mcp.mjs`): a Claude Code `--mcp-config` object, a Codex `-c mcp_servers.*`, a DSH `mcpServers` entry. Claude Code also gets their `mcp__<server>__<tool>` names and `ToolSearch` in `--allowedTools`, and runs with its tool search forced on (`ENABLE_TOOL_SEARCH=true`), so those schemas are deferred and loaded on demand. The CLI's `CLAUDE_CODE_ENTRYPOINT` is removed unless config.yml's `claude.entrypoint` names awui (see [configuration](configuration.md)) |
 | HTTP MCP server | Claude Code, Codex, DeepSeek Harness | the orchestration tools, served by awui itself at `POST /api/orchestration/mcp`: a `{"type":"http"}` server in Claude Code's `--mcp-config` with `Authorization: Bearer ${AWUI_ORCH_TOKEN}` (the CLI expands that reference from the child's environment), `mcp_servers.awui-orchestrate.url` + `bearer_token_env_var` on Codex's command line, and an ACP `mcpServers` entry with `type: "http"` for DSH when its handshake advertises `mcpCapabilities.http`. No child process, and no file for the user to edit: every one of the three is wired per chat, from what the adapter already passes |
 | ACP `mcpServers` | Grok Build | the same two servers as stdio entries on `session/new` **and** `session/load` (`GrokAdapter.mcpServers()`), each `{ type: "stdio", name, command, args, env: [{ name, value }] }` with a real Node from `nodeForMcpServers()` (a compiled awui is Bun). They load beside the user's own servers, per session; nothing is written to `~/.grok`, and no config file or plugin is used. Grok names an MCP tool `<server>__<tool>` (no `mcp__` prefix) and may route the call through its `use_tool` dispatcher naming that key; `grok-transcript.ts` renames awui's own servers' calls to `mcp__<server>__<tool>`, the spelling `render-token.ts` and `tool-sentence.ts` read, and shows the call's own arguments. A render result's `awui-html-render:` line becomes the page card, so `supportsHtmlRender` is declared. An MCP call raises its own approval card, like any other tool. A server still handshaking when the first prompt goes out is missing from that turn's catalog |
-| none | Hermes, OpenCode | their adapters mount no MCP server for awui today, so they are left unwired rather than invented |
+| runtime MCP registration | OpenCode | two servers registered on its own shared server, one pair per chat, and taken off again when the chat closes: `awui-r-<id>` (`extensions/render-html-mcp.mjs`) and `awui-o-<id>` (`extensions/orchestrate-mcp.mjs`), each a `local` entry whose command is a Node running that bridge with the chat's two variables. Nothing is written to the user's OpenCode config (the user's own MCP servers keep loading), and because every OpenCode chat in one project shares that server and so one MCP set, each chat's session also carries permission rules: deny `awui-*`, then allow its own two, where the last match wins |
+| none | Hermes | its adapter mounts no MCP server for awui today, so they are left unwired rather than invented |
 
 Each family is injected only when the chat was given its own two variables (`AWUI_RENDER_URL`/
 `AWUI_RENDER_TOKEN`, `AWUI_ORCH_URL`/`AWUI_ORCH_TOKEN`), which `ChatManager` mints per chat
@@ -113,7 +114,13 @@ and never for a read-only harness or a Board-owned chat. So the gate is the toke
 harness: a new adapter needs no code to have the tools withheld, and its own `-e`/MCP wiring
 is what arms them. `harness/render-token.ts` holds the MCP names (from the catalogue) so an
 allow list cannot drift from what is served, and `scripts/build-binary.ts`'s `EXTENSIONS`
-list is what the compiled binary carries.
+list is what the compiled binary carries. OpenCode's names have a scheme of their own
+(`src/shared/awui-mcp.ts`): OpenCode exposes a registered server's tool as
+`<sanitized server>_<sanitized tool>`, so a chat's servers are `awui-r-<id>` and `awui-o-<id>`,
+where the id is a hash of that chat's two tokens (a name becomes part of every tool name sent to
+the model, so it never holds the token itself) and the whole name stays under OpenCode's
+64-character limit. Its bridges are registered with `codemode: false`, so their tools are
+tools, not entries inside Code Mode's `execute`.
 
 An MCP server awui hands a harness must arrive per chat, through the command line, the
 environment, or the session parameters the adapter already controls — never by writing to the

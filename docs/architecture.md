@@ -21,6 +21,7 @@ The module map:
 ```
 src/shared/protocol.ts      wire types + Zod request schemas (no SDK types)
 src/shared/html-render.ts   agent-rendered pages: bootstrap inject, theme payload, frame-height math
+src/shared/awui-mcp.ts     awui's tool servers and tools as OpenCode names them (`awui-r-<id>`, `<server>_<tool>`)
 src/server/
   harness/types.ts          HarnessAdapter / LiveChat contract, normalized HarnessEvent
   harness/registry.ts       adapter registry (one entry per harness)
@@ -35,6 +36,7 @@ src/server/
   harness/opencode.ts       OpenCode adapter (HTTP API and events of one shared `opencode serve`)
   harness/opencode-server.ts  that server: started when needed, a password of awui's, events by session
   harness/opencode-messages.ts  OpenCode's messages, models, forms, and permissions in awui's terms
+  harness/opencode-tools.ts   awui's render and orchestration MCP servers registered per chat, and its session's rules
   harness/render-extension.ts  the render_html extension's file + the -e args that load it
   harness/render-token.ts   render tool names + a result's reference, with its spoof guard
   harness/codex.ts          Codex adapter (`codex app-server`) with rollout/session folding
@@ -190,6 +192,7 @@ OpenCode 2 is driven through its own HTTP API: awui starts **one** private `open
 - **Subagents:** a delegation (`task`, or oh-my-opencode-slim's `subagent`) runs a child session, which the call names as soon as it starts; awui follows that session's events, so the card shows the agent's model, tool calls, tokens, cost, and time as it works, and its answer after. *Open transcript* reads the child session (only a child of the chat's own session). A `background` run goes on reporting after its call returns. Reopened, each run is filled in from its child session's totals. Child sessions stay out of the session list.
 - **Decisions:** a permission request is an approval card (*Allow once*, *Always allow* with the pattern OpenCode would save, *Deny*); a form (the question tool's) is one card per field, its answers sent back together. A request answered in OpenCode's own client closes here.
 - **Config:** the project's models (OpenCode's list), each model's variants as its thinking levels (`none` and `default` are not levels); a change goes to `POST /session/{id}/model`, or waits for the session before the first message. Context is the last step's tokens against the model's window; usage and cost are OpenCode's own totals.
+- **awui's own tools:** OpenCode has no extension API, so `render_html` and the orchestration tools reach a chat as two MCP servers registered on that shared server when the chat opens — `awui-r-<id>` and `awui-o-<id>`, each a `local` entry running awui's bridge under Node with the chat's own two variables, and `codemode: false` so they stay tools rather than entries inside Code Mode's `execute`. Nothing is read from or written to your OpenCode config; your own MCP servers keep loading. The id is a hash of the chat's tokens (never the token: a server name becomes part of every tool name sent to the model), and OpenCode exposes a tool as `<server>_<tool>`, so a render call arrives as `awui-r-<id>_render_html` and its page marker is lifted onto the card. Chats in one project share that server and so one MCP set, so each chat's session also gets permission rules — deny `awui-*`, then allow its own two, last match wins — which is what keeps one chat's tool token out of another chat's hands. Registration is repeated before each turn (a restarted server has no runtime set), removed when the chat closes, and a refusal costs only the tools: the chat runs without them and the server logs the reason once, without a token.
 
 ## Grok
 

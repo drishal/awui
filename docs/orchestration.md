@@ -43,7 +43,8 @@ parameter schemas come from `GET /tools` (or the catalogue served from it), so
 | Claude Code, Codex, DeepSeek Harness | awui's own HTTP MCP endpoint, mounted per chat | `POST /api/orchestration/mcp` |
 | a DSH build whose ACP does not advertise `mcpCapabilities.http` | the stdio MCP server (`awui-orchestrate`), as a fallback | `extensions/orchestrate-mcp.mjs` |
 | Grok Build | the same stdio MCP server, passed as an ACP stdio entry on `session/new` and `session/load`; Grok calls a tool as `<server>__<tool>` (or through its `use_tool` dispatcher), which the adapter renames to `mcp__awui-orchestrate__<tool>` for the card | `extensions/orchestrate-mcp.mjs` |
-| Hermes, OpenCode | not wired: neither mounts an MCP server for awui today | — |
+| OpenCode | a second server registered at runtime on OpenCode's shared server, `awui-o-<id>`, beside the chat's `awui-r-<id>` render server; its session allows only the chat's own pair and denies every other chat's | `extensions/orchestrate-mcp.mjs` |
+| Hermes | not wired: it mounts no MCP server for awui today | — |
 
 Nothing is installed into a user's harness config, and no adapter asks the user to add a server:
 the harness gets its own entry per chat, from what the adapter already passes. Claude Code reads a
@@ -61,8 +62,11 @@ extensions folder stays inert; the MCP paths serve no tool without them.
 
 Claude Code is also given the tools in `--allowedTools` (as `mcp__awui-orchestrate__<tool>`),
 because its MCP tools need an allow rule to run without a prompt; Codex and DSH take the
-server alone. Every injected name comes from the catalogue, so an allow list cannot drift
-from what is served.
+server alone. OpenCode needs neither an allow list nor a config file: awui registers the two
+servers on OpenCode's own shared server for that chat and gives the chat's session two glob
+rules — deny `awui-*`, allow its own two — where the last matching rule wins, so a second chat
+in the same project cannot call this one's tools with this one's token. Every injected name
+comes from the catalogue, so an allow list cannot drift from what is served.
 
 `awui doctor` prints one line for all of it:
 `✓ Orchestration: on (max 4 children per chat, depth 2, 12 live tasks)`, `!` when the surface is
@@ -165,7 +169,8 @@ receive them as **MCP prompts** from the same `awui-orchestrate` server that car
 awui offers them too. Grok Build gets that server too, as an ACP stdio entry on the session.
 Whether a client shows MCP prompts as commands is **unverified** except for Claude Code, which
 documents them; Codex, DSH, and Grok may only expose them programmatically. Pi and omp have a
-tools-only extension API and no prompt mechanism, and Hermes and OpenCode are not wired to awui's
+tools-only extension API and no prompt mechanism, OpenCode gets the prompts from that same
+server but shows them only where its own client does, and Hermes is not wired to awui's
 tools at all — there the skill is a file: ask the agent to read `skills/council/SKILL.md` and
 follow it, or paste the text in. The file and the prompt are one source, so they cannot drift.
 

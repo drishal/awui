@@ -1,6 +1,6 @@
-import { chmodSync, mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { OpenCodeAdapter } from "../../src/server/harness/opencode.js";
 import { liveOpenCodeServers } from "../../src/server/harness/opencode-server.js";
@@ -18,6 +18,8 @@ let project: string;
 let state: string;
 let adapter: OpenCodeAdapter;
 const open: LiveChat[] = [];
+/** Adapters a test made for its own environment (a refused registration, a config dir to leave alone). */
+const extras: OpenCodeAdapter[] = [];
 
 beforeEach(() => {
   home = tempDir("awui-opencode-");
@@ -29,14 +31,15 @@ beforeEach(() => {
 
 afterEach(async () => {
   for (const chat of open.splice(0)) await chat.dispose();
+  for (const extra of extras.splice(0)) await extra.shutdown();
   await adapter.shutdown();
   expect(liveOpenCodeServers()).toBe(0);
 });
 
 const ws = (): WorkspaceInfo => ({ id: "w", path: project, name: "proj" });
 
-async function openChat(resumeNativeId?: string) {
-  const live = await adapter.openChat({ cwd: project, ...(resumeNativeId ? { resumeNativeId } : {}) });
+async function openChat(resumeNativeId?: string, toolEnv?: NodeJS.ProcessEnv) {
+  const live = await adapter.openChat({ cwd: project, ...(resumeNativeId ? { resumeNativeId } : {}), ...(toolEnv ? { toolEnv } : {}) });
   open.push(live);
   return { live, chat: await Chat.open(`c${open.length}`, adapter, ws(), live) };
 }
@@ -322,5 +325,157 @@ describe("OpenCode's shapes", () => {
     ]);
     expect(qs[3]?.request.title).toBe("Questions");
     expect([formValue(qs[0]!, form, "Alpha"), formValue(qs[1]!, form, true), formValue(qs[2]!, form, "3"), formValue(qs[3]!, form, "because")]).toEqual([["a"], true, 3, "because"]);
+  });
+});
+
+/** The tokens ChatManager mints per chat, one pair per chat number. */
+function tokens(n: number): NodeJS.ProcessEnv {
+  return {
+    AWUI_RENDER_URL: "http://127.0.0.1:4783/api/render",
+    AWUI_RENDER_TOKEN: `${n}`.padStart(32, "a"),
+    AWUI_ORCH_URL: "http://127.0.0.1:4783/api/orchestration",
+    AWUI_ORCH_TOKEN: `${n}`.padStart(32, "b"),
+  };
+}
+
+interface FakeState {
+  sessions: Record<string, { permissions?: Array<{ action: string; resource: string; effect: string }> }>;
+  pid?: number;
+  mcpAdds?: Array<{ directory: string; server: string; config: { type: string; command: string[]; environment: Record<string, string>; codemode?: boolean } }>;
+  mcpRemoves?: Array<{ directory: string; server: string }>;
+}
+
+const fakeState = (): FakeState => JSON.parse(readFileSync(state, "utf8")) as FakeState;
+const adds = () => fakeState().mcpAdds ?? [];
+
+/** One chat's tools a test calls by name, from what the fake server was given. */
+const toolsOf = (chatNumber: number) => {
+  const mine = [tokens(chatNumber).AWUI_RENDER_TOKEN, tokens(chatNumber).AWUI_ORCH_TOKEN];
+  return adds().filter((add) => Object.values(add.config.environment).some((value) => mine.includes(value)));
+};
+
+describe("awui's tools in an OpenCode chat", () => {
+  it("registers its two servers for the chat, wired to awui's bridges, and scopes the session", async () => {
+    const { chat, live } = await openChat(undefined, tokens(1));
+    await chat.send("hello", "normal");
+    await until(() => adds().length === 2 && (fakeState().sessions[live.nativeId as string]?.permissions?.length ?? 0) === 3);
+    const [render, orchestrate] = toolsOf(1);
+    // One server per family, named for this chat and carrying no token in its name.
+    expect(render?.server).toMatch(/^awui-r-[0-9a-f]{16}$/);
+    expect(orchestrate?.server).toMatch(/^awui-o-[0-9a-f]{16}$/);
+    expect(render?.server).not.toContain(tokens(1).AWUI_RENDER_TOKEN as string);
+    expect(render?.directory).toBe(project);
+    expect(render?.config).toMatchObject({ type: "local", codemode: false });
+    expect(render?.config.command[1]).toMatch(/render-html-mcp\.mjs$/);
+    expect(render?.config.environment).toEqual({ AWUI_RENDER_URL: tokens(1).AWUI_RENDER_URL, AWUI_RENDER_TOKEN: tokens(1).AWUI_RENDER_TOKEN });
+    expect(orchestrate?.config.command[1]).toMatch(/orchestrate-mcp\.mjs$/);
+    expect(orchestrate?.config.environment).toEqual({ AWUI_ORCH_URL: tokens(1).AWUI_ORCH_URL, AWUI_ORCH_TOKEN: tokens(1).AWUI_ORCH_TOKEN });
+    // The session's own rules deny every awui server, then allow this chat's two.
+    const session = fakeState().sessions[live.nativeId as string];
+    expect(session?.permissions).toEqual([
+      { action: "awui-*", resource: "*", effect: "deny" },
+      { action: `${render?.server}_*`, resource: "*", effect: "allow" },
+      { action: `${orchestrate?.server}_*`, resource: "*", effect: "allow" },
+    ]);
+  });
+
+  it("keeps the user's own OpenCode config untouched: the servers exist only over the API", async () => {
+    const configDir = path.join(home, "xdg", "opencode");
+    const own = new OpenCodeAdapter({ command: script, env: { ...process.env, FAKE_OPENCODE_STATE: state, XDG_CONFIG_HOME: path.join(home, "xdg") } });
+    extras.push(own);
+    const live = await own.openChat({ cwd: project, toolEnv: tokens(2) });
+    open.push(live);
+    const chat = await Chat.open("cfg", own, ws(), live);
+    await chat.send("hello", "normal");
+    await until(() => adds().length === 2);
+    expect(existsSync(configDir)).toBe(false);
+  });
+
+  it("lets two chats in one project share the server but not the tools", async () => {
+    const { chat: first } = await openChat(undefined, tokens(1));
+    const { chat: second } = await openChat(undefined, tokens(3));
+    await first.send("hello", "normal");
+    await second.send("hello", "normal");
+    await until(() => adds().length === 4 && [first, second].every((c) => c.status === "idle"));
+    const ours = toolsOf(1)[0]?.server as string;
+    const theirs = toolsOf(3)[0]?.server as string;
+    expect(ours).not.toBe(theirs);
+    // This chat calls its own render tool: the session's allow rule runs it without a prompt.
+    await first.send(`mcpcall ${ours}_render_html`, "normal");
+    await until(() => first.status === "idle" && first.snapshot().items.some((i) => i.kind === "tool"));
+    expect(first.snapshot().items.find((i) => i.kind === "tool")).toMatchObject({ name: `${ours}_render_html`, status: "done" });
+    // The chat next door calls it instead: the deny rule refuses, and no card is raised.
+    await second.send(`mcpcall ${ours}_render_html`, "normal");
+    await until(() => second.status === "idle" && second.snapshot().items.some((i) => i.kind === "tool"));
+    expect(second.snapshot().items.find((i) => i.kind === "tool")).toMatchObject({ name: `${ours}_render_html`, status: "error", output: "Denied" });
+    expect(second.snapshot().pending).toEqual([]);
+  });
+
+  it("takes its servers off the shared one when the chat closes", async () => {
+    const { live } = await openChat(undefined, tokens(1));
+    const chat = await Chat.open("close", adapter, ws(), live);
+    await chat.send("hello", "normal");
+    await until(() => adds().length === 2);
+    await live.dispose();
+    expect(fakeState().mcpRemoves?.map((r) => r.server).sort()).toEqual(adds().map((a) => a.server).sort());
+  });
+
+  it("keeps the chat working when the server refuses the tools, and says so once", async () => {
+    const refusing = new OpenCodeAdapter({ command: script, env: { ...process.env, FAKE_OPENCODE_STATE: state, FAKE_OPENCODE_MCP_FAIL: "1" } });
+    extras.push(refusing);
+    const live = await refusing.openChat({ cwd: project, toolEnv: tokens(1) });
+    open.push(live);
+    const chat = await Chat.open("refused", refusing, ws(), live);
+    const said: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((line: unknown) => void said.push(String(line)));
+    try {
+      await chat.send("hello", "normal");
+      await until(() => chat.status === "idle" && answered(chat, "Echo: hello"));
+      await chat.send("hello again", "normal");
+      await until(() => answered(chat, "Echo: hello again"));
+    } finally {
+      spy.mockRestore();
+    }
+    // The turn ran; the tools did not, and the reason (never a token) was said once.
+    expect(said.filter((line) => line.includes("awui's tools"))).toHaveLength(1);
+    expect(said.join("\n")).not.toContain(tokens(1).AWUI_RENDER_TOKEN as string);
+  });
+
+  it("registers again before a turn when the shared server has restarted", async () => {
+    const { chat } = await openChat(undefined, tokens(1));
+    await chat.send("hello", "normal");
+    await until(() => adds().length === 2);
+    const pid = fakeState().pid as number;
+    process.kill(pid, "SIGTERM");
+    await until(() => {
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    // The restarted server has no runtime set: the next turn puts the servers back.
+    await chat.send("hello again", "normal");
+    await until(() => adds().length === 4);
+    await until(() => answered(chat, "Echo: hello again"));
+    expect(new Set(adds().map((a) => a.server)).size).toBe(2);
+  });
+
+  it("publishes a page from an awui render call, live and from the session's stored messages", async () => {
+    expect(adapter.capabilities.supportsHtmlRender).toBe(true);
+    const { chat, live } = await openChat(undefined, tokens(1));
+    await chat.send("hello", "normal");
+    await until(() => adds().length === 2 && chat.status === "idle");
+    await chat.send("render one", "normal");
+    await until(() => chat.status === "idle" && chat.snapshot().items.some((i) => i.kind === "tool" && i.htmlRender !== undefined));
+    const page = { id: "0123456789abcdef0123456789abcdef", title: "Probe page", height: 240 };
+    const shown = chat.snapshot().items.find((i) => i.kind === "tool");
+    expect(shown).toMatchObject({ htmlRender: page });
+    // The marker line is not part of the card's text.
+    expect(shown?.kind === "tool" ? shown.output : "").not.toContain("awui-html-render:");
+    // Reloaded from the session's messages, the page is still there.
+    const items = await adapter.readTranscript({ cwd: project, nativeId: live.nativeId as string });
+    expect(items?.items.find((i) => i.kind === "tool")).toMatchObject({ htmlRender: page });
   });
 });

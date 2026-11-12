@@ -68,6 +68,7 @@ Server changes that the browser sees need e2e too.
 ```
 src/shared/protocol.ts        Wire types and Zod request schemas: the only contract between server and clients.
 src/shared/html-render.ts     Agent-rendered pages: bootstrap markup, theme payload, frame-height math (no harness types).
+src/shared/awui-mcp.ts        awui's tool servers and tools as OpenCode names them (`awui-r-<id>`, `<server>_<tool>`); one scheme for server and clients.
 src/shared/approval.ts        Which requests are plain approvals, and their Approve/Deny answers (the card and push notes).
 src/shared/review.ts         Review pins (a line's hash, following it through later edits) and the one prompt a batch of open threads becomes.
 src/server/
@@ -99,6 +100,7 @@ src/server/
   harness/{pi,omp,hermes,claude,codex,opencode,grok,dsh}.ts   The eight adapters; codex-transcript.ts folds Codex's rollout files for a resumed chat and Usage across chats; hermes-gateway.ts is the attach to Hermes's own gateway (its control socket's public contract: rendezvous, `resolve-profile`/`identify` verdict, `session-ticket`) and hermes-canonical.ts the canonical session wire presented as the dialect the chat speaks; grok-transcript.ts folds Grok's ACP session updates (live and on disk), and dsh-transcript.ts decodes DeepSeek Harness's concatenated-zstd session log and folds its ACP updates. fake.ts is the deterministic test adapter.
   harness/opencode-server.ts  OpenCode's one shared `opencode serve`: started when needed, awui's password, events by session.
   harness/opencode-messages.ts  OpenCode's messages, models, forms, permissions as awui's (pure, against recorded shapes).
+  harness/opencode-tools.ts   awui's render and orchestration MCP servers registered per chat on the shared server, and the session rules that scope them.
   harness/awui.ts              The Awui chat harness: a read-only `pi` child (subclass), own agent dir, write/exec tools denied; loads render_html + eval_python, not rewind. Web-only; its Settings can link the user's pi login into that dir (awui-settings.ts).
   awui-settings.ts             The Awui harness's provider settings: edit its isolated agent dir's models.json (keys never echoed; pi-shaped fields survive saves), plus the opt-in that links the user's pi auth.json in and seeds Pi's providers once.
   harness/agent-events.ts     Pi-family event and transcript normalization (Pi and omp share it); historyToItems.
@@ -342,7 +344,9 @@ if every test passes.
   server runs with `AWUI_HERDR=0`. Never point a test at the developer's herdr.
 - **Scripted CLIs** (`tests/fixtures/fake-omp.mjs`, `fake-hermes.mjs`,
   `fake-claude.mjs`, `fake-codex.mjs`, `fake-opencode.mjs`, `fake-grok.mjs`, `fake-dsh.mjs`, `fake-hermes-attach.mjs`, `fake-hermes-gateway.mjs`) speak each harness's real wire protocol
-  (OpenCode's is an HTTP server with OpenCode 2's routes and event stream; DSH's writes
+  (OpenCode's is an HTTP server with OpenCode 2's routes and event stream, including the runtime
+  MCP add/remove routes and its last-match-wins session permission rules, and it keeps its own pid
+  in the state file so a test can end it and watch a chat register again; DSH's writes
   v4 concatenated-zstd session logs). Adapter changes
   get a test against one of them; record new frames from the real CLI rather
   than inventing them.

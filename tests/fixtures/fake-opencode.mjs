@@ -1,18 +1,26 @@
 #!/usr/bin/env node
 // Scripted `opencode serve` (OpenCode 2's HTTP API) for adapter tests: the
 // routes awui calls and the events and stored messages they produce, in the
-// shapes recorded from OpenCode 2.0.27. Basic auth with
-// $OPENCODE_SERVER_PASSWORD; sessions live in $FAKE_OPENCODE_STATE (JSON), so
-// a restarted server still has them, and every permission or form reply is
-// recorded there. Prompt text selects behaviour:
+// shapes recorded from OpenCode 2.0.27, plus the runtime MCP routes and the
+// session permission rules recorded from 2.2.7 (add and remove a server, a
+// session's rules checked the way OpenCode checks them: last match wins, else
+// ask). Basic auth with $OPENCODE_SERVER_PASSWORD; sessions live in
+// $FAKE_OPENCODE_STATE (JSON), so a restarted server still has them, and every
+// permission or form reply, MCP registration, and removal is recorded there.
+// Prompt text selects behaviour:
 //   "tool"   read a file first           "ask"       a shell call that needs approval
 //   "edit"   edit a file (with a patch)  "question"  a form with two options
 //   "slow"   stream many chunks          "fail"      the step fails with an error
 //   "todo"   write a todo list            "delegate"  a subagent call running a child session
+//   "mcpcall <tool>"  call that MCP tool, allowed or refused by the session's rules
+//   "render"  call this project's awui render server, with the page marker awui's bridge prints
 // A prompt sent while a run goes is held in the inbox: "steer" runs at the
-// next step, "queue" after the run.
+// next step, "queue" after the run. $FAKE_OPENCODE_MCP_FAIL=1 refuses every
+// MCP registration, as a server the runtime set will not take. The process's
+// own pid is kept in the state file, so a test can end the shared server and
+// see what its chats do when one starts again.
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import http from "node:http";
 
 const argv = process.argv.slice(2);
@@ -29,7 +37,27 @@ const statePath = process.env.FAKE_OPENCODE_STATE;
 const delay = Number(process.env.FAKE_OPENCODE_DELAY_MS ?? 5);
 
 const state = statePath && existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : { sessions: {}, replies: [] };
-const save = () => statePath && writeFileSync(statePath, JSON.stringify(state));
+// The shared server's pid: a test ends this process to see a chat outlive its server.
+state.pid = process.pid;
+// Written and renamed, as the server writes its own state: a test reading it never sees half a file.
+const save = () => statePath && (writeFileSync(`${statePath}.tmp`, JSON.stringify(state)), renameSync(`${statePath}.tmp`, statePath));
+// Every MCP server registered at runtime, by directory and name: OpenCode keeps this set in
+// memory, so a server that starts again has none of it until a chat registers them again.
+const mcpServers = new Map();
+const mcpKey = (directory, server) => `${directory}\n${server}`;
+/** The awui render server this project has registered, for the "render" prompt. */
+const renderServer = (directory) => [...mcpServers.keys()].filter((k) => k.startsWith(`${directory}\nawui-r-`)).map((k) => k.split("\n")[1]);
+/** The registered server a tool name belongs to, longest match first (a server's tools are `<server>_<tool>`). */
+const serverOfTool = (directory, name) =>
+  [...mcpServers.keys()]
+    .filter((k) => k.startsWith(`${directory}\n`))
+    .map((k) => k.split("\n")[1])
+    .filter((server) => name.startsWith(`${server}_`))
+    .sort((a, b) => b.length - a.length)[0];
+/** OpenCode's rule match: a glob on the action, last match wins, and "ask" when nothing matches. */
+const glob = (pattern, value) =>
+  new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "s").test(value);
+const ruleEffect = (action, s) => [...(Array.isArray(s.permissions) ? s.permissions : [])].reverse().find((rule) => glob(rule.action, action))?.effect ?? "ask";
 let counter = 0;
 const id = (prefix) => `${prefix}_${Date.now().toString(16)}${(counter++).toString(36).padStart(4, "0")}${randomBytes(4).toString("hex")}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -49,6 +77,8 @@ const MODELS = [
   { id: "plain", providerID: "acme", name: "Plain", capabilities: { tools: true, input: ["text"], output: ["text"] }, variants: [], limit: { context: 32000 }, enabled: true },
 ];
 const COMMANDS = [{ name: "review", description: "review changes" }];
+// The page a "render" prompt publishes: awui's render tool ids are 32 hex characters.
+const RENDER_PAGE_ID = "0123456789abcdef0123456789abcdef";
 
 // ---- events ----------------------------------------------------------------------------
 const streams = new Set();
@@ -193,6 +223,19 @@ async function turn(s, text) {
     await step([{ tool: { name: "subagent", input: { agent: "explorer", description: "Look around", background: false, prompt: "List the files and read README.md" }, delegate: true } }]);
   if (/todo/.test(text)) await step([{ tool: { name: "todowrite", input: { todos: [{ content: "write tests", status: "in_progress" }, { content: "ship", status: "pending" }] }, output: "2 todos" } }]);
   if (/ask/.test(text)) await step([{ tool: { name: "shell", input: { command: "echo hi" }, output: "hi\n", metadata: { exit: 0 }, permission: true } }]);
+  const mcpCall = /mcpcall\s+(\S+)/.exec(text)?.[1];
+  if (mcpCall) {
+    await step([{ tool: { name: mcpCall, input: { probe: true }, mcp: mcpCall } }]);
+    return r.stop;
+  }
+  if (/render/.test(text)) {
+    const server = renderServer(loc)[0];
+    if (server) {
+      const page = { id: RENDER_PAGE_ID, title: "Probe page", height: 240 };
+      await step([{ tool: { name: `${server}_render_html`, input: { html: "<p>hi</p>", title: page.title, height: page.height }, output: `Rendered "${page.title}" into the chat. The page is above; do not describe or restate it in your reply.\nawui-html-render: ${JSON.stringify(page)}` } }]);
+      return r.stop;
+    }
+  }
   if (/question/.test(text)) {
     const chosen = await form(s);
     if (r.stop) return true;
@@ -232,6 +275,18 @@ async function tool(s, message, spec) {
     part.time.completed = Date.now();
     emit("session.tool.success", { sessionID: s.id, assistantMessageID: message.id, id: callId, content: part.state.content, metadata: part.state.metadata, executed: false }, loc);
     return;
+  }
+  // An MCP tool: it exists only while its server is registered for this directory, and the
+  // session's rules decide whether this chat may call it (another chat's server answers deny).
+  if (spec.mcp) {
+    const server = serverOfTool(loc, spec.mcp);
+    const effect = server ? ruleEffect(spec.mcp, s) : "deny";
+    if (!server || effect !== "allow") {
+      part.state = { status: "error", input: spec.input, error: { type: server ? "permission.rejected" : "mcp.not_found", message: server ? "Denied" : `MCP server not found: ${spec.mcp}` } };
+      part.time.completed = Date.now();
+      emit("session.tool.failed", { sessionID: s.id, assistantMessageID: message.id, id: callId, error: part.state.error, executed: false }, loc);
+      return;
+    }
   }
   if (spec.permission) {
     const pid = id("per");
@@ -348,6 +403,27 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/model/default") return send(res, 200, { data: MODELS[0] });
     if (p === "/api/command") return send(res, 200, { data: COMMANDS });
     if (p === "/api/session/active") return send(res, 200, { data: [...runs].filter(([, r]) => r.active).map(([sid]) => ({ sessionID: sid })) });
+    // awui's MCP servers: runtime-only, per directory, as OpenCode's own are (the answer is 204).
+    const mcpRoute = /^\/api\/experimental\/mcp\/([^/]+)$/.exec(p);
+    if (mcpRoute) {
+      const server = decodeURIComponent(mcpRoute[1]);
+      const directory = q.get("location[directory]") ?? "";
+      if (m === "PUT") {
+        const body = await readBody(req);
+        if (process.env.FAKE_OPENCODE_MCP_FAIL) return send(res, 500, { message: "MCP servers are unavailable" });
+        if (!Array.isArray(body.config?.command)) return send(res, 400, { message: 'Expected array\n  at ["config"]["command"]' });
+        mcpServers.set(mcpKey(directory, server), body.config);
+        state.mcpAdds = [...(state.mcpAdds ?? []), { directory, server, config: body.config }];
+        save();
+        return send(res, 204);
+      }
+      if (m === "DELETE") {
+        mcpServers.delete(mcpKey(directory, server));
+        state.mcpRemoves = [...(state.mcpRemoves ?? []), { directory, server }];
+        save();
+        return send(res, 204);
+      }
+    }
     if (p === "/api/session" && m === "POST") {
       const body = await readBody(req);
       const sid = id("ses");
@@ -391,6 +467,8 @@ const server = http.createServer(async (req, res) => {
         s.title = body.title;
         emit("session.renamed", { sessionID: s.id, title: s.title }, s.location.directory);
       }
+      // A session's own permission rules: awui scopes its chats with a deny and two allows.
+      if (Array.isArray(body.permissions)) s.permissions = body.permissions;
       save();
       return send(res, 200, { data: info(s) });
     }

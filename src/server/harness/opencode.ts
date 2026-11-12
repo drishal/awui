@@ -52,6 +52,8 @@ import {
   usageOf,
 } from "./opencode-messages.js";
 import { locationQuery, OpenCodeServer, type OpenCodeEvent } from "./opencode-server.js";
+import { isAwuiRule, openCodeTools, type OpenCodeTools } from "./opencode-tools.js";
+import { nodeForMcpServers, renderHtmlMcpServer } from "./render-extension.js";
 import { versionLabel } from "./version.js";
 import type {
   HarnessAdapter,
@@ -162,11 +164,17 @@ class OpenCodeChat implements LiveChat {
   private unsubscribe: (() => void) | null = null;
   private stopWatchingExit: (() => void) | null = null;
   private disposed = false;
+  /** The tool rules this chat last wrote onto its session, so a turn does not rewrite an unchanged set. */
+  private scoped: string | null = null;
+  /** The last tools failure said aloud: OpenCode refusing them every turn is one problem, not one per turn. */
+  private toolsWarning: string | null = null;
 
   constructor(
     private readonly adapter: OpenCodeAdapter,
     private readonly cwd: string,
     resumeId: string | null,
+    /** awui's own tools for this chat, and the servers carrying them (opencode-tools.ts); null when it got none. */
+    private readonly toolServers: OpenCodeTools | null = null,
   ) {
     this.sessionId = resumeId;
   }
@@ -205,8 +213,51 @@ class OpenCodeChat implements LiveChat {
     const messages = await this.adapter.messages(this.sessionId).catch(() => []);
     this.todos = latestTodos(messages);
     this.usage.turns = promptIds(messages).length;
+    await this.wireTools(info);
     // A request that waits from before this chat opened (another client, a restart of the page).
     void this.reopenRequests();
+  }
+
+  /**
+   * Give this chat awui's tools. Its servers are registered on the shared OpenCode server —
+   * whose runtime set lives in that process's memory, so a restarted server has none, and
+   * re-adding an unchanged config keeps its connection — and its session is scoped, so no
+   * chat next door can call them. Registration happens when the chat opens and again before
+   * each prompt; a failure is logged once and costs only the tools, never the chat.
+   */
+  private async wireTools(info?: Obj): Promise<void> {
+    const tools = this.toolServers;
+    if (!tools) return;
+    for (const server of tools.servers) {
+      await this.server.call("PUT", `/api/experimental/mcp/${encodeURIComponent(server.name)}?${locationQuery(this.cwd)}`, { config: server.config }).catch((error: unknown) => this.toolsFailed(error));
+    }
+    if (this.sessionId) await this.scope(this.sessionId, info).catch((error: unknown) => this.toolsFailed(error));
+  }
+
+  /**
+   * Deny every awui tool server on this session, then allow this chat's own: the rule check
+   * is last-match-wins, so the pair leaves another chat's tools refused while this chat's
+   * run without a prompt. The session's other rules — the user's, and OpenCode's own agent
+   * rules it merges in — stay; the ones a previous open of this chat wrote are replaced.
+   */
+  private async scope(sessionId: string, info?: Obj): Promise<void> {
+    const rules = this.toolServers?.rules;
+    if (!rules) return;
+    const wanted = JSON.stringify(rules);
+    if (this.scoped === wanted) return;
+    const session = info ?? (await this.adapter.sessionInfo(sessionId));
+    if (!session) return;
+    const kept = (Array.isArray(session.permissions) ? session.permissions : []).filter((rule) => !isAwuiRule(rule));
+    await this.server.call("PATCH", `/api/session/${sessionId}`, { permissions: [...kept, ...rules] });
+    this.scoped = wanted;
+  }
+
+  /** Say why the tools are missing, once: never the token, and never as a card over the chat. */
+  private toolsFailed(error: unknown): void {
+    const message = `OpenCode would not take awui's tools: ${error instanceof Error ? error.message : String(error)}`;
+    if (this.toolsWarning === message) return;
+    this.toolsWarning = message;
+    console.error(`awui: ${message}`);
   }
 
   private watch(sessionId: string): void {
@@ -316,7 +367,7 @@ class OpenCodeChat implements LiveChat {
       case "session.tool.success":
       case "session.tool.failed": {
         const failed = event.type === "session.tool.failed";
-        const result = toolResult(d, failed);
+        const result = toolResult(d, failed, this.tools.get(str(d.id)) ?? "tool");
         const delegation = this.delegations.get(str(d.id));
         let details = result.details;
         if (delegation) {
@@ -651,6 +702,8 @@ class OpenCodeChat implements LiveChat {
   /** A prompt into OpenCode's inbox; "/name args" runs a command OpenCode knows. */
   private async send(text: string, images: ImageAttachment[] | undefined, delivery: "steer" | "queue" | null): Promise<void> {
     const id = await this.ensureSession();
+    // Before the turn, so the tools are in the session's set even after the server restarted.
+    await this.wireTools();
     const files = filesOf(images);
     const slash = /^\/(\S+)\s*([\s\S]*)$/.exec(text);
     const command = slash && (await this.listCommands()).some((c) => c.name === slash[1]) ? slash : null;
@@ -760,6 +813,13 @@ class OpenCodeChat implements LiveChat {
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.stopWatchingExit?.();
+    // awui's servers come off the shared one too, unless it is already gone: asking would
+    // start a server just to delete from it, and a stopped server dropped them with its memory.
+    if (this.toolServers && this.server.active()) {
+      for (const server of this.toolServers.servers) {
+        await this.server.call("DELETE", `/api/experimental/mcp/${encodeURIComponent(server.name)}?${locationQuery(this.cwd)}`).catch(() => undefined);
+      }
+    }
     this.hub.clear();
   }
 }
@@ -781,7 +841,8 @@ export class OpenCodeAdapter implements HarnessAdapter {
     supportsFork: true,
     supportsHandoff: false,
     supportsRewind: true,
-    supportsHtmlRender: false,
+    // awui's render_html MCP server is registered on the shared server for each chat, when a Node can run it.
+    supportsHtmlRender: renderHtmlMcpServer() !== null && nodeForMcpServers() !== null,
     supportsQueueEdit: true,
     supportsPermissionMode: false,
     supportsResumeCommand: false,
@@ -991,7 +1052,7 @@ export class OpenCodeAdapter implements HarnessAdapter {
   }
 
   async openChat(req: OpenChatRequest): Promise<LiveChat> {
-    const chat = new OpenCodeChat(this, req.cwd, req.resumeNativeId ?? null);
+    const chat = new OpenCodeChat(this, req.cwd, req.resumeNativeId ?? null, openCodeTools(req.toolEnv));
     await chat.start();
     return chat;
   }

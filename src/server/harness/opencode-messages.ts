@@ -8,6 +8,7 @@
 // only the fields named here are ever read from them.
 import type { InteractionRequest, ModelInfo, TodoItem } from "../../shared/protocol.js";
 import { isObj, type Obj } from "./agent-events.js";
+import { isHtmlRenderCall, splitRenderMarker } from "./render-token.js";
 import { isAgentTool } from "./subagents.js";
 import type { UsageEntry } from "./types.js";
 
@@ -96,13 +97,24 @@ export function toolDetails(metadata: unknown): Obj | undefined {
   return patches.length > 0 ? { ...metadata, diff: patches.join("\n") } : metadata;
 }
 
+/**
+ * A result's text and details, with an awui render tool's page taken off its last line. An
+ * MCP result carries only content, so awui's render bridge marks the page on that line
+ * (render-token.ts); only a render call may hand it over, never a tool's own imitating text.
+ */
+function withRenderMarker(name: string, output: string, details: Obj | undefined): { output: string; details?: Obj } {
+  if (!isHtmlRenderCall(name, undefined)) return { output, ...(details ? { details } : {}) };
+  const marked = splitRenderMarker(output);
+  const merged = marked.details ? { ...(details ?? {}), ...marked.details } : details;
+  return { output: marked.text, ...(merged ? { details: merged } : {}) };
+}
+
 /** A tool result's text and failure from a live event (`session.tool.success` / `session.tool.failed`). */
-export function toolResult(data: Obj, failed: boolean): { output: string; isError: boolean; details?: Obj } {
+export function toolResult(data: Obj, failed: boolean, name: string): { output: string; isError: boolean; details?: Obj } {
   if (failed) return { output: str(isObj(data.error) ? data.error.message : data.error) || "Tool failed", isError: true };
-  const output = toolText({ status: "completed", content: data.content });
-  const details = toolDetails(data.metadata);
+  const marked = withRenderMarker(name, toolText({ status: "completed", content: data.content }), toolDetails(data.metadata));
   const exit = isObj(data.metadata) ? data.metadata.exit : undefined;
-  return { output, isError: typeof exit === "number" && exit !== 0, ...(details ? { details } : {}) };
+  return { output: marked.output, isError: typeof exit === "number" && exit !== 0, ...(marked.details ? { details: marked.details } : {}) };
 }
 
 /**
@@ -133,15 +145,17 @@ export function transcriptOf(messages: unknown[]): Obj[] {
             if (state.status === "completed" || state.status === "error") {
               const ended = isObj(part.time) ? num(part.time.completed) : 0;
               const result = isAgentTool(str(part.name)) ? delegationResult(state.input, state.metadata, toolText(state), state.status === "error") : null;
-              const details = result ? { ...toolDetails(state.metadata), results: [result] } : state.status === "completed" ? toolDetails(state.metadata) : undefined;
+              const name = str(part.name) || "tool";
+              const shaped = result ? { ...toolDetails(state.metadata), results: [result] } : state.status === "completed" ? toolDetails(state.metadata) : undefined;
+              const marked = state.status === "completed" ? withRenderMarker(name, toolText(state), shaped) : { output: toolText(state), details: shaped };
               const exit = isObj(state.metadata) ? state.metadata.exit : undefined;
               results.push({
                 role: "toolResult",
                 toolCallId: str(part.id),
-                toolName: str(part.name) || "tool",
-                content: [{ type: "text", text: toolText(state) }],
+                toolName: name,
+                content: [{ type: "text", text: marked.output }],
                 isError: state.status === "error" || (typeof exit === "number" && exit !== 0),
-                ...(details ? { details } : {}),
+                ...(marked.details ? { details: marked.details } : {}),
                 ...(ended ? { timestamp: ended } : {}),
               });
             }

@@ -61,7 +61,7 @@ import {
   type DshUsage,
 } from "./dsh-transcript.js";
 import { HTML_RENDER_MCP_SERVER, htmlRenderRef, splitRenderMarker } from "./render-token.js";
-import { ORCH_MCP_SERVER, orchestrateMcpServer, renderHtmlMcpServer } from "./render-extension.js";
+import { nodeForMcpServers, ORCH_MCP_SERVER, orchestrateMcpServer, renderHtmlMcpServer } from "./render-extension.js";
 import { versionLabel } from "./version.js";
 import type {
   HarnessAdapter,
@@ -1085,21 +1085,6 @@ export function flowOverlay(row: Obj, plugin: string): unknown[] {
   return [{ id: BRIDGE_ROW, disabled: true }, { insert: [{ ...rest, id: "acp-flow", name: plugin }] }];
 }
 
-/** An absolute Node to run awui's render MCP server, or null when there is none. */
-function nodeForMcp(): string | null {
-  // A compiled awui binary is Bun, not Node; the MCP server needs a real Node.
-  if (!process.versions.bun) return process.execPath;
-  const names = process.platform === "win32" ? ["node.exe", "node"] : ["node"];
-  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
-    if (!dir) continue;
-    for (const name of names) {
-      const candidate = path.join(dir, name);
-      if (existsSync(candidate)) return candidate;
-    }
-  }
-  return null;
-}
-
 export class DshAdapter implements HarnessAdapter {
   readonly id = asHarnessId("dsh");
   readonly displayName = "DeepSeek Harness";
@@ -1119,7 +1104,7 @@ export class DshAdapter implements HarnessAdapter {
     supportsHandoff: false,
     supportsRewind: false,
     // awui's render_html MCP server is mounted on the ACP session when a Node can run it.
-    supportsHtmlRender: renderHtmlMcpServer() !== null && nodeForMcp() !== null,
+    supportsHtmlRender: renderHtmlMcpServer() !== null && nodeForMcpServers() !== null,
     supportsQueueEdit: false,
     // DSH's permission presets are its own config, which awui never writes.
     supportsPermissionMode: false,
@@ -1313,7 +1298,7 @@ export class DshAdapter implements HarnessAdapter {
    */
   mcpServers(toolEnv: NodeJS.ProcessEnv | undefined, http = true): unknown[] {
     const servers: unknown[] = [];
-    const node = nodeForMcp();
+    const node = nodeForMcpServers();
     const render = renderHtmlMcpServer();
     if (node && render && toolEnv?.AWUI_RENDER_URL && toolEnv.AWUI_RENDER_TOKEN) {
       servers.push({

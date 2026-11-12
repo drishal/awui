@@ -1,16 +1,19 @@
 // The render tool's names and the normalization of its result into the
-// reference a tool card carries. Three call shapes register it: the extension
+// reference a tool card carries. Four call shapes register it: the extension
 // (Pi/omp) names it plain `render_html`; awui's MCP server
 // (extensions/render-html-mcp.mjs) serves it to Claude Code, which calls it
-// `mcp__awui__render_html`; and the omp session's built-in `xd://...` device
-// (what this agent sees as `write xd://render_html`) runs it as a WRITE with
-// that device path in its args. Its result's `details.htmlRender` holds
+// `mcp__awui__render_html`, and to OpenCode, which registers that server at
+// runtime and names its tool `awui-r-<id>_render_html` (shared/awui-mcp.ts);
+// and the omp session's built-in `xd://...` device (what this agent sees as
+// `write xd://render_html`) runs it as a WRITE with that device path in its
+// args. Its result's `details.htmlRender` holds
 // { id, title, height }; only one of those exact shapes may carry it, so a
 // result that imitates the shape without going through the render tool does
 // not publish a page. An MCP result has no details: the MCP server puts the
 // reference on its output's last line, which the adapter lifts off
 // (splitRenderMarker). Live (chat.ts) and history (agent-events.ts) both read
 // the reference through here so they agree.
+import { awuiOpenCodeTool } from "../../shared/awui-mcp.js";
 import { HTML_RENDER_MAX_HEIGHT, HTML_RENDER_MIN_HEIGHT, type HtmlRenderRef } from "../../shared/protocol.js";
 import { htmlRenderTitle } from "../../shared/html-render.js";
 import { ORCH_TOOLS } from "../orchestration/tools.js";
@@ -61,12 +64,13 @@ function isXdRenderWrite(toolName: string, args: unknown): boolean {
 }
 
 /**
- * Whether a call is the render tool in one of its three shapes (extension, MCP,
- * the xd:// device write). Decided from the call's raw args at its start, so a
- * caller remembers only the answer, not the args (a write's args are a whole file).
+ * Whether a call is the render tool in one of its four shapes (extension, Claude Code's MCP
+ * name, OpenCode's per-chat MCP name, the xd:// device write). Decided from the call's raw
+ * args at its start, so a caller remembers only the answer, not the args (a write's args are
+ * a whole file).
  */
 export function isHtmlRenderCall(toolName: string, args: unknown): boolean {
-  return toolName === RENDER_TOOL_NAME || toolName === HTML_RENDER_MCP_TOOL || toolName === HTML_RENDER_MCP_DOTTED || isXdRenderWrite(toolName, args);
+  return toolName === RENDER_TOOL_NAME || toolName === HTML_RENDER_MCP_TOOL || toolName === HTML_RENDER_MCP_DOTTED || awuiOpenCodeTool(toolName, "render") === RENDER_TOOL_NAME || isXdRenderWrite(toolName, args);
 }
 
 /** The reference a tool result's `details.htmlRender` holds, or undefined when it is not one. */

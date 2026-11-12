@@ -258,6 +258,11 @@ export class OpenCodeServer {
     }
   }
 
+  /** Whether a server is up right now: a call would start one, so a closing chat asks before it tidies up. */
+  active(): boolean {
+    return this.running !== null && this.running.child.exitCode === null;
+  }
+
   async stop(): Promise<void> {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
