@@ -77,6 +77,7 @@ macOS and Windows desktop packages exist (`npm --prefix apps/desktop run dist:ma
 2. Type, or paste a screenshot.
 3. Steer it, queue a follow-up, or stop it while it works.
 4. Close the browser if you like — the run keeps going on the server.
+5. Comment on any line the agent changed, and send the open comments back to it — or to another chat — as one prompt.
 
 ## Docs
 

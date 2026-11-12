@@ -69,6 +69,7 @@ Server changes that the browser sees need e2e too.
 src/shared/protocol.ts        Wire types and Zod request schemas: the only contract between server and clients.
 src/shared/html-render.ts     Agent-rendered pages: bootstrap markup, theme payload, frame-height math (no harness types).
 src/shared/approval.ts        Which requests are plain approvals, and their Approve/Deny answers (the card and push notes).
+src/shared/review.ts         Review pins (a line's hash, following it through later edits) and the one prompt a batch of open threads becomes.
 src/server/
   index.ts                    Startup: config, state-folder migration, registry, routes, listen, shutdown. A running server
                               writes server.json (port, pid) into the state folder for clients that have no port. Subcommands: `desktop`, `tui`, `tern`, `doctor`, `install tui|desktop|service`.
@@ -127,6 +128,7 @@ src/server/
   git.ts, git-status.ts       Hardened git runner; the composer's git row.
   image-store.ts, notify.ts, limits.ts, session-marks.ts, run-command.ts, state-file.ts   Side features (see their header comments).
   idempotency.ts             An `Idempotency-Key` on a mutating request: one answer per key, ten minutes, in memory.
+  review-threads.ts           Review threads per chat in the state folder (pins, notes, resolve, line moves), bounded and pruned.
   project-files.ts            A project's files for @mention pickers (git ls-files, else a bounded walk).
   project-search.ts           Search in project: bounded `git grep -F` (else a scan of project-files' walk).
   file-view.ts                The file viewer: one of the project's own files (project-files' list), realpath-confined, bounded.

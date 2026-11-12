@@ -55,7 +55,7 @@ banners-dialogs.css), so search rather than guess.
 | Approvals and questions | `ApprovalStack.tsx` | `approvals.css` | `app.spec.ts` |
 | Dialogs: settings (a rail of sections, the open one, and one Save bar under both), folders, restore, palette, images | `Dialog.tsx`, `SettingsDialog.tsx` (its search's matching: `settings-search.ts`), `WorkspacePicker.tsx`, `RestoreDialog.tsx`, `HerdrDialog.tsx`, `CommandPalette.tsx`, `ImageViewer.tsx`, `LoginForm.tsx` | `banners-dialogs.css`, `settings.css` | `settings.spec.ts`, `app.spec.ts`, `herdr.spec.ts`, `remote-login.spec.ts` |
 | Searches: every chat, in project, find in chat | `ChatSearch.tsx`, `ProjectSearch.tsx`, `find.ts` | `chat-search.css`, `project-search.css`, `find.css` | `unified.spec.ts`, `composer-extras.spec.ts` |
-| File viewer, review, file timeline | `FileViewer.tsx`, `ReviewPanel.tsx`, `TimelineDialog.tsx` | `file-viewer.css`, `timeline.css` | `unified.spec.ts` |
+| File viewer, review (threads on diff lines, their pins in `review.ts`), file timeline | `FileViewer.tsx`, `ReviewPanel.tsx`, `TimelineDialog.tsx` | `file-viewer.css`, `banners-dialogs.css`, `timeline.css` | `unified.spec.ts`, `review.spec.ts` |
 | Usage and limits (the heatmap of days: `heatmap.ts`) | `UsageDialog.tsx`, `LimitsMeter.tsx` | `usage.css` | `unified.spec.ts`, `usage-and-actions.spec.ts` |
 | Saved prompts, shortcuts | `SavedPromptsDialog.tsx`, `ShortcutSheet.tsx` | `saved-prompts.css`, `shortcuts.css` | `unified.spec.ts` |
 | A chat beside the main one | `SidePane.tsx` | `side-pane.css` | `unified.spec.ts` |
