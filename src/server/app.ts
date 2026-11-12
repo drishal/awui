@@ -48,6 +48,9 @@ import {
   htmlRenderPreviewSchema,
   worktreeCreateSchema,
   prCheckoutSchema,
+  prWatchSchema,
+  prUnwatchSchema,
+  prRepairSchema,
   prStackCreateSchema,
   prStackMergeSchema,
   projectConfigTrustSchema,
@@ -160,7 +163,8 @@ import { gitFileDiff, gitStatus } from "./git-status.js";
 import { git } from "./git.js";
 import { commitStaged, GitActionError, stageFiles, unstageFiles } from "./git-actions.js";
 import { runCommand, runShellCommand } from "./run-command.js";
-import type { RunResult , WorktreeInfo } from "../shared/protocol.js";
+import { PrWatches, readPrSnapshot, repairPrompt, clipRepairLog } from "./pr-watches.js";
+import type { RunResult, WorktreeInfo } from "../shared/protocol.js";
 
 /** A setup command's limits: a real install can take minutes, and its output is read in a dialog. */
 const SETUP_TIMEOUT_MS = 5 * 60_000;
@@ -175,7 +179,7 @@ import type { TerminalManager } from "./terminal.js";
 import { ManagedWorktrees, worktreeProblem } from "./worktrees.js";
 import { PROJECT_CONFIG_FILE, projectConfigStatus, ProjectConfigTrust, readProjectConfig } from "./project-config.js";
 import { Races, raceChatsFor, type RaceRecord } from "./races.js";
-import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest, pullRequestDetail, mergePullRequest } from "./github.js";
+import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest, pullRequestDetail, mergePullRequest, runGh } from "./github.js";
 import { PrStacks } from "./stacks.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
 import { Orchestrator } from "./orchestration/orchestrator.js";
@@ -229,6 +233,8 @@ export interface AppDeps {
   routines?: Routines;
   /** Agent-scoped heartbeats (heartbeats.ts); in memory when absent. */
   heartbeats?: Heartbeats;
+  /** The opt-in PR watchers, persistent per native session (pr-watches.ts); absent files are memory only. */
+  prWatches?: PrWatches;
   /** Routines' run history (a run's verdict, and the sessions it opened); in memory when absent. */
   routineRuns?: RoutineRuns;
   /** Sessions that were running when the last process stopped; in memory when absent (nothing to resume). */
@@ -422,6 +428,18 @@ export async function createApp(deps: AppDeps) {
     };
   }
   const log = deps.log ?? ((m: string) => console.error(m));
+  const prWatchesPromise = deps.prWatches ?? Promise.resolve(PrWatches.open(deps.stateDir ?? null, async (watch, report) => {
+    const ws = await workspaces.get(watch.workspaceId);
+    const nativeId = watch.nativeId.startsWith(`${watch.harnessId}:`) ? watch.nativeId.slice(watch.harnessId.length + 1) : watch.nativeId;
+    // A reaped chat's stable native session is the one owner. No peer in the same project is a substitute.
+    let chat = manager.liveChatFor(watch.harnessId, nativeId) ?? null;
+    const adapter = await availableAdapter(watch.harnessId);
+    chat ??= await manager.resume(adapter, ws, nativeId);
+    if (!chat) throw new ChatError(404, "session_not_found", "This watched session is no longer available");
+    const mode = chat.status === "running" ? chat.snapshot().capabilities.supportsSteer ? "steer" : chat.snapshot().capabilities.supportsFollowUp ? "followUp" : null : "normal";
+    if (mode === null) throw new ChatError(409, "chat_busy", "The owner chat has no queue: retain the activity for a later poll");
+    await chat.send(report, mode, [], { origin: "agent" });
+  }, (id) => workspaces.get(id)));
   // A broken config.yml keeps the defaults here; the server logged why at startup.
   const userConfig = () => {
     try {
@@ -1232,10 +1250,58 @@ export async function createApp(deps: AppDeps) {
     res.json({ ok: true });
   });
 
-  // GitHub: author use their own gh/git login, never a credential the web app can see.
+  // GitHub status plus an opt-in PR activity surface: a chat is an owner, not arbitrary object returned by another session.
+  const prWatches = await prWatchesPromise;
+  app.locals.prWatchStore = prWatches;
+  app.get("/api/chats/:id/pr-watches", requireGrant("chat.read"), (req, res) => {
+    const chat = manager.get(req.params.id);
+    const nativeId = chat.sessionId;
+    res.json({ watches: nativeId ? prWatches.list(nativeId) : [] });
+  });
+  app.post("/api/chats/:id/pr-watch", requireGrant("chat.write"), async (req, res) => {
+    const chat = manager.get(req.params.id);
+    const input = body(prWatchSchema, req);
+    const snapshot = await readPrSnapshot(chat.workspace, input.url);
+    const watch = await prWatches.add(chat, snapshot);
+    res.status(201).json({ watch });
+  });
+  app.delete("/api/chats/:id/pr-watch", requireGrant("chat.write"), async (req, res) => {
+    const chat = manager.get(req.params.id);
+    if (!chat.sessionId) throw new ChatError(404, "no_watch", "This chat has no session bound to a watch");
+    const { url } = body(prUnwatchSchema, req);
+    res.json({ removed: await prWatches.remove(chat.sessionId, url) });
+  });
+
+
+  // A failing CI run offers an explicit bounded repair conversation. The full log lives in
+  // the harness session (not the wire) and the chat is marked as repair work, not an ordinary user message.
+  app.post("/api/workspaces/:id/pr-repair", requireGrant("chat.write"), async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const input = body(prRepairSchema, req);
+    const snapshot = await readPrSnapshot(ws, input.url);
+    const failed = snapshot.checks.filter((check) => /fail|error|cancel|timeout/i.test(check.state));
+    if (failed.length === 0) throw new ChatError(409, "no_repair", "This PR has no reported failing checks right now");
+    if (!input.harnessId) throw new ChatError(400, "unsupported", "A repair chat must name its owning chat's harness");
+    const harness = await availableAdapter(input.harnessId);
+    const chat = await manager.create(harness, ws);
+    const logs: string[] = [];
+    for (const check of failed) {
+      const runId = snapshot.failingRuns.find((run) => run.name === check.name)?.runId ?? null;
+      if (runId !== null) {
+        const log = await runGh(["run", "view", runId, "--log-failed"], ws.path);
+        logs.push(`${check.name}\n${clipRepairLog(log)}`);
+      }
+    }
+    const prompt = repairPrompt(snapshot.title, snapshot.url, failed, logs.length > 0 ? logs.join("\n\n") : (snapshot.reviewExcerpts.length > 0 ? snapshot.reviewExcerpts.join("\n") : "No log was available for these failing checks."));
+    await chat.send(prompt, "normal", [], { origin: "agent" });
+    if (snapshot.failingRuns.length > 0) await prWatches.recordRepair(chat.sessionId as string, chat.chatId, snapshot.url);
+    res.status(201).json({ chat: chat.snapshot() });
+  });
+
   app.get("/api/workspaces/:id/github", requireGrant("chat.read"), async (req, res) => {
     res.json(await githubStatus(await workspaces.get(req.params.id)));
   });
+
   app.post("/api/workspaces/:id/github/push", requireGrant("chat.write"), async (req, res) => {
     res.json(await pushBranch(await workspaces.get(req.params.id)));
   });
@@ -1243,6 +1309,9 @@ export async function createApp(deps: AppDeps) {
     const ws = await workspaces.get(req.params.id);
     const input = body(gitHubPrSchema, req);
     res.status(201).json(await createPullRequest(ws, input.base, input.title, input.body));
+  });
+  app.get("/api/workspaces/:id/github", requireGrant("chat.read"), async (req, res) => {
+    res.json(await githubStatus(await workspaces.get(req.params.id)));
   });
   app.get("/api/workspaces/:id/github/pr", requireGrant("chat.read"), async (req, res) => {
     res.json({ pr: await currentPullRequest(await workspaces.get(req.params.id)) });

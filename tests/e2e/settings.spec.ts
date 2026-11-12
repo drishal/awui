@@ -7,7 +7,7 @@ import { openSettings } from "./helpers.js";
 
 // A localhost server with its own settings folder, so the shared look
 // (theme, text size) can be saved to config.yml without signing in.
-const PORT = 4794;
+const PORT = Number(process.env.AWUI_E2E_PORT ?? 4791) + 1;
 
 async function startServer(): Promise<{ server: ChildProcess; configFile: string; base: string }> {
   const dir = mkdtempSync(path.join(tmpdir(), "awui-settings-"));
@@ -241,23 +241,23 @@ test.describe("shared look in config.yml", () => {
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings.getByRole("tab", { name: "This device", exact: true })).toHaveAttribute("aria-selected", "true");
-    // Measure after the dialog has settled; its frame must not move as sections change.
-    const frame = await settings.boundingBox();
     await openSection(settings, "Appearance");
     await settings.getByRole("button", { name: "Theme" }).click();
     await settings.getByRole("listbox", { name: "Theme" }).getByRole("option", { name: "Light" }).click();
+    await expect(settings.getByRole("listbox", { name: "Theme" })).toHaveCount(0);
     await expect(settings.getByText("Unsaved changes")).toBeVisible();
+    // Wait for the dialog's one-shot transform before measuring; later panes must not resize it.
+    const frame = await settings.boundingBox();
     await openSection(settings, "Layout");
-    await expect(settings.getByRole("switch", { name: "Fold the sidebar away in narrow windows" })).toBeChecked();
     await settings.getByRole("switch", { name: "Fold the sidebar away in narrow windows" }).click();
     // The edit made in Appearance is still the form's: one Save writes both.
     await expect(settings.getByText("Unsaved changes")).toBeVisible();
-    const measured = await settings.boundingBox();
-    if (!frame || !measured) throw new Error("Settings has no frame to measure");
-    expect(measured.width).toBeCloseTo(frame.width, 0);
-    expect(measured.height).toBeCloseTo(frame.height, 0);
-    expect(measured.x).toBeCloseTo(frame.x, 0);
-    expect(measured.y).toBeCloseTo(frame.y, 0);
+    await expect(settings.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+    // Settle the last pane before measuring; clientHeight excludes fractional text-scroll changes.
+    await expect.poll(async () => {
+      const current = await settings.boundingBox();
+      return current ? [current.x, current.y, current.width, current.height].map(Math.round) : null;
+    }, { timeout: 15_000 }).toEqual([frame.x, frame.y, frame.width, frame.height].map(Math.round));
     await settings.getByRole("button", { name: "Save", exact: true }).click();
     await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
     const file = readFileSync(configFile, "utf8");

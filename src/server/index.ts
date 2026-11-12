@@ -423,6 +423,7 @@ async function main(): Promise<void> {
     clearInterval(pasteCleanupTimer);
     if (settleTimer) clearInterval(settleTimer);
     server.close();
+    if (app.locals.prWatchStore) await app.locals.prWatchStore.stop();
     terminals.shutdown();
     for (const socket of sockets) socket.destroy();
     try {

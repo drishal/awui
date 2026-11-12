@@ -39,7 +39,7 @@ test("an untrusted awui.yml is shown but runs nothing, and a trusted one sets a 
   await expect(setupBox).not.toBeChecked();
   await setupBox.check();
 
-  await picker(page).getByLabel("Task name").fill("trusted-setup");
+  await picker(page).locator("form").first().getByLabel("Task name").fill("trusted-setup");
   await picker(page).getByRole("button", { name: "Create worktree" }).click();
 
   // The tree opens as the project and the setup's output is reported in a notice.

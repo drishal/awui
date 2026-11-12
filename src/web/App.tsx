@@ -2663,7 +2663,7 @@ export function App() {
             onKeyDown={split.key}
             onDoubleClick={split.toggle}
           /> : null}
-          {toolPanel && toolWorkspace ? <div className="work-panel-slot"><LazyPanel>{toolPanel === "terminal" ? <TerminalPanel workspace={toolWorkspace} onClose={() => setToolPanel(null)} /> : <GitHubPanel workspace={toolWorkspace} onClose={() => setToolPanel(null)} />}</LazyPanel></div> : null}
+          {toolPanel && toolWorkspace && chat ? <div className="work-panel-slot"><LazyPanel>{toolPanel === "terminal" ? <TerminalPanel workspace={toolWorkspace} onClose={() => setToolPanel(null)} /> : <GitHubPanel workspace={toolWorkspace} chat={chat} onOpen={(snapshot) => showChat(snapshot, { keepDrawer: true })} onClose={() => setToolPanel(null)} />}</LazyPanel></div> : null}
           {side ? (
             <SidePane
               initial={side.initial}

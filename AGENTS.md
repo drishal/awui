@@ -134,6 +134,7 @@ src/server/
   binary-runtime.ts          Browser preview's CommonJS package beside the executable. The trusted PTY page is src/web/terminal-shell.html, not a server module.
   render-preview.ts          Authenticated bounded Chromium capture of an agent's own stored page; in-memory fixed-origin rendering, no other network/fetch/cookies/storage, timeout, console cap and certainly no app frame sharing.
   stacks.ts                  Stacked pull requests per project: "stack above #N" makes the PR below's head the target, the ordered stack saved in the state folder, merge-through bottom-up with `gh pr merge --merge` only; per-layer status and checks from the same bounded gh calls.
+  pr-watches.ts              Opt-in PR poller keyed by one chat's native session; dedupe, retries, actual gh check/run logs and per-session repair markers. Polling never invents a transcript; uses real workspace IDs.
   github.ts                  Bounded local gh/git workflows: existing-PR lookup, explicit push, PR create, PR detail by number, normalized checks; never reads or sends credentials to a browser.
   overview-events.ts         Bounded live metadata-only stream for chat status and room summaries (500 events max, no transcripts). UI shares one EventSource per tab with fallback full refresh; native IDs remain harness-scoped and disposed clear live/asking status.
   paste-store.ts             1 MiB file-backed large pastes in /tmp, seven-day retention, delete-on-unsent and bounded expiry sweep; agent reads actual retained file paths.

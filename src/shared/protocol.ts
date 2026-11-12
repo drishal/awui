@@ -1909,6 +1909,24 @@ export const roomAnswerSchema = answerSchema;
  */
 export const orchCallSchema = z.object({ tool: z.string().min(1).max(64), args: z.unknown().optional() }).strict();
 
+export interface PrWatchView {
+  url: string;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  checks: Array<{ name: string; state: string; link: string | null }>;
+  failingRuns: Array<{ name: string; runId: string | null }>;
+  reviewExcerpts: string[];
+  /** How many owner-scoped activity prompts have been delivered; baseline registration never wakes. */
+  deliveredCount: number;
+}
+
+export const prUrlSchema = z.string().url().max(2048).refine((value) => /^https:\/\/[^\s]+\/pull\/[0-9]{1,18}\/?$/.test(value), "a GitHub pull-request HTTPS URL");
+export const prWatchSchema = z.object({ url: prUrlSchema }).strict();
+export const prUnwatchSchema = prWatchSchema;
+export const prRepairSchema = prWatchSchema.extend({ harnessId: z.string().min(1).max(64).optional() });
+export type PrRepairInput = z.infer<typeof prRepairSchema>;
+
 export type SendMode = z.infer<typeof sendMessageSchema>["mode"];
 
 /** config.yml's settings as the Settings dialog shows them; the password itself never leaves the server. */

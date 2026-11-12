@@ -3,7 +3,7 @@
 // actual branch, PR, and stack layers; this panel presents the confirmed outcome
 // only, and every write (push, create, merge, archive) is one deliberate action.
 import { useEffect, useState } from "react";
-import type { PrStack, WorkspaceInfo } from "../../shared/protocol.js";
+import type { ChatSnapshot, PrStack, WorkspaceInfo } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { IconBranch, IconRefresh } from "../icons.js";
@@ -33,8 +33,11 @@ interface Layer {
   checks: Check[];
 }
 
-export function GitHubPanel({ workspace, onClose }: { workspace: WorkspaceInfo; onClose: () => void }) {
+export function GitHubPanel({ workspace, chat, onClose, onOpen }: { workspace: WorkspaceInfo; chat: ChatSnapshot; onClose: () => void; onOpen: (chat: ChatSnapshot) => void }) {
+  const [watching, setWatching] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
+  const [watchedUrl, setWatchedUrl] = useState<string | null>(null);
+  const [repairOpen, setRepairOpen] = useState(false);
   const [checks, setChecks] = useState<Check[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [prUrl, setPrUrl] = useState<string | null>(null);
@@ -72,6 +75,8 @@ export function GitHubPanel({ workspace, onClose }: { workspace: WorkspaceInfo; 
         setPrUrl(current.value.pr?.url ?? null);
         if (current.value.pr && !title) setTitle(current.value.pr.isDraft ? `${current.value.pr.title} — update` : current.value.pr.title);
       }
+      const mine = await api<{ watches: Array<{ url: string }> }>(`/api/chats/${chat.chatId}/pr-watches`).catch(() => null);
+      setWatchedUrl(mine?.watches[0]?.url ?? null);
       const failed = [check, current].find((r) => r.status === "rejected");
       if (failed) setError(errorText(failed.reason));
       setStack((await api<{ stacks: PrStack[] }>(`/api/workspaces/${workspace.id}/pr-stack`)).stacks[0] ?? null);
@@ -151,6 +156,22 @@ export function GitHubPanel({ workspace, onClose }: { workspace: WorkspaceInfo; 
       </div>
       <h3>Checks</h3>
       {checks.length === 0 ? <p className="muted">No reported checks are available for the current PR.</p> : <ul className="github-checks">{checks.map((check) => <li key={check.name}><span>{check.name}</span><span className={`github-check is-${check.state}`}>{check.state}</span>{check.link ? <a href={check.link} target="_blank" rel="noreferrer">View</a> : null}</li>)}</ul>}
+      {prUrl ? <section className="picker-section" aria-label="Pull request activity">
+        <h3>Watch this PR</h3>
+        <p className="muted">{watchedUrl === prUrl ? "This chat owns the watch. A real check or review change prompts it; repeated polls stay quiet." : "One opt-in watch for this chat. Activity goes to you here, never to another workspace chat."}</p>
+        {!chat.sessionId ? <p className="muted">Wait for this chat's native session, then register.</p> : watchedUrl !== prUrl ? <button className="btn btn-small" disabled={watching} onClick={() => {
+          setWatching(true);
+          void api(`/api/chats/${chat.chatId}/pr-watch`, { body: { url: prUrl } }).then(() => setWatchedUrl(prUrl)).catch((e: unknown) => setError(errorText(e))).finally(() => setWatching(false));
+        }}>Watch this PR</button> : <button className="btn btn-small" disabled={watching} onClick={() => {
+          void api(`/api/chats/${chat.chatId}/pr-watch`, { method: "DELETE", body: { url: prUrl } }).then(() => setWatchedUrl(null)).catch((e: unknown) => setError(errorText(e)));
+        }}>Unwatch this PR</button>}
+        {checks.some((check) => /fail|error|cancel|timeout/i.test(check.state)) ? !repairOpen ? <button type="button" className="btn btn-small" disabled={chat.capabilities.readOnlyHarness} onClick={() => setRepairOpen(true)}>Offer CI repair</button> : <div className="notice notice-info">
+          <p>Start a new {chat.harnessId} chat with the failing checks and their evidence. The agent fixes only those and reports local results; no push happens automatically.</p>
+          <button type="button" className="btn btn-small" onClick={() => {
+            void api<{ chat: ChatSnapshot }>(`/api/workspaces/${workspace.id}/pr-repair`, { body: { url: prUrl, harnessId: chat.harnessId } }).then((response) => { setRepairOpen(false); onOpen(response.chat); }).catch((e: unknown) => setError(errorText(e)));
+          }}>Start repair chat</button><button type="button" className="btn btn-small btn-ghost" onClick={() => setRepairOpen(false)}>Cancel</button>
+        </div> : null}
+      </section> : null}
       {stack && stack.layers.length > 0 ? <>
         <h3>Stack</h3>
         <p className="muted">Merged bottom-up: each layer goes in after the one below it. Creating a stacked PR does not push or merge anything by itself.</p>
