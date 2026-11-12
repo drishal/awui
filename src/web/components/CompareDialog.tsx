@@ -1,8 +1,8 @@
 // One prompt, separate worktrees and harnesses. The server creates only the
 // chosen tasks, reports each one's start failure, and returns ordinary chats.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatSnapshot, HarnessStatus, WorkspaceInfo } from "../../shared/protocol.js";
-import { api, errorText } from "../api.js";
+import { api, errorText, idempotencyKey } from "../api.js";
 import { Dialog } from "./Dialog.js";
 
 export function CompareDialog({ workspace, harnesses, initialHarness, initialModel, onDone, onClose }: {
@@ -22,14 +22,20 @@ export function CompareDialog({ workspace, harnesses, initialHarness, initialMod
   const [error, setError] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<Record<string, string>>({});
   useEffect(() => { if (choices.length < 2) setChoices(available.slice(0, 2).map((h) => h.id)); }, [available.length]);
+  // One key per attempt: pressing Compare again with the same inputs after a lost answer must not
+  // create a second set of worktrees, while any change of them is a new attempt.
+  const attempt = useRef<{ key: string; fingerprint: string } | null>(null);
   const start = async () => {
     setBusy(true); setError(null); setOutcomes({});
+    const body = { workspaceId: workspace.id, name, base, prompt, choices: choices.map((harnessId, index) => ({ harnessId, ...(index === 0 && harnessId === initialHarness && initialModel ? { model: initialModel } : {}) })) };
+    const fingerprint = JSON.stringify(body);
+    const key = attempt.current?.fingerprint === fingerprint ? attempt.current.key : idempotencyKey();
+    attempt.current = { key, fingerprint };
     try {
-      const response = await api<{ results: Array<{ harnessId: string; snapshot: ChatSnapshot | null; error?: string; tree: { path: string } | null }> }>("/api/compare", {
-        body: { workspaceId: workspace.id, name, base, prompt, choices: choices.map((harnessId, index) => ({ harnessId, ...(index === 0 && harnessId === initialHarness && initialModel ? { model: initialModel } : {}) })) },
-      });
+      const response = await api<{ results: Array<{ harnessId: string; snapshot: ChatSnapshot | null; error?: string; tree: { path: string } | null }> }>("/api/compare", { body, idempotencyKey: key });
       const problems = response.results.filter((result) => result.error);
       if (response.results.length === 0) throw new Error("No worktrees were created");
+      attempt.current = null;
       onDone(response.results.flatMap((r) => r.snapshot ? [r.snapshot] : []));
       // The started chats are open already; the dialog stays only to show what failed.
       if (problems.length === 0) onClose();

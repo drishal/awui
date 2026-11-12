@@ -8,7 +8,7 @@
 // name: file-drop.ts), else offers to be added to the project first.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type ChainStep, type ConfigPatch, type DelegatedTaskView, IMAGE_MIME_TYPES, type HarnessStatus, type ImageAttachment, type InteractionAnswer, MAX_IMAGES, MAX_PASTE_BYTES, type PasteAttachment, type QueueState, type SendMode, type SlashCommand, type UsageLimits } from "../../shared/protocol.js";
-import { api, errorText } from "../api.js";
+import { api, errorText, idempotencyKey } from "../api.js";
 import type { ChatState } from "../chat-state.js";
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../commands.js";
 import { blanks, matchPrompts, nextBlank, promptGist } from "../prompt-blanks.js";
@@ -103,7 +103,7 @@ export function Composer({
   maxChars: number;
   hero?: boolean;
   placeholder?: string;
-  onSend: (text: string, mode: SendMode, images: ImageAttachment[], options?: { compactFirst?: boolean; attachments?: string[] }) => Promise<boolean>;
+  onSend: (text: string, mode: SendMode, images: ImageAttachment[], options?: { compactFirst?: boolean; attachments?: string[]; idempotencyKey?: string }) => Promise<boolean>;
   onStop: () => void;
   /** Compact this chat (the same route the palette's Compact context and /compact run); the cold-resume hint needs it. */
   onCompact?: () => void;
@@ -125,6 +125,9 @@ export function Composer({
   const draftKey = `draft.${chat.chatId}`;
   const [text, setText] = useState(() => load<string>(draftKey, ""));
   const [sending, setSending] = useState(false);
+  // One idempotency key per send attempt: the same prompt sent again after a failure reuses it
+  // (so a lost answer cannot send twice), while any edit is a new message with a new key.
+  const attempt = useRef<{ key: string; text: string; mode: SendMode; images: PendingImage[]; pastes: PasteAttachment[]; compactFirst: boolean } | null>(null);
   const [answering, setAnswering] = useState(false);
   const [folded, setFolded] = useState<FoldedRequest | null>(null);
   const { git, direnv, at: gitAt, refresh: refreshGit } = useGitStatus(chat.chatId, chat.status);
@@ -253,6 +256,10 @@ export function Composer({
       // restore only if the send failed and nothing new was typed or attached.
       const attached = images;
       const pasted = pastes;
+      // The same words, mode, and attachments as the attempt that just failed: this is its retry.
+      const prior = attempt.current;
+      const key = prior && prior.text === value && prior.mode === mode && prior.images === attached && prior.pastes === pasted && prior.compactFirst === compactFirst ? prior.key : idempotencyKey();
+      attempt.current = { key, text: value, mode, images: attached, pastes: pasted, compactFirst };
       setSending(true);
       setText("");
       setImages([]);
@@ -265,10 +272,13 @@ export function Composer({
         value,
         mode,
         attached.map(({ mimeType, data }) => ({ mimeType, data })),
-        { ...(mode === "normal" && compactFirst ? { compactFirst: true } : {}), ...(pasted.length > 0 ? { attachments: pasted.map((p) => p.id) } : {}) },
+        { ...(mode === "normal" && compactFirst ? { compactFirst: true } : {}), ...(pasted.length > 0 ? { attachments: pasted.map((p) => p.id) } : {}), idempotencyKey: key },
       );
       setSending(false);
-      if (ok) setCompactChoice(null);
+      if (ok) {
+        setCompactChoice(null);
+        attempt.current = null;
+      }
       if (!ok) {
         setText((current) => current || value);
         setImages((current) => (current.length > 0 ? current : attached));

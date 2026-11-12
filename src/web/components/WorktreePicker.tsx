@@ -1,8 +1,8 @@
 // Select or create an isolated Git checkout. Worktree paths stay server-owned;
 // choosing one just hands its workspace to the ordinary start/resume flow.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WorktreeInfo, WorktreeSeedReport, WorkspaceInfo } from "../../shared/protocol.js";
-import { api, errorText } from "../api.js";
+import { api, errorText, idempotencyKey } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { worktreeSeedSummary } from "../worktree-seed.js";
 
@@ -26,12 +26,19 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded
     } catch (e) { setError(errorText(e)); }
   };
   useEffect(() => { void refresh(); }, [workspace.id]);
+  // One key per attempt: a create retried after its answer was lost (the same name and base)
+  // must not make a second checkout, while a different name or base is a new one.
+  const attempt = useRef<{ key: string; name: string; base: string } | null>(null);
   const create = async () => {
     setBusy(true);
     setError(null);
+    const prior = attempt.current;
+    const key = prior && prior.name === name && prior.base === base ? prior.key : idempotencyKey();
+    attempt.current = { key, name, base };
     try {
-      const tree = await api<WorktreeInfo & { seeded: WorktreeSeedReport }>(`/api/workspaces/${workspace.id}/worktrees`, { body: { name, base } });
+      const tree = await api<WorktreeInfo & { seeded: WorktreeSeedReport }>(`/api/workspaces/${workspace.id}/worktrees`, { body: { name, base }, idempotencyKey: key });
       const seeded = worktreeSeedSummary(tree.seeded);
+      attempt.current = null;
       if (seeded) onSeeded(seeded);
       await onOpen(tree.path);
       onClose();

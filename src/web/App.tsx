@@ -40,7 +40,7 @@ import type {
   UserItem,
   WorkspaceInfo,
 } from "../shared/protocol.js";
-import { api, ApiError, errorText } from "./api.js";
+import { api, ApiError, errorText, idempotencyKey } from "./api.js";
 import { checkForNewBuild, rememberBuild, reloadApp, watchForNewBuild } from "./app-update.js";
 import { useBanner } from "./banner.js";
 import { useBootstrap } from "./bootstrap.js";
@@ -755,6 +755,10 @@ export function App() {
   /** The start screen's Send: create the chat, then post the message to its id (the render closure still holds no chat). */
   const [startBusy, setStartBusy] = useState(false);
   const startingRef = useRef(false);
+  // One key pair per start attempt: a start retried after a lost answer reuses them, so it can
+  // neither make a second chat nor send the prompt twice. Any change to what it would send is a
+  // new attempt, with new keys.
+  const startAttempt = useRef<{ harness: string; path: string; model: string | null; thinking: string; text: string; images: PendingImage[]; create: string; send: string } | null>(null);
   // The start screen's model chip: the harness's models for the folder, read before any chat
   // exists. A pick applies when the chat is created, never to this or the last chat.
   const [startModels, setStartModels] = useState<ModelInfo[]>([]);
@@ -831,11 +835,15 @@ export function App() {
     // Start ownership belongs to this submission, not whichever view next consumes the shared draft key.
     const originKey = startTabKey.current;
     const startHarness = harnessId;
+    const prior = startAttempt.current;
+    const retry = prior !== null && prior.harness === startHarness && prior.path === target.path && prior.model === startModel && prior.thinking === startThinking && prior.text === text && prior.images === images;
+    const keys = retry ? prior : { harness: startHarness, path: target.path, model: startModel, thinking: startThinking, text, images, create: idempotencyKey(), send: idempotencyKey() };
+    startAttempt.current = keys;
     setStartBusy(true);
     setBanner(null);
     try {
       const ws = await enterWorkspace(target);
-      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId: startHarness, workspaceId: ws.id, ...(startModel ? { model: startModel } : {}), ...(startThinking ? { thinkingLevel: startThinking } : {}) } });
+      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId: startHarness, workspaceId: ws.id, ...(startModel ? { model: startModel } : {}), ...(startThinking ? { thinkingLevel: startThinking } : {}) }, idempotencyKey: keys.create });
       // A create is never undone by the user going elsewhere while it ran (a tab
       // switch, another open): the chat keeps its tab and its prompt, landing in
       // the background below. startingRef already guarantees one create at a time,
@@ -847,7 +855,9 @@ export function App() {
             mode: "normal",
             ...(images.length > 0 ? { images: images.map(({ mimeType, data }) => ({ mimeType, data })) } : {}),
           },
+          idempotencyKey: keys.send,
         });
+        startAttempt.current = null;
       } catch (e) {
         // The chat exists but has no message: open it with the text as its draft, so the words are not lost.
         save(`draft.${snapshot.chatId}`, text);
@@ -1361,7 +1371,7 @@ export function App() {
 
   // The server skips a notification for a chat or room some tab visibly focuses (src/server/presence.ts).
   usePresenceReporting(Boolean(boot), room.roomId ? null : chatId, room.roomId ?? null);
-  const send = async (text: string, mode: SendMode, images: ImageAttachment[] = [], options: { compactFirst?: boolean; attachments?: string[] } = {}): Promise<boolean> => {
+  const send = async (text: string, mode: SendMode, images: ImageAttachment[] = [], options: { compactFirst?: boolean; attachments?: string[]; idempotencyKey?: string } = {}): Promise<boolean> => {
     if (!chat) return false;
     const command = mode === "normal" && images.length === 0 && (options.attachments?.length ?? 0) === 0 ? appCommand(text) : null;
     if (command) return runAppCommand(command.name, command.arg);
@@ -1374,6 +1384,7 @@ export function App() {
           ...(options.attachments && options.attachments.length > 0 ? { attachments: options.attachments.map((id) => ({ id })) } : {}),
           ...(options.compactFirst ? { compactFirst: true } : {}),
         },
+        ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
       });
       setBanner(null);
       return true;

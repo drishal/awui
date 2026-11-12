@@ -9,7 +9,7 @@ import type { ChatState } from "./chat-state.js";
 import { appCommand } from "./commands.js";
 
 export interface ChatActions {
-  send: (text: string, mode: SendMode, images?: ImageAttachment[], options?: { compactFirst?: boolean; attachments?: string[] }) => Promise<boolean>;
+  send: (text: string, mode: SendMode, images?: ImageAttachment[], options?: { compactFirst?: boolean; attachments?: string[]; idempotencyKey?: string }) => Promise<boolean>;
   stop: () => void;
   answer: (requestId: string, answer: InteractionAnswer) => Promise<void>;
   configure: (patch: ConfigPatch) => Promise<void>;
@@ -39,6 +39,7 @@ export function chatActions(
               ...(options.attachments && options.attachments.length > 0 ? { attachments: options.attachments.map((a) => ({ id: a })) } : {}),
               ...(options.compactFirst ? { compactFirst: true } : {}),
             },
+            ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
           });
         return true;
       } catch (e) {
