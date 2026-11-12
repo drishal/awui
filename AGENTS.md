@@ -344,7 +344,8 @@ if every test passes.
   kind, an MCP-like one with JSON arguments and result among them), `subagents` (a parallel pi-subagents run with live progress and
   transcripts), `evalagents` (an omp eval cell spawning two agents, live rows and `yield` answers), `recall`, `todo`, `bloat`, `slow` (many small chunks, to act
   mid-run), `fail`, `planned` (an ExitPlanMode plan), `ratelimit` (a stop on a
-  usage limit), `wait` (a provider wait on the harness's status line),
+  usage limit), `silent` (an empty answer, for a quiet routine run) and `quietrun`
+  (an answer that begins QUIET), `wait` (a provider wait on the harness's status line),
   `interleaved` (a reply, a command, then the answer), `ticking` (a command
   whose output arrives a line at a time), `afterreply` (the answer, then a tool
   call after it), `unfinished` (a call whose result never comes: the run
