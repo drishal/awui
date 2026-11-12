@@ -5,32 +5,18 @@
 // never starting the harness), fetched once per version of the session.
 import { useEffect, useRef, useState } from "react";
 import type { ProjectSession, SessionPreview } from "../../shared/protocol.js";
-import { api } from "../api.js";
+import { sessionPreview } from "../session-preview.js";
 import { harnessColor } from "../harness-colors.js";
 import { useCardPlace } from "../hover-card.js";
 import { plainPreview } from "../session-groups.js";
 import { agentStatusText } from "../agent-status.js";
-
-const cache = new Map<string, Promise<SessionPreview | null>>();
-
-function preview(s: ProjectSession): Promise<SessionPreview | null> {
-  const key = `${s.id}@${s.updatedAt ?? ""}`;
-  let hit = cache.get(key);
-  if (!hit) {
-    const q = new URLSearchParams({ harnessId: s.harnessId, workspaceId: s.workspaceId, sessionId: s.id });
-    hit = api<SessionPreview>(`/api/sessions/preview?${q}`).catch(() => null);
-    cache.set(key, hit);
-    if (cache.size > 200) cache.delete(cache.keys().next().value as string);
-  }
-  return hit;
-}
 
 export function SessionCard({ s, anchor, harnessName, project, id, provenance }: { s: ProjectSession; anchor: DOMRect; harnessName: string; project: string; id: string; provenance?: string | null }) {
   const [data, setData] = useState<SessionPreview | null | undefined>(undefined);
   const card = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let live = true;
-    void preview(s).then((p) => live && setData(p));
+    void sessionPreview(s).then((p) => live && setData(p));
     return () => {
       live = false;
     };

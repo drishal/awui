@@ -122,6 +122,7 @@ const CompareDialog = lazy(() => import("./components/CompareDialog.js").then((m
 const RacePanel = lazy(() => import("./components/RacePanel.js").then((m) => ({ default: m.RacePanel })));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js").then((m) => ({ default: m.TerminalPanel })));
 const GitHubPanel = lazy(() => import("./components/GitHubPanel.js").then((m) => ({ default: m.GitHubPanel })));
+const Dashboard = lazy(() => import("./components/Dashboard.js").then((m) => ({ default: m.Dashboard })));
 
 // Panels on-demand: a desktop with a dozen idle tabs doesn't need code for every
 // project workflow unless someone actually opens one of these dialogs.
@@ -316,6 +317,8 @@ export function App() {
   /** The saved prompts' manager: open, perhaps starting a new prompt from a draft. */
   const [promptsOpen, setPromptsOpen] = useState<{ draft?: string } | null>(null);
   const [usageOpen, setUsageOpen] = useState(false);
+  /** The agent dashboard: every project's sessions by what needs you, what works, what is done. */
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   const [routinesOpen, setRoutinesOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   /** A chat beside the main one (SidePane): what it starts on (null: its picker); `n` remounts it for a new one. */
@@ -1788,6 +1791,7 @@ export function App() {
       run: () => (side ? setSide(null) : void openBeside()),
     });
     items.push({ id: "usage", section: "Actions", label: "Usage across chats", hint: "tokens, cost", keywords: "spend dashboard stats", run: () => setUsageOpen(true) });
+    items.push({ id: "dashboard", section: "Actions", label: "Agent dashboard…", hint: "needs you · working · done", keywords: "board kanban overview agents progress", run: () => setDashboardOpen(true) });
     items.push({ id: "routines", section: "Actions", label: "Routines…", hint: "scheduled prompts", keywords: "schedule cron jobs recurring", run: () => setRoutinesOpen(true) });
     items.push({ id: "reload-app", section: "Actions", label: "Reload the app", hint: "after an update", keywords: "refresh update deploy new build", run: () => void reloadApp() });
     items.push({ id: "prompts", section: "Actions", label: "Saved prompts…", hint: "#", keys: true, keywords: "templates snippets", run: () => setPromptsOpen({}) });
@@ -2773,6 +2777,11 @@ export function App() {
       {usageOpen ? (
         <Suspense fallback={<Loader label="Opening usage…" overlay />}>
         <UsageDialog harnesses={boot.harnesses} limits={limits} onRefresh={refreshLimits} onOpenSession={(s, ws) => void openSession(s, ws ? { workspace: ws } : {})} onClose={() => setUsageOpen(false)} />
+        </Suspense>
+      ) : null}
+      {dashboardOpen ? (
+        <Suspense fallback={<Loader label="Opening the dashboard…" overlay />}>
+        <Dashboard overview={overview} harnesses={boot.harnesses} onOpenSession={(s, ws) => { setDashboardOpen(false); void openSession(s, ws ? { workspace: ws } : {}); }} onClose={() => setDashboardOpen(false)} />
         </Suspense>
       ) : null}
       {viewer && searchWorkspace ? <FileViewer workspace={searchWorkspace} request={viewer.request} changes={chat ? changes : []} onClose={() => setViewer(null)} /> : null}

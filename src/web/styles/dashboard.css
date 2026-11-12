@@ -1,0 +1,37 @@
+/* The agent dashboard: three columns of cards over the same overview the sidebar
+   draws. Cards are flat rows, not boxes; a column's head is its count and name. */
+.dashboard-dialog { width: min(1100px, calc(100vw - 32px)); }
+.dashboard-filters { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.dashboard-filter { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; }
+.dashboard-close { margin-left: auto; }
+.dashboard-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.dashboard-column { display: grid; gap: 6px; min-width: 0; }
+.dashboard-column-head { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-2); font-weight: 600; }
+.dashboard-count { color: var(--muted-text); font-variant-numeric: tabular-nums; font-weight: 400; }
+.dashboard-cards { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.dashboard-empty { margin: 0; font-size: 12px; }
+.dashboard-card { display: grid; gap: 4px; border: 1px solid var(--hairline); border-radius: 10px; overflow: hidden; }
+.dashboard-card-main { display: grid; gap: 3px; width: 100%; padding: 8px 10px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.dashboard-card-main:hover { background: var(--hover); }
+.dashboard-card-title { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-card-meta { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; color: var(--muted-text); font-size: 11px; }
+.dashboard-flag { padding: 0 5px; border-radius: 6px; background: var(--surface-2); }
+.dashboard-flag.is-needs { color: var(--warn); }
+.dashboard-pr { color: var(--link); text-decoration: none; }
+.dashboard-pr:hover { text-decoration: underline; }
+.dashboard-status { font-size: 12px; color: var(--muted-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-status.is-blocked { color: var(--warn); }
+.dashboard-status.is-review, .dashboard-status.is-done { color: var(--ok); }
+.dashboard-line { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; color: var(--text-2); }
+.dashboard-children { display: grid; gap: 2px; list-style: none; margin: 0; padding: 0 0 4px; border-top: 1px solid var(--hairline); }
+.dashboard-child { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 10px 5px 18px; border: 0; background: none; color: var(--text-2); text-align: left; font-size: 12px; cursor: pointer; }
+.dashboard-child:hover { background: var(--hover); color: var(--text); }
+.dashboard-child-title { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-child-state { flex: none; color: var(--muted-text); font-size: 11px; }
+.dashboard-child-state.is-needs { color: var(--warn); }
+.dashboard-child-state.is-working { color: var(--accent); }
+
+/* Narrow screens: the columns stack, Needs you first, so nothing is off to the side. */
+@media (max-width: 900px) {
+  .dashboard-board { grid-template-columns: minmax(0, 1fr); }
+}

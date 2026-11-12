@@ -119,6 +119,11 @@ export interface SessionSummary {
    */
   origin?: SessionOrigin;
   /**
+   * For a live delegated child: whose it is, as its chat carries it. A finished child has
+   * no chat here and no lineage, so only a running delegation nests under its parent.
+   */
+  lineage?: ChatLineage;
+  /**
    * The line its own agent set through the orchestration tool surface: where the
    * work stands and what it is waiting on. Absent until an agent writes one.
    */

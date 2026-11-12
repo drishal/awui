@@ -193,6 +193,10 @@ src/web/                      React 19 + Vite client. App.tsx is the shell; comp
   saved-prompts.ts, prompt-blanks.ts   The # menu's list (the server's, kept in step) and its {{blanks}} (pure; atui uses them).
   chat-actions.ts             A pane's chat actions (send, stop, answer, configure, handoff), for the chat beside the main one.
   usage.ts                    Usage across chats, for drawing: short numbers, the cache's share, day labels, bars by harness.
+  dashboard.ts                The agent dashboard's board: columns (needs you / working / done), delegated children nesting
+                              under their parent, the project and pull-request filters (pure; Dashboard.tsx draws it).
+  session-preview.ts          One session's hover-card preview, fetched once per version and shared by the sidebar's card
+                              and the dashboard's cards; the one-line clamp a card shows.
   highlight.ts, file-bus.ts   The file viewer's colours (a small tokenizer, no dependency); opening it from any path on the page.
   shortcuts.ts                Every key the app answers: the shortcut sheet's table, and the palette's hints.
   split-layout.ts             Main/side width ratio and pointer/keyboard separator. Saved only when settled; preserves editor and attached-file identity during Make main, not a transcript store.

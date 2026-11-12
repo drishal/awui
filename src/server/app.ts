@@ -1268,6 +1268,7 @@ export function createApp(deps: AppDeps) {
         status: chat.status,
         workspaceId: chat.workspace.id,
         ...(chat.pendingCount > 0 ? { asking: true as const } : {}),
+        ...(chat.lineage ? { lineage: chat.lineage } : {}),
       });
     }
     const inHerdr = deps.herdr ? await deps.herdr.bySession() : null;
