@@ -66,6 +66,8 @@ import {
   replySchema,
   threadStatusSchema,
   reanchorSchema,
+  secondOpinionSchema,
+  type SecondOpinionResult,
   sendThreadsSchema,
   type ReviewSendResult,
   type RotateResult,
@@ -101,7 +103,7 @@ import { Idempotency } from "./idempotency.js";
 import type { ChatManager } from "./chats/manager.js";
 import type { HarnessRegistry } from "./harness/registry.js";
 import type { HarnessAdapter, NativeSessionSummary } from "./harness/types.js";
-import { briefPrompt, isEmptySeed, toSeed } from "./harness/handoff.js";
+import { briefPrompt, isEmptySeed, toSeed, turnBrief } from "./harness/handoff.js";
 import { sniffImage } from "./images.js";
 import { deletePaste, resolvePaste, storePaste } from "./paste-store.js";
 import { projectFiles, searchFiles } from "./project-files.js";
@@ -119,6 +121,7 @@ import { checkoutOf } from "./checkouts.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { Routines } from "./routines.js";
 import { ReviewProblem, ReviewThreads } from "./review-threads.js";
+import { SecondOpinions, reportExcerpt } from "./second-opinions.js";
 import { batchPrompt } from "../shared/review.js";
 import { Limits } from "./limits.js";
 import { Notifier, pushEndpointProblem } from "./notify.js";
@@ -173,6 +176,8 @@ export interface AppDeps {
   marks?: SessionMarks;
   /** Review threads (comments on diff lines); in memory when absent. */
   reviewThreads?: ReviewThreads;
+  /** Turns sent to another harness for a second opinion; in memory when absent. */
+  secondOpinions?: SecondOpinions;
   /** Comparisons of one prompt in several worktree chats; in memory when absent. */
   races?: Races;
   /** Hand-made session orders; in memory when absent. */
@@ -252,6 +257,7 @@ export function createApp(deps: AppDeps) {
   const { registry, manager, workspaces, security, theme } = deps;
   const marks = deps.marks ?? SessionMarks.inMemory();
   const reviewThreads = deps.reviewThreads ?? ReviewThreads.inMemory();
+  const secondOpinions = deps.secondOpinions ?? SecondOpinions.inMemory();
   const races = deps.races ?? Races.inMemory(raceChatsFor(manager));
   const order = deps.order ?? SessionOrder.inMemory();
   const prompts = deps.prompts ?? SavedPrompts.inMemory();
@@ -1988,6 +1994,47 @@ export function createApp(deps: AppDeps) {
     if (chat.adapter.capabilities.supportsThinkingLevel && snap.config.thinkingLevel) config.thinkingLevel = snap.config.thinkingLevel;
     if (Object.keys(config).length > 0) await fresh.setConfig(config).catch(() => undefined);
     res.status(201).json({ snapshot: fresh.snapshot() } satisfies RotateResult);
+  });
+
+  /**
+   * A second opinion on one turn: the turn and a question go to another harness as
+   * the first prompt of an ordinary chat in this project. Nothing is written into
+   * either session file by awui: the other agent's reply is that chat's own
+   * transcript, and the cards in this transcript are records in the state folder.
+   */
+  app.post("/api/chats/:id/second-opinion", async (req, res) => {
+    const chat = manager.get(req.params.id);
+    const { turn, harness, ask } = body(secondOpinionSchema, req);
+    const target = await availableAdapter(harness);
+    if (target.id === chat.adapter.id) throw new ChatError(400, "same_harness", "Pick another harness for a second opinion");
+    const turns = chat.userTurns();
+    if (turn > turns.length) throw new ChatError(400, "no_turn", `This chat has ${turns.length} turn${turns.length === 1 ? "" : "s"}`);
+    const snap = chat.snapshot();
+    const seed = toSeed(snap.items, { throughTurns: turn });
+    const picked = seed.turns[seed.turns.length - 1];
+    if (!picked) throw new ChatError(400, "no_turn", "That turn has nothing to send");
+    const brief = turnBrief(picked, { from: chat.adapter.displayName, project: chat.workspace.name, ask: ask?.trim() ? ask.trim() : null });
+    if (brief.length > MAX_MESSAGE_CHARS) throw new ChatError(413, "prompt_too_long", "That turn is too long to send");
+    const moved = await manager.create(target, chat.workspace);
+    try {
+      await moved.send(brief, "normal");
+    } catch (error) {
+      await moved.dispose("the second opinion could not start").catch(() => undefined);
+      throw new ChatError(502, "opinion_failed", `${target.displayName} could not take this turn: ${errorMessage(error)}`);
+    }
+    if (target.capabilities.supportsRename) await moved.rename(`Second opinion from ${chat.adapter.displayName}`).catch(() => undefined);
+    const opinion = await secondOpinions.add(chat.chatId, { turn, from: chat.adapter.id, to: target.id, chatId: moved.chatId, ask: ask?.trim() ?? "" });
+    res.status(201).json({ opinion, snapshot: moved.snapshot() } satisfies SecondOpinionResult);
+  });
+
+  /** A chat's second opinions, newest first, each with what the other agent has said so far. */
+  app.get("/api/chats/:id/second-opinion", (req, res) => {
+    const opinions = secondOpinions.list(req.params.id).map((opinion) => {
+      const target = manager.peek(opinion.chatId);
+      const answer = target ? reportExcerpt(target.snapshot().items) : null;
+      return secondOpinions.setReport(req.params.id, opinion.id, answer) ?? opinion;
+    });
+    res.json({ opinions });
   });
   // The chain: what a chat runs after its run settles, kept here so it goes on with no browser open.
   manager.onChainHandoff = async (chat, step, rest) => {

@@ -20,7 +20,7 @@ import { oldestSeq } from "./room-state.js";
 import { BotEditor } from "./components/BotEditor.js";
 import { RoomEditor } from "./components/RoomEditor.js";
 import { RoomHeadActions, RoomHeadSub } from "./components/RoomHeader.js";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   SessionMarkState,
   ChatSnapshot,
@@ -35,6 +35,8 @@ import type {
   ProjectSession,
   PushNote,
   RotateResult,
+  SecondOpinion,
+  SecondOpinionResult,
   SendMode,
   ServerSettings,
   ThemeChoice,
@@ -82,6 +84,7 @@ import { WorkspacePicker } from "./components/WorkspacePicker.js";
 import { PairDialog, RenameDialog } from "./dialogs.js";
 import { ReviewPanel } from "./components/ReviewPanel.js";
 import { RestoreDialog } from "./components/RestoreDialog.js";
+import { SecondOpinionDialog } from "./components/SecondOpinionDialog.js";
 import { HerdrDialog } from "./components/HerdrDialog.js";
 import { collectChanges } from "./review.js";
 import { copyResumeCommand, useResumeCommand } from "./resume-command.js";
@@ -338,6 +341,9 @@ export function App() {
   const [reviewOpen, setReviewOpen] = useState(false);
   /** The turn whose checkpoint the restore dialog shows. */
   const [restoreTurn, setRestoreTurn] = useState<number | null>(null);
+  /** The turns sent to another harness for a second opinion, and whose sheet is open. */
+  const [opinions, setOpinions] = useState<SecondOpinion[]>([]);
+  const [opinionTurn, setOpinionTurn] = useState<number | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1228,6 +1234,34 @@ export function App() {
     if (id !== null && id !== previous && room.roomId) leaveRoom();
   }, [chat?.chatId, room.roomId]);
 
+  /**
+   * A chat's second opinions: read when the chat is shown, and again every few seconds
+   * while a card waits for the other agent's reply (that reply lands in its own chat,
+   * which this tab's stream says nothing about).
+   */
+  const opinionChatId = chat?.chatId ?? null;
+  const loadOpinions = useCallback(
+    async (chatId: string) => {
+      try {
+        const body = await api<{ opinions: SecondOpinion[] }>(`/api/chats/${chatId}/second-opinion`);
+        setOpinions(body.opinions);
+      } catch {
+        // No opinions yet, or none readable: the transcript simply has no cards.
+      }
+    },
+    [],
+  );
+  useEffect(() => {
+    setOpinions([]);
+    if (opinionChatId) void loadOpinions(opinionChatId);
+  }, [opinionChatId, loadOpinions]);
+  const waitingOpinions = opinions.some((opinion) => opinion.report === null);
+  useEffect(() => {
+    if (!opinionChatId || !waitingOpinions) return;
+    const timer = window.setInterval(() => void loadOpinions(opinionChatId), 4000);
+    return () => window.clearInterval(timer);
+  }, [opinionChatId, waitingOpinions, loadOpinions]);
+
   /** Open a chat beside the main one: `s` at once, or the pane's picker. */
   const openBeside = async (s?: ProjectSession) => {
     if (!s) return setSide((v) => ({ initial: null, n: (v?.n ?? 0) + 1 }));
@@ -1579,6 +1613,17 @@ export function App() {
     } catch (e) {
       fail(e);
     }
+  };
+
+  /** Ask another harness about a turn; its reply runs in an ordinary chat, opened beside this one. */
+  const askOpinion = async (harness: string, ask: string) => {
+    if (!chat || opinionTurn === null) return;
+    const turn = opinionTurn;
+    const result = await api<SecondOpinionResult>(`/api/chats/${chat.chatId}/second-opinion`, { body: { turn, harness, ...(ask ? { ask } : {}) } });
+    setOpinions((list) => [result.opinion, ...list.filter((opinion) => opinion.id !== result.opinion.id)]);
+    setOpinionTurn(null);
+    if (wide) setSide((v) => ({ initial: result.snapshot, n: (v?.n ?? 0) + 1 }));
+    else showChat(result.snapshot, { newTab: true });
   };
 
   const compact = async () => {
@@ -2438,6 +2483,12 @@ export function App() {
                     retry: (through, item) => void rerun(through, item, item.text, false),
                     edit: (through, item, text, undoFiles) => rerun(through, item, text, undoFiles),
                   }}
+                  {...(chat.capabilities.supportsHandoff || boot.harnesses.filter((h) => h.available && h.id !== chat.harnessId).length > 0
+                    ? { onOpinion: (through: number) => setOpinionTurn(through) }
+                    : {})}
+                  opinionsFor={(through) => opinions.filter((opinion) => opinion.turn === through)}
+                  nameOfHarness={(harnessId) => boot.harnesses.find((h) => h.id === harnessId)?.displayName ?? harnessId}
+                  onOpenOpinion={(chatId) => void openChatById(chatId)}
                 />
                 {chat.gone ? <div className="banner banner-info">{chat.gone}</div> : null}
                 <Composer
@@ -2635,6 +2686,15 @@ export function App() {
             setHerdrAsk(null);
             void refreshSessions();
           }}
+        />
+      ) : null}
+      {opinionTurn !== null && chat ? (
+        <SecondOpinionDialog
+          turn={opinionTurn}
+          from={chat.harnessId}
+          harnesses={boot.harnesses}
+          onSubmit={askOpinion}
+          onClose={() => setOpinionTurn(null)}
         />
       ) : null}
       {restoreTurn !== null && chat ? (

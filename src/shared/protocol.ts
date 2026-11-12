@@ -408,6 +408,47 @@ export const MAX_REANCHOR_MOVES = 200;
 /** The line text an anchor carries: one tool-diff line, as tool-diff.ts bounds it. */
 export const MAX_REVIEW_LINE_CHARS = 400;
 
+/** Bounds for second opinions (see docs/security.md). */
+export const MAX_SECOND_OPINIONS_PER_CHAT = 20;
+export const MAX_OPINION_ASK_CHARS = 2_000;
+/** What a card shows of the other agent's answer; the rest is in its own chat. */
+export const MAX_OPINION_REPORT_CHARS = 2_000;
+
+/**
+ * One turn sent to another harness for a second opinion. It is awui's own record
+ * (the state folder), not a harness transcript: the other agent answers in an
+ * ordinary chat of its own, which is where the whole reply lives.
+ */
+export interface SecondOpinion {
+  id: string;
+  /** The turn, as a fork counts user turns (1 is the first prompt). */
+  turn: number;
+  /** The harness that produced the turn. */
+  from: string;
+  /** The harness asked for the opinion. */
+  to: string;
+  /** The chat the opinion runs in: an ordinary chat of this project. */
+  chatId: string;
+  /** The question, as the card repeats it. */
+  ask: string;
+  askedAt: number;
+  /** The answer's opening words, filled when a client lists the opinions; null until it says something. */
+  report: string | null;
+}
+
+/** A second opinion just asked for: the record, and the chat it opens. */
+export interface SecondOpinionResult {
+  opinion: SecondOpinion;
+  snapshot: ChatSnapshot;
+}
+
+/** Ask another harness about one turn: which turn, which harness, and what to ask. */
+export const secondOpinionSchema = z.object({
+  turn: z.number().int().min(1).max(10_000),
+  harness: z.string().min(1).max(64),
+  ask: z.string().trim().max(MAX_OPINION_ASK_CHARS).optional(),
+});
+
 /**
  * A comment pinned to one diff line. `text` and `hash` are the line as it was
  * when the comment was written, so the pin can be found again after the agent

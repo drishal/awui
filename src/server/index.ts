@@ -35,6 +35,7 @@ import { runRoutine } from "./routine-runner.js";
 import { SessionOrder } from "./session-order.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { ReviewThreads } from "./review-threads.js";
+import { SecondOpinions } from "./second-opinions.js";
 import { Races, raceChatsFor } from "./races.js";
 import { Limits } from "./limits.js";
 import { Notifier, roomPushNote } from "./notify.js";
@@ -226,6 +227,7 @@ async function main(): Promise<void> {
   const order = await SessionOrder.open(config.stateDir);
   const prompts = await SavedPrompts.open(config.stateDir);
   const reviewThreads = await ReviewThreads.open(config.stateDir);
+  const secondOpinions = await SecondOpinions.open(config.stateDir);
   const races = await Races.open(config.stateDir, raceChatsFor(manager));
   const limits = await Limits.open(registry, config.stateDir);
   limits.warm();
@@ -267,6 +269,7 @@ async function main(): Promise<void> {
     order,
     prompts,
     reviewThreads,
+    secondOpinions,
     races,
     limits,
     notifier,

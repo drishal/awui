@@ -18,6 +18,7 @@ import { ThemeStore } from "../../src/server/theme.js";
 import { Workspaces } from "../../src/server/workspaces.js";
 import { TerminalManager } from "../../src/server/terminal.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "../../src/server/orchestration/limits.js";
+import { SecondOpinions } from "../../src/server/second-opinions.js";
 
 export const USER = "alice";
 export const PASS = "correct horse battery";
@@ -122,6 +123,7 @@ export async function makeTestApp(options: {
     webDir: null,
     heartbeatMs: options.heartbeatMs ?? 20_000,
     stateDir,
+    secondOpinions: await SecondOpinions.open(stateDir),
     orchestrationLimits,
     ...(terminals ? { terminals } : {}),
     boards,

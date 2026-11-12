@@ -4,7 +4,7 @@
 //  - OpenCode: tool counts on the fold line, changed files per turn;
 //  - Hermes Desktop: flat-not-boxed, pinned prompts, red only for failures.
 import { createContext, Fragment, memo, startTransition, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { AssistantItem, ChatItem, ChatStatus, ImageRef, NoticeItem, RequestItem, ToolCategory, ToolItem, UserItem } from "../../shared/protocol.js";
+import type { AssistantItem, ChatItem, ChatStatus, ImageRef, NoticeItem, RequestItem, SecondOpinion, ToolCategory, ToolItem, UserItem } from "../../shared/protocol.js";
 import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronUp, IconClock, IconCopy, IconEdit, IconFile, IconFork, IconImage, IconInfo, IconLink, IconRefresh, IconSearch, IconSpark, IconUndo, IconWarning, IconX, RaySpinner, Spinner, ToolIcon } from "../icons.js";
 import { promptLink } from "../prompt-link.js";
 import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
@@ -20,6 +20,7 @@ import { phaseDelay, workingPhase } from "../working-phase.js";
 import { retryLabel, retryPrompt, type RetryMode } from "../tool-retry.js";
 import { iconStack, monogram, serverHue, toolKind, toolKinds, usedLabel, type ToolKind } from "../tool-kinds.js";
 import { Dot } from "./Dot.js";
+import { SecondOpinionCard } from "./SecondOpinionCard.js";
 import { Rolling } from "./Rolling.js";
 import { Arrivals, ArrivalsContext, useArrival } from "../arrivals.js";
 import { claimLanding, glideOffset } from "../queue-glide.js";
@@ -704,11 +705,14 @@ function Answer({
   timing = null,
   turnMarkdown,
   onTiming,
+  onOpinion,
 }: {
   item: AssistantItem;
   through: number;
   canFork: boolean;
   onFork: (through: number) => void;
+  /** Ask another harness about this turn; absent where there is none to ask. */
+  onOpinion?: ((through: number) => void) | undefined;
   /** The files as they were before this turn's prompt can be put back. */
   canRestore: boolean;
   onRestore: (through: number) => void;
@@ -733,6 +737,7 @@ function Answer({
     // Selecting a passage to quote is fiddly on a phone; this quotes the whole reply.
     { label: "Quote in message", icon: <IconEdit size={16} />, run: () => addToDraft(asQuote(item.text)) },
     ...(onTiming ? [{ label: "Timing", icon: <IconClock size={16} />, run: onTiming }] : []),
+    ...(onOpinion ? [{ label: "Second opinion", icon: <IconSpark size={16} />, run: () => onOpinion(through) }] : []),
     ...(canFork ? [{ label: "Fork from here", icon: <IconFork size={16} />, run: () => onFork(through) }] : []),
     ...(canRestore ? [{ label: "Undo file changes from here", icon: <IconUndo size={16} />, run: () => onRestore(through) }] : []),
   ];
@@ -759,6 +764,17 @@ function Answer({
           {onTiming ? (
             <button type="button" className="ghost-icon" aria-label="Timing" title="Timing: when each step and call of this turn ran" onClick={onTiming}>
               <IconClock size={14} />
+            </button>
+          ) : null}
+          {onOpinion ? (
+            <button
+              type="button"
+              className="ghost-icon"
+              aria-label="Second opinion"
+              title="Second opinion: send this turn to another harness, which reviews it in its own chat"
+              onClick={() => onOpinion(through)}
+            >
+              <IconSpark size={14} />
             </button>
           ) : null}
           {canFork ? (
@@ -1159,6 +1175,10 @@ function TurnBody({
   onImplement,
   onTiming,
   timing,
+  opinions,
+  nameOfHarness,
+  onOpinion,
+  onOpenOpinion,
 }: {
   turn: Turn;
   open: boolean;
@@ -1169,6 +1189,14 @@ function TurnBody({
   canRestore: boolean;
   onRestore: (through: number) => void;
   onImplement: (() => void) | null;
+  /** Second opinions asked about this turn: one card each, under the answer. */
+  opinions?: SecondOpinion[] | undefined;
+  /** A harness id as its display name, for the cards' from → to line. */
+  nameOfHarness?: ((harnessId: string) => string) | undefined;
+  /** Ask another harness about this turn; absent where there is none to ask. */
+  onOpinion?: ((through: number) => void) | undefined;
+  /** Open the chat an opinion runs in. */
+  onOpenOpinion?: ((chatId: string) => void) | undefined;
   /** Opens the turn's Timing view; absent where there is none (a room's run). */
   onTiming?: () => void;
   /** Replaces the answer row's quiet timing line (a room's run puts its usage there); absent, the turn's own timing. */
@@ -1199,8 +1227,18 @@ function TurnBody({
         <PlanCard key={p.id} plan={p.plan} onImplement={onImplement} />
       ))}
       {turn.answer ? (
-        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timing !== undefined ? timing : timingLabel(turnTiming(turn))} turnMarkdown={turn.prompt ? () => turnMarkdownOf(turn, workspace) : null} {...(onTiming ? { onTiming } : {})} />
+        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timing !== undefined ? timing : timingLabel(turnTiming(turn))} turnMarkdown={turn.prompt ? () => turnMarkdownOf(turn, workspace) : null} {...(onTiming ? { onTiming } : {})} {...(onOpinion ? { onOpinion } : {})} />
       ) : null}
+      {opinions && opinions.length > 0
+        ? opinions.map((opinion) => (
+            <SecondOpinionCard
+              key={opinion.id}
+              opinion={opinion}
+              nameOf={nameOfHarness ?? ((id) => id)}
+              onOpen={() => onOpenOpinion?.(opinion.chatId)}
+            />
+          ))
+        : null}
       {afterWork ? (
         <div className="turn-work-after" data-testid="work-after">
           <ProcessFold turn={turn} open={open} onToggle={onToggle} workspace={workspace} segment={afterWork} place="last" />
@@ -1243,6 +1281,10 @@ const TurnView = memo(function TurnView({
   promptActions,
   onImplement,
   retry,
+  opinions,
+  nameOfHarness,
+  onOpinion,
+  onOpenOpinion,
 }: {
   turn: Turn;
   open: boolean;
@@ -1255,6 +1297,11 @@ const TurnView = memo(function TurnView({
   canBranch: boolean;
   hasCheckpoint: boolean;
   promptActions: PromptActions;
+  /** This turn's second opinions, the harnesses' names, and how to ask for another. */
+  opinions?: SecondOpinion[] | undefined;
+  nameOfHarness?: ((harnessId: string) => string) | undefined;
+  onOpinion?: ((through: number) => void) | undefined;
+  onOpenOpinion?: ((chatId: string) => void) | undefined;
   /** The latest turn's plan can be acted on (idle, nothing asked): Implement sends it on. */
   onImplement: (() => void) | null;
   /** What "Ask to retry" does, for the latest turn only (null: no button). */
@@ -1283,7 +1330,7 @@ const TurnView = memo(function TurnView({
     <RetryContext.Provider value={retry}>
     <section className="turn" id={`turn-${turn.id}`} data-turn-id={turn.id} data-testid="turn">
       <UserPrompt item={turn.prompt} through={turn.through} canBranch={canBranch} hasCheckpoint={hasCheckpoint} actions={promptActions} />
-      <TurnBody turn={turn} open={open} onToggle={onToggle} workspace={workspace} canFork={canFork} onFork={onFork} canRestore={canRestore} onRestore={onRestore} onImplement={onImplement} onTiming={openTiming} />
+      <TurnBody turn={turn} open={open} onToggle={onToggle} workspace={workspace} canFork={canFork} onFork={onFork} canRestore={canRestore} onRestore={onRestore} onImplement={onImplement} onTiming={openTiming} {...(opinions ? { opinions } : {})} {...(nameOfHarness ? { nameOfHarness } : {})} {...(onOpinion ? { onOpinion } : {})} {...(onOpenOpinion ? { onOpenOpinion } : {})} />
       {timingDialog}
     </section>
     </RetryContext.Provider>
@@ -1341,6 +1388,10 @@ export function Conversation({
   onRetryCall,
   findRequest = null,
   pane = "main",
+  onOpinion,
+  opinionsFor,
+  nameOfHarness,
+  onOpenOpinion,
 }: {
   chatId: string;
   items: ChatItem[];
@@ -1365,6 +1416,14 @@ export function Conversation({
   findRequest?: { query: string; nonce: number; chatId: string } | null;
   /** Which pane it is in, with a chat beside the main one: Ctrl+F finds in the pane that has the focus (the main one otherwise). */
   pane?: "main" | "side";
+  /** Ask another harness about a settled turn: the sheet's harness picker sends it. */
+  onOpinion?: (through: number) => void;
+  /** A turn's second opinions, by turn: what each answer's cards show. */
+  opinionsFor?: (through: number) => SecondOpinion[];
+  /** A harness id as its display name, for the cards' from → to line. */
+  nameOfHarness?: (harnessId: string) => string;
+  /** Open the chat an opinion runs in (the card's Open chat). */
+  onOpenOpinion?: (chatId: string) => void;
 }) {
   const [arrivals] = useState(() => new Arrivals());
   arrivals.update(chatId, items);
@@ -1776,6 +1835,10 @@ export function Conversation({
                     promptActions={actions}
                     onImplement={canImplement && turn === lastTurn && turn.plans.length > 0 ? implement : null}
                     retry={turn === lastTurn ? retry : null}
+                    {...(opinionsFor ? { opinions: opinionsFor(turn.through) } : {})}
+                    {...(nameOfHarness ? { nameOfHarness } : {})}
+                    {...(onOpinion ? { onOpinion } : {})}
+                    {...(onOpenOpinion ? { onOpenOpinion } : {})}
                   />
                 </Fragment>
               ))}
