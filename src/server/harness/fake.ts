@@ -2,6 +2,8 @@
 // touches the network or a model. Prompt text selects scripted behaviour:
 //   "tool"  run a fake tool          "ask"   raise a confirm request first
 //   "fail"  end with an error        "slow"  stream many chunks
+//   "silent" end with an empty answer (a run with nothing to report)
+//   "quietrun" answer "QUIET: …" (a run that says in words that it has nothing to report)
 //   "big"   produce oversized tool output    "edit"  edit a file (src/app.ts)
 //   "bloat" pad the session to about two thirds of the context window
 //   "quiz"  ask a multiple-choice question (omp's style; "quiz described": Claude Code's)
@@ -846,6 +848,18 @@ class FakeLiveChat implements LiveChat {
         await this.pause(signal);
         this.record({ role: "assistant", content: [], stopReason: "error", errorMessage: error });
         this.emit({ type: "assistant_end", text: "", thinking: "", error });
+        return;
+      }
+      if (/\bsilent\b/i.test(text)) {
+        // A run that ends with no answer at all: what a quiet routine's chat settles with.
+        this.emit({ type: "assistant_start", model: this.model });
+        await this.pause(signal);
+        this.record({ role: "assistant", content: [] });
+        this.emit({ type: "assistant_end", text: "", thinking: "" });
+        return;
+      }
+      if (/\bquietrun\b/i.test(text)) {
+        await this.reply("QUIET: nothing needed today.", signal);
         return;
       }
       if (/\bfail\b/i.test(text)) {

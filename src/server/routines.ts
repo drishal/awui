@@ -18,8 +18,8 @@ function outcomeOf(raw: unknown): RoutineOutcome | null {
   return OUTCOMES.includes(raw as RoutineOutcome) ? (raw as RoutineOutcome) : null;
 }
 
-/** Why the last slot skipped or failed: one bounded line, or null. Anything else in the file is dropped. */
-function detailOf(raw: unknown): string | null {
+/** Why a run skipped or failed, or what it posted: one bounded line, or null. Anything else is dropped. */
+export function runDetail(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const text = raw.trim().slice(0, MAX_RUN_DETAIL_CHARS);
   return text || null;
@@ -40,7 +40,7 @@ function clean(raw: unknown): Routine | null {
     nextRunAt: at,
     lastRunAt: (lastRunAt as number | null) ?? null,
     lastRunOutcome: outcomeOf(lastRunOutcome),
-    lastRunDetail: detailOf(lastRunDetail),
+    lastRunDetail: runDetail(lastRunDetail),
   };
 }
 
@@ -117,7 +117,7 @@ export class Routines {
   async markOutcome(id: string, outcome: RoutineOutcome, detail: string | null = null): Promise<Routine | undefined> {
     const routine = this.byId.get(id);
     if (!routine) return undefined;
-    const next: Routine = { ...routine, lastRunOutcome: outcome, lastRunDetail: detailOf(detail) };
+    const next: Routine = { ...routine, lastRunOutcome: outcome, lastRunDetail: runDetail(detail) };
     this.byId.set(id, next);
     await this.persist();
     return next;

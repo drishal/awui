@@ -19,6 +19,7 @@ import { Workspaces } from "../../src/server/workspaces.js";
 import { TerminalManager } from "../../src/server/terminal.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "../../src/server/orchestration/limits.js";
 import { SecondOpinions } from "../../src/server/second-opinions.js";
+import type { RoutineRuns } from "../../src/server/routine-runs.js";
 
 export const USER = "alice";
 export const PASS = "correct horse battery";
@@ -71,6 +72,8 @@ export async function makeTestApp(options: {
   herdr?: Herdr;
   /** The orchestration surface's limits, over the built-in defaults (config.yml's `orchestration:`). */
   orchestrationLimits?: Partial<OrchestrationLimits>;
+  /** The routines' run history, when a test drives a routine itself (in memory otherwise). */
+  routineRuns?: RoutineRuns;
 } = {}): Promise<TestApp> {
   const root = tempDir();
   const project = path.join(root, "proj");
@@ -125,6 +128,7 @@ export async function makeTestApp(options: {
     stateDir,
     secondOpinions: await SecondOpinions.open(stateDir),
     orchestrationLimits,
+    ...(options.routineRuns ? { routineRuns: options.routineRuns } : {}),
     ...(terminals ? { terminals } : {}),
     boards,
     ...(options.herdr ? { herdr: options.herdr } : {}),

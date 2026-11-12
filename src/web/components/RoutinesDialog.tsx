@@ -2,7 +2,7 @@
 // them (the 30 s tick in index.ts) with no browser open; this dialog is how they
 // are made, turned off, and removed.
 import { useEffect, useState } from "react";
-import type { HarnessStatus, Routine, WorkspaceInfo } from "../../shared/protocol.js";
+import type { HarnessStatus, Routine, RoutineOutcome, RoutineRun, WorkspaceInfo } from "../../shared/protocol.js";
 import type { RoutineCadence } from "../../shared/routine-schedule.js";
 import { cadenceLabel } from "../../shared/routine-schedule.js";
 import { api, errorText } from "../api.js";
@@ -10,18 +10,44 @@ import { IconX } from "../icons.js";
 import { Dialog } from "./Dialog.js";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+/** How many of a routine's last runs its row shows: enough to see a couple of nights, not a log. */
+const RUN_ROWS_PER_ROUTINE = 3;
 type Kind = RoutineCadence["kind"];
 
-/** How the last slot ended, in the list's words: "ran 09:00", "skipped 09:00 — precheck exited 1". */
+/** How a run ended, in the list's words: "posted 09:00", "quiet 09:00", "skipped 09:00 — precheck exited 1". */
+function outcomeWords(outcome: RoutineOutcome): string {
+  switch (outcome) {
+    case "posted":
+      return "posted";
+    case "quiet":
+      return "quiet";
+    case "skipped":
+      return "skipped";
+    case "failed":
+      return "failed";
+    case "launched":
+      return "running";
+  }
+}
+
+/** When a run happened, as the list's rows show it. */
+function runWhen(run: RoutineRun): string {
+  return new Date(run.startedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** How the last slot ended, in the list's words: "posted 09:00", "skipped 09:00 — precheck exited 1". */
 function outcomeText(routine: Routine): string {
+  if (!routine.lastRunOutcome) return "";
   const at = routine.lastRunAt ? new Date(routine.lastRunAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-  const verb = routine.lastRunOutcome === "launched" ? "ran" : routine.lastRunOutcome === "skipped" ? "skipped" : "failed to start";
+  const verb = outcomeWords(routine.lastRunOutcome);
   const when = at ? `${verb} ${at}` : verb;
   return routine.lastRunDetail ? `${when} — ${routine.lastRunDetail}` : when;
 }
 
-export function RoutinesDialog({ harnesses, workspaces, onClose }: { harnesses: HarnessStatus[]; workspaces: WorkspaceInfo[]; onClose: () => void }) {
+export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: { harnesses: HarnessStatus[]; workspaces: WorkspaceInfo[]; onClose: () => void; onOpenChat: (chatId: string) => void }) {
   const [routines, setRoutines] = useState<Routine[] | null>(null);
+  /** The last few runs of each routine, newest first (the server keeps the full history). */
+  const [runs, setRuns] = useState<RoutineRun[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
@@ -36,7 +62,12 @@ export function RoutinesDialog({ harnesses, workspaces, onClose }: { harnesses: 
 
   const load = async () => {
     try {
-      setRoutines((await api<{ routines: Routine[] }>("/api/routines")).routines);
+      const [list, history] = await Promise.all([
+        api<{ routines: Routine[] }>("/api/routines"),
+        api<{ runs: RoutineRun[] }>(`/api/routines/runs?limit=${RUN_ROWS_PER_ROUTINE * 4}`),
+      ]);
+      setRoutines(list.routines);
+      setRuns(history.runs);
     } catch (failure) {
       setError(errorText(failure));
     }
@@ -95,6 +126,8 @@ export function RoutinesDialog({ harnesses, workspaces, onClose }: { harnesses: 
   };
 
   const canSave = Boolean(name.trim() && prompt.trim() && harnessId && workspaceId) && !busy;
+  /** This routine's newest runs, as its row shows them. */
+  const runsFor = (routineId: string) => runs.filter((run) => run.routineId === routineId).slice(0, RUN_ROWS_PER_ROUTINE);
 
   return (
     <Dialog title="Routines" onClose={onClose} className="routines">
@@ -105,23 +138,42 @@ export function RoutinesDialog({ harnesses, workspaces, onClose }: { harnesses: 
           <ul className="routines-list" aria-label="Routines">
             {routines.map((routine) => (
               <li key={routine.id} className="routine-row">
-                <label className="routine-main">
-                  <input type="checkbox" checked={routine.enabled} aria-label={`Enable ${routine.name}`} onChange={(e) => void setEnabled(routine, e.target.checked)} />
-                  <span className="routine-name">{routine.name}</span>
-                  <span className="routine-when">
-                    {cadenceLabel(routine.cadence)} · next {new Date(routine.nextRunAt).toLocaleString()}
-                  </span>
-                  {routine.precheck ? (
-                    <span className="routine-precheck" title={routine.precheck}>
-                      precheck: {routine.precheck}
+                <div className="routine-row-main">
+                  <label className="routine-main">
+                    <input type="checkbox" checked={routine.enabled} aria-label={`Enable ${routine.name}`} onChange={(e) => void setEnabled(routine, e.target.checked)} />
+                    <span className="routine-name">{routine.name}</span>
+                    <span className="routine-when">
+                      {cadenceLabel(routine.cadence)} · next {new Date(routine.nextRunAt).toLocaleString()}
                     </span>
+                    {routine.precheck ? (
+                      <span className="routine-precheck" title={routine.precheck}>
+                        precheck: {routine.precheck}
+                      </span>
+                    ) : null}
+                    {routine.lastRunOutcome ? (
+                      <span className={`routine-outcome routine-outcome-${routine.lastRunOutcome}`} title={routine.lastRunDetail ?? undefined}>
+                        {outcomeText(routine)}
+                      </span>
+                    ) : null}
+                  </label>
+                  {runsFor(routine.id).length > 0 ? (
+                    <ul className="routine-runs" aria-label={`Recent runs of ${routine.name}`}>
+                      {runsFor(routine.id).map((run) => (
+                        <li key={run.id} className={`routine-run routine-outcome-${run.outcome}`}>
+                          <span className="routine-run-when">{runWhen(run)}</span>
+                          <span className="routine-run-words" title={run.detail ?? undefined}>
+                            {run.detail ? `${outcomeWords(run.outcome)} — ${run.detail}` : outcomeWords(run.outcome)}
+                          </span>
+                          {run.chatId ? (
+                            <button type="button" className="link-btn" onClick={() => onOpenChat(run.chatId as string)}>
+                              Open
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
-                  {routine.lastRunOutcome ? (
-                    <span className={`routine-outcome routine-outcome-${routine.lastRunOutcome}`} title={routine.lastRunDetail ?? undefined}>
-                      {outcomeText(routine)}
-                    </span>
-                  ) : null}
-                </label>
+                </div>
                 <button type="button" className="icon-btn" aria-label={`Delete ${routine.name}`} onClick={() => void remove(routine)}>
                   <IconX size={13} />
                 </button>

@@ -976,14 +976,51 @@
   border-bottom: 1px solid var(--hairline);
 }
 
+.routine-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
 .routine-main {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px;
-  flex: 1;
-  min-width: 0;
   font-size: 13px;
+}
+
+/* A routine's last few runs: one small line each, with Open for the chat while it is live. */
+.routine-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 0 0 22px;
+  padding: 0;
+  list-style: none;
+}
+
+.routine-run {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.routine-run-when {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.routine-run-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .routine-name {
@@ -1012,6 +1049,10 @@
 
 .routine-outcome-failed {
   color: var(--danger);
+}
+
+.routine-outcome-posted {
+  color: var(--muted-text);
 }
 
 .routines-form {

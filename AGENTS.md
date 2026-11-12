@@ -133,7 +133,7 @@ src/server/
   github.ts                  Bounded local gh/git workflows: existing-PR lookup, explicit push, PR create, normalized checks; never reads or sends credentials to a browser.
   overview-events.ts         Bounded live metadata-only stream for chat status and room summaries (500 events max, no transcripts). UI shares one EventSource per tab with fallback full refresh; native IDs remain harness-scoped and disposed clear live/asking status.
   paste-store.ts             1 MiB file-backed large pastes in /tmp, seven-day retention, delete-on-unsent and bounded expiry sweep; agent reads actual retained file paths.
-  routines.ts, routines-timer.ts, routine-runner.ts  Server-owned scheduled prompts: bounded store, one due claim before launch, next-slot retry across overlap failures.
+  routines.ts, routines-timer.ts, routine-runner.ts, routine-runs.ts  Server-owned scheduled prompts: bounded store, one due claim before launch, next-slot retry across overlap failures; a run is quiet (its verdict is posted, quiet, or failed, kept in the run history, and its session is hidden from the user's list).
   direnv.ts                  Project .envrc evaluation for harness spawns and explicit terminal semantics, isolated/cached by validated project directory.
   git-actions.ts, checkouts.ts, session-order.ts   Stage/unstage/commit action guards, branch/worktree grouping, hand-ordered session arrays.
   project-upload.ts          One new file into a validated workspace root, exclusive create, 8 MB route cap.

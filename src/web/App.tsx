@@ -2114,7 +2114,7 @@ export function App() {
         onClose={() => setDrawerOpen(false)}
         onCollapse={() => collapseSidebar(true)}
       />
-      {routinesOpen && boot ? <Suspense fallback={<Loader label="Opening routines…" overlay />}><RoutinesDialog harnesses={available} workspaces={overview.workspaces} onClose={() => setRoutinesOpen(false)} /></Suspense> : null}
+      {routinesOpen && boot ? <Suspense fallback={<Loader label="Opening routines…" overlay />}><RoutinesDialog harnesses={available} workspaces={overview.workspaces} onClose={() => setRoutinesOpen(false)} onOpenChat={(id) => void openChatById(id)} /></Suspense> : null}
       {settingsOpen ? (
         <Suspense fallback={<Loader label="Opening settings…" overlay />}>
         <SettingsDialog

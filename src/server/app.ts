@@ -58,6 +58,7 @@ import {
   savedPromptSchema,
   sessionMarkSchema,
   routineSchema,
+  routineRunsQuerySchema,
   sessionBulkMarkSchema,
   sessionOrderSchema,
   pushSubscriptionSchema,
@@ -125,6 +126,7 @@ import { SessionOrder } from "./session-order.js";
 import { checkoutOf } from "./checkouts.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { Routines } from "./routines.js";
+import { RoutineRuns } from "./routine-runs.js";
 import { ReviewProblem, ReviewThreads } from "./review-threads.js";
 import { SecondOpinions, reportExcerpt } from "./second-opinions.js";
 import { attributionSnapshot } from "./attribution.js";
@@ -198,6 +200,8 @@ export interface AppDeps {
   prompts?: SavedPrompts;
   /** Scheduled runs; in memory when absent. */
   routines?: Routines;
+  /** Routines' run history (a run's verdict, and the sessions it opened); in memory when absent. */
+  routineRuns?: RoutineRuns;
   /** Subscription limits; in memory when absent. */
   limits?: Limits;
   /** Notes and Web Push for devices that turned notifications on; in memory when absent. */
@@ -280,6 +284,12 @@ export function createApp(deps: AppDeps) {
   const order = deps.order ?? SessionOrder.inMemory();
   const prompts = deps.prompts ?? SavedPrompts.inMemory();
   const routines = deps.routines ?? Routines.inMemory();
+  const routineRuns = deps.routineRuns ?? RoutineRuns.inMemory();
+  /**
+   * Whether a session was opened by a routine: not the user's chat, so the session lists
+   * leave it out (Usage still counts it) and only a run with something to say is a note.
+   */
+  const routineSession = (harnessId: string, nativeId: string): boolean => routineRuns.ownsSession(`${harnessId}:${nativeId}`);
   const limits = deps.limits ?? Limits.inMemory(registry);
   manager.onLimits = (account) => limits.report(account);
   const notifier = deps.notifier ?? Notifier.inMemory();
@@ -296,6 +306,9 @@ export function createApp(deps: AppDeps) {
     // orchestrator wakes the parent with it. An ask (a question or an approval) still reaches the
     // user, who is the only one who can answer it.
     if (chat.lineage !== undefined && kind !== "ask") return;
+    // A routine's run is the routine's news: one note when the run ends with something to
+    // say (routine-runner.ts posts it), not one per finished turn of a chat nobody opened.
+    if (chat.sessionId && routineRuns.ownsSession(chat.sessionId) && kind !== "ask") return;
     // The user already watches this chat on some connected client, visibly focused: the note would reach for a screen it is on.
     if (presence.viewed({ chatId: chat.chatId })) return;
     // An approval's note carries its two answers, so the notification's own buttons can send one.
@@ -1013,7 +1026,7 @@ export function createApp(deps: AppDeps) {
   // Usage across sessions (usage-report.ts): the sidebar's sessions' calls, read from the harnesses' files.
   app.get("/api/usage", async (req, res) => {
     const { days, tz, refresh } = usageReportSchema.parse(req.query);
-    const overview = await listSessions(null);
+    const overview = await listSessions(null, true);
     const byId = new Map(overview.workspaces.map((w) => [w.id, w]));
     const unreadable = new Set<string>();
     const targets: UsageTarget[] = overview.sessions.map((session) => {
@@ -1104,7 +1117,7 @@ export function createApp(deps: AppDeps) {
     const problem = adapter.workspaceProblem(ws.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
     // Rooms' and side threads' sessions are theirs: neither belongs in a picker of ordinary chats.
-    const native = (await adapter.listSessions(ws.path)).filter((s) => !deps.boards?.ownsNativeSession(adapter.id, s.nativeId) && !manager.liveChatFor(adapter.id, s.nativeId)?.side);
+    const native = (await adapter.listSessions(ws.path)).filter((s) => !deps.boards?.ownsNativeSession(adapter.id, s.nativeId) && !manager.liveChatFor(adapter.id, s.nativeId)?.side && !routineSession(adapter.id, s.nativeId));
     const seen = new Set<string>();
     const sessions: SessionSummary[] = native.map((s) => {
       seen.add(s.nativeId);
@@ -1114,6 +1127,7 @@ export function createApp(deps: AppDeps) {
     // Live chats whose session the harness has not persisted yet.
     for (const chat of manager.list()) {
       if (chat.owner || chat.side || chat.harnessId !== adapter.id || chat.workspace.id !== ws.id || chat.status === "disposed") continue;
+      if (routineRuns.ownsChat(chat.chatId)) continue;
       if (chat.nativeId && seen.has(chat.nativeId)) continue;
       sessions.unshift({
         id: chat.sessionId ?? `${adapter.id}:live-${chat.chatId}`,
@@ -1214,7 +1228,11 @@ export function createApp(deps: AppDeps) {
   // The sidebar's list: each harness's newest sessions across projects, every
   // session of the current project (`?path=`), and live chats not saved yet.
   // Projects outside WORKSPACE_ROOTS, or that a harness cannot open, are left out.
-  const listSessions = async (path: string | null): Promise<SessionsOverview> => {
+  // `includeRoutine` is for Usage, which counts the tokens a routine's run spent; the
+  // sidebar asks without it, because a routine's session is not the user's chat.
+  const listSessions = async (path: string | null, includeRoutine = false): Promise<SessionsOverview> => {
+    /** A routine's own session: hidden from the user's list, still counted in usage. */
+    const routineOwned = (harnessId: string, nativeId: string) => !includeRoutine && routineRuns.ownsSession(`${harnessId}:${nativeId}`);
     const resolved = new Map<string, Promise<WorkspaceInfo | null>>();
     const workspaceFor = (cwd: string) => {
       let ws = resolved.get(cwd);
@@ -1243,9 +1261,9 @@ export function createApp(deps: AppDeps) {
       adapters.map(async (adapter) => {
         try {
           const here = current && !adapter.workspaceProblem(current.path) ? await adapter.listSessions(current.path) : [];
-          if (current) for (const s of here) if (!deps.boards?.ownsNativeSession(adapter.id, s.nativeId)) add(adapter, s, current);
+          if (current) for (const s of here) if (!deps.boards?.ownsNativeSession(adapter.id, s.nativeId) && !routineOwned(adapter.id, s.nativeId)) add(adapter, s, current);
           for (const s of await adapter.listRecentSessions(RECENT_SESSIONS_PER_HARNESS)) {
-            if (deps.boards?.ownsNativeSession(adapter.id, s.nativeId)) continue;
+            if (deps.boards?.ownsNativeSession(adapter.id, s.nativeId) || routineOwned(adapter.id, s.nativeId)) continue;
             const ws = await workspaceFor(s.cwd);
             if (ws && !adapter.workspaceProblem(ws.path)) add(adapter, s, ws);
           }
@@ -1256,6 +1274,8 @@ export function createApp(deps: AppDeps) {
     );
     for (const chat of manager.list()) {
       if (chat.owner || chat.side || chat.status === "disposed") continue;
+      if (routineRuns.ownsChat(chat.chatId)) continue;
+      if (chat.nativeId && routineOwned(chat.harnessId, chat.nativeId)) continue;
       const id = chat.sessionId ?? `${chat.harnessId}:live-${chat.chatId}`;
       if (sessions.has(id)) continue;
       projects.set(chat.workspace.id, chat.workspace);
@@ -1412,6 +1432,16 @@ export function createApp(deps: AppDeps) {
   app.get("/api/routines", (_req, res) => {
     res.json({ routines: routines.all() });
   });
+  // A routine's run history, newest first: what each run came to, and the chat it opened
+  // while this process still has it (the session it opened is not in the session lists).
+  app.get("/api/routines/runs", (req, res) => {
+    const { routineId, limit } = routineRunsQuerySchema.parse(req.query);
+    const runs = routineRuns.list(routineId, limit).map((run) => ({
+      ...run,
+      chatId: run.chatId && manager.peek(run.chatId) ? run.chatId : null,
+    }));
+    res.json({ runs });
+  });
   app.put("/api/routines", async (req, res) => {
     const input = body(routineSchema, req);
     await workspaces.get(input.workspaceId);
@@ -1424,6 +1454,7 @@ export function createApp(deps: AppDeps) {
   });
   app.delete("/api/routines/:id", async (req, res) => {
     if (!(await routines.remove(req.params.id))) throw new ChatError(404, "no_routine", "No such routine");
+    await routineRuns.forget(req.params.id);
     res.json({ ok: true });
   });
 

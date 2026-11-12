@@ -1290,6 +1290,13 @@ export const routineCadenceSchema = z.discriminatedUnion("kind", [
 export const MAX_PRECHECK_CHARS = 500;
 /** Why the last slot was skipped or failed, as the list shows it. */
 export const MAX_RUN_DETAIL_CHARS = 300;
+/** How many runs of a routine's history one read asks for. */
+export const MAX_RUNS_READ = 100;
+/** `GET /api/routines/runs`: one routine's history, or every routine's, newest first. */
+export const routineRunsQuerySchema = z.object({
+  routineId: z.string().min(1).max(64).optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_RUNS_READ).default(20),
+});
 
 /** What the Routines dialog saves: a prompt on a cadence, in a project, on a harness. */
 export const routineSchema = z.object({
@@ -1307,8 +1314,12 @@ export const routineSchema = z.object({
 // schema on parse, so a caller need not spell out the defaults.
 export type RoutineInput = z.input<typeof routineSchema>;
 
-/** How a routine's last due slot ended: a chat started, a precheck skipped it, or the start threw. */
-export type RoutineOutcome = "launched" | "skipped" | "failed";
+/**
+ * How a routine's run ended, in the order it becomes known: "launched" while its chat
+ * runs, then "posted" (the agent had something to say) or "quiet" (nothing worth a
+ * note), or "failed"; a precheck that said "nothing to do" skips it.
+ */
+export type RoutineOutcome = "launched" | "skipped" | "failed" | "posted" | "quiet";
 
 /** A saved routine: its input, plus the id, the times, and the last outcome the server keeps. */
 export interface Routine extends Omit<RoutineInput, "enabled" | "precheck"> {
@@ -1321,6 +1332,28 @@ export interface Routine extends Omit<RoutineInput, "enabled" | "precheck"> {
   lastRunOutcome: RoutineOutcome | null;
   /** The exit code or reason behind a skip, bounded; null when there is nothing to say. */
   lastRunDetail: string | null;
+}
+
+/**
+ * One run of a routine: the record the list keeps so a run can be read after its chat is
+ * gone (and so the session it opened is recognized as the routine's, not the user's).
+ * Written when the run starts (outcome "launched") and again when it ends.
+ */
+export interface RoutineRun {
+  id: string;
+  routineId: string;
+  /** The routine's name when it ran, for a record read after the routine was deleted. */
+  name: string;
+  startedAt: number;
+  /** Null while the run is going. */
+  endedAt: number | null;
+  outcome: RoutineOutcome;
+  /** What was said, or why it skipped or failed: one bounded line. */
+  detail: string | null;
+  /** The chat the run opened, while this process has it live. */
+  chatId: string | null;
+  /** `harness:native` once the harness assigned one: what hides it from the session list. */
+  sessionId: string | null;
 }
 
 export interface FileView {

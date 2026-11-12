@@ -1,5 +1,9 @@
-// The routines routes: the dialog's reads and writes, validated against real projects.
+// The routines routes: the dialog's reads and writes, validated against real projects,
+// and the run history a routine's quiet runs leave (their sessions are not the user's).
 import { afterEach, describe, expect, it } from "vitest";
+import type { Routine, RoutineRun, WorkspaceInfo } from "../../src/shared/protocol.js";
+import { runRoutine } from "../../src/server/routine-runner.js";
+import { RoutineRuns } from "../../src/server/routine-runs.js";
 import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
 
 let t: TestApp | null = null;
@@ -7,6 +11,14 @@ afterEach(async () => {
   await t?.close();
   t = null;
 });
+
+async function until(check: () => boolean, ms = 10_000) {
+  const start = Date.now();
+  while (!check()) {
+    if (Date.now() - start > ms) throw new Error("timed out");
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 async function setUp() {
   t = await makeTestApp();
@@ -41,6 +53,35 @@ describe("the routines routes", () => {
     expect((await agent.put("/api/routines").send(body({ cadence: { kind: "daily", hour: 24, minute: 0 } }))).status).toBe(400);
     expect((await agent.put("/api/routines").send(body({ workspaceId: "no-such-project" }))).status).toBe(404);
     expect((await agent.put("/api/routines").send(body({ harnessId: "nope" }))).status).toBe(404);
+  });
+
+  it("lists a routine's runs, and leaves the sessions they opened out of the user's list", async () => {
+    const routineRuns = RoutineRuns.inMemory();
+    t = await makeTestApp({ routineRuns });
+    const agent = await signedIn(t);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body as WorkspaceInfo;
+    const created = (await agent.put("/api/routines").send({ name: "Nightly review", prompt: "Review today", harnessId: "fake", workspaceId: ws.id, cadence: { kind: "daily", hour: 9, minute: 0 } }).expect(200)).body as Routine;
+
+    // The timer's own call, driven here so the test does not wait for a clock.
+    await runRoutine(created, ws, t.fake, t.manager, { runs: routineRuns });
+    await until(() => routineRuns.list(created.id)[0]?.endedAt !== null);
+
+    const history = (await agent.get(`/api/routines/runs?routineId=${created.id}`).expect(200)).body as { runs: RoutineRun[] };
+    expect(history.runs).toHaveLength(1);
+    expect(history.runs[0]).toMatchObject({ routineId: created.id, name: "Nightly review", outcome: "posted" });
+    expect(history.runs[0]?.chatId).toBeTruthy();
+    // Every routine's, when none is named; and the limit is bounded by the schema.
+    expect(((await agent.get("/api/routines/runs").expect(200)).body as { runs: RoutineRun[] }).runs).toHaveLength(1);
+    expect((await agent.get("/api/routines/runs?limit=1000")).status).toBe(400);
+
+    // The run's chat is the routine's, not a chat of the user's: the session list leaves it out.
+    const sessions = (await agent.get("/api/sessions").expect(200)).body as { sessions: Array<{ id: string; liveChatId?: string }> };
+    expect(sessions.sessions.map((s) => s.liveChatId)).not.toContain(history.runs[0]?.chatId);
+    expect(sessions.sessions.map((s) => s.id)).not.toContain(history.runs[0]?.sessionId);
+
+    // Deleting the routine forgets its runs (and stops hiding their sessions).
+    await agent.delete(`/api/routines/${created.id}`).expect(200);
+    expect(((await agent.get("/api/routines/runs").expect(200)).body as { runs: RoutineRun[] }).runs).toEqual([]);
   });
 
   it("keeps a precheck, and refuses one longer than a command line", async () => {

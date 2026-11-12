@@ -32,6 +32,7 @@ import { AgentStatuses } from "./agent-status.js";
 import { ProjectConfigTrust } from "./project-config.js";
 import { TerminalManager } from "./terminal.js";
 import { Routines } from "./routines.js";
+import { RoutineRuns } from "./routine-runs.js";
 import { startDue } from "./routines-timer.js";
 import { runRoutine } from "./routine-runner.js";
 import { SessionOrder } from "./session-order.js";
@@ -203,6 +204,7 @@ async function main(): Promise<void> {
   const agentStatuses = await AgentStatuses.open(path.join(config.stateDir, "agent-status.json"));
   const projectConfigTrust = await ProjectConfigTrust.open(path.join(config.stateDir, "project-config-trust.json"));
   const routines = await Routines.open(config.stateDir);
+  const routineRuns = await RoutineRuns.open(config.stateDir);
 
   // Scheduled runs: every 30 seconds, start whatever is due. The store claims a
   // routine before it starts, so overlapping ticks cannot run one twice; a failure
@@ -213,7 +215,13 @@ async function main(): Promise<void> {
       async (routine) => {
         const adapter = registry.get(routine.harnessId);
         if (!adapter) throw new Error(`no ${routine.harnessId} adapter`);
-        const ran = await runRoutine(routine, await workspaces.get(routine.workspaceId), adapter, manager);
+        // A run is quiet: its chat is the routine's, and only a run that ends with something
+        // to say posts a note (its verdict and its session are kept in routine-runs.json).
+        const ran = await runRoutine(routine, await workspaces.get(routine.workspaceId), adapter, manager, {
+          runs: routineRuns,
+          markOutcome: (id, outcome, detail) => routines.markOutcome(id, outcome, detail),
+          post: (r, chat, text) => notifier.notify({ kind: "done", chatId: chat.chatId, sessionId: chat.sessionId, title: r.name, body: text }),
+        });
         if (ran.chat) {
           // Where the session came from, once the harness has assigned one: the sidebar's
           // hide toggle needs it after this process is gone, and no client can set it.
@@ -277,6 +285,7 @@ async function main(): Promise<void> {
     agentStatuses,
     projectConfigTrust,
     routines,
+    routineRuns,
     order,
     prompts,
     reviewThreads,
