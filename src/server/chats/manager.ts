@@ -93,6 +93,11 @@ export class ChatManager {
     return chat;
   }
 
+  /** The live chat, or undefined when it was closed: for callers that record a chat they do not own (a race's members). */
+  peek(chatId: string): Chat | undefined {
+    return this.chats.get(chatId);
+  }
+
   /** The chat whose child was spawned with this render token, when one is live. */
   chatForRenderToken(token: string): Chat | undefined {
     for (const chat of this.chats.values()) {

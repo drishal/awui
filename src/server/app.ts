@@ -122,6 +122,7 @@ import { writeProjectFile } from "./project-upload.js";
 import { UsageReader, type UsageTarget } from "./usage-report.js";
 import { Checkpoints } from "./checkpoints.js";
 import { gitFileDiff, gitStatus } from "./git-status.js";
+import { git } from "./git.js";
 import { commitStaged, GitActionError, stageFiles, unstageFiles } from "./git-actions.js";
 import { runCommand } from "./run-command.js";
 import { shellLine } from "./shell-line.js";
@@ -131,6 +132,7 @@ import { ModelCatalog } from "./model-catalog.js";
 import { overviewEvents } from "./overview-events.js";
 import type { TerminalManager } from "./terminal.js";
 import { ManagedWorktrees, worktreeProblem, type WorktreeInfo } from "./worktrees.js";
+import { Races, raceChatsFor, type RaceRecord } from "./races.js";
 import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest } from "./github.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
 import { Orchestrator } from "./orchestration/orchestrator.js";
@@ -164,6 +166,8 @@ export interface AppDeps {
   marks?: SessionMarks;
   /** Review threads (comments on diff lines); in memory when absent. */
   reviewThreads?: ReviewThreads;
+  /** Comparisons of one prompt in several worktree chats; in memory when absent. */
+  races?: Races;
   /** Hand-made session orders; in memory when absent. */
   order?: SessionOrder;
   /** Saved prompts, for every device; in memory when absent (tests). */
@@ -241,6 +245,7 @@ export function createApp(deps: AppDeps) {
   const { registry, manager, workspaces, security, theme } = deps;
   const marks = deps.marks ?? SessionMarks.inMemory();
   const reviewThreads = deps.reviewThreads ?? ReviewThreads.inMemory();
+  const races = deps.races ?? Races.inMemory(raceChatsFor(manager));
   const order = deps.order ?? SessionOrder.inMemory();
   const prompts = deps.prompts ?? SavedPrompts.inMemory();
   const routines = deps.routines ?? Routines.inMemory();
@@ -679,6 +684,25 @@ export function createApp(deps: AppDeps) {
     res.json({ ok: true });
   });
 
+  // Races (races.ts): the group a comparison starts, what git says about each member,
+  // and the two things it may do — copy the winner's changes in, or remove a loser
+  // git agrees to drop. Every route re-validates the project through workspaces.get().
+  const raceOf = (id: string): RaceRecord => {
+    const race = races.get(id);
+    if (!race) throw new ChatError(404, "no_race", "No such comparison; it may have been pruned");
+    return race;
+  };
+  app.get("/api/races", async (_req, res) => {
+    // The record and each member's live status: no git per row, so fifty of them stay one cheap call.
+    res.json({ races: await Promise.all(races.list().map((race) => races.view(race))) });
+  });
+  app.get("/api/races/:id", async (req, res) => {
+    const race = raceOf(req.params.id);
+    // A project that was closed or moved is not this race's to read: the record's bare view still answers.
+    const project = await workspaces.get(race.workspaceId).then((ws) => ({ root: ws.path, ws, trees })).catch(() => undefined);
+    res.json(await races.view(race, project));
+  });
+
   // Backend previews are requested by a signed-in contributor of an owning chat.
   // No free-form URL is accepted and external network is blocked in the renderer.
   app.post("/api/chats/:id/html-render/:renderId/preview", async (req, res) => {
@@ -810,6 +834,8 @@ export function createApp(deps: AppDeps) {
       return { choice, adapter, slug: `${input.name.slice(0, Math.max(1, 63 - suffix.length))}-${suffix}`.slice(0, 64) };
     });
     const results: Array<{ harnessId: string; tree: WorktreeInfo | null; workspace: WorkspaceInfo | null; chat?: Chat; error?: string }> = [];
+    /** The started members, in the order they started: what the comparison's record keeps. */
+    const members: RaceRecord["members"] = [];
     for (const { choice, adapter, slug } of planned) {
       let tree: WorktreeInfo | null = null;
       let ws: WorkspaceInfo | null = null;
@@ -817,16 +843,28 @@ export function createApp(deps: AppDeps) {
         tree = await trees.create(parent, slug, input.base).catch((error: unknown) => {
           throw worktreeProblem(error) ?? error;
         });
+        // The fork point is the base as a commit, resolved in the project: the ref every
+        // member of one comparison shares, so counts and an apply have one exact point.
+        const fork = await git(["rev-parse", "--verify", "--end-of-options", `${tree.base}^{commit}`], { cwd: parent.path }).then((sha) => sha.trim()).catch(() => "");
         ws = await workspaces.open(tree.path);
         const chat = await manager.create(adapter, ws);
         if (choice.model) await chat.setConfig({ model: choice.model });
         await chat.send(input.prompt, "normal");
         results.push({ harnessId: choice.harnessId, tree, workspace: ws, chat });
+        members.push({ chatId: chat.chatId, worktreeId: tree.id, worktree: path.basename(tree.path), path: tree.path, branch: tree.branch, harnessId: choice.harnessId, startedAt: Date.now(), ...(choice.model ? { model: choice.model } : {}), fork });
       } catch (error) {
         results.push({ harnessId: choice.harnessId, tree, workspace: ws, error: errorMessage(error) });
       }
     }
-    res.status(201).json({ results: results.map(({ harnessId, tree, workspace, chat, error }) => ({ harnessId, tree, workspace, snapshot: chat?.snapshot() ?? null, error })) });
+    // The record is best-effort: the started chats are the answer, so a state-folder
+    // failure must not turn a useful fan-out into an error that orphans them.
+    const raceId = members.length > 0
+      ? await races.create({ workspaceId: parent.id, workspacePath: parent.path, workspaceName: parent.name, prompt: input.prompt, base: input.base, members }).then((race) => race.id).catch((error: unknown) => {
+          log(`race: could not record the comparison: ${errorMessage(error)}`);
+          return null;
+        })
+      : null;
+    res.status(201).json({ raceId, results: results.map(({ harnessId, tree, workspace, chat, error }) => ({ harnessId, tree, workspace, snapshot: chat?.snapshot() ?? null, error })) });
   });
 
   // Usage across sessions (usage-report.ts): the sidebar's sessions' calls, read from the harnesses' files.

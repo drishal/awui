@@ -32,6 +32,7 @@ import { runRoutine } from "./routine-runner.js";
 import { SessionOrder } from "./session-order.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { ReviewThreads } from "./review-threads.js";
+import { Races, raceChatsFor } from "./races.js";
 import { Limits } from "./limits.js";
 import { Notifier, roomPushNote } from "./notify.js";
 import { PresenceTable } from "./presence.js";
@@ -222,6 +223,7 @@ async function main(): Promise<void> {
   const order = await SessionOrder.open(config.stateDir);
   const prompts = await SavedPrompts.open(config.stateDir);
   const reviewThreads = await ReviewThreads.open(config.stateDir);
+  const races = await Races.open(config.stateDir, raceChatsFor(manager));
   const limits = await Limits.open(registry, config.stateDir);
   limits.warm();
   const notifier = await Notifier.open(config.stateDir, (m) => console.error(`awui: ${m}`));
@@ -262,6 +264,7 @@ async function main(): Promise<void> {
     order,
     prompts,
     reviewThreads,
+    races,
     limits,
     notifier,
     presence,

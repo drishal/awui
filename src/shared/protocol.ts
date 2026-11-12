@@ -145,6 +145,61 @@ export interface WorktreeSeedReport {
 /** One created worktree together with what was seeded into it (the create response only). */
 export type WorktreeCreated = WorktreeInfo & { seeded: WorktreeSeedReport };
 
+/** How a race member stands: its chat's live run, or closed once that chat was closed. */
+export type RaceMemberStatus = "running" | "settled" | "failed" | "closed";
+
+/** One file's line counts against a race's fork point, as `git diff --numstat` reads them. */
+export interface RaceFile {
+  /** Relative to the member's worktree. */
+  path: string;
+  added: number;
+  removed: number;
+  /** Git counts no lines for a binary file. */
+  binary: boolean;
+}
+
+/**
+ * One agent's chat in a race: its worktree, its branch, and what it changed. The
+ * counts, files, uncommitted work and unmerged commits cost git runs, so only the
+ * race's own view carries them; the list keeps to the record and the live chats.
+ */
+export interface RaceMemberView {
+  chatId: string;
+  harnessId: string;
+  model: string | null;
+  branch: string;
+  /** The worktree's folder name; the project's paths never leave the server. */
+  worktree: string;
+  startedAt: number;
+  status: RaceMemberStatus;
+  winner: boolean;
+  /** Against the fork point, over its tracked files (committed or not). */
+  added?: number;
+  removed?: number;
+  files?: RaceFile[];
+  /** The last answer's opening words (300 characters), when its chat is open. */
+  answer?: string | null;
+  /** Uncommitted work: cleanup skips it rather than deleting it. */
+  dirty?: boolean;
+  /** Commits its branch has that the reference branch does not: `git branch -d` would refuse. */
+  unmerged?: number;
+}
+
+/** One prompt sent to several worktree chats, and where the comparison stands. */
+export interface RaceSummary {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  prompt: string;
+  base: string;
+  createdAt: number;
+  winnerChatId: string | null;
+  /** When a cleanup removed what it could; absent until then. */
+  cleanedAt: number | null;
+  members: RaceMemberView[];
+}
+
+
 /** A project folder's place in its git repository, for the order of the sidebar's projects. */
 export interface Checkout {
   /** Opaque, and the same for every worktree of one repository. */
