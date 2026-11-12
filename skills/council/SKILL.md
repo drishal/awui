@@ -16,10 +16,12 @@ so and stop: there is no council without delegation.
 
 ## 1. Choose the seats
 
-Call `list_profiles` with no arguments. Pick three entries whose `provider` fields are distinct —
-different families, not three models from one vendor. A saved bot profile (`source: "bot"`) is a
-good seat when its harness and model fit; otherwise use a `source: "harness"` entry with an
-explicit `model`. Skip entries with `available: false`.
+Call `list_profiles` with no arguments. Pick three seats from three different model families, not
+three models from one vendor. A saved bot profile (`source: "bot"`) is a good seat when its harness
+and model fit: its `provider` field names the family. A `source: "harness"` entry has no model or
+provider of its own (both are null): choose a `model` for it yourself, spelled as that harness
+spells it (`provider/id`), and the part before the slash is the family. Skip entries with
+`available: false`.
 
 If fewer than three distinct providers exist, seat one reviewer per provider and say in the
 report how many sat: a council of two is still a council, a council of one is an advisor.
