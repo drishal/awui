@@ -86,14 +86,22 @@ describe("claude adapter (scripted CLI)", () => {
     const live = await adapter.openChat({ cwd: project, toolEnv: tokens });
     open.push(live);
     const args = recorded("args").at(-1) as string[];
-    const config = JSON.parse(args[args.indexOf("--mcp-config") + 1] ?? "{}") as { mcpServers: Record<string, { args: string[]; env: Record<string, string> }> };
+    const config = JSON.parse(args[args.indexOf("--mcp-config") + 1] ?? "{}") as { mcpServers: Record<string, Record<string, unknown>> };
     expect(Object.keys(config.mcpServers)).toEqual(["awui", "awui-orchestrate"]);
-    expect(config.mcpServers["awui-orchestrate"]).toEqual({
+    // render_html is still a stdio child awui starts; the orchestration tools come over HTTP from
+    // awui itself, and the header names the chat's token by reference so it never sits in `ps`.
+    expect(config.mcpServers["awui"]).toMatchObject({
       type: "stdio",
       command: process.execPath,
-      args: [path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs")],
-      env: { AWUI_ORCH_URL: tokens.AWUI_ORCH_URL, AWUI_ORCH_TOKEN: tokens.AWUI_ORCH_TOKEN },
+      args: [path.join(import.meta.dirname, "..", "..", "extensions", "render-html-mcp.mjs")],
     });
+    expect(config.mcpServers["awui-orchestrate"]).toEqual({
+      type: "http",
+      url: `${tokens.AWUI_ORCH_URL}/mcp`,
+      headers: { Authorization: "Bearer ${AWUI_ORCH_TOKEN}" },
+    });
+    // The CLI expands that reference from the environment it is started with.
+    expect(recorded("env").at(-1)).toMatchObject({ AWUI_ORCH_TOKEN: tokens.AWUI_ORCH_TOKEN, AWUI_ORCH_URL: tokens.AWUI_ORCH_URL });
     // Both families are allowed without a prompt: one comma-separated argument, as the CLI documents it.
     const allowed = (args[args.indexOf("--allowedTools") + 1] ?? "").split(",");
     expect(allowed).toContain("mcp__awui__render_html");

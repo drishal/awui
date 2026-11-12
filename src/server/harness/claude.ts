@@ -46,7 +46,7 @@ import {
 import { claudeTaskReport } from "./jobs.js";
 import { claudeLimits, claudeUsageLimits } from "./limits.js";
 import { promptCacheExpiresAt, promptCacheTtlMs } from "./prompt-cache.js";
-import { orchestrateMcpServer, ORCH_MCP_SERVER, renderHtmlMcpServer } from "./render-extension.js";
+import { ORCH_MCP_SERVER, renderHtmlMcpServer } from "./render-extension.js";
 import { orchestrationMcpToolNames } from "./render-token.js";
 import { HTML_RENDER_MCP_SERVER, HTML_RENDER_MCP_TOOL, splitRenderMarker } from "./render-token.js";
 import { versionLabel } from "./version.js";
@@ -81,11 +81,15 @@ const USAGE_PROBE_ARGS = ["--no-session-persistence", "--strict-mcp-config", "--
  * starts), and permission prompts answered over stdio by this host.
  */
 /**
+/**
  * The CLI arguments that give a chat awui's tools: its MCP servers (render_html,
- * and the orchestration tools when the chat has a token), started with that
+ * and the orchestration tools when the chat has a token), pointed at that
  * chat's endpoints (the user's own MCP servers still load), and those tools
  * allowed without a prompt, since they only publish a page into this chat or
- * delegate work from it. None without a server's file or its token.
+ * delegate work from it. render_html is a stdio child; the orchestration tools
+ * come over HTTP from awui itself, so the token is a reference to this child's
+ * own `AWUI_ORCH_TOKEN` rather than a value on the command line. None without
+ * the server's file, or that family's token.
  */
 function toolsMcpArgs(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
   // The CLI runs on Node; a compiled awui binary is not one, so then the Node on PATH runs the server.
@@ -97,9 +101,10 @@ function toolsMcpArgs(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
     servers[HTML_RENDER_MCP_SERVER] = { type: "stdio", command: node, args: [render], env: { AWUI_RENDER_URL: toolEnv.AWUI_RENDER_URL, AWUI_RENDER_TOKEN: toolEnv.AWUI_RENDER_TOKEN } };
     allowed.push(HTML_RENDER_MCP_TOOL);
   }
-  const orchestrate = orchestrateMcpServer();
-  if (orchestrate && toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
-    servers[ORCH_MCP_SERVER] = { type: "stdio", command: node, args: [orchestrate], env: { AWUI_ORCH_URL: toolEnv.AWUI_ORCH_URL, AWUI_ORCH_TOKEN: toolEnv.AWUI_ORCH_TOKEN } };
+  if (toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
+    // The header's value is a reference, not the token: the CLI expands `${VAR}` from the child's
+    // own environment (in a URL and a header value), so no credential appears in `ps`.
+    servers[ORCH_MCP_SERVER] = { type: "http", url: `${toolEnv.AWUI_ORCH_URL}/mcp`, headers: { Authorization: "Bearer ${AWUI_ORCH_TOKEN}" } };
     allowed.push(...orchestrationMcpToolNames());
   }
   if (Object.keys(servers).length === 0) return [];
@@ -407,12 +412,15 @@ class ClaudeLiveChat implements LiveChat {
   }
 
   /**
-   * The child's environment. A delegated child is its own session, so Claude Code would give it
-   * the main conversation's cache lifetime; with `claude.subagent_prompt_cache_ttl` set it follows
-   * a native subagent's instead. A value already in the environment wins, as it does in the CLI.
+   * The child's environment: awui's own, plus the chat's tool variables (`AWUI_ORCH_URL` and its
+   * token), because the MCP config names the token by reference and the CLI expands that from the
+   * environment it is started with. A delegated child is its own session, so Claude Code would
+   * give it the main conversation's cache lifetime; with `claude.subagent_prompt_cache_ttl` set it
+   * follows a native subagent's instead. The chat's tool variables go last: they belong to this
+   * chat, so nothing inherited from the server's own environment can displace them.
    */
   private childEnv(): NodeJS.ProcessEnv {
-    const env = this.adapter.childEnv();
+    const env = { ...this.adapter.childEnv(), ...this.toolEnv };
     const ttl = this.adapter.subagentPromptCacheTtl;
     if (!this.delegated || !ttl || env.CLAUDE_CODE_PROMPT_CACHE_TTL !== undefined) return env;
     return { ...env, CLAUDE_CODE_PROMPT_CACHE_TTL: ttl };
