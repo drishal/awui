@@ -106,7 +106,7 @@ harness has:
 | HTTP MCP server | Claude Code, Codex, DeepSeek Harness | the orchestration tools, served by awui itself at `POST /api/orchestration/mcp`: a `{"type":"http"}` server in Claude Code's `--mcp-config` with `Authorization: Bearer ${AWUI_ORCH_TOKEN}` (the CLI expands that reference from the child's environment), `mcp_servers.awui-orchestrate.url` + `bearer_token_env_var` on Codex's command line, and an ACP `mcpServers` entry with `type: "http"` for DSH when its handshake advertises `mcpCapabilities.http`. No child process, and no file for the user to edit: every one of the three is wired per chat, from what the adapter already passes |
 | ACP `mcpServers` | Grok Build | the same two servers as stdio entries on `session/new` **and** `session/load` (`GrokAdapter.mcpServers()`), each `{ type: "stdio", name, command, args, env: [{ name, value }] }` with a real Node from `nodeForMcpServers()` (a compiled awui is Bun). They load beside the user's own servers, per session; nothing is written to `~/.grok`, and no config file or plugin is used. Grok names an MCP tool `<server>__<tool>` (no `mcp__` prefix) and may route the call through its `use_tool` dispatcher naming that key; `grok-transcript.ts` renames awui's own servers' calls to `mcp__<server>__<tool>`, the spelling `render-token.ts` and `tool-sentence.ts` read, and shows the call's own arguments. A render result's `awui-html-render:` line becomes the page card, so `supportsHtmlRender` is declared. An MCP call raises its own approval card, like any other tool. A server still handshaking when the first prompt goes out is missing from that turn's catalog |
 | runtime MCP registration | OpenCode | two servers registered on its own shared server, one pair per chat, and taken off again when the chat closes: `awui-r-<id>` (`extensions/render-html-mcp.mjs`) and `awui-o-<id>` (`extensions/orchestrate-mcp.mjs`), each a `local` entry whose command is a Node running that bridge with the chat's two variables. Nothing is written to the user's OpenCode config (the user's own MCP servers keep loading), and because every OpenCode chat in one project shares that server and so one MCP set, each chat's session also carries permission rules: deny `awui-*`, then allow its own two, where the last match wins |
-| none | Hermes | its adapter mounts no MCP server for awui today, so they are left unwired rather than invented |
+| one entry in the harness's own config | Hermes | `awui mcp`, the same stdio bridge (`extensions/orchestrate-mcp.mjs`) run from awui's own binary, added once by the user through Hermes's own CLI (`hermes mcp add awui --command <awui> --env 'AWUI_ORCH_URL=${AWUI_ORCH_URL}' 'AWUI_ORCH_TOKEN=${AWUI_ORCH_TOKEN}' --args mcp`, printed by `awui setup mcp`). Hermes mounts MCP servers only from its config, and one gateway owns its whole profile, so awui cannot hand a single chat its two variables there yet: the entry sits inert (`initialize`, an empty `tools/list`, `ping`) until that changes, and no Hermes chat has awui's tools per chat today |
 
 Each family is injected only when the chat was given its own two variables (`AWUI_RENDER_URL`/
 `AWUI_RENDER_TOKEN`, `AWUI_ORCH_URL`/`AWUI_ORCH_TOKEN`), which `ChatManager` mints per chat
@@ -124,9 +124,28 @@ tools, not entries inside Code Mode's `execute`. These are OpenCode's experiment
 against OpenCode 2.2.7; an OpenCode without them costs only the tools — the chat runs on, and the
 server says why once, without a token.
 
+### What the user has to do, per harness
+
+`awui setup mcp` prints this (read-only; `--json` for scripts), and `awui doctor` carries a
+one-line verdict:
+
+| State | Harnesses | What it means |
+|---|---|---|
+| **Automatic** | Pi, omp, Claude Code, Codex, DeepSeek Harness, Grok Build, OpenCode — and the awui harness, which is read-only and gets `render_html` and `eval_python` instead | the adapter hands the chat its server as the chat starts; the user configures nothing, and no harness file is read or written |
+| **One-time setup** | Hermes | one entry in Hermes's own config, made through Hermes's own CLI; `awui setup mcp --apply` runs that command after asking, and an entry already there is never overwritten. It is inert outside awui, and — as the table above says — not yet wired per chat |
+| **Not available** | — | nothing today: every other adapter wires its own transport |
+
+A harness that is not installed is reported as such and gets no instruction. The entry names
+`awui mcp` (`src/server/mcp-bridge.ts`): from a checkout that is the repo's
+`extensions/orchestrate-mcp.mjs`, and in the binary its embedded source, so the one definition
+stays the file every other harness's MCP wiring already runs. Outside an awui chat it answers
+`initialize`, an empty `tools/list`, and `ping`, so a harness never reports it as a broken server.
+
 An MCP server awui hands a harness must arrive per chat, through the command line, the
-environment, or the session parameters the adapter already controls — never by writing to the
-user's own harness config (`~/.claude.json`, `~/.codex/config.toml`, `opencode.json`, …). Running
+environment, or the session parameters the adapter already controls — never by awui writing to the
+user's own harness config (`~/.claude.json`, `~/.codex/config.toml`, `opencode.json`, …). The one
+exception is the entry only the user can make, with that harness's own CLI, for a harness with no
+per-chat transport (Hermes): awui prints it, and `--apply` runs it, and neither edits the file. Running
 a chat through awui is enough, the user configures nothing, their own MCP servers still load
 beside awui's, and nothing awui passes may tell the CLI to ignore them (`--strict-mcp-config`
 belongs to the usage probe, which wants no servers at all, never to a chat's child).

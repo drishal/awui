@@ -44,10 +44,13 @@ parameter schemas come from `GET /tools` (or the catalogue served from it), so
 | a DSH build whose ACP does not advertise `mcpCapabilities.http` | the stdio MCP server (`awui-orchestrate`), as a fallback | `extensions/orchestrate-mcp.mjs` |
 | Grok Build | the same stdio MCP server, passed as an ACP stdio entry on `session/new` and `session/load`; Grok calls a tool as `<server>__<tool>` (or through its `use_tool` dispatcher), which the adapter renames to `mcp__awui-orchestrate__<tool>` for the card | `extensions/orchestrate-mcp.mjs` |
 | OpenCode | a second server registered at runtime on OpenCode's shared server, `awui-o-<id>`, beside the chat's `awui-r-<id>` render server; its session allows only the chat's own pair and denies every other chat's | `extensions/orchestrate-mcp.mjs` |
-| Hermes | not wired: it mounts no MCP server for awui today | — |
+| Hermes | not per chat yet: it mounts MCP servers only from its own config, so the user adds awui's bridge there once (`awui setup mcp`) | `extensions/orchestrate-mcp.mjs`, run as `awui mcp` |
 
-Nothing is installed into a user's harness config, and no adapter asks the user to add a server:
-the harness gets its own entry per chat, from what the adapter already passes. Claude Code reads a
+Nothing is installed into a user's harness config by awui, and no adapter asks the user to add a
+server: the harness gets its own entry per chat, from what the adapter already passes. The one
+harness without a per-chat transport is Hermes: one gateway owns its whole profile, so awui cannot
+put a chat's two variables in its environment, and `awui setup mcp` prints the single entry that
+harness's own CLI adds (inert until that changes). `awui doctor` says whether it is there. Claude Code reads a
 `{"type":"http","url","headers"}` server out of `--mcp-config` with
 `Authorization: Bearer ${AWUI_ORCH_TOKEN}` — a reference the CLI expands from the child's
 environment, which awui fills, so the token never sits in `ps`. Codex gets
@@ -170,8 +173,8 @@ awui offers them too. Grok Build gets that server too, as an ACP stdio entry on 
 Whether a client shows MCP prompts as commands is **unverified** except for Claude Code, which
 documents them; Codex, DSH, and Grok may only expose them programmatically. Pi and omp have a
 tools-only extension API and no prompt mechanism, OpenCode gets the prompts from that same
-server but shows them only where its own client does, and Hermes is not wired to awui's
-tools at all — there the skill is a file: ask the agent to read `skills/council/SKILL.md` and
+server but shows them only where its own client does, and Hermes has no tools of awui's in a
+chat yet — there the skill is a file: ask the agent to read `skills/council/SKILL.md` and
 follow it, or paste the text in. The file and the prompt are one source, so they cannot drift.
 
 ## Reading a child's chat

@@ -18,6 +18,7 @@ const healthy: DoctorInput = {
   remote: { exposed: false, credentials: false },
   herdr: { enabled: false, socket: "/h.sock", exists: false },
   orchestration: { enabled: true, maxChildrenPerChat: 4, maxDepth: 2, maxLiveTasks: 12, missingBridges: [] },
+  mcp: [{ harnessId: "pi", displayName: "Pi", installed: true, kind: "automatic", detail: "an `-e` extension loaded on the chat's command line", argv: [], existing: null }],
   windows: false,
   embedded: false,
 };
@@ -75,6 +76,17 @@ describe("doctor", () => {
     expect(missing.ok).toBe("warn");
     expect(missing.detail).toContain("extensions/orchestrate.ts");
     expect(render(evaluate({ ...healthy, orchestration: { ...healthy.orchestration, missingBridges: ["extensions/orchestrate.ts"] } }))).toContain("! Orchestration");
+  });
+
+  it("warns for a harness whose own config still needs awui's entry", () => {
+    expect(by(evaluate(healthy), "MCP tools")).toMatchObject({ ok: true, detail: "every installed harness gets awui's tools per chat" });
+    // Hermes is the one manual step, and doctor names where to read the command rather than repeat it.
+    const hermes = { harnessId: "hermes", displayName: "Hermes", installed: true, kind: "one-time" as const, detail: "Hermes mounts MCP servers only from its own config", argv: ["hermes", "mcp", "add", "awui"], existing: { verdict: "missing" as const, transport: null, reason: null } };
+    expect(by(evaluate({ ...healthy, mcp: [...healthy.mcp, hermes] }), "MCP tools")).toMatchObject({ ok: "warn", detail: "Hermes needs a one-time entry in its own config (`awui setup mcp` prints the command)" });
+    // Once it is there, and for a harness that is not installed, nothing is owed.
+    expect(by(evaluate({ ...healthy, mcp: [...healthy.mcp, { ...hermes, existing: { verdict: "ours" as const, transport: "awui mcp", reason: null } }] }), "MCP tools").ok).toBe(true);
+    expect(by(evaluate({ ...healthy, mcp: [...healthy.mcp, { ...hermes, installed: false }] }), "MCP tools").ok).toBe(true);
+    expect(render(evaluate({ ...healthy, mcp: [...healthy.mcp, hermes] }))).toContain("! MCP tools");
   });
   it("reports a config error and never a secret", () => {
     const checks = evaluate({ ...healthy, configError: "config.yml: port must be a number" });

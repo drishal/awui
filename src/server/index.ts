@@ -3,6 +3,7 @@ import { existsSync, promises as fs } from "node:fs";
 import http from "node:http";
 import type { Socket } from "node:net";
 import path from "node:path";
+import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { createApp, RECENT_SESSIONS_PER_HARNESS } from "./app.js";
 import { ChatManager } from "./chats/manager.js";
@@ -24,6 +25,7 @@ import { writeJson } from "./state-file.js";
 import { clientCommand, runClient } from "./clients.js";
 import { runDoctor } from "./doctor.js";
 import { runMcpBridge } from "./mcp-bridge.js";
+import { applyOneTimeSetup, gatherMcpSetup, renderSetup, setupJson, type ApplyResult } from "./mcp-setup.js";
 import { runHeadlessCli } from "./cli-run.js";
 import { SessionMarks } from "./session-marks.js";
 import { TerminalManager } from "./terminal.js";
@@ -371,6 +373,106 @@ async function main(): Promise<void> {
 }
 
 
+const MCP_SETUP_HELP = `awui setup mcp [--json] [--apply [harness]] [--yes]
+
+Prints how awui's own tools (render_html, delegate_task, …) reach each harness's
+chats: automatic, per chat, or one entry in the harness's own config.
+
+  --json             the same data, for scripts
+  --apply [harness]  run the one-time step with the harness's own command (today:
+                     Hermes), after asking; --yes answers the question for scripts
+  --yes, -y          do not ask, only with --apply
+  --help, -h         this help
+
+Nothing here edits a harness's config: --apply runs the command that harness itself
+provides, and an entry already there is never overwritten.`;
+
+/** Ask before running a one-time step; null means there is no terminal to ask on. */
+function askToRun(): (() => Promise<boolean>) | null {
+  if (!process.stdin.isTTY) return null;
+  return () =>
+    new Promise<boolean>((resolve) => {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      rl.question("Run it? [y/N] ", (answer) => {
+        rl.close();
+        resolve(/^y(es)?$/i.test(answer.trim()));
+      });
+    });
+}
+
+/**
+ * `awui setup mcp [--json] [--apply [harness]] [--yes]`: the per-harness report on how
+ * awui's own tools reach a chat, and with `--apply` the harness's own one-time command
+ * (today only Hermes has one). Read-only otherwise, and no model is called either way.
+ */
+async function runSetup(args: string[]): Promise<number> {
+  if (args[0] !== "mcp") {
+    console.error(`awui setup: expected \`mcp\`${args[0] ? `, not \`${args[0]}\`` : ""}\n\n${MCP_SETUP_HELP}`);
+    return 64;
+  }
+  let json = false;
+  let yes = false;
+  let apply = false;
+  let only: string | null = null;
+  const rest = args.slice(1);
+  for (let i = 0; i < rest.length; i++) {
+    const word = rest[i]!;
+    if (word === "--json") json = true;
+    else if (word === "--yes" || word === "-y") yes = true;
+    else if (word === "--help" || word === "-h") {
+      console.log(MCP_SETUP_HELP);
+      return 0;
+    } else if (word === "--apply") {
+      apply = true;
+      const next = rest[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        only = next;
+        i++;
+      }
+    } else {
+      console.error(`awui setup mcp: unknown option: ${word}\n\n${MCP_SETUP_HELP}`);
+      return 64;
+    }
+  }
+  let config;
+  try {
+    const settings = readUserConfig(configDir());
+    config = loadConfig({ ...(settings ? configEnv(settings.config) : {}), ...process.env }, settings?.config);
+  } catch (error) {
+    if (error instanceof ConfigError || error instanceof UserConfigError) {
+      console.error(`awui setup mcp: ${error.message}`);
+      return EXIT_CONFIG;
+    }
+    throw error;
+  }
+  const registry = HarnessRegistry.fromConfig(config);
+  const statuses = await registry.refreshStatus();
+  const report = await gatherMcpSetup({
+    harnesses: statuses.map((s) => ({ id: s.id, displayName: s.displayName, available: s.available })),
+    // The Hermes adapter's own command: config.yml's `harnesses.hermes.command`, else HERMES_BIN, else `hermes`.
+    hermesBin: registry.get("hermes")?.cliCommand ?? "hermes",
+  });
+  if (!apply) {
+    console.log(json ? setupJson(report) : renderSetup(report));
+    return 0;
+  }
+  const targets = report.entries.filter((entry) => entry.kind === "one-time" && entry.installed && (only === null || entry.harnessId === only));
+  if (only !== null && targets.length === 0) {
+    console.error(`awui setup mcp: ${only} needs no one-time setup here (or is not installed)`);
+    return 64;
+  }
+  if (targets.length === 0) {
+    console.log("Nothing to set up: every installed harness is given awui's tools per chat.");
+    return 0;
+  }
+  const ask = yes ? async () => true : askToRun();
+  const results: Array<ApplyResult & { harnessId: string }> = [];
+  for (const entry of targets) {
+    results.push({ harnessId: entry.harnessId, ...(await applyOneTimeSetup(entry, { log: (line) => console.log(line), ask })) });
+  }
+  if (json) console.log(JSON.stringify(results, null, 2));
+  return results.every((result) => result.ok) ? 0 : 1;
+}
 /** awui's CLI surface. Beyond the subcommands, a few flags; everything else is env or config.yml. */
 const HELP = `awui ${embeddedVersion ?? ""} — local web UI for coding agents
 
@@ -390,6 +492,7 @@ Usage:
   awui install service   Install the binary for autostart: ~/.local/bin (with atui) + systemd on Linux/macOS,
                          a logon Scheduled Task on Windows
                          [--link symlinks it instead of copying (POSIX only), for a dev checkout]
+  awui setup mcp         What each harness needs before awui's own tools reach its chats; --apply runs a one-time step
   awui mcp               awui's orchestration MCP server on stdio, for a harness config that names a program (Hermes)
 
 Flags:
@@ -451,6 +554,16 @@ if (client) {
     (code) => process.exit(code),
     (error: unknown) => {
       console.error(`awui: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    },
+  );
+} else if (args[0] === "setup") {
+  // `awui setup mcp`: what each harness needs before awui's own tools reach its chats.
+  // Read-only unless --apply, which runs the harness's own command after asking.
+  runSetup(args.slice(1)).then(
+    (code) => process.exit(code),
+    (error: unknown) => {
+      console.error(`awui setup: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     },
   );

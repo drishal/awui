@@ -15,6 +15,7 @@ import { IS_WINDOWS } from "./platform-win.js";
 import { orchestrateExtension } from "./harness/render-extension.js";
 import { Workspaces } from "./workspaces.js";
 import type { HarnessStatus } from "../shared/protocol.js";
+import { gatherMcpSetup, type McpSetupEntry } from "./mcp-setup.js";
 
 export interface Check {
   name: string;
@@ -45,6 +46,8 @@ export interface DoctorInput {
   herdr: { enabled: boolean; socket: string; exists: boolean };
   /** The delegation surface: its switch and caps, and the bridge files a chat's child would be given. */
   orchestration: { enabled: boolean; maxChildrenPerChat: number; maxDepth: number; maxLiveTasks: number; missingBridges: string[] };
+  /** How awui's own tools reach each harness's chats (`awui setup mcp` says the rest). */
+  mcp: McpSetupEntry[];
   /** Native Windows host: mode bits are not enforceable, so the state-folder mode is not a failure. */
   windows: boolean;
   /** This process is the compiled binary: the terminal clients are built in, so Bun is not needed for them. */
@@ -132,6 +135,11 @@ export function evaluate(i: DoctorInput): Check[] {
   if (!o.enabled) out.push({ name: "Orchestration", ok: true, detail: "off (orchestration.enabled is false in config.yml)" });
   else if (o.missingBridges.length > 0) out.push({ name: "Orchestration", ok: "warn", detail: `on, but ${o.missingBridges.join(" and ")} cannot be found, so the chats that load it get no tools` });
   else out.push({ name: "Orchestration", ok: true, detail: `on (max ${o.maxChildrenPerChat} children per chat, depth ${o.maxDepth}, ${o.maxLiveTasks} live tasks)` });
+  // The same tools, from the other end: whether each harness's chats can be given them at all.
+  // The instruction lives in `awui setup mcp`; here only the verdict and where to read more.
+  const manual = i.mcp.filter((entry) => entry.installed && entry.kind === "one-time" && entry.existing?.verdict !== "ours");
+  if (manual.length > 0) out.push({ name: "MCP tools", ok: "warn", detail: `${manual.map((entry) => entry.displayName).join(", ")} needs a one-time entry in its own config (\`awui setup mcp\` prints the command)` });
+  else out.push({ name: "MCP tools", ok: true, detail: "every installed harness gets awui's tools per chat" });
   return out;
 }
 
@@ -195,8 +203,12 @@ export async function gather(env: NodeJS.ProcessEnv = process.env): Promise<Doct
   const userConfig: UserConfig | undefined = settings?.config;
   let harnesses: DoctorInput["harnesses"] = [];
   let harnessError: string | null = null;
+  // The Hermes CLI its own adapter would run: config.yml's command, else HERMES_BIN, else `hermes`.
+  let hermesBin = "hermes";
   try {
-    harnesses = await HarnessRegistry.fromConfig(config).refreshStatus();
+    const registry = HarnessRegistry.fromConfig(config);
+    hermesBin = registry.get("hermes")?.cliCommand ?? hermesBin;
+    harnesses = await registry.refreshStatus();
   } catch (error) {
     harnessError = error instanceof Error ? error.message : String(error);
   }
@@ -226,6 +238,7 @@ export async function gather(env: NodeJS.ProcessEnv = process.env): Promise<Doct
     remote: { exposed, credentials: config.login !== null || existsSync(config.credentialsFile) },
     herdr: { enabled: herdrEnabled(userConfig, env), socket, exists: existsSync(socket) },
     orchestration: { ...config.orchestration, missingBridges: missingOrchestrationBridges() },
+    mcp: (await gatherMcpSetup({ harnesses: harnesses.map((h) => ({ id: h.id, displayName: h.displayName, available: h.available })), hermesBin, env })).entries,
     windows: IS_WINDOWS,
     embedded: isEmbedded,
   };

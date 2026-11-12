@@ -18,6 +18,7 @@ cp dist/bin/linux-x64/awui ~/.local/bin/awui   # macOS: dist/bin/darwin-arm64/aw
 awui                 # web UI + API on http://127.0.0.1:4783
 awui tui             # the terminal client (also `awui install tui` for an `atui` command)
 awui doctor          # check the setup (config, harnesses, state folder, port); --json for machines
+awui setup mcp       # how awui's own tools reach each harness; --apply runs a one-time step
 awui tern            # in a Tern pane: awui drawn natively by Tern
 ```
 

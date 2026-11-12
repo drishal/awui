@@ -52,6 +52,7 @@ Match the task to a guide before opening code:
 | `npm run test:atui` | Build, then `bun test tests/atui` (atui in OpenTUI's test renderer, and the Tern client against a stand-in Tern, both against a real server). |
 | `npm run desktop` | The optional desktop app from a checkout (`apps/desktop`, after `npm ci` there). It attaches to a running server or starts one; `npm run smoke` in that folder drives it under Playwright (needs a display or Xvfb). |
 | `awui doctor [--json]` | Checks config.yml, Node/Bun, each harness, workspace roots, the state folder's mode, the port, remote sign-in, herdr; prints ✓/!/✗ lines, exit 1 on a ✗ (`src/server/doctor.ts`). |
+| `awui setup mcp [--json] [--apply [harness]] [--yes]` | How awui's own tools reach each harness's chats (`src/server/mcp-setup.ts`); read-only unless `--apply`, which runs the harness's own command (Hermes's `mcp add`) after asking. |
 | `awui desktop` / `awui install desktop` | Start the optional Electron app (detached; it attaches to a running server) and link a built one as `awui-desktop` (`src/server/desktop-app.ts`). |
 | `awui tern` | The Tern client in a Tern pane (from a checkout: `bun --conditions=browser src/tern/main.ts`; Solid's default Bun build is its server one, where effects never run; the binary runs it built in). |
 | `npm run smoke` | Opt-in tests against the real installed harnesses. No model is called unless `SMOKE_MODEL` (and `SMOKE_CLAUDE_MODEL`, `SMOKE_GROK_MODEL`, `SMOKE_DSH_MODEL`) name one. |
@@ -73,7 +74,7 @@ src/shared/approval.ts        Which requests are plain approvals, and their Appr
 src/shared/review.ts         Review pins (a line's hash, following it through later edits) and the one prompt a batch of open threads becomes.
 src/server/
   index.ts                    Startup: config, state-folder migration, registry, routes, listen, shutdown. A running server
-                              writes server.json (port, pid) into the state folder for clients that have no port. Subcommands: `desktop`, `tui`, `tern`, `doctor`, `install tui|desktop|service`.
+                              writes server.json (port, pid) into the state folder for clients that have no port. Subcommands: `desktop`, `tui`, `tern`, `doctor`, `setup mcp`, `mcp`, `install tui|desktop|service`.
 
   app.ts                      Every route (Express 5), SSE, error mapping. All /api routes but health/login/logout need auth. POST /api/render additionally requires AWUI_RENDER_TOKEN; trusted /terminal-shell.html is a web entry that reuses those origin/message checks for the PTY iframe.
   embedded.ts                 The binary's baked-in assets: embedded web bundle, extension sources, version; materializes extensions into state dir for `-e`.
@@ -81,6 +82,11 @@ src/server/
   clients-module.d.ts         The `awui:clients` module's types: the binary's bundled terminal clients (scripts/build-binary.ts bundles src/atui/embed.ts as it).
   cli-run.ts                  The headless CLI: `awui run|send|wait|chats` drives a server that is already running (found by `$AWUI_URL`, else server.json in the state folder), through the same JSON API the browser uses; it starts no harness and writes nothing.
   install-tui.ts              `awui install tui`: the `~/.local/bin/atui` symlink (to the binary, which carries atui, or the checkout's bin/atui); retires the old fetched copy.
+  mcp-setup.ts                `awui setup mcp`: which harness gets awui's own tools per chat, and the one harness
+                              (Hermes) whose single entry only its own CLI can make. Reads a harness's own `mcp list`,
+                              never edits its config; `--apply` runs that command after asking.
+  mcp-bridge.ts               `awui mcp`: the orchestration bridge on stdio for a harness config that names a program,
+                              the embedded `extensions/orchestrate-mcp.mjs` (inert without a chat's variables).
   platform-win.ts             Native Windows process/env rules (shared by harness adapters and PTY lifecycle).
   install-service.ts          `awui install service`: the binary + systemd unit (or Windows Run key), plus the `atui` link beside it.
   desktop-app.ts              `awui desktop` / `awui install desktop` / `awui desktop --install-icon`: finds the optional Electron
