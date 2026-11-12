@@ -142,6 +142,8 @@ src/server/
   image-store.ts, notify.ts, limits.ts, session-marks.ts, run-command.ts, state-file.ts   Side features (see their header comments).
   agent-status.ts             The status line an agent sets for its chat (the orchestration `set_status` tool): one
                               word plus one bounded sentence, per native session, drawn in the sidebar and header.
+  project-config.ts           A project's checked-in `awui.yml` (base ref, shared symlinks, one setup command) as
+                              untrusted input: its hash, the trust recorded in the state folder, and its status.
   idempotency.ts             An `Idempotency-Key` on a mutating request: one answer per key, ten minutes, in memory.
   review-threads.ts           Review threads per chat in the state folder (pins, notes, resolve, line moves), bounded and pruned.
   attribution.ts              A chat's edited files as they are on disk now, hashed line by line (bounded, through the file

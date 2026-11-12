@@ -3,6 +3,13 @@
 .worktree-create label, .compare-prompt { color: var(--text-2); font-size: 13px; }
 .worktree-create .input { margin-top: 5px; width: 100%; }
 .worktree-actions, .picker-work-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 16px; }
+/* The project's own awui.yml: what it asks for, its trust button, and its one command. */
+.worktree-config { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 10px; font-size: 13px; }
+.worktree-config.is-problem { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.worktree-config-line { margin: 0; min-width: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
+.worktree-config .mono, .worktree-setup-check .mono { font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.worktree-setup-check { display: flex; align-items: center; gap: 6px; flex-basis: 100%; color: var(--text-2); }
+.worktree-setup-output { max-height: 240px; overflow: auto; margin: 0 0 12px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .worktree-list { display: grid; gap: 6px; list-style: none; padding: 0; }
 .worktree-row { display: flex; align-items: center; gap: 8px; }
 .worktree-row .picker-item { flex: 1; min-width: 0; }

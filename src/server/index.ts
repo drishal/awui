@@ -29,6 +29,7 @@ import { applyOneTimeSetup, gatherMcpSetup, renderSetup, setupJson, type ApplyRe
 import { runHeadlessCli } from "./cli-run.js";
 import { SessionMarks } from "./session-marks.js";
 import { AgentStatuses } from "./agent-status.js";
+import { ProjectConfigTrust } from "./project-config.js";
 import { TerminalManager } from "./terminal.js";
 import { Routines } from "./routines.js";
 import { startDue } from "./routines-timer.js";
@@ -200,6 +201,7 @@ async function main(): Promise<void> {
   manager.orchestration = { baseUrl: `http://127.0.0.1:${config.port}`, enabled: () => orchLimits().enabled };
   const marks = await SessionMarks.open(config.stateDir);
   const agentStatuses = await AgentStatuses.open(path.join(config.stateDir, "agent-status.json"));
+  const projectConfigTrust = await ProjectConfigTrust.open(path.join(config.stateDir, "project-config-trust.json"));
   const routines = await Routines.open(config.stateDir);
 
   // Scheduled runs: every 30 seconds, start whatever is due. The store claims a
@@ -273,6 +275,7 @@ async function main(): Promise<void> {
     herdr,
     marks,
     agentStatuses,
+    projectConfigTrust,
     routines,
     order,
     prompts,

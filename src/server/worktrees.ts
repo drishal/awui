@@ -25,10 +25,19 @@ export interface WorktreeInfo {
   createdAt: number;
 }
 
+/** What a create takes beyond the name and base: the project's own `awui.yml` shared entries. */
+export interface WorktreeCreateOptions {
+  /**
+   * Project-relative gitignored entries to symlink into the new tree, from the project's
+   * checked-in `awui.yml`. Confined exactly as `.worktreeinclude`'s entries are: absolute
+   * paths and `..` are skipped, and a source whose realpath leaves the project never lands.
+   */
+  shared?: readonly string[];
+}
+
 export interface WorktreeService {
   list(ws: WorkspaceInfo): Promise<WorktreeInfo[]>;
-  list(ws: WorkspaceInfo): Promise<WorktreeInfo[]>;
-  create(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeCreated>;
+  create(ws: WorkspaceInfo, name: string, base: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated>;
   prune(ws: WorkspaceInfo, id: string): Promise<void>;
   /** Drop a tree's record after something else removed the checkout (a race's cleanup). */
   forget(ws: WorkspaceInfo, id: string): Promise<void>;
@@ -128,11 +137,11 @@ export class ManagedWorktrees implements WorktreeService {
     return out;
   }
 
-  async create(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeCreated> {
-    return serial(ws, () => this.createOne(ws, name, base));
+  async create(ws: WorkspaceInfo, name: string, base: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated> {
+    return serial(ws, () => this.createOne(ws, name, base, options));
   }
 
-  private async createOne(ws: WorkspaceInfo, name: string, base: string): Promise<WorktreeCreated> {
+  private async createOne(ws: WorkspaceInfo, name: string, base: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated> {
     const s = slug(name);
     if (!s || s !== name.trim() || !SLUG_PATTERN.test(s)) throw new Error("bad_name");
     if (RESERVED[s]) throw new Error("reserved_name");
@@ -178,7 +187,7 @@ export class ManagedWorktrees implements WorktreeService {
     }
     // Seeding never fails the create: a broken include file or an unreadable
     // entry is reported entry by entry, and the tree is usable regardless.
-    const seeded = await seedWorktree(ws.path, dest).catch((): WorktreeSeedReport => ({ copied: [], linked: [], skipped: [{ path: INCLUDE_FILE, reason: "could not be read" }], more: 0 }));
+    const seeded = await seedWorktree(ws.path, dest, options?.shared ?? []).catch((): WorktreeSeedReport => ({ copied: [], linked: [], skipped: [{ path: INCLUDE_FILE, reason: "could not be read" }], more: 0 }));
     return { ...info, seeded };
   }
 
@@ -323,13 +332,19 @@ async function copyEntry(walk: SeedWalk, from: string, to: string, rel: string, 
   return true;
 }
 
-/** Seed one new tree from the project's `.worktreeinclude`, reporting what was copied, linked, and skipped. */
-async function seedWorktree(root: string, dest: string): Promise<WorktreeSeedReport> {
+/**
+ * Seed one new tree from the project's `.worktreeinclude`, reporting what was copied,
+ * linked, and skipped, then link the entries its `awui.yml` shares (the project config's
+ * `shared`, which are always symlinks, never copies: they name what the tree reaches
+ * back for, such as `node_modules`).
+ */
+async function seedWorktree(root: string, dest: string, shared: readonly string[] = []): Promise<WorktreeSeedReport> {
   const report: WorktreeSeedReport = { copied: [], linked: [], skipped: [], more: 0 };
-  let text: string;
-  try { text = await fs.readFile(path.join(root, INCLUDE_FILE), "utf8"); } catch { return report; }
+  let text = "";
+  try { text = await fs.readFile(path.join(root, INCLUDE_FILE), "utf8"); } catch { /* no include file: the shared entries below may still apply */ }
   const walk: SeedWalk = { root, bytes: 0, files: 0, report };
-  for (const entry of parseWorktreeInclude(text)) {
+  const entries = [...parseWorktreeInclude(text), ...shared.map((entry) => ({ path: entry.replace(/\/+$/, ""), link: true }))];
+  for (const entry of entries) {
     if (report.copied.length + report.linked.length >= MAX_INCLUDE_ENTRIES) { skip(walk, entry.path, "too many entries"); continue; }
     if (escapes(entry.path)) { skip(walk, entry.path, "outside the project"); continue; }
     let real: string;

@@ -69,6 +69,12 @@ The precheck is one command line (at most 500 characters) run through the host's
 
 awui records `lastRunOutcome` (`launched`, `skipped`, or `failed`) and a bounded `lastRunDetail` beside the routine, and the dialog's list shows both; a file written before these fields existed still loads, with no outcome. Editing a routine keeps them.
 
+## A project's awui.yml
+
+A repository can declare its own worktree behaviour in a checked-in `awui.yml` at its root instead of a person repeating it per checkout: `base:` (the commit-ish a new tree starts from), `shared:` (project-relative gitignored entries symlinked into each new tree), and `setup:` (one command line to run there). It is not a `config.yml` setting and awui does not read it from anywhere else.
+
+Because the repository may be one you have just cloned, awui treats the file as untrusted: its `shared:` entries are confined exactly as `.worktreeinclude`'s are, its `setup` command never runs on its own, and the worktree picker asks before either — the trust is recorded per project and per file hash in `$XDG_STATE_HOME/awui/project-config-trust.json`, so a commit that edits the file makes it untrusted again. Unknown keys, bad YAML, a file over 64 KB, and a path that leaves the project are refused with the reason. See [Worktrees](usage.md) for the dialog and [Security](security.md) for the limits.
+
 ## With herdr
 
 [herdr](https://herdr.dev) is a terminal workspace manager for coding agents: workspaces, tabs, and panes, with each pane's agent and whether it is working, blocked on you, or done (herdr's own hooks for Pi, omp, Claude Code, and Hermes tell it, and `herdr integration install <harness>` sets them up). awui works with it both ways, through herdr's JSON socket, and does nothing where herdr does not run. `herdr: false` in `config.yml`, or the Settings dialog's checkbox, turns it off.

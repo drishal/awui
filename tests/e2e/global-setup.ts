@@ -27,6 +27,20 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   writeFileSync(path.join(gitProject, "pic.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"));
   writeFileSync(path.join(gitProject, "page.html"), '<!doctype html><h1>Preview</h1><script>document.body.dataset.ran = "1";</script>\n');
   writeFileSync(path.join(gitProject, "notes.md"), "# Notes\n\nSome **bold** words and a [link](https://example.com).\n");
+  // A repository that declares its own awui.yml (worktree-config.spec.ts): one commit, one
+  // setup command that writes a file. Nothing else in the suite runs in it.
+  const configProject = path.join(root, "delta");
+  mkdirSync(configProject, { recursive: true });
+  const runConfigGit = (...args: string[]) => execFileSync("git", args, { cwd: configProject, stdio: "ignore" });
+  runConfigGit("init", "-q", "-b", "main");
+  runConfigGit("config", "user.name", "E2E");
+  runConfigGit("config", "user.email", "e2e@example.com");
+  writeFileSync(path.join(configProject, "readme.md"), "# Delta\n");
+  writeFileSync(path.join(configProject, "awui.yml"), "base: main\nsetup: echo set-up > setup.txt\n");
+  mkdirSync(path.join(configProject, "node_modules"));
+  writeFileSync(path.join(configProject, ".gitignore"), "node_modules/\n");
+  runConfigGit("add", "-A");
+  runConfigGit("commit", "-qm", "first");
   const themeFile = path.join(base, "theme.yaml");
   copyFileSync(path.join(import.meta.dirname, "..", "fixtures", "themes", "stylix.yaml"), themeFile);
   // A stand-in herdr instead of the developer's: its panes are what a test writes to agents.json, and

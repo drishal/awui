@@ -158,6 +158,29 @@ export interface WorktreeInfo {
   createdAt: number;
 }
 
+/**
+ * A project's own `awui.yml` as the worktree picker shows it: the version's hash, what
+ * it asks for, why it was refused when it was, and whether a person has trusted this
+ * exact version. Its `setup` command runs only from an explicit request after that.
+ */
+export interface ProjectConfigStatus {
+  /** Always `awui.yml`: the filename is fixed, so a repository cannot point awui elsewhere. */
+  file: string;
+  /** The file's sha256, cut short: the version trust is keyed on. */
+  hash: string;
+  trusted: boolean;
+  config: {
+    /** The base ref a new worktree starts from unless the person picks another. */
+    base?: string;
+    /** Project-relative gitignored folders and files symlinked into a new worktree. */
+    shared?: string[];
+    /** One command the picker can run in a worktree, by hand, once the file is trusted. */
+    setup?: string;
+  };
+  /** Why the file's settings cannot be used (bad YAML, an unknown key, a path that leaves the project). */
+  problem?: string;
+}
+
 /** What a new managed worktree was seeded with, from the project's checked-in `.worktreeinclude`. */
 export interface WorktreeSeedReport {
   /** Gitignored files and small folders copied into the new tree. */
@@ -1115,7 +1138,14 @@ export const MAX_MESSAGE_CHARS = 100_000;
 export const IDEMPOTENCY_KEY_HEADER = "idempotency-key";
 
 export const openWorkspaceSchema = z.object({ path: z.string().min(1).max(4096) });
-export const worktreeCreateSchema = z.object({ name: z.string().trim().min(1).max(64), base: z.string().trim().min(1).max(256) });
+export const worktreeCreateSchema = z.object({
+  name: z.string().trim().min(1).max(64),
+  base: z.string().trim().min(1).max(256),
+  /** Run the project's trusted `awui.yml` setup command in the new tree (never automatic). */
+  setup: z.boolean().optional(),
+});
+/** Trust one version of a project's `awui.yml`, named by the hash the picker was shown. */
+export const projectConfigTrustSchema = z.object({ hash: z.string().regex(/^[0-9a-f]{16}$/) });
 export const terminalCreateSchema = z.object({ cols: z.number().int().min(10).max(400).default(100), rows: z.number().int().min(4).max(120).default(30) });
 export const terminalWriteSchema = z.object({ data: z.string().max(16_384) });
 export const htmlRenderPreviewSchema = z.object({ theme: z.record(z.string().regex(/^--[a-z0-9-]+$/), z.string().max(1000).refine((value) => !/[;{}]/.test(value))).refine((value) => Object.keys(value).length <= 32), appearance: z.enum(["light", "dark"]) });

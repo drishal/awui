@@ -43,6 +43,7 @@ import {
   terminalWriteSchema,
   htmlRenderPreviewSchema,
   worktreeCreateSchema,
+  projectConfigTrustSchema,
   compareStartSchema,
   raceCleanupSchema,
   raceDiffQuery,
@@ -139,7 +140,12 @@ import { Checkpoints } from "./checkpoints.js";
 import { gitFileDiff, gitStatus } from "./git-status.js";
 import { git } from "./git.js";
 import { commitStaged, GitActionError, stageFiles, unstageFiles } from "./git-actions.js";
-import { runCommand } from "./run-command.js";
+import { runCommand, runShellCommand } from "./run-command.js";
+import type { RunResult } from "../shared/protocol.js";
+
+/** A setup command's limits: a real install can take minutes, and its output is read in a dialog. */
+const SETUP_TIMEOUT_MS = 5 * 60_000;
+const SETUP_MAX_OUTPUT = 32_000;
 import { shellLine } from "./shell-line.js";
 import type { Workspaces } from "./workspaces.js";
 import { allowEnvrc, direnvState, prepareSpawnEnv } from "./direnv.js";
@@ -147,6 +153,7 @@ import { ModelCatalog } from "./model-catalog.js";
 import { overviewEvents } from "./overview-events.js";
 import type { TerminalManager } from "./terminal.js";
 import { ManagedWorktrees, worktreeProblem, type WorktreeInfo } from "./worktrees.js";
+import { PROJECT_CONFIG_FILE, projectConfigStatus, ProjectConfigTrust, readProjectConfig } from "./project-config.js";
 import { Races, raceChatsFor, type RaceRecord } from "./races.js";
 import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest } from "./github.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
@@ -209,6 +216,8 @@ export interface AppDeps {
   boards?: BoardManager;
   /** Agent-set status lines (agent-status.ts); in memory when absent (tests). */
   agentStatuses?: AgentStatuses;
+  /** Which projects' `awui.yml` versions a person trusted (project-config.ts); in memory when absent (tests). */
+  projectConfigTrust?: ProjectConfigTrust;
   /** The orchestration surface's bounds, read at each use; config.yml's `orchestration:` (none: the defaults). */
   orchestrationLimits?: () => OrchestrationLimits;
   log?: (message: string) => void;
@@ -264,6 +273,7 @@ export function createApp(deps: AppDeps) {
   const { registry, manager, workspaces, security, theme } = deps;
   const marks = deps.marks ?? SessionMarks.inMemory();
   const agentStatuses = deps.agentStatuses ?? AgentStatuses.inMemory();
+  const projectTrust = deps.projectConfigTrust ?? ProjectConfigTrust.inMemory();
   const reviewThreads = deps.reviewThreads ?? ReviewThreads.inMemory();
   const secondOpinions = deps.secondOpinions ?? SecondOpinions.inMemory();
   const races = deps.races ?? Races.inMemory(raceChatsFor(manager));
@@ -735,18 +745,60 @@ export function createApp(deps: AppDeps) {
   // Workspace tools: every operation goes through Workspaces.get(), which
   // revalidates a project that may have been renamed or replaced by a symlink.
   const trees = new ManagedWorktrees();
+
+  // A project's own `awui.yml` (project-config.ts) is untrusted input from the repository: its
+  // hash is recorded here only when a person trusts that exact version, and its setup command
+  // runs only on an explicit request after that. Reading it names no paths.
+  app.get("/api/workspaces/:id/project-config", async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    res.json({ config: await projectConfigStatus(ws.path, projectTrust) });
+  });
+  app.post("/api/workspaces/:id/project-config/trust", async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const { hash } = body(projectConfigTrustSchema, req);
+    const read = await readProjectConfig(ws.path);
+    if (!read) throw new ChatError(404, "no_config", `This project has no ${PROJECT_CONFIG_FILE}`);
+    if (read.hash !== hash) throw new ChatError(409, "config_changed", "That file changed since it was shown; read it again before trusting it");
+    if (read.problem) throw new ChatError(422, "bad_config", read.problem);
+    await projectTrust.trust(ws.path, hash);
+    res.json({ trusted: true, hash });
+  });
+
+  /** The one setup command a trusted `awui.yml` names, run in one of this project's own worktrees. */
+  const runSetup = async (ws: WorkspaceInfo, treeId: string): Promise<RunResult> => {
+    const read = await readProjectConfig(ws.path);
+    if (read?.problem) throw new ChatError(422, "bad_config", read.problem);
+    if (!read?.config.setup) throw new ChatError(404, "no_setup", `This project's ${PROJECT_CONFIG_FILE} has no setup command`);
+    if (!projectTrust.isTrusted(ws.path, read.hash)) throw new ChatError(409, "untrusted", `Trust this ${PROJECT_CONFIG_FILE} before running its setup command`);
+    // The tree comes from the project's own records, never from a path the client sends.
+    const tree = (await trees.list(ws)).find((t) => t.id === treeId);
+    if (!tree) throw new ChatError(404, "unknown_id", "That managed worktree is not in this project");
+    return runShellCommand(read.config.setup, tree.path, { timeoutMs: SETUP_TIMEOUT_MS, maxOutput: SETUP_MAX_OUTPUT });
+  };
+
   app.get("/api/workspaces/:id/worktrees", async (req, res) => {
     res.json({ worktrees: await trees.list(await workspaces.get(req.params.id)) });
   });
   app.post("/api/workspaces/:id/worktrees", async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const input = body(worktreeCreateSchema, req);
-      try {
-      const info = await trees.create(ws, input.name, input.base);
-      res.status(201).json({ ...info, workspace: await workspaces.open(info.path) });
+    // The config's shared entries seed the tree; its setup command needs both the trust and
+    // this request's own consent, checked before anything is created.
+    const read = await readProjectConfig(ws.path);
+    const config = read && !read.problem ? read.config : {};
+    if (input.setup === true && (!read?.config.setup || read.problem || !projectTrust.isTrusted(ws.path, read.hash))) {
+      throw new ChatError(409, "untrusted", `Trust this ${PROJECT_CONFIG_FILE} before running its setup command`);
+    }
+    try {
+      const info = await trees.create(ws, input.name, input.base, { shared: config.shared ?? [] });
+      const setup = input.setup === true ? await runSetup(ws, info.id) : undefined;
+      res.status(201).json({ ...info, workspace: await workspaces.open(info.path), ...(setup ? { setup } : {}) });
     } catch (error) {
       throw worktreeProblem(error) ?? error;
     }
+  });
+  app.post("/api/workspaces/:id/worktrees/:treeId/setup", async (req, res) => {
+    res.json(await runSetup(await workspaces.get(req.params.id), req.params.treeId));
   });
   app.delete("/api/workspaces/:id/worktrees/:treeId", async (req, res) => {
     await trees.prune(await workspaces.get(req.params.id), req.params.treeId).catch((error: unknown) => {
