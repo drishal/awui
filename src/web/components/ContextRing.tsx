@@ -1,14 +1,17 @@
-// Context occupancy ring (DeepSeek Harness / OpenCode). Its popover holds the
-// whole picture, in DeepSeek Harness's sections: what fills the context
-// window, the session's tokens, and model timing. On a phone the popover is
-// the same body drawn as a bottom sheet (Dialog); the desktop keeps the
-// anchored popover. Its foot opens the full view — the same sections at a
+// Context occupancy ring, for every harness that reports its own figure (Pi,
+// omp, Hermes, Claude Code, Codex, Grok, DeepSeek Harness, OpenCode). Its
+// popover holds the whole picture, in DeepSeek Harness's sections: what fills
+// the context window, the session's tokens, and model timing. On a phone the
+// popover is the same body drawn as a bottom sheet (Dialog); the desktop keeps
+// the anchored popover. Its foot opens the full view — the same sections at a
 // dialog's width, plus the space left and the latest turn's time (TimingView).
-// Hidden until the harness reports a percentage. Beside it, the draft's
-// estimated size once it is worth a mention (token-estimate.ts), which stays
-// even where the ring is hidden; the panel adds what sending it does to the context.
+// Hidden until the harness reports a percentage (context-tone.ts holds that
+// rule and the amber/red lines). Beside it, the draft's estimated size once it
+// is worth a mention (token-estimate.ts), which stays even where the ring is
+// hidden; the panel adds what sending it does to the context.
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatItem, ChatStatus, ContextCategory, ContextPoint, ContextUsage, SessionUsage } from "../../shared/protocol.js";
+import { contextTone, hasContextFigure } from "../context-tone.js";
 import { coarse } from "../gestures.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { sparkline, SPARK_H, SPARK_W } from "../sparkline.js";
@@ -348,14 +351,14 @@ export function ContextRing({
     </span>
   ) : null;
 
-  // Hidden until there is real usage: an empty ring reads like a spinner.
-  if (!context || context.percent === null || context.percent < 0.5) return figure ? <div className="context-ring-wrap">{figure}</div> : null;
+  // Hidden until the harness itself knows how full the window is: an empty ring reads like a spinner.
+  if (!hasContextFigure(context)) return figure ? <div className="context-ring-wrap">{figure}</div> : null;
   const pct = Math.max(0, Math.min(100, context.percent));
   // A pie, which no loader looks like: a faint disc, and the used share drawn as a stroke as wide as its own
   // diameter (r 3.5, width 7) so it fills a sector out to the disc's edge.
   const r = 3.5;
   const c = 2 * Math.PI * r;
-  const tone = pct >= 90 ? "danger" : pct >= 70 ? "warn" : "ok";
+  const tone = contextTone(pct);
   const detail = `${Math.round(pct)}% of context used${context.tokens !== null ? ` · ${compact(context.tokens)} / ${compact(context.window)} tokens` : ""}`;
   const peek = { context, usage, draft: size, canCompact, history, compacting, compacted, details: false as const, turn: null, workspace: "" };
 
