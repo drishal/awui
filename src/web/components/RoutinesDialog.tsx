@@ -6,7 +6,8 @@ import type { HarnessStatus, Routine, RoutineOutcome, RoutineRun, WorkspaceInfo 
 import type { RoutineCadence } from "../../shared/routine-schedule.js";
 import { cadenceLabel } from "../../shared/routine-schedule.js";
 import { api, errorText } from "../api.js";
-import { IconX } from "../icons.js";
+import { IconCopy, IconX } from "../icons.js";
+import { CopyButton } from "./CopyButton.js";
 import { Dialog } from "./Dialog.js";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -68,6 +69,13 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
   const [until, setUntil] = useState("");
   const [maxRuns, setMaxRuns] = useState("");
   const [grace, setGrace] = useState("");
+  /** The webhook trigger: on when checked, with its filters; the secret is minted on save. */
+  const [hookOn, setHookOn] = useState(false);
+  const [hookHeader, setHookHeader] = useState("x-github-event");
+  const [hookHeaderValue, setHookHeaderValue] = useState("");
+  const [hookPath, setHookPath] = useState("");
+  const [hookPathValue, setHookPathValue] = useState("");
+  const [hookDedupe, setHookDedupe] = useState("");
 
   const load = async () => {
     try {
@@ -107,13 +115,17 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
     setBusy(true);
     setError(null);
     try {
-      await api<Routine>("/api/routines", { method: "PUT", body: { name: name.trim(), prompt: prompt.trim(), harnessId, workspaceId, cadence: cadence(), precheck: precheck.trim(), ...limits() } });
+      const hook = hookOn
+        ? { secret: "", header: hookHeader.trim(), headerValue: hookHeaderValue.trim(), path: hookPath.trim(), pathValue: hookPathValue.trim(), dedupePath: hookDedupe.trim() }
+        : null;
+      await api<Routine>("/api/routines", { method: "PUT", body: { name: name.trim(), prompt: prompt.trim(), harnessId, workspaceId, cadence: cadence(), precheck: precheck.trim(), ...limits(), hook } });
       setName("");
       setPrompt("");
       setPrecheck("");
       setUntil("");
       setMaxRuns("");
       setGrace("");
+      setHookOn(false);
       await load();
     } catch (failure) {
       setError(errorText(failure));
@@ -163,6 +175,9 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
     }
   };
 
+  /** Where a sender posts this routine's webhook (the page's own origin, so it works from anywhere awui is reached). */
+  const hookUrl = (routine: Routine) => `${window.location.origin}/api/hooks/${routine.id}`;
+
   /** Run a routine now, without moving its own slot: the same work its next tick would do. */
   const runNow = async (routine: Routine) => {
     setError(null);
@@ -207,6 +222,18 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
                       </span>
                     ) : null}
                   </label>
+                  {routine.hook ? (
+                    <span className="routine-hook">
+                      <span className="routine-hook-line">
+                        webhook <code>{hookUrl(routine)}</code>
+                        <CopyButton className="ghost-icon" icon={<IconCopy size={12} />} label={`Copy ${routine.name}'s webhook URL`} onCopy={() => navigator.clipboard?.writeText(hookUrl(routine))} />
+                      </span>
+                      <span className="routine-hook-line">
+                        secret <code>{routine.hook.secret}</code>
+                        <CopyButton className="ghost-icon" icon={<IconCopy size={12} />} label={`Copy ${routine.name}'s webhook secret`} onCopy={() => navigator.clipboard?.writeText(routine.hook?.secret ?? "")} />
+                      </span>
+                    </span>
+                  ) : null}
                   {runsFor(routine.id).length > 0 ? (
                     <ul className="routine-runs" aria-label={`Recent runs of ${routine.name}`}>
                       {runsFor(routine.id).map((run) => (
@@ -344,6 +371,40 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
               <input className="input input-short" type="number" min={0} max={1440} aria-label="Grace minutes" placeholder="no limit" value={grace} onChange={(e) => setGrace(e.target.value)} />
             </label>
           </div>
+          <label className="routines-check">
+            <input type="checkbox" checked={hookOn} aria-label="Start on a webhook" onChange={(e) => setHookOn(e.target.checked)} />
+            Start on a webhook too
+          </label>
+          {hookOn ? (
+            <div className="routines-picks routines-hook-form">
+              <label>
+                Header
+                <input className="input input-short" aria-label="Webhook header" placeholder="x-github-event" value={hookHeader} onChange={(e) => setHookHeader(e.target.value)} />
+              </label>
+              <label>
+                Must equal
+                <input className="input input-short" aria-label="Webhook header value" placeholder="pull_request" value={hookHeaderValue} onChange={(e) => setHookHeaderValue(e.target.value)} />
+              </label>
+              <label>
+                Body path
+                <input className="input input-short" aria-label="Webhook body path" placeholder="action" value={hookPath} onChange={(e) => setHookPath(e.target.value)} />
+              </label>
+              <label>
+                Must equal
+                <input className="input input-short" aria-label="Webhook body value" placeholder="opened" value={hookPathValue} onChange={(e) => setHookPathValue(e.target.value)} />
+              </label>
+              <label>
+                Dedupe path
+                <input className="input input-short" aria-label="Webhook dedupe path" placeholder="delivery id in the body" value={hookDedupe} onChange={(e) => setHookDedupe(e.target.value)} />
+              </label>
+            </div>
+          ) : null}
+          {hookOn ? (
+            <p className="muted routines-hint">
+              Signed with the routine's own secret (HMAC-SHA256 in <code>X-Awui-Signature</code>, or GitHub's <code>X-Hub-Signature-256</code>); the URL and secret appear here once the routine is saved.
+              <code>{"{{webhook}}"}</code> in the prompt is where the delivery's JSON goes (bounded).
+            </p>
+          ) : null}
           {error ? (
             <p className="routines-error" role="alert">
               {error}

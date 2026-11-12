@@ -16,6 +16,7 @@ const routine = (id: string, nextRunAt: number, enabled = true, graceMinutes = 0
   until: null,
   maxRuns: null,
   graceMinutes,
+  hook: null,
   runs: 0,
   halted: null,
   enabled,

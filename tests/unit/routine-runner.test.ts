@@ -36,6 +36,7 @@ function routineFor(ws: WorkspaceInfo, precheck: string, prompt = "Review today'
   until: null,
   maxRuns: null,
   graceMinutes: 0,
+  hook: null,
   runs: 0,
   halted: null,
     enabled: true,

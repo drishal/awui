@@ -5,7 +5,7 @@
 // outcome is stored too, so the list can say why a slot skipped without a chat.
 // A routine can also stop for good — its expiry passed, or it reached maxRuns — and
 // then says why ("halted"), so a routine nobody switched off does not look due again.
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
 import { MAX_RUN_DETAIL_CHARS, type Routine, type RoutineInput, type RoutineOutcome, routineSchema } from "../shared/protocol.js";
 import { cadenceProblem, nextRunAt } from "../shared/routine-schedule.js";
@@ -108,6 +108,8 @@ export class Routines {
     if (problem) throw new Error(problem);
     const existing = parsed.id === undefined ? undefined : this.byId.get(parsed.id);
     if (!existing && this.byId.size >= MAX_ROUTINES) throw new Error(`At most ${MAX_ROUTINES} routines`);
+    // A hook with no secret yet is the dialog asking for one: minted here, never guessed.
+    if (parsed.hook && !parsed.hook.secret) parsed.hook.secret = randomBytes(24).toString("hex");
     const runs = existing?.runs ?? 0;
     // A save is the owner saying "this is what I want now", so it also clears a halt: the
     // next slot is computed afresh from the new cadence, expiry, and cap.

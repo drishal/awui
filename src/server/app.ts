@@ -129,6 +129,7 @@ import { Routines } from "./routines.js";
 import { RoutineRuns } from "./routine-runs.js";
 import { routineNote, runRoutine } from "./routine-runner.js";
 import { cadenceProblem } from "../shared/routine-schedule.js";
+import { deliveryKey, GITHUB_SIGNATURE_HEADER, HookGate, hookMatches, hookPrompt, MAX_HOOK_BODY, MAX_HOOKS_PER_HOUR, SIGNATURE_HEADER, signatureMatches } from "./routine-webhook.js";
 import { ReviewProblem, ReviewThreads } from "./review-threads.js";
 import { SecondOpinions, reportExcerpt } from "./second-opinions.js";
 import { attributionSnapshot } from "./attribution.js";
@@ -584,6 +585,43 @@ export function createApp(deps: AppDeps) {
   };
   app.get("/api/orchestration/mcp", mcpNoStream);
   app.delete("/api/orchestration/mcp", mcpNoStream);
+
+  /**
+   * A routine's webhook (routine-webhook.ts). The one /api route with no browser session:
+   * a sender holds the routine's own secret and signs the body with it (HMAC-SHA256, as
+   * GitHub does). It sits before requireAuth for that reason, answers 404 for a routine
+   * that has no hook (so a scan learns nothing), is rate limited per routine, bounded to
+   * one event's JSON, and only runs a routine whose filters the delivery passes.
+   */
+  const hookGate = new HookGate();
+  app.post("/api/hooks/:id", express.json({ limit: MAX_HOOK_BODY, verify: (req, _res, buf) => void ((req as Request & { rawBody?: string }).rawBody = buf.toString("utf8")) }), async (req, res) => {
+    const routine = routines.get(req.params.id);
+    const hook = routine?.hook ?? null;
+    if (!routine || !hook) throw new ChatError(404, "no_hook", "No such webhook");
+    const raw = (req as Request & { rawBody?: string }).rawBody ?? "";
+    const signature = req.get(SIGNATURE_HEADER) ?? req.get(GITHUB_SIGNATURE_HEADER);
+    if (!signatureMatches(hook.secret, raw, signature)) throw new ChatError(401, "bad_signature", "The signature does not match this body and secret");
+    if (!hookGate.allow(routine.id)) throw new ChatError(429, "hook_flood", `At most ${MAX_HOOKS_PER_HOUR} deliveries an hour for one routine`);
+    const header = (name: string) => req.get(name);
+    if (!hookMatches(hook, header, req.body)) {
+      res.status(204).end();
+      return;
+    }
+    if (!hookGate.first(routine.id, deliveryKey(hook, header, req.body))) {
+      res.json({ ok: true, duplicate: true });
+      return;
+    }
+    const adapter = await availableAdapter(routine.harnessId);
+    const workspace = await workspaces.get(routine.workspaceId);
+    const prompted = { ...routine, prompt: hookPrompt(routine.prompt, req.body) };
+    const ran = await runRoutine(prompted, workspace, adapter, manager, {
+      runs: routineRuns,
+      markOutcome: (id, outcome, detail) => routines.markOutcome(id, outcome, detail),
+      post: (r, chat, text) => routineNote(notifier, r, chat, text),
+    });
+    if (!ran.chat) throw new ChatError(409, "routine_skipped", ran.detail ?? "The precheck skipped this run");
+    res.status(202).json({ ok: true, chatId: ran.chat.chatId, runId: ran.run?.id ?? null });
+  });
 
   app.use("/api", security.requireAuth, (_req, res, next) => {
     // Session-bearing JSON must never be cached by a browser or proxy.

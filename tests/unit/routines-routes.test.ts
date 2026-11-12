@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Routine, RoutineRun, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { runRoutine } from "../../src/server/routine-runner.js";
+import { signatureOf } from "../../src/server/routine-webhook.js";
 import { RoutineRuns } from "../../src/server/routine-runs.js";
 import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
 
@@ -127,5 +128,71 @@ describe("a routine's schedule", () => {
     const skipped = await agent.post(`/api/routines/${created.id}/run`);
     expect(skipped.status).toBe(409);
     expect((skipped.body as { error: string }).error).toMatch(/precheck exited 1/);
+  });
+});
+
+describe("a routine's webhook", () => {
+  const hookBody = (extra: object = {}) => ({ secret: "", header: "x-github-event", headerValue: "pull_request", path: "action", pathValue: "opened", dedupePath: "", ...extra });
+
+  it("mints a secret when the hook is made, and keeps it across a save", async () => {
+    const { agent, body } = await setUp();
+    const created = (await agent.put("/api/routines").send(body({ hook: hookBody() })).expect(200)).body as Routine;
+    expect(created.hook?.secret).toMatch(/^[0-9a-f]{48}$/);
+    const edited = (await agent.put("/api/routines").send(body({ id: created.id, hook: created.hook })).expect(200)).body as Routine;
+    expect(edited.hook?.secret).toBe(created.hook?.secret);
+    // No hook at all is null.
+    expect(((await agent.put("/api/routines").send(body({ name: "Plain" })).expect(200)).body as Routine).hook).toBeNull();
+  });
+
+  it("refuses an unsigned delivery, a wrong secret, and a routine without a hook", async () => {
+    const { agent, body } = await setUp();
+    const created = (await agent.put("/api/routines").send(body({ hook: hookBody() })).expect(200)).body as Routine;
+    const payload = { action: "opened", number: 7 };
+    expect((await agent.post(`/api/hooks/${created.id}`).send(payload)).status).toBe(401);
+    const wrong = signatureOf("not-the-secret", JSON.stringify(payload));
+    expect((await agent.post(`/api/hooks/${created.id}`).set("X-Awui-Signature", wrong).send(payload)).status).toBe(401);
+    expect((await agent.post("/api/hooks/no-such").send(payload)).status).toBe(404);
+    const plain = (await agent.put("/api/routines").send(body({ name: "Plain" })).expect(200)).body as Routine;
+    expect((await agent.post(`/api/hooks/${plain.id}`).send(payload)).status).toBe(404);
+  });
+
+  it("starts a run for a delivery its filters pass, once per delivery", async () => {
+    const routineRuns = RoutineRuns.inMemory();
+    const { agent, body } = await (async () => {
+      t = await makeTestApp({ routineRuns });
+      const a = await signedIn(t);
+      const w = (await a.post("/api/workspaces/open").send({ path: t.project })).body as { id: string };
+      return { agent: a, body: (extra: object = {}) => ({ name: "On a PR", prompt: "Look at {{webhook}}", harnessId: "fake", workspaceId: w.id, cadence: { kind: "daily", hour: 9, minute: 0 }, hook: hookBody(), ...extra }) };
+    })();
+    const created = (await agent.put("/api/routines").send(body()).expect(200)).body as Routine;
+    const secret = created.hook?.secret ?? "";
+    const payload = { action: "opened", pull_request: { number: 7 } };
+    const raw = JSON.stringify(payload);
+    const signed = signatureOf(secret, raw);
+
+    const accepted = await agent.post(`/api/hooks/${created.id}`).set("X-Awui-Signature", signed).set("X-GitHub-Event", "pull_request").set("X-GitHub-Delivery", "d-1").send(payload).expect(202);
+    expect((accepted.body as { chatId: string }).chatId).toBeTruthy();
+    await until(() => routineRuns.list(created.id)[0]?.endedAt !== null);
+    const run = routineRuns.list(created.id)[0] as RoutineRun;
+    expect(run.outcome).toBe("posted");
+    // The delivery's body reached the prompt, bounded and as JSON.
+    expect(run.detail).toContain("Echo: Look at");
+    // The same delivery again runs nothing; a new one does.
+    const repeat = await agent.post(`/api/hooks/${created.id}`).set("X-Awui-Signature", signed).set("X-GitHub-Event", "pull_request").set("X-GitHub-Delivery", "d-1").send(payload);
+    expect(repeat.body).toEqual({ ok: true, duplicate: true });
+    // A delivery its filters refuse is taken, but runs nothing.
+    const filtered = await agent.post(`/api/hooks/${created.id}`).set("X-Awui-Signature", signed).set("X-GitHub-Event", "issues").set("X-GitHub-Delivery", "d-2").send(payload);
+    expect(filtered.status).toBe(204);
+    expect(routineRuns.list(created.id)).toHaveLength(1);
+  });
+
+  it("answers 409 when the webhook run's precheck says there is nothing to do", async () => {
+    const { agent, body } = await setUp();
+    const created = (await agent.put("/api/routines").send(body({ precheck: "exit 2", hook: hookBody() })).expect(200)).body as Routine;
+    const payload = { action: "opened" };
+    const signed = signatureOf(created.hook?.secret ?? "", JSON.stringify(payload));
+    const answer = await agent.post(`/api/hooks/${created.id}`).set("X-Awui-Signature", signed).set("X-GitHub-Event", "pull_request").send(payload);
+    expect(answer.status).toBe(409);
+    expect((answer.body as { error: string }).error).toMatch(/precheck exited 2/);
   });
 });

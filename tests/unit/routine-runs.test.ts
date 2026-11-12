@@ -20,6 +20,7 @@ const routine = (id = "r1"): Routine => ({
   until: null,
   maxRuns: null,
   graceMinutes: 0,
+  hook: null,
   runs: 0,
   halted: null,
   enabled: true,

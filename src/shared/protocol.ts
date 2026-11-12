@@ -1302,6 +1302,27 @@ export const routineRunsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(MAX_RUNS_READ).default(20),
 });
 
+/**
+ * A routine's webhook: the sender signs the body with `secret` (HMAC-SHA256, hex) and
+ * posts it to `/api/hooks/<routine id>`. An empty secret asks the server to mint one.
+ * The filters narrow what counts (a header value, a body path), and a delivery key makes
+ * a repeat of the same delivery a no-op.
+ */
+export const routineHookSchema = z
+  .object({
+    secret: z.string().trim().max(128).default(""),
+    /** Only a request whose header `header` equals `headerValue` counts. Empty = any. */
+    header: z.string().trim().max(64).default(""),
+    headerValue: z.string().trim().max(200).default(""),
+    /** Only a body whose dotted path `path` equals `pathValue` counts. Empty = any. */
+    path: z.string().trim().max(200).default(""),
+    pathValue: z.string().trim().max(200).default(""),
+    /** A body path whose value names the delivery, for dedupe (a header, X-GitHub-Delivery, comes first). */
+    dedupePath: z.string().trim().max(200).default(""),
+  })
+  .strict();
+export type RoutineHook = z.infer<typeof routineHookSchema>;
+
 /** What the Routines dialog saves: a prompt on a cadence, in a project, on a harness. */
 export const routineSchema = z.object({
   id: z.string().min(1).max(64).optional(),
@@ -1323,6 +1344,8 @@ export const routineSchema = z.object({
    * the reason) instead of starting the agent on stale work. 0 = no limit.
    */
   graceMinutes: z.number().int().min(0).max(1440).default(0),
+  /** A webhook that may start a run of its own; null when the routine only runs on its cadence. */
+  hook: routineHookSchema.nullable().default(null),
   enabled: z.boolean().default(true),
 });
 // What the dialog sends: `enabled` and `id` are optional here and filled in by the
@@ -1337,10 +1360,11 @@ export type RoutineInput = z.input<typeof routineSchema>;
 export type RoutineOutcome = "launched" | "skipped" | "failed" | "posted" | "quiet";
 
 /** A saved routine: its input, plus the id, the times, and the last outcome the server keeps. */
-export interface Routine extends Omit<RoutineInput, "enabled" | "precheck" | "timezone" | "until" | "maxRuns" | "graceMinutes"> {
+export interface Routine extends Omit<RoutineInput, "enabled" | "precheck" | "timezone" | "until" | "maxRuns" | "graceMinutes" | "hook"> {
   id: string;
   enabled: boolean;
   precheck: string;
+  hook: RoutineHook | null;
   timezone: string;
   until: number | null;
   maxRuns: number | null;
