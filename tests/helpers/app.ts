@@ -131,7 +131,7 @@ export async function makeTestApp(options: {
       ? {
           settings: {
             configDir: path.join(root, "settings"),
-            running: { port: 4783, host: "127.0.0.1" as const, username: "", password: null, workspaceRoots: [root], allowedHosts: [], allowedTailscaleUsers: [] },
+            running: { port: 4783, host: "127.0.0.1" as const, username: "", password: null, workspaceRoots: [root], allowedHosts: [], allowedTailscaleUsers: [], acpAgents: "[]" },
             envSet: new Set<string>(),
             credentialsFile: path.join(root, "credentials.json"),
             canRestart: false,

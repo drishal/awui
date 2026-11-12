@@ -1521,10 +1521,52 @@ export interface ServerSettingsValues {
   orchestrationEnabled: boolean;
   /** The desktop app: closing its window hides it to the tray (notes keep coming) instead of quitting. */
   desktopBackground: boolean;
+  /** config.yml's own ACP agents, as the Settings dialog lists them (environment values never leave the server). */
+  acpAgents: AcpAgentSettings[];
+}
+
+/**
+ * One ACP agent as the Settings dialog shows it. The agent keeps its own login
+ * and secrets; `envNames` is what the entry's `env` sets, never the values
+ * (a value is write-only, like the sign-in password).
+ */
+export interface AcpAgentSettings {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  envNames: string[];
+  /** The `authenticate` method id, or null. */
+  authMethod: string | null;
+}
+
+/** One entry as the dialog saves it: a blank env value keeps the one already stored for that name. */
+export interface AcpAgentPatch {
+  id: string;
+  name?: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  authMethod?: string | null;
+}
+
+/** What one `initialize` handshake told the Settings dialog's Test, with no model call. */
+export interface AcpAgentProbe {
+  /** The agent's own name and version, as it introduced itself. */
+  agentName: string | null;
+  version: string | null;
+  /** An existing session can be resumed, and whether its history is replayed. */
+  resume: boolean;
+  replay: boolean;
+  images: boolean;
+  /** It takes awui's MCP servers over HTTP itself. */
+  mcpHttp: boolean;
+  authMethods: string[];
+  warnings: string[];
 }
 
 /** Settings that take effect only when the server restarts. */
-export type RestartSetting = "port" | "host" | "username" | "password" | "workspaceRoots" | "allowedHosts" | "allowedTailscaleUsers";
+export type RestartSetting = "port" | "host" | "username" | "password" | "workspaceRoots" | "allowedHosts" | "allowedTailscaleUsers" | "acpAgents";
 
 export interface ServerSettings {
   /** This browser is on the machine running the server: it may change them (other devices only read). */
@@ -1540,6 +1582,22 @@ export interface ServerSettings {
   /** A supervisor (systemd) brings the server back after it exits, so it can restart itself. */
   canRestart: boolean;
 }
+
+/** One ACP agent as the dialog saves it (config.yml's `harnesses.acp` entry, camelCase on the wire). */
+export const acpAgentPatchSchema = z
+  .object({
+    id: z.string().trim().regex(/^[a-z0-9][a-z0-9-]{0,31}$/),
+    name: z.string().trim().max(64).optional(),
+    command: z.string().trim().min(1).max(4096),
+    args: z.array(z.string().max(4096)).max(64).optional(),
+    /** A blank value keeps the one already stored for that name; a name left out is removed. */
+    env: z.record(z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/), z.string().max(8192)).optional(),
+    authMethod: z.string().trim().max(128).nullable().optional(),
+  })
+  .strict();
+
+/** The dialog's Test: one saved entry, by id (its stored environment included). */
+export const acpTestSchema = z.object({ id: z.string().trim().min(1).max(64) }).strict();
 
 /** A change from the Settings dialog; omitted fields stay as they are. `password: null` removes it. */
 export const settingsPatchSchema = z
@@ -1562,6 +1620,8 @@ export const settingsPatchSchema = z
     herdr: z.boolean().optional(),
     orchestrationEnabled: z.boolean().optional(),
     desktopBackground: z.boolean().optional(),
+    /** The whole list, in order: what is missing is removed. A blank env value keeps the stored one. */
+    acpAgents: z.array(acpAgentPatchSchema).max(16).optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>;

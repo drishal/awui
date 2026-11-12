@@ -297,6 +297,44 @@
   min-width: 0;
 }
 
+/* The ACP agents: one block each, its command line and environment on their own rows. */
+.acp-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.acp-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+}
+
+.acp-agent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 1.2fr) 32px;
+  align-items: start;
+  gap: 6px;
+}
+
+.acp-agent-row > .input {
+  min-width: 0;
+}
+
+.acp-agent-row:nth-child(2) {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.acp-agent-test {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .settings-version {
   margin-right: auto;
   font-size: 12px;

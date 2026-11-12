@@ -12,7 +12,7 @@
 // phone the same two panes become a list and a detail: the rail, then the
 // section with a way back.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import type { Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle, UiFont } from "../../shared/protocol.js";
+import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle, UiFont } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { FormRow } from "./FormRow.js";
@@ -42,6 +42,7 @@ const RESTART_LABEL: Record<RestartSetting, string> = {
   workspaceRoots: "workspace roots",
   allowedHosts: "allowed hosts",
   allowedTailscaleUsers: "Tailscale users",
+  acpAgents: "ACP agents",
 };
 
 /** The dialog's sections, in the order they are read: the rail's list and the pane's headings. */
@@ -50,6 +51,7 @@ const SECTIONS = [
   { id: "look", label: "Appearance" },
   { id: "layout", label: "Layout" },
   { id: "agents", label: "Agents" },
+  { id: "acp", label: "ACP agents" },
   { id: "desktop", label: "Desktop app" },
   { id: "network", label: "Network and sign-in" },
   { id: "access", label: "Folders and access" },
@@ -120,6 +122,54 @@ function draftAwui(c: AwuiSettingsResponse): AwuiSettingsState {
 const SCALE_MIN = TEXT_SCALES[0]?.[1] ?? 0.85;
 const SCALE_MAX = TEXT_SCALES[TEXT_SCALES.length - 1]?.[1] ?? 1.35;
 
+/**
+ * One ACP agent as the form holds it: `args` is one argument per line (an
+ * argument may hold a space) and `env` is `NAME=value` lines. A value left blank
+ * keeps the one the server already stored, which the browser is never shown.
+ */
+interface AcpAgentRow {
+  id: string;
+  name: string;
+  command: string;
+  args: string;
+  env: string;
+  envNames: string[];
+  authMethod: string;
+}
+
+function acpRowsOf(agents: AcpAgentSettings[]): AcpAgentRow[] {
+  return agents.map((agent) => ({
+    id: agent.id,
+    name: agent.name === agent.id ? "" : agent.name,
+    command: agent.command,
+    args: agent.args.join("\n"),
+    env: agent.envNames.map((name) => `${name}=`).join("\n"),
+    envNames: agent.envNames,
+    authMethod: agent.authMethod ?? "",
+  }));
+}
+
+/** The env lines as names and values; a value typed as "-" clears it, and a blank one keeps the stored value. */
+function acpPatchOf(rows: AcpAgentRow[]): AcpAgentPatch[] {
+  return rows.map((row) => {
+    const env: Record<string, string> = {};
+    for (const line of lines(row.env)) {
+      const at = line.indexOf("=");
+      const name = (at >= 0 ? line.slice(0, at) : line).trim();
+      const value = at >= 0 ? line.slice(at + 1).trim() : "";
+      if (name) env[name] = value;
+    }
+    return {
+      id: row.id.trim(),
+      ...(row.name.trim() ? { name: row.name.trim() } : {}),
+      command: row.command.trim(),
+      ...(lines(row.args).length > 0 ? { args: lines(row.args) } : {}),
+      ...(Object.keys(env).length > 0 ? { env } : {}),
+      authMethod: row.authMethod.trim() || null,
+    };
+  });
+}
+
 /** The form's working copy: lists as one entry per line, the password as a write-only field. */
 interface Draft {
   port: string;
@@ -141,6 +191,8 @@ interface Draft {
   herdr: boolean;
   orchestrationEnabled: boolean;
   desktopBackground: boolean;
+  /** config.yml's `harnesses.acp` entries as the form edits them (args and env one per line). */
+  acpAgents: AcpAgentRow[];
 }
 
 /** The font tokens.css ships as the default (public/fonts), named where the Font setting offers it. */
@@ -167,6 +219,7 @@ function draftOf(v: ServerSettingsValues): Draft {
     herdr: v.herdr,
     orchestrationEnabled: v.orchestrationEnabled,
     desktopBackground: v.desktopBackground,
+    acpAgents: acpRowsOf(v.acpAgents),
   };
 }
 
@@ -201,6 +254,8 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   if (d.herdr !== v.herdr) p.herdr = d.herdr;
   if (d.orchestrationEnabled !== v.orchestrationEnabled) p.orchestrationEnabled = d.orchestrationEnabled;
   if (d.desktopBackground !== v.desktopBackground) p.desktopBackground = d.desktopBackground;
+  // ACP agents compare as the form holds them: the argument and env lines are its own spelling.
+  if (JSON.stringify(d.acpAgents) !== JSON.stringify(acpRowsOf(v.acpAgents))) p.acpAgents = acpPatchOf(d.acpAgents);
   return p;
 }
 
@@ -238,6 +293,8 @@ export function SettingsDialog({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  /** Each ACP agent's last Test: its own line when it draws one, else its error. */
+  const [acpTests, setAcpTests] = useState<Record<string, { busy: boolean; line?: string; error?: string }>>({});
   // The awui harness's own providers; null until loaded, false when the harness is off.
   const [awui, setAwui] = useState<AwuiSettingsState | null>(null);
   const [active, setActive] = useState<SectionId>(() => openingSection(section));
@@ -404,6 +461,26 @@ export function SettingsDialog({
   ];
   const setAwuiRow = (i: number, change: Partial<AwuiProviderRow>) => awui && setAwui({ ...awui, saved: false, rows: awui.rows.map((x, j) => (j === i ? { ...x, ...change } : x)) });
 
+  const setAcpRow = (i: number, change: Partial<AcpAgentRow>) => draft && update({ acpAgents: draft.acpAgents.map((row, j) => (j === i ? { ...row, ...change } : row)) });
+  /** The ids config.yml has now: a row must be saved before the server can handshake with it. */
+  const savedAcpIds = server?.values.acpAgents.map((agent) => agent.id) ?? [];
+  /** One handshake, no model call: what the saved agent calls itself and what it advertises. */
+  const testAcp = async (row: AcpAgentRow) => {
+    const id = row.id.trim();
+    if (!id) return;
+    setAcpTests((tests) => ({ ...tests, [id]: { busy: true } }));
+    try {
+      const probe = await api<AcpAgentProbe>("/api/settings/acp/test", { method: "POST", body: { id } });
+      const said = [probe.agentName ?? "The agent", probe.version ? `v${probe.version}` : ""].filter(Boolean).join(" ");
+      const bits = [probe.resume ? (probe.replay ? "resumes with history" : "resumes without history") : "no resume", probe.images ? "images" : "no images", probe.mcpHttp ? "HTTP MCP" : "stdio MCP"];
+      const methods = probe.authMethods.length > 0 ? `; sign-in: ${probe.authMethods.join(", ")}` : "; no sign-in methods";
+      const warnings = probe.warnings.length > 0 ? ` — ${probe.warnings.join(" ")}` : "";
+      setAcpTests((tests) => ({ ...tests, [id]: { busy: false, line: `${said}: ${bits.join(", ")}${methods}${warnings}` } }));
+    } catch (e) {
+      setAcpTests((tests) => ({ ...tests, [id]: { busy: false, error: errorText(e) } }));
+    }
+  };
+
   // A section exists once it has something to show: the server's form once it loaded, the awui
   // harness's own when the harness is registered.
   const sections = SECTIONS.filter((s) => (s.id === "device" ? true : s.id === "awui" ? awui !== null : draft !== null));
@@ -422,6 +499,12 @@ export function SettingsDialog({
   const issues: Partial<Record<SectionId, string>> = {};
   if (draft && editable && (port === "" || Number(port) < 1 || Number(port) > 65_535)) {
     issues.network = port === "" ? "The port cannot be empty." : "The port must be between 1 and 65535.";
+  }
+  if (draft && editable && draft.acpAgents.length > 0) {
+    const ids = draft.acpAgents.map((row) => row.id.trim());
+    if (ids.some((id) => !/^[a-z0-9][a-z0-9-]{0,31}$/.test(id))) issues.acp = "An id is a lowercase slug: letters, digits, and - (at most 32), not starting with -.";
+    else if (new Set(ids).size !== ids.length) issues.acp = "Two ACP agents share an id.";
+    else if (draft.acpAgents.some((row) => !row.command.trim())) issues.acp = "An ACP agent needs the command that starts it.";
   }
 
   // Typing a search that no section's open rows match opens the first section that does: the
@@ -689,6 +772,57 @@ export function SettingsDialog({
                 <FormRow row="delegate" hidden={!shows("agents", "delegate")} label="Agents delegate to other agents" desc="A chat's agent can hand a task to another agent chat, watch it, stop it, and read the result back. Off: no chat is given the tools." toggle>
                   <Switch label="Agents delegate to other agents" checked={draft.orchestrationEnabled} disabled={!editable} onChange={(orchestrationEnabled) => update({ orchestrationEnabled })} />
                 </FormRow>
+              </div>
+            </section>
+
+            <section className="form-section" id="settings-panel-acp" role="tabpanel" aria-labelledby="settings-acp" hidden={current !== "acp"}>
+              <h3 id="settings-acp">ACP agents</h3>
+              <p className="form-note">Any app that speaks the Agent Client Protocol over stdio (Gemini CLI, Qwen Code, Goose, Cline, …), each a harness of its own with no code. The agent keeps its own login and session files; awui only starts it. A change to this list takes effect when the server restarts.</p>
+              <div className="form-card">
+                <div className="form-row is-stack" data-settings-row="acp-list" hidden={!shows("acp", "acp-list")}>
+                  <span className="form-row-text">
+                    <span className="form-label">Agents</span>
+                    <span className="form-desc">Arguments one per line (an argument may hold a space). Env lines are NAME=value: a value left blank keeps the stored one, and removing the line removes the variable. Test runs one handshake, no model call.</span>
+                  </span>
+                  {draft.acpAgents.length > 0 ? (
+                    <div className="acp-agents">
+                      {draft.acpAgents.map((row, i) => (
+                        <div className="acp-agent" key={i}>
+                          <div className="acp-agent-row">
+                            <input className="input" aria-label="ACP agent id" placeholder="gemini" value={row.id} disabled={!editable} onChange={(e) => setAcpRow(i, { id: e.target.value })} />
+                            <input className="input" aria-label="ACP agent name" placeholder="Gemini CLI" value={row.name} disabled={!editable} onChange={(e) => setAcpRow(i, { name: e.target.value })} />
+                            <input className="input" aria-label="ACP agent command" placeholder="gemini" value={row.command} disabled={!editable} onChange={(e) => setAcpRow(i, { command: e.target.value })} />
+                            <button type="button" className="ghost-icon" aria-label={`Remove ${row.name || row.id || "agent"}`} title="Remove agent" disabled={!editable} onClick={() => update({ acpAgents: draft.acpAgents.filter((_, j) => j !== i) })}>
+                              <IconX size={14} />
+                            </button>
+                          </div>
+                          <div className="acp-agent-row">
+                            <textarea className="input" aria-label="ACP agent arguments" placeholder="--acp" rows={2} value={row.args} disabled={!editable} onChange={(e) => setAcpRow(i, { args: e.target.value })} />
+                            <textarea className="input" aria-label="ACP agent environment" placeholder="GEMINI_API_KEY=" rows={2} value={row.env} disabled={!editable} onChange={(e) => setAcpRow(i, { env: e.target.value })} />
+                            <input className="input" aria-label="ACP agent auth method" placeholder="auth method (optional)" value={row.authMethod} disabled={!editable} onChange={(e) => setAcpRow(i, { authMethod: e.target.value })} />
+                          </div>
+                          <div className="acp-agent-test">
+                            <button type="button" className="button" disabled={!editable || !savedAcpIds.includes(row.id.trim()) || acpTests[row.id]?.busy === true} onClick={() => void testAcp(row)}>
+                              Test
+                            </button>
+                            {(() => {
+                              const test = acpTests[row.id];
+                              if (!test) return null;
+                              if (test.busy) return <span className="form-desc">Testing…</span>;
+                              if (test.error) return <span className="notice notice-error" role="alert">{test.error}</span>;
+                              return <span className="form-desc">✓ {test.line}</span>;
+                            })()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="form-empty">None yet.</p>
+                  )}
+                  <button type="button" className="button" disabled={!editable} onClick={() => update({ acpAgents: [...draft.acpAgents, { id: "", name: "", command: "", args: "", env: "", envNames: [], authMethod: "" }] })}>
+                    Add an ACP agent
+                  </button>
+                </div>
               </div>
             </section>
 

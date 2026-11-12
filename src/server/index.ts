@@ -286,6 +286,8 @@ async function main(): Promise<void> {
         workspaceRoots: config.workspaceRoots,
         allowedHosts: config.allowedHosts,
         allowedTailscaleUsers: config.allowedTailscaleUsers,
+        // The ACP agents the registry was built with: a saved change to them waits for a restart.
+        acpAgents: JSON.stringify(config.acp),
       },
       envSet,
       credentialsFile: config.credentialsFile,

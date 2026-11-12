@@ -7,7 +7,7 @@ import path from "node:path";
 import { parseDocument } from "yaml";
 import type { RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch } from "../shared/protocol.js";
 import { ChatError } from "./chats/chat.js";
-import { ConfigError, DEFAULT_PORT, expandHome, loadConfig, normalizeAuthority, USERNAME_PATTERN } from "./config.js";
+import { acpAgents, ConfigError, DEFAULT_PORT, expandHome, loadConfig, normalizeAuthority, USERNAME_PATTERN, type AcpAgentConfig } from "./config.js";
 import { checkUserConfig, CONFIG_FILE, configEnv, UserConfigError, type UserConfig } from "./user-config.js";
 
 /** The settings the running server started with, as config.yml would state them. */
@@ -20,6 +20,8 @@ export interface RunningSettings {
   workspaceRoots: string[];
   allowedHosts: string[];
   allowedTailscaleUsers: string[];
+  /** The ACP agents this server started with (config.acp, as JSON): a saved change needs a restart. */
+  acpAgents: string;
 }
 
 export interface SettingsContext {
@@ -95,6 +97,15 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
     herdr: c.herdr ?? true,
     desktopBackground: c.desktop_background ?? true,
     orchestrationEnabled: c.orchestration?.enabled ?? true,
+    // The values never leave the server: a device learns which variables an entry sets, not their secrets.
+    acpAgents: (c.harnesses?.acp ?? []).map((entry) => ({
+      id: entry.id,
+      name: entry.name ?? entry.id,
+      command: entry.command,
+      args: entry.args ?? [],
+      envNames: Object.keys(entry.env ?? {}),
+      authMethod: entry.auth_method ?? null,
+    })),
   };
 }
 
@@ -115,7 +126,20 @@ function pending(c: UserConfig, ctx: SettingsContext): RestartSetting[] {
   if (!ctx.envSet.has("ALLOWED_TAILSCALE_USERS") && !sameList(v.allowedTailscaleUsers.map((u) => u.toLowerCase()), r.allowedTailscaleUsers)) {
     out.push("allowedTailscaleUsers");
   }
+  // ACP agents are built into the registry at startup (one adapter each), so a changed list waits for it.
+  if (JSON.stringify(acpAgents(c, ctx.home)) !== r.acpAgents) out.push("acpAgents");
   return out;
+}
+
+/**
+ * One saved ACP agent with its environment values, for the dialog's Test: a
+ * handshake needs them, and the browser is never sent one. Null when config.yml
+ * has no such entry (or no settings folder).
+ */
+export function savedAcpAgent(ctx: SettingsContext, id: string): AcpAgentConfig | null {
+  const file = fileOf(ctx);
+  if (!file) return null;
+  return acpAgents(parseConfig(readFile(file), file), ctx.home).find((entry) => entry.id === id) ?? null;
 }
 
 export function readSettings(ctx: SettingsContext, editable: boolean): ServerSettings {
@@ -193,6 +217,28 @@ export function writeSettings(ctx: SettingsContext, patch: SettingsPatch, who: R
   if (patch.showStatusBar !== undefined) set(["show_status_bar"], patch.showStatusBar);
   if (patch.herdr !== undefined) set(["herdr"], patch.herdr);
   if (patch.desktopBackground !== undefined) set(["desktop_background"], patch.desktopBackground);
+  if (patch.acpAgents !== undefined) {
+    // A blank value keeps the stored one: the dialog never sees a value, so a save cannot erase a secret it did not show.
+    const stored = new Map((file ? parseConfig(readFile(file), file) : {}).harnesses?.acp?.map((entry) => [entry.id, entry.env ?? {}]) ?? []);
+    const list = patch.acpAgents.map((entry) => {
+      const env: Record<string, string> = {};
+      for (const [name, value] of Object.entries(entry.env ?? {})) {
+        const kept = value || stored.get(entry.id)?.[name];
+        if (kept) env[name] = kept;
+      }
+      return {
+        id: entry.id,
+        ...(entry.name ? { name: entry.name } : {}),
+        command: entry.command,
+        ...(entry.args && entry.args.length > 0 ? { args: entry.args } : {}),
+        ...(Object.keys(env).length > 0 ? { env } : {}),
+        ...(entry.authMethod ? { auth_method: entry.authMethod } : {}),
+      };
+    });
+    set(["harnesses", "acp"], list);
+  }
+  const harnesses = doc.getIn(["harnesses"]) as { items?: unknown[] } | undefined;
+  if (harnesses && Array.isArray(harnesses.items) && harnesses.items.length === 0) doc.deleteIn(["harnesses"]);
   const auth = doc.getIn(["auth"]) as { items?: unknown[] } | undefined;
   if (auth && Array.isArray(auth.items) && auth.items.length === 0) doc.deleteIn(["auth"]);
   // On is the default: the switch saves as no key at all, and the block goes when nothing else is in it.

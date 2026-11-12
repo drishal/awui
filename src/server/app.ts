@@ -37,6 +37,7 @@ import {
   openWorkspaceSchema,
   patchConfigSchema,
   renameSchema,
+  acpTestSchema,
   settingsPatchSchema,
   terminalCreateSchema,
   terminalWriteSchema,
@@ -69,6 +70,7 @@ import {
   type ReviewSendResult,
   type ReviewThread,
   putBackSchema,
+  type AcpAgentProbe,
   restoreSchema,
   type CheckpointPreview,
   type CheckpointRestored,
@@ -105,7 +107,8 @@ import { projectFiles, searchFiles } from "./project-files.js";
 import { searchProject } from "./project-search.js";
 import type { Security } from "./security.js";
 import type { ThemeStore } from "./theme.js";
-import { readSettings, writeSettings, type Requester, type SettingsContext } from "./settings.js";
+import { readSettings, savedAcpAgent, writeSettings, type Requester, type SettingsContext } from "./settings.js";
+import { AcpAdapter } from "./harness/acp.js";
 import { readAwuiConfig, writeAwuiConfig } from "./awui-settings.js";
 import { readUserConfig, uiSettings } from "./user-config.js";
 import { HerdrError, type Herdr } from "./herdr.js";
@@ -606,6 +609,34 @@ export function createApp(deps: AppDeps) {
   app.put("/api/awui/settings", async (req, res) => {
     res.json(await writeAwuiConfig(registry, req.body));
   });
+  // The Settings dialog's Test for a saved ACP agent: one `initialize` handshake, no
+  // model call, no session. Its stored environment is used server-side only.
+  app.post("/api/settings/acp/test", async (req, res) => {
+    const ctx = settingsCtx();
+    const { id } = body(acpTestSchema, req);
+    const agent = savedAcpAgent(ctx, id);
+    if (!agent) throw new ChatError(404, "unknown_acp_agent", `config.yml has no ACP agent "${id}"`);
+    const adapter = new AcpAdapter(agent, { home: ctx.home, stateDir: deps.stateDir ?? ctx.home });
+    try {
+      const { probe, warnings } = await adapter.probeAgent(ctx.home);
+      // What it advertises, in awui's words: no path, no token, no stderr.
+      res.json({
+        agentName: probe.agentName,
+        version: probe.version,
+        resume: probe.loadSession || probe.resumeSession,
+        replay: probe.loadSession,
+        images: probe.image,
+        mcpHttp: probe.mcpHttp,
+        authMethods: probe.authMethods,
+        warnings,
+      } satisfies AcpAgentProbe);
+    } catch (error) {
+      throw new ChatError(502, "acp_handshake_failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      await adapter.shutdown();
+    }
+  });
+
   app.post("/api/settings/restart", (_req, res) => {
     const ctx = settingsCtx();
     if (!ctx.canRestart) throw new ChatError(409, "no_supervisor", "Nothing would start the server again: restart it yourself");

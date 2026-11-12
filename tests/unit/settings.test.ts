@@ -14,7 +14,7 @@ function setup(yaml: string, overrides: Partial<SettingsContext> = {}) {
   if (yaml) writeFileSync(file, yaml);
   const ctx: SettingsContext = {
     configDir: dir,
-    running: { port: 4783, host: "127.0.0.1", username: "", password: null, workspaceRoots: [home], allowedHosts: [], allowedTailscaleUsers: [] },
+    running: { port: 4783, host: "127.0.0.1", username: "", password: null, workspaceRoots: [home], allowedHosts: [], allowedTailscaleUsers: [], acpAgents: "[]" },
     envSet: new Set(),
     credentialsFile: path.join(home, "credentials.json"),
     canRestart: false,
@@ -54,6 +54,7 @@ describe("settings", () => {
       herdr: true,
       desktopBackground: true,
       orchestrationEnabled: true,
+      acpAgents: [],
     });
   });
 
@@ -162,6 +163,23 @@ describe("settings", () => {
     expect(writeSettings(ctx, { host: "127.0.0.1" }, serve).values.host).toBe("127.0.0.1");
     expect(writeSettings(ctx, { allowedTailscaleUsers: ["Me@Example.com"] }, serve).values.allowedTailscaleUsers).toEqual(["Me@Example.com"]);
     expect(writeSettings(ctx, { host: "0.0.0.0", port: 4800 }, phone).values.port).toBe(4800);
+  });
+
+  it("saves ACP agents whole, never shows an env value, and keeps a stored one through a blank save", () => {
+    const { ctx, file } = setup("harnesses:\n  pi:\n    command: /opt/pi\n  acp:\n    - id: gemini\n      command: gemini\n      args: [--acp]\n      env:\n        GEMINI_API_KEY: s3cret\n");
+    const view = readSettings(ctx, true);
+    expect(view.values.acpAgents).toEqual([{ id: "gemini", name: "gemini", command: "gemini", args: ["--acp"], envNames: ["GEMINI_API_KEY"], authMethod: null }]);
+    // The dialog sends every name it saw, blank, and a new one: the blank keeps the secret, the new one is stored.
+    const saved = writeSettings(ctx, { acpAgents: [{ id: "gemini", command: "gemini", args: ["--acp", "--debug"], env: { GEMINI_API_KEY: "", GOOSE_HOME: "/srv/goose" }, authMethod: "api-key" }] });
+    expect(saved.values.acpAgents).toEqual([{ id: "gemini", name: "gemini", command: "gemini", args: ["--acp", "--debug"], envNames: ["GEMINI_API_KEY", "GOOSE_HOME"], authMethod: "api-key" }]);
+    const text = readFileSync(file, "utf8");
+    expect(text).toContain("s3cret");
+    expect(text).toContain("GOOSE_HOME: /srv/goose");
+    expect(text).toContain("auth_method: api-key");
+    // The pi launch beside it is untouched, and the ACP list waits for a restart.
+    expect(text).toContain("/opt/pi");
+    // This server started with no ACP agent, so a list that differs from that is waiting for a restart.
+    expect(writeSettings(ctx, { acpAgents: [{ id: "goose", command: "goose" }] }).restartPending).toContain("acpAgents");
   });
 
   it("has nothing to write to without a settings folder", () => {

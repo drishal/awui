@@ -106,7 +106,7 @@ environment variables. `AWUI_HARNESSES` selects an ACP agent by its id too, so
 `AWUI_HARNESSES=fake,gemini` brings up exactly those two. Every payload is bounded
 like the rest of awui (tool output to 16 KB, args to 4 KB, diffs to 800 lines /
 40 KB), and an update kind this client does not know is noted once per chat and
-never crashes it.
+never crashes it. The Settings dialog's **ACP agents** section adds, removes, and tests entries; Test runs the handshake only (the agent's name and version, what it advertises, and its sign-in methods), and a change to the list takes effect at the next restart.
 
 ## 2. The contract (`src/server/harness/types.ts`)
 
@@ -355,7 +355,11 @@ agent on this machine:
 - **Find the real executable.** Installers write wrapper scripts of every
   shape; prefer a launcher's own "print your command" flag over parsing it, and
   never fall back silently to a system interpreter. (Hermes: the installer's
-  launcher.)
+  if (!ctx.envSet.has("ALLOWED_TAILSCALE_USERS") && !sameList(v.allowedTailscaleUsers.map((u) => u.toLowerCase()), r.allowedTailscaleUsers)) {
+    out.push("allowedTailscaleUsers");
+  }
+  // ACP agents are built into the registry at startup, so a changed list takes effect with the next server.
+  if (JSON.stringify(acpAgents(c, ctx.home)) !== r.acpAgents) out.push("acpAgents");
 - **Settled means settled.** A message end is not the end of a run; tool calls
   and follow-ups can still come. Emit `settled` only on the agent's own signal.
 - **Keep the child's environment its own.** Strip variables that belong to a
