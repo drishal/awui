@@ -147,6 +147,13 @@ record instead of a `cancel_timeout` when the child is slow to settle. Both stay
 | `thread_read` | `taskId`, `before`, `limit` (≤200, default 40) | yes |
 | `thread_wait` | `taskIds` (1–4), `waitMs` (default 55 000, max 110 000) | yes |
 | `list_profiles` | `workspaceId` | yes |
+| `set_status` | `status` (`working`/`blocked`/`review`/`done`), `comment` (≤200 chars, optional) | yes |
+
+`set_status` writes this chat's status line: one word for where the work stands and one
+sentence a person reads in the sidebar's row, the chat's header, and its hover card
+without opening the chat (`$XDG_STATE_HOME/awui/agent-status.json`, the newest 500
+sessions, comments collapsed to one line and cut at 200 characters). It replaces the
+previous line, and a chat the harness has not named yet answers `no_session`.
 
 `list_profiles` lists the project's saved bot profiles and one entry per installed
 harness at its default model — `{ id, source, name, harnessId, harnessName, available,

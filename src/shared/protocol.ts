@@ -118,11 +118,28 @@ export interface SessionSummary {
    * from the orchestration records.
    */
   origin?: SessionOrigin;
+  /**
+   * The line its own agent set through the orchestration tool surface: where the
+   * work stands and what it is waiting on. Absent until an agent writes one.
+   */
+  agentStatus?: AgentStatusLine;
   herdr?: { paneId: string; status: HerdrStatus };
 }
 
 /** Who started a session that no person typed into. */
 export type SessionOrigin = "routine" | "agent";
+
+/** Where an agent says its own work stands. */
+export type AgentStatusState = "working" | "blocked" | "review" | "done";
+
+/** A line its own agent set for a session, which people read without opening the chat. */
+export interface AgentStatusLine {
+  state: AgentStatusState;
+  /** One sentence, spaces collapsed and cut to its cap (the server enforces both). */
+  comment: string;
+  /** Epoch ms it was set: how stale the line is, on hover. */
+  at: number;
+}
 
 /** A herdr pane's agent: `done` is idle with a finish nobody has looked at yet. */
 export type HerdrStatus = "idle" | "done" | "working" | "blocked" | "unknown";
@@ -272,9 +289,17 @@ export interface SessionOverviewEvent {
   asking?: true;
   disposed?: true;
 }
+/** One session's agent-set status line, and null when the line was cleared or expired. */
+export interface AgentStatusOverviewEvent {
+  type: "agent-status";
+  /** As `SessionSummary.id`: `harnessId:nativeId`. */
+  sessionId: string;
+  agentStatus: AgentStatusLine | null;
+}
 /** The overview is metadata only. A snapshot asks the client to reload the full ordinary overview. */
 export type OverviewEvent =
   | SessionOverviewEvent
+  | AgentStatusOverviewEvent
   | { type: "room"; room: RoomSummary }
   | { type: "snapshot" };
 

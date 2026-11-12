@@ -23,7 +23,7 @@ afterEach(async () => {
   t = null;
 });
 
-const TOOL_NAMES = ["delegate_task", "task_status", "task_cancel", "thread_send", "thread_read", "thread_wait", "list_profiles"];
+const TOOL_NAMES = ["delegate_task", "task_status", "task_cancel", "thread_send", "thread_read", "thread_wait", "set_status", "list_profiles"];
 
 async function setup(options: Parameters<typeof makeTestApp>[0] = {}) {
   const app = await makeTestApp(options);
@@ -200,6 +200,26 @@ describe("delegated tasks", () => {
     const parentSnap = (await agent.get(`/api/chats/${chat.chatId}`)).body as ChatSnapshot;
     expect(parentSnap.delegated?.[0]).toMatchObject({ id: started.taskId, parentChatId: chat.chatId, childChatId: childId, harnessId: "fake", title: "Summariser", depth: 1 });
     sse.close();
+  });
+
+  it("sets a chat's status line, shows it in the session list, and refuses a state it does not have", async () => {
+    const { app, agent, token } = await setup();
+    const set = await call(agent, token, "set_status", { status: "blocked", comment: "waiting on the flaky auth test" });
+    expect(set.status).toBe(200);
+    expect(set.body.text).toBe("Status set: blocked — waiting on the flaky auth test");
+    const chat = app.manager.list().find((c) => c.orchestration?.token === token);
+    if (!chat?.sessionId) throw new Error("the chat has no session");
+    const overview = (await agent.get("/api/sessions").expect(200)).body as SessionsOverview;
+    expect(overview.sessions.find((s) => s.id === chat.sessionId)?.agentStatus).toMatchObject({ state: "blocked", comment: "waiting on the flaky auth test" });
+    // One state only, and the comment is bounded rather than refused.
+    expect((await call(agent, token, "set_status", { status: "waiting" })).status).toBe(400);
+    const long = await call(agent, token, "set_status", { status: "review", comment: "x".repeat(500) });
+    expect(long.status).toBe(400);
+    const ok = await call(agent, token, "set_status", { status: "review", comment: "y".repeat(200) });
+    expect(ok.status).toBe(200);
+    // A later write replaces the line.
+    const again = await call(agent, token, "set_status", { status: "done", comment: "shipped" });
+    expect((again.body.data as { state: string }).state).toBe("done");
   });
 
   it("lists a delegated child's session with its origin, so the sidebar can hide agent-started work", async () => {

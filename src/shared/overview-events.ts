@@ -5,6 +5,18 @@ import type { OverviewEvent, ProjectSession, RoomSummary, SessionsOverview } fro
 export function mergeSessionOverview(overview: SessionsOverview, event: OverviewEvent): { overview: SessionsOverview; refresh: boolean } {
   if (event.type === "snapshot") return { overview, refresh: true };
   if (event.type === "room") return { overview, refresh: false };
+  // An agent's status line patches its one row and touches nothing else: a chat that
+  // has not persisted its session yet is not in the list, and its line waits for a refresh.
+  if (event.type === "agent-status") {
+    const at = overview.sessions.findIndex((s) => s.id === event.sessionId);
+    if (at < 0) return { overview, refresh: false };
+    const sessions = overview.sessions.slice();
+    const next: ProjectSession = { ...(sessions[at] as ProjectSession) };
+    if (event.agentStatus) next.agentStatus = event.agentStatus;
+    else delete next.agentStatus;
+    sessions[at] = next;
+    return { overview: { ...overview, sessions }, refresh: false };
+  }
   const at = overview.sessions.findIndex((s) => s.id === `${event.harnessId}:${event.nativeId}`);
   if (at < 0) return { overview, refresh: true };
   const current = overview.sessions[at] as ProjectSession;

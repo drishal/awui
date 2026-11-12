@@ -2,7 +2,7 @@
 // or harness credentials cross this channel. The replay tail is in memory;
 // stale clients refresh the ordinary session and room lists, not a second transcript.
 import type { Chat } from "./chats/chat.js";
-import type { OverviewEvent, RoomSummary, SessionsOverview } from "../shared/protocol.js";
+import type { AgentStatusLine, OverviewEvent, RoomSummary, SessionsOverview } from "../shared/protocol.js";
 
 type Listener = { send(id: number, event: OverviewEvent): void; close(): void };
 
@@ -80,6 +80,11 @@ function overviewEventsNote(event: OverviewEvent): void {
   if (event.type !== "room" && event.type !== "session") return;
   // Normalized content prohibits user transcript, only metadata (Server Summary objects copied).
   log.emit(event);
+}
+
+/** One session's agent-set status line: metadata only, so the sidebar and the chat header keep up. */
+export function noteAgentStatus(sessionId: string, agentStatus: AgentStatusLine | null): void {
+  log.emit({ type: "agent-status", sessionId, agentStatus });
 }
 
 /** Room emit is content-deduplicated because replay/snapshot clients observe same event. */

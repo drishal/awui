@@ -21,6 +21,8 @@ import { harnessColor } from "../harness-colors.js";
 import { HarnessMenu } from "./HarnessMenu.js";
 import { WorkingRing } from "./WorkingRing.js";
 import { SessionCard } from "./SessionCard.js";
+import { agentStatusText } from "../agent-status.js";
+import { ago } from "../turns.js";
 import { SidebarFilters } from "./SidebarFilters.js";
 import { ProjectBadge } from "./ProjectBadge.js";
 import { ProjectIconDialog } from "./ProjectIconDialog.js";
@@ -415,6 +417,11 @@ function SessionRow({
           <span className="harness-dot" style={harnessColor(s.harnessId)} role="img" aria-label={harnessName} title={harnessName} />
         )}
         <span className="session-title">{plainTitle(s.title)}</span>
+        {s.agentStatus ? (
+          <span className={`session-agent is-${s.agentStatus.state}`} title={`${agentStatusText(s.agentStatus)} · set by the agent ${ago(s.agentStatus.at)}`}>
+            {s.agentStatus.comment || agentStatusText(s.agentStatus)}
+          </span>
+        ) : null}
         {s.unread ? <span className="session-unread" role="img" aria-label="Unread" title="Unread" /> : null}
         <span className="session-meta">
           {project ? <span className="session-project">{project}</span> : null}

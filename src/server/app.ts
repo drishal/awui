@@ -119,6 +119,7 @@ import { readAwuiConfig, writeAwuiConfig } from "./awui-settings.js";
 import { breakdownRules, readUserConfig, uiSettings } from "./user-config.js";
 import { HerdrError, type Herdr } from "./herdr.js";
 import { SessionMarks } from "./session-marks.js";
+import { AgentStatuses } from "./agent-status.js";
 import { SessionOrder } from "./session-order.js";
 import { checkoutOf } from "./checkouts.js";
 import { SavedPrompts } from "./saved-prompts.js";
@@ -206,6 +207,8 @@ export interface AppDeps {
   herdr?: Herdr;
   /** Board rooms; without one the board routes answer 404 and ownership filtering is a no-op. */
   boards?: BoardManager;
+  /** Agent-set status lines (agent-status.ts); in memory when absent (tests). */
+  agentStatuses?: AgentStatuses;
   /** The orchestration surface's bounds, read at each use; config.yml's `orchestration:` (none: the defaults). */
   orchestrationLimits?: () => OrchestrationLimits;
   log?: (message: string) => void;
@@ -260,6 +263,7 @@ function latest(saved: Date | null, talkedAt: number | null): string | null {
 export function createApp(deps: AppDeps) {
   const { registry, manager, workspaces, security, theme } = deps;
   const marks = deps.marks ?? SessionMarks.inMemory();
+  const agentStatuses = deps.agentStatuses ?? AgentStatuses.inMemory();
   const reviewThreads = deps.reviewThreads ?? ReviewThreads.inMemory();
   const secondOpinions = deps.secondOpinions ?? SecondOpinions.inMemory();
   const races = deps.races ?? Races.inMemory(raceChatsFor(manager));
@@ -310,6 +314,7 @@ export function createApp(deps: AppDeps) {
     workspaces,
     ...(deps.boards ? { boards: deps.boards } : {}),
     file: deps.stateDir ? path.join(deps.stateDir, "orchestration", "tasks.json") : null,
+    statuses: agentStatuses,
     limits: orchestrationLimits,
     log,
   });
@@ -1220,7 +1225,9 @@ export function createApp(deps: AppDeps) {
       // A routine's origin is the mark; a delegated child's is in the orchestrator's records,
       // so it survives a reap. Either one is metadata only: the sidebar hides by it.
       const origin = mark?.origin ?? (manager.delegatedSession?.(s.harnessId, s.id.slice(s.harnessId.length + 1)) ? "agent" : undefined);
-      if (mark || pane || origin) sessions.set(id, { ...s, ...mark, ...(origin ? { origin } : {}), ...(pane ? { herdr: { paneId: pane.paneId, status: pane.status } } : {}) });
+      // The line its own agent set (the orchestration tool surface's set_status).
+      const agentStatus = agentStatuses.get(id);
+      if (mark || pane || origin || agentStatus) sessions.set(id, { ...s, ...mark, ...(origin ? { origin } : {}), ...(agentStatus ? { agentStatus } : {}), ...(pane ? { herdr: { paneId: pane.paneId, status: pane.status } } : {}) });
     }
     const checkouts: Record<string, Checkout> = {};
     await Promise.all(

@@ -352,6 +352,28 @@
   font-weight: 600;
 }
 
+/* The line the agent set for itself: its own words where the row has room, cut short.
+   Blocked wears the warning colour; review and done read as settled. */
+.session-agent {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.session-agent.is-blocked {
+  color: var(--warn);
+}
+
+.session-agent.is-review,
+.session-agent.is-done {
+  color: var(--ok);
+}
+
 /* Under the Needs you heading the word says nothing the heading does not, and it took the title's room. */
 .needs-group .session-asking {
   display: none;

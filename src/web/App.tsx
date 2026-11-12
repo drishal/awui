@@ -108,6 +108,8 @@ import { forgetWorkspace, load, rememberWorkspace, save } from "./storage.js";
 import { themeModeOf, useTheme } from "./theme.js";
 import { retryMode } from "./tool-retry.js";
 import { plainTitle } from "./plain-title.js";
+import { agentStatusText } from "./agent-status.js";
+import { ago } from "./turns.js";
 
 // Heavy auxiliary panels load on first use, keeping the chat/streaming hot path small.
 const SettingsDialog = lazy(() => import("./components/SettingsDialog.js").then((m) => ({ default: m.SettingsDialog })));
@@ -1983,6 +1985,11 @@ export function App() {
       ? (currentHarness.reason ?? `${currentHarness.displayName} is not installed.`)
       : null;
   const chatHarness = chat ? boot.harnesses.find((h) => h.id === chat.harnessId) : undefined;
+  // The agent's own status line comes from the sidebar's row (the overview stream patches it
+  // in place), so it shows in the header too without a second request.
+  const chatStatusLine = chat
+    ? overview.sessions.find((x) => (chat.sessionId !== null && x.id === chat.sessionId) || x.liveChatId === chat.chatId)?.agentStatus
+    : undefined;
   const hasPrompt = chat ? chat.items.some((i) => i.kind === "user") : false;
   /** The chat being opened names the header until it is shown. */
   const heading = splash && !splash.leaving ? splash.target : null;
@@ -2192,6 +2199,11 @@ export function App() {
                       <StatusWord text={STATUS_LABEL[chat.status] ?? chat.status} />
                     </span>
                     {chat.lineage ? <LineageChip lineage={chat.lineage} onOpen={(id) => void openChatById(id)} /> : null}
+                    {chatStatusLine ? (
+                      <span className={`chat-agent-status is-${chatStatusLine.state}`} title={`The agent set this ${ago(chatStatusLine.at)}`}>
+                        {agentStatusText(chatStatusLine)}
+                      </span>
+                    ) : null}
                     {chat.harnessId !== "awui" ? (
                       <span className="chat-path" title={chat.workspace.path}>
                         {chat.workspace.name}

@@ -81,6 +81,25 @@
   }
 }
 
+/* The agent's own status line, in the header's sub row: where the work stands, in its words. */
+.chat-agent-status {
+  min-width: 0;
+  max-width: 42ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-text);
+}
+
+.chat-agent-status.is-blocked {
+  color: var(--warn);
+}
+
+.chat-agent-status.is-review,
+.chat-agent-status.is-done {
+  color: var(--ok);
+}
+
 .chat-path {
   max-width: 30ch;
   overflow: hidden;

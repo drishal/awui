@@ -16,6 +16,7 @@ import type { ChatManager } from "../chats/manager.js";
 import type { HarnessRegistry } from "../harness/registry.js";
 import type { HarnessAdapter } from "../harness/types.js";
 import type { Workspaces } from "../workspaces.js";
+import type { AgentStatuses } from "../agent-status.js";
 import { readPage } from "./read.js";
 import { TaskStore } from "./store.js";
 import {
@@ -29,6 +30,8 @@ import {
   threadReadSchema,
   threadSendSchema,
   threadWaitSchema,
+  setStatus,
+  setStatusSchema,
   type ToolContext,
   type ToolOutput,
 } from "./tools.js";
@@ -48,6 +51,8 @@ export interface OrchestratorDeps {
   boards?: BoardManager;
   /** `<stateDir>/orchestration/tasks.json`; null keeps the records in memory only (tests). */
   file: string | null;
+  /** Where `set_status` writes (agent-status.ts); absent leaves the tool saying it is not wired. */
+  statuses?: AgentStatuses;
   log: (message: string) => void;
   /**
    * The limits in force now: config.yml's `orchestration:` block, read at each use (index.ts), so a
@@ -107,6 +112,8 @@ export class Orchestrator {
         return this.threadSend(caller, threadSendSchema.parse(args));
       case "thread_read":
         return this.threadRead(caller, threadReadSchema.parse(args));
+      case "set_status":
+        return setStatus(caller, setStatusSchema.parse(args), this.deps.statuses);
       default:
         throw new ChatError(400, "unknown_tool", `${name} is not wired on this server yet`);
     }

@@ -1,5 +1,6 @@
 // The orchestration surface an agent sees: the tools that let one chat delegate work to
-// another harness, watch it, talk to it, and read the result back. This file is the one
+// another harness, watch it, talk to it, and read the result back, plus the one status
+// line it sets for the person watching. This file is the one
 // place a tool is defined — the Pi/omp/awui extension and the MCP bridge both fetch this
 // catalogue from GET /api/orchestration/tools, so a name, a description, and a parameter
 // schema exist once. Each tool also has a Zod schema here, applied by orchestrator.ts
@@ -7,9 +8,11 @@
 // itself, which is also why these schemas live here and not in protocol.ts (no browser
 // ever sees them).
 import { z } from "zod";
-import type { BotProfile } from "../../shared/protocol.js";
+import type { AgentStatusState, BotProfile } from "../../shared/protocol.js";
 import type { BoardManager } from "../boards/types.js";
-import type { Chat } from "../chats/chat.js";
+import { ChatError, type Chat } from "../chats/chat.js";
+import type { AgentStatuses } from "../agent-status.js";
+import { noteAgentStatus } from "../overview-events.js";
 import type { HarnessRegistry } from "../harness/registry.js";
 import type { Workspaces } from "../workspaces.js";
 
@@ -56,6 +59,16 @@ export const threadReadSchema = z
 
 export const threadWaitSchema = z
   .object({ taskIds: z.array(taskId).min(1).max(MAX_WAIT_TASKS), waitMs: z.number().int().min(0).max(MAX_WAIT_MS).optional() })
+  .strict();
+
+/** One status line, as the agent sets it: a state, and the sentence a person reads. */
+export const MAX_STATUS_COMMENT_CHARS = 200;
+
+export const setStatusSchema = z
+  .object({
+    status: z.enum(["working", "blocked", "review", "done"]),
+    comment: z.string().trim().max(MAX_STATUS_COMMENT_CHARS).default(""),
+  })
   .strict();
 
 /** One tool as the bridges register it: the name, the words the model reads, and JSON Schema for its arguments. */
@@ -149,6 +162,20 @@ export const ORCH_TOOLS: OrchTool[] = [
     ),
   },
   {
+    name: "set_status",
+    description:
+      "Set this chat's status line: one word for where the work stands and one short sentence saying what you are doing or waiting on. " +
+      "A person reads it in the sidebar's row and the chat's header without opening the chat, so use it when you are stuck, finished, or working on something long. " +
+      "It replaces the previous line; set it again when it changes.",
+    parameters: object(
+      {
+        status: { type: "string", enum: ["working", "blocked", "review", "done"], description: "working: still on it; blocked: waiting on something; review: ready for a person; done: finished." },
+        comment: stringProperty("One sentence for the person watching: what you are doing, or what you need.", MAX_STATUS_COMMENT_CHARS),
+      },
+      ["status"],
+    ),
+  },
+  {
     name: "list_profiles",
     description:
       "List the workers you can delegate to: this project's saved bot profiles and one entry per installed harness at its default model. " +
@@ -190,6 +217,21 @@ export interface ToolOutput {
 
 export function findTool(name: string): OrchTool | undefined {
   return ORCH_TOOLS.find((tool) => tool.name === name);
+}
+
+/**
+ * `set_status`: the one tool that writes rather than reads. The line is kept per native
+ * session by agent-status.ts and published on the overview stream, so the sidebar's row
+ * and the chat's header show it without a reload. A chat the harness has not yet named
+ * has no session to key it on, and says so instead of dropping the line.
+ */
+export async function setStatus(chat: Chat, args: { status: AgentStatusState; comment: string }, statuses: AgentStatuses | undefined): Promise<ToolOutput> {
+  if (!statuses) throw new ChatError(404, "status_off", "Status lines are not wired on this server");
+  if (!chat.sessionId) throw new ChatError(409, "no_session", "This chat has no session yet; set a status once the harness has named it");
+  const sessionId = chat.sessionId;
+  const line = await statuses.set(sessionId, args.status, args.comment);
+  noteAgentStatus(sessionId, line);
+  return { text: `Status set: ${line.state}${line.comment ? ` — ${line.comment}` : ""}`, data: line };
 }
 
 

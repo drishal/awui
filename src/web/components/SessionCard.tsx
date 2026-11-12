@@ -9,6 +9,7 @@ import { api } from "../api.js";
 import { harnessColor } from "../harness-colors.js";
 import { useCardPlace } from "../hover-card.js";
 import { plainPreview } from "../session-groups.js";
+import { agentStatusText } from "../agent-status.js";
 
 const cache = new Map<string, Promise<SessionPreview | null>>();
 
@@ -47,6 +48,7 @@ export function SessionCard({ s, anchor, harnessName, project, id, provenance }:
         {model ? <span className="session-card-model">{model}</span> : null}
       </div>
       {provenance ? <p className="session-card-provenance">{provenance}</p> : null}
+      {s.agentStatus ? <p className={`session-card-status is-${s.agentStatus.state}`}>{agentStatusText(s.agentStatus)}</p> : null}
       {data === undefined ? (
         <div className="session-card-loading muted">Loading…</div>
       ) : data === null ? (
