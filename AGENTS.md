@@ -336,6 +336,12 @@ if every test passes.
 - **atui:** the theme comes from the server's tokens (`theme.ts`); mouse and
   keyboard both work; new keys go into the palette and the help strings.
 
+## Review guidance
+
+- **Reverse every one-way door.** When reviewing a change, every state
+  transition it adds must have an inverse (snooze↔unsnooze, settle↔unsettle,
+  pin↔unpin): if a new action can only go one way, flag it as a bug.
+
 ## Testing
 
 - **Fake harnesses are the main tool.** `FakeAdapter` (`src/server/harness/fake.ts`)
