@@ -3,15 +3,17 @@
 // derived on read, because the timer asks what is due now; saving, editing, and
 // running a routine recompute it from shared/routine-schedule.ts. The last
 // outcome is stored too, so the list can say why a slot skipped without a chat.
+// A routine can also stop for good — its expiry passed, or it reached maxRuns — and
+// then says why ("halted"), so a routine nobody switched off does not look due again.
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { MAX_RUN_DETAIL_CHARS, type Routine, type RoutineInput, type RoutineOutcome, routineSchema } from "../shared/protocol.js";
-import { nextRunAt } from "../shared/routine-schedule.js";
+import { cadenceProblem, nextRunAt } from "../shared/routine-schedule.js";
 import { isObj, readJson, writeJson } from "./state-file.js";
 
 export const MAX_ROUTINES = 50;
 
-const OUTCOMES: readonly RoutineOutcome[] = ["launched", "skipped", "failed"];
+const OUTCOMES: readonly RoutineOutcome[] = ["launched", "skipped", "failed", "posted", "quiet"];
 
 /** A stored outcome, or null for a file written before outcomes were kept (and for a hand-edited one). */
 function outcomeOf(raw: unknown): RoutineOutcome | null {
@@ -30,18 +32,40 @@ function clean(raw: unknown): Routine | null {
   if (!isObj(raw)) return null;
   const parsed = routineSchema.safeParse(raw);
   if (!parsed.success) return null;
-  const { id, nextRunAt: at, lastRunAt, lastRunOutcome, lastRunDetail } = raw as { id?: unknown; nextRunAt?: unknown; lastRunAt?: unknown; lastRunOutcome?: unknown; lastRunDetail?: unknown };
+  const { id, nextRunAt: at, lastRunAt, lastRunOutcome, lastRunDetail, runs, halted } = raw as {
+    id?: unknown;
+    nextRunAt?: unknown;
+    lastRunAt?: unknown;
+    lastRunOutcome?: unknown;
+    lastRunDetail?: unknown;
+    runs?: unknown;
+    halted?: unknown;
+  };
   if (typeof id !== "string" || !id) return null;
-  if (typeof at !== "number" || !Number.isFinite(at)) return null;
+  if (at !== null && (typeof at !== "number" || !Number.isFinite(at))) return null;
   if (lastRunAt !== null && typeof lastRunAt !== "number") return null;
   return {
     ...parsed.data,
     id,
-    nextRunAt: at,
+    nextRunAt: (at as number | null) ?? null,
+    halted: typeof halted === "string" && halted.trim() ? halted.trim().slice(0, MAX_RUN_DETAIL_CHARS) : null,
+    runs: typeof runs === "number" && Number.isInteger(runs) && runs >= 0 ? runs : 0,
     lastRunAt: (lastRunAt as number | null) ?? null,
     lastRunOutcome: outcomeOf(lastRunOutcome),
     lastRunDetail: runDetail(lastRunDetail),
   };
+}
+
+/**
+ * Where a routine stands after the slot at `at`: its next one, or the reason it has none.
+ * `runs` is how many it has had, this slot included.
+ */
+function advance(routine: Pick<Routine, "cadence" | "timezone" | "until" | "maxRuns">, runs: number, at: number): { nextRunAt: number | null; halted: string | null } {
+  if (routine.maxRuns !== null && runs >= routine.maxRuns) return { nextRunAt: null, halted: `stopped after ${runs} run${runs === 1 ? "" : "s"} (its maxRuns)` };
+  const next = nextRunAt(routine.cadence, at, routine.timezone);
+  if (next === null) return { nextRunAt: null, halted: routine.cadence.kind === "once" ? "ran its one time" : "has no further run" };
+  if (routine.until !== null && next > routine.until) return { nextRunAt: null, halted: `stopped at its expiry (${new Date(routine.until).toISOString()})` };
+  return { nextRunAt: next, halted: null };
 }
 
 export class Routines {
@@ -65,9 +89,9 @@ export class Routines {
     return store;
   }
 
-  /** The soonest first, so the timer can stop at the first one not yet due. */
+  /** The soonest first (one with no further run last), so the timer can stop at the first one not yet due. */
   all(): Routine[] {
-    return [...this.byId.values()].sort((a, b) => a.nextRunAt - b.nextRunAt || a.name.localeCompare(b.name));
+    return [...this.byId.values()].sort((a, b) => (a.nextRunAt ?? Infinity) - (b.nextRunAt ?? Infinity) || a.name.localeCompare(b.name));
   }
 
   get(id: string): Routine | undefined {
@@ -79,12 +103,20 @@ export class Routines {
     // Parsed here as well as at the route: this is the last stop before disk, and
     // the schema is what supplies `enabled` and refuses a cadence that cannot run.
     const parsed = routineSchema.parse(input);
+    // The route checks this first and says which field; here it is the last stop before disk.
+    const problem = cadenceProblem(parsed.cadence, now, parsed.timezone);
+    if (problem) throw new Error(problem);
     const existing = parsed.id === undefined ? undefined : this.byId.get(parsed.id);
     if (!existing && this.byId.size >= MAX_ROUTINES) throw new Error(`At most ${MAX_ROUTINES} routines`);
+    const runs = existing?.runs ?? 0;
+    // A save is the owner saying "this is what I want now", so it also clears a halt: the
+    // next slot is computed afresh from the new cadence, expiry, and cap.
+    const standing = advance(parsed, runs, now);
     const routine: Routine = {
       ...parsed,
       id: existing?.id ?? randomUUID(),
-      nextRunAt: nextRunAt(parsed.cadence, now),
+      ...standing,
+      runs,
       lastRunAt: existing?.lastRunAt ?? null,
       lastRunOutcome: existing?.lastRunOutcome ?? null,
       lastRunDetail: existing?.lastRunDetail ?? null,
@@ -100,11 +132,12 @@ export class Routines {
     return true;
   }
 
-  /** A routine that just ran counts the time and moves to its next slot. */
+  /** A routine that just ran counts the time and moves to its next slot (or stops, and says why). */
   async markRan(id: string, at = Date.now()): Promise<Routine | undefined> {
     const routine = this.byId.get(id);
     if (!routine) return undefined;
-    const next: Routine = { ...routine, lastRunAt: at, nextRunAt: nextRunAt(routine.cadence, at) };
+    const runs = routine.runs + 1;
+    const next: Routine = { ...routine, runs, lastRunAt: at, ...advance(routine, runs, at) };
     this.byId.set(id, next);
     await this.persist();
     return next;
@@ -123,9 +156,9 @@ export class Routines {
     return next;
   }
 
-  /** What the timer should start now: enabled, and its slot has come. */
+  /** What the timer should start now: enabled, not stopped for good, and its slot has come. */
   due(now = Date.now()): Routine[] {
-    return this.all().filter((routine) => routine.enabled && routine.nextRunAt <= now);
+    return this.all().filter((routine) => routine.enabled && routine.halted === null && routine.nextRunAt !== null && routine.nextRunAt <= now);
   }
 
   private persist(): Promise<void> {

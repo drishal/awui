@@ -92,3 +92,40 @@ describe("the routines routes", () => {
     expect((await agent.put("/api/routines").send(body({ precheck: "x".repeat(501) }))).status).toBe(400);
   });
 });
+
+describe("a routine's schedule", () => {
+  it("keeps a cron expression and a timezone, and says why one cannot run", async () => {
+    const { agent, body } = await setUp();
+    const created = (await agent.put("/api/routines").send(body({ cadence: { kind: "cron", expr: "0 9 * * 1-5" }, timezone: "Europe/Berlin" })).expect(200)).body as Routine;
+    expect(created).toMatchObject({ cadence: { kind: "cron", expr: "0 9 * * 1-5" }, timezone: "Europe/Berlin", graceMinutes: 0, maxRuns: null, until: null, runs: 0, halted: null });
+    expect(created.nextRunAt).toBeGreaterThan(Date.now());
+
+    const bad = await agent.put("/api/routines").send(body({ cadence: { kind: "cron", expr: "0 9 * *" } }));
+    expect(bad.status).toBe(400);
+    expect((bad.body as { error: string }).error).toMatch(/five fields/);
+    expect((await agent.put("/api/routines").send(body({ timezone: "Mars/Olympus" }))).status).toBe(400);
+    expect((await agent.put("/api/routines").send(body({ until: Date.now() - 1000 }))).status).toBe(400);
+    // A one-off in the past is refused too.
+    expect((await agent.put("/api/routines").send(body({ cadence: { kind: "once", at: Date.now() - 1000 } }))).status).toBe(400);
+  });
+
+  it("runs one now, without moving its next slot", async () => {
+    const { agent, body } = await setUp();
+    const created = (await agent.put("/api/routines").send(body()).expect(200)).body as Routine;
+    const ran = (await agent.post(`/api/routines/${created.id}/run`).expect(202)).body as { chatId: string; routineId: string };
+    expect(ran.routineId).toBe(created.id);
+    expect(ran.chatId).toBeTruthy();
+    const after = ((await agent.get("/api/routines").expect(200)).body as { routines: Routine[] }).routines[0];
+    expect(after?.nextRunAt).toBe(created.nextRunAt);
+    expect(after?.runs).toBe(0);
+    await agent.post("/api/routines/no-such/run").expect(404);
+  });
+
+  it("answers 409 when a run's precheck says there is nothing to do", async () => {
+    const { agent, body } = await setUp();
+    const created = (await agent.put("/api/routines").send(body({ precheck: "exit 1" })).expect(200)).body as Routine;
+    const skipped = await agent.post(`/api/routines/${created.id}/run`);
+    expect(skipped.status).toBe(409);
+    expect((skipped.body as { error: string }).error).toMatch(/precheck exited 1/);
+  });
+});

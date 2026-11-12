@@ -127,6 +127,8 @@ import { checkoutOf } from "./checkouts.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { Routines } from "./routines.js";
 import { RoutineRuns } from "./routine-runs.js";
+import { routineNote, runRoutine } from "./routine-runner.js";
+import { cadenceProblem } from "../shared/routine-schedule.js";
 import { ReviewProblem, ReviewThreads } from "./review-threads.js";
 import { SecondOpinions, reportExcerpt } from "./second-opinions.js";
 import { attributionSnapshot } from "./attribution.js";
@@ -1444,13 +1446,38 @@ export function createApp(deps: AppDeps) {
   });
   app.put("/api/routines", async (req, res) => {
     const input = body(routineSchema, req);
+    // A schedule that cannot run is a bad request, said in the dialog's words (the shape
+    // cannot check a cron expression's meaning, only its length).
+    const problem = cadenceProblem(input.cadence ?? { kind: "daily", hour: 9, minute: 0 }, Date.now(), input.timezone ?? "");
+    if (problem) throw new ChatError(400, "bad_cadence", problem);
+    if (input.until != null && input.until <= Date.now()) throw new ChatError(400, "bad_expiry", "The expiry has already passed");
     await workspaces.get(input.workspaceId);
     await availableAdapter(input.harnessId);
     try {
       res.json(await routines.save(input));
     } catch (error) {
-      throw new ChatError(409, "too_many_routines", errorMessage(error));
+      const text = errorMessage(error);
+      if (/^At most /.test(text)) throw new ChatError(409, "too_many_routines", text);
+      throw new ChatError(400, "bad_routine", text);
     }
+  });
+  /**
+   * Run a routine now, outside its cadence: the same run the next tick would make, and
+   * (like a scheduled one) it does not move the routine's own next slot. What it came to
+   * is in the run history; a precheck that says "nothing to do" answers 409 with its why.
+   */
+  app.post("/api/routines/:id/run", async (req, res) => {
+    const routine = routines.get(req.params.id);
+    if (!routine) throw new ChatError(404, "no_routine", "No such routine");
+    const adapter = await availableAdapter(routine.harnessId);
+    const workspace = await workspaces.get(routine.workspaceId);
+    const ran = await runRoutine(routine, workspace, adapter, manager, {
+      runs: routineRuns,
+      markOutcome: (id, outcome, detail) => routines.markOutcome(id, outcome, detail),
+      post: (r, chat, text) => routineNote(notifier, r, chat, text),
+    });
+    if (!ran.chat) throw new ChatError(409, "routine_skipped", ran.detail ?? "The precheck skipped this run");
+    res.status(202).json({ chatId: ran.chat.chatId, routineId: routine.id });
   });
   app.delete("/api/routines/:id", async (req, res) => {
     if (!(await routines.remove(req.params.id))) throw new ChatError(404, "no_routine", "No such routine");

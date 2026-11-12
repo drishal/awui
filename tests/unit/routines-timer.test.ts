@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Routine, RoutineOutcome } from "../../src/shared/protocol.js";
 import { type RoutineDue, startDue } from "../../src/server/routines-timer.js";
 
-const routine = (id: string, nextRunAt: number, enabled = true): Routine => ({
+const routine = (id: string, nextRunAt: number, enabled = true, graceMinutes = 0): Routine => ({
   id,
   name: id,
   prompt: "go",
@@ -12,6 +12,12 @@ const routine = (id: string, nextRunAt: number, enabled = true): Routine => ({
   workspaceId: "w",
   cadence: { kind: "daily", hour: 9, minute: 0 },
   precheck: "",
+  timezone: "",
+  until: null,
+  maxRuns: null,
+  graceMinutes,
+  runs: 0,
+  halted: null,
   enabled,
   nextRunAt,
   lastRunAt: null,
@@ -28,7 +34,7 @@ function fakeStore(routines: Routine[]): RoutineDue & { marks: Array<[string, nu
   return {
     marks,
     outcomes,
-    due: (now: number) => routines.filter((r) => r.enabled && r.nextRunAt <= now),
+    due: (now: number) => routines.filter((r) => r.enabled && r.nextRunAt !== null && r.nextRunAt <= now),
     markRan: async (id: string, at: number) => {
       marks.push([id, at]);
       const found = routines.find((r) => r.id === id);
@@ -97,6 +103,25 @@ describe("the routines timer", () => {
     expect(store.outcomes).toEqual([["quiet", "skipped", "precheck exited 1: no changes"]]);
     // The slot is used up, so the next tick does not try it again.
     expect(await startDue(store, async () => undefined, 500)).toEqual([]);
+  });
+
+  it("spends a slot missed past its grace, saying how late it was", async () => {
+    // Due five hours ago, with an hour of grace: no agent starts on last night's work.
+    const late = 500 - 5 * 3_600_000;
+    const store = fakeStore([routine("late", late, true, 60), routine("recent", 500 - 600_000, true, 60)]);
+    const started: string[] = [];
+    expect(await startDue(store, async (r) => void started.push(r.id), 500)).toEqual(["recent"]);
+    expect(started).toEqual(["recent"]);
+    expect(store.outcomes[0]).toEqual(["late", "skipped", "missed its slot by 5 h (grace 60 min)"]);
+    // It is spent either way: the next tick does not run it.
+    expect(await startDue(store, async () => void started.push("again"), 500)).toEqual([]);
+  });
+
+  it("runs a late slot when it has no grace window", async () => {
+    const store = fakeStore([routine("late", 500 - 5 * 3_600_000)]);
+    const started: string[] = [];
+    expect(await startDue(store, async (r) => void started.push(r.id), 500)).toEqual(["late"]);
+    expect(started).toEqual(["late"]);
   });
 
   it("never starts a disabled routine", async () => {

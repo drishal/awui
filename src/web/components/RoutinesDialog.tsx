@@ -1,6 +1,6 @@
 // Routines: a prompt on a cadence, in a project, on a harness. The server runs
 // them (the 30 s tick in index.ts) with no browser open; this dialog is how they
-// are made, turned off, and removed.
+// are made, turned off, run once, read back (their last few runs), and removed.
 import { useEffect, useState } from "react";
 import type { HarnessStatus, Routine, RoutineOutcome, RoutineRun, WorkspaceInfo } from "../../shared/protocol.js";
 import type { RoutineCadence } from "../../shared/routine-schedule.js";
@@ -10,6 +10,8 @@ import { IconX } from "../icons.js";
 import { Dialog } from "./Dialog.js";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+/** A few expressions worth one click, in the same five fields the cron box takes. */
+const CRON_PRESETS = ["*/15 * * * *", "0 * * * *", "0 9 * * 1-5", "30 18 * * 5"];
 /** How many of a routine's last runs its row shows: enough to see a couple of nights, not a log. */
 const RUN_ROWS_PER_ROUTINE = 3;
 type Kind = RoutineCadence["kind"];
@@ -59,6 +61,13 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
   const [time, setTime] = useState("09:00");
   const [minute, setMinute] = useState(0);
   const [weekday, setWeekday] = useState(1);
+  const [cron, setCron] = useState("0 9 * * 1-5");
+  const [onceAt, setOnceAt] = useState("");
+  const [timezone, setTimezone] = useState("");
+  /** The optional stops: no run after a date, after a number of runs, or long after a missed slot. */
+  const [until, setUntil] = useState("");
+  const [maxRuns, setMaxRuns] = useState("");
+  const [grace, setGrace] = useState("");
 
   const load = async () => {
     try {
@@ -78,20 +87,33 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
 
   const cadence = (): RoutineCadence => {
     if (kind === "hourly") return { kind: "hourly", minute };
+    if (kind === "cron") return { kind: "cron", expr: cron.trim() };
+    if (kind === "once") return { kind: "once", at: new Date(onceAt).getTime() };
     const [h, m] = time.split(":").map(Number);
     const hour = h ?? 9;
     const at = m ?? 0;
     return kind === "weekly" ? { kind: "weekly", weekday, hour, minute: at } : { kind, hour, minute: at };
   };
 
+  /** The stops as the wire takes them: empty boxes are no limit at all. */
+  const limits = () => ({
+    timezone: timezone.trim(),
+    until: until ? new Date(`${until}T23:59`).getTime() : null,
+    maxRuns: maxRuns.trim() ? Number(maxRuns) : null,
+    graceMinutes: grace.trim() ? Number(grace) : 0,
+  });
+
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
-      await api<Routine>("/api/routines", { method: "PUT", body: { name: name.trim(), prompt: prompt.trim(), harnessId, workspaceId, cadence: cadence(), precheck: precheck.trim() } });
+      await api<Routine>("/api/routines", { method: "PUT", body: { name: name.trim(), prompt: prompt.trim(), harnessId, workspaceId, cadence: cadence(), precheck: precheck.trim(), ...limits() } });
       setName("");
       setPrompt("");
       setPrecheck("");
+      setUntil("");
+      setMaxRuns("");
+      setGrace("");
       await load();
     } catch (failure) {
       setError(errorText(failure));
@@ -107,7 +129,23 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
     // truth rather than leaving the row saying something the server does not.
     setRoutines((current) => current?.map((r) => (r.id === routine.id ? { ...r, enabled } : r)) ?? current);
     try {
-      await api("/api/routines", { method: "PUT", body: { id: routine.id, name: routine.name, prompt: routine.prompt, harnessId: routine.harnessId, workspaceId: routine.workspaceId, cadence: routine.cadence, precheck: routine.precheck, enabled } });
+      await api("/api/routines", {
+        method: "PUT",
+        body: {
+          id: routine.id,
+          name: routine.name,
+          prompt: routine.prompt,
+          harnessId: routine.harnessId,
+          workspaceId: routine.workspaceId,
+          cadence: routine.cadence,
+          precheck: routine.precheck,
+          timezone: routine.timezone,
+          until: routine.until,
+          maxRuns: routine.maxRuns,
+          graceMinutes: routine.graceMinutes,
+          enabled,
+        },
+      });
       await load();
     } catch (failure) {
       setError(errorText(failure));
@@ -119,6 +157,17 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
     setError(null);
     try {
       await api(`/api/routines/${encodeURIComponent(routine.id)}`, { method: "DELETE" });
+      await load();
+    } catch (failure) {
+      setError(errorText(failure));
+    }
+  };
+
+  /** Run a routine now, without moving its own slot: the same work its next tick would do. */
+  const runNow = async (routine: Routine) => {
+    setError(null);
+    try {
+      await api(`/api/routines/${encodeURIComponent(routine.id)}/run`, { method: "POST" });
       await load();
     } catch (failure) {
       setError(errorText(failure));
@@ -143,8 +192,10 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
                     <input type="checkbox" checked={routine.enabled} aria-label={`Enable ${routine.name}`} onChange={(e) => void setEnabled(routine, e.target.checked)} />
                     <span className="routine-name">{routine.name}</span>
                     <span className="routine-when">
-                      {cadenceLabel(routine.cadence)} · next {new Date(routine.nextRunAt).toLocaleString()}
+                      {cadenceLabel(routine.cadence)}
+                      {routine.timezone ? ` (${routine.timezone})` : ""} · {routine.nextRunAt === null ? "no further run" : `next ${new Date(routine.nextRunAt).toLocaleString()}`}
                     </span>
+                    {routine.halted ? <span className="routine-halted">{routine.halted}</span> : null}
                     {routine.precheck ? (
                       <span className="routine-precheck" title={routine.precheck}>
                         precheck: {routine.precheck}
@@ -174,6 +225,9 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
                     </ul>
                   ) : null}
                 </div>
+                <button type="button" className="btn btn-ghost btn-small" aria-label={`Run ${routine.name} now`} onClick={() => void runNow(routine)}>
+                  Run now
+                </button>
                 <button type="button" className="icon-btn" aria-label={`Delete ${routine.name}`} onClick={() => void remove(routine)}>
                   <IconX size={13} />
                 </button>
@@ -223,6 +277,8 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
                 <option value="daily">Daily</option>
                 <option value="weekdays">Weekdays</option>
                 <option value="weekly">Weekly</option>
+                <option value="cron">Cron</option>
+                <option value="once">Once</option>
               </select>
             </label>
             {kind === "hourly" ? (
@@ -230,12 +286,21 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
                 Minute
                 <input type="number" min={0} max={59} aria-label="Minute" value={minute} onChange={(e) => setMinute(Math.max(0, Math.min(59, Number(e.target.value) || 0)))} />
               </label>
+            ) : kind === "cron" ? null : kind === "once" ? (
+              <label>
+                At
+                <input type="datetime-local" aria-label="Once at" value={onceAt} onChange={(e) => setOnceAt(e.target.value)} />
+              </label>
             ) : (
               <label>
                 At
                 <input type="time" aria-label="At" value={time} onChange={(e) => setTime(e.target.value)} />
               </label>
             )}
+            <label>
+              Timezone
+              <input className="input input-short" aria-label="Timezone" placeholder="this machine" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
+            </label>
             {kind === "weekly" ? (
               <label>
                 Day
@@ -248,6 +313,36 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
                 </select>
               </label>
             ) : null}
+          </div>
+          {kind === "cron" ? (
+            <div className="routines-cron">
+              <label>
+                Cron
+                <input className="input" aria-label="Cron expression" placeholder="0 9 * * 1-5" value={cron} onChange={(e) => setCron(e.target.value)} />
+              </label>
+              <div className="routines-presets">
+                {CRON_PRESETS.map((preset) => (
+                  <button key={preset} type="button" className="btn btn-ghost btn-small" onClick={() => setCron(preset)}>
+                    {preset}
+                  </button>
+                ))}
+              </div>
+              <p className="muted routines-hint">minute hour day-of-month month day-of-week: *, a number, a-b, */n, or a comma list.</p>
+            </div>
+          ) : null}
+          <div className="routines-picks">
+            <label>
+              Stop after
+              <input type="date" aria-label="Runs until" value={until} onChange={(e) => setUntil(e.target.value)} />
+            </label>
+            <label>
+              Runs
+              <input className="input input-short" type="number" min={1} max={10000} aria-label="At most this many runs" placeholder="no limit" value={maxRuns} onChange={(e) => setMaxRuns(e.target.value)} />
+            </label>
+            <label>
+              Grace (min)
+              <input className="input input-short" type="number" min={0} max={1440} aria-label="Grace minutes" placeholder="no limit" value={grace} onChange={(e) => setGrace(e.target.value)} />
+            </label>
           </div>
           {error ? (
             <p className="routines-error" role="alert">

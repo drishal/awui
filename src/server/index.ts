@@ -34,7 +34,7 @@ import { TerminalManager } from "./terminal.js";
 import { Routines } from "./routines.js";
 import { RoutineRuns } from "./routine-runs.js";
 import { startDue } from "./routines-timer.js";
-import { runRoutine } from "./routine-runner.js";
+import { routineNote, runRoutine } from "./routine-runner.js";
 import { SessionOrder } from "./session-order.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { ReviewThreads } from "./review-threads.js";
@@ -220,7 +220,7 @@ async function main(): Promise<void> {
         const ran = await runRoutine(routine, await workspaces.get(routine.workspaceId), adapter, manager, {
           runs: routineRuns,
           markOutcome: (id, outcome, detail) => routines.markOutcome(id, outcome, detail),
-          post: (r, chat, text) => notifier.notify({ kind: "done", chatId: chat.chatId, sessionId: chat.sessionId, title: r.name, body: text }),
+          post: (r, chat, text) => routineNote(notifier, r, chat, text),
         });
         if (ran.chat) {
           // Where the session came from, once the harness has assigned one: the sidebar's

@@ -1284,6 +1284,10 @@ export const routineCadenceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("daily"), hour: z.number().int().min(0).max(23), minute: z.number().int().min(0).max(59) }),
   z.object({ kind: z.literal("weekdays"), hour: z.number().int().min(0).max(23), minute: z.number().int().min(0).max(59) }),
   z.object({ kind: z.literal("weekly"), weekday: z.number().int().min(0).max(6), hour: z.number().int().min(0).max(23), minute: z.number().int().min(0).max(59) }),
+  /** Five fields, checked by shared/routine-schedule.ts's cronProblem (a syntax the shape cannot hold). */
+  z.object({ kind: z.literal("cron"), expr: z.string().trim().min(1).max(120) }),
+  /** One run at an epoch, then nothing further. */
+  z.object({ kind: z.literal("once"), at: z.number().int().positive() }),
 ]);
 
 /** A routine's precheck is one command line; longer than this is a typo, not a guard. */
@@ -1308,6 +1312,17 @@ export const routineSchema = z.object({
   cadence: routineCadenceSchema,
   /** A shell command run in the project before a due run; a non-zero exit skips it. Empty = none. */
   precheck: z.string().trim().max(MAX_PRECHECK_CHARS).default(""),
+  /** The IANA zone its cadence is read in; empty means this machine's own clock. */
+  timezone: z.string().trim().max(64).default(""),
+  /** No run after this epoch (checked against the next slot). Null = no expiry. */
+  until: z.number().int().positive().nullable().default(null),
+  /** Stop after this many runs. Null = no limit. */
+  maxRuns: z.number().int().min(1).max(10_000).nullable().default(null),
+  /**
+   * How late a missed slot may still run: a server that was asleep past this skips it (with
+   * the reason) instead of starting the agent on stale work. 0 = no limit.
+   */
+  graceMinutes: z.number().int().min(0).max(1440).default(0),
   enabled: z.boolean().default(true),
 });
 // What the dialog sends: `enabled` and `id` are optional here and filled in by the
@@ -1322,11 +1337,20 @@ export type RoutineInput = z.input<typeof routineSchema>;
 export type RoutineOutcome = "launched" | "skipped" | "failed" | "posted" | "quiet";
 
 /** A saved routine: its input, plus the id, the times, and the last outcome the server keeps. */
-export interface Routine extends Omit<RoutineInput, "enabled" | "precheck"> {
+export interface Routine extends Omit<RoutineInput, "enabled" | "precheck" | "timezone" | "until" | "maxRuns" | "graceMinutes"> {
   id: string;
   enabled: boolean;
   precheck: string;
-  nextRunAt: number;
+  timezone: string;
+  until: number | null;
+  maxRuns: number | null;
+  graceMinutes: number;
+  /** Null when it has no further run: a one-off that ran, or one that expired or hit its cap. */
+  nextRunAt: number | null;
+  /** Why it stopped for good (its expiry, or its run cap), in the list's words; null while it runs. */
+  halted: string | null;
+  /** How many runs it has had (a run the precheck skipped counts: its slot was used). */
+  runs: number;
   lastRunAt: number | null;
   /** Null before the first run (or from a file written before outcomes were kept). */
   lastRunOutcome: RoutineOutcome | null;

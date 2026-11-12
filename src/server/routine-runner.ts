@@ -15,6 +15,7 @@ import type { HarnessAdapter } from "./harness/types.js";
 import { runPrecheck } from "./routine-precheck.js";
 import { runDetail } from "./routines.js";
 import { RoutineRuns } from "./routine-runs.js";
+import type { Notifier } from "./notify.js";
 
 /** A routine's slot: the chat it opened, or why it skipped (null only when it launched). */
 export interface RoutineRunResult {
@@ -84,6 +85,11 @@ export function runVerdict(chat: Chat): { outcome: "posted" | "quiet" | "failed"
   // A run with nothing to report says so by ending empty, or with QUIET on its first line.
   if (!answer || QUIET.test(answer)) return { outcome: "quiet", detail: null };
   return { outcome: "posted", detail: firstLine(answer) };
+}
+
+/** The one note a posted run sends: the routine's name and the answer's first line. */
+export function routineNote(notifier: Notifier, routine: Routine, chat: Chat, text: string): void {
+  notifier.notify({ kind: "done", chatId: chat.chatId, sessionId: chat.sessionId, title: routine.name, body: text });
 }
 
 /** Record what the run came to, and post one note when it had something to say. */
