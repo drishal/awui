@@ -11,7 +11,7 @@ import path from "node:path";
 import type { ChatItem, ChatStatus, RaceCleanupResult, RaceFile, RaceFileDiff, RaceMemberStatus, RaceMemberView, RaceSummary, RaceWinnerResult, WorkspaceInfo } from "../shared/protocol.js";
 import type { Chat } from "./chats/chat.js";
 import { ChatError, errorMessage } from "./chats/chat.js";
-import { git } from "./git.js";
+import { git, gitBuffer } from "./git.js";
 import { parseUnified } from "./harness/tool-diff.js";
 import { isObj, readJson, writeJsonChecked } from "./state-file.js";
 import { isWithin } from "./workspaces.js";
@@ -32,6 +32,16 @@ const MAX_PATCH_BYTES = 2 * 1024 * 1024;
 /** A member's git counts, reused for a moment so a panel's refresh does not re-run git per row. */
 const CACHE_TTL_MS = 5_000;
 const READ = { timeoutMs: 20_000 };
+/**
+ * A patch is read back by `git apply`, so the diff that makes it must not follow the
+ * user's own config: `diff.noprefix` would write a new file `src/g` as `src/g` where the
+ * patch needs `a/src/g`, and apply would then create `./g`; `diff.relative` would move
+ * every path; a textconv driver would rewrite a file's bytes. Pinned here, once, for
+ * both the bytes we generate and the diff the panel shows.
+ */
+const DIFF_OPTIONS = ["--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "--src-prefix=a/", "--dst-prefix=b/"];
+/** The same options, plus whole files: `--binary` carries what a text patch cannot. */
+const PATCH_OPTIONS = ["--binary", ...DIFF_OPTIONS];
 /** A chat in one of these states is working: cleanup leaves its worktree alone. */
 const BUSY: readonly ChatStatus[] = ["starting", "running", "stopping", "compacting"];
 
@@ -194,7 +204,7 @@ async function isDirty(tree: string): Promise<boolean> {
 /** A member's tracked files against its fork point: names and counts only, never a diff. */
 async function numstat(tree: string, fork: string): Promise<{ added: number; removed: number; files: RaceFile[] }> {
   if (!fork) return { added: 0, removed: 0, files: [] };
-  const out = await git(["diff", "--numstat", "--no-color", fork], { cwd: tree, ...READ });
+  const out = await git(["diff", "--numstat", "--no-color", "--no-ext-diff", "--no-textconv", fork], { cwd: tree, ...READ });
   const files: RaceFile[] = [];
   let added = 0;
   let removed = 0;
@@ -379,7 +389,7 @@ export class Races {
     if (!member.fork) throw new ChatError(409, "no_fork_point", "This member's fork point was not recorded");
     if (!(await existsDir(member.path))) throw new ChatError(410, "worktree_gone", "This member's worktree is gone");
     await confine(member.path, wanted);
-    const text = await git(["--literal-pathspecs", "diff", "--no-color", "-U3", member.fork, "--", wanted], { cwd: member.path, ...READ, okExit: [1] }).catch((error: unknown) => {
+    const text = await git(["--literal-pathspecs", "diff", "-U3", ...DIFF_OPTIONS, member.fork, "--", wanted], { cwd: member.path, ...READ, okExit: [1] }).catch((error: unknown) => {
       throw new ChatError(422, "git_failed", errorMessage(error));
     });
     return { path: wanted, diff: parseUnified(text) };
@@ -403,11 +413,12 @@ export class Races {
         if (status.trim()) throw new ChatError(409, "dirty_checkout", "This project has uncommitted changes. Commit or stash them, then pick apply again; nothing was changed");
         const head = (await git(["rev-parse", "--verify", "--end-of-options", "HEAD"], { cwd: project.root, ...READ })).trim();
         if (head !== member.fork) throw new ChatError(409, "head_moved", `The project's HEAD has moved past the fork point, so nothing was applied. Merge its branch \`${member.branch}\` by hand instead`);
-        const patch = await git(["diff", "--binary", "--no-color", member.fork], { cwd: member.path, ...READ }).catch((error: unknown) => {
+        // Bytes, not text (see `gitBuffer`): `git apply` writes these very bytes back.
+        const patch = await gitBuffer(["diff", ...PATCH_OPTIONS, member.fork], { cwd: member.path, ...READ }).catch((error: unknown) => {
           throw new ChatError(422, "git_failed", errorMessage(error));
         });
-        if (patch.trim() === "") throw new ChatError(409, "nothing_to_apply", "This member changed nothing against its fork point");
-        if (Buffer.byteLength(patch) > MAX_PATCH_BYTES) throw new ChatError(413, "patch_too_large", "This change is too large to apply from here; merge its branch by hand instead");
+        if (patch.length === 0) throw new ChatError(409, "nothing_to_apply", "This member changed nothing against its fork point");
+        if (patch.length > MAX_PATCH_BYTES) throw new ChatError(413, "patch_too_large", "This change is too large to apply from here; merge its branch by hand instead");
         // A clean checkout at the fork point cannot conflict, so a plain apply is enough,
         // and only a plain apply leaves the result unstaged (`--3way` writes the index).
         await git(["apply", "--check", "-"], { cwd: project.root, ...READ, input: patch }).catch((error: unknown) => {

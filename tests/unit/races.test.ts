@@ -3,7 +3,7 @@
 // loser git agrees to drop). The store's bounds are exercised in memory; the routes
 // against a real temp git repo and the fake adapters, so every tree is a real one.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -193,6 +193,43 @@ describe("race routes", () => {
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: race.app.project, encoding: "utf8" })).toContain("M app.txt");
     expect(execFileSync("git", ["diff", "--cached", "--name-only"], { cwd: race.app.project, encoding: "utf8" })).toBe("");
     expect(execFileSync("git", ["show", ":app.txt"], { cwd: race.app.project, encoding: "utf8" })).toBe("base\n");
+  }, 30_000);
+
+  it("pins the diff options of an apply, so a checkout's own config cannot move a new file", async () => {
+    const race = await startRace("edit");
+    await settled(race);
+    const [winner] = two(race);
+    // The project's config is every worktree's config. With `diff.noprefix`, a diff of the
+    // new file reads `src/g.txt` where a patch needs `a/src/g.txt`, and `git apply` then
+    // writes `./g.txt` into the checkout: the patch is generated with its own prefixes.
+    git(race.app.project, "config", "diff.noprefix", "true");
+    git(race.app.project, "config", "diff.relative", "true");
+    // Only the new file is compared, so a wrongly prefixed patch has nothing else to trip over.
+    git(winner.tree, "checkout", "-q", "--", ".");
+    mkdirSync(path.join(winner.tree, "src"), { recursive: true });
+    writeFileSync(path.join(winner.tree, "src", "g.txt"), "new\n");
+    git(winner.tree, "add", "src/g.txt");
+    git(winner.tree, "commit", "-qm", "add g");
+    const res = await race.agent.post(`/api/races/${race.raceId}/winner`).send({ chatId: winner.chatId, mode: "apply" });
+    expect(res.status).toBe(200);
+    expect(existsSync(path.join(race.app.project, "src", "g.txt"))).toBe(true);
+    expect(existsSync(path.join(race.app.project, "g.txt"))).toBe(false);
+  }, 30_000);
+
+  it("carries a patch's bytes unchanged, so a file UTF-8 cannot express arrives as it was", async () => {
+    const race = await startRace("edit");
+    await settled(race);
+    const [winner] = two(race);
+    const latin1 = Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]); // "café" in Latin-1: 0xE9 is no UTF-8 byte
+    const binary = Buffer.from([0x00, 0x01, 0xff, 0xfe, 0x00, 0x7f]);
+    writeFileSync(path.join(winner.tree, "latin1.txt"), latin1);
+    writeFileSync(path.join(winner.tree, "blob.bin"), binary);
+    git(winner.tree, "add", "latin1.txt", "blob.bin");
+    git(winner.tree, "commit", "-qm", "bytes");
+    const res = await race.agent.post(`/api/races/${race.raceId}/winner`).send({ chatId: winner.chatId, mode: "apply" });
+    expect(res.status).toBe(200);
+    expect(readFileSync(path.join(race.app.project, "latin1.txt"))).toEqual(latin1);
+    expect(readFileSync(path.join(race.app.project, "blob.bin"))).toEqual(binary);
   }, 30_000);
 
   it("refuses an apply whose checkout has moved past the fork point", async () => {
