@@ -14,6 +14,8 @@
 //   "todo"   write a todo list            "delegate"  a subagent call running a child session
 //   "mcpcall <tool>"  call that MCP tool, allowed or refused by the session's rules
 //   "render"  call this project's awui render server, with the page marker awui's bridge prints
+//   "alwaysallow"  an "always" answer: a broad allow appended after the session's own rules
+//   "stray"   a session another client of the server made, with no rules at all
 // A prompt sent while a run goes is held in the inbox: "steer" runs at the
 // next step, "queue" after the run. $FAKE_OPENCODE_MCP_FAIL=1 refuses every
 // MCP registration, as a server the runtime set will not take. The process's
@@ -235,6 +237,19 @@ async function turn(s, text) {
       await step([{ tool: { name: `${server}_render_html`, input: { html: "<p>hi</p>", title: page.title, height: page.height }, output: `Rendered "${page.title}" into the chat. The page is above; do not describe or restate it in your reply.\nawui-html-render: ${JSON.stringify(page)}` } }]);
       return r.stop;
     }
+  }
+  // What OpenCode does when a card is answered "always": a broad allow lands after awui's rules and
+  // wins the last-match check until the chat puts its pair back in front of it.
+  if (/alwaysallow/.test(text)) s.permissions = [...(Array.isArray(s.permissions) ? s.permissions : []), { action: "*", resource: "*", effect: "allow" }];
+  // A session another client of the server made: no parent, no rules of awui's, and by OpenCode's
+  // own default nothing is refused in it.
+  if (/stray/.test(text)) {
+    const stray = id("ses");
+    const now = Date.now();
+    const other = { id: stray, title: "Made elsewhere", location: s.location, model: s.model, cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }, time: { created: now, updated: now }, messages: [] };
+    state.sessions[stray] = other;
+    save();
+    emit("session.created", { sessionID: stray, title: other.title, location: other.location });
   }
   if (/question/.test(text)) {
     const chosen = await form(s);

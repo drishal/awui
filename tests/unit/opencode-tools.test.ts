@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { awuiMcpServerName, awuiOpenCodeFamily, awuiOpenCodeTool } from "../../src/shared/awui-mcp.js";
 import { isHtmlRenderCall } from "../../src/server/harness/render-token.js";
-import { isAwuiRule, openCodeTools } from "../../src/server/harness/opencode-tools.js";
+import { AWUI_DENY_RULE, deniesAwui, isAwuiRule, openCodeTools, sameRules } from "../../src/server/harness/opencode-tools.js";
 
 const toolEnv = (over: Record<string, string | undefined> = {}): NodeJS.ProcessEnv => ({
   AWUI_RENDER_URL: "http://127.0.0.1:4783/api/render",
@@ -97,6 +97,26 @@ describe("the tool servers a chat is given", () => {
     expect(isAwuiRule(rules[0])).toBe(true);
     expect(isAwuiRule({ action: "edit", resource: "*", effect: "allow" })).toBe(false);
     expect(isAwuiRule(null)).toBe(false);
+  });
+
+  // The comparison decides whether a turn writes the rules again, so it must see the order: the check
+  // is last-match-wins, and a broad allow appended after awui's deny beats it.
+  it("tells an unchanged ruleset from one an allow was appended to", () => {
+    const wanted = openCodeTools(toolEnv())?.rules ?? [];
+    expect(AWUI_DENY_RULE).toEqual({ action: "awui-*", resource: "*", effect: "deny" });
+    expect(sameRules(wanted, wanted)).toBe(true);
+    // The same rules as the server stores them, key order and all.
+    expect(sameRules(wanted.map((rule) => ({ effect: rule.effect, resource: rule.resource, action: rule.action })), wanted)).toBe(true);
+    expect(sameRules([{ action: "*", resource: "*", effect: "allow" }, ...wanted], wanted)).toBe(false);
+    expect(sameRules(wanted.slice(1), wanted)).toBe(false);
+    expect(sameRules([], wanted)).toBe(false);
+    expect(sameRules(["not a rule", ...wanted.slice(1)], wanted)).toBe(false);
+    // Already refusing awui's servers is what keeps the guard off a child that inherited its chat's pair.
+    expect(deniesAwui(wanted)).toBe(true);
+    expect(deniesAwui([AWUI_DENY_RULE])).toBe(true);
+    expect(deniesAwui(wanted.slice(1))).toBe(false);
+    expect(deniesAwui([])).toBe(false);
+    expect(deniesAwui([{ action: "*", resource: "*", effect: "allow" }])).toBe(false);
   });
 });
 

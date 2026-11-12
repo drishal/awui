@@ -52,7 +52,7 @@ import {
   usageOf,
 } from "./opencode-messages.js";
 import { locationQuery, OpenCodeServer, type OpenCodeEvent } from "./opencode-server.js";
-import { isAwuiRule, openCodeTools, type OpenCodeTools } from "./opencode-tools.js";
+import { AWUI_DENY_RULE, deniesAwui, isAwuiRule, openCodeTools, sameRules, type OpenCodeRule, type OpenCodeTools } from "./opencode-tools.js";
 import { nodeForMcpServers, renderHtmlMcpServer } from "./render-extension.js";
 import { versionLabel } from "./version.js";
 import type {
@@ -164,8 +164,6 @@ class OpenCodeChat implements LiveChat {
   private unsubscribe: (() => void) | null = null;
   private stopWatchingExit: (() => void) | null = null;
   private disposed = false;
-  /** The tool rules this chat last wrote onto its session, so a turn does not rewrite an unchanged set. */
-  private scoped: string | null = null;
   /** The last tools failure said aloud: OpenCode refusing them every turn is one problem, not one per turn. */
   private toolsWarning: string | null = null;
 
@@ -235,21 +233,24 @@ class OpenCodeChat implements LiveChat {
   }
 
   /**
-   * Deny every awui tool server on this session, then allow this chat's own: the rule check
-   * is last-match-wins, so the pair leaves another chat's tools refused while this chat's
-   * run without a prompt. The session's other rules — the user's, and OpenCode's own agent
-   * rules it merges in — stay; the ones a previous open of this chat wrote are replaced.
+   * Deny every awui tool server on this session, then allow this chat's own: the rule check is
+   * last-match-wins, so the pair leaves another chat's tools refused while this chat's run without a
+   * prompt. The session's other rules — the user's, OpenCode's own agent rules, a broad allow an
+   * "always" answer appended — stay in front of that pair, which is why this is checked against the
+   * stored rules on every turn instead of being written once: a rule added after ours would win the
+   * match. The ones a previous open of this chat wrote are replaced.
    */
   private async scope(sessionId: string, info?: Obj): Promise<void> {
     const rules = this.toolServers?.rules;
     if (!rules) return;
-    const wanted = JSON.stringify(rules);
-    if (this.scoped === wanted) return;
+    // The server's own record of the chat's session, for the adapter's guard on created sessions.
+    this.adapter.noteSession(sessionId, rules);
     const session = info ?? (await this.adapter.sessionInfo(sessionId));
     if (!session) return;
-    const kept = (Array.isArray(session.permissions) ? session.permissions : []).filter((rule) => !isAwuiRule(rule));
-    await this.server.call("PATCH", `/api/session/${sessionId}`, { permissions: [...kept, ...rules] });
-    this.scoped = wanted;
+    const current = Array.isArray(session.permissions) ? session.permissions : [];
+    const wanted = [...current.filter((rule) => !isAwuiRule(rule)), ...rules];
+    if (sameRules(current, wanted)) return;
+    await this.server.call("PATCH", `/api/session/${sessionId}`, { permissions: wanted });
   }
 
   /** Say why the tools are missing, once: never the token, and never as a card over the chat. */
@@ -281,6 +282,9 @@ class OpenCodeChat implements LiveChat {
     const id = str(created?.data?.id);
     if (!id) throw new Error("OpenCode made no session");
     this.sessionId = id;
+    // Recorded before any rule is written: the adapter's guard on created sessions must know this
+    // session belongs to a chat, so it never narrows the rules this chat is about to write.
+    this.adapter.noteSession(id, this.toolServers?.rules ?? null);
     this.sessionTitle = str(created?.data?.title) || null;
     this.watch(id);
     this.emit({ type: "session", nativeId: id });
@@ -813,6 +817,8 @@ class OpenCodeChat implements LiveChat {
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.stopWatchingExit?.();
+    // Its rules stay on the session (an "always" answer does too); only our note of it goes.
+    if (this.sessionId) this.adapter.forgetSession(this.sessionId);
     // awui's servers come off the shared one too, unless it is already gone: asking would
     // start a server just to delete from it, and a stopped server dropped them with its memory.
     if (this.toolServers && this.server.active()) {
@@ -851,6 +857,9 @@ export class OpenCodeAdapter implements HarnessAdapter {
   };
   readonly server: OpenCodeServer;
   private modelCache = new Map<string, { at: number; models: ModelInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null }>();
+  /** Each live chat's session, with the tool rules its chat wrote there (null: it was given no tools). */
+  private readonly chatSessions = new Map<string, OpenCodeRule[] | null>();
+  private watchingSessions = false;
 
   constructor(private readonly options: OpenCodeOptions = {}) {
     this.cliCommand = options.command ?? (process.env.OPENCODE_BIN?.trim() || "opencode");
@@ -1049,6 +1058,55 @@ export class OpenCodeAdapter implements HarnessAdapter {
   async readUsage(req: { cwd: string; nativeId: string }): Promise<UsageEntry[] | null> {
     const found = await this.projectMessages(req);
     return found ? usageOf(found.messages) : null;
+  }
+
+  /**
+   * A chat's session, and the rules its chat writes there. Recorded before the rules go on the wire,
+   * so the guard below can tell a chat's own session from one OpenCode made by itself.
+   */
+  noteSession(sessionId: string, rules: OpenCodeRule[] | null): void {
+    this.chatSessions.set(sessionId, rules);
+    if (rules) this.watchCreatedSessions();
+  }
+
+  forgetSession(sessionId: string): void {
+    this.chatSessions.delete(sessionId);
+  }
+
+  /**
+   * One observer for the whole server. OpenCode's own task tool creates child sessions, and a client
+   * of the server can make one too; a session with no permission rule allows every tool, so one awui
+   * did not scope could call a chat's `awui-o-<id>_delegate_task` with that chat's token. Registered
+   * the first time a chat is given awui's tools: with none on the server there is nothing to refuse.
+   */
+  private watchCreatedSessions(): void {
+    if (this.watchingSessions) return;
+    this.watchingSessions = true;
+    this.server.onSessionCreated((sessionId, parentId) => void this.scopeCreatedSession(sessionId, parentId).catch(() => undefined));
+  }
+
+  /**
+   * Scope a session no chat of ours opened. A child session keeps its parent's rules (OpenCode copies
+   * them when it creates it, checked against 2.2.7), so a child of a chat gets that chat's pair —
+   * its own tools still run — and anything else gets the bare deny.
+   */
+  private async scopeCreatedSession(sessionId: string, parentId: string): Promise<void> {
+    // A chat that has awui's tools writes its own pair; its session is never touched here.
+    if (this.chatSessions.get(sessionId)) return;
+    const info = await this.sessionInfo(sessionId);
+    // The chat may have registered its session while this read was on its way: its rules win.
+    if (!info || this.chatSessions.get(sessionId)) return;
+    const current = Array.isArray(info.permissions) ? info.permissions : [];
+    // Already refusing awui's servers: a chat's pair, or a copy of its parent's (a grandchild inherits
+    // through its own parent). Never narrowed here — an allow in there is a chat's own tools.
+    if (deniesAwui(current)) return;
+    // A chat opened without awui's tools is in the map with nothing: it still gets the bare deny, since
+    // the servers another chat registered are on the same server for it too.
+    const rules = (parentId ? this.chatSessions.get(parentId) : null) ?? [AWUI_DENY_RULE];
+    const kept = current.filter((rule) => !isAwuiRule(rule));
+    const wanted = [...kept, ...rules];
+    if (sameRules(current, wanted)) return;
+    await this.server.call("PATCH", `/api/session/${sessionId}`, { permissions: wanted });
   }
 
   async openChat(req: OpenChatRequest): Promise<LiveChat> {

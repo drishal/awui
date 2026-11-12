@@ -182,9 +182,14 @@ list is what the compiled binary carries. OpenCode's names have a scheme of thei
 where the id is a hash of that chat's two tokens (a name becomes part of every tool name sent to
 the model, so it never holds the token itself) and the whole name stays under OpenCode's
 64-character limit. Its bridges are registered with `codemode: false`, so their tools are
-tools, not entries inside Code Mode's `execute`. These are OpenCode's experimental routes, checked
-against OpenCode 2.2.7; an OpenCode without them costs only the tools — the chat runs on, and the
-server says why once, without a token.
+tools, not entries inside Code Mode's `execute`. Because one server holds every OpenCode chat of a
+project, each session is scoped: deny `awui-*`, then allow its own pair, last match wins, rewritten
+before a turn whenever a later rule (an "always" answer's broad allow) has landed in front of it. A
+session awui did not open — a child session its own task tool creates, or one another client of its
+server makes — is scoped too, with its parent chat's pair or the bare deny: OpenCode 2.2.7 allows
+every tool in a session with no rule, and a child copies its parent's rules when it is created. These
+are OpenCode's experimental routes, checked against OpenCode 2.2.7; an OpenCode without them costs
+only the tools — the chat runs on, and the server says why once, without a token.
 
 ### What the user has to do, per harness
 

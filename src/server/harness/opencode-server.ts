@@ -79,6 +79,8 @@ export class OpenCodeServer {
   private listeners = new Map<string, Set<Listener>>();
   /** Told when the server stops under open chats (their runs are gone with it). */
   private exitListeners = new Set<(message: string) => void>();
+  /** Told of every session the server creates, whether or not a chat of ours opened it. */
+  private sessionListeners = new Set<(sessionId: string, parentId: string) => void>();
   private idleTimer: NodeJS.Timeout | null = null;
   /** The running server's stderr; one server serves every chat, so it is kept for the server's lifetime. */
   private stderr: StderrTail | null = null;
@@ -186,6 +188,11 @@ export class OpenCodeServer {
 
   private dispatch(event: OpenCodeEvent): void {
     const session = eventSession(event);
+    // Before routing: a new session is scoped whether or not a chat is listening for it.
+    if (event.type === "session.created" && session) {
+      const parentId = typeof event.data.parentID === "string" ? event.data.parentID : "";
+      for (const listener of this.sessionListeners) listener(session, parentId);
+    }
     for (const listener of this.listeners.get(session) ?? []) listener(event);
     // A subagent's session is born under its parent: the parent's chat hears of it.
     const parent = event.type === "session.created" && typeof event.data.parentID === "string" ? event.data.parentID : "";
@@ -206,6 +213,16 @@ export class OpenCodeServer {
       if (set.size === 0) this.listeners.delete(sessionId);
       this.touch();
     };
+  }
+
+  /**
+   * Every session the server creates, and the parent it was created under (empty for none). OpenCode's
+   * own task tool and any client of this server make sessions awui did not open, so the adapter scopes
+   * them by this: a session with no permission rule allows every tool, another chat's included.
+   */
+  onSessionCreated(listener: (sessionId: string, parentId: string) => void): () => void {
+    this.sessionListeners.add(listener);
+    return () => this.sessionListeners.delete(listener);
   }
 
   /** Told once when the server stops under the chats. */

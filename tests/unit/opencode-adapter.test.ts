@@ -339,7 +339,7 @@ function tokens(n: number): NodeJS.ProcessEnv {
 }
 
 interface FakeState {
-  sessions: Record<string, { permissions?: Array<{ action: string; resource: string; effect: string }> }>;
+  sessions: Record<string, { title?: string; permissions?: Array<{ action: string; resource: string; effect: string }> }>;
   pid?: number;
   mcpAdds?: Array<{ directory: string; server: string; config: { type: string; command: string[]; environment: Record<string, string>; codemode?: boolean } }>;
   mcpRemoves?: Array<{ directory: string; server: string }>;
@@ -409,6 +409,66 @@ describe("awui's tools in an OpenCode chat", () => {
     await until(() => second.status === "idle" && second.snapshot().items.some((i) => i.kind === "tool"));
     expect(second.snapshot().items.find((i) => i.kind === "tool")).toMatchObject({ name: `${ours}_render_html`, status: "error", output: "Denied" });
     expect(second.snapshot().pending).toEqual([]);
+  });
+
+  // A subagent's child session inherits the parent's rules when OpenCode makes it (checked against
+  // 2.2.7), and the adapter writes them anyway: a session with no rule allows every tool, so a child
+  // that missed them could call another chat's `awui-o-<id>_…` with that chat's token.
+  it("scopes the child session a subagent run makes", async () => {
+    const { chat, live } = await openChat(undefined, tokens(1));
+    await chat.send("delegate please", "normal");
+    await until(() => Object.keys(fakeState().sessions).length === 2);
+    const [render, orchestrate] = toolsOf(1);
+    const child = Object.keys(fakeState().sessions).find((id) => id !== live.nativeId) as string;
+    await until(() => (fakeState().sessions[child]?.permissions?.length ?? 0) === 3);
+    expect(fakeState().sessions[child]?.permissions).toEqual([
+      { action: "awui-*", resource: "*", effect: "deny" },
+      { action: `${render?.server}_*`, resource: "*", effect: "allow" },
+      { action: `${orchestrate?.server}_*`, resource: "*", effect: "allow" },
+    ]);
+  });
+
+  // A session another client of the shared server made has no rules, and by OpenCode's own default
+  // nothing is refused in it: it gets the bare deny, so it cannot reach any chat's tool servers.
+  it("denies awui's tool servers on a session no chat opened", async () => {
+    const { chat } = await openChat(undefined, tokens(1));
+    await chat.send("stray session please", "normal");
+    await until(() => Object.values(fakeState().sessions).some((session) => session.title === "Made elsewhere"));
+    const stray = Object.keys(fakeState().sessions).find((id) => fakeState().sessions[id]?.title === "Made elsewhere") as string;
+    await until(() => (fakeState().sessions[stray]?.permissions?.length ?? 0) > 0);
+    expect(fakeState().sessions[stray]?.permissions).toEqual([{ action: "awui-*", resource: "*", effect: "deny" }]);
+  });
+
+  // The review's own case: a chat opened without awui's tools shares the server, so the servers another
+  // chat registered are there for it too, and by OpenCode's default nothing is refused in it.
+  it("denies awui's tool servers in a chat that was given none of its own", async () => {
+    const withTools = await openChat(undefined, tokens(1));
+    await withTools.chat.send("hello", "normal");
+    await until(() => adds().length === 2);
+    const without = await openChat();
+    await without.chat.send("hello", "normal");
+    await until(() => without.chat.status === "idle" && answered(without.chat, "Echo: hello"));
+    await until(() => (fakeState().sessions[without.live.nativeId as string]?.permissions?.length ?? 0) === 1);
+    expect(fakeState().sessions[without.live.nativeId as string]?.permissions).toEqual([{ action: "awui-*", resource: "*", effect: "deny" }]);
+  });
+
+  // An "always" answer appends a broad allow after awui's pair, and last-match-wins hands it the
+  // check: the pair is written again in front of it, on the turn after.
+  it("puts its deny and allow back in front of an allow the agent appends later", async () => {
+    const { chat, live } = await openChat(undefined, tokens(1));
+    await chat.send("alwaysallow please", "normal");
+    await until(() => (fakeState().sessions[live.nativeId as string]?.permissions?.length ?? 0) === 4);
+    await chat.send("hello", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "Echo: hello"));
+    const [render, orchestrate] = toolsOf(1);
+    const session = fakeState().sessions[live.nativeId as string];
+    // The broad allow the answer appended stays, but before awui's pair: the deny matches last.
+    expect(session?.permissions).toEqual([
+      { action: "*", resource: "*", effect: "allow" },
+      { action: "awui-*", resource: "*", effect: "deny" },
+      { action: `${render?.server}_*`, resource: "*", effect: "allow" },
+      { action: `${orchestrate?.server}_*`, resource: "*", effect: "allow" },
+    ]);
   });
 
   it("takes its servers off the shared one when the chat closes", async () => {

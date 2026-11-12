@@ -13,7 +13,10 @@
 // Checked against OpenCode 2.2.7: the add answers 204 and `/api/mcp` then lists the server
 // as connected; a server's tool arrives as `<sanitized server>_<sanitized tool>`; a
 // session's `permissions` are glob rules on the action (that tool name) and resource, and
-// `PATCH /api/session/:id` stores them where a later read shows them again.
+// `PATCH /api/session/:id` stores them where a later read shows them again; a session with no
+// rule allows every tool, a child session copies its parent's rules when it is created, and a
+// rule appended after ours wins the last-match check (measured with `POST /api/session/:id/
+// permission`, the same evaluation a tool call goes through).
 import { createHash } from "node:crypto";
 import { awuiMcpServerName, AWUI_MCP_SERVER_PREFIX, type AwuiToolFamily } from "../../shared/awui-mcp.js";
 import { nodeForMcpServers, orchestrateMcpServer, renderHtmlMcpServer } from "./render-extension.js";
@@ -73,14 +76,42 @@ export function openCodeTools(toolEnv?: NodeJS.ProcessEnv): OpenCodeTools | null
   if (servers.length === 0) return null;
   return {
     servers,
-    rules: [
-      { action: `${AWUI_MCP_SERVER_PREFIX}*`, resource: "*", effect: "deny" },
-      ...servers.map((server): OpenCodeRule => ({ action: `${server.name}_*`, resource: "*", effect: "allow" })),
-    ],
+    rules: [AWUI_DENY_RULE, ...servers.map((server): OpenCodeRule => ({ action: `${server.name}_*`, resource: "*", effect: "allow" }))],
   };
 }
+
+/**
+ * The one rule every session in awui's OpenCode server is given: another chat's tool server is refused.
+ * A session with no rule at all allows everything (checked against OpenCode 2.2.7), so a session awui
+ * did not scope could call a chat's `awui-o-<id>_…` tool with that chat's token.
+ */
+export const AWUI_DENY_RULE: OpenCodeRule = { action: `${AWUI_MCP_SERVER_PREFIX}*`, resource: "*", effect: "deny" };
 
 /** Whether a permission rule is one awui wrote for a chat's tool servers, so a reuse replaces it instead of growing the list. */
 export function isAwuiRule(rule: unknown): boolean {
   return typeof rule === "object" && rule !== null && typeof (rule as { action?: unknown }).action === "string" && (rule as { action: string }).action.startsWith(AWUI_MCP_SERVER_PREFIX);
+}
+
+/**
+ * Whether a session's ruleset already refuses awui's tool servers — a chat's own pair, or a copy of its
+ * parent's. Nothing is written over such a session: narrowing it would take a chat's own tools away from
+ * a child that legitimately inherited its rules.
+ */
+export function deniesAwui(stored: unknown[]): boolean {
+  return stored.some((rule) => isAwuiRule(rule) && typeof rule === "object" && rule !== null && (rule as { effect?: unknown }).effect === "deny");
+}
+
+/**
+ * Whether a session's stored ruleset is already exactly these rules, in this order. OpenCode's check is
+ * last-match-wins, so the order is the meaning: a broad allow an "always" answer appends after awui's
+ * pair would beat its deny, and the comparison is what notices it.
+ */
+export function sameRules(stored: unknown[], wanted: OpenCodeRule[]): boolean {
+  if (stored.length !== wanted.length) return false;
+  return wanted.every((rule, at) => {
+    const other = stored[at];
+    if (typeof other !== "object" || other === null) return false;
+    const { action, resource, effect } = other as { action?: unknown; resource?: unknown; effect?: unknown };
+    return action === rule.action && resource === rule.resource && effect === rule.effect;
+  });
 }
