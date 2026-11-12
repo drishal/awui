@@ -5,6 +5,7 @@
 // file, and this record holds a bounded result and pointers, nothing else.
 import { z } from "zod";
 import type { DelegatedTaskView, HarnessId, SessionUsage } from "../../shared/protocol.js";
+import { ChatError } from "../chats/chat.js";
 
 /** A terminal row older than this is pruned at load and at each write. */
 export const MAX_TASK_AGE_MS = 7 * 24 * 60 * 60_000;
@@ -150,4 +151,38 @@ export function formatElapsed(ms: number): string {
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m${String(seconds % 60).padStart(2, "0")}s`;
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+/** Every denial an orchestration call can answer with, as the REST envelope, the HTTP MCP
+ * result's `structuredContent`, and the bridges all name it. The human sentence rides beside
+ * the code; the code is the half an agent tests against. */
+export const ORCH_DENIAL_CODES = [
+  "unknown_tool",
+  "orch_off",
+  "bad_orch_token",
+  "orch_token_expired",
+  "invalid_request",
+  "too_many_calls",
+  "max_depth",
+  "too_many_tasks",
+  "caller_read_only",
+  "unknown_harness",
+  "harness_unavailable",
+  "workspace_unsupported",
+  "store_failed",
+  "unknown_workspace",
+  "unknown_task",
+  "not_your_task",
+  "task_not_running",
+  "cannot_send",
+  "cancel_timeout",
+  "unknown_profile",
+  "mode_escalation_denied",
+  "unsupported",
+] as const;
+export type OrchDenialCode = (typeof ORCH_DENIAL_CODES)[number];
+
+/** A refusal with its typed code: thrown as the ChatError the routes map, never losing the sentence. */
+export function denial(status: number, code: OrchDenialCode, message: string): ChatError {
+  return new ChatError(status, code, message);
 }

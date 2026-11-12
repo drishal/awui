@@ -83,7 +83,8 @@ export default function orchestrate(pi: Api): void {
     }
     if (answer.ok === true) return { content: [text(answer.text ?? "")], details: {} };
     const code = answer.code ?? "unknown_error";
-    return { content: [text(`${code}: ${answer.message ?? "the call failed"}`)], details: {}, isError: true };
+    // The typed denial code rides in details, so the chat surface can show it without parsing the sentence.
+    return { content: [text(`${code}: ${answer.message ?? "the call failed"}`)], details: { denial: code }, isError: true };
   };
 
   const register = (tools: OrchToolDef[]): void => {

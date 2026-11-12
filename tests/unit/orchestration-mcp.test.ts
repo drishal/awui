@@ -87,6 +87,10 @@ describe("orchestration over HTTP MCP", () => {
     const over = await post(agent, token, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_profiles", arguments: {} } });
     expect(over.body.result).toMatchObject({ isError: true });
     expect(over.body.result.content[0].text).toMatch(/^too_many_calls: /);
+    // The refusal's typed code rides beside the sentence, so an agent tests the code, not the words.
+    const structured = over.body.result.structuredContent as { ok: boolean; code: string; message: string };
+    expect(structured).toMatchObject({ ok: false, code: "too_many_calls" });
+    expect(structured.message).toBe(over.body.result.content[0].text.slice("too_many_calls: ".length));
 
     // A name the catalogue does not carry is a protocol error, as it is through the stdio bridge.
     const unknown = await post(agent, token, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "steal_everything", arguments: {} } });

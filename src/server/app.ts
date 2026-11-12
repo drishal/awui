@@ -168,6 +168,7 @@ import { ORCH_TOOLS } from "./orchestration/tools.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "./orchestration/limits.js";
 import { orchestrationSkills } from "./orchestration/skills.js";
 import { answerMcp, isToolCall } from "./orchestration/mcp.js";
+import { denial, type OrchDenialCode } from "./orchestration/types.js";
 
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
@@ -437,18 +438,18 @@ export function createApp(deps: AppDeps) {
    * read now, not at startup: the Settings dialog's checkbox takes effect within a couple of seconds.
    */
   const orchOn = (): void => {
-    if (!manager.orchestration) throw new ChatError(404, "orch_off", "Orchestration is not wired on this server");
-    if (!orchestrationLimits().enabled) throw new ChatError(404, "orch_off", "Orchestration is turned off in config.yml (orchestration.enabled)");
+    if (!manager.orchestration) throw denial(404, "orch_off", "Orchestration is not wired on this server");
+    if (!orchestrationLimits().enabled) throw denial(404, "orch_off", "Orchestration is turned off in config.yml (orchestration.enabled)");
   };
   const orchCaller = (req: Request): Chat => {
     orchOn();
     const token = req.get("x-awui-orch-token") ?? "";
     const chat = token !== "" ? manager.chatForOrchToken(token) : undefined;
-    if (!chat) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+    if (!chat) throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
     // Board-owned chats never get a token, and must not borrow one through this route either.
-    if (chat.owner) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+    if (chat.owner) throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
     // A token is good for 12 hours; a chat restart (a resume) mints a fresh one.
-    if ((chat.orchestration?.expiresAt ?? 0) <= Date.now()) throw new ChatError(401, "orch_token_expired", "This chat's tool token expired; restart the chat to get a new one");
+    if ((chat.orchestration?.expiresAt ?? 0) <= Date.now()) throw denial(401, "orch_token_expired", "This chat's tool token expired; restart the chat to get a new one");
     return chat;
   };
 
@@ -470,7 +471,7 @@ export function createApp(deps: AppDeps) {
       // exists, so a token minted for a child that is still starting is enough here (calls are not).
       const token = req.get("x-awui-orch-token") ?? "";
       orchOn();
-      if (token === "" || !manager.knowsOrchToken(token)) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+      if (token === "" || !manager.knowsOrchToken(token)) throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
       res.json({ tools: ORCH_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })) });
     } catch (error) {
       if (!orchFailed(res, error)) throw error;
@@ -486,7 +487,7 @@ export function createApp(deps: AppDeps) {
     try {
       const token = req.get("x-awui-orch-token") ?? "";
       orchOn();
-      if (token === "" || !manager.knowsOrchToken(token)) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+      if (token === "" || !manager.knowsOrchToken(token)) throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
       const skills = await orchestrationSkills();
       res.json({ prompts: skills.map(({ name, description, text }) => ({ name, description, text })) });
     } catch (error) {
@@ -524,15 +525,15 @@ export function createApp(deps: AppDeps) {
   const orchMcpCaller = (req: Request, needsChat: boolean): Chat | undefined => {
     orchOn();
     const token = orchMcpToken(req);
-    if (token === "") throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+    if (token === "") throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
     const chat = manager.chatForOrchToken(token);
     if (chat) {
-      if (chat.owner) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
-      if ((chat.orchestration?.expiresAt ?? 0) <= Date.now()) throw new ChatError(401, "orch_token_expired", "This chat's tool token expired; restart the chat to get a new one");
+      if (chat.owner) throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
+      if ((chat.orchestration?.expiresAt ?? 0) <= Date.now()) throw denial(401, "orch_token_expired", "This chat's tool token expired; restart the chat to get a new one");
       return chat;
     }
     if (manager.knowsOrchToken(token) && !needsChat) return undefined;
-    throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+    throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
   };
   /**
    * A body no JSON parser can read, answered as JSON-RPC's parse error rather than the route map's
@@ -560,16 +561,17 @@ export function createApp(deps: AppDeps) {
         prompts: orchestrationSkills,
         call: async (name, args) => {
           // The chat was checked above for a call; this only satisfies the type when it was not.
-          if (!chat) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+          if (!chat) throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
           try {
             const out = await orchestration.run(name, args, chat);
             return { text: out.text };
           } catch (error) {
-            // A refused call is a result the model reads, worded as the stdio bridge words it.
-            if (error instanceof ChatError) return { text: `${error.code}: ${error.message}`, failed: true };
+            // A refused call is a result the model reads, worded as the stdio bridge words it,
+            // with the typed denial code carried beside the sentence.
+            if (error instanceof ChatError) return { text: `${error.code}: ${error.message}`, failed: true, code: error.code as OrchDenialCode, message: error.message };
             // The tool's own schema refused the arguments: the same code the REST route answers, with
             // the issue the model has to fix instead of the route map's generic line.
-            if (error instanceof ZodError) return { text: `invalid_request: ${error.issues[0]?.message ?? "Invalid request"}`, failed: true };
+            if (error instanceof ZodError) return { text: `invalid_request: ${error.issues[0]?.message ?? "Invalid request"}`, failed: true, code: "invalid_request", message: error.issues[0]?.message ?? "Invalid request" };
             throw error;
           }
         },

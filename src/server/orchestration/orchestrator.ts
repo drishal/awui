@@ -11,7 +11,7 @@ import { randomBytes } from "node:crypto";
 import { isApproval } from "../../shared/approval.js";
 import { MAX_DELEGATED_TASKS, type ChatItem, type ChatLineage, type ChatStatus, type DelegatedTaskView, type InteractionRequest, type SendMode } from "../../shared/protocol.js";
 import type { BoardManager } from "../boards/types.js";
-import { ChatError, errorMessage, namespacedSessionId, type Chat } from "../chats/chat.js";
+import { errorMessage, namespacedSessionId, type Chat } from "../chats/chat.js";
 import type { ChatManager } from "../chats/manager.js";
 import type { HarnessRegistry } from "../harness/registry.js";
 import type { HarnessAdapter } from "../harness/types.js";
@@ -36,7 +36,7 @@ import {
   type ToolOutput,
 } from "./tools.js";
 import type { OrchestrationLimits } from "./limits.js";
-import { formatElapsed, firstLine, MAX_ERROR_CHARS, MAX_RESULT_CHARS, MAX_TITLE_CHARS, viewOf, type StoredTask } from "./types.js";
+import { denial, formatElapsed, firstLine, MAX_ERROR_CHARS, MAX_RESULT_CHARS, MAX_TITLE_CHARS, viewOf, type StoredTask } from "./types.js";
 import { MAX_WAKE_ATTEMPTS, WAKE_COALESCE_MS, WAKE_RETRY_MS, wakeReport } from "./wake.js";
 
 /** How long a cancel waits for the child to settle before it says so. */
@@ -92,8 +92,8 @@ export class Orchestrator {
   /** Run one tool call as `caller`. The tool's own schema validates the arguments first. */
   async run(name: string, rawArgs: unknown, caller: Chat): Promise<ToolOutput> {
     const tool = findTool(name);
-    if (!tool) throw new ChatError(400, "unknown_tool", `No such tool: ${name}`);
-    if (!this.limits.enabled) throw new ChatError(404, "orch_off", "Orchestration is turned off in config.yml (orchestration.enabled)");
+    if (!tool) throw denial(400, "unknown_tool", `No such tool: ${name}`);
+    if (!this.limits.enabled) throw denial(404, "orch_off", "Orchestration is turned off in config.yml (orchestration.enabled)");
     await this.ready();
     this.countCall(caller.chatId);
     const args = rawArgs ?? {};
@@ -115,7 +115,7 @@ export class Orchestrator {
       case "set_status":
         return setStatus(caller, setStatusSchema.parse(args), this.deps.statuses);
       default:
-        throw new ChatError(400, "unknown_tool", `${name} is not wired on this server yet`);
+        throw denial(400, "unknown_tool", `${name} is not wired on this server yet`);
     }
   }
 
@@ -229,7 +229,7 @@ export class Orchestrator {
     // Idempotent: a finished task is returned as it stands, and asking is reading it.
     if (already) return { text: `Task ${task.id} already finished (${task.outcome}).`, data: { task: viewOf(task) } };
     const text = `Cancelled task ${task.id} (${task.title}). Its chat is ${settled ? "stopped" : "still stopping"}.`;
-    if (!settled) throw new ChatError(504, "cancel_timeout", `${text} It did not settle within ${CANCEL_SETTLE_MS / 1000}s`);
+    if (!settled) throw denial(504, "cancel_timeout", `${text} It did not settle within ${CANCEL_SETTLE_MS / 1000}s`);
     return { text, data: { task: viewOf(task) } };
   }
 
@@ -280,12 +280,12 @@ export class Orchestrator {
     const task = this.ownTask(caller, args.taskId);
     const child = this.childChat(task);
     if (!child || child.status === "disposed") {
-      throw new ChatError(409, "task_not_running", `Task ${task.id}'s chat is closed; its session can be resumed as an ordinary chat, but nothing is listening now`);
+      throw denial(409, "task_not_running", `Task ${task.id}'s chat is closed; its session can be resumed as an ordinary chat, but nothing is listening now`);
     }
     const caps = child.adapter.capabilities;
     const busy = child.status === "running" || child.status === "stopping" || child.status === "compacting";
     const mode: SendMode = !busy ? "normal" : caps.supportsSteer ? "steer" : "followUp";
-    if (busy && !caps.supportsSteer && !caps.supportsFollowUp) throw new ChatError(409, "cannot_send", `${child.adapter.displayName} cannot take a message mid-run`);
+    if (busy && !caps.supportsSteer && !caps.supportsFollowUp) throw denial(409, "cannot_send", `${child.adapter.displayName} cannot take a message mid-run`);
     const revived = task.state === "result_available";
     if (revived) {
       this.stopWatching(task.id);
@@ -305,7 +305,7 @@ export class Orchestrator {
     try {
       await child.send(args.text, mode);
     } catch (error) {
-      throw new ChatError(409, "cannot_send", `Task ${task.id}'s chat refused the message: ${errorMessage(error)}`);
+      throw denial(409, "cannot_send", `Task ${task.id}'s chat refused the message: ${errorMessage(error)}`);
     }
     if (revived) this.changed(task);
     const queued = mode === "steer" ? "steered" : "sent";
@@ -352,7 +352,7 @@ export class Orchestrator {
     if (recent.length >= limit && oldest !== undefined) {
       this.callTimes.set(chatId, recent);
       const wait = Math.max(1, Math.ceil((oldest + 60_000 - now) / 1000));
-      throw new ChatError(429, "too_many_calls", `This chat has made ${limit} tool calls in the last minute; try again in ${wait}s`);
+      throw denial(429, "too_many_calls", `This chat has made ${limit} tool calls in the last minute; try again in ${wait}s`);
     }
     recent.push(now);
     this.callTimes.set(chatId, recent);
@@ -363,13 +363,13 @@ export class Orchestrator {
   /** Depth and count limits for a new task from `caller`; throws the 429 that names the limit hit. */
   private checkRoom(caller: Chat, depth: number): void {
     const limits = this.limits;
-    if (depth > limits.maxDepth) throw new ChatError(429, "max_depth", `Delegation stops at ${limits.maxDepth} levels; this chat is already at its limit`);
-    if (this.liveTasks() >= limits.maxLiveTasks) throw new ChatError(429, "too_many_tasks", `This server already runs ${limits.maxLiveTasks} delegated tasks`);
+    if (depth > limits.maxDepth) throw denial(429, "max_depth", `Delegation stops at ${limits.maxDepth} levels; this chat is already at its limit`);
+    if (this.liveTasks() >= limits.maxLiveTasks) throw denial(429, "too_many_tasks", `This server already runs ${limits.maxLiveTasks} delegated tasks`);
     const mine = this.tasks.filter((task) => task.parentChatId === caller.chatId);
     if (mine.filter((task) => task.state !== "result_available").length >= limits.maxChildrenPerChat) {
-      throw new ChatError(429, "too_many_tasks", `A chat may run ${limits.maxChildrenPerChat} delegated tasks at once`);
+      throw denial(429, "too_many_tasks", `A chat may run ${limits.maxChildrenPerChat} delegated tasks at once`);
     }
-    if (mine.length >= limits.maxTasksPerChat) throw new ChatError(429, "too_many_tasks", `A chat may start ${limits.maxTasksPerChat} delegated tasks`);
+    if (mine.length >= limits.maxTasksPerChat) throw denial(429, "too_many_tasks", `A chat may start ${limits.maxTasksPerChat} delegated tasks`);
   }
 
   private async delegate(
@@ -389,7 +389,7 @@ export class Orchestrator {
     },
   ): Promise<ToolOutput> {
     if (caller.adapter.capabilities.readOnlyHarness) {
-      throw new ChatError(403, "caller_read_only", `${caller.adapter.displayName} is a read-only surface and cannot delegate work`);
+      throw denial(403, "caller_read_only", `${caller.adapter.displayName} is a read-only surface and cannot delegate work`);
     }
     // A repeated request is the same task, never a second child.
     const repeat = this.repeatOf(caller, args.clientRequestId);
@@ -400,13 +400,13 @@ export class Orchestrator {
     const bot = args.profile === undefined ? undefined : await this.findProfile(args.profile);
     const harnessId = args.harness ?? bot?.harnessId ?? caller.adapter.id;
     const adapter = this.deps.registry.get(harnessId);
-    if (!adapter) throw new ChatError(422, "unknown_harness", `No harness called ${harnessId}`);
-    if (adapter.capabilities.readOnlyHarness) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is a read-only surface and cannot host a delegated task`);
-    if (!(await this.deps.registry.available(adapter.id))) throw new ChatError(422, "harness_unavailable", `${adapter.displayName} is not available right now`);
+    if (!adapter) throw denial(422, "unknown_harness", `No harness called ${harnessId}`);
+    if (adapter.capabilities.readOnlyHarness) throw denial(422, "harness_unavailable", `${adapter.displayName} is a read-only surface and cannot host a delegated task`);
+    if (!(await this.deps.registry.available(adapter.id))) throw denial(422, "harness_unavailable", `${adapter.displayName} is not available right now`);
     // An open project by id, never a path: the caller's own unless it names another.
     const workspace = args.workspaceId === undefined ? caller.workspace : await this.deps.workspaces.get(args.workspaceId);
     const problem = adapter.workspaceProblem(workspace.path);
-    if (problem) throw new ChatError(422, "workspace_unsupported", problem);
+    if (problem) throw denial(422, "workspace_unsupported", problem);
     const permissionMode = this.permissionModeFor(caller, adapter, args.permissionMode ?? bot?.permissionMode ?? undefined);
     const model = args.model ?? bot?.model ?? undefined;
     const thinkingLevel = args.thinkingLevel ?? bot?.thinkingLevel ?? undefined;
@@ -451,7 +451,7 @@ export class Orchestrator {
       await this.persist();
     } catch (error) {
       this.tasks = this.tasks.filter((t) => t !== task);
-      throw new ChatError(500, "store_failed", `Could not record the task: ${errorMessage(error)}`);
+      throw denial(500, "store_failed", `Could not record the task: ${errorMessage(error)}`);
     }
 
     // The parent lists its tasks from here on, so even a spawn that fails is a row it can see.
@@ -943,8 +943,8 @@ export class Orchestrator {
 
   private ownTask(caller: Chat, taskId: string): StoredTask {
     const task = this.tasks.find((t) => t.id === taskId);
-    if (!task) throw new ChatError(404, "unknown_task", `No task ${taskId}`);
-    if (!this.ownTaskOf(task, caller)) throw new ChatError(403, "not_your_task", `Task ${taskId} belongs to another chat`);
+    if (!task) throw denial(404, "unknown_task", `No task ${taskId}`);
+    if (!this.ownTaskOf(task, caller)) throw denial(403, "not_your_task", `Task ${taskId} belongs to another chat`);
     return task;
   }
 
@@ -986,7 +986,7 @@ export class Orchestrator {
   private async findProfile(idOrName: string) {
     const bots = this.deps.boards ? await this.deps.boards.listBots() : [];
     const bot = bots.find((b) => b.id === idOrName) ?? bots.find((b) => b.name.toLowerCase() === idOrName.toLowerCase());
-    if (!bot) throw new ChatError(422, "unknown_profile", `No saved bot profile called ${idOrName}`);
+    if (!bot) throw denial(422, "unknown_profile", `No saved bot profile called ${idOrName}`);
     return bot;
   }
 
@@ -1004,16 +1004,16 @@ export class Orchestrator {
     // its broadest mode (or with none to speak of) may hand work to one, or the child would be freer.
     if (!adapter.capabilities.supportsPermissionMode) {
       if (parentMode !== null && modes.length > 1 && rank(parentMode) < modes.length - 1) {
-        throw new ChatError(403, "mode_escalation_denied", `${adapter.displayName} has no permission modes, so it cannot be held to this chat's ${parentMode} mode`);
+        throw denial(403, "mode_escalation_denied", `${adapter.displayName} has no permission modes, so it cannot be held to this chat's ${parentMode} mode`);
       }
-      if (requested !== undefined) throw new ChatError(400, "unsupported", `${adapter.displayName} has no permission modes`);
+      if (requested !== undefined) throw denial(400, "unsupported", `${adapter.displayName} has no permission modes`);
       return undefined;
     }
     if (requested === undefined) return parentMode ?? undefined;
     const parentRank = parentMode === null ? -1 : rank(parentMode);
     const wantedRank = rank(requested);
     if (parentRank < 0 || wantedRank < 0 || wantedRank > parentRank) {
-      throw new ChatError(403, "mode_escalation_denied", `${requested} is not at or below this chat's own ${parentMode ?? "no"} permission mode`);
+      throw denial(403, "mode_escalation_denied", `${requested} is not at or below this chat's own ${parentMode ?? "no"} permission mode`);
     }
     return requested;
   }

@@ -352,7 +352,13 @@ business.
 ## Error codes
 
 All are `ChatError`s with the status shown, answered in the bridges' envelope
-(`{ ok: false, code, message }`):
+(`{ ok: false, code, message }`). The codes are one typed union
+(`OrchDenialCode`, in `orchestration/types.ts`), so a typo in a code is a
+compile error; the human sentence always rides beside the code. Over the HTTP
+MCP endpoint a refusal is a JSON-RPC result with `isError: true`, the text
+reading `code: message`, and the same pair as `structuredContent`
+(`{ ok: false, code, message }`) for an agent that tests the code rather than
+parsing the words:
 
 | Code | Status | When |
 |---|---|---|

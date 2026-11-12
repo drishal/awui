@@ -27,7 +27,9 @@ const TIMEOUT_MS = 115_000;
 const LIST_TIMEOUT_MS = 10_000;
 
 const text = (value) => ({ type: "text", text: value });
-const failure = (message) => ({ content: [text(message)], isError: true });
+// A denial is a result the model reads; the typed code rides in `structuredContent`
+// so an agent can test the code instead of parsing the sentence.
+const failure = (message, structured) => ({ content: [text(message)], isError: true, ...(structured ? { structuredContent: structured } : {}) });
 /** An error's own message, for an error answer that names what went wrong without the token. */
 const describe = (error) => (error instanceof Error ? error.message : String(error));
 
@@ -97,7 +99,7 @@ async function forward(name, args) {
   if (body?.ok === true) return { content: [text(typeof body.text === "string" ? body.text : "")] };
   const code = typeof body?.code === "string" ? body.code : `HTTP ${response.status}`;
   const message = typeof body?.message === "string" ? body.message : "the call failed";
-  return failure(`${code}: ${message}`);
+  return failure(`${code}: ${message}`, typeof body?.code === "string" ? { ok: false, code, message } : undefined);
 }
 
 const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);

@@ -14,6 +14,8 @@
 // `Mcp-Session-Id`. A client that reconnects therefore starts clean, and `initialize` may be
 // repeated without harm.
 
+import type { OrchDenialCode } from "./types.js";
+
 /** The MCP protocol era this server speaks when a client does not name one. */
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 /** The name awui's MCP server answers with, the same one the stdio bridge uses. */
@@ -33,10 +35,14 @@ export interface McpPromptEntry {
   text: string;
 }
 
-/** What one tool call answered: the line the model reads, and whether that line is a failure. */
+/** What one tool call answered: the line the model reads, whether that line is a failure, and
+ * when it is, the refusal's typed code with the human sentence beside it (the result's
+ * `structuredContent`, so an agent can test the code instead of parsing the text). */
 export interface McpCallOutcome {
   text: string;
   failed?: boolean;
+  code?: OrchDenialCode;
+  message?: string;
 }
 
 export interface McpDeps {
@@ -131,7 +137,12 @@ export async function answerMcp(message: unknown, deps: McpDeps): Promise<McpAns
       // The call's own refusal is a result, not an error: the model reads `code: message` and can
       // act on it, exactly as it does through the stdio bridge.
       const outcome = await deps.call(name, params.arguments ?? {});
-      return answer(id, { content: [text(outcome.text)], ...(outcome.failed ? { isError: true } : {}) });
+      // A denial also carries its typed code as `structuredContent`, so an agent can test the
+      // code instead of parsing the sentence in the text.
+      return answer(id, {
+        content: [text(outcome.text)],
+        ...(outcome.failed ? { isError: true, structuredContent: { ok: false, code: outcome.code ?? "unknown_error", message: outcome.message ?? outcome.text } } : {}),
+      });
     }
     default:
       return fail(id, -32601, `Method not found: ${method}`);
