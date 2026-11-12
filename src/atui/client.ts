@@ -1,7 +1,15 @@
 // The awui server as atui reaches it: the same JSON API and event
 // stream the browser uses (src/web/api.ts, src/web/stream.ts), read from a
 // fetch body since a terminal app has no EventSource.
-import type { ChatEvent } from "../shared/protocol.js";
+import { IDEMPOTENCY_KEY_HEADER, type ChatEvent } from "../shared/protocol.js";
+
+/** The methods that have an effect: only these carry an idempotency key. */
+const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** A key for one logical mutating call; pass it again to retry that call (server/idempotency.ts). */
+export function idempotencyKey(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `k${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
 
 export class ServerError extends Error {
   constructor(
@@ -16,12 +24,19 @@ export class ServerError extends Error {
 export class Server {
   constructor(readonly base: string) {}
 
-  async call<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  async call<T>(path: string, init: { method?: string; body?: unknown; idempotencyKey?: string } = {}): Promise<T> {
+    const method = init.method ?? (init.body === undefined ? "GET" : "POST");
+    // A mutating call carries a key, so a repeat of this exact request (its answer lost on the
+    // way back) is recognised instead of applied twice. A caller retrying it passes the same one.
+    const key = MUTATING.has(method) ? (init.idempotencyKey ?? idempotencyKey()) : null;
+    const headers: Record<string, string> = {};
+    if (init.body !== undefined) headers["content-type"] = "application/json";
+    if (key !== null) headers[IDEMPOTENCY_KEY_HEADER] = key;
     let res: Response;
     try {
       res = await fetch(this.base + path, {
-        method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-        headers: init.body === undefined ? {} : { "content-type": "application/json" },
+        method,
+        headers,
         body: init.body === undefined ? null : JSON.stringify(init.body),
       });
     } catch {

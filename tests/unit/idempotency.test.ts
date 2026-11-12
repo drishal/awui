@@ -14,7 +14,7 @@ const KEY = "key-00000001";
 /** A small app with one mutating route that counts its runs, mounted the way app.ts mounts it. */
 function tinyApp(options: IdempotencyOptions = {}) {
   const idempotency = new Idempotency(options);
-  const runs = { things: 0, other: 0, slow: 0, failing: 0, upload: 0 };
+  const runs = { things: 0, other: 0, slow: 0, hang: 0, failing: 0, upload: 0 };
   let release: (() => void) | null = null;
   const app = express();
   app.use("/api", express.json());
@@ -26,6 +26,10 @@ function tinyApp(options: IdempotencyOptions = {}) {
   app.post("/api/other", (_req, res) => {
     runs.other += 1;
     res.json({ run: runs.other });
+  });
+  app.post("/api/hang", () => {
+    runs.hang += 1;
+    // Never answers: the test hangs up on it instead.
   });
   app.post("/api/slow", async (_req, res) => {
     runs.slow += 1;
@@ -51,7 +55,11 @@ function tinyApp(options: IdempotencyOptions = {}) {
   return {
     server,
     runs,
-    done: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    // A route that never answers holds its socket open: drop the connections rather than wait for them.
+    done: () => new Promise<void>((resolve) => {
+      server.closeAllConnections();
+      server.close(() => resolve());
+    }),
     /** Let the request that is parked in /api/slow answer. */
     release: () => release?.(),
   };
@@ -109,6 +117,22 @@ describe("a repeat of a keyed request", () => {
     expect(second.status).toBe(409);
     expect(second.body.code).toBe("request_in_progress");
     app.release();
+  });
+
+  it("forgets a request the client hung up on, rather than blocking its key", async () => {
+    app = tinyApp({ waitMs: 100 });
+    const abandoned = request(app.server).post("/api/hang").set(IDEMPOTENCY_KEY_HEADER, KEY).send({});
+    // A Test runs when it is awaited: start it and leave the promise to fail when we hang up.
+    void abandoned.then((res) => res, () => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    abandoned.abort();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // The key is free again: this one reaches the route instead of waiting for an answer that never comes.
+    const next = request(app.server).post("/api/hang").set(IDEMPOTENCY_KEY_HEADER, KEY).send({});
+    void next.then((res) => res, () => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    next.abort();
+    expect(app.runs.hang).toBe(2);
   });
 
   it("refuses the same key with a different body or on another route", async () => {

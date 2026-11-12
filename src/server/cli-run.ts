@@ -7,10 +7,11 @@
 // answers `awui`'s own /api/health, so another program on the port is never
 // driven. The answer is read from the chat's own ChatItems: the last reply the
 // agent wrote, exactly what the web UI draws.
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { DEFAULT_PORT, ENDPOINT_FILE, parseEndpoint } from "../shared/desktop.js";
-import type { Bootstrap, ChatItem, ChatSnapshot, ChatStatus, SessionUsage, SessionsOverview, WorkspaceInfo } from "../shared/protocol.js";
+import { IDEMPOTENCY_KEY_HEADER, type Bootstrap, type ChatItem, type ChatSnapshot, type ChatStatus, type SessionUsage, type SessionsOverview, type WorkspaceInfo } from "../shared/protocol.js";
 import { loadConfig } from "./config.js";
 
 /** A run settled on its own (idle), then nothing; 1 the run failed or the CLI could not do what it was asked. */
@@ -242,12 +243,36 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 const chatRoute = (chatId: string, suffix = ""): string => `/api/chats/${encodeURIComponent(chatId)}${suffix}`;
 
+/** The methods that have an effect: only these carry an idempotency key. */
+const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * One key per request for this invocation: a call retried within it (its answer lost) is the same
+ * request and reuses its key, while another route or another body gets its own — the server
+ * refuses one key on two requests (idempotency.ts). A new invocation starts fresh, so nothing is
+ * shared between two runs of `awui send`.
+ */
+const callKeys = new Map<string, string>();
+function callKey(method: string, route: string, body: unknown): string {
+  const id = `${method} ${route} ${createHash("sha256").update(body === undefined ? "" : JSON.stringify(body)).digest("base64url")}`;
+  const known = callKeys.get(id);
+  if (known !== undefined) return known;
+  const key = randomUUID();
+  callKeys.set(id, key);
+  return key;
+}
+
 async function api<T>(base: string, route: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  const method = init.method ?? (init.body === undefined ? "GET" : "POST");
+  const key = MUTATING.has(method) ? callKey(method, route, init.body) : null;
+  const headers: Record<string, string> = {};
+  if (init.body !== undefined) headers["content-type"] = "application/json";
+  if (key !== null) headers[IDEMPOTENCY_KEY_HEADER] = key;
   let res: Response;
   try {
     res = await fetch(base + route, {
-      method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-      headers: init.body === undefined ? {} : { "content-type": "application/json" },
+      method,
+      headers,
       body: init.body === undefined ? null : JSON.stringify(init.body),
     });
   } catch {

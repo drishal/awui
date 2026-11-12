@@ -156,6 +156,11 @@ export class Idempotency {
       this.finish(entry, tooBig ? null : { status: res.statusCode, body, type: String(res.getHeader("content-type") ?? "application/json") });
       return (end as (chunk?: unknown, ...rest: unknown[]) => Response)(chunk, ...rest);
     }) as Response["end"];
+    // A client that hangs up before the answer leaves its request without one: settle it here, or
+    // its key would answer 409 (or wait) forever.
+    res.on("close", () => {
+      if (!entry.done) this.finish(entry, null);
+    });
     next();
   }
 

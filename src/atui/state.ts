@@ -35,7 +35,7 @@ import { appCommand } from "../web/commands.js";
 import { isBusy } from "../web/session-groups.js";
 import { newsBetween, type News } from "./assist.js";
 import { imageModeFrom, imageProtocol, type ImageMode } from "./images.js";
-import { followChat, Server, ServerError, type Connection } from "./client.js";
+import { followChat, idempotencyKey, Server, ServerError, type Connection } from "./client.js";
 import { themeFrom, type Theme } from "./theme.js";
 
 export interface AtuiOptions {
@@ -504,6 +504,10 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     }
   };
 
+  // The send attempt in flight: a retry of the same words and images reuses its idempotency key,
+  // so a lost answer cannot post the prompt twice. An edit is a new attempt with a new key.
+  let sendAttempt: { key: string; text: string; mode: SendMode; images: ImageAttachment[] } | null = null;
+
   /** Send what was typed: a normal message when idle, a steer (or follow-up) while the agent works. */
   const send = async (text: string, options: { compactFirst?: boolean; images?: ImageAttachment[] } = {}): Promise<boolean> => {
     const images = options.images ?? [];
@@ -523,6 +527,10 @@ export function createAtui(server: Server, opts: AtuiOptions) {
         else if (c.status === "running" && c.capabilities.supportsFollowUp) mode = "followUp";
         else throw new Error("The agent is busy; wait, or stop it with Esc Esc");
       }
+      const prior = sendAttempt;
+      const retry = prior !== null && prior.text === value && prior.mode === mode && prior.images.length === images.length && prior.images.every((image, at) => image.data === images[at]?.data);
+      const key = retry && prior ? prior.key : idempotencyKey();
+      sendAttempt = { key, text: value, mode, images };
       await server.call(`/api/chats/${c.chatId}/messages`, {
         body: {
           text: value,
@@ -530,7 +538,9 @@ export function createAtui(server: Server, opts: AtuiOptions) {
           ...(images.length > 0 ? { images: images.map(({ mimeType, data }) => ({ mimeType, data })) } : {}),
           ...(mode === "normal" && options.compactFirst ? { compactFirst: true } : {}),
         },
+        idempotencyKey: key,
       });
+      sendAttempt = null;
       setBanner(null);
       return true;
     } catch (error) {
