@@ -2633,15 +2633,18 @@ export function App() {
           chatId={chat.chatId}
           items={chat.items}
           workspace={chat.workspace.path}
-          sendLabel={chat.status === "idle" || chat.status === "error" ? "Send to the agent" : "Send as follow-up"}
-          sendBlocked={
-            chat.status === "disposed"
-              ? "This chat is closed"
-              : chat.status === "idle" || chat.status === "error" || chat.capabilities.supportsFollowUp
-                ? null
-                : "Wait until the agent is idle"
-          }
-          onSend={(prompt) => send(prompt, chat.status === "idle" || chat.status === "error" ? "normal" : "followUp")}
+          workspaceId={chat.workspace.id}
+          harnessId={chat.harnessId}
+          status={chat.status}
+          followUp={chat.capabilities.supportsFollowUp}
+          harnesses={boot.harnesses}
+          onSent={(targetChatId) => {
+            // The batch went elsewhere: show that chat beside this one, and leave the review open here.
+            void api<ChatSnapshot>(`/api/chats/${targetChatId}`)
+              .then((snapshot) => setTabState((current) => placeChat(current, snapshot, { newTab: true, background: true })))
+              .catch(() => undefined);
+            void refreshSessions();
+          }}
           onClose={() => setReviewOpen(false)}
         />
       ) : null}

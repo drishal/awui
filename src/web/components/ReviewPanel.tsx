@@ -5,9 +5,9 @@
 // resolved. The panel only draws them and asks for changes.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, errorText } from "../api.js";
-import type { ChatItem, ReviewThread } from "../../shared/protocol.js";
+import type { ChatItem, ChatSnapshot, ChatStatus, HarnessStatus, ProjectSession, ReviewSendResult, ReviewThread } from "../../shared/protocol.js";
 import { IconCheck, IconX } from "../icons.js";
-import { anchorOf, batchPrompt, buildLineIndex, collectChanges, commentable, commentKey, placeThreads, reanchor, type PlacedThread, type ReviewComment } from "../review.js";
+import { anchorOf, buildLineIndex, collectChanges, commentable, commentKey, placeThreads, reanchor, type PlacedThread, type ReviewComment } from "../review.js";
 import { load, save } from "../storage.js";
 import { FileLink } from "./FileLink.js";
 import { DiffBadge, DiffView } from "./ToolBody.js";
@@ -67,19 +67,26 @@ export function ReviewPanel({
   chatId,
   items,
   workspace,
-  sendLabel,
-  sendBlocked,
-  onSend,
+  workspaceId,
+  harnessId,
+  status,
+  followUp,
+  harnesses,
+  onSent,
   onClose,
 }: {
   chatId: string;
   items: ChatItem[];
   workspace: string;
-  /** "Send", or "Send as follow-up" while the agent works. */
-  sendLabel: string;
-  /** Why the comments cannot go now. */
-  sendBlocked: string | null;
-  onSend: (prompt: string) => Promise<boolean>;
+  workspaceId: string;
+  /** This chat's harness, the default for a new chat's picker. */
+  harnessId: string;
+  status: ChatStatus;
+  /** Whether this chat takes a follow-up while it runs. */
+  followUp: boolean;
+  harnesses: HarnessStatus[];
+  /** The chat that got the prompt, when it is not this one, so the app can show it. */
+  onSent: (targetChatId: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -91,6 +98,13 @@ export function ReviewPanel({
   const [showResolved, setShowResolved] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Sending is two steps: what goes (the footer's count) and where it goes.
+  const [picking, setPicking] = useState(false);
+  const [where, setWhere] = useState<"chat" | "new" | "session">("chat");
+  const [newHarness, setNewHarness] = useState(harnessId);
+  const [session, setSession] = useState("");
+  const [chats, setChats] = useState<ProjectSession[] | null>(null);
 
   const fail = (e: unknown) => setError(errorText(e));
   const replace = (thread: ReviewThread) => setThreads((list) => [thread, ...list.filter((t) => t.id !== thread.id)]);
@@ -151,6 +165,7 @@ export function ReviewPanel({
   const { placed, detached } = useMemo(() => placeThreads(files, threads), [files, threads]);
   const open = threads.filter((t) => t.status === "open");
   const resolved = threads.filter((t) => t.status === "resolved");
+  const busy = status !== "idle" && status !== "error";
   const staleIds = useMemo(() => new Set([...placed.values()].flat().concat(detached).filter((p) => p.stale).map((p) => p.thread.id)), [placed, detached]);
   const added = files.reduce((n, f) => n + f.added, 0);
   const removed = files.reduce((n, f) => n + f.removed, 0);
@@ -194,11 +209,51 @@ export function ReviewPanel({
     }
   };
 
+  /** The chats of this project the picker offers: open ones, and sessions a resume would open. */
+  const loadChats = async () => {
+    if (chats !== null) return;
+    try {
+      const body = await api<{ sessions: ProjectSession[] }>("/api/sessions");
+      setChats(body.sessions.filter((s) => s.workspaceId === workspaceId));
+    } catch (e) {
+      fail(e);
+    }
+  };
+
+  /** The chat a "session" pick sends to: the live one, else the same session resumed here (one writer per session). */
+  const sessionChat = async (): Promise<string> => {
+    const chosen = (chats ?? []).find((c) => c.id === session);
+    if (!chosen) throw new Error("Pick a chat to send to");
+    if (chosen.liveChatId) return chosen.liveChatId;
+    const resumed = await api<ChatSnapshot>("/api/chats/resume", { body: { harnessId: chosen.harnessId, sessionId: chosen.id, workspaceId } });
+    return resumed.chatId;
+  };
+
+  /** Where the batch went, in words for the notice. */
+  const describe = (id: string): string => {
+    if (id === chatId) return "this chat";
+    return (chats ?? []).find((c) => c.liveChatId === id || c.id === id)?.title ?? "a new chat";
+  };
+
   const send = async () => {
     setSending(true);
-    const ok = await onSend(batchPrompt(threads, staleIds));
-    setSending(false);
-    if (ok) onClose();
+    try {
+      const target = where === "chat" ? chatId : where === "session" ? await sessionChat() : null;
+      const stale = [...staleIds];
+      // The prompt is composed server-side from the stored threads, so the batch and its marks cannot drift.
+      const result = target
+        ? await api<ReviewSendResult>(`${threadsPath}/send`, { body: { target: { kind: "chat", chatId: target }, stale } })
+        : await api<ReviewSendResult>(`${threadsPath}/send`, { body: { target: { kind: "new", harnessId: newHarness }, stale } });
+      setNotice(`Sent ${result.sent} ${result.sent === 1 ? "comment" : "comments"} to ${describe(result.targetChatId)}`);
+      setPicking(false);
+      setError(null);
+      await reload();
+      if (result.targetChatId !== chatId) onSent(result.targetChatId);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setSending(false);
+    }
   };
 
   const card = (entry: PlacedThread, key?: string) => (
@@ -223,6 +278,7 @@ export function ReviewPanel({
       onCancel={(e) => {
         e.preventDefault();
         if (composing) setComposing(null);
+        else if (picking) setPicking(false);
         else onClose();
       }}
       onClick={(e) => {
@@ -312,18 +368,77 @@ export function ReviewPanel({
             </section>
           ) : null}
         </div>
+        {picking ? (
+          <div className="review-send">
+            <fieldset>
+              <legend>Send {open.length} {open.length === 1 ? "comment" : "comments"} to</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="review-target"
+                  checked={where === "chat"}
+                  disabled={busy && !followUp}
+                  onChange={() => setWhere("chat")}
+                />
+                This chat
+                <span className="muted">{busy ? (followUp ? " — it is working, so they queue as a follow-up" : " — wait until it is idle") : null}</span>
+              </label>
+              <label>
+                <input type="radio" name="review-target" checked={where === "new"} onChange={() => { setWhere("new"); void loadChats(); }} />
+                A new chat
+                <select aria-label="New chat's harness" value={newHarness} onChange={(e) => setNewHarness(e.target.value)}>
+                  {harnesses.filter((h) => h.available).map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <input type="radio" name="review-target" checked={where === "session"} onChange={() => { setWhere("session"); void loadChats(); }} />
+                Another chat of this project
+                <select aria-label="Chat to send to" value={session} onChange={(e) => setSession(e.target.value)}>
+                  <option value="">{chats === null ? "Loading…" : "Choose a chat"}</option>
+                  {(chats ?? []).map((c) => {
+                    const blocked = c.status !== undefined && c.status !== "idle" && c.status !== "error" && !(harnesses.find((h) => h.id === c.harnessId)?.capabilities.supportsFollowUp ?? false);
+                    return (
+                      <option key={c.id} value={c.id} disabled={blocked}>
+                        {c.title || "New chat"}
+                        {c.status === "running" ? " · working" : c.liveChatId ? "" : " · resumes it"}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            </fieldset>
+            <div className="review-send-actions">
+              <button type="button" className="btn btn-small" onClick={() => setPicking(false)}>
+                Back
+              </button>
+              <button
+                type="button"
+                className="btn btn-small btn-primary"
+                disabled={sending || (where === "session" && !session) || (where === "chat" && busy && !followUp)}
+                onClick={() => void send()}
+              >
+                {sending ? "Sending…" : "Send"}
+              </button>
+            </div>
+          </div>
+        ) : null}
         <footer className="review-foot">
-          <span className="muted">
+          <span className="muted" role="status">
             {open.length === 0 && resolved.length === 0 ? "No comments yet" : `${open.length} open`}
             {resolved.length > 0 ? ` · ${resolved.length} resolved` : null}
+            {notice !== null ? ` · ${notice}` : null}
           </span>
           {resolved.length > 0 ? (
             <button type="button" className="btn btn-small" aria-pressed={showResolved} onClick={() => setShowResolved((on) => !on)}>
               {showResolved ? "Open only" : "All"}
             </button>
           ) : null}
-          <button type="button" className="btn btn-small btn-primary" disabled={open.length === 0 || sending || sendBlocked !== null} title={sendBlocked ?? undefined} onClick={() => void send()}>
-            {open.length > 1 ? `Send ${open.length} comments` : sendLabel}
+          <button type="button" className="btn btn-small btn-primary" disabled={open.length === 0 || sending || picking} onClick={() => setPicking(true)}>
+            {open.length === 1 ? "Send 1 comment" : `Send ${open.length} comments`}
           </button>
         </footer>
       </div>

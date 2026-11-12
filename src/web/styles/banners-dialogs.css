@@ -249,6 +249,47 @@
   font-size: 13px;
 }
 
+/* A send's second step: where the batch of comments goes. */
+.review-send {
+  padding: 10px 16px;
+  border-top: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--accent) 4%, var(--card));
+}
+
+.review-send fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.review-send legend {
+  padding-bottom: 6px;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.review-send label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.review-send select {
+  max-width: 60%;
+  margin-left: auto;
+}
+
+.review-send-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .review-foot {
   display: flex;
   align-items: center;
