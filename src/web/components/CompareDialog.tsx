@@ -10,7 +10,8 @@ export function CompareDialog({ workspace, harnesses, initialHarness, initialMod
   harnesses: HarnessStatus[];
   initialHarness: string | null;
   initialModel: string | null;
-  onDone(chats: ChatSnapshot[]): void;
+  /** The started chats, and the comparison's record id when the server kept one. */
+  onDone(chats: ChatSnapshot[], raceId: string | null): void;
   onClose(): void;
 }) {
   const available = harnesses.filter((h) => h.available);
@@ -32,11 +33,11 @@ export function CompareDialog({ workspace, harnesses, initialHarness, initialMod
     const key = attempt.current?.fingerprint === fingerprint ? attempt.current.key : idempotencyKey();
     attempt.current = { key, fingerprint };
     try {
-      const response = await api<{ results: Array<{ harnessId: string; snapshot: ChatSnapshot | null; error?: string; tree: { path: string } | null }> }>("/api/compare", { body, idempotencyKey: key });
+      const response = await api<{ raceId: string | null; results: Array<{ harnessId: string; snapshot: ChatSnapshot | null; error?: string; tree: { path: string } | null }> }>("/api/compare", { body, idempotencyKey: key });
       const problems = response.results.filter((result) => result.error);
       if (response.results.length === 0) throw new Error("No worktrees were created");
       attempt.current = null;
-      onDone(response.results.flatMap((r) => r.snapshot ? [r.snapshot] : []));
+      onDone(response.results.flatMap((r) => r.snapshot ? [r.snapshot] : []), response.raceId);
       // The started chats are open already; the dialog stays only to show what failed.
       if (problems.length === 0) onClose();
       else setOutcomes(Object.fromEntries(problems.map((r) => [r.tree?.path ?? (harnesses.find((h) => h.id === r.harnessId)?.displayName ?? r.harnessId), r.error ?? "Could not start"])));

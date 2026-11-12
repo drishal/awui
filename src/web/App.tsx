@@ -111,6 +111,7 @@ const RoutinesDialog = lazy(() => import("./components/RoutinesDialog.js").then(
 const RoomView = lazy(() => import("./components/RoomView.js").then((m) => ({ default: m.RoomView })));
 const WorktreePicker = lazy(() => import("./components/WorktreePicker.js").then((m) => ({ default: m.WorktreePicker })));
 const CompareDialog = lazy(() => import("./components/CompareDialog.js").then((m) => ({ default: m.CompareDialog })));
+const RacePanel = lazy(() => import("./components/RacePanel.js").then((m) => ({ default: m.RacePanel })));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js").then((m) => ({ default: m.TerminalPanel })));
 const GitHubPanel = lazy(() => import("./components/GitHubPanel.js").then((m) => ({ default: m.GitHubPanel })));
 
@@ -270,6 +271,8 @@ export function App() {
 
   const [worktreeOpen, setWorktreeOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
+  /** The races panel: one comparison by id (just started, or reopened), or the list. */
+  const [racesOpen, setRacesOpen] = useState<{ raceId: string | null } | null>(null);
   const [toolPanel, setToolPanel] = useState<null | "terminal" | "github">(null);
   const [toolWorkspace, setToolWorkspace] = useState<WorkspaceInfo | null>(null);
   const openTool = (kind: "terminal" | "github", ws = workspace) => { setToolWorkspace(ws); setToolPanel(kind); };
@@ -1676,6 +1679,7 @@ export function App() {
       items.push({ id: "terminal", section: "Project", label: "Terminal", hint: workspace.name, searchOnly: true, run: () => openTool("terminal") });
       items.push({ id: "github", section: "Project", label: "GitHub and pull requests…", hint: workspace.name, searchOnly: true, run: () => openTool("github") });
       items.push({ id: "compare", section: "Project", label: "Compare agents in isolated worktrees…", disabled: available.length < 2 ? "Need two available harnesses" : undefined, searchOnly: true, run: () => setCompareOpen(true) });
+      items.push({ id: "races", section: "Project", label: "Races: compare a prompt's results…", searchOnly: true, run: () => setRacesOpen({ raceId: null }) });
     }
     items.push({
       id: "new-tab",
@@ -2552,13 +2556,16 @@ export function App() {
 
       {pickerOpen ? <WorkspacePicker worktrees={workspace && !room.roomId ? () => setWorktreeOpen(true) : undefined} recent={recent} onOpen={async (p) => { await openWorkspace(p); }} onClose={() => setPickerOpen(false)} error={pickerError} /> : null}
       {worktreeOpen && workspace ? <LazyPanel overlay><WorktreePicker workspace={workspace} onOpen={async (path) => { await openWorkspace(path); }} onCompare={() => setCompareOpen(true)} onClose={() => setWorktreeOpen(false)} onSeeded={(text) => toasts.push({ key: "worktree-seeded", text, ms: 8000 })} /></LazyPanel> : null}
-      {compareOpen && workspace ? <LazyPanel overlay><CompareDialog workspace={workspace} harnesses={boot.harnesses} initialHarness={harnessId} initialModel={startModel} onClose={() => setCompareOpen(false)} onDone={(snapshots) => {
+      {compareOpen && workspace ? <LazyPanel overlay><CompareDialog workspace={workspace} harnesses={boot.harnesses} initialHarness={harnessId} initialModel={startModel} onClose={() => setCompareOpen(false)} onDone={(snapshots, raceId) => {
         const first = snapshots[0];
         if (first) showChat(first, { newTab: true });
         const second = snapshots[1];
         if (second && first) setSide((current) => ({ initial: second, n: (current?.n ?? 0) + 1 }));
         for (const snapshot of snapshots.slice(2)) setTabState((current) => placeChat(current, snapshot, { newTab: true, background: true }));
+        // The comparison just started is the one to watch: its panel opens over the chats.
+        if (raceId) setRacesOpen({ raceId });
       }} /></LazyPanel> : null}
+      {racesOpen ? <LazyPanel><RacePanel initialRaceId={racesOpen.raceId} harnesses={boot.harnesses} onOpenChat={(chatId) => void openChatById(chatId)} onClose={() => setRacesOpen(null)} /></LazyPanel> : null}
 
       {roomEditor ? (
         <RoomEditor

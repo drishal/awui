@@ -12,4 +12,33 @@
 .compare-harnesses legend { width: 100%; }
 #compare-prompt, .compare-prompt { width: 100%; resize: vertical; margin: 12px 0; font: var(--chat-font)/1.5 var(--font-sans); }
 .dialog-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+/* Races: one row per compared agent, its changed files, and the cleanup of its losers. */
+.race-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.race-prompt { margin: 0 0 12px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.race-mode { display: flex; flex-wrap: wrap; gap: 6px 16px; border: 0; margin: 0 0 12px; padding: 0; }
+.race-mode legend { width: 100%; margin-bottom: 6px; color: var(--text-2); font-size: 13px; }
+.race-members { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.race-member { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--hairline); border-radius: 10px; }
+.race-member.is-winner { border-color: var(--accent); }
+.race-member-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.race-status, .race-counts { color: var(--text-2); font-size: 12px; }
+.race-winner { color: var(--accent); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+.race-branch { font: 12px var(--font-mono); overflow-wrap: anywhere; }
+.race-answer { margin: 0; color: var(--text-2); font-size: 13px; white-space: pre-wrap; }
+.race-files { display: flex; flex-wrap: wrap; gap: 4px 12px; list-style: none; margin: 0; padding: 0; }
+.race-files li { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.race-file { padding: 0; border: 0; background: none; color: var(--link); font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.race-file:hover { text-decoration: underline; }
+.race-diff { border-top: 1px solid var(--hairline); padding-top: 6px; }
+.race-none { margin: 0; font-size: 13px; }
+.race-cleanup { display: grid; gap: 8px; margin-top: 16px; border-top: 1px solid var(--hairline); padding-top: 12px; }
+.race-cleanup h3 { margin: 0; font-size: 14px; }
+.race-losers { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.race-losers li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.race-cleanup-results { margin: 0; padding-left: 18px; color: var(--text-2); font-size: 13px; }
+.race-list { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.race-row { display: grid; gap: 2px; width: 100%; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 10px; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.race-row:hover { background: var(--hover); }
+.race-row-title { font-weight: 600; }
+.race-row-prompt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--text-2); overflow: hidden; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .worktree-row { align-items: stretch; } .worktree-row .btn { min-height: 44px; } }
