@@ -743,7 +743,8 @@ export function createApp(deps: AppDeps) {
   app.get("/api/races/:id/members/:chatId/diff", async (req, res) => {
     const race = raceOf(req.params.id);
     const { path: file } = raceDiffQuery.parse(req.query);
-    res.json(await races.diff(race, req.params.chatId, file));
+    // The project is revalidated here too, so a member's tree must still sit inside it.
+    res.json(await races.diff(race, req.params.chatId, file, await raceProject(race)));
   });
   app.post("/api/races/:id/winner", async (req, res) => {
     const race = raceOf(req.params.id);

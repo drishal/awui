@@ -184,6 +184,14 @@ async function confine(tree: string, file: string): Promise<void> {
   if (!isWithin(realTree, real)) throw new ChatError(400, "bad_path", "Paths stay inside the worktree");
 }
 
+/** A member's whole tree, resolved: the project a route just revalidated must still hold it. */
+async function confineTree(root: string, tree: string): Promise<void> {
+  if (!isWithin(root, tree)) throw new ChatError(400, "bad_path", "That member's worktree is outside this project");
+  const realRoot = await fs.realpath(root).catch(() => root);
+  const realTree = await fs.realpath(tree).catch(() => tree);
+  if (!isWithin(realRoot, realTree)) throw new ChatError(400, "bad_path", "That member's worktree is outside this project");
+}
+
 async function existsDir(target: string): Promise<boolean> {
   try {
     return (await fs.stat(target)).isDirectory();
@@ -409,12 +417,17 @@ export class Races {
     };
   }
 
-  /** One file of a member's worktree, against its fork point, bounded like a tool's diff. */
-  async diff(race: RaceRecord, chatId: string, file: string): Promise<RaceFileDiff> {
+  /**
+   * One file of a member's worktree, against its fork point, bounded like a tool's diff.
+   * The project is the one the route just revalidated, so a tree that is no longer inside
+   * it (or is now a symlink out of it) is refused before any read.
+   */
+  async diff(race: RaceRecord, chatId: string, file: string, project: RaceProject): Promise<RaceFileDiff> {
     const member = race.members.find((m) => m.chatId === chatId);
     if (!member) throw new ChatError(404, "no_member", "That chat is not in this comparison");
     const wanted = cleanRelative(file);
     if (!member.fork) throw new ChatError(409, "no_fork_point", "This member's fork point was not recorded");
+    await confineTree(project.root, member.path);
     if (!(await existsDir(member.path))) throw new ChatError(410, "worktree_gone", "This member's worktree is gone");
     await confine(member.path, wanted);
     const text = await git(["--literal-pathspecs", "diff", "-U3", ...DIFF_OPTIONS, member.fork, "--", wanted], { cwd: member.path, ...READ, okExit: [1] }).catch((error: unknown) => {

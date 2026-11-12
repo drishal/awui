@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { ChatStatus, RaceCleanupResult, RaceSummary, RaceWinnerResult } from "../../src/shared/protocol.js";
+import { git as serverGit } from "../../src/server/git.js";
 import { MAX_RACES, Races, type RaceChats, type RaceRecordMember } from "../../src/server/races.js";
 import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
 
@@ -354,5 +355,15 @@ describe("race routes", () => {
     expect((await race.agent.post(`/api/races/${race.raceId}/winner`).send({ chatId: "someone-else" })).status).toBe(404);
     expect((await race.agent.post(`/api/races/${race.raceId}/winner`).send({ chatId: two(race)[0].chatId, mode: "merge" })).status).toBe(400);
     expect((await race.agent.get(`/api/races/${race.raceId}/members/not-a-member/diff`).query({ path: "app.txt" })).status).toBe(404);
+  }, 30_000);
+
+  it("refuses a patch whose paths would leave the repository, which is what an apply relies on", async () => {
+    const race = await startRace("edit");
+    // A member's diff only ever names paths inside its own repository, but `git apply` is the
+    // last word on where a patch may write: it refuses a path outside the checkout by itself.
+    const patch = ["diff --git a/../../escape b/../../escape", "new file mode 100644", "--- /dev/null", "+++ b/../../escape", "@@ -0,0 +1 @@", "+outside", ""].join("\n");
+    const refused = await serverGit(["apply", "--check", "-"], { cwd: race.app.project, input: patch }).then(() => "", (error: unknown) => String(error));
+    expect(refused).toContain("../../escape");
+    expect(existsSync(path.join(race.app.project, "..", "escape"))).toBe(false);
   }, 30_000);
 });
