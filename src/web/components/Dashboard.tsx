@@ -33,8 +33,12 @@ import { plainTitle } from "../plain-title.js";
 import { Select } from "./Select.js";
 import { Dialog } from "./Dialog.js";
 
-/** How many cards fetch a preview on opening; the rest fetch theirs when the pointer rests on them. */
-const EAGER_PREVIEWS = 24;
+/**
+ * How many cards fetch a preview on opening, per column (three at most, so 24 reads): the
+ * rest fetch theirs when the pointer rests on them. Each read is a transcript read on the
+ * server, which is why even the eager ones are this few.
+ */
+const EAGER_PREVIEWS = 8;
 
 export function Dashboard({ overview, harnesses, onOpenSession, onClose }: {
   overview: SessionsOverview;

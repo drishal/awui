@@ -50,11 +50,13 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded
   const setupIn = async (tree: Pick<WorktreeInfo, "id" | "branch">) => {
     setError(null);
     setSetupResult(null);
+    setBusy(true);
     try {
       const result = await api<RunResult>(`/api/workspaces/${workspace.id}/worktrees/${tree.id}/setup`, { method: "POST" });
       setSetupResult(result);
       onSeeded(setupSummary(tree.branch, result));
     } catch (e) { setError(errorText(e)); }
+    finally { setBusy(false); }
   };
   // One key per attempt: a create retried after its answer was lost (the same name and base)
   // must not make a second checkout, while a different name or base is a new one.
@@ -121,7 +123,7 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded
             <span className="picker-name">{tree.branch}</span><span className="picker-path">{tree.path}</span>
           </button>
           {canRunSetup(projectConfig) ? (
-            <button type="button" className="btn btn-small btn-ghost" title={`Run ${projectConfig?.config.setup ?? "the setup command"} in this worktree`} disabled={busy} onClick={() => void setupIn(tree)}>
+            <button type="button" className="btn btn-small btn-ghost" title={busy ? "Running…" : `Run ${projectConfig?.config.setup ?? "the setup command"} in this worktree`} disabled={busy} onClick={() => void setupIn(tree)}>
               Set up
             </button>
           ) : null}
