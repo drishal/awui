@@ -45,6 +45,7 @@ import {
 } from "./claude-sessions.js";
 import { claudeTaskReport } from "./jobs.js";
 import { claudeLimits, claudeUsageLimits } from "./limits.js";
+import { promptCacheExpiresAt, promptCacheTtlMs } from "./prompt-cache.js";
 import { orchestrateMcpServer, ORCH_MCP_SERVER, renderHtmlMcpServer } from "./render-extension.js";
 import { orchestrationMcpToolNames } from "./render-token.js";
 import { HTML_RENDER_MCP_SERVER, HTML_RENDER_MCP_TOOL, splitRenderMarker } from "./render-token.js";
@@ -336,6 +337,12 @@ interface Step {
   thinking: string;
   start: Obj;
   end: Obj;
+  /**
+   * When this call's stream opened. The cache's lifetime counts from the request and the wire
+   * carries no earlier mark; message_start arrives within a round trip of it, which a 5-minute
+   * or 1-hour window does not notice.
+   */
+  startedAt: number;
   tools: Array<{ id: string; name: string; input: unknown }>;
 }
 
@@ -357,6 +364,8 @@ class ClaudeLiveChat implements LiveChat {
   private running = false;
   private todos: TodoItem[] = [];
   private usage: UsageBaseline = { turns: 0, steps: 0, input: 0, cachedInput: 0, cacheWrite: 0, output: 0, cost: 0 };
+  /** How long this session's prompt cache lives and when it runs out, from the newest call that said. */
+  private cache: { ttlMs: number; expiresAt: number; requestedAt: number } | null = null;
   /** can_use_tool requests the CLI withdrew; their late answers go nowhere. */
   private withdrawn = new Set<string>();
   private compactWaiter: (() => void) | null = null;
@@ -406,6 +415,13 @@ class ClaudeLiveChat implements LiveChat {
         const { entries, meta } = await resumed;
         this.sessionTitle = meta && meta.title !== meta.firstPrompt.slice(0, 80) ? meta.title : null;
         this.usage = usageBaseline(entries);
+        // The file's own last cache write says when the prefix it holds stops being readable, so a
+        // chat opened after a long gap knows at once rather than after its first prompt.
+        for (const entry of entries) {
+          if (entry.type !== "assistant" || !isObj(entry.message) || !isObj(entry.message.usage)) continue;
+          const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+          if (Number.isFinite(at)) this.noteCache(entry.message.usage, at);
+        }
         this.todos = toTodos(latestTodos(entries));
       }
       const init = await rpc.init;
@@ -480,7 +496,7 @@ class ClaudeLiveChat implements LiveChat {
     switch (event.type) {
       case "message_start": {
         const message = isObj(event.message) ? event.message : {};
-        this.step = { ...(str(message.model) ? { model: str(message.model) } : {}), text: "", thinking: "", start: isObj(message.usage) ? message.usage : {}, end: {}, tools: [] };
+        this.step = { ...(str(message.model) ? { model: str(message.model) } : {}), text: "", thinking: "", start: isObj(message.usage) ? message.usage : {}, end: {}, startedAt: Date.now(), tools: [] };
         this.emit({ type: "assistant_start", ...(this.step.model ? { model: this.step.model } : {}) });
         return;
       }
@@ -519,8 +535,21 @@ class ClaudeLiveChat implements LiveChat {
       output: num(step.end.output_tokens) || num(step.start.output_tokens),
     };
     this.usage.steps += 1;
+    // The end frame carries the same breakdown when a call wrote the cache late; start has the counts.
+    this.noteCache(step.start, step.startedAt);
+    this.noteCache(step.end, step.startedAt);
     this.emit({ type: "assistant_end", text: step.text, thinking: step.thinking, usage });
     for (const tool of step.tools) this.emit({ type: "tool_start", toolCallId: tool.id, name: tool.name, args: tool.input });
+  }
+
+  /**
+   * Remember how long the prompt cache the last call wrote stays readable, from its usage. Older
+   * calls (a resumed file read after a live one) do not overwrite a newer reading.
+   */
+  private noteCache(usage: Obj, requestedAt: number): void {
+    const ttlMs = promptCacheTtlMs(usage);
+    if (ttlMs === undefined || (this.cache !== null && requestedAt < this.cache.requestedAt)) return;
+    this.cache = { ttlMs, expiresAt: promptCacheExpiresAt(ttlMs, requestedAt), requestedAt };
   }
 
   /** Whole content blocks: tool calls (held until the call ends) and the TodoWrite list. */
@@ -792,7 +821,17 @@ class ClaudeLiveChat implements LiveChat {
 
   async getUsage(): Promise<HarnessUsage | null> {
     const u = this.usage;
-    return { turns: u.turns, steps: u.steps, input: u.input, cachedInput: u.cachedInput, cacheWrite: u.cacheWrite, output: u.output, cost: u.cost > 0 ? u.cost : null };
+    const cache = this.cache;
+    return {
+      turns: u.turns,
+      steps: u.steps,
+      input: u.input,
+      cachedInput: u.cachedInput,
+      cacheWrite: u.cacheWrite,
+      output: u.output,
+      cost: u.cost > 0 ? u.cost : null,
+      ...(cache ? { promptCacheTtlMs: cache.ttlMs, promptCacheExpiresAt: cache.expiresAt } : {}),
+    };
   }
 
   async getTodos(): Promise<TodoItem[]> {

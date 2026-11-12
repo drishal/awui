@@ -129,6 +129,19 @@ describe("claude adapter (scripted CLI)", () => {
     expect(JSON.stringify(snap)).not.toContain("someone@example.com");
   });
 
+  it("keeps how long its prompt cache lives, from the usage each call reports", async () => {
+    const { chat, live } = await openChat();
+    expect((await live.getUsage())?.promptCacheExpiresAt).toBeUndefined();
+    const before = Date.now();
+    await chat.send("hello there", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "claude says hello there"));
+    const usage = chat.snapshot().usage;
+    // The fake's calls write Claude's five-minute window; the reading starts with the request.
+    expect(usage).toMatchObject({ promptCacheTtlMs: 300_000 });
+    expect(usage?.promptCacheExpiresAt).toBeGreaterThanOrEqual(before + 300_000);
+    expect(usage?.promptCacheExpiresAt).toBeLessThanOrEqual(Date.now() + 300_000);
+  });
+
   it("shows tool calls after the model call that made them, with their output", async () => {
     const { chat } = await openChat();
     await chat.send("run tool please", "normal");
@@ -314,6 +327,9 @@ describe("claude adapter (scripted CLI)", () => {
     expect(again.title).toBe("Named session");
     expect(resumed.snapshot().items.map((i) => i.kind)).toEqual(["user", "assistant", "user", "assistant", "tool", "assistant"]);
     expect(resumed.snapshot().usage).toMatchObject({ turns: 2, cost: 0.01 });
+    // The file's own last call says which cache window it wrote, so a reopened chat knows before a prompt.
+    expect(resumed.snapshot().usage).toMatchObject({ promptCacheTtlMs: 300_000 });
+    expect(resumed.snapshot().usage?.promptCacheExpiresAt).toBeGreaterThan(0);
 
     const fork = await adapter.forkSession({ cwd: project, nativeId, throughTurns: 1 });
     const { chat: copy } = await openChat(fork.nativeId);

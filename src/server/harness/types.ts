@@ -57,6 +57,10 @@ export interface HarnessUsage {
   cacheWrite: number;
   output: number;
   cost: number | null;
+  /** How long the provider keeps this session's cached prompt prefix (Claude Code's 5m or 1h), when it says. */
+  promptCacheTtlMs?: number;
+  /** When that prefix runs out: the last request's time plus the lifetime (epoch ms). */
+  promptCacheExpiresAt?: number;
 }
 
 export interface RecentNativeSession extends NativeSessionSummary {

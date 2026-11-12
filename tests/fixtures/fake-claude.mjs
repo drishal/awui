@@ -102,8 +102,10 @@ const steering = [];
 const followUps = [];
 const pendingPermissions = new Map();
 
+// A call's usage, in the shape a real message carries: the cache breakdown names which window
+// the call wrote, which a chat turns into the prompt cache's lifetime.
 function usage(output) {
-  return { input_tokens: 10, cache_read_input_tokens: 100, cache_creation_input_tokens: 20, output_tokens: output };
+  return { input_tokens: 10, cache_read_input_tokens: 100, cache_creation_input_tokens: 20, cache_creation: { ephemeral_5m_input_tokens: 20, ephemeral_1h_input_tokens: 0 }, output_tokens: output };
 }
 
 /** One model call: stream its text, then write its blocks; returns the message id. */

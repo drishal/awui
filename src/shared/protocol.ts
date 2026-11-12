@@ -502,6 +502,16 @@ export interface SessionUsage {
   llmMs: number | null;
   ttftMs: number | null;
   tokensPerSecond: number | null;
+  /**
+   * How long the provider keeps this session's cached prompt prefix after a request (Claude Code's
+   * 5 minutes or 1 hour), when it reports which cache it wrote. Absent for harnesses that do not.
+   */
+  promptCacheTtlMs?: number;
+  /**
+   * When that prefix stops being readable, epoch ms: the last request's time plus the lifetime.
+   * The composer's cold-resume hint reads it rather than guessing from the clock.
+   */
+  promptCacheExpiresAt?: number;
 }
 
 /** One rate-limit window of a subscription: Claude's five hours or seven days, a provider's month. */
