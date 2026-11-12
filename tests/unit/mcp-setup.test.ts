@@ -146,6 +146,10 @@ describe("Hermes's own MCP list", () => {
     expect(isAwuiBridgeTransport("C:\\bin\\awui.exe mcp")).toBe(true);
     expect(isAwuiBridgeTransport("/usr/bin/something-else mcp")).toBe(false);
     expect(isAwuiBridgeTransport("/usr/bin/awui-other mcp")).toBe(false);
+    // A folder whose own name has a space: splitting the cell into words read this as someone else's.
+    expect(isAwuiBridgeTransport("/home/u/My Apps/awui mcp")).toBe(true);
+    expect(isAwuiBridgeTransport("C:\\Program Files\\awui\\awui.exe mcp")).toBe(true);
+    expect(isAwuiBridgeTransport("awui mcp --verbose")).toBe(false);
     expect(isAwuiBridgeTransport("awui serve")).toBe(false);
     expect(isAwuiBridgeTransport(null)).toBe(false);
   });

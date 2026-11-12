@@ -199,7 +199,7 @@ one-line verdict:
 | State | Harnesses | What it means |
 |---|---|---|
 | **Automatic** | Pi, omp, Claude Code, Codex, DeepSeek Harness, Grok Build, OpenCode — and the awui harness, which is read-only and gets `render_html` and `eval_python` instead | the adapter hands the chat its server as the chat starts; the user configures nothing, and no harness file is read or written |
-| **One-time setup** | Hermes | one entry in Hermes's own config, made through Hermes's own CLI; `awui setup mcp --apply` runs that command after asking, and an entry already there is never overwritten. It is inert outside awui, and — as the table above says — not yet wired per chat |
+| **One-time setup** | Hermes | one entry in Hermes's own config, made through Hermes's own CLI; `awui setup mcp --apply` runs that command after asking, and an entry already there is never overwritten. With `--json` stdout carries the report alone (a step's own lines and its question go to stderr), so a script can read it It is inert outside awui, and — as the table above says — not yet wired per chat |
 | **Not available** | — | nothing today: every other adapter wires its own transport |
 
 A harness that is not installed is reported as such and gets no instruction. The entry names

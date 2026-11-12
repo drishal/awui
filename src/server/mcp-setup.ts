@@ -120,11 +120,14 @@ export function parseHermesMcpList(text: string): { found: boolean; transport: s
   return { found: false, transport: null };
 }
 
-/** Whether a listed transport runs awui's bridge: `awui mcp`, or a path ending in `/awui mcp`. */
+/**
+ * Whether a listed transport runs awui's bridge: `awui mcp`, or a path ending in `/awui mcp`. The
+ * path is matched whole rather than by splitting on spaces, since a program can live in a folder
+ * whose name has one ("/home/u/My Apps/awui").
+ */
 export function isAwuiBridgeTransport(transport: string | null): boolean {
   if (transport === null) return false;
-  const words = transport.trim().split(/\s+/);
-  return words.length === 2 && words[1] === "mcp" && /(^|[/\\])awui(\.exe)?$/i.test(words[0] ?? "");
+  return /(^|[/\\])awui(\.exe)? mcp$/i.test(transport.trim());
 }
 
 /** The entries, from what the probes found. Pure: every machine fact arrives in the input. */

@@ -131,6 +131,20 @@ describe("orchestration over HTTP MCP", () => {
     expect(JSON.stringify(expired.body)).not.toContain(token);
   });
 
+  // A body that is not JSON at all: a client must be told its message was not a message, which the
+  // route map's `{ ok: false, code }` envelope does not say.
+  it("answers a body it cannot parse with JSON-RPC's parse error", async () => {
+    const { app, agent, token } = await setup();
+    const broken = await agent.post("/api/orchestration/mcp").set("authorization", `Bearer ${token}`).set("content-type", "application/json").send('{"jsonrpc": "2.0", "id": 1, ');
+    expect(broken.status).toBe(400);
+    expect(broken.body).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+    // The endpoint is still there afterwards.
+    const ok = await post(agent, token, init);
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ jsonrpc: "2.0", id: 0 });
+    void app;
+  });
+
   it("is off with the rest of the surface, and needs the chat itself to run a tool", async () => {
     const off = await makeTestApp({ orchestrationLimits: { enabled: false } });
     t = off;

@@ -484,7 +484,25 @@ export function createApp(deps: AppDeps) {
     if (manager.knowsOrchToken(token) && !needsChat) return undefined;
     throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
   };
-  app.post("/api/orchestration/mcp", express.json({ limit: "512kb" }), async (req, res) => {
+  /**
+   * A body no JSON parser can read, answered as JSON-RPC's parse error rather than the route map's
+   * generic envelope: an MCP client reads one or the other, and only this one tells it the message
+   * was not a message. Any other body failure (too large) stays the map's.
+   */
+  const mcpBody = (req: Request, res: Response, next: NextFunction): void => {
+    express.json({ limit: "512kb" })(req, res, (error?: unknown) => {
+      if (!error) {
+        next();
+        return;
+      }
+      if ((error as { type?: unknown }).type !== "entity.parse.failed") {
+        next(error);
+        return;
+      }
+      res.status(400).json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+    });
+  };
+  app.post("/api/orchestration/mcp", mcpBody, async (req, res) => {
     try {
       const chat = orchMcpCaller(req, isToolCall(req.body));
       const answered = await answerMcp(req.body, {

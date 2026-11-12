@@ -390,11 +390,11 @@ Nothing here edits a harness's config: --apply runs the command that harness its
 provides, and an entry already there is never overwritten.`;
 
 /** Ask before running a one-time step; null means there is no terminal to ask on. */
-function askToRun(): (() => Promise<boolean>) | null {
+function askToRun(output: NodeJS.WriteStream = process.stdout): (() => Promise<boolean>) | null {
   if (!process.stdin.isTTY) return null;
   return () =>
     new Promise<boolean>((resolve) => {
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const rl = readline.createInterface({ input: process.stdin, output });
       rl.question("Run it? [y/N] ", (answer) => {
         rl.close();
         resolve(/^y(es)?$/i.test(answer.trim()));
@@ -464,13 +464,18 @@ async function runSetup(args: string[]): Promise<number> {
     return 64;
   }
   if (targets.length === 0) {
-    console.log("Nothing to set up: every installed harness is given awui's tools per chat.");
+    // Under --json, stdout is the report and nothing else: the sentence would make it unreadable.
+    if (json) console.log("[]");
+    else console.log("Nothing to set up: every installed harness is given awui's tools per chat.");
     return 0;
   }
-  const ask = yes ? async () => true : askToRun();
+  const ask = yes ? async () => true : askToRun(json ? process.stderr : process.stdout);
+  // A step's own progress lines are notes, not the report: with --json they go to stderr so a script
+  // reading stdout gets one JSON document.
+  const log = json ? (line: string) => console.error(line) : (line: string) => console.log(line);
   const results: Array<ApplyResult & { harnessId: string }> = [];
   for (const entry of targets) {
-    results.push({ harnessId: entry.harnessId, ...(await applyOneTimeSetup(entry, { log: (line) => console.log(line), ask })) });
+    results.push({ harnessId: entry.harnessId, ...(await applyOneTimeSetup(entry, { log, ask })) });
   }
   if (json) console.log(JSON.stringify(results, null, 2));
   return results.every((result) => result.ok) ? 0 : 1;
