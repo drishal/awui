@@ -95,7 +95,7 @@ export function sessionRows(overview: SessionsOverview, at: { here: string | nul
       id: s.id,
       label: s.title ? plainTitle(s.title) : "Untitled",
       // A herdr pane runs it: opening it shows that pane first (state.ts openSession).
-      detail: `${at.harnessName(s.harnessId)}${s.herdr ? ` · in herdr, ${s.herdr.status}` : ""}${place !== "project" && project ? ` · ${project}` : ""}`,
+      detail: `${at.harnessName(s.harnessId)}${s.herdr ? ` · in herdr, ${s.herdr.status}` : ""}${s.handover ? " · handed to a terminal" : ""}${place !== "project" && project ? ` · ${project}` : ""}`,
       value: s.updatedAt ? ago(time(s), now) : "",
       group: GROUPS[place] ?? (place === "project" ? (project ?? "Other projects") : "Snoozed, settled, and archived"),
       ...(s.asking || s.herdr?.status === "blocked" ? { dot: "warning" } : isBusy(s.status) || s.herdr?.status === "working" ? { dot: "accent" } : s.status === "error" ? { dot: "error" } : {}),

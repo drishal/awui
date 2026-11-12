@@ -145,6 +145,14 @@ const schema = z
      */
     settle_after_days: z.number().int().min(1).max(3650).optional(),
     /**
+     * Finished chats nobody has looked at for this many minutes have their harness child parked
+     * (disposed) by the reaper; opening the chat again resumes the same native session from its
+     * transcript. Only adapters that can read the transcript back park (a real resume), and a
+     * chat waiting on an answer, holding a chain, or carrying background work is never parked.
+     * Unset or 0 turns hibernation off. Read at startup.
+     */
+    hibernate_after_minutes: z.number().int().min(1).max(60 * 24 * 30).optional(),
+    /**
      * The orchestration surface's bounds (limits.ts holds the defaults and what each one means).
      * Every number is re-read while the server runs, so none of them needs a restart.
      */
@@ -170,6 +178,35 @@ const schema = z
     claude: z.object({ subagent_prompt_cache_ttl: z.enum(["5m", "1h"]).optional(), entrypoint: claudeEntrypointSchema.optional() }).strict().optional(),
     /** Herdr's API socket, when not the default session's (file-only; HERDR_SOCKET_PATH wins). */
     herdr_socket: z.string().trim().min(1).max(4096).optional(),
+    /**
+     * Shared agent profiles: named provider/model/thinking/mode bundles kept in
+     * config.yml, so every room and delegation can use the same seat. Credentials
+     * never appear here (the provider login stays in the harness's own auth);
+     * the Settings dialog's Agents section manages the list.
+     */
+    agent_profiles: z
+      .array(
+        z
+          .object({
+            name: z.string().trim().min(1).max(64),
+            harness: z.string().trim().min(1).max(64),
+            model: z.string().trim().min(1).max(512).nullable().optional(),
+            thinking: z.string().trim().min(1).max(64).nullable().optional(),
+            permission_mode: z.string().trim().min(1).max(64).nullable().optional(),
+            note: z.string().trim().min(1).max(200).nullable().optional(),
+          })
+          .strict(),
+      )
+      .max(64)
+      .superRefine((list, ctx) => {
+        const seen = new Set<string>();
+        for (const [index, entry] of list.entries()) {
+          const key = entry.name.toLowerCase();
+          if (seen.has(key)) ctx.addIssue({ code: "custom", path: [index, "name"], message: `"${entry.name}" is already defined` });
+          seen.add(key);
+        }
+      })
+      .optional(),
     /**
      * Which changed paths a worktree or race card counts as tests and as generated
      * output (shared/breakdown.ts holds the defaults). File-only; globs, `**` crossing

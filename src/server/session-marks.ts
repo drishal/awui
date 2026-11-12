@@ -25,6 +25,8 @@ export interface MarkChange {
   snoozedUntil?: number | null;
   /** Seen? Kept beside a place, never in place of one. */
   unread?: boolean;
+  /** The server hibernated this chat's harness child (server-set only; the marks route refuses it). */
+  parked?: boolean;
   /** Set exactly the given marks and clear the rest. */
   replace?: boolean;
 }
@@ -36,11 +38,12 @@ function clean(raw: Record<string, unknown>): SessionMark {
     ...(raw.settled === true ? { settled: true } : {}),
     ...(typeof raw.snoozedUntil === "number" && raw.snoozedUntil > 0 ? { snoozedUntil: raw.snoozedUntil } : {}),
     ...(raw.unread === true ? { unread: true } : {}),
+    ...(raw.parked === true ? { parked: true } : {}),
     ...(raw.origin === "routine" || raw.origin === "agent" ? { origin: raw.origin } : {}),
   };
 }
 
-const empty = (m: SessionMark) => !m.pinned && !m.archived && !m.settled && !m.snoozedUntil && !m.unread && !m.origin;
+const empty = (m: SessionMark) => !m.pinned && !m.archived && !m.settled && !m.snoozedUntil && !m.unread && !m.parked && !m.origin;
 
 /** A session as the sweep sees it: its id and the harness's own last-activity time. */
 export interface SweepCandidate {
@@ -122,6 +125,11 @@ export class SessionMarks {
     // Unread sits beside a place (pin, settle, snooze) instead of replacing it.
     if (change.unread === true) next.unread = true;
     else if (change.unread === false) delete next.unread;
+    // Parked too: the scheduler's mark, beside wherever the session sits. Only the
+    // server sets it (the marks route never takes one), so `true` comes from the
+    // hibernation hook and `false` from a run starting or the session being read.
+    if (change.parked === true) next.parked = true;
+    else if (change.parked === false) delete next.parked;
     return next;
   }
 

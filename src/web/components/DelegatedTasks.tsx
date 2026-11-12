@@ -10,6 +10,7 @@ import { useNow } from "../hooks.js";
 import { IconChevronDown } from "../icons.js";
 import { ago } from "../turns.js";
 import { ConfirmButton } from "./ConfirmButton.js";
+import { TaskReview } from "./TaskReview.js";
 
 /** Rows the panel draws before it counts the rest. */
 const MAX_ROWS = 8;
@@ -17,12 +18,16 @@ const MAX_ROWS = 8;
 function Row({
   task,
   now,
+  chatId,
+  workspaceId,
   harnessName,
   onOpen,
   onCancel,
 }: {
   task: DelegatedTaskView;
   now: number;
+  chatId: string;
+  workspaceId: string;
   harnessName: (id: string) => string;
   onOpen: (task: DelegatedTaskView) => void;
   onCancel: (task: DelegatedTaskView) => void;
@@ -55,17 +60,22 @@ function Row({
           {line}
         </p>
       ) : null}
+      {open && finished && task.reviewable ? <TaskReview chatId={chatId} taskId={task.id} workspaceId={workspaceId} /> : null}
     </li>
   );
 }
 
 export function DelegatedTasks({
   tasks,
+  chatId,
+  workspaceId,
   harnessName = (id) => id,
   onOpen,
   onCancel,
 }: {
   tasks: DelegatedTaskView[];
+  chatId: string;
+  workspaceId: string;
   harnessName?: (id: string) => string;
   onOpen: (task: DelegatedTaskView) => void;
   onCancel: (task: DelegatedTaskView) => void;
@@ -78,7 +88,7 @@ export function DelegatedTasks({
   return (
     <ul className="tasks" aria-label="Delegated tasks">
       {shown.map((task) => (
-        <Row key={task.id} task={task} now={now} harnessName={harnessName} onOpen={onOpen} onCancel={onCancel} />
+        <Row key={task.id} task={task} now={now} chatId={chatId} workspaceId={workspaceId} harnessName={harnessName} onOpen={onOpen} onCancel={onCancel} />
       ))}
       {tasks.length > shown.length ? <li className="task-more muted">{tasks.length - shown.length} more, in the parent's tool calls</li> : null}
     </ul>

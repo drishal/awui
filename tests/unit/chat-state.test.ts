@@ -22,6 +22,8 @@ const task = (id: string, extra: Partial<DelegatedTaskView> = {}): DelegatedTask
   activity: null,
   result: null,
   asking: null,
+  scope: null,
+  reviewable: false,
   ...extra,
 });
 

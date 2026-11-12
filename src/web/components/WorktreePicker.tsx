@@ -1,8 +1,9 @@
-// Select or create an isolated Git checkout. Worktree paths stay server-owned;
-// choosing one just hands its workspace to the ordinary start/resume flow. The project
-// may check in its own `awui.yml`: its base ref fills the form, its shared entries seed
-// the tree, and its setup command is offered only once a person has trusted that exact
-// version and ticks the box — a repository's file never runs anything by itself.
+// Select or create an isolated Git checkout, of a base revision or of an existing
+// pull request. Worktree paths stay server-owned; choosing one just hands its
+// workspace to the ordinary start/resume flow. The project may check in its own
+// `awui.yml`: its base ref fills the form, its shared entries seed the tree, and its
+// setup command is offered only once a person has trusted that exact version and
+// ticks the box — a repository's file never runs anything by itself.
 import { useEffect, useRef, useState } from "react";
 import type { ProjectConfigStatus, RunResult, WorktreeInfo, WorktreeSeedReport, WorkspaceInfo } from "../../shared/protocol.js";
 import { api, errorText, idempotencyKey } from "../api.js";
@@ -20,6 +21,8 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded
   const [trees, setTrees] = useState<WorktreeInfo[]>([]);
   const [name, setName] = useState("");
   const [base, setBase] = useState("HEAD");
+  /** The checkout-pr form: an existing pull request's number. */
+  const [checkoutPr, setCheckoutPr] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -80,6 +83,21 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
   };
+  // A managed isolated checkout of an existing pull request: the head branch is
+  // looked up server-side, so the form names only the number and a task name.
+  const checkout = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const tree = await api<WorktreeInfo & { seeded: WorktreeSeedReport }>(`/api/workspaces/${workspace.id}/worktrees/checkout-pr`, { body: { pr: Number(checkoutPr), name: name || `pr-${checkoutPr}` } });
+      const seeded = worktreeSeedSummary(tree.seeded);
+      if (seeded) onSeeded(seeded);
+      setCheckoutPr("");
+      await onOpen(tree.path);
+      onClose();
+    } catch (e) { setError(errorText(e)); }
+    finally { setBusy(false); }
+  };
   return (
     <Dialog title={`Worktrees for ${workspace.name}`} onClose={onClose} className="dialog-wide">
       <p className="muted">Each chat runs in its own checkout. Nothing is deleted unless you choose Prune on a clean managed tree.</p>
@@ -88,6 +106,11 @@ export function WorktreePicker({ workspace, onOpen, onClose, onCompare, onSeeded
         <label>Task name <input className="input" required pattern="[a-z0-9][a-z0-9\-]{0,63}" value={name} onChange={(e) => setName(e.target.value)} placeholder="fix-sidebar" minLength={1} maxLength={64} /></label>
         <label>Base branch or commit <input className="input" required value={base} onChange={(e) => setBase(e.target.value)} maxLength={256} /></label>
         <button className="btn btn-primary" disabled={busy || !name.trim() || !base.trim()}>{busy ? "Creating…" : "Create worktree"}</button>
+      </form>
+      <form onSubmit={(e) => { e.preventDefault(); void checkout(); }} className="worktree-create">
+        <label>Pull request number <input className="input" required value={checkoutPr} onChange={(e) => setCheckoutPr(e.target.value)} placeholder="42" minLength={1} maxLength={5} inputMode="numeric" pattern="[0-9]+" /></label>
+        <label>Pull request task name <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="defaults to pr-42" minLength={1} maxLength={64} pattern="[a-z0-9][a-z0-9\-]{0,63}" /></label>
+        <button className="btn" disabled={busy || !checkoutPr.trim()}>Check out pull request</button>
       </form>
       {projectConfig ? (
         <div className={`worktree-config${projectConfig.problem ? " is-problem" : ""}`} data-testid="project-config">

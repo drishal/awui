@@ -2,7 +2,7 @@
 // native session: `harnessId + nativeId -> chatId`. Another terminal or
 // process running the same harness is NOT locked out (documented in README).
 import { randomBytes, randomUUID } from "node:crypto";
-import type { ChatLineage, DelegatedTaskView, InteractionRequest, LimitAccount, PushNote, WorkspaceInfo } from "../../shared/protocol.js";
+import type { ChatLineage, DelegatedTaskView, InteractionRequest, LimitAccount, Plan, PushNote, WorkspaceInfo } from "../../shared/protocol.js";
 import { DeferredLiveChat } from "../harness/deferred.js";
 import type { HarnessAdapter, LiveChat } from "../harness/types.js";
 import { Chat, ChatError, errorMessage, type ChatOwner } from "./chat.js";
@@ -76,6 +76,8 @@ export class ChatManager {
    */
   delegatedSession?: (harnessId: string, nativeId: string) => boolean;
   tasksFor?: (chat: Chat) => DelegatedTaskView[];
+  /** The one plan belonging to this chat's stable native session, if any. */
+  planFor?: (chat: Chat) => Plan | null;
   /** A denial explanation belongs to this manager's delegated worker, not an arbitrary chat. */
   onDenied?: Chat["onDenied"];
   /**
@@ -83,6 +85,13 @@ export class ChatManager {
    * owed to a parent here: they were written while it was closed, or by the process before this one.
    */
   onRegistered?: (chat: Chat) => void;
+  /**
+   * Hibernation for idle finished chats. When set, the reaper parks (disposes) a chat that has
+   * been hidden — unviewed and unread — past `afterMs`: its harness child goes, its session's
+   * native id stays, and opening it again resumes the same native session. The hook records the
+   * parked mark (session-marks.ts), so lists can say why the live chat is gone.
+   */
+  hibernate?: { afterMs: number; onParked?: (chat: Chat) => void };
 
   constructor(private readonly idleDisposeMs = IDLE_DISPOSE_MS) {
     this.reaper = setInterval(() => void this.reap(), REAP_INTERVAL_MS);
@@ -188,6 +197,7 @@ export class ChatManager {
     // not in the chat: stamp them here so a resumed chat shows what it is.
     chat.lineage = this.lineageFor?.(chat);
     if (this.tasksFor && this.tasksFor(chat).length > 0) chat.delegated = () => this.tasksFor?.(chat) ?? [];
+    if (this.planFor && !chat.plan) chat.plan = () => this.planFor?.(chat) ?? null;
     // Board-owned chats take no ordinary per-prompt checkpoints (a room-level design comes later),
     // and neither does a side thread: it is a look at one block, not a run whose files go back.
     if (this.checkpoints && !chat.owner && !chat.side) {
@@ -325,6 +335,34 @@ export class ChatManager {
       if (idle && chat.subscriberCount === 0 && now - chat.lastSeen > this.idleDisposeMs) {
         await chat.dispose("Closed after being idle with no viewers").catch(() => undefined);
       }
+    }
+    await this.park();
+  }
+
+  /**
+   * Park one candidate: hidden long enough, idle, and resumable. Called from the reaper's own
+   * pass, so two ticks cannot race — the map no longer holds a chat once its dispose lands, and
+   * a chat re-registered in the same tick is a different, unhidden one by the time park runs.
+   */
+  private async park(): Promise<void> {
+    const surface = this.hibernate;
+    if (!surface || surface.afterMs <= 0) return;
+    const now = Date.now();
+    for (const chat of [...this.chats.values()]) {
+      // The adapter must read the transcript back: parking a chat whose history lives only
+      // behind its process would reopen it empty. Real resume, or no park.
+      if (!chat.adapter.readTranscript) continue;
+      // Hidden means unviewed (no streams attached): a chat someone is watching is not
+      // this scheduler's to take away.
+      if (chat.unviewedSince === null) continue;
+      const idle = chat.status === "idle" || chat.status === "error";
+      if (!idle || chat.subscriberCount > 0) continue;
+      // The same vetoes the idle dispose takes, plus the child's own deferred work: queued
+      // messages, background jobs, subagents still out — a closed chat loses all of them.
+      if (chat.pendingCount > 0 || chat.continueAt !== null || chat.chainLength > 0 || chat.hasDeferredWork) continue;
+      if (now - chat.lastSeen <= surface.afterMs) continue;
+      await chat.dispose("Hibernated: parked after being idle, unviewed, and unread").catch(() => undefined);
+      surface.onParked?.(chat);
     }
   }
 

@@ -91,6 +91,9 @@ function apply(state: ChatState | null, event: ChatEvent, index: Map<string, num
       return { ...state, checkpoints: event.turns };
     case "chain":
       return { ...state, chain: event.chain, chainPaused: event.paused };
+    // One coordinated worker proposal changed: the latest snapshot replaces its own row.
+    case "plan":
+      return { ...state, plan: event.plan ?? undefined };
     // One delegated task changed: its panel row is replaced in place, or added in front when it
     // is new (the server lists them newest first, and the panel shows them so).
     case "task": {

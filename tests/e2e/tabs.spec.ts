@@ -362,10 +362,11 @@ test("Copy resume command puts the line that resumes a session in a terminal on 
   await item.click();
   const line = /^cd \S+alpha && fake --resume \S+$/;
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toMatch(line);
-  // The chat is open here, a second writer if left open: the banner says so and can close it.
+  // The chat is open here, a second writer if left open: the banner names the explicit hand-over.
   const banner = page.getByRole("status").filter({ hasText: "Copied: cd " });
   await expect(banner).toContainText("close the chat here first");
-  await banner.getByRole("button", { name: "Close chat" }).click();
+  await banner.getByRole("button", { name: "Hand to terminal" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "handed to the terminal" })).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: /resume me in a terminal/ })).toHaveCount(0);
   // Its row copies the same line, without the warning now that nothing here has it open.
   await page.evaluate(() => navigator.clipboard.writeText(""));

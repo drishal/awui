@@ -3,7 +3,7 @@
 // its role label, and its accent (a row of swatches, not a list of token names). Capability-gated: a control appears only when
 // the harness says it has one, and never with a fictional universal value.
 import { useEffect, useState } from "react";
-import type { BotProfile, HarnessStatus, ModelInfo, WorkspaceInfo } from "../../shared/protocol.js";
+import type { AgentProfileSettings, BotProfile, HarnessStatus, ModelInfo, WorkspaceInfo } from "../../shared/protocol.js";
 import { BOARD_MAX_BOT_NAME_CHARS, BOARD_MAX_INSTRUCTIONS_CHARS, BOARD_MAX_ROLE_CHARS, HARNESS_ACCENTS } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { createBot, deleteBot, patchBot } from "../rooms.js";
@@ -56,6 +56,7 @@ export function BotEditor({
   bot,
   harnesses,
   workspaces,
+  sharedProfiles,
   defaultWorkspaceId,
   onSaved,
   onDeleted,
@@ -66,6 +67,8 @@ export function BotEditor({
   bot: BotProfile | null;
   harnesses: HarnessStatus[];
   workspaces: WorkspaceInfo[];
+  /** The shared agent profiles (Settings → Agents): one click fills the seat in. */
+  sharedProfiles?: AgentProfileSettings[];
   /** Which project's model catalog to read when the caller knows one (the open room's). */
   defaultWorkspaceId: string | null;
   onSaved: (bot: BotProfile) => void;
@@ -171,6 +174,29 @@ export function BotEditor({
           <FormRow label="Name" desc="Also its @handle in a room, unless the room picks another." stack>
             <input className="input" type="text" value={name} maxLength={BOARD_MAX_BOT_NAME_CHARS} aria-label="Bot name" placeholder="e.g. reviewer" onChange={(e) => setName(e.target.value)} />
           </FormRow>
+          {!bot && sharedProfiles && sharedProfiles.length > 0 ? (
+            <FormRow label="Use a shared profile" desc="One click fills the harness, model, thinking level, and permission mode in; the name and instructions stay yours. Managed in Settings → Agents.">
+              <Select
+                label="Shared agent profile"
+                value=""
+                placeholder="From Settings → Agents…"
+                options={sharedProfiles.map((p) => ({
+                  value: p.name,
+                  label: p.name,
+                  hint: `${p.harness}${p.model ? ` · ${p.model}` : ""}${p.thinking ? ` · ${p.thinking}` : ""}`,
+                  dot: `var(--harness-${p.harness}, var(--muted))`,
+                }))}
+                onChange={(picked) => {
+                  const seat = sharedProfiles.find((p) => p.name === picked);
+                  if (!seat) return;
+                  setHarnessId(seat.harness);
+                  setModel(seat.model);
+                  setThinkingLevel(seat.thinking ?? "");
+                  setPermissionMode(seat.permissionMode ?? "");
+                }}
+              />
+            </FormRow>
+          ) : null}
           {bot || !harness?.capabilities.supportsModelSelection ? (
             <FormRow label="Harness" desc={bot ? "A bot's harness cannot change; make a new bot instead." : "The agent that runs this bot."}>
               {bot ? (

@@ -6,7 +6,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, afterEach, vi } from "vitest";
-import type { ChatItem, ChatSnapshot, DelegatedTaskView, PushNote, SessionsOverview, WorkspaceInfo } from "../../src/shared/protocol.js";
+import type { ChatItem, ChatSnapshot, DelegatedTaskView, Plan, PushNote, SessionsOverview, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
 import { HarnessRegistry } from "../../src/server/harness/registry.js";
@@ -23,7 +23,7 @@ afterEach(async () => {
   t = null;
 });
 
-const TOOL_NAMES = ["delegate_task", "task_status", "task_cancel", "thread_send", "thread_read", "thread_wait", "set_status", "list_profiles"];
+const TOOL_NAMES = ["delegate_task", "task_review", "task_status", "plan_workers", "task_cancel", "thread_send", "thread_read", "thread_wait", "set_status", "request_decision", "list_profiles", "schedule_heartbeat"];
 
 async function setup(options: Parameters<typeof makeTestApp>[0] = {}) {
   const app = await makeTestApp(options);
@@ -425,6 +425,25 @@ function taskRecords(app: TestApp): StoredRecord[] {
   }
 }
 
+/** One decision record as the store's file keeps it: what a decision test reads back from disk. */
+interface StoredDecisionRecord {
+  id: string;
+  decisionId: string;
+  taskId: string;
+  state: string;
+  outcome: string | null;
+  denialReason: string | null;
+  answer: { kind: string; confirmed?: boolean; value?: string } | null;
+}
+
+function decisionRecords(app: TestApp): StoredDecisionRecord[] {
+  try {
+    return (JSON.parse(readFileSync(path.join(app.stateDir, "orchestration", "decisions.json"), "utf8")) as { decisions: StoredDecisionRecord[] }).decisions;
+  } catch {
+    return [];
+  }
+}
+
 describe("thread_read", () => {
   it("reads a child's transcript just described, newest last and in pages", async () => {
     const { agent, token } = await setup();
@@ -457,6 +476,50 @@ describe("thread_read", () => {
     expect((whole.body.data as { truncated: boolean }).truncated).toBe(false);
   });
 
+  it("lists shared profiles and applies the chosen model and thinking to its child", async () => {
+    const folder = tempDir("awui-shared-profiles-");
+    mkdirSync(folder, { recursive: true });
+    const profile = "agent_profiles:\n  - name: Review team\n    harness: fake\n    model: fake/slow\n    thinking: high\n    note: Careful reviewer, changes only after evidence.\n";
+    writeFileSync(path.join(folder, "config.yml"), profile);
+    const t = await makeTestApp({ configDir: folder });
+    const agent = await signedIn(t);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body;
+    const answer = await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id });
+    const own = t.manager.get(answer.body.chatId);
+    const listed = await call(agent, tokenOf(t, own.chatId), "list_profiles", {});
+    expect(listed.body.data.profiles.find((p: { id: string }) => p.id === "shared:Review team")).toMatchObject({ model: "fake/slow", thinkingLevel: "high" });
+    await waitUntil(() => own.snapshot().config.permissionMode === "default");
+    const started = await call(agent, tokenOf(t, own.chatId), "delegate_task", { brief: "review this shared profile", profile: "Review team", title: "Shared profile test" });
+    expect(started.status, JSON.stringify(started.body)).toBe(200);
+    const child = t.manager.get(started.body.data.childChatId);
+    await waitUntil(() => child.status === "idle");
+    expect(child.adapter.id).toBe("fake");
+    await waitUntil(() => child.snapshot().config.model === "fake/slow");
+    expect(child.adapter.id).toBe("fake");
+    expect(child.snapshot().config.thinkingLevel).toBe("high");
+    await child.dispose("test");
+  });
+
+  it("saves and edits a lead/worker plan through the chat route, and requires confirm to run", async () => {
+    const { app, agent, chat } = await setup();
+    const created = await agent.post(`/api/chats/${chat.chatId}/plans`).send({ title: "Review-first split", maxParallel: 1, tasks: [{ id: "inspect", prompt: "inspect the failing cases", isolation: "worktree", writeScope: ["tests/**"] }] });
+    expect(created.status).toBe(201);
+    expect(created.body.data.plan.status).toBe("draft");
+    expect(app.manager.list().filter((c) => c.lineage?.kind === "delegate")).toHaveLength(0);
+    const edited = await agent.post(`/api/chats/${chat.chatId}/plans`).send({
+      title: "Review-first split", maxParallel: 1, planId: created.body.data.plan.id,
+      tasks: [{ id: "inspect", prompt: "slow inspect the failing cases", title: "Inspect", writeScope: ["tests/**"] }],
+    });
+    expect(edited.body.data.plan.tasks[0].prompt).toBe("slow inspect the failing cases");
+    const denied = await agent.post("/api/chats/a-dead-id/plans/confirm").send({ planId: created.body.data.plan.id });
+    expect(denied.status).toBe(404);
+    const confirmed = await agent.post(`/api/chats/${chat.chatId}/plans/confirm`).send({ planId: created.body.data.plan.id });
+    expect(confirmed.status).toBe(200);
+    const parent = app.manager.get(chat.chatId);
+    await waitUntil(() => parent.snapshot().plan?.taskIds.inspect !== undefined);
+    expect(app.manager.list().some((c) => c.lineage?.taskId === parent.snapshot().plan?.taskIds.inspect)).toBe(true);
+  });
+
   it("records a denial's explanation, and refuses to attach it to approval", async () => {
     const { app, agent } = await setup();
     const { current: chat } = { current: app.manager.list()[0] };
@@ -487,7 +550,8 @@ describe("thread_read", () => {
     expect(denied?.denialReason).toBe("Keep the existing assertion and explain why.");
     await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
     const task = await call(agent, token, "task_status", { taskId: started.taskId });
-    expect(task.body.data.tasks[0].outcome).toBe("done");
+    // The denied attempt's fatal error stays a failure even though the corrective turn started successfully.
+    expect(task.body.data.tasks[0].outcome).toBe("failed");
   });
 
   it("leaves an ordinary chat's denial recorded without an extra prompt", async () => {
@@ -498,6 +562,70 @@ describe("thread_read", () => {
     await agent.post(`/api/chats/${chat.chatId}/requests/${chat.snapshot().pending[0]!.id}`).send({ answer: { kind: "confirm", confirmed: false }, denialReason: "Do not edit this file" }).expect(200);
     await waitUntil(() => chat.status === "idle");
     expect(chat.userTurns().some((text) => text.startsWith("The person denied"))).toBe(false);
+  });
+
+  it("edits a worker plan, starts only independent workers, then waits for a dependency", async () => {
+    const { app, agent, chat, token } = await setup();
+    const plan = await call(agent, token, "plan_workers", {
+      action: "save", title: "Build, then document", maxParallel: 1,
+      tasks: [
+        { id: "build", prompt: "slow build", title: "Build", writeScope: ["src/**"] },
+        { id: "docs", prompt: "write the docs", title: "Docs", dependsOn: ["build"], writeScope: ["docs/**"] },
+      ],
+    });
+    const id = plan.body.data.plan.id as string;
+    const sse = openSse(app, chat.chatId, agent.cookie);
+    const confirmed = await call(agent, token, "plan_workers", { action: "confirm", planId: id });
+    expect(confirmed.body.data.plan.taskIds.docs).toBeUndefined();
+    for (const event of sse.chatEvents()) console.log("SSEEVENT", JSON.stringify(event));
+    await sse.waitFor(() => app.manager.get(chat.chatId).snapshot().plan?.status === "review", 10_000);
+    const assigned = app.manager.get(chat.chatId).snapshot().plan!.taskIds;
+    expect(assigned.docs).toBeDefined();
+    expect(app.manager.list().some((c) => c.lineage?.taskId === assigned.build)).toBe(true);
+    expect(app.manager.list().some((c) => c.lineage?.taskId === assigned.docs)).toBe(true);
+    expect((await call(agent, token, "plan_workers", { action: "confirm", planId: id })).status).toBe(409);
+    sse.close();
+  }, 20_000);
+
+  it("direct probe of failing child's done semantics", async () => {
+    const { agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "fail" });
+    expect(started.childChatId).not.toBeNull();
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    expect(waited.body.data.tasks[0]).toMatchObject({ outcome: "failed", result: { error: "Fake failure" } });
+  });
+
+  it("stops a dependent plan after a worker fails, leaving later tasks unstarted", async () => {
+    const { app, agent, token } = await setup();
+    const plan = await call(agent, token, "plan_workers", {
+      action: "save", title: "Fail before docs", maxParallel: 1,
+      tasks: [{ id: "fail", prompt: "fail" }, { id: "docs", prompt: "never start docs", dependsOn: ["fail"] }],
+    });
+    const id = plan.body.data.plan.id as string;
+    await call(agent, token, "plan_workers", { action: "confirm", planId: id });
+    await waitUntil(() => {
+      const stored = JSON.parse(readFileSync(path.join(app.stateDir, "orchestration", "plans.json"), "utf8")).plans as Array<{ id: string; status: string; note?: string }>;
+      const record = stored.find((p) => p.id === id);
+      return record?.status === "failed";
+    }, 10_000, `plan records worker failure: ${JSON.stringify((await call(agent, token, "task_status", {})).body)}`);
+    expect(app.manager.list().some((c) => c.lineage?.parentTitle === "never start docs")).toBe(false);
+    const stored = JSON.parse(readFileSync(path.join(app.stateDir, "orchestration", "plans.json"), "utf8")).plans.find((p: { title: string }) => p.title === "Fail before docs") as { note: string; taskIds: Record<string, string>; status: string };
+    expect(stored.taskIds.docs).toBeUndefined();
+    expect(stored.note).toContain("Later workers did not start");
+  });
+
+  it("refuses to edit somebody else's plan or to start overlapping writers", async () => {
+    const { app, agent, token } = await setup();
+    const other = await call(agent, tokenOf(app, app.manager.list()[0]!.chatId), "delegate_task", { brief: "summarise a document" });
+    const parentId = (other.body.data as { taskId: string }).taskId;
+    const second = await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: (await agent.post("/api/workspaces/open").send({ path: app.project })).body.id });
+    const foreign = await call(agent, tokenOf(app, second.body.chatId), "plan_workers", { action: "save", title: "Other", maxParallel: 1, tasks: [{ id: "one", prompt: "read the file" }] });
+    const id = foreign.body.data.plan.id as string;
+    expect((await call(agent, token, "plan_workers", { action: "cancel", planId: id })).body.code).toBe("unknown_plan");
+    expect(parentId).toBeDefined();
+    const collision = await call(agent, token, "plan_workers", { action: "save", title: "Collision", maxParallel: 2, tasks: [{ id: "a", prompt: "change A", writeScope: ["src/**"] }, { id: "b", prompt: "change B", writeScope: ["src/a.ts"] }] });
+    expect(collision.status, JSON.stringify(collision.body)).toBe(422);
+    expect(collision.body.code).toBe("scope_collision");
   });
 
   it("reads a closed child's chat from the harness's file, and says so when there is none", async () => {
@@ -523,6 +651,80 @@ describe("thread_read", () => {
     expect(data.truncated).toBe(true);
     expect(missing.body.text).toContain("cannot be read");
     expect(missing.body.text).toContain("Echo: explain the build");
+  });
+});
+
+describe("write scopes", () => {
+  it("carries the assignment envelope in the brief and the note on the record", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "unsafe edit the parser", writeScope: ["src/**"], title: "Scoped parser" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+
+    // The brief the worker saw carries the machine-readable contract between the markers,
+    // after the brief's own text (quoted markers broken first, so it cannot forge one).
+    const child = app.manager.get(started.childChatId as string);
+    const brief = child.snapshot().items.find((i): i is Extract<ChatItem, { kind: "user" }> => i.kind === "user" && i.text.includes("unsafe edit the parser"));
+    expect(brief).toBeTruthy();
+    if (!brief) throw new Error("the brief never echoed");
+    expect(brief.text.startsWith("<<<AWUI_BOARD_CONTROL")).toBe(false);
+    expect(brief.text).toContain("<<<AWUI_BOARD_CONTROL");
+    expect(brief.text).toContain('"action": "assignment"');
+    expect(brief.text).toContain('"src/**"');
+
+    // The record's view carries the scope, and thread_read's answer names it.
+    const status = await call(agent, token, "task_status", { taskId: started.taskId });
+    const data = status.body.data as { tasks: Array<{ scope: { globs: string[] } | null }> };
+    expect(data.tasks[0]?.scope).toMatchObject({ globs: ["src/**"] });
+  });
+
+  it("blocks an unsafe write on a capable harness, and counts it", async () => {
+    const { app, agent, token } = await setup();
+    // The child parks on the approval the fake raises before its write; the guard denies
+    // the ask before the tool runs, and the fake records the denial.
+    const started = await delegate(agent, token, { brief: "unsafe work on the parser", writeScope: ["src/**"] });
+    await waitUntil(() => taskRecords(app).find((r) => r.id === started.taskId)?.outcome !== null, 10_000, "the task to settle");
+    const record = taskRecords(app).find((r) => r.id === started.taskId);
+    expect(record?.outcome).toBe("done");
+
+    // The guard saw the write and refused the ask: the record counts one blocked write.
+    const status = await call(agent, token, "task_status", { taskId: started.taskId });
+    const data = status.body.data as { tasks: Array<{ scope: { attempted: number; blocked: number; landed: number; recent: string[] } | null }> };
+    const scope = data.tasks[0]?.scope;
+    expect(scope).toMatchObject({ attempted: 1, blocked: 1, landed: 0 });
+    expect(scope?.recent[0]).toContain("blocked");
+    expect(scope?.recent[0]).toContain("src/**");
+  });
+
+  it("reports a landed out-of-scope write on an incapable harness, and never claims it was blocked", async () => {
+    const { app, agent, token } = await setup();
+    // fake-b cannot take interactive asks: no pre-emption is possible, so the write lands
+    // and the honest half is detection. The record says "reported, not blocked".
+    const other = app.registry.get("fake-b");
+    if (!other) throw new Error("fake-b is not registered");
+    (other.capabilities as { supportsInteractiveRequests: boolean }).supportsInteractiveRequests = false;
+    // A child inherits the caller's mode; fake-b has no permission modes to rank, so this
+    // chat starts in its broadest mode before the delegation.
+    const chat = app.manager.list().find((c) => c.orchestration?.token === token);
+    if (!chat) throw new Error("no chat for the token");
+    await chat.setConfig({ permissionMode: "bypass" });
+    const started = await delegate(agent, token, { brief: "unsafe work on the parser", writeScope: ["src/**"], harness: "fake-b" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+
+    const status = await call(agent, token, "task_status", { taskId: started.taskId });
+    const data = status.body.data as { tasks: Array<{ scope: { attempted: number; blocked: number; landed: number; recent: string[] } | null }> };
+    const scope = data.tasks[0]?.scope;
+    expect(scope).toMatchObject({ attempted: 1, blocked: 0, landed: 1 });
+    expect(scope?.recent[0]).toContain("reported, not blocked");
+    expect(scope?.recent[0]).not.toContain("blocked outside");
+  });
+
+  it("answers bad_scope for a pattern holding .., and leaves the child unspawned", async () => {
+    const { app, agent, token } = await setup();
+    const res = await call(agent, token, "delegate_task", { brief: "should never start", writeScope: ["../outside/**"] });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ ok: false, code: "bad_scope" });
+    expect(res.body.message).toContain("..");
+    expect(app.manager.list().some((c) => c.lineage !== undefined)).toBe(false);
   });
 });
 
@@ -830,5 +1032,231 @@ describe("budgets", () => {
     // The budget only silences the prompt: the parent can still ask, and gets the result.
     const read = await call(agent, token, "task_status", { taskId: second.taskId });
     expect((read.body.data as { tasks: DelegatedTaskView[] }).tasks[0]).toMatchObject({ state: "result_available", outcome: "done" });
+  });
+});
+
+describe("decision gates", () => {
+  it("parks a delegated worker's decision, records the person's answer, and returns it to the caller", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "slow pick the migration approach" });
+    const child = app.manager.get(started.childChatId as string);
+    // The call parks: it answers only after the person answers, not before.
+    const workerToken = tokenOf(app, started.childChatId as string);
+    const parked = call(agent, workerToken, "request_decision", { question: "Which migration approach?", kind: "select", options: ["Expand and contract", "Big bang"], decisionId: "approach" });
+    void parked.then(() => undefined);
+    await waitUntil(() => child.snapshot().pending.some((r) => r.id.startsWith("dc-")), 4_000, "the decision question on the worker's chat");
+    const requestId = child.snapshot().pending.find((r) => r.id.startsWith("dc-"))!.id;
+    const answer = await agent.post(`/api/chats/${child.chatId}/requests/${requestId}`).send({ answer: { kind: "select", value: "Expand and contract" } });
+    expect(answer.status).toBe(200);
+    const done = await parked;
+    expect(done.status).toBe(200);
+    expect(done.body.text).toContain('answered "Expand and contract"');
+    const data = done.body.data as { decision: { decisionId: string; state: string; answer: { kind: string; value: string }; outcome: string } };
+    expect(data.decision).toMatchObject({ decisionId: "approach", state: "answered", outcome: "Chose “Expand and contract”" });
+    // The transcript item keeps the answer beside the question, as any request's outcome does.
+    const record = child.snapshot().items.find((item) => item.kind === "request" && item.request.id === requestId) as Extract<ChatItem, { kind: "request" }> | undefined;
+    expect(record?.outcome).toBe("Chose “Expand and contract”");
+    // The record keeps the decision on disk, under its own decisions file, not the task records;
+    // the persist rides beside the answer, so the read waits for it.
+    await waitUntil(() => decisionRecords(app).find((decision) => decision.decisionId === "approach")?.state === "answered", 4_000, "the answered decision's record");
+    expect(decisionRecords(app).find((decision) => decision.decisionId === "approach")).toMatchObject({ state: "answered" });
+  });
+
+  it("records a denial's corrective reason and returns it beside the verdict", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "slow rewrite the parser" });
+    const child = app.manager.get(started.childChatId as string);
+    const workerToken = tokenOf(app, started.childChatId as string);
+    const parked = call(agent, workerToken, "request_decision", { question: "Rewrite the parser now?", decisionId: "rewrite" });
+    void parked.then(() => undefined);
+    await waitUntil(() => child.snapshot().pending.some((r) => r.id.startsWith("dc-")), 4_000, "the decision question");
+    const requestId = child.snapshot().pending.find((r) => r.id.startsWith("dc-"))!.id;
+    const wrong = await agent.post(`/api/chats/${child.chatId}/requests/${requestId}`).send({ answer: { kind: "confirm", confirmed: true }, denialReason: "Not relevant" });
+    expect(wrong.status).toBe(400);
+    expect(wrong.body.code).toBe("bad_denial_reason");
+    const answered = await agent.post(`/api/chats/${child.chatId}/requests/${requestId}`).send({ answer: { kind: "confirm", confirmed: false }, denialReason: "Keep the existing assertion and explain why." });
+    expect(answered.status).toBe(200);
+    const done = await parked;
+    expect(done.status).toBe(200);
+    expect(done.body.text).toContain("denied");
+    expect(done.body.text).toContain("Keep the existing assertion and explain why.");
+    const data = done.body.data as { decision: { denialReason: string | null; outcome: string } };
+    expect(data.decision).toMatchObject({ denialReason: "Keep the existing assertion and explain why.", outcome: "Denied" });
+  });
+
+  it("returns the recorded answer to a retry with the same decisionId, and asks once", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "slow pick the migration approach" });
+    const child = app.manager.get(started.childChatId as string);
+    const workerToken = tokenOf(app, started.childChatId as string);
+    const first = call(agent, workerToken, "request_decision", { question: "Which migration approach?", kind: "select", options: ["Expand and contract", "Big bang"], decisionId: "approach" });
+    void first.then(() => undefined);
+    await waitUntil(() => child.snapshot().pending.some((r) => r.id.startsWith("dc-")), 4_000, "the decision question");
+    const requestId = child.snapshot().pending.find((r) => r.id.startsWith("dc-"))!.id;
+    await agent.post(`/api/chats/${child.chatId}/requests/${requestId}`).send({ answer: { kind: "select", value: "Expand and contract" } });
+    expect((await first).status).toBe(200);
+    await waitUntil(() => decisionRecords(app).find((decision) => decision.decisionId === "approach")?.state === "answered", 4_000, "the answered decision's record");
+    // The retry answers at once from the record: no second question is raised.
+    const retry = await call(agent, workerToken, "request_decision", { question: "Which migration approach?", kind: "select", options: ["Expand and contract", "Big bang"], decisionId: "approach" });
+    expect(retry.status).toBe(200);
+    expect((retry.body.data as { decision: { state: string } }).decision.state).toBe("answered");
+    expect(child.snapshot().pending.filter((r) => r.id.startsWith("dc-"))).toHaveLength(0);
+    expect(child.snapshot().items.filter((item) => item.kind === "request" && item.request.id.startsWith("dc-"))).toHaveLength(1);
+  });
+
+  it("parks a pending repeat until the person answers, without raising a second question", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "slow pick the migration approach" });
+    const child = app.manager.get(started.childChatId as string);
+    const workerToken = tokenOf(app, started.childChatId as string);
+    const parked = call(agent, workerToken, "request_decision", { question: "Which migration approach?", kind: "select", options: ["A", "B"], decisionId: "approach", waitMs: 8_000 });
+    void parked.then(() => undefined);
+    await waitUntil(() => child.snapshot().pending.some((r) => r.id.startsWith("dc-")), 4_000, "the decision question");
+    const requestId = child.snapshot().pending.find((r) => r.id.startsWith("dc-"))!.id;
+    const repeat = call(agent, workerToken, "request_decision", { question: "Which migration approach?", kind: "select", options: ["A", "B"], decisionId: "approach", waitMs: 8_000 });
+    void repeat.then(() => undefined);
+    await agent.post(`/api/chats/${child.chatId}/requests/${requestId}`).send({ answer: { kind: "select", value: "A" } });
+    expect((await repeat).body.data as { decision: { state: string } }).toBeTruthy();
+    expect((await parked).status).toBe(200);
+    expect(child.snapshot().pending.filter((r) => r.id.startsWith("dc-"))).toHaveLength(0);
+  });
+
+  it("leaves the decision pending after the cap, with the question still on the chat", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "slow pick the migration approach" });
+    const child = app.manager.get(started.childChatId as string);
+    const began = Date.now();
+    const workerToken = tokenOf(app, started.childChatId as string);
+    const parked = await call(agent, workerToken, "request_decision", { question: "Which migration approach?", decisionId: "approach", waitMs: 300 });
+    expect(Date.now() - began).toBeGreaterThanOrEqual(280);
+    expect(parked.status).toBe(200);
+    expect((parked.body.data as { state: string }).state).toBe("pending");
+    expect(parked.body.text).toContain("still waiting for the person");
+    // The record keeps the question: the person can still answer it, and the caller can ask again.
+    expect(child.snapshot().pending.some((r) => r.id.startsWith("dc-"))).toBe(true);
+  });
+
+  it("denies a cross-agent answer: another chat cannot answer the worker's decision", async () => {
+    const { app, agent, token, ws } = await setup();
+    const started = await delegate(agent, token, { brief: "slow pick the migration approach" });
+    const child = app.manager.get(started.childChatId as string);
+    const workerToken = tokenOf(app, started.childChatId as string);
+    const parked = call(agent, workerToken, "request_decision", { question: "Which migration approach?", decisionId: "approach", waitMs: 6_000 });
+    void parked.then(() => undefined);
+    await waitUntil(() => child.snapshot().pending.some((r) => r.id.startsWith("dc-")), 4_000, "the decision question");
+    // A second delegated worker (a sibling) answers the first worker's decision.
+    const sibling = await delegate(agent, token, { brief: "check the changelog" });
+    const siblingChat = app.manager.get(sibling.childChatId as string);
+    const requestId = child.snapshot().pending.find((r) => r.id.startsWith("dc-"))!.id;
+    const foreign = await agent.post(`/api/chats/${siblingChat.chatId}/requests/${requestId}`).send({ answer: { kind: "confirm", confirmed: true } });
+    expect(foreign.status).toBe(409);
+    // The parked call is still waiting: the record says pending, and the question is still on the chat.
+    expect(decisionRecords(app).find((decision) => decision.decisionId === "approach")).toMatchObject({ state: "pending" });
+    expect(child.snapshot().pending.some((r) => r.id === requestId)).toBe(true);
+    expect(siblingChat.chatId).not.toBe(child.chatId);
+    // The person answers on the worker's own chat; the parked call returns.
+    await agent.post(`/api/chats/${child.chatId}/requests/${requestId}`).send({ answer: { kind: "confirm", confirmed: false } });
+    expect((await parked).status).toBe(200);
+    void ws;
+  });
+
+  it("refuses the tool from an ordinary chat that is not a delegated worker", async () => {
+    const { app, agent } = await setup();
+    const chat = app.manager.list()[0]!;
+    const refused = await agent.post("/api/orchestration/call").set("x-awui-orch-token", app.manager.list().find((c) => c.chatId === chat.chatId)?.orchestration?.token ?? "").send({ tool: "request_decision", args: { question: "Which?", decisionId: "x" } });
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ ok: false, code: "not_delegated" });
+  });
+
+  it("answers a select decision with fewer than two options as a bad request", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "slow pick the migration approach" });
+    const workerToken = tokenOf(app, started.childChatId as string);
+    const invalid = await call(agent, workerToken, "request_decision", { question: "Which?", kind: "select", options: ["Only one"], decisionId: "x" });
+    expect(invalid.status).toBe(400);
+    void started;
+  });
+
+  it("keeps an unresolved decision across a restart, never auto-answers it, and re-raises the question", async () => {
+    const root = tempDir("awui-decision-restart-");
+    mkdirSync(path.join(root, "proj"), { recursive: true });
+    const manager = new ChatManager();
+    const registry = new HarnessRegistry();
+    const fake = new FakeAdapter();
+    registry.register(fake);
+    await registry.refreshStatus();
+    const { workspaces } = await Workspaces.create([root], root);
+    const workspace: WorkspaceInfo = { id: "w1", path: path.join(root, "proj"), name: "proj" };
+    try {
+      const parent = await manager.create(fake, workspace);
+      const file = path.join(root, ".state", "orchestration", "decisions.json");
+      mkdirSync(path.dirname(file), { recursive: true });
+      const childChatId = "gone-chat";
+      // A decision still pending when the last process stopped: the person never answered it.
+      writeFileSync(
+        file,
+        JSON.stringify({
+          schemaVersion: 1,
+          decisions: [
+            {
+              id: "dcbeef01",
+              decisionId: "approach",
+              taskId: "beef",
+              parentChatId: "gone",
+              childChatId,
+              childSessionId: "fake:gone-session",
+              question: "Which migration approach?",
+              message: null,
+              kind: "confirm",
+              options: [],
+              state: "pending",
+              answer: null,
+              outcome: null,
+              denialReason: null,
+              createdAt: Date.now() - 60_000,
+              answeredAt: null,
+            },
+          ],
+        }),
+      );
+      const orchestration = new Orchestrator({ chats: manager, registry, workspaces, file, decisionsFile: file, limits: () => DEFAULT_ORCHESTRATION_LIMITS, log: () => undefined });
+      await orchestration.start();
+      // The worker's session, as the last process left it: the fake keeps one per native id, and
+      // the resume's readTranscript also proves the session is this project's.
+      (fake as unknown as { sessions: Map<string, { nativeId: string; cwd: string; title: string; messages: unknown[]; updatedAt: Date }> }).sessions.set("gone-session", {
+        nativeId: "gone-session",
+        cwd: workspace.path,
+        title: "Parser work",
+        messages: [{ timestamp: Date.now(), role: "user", content: "pick the approach" }],
+        updatedAt: new Date(),
+      });
+      // Nothing auto-answered it: the record stands as it was written.
+      const readBack = () => {
+        try {
+          return (JSON.parse(readFileSync(file, "utf8")) as { decisions: Array<{ id: string; state: string; answer: unknown; outcome: string | null }> }).decisions;
+        } catch {
+          return null;
+        }
+      };
+      expect(readBack()?.[0]).toMatchObject({ id: "dcbeef01", state: "pending", answer: null, outcome: null });
+      // A worker chat for this session is opened again (a resume): the gate is installed on it,
+      // and registering it re-raises the question from the record.
+      const resumed = await manager.resume(fake, workspace, "gone-session");
+      expect(resumed.chatId).not.toBe(childChatId);
+      // The gate is installed by the registration below, as app.ts wires it for every chat.
+      expect(resumed.decisionGate).toBeUndefined();
+      await orchestration.registered(resumed);
+      expect(resumed.decisionGate).toBeDefined();
+      const requestId = resumed.snapshot().pending.find((r) => r.id.startsWith("dc-"))?.id;
+      expect(requestId).toBe("dc-dcbeef01");
+      // The person answers the re-raised question on the resumed chat: the recorded verdict lands,
+      // and the record on disk says answered with the outcome.
+      const outcome = resumed.answer("dc-dcbeef01", { kind: "confirm", confirmed: true });
+      expect(outcome).toBe("Approved");
+      await waitUntil(() => readBack()?.[0]?.state === "answered", 4_000, "the answered decision's record");
+      expect(readBack()?.[0]).toMatchObject({ id: "dcbeef01", state: "answered", outcome: "Approved" });
+    } finally {
+      await manager.shutdown();
+    }
   });
 });

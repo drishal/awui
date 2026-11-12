@@ -3,6 +3,7 @@
 // task, a task a restart marked interrupted, and a retry all say the same thing, and so the bound is
 // testable without a chat. The orchestrator owns the ledger and the timer; this file only composes.
 import { MAX_ERROR_CHARS, MAX_RESULT_CHARS, formatElapsed, type StoredTask } from "./types.js";
+import { scopeNote } from "./scope.js";
 
 /** Reports queued for one parent within this window flush as one prompt (a council's three arrive together). */
 export const WAKE_COALESCE_MS = 2_500;
@@ -20,6 +21,8 @@ function clip(text: string, max: number): string {
 function reportBlock(task: StoredTask): string {
   const elapsed = formatElapsed((task.endedAt ?? Date.now()) - task.createdAt);
   const lines = [`[awui delegate ${task.id} · ${task.outcome ?? task.state} · ${task.harnessId} · ${elapsed}]`, `"${task.title}"`];
+  const note = scopeNote(task.scope);
+  if (note) lines.push(`[${note}]`);
   const finalText = (task.result?.finalText ?? "").trim();
   if (finalText !== "") lines.push(clip(finalText, MAX_RESULT_CHARS));
   if (task.result?.error) lines.push(`Error: ${clip(task.result.error, MAX_ERROR_CHARS)}`);

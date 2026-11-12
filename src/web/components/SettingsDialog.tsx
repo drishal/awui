@@ -12,7 +12,7 @@
 // phone the same two panes become a list and a detail: the rail, then the
 // section with a way back.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle, UiFont } from "../../shared/protocol.js";
+import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, AgentProfilePatch, AgentProfileSettings, Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle, UiFont } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { FormRow } from "./FormRow.js";
@@ -21,6 +21,7 @@ import { Select } from "./Select.js";
 import { Switch } from "./Switch.js";
 import { TEXT_SCALES } from "./Sidebar.js";
 import { IconPlus, IconRefresh, IconX } from "../icons.js";
+import { InvitationsPanel } from "./InvitationsPanel.js";
 import type { NotifyState } from "../notify.js";
 import { chime, chimeOn, setChime } from "../attention.js";
 import { matchSettings, type SettingsSectionText } from "../settings-search.js";
@@ -55,6 +56,7 @@ const SECTIONS = [
   { id: "desktop", label: "Desktop app" },
   { id: "network", label: "Network and sign-in" },
   { id: "access", label: "Folders and access" },
+  { id: "invites", label: "Invitations" },
   { id: "awui", label: "Awui harness" },
 ] as const;
 
@@ -149,6 +151,35 @@ function acpRowsOf(agents: AcpAgentSettings[]): AcpAgentRow[] {
   }));
 }
 
+/**
+ * One shared agent profile as the form holds it: a named seat (harness, model,
+ * thinking level, permission mode, note) every room and delegation can use.
+ */
+interface AgentProfileRow {
+  name: string;
+  harness: string;
+  model: string;
+  thinking: string;
+  permissionMode: string;
+  note: string;
+}
+
+function agentProfileRowsOf(profiles: AgentProfileSettings[]): AgentProfileRow[] {
+  return profiles.map((p) => ({ name: p.name, harness: p.harness, model: p.model ?? "", thinking: p.thinking ?? "", permissionMode: p.permissionMode ?? "", note: p.note ?? "" }));
+}
+
+/** The list as the dialog saves it: an empty field is the harness's own default, said as null. */
+function agentProfilePatchOf(rows: AgentProfileRow[]): AgentProfilePatch[] {
+  return rows.map((row) => ({
+    name: row.name.trim(),
+    harness: row.harness.trim(),
+    ...(row.model.trim() ? { model: row.model.trim() } : {}),
+    ...(row.thinking.trim() ? { thinking: row.thinking.trim() } : {}),
+    ...(row.permissionMode.trim() ? { permissionMode: row.permissionMode.trim() } : {}),
+    ...(row.note.trim() ? { note: row.note.trim() } : {}),
+  }));
+}
+
 /** The env lines as names and values; a value typed as "-" clears it, and a blank one keeps the stored value. */
 function acpPatchOf(rows: AcpAgentRow[]): AcpAgentPatch[] {
   return rows.map((row) => {
@@ -193,6 +224,8 @@ interface Draft {
   desktopBackground: boolean;
   /** config.yml's `harnesses.acp` entries as the form edits them (args and env one per line). */
   acpAgents: AcpAgentRow[];
+  /** config.yml's `agent_profiles` entries as the form edits them. */
+  agentProfiles: AgentProfileRow[];
 }
 
 /** The font tokens.css ships as the default (public/fonts), named where the Font setting offers it. */
@@ -220,6 +253,7 @@ function draftOf(v: ServerSettingsValues): Draft {
     orchestrationEnabled: v.orchestrationEnabled,
     desktopBackground: v.desktopBackground,
     acpAgents: acpRowsOf(v.acpAgents),
+    agentProfiles: agentProfileRowsOf(v.agentProfiles),
   };
 }
 
@@ -256,6 +290,8 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   if (d.desktopBackground !== v.desktopBackground) p.desktopBackground = d.desktopBackground;
   // ACP agents compare as the form holds them: the argument and env lines are its own spelling.
   if (JSON.stringify(d.acpAgents) !== JSON.stringify(acpRowsOf(v.acpAgents))) p.acpAgents = acpPatchOf(d.acpAgents);
+  // Shared agent profiles compare the same way: the form's empty fields are its own spelling.
+  if (JSON.stringify(d.agentProfiles) !== JSON.stringify(agentProfileRowsOf(v.agentProfiles))) p.agentProfiles = agentProfilePatchOf(d.agentProfiles);
   return p;
 }
 
@@ -462,6 +498,7 @@ export function SettingsDialog({
   const setAwuiRow = (i: number, change: Partial<AwuiProviderRow>) => awui && setAwui({ ...awui, saved: false, rows: awui.rows.map((x, j) => (j === i ? { ...x, ...change } : x)) });
 
   const setAcpRow = (i: number, change: Partial<AcpAgentRow>) => draft && update({ acpAgents: draft.acpAgents.map((row, j) => (j === i ? { ...row, ...change } : row)) });
+  const setAgentProfileRow = (i: number, change: Partial<AgentProfileRow>) => draft && update({ agentProfiles: draft.agentProfiles.map((row, j) => (j === i ? { ...row, ...change } : row)) });
   /** The ids config.yml has now: a row must be saved before the server can handshake with it. */
   const savedAcpIds = server?.values.acpAgents.map((agent) => agent.id) ?? [];
   /** One handshake, no model call: what the saved agent calls itself and what it advertises. */
@@ -482,8 +519,8 @@ export function SettingsDialog({
   };
 
   // A section exists once it has something to show: the server's form once it loaded, the awui
-  // harness's own when the harness is registered.
-  const sections = SECTIONS.filter((s) => (s.id === "device" ? true : s.id === "awui" ? awui !== null : draft !== null));
+  // harness's own when the harness is registered. Invitations need only their own list.
+  const sections = SECTIONS.filter((s) => (s.id === "device" ? true : s.id === "invites" ? true : s.id === "awui" ? awui !== null : draft !== null));
   const current = sections.find((s) => s.id === active)?.id ?? "device";
   const currentLabel = SECTIONS.find((s) => s.id === current)?.label ?? "";
   const matches = useMemo(() => matchSettings(index, query), [index, query]);
@@ -505,6 +542,10 @@ export function SettingsDialog({
     if (ids.some((id) => !/^[a-z0-9][a-z0-9-]{0,31}$/.test(id))) issues.acp = "An id is a lowercase slug: letters, digits, and - (at most 32), not starting with -.";
     else if (new Set(ids).size !== ids.length) issues.acp = "Two ACP agents share an id.";
     else if (draft.acpAgents.some((row) => !row.command.trim())) issues.acp = "An ACP agent needs the command that starts it.";
+  }
+  if (draft && editable && draft.agentProfiles.length > 1) {
+    const names = draft.agentProfiles.map((row) => row.name.trim().toLowerCase()).filter(Boolean);
+    if (new Set(names).size !== names.length) issues.agents = "Two shared profiles share a name.";
   }
 
   // Typing a search that no section's open rows match opens the first section that does: the
@@ -632,7 +673,9 @@ export function SettingsDialog({
         </section>
 
         {!draft ? (
-          current === "device" || current === "awui" ? null : (
+          current === "device" || current === "awui" || current === "invites" ? (
+            current === "invites" ? <InvitationsPanel current={current} /> : null
+          ) : (
             <section className="form-section" id={`settings-panel-${current}`} role="tabpanel" aria-labelledby="settings-loading">
               <h3 id="settings-loading">{currentLabel}</h3>
               {error ? (
@@ -772,6 +815,40 @@ export function SettingsDialog({
                 <FormRow row="delegate" hidden={!shows("agents", "delegate")} label="Agents delegate to other agents" desc="A chat's agent can hand a task to another agent chat, watch it, stop it, and read the result back. Off: no chat is given the tools." toggle>
                   <Switch label="Agents delegate to other agents" checked={draft.orchestrationEnabled} disabled={!editable} onChange={(orchestrationEnabled) => update({ orchestrationEnabled })} />
                 </FormRow>
+              </div>
+              <div className="form-card">
+                <div className="form-row is-stack" data-settings-row="agent-profiles" hidden={!shows("agents", "agent-profiles")}>
+                  <span className="form-row-text">
+                    <span className="form-label">Shared agent profiles</span>
+                    <span className="form-desc">Named seats every room and delegation can use, in config.yml for every device: a harness, the model and thinking level it offers here, its permission mode, and a note a delegating model reads. An empty field is that harness's own default. Provider logins stay in each harness's own auth; a profile never holds one.</span>
+                  </span>
+                  {draft.agentProfiles.length > 0 ? (
+                    <div className="agent-profiles">
+                      {draft.agentProfiles.map((row, i) => (
+                        <div className="agent-profile" key={i}>
+                          <div className="agent-profile-row">
+                            <input className="input" aria-label="Profile name" placeholder="e.g. reviewer" value={row.name} disabled={!editable} onChange={(e) => setAgentProfileRow(i, { name: e.target.value })} />
+                            <input className="input" aria-label="Profile harness" placeholder="harness id (e.g. omp)" value={row.harness} disabled={!editable} onChange={(e) => setAgentProfileRow(i, { harness: e.target.value })} />
+                            <input className="input" aria-label="Profile model" placeholder="provider/id (harness default)" value={row.model} disabled={!editable} onChange={(e) => setAgentProfileRow(i, { model: e.target.value })} />
+                            <button type="button" className="ghost-icon" aria-label={`Remove ${row.name || "profile"}`} title="Remove profile" disabled={!editable} onClick={() => update({ agentProfiles: draft.agentProfiles.filter((_, j) => j !== i) })}>
+                              <IconX size={14} />
+                            </button>
+                          </div>
+                          <div className="agent-profile-row is-second">
+                            <input className="input" aria-label="Profile thinking level" placeholder="thinking level (harness default)" value={row.thinking} disabled={!editable} onChange={(e) => setAgentProfileRow(i, { thinking: e.target.value })} />
+                            <input className="input" aria-label="Profile permission mode" placeholder="permission mode (harness default)" value={row.permissionMode} disabled={!editable} onChange={(e) => setAgentProfileRow(i, { permissionMode: e.target.value })} />
+                            <input className="input" aria-label="Profile note" placeholder="one line a delegating model reads" value={row.note} disabled={!editable} onChange={(e) => setAgentProfileRow(i, { note: e.target.value })} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="form-empty">None yet.</p>
+                  )}
+                  <button type="button" className="button" disabled={!editable} onClick={() => update({ agentProfiles: [...draft.agentProfiles, { name: "", harness: "", model: "", thinking: "", permissionMode: "", note: "" }] })}>
+                    Add a shared profile
+                  </button>
+                </div>
               </div>
             </section>
 
@@ -925,6 +1002,8 @@ export function SettingsDialog({
                 <p className="form-note">Set by the environment, so config.yml cannot change: {server.envOverrides.join(", ")}.</p>
               ) : null}
             </section>
+
+            <InvitationsPanel current={current} />
           </form>
         )}
 
@@ -1000,7 +1079,7 @@ export function SettingsDialog({
         ) : null}
         <div className="settings-bar-row">
           <span className="settings-version">awui v{version}</span>
-          {current === "awui" && awui ? (
+          {current === "invites" ? null : current === "awui" && awui ? (
             <>
               <span className="settings-foot-state" role="status">
                 {awui.busy ? "Saving…" : awui.saved ? "Saved." : ""}

@@ -335,6 +335,37 @@
   flex-wrap: wrap;
 }
 
+/* Shared agent profiles: one block each, the seat's identity above its defaults. */
+.agent-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+}
+
+.agent-profile-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.3fr) 32px;
+  align-items: start;
+  gap: 6px;
+}
+
+.agent-profile-row.is-second {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr);
+}
+
+.agent-profile-row > .input {
+  min-width: 0;
+}
+
 .settings-version {
   margin-right: auto;
   font-size: 12px;
@@ -394,4 +425,56 @@
   .awui-provider {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
   }
+}
+
+/* ---- Invitations (limited-session grants) ---- */
+
+.invite-grants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 2px;
+}
+
+.invite-grant {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.invite-grant input {
+  accent-color: var(--accent);
+}
+
+.invite-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.invite-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+}
+
+.invite-row + .invite-row {
+  border-top: 1px solid var(--hairline);
+}
+
+.invite-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.invite-grant-names {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted-text);
+  font-size: 12px;
 }

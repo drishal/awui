@@ -77,8 +77,9 @@ export function useSessions({ boot, workspace, chat }: { boot: Bootstrap | null;
       ...o,
       sessions: o.sessions.map((s) => {
         if (s.id !== sessionId) return s;
-        const { pinned: _p, archived: _a, settled: _s, snoozedUntil: _z, ...rest } = s;
-        return { ...rest, ...mark };
+        // Parked is the server's own mark: a client's pin/archive change leaves it alone.
+        const { pinned: _p, archived: _a, settled: _s, snoozedUntil: _z, parked: _parked, ...rest } = s;
+        return { ...rest, ...mark, ...(s.parked ? { parked: true } : {}) };
       }),
     }));
   }, []);

@@ -41,6 +41,13 @@ export interface ServerConfig {
    * this many days. 0 turns the sweep off.
    */
   settleAfterDays: number;
+  /**
+   * config.yml's `hibernate_after_minutes`: the reaper parks (disposes) a chat that has stayed
+   * hidden — unviewed and unread — past this many minutes, and opening it again resumes the same
+   * native session from its transcript. 0 turns hibernation off (the plain 30-minute idle dispose
+   * still runs, as always).
+   */
+  hibernateAfterMinutes: number;
   home: string;
 }
 
@@ -163,8 +170,7 @@ export interface AcpAgentConfig {
   authMethod: string | null;
 }
 
-/**
- * config.yml's ACP agents: id, name, command line, environment, and the auth
+/** config.yml's ACP agents: id, name, command line, environment, and the auth
  * method to call. A `~/` command is expanded the way a harness's own command is;
  * nothing else is inferred, because the agent's own config is not awui's to read.
  */
@@ -187,6 +193,33 @@ export function acpAgents(c: UserConfig | undefined, home: string): AcpAgentConf
 
 export function claudeSettings(c: UserConfig | undefined): ClaudeSettings {
   return { subagentPromptCacheTtl: c?.claude?.subagent_prompt_cache_ttl ?? null, entrypoint: c?.claude?.entrypoint ?? null };
+}
+
+/** One shared agent profile, as config.yml's `agent_profiles:` states it. */
+export interface AgentProfileConfig {
+  name: string;
+  harness: string;
+  /** `provider/id`; null is the harness's own default. */
+  model: string | null;
+  thinking: string | null;
+  permissionMode: string | null;
+  note: string | null;
+}
+
+/**
+ * config.yml's shared agent profiles: named seats every room and delegation can
+ * ask for by name. Nothing is inferred here beyond what the file says: a model
+ * the harness refuses is reported when a seat is used, never rewritten.
+ */
+export function agentProfiles(c: UserConfig | undefined): AgentProfileConfig[] {
+  return (c?.agent_profiles ?? []).map((entry) => ({
+    name: entry.name,
+    harness: entry.harness,
+    model: entry.model ?? null,
+    thinking: entry.thinking ?? null,
+    permissionMode: entry.permission_mode ?? null,
+    note: entry.note ?? null,
+  }));
 }
 
 /** `file`: config.yml's settings that are not environment variables (the harnesses' launch). */
@@ -239,6 +272,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, file?: UserConf
     orchestration: orchestrationLimits(file),
     claude: claudeSettings(file),
     settleAfterDays: file?.settle_after_days ?? 0,
+    hibernateAfterMinutes: file?.hibernate_after_minutes ?? 0,
     home,
   };
 }

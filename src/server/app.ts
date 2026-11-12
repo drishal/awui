@@ -8,6 +8,8 @@ import { buildIdOf } from "./build-id.js";
 import { embeddedWeb } from "./embedded.js";
 import {
   answerSchema,
+  workerPlanSaveSchema,
+  workerPlanConfirmSchema,
   botCreateSchema,
   botPatchSchema,
   memberAddSchema,
@@ -38,16 +40,22 @@ import {
   patchConfigSchema,
   renameSchema,
   acpTestSchema,
+  inviteCreateSchema,
+  invitePatchSchema,
   settingsPatchSchema,
   terminalCreateSchema,
   terminalWriteSchema,
   htmlRenderPreviewSchema,
   worktreeCreateSchema,
+  prCheckoutSchema,
+  prStackCreateSchema,
+  prStackMergeSchema,
   projectConfigTrustSchema,
   compareStartSchema,
   raceCleanupSchema,
   raceDiffQuery,
   raceWinnerSchema,
+  taskReviewDecisionSchema,
   gitHubPrSchema,
   resumeChatSchema,
   herdrFocusSchema,
@@ -92,6 +100,7 @@ import {
   type SessionPreview,
   resumeCommandSchema,
   type ResumeCommand,
+  type HandoverReclaim,
   type GitStatus,
   uploadPasteSchema,
   usageReportSchema,
@@ -114,18 +123,22 @@ import { deletePaste, resolvePaste, storePaste } from "./paste-store.js";
 import { projectFiles, searchFiles } from "./project-files.js";
 import { searchProject } from "./project-search.js";
 import type { Security } from "./security.js";
+import { makeRequireGrant, InviteStore, invitesFileOf, isGrant, GRANTS, type Grant, type GrantsOf as GrantsOfFn } from "./grants.js";
 import type { ThemeStore } from "./theme.js";
 import { readSettings, savedAcpAgent, writeSettings, type Requester, type SettingsContext } from "./settings.js";
 import { AcpAdapter } from "./harness/acp.js";
 import { readAwuiConfig, writeAwuiConfig } from "./awui-settings.js";
 import { breakdownRules, readUserConfig, uiSettings } from "./user-config.js";
+import { agentProfiles } from "./config.js";
 import { HerdrError, type Herdr } from "./herdr.js";
 import { SessionMarks } from "./session-marks.js";
+import { Handovers } from "./handover.js";
 import { AgentStatuses } from "./agent-status.js";
 import { SessionOrder } from "./session-order.js";
 import { checkoutOf } from "./checkouts.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { Routines } from "./routines.js";
+import { Heartbeats, viewOf as heartbeatViewOf } from "./heartbeats.js";
 import { RoutineRuns } from "./routine-runs.js";
 import { RESUME_TEXT, ResumeIntents } from "./resume-intent.js";
 import { routineNote, runRoutine } from "./routine-runner.js";
@@ -147,7 +160,7 @@ import { gitFileDiff, gitStatus } from "./git-status.js";
 import { git } from "./git.js";
 import { commitStaged, GitActionError, stageFiles, unstageFiles } from "./git-actions.js";
 import { runCommand, runShellCommand } from "./run-command.js";
-import type { RunResult } from "../shared/protocol.js";
+import type { RunResult , WorktreeInfo } from "../shared/protocol.js";
 
 /** A setup command's limits: a real install can take minutes, and its output is read in a dialog. */
 const SETUP_TIMEOUT_MS = 5 * 60_000;
@@ -159,12 +172,14 @@ import { ModelCatalog } from "./model-catalog.js";
 import { notePressure, overviewEvents } from "./overview-events.js";
 import { PressureMonitor } from "./pressure.js";
 import type { TerminalManager } from "./terminal.js";
-import { ManagedWorktrees, worktreeProblem, type WorktreeInfo } from "./worktrees.js";
+import { ManagedWorktrees, worktreeProblem } from "./worktrees.js";
 import { PROJECT_CONFIG_FILE, projectConfigStatus, ProjectConfigTrust, readProjectConfig } from "./project-config.js";
 import { Races, raceChatsFor, type RaceRecord } from "./races.js";
-import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest } from "./github.js";
+import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest, pullRequestDetail, mergePullRequest } from "./github.js";
+import { PrStacks } from "./stacks.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
 import { Orchestrator } from "./orchestration/orchestrator.js";
+import { IntegrationReview, type IntegrationRecord, type ReviewProject } from "./orchestration/review.js";
 import { ORCH_TOOLS } from "./orchestration/tools.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "./orchestration/limits.js";
 import { orchestrationSkills } from "./orchestration/skills.js";
@@ -191,6 +206,10 @@ export interface AppDeps {
   configDir?: string | null;
   /** The Settings dialog's view of config.yml; without it the settings routes answer 404. */
   settings?: SettingsContext;
+  /** The server state folder, where agent-rendered pages and invites live. */
+  stateDir?: string | null;
+  /** Limited-session invitations (grants.ts); in memory when absent. */
+  invites?: InviteStore;
   heartbeatMs?: number;
   /** Pinned and archived sessions; in memory when absent. */
   marks?: SessionMarks;
@@ -200,16 +219,22 @@ export interface AppDeps {
   secondOpinions?: SecondOpinions;
   /** Comparisons of one prompt in several worktree chats; in memory when absent. */
   races?: Races;
+  /** Stacked pull requests per project (stacks.ts); in memory when absent (tests). */
+  prStacks?: PrStacks;
   /** Hand-made session orders; in memory when absent. */
   order?: SessionOrder;
   /** Saved prompts, for every device; in memory when absent (tests). */
   prompts?: SavedPrompts;
   /** Scheduled runs; in memory when absent. */
   routines?: Routines;
+  /** Agent-scoped heartbeats (heartbeats.ts); in memory when absent. */
+  heartbeats?: Heartbeats;
   /** Routines' run history (a run's verdict, and the sessions it opened); in memory when absent. */
   routineRuns?: RoutineRuns;
   /** Sessions that were running when the last process stopped; in memory when absent (nothing to resume). */
   resumeIntents?: ResumeIntents;
+  /** Sessions handed off to a terminal (the exact resume line, a lock against a second writer); in memory when absent. */
+  handovers?: Handovers;
   /** Subscription limits; in memory when absent. */
   limits?: Limits;
   /** Notes and Web Push for devices that turned notifications on; in memory when absent. */
@@ -218,8 +243,6 @@ export interface AppDeps {
   presence?: PresenceTable;
   /** Where file checkpoints live (shadow repositories, and each session's list of them); none when absent. */
   checkpointsDir?: string | null;
-  /** The server state folder, where agent-rendered HTML pages are stored. */
-  stateDir?: string | null;
   /** The start screen's model answers per harness and project; saved in the state folder when absent and one is set. */
   modelCatalog?: ModelCatalog;
   /** Herdr's panes, to mark the sessions they run; none when absent (tests that do not ask for it). */
@@ -232,6 +255,12 @@ export interface AppDeps {
   projectConfigTrust?: ProjectConfigTrust;
   /** The orchestration surface's bounds, read at each use; config.yml's `orchestration:` (none: the defaults). */
   orchestrationLimits?: () => OrchestrationLimits;
+  /**
+   * Hibernation for idle finished chats, as config.yml's `hibernate_after_minutes` states it
+   * (epoch ms; none or 0: off). The manager parks a chat that has stayed hidden — unviewed and
+   * unread — past this, and the mark route below records why its live chat is gone.
+   */
+  hibernateAfterMs?: number;
   /** The server's own resource-pressure monitor; a fresh one, sampled on a cadence, when absent. A test passes its own quiet one. */
   pressure?: PressureMonitor;
   log?: (message: string) => void;
@@ -252,6 +281,27 @@ function parseLastEventId(value: unknown): number | undefined {
   if (typeof raw !== "string" || !/^\d{1,15}$/.test(raw)) return undefined;
   return Number(raw);
 }
+
+/**
+ * One file of a worker's worktree, against its fork point: the same bounded diff a race
+ * member's route answers. The record carries the worktree path it revalidated; the project
+ * is the one the caller just got through workspaces.get(), so a tree that has left it is
+ * refused before any read.
+ */
+function reviewFileDiff(record: IntegrationRecord, file: string, project: ReviewProject): Promise<{ path: string; diff: string }> {
+  const READ = { timeoutMs: 20_000 };
+  return git(["--literal-pathspecs", "diff", "-U3", "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "--src-prefix=a/", "--dst-prefix=b/", record.fork, "--", file], {
+    cwd: record.workspacePath,
+    ...READ,
+    okExit: [1],
+  }).then(
+    (text) => ({ path: file, diff: text }),
+    (error: unknown) => {
+      throw new ChatError(422, "git_failed", errorMessage(error));
+    },
+  );
+}
+
 
 /**
  * One native session as a sidebar row: ids, ISO timestamps, and the live chat
@@ -283,7 +333,7 @@ function latest(saved: Date | null, talkedAt: number | null): string | null {
   return at > 0 ? new Date(at).toISOString() : null;
 }
 
-export function createApp(deps: AppDeps) {
+export async function createApp(deps: AppDeps) {
   const { registry, manager, workspaces, security, theme } = deps;
   const marks = deps.marks ?? SessionMarks.inMemory();
   const agentStatuses = deps.agentStatuses ?? AgentStatuses.inMemory();
@@ -294,8 +344,10 @@ export function createApp(deps: AppDeps) {
   const order = deps.order ?? SessionOrder.inMemory();
   const prompts = deps.prompts ?? SavedPrompts.inMemory();
   const routines = deps.routines ?? Routines.inMemory();
+  const heartbeats = deps.heartbeats ?? Heartbeats.inMemory();
   const routineRuns = deps.routineRuns ?? RoutineRuns.inMemory();
   const resumeIntents = deps.resumeIntents ?? ResumeIntents.inMemory();
+  const handovers = deps.handovers ?? Handovers.inMemory();
   /**
    * Whether a session was opened by a routine: not the user's chat, so the session lists
    * leave it out (Usage still counts it) and only a run with something to say is a note.
@@ -347,23 +399,79 @@ export function createApp(deps: AppDeps) {
   };
   // A run starting brings a settled session back to the list (that is what settled meant), but
   // not a snoozed one: a snooze that keeps working stays quiet until it fails or asks for
-  // something, when the note above wakes it.
+  // something, when the note above wakes it. A run also takes a parked chat back: its mark
+  // said the live chat was gone, and a chat that works is not parked any more.
   manager.onRunStart = (chat) => {
     if (chat.owner || chat.side) return;
-    if (chat.sessionId) marks.unsettle(chat.sessionId);
+    if (chat.sessionId) {
+      marks.unsettle(chat.sessionId);
+      void marks.set(chat.sessionId, { parked: false }).catch(() => undefined);
+    }
   };
+  // Hibernation: the manager parks (disposes) an idle chat that has stayed hidden — unviewed
+  // and unread — past config.yml's `hibernate_after_minutes`, and this records why the live
+  // chat is gone. The session id is the mark's key, so the same chat reopens as the same
+  // native session; the mark goes when a run starts (above) or the session is read.
+  if ((deps.hibernateAfterMs ?? 0) > 0) {
+    manager.hibernate = {
+      afterMs: deps.hibernateAfterMs as number,
+      onParked: (chat) => {
+        if (chat.owner || chat.side || !chat.sessionId) return;
+        void marks.set(chat.sessionId, { parked: true }).catch(() => undefined);
+      },
+    };
+  }
   const log = deps.log ?? ((m: string) => console.error(m));
+  // A broken config.yml keeps the defaults here; the server logged why at startup.
+  const userConfig = () => {
+    try {
+      return readUserConfig(deps.configDir ?? null)?.config;
+    } catch {
+      return undefined;
+    }
+  };
+  // Limited-session invitations (grants.ts): in the state folder when one exists, in
+  // memory when absent (tests). The per-route gate resolves the session's list at each
+  // use, so a revocation or an edit applies without a restart.
+  const invites = deps.invites ?? new InviteStore(deps.stateDir ? invitesFileOf(deps.stateDir) : null);
+  // The store reads its file once, at construction; the first request awaits that read
+  // (express 5 runs async middlewares), so no gate resolves before the list is loaded.
+  const grantsOf: GrantsOfFn = async (req, res) => {
+    if (res.locals.local === true) return null;
+    const id = security.inviteId(req, res.locals.authority as string);
+    // A session bound to an invitation is limited for its cookie's lifetime: a revoked
+    // id resolves to an empty allow list (every gate refuses, 403 missing_grant) — never
+    // a silent fall back to full access. Only a session with no invitation is full.
+    if (id) return (await invites.getAfterLoad(id))?.grants ?? [];
+    return null;
+  };
+  const requireGrant = makeRequireGrant(grantsOf);
   // Delegated tasks: one record store in the state folder, shared by every chat in this process.
   // The limits come from config.yml, read at each use, so a changed number needs no restart.
   const orchestrationLimits = deps.orchestrationLimits ?? (() => DEFAULT_ORCHESTRATION_LIMITS);
+  // Review-gated integration (review.ts): finished isolated workers are recorded here for a
+  // person's review; the apply is races.ts's own head-checked patch. Created before the
+  // orchestrator, which hands it the finished isolated workers and reads the decisions back.
+  const projectTrees = deps.stateDir ? new ManagedWorktrees() : undefined;
+  const integrationLedger = await IntegrationReview.open(deps.stateDir, reviewFileDiff).catch((error: unknown) => {
+    log(`orchestration: could not open the review ledger: ${errorMessage(error)}`);
+    return undefined;
+  });
   const orchestration = new Orchestrator({
     chats: manager,
     registry,
     workspaces,
     ...(deps.boards ? { boards: deps.boards } : {}),
+    ...(projectTrees ? { trees: projectTrees } : {}),
+    ...(integrationLedger ? { review: integrationLedger } : {}),
     file: deps.stateDir ? path.join(deps.stateDir, "orchestration", "tasks.json") : null,
+    decisionsFile: deps.stateDir ? path.join(deps.stateDir, "orchestration", "decisions.json") : null,
     statuses: agentStatuses,
+    // The shared agent profiles come from config.yml, read at each use, so a Settings
+    // change lists them (and applies to a delegation) without a restart.
+    profiles: deps.configDir === undefined ? undefined : () => agentProfiles(userConfig()),
     limits: orchestrationLimits,
+    heartbeats,
     log,
   });
   // Chats read their lineage and their tasks from the records, so a resumed chat still knows
@@ -371,6 +479,7 @@ export function createApp(deps: AppDeps) {
   manager.lineageFor = (chat) => orchestration.lineageOf(chat);
   manager.delegatedSession = (harnessId, nativeId) => orchestration.isDelegatedSession(harnessId, nativeId);
   manager.tasksFor = (chat) => orchestration.tasksFor(chat);
+  manager.planFor = (chat) => orchestration.planFor(chat);
   // A parent that was closed when a report was written (or when the last process died) gets it here.
   manager.onRegistered = (chat) => {
     void orchestration.registered(chat).catch((error: unknown) => log(`orchestration: could not deliver a report: ${errorMessage(error)}`));
@@ -424,8 +533,18 @@ export function createApp(deps: AppDeps) {
     res.json({ ok: true, build, pressure: pressure.status() });
   });
 
-  // Sign-in for other devices; reachable without a session.
-  app.post("/api/login", express.json({ limit: "8kb" }), security.login);
+  // Sign-in for other devices; reachable without a session. A body may name one
+  // invitation (grants.ts): the cookie then carries its id only, and every request
+  // resolves that id's allow list — never the grants themselves — so a revocation or
+  // an edit to the invitation applies at once. An unknown id signs in as a full
+  // session (the backwards-compatible default) rather than an empty one.
+  app.post("/api/login", express.json({ limit: "8kb" }), async (req, res, next) => {
+    const invite = typeof req.body?.invite === "string" ? req.body.invite.slice(0, 64) : "";
+    // Per-request state, not the Security instance's: two sign-ins in flight mint
+    // their own cookies, each with its own invitation (or none).
+    res.locals.loginInvite = invite !== "" && (await invites.getAfterLoad(invite)) ? invite : undefined;
+    next();
+  }, security.login);
   app.post("/api/logout", security.logout);
 
   // The render tool in a chat's harness child posts its page here. It is not a
@@ -673,14 +792,6 @@ export function createApp(deps: AppDeps) {
   // device whose session sent the key rather than to the whole server.
   app.use("/api", idempotency.handle);
 
-  // A broken config.yml keeps the defaults here; the server logged why at startup.
-  const userConfig = () => {
-    try {
-      return readUserConfig(deps.configDir ?? null)?.config;
-    } catch {
-      return undefined;
-    }
-  };
   const browserSettings = () => uiSettings(userConfig());
 
   let statusAt = 0;
@@ -698,12 +809,14 @@ export function createApp(deps: AppDeps) {
         username: security.username,
         remoteEnabled: security.username !== null,
       },
+      grants: await grantsOf(req, res),
       harnesses: registry.status(),
       roots: workspaces.rootList,
       home: deps.home,
       theme: { active: t.name ?? "built-in", ...(t.problem ? { problem: t.problem } : {}) },
       ui: browserSettings(),
       breakdown: breakdownRules(userConfig()),
+      agentProfiles: agentProfiles(userConfig()),
       pairing: { urls: deps.pairingUrls },
       limits: { maxMessageChars: MAX_MESSAGE_CHARS },
     };
@@ -721,25 +834,25 @@ export function createApp(deps: AppDeps) {
     authority: String(res.locals.authority ?? ""),
     tailscaleUser: res.locals.hostKind === "remote" ? String(req.headers["tailscale-user-login"] ?? "").toLowerCase() || null : null,
   });
-  app.get("/api/settings", (_req, res) => {
+  app.get("/api/settings", requireGrant("settings.manage"), (_req, res) => {
     res.json(readSettings(settingsCtx(), true));
   });
-  app.put("/api/settings", (req, res) => {
+  app.put("/api/settings", requireGrant("settings.manage"), (req, res) => {
     const ctx = settingsCtx();
     res.json(writeSettings(ctx, body(settingsPatchSchema, req), requester(req, res)));
   });
 
   // The awui harness's own providers (its isolated agent dir's models.json).
   // Server-side only edits; an apiKey is never returned (redacted to a flag).
-  app.get("/api/awui/settings", async (_req, res) => {
+  app.get("/api/awui/settings", requireGrant("settings.manage"), async (_req, res) => {
     res.json(await readAwuiConfig(registry));
   });
-  app.put("/api/awui/settings", async (req, res) => {
+  app.put("/api/awui/settings", requireGrant("settings.manage"), async (req, res) => {
     res.json(await writeAwuiConfig(registry, req.body));
   });
   // The Settings dialog's Test for a saved ACP agent: one `initialize` handshake, no
   // model call, no session. Its stored environment is used server-side only.
-  app.post("/api/settings/acp/test", async (req, res) => {
+  app.post("/api/settings/acp/test", requireGrant("settings.manage"), async (req, res) => {
     const ctx = settingsCtx();
     const { id } = body(acpTestSchema, req);
     const agent = savedAcpAgent(ctx, id);
@@ -765,7 +878,7 @@ export function createApp(deps: AppDeps) {
     }
   });
 
-  app.post("/api/settings/restart", (_req, res) => {
+  app.post("/api/settings/restart", requireGrant("settings.manage"), (_req, res) => {
     const ctx = settingsCtx();
     if (!ctx.canRestart) throw new ChatError(409, "no_supervisor", "Nothing would start the server again: restart it yourself");
     res.status(202).json({ restarting: true });
@@ -773,16 +886,43 @@ export function createApp(deps: AppDeps) {
     setTimeout(() => process.kill(process.pid, "SIGTERM"), 300);
   });
 
+  // ---- Limited-session invitations (grants.ts): who may hold one, and what it allows ----
+  // Managing them needs settings.manage: a limited session must not mint itself a wider
+  // invitation, and existing full password accounts keep managing them as they always did.
+  // The list answers no secrets: a name, its grants, and the id the invite UI sends back
+  // with a sign-in (the cookie then carries only that id — grants resolve server-side).
+  app.get("/api/invites", requireGrant("settings.manage"), (req, res) => {
+    res.json({ invites: invites.list(), all: [...GRANTS] });
+  });
+  app.post("/api/invites", requireGrant("settings.manage"), (req, res) => {
+    const input = body(inviteCreateSchema, req);
+    res.status(201).json({ invite: invites.create(input.name, input.grants) });
+  });
+  app.patch("/api/invites/:id", requireGrant("settings.manage"), (req, res) => {
+    const input = body(invitePatchSchema, req);
+    const invite = invites.update(req.params.id, input.name ?? null, input.grants ?? null);
+    if (!invite) throw new ChatError(404, "no_invite", "No such invitation");
+    res.json({ invite });
+  });
+  app.delete("/api/invites/:id", requireGrant("settings.manage"), async (req, res) => {
+    // Revocation is immediate: the next request whose cookie names this invitation
+    // resolves to an empty allow list and is refused with 403 `missing_grant` — never
+    // a silent fall back to full access. The holder signs in again; without a live
+    // invitation named, that sign-in is a full session (the backwards-compatible default).
+    if (!(await invites.remove(req.params.id))) throw new ChatError(404, "no_invite", "No such invitation");
+    res.json({ ok: true });
+  });
+
   app.get("/api/theme", async (_req, res) => {
     res.json(await theme.get());
   });
 
-  app.get("/api/workspaces/browse", async (req, res) => {
+  app.get("/api/workspaces/browse", requireGrant("workspaces.manage"), async (req, res) => {
     const p = typeof req.query.path === "string" ? req.query.path : undefined;
     res.json(await workspaces.browse(p));
   });
 
-  app.post("/api/workspaces/open", async (req, res) => {
+  app.post("/api/workspaces/open", requireGrant("workspaces.manage"), async (req, res) => {
     const { path: p } = body(openWorkspaceSchema, req);
     res.json(await workspaces.open(p));
   });
@@ -791,7 +931,7 @@ export function createApp(deps: AppDeps) {
   // workspace's tree has a blocked one. Goes to someone signed in from anywhere — it writes to
   // the user's direnv state (~/.local/share/direnv/allow), the same consent `direnv allow` asks
   // for in a terminal, and the user just read what they are allowing in the prompt's file link.
-  app.post("/api/workspaces/:id/direnv-allow", async (req, res) => {
+  app.post("/api/workspaces/:id/direnv-allow", requireGrant("workspaces.manage"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     if (!direnvState(ws.path).blocked) throw new ChatError(409, "not_blocked", "No blocked .envrc here");
     if (!allowEnvrc(ws.path)) throw new ChatError(500, "direnv_failed", "direnv allow did not run");
@@ -800,14 +940,14 @@ export function createApp(deps: AppDeps) {
 
   // A project's files for a client's @mention picker, relative to the project.
   // Read-only and confined to an opened workspace (by id, never a path).
-  app.get("/api/workspaces/:id/files", async (req, res) => {
+  app.get("/api/workspaces/:id/files", requireGrant("chat.read"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const { q } = fileSearchSchema.parse(req.query);
     res.json({ files: searchFiles(await projectFiles(ws.path), q) });
   });
 
   // A file dropped into the project: new files only, one name, bounded by the body.
-  app.post("/api/workspaces/:id/upload", express.raw({ type: () => true, limit: "8mb" }), async (req, res) => {
+  app.post("/api/workspaces/:id/upload", requireGrant("chat.write"), express.raw({ type: () => true, limit: "8mb" }), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const { name } = fileUploadSchema.parse(req.query);
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
@@ -827,14 +967,19 @@ export function createApp(deps: AppDeps) {
   // revalidates a project that may have been renamed or replaced by a symlink.
   const trees = new ManagedWorktrees();
 
+  // Stacked pull requests (stacks.ts): the ordered stack per project, kept in the
+  // state folder so a stack outlives its open panels. Without state wiring the
+  // store is in memory, like the races store beside it.
+  const prStacks = deps.prStacks ?? PrStacks.inMemory(workspaces);
+
   // A project's own `awui.yml` (project-config.ts) is untrusted input from the repository: its
   // hash is recorded here only when a person trusts that exact version, and its setup command
   // runs only on an explicit request after that. Reading it names no paths.
-  app.get("/api/workspaces/:id/project-config", async (req, res) => {
+  app.get("/api/workspaces/:id/project-config", requireGrant("chat.read"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     res.json({ config: await projectConfigStatus(ws.path, projectTrust) });
   });
-  app.post("/api/workspaces/:id/project-config/trust", async (req, res) => {
+  app.post("/api/workspaces/:id/project-config/trust", requireGrant("workspaces.manage"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const { hash } = body(projectConfigTrustSchema, req);
     const read = await readProjectConfig(ws.path);
@@ -857,10 +1002,10 @@ export function createApp(deps: AppDeps) {
     return runShellCommand(read.config.setup, tree.path, { timeoutMs: SETUP_TIMEOUT_MS, maxOutput: SETUP_MAX_OUTPUT });
   };
 
-  app.get("/api/workspaces/:id/worktrees", async (req, res) => {
+  app.get("/api/workspaces/:id/worktrees", requireGrant("chat.read"), async (req, res) => {
     res.json({ worktrees: await trees.list(await workspaces.get(req.params.id)) });
   });
-  app.post("/api/workspaces/:id/worktrees", async (req, res) => {
+  app.post("/api/workspaces/:id/worktrees", requireGrant("workspaces.manage"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const input = body(worktreeCreateSchema, req);
     // The config's shared entries seed the tree; its setup command needs both the trust and
@@ -878,13 +1023,79 @@ export function createApp(deps: AppDeps) {
       throw worktreeProblem(error) ?? error;
     }
   });
-  app.post("/api/workspaces/:id/worktrees/:treeId/setup", async (req, res) => {
+  app.post("/api/workspaces/:id/worktrees/:treeId/setup", requireGrant("workspaces.manage"), async (req, res) => {
     res.json(await runSetup(await workspaces.get(req.params.id), req.params.treeId));
   });
-  app.delete("/api/workspaces/:id/worktrees/:treeId", async (req, res) => {
+  app.delete("/api/workspaces/:id/worktrees/:treeId", requireGrant("workspaces.manage"), async (req, res) => {
     await trees.prune(await workspaces.get(req.params.id), req.params.treeId).catch((error: unknown) => {
       throw worktreeProblem(error) ?? error;
     });
+    res.json({ ok: true });
+  });
+
+  // A managed isolated checkout of an existing pull request (a checkout-pr tree):
+  // the head branch is looked up server-side with gh, so the client names only the
+  // number and a task name, and the tree runs through the ordinary workspace flow.
+  app.post("/api/workspaces/:id/worktrees/checkout-pr", requireGrant("workspaces.manage"), async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const input = body(prCheckoutSchema, req);
+    const read = await readProjectConfig(ws.path);
+    const config = read && !read.problem ? read.config : {};
+    const detail = await pullRequestDetail(ws, input.pr);
+    if (!detail) throw new ChatError(404, "bad_pr", `GitHub has no pull request #${input.pr} in this repository`);
+    try {
+      const info = await trees.checkoutPr(ws, input.name, input.pr, detail.headRefName, { shared: config.shared ?? [] });
+      res.status(201).json({ ...info, workspace: await workspaces.open(info.path) });
+    } catch (error) {
+      throw worktreeProblem(error) ?? error;
+    }
+  });
+
+  // Archive one checkout-pr tree whose pull request merged: the worktree refuses a
+  // dirty or moved-off tree itself, and the refusal is the actionable error.
+  app.post("/api/workspaces/:id/worktrees/:treeId/archive", requireGrant("workspaces.manage"), async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const detail = await pullRequestDetail(ws, Number(req.query.pr ?? NaN));
+    if (!detail) throw new ChatError(404, "bad_pr", `GitHub has no pull request like that in this repository`);
+    if (detail.state !== "MERGED") throw new ChatError(409, "not_merged", `#${req.query.pr ?? ""} is ${detail.state}, not MERGED; archive only runs on a merged pull request`);
+    await trees.archiveMerged(ws, req.params.treeId, Number(req.query.pr)).catch((error: unknown) => {
+      throw worktreeProblem(error) ?? error;
+    });
+    res.json({ ok: true });
+  });
+
+  // Stacked pull requests (stacks.ts): one ordered stack per project, per-layer
+  // status from the same bounded gh calls the panel reads, merges bottom-up.
+  app.get("/api/workspaces/:id/pr-stack", requireGrant("chat.read"), async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const stacks = prStacks.list(ws.id);
+    res.json({ stacks: await Promise.all(stacks.map((stack) => prStacks.view(stack))) });
+  });
+  app.post("/api/workspaces/:id/pr-stack", requireGrant("workspaces.manage"), async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const input = body(prStackCreateSchema, req);
+    const stack = prStacks.list(ws.id)[0] ?? (await prStacks.create(ws.id, ws.name, input.base ?? "main"));
+    const result = input.above !== undefined
+      ? await prStacks.stackAbove(stack.id, input.above, input.title, input.body, input.push)
+      : await prStacks.start(stack.id, input.base ?? "main", input.title, input.body, input.push);
+    res.status(201).json({ stack: await prStacks.view(result.stack), layer: result.layer });
+  });
+  app.post("/api/workspaces/:id/pr-stack/:stackId/merge", requireGrant("workspaces.manage"), async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const input = body(prStackMergeSchema, req);
+    prStacks.required(req.params.stackId);
+    const result = await prStacks.merge(req.params.stackId, input.archive
+      ? async (treeWs, pr, worktreeId) => {
+          if (!worktreeId) return;
+          await trees.archiveMerged(treeWs, worktreeId, pr);
+        }
+      : undefined);
+    res.json({ stack: await prStacks.view(result.stack), mergedThrough: result.mergedThrough ?? null, refusal: result.refusal ?? null, archiveRefusals: result.archiveRefusals });
+  });
+  app.delete("/api/workspaces/:id/pr-stack/:stackId", requireGrant("workspaces.manage"), async (req, res) => {
+    await workspaces.get(req.params.id);
+    prStacks.required(req.params.stackId);
+    await prStacks.forget(req.params.stackId);
     res.json({ ok: true });
   });
 
@@ -900,28 +1111,28 @@ export function createApp(deps: AppDeps) {
     const ws = await workspaces.get(race.workspaceId);
     return { root: ws.path, ws, trees };
   };
-  app.get("/api/races", async (_req, res) => {
+  app.get("/api/races", requireGrant("chat.read"), async (_req, res) => {
     // The record and each member's live status: no git per row, so fifty of them stay one cheap call.
     res.json({ races: await Promise.all(races.list().map((race) => races.view(race))) });
   });
-  app.get("/api/races/:id", async (req, res) => {
+  app.get("/api/races/:id", requireGrant("chat.read"), async (req, res) => {
     const race = raceOf(req.params.id);
     // A project that was closed or moved is not this race's to read: the record's bare view still answers.
     const project = await workspaces.get(race.workspaceId).then((ws) => ({ root: ws.path, ws, trees })).catch(() => undefined);
     res.json(await races.view(race, project));
   });
-  app.get("/api/races/:id/members/:chatId/diff", async (req, res) => {
+  app.get("/api/races/:id/members/:chatId/diff", requireGrant("chat.read"), async (req, res) => {
     const race = raceOf(req.params.id);
     const { path: file } = raceDiffQuery.parse(req.query);
     // The project is revalidated here too, so a member's tree must still sit inside it.
     res.json(await races.diff(race, req.params.chatId, file, await raceProject(race)));
   });
-  app.post("/api/races/:id/winner", async (req, res) => {
+  app.post("/api/races/:id/winner", requireGrant("chat.write"), async (req, res) => {
     const race = raceOf(req.params.id);
     const input = body(raceWinnerSchema, req);
     res.json(await races.pickWinner(race, input.chatId, input.mode, await raceProject(race)));
   });
-  app.post("/api/races/:id/cleanup", async (req, res) => {
+  app.post("/api/races/:id/cleanup", requireGrant("chat.write"), async (req, res) => {
     const race = raceOf(req.params.id);
     const input = body(raceCleanupSchema, req);
     res.json(await races.cleanup(race, input.discard, await raceProject(race)));
@@ -929,7 +1140,7 @@ export function createApp(deps: AppDeps) {
 
   // Backend previews are requested by a signed-in contributor of an owning chat.
   // No free-form URL is accepted and external network is blocked in the renderer.
-  app.post("/api/chats/:id/html-render/:renderId/preview", async (req, res) => {
+  app.post("/api/chats/:id/html-render/:renderId/preview", requireGrant("chat.read"), async (req, res) => {
     if (!deps.stateDir) throw new ChatError(404, "render_off", "HTML preview is not wired on this server");
     const chat = manager.get(req.params.id);
     const id = req.params.renderId;
@@ -949,7 +1160,7 @@ export function createApp(deps: AppDeps) {
   // A signed-in project's interactive terminal. The input route has no command
   // parameter at all: a PTY is not a shell-exec API, and every create spawns the
   // user's own interactive shell in their validated project.
-  app.post("/api/workspaces/:id/terminal", async (req, res) => {
+  app.post("/api/workspaces/:id/terminal", requireGrant("workspaces.manage"), async (req, res) => {
     if (!deps.terminals) throw new ChatError(404, "terminal_off", "The interactive terminal is not wired on this server");
     const ws = await workspaces.get(req.params.id);
     const input = body(terminalCreateSchema, req);
@@ -957,7 +1168,7 @@ export function createApp(deps: AppDeps) {
     res.status(201).json(session);
   });
   for (const action of ["write", "resize"] as const) {
-    app.post(`/api/workspaces/:id/terminal/:termId/${action}`, async (req, res) => {
+    app.post(`/api/workspaces/:id/terminal/:termId/${action}`, requireGrant("workspaces.manage"), async (req, res) => {
       if (!deps.terminals) throw new ChatError(404, "terminal_off", "The interactive terminal is not wired");
       const ws = await workspaces.get(req.params.id);
       if (action === "write") {
@@ -970,7 +1181,7 @@ export function createApp(deps: AppDeps) {
       res.json({ ok: true });
     });
   }
-  app.get("/api/workspaces/:id/terminal/:termId/events", async (req, res) => {
+  app.get("/api/workspaces/:id/terminal/:termId/events", requireGrant("workspaces.manage"), async (req, res) => {
     const terminals = deps.terminals;
     if (!terminals) throw new ChatError(404, "terminal_off", "The interactive terminal is not wired");
     let closed = false;
@@ -1015,32 +1226,32 @@ export function createApp(deps: AppDeps) {
     heartbeat = setInterval(() => { if (!closed) res.write("event: heartbeat\ndata: {}\n\n"); }, deps.heartbeatMs ?? 20_000);
     res.on("close", stop);
   });
-  app.delete("/api/workspaces/:id/terminal/:termId", async (req, res) => {
+  app.delete("/api/workspaces/:id/terminal/:termId", requireGrant("workspaces.manage"), async (req, res) => {
     if (!deps.terminals) throw new ChatError(404, "terminal_off", "The interactive terminal is not wired");
     deps.terminals.close(await workspaces.get(req.params.id), req.params.termId);
     res.json({ ok: true });
   });
 
   // GitHub: author use their own gh/git login, never a credential the web app can see.
-  app.get("/api/workspaces/:id/github", async (req, res) => {
+  app.get("/api/workspaces/:id/github", requireGrant("chat.read"), async (req, res) => {
     res.json(await githubStatus(await workspaces.get(req.params.id)));
   });
-  app.post("/api/workspaces/:id/github/push", async (req, res) => {
+  app.post("/api/workspaces/:id/github/push", requireGrant("chat.write"), async (req, res) => {
     res.json(await pushBranch(await workspaces.get(req.params.id)));
   });
-  app.post("/api/workspaces/:id/github/pr", async (req, res) => {
+  app.post("/api/workspaces/:id/github/pr", requireGrant("chat.write"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const input = body(gitHubPrSchema, req);
     res.status(201).json(await createPullRequest(ws, input.base, input.title, input.body));
   });
-  app.get("/api/workspaces/:id/github/pr", async (req, res) => {
+  app.get("/api/workspaces/:id/github/pr", requireGrant("chat.read"), async (req, res) => {
     res.json({ pr: await currentPullRequest(await workspaces.get(req.params.id)) });
   });
-  app.get("/api/workspaces/:id/github/checks", async (req, res) => {
+  app.get("/api/workspaces/:id/github/checks", requireGrant("chat.read"), async (req, res) => {
     res.json({ checks: await pullRequestChecks(await workspaces.get(req.params.id)) });
   });
 
-  app.post("/api/compare", async (req, res) => {
+  app.post("/api/compare", requireGrant("chat.write"), async (req, res) => {
     const input = body(compareStartSchema, req);
     const parent = await workspaces.get(input.workspaceId);
     const availableChoices = input.choices.filter((choice) => registry.isAvailable(choice.harnessId));
@@ -1092,7 +1303,7 @@ export function createApp(deps: AppDeps) {
   });
 
   // Usage across sessions (usage-report.ts): the sidebar's sessions' calls, read from the harnesses' files.
-  app.get("/api/usage", async (req, res) => {
+  app.get("/api/usage", requireGrant("chat.read"), async (req, res) => {
     const { days, tz, refresh } = usageReportSchema.parse(req.query);
     const overview = await listSessions(null, true);
     const byId = new Map(overview.workspaces.map((w) => [w.id, w]));
@@ -1111,13 +1322,13 @@ export function createApp(deps: AppDeps) {
   });
 
   // Saved prompts (saved-prompts.ts): every device and atui share them.
-  app.get("/api/prompts", (_req, res) => {
+  app.get("/api/prompts", requireGrant("chat.read"), (_req, res) => {
     res.json({ prompts: prompts.list() });
   });
-  app.post("/api/prompts", async (req, res) => {
+  app.post("/api/prompts", requireGrant("chat.write"), async (req, res) => {
     res.json(await prompts.save(body(savedPromptSchema, req)));
   });
-  app.delete("/api/prompts/:id", async (req, res) => {
+  app.delete("/api/prompts/:id", requireGrant("chat.write"), async (req, res) => {
     await prompts.remove(req.params.id);
     res.json({ ok: true });
   });
@@ -1125,7 +1336,7 @@ export function createApp(deps: AppDeps) {
   // The file viewer: one of the project's own files, read-only and bounded (file-view.ts).
   // An image's bytes for the viewer's preview: same confinement as the text view,
   // typed by magic bytes, with nosniff so the browser takes the type we send.
-  app.get("/api/workspaces/:id/media", async (req, res) => {
+  app.get("/api/workspaces/:id/media", requireGrant("chat.read"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const { path: wanted } = fileViewSchema.parse(req.query);
     const { bytes, mimeType } = await readMedia(ws.path, wanted);
@@ -1135,7 +1346,7 @@ export function createApp(deps: AppDeps) {
     res.setHeader("Cache-Control", "private, max-age=60");
     res.send(bytes);
   });
-  app.get("/api/workspaces/:id/file", async (req, res) => {
+  app.get("/api/workspaces/:id/file", requireGrant("chat.read"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const { path: wanted } = fileViewSchema.parse(req.query);
     res.json(await viewFile(ws.path, wanted));
@@ -1143,7 +1354,7 @@ export function createApp(deps: AppDeps) {
 
   // Search in project: lines holding a fixed string (never a pattern), bounded
   // (project-search.ts). Only inside an opened workspace, as the file list is.
-  app.get("/api/workspaces/:id/search", async (req, res) => {
+  app.get("/api/workspaces/:id/search", requireGrant("chat.read"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const { q, case: matchCase } = projectSearchSchema.parse(req.query);
     try {
@@ -1172,14 +1383,14 @@ export function createApp(deps: AppDeps) {
   // blocked, so a gateway that finished starting (or a CLI just installed) stops being
   // greyed out without a page reload. The registry throttles that ask (registry.ts): a
   // signed-in device cannot force a discovery, including a Hermes CLI spawn, per request.
-  app.get("/api/harnesses/:id/status", async (req, res) => {
+  app.get("/api/harnesses/:id/status", requireGrant("chat.read"), async (req, res) => {
     const adapter = adapterOr404(req.params.id);
     const status = await registry.recheck(adapter.id);
     if (!status) throw new ChatError(404, "unknown_harness", "Unknown harness");
     res.json(status);
   });
 
-  app.get("/api/harnesses/:id/sessions", async (req, res) => {
+  app.get("/api/harnesses/:id/sessions", requireGrant("chat.read"), async (req, res) => {
     const adapter = await availableAdapter(req.params.id);
     const ws = await workspaces.get(String(req.query.workspaceId ?? ""));
     const problem = adapter.workspaceProblem(ws.path);
@@ -1211,7 +1422,7 @@ export function createApp(deps: AppDeps) {
 
   // The models a chat in this workspace could start on, so the start screen can
   // offer one before any session exists. The same call a chat's own config makes.
-  app.get("/api/harnesses/:id/models", async (req, res) => {
+  app.get("/api/harnesses/:id/models", requireGrant("chat.read"), async (req, res) => {
     const adapter = await availableAdapter(req.params.id);
     const ws = await workspaces.get(String(req.query.workspaceId ?? ""));
     const problem = adapter.workspaceProblem(ws.path);
@@ -1233,7 +1444,7 @@ export function createApp(deps: AppDeps) {
   // A session's last prompt and answer, for a history picker's preview: from
   // the live chat when one is open, else the harness's own file (read only,
   // the harness is not started). Cut short: a preview, not a transcript.
-  app.get("/api/sessions/preview", async (req, res) => {
+  app.get("/api/sessions/preview", requireGrant("chat.read"), async (req, res) => {
     const input = sessionPreviewSchema.parse(req.query);
     const adapter = adapterOr404(input.harnessId);
     const prefix = `${adapter.id}:`;
@@ -1277,7 +1488,7 @@ export function createApp(deps: AppDeps) {
   // ids are opaque to clients, so the line is made here. `live` lets the client
   // say to close the chat here first: awui keeps one writer per session, and a
   // terminal running the same session would be a second.
-  app.get("/api/sessions/resume-command", async (req, res) => {
+  app.get("/api/sessions/resume-command", requireGrant("chat.read"), async (req, res) => {
     const input = resumeCommandSchema.parse(req.query);
     const adapter = adapterOr404(input.harnessId);
     if (!adapter.capabilities.supportsResumeCommand || !adapter.resumeCommand) throw new ChatError(400, "unsupported", "This harness has no resume command");
@@ -1289,7 +1500,40 @@ export function createApp(deps: AppDeps) {
     const ws = await workspaces.get(input.workspaceId);
     const argv = await adapter.resumeCommand({ cwd: ws.path, nativeId });
     if (!argv) throw new ChatError(404, "not_saved", "That session has nothing saved to resume yet");
-    const body: ResumeCommand = { command: shellLine(ws.path, argv), live: manager.liveChatFor(adapter.id, nativeId) !== undefined };
+    const command = shellLine(ws.path, argv);
+  // Copy resume command is read-only: only the explicit hand-over action closes a live writer.
+    const live = manager.liveChatFor(adapter.id, nativeId) !== undefined;
+    const body: ResumeCommand = { command, live, ...(handovers.has(input.sessionId) ? { held: true as const } : {}) };
+    res.json(body);
+  });
+
+  /** Explicitly hand a session to its native CLI: stop awui's live writer before recording the lock. */
+  app.post("/api/sessions/handover", requireGrant("chat.write"), async (req, res) => {
+    const input = sessionPreviewSchema.parse(req.body ?? {});
+    const adapter = adapterOr404(input.harnessId);
+    if (!adapter.capabilities.supportsResumeCommand || !adapter.resumeCommand) throw new ChatError(400, "unsupported", "This harness cannot hand a session to its own CLI");
+    const prefix = `${adapter.id}:`;
+    if (!input.sessionId.startsWith(prefix)) throw new ChatError(400, "wrong_harness", "Session belongs to another harness");
+    const nativeId = input.sessionId.slice(prefix.length);
+    const ws = await workspaces.get(input.workspaceId);
+    const command = shellLine(ws.path, (await adapter.resumeCommand({ cwd: ws.path, nativeId })) ?? []);
+    const live = manager.liveChatFor(adapter.id, nativeId);
+    if (live && live.status !== "idle" && live.status !== "error") throw new ChatError(409, "busy", "Stop the run before handing this session to the terminal");
+    if (live) await live.dispose("Handed to the harness CLI");
+    await handovers.set(input.sessionId, command);
+    res.json({ command, live: false });
+  });
+
+  // Reclaiming a handed-off session: the lock goes, and the client learns the line
+  // the handover held (to paste again, or to see what took the session over). The
+  // reclaim is one click and never runs anything.
+  app.post("/api/sessions/reclaim", requireGrant("workspaces.manage"), async (req, res) => {
+    const input = sessionPreviewSchema.parse(req.body ?? {});
+    const adapter = adapterOr404(input.harnessId);
+    const prefix = `${adapter.id}:`;
+    if (!input.sessionId.startsWith(prefix)) throw new ChatError(400, "wrong_harness", "Session belongs to another harness");
+    const live = manager.liveChatFor(adapter.id, input.sessionId.slice(prefix.length)) !== undefined;
+    const body: HandoverReclaim = { command: await handovers.take(input.sessionId), live };
     res.json(body);
   });
 
@@ -1363,12 +1607,13 @@ export function createApp(deps: AppDeps) {
     for (const [id, s] of sessions) {
       const mark = marks.get(id);
       const pane = inHerdr?.get(id);
+      const handed = handovers.has(id) && s.liveChatId === undefined;
       // A routine's origin is the mark; a delegated child's is in the orchestrator's records,
       // so it survives a reap. Either one is metadata only: the sidebar hides by it.
       const origin = mark?.origin ?? (manager.delegatedSession?.(s.harnessId, s.id.slice(s.harnessId.length + 1)) ? "agent" : undefined);
       // The line its own agent set (the orchestration tool surface's set_status).
       const agentStatus = agentStatuses.get(id);
-      if (mark || pane || origin || agentStatus) sessions.set(id, { ...s, ...mark, ...(origin ? { origin } : {}), ...(agentStatus ? { agentStatus } : {}), ...(pane ? { herdr: { paneId: pane.paneId, status: pane.status } } : {}) });
+      if (mark || pane || origin || agentStatus || handed) sessions.set(id, { ...s, ...mark, ...(origin ? { origin } : {}), ...(agentStatus ? { agentStatus } : {}), ...(pane ? { herdr: { paneId: pane.paneId, status: pane.status } } : {}), ...(handed ? { handover: true as const, handoverCommand: handovers.get(id) ?? undefined } : {}) });
     }
     const checkouts: Record<string, Checkout> = {};
     await Promise.all(
@@ -1385,14 +1630,14 @@ export function createApp(deps: AppDeps) {
       orders: order.all(),
     };
   };
-  app.get("/api/sessions", async (req, res) => {
+  app.get("/api/sessions", requireGrant("chat.read"), async (req, res) => {
     res.json(await listSessions(typeof req.query.path === "string" && req.query.path ? req.query.path : null));
   });
 
   // Only live metadata: titles/status/pending count and the room summary.
   // A replay gap sends one snapshot marker; the client then takes the ordinary
   // full lists. No transcripts or board records are fused into this stream.
-  app.get("/api/overview/events", (req, res) => {
+  app.get("/api/overview/events", requireGrant("chat.read"), (req, res) => {
     const last = parseLastEventId(req.headers["last-event-id"] ?? req.query.lastEventId);
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
@@ -1425,7 +1670,7 @@ export function createApp(deps: AppDeps) {
 
   // Search every chat (chat-search.ts): the sidebar's sessions, newest first,
   // read from the live chat or the harness's own file; never starts a harness.
-  app.get("/api/sessions/search", async (req, res) => {
+  app.get("/api/sessions/search", requireGrant("chat.read"), async (req, res) => {
     const input = chatSearchSchema.parse(req.query);
     const overview = await listSessions(null);
     const byId = new Map(overview.workspaces.map((w) => [w.id, w]));
@@ -1447,49 +1692,49 @@ export function createApp(deps: AppDeps) {
   });
 
   // Notifications. A push only wakes the device's service worker, which then reads the notes here.
-  app.get("/api/push/key", (_req, res) => {
+  app.get("/api/push/key", requireGrant("chat.read"), (_req, res) => {
     res.json({ key: notifier.applicationServerKey });
   });
-  app.post("/api/push/subscribe", async (req, res) => {
+  app.post("/api/push/subscribe", requireGrant("chat.write"), async (req, res) => {
     const { endpoint } = body(pushSubscriptionSchema, req);
     const problem = pushEndpointProblem(endpoint);
     if (problem) throw new ChatError(422, "bad_push_endpoint", problem);
     await notifier.subscribe(endpoint);
     res.json({ ok: true });
   });
-  app.post("/api/push/unsubscribe", async (req, res) => {
+  app.post("/api/push/unsubscribe", requireGrant("chat.write"), async (req, res) => {
     await notifier.unsubscribe(body(pushSubscriptionSchema, req).endpoint);
     res.json({ ok: true });
   });
-  app.post("/api/push/test", (req, res) => {
+  app.post("/api/push/test", requireGrant("chat.write"), (req, res) => {
     const { endpoint } = body(pushTestSchema, req);
     res.json(notifier.notify({ kind: "done", chatId: "", sessionId: null, title: "awui", body: "Notifications work on this device" }, endpoint));
   });
   /** Notes after `since` (epoch ms, as `now` last said); without it, the last two minutes. */
-  app.get("/api/notifications", (req, res) => {
+  app.get("/api/notifications", requireGrant("chat.read"), (req, res) => {
     const raw = typeof req.query.since === "string" && /^\d{1,15}$/.test(req.query.since) ? Number(req.query.since) : null;
     const now = Date.now();
     res.json({ notes: notifier.since(raw ?? now - 120_000), now });
   });
   // Presence: which chat or room each connected client visibly focuses, so a note for
   // a target the user already watches is not sent (presence.ts). Ids and flags only.
-  app.post("/api/presence", (req, res) => {
+  app.post("/api/presence", requireGrant("chat.read"), (req, res) => {
     const report = body(presenceSchema, req);
     presence.report(report.clientId, { chatId: report.chatId ?? null, roomId: report.roomId ?? null }, report.visible, report.focused);
     res.json({ ok: true });
   });
 
-  app.get("/api/limits", async (req, res) => {
+  app.get("/api/limits", requireGrant("chat.read"), async (req, res) => {
     res.json(await limits.get(req.query.refresh === "1"));
   });
 
-  app.post("/api/sessions/marks", async (req, res) => {
+  app.post("/api/sessions/marks", requireGrant("chat.write"), async (req, res) => {
     const { sessionId, ...change } = body(sessionMarkSchema, req);
     if (change.snoozedUntil !== undefined && change.snoozedUntil !== null && change.snoozedUntil <= Date.now()) throw new ChatError(400, "bad_snooze", "Snooze until a time to come");
     res.json(await marks.set(sessionId, change));
   });
   /** The same change for several sessions at once: one write, and one undo for the selection. */
-  app.post("/api/sessions/marks/bulk", async (req, res) => {
+  app.post("/api/sessions/marks/bulk", requireGrant("chat.write"), async (req, res) => {
     const { ids, ...change } = body(sessionBulkMarkSchema, req);
     if (change.snoozedUntil !== undefined && change.snoozedUntil !== null && change.snoozedUntil <= Date.now()) throw new ChatError(400, "bad_snooze", "Snooze until a time to come");
     res.json({ marks: await marks.setMany(ids, change) });
@@ -1497,12 +1742,12 @@ export function createApp(deps: AppDeps) {
 
   // Routines: a prompt on a cadence, in a project, on a harness. The timer that
   // starts them is index.ts's; these are the dialog's reads and writes.
-  app.get("/api/routines", (_req, res) => {
+  app.get("/api/routines", requireGrant("chat.read"), (_req, res) => {
     res.json({ routines: routines.all() });
   });
   // A routine's run history, newest first: what each run came to, and the chat it opened
   // while this process still has it (the session it opened is not in the session lists).
-  app.get("/api/routines/runs", (req, res) => {
+  app.get("/api/routines/runs", requireGrant("chat.read"), (req, res) => {
     const { routineId, limit } = routineRunsQuerySchema.parse(req.query);
     const runs = routineRuns.list(routineId, limit).map((run) => ({
       ...run,
@@ -1510,7 +1755,7 @@ export function createApp(deps: AppDeps) {
     }));
     res.json({ runs });
   });
-  app.put("/api/routines", async (req, res) => {
+  app.put("/api/routines", requireGrant("routines.manage"), async (req, res) => {
     const input = body(routineSchema, req);
     // A schedule that cannot run is a bad request, said in the dialog's words (the shape
     // cannot check a cron expression's meaning, only its length).
@@ -1532,7 +1777,7 @@ export function createApp(deps: AppDeps) {
    * (like a scheduled one) it does not move the routine's own next slot. What it came to
    * is in the run history; a precheck that says "nothing to do" answers 409 with its why.
    */
-  app.post("/api/routines/:id/run", async (req, res) => {
+  app.post("/api/routines/:id/run", requireGrant("routines.manage"), async (req, res) => {
     const routine = routines.get(req.params.id);
     if (!routine) throw new ChatError(404, "no_routine", "No such routine");
     const adapter = await availableAdapter(routine.harnessId);
@@ -1545,13 +1790,23 @@ export function createApp(deps: AppDeps) {
     if (!ran.chat) throw new ChatError(409, "routine_skipped", ran.detail ?? "The precheck skipped this run");
     res.status(202).json({ chatId: ran.chat.chatId, routineId: routine.id });
   });
-  app.delete("/api/routines/:id", async (req, res) => {
+  app.delete("/api/routines/:id", requireGrant("routines.manage"), async (req, res) => {
     if (!(await routines.remove(req.params.id))) throw new ChatError(404, "no_routine", "No such routine");
     await routineRuns.forget(req.params.id);
     res.json({ ok: true });
   });
 
-  app.post("/api/sessions/order", async (req, res) => {
+  app.get("/api/heartbeats", requireGrant("routines.manage"), (_req, res) => {
+    res.json({ heartbeats: heartbeats.all().map(heartbeatViewOf) });
+  });
+  app.delete("/api/heartbeats/:id", requireGrant("routines.manage"), async (req, res) => {
+    const heartbeat = heartbeats.get(req.params.id);
+    if (!heartbeat) throw new ChatError(404, "no_heartbeat", "No such heartbeat");
+    await heartbeats.cancel(req.params.id, heartbeat.ownerHarnessId, heartbeat.ownerNativeId);
+    res.json({ cancelled: true });
+  });
+
+  app.post("/api/sessions/order", requireGrant("chat.write"), async (req, res) => {
     const { harnessId, workspaceId, ids } = body(sessionOrderSchema, req);
     res.json({ ids: await order.set(harnessId, workspaceId, ids) });
   });
@@ -1564,71 +1819,71 @@ export function createApp(deps: AppDeps) {
     return deps.boards;
   };
 
-  app.get("/api/bots", async (_req, res) => {
+  app.get("/api/bots", requireGrant("chat.read"), async (_req, res) => {
     res.json(await board().listBots());
   });
-  app.post("/api/bots", async (req, res) => {
+  app.post("/api/bots", requireGrant("boards.manage"), async (req, res) => {
     res.status(201).json(await board().createBot(body(botCreateSchema, req)));
   });
-  app.patch("/api/bots/:id", async (req, res) => {
+  app.patch("/api/bots/:id", requireGrant("boards.manage"), async (req, res) => {
     res.json(await board().patchBot(req.params.id, body(botPatchSchema, req)));
   });
-  app.delete("/api/bots/:id", async (req, res) => {
+  app.delete("/api/bots/:id", requireGrant("boards.manage"), async (req, res) => {
     await board().deleteBot(req.params.id);
     res.json({ ok: true });
   });
 
-  app.get("/api/rooms", async (_req, res) => {
+  app.get("/api/rooms", requireGrant("chat.read"), async (_req, res) => {
     res.json(await board().listRooms());
   });
-  app.post("/api/rooms", async (req, res) => {
+  app.post("/api/rooms", requireGrant("boards.manage"), async (req, res) => {
     const info = await board().createRoom(body(roomCreateSchema, req));
     // The snapshot opens the room immediately, instead of a refetch from the client.
     res.status(201).json(await board().roomSnapshot(info.id));
   });
-  app.get("/api/rooms/:id", async (req, res) => {
+  app.get("/api/rooms/:id", requireGrant("chat.read"), async (req, res) => {
     res.json(await board().roomSnapshot(req.params.id));
   });
-  app.patch("/api/rooms/:id", async (req, res) => {
+  app.patch("/api/rooms/:id", requireGrant("boards.manage"), async (req, res) => {
     res.json(await board().patchRoom(req.params.id, body(roomPatchSchema, req)));
   });
-  app.post("/api/rooms/:id/members", async (req, res) => {
+  app.post("/api/rooms/:id/members", requireGrant("boards.manage"), async (req, res) => {
     res.json(await board().addMember(req.params.id, body(memberAddSchema, req)));
   });
-  app.patch("/api/rooms/:id/members/:memberId", async (req, res) => {
+  app.patch("/api/rooms/:id/members/:memberId", requireGrant("boards.manage"), async (req, res) => {
     res.json(await board().patchMember(req.params.id, req.params.memberId, body(memberPatchSchema, req)));
   });
-  app.delete("/api/rooms/:id/members/:memberId", async (req, res) => {
+  app.delete("/api/rooms/:id/members/:memberId", requireGrant("boards.manage"), async (req, res) => {
     res.json(await board().removeMember(req.params.id, req.params.memberId));
   });
-  app.post("/api/rooms/:id/members/:memberId/reset", async (req, res) => {
+  app.post("/api/rooms/:id/members/:memberId/reset", requireGrant("boards.manage"), async (req, res) => {
     res.json(await board().resetMemberSession(req.params.id, req.params.memberId));
   });
 
   // Persist and queue: the turn runs on its own, with no request holding it open.
-  app.post("/api/rooms/:id/messages", async (req, res) => {
+  app.post("/api/rooms/:id/messages", requireGrant("boards.manage"), async (req, res) => {
     res.status(202).json(await board().postMessage(req.params.id, body(roomMessageSchema, req)));
   });
-  app.post("/api/rooms/:id/stop", async (req, res) => {
+  app.post("/api/rooms/:id/stop", requireGrant("boards.manage"), async (req, res) => {
     await board().stop(req.params.id);
     res.json({ ok: true });
   });
-  app.delete("/api/rooms/:id/queue/:turnId", async (req, res) => {
+  app.delete("/api/rooms/:id/queue/:turnId", requireGrant("boards.manage"), async (req, res) => {
     res.json({ queued: await board().cancelQueued(req.params.id, req.params.turnId) });
   });
-  app.post("/api/rooms/:id/requests/:requestId/answer", async (req, res) => {
+  app.post("/api/rooms/:id/requests/:requestId/answer", requireGrant("chat.approve"), async (req, res) => {
     const { answer, denialReason } = body(roomAnswerSchema, req);
     await board().answerRequest(req.params.id, req.params.requestId, answer, denialReason);
     res.json({ ok: true });
   });
-  app.get("/api/rooms/:id/history", async (req, res) => {
+  app.get("/api/rooms/:id/history", requireGrant("chat.read"), async (req, res) => {
     const query = roomHistoryQuery.parse(req.query);
     res.json({ records: await board().roomHistory(req.params.id, query) });
   });
-  app.get("/api/rooms/:id/usage", async (req, res) => {
+  app.get("/api/rooms/:id/usage", requireGrant("chat.read"), async (req, res) => {
     res.json(await board().roomUsage(req.params.id));
   });
-  app.get("/api/rooms/:id/export", async (req, res) => {
+  app.get("/api/rooms/:id/export", requireGrant("chat.read"), async (req, res) => {
     const markdown = await board().exportRoom(req.params.id);
     const info = await board().roomSnapshot(req.params.id);
     const slug = info.room.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "room";
@@ -1638,7 +1893,7 @@ export function createApp(deps: AppDeps) {
   });
 
   // The room stream: same snapshot/replay semantics as a chat's.
-  app.get("/api/rooms/:id/events", async (req, res) => {
+  app.get("/api/rooms/:id/events", requireGrant("chat.read"), async (req, res) => {
     const manager = board();
     const last = parseLastEventId(req.headers["last-event-id"] ?? req.query.lastEventId);
     res.writeHead(200, {
@@ -1708,19 +1963,19 @@ export function createApp(deps: AppDeps) {
    * chat's own tool diffs, which a client already has; this only says which of them are
    * still in the file.
    */
-  app.get("/api/chats/:id/attribution", async (req, res) => {
+  app.get("/api/chats/:id/attribution", requireGrant("chat.read"), async (req, res) => {
     res.json((await attributionSnapshot(manager.get(req.params.id))) satisfies AttributionSnapshot);
   });
 
-  app.get("/api/chats/:id/review-threads", (req, res) => {
+  app.get("/api/chats/:id/review-threads", requireGrant("chat.read"), (req, res) => {
     res.json({ threads: reviewThreads.list(req.params.id) });
   });
-  app.post("/api/chats/:id/review-threads", async (req, res) => {
+  app.post("/api/chats/:id/review-threads", requireGrant("chat.write"), async (req, res) => {
     const { anchor, text } = body(createThreadSchema, req);
     res.status(201).json(await review(() => reviewThreads.create(req.params.id, anchor, text)));
   });
   /** Line moves one client's reconciliation pass found: the pin's hash matched at another line. */
-  app.post("/api/chats/:id/review-threads/reanchor", async (req, res) => {
+  app.post("/api/chats/:id/review-threads/reanchor", requireGrant("chat.write"), async (req, res) => {
     const { moves } = body(reanchorSchema, req);
     res.json({ moved: await reviewThreads.move(req.params.id, moves) });
   });
@@ -1729,7 +1984,7 @@ export function createApp(deps: AppDeps) {
    * same project, or a new one. While the target runs, the prompt queues as a
    * follow-up where the harness has them; otherwise the send waits for an idle chat.
    */
-  app.post("/api/chats/:id/review-threads/send", async (req, res) => {
+  app.post("/api/chats/:id/review-threads/send", requireGrant("chat.write"), async (req, res) => {
     const source = manager.get(req.params.id);
     const input = body(sendThreadsSchema, req);
     const threads = reviewThreads.list(source.chatId);
@@ -1755,20 +2010,20 @@ export function createApp(deps: AppDeps) {
     await reviewThreads.markSent(source.chatId, open.map((t) => t.id), Date.now());
     res.status(202).json({ accepted: true, targetChatId: target.chatId, sent: open.length } satisfies ReviewSendResult);
   });
-  app.post("/api/chats/:id/review-threads/:threadId/notes", async (req, res) => {
+  app.post("/api/chats/:id/review-threads/:threadId/notes", requireGrant("chat.write"), async (req, res) => {
     const { text } = body(replySchema, req);
     res.status(201).json(await review(() => reviewThreads.addNote(req.params.id, req.params.threadId, text)));
   });
-  app.post("/api/chats/:id/review-threads/:threadId/status", async (req, res) => {
+  app.post("/api/chats/:id/review-threads/:threadId/status", requireGrant("chat.write"), async (req, res) => {
     const { status } = body(threadStatusSchema, req);
     res.json(await review(() => reviewThreads.setStatus(req.params.id, req.params.threadId, status)));
   });
-  app.delete("/api/chats/:id/review-threads/:threadId", async (req, res) => {
+  app.delete("/api/chats/:id/review-threads/:threadId", requireGrant("chat.write"), async (req, res) => {
     if (!(await reviewThreads.remove(req.params.id, req.params.threadId))) throw new ChatError(404, "no_thread", "No such comment thread");
     res.json({ ok: true });
   });
 
-  app.post("/api/chats", async (req, res) => {
+  app.post("/api/chats", requireGrant("chat.write"), async (req, res) => {
     const input = body(createChatSchema, req);
     const adapter = await availableAdapter(input.harnessId);
     const ws = await workspaces.get(input.workspaceId);
@@ -1786,7 +2041,7 @@ export function createApp(deps: AppDeps) {
     res.status(201).json(chat.snapshot());
   });
 
-  app.post("/api/chats/resume", async (req, res) => {
+  app.post("/api/chats/resume", requireGrant("chat.write"), async (req, res) => {
     const input = body(resumeChatSchema, req);
     const adapter = await availableAdapter(input.harnessId);
     const prefix = `${adapter.id}:`;
@@ -1802,11 +2057,18 @@ export function createApp(deps: AppDeps) {
         throw new ChatError(409, "open_in_herdr", `This session is open in herdr (pane ${pane.paneId}, ${pane.status}): opening it here as well would run a second ${adapter.displayName} on the same session`);
       }
     }
-    // The harness itself says another of its processes owns the session (omp's lease: an omp in a terminal).
+    if (!manager.liveChatFor(adapter.id, nativeId) && handovers.has(input.sessionId) && !input.reclaim) {
+      throw new ChatError(409, "session_handed", `This session was handed to a terminal (${handovers.get(input.sessionId) ?? "its command is no longer retained"}); reclaim it before resuming it here`);
+    }
+    // Reclaim may happen only when a native lease no longer holds the session; otherwise keep the lock and never start a second writer.
     if (!manager.liveChatFor(adapter.id, nativeId) && (await adapter.heldElsewhere?.(nativeId))) {
       throw new ChatError(409, "session_held", `This session is open in another ${adapter.displayName}: close that one first, or opening it here would run a second ${adapter.displayName} on the same session`);
     }
+    if (input.reclaim && handovers.has(input.sessionId)) await handovers.take(input.sessionId);
     const chat = await manager.resume(adapter, ws, nativeId);
+    // Opening it read the session: a parked chat's mark said the live chat was gone, and this
+    // one is back — the same native session, a new chat id, no second writer.
+    void marks.set(`${adapter.id}:${nativeId}`, { parked: false }).catch(() => undefined);
     // A run was going when the last process stopped: its child died with it, so this
     // session carries the intent to carry on. One prompt, once, on the first open after
     // the restart — a chat nobody reopens starts nothing.
@@ -1821,7 +2083,7 @@ export function createApp(deps: AppDeps) {
    * extensions it loads are read again while the conversation stays. The old chat is
    * disposed and a new one resumes the session, so the answer carries the new chat id.
    */
-  app.post("/api/chats/:id/restart", async (req, res) => {
+  app.post("/api/chats/:id/restart", requireGrant("chat.write"), async (req, res) => {
     const old = manager.get(req.params.id);
     if (old.status !== "idle" && old.status !== "error") throw new ChatError(409, "busy", "Wait until the agent is idle");
     const prefix = `${old.adapter.id}:`;
@@ -1849,7 +2111,7 @@ export function createApp(deps: AppDeps) {
   });
 
   // An image under a prompt (see image-store): the id is the hash of its bytes, so it never changes.
-  app.get("/api/images/:id", (req, res) => {
+  app.get("/api/images/:id", requireGrant("chat.read"), (req, res) => {
     const image = /^[0-9a-f]{32}$/.test(req.params.id) ? storedImage(req.params.id) : null;
     if (!image) throw new ChatError(404, "no_image", "That image is no longer held; reload the chat");
     res.setHeader("Content-Type", image.mimeType);
@@ -1863,7 +2125,7 @@ export function createApp(deps: AppDeps) {
   // whose transcript carries that id, so one chat cannot read another's page.
   // Served as HTML, but to an opaque-origin frame (never allow-same-origin),
   // so its scripts cannot reach the app's session.
-  app.get("/api/chats/:id/html-render/:renderId", async (req, res) => {
+  app.get("/api/chats/:id/html-render/:renderId", requireGrant("chat.read"), async (req, res) => {
     const stateDir = deps.stateDir;
     if (!stateDir) throw new ChatError(404, "render_off", "HTML render is not wired on this server");
     const chat = manager.get(req.params.id);
@@ -1888,7 +2150,7 @@ export function createApp(deps: AppDeps) {
   // A deep link's key (chat-stream.ts): a live chat's id, or the stable namespaced session id
   // (`pi:<native>`), which survives the reopen that mints a new chat id. Answers what opens it;
   // a key nothing knows is a 404 the client renders inert (the hash cleared, no error).
-  app.get("/api/chats/link/:key", async (req, res) => {
+  app.get("/api/chats/link/:key", requireGrant("chat.read"), async (req, res) => {
     const key = String(req.params.key);
     if (!/^[\w.:+-]{1,160}$/.test(key)) throw new ChatError(400, "bad_link", "Not a chat link key");
     const direct = manager.peek(key);
@@ -1903,11 +2165,11 @@ export function createApp(deps: AppDeps) {
     throw new ChatError(404, "unknown_chat", "No chat or session answers to that link");
   });
 
-  app.get("/api/chats/:id", (req, res) => {
+  app.get("/api/chats/:id", requireGrant("chat.read"), (req, res) => {
     res.json(manager.get(req.params.id).snapshot());
   });
 
-  app.get("/api/chats/:id/events", (req, res) => {
+  app.get("/api/chats/:id/events", requireGrant("chat.read"), (req, res) => {
     const chat = manager.get(req.params.id);
     const last = parseLastEventId(req.headers["last-event-id"] ?? req.query.lastEventId);
     res.writeHead(200, {
@@ -1941,22 +2203,28 @@ export function createApp(deps: AppDeps) {
     });
   });
 
-  app.post("/api/chats/:id/pastes", express.json({ limit: "1100kb" }), async (req, res) => {
+  app.post("/api/chats/:id/pastes", requireGrant("chat.write"), express.json({ limit: "1100kb" }), async (req, res) => {
     const chat = manager.get(req.params.id);
     const { text } = body(uploadPasteSchema, req);
     res.status(201).json(await storePaste(chat.chatId, text));
   });
-  app.delete("/api/chats/:id/pastes/:pasteId", async (req, res) => {
+  app.delete("/api/chats/:id/pastes/:pasteId", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     await deletePaste(chat.chatId, req.params.pasteId);
     res.json({ ok: true });
   });
 
-  app.post("/api/chats/:id/messages", async (req, res) => {
+  app.post("/api/chats/:id/messages", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     const { text, images, mode, compactFirst, attachments } = body(sendMessageSchema, req);
     for (const image of images) {
       if (sniffImage(image.data) !== image.mimeType) throw new ChatError(400, "bad_image", "An attachment is not the image type it claims to be");
+    }
+    // The session was handed to a terminal (its resume line copied) and not reclaimed: writing
+    // here alongside the pasted line would be a second writer, so the send waits until the
+    // chat is closed (completing the handover) or reclaimed in the session list.
+    if (mode === "normal" && chat.sessionId && handovers.has(chat.sessionId)) {
+      throw new ChatError(409, "session_handed", `This session was handed to a terminal: reclaim it in the session list, or close the chat here first, so only one process writes it`);
     }
     const pastes = attachments.length > 0 ? await Promise.all(attachments.map((a) => resolvePaste(chat.chatId, a.id))) : [];
     const header = pastes
@@ -1966,7 +2234,7 @@ export function createApp(deps: AppDeps) {
     res.status(202).json({ accepted: true, mode });
   });
 
-  app.post("/api/chats/:id/rewind", async (req, res) => {
+  app.post("/api/chats/:id/rewind", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     const { turn, text, images } = body(rewindSchema, req);
     for (const image of images) {
@@ -1976,60 +2244,125 @@ export function createApp(deps: AppDeps) {
     res.status(202).json({ accepted: true });
   });
 
-  app.post("/api/chats/:id/abort", (req, res) => {
+  app.post("/api/chats/:id/abort", requireGrant("chat.write"), (req, res) => {
     const chat = manager.get(req.params.id);
     chat.abort().catch((error: unknown) => log(`abort failed: ${errorMessage(error)}`));
     res.status(202).json({ accepted: true });
   });
 
-  app.patch("/api/chats/:id/config", async (req, res) => {
+  app.patch("/api/chats/:id/config", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     await chat.setConfig(body(patchConfigSchema, req));
     res.json(chat.snapshot().config);
   });
 
   // A subagent's own transcript, for the viewer: read from the file its harness wrote.
-  app.get("/api/chats/:id/tools/:toolId/agents/:runId", async (req, res) => {
+  app.get("/api/chats/:id/tools/:toolId/agents/:runId", requireGrant("chat.read"), async (req, res) => {
     res.json(await manager.get(req.params.id).subagentTranscript(req.params.toolId, req.params.runId));
   });
 
-  app.get("/api/chats/:id/commands", async (req, res) => {
+  app.get("/api/chats/:id/commands", requireGrant("chat.read"), async (req, res) => {
     res.json({ commands: await manager.get(req.params.id).commands() });
   });
 
   // A chat's delegated tasks, for the panel above its composer: the same bounded rows its
   // snapshot carries (`task` events keep them current), read fresh for a panel opened late.
-  app.get("/api/chats/:id/tasks", (req, res) => {
+  app.get("/api/chats/:id/tasks", requireGrant("chat.read"), (req, res) => {
     res.json({ tasks: orchestration.tasksFor(manager.get(req.params.id)) });
+  });
+
+  /** Editable worker proposals are owned by this chat; a different browser chat cannot confirm them. */
+  app.get("/api/chats/:id/plans", requireGrant("chat.read"), (req, res) => {
+    const snap = manager.get(req.params.id).snapshot();
+    res.json({ plan: snap.plan ?? null });
+  });
+  app.post("/api/chats/:id/plans", requireGrant("chat.write"), async (req, res) => {
+    const input = body(workerPlanSaveSchema, req);
+    const args = { ...input, action: "save" as const };
+    res.status(201).json(await orchestration.editPlanFor(manager.get(req.params.id), args));
+  });
+  app.post("/api/chats/:id/plans/:action", requireGrant("chat.write"), async (req, res) => {
+    const input = body(workerPlanConfirmSchema, req);
+    const action = req.params.action;
+    if (action !== "confirm" && action !== "cancel") throw new ChatError(404, "not_found", "No such plan action");
+    res.json(await orchestration.editPlanFor(manager.get(req.params.id), { planId: input.planId, action }));
   });
 
   // The user stopping a child its chat's agent started. The tool's own cancel answers the model;
   // this one answers the panel, so a child that is slow to settle still comes back cancelled
   // rather than as a 504. Refusals are the tool's: unknown_task, not_your_task.
-  app.post("/api/chats/:id/tasks/:taskId/cancel", async (req, res) => {
+  app.post("/api/chats/:id/tasks/:taskId/cancel", requireGrant("chat.write"), async (req, res) => {
     res.json({ task: await orchestration.cancelFor(manager.get(req.params.id), req.params.taskId) });
   });
 
-  app.post("/api/chats/:id/models/refresh", async (req, res) => {
+  // A finished isolated worker is only reviewed by the person's explicit decision; apply never
+  // races a moved lead or worker head. Cleanup still refuses unreviewed changes.
+  const integrationOf = (chatId: string, id: string): IntegrationRecord => {
+    // Every browser action passes through the existing parent ownership check first.
+    void orchestration.taskFor(manager.get(chatId), id);
+    const record = integrationLedger?.get(id);
+    if (!record) throw new ChatError(404, "no_integration", `No review record for task ${id}`);
+    return record;
+  };
+  app.get("/api/chats/:id/tasks/:taskId/review", requireGrant("chat.read"), async (req, res) => {
+    const record = integrationOf(req.params.id, req.params.taskId);
+    const ws = await workspaces.get(record.workspaceId);
+    const heads = integrationLedger
+      ? await integrationLedger.headsMatch(record, { root: ws.path, ws, trees: projectTrees as never }).catch(() => null)
+      : null;
+    res.json({ record, headsMatch: heads?.match ?? null, reason: heads?.reason ?? null });
+  });
+  app.post("/api/chats/:id/tasks/:taskId/review", requireGrant("workspaces.manage"), async (req, res) => {
+    if (!integrationLedger) throw new ChatError(501, "review_off", "Reviews are not wired on this server");
+    const input = body(taskReviewDecisionSchema, req);
+    const ws = await workspaces.get(input.workspaceId);
+    const by = requester(req, res);
+    const who = by.local ? "local" : by.authority || by.kind;
+    const result = await integrationLedger.reviewTask(req.params.taskId, input.decision, input.note, who, {
+      root: ws.path,
+      ws,
+      trees: projectTrees as never,
+    });
+    res.json(result);
+  });
+  app.post("/api/chats/:id/tasks/:taskId/unreview", requireGrant("workspaces.manage"), async (req, res) => {
+    if (!integrationLedger) throw new ChatError(501, "review_off", "Reviews are not wired on this server");
+    res.json({ record: await integrationLedger.unreview(req.params.taskId) });
+  });
+  app.get("/api/chats/:id/tasks/:taskId/review/diff", requireGrant("chat.read"), async (req, res) => {
+    if (!integrationLedger) throw new ChatError(501, "review_off", "Reviews are not wired on this server");
+    const record = integrationOf(req.params.id, req.params.taskId);
+    const { path: file } = raceDiffQuery.parse(req.query);
+    const ws = await workspaces.get(record.workspaceId);
+    res.json(await integrationLedger.diff(req.params.taskId, file, { root: ws.path, ws, trees: projectTrees as never }));
+  });
+  app.post("/api/chats/:id/tasks/:taskId/review/cleanup", requireGrant("workspaces.manage"), async (req, res) => {
+    if (!integrationLedger) throw new ChatError(501, "review_off", "Reviews are not wired on this server");
+    const record = integrationOf(req.params.id, req.params.taskId);
+    const ws = await workspaces.get(record.workspaceId);
+    res.json(await integrationLedger.cleanup(req.params.taskId, { root: ws.path, ws, trees: projectTrees as never }));
+  });
+
+  app.post("/api/chats/:id/models/refresh", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     await chat.refreshModels();
     res.json(chat.snapshot().config);
   });
 
   // An edited or removed queued message: the whole queue, as it should now be.
-  app.put("/api/chats/:id/queue", async (req, res) => {
+  app.put("/api/chats/:id/queue", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     await chat.replaceQueue(body(queueSchema, req));
     res.json({ accepted: true });
   });
 
-  app.post("/api/chats/:id/rename", async (req, res) => {
+  app.post("/api/chats/:id/rename", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     await chat.rename(body(renameSchema, req).name);
     res.json({ title: chat.title });
   });
 
-  app.post("/api/chats/:id/compact", (req, res) => {
+  app.post("/api/chats/:id/compact", requireGrant("chat.write"), (req, res) => {
     const chat = manager.get(req.params.id);
     const { instructions } = body(compactSchema, req);
     if (chat.status !== "idle") throw new ChatError(409, "busy", "Compact only while idle");
@@ -2042,14 +2375,14 @@ export function createApp(deps: AppDeps) {
    * fires with every browser closed; the route is bounded a little under
    * setTimeout's own ceiling (24.8 days), which is longer than any limit window.
    */
-  app.post("/api/chats/:id/continue-at", (req, res) => {
+  app.post("/api/chats/:id/continue-at", requireGrant("chat.write"), (req, res) => {
     const chat = manager.get(req.params.id);
     const { at } = body(continueAtSchema, req);
     if (at !== null && at > Date.now() + 24 * 86_400_000) throw new ChatError(400, "bad_continue", "That is further away than a month");
     chat.scheduleContinue(at);
     res.json({ ok: true, continueAt: chat.continueAt });
   });
-  app.post("/api/chats/:id/run", async (req, res) => {
+  app.post("/api/chats/:id/run", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     const { command, shell } = body(runCommandSchema, req);
     log(`run: a ${shell} command in ${chat.workspace.name}`);
@@ -2058,11 +2391,11 @@ export function createApp(deps: AppDeps) {
   });
 
   // The project's git status (the composer's git row) and a listed file's diff.
-  app.get("/api/chats/:id/git", async (req, res) => {
+  app.get("/api/chats/:id/git", requireGrant("chat.read"), async (req, res) => {
     const chat = manager.get(req.params.id);
     res.json({ status: await gitStatus(chat.workspace.path).catch(() => null), direnv: direnvState(chat.workspace.path) });
   });
-  app.get("/api/chats/:id/git/diff", async (req, res) => {
+  app.get("/api/chats/:id/git/diff", requireGrant("chat.read"), async (req, res) => {
     const chat = manager.get(req.params.id);
     const file = typeof req.query.path === "string" ? req.query.path : "";
     if (!file || file.length > 4096) throw new ChatError(400, "bad_path", "Name a changed file");
@@ -2074,8 +2407,11 @@ export function createApp(deps: AppDeps) {
     res.json(diff);
   });
 
-  const gitWrite = async (req: Request<{ id: string }>, run: (cwd: string) => Promise<GitStatus>) => {
+  const gitWrite = async (req: Request<{ id: string }>, res: Response, run: (cwd: string) => Promise<GitStatus>) => {
     const chat = manager.get(req.params.id);
+    // A remote device may read the project's git status but cannot change it; even a full session has this bound.
+    // Tailscale Serve arrives via loopback but remains a remote trusted principal; its requests do not count as this machine.
+    if (!requester(req, res).local || res.locals.hostKind === "remote" || req.headers["tailscale-user-login"]) throw new ChatError(403, "local_only", "Changing this machine's git checkout needs the machine itself");
     try {
       return await run(chat.workspace.path);
     } catch (error) {
@@ -2084,17 +2420,17 @@ export function createApp(deps: AppDeps) {
     }
   };
   /** Stage, unstage, or commit from the git panel: every write this app makes to a repository, by hand. */
-  app.post("/api/chats/:id/git/stage", async (req, res) => {
+  app.post("/api/chats/:id/git/stage", requireGrant("chat.write"), async (req, res) => {
     const { paths } = body(gitPathsSchema, req);
-    res.json({ status: await gitWrite(req, (cwd) => stageFiles(cwd, paths)) });
+    res.json({ status: await gitWrite(req, res, (cwd) => stageFiles(cwd, paths)) });
   });
-  app.post("/api/chats/:id/git/unstage", async (req, res) => {
+  app.post("/api/chats/:id/git/unstage", requireGrant("chat.write"), async (req, res) => {
     const { paths } = body(gitPathsSchema, req);
-    res.json({ status: await gitWrite(req, (cwd) => unstageFiles(cwd, paths)) });
+    res.json({ status: await gitWrite(req, res, (cwd) => unstageFiles(cwd, paths)) });
   });
-  app.post("/api/chats/:id/git/commit", async (req, res) => {
+  app.post("/api/chats/:id/git/commit", requireGrant("chat.write"), async (req, res) => {
     const { message } = body(gitCommitSchema, req);
-    res.json({ status: await gitWrite(req, (cwd) => commitStaged(cwd, message)) });
+    res.json({ status: await gitWrite(req, res, (cwd) => commitStaged(cwd, message)) });
   });
 
   // File checkpoints: what restoring a turn would do, doing it, and putting the files back again.
@@ -2112,27 +2448,27 @@ export function createApp(deps: AppDeps) {
     throw error instanceof ChatError ? error : new ChatError(422, "checkpoint_failed", errorMessage(error));
   };
   // The file timeline: each prompt's checkpoint, and what changed between any two of them (or now).
-  app.get("/api/chats/:id/checkpoints", async (req, res) => {
+  app.get("/api/chats/:id/checkpoints", requireGrant("chat.read"), async (req, res) => {
     const cp = checkpointsOf(manager.get(req.params.id), false);
     await cp.start();
     res.json({ points: cp.points() });
   });
-  app.get("/api/chats/:id/checkpoints/compare", async (req, res) => {
+  app.get("/api/chats/:id/checkpoints/compare", requireGrant("chat.read"), async (req, res) => {
     const cp = checkpointsOf(manager.get(req.params.id), false);
     const { from, to } = checkpointCompareSchema.parse(req.query);
     res.json((await cp.compare(from, to).catch(checkpointFailure)) satisfies CheckpointComparison);
   });
-  app.get("/api/chats/:id/checkpoints/:turn", async (req, res) => {
+  app.get("/api/chats/:id/checkpoints/:turn", requireGrant("chat.read"), async (req, res) => {
     const cp = checkpointsOf(manager.get(req.params.id), false);
     const { files } = await cp.preview(turnOf(req.params.turn)).catch(checkpointFailure);
     res.json({ files } satisfies CheckpointPreview);
   });
-  app.post("/api/chats/:id/checkpoints/:turn/restore", async (req, res) => {
+  app.post("/api/chats/:id/checkpoints/:turn/restore", requireGrant("chat.write"), async (req, res) => {
     const cp = checkpointsOf(manager.get(req.params.id), true);
     const { paths } = body(restoreSchema, req);
     res.json((await cp.restore(turnOf(req.params.turn), paths).catch(checkpointFailure)) satisfies CheckpointRestored);
   });
-  app.post("/api/chats/:id/checkpoints/put-back", async (req, res) => {
+  app.post("/api/chats/:id/checkpoints/put-back", requireGrant("chat.write"), async (req, res) => {
     const cp = checkpointsOf(manager.get(req.params.id), true);
     const { tree, paths } = body(putBackSchema, req);
     const all = paths ?? (await cp.previewTree(tree).catch(checkpointFailure)).files.map((f) => f.path);
@@ -2143,7 +2479,7 @@ export function createApp(deps: AppDeps) {
     res.json((await cp.restore(null, all, tree).catch(checkpointFailure)) satisfies CheckpointRestored);
   });
 
-  app.post("/api/chats/:id/fork", async (req, res) => {
+  app.post("/api/chats/:id/fork", requireGrant("chat.write"), async (req, res) => {
     const { through } = body(forkChatSchema, req);
     const chat = manager.get(req.params.id);
     if (!chat.adapter.capabilities.supportsFork) throw new ChatError(400, "unsupported", `${chat.adapter.displayName} sessions cannot be forked`);
@@ -2190,7 +2526,7 @@ export function createApp(deps: AppDeps) {
     if (draft) await moved.send(draft, "normal").catch(() => undefined);
     return moved;
   };
-  app.post("/api/chats/:id/handoff", async (req, res) => {
+  app.post("/api/chats/:id/handoff", requireGrant("chat.write"), async (req, res) => {
     const { harness, through, prompt } = body(handoffSchema, req);
     res.status(201).json((await handoffChat(manager.get(req.params.id), harness, { ...(through ? { through } : {}), ...(prompt ? { prompt } : {}) })).snapshot());
   });
@@ -2202,7 +2538,7 @@ export function createApp(deps: AppDeps) {
    * The seed is a file the harness writes, so nothing is summed by a model, nothing
    * is paid for, and this chat's session file is only read.
    */
-  app.post("/api/chats/:id/rotate", async (req, res) => {
+  app.post("/api/chats/:id/rotate", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     if (!chat.adapter.capabilities.supportsHandoff) {
       throw new ChatError(400, "unsupported", `${chat.adapter.displayName} cannot start a session from a transcript: compact instead`);
@@ -2233,7 +2569,7 @@ export function createApp(deps: AppDeps) {
    * either session file by awui: the other agent's reply is that chat's own
    * transcript, and the cards in this transcript are records in the state folder.
    */
-  app.post("/api/chats/:id/second-opinion", async (req, res) => {
+  app.post("/api/chats/:id/second-opinion", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     const { turn, harness, ask } = body(secondOpinionSchema, req);
     const target = await availableAdapter(harness);
@@ -2259,7 +2595,7 @@ export function createApp(deps: AppDeps) {
   });
 
   /** A chat's second opinions, newest first, each with what the other agent has said so far. */
-  app.get("/api/chats/:id/second-opinion", (req, res) => {
+  app.get("/api/chats/:id/second-opinion", requireGrant("chat.read"), (req, res) => {
     const opinions = secondOpinions.list(req.params.id).map((opinion) => {
       const target = manager.peek(opinion.chatId);
       const answer = target ? reportExcerpt(target.snapshot().items) : null;
@@ -2275,7 +2611,7 @@ export function createApp(deps: AppDeps) {
    * chat at that turn, which is as capable as the chat it came from and says so.
    * Either way it is hidden from every session list: it is a look, not a session.
    */
-  app.post("/api/chats/:id/side", async (req, res) => {
+  app.post("/api/chats/:id/side", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     const { turn, question } = body(sideThreadSchema, req);
     const turns = chat.userTurns();
@@ -2314,7 +2650,7 @@ export function createApp(deps: AppDeps) {
     const moved = await handoffChat(chat, step.harness, step.prompt ? { prompt: step.prompt } : {});
     if (rest.length > 0) moved.setChain(rest, true);
   };
-  app.put("/api/chats/:id/chain", async (req, res) => {
+  app.put("/api/chats/:id/chain", requireGrant("chat.write"), async (req, res) => {
     const { steps, resume } = body(chainSchema, req);
     const chat = manager.get(req.params.id);
     for (const step of steps) {
@@ -2330,14 +2666,14 @@ export function createApp(deps: AppDeps) {
     res.json({ chain: snap.chain, paused: snap.chainPaused });
   });
 
-  app.post("/api/chats/:id/requests/:requestId", async (req, res) => {
+  app.post("/api/chats/:id/requests/:requestId", requireGrant("chat.approve"), async (req, res) => {
     const chat = manager.get(req.params.id);
     const { answer, denialReason } = body(answerSchema, req);
     const outcome = chat.answer(req.params.requestId, answer, denialReason);
     res.json({ outcome });
   });
 
-  app.post("/api/chats/:id/dispose", async (req, res) => {
+  app.post("/api/chats/:id/dispose", requireGrant("chat.write"), async (req, res) => {
     const chat = manager.get(req.params.id);
     await chat.dispose("Closed by user");
     res.json({ disposed: true });

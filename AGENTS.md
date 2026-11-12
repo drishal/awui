@@ -126,12 +126,15 @@ src/server/
   checkpoints.ts             Per-prompt work-tree snapshots in a shadow git repo; turn undo.
   workspaces.ts              Realpath confinement for folder browse and every project lookup, refusing outside-root replacements.
   envelope.ts                 The hidden envelope: markers, escaping, and the visible remainder of a send that is one contract; Board consultations are the first user.
-  worktrees.ts               Managed isolated Git checkouts under `<project>/.awui/worktrees`, with per-workspace lock root and atomic metadata; prune refuses a dirty tree.
+  worktrees.ts               Managed isolated Git checkouts under `<project>/.awui/worktrees`, with per-workspace lock root and atomic metadata; prune refuses a dirty tree, `checkout-pr` checks out an existing PR's head branch isolated, and `archiveMerged` archives a checkout only when its PR merged, the tree is clean, and identity matches.
+  handover.ts                Sessions handed to a native CLI: an exact quoted resume line and lock, reclaimed once no native lease holds it; never a second writer.
+  orchestration/scope.ts     The write-scope guard for a delegated task: glob-normalized assignment, a private scratch dir under `<project>/.awui/scratch`, and the verdict for a tool call or a harness permission request; pure, so the counts and rows read one wording.
   races.ts                   A comparison recorded: each worktree member's fork point, live status, counts and one file's diff; picking a winner (keep, or apply into a clean checkout at the fork point, never committing) and cleaning up a loser git agrees to drop.
   terminal.ts, terminal-backend.ts  Bounded project PTYs: real @lydell/node-pty for source/Node, Bun.Terminal in the compiled app. Validated cwd, process-tree kill on last disconnect/server exit, 1 MiB replay, 60 s exit retention. Never a shell-pipe wrapper; only explicit interactive shells.
   binary-runtime.ts          Browser preview's CommonJS package beside the executable. The trusted PTY page is src/web/terminal-shell.html, not a server module.
   render-preview.ts          Authenticated bounded Chromium capture of an agent's own stored page; in-memory fixed-origin rendering, no other network/fetch/cookies/storage, timeout, console cap and certainly no app frame sharing.
-  github.ts                  Bounded local gh/git workflows: existing-PR lookup, explicit push, PR create, normalized checks; never reads or sends credentials to a browser.
+  stacks.ts                  Stacked pull requests per project: "stack above #N" makes the PR below's head the target, the ordered stack saved in the state folder, merge-through bottom-up with `gh pr merge --merge` only; per-layer status and checks from the same bounded gh calls.
+  github.ts                  Bounded local gh/git workflows: existing-PR lookup, explicit push, PR create, PR detail by number, normalized checks; never reads or sends credentials to a browser.
   overview-events.ts         Bounded live metadata-only stream for chat status and room summaries (500 events max, no transcripts). UI shares one EventSource per tab with fallback full refresh; native IDs remain harness-scoped and disposed clear live/asking status.
   paste-store.ts             1 MiB file-backed large pastes in /tmp, seven-day retention, delete-on-unsent and bounded expiry sweep; agent reads actual retained file paths.
   routines.ts, routines-timer.ts, routine-runner.ts, routine-runs.ts  Server-owned scheduled prompts: bounded store, one due claim before launch, next-slot retry across overlap failures; a run is quiet (its verdict is posted, quiet, or failed, kept in the run history, and its session is hidden from the user's list).
@@ -143,6 +146,10 @@ src/server/
   image-store.ts, notify.ts, limits.ts, session-marks.ts, run-command.ts, state-file.ts   Side features (see their header comments).
   agent-status.ts             The status line an agent sets for its chat (the orchestration `set_status` tool): one
                               word plus one bounded sentence, per native session, drawn in the sidebar and header.
+  orchestration/decisions.ts  The decision gate behind a delegated worker's `request_decision` tool: a recorded
+                              question and answer per task (caller-stable `decisionId`, a denial's corrective reason),
+                              pending across a restart, never auto-answered; the parked call and the ledger are the
+                              orchestrator's, the transcript item and the answer route are Chat's.
   project-config.ts           A project's checked-in `awui.yml` (base ref, shared symlinks, one setup command) as
                               untrusted input: its hash, the trust recorded in the state folder, and its status.
   resume-intent.ts            Sessions that were running when the process stopped: one "Resume working." on their next open, never a harness started by a restart.
@@ -366,7 +373,10 @@ if every test passes.
   far wider than the column), `moaref` (a MoA turn's reference advice as
   Markdown folds, with the fan-out on the status line), `delegate` (delegate a
   task through the real orchestration endpoint, then wait for it: a child chat
-  appears; with `slow`, the child runs on, so a panel's Cancel has a live row), and the Board scenarios
+  appears; with `slow`, the child runs on, so a panel's Cancel has a live row),
+  `unsafe` (a real write to `unsafe-outside.ts` in the project root, which a
+  delegated child's write scope refuses; with `edit`, the tracked in-scope
+  edit beside it), and the Board scenarios
   `consult` (a valid control document on the first invocation, a plain answer
   once its consultation result comes back), `consult-bad`, `consult-unknown`,
   `consult-self`, `consult-dup` (malformed, off-allowlist, self, repeated),

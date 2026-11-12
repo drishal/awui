@@ -15,6 +15,7 @@ import { HarnessRegistry } from "./harness/registry.js";
 import { hashPassword, loadCredentials, PasswordAuth } from "./auth.js";
 import { cachedLanHosts, sampleLanHosts } from "./network.js";
 import { loadOrCreateSecret, Security } from "./security.js";
+import { InviteStore, invitesFileOf } from "./grants.js";
 import { embeddedVersion, extractEmbeddedExtensions, isEmbedded } from "./embedded.js";
 import "./assets.gen.js";
 import { installTui } from "./install-tui.js";
@@ -31,16 +32,20 @@ import { SessionMarks, staleSessions, type SweepCandidate } from "./session-mark
 import { AgentStatuses } from "./agent-status.js";
 import { ProjectConfigTrust } from "./project-config.js";
 import { ResumeIntents } from "./resume-intent.js";
+import { Handovers } from "./handover.js";
 import { TerminalManager } from "./terminal.js";
 import { Routines } from "./routines.js";
 import { RoutineRuns } from "./routine-runs.js";
 import { startDue } from "./routines-timer.js";
+import { startDueHeartbeats } from "./heartbeat-runner.js";
+import { Heartbeats } from "./heartbeats.js";
 import { routineNote, runRoutine } from "./routine-runner.js";
 import { SessionOrder } from "./session-order.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { ReviewThreads } from "./review-threads.js";
 import { SecondOpinions } from "./second-opinions.js";
 import { Races, raceChatsFor } from "./races.js";
+import { PrStacks } from "./stacks.js";
 import { Limits } from "./limits.js";
 import { Notifier, roomPushNote } from "./notify.js";
 import { PresenceTable } from "./presence.js";
@@ -207,8 +212,10 @@ async function main(): Promise<void> {
   const agentStatuses = await AgentStatuses.open(path.join(config.stateDir, "agent-status.json"));
   const projectConfigTrust = await ProjectConfigTrust.open(path.join(config.stateDir, "project-config-trust.json"));
   const resumeIntents = await ResumeIntents.open(config.stateDir);
+  const handovers = await Handovers.open(config.stateDir);
   const routines = await Routines.open(config.stateDir);
   const routineRuns = await RoutineRuns.open(config.stateDir);
+  const heartbeats = await Heartbeats.open(config.stateDir);
 
   // Scheduled runs: every 30 seconds, start whatever is due. The store claims a
   // routine before it starts, so overlapping ticks cannot run one twice; a failure
@@ -240,6 +247,9 @@ async function main(): Promise<void> {
       Date.now(),
       (routine, error) => console.error(`awui: routine "${routine.name}" did not start: ${error instanceof Error ? error.message : String(error)}`),
     );
+    // Agent heartbeats sweep on the same tick: a beat whose target session is gone is
+    // recorded skipped, so a vanished scheduler neither spins nor respawns itself.
+    void startDueHeartbeats(heartbeats, registry, manager, Date.now(), (line) => console.log(`awui: heartbeat ${line}`), notifier).catch((error: unknown) => console.error(`awui: heartbeat sweep failed: ${error instanceof Error ? error.message : String(error)}`));
   }, 30_000);
   routineTimer.unref();
   // Settling by age: config.yml's settle_after_days settles sessions nobody has touched for
@@ -277,6 +287,7 @@ async function main(): Promise<void> {
   const reviewThreads = await ReviewThreads.open(config.stateDir);
   const secondOpinions = await SecondOpinions.open(config.stateDir);
   const races = await Races.open(config.stateDir, raceChatsFor(manager));
+  const prStacks = await PrStacks.open(config.stateDir, workspaces);
   const limits = await Limits.open(registry, config.stateDir);
   limits.warm();
   const notifier = await Notifier.open(config.stateDir, (m) => console.error(`awui: ${m}`));
@@ -300,7 +311,7 @@ async function main(): Promise<void> {
   const pairingUrls = [...lanUrls, ...config.allowedHosts.map((h) => `https://${h}/`)];
   const webDir = process.env.AWUI_WEB_DIR ?? (root === null ? null : path.join(root, "dist", "web"));
   const terminals = new TerminalManager();
-  const app = createApp({
+  const app = await createApp({
     version: pkg.version,
     home: config.home,
     registry,
@@ -316,6 +327,7 @@ async function main(): Promise<void> {
     agentStatuses,
     projectConfigTrust,
     resumeIntents,
+    handovers,
     routines,
     routineRuns,
     order,
@@ -323,13 +335,18 @@ async function main(): Promise<void> {
     reviewThreads,
     secondOpinions,
     races,
+    prStacks,
     limits,
     notifier,
     presence,
     boards,
     checkpointsDir: path.join(config.stateDir, "checkpoints"),
     stateDir: config.stateDir,
+    invites: new InviteStore(invitesFileOf(config.stateDir)),
     orchestrationLimits: orchLimits,
+    // Finished chats nobody has looked at for this long get their harness child parked; opening
+    // the chat again resumes the same native session. 0 (config.yml unset) is off.
+    ...(config.hibernateAfterMinutes > 0 ? { hibernateAfterMs: config.hibernateAfterMinutes * 60_000 } : {}),
     terminals,
     settings: {
       configDir: config.configDir,

@@ -19,6 +19,8 @@ const task = (over: Partial<DelegatedTaskView> = {}): DelegatedTaskView => ({
   activity: null,
   result: null,
   asking: null,
+  scope: null,
+  reviewable: false,
   ...over,
 });
 

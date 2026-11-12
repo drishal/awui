@@ -1,8 +1,9 @@
-// Push and create pull requests using the project's own gh authentication.
+// Push, create, and stack pull requests using the project's own gh authentication.
 // No remote URL or credentials are fabricated here. The server identifies the
-// actual branch and PR; this panel presents the confirmed outcome only.
+// actual branch, PR, and stack layers; this panel presents the confirmed outcome
+// only, and every write (push, create, merge, archive) is one deliberate action.
 import { useEffect, useState } from "react";
-import type { WorkspaceInfo } from "../../shared/protocol.js";
+import type { PrStack, WorkspaceInfo } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { IconBranch, IconRefresh } from "../icons.js";
@@ -22,6 +23,16 @@ interface Check {
   link: string | null;
 }
 
+interface Layer {
+  pr: number;
+  url: string;
+  title: string;
+  state: string;
+  baseBranch: string;
+  headBranch: string;
+  checks: Check[];
+}
+
 export function GitHubPanel({ workspace, onClose }: { workspace: WorkspaceInfo; onClose: () => void }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [checks, setChecks] = useState<Check[]>([]);
@@ -30,7 +41,14 @@ export function GitHubPanel({ workspace, onClose }: { workspace: WorkspaceInfo; 
   const [title, setTitle] = useState("");
   const [base, setBase] = useState("main");
   const [body, setBody] = useState("");
-  const [busy, setBusy] = useState<"load" | "push" | "pr" | null>("load");
+  const [busy, setBusy] = useState<"load" | "push" | "pr" | "merge" | null>("load");
+  const [stack, setStack] = useState<PrStack | null>(null);
+  /** The PR to stack above, and the stacked PR's own title/description. */
+  const [above, setAbove] = useState("");
+  const [stackTitle, setStackTitle] = useState("");
+  const [stackBody, setStackBody] = useState("");
+  const [stackPush, setStackPush] = useState(false);
+  const [mergeArchive, setMergeArchive] = useState(false);
 
   const refresh = async () => {
     setBusy("load");
@@ -56,6 +74,7 @@ export function GitHubPanel({ workspace, onClose }: { workspace: WorkspaceInfo; 
       }
       const failed = [check, current].find((r) => r.status === "rejected");
       if (failed) setError(errorText(failed.reason));
+      setStack((await api<{ stacks: PrStack[] }>(`/api/workspaces/${workspace.id}/pr-stack`)).stacks[0] ?? null);
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(null); }
   };
@@ -78,6 +97,42 @@ export function GitHubPanel({ workspace, onClose }: { workspace: WorkspaceInfo; 
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(null); }
   };
+  // Stack this PR above #above: the server makes that PR's head branch the target.
+  const stackOn = async () => {
+    setBusy("pr"); setError(null);
+    try {
+      const result = await api<{ stack: PrStack }>(`/api/workspaces/${workspace.id}/pr-stack`, { body: { above: Number(above), title: stackTitle, body: stackBody, push: stackPush } });
+      setStack(result.stack);
+      setStackTitle(""); setStackBody(""); setAbove("");
+      await refresh();
+    } catch (e) { setError(errorText(e)); }
+    finally { setBusy(null); }
+  };
+  // Start a stack on the explicit base typed in the form.
+  const stackFrom = async () => {
+    setBusy("pr"); setError(null);
+    try {
+      const result = await api<{ stack: PrStack }>(`/api/workspaces/${workspace.id}/pr-stack`, { body: { base, title: stackTitle, body: stackBody, push: stackPush } });
+      setStack(result.stack);
+      setStackTitle(""); setStackBody("");
+      await refresh();
+    } catch (e) { setError(errorText(e)); }
+    finally { setBusy(null); }
+  };
+  // Merge bottom-up through gh; the refusal, when one comes, is the actionable error.
+  const merge = async () => {
+    if (!stack) return;
+    setBusy("merge"); setError(null);
+    try {
+      const result = await api<{ stack: PrStack; refusal: { pr: number; message: string } | null; archiveRefusals: Array<{ pr: number; message: string }> }>(`/api/workspaces/${workspace.id}/pr-stack/${stack.id}/merge`, { method: "POST", body: { archive: mergeArchive } });
+      setStack(result.stack);
+      const notes: string[] = [];
+      if (result.refusal) notes.push(`#${result.refusal.pr} could not be merged: ${result.refusal.message}`);
+      for (const refusal of result.archiveRefusals) notes.push(`#${refusal.pr}'s checkout could not be archived: ${refusal.message}`);
+      if (notes.length > 0) setError(notes.join(" · "));
+    } catch (e) { setError(errorText(e)); }
+    finally { setBusy(null); }
+  };
 
   return (
     <Dialog title={`GitHub for ${workspace.name}`} onClose={onClose} className="dialog-wide">
@@ -96,6 +151,39 @@ export function GitHubPanel({ workspace, onClose }: { workspace: WorkspaceInfo; 
       </div>
       <h3>Checks</h3>
       {checks.length === 0 ? <p className="muted">No reported checks are available for the current PR.</p> : <ul className="github-checks">{checks.map((check) => <li key={check.name}><span>{check.name}</span><span className={`github-check is-${check.state}`}>{check.state}</span>{check.link ? <a href={check.link} target="_blank" rel="noreferrer">View</a> : null}</li>)}</ul>}
+      {stack && stack.layers.length > 0 ? <>
+        <h3>Stack</h3>
+        <p className="muted">Merged bottom-up: each layer goes in after the one below it. Creating a stacked PR does not push or merge anything by itself.</p>
+        <ul className="github-stack">
+          {stack.layers.map((layer) => <li key={layer.pr} className="github-stack-row">
+            <a href={layer.url} target="_blank" rel="noreferrer">#{layer.pr}</a>
+            <span className="github-stack-title">{layer.title}</span>
+            <span className={`github-check is-${layer.state.toLowerCase()}`}>{layer.state}</span>
+            <span className="muted github-stack-base">→ {layer.baseBranch}</span>
+            {layer.checks.length > 0 ? <span className="github-stack-checks">{layer.checks.filter((c) => c.state === "pass").length}/{layer.checks.length} checks</span> : null}
+          </li>)}
+        </ul>
+        <div className="github-actions">
+          <button className="btn btn-primary" disabled={busy !== null || !stack.layers.some((l) => l.state === "OPEN" || l.state === "DRAFT")} onClick={() => void merge()}>{busy === "merge" ? "Merging stack…" : "Merge stack bottom-up"}</button>
+          <label className="worktree-setup-check">
+            <input type="checkbox" checked={mergeArchive} onChange={(e) => setMergeArchive(e.target.checked)} />
+            Archive checkouts whose PRs merge
+          </label>
+        </div>
+      </> : null}
+      <h3>Stack a new pull request</h3>
+      <p className="muted">Puts a new PR on top of #above: that PR's head branch becomes the new PR's target.</p>
+      <label className="form-row">Stack above (PR number) <input className="input" value={above} onChange={(e) => setAbove(e.target.value)} maxLength={5} placeholder="42, empty to start a stack on the target branch" /></label>
+      <label className="form-row">Title <input className="input" value={stackTitle} onChange={(e) => setStackTitle(e.target.value)} maxLength={200} placeholder="What this layer changes" /></label>
+      <label className="form-row">Description <textarea className="input" rows={4} value={stackBody} onChange={(e) => setStackBody(e.target.value)} maxLength={20000} placeholder="Why this layer matters" /></label>
+      <label className="worktree-setup-check">
+        <input type="checkbox" checked={stackPush} onChange={(e) => setStackPush(e.target.checked)} />
+        Push the checked-out branch to origin first
+      </label>
+      <div className="github-actions">
+        <button className="btn btn-primary" disabled={busy !== null || !stackTitle.trim() || !above.trim()} onClick={() => void stackOn()}>{busy === "pr" ? "Creating pull request…" : "Stack above #N"}</button>
+        <button className="btn btn-ghost" disabled={busy !== null || !stackTitle.trim() || !base.trim()} onClick={() => void stackFrom()}>Start a stack on {base || "the target branch"}</button>
+      </div>
       <h3>New pull request</h3>
       <p className="muted">Your explicit push creates the upstream branch. Creating a PR does not push or merge anything automatically.</p>
       <label className="form-row">Target branch <input className="input" value={base} onChange={(e) => setBase(e.target.value)} maxLength={120} /></label>

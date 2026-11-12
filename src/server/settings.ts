@@ -7,7 +7,7 @@ import path from "node:path";
 import { parseDocument } from "yaml";
 import type { RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch } from "../shared/protocol.js";
 import { ChatError } from "./chats/chat.js";
-import { acpAgents, ConfigError, DEFAULT_PORT, expandHome, loadConfig, normalizeAuthority, USERNAME_PATTERN, type AcpAgentConfig } from "./config.js";
+import { acpAgents, agentProfiles, ConfigError, DEFAULT_PORT, expandHome, loadConfig, normalizeAuthority, USERNAME_PATTERN, type AcpAgentConfig } from "./config.js";
 import { checkUserConfig, CONFIG_FILE, configEnv, UserConfigError, type UserConfig } from "./user-config.js";
 
 /** The settings the running server started with, as config.yml would state them. */
@@ -106,6 +106,7 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
       envNames: Object.keys(entry.env ?? {}),
       authMethod: entry.auth_method ?? null,
     })),
+    agentProfiles: agentProfiles(c),
   };
 }
 
@@ -236,6 +237,16 @@ export function writeSettings(ctx: SettingsContext, patch: SettingsPatch, who: R
       };
     });
     set(["harnesses", "acp"], list);
+  }
+  if (patch.agentProfiles !== undefined) {
+    set(["agent_profiles"], patch.agentProfiles.map((entry) => ({
+      name: entry.name,
+      harness: entry.harness,
+      ...(entry.model ? { model: entry.model } : {}),
+      ...(entry.thinking ? { thinking: entry.thinking } : {}),
+      ...(entry.permissionMode ? { permission_mode: entry.permissionMode } : {}),
+      ...(entry.note ? { note: entry.note } : {}),
+    })));
   }
   const harnesses = doc.getIn(["harnesses"]) as { items?: unknown[] } | undefined;
   if (harnesses && Array.isArray(harnesses.items) && harnesses.items.length === 0) doc.deleteIn(["harnesses"]);

@@ -87,6 +87,8 @@ const RowActions = createContext<{
   warm: (s: ProjectSession, why: "hover" | "press") => void;
   beside?: (s: ProjectSession) => void;
   resumable: (s: ProjectSession) => boolean;
+  /** Reclaim a handed-off session (the lock goes, and the session opens here). */
+  reclaim?: (s: ProjectSession) => void;
   notice: (text: string) => void;
   /** When every limited account window resets, for the menu entry below. */
   snoozeReset: number | null;
@@ -142,7 +144,7 @@ function RowMenu({
     ...(below ? { top: anchor.bottom + 4, bottom: "auto" } : { top: "auto", bottom: window.innerHeight - anchor.top + 4 }),
     ...(height > room ? { maxHeight: room, overflowY: "auto" as const } : {}),
   };
-  const { beside, resumable, notice } = useContext(RowActions);
+  const { beside, resumable, reclaim: reclaimFn, notice } = useContext(RowActions);
   const canResume = markable && resumable(s);
   const { resume, why } = useResumeCommand(canResume ? { harnessId: s.harnessId, sessionId: s.id, workspaceId: s.workspaceId } : null);
   const pick = (change: MarkChange) => {
@@ -194,6 +196,22 @@ function RowMenu({
               }}
             >
               <IconTerminal size={14} /> Copy resume command
+            </button>
+          </li>
+        ) : null}
+        {s.handover ? (
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              title={s.handoverCommand ? `Handed to a terminal: ${s.handoverCommand}` : "Handed to a terminal"}
+              onClick={() => {
+                if (!reclaimFn) return;
+                onClose();
+                reclaimFn(s);
+              }}
+            >
+              <IconTerminal size={14} /> Reclaim session
             </button>
           </li>
         ) : null}
@@ -427,12 +445,23 @@ function SessionRow({
         <span className="session-meta">
           {project ? <span className="session-project">{project}</span> : null}
           {s.liveChatId && !working ? <span className="live-dot" title="Open in this server" aria-label="live" /> : null}
+          {s.parked && !s.liveChatId ? (
+            <span className="session-parked" role="img" aria-label="Parked" title="Parked: the agent was parked after sitting idle; opening it resumes the same session" />
+          ) : null}
           {s.herdr ? (
             <span
               className={`session-herdr is-${s.herdr.status}`}
               role="img"
               aria-label={`Open in herdr, pane ${s.herdr.paneId} (${s.herdr.status})`}
               title={`Open in herdr, pane ${s.herdr.paneId} (${s.herdr.status})`}
+            />
+          ) : null}
+          {s.handover ? (
+            <span
+              className="session-handover"
+              role="img"
+              aria-label={`Handed to a terminal${s.handoverCommand ? `: ${s.handoverCommand}` : ""}`}
+              title={`Handed to a terminal${s.handoverCommand ? `: ${s.handoverCommand}` : ""}`}
             />
           ) : null}
           {s.asking ? <span className="session-asking">needs you</span> : null}
@@ -980,6 +1009,8 @@ export function Sidebar(props: {
   onOpenBeside?: (s: ProjectSession) => void;
   /** Pin or archive a session. */
   onMarkSession: (s: ProjectSession, change: MarkChange) => void;
+  /** Reclaim a handed-off session (the lock goes, and the session opens here). */
+  onReclaimSession?: (s: ProjectSession) => void;
   /** A project's sessions in a hand-made order (a drag, Move up/down), for the shown harness. */
   onReorderSessions: (harnessId: string, workspaceId: string, ids: string[]) => void;
   /** Say something in the app's banner (a copied resume command). */
@@ -1125,7 +1156,7 @@ export function Sidebar(props: {
   );
 
   return (
-    <RowActions.Provider value={{ warm: props.onWarmSession, snoozeReset: limitResetAt(props.limits), ...(props.onOpenBeside ? { beside: props.onOpenBeside } : {}), resumable, notice: props.onNotice }}>
+    <RowActions.Provider value={{ warm: props.onWarmSession, snoozeReset: limitResetAt(props.limits), ...(props.onOpenBeside ? { beside: props.onOpenBeside } : {}), resumable, ...(props.onReclaimSession ? { reclaim: props.onReclaimSession } : {}), notice: props.onNotice }}>
       <div className={`backdrop${props.open ? " is-open" : ""}`} onClick={props.onClose} aria-hidden="true" />
       <aside
         ref={asideRef}

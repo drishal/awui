@@ -152,8 +152,14 @@ export class Security {
     return createHmac("sha256", this.options.secret).update(payload).digest("base64url");
   }
 
-  issueCookie(authority: string, secure: boolean, now = Date.now()): string {
-    const body = { v: 2, h: authority, iat: now, exp: now + COOKIE_MAX_AGE_MS, f: this.options.password?.fingerprint ?? "", n: randomBytes(12).toString("base64url") };
+  /**
+   * A session's cookie. `invite` names one invitation (grants.ts) the session is
+   * bound to: the cookie carries only that id — never the grants themselves — so
+   * the server resolves the list on every request and a revocation or edit applies
+   * at once. No invite: full access (the backwards-compatible default).
+   */
+  issueCookie(authority: string, secure: boolean, invite?: string, now = Date.now()): string {
+    const body = { v: 2, h: authority, iat: now, exp: now + COOKIE_MAX_AGE_MS, f: this.options.password?.fingerprint ?? "", n: randomBytes(12).toString("base64url"), ...(invite ? { g: invite } : {}) };
     const payload = Buffer.from(JSON.stringify(body)).toString("base64url");
     const value = `${payload}.${this.sign(payload)}`;
     const attrs = [`${this.cookieName}=${value}`, "Path=/", "HttpOnly", "SameSite=Strict", `Max-Age=${COOKIE_MAX_AGE_MS / 1000}`];
@@ -173,7 +179,7 @@ export class Security {
   }
 
   /** The request's cookie, when it is a valid session for this authority: its id (absent on cookies from before ids) and expiry. */
-  private session(req: Request, authority: string, now = Date.now()): { n?: string; exp: number } | null {
+  private session(req: Request, authority: string, now = Date.now()): { n?: string; g?: string; exp: number } | null {
     const password = this.options.password;
     if (!password) return null;
     const value = this.readCookie(req);
@@ -185,12 +191,13 @@ export class Security {
     const expected = Buffer.from(this.sign(payload));
     if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
     try {
-      const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { h?: string; exp?: number; f?: string; n?: unknown };
+      const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { h?: string; exp?: number; f?: string; n?: unknown; g?: unknown };
       // A cookie from before the password changed is void, and so is one whose device signed out.
       if (data.h !== authority || typeof data.exp !== "number" || data.exp <= now || data.f !== password.fingerprint) return null;
       const n = typeof data.n === "string" ? data.n : undefined;
       if (n !== undefined && this.revoked.has(n)) return null;
-      return n !== undefined ? { n, exp: data.exp } : { exp: data.exp };
+      const g = typeof data.g === "string" && data.g.length <= 64 ? data.g : undefined;
+      return { exp: data.exp, ...(n !== undefined ? { n } : {}), ...(g !== undefined ? { g } : {}) };
     } catch {
       return null;
     }
@@ -206,6 +213,14 @@ export class Security {
    */
   sessionId(req: Request, authority: string): string | null {
     return this.session(req, authority)?.n ?? null;
+  }
+
+  /**
+   * The invitation the session was issued for (grants.ts), so the request's grants are
+   * that invitation's allow list. Null for a local request or a full password session.
+   */
+  inviteId(req: Request, authority: string): string | null {
+    return this.session(req, authority)?.g ?? null;
   }
 
   /** POST /api/login { username, password }. */
@@ -235,7 +250,8 @@ export class Security {
       return send(res, 401, "bad_credentials", "Wrong username or password");
     }
     this.limiter.succeed(who);
-    res.setHeader("Set-Cookie", this.issueCookie(res.locals.authority as string, res.locals.hostKind === "remote"));
+    const invite = typeof res.locals.loginInvite === "string" ? res.locals.loginInvite : undefined;
+    res.setHeader("Set-Cookie", this.issueCookie(res.locals.authority as string, res.locals.hostKind === "remote", invite));
     res.json({ ok: true, username: auth.username });
   };
 

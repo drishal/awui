@@ -119,7 +119,7 @@ export function Sidebar(p: {
   // Every session asking for you breathes together, in the warn colour, from dim to full.
   const breath = () => breathe(tick(), BREATH_TICKS);
   const askingTone = () => mix(mix(t().bg, t().warn, 0.35), t().warn, breath());
-  const meta = (row: Extract<Row, { kind: "session" }>) => ` ${row.s.herdr ? "herdr " : ""}${row.project ? `${clip(row.project, 10)} ` : ""}${age(row.s.updatedAt)}`;
+  const meta = (row: Extract<Row, { kind: "session" }>) => ` ${row.s.herdr ? "herdr " : ""}${row.s.handover ? "handed " : ""}${row.project ? `${clip(row.project, 10)} ` : ""}${age(row.s.updatedAt)}`;
   /** A session a herdr pane runs, by what herdr says it does (awui's own run marks win). */
   const herdrTone = (s: ProjectSession) => (s.herdr?.status === "blocked" ? askingTone() : s.herdr?.status === "working" ? t().accent : t().muted);
 
@@ -179,8 +179,8 @@ export function Sidebar(p: {
                   backgroundColor={i() === selectedRow() && p.active ? t().selection : isActive(row.s) ? t().surface2 : undefined}
                   onMouseDown={() => void app.openSession(row.s).then(p.onOpened)}
                 >
-                  <text flexShrink={0} fg={row.s.asking ? askingTone() : isBusy(row.s.status) ? t().accent : row.s.liveChatId ? t().ok : row.s.herdr ? herdrTone(row.s) : t().muted}>
-                    {row.s.asking ? "▲ " : isBusy(row.s.status) ? `${spinnerFor(row.s.harnessId)[tick() % spinnerFor(row.s.harnessId).length]} ` : row.s.liveChatId ? "● " : row.s.herdr ? "◆ " : "· "}
+                  <text flexShrink={0} fg={row.s.asking ? askingTone() : isBusy(row.s.status) ? t().accent : row.s.liveChatId ? t().ok : row.s.herdr ? herdrTone(row.s) : row.s.handover ? t().accent : t().muted}>
+                    {row.s.asking ? "▲ " : isBusy(row.s.status) ? `${spinnerFor(row.s.harnessId)[tick() % spinnerFor(row.s.harnessId).length]} ` : row.s.liveChatId ? "● " : row.s.herdr ? "◆ " : row.s.handover ? "◇ " : "· "}
                   </text>
                   <text flexGrow={1} fg={row.s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(row.s) ? t().text : t().text2} wrapMode="none">
                     {clip(row.s.title || "New chat", width() - meta(row).length)}

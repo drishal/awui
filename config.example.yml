@@ -59,6 +59,16 @@ show_status_bar: true
 # neither is one with a live chat here.
 # settle_after_days: 30
 
+# Hibernation: finished chats nobody has looked at for this many minutes have
+# their harness child parked (disposed) by the reaper, so a day of finished work
+# does not keep a child process per chat. Opening the chat again resumes the
+# same native session from its transcript, its conversation present read-only
+# while the harness starts behind it. Only adapters that can read the transcript
+# back park (a real resume); a chat waiting on an answer or an approval, holding
+# chain steps, or carrying background jobs or subagents is never parked. Unset
+# or 0 turns hibernation off (the plain 30-minute idle dispose still runs).
+# hibernate_after_minutes: 120
+
 # The desktop app: closing its window hides it to the tray, so finished runs
 # and approvals still notify you; quit from the tray or with Ctrl+Q. false
 # makes closing the window quit the app. Read each time the window closes.

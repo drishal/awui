@@ -31,7 +31,7 @@ export function tempDir(prefix = "awui-"): string {
 }
 
 export interface TestApp {
-  app: ReturnType<typeof createApp>;
+  app: Awaited<ReturnType<typeof createApp>>;
   /** Listening server: cookies are bound to host:port, so reuse one port. */
   server: http.Server;
   port: number;
@@ -76,6 +76,8 @@ export async function makeTestApp(options: {
   orchestrationLimits?: Partial<OrchestrationLimits>;
   /** The routines' run history, when a test drives a routine itself (in memory otherwise). */
   routineRuns?: RoutineRuns;
+  /** A temporary settings folder whose config.yml this server alone reads; absent stays isolated. */
+  configDir?: string;
   /** The sessions a previous process left running, when a test drives the resume itself. */
   resumeIntents?: ResumeIntents;
 } = {}): Promise<TestApp> {
@@ -118,7 +120,7 @@ export async function makeTestApp(options: {
     },
   });
   await boards.start();
-  const app = createApp({
+  const app = await createApp({
     version: "test",
     home: root,
     registry,
@@ -129,6 +131,7 @@ export async function makeTestApp(options: {
     pairingUrls: [],
     webDir: null,
     heartbeatMs: options.heartbeatMs ?? 20_000,
+    ...(options.configDir !== undefined ? { configDir: options.configDir } : { configDir: null }),
     // Nothing samples the machine in a test: the app under test gets a quiet monitor.
     pressure: new PressureMonitor(),
     stateDir,

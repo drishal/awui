@@ -17,6 +17,23 @@ export const MAX_ACTIVITY_CHARS = 300;
 export const MAX_ERROR_CHARS = 500;
 export const TASK_SCHEMA_VERSION = 1;
 
+/**
+ * The write scope a delegated task was held to (A5): the globs its tool writes must match
+ * (empty: anywhere in the project), the private scratch dir it alone was given, and what the
+ * guard saw while it ran — attempted (every out-of-scope write seen), how many were blocked
+ * before they ran, and how many landed and could only be reported. The wording lives here so a
+ * status row, a wake report, and thread_read all read the same counts.
+ */
+export interface TaskScope {
+  globs: string[];
+  scratchDir: string | null;
+  attempted: number;
+  blocked: number;
+  landed: number;
+  /** The newest out-of-scope writes, as the rows the child chat drew (scope.ts's wording). */
+  recent: string[];
+}
+
 /** At-least-once finish delivery: `pendingSince` is written before the parent is woken. */
 export interface TaskWake {
   pendingSince: number | null;
@@ -44,6 +61,14 @@ export interface StoredTask extends DelegatedTaskView {
   notify: "wake" | "none";
   clientRequestId: string | null;
   wake: TaskWake;
+  /**
+   * The worktree the task's child worked in when it ran isolated (`isolation: "worktree"`):
+   * the managed worktree's id, its branch, and the fork point. Null when it shared the
+   * caller's tree. The review gates on these heads (review.ts), never on the chat.
+   */
+  isolation: { worktreeId: string; branch: string; fork: string } | null;
+  /** The write scope the child was held to; null (or absent on a row that predates it) for a task that carries none — the scope's counts say what the guard saw. */
+  scope?: TaskScope | null;
 }
 
 const usageSchema = z.custom<SessionUsage | null>((value) => value === null || (typeof value === "object" && !Array.isArray(value)));
@@ -85,12 +110,29 @@ export const storedTaskSchema = z.object({
     attempts: z.number().int().min(0).max(10),
     skipped: z.string().max(200).nullable(),
   }),
+  isolation: z
+    .object({ worktreeId: z.string().min(1).max(64), branch: z.string().min(1).max(256), fork: z.string().regex(/^[0-9a-f]{40}$/) })
+    .nullable()
+    .optional(),
+  scope: z
+    .object({
+      globs: z.array(z.string().min(1).max(128)).max(8),
+      scratchDir: z.string().max(4096).nullable(),
+      attempted: z.number().int().min(0),
+      blocked: z.number().int().min(0),
+      landed: z.number().int().min(0),
+      recent: z.array(z.string().max(400)).max(8),
+    })
+    .nullable()
+    .optional(),
 });
 
 /** One row from the file, or null when it is malformed: the child's session is the truth, so a bad row is dropped. */
 export function parseStoredTask(value: unknown): StoredTask | null {
   const parsed = storedTaskSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  // Records written before worktree isolation carry no `isolation` field: normalized to
+  // null, so an old shared-tree task is never read as an isolated one.
+  return parsed.success ? { ...parsed.data, isolation: parsed.data.isolation ?? null, reviewable: (parsed.data.isolation ?? null) !== null } : null;
 }
 
 /** What the browser and a tool call see: the stored record without its server-only fields. */
@@ -112,6 +154,8 @@ export function viewOf(task: StoredTask): DelegatedTaskView {
     activity: task.activity,
     result: task.result,
     asking: task.asking,
+    scope: task.scope,
+    reviewable: task.isolation !== null,
   };
 }
 
@@ -132,6 +176,17 @@ export function pruneTasks(tasks: StoredTask[], now: number): StoredTask[] {
     live.splice(victim, 1);
   }
   return live;
+}
+
+/**
+ * Whether a task's work has been through a person's review (A6: "completed" is not
+ * "reviewed"). A task that ran isolated is reviewed only when its integration record
+ * carries a decision; one that shared the caller's tree has nothing to review — its
+ * edits landed in the caller's own working tree, where the caller already sees them.
+ * Pure, so the orchestrator, the panel, and the tests share the one rule.
+ */
+export function isReviewed(task: Pick<StoredTask, "isolation">, reviewed: boolean): boolean {
+  return task.isolation === null || reviewed;
 }
 
 /** A single line from a child's text, cut to what an activity row shows. */
@@ -173,11 +228,20 @@ export const ORCH_DENIAL_CODES = [
   "unknown_workspace",
   "unknown_task",
   "not_your_task",
+  "not_delegated",
   "task_not_running",
   "cannot_send",
   "cancel_timeout",
   "unknown_profile",
   "mode_escalation_denied",
+  "invalid_plan",
+  "plan_not_draft",
+  "plan_running",
+  "plan_dependency_failed",
+  "unknown_plan",
+  "scope_collision",
+  "bad_scope",
+  "no_session",
   "unsupported",
 ] as const;
 export type OrchDenialCode = (typeof ORCH_DENIAL_CODES)[number];

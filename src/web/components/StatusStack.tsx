@@ -52,6 +52,7 @@ function Group({
 
 export function StatusStack({
   chatId,
+  workspaceId,
   queue,
   todos,
   notice,
@@ -71,6 +72,7 @@ export function StatusStack({
   onCancelTask,
 }: {
   chatId: string;
+  workspaceId: string;
   /** The harness's own status line (`<harness>:status`), when it has one. */
   notice?: string | null;
   /** Put a changed queue in place of the harness's; given only where it can take its queue back. */
@@ -316,7 +318,7 @@ export function StatusStack({
           ) : null}
           {showTasks ? (
             <Group title="Delegated" meta={tasksMeta(tasks) ?? undefined} defaultOpen>
-              <DelegatedTasks tasks={tasks} harnessName={harnessName} onOpen={onOpenTask} onCancel={onCancelTask} />
+              <DelegatedTasks tasks={tasks} chatId={chatId} workspaceId={workspaceId} harnessName={harnessName} onOpen={onOpenTask} onCancel={onCancelTask} />
             </Group>
           ) : null}
           {todos.length > 0 ? (

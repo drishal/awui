@@ -30,6 +30,7 @@
 //   "noticefold" a reply, an extension's notice, then a second reply (a tool-less stretch between replies)
 //   "delegate" delegate a task through the real orchestration endpoint, then wait for it (a child chat appears);
 //              with "slow" the child runs the slow script, so a running row can be cancelled
+//   "unsafe" a real write to unsafe-outside.ts in the project root, which a delegated child's write scope refuses
 //
 // Board rooms drive this adapter through the real server. A Board invocation is
 // recognised by the prompt envelope's "## Current request" section, and its
@@ -298,7 +299,7 @@ export class FakeAdapter implements HarnessAdapter {
         push({ role: "toolResult", toolCallId: id, toolName: entry.name, content: [{ type: "text", text: toolRecordText(entry) }], isError: false });
       }
     }
-    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode, this.stopDelayMs);
+    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode, this.stopDelayMs, undefined, this.capabilities.supportsInteractiveRequests);
   }
 
   /** Like the file-backed harnesses: each call's usage, from the stored session. */
@@ -330,7 +331,7 @@ export class FakeAdapter implements HarnessAdapter {
       session = { nativeId: randomUUID(), cwd: req.cwd, title: "", messages: [], updatedAt: new Date() };
       this.sessions.set(session.nativeId, session);
     }
-    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode, this.stopDelayMs, req.toolEnv);
+    return new FakeLiveChat(session, this.chunkDelayMs, this.capabilities.supportsPermissionMode, this.stopDelayMs, req.toolEnv, this.capabilities.supportsInteractiveRequests);
   }
 
   async shutdown(): Promise<void> {}
@@ -356,6 +357,8 @@ class FakeLiveChat implements LiveChat {
     /** A stop that waits this long before biting, for the teardown-bound test. */
     private readonly stopDelayMs = 0,
     private readonly toolEnv?: NodeJS.ProcessEnv,
+    /** The adapter raises its own permission request before writes (interactive requests). */
+    private readonly requests = true,
   ) {}
 
   get nativeId(): string {
@@ -639,6 +642,9 @@ class FakeLiveChat implements LiveChat {
       }
       if (/\btool\b|\bbig\b|\bask\b/i.test(text)) await this.tool(/\bbig\b/i.test(text) ? "big" : "read", signal);
       if (/\bedit\b/i.test(text)) await this.tool("edit", signal);
+      // The delegated child's guard scenario: an out-of-scope write the task's scope refuses,
+      // before the run goes on. A capable harness denies it before the tool runs.
+      if (/\bunsafe\b/i.test(text)) await this.tool("unsafe", signal);
       if (/\bshowcase\b/i.test(text)) for (const call of this.showcase()) await this.call(call, signal);
       if (/\bsubagents\b/i.test(text)) await this.subagents(signal);
       if (/\bevalagents\b/i.test(text)) await this.evalAgents(signal);
@@ -1021,12 +1027,23 @@ class FakeLiveChat implements LiveChat {
     return { name: "edit", args: { path: file, oldText: "a", newText: "b" }, output: "Edited src/app.ts (+1 -1)" };
   }
 
-  private async tool(kind: "read" | "big" | "edit", signal: AbortSignal): Promise<void> {
-    const big = kind === "big";
+  /**
+   * An out-of-scope write a delegated child's guard would refuse: the harness raises its own
+   * write ask first (as it does before any write), then writes `unsafe-outside.ts` in the
+   * project root only when approved — so a capable harness's pre-emption denies the ask before
+   * the tool runs, and an incapable one's detection sees the landed row.
+   */
+  private async unsafeScenario(signal: AbortSignal): Promise<FakeCall> {
+    const approved = await this.ask(signal, "write");
+    if (!approved) return { name: "write", args: { path: "unsafe-outside.ts", content: "outside" }, output: "Write denied outside the scope", isError: true };
+    const file = path.join(this.session.cwd, "unsafe-outside.ts");
+    await fs.writeFile(file, "// Written by the fake harness's unsafe write command.\nexport const outside = true;\n");
+    return { name: "write", args: { path: file, content: "outside" }, output: `Wrote ${file}` };
+  }
+
+  private async tool(kind: "read" | "big" | "edit" | "unsafe", signal: AbortSignal): Promise<void> {
     await this.call(
-      kind === "edit"
-        ? await this.editScenario()
-        : { name: "read", args: { path: "README.md" }, output: big ? "x".repeat(200_000) : "# Fake README\nhello" },
+      kind === "edit" ? await this.editScenario() : kind === "unsafe" ? await this.unsafeScenario(signal) : { name: "read", args: { path: "README.md" }, output: kind === "big" ? "x".repeat(200_000) : "# Fake README\nhello" },
       signal,
     );
   }
@@ -1291,6 +1308,9 @@ class FakeLiveChat implements LiveChat {
 
   private ask(signal: AbortSignal, tool = "read"): Promise<boolean> {
     const id = randomUUID();
+    // An incapable adapter (fake-b with interactive requests off) asks nothing: a real
+    // harness that cannot take a request never blocks on its own ask either.
+    if (!this.requests) return Promise.resolve(true);
     return new Promise<boolean>((resolve, reject) => {
       const onAbort = () => {
         if (this.pending.delete(id)) this.emit({ type: "request_cancelled", requestId: id, outcome: "cancelled" });
@@ -1308,7 +1328,7 @@ class FakeLiveChat implements LiveChat {
           id,
           kind: "confirm",
           title: `Allow tool: ${tool}`,
-          message: tool === "bash" ? "npm test -- --watch=false" : "The fake agent wants to read README.md",
+          message: tool === "bash" ? "npm test -- --watch=false" : tool === "write" ? `The fake agent wants to write unsafe-outside.ts` : "The fake agent wants to read README.md",
           createdAt: Date.now(),
         },
       });

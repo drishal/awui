@@ -754,6 +754,7 @@ export function Composer({
       ) : null}
       <StatusStack
         chatId={chat.chatId}
+        workspaceId={chat.workspace.id}
         queue={chat.queue}
         todos={chat.todos}
         notice={chat.extensionStatus[`${chat.harnessId}:status`] ?? null}

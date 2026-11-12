@@ -775,6 +775,14 @@
   background: var(--ok);
 }
 
+/* Hibernated: the harness child was parked; the session resumes where it was. */
+.session-parked {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--muted-text);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

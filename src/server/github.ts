@@ -89,6 +89,34 @@ export async function currentPullRequest(ws: WorkspaceInfo): Promise<{ url: stri
   }
 }
 
+/** One PR's detail by number, as the stack and the checkout flow carry it; null when GitHub has none. */
+export async function pullRequestDetail(ws: WorkspaceInfo, pr: number): Promise<{ url: string; title: string; state: string; isDraft: boolean; baseRefName: string; headRefName: string } | null> {
+  try {
+    const result = await runGh(["pr", "view", String(pr), "--json", "url,title,state,isDraft,baseRefName,headRefName"], ws.path);
+    const doc = JSON.parse(result) as Record<string, unknown>;
+    const url = doc.url;
+    const baseRefName = doc.baseRefName;
+    const headRefName = doc.headRefName;
+    if (typeof url !== "string" || !/^https:\/\//.test(url)) return null;
+    if (typeof baseRefName !== "string" || typeof headRefName !== "string") return null;
+    return {
+      url,
+      title: typeof doc.title === "string" ? doc.title : "",
+      state: typeof doc.state === "string" ? doc.state : "UNKNOWN",
+      isDraft: doc.isDraft === true,
+      baseRefName,
+      headRefName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Merge one PR with gh's own merge, merge commit only; the caller words the refusal. */
+export async function mergePullRequest(ws: WorkspaceInfo, pr: number): Promise<void> {
+  await runGh(["pr", "merge", String(pr), "--merge"], ws.path);
+}
+
 export function pullRequestChecksParse(raw: string): GitHubCheck[] {
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { parsed = null; }

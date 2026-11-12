@@ -54,6 +54,7 @@ describe("settings", () => {
       herdr: true,
       desktopBackground: true,
       orchestrationEnabled: true,
+      agentProfiles: [],
       acpAgents: [],
     });
   });
@@ -180,6 +181,18 @@ describe("settings", () => {
     expect(text).toContain("/opt/pi");
     // This server started with no ACP agent, so a list that differs from that is waiting for a restart.
     expect(writeSettings(ctx, { acpAgents: [{ id: "goose", command: "goose" }] }).restartPending).toContain("acpAgents");
+  });
+
+  it("saves shared agent profiles for delegation without writing credentials", () => {
+    const { ctx, file } = setup(FILE);
+    const profile = { name: "Reviewer", harness: "omp", model: "provider/review-small", thinking: "high", permissionMode: "acceptEdits", note: "Reviews before integration." };
+    const saved = writeSettings(ctx, { agentProfiles: [profile] });
+    expect(saved.values.agentProfiles).toEqual([profile]);
+    expect(readSettings(ctx, true).values.agentProfiles).toEqual([profile]);
+    expect(readFileSync(file, "utf8")).toContain("agent_profiles:");
+    expect(readFileSync(file, "utf8")).toContain("permission_mode: acceptEdits");
+    expect(saved.restartPending).toEqual([]);
+    expect(writeSettings(ctx, { agentProfiles: [] }).values.agentProfiles).toEqual([]);
   });
 
   it("has nothing to write to without a settings folder", () => {

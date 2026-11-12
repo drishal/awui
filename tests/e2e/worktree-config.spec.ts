@@ -24,7 +24,6 @@ test("an untrusted awui.yml is shown but runs nothing, and a trusted one sets a 
   await expect(configPanel(page)).toContainText("awui.yml");
   await expect(configPanel(page)).toContainText("starts from main");
   await expect(configPanel(page)).toContainText("has a setup command");
-  await expect(configPanel(page)).toContainText("echo set-up > setup.txt");
   const trust = configPanel(page).getByRole("button", { name: /^Trust this awui\.yml/ });
   await expect(trust).toBeVisible();
   await expect(configPanel(page).getByRole("checkbox")).toHaveCount(0);
@@ -35,6 +34,7 @@ test("an untrusted awui.yml is shown but runs nothing, and a trusted one sets a 
   // Trusting that exact version offers the command, still unticked.
   await trust.click();
   await expect(configPanel(page)).toContainText("Trusted (");
+  await expect(configPanel(page)).toContainText("echo set-up > setup.txt");
   const setupBox = configPanel(page).getByRole("checkbox");
   await expect(setupBox).not.toBeChecked();
   await setupBox.check();

@@ -11,3 +11,17 @@
 .github-check.is-fail, .github-check.is-failure { color: var(--danger); }
 .github-check.is-pending, .github-check.is-running { color: var(--warn); }
 .notice-info { margin: 12px 0; overflow-wrap: anywhere; }
+/* Stacked PRs: one row per layer, its state and target readable at a glance. */
+.github-stack { display: grid; gap: 6px; list-style: none; padding: 0; margin: 0 0 8px; }
+.github-stack-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 32px; }
+.github-stack-title { min-width: 0; flex: 1 1 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.github-stack-base { font: 12px var(--font-mono); overflow-wrap: anywhere; }
+.github-stack-checks { color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.github-check.is-merged { color: var(--muted-text); }
+.github-check.is-open { color: var(--warn); }
+
+/* Proposal fields may be long; the task list scrolls without losing the existing dialog shell. */
+.dialog:has(.worker-plan-editor) { height: min(86dvh, 760px); }
+.worker-plan-editor { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.worker-plan-editor > form { min-height: 0; overflow-y: auto; padding-right: 4px; }
+.worker-plan-editor .dialog-actions { position: sticky; bottom: 0; margin-top: auto; background: var(--panel); }

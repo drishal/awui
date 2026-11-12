@@ -1131,3 +1131,33 @@
   color: var(--danger);
   font-size: 13px;
 }
+
+/* Agent heartbeats: the orchestration surface's schedules, marked by their starter. */
+.routines-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.routines-agent h3 {
+  margin: 0;
+  font-size: var(--label-size);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+
+.routine-row-agent {
+  border-bottom-color: var(--hairline);
+}
+
+.routine-provenance {
+  color: var(--muted-text);
+  font-size: 12px;
+  font-style: italic;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

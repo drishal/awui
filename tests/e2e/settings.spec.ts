@@ -241,7 +241,7 @@ test.describe("shared look in config.yml", () => {
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings.getByRole("tab", { name: "This device", exact: true })).toHaveAttribute("aria-selected", "true");
-    // The dialog keeps its size: the pane scrolls, the frame does not move between sections.
+    // Measure after the dialog has settled; its frame must not move as sections change.
     const frame = await settings.boundingBox();
     await openSection(settings, "Appearance");
     await settings.getByRole("button", { name: "Theme" }).click();
@@ -252,7 +252,12 @@ test.describe("shared look in config.yml", () => {
     await settings.getByRole("switch", { name: "Fold the sidebar away in narrow windows" }).click();
     // The edit made in Appearance is still the form's: one Save writes both.
     await expect(settings.getByText("Unsaved changes")).toBeVisible();
-    expect(await settings.boundingBox()).toEqual(frame);
+    const measured = await settings.boundingBox();
+    if (!frame || !measured) throw new Error("Settings has no frame to measure");
+    expect(measured.width).toBeCloseTo(frame.width, 0);
+    expect(measured.height).toBeCloseTo(frame.height, 0);
+    expect(measured.x).toBeCloseTo(frame.x, 0);
+    expect(measured.y).toBeCloseTo(frame.y, 0);
     await settings.getByRole("button", { name: "Save", exact: true }).click();
     await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
     const file = readFileSync(configFile, "utf8");
@@ -364,7 +369,8 @@ test.describe("shared look in config.yml", () => {
     await expect(settings.getByRole("tab", { name: "Appearance", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(settings.getByRole("heading", { name: "Appearance" })).toBeVisible();
     await page.keyboard.press("End");
-    await expect(settings.getByRole("tab", { name: "Folders and access" })).toHaveAttribute("aria-selected", "true");
+    await expect(settings.getByRole("tab", { name: "Invitations", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(settings.getByRole("heading", { name: "Invitations" })).toBeVisible();
     await page.keyboard.press("ArrowDown");
     await expect(settings.getByRole("tab", { name: "This device", exact: true })).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Escape");

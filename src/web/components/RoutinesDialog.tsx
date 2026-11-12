@@ -2,7 +2,7 @@
 // them (the 30 s tick in index.ts) with no browser open; this dialog is how they
 // are made, turned off, run once, read back (their last few runs), and removed.
 import { useEffect, useState } from "react";
-import type { HarnessStatus, Routine, RoutineOutcome, RoutineRun, WorkspaceInfo } from "../../shared/protocol.js";
+import type { HarnessStatus, HeartbeatView, Routine, RoutineOutcome, RoutineRun, WorkspaceInfo } from "../../shared/protocol.js";
 import type { RoutineCadence } from "../../shared/routine-schedule.js";
 import { cadenceLabel } from "../../shared/routine-schedule.js";
 import { api, errorText } from "../api.js";
@@ -38,6 +38,15 @@ function runWhen(run: RoutineRun): string {
   return new Date(run.startedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+/** A heartbeat's interval, as its row says it: "5m", "45m", "2h", "1d". */
+function beatInterval(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = minutes / 60;
+  if (hours < 24) return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
 /** How the last slot ended, in the list's words: "posted 09:00", "skipped 09:00 — precheck exited 1". */
 function outcomeText(routine: Routine): string {
   if (!routine.lastRunOutcome) return "";
@@ -51,6 +60,8 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   /** The last few runs of each routine, newest first (the server keeps the full history). */
   const [runs, setRuns] = useState<RoutineRun[]>([]);
+  /** Agent-scheduled heartbeats, newest first (the orchestration surface's schedules). */
+  const [heartbeats, setHeartbeats] = useState<HeartbeatView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
@@ -79,12 +90,14 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
 
   const load = async () => {
     try {
-      const [list, history] = await Promise.all([
+      const [list, history, beats] = await Promise.all([
         api<{ routines: Routine[] }>("/api/routines"),
         api<{ runs: RoutineRun[] }>(`/api/routines/runs?limit=${RUN_ROWS_PER_ROUTINE * 4}`),
+        api<{ heartbeats: HeartbeatView[] }>("/api/heartbeats"),
       ]);
       setRoutines(list.routines);
       setRuns(history.runs);
+      setHeartbeats(beats.heartbeats);
     } catch (failure) {
       setError(errorText(failure));
     }
@@ -189,6 +202,17 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
     }
   };
 
+  /** Cancel an agent's heartbeat user-side: it will not beat again. */
+  const cancelHeartbeat = async (heartbeat: HeartbeatView) => {
+    setError(null);
+    try {
+      await api(`/api/heartbeats/${encodeURIComponent(heartbeat.id)}`, { method: "DELETE" });
+      await load();
+    } catch (failure) {
+      setError(errorText(failure));
+    }
+  };
+
   const canSave = Boolean(name.trim() && prompt.trim() && harnessId && workspaceId) && !busy;
   /** This routine's newest runs, as its row shows them. */
   const runsFor = (routineId: string) => runs.filter((run) => run.routineId === routineId).slice(0, RUN_ROWS_PER_ROUTINE);
@@ -261,6 +285,38 @@ export function RoutinesDialog({ harnesses, workspaces, onClose, onOpenChat }: {
               </li>
             ))}
           </ul>
+        ) : null}
+
+        {heartbeats.length > 0 ? (
+          <div className="routines-agent">
+            <h3>Agent heartbeats</h3>
+            <ul className="routines-list" aria-label="Agent heartbeats">
+              {heartbeats.map((heartbeat) => (
+                <li key={heartbeat.id} className="routine-row routine-row-agent">
+                  <div className="routine-row-main">
+                    <label className="routine-main">
+                      <span className="routine-name">{heartbeat.name}</span>
+                      <span className="routine-when">
+                        every {beatInterval(heartbeat.intervalMs)} · {heartbeat.cancelledAt !== null ? "cancelled" : heartbeat.halted ? heartbeat.halted : heartbeat.nextRunAt === null ? "no further run" : `next ${new Date(heartbeat.nextRunAt).toLocaleString()}`}
+                      </span>
+                      <span className="routine-provenance" title={heartbeat.ownerSessionId}>
+                        scheduled by an agent
+                      </span>
+                      {heartbeat.lastRunOutcome ? (
+                        <span className={`routine-outcome routine-outcome-${heartbeat.lastRunOutcome}`} title={heartbeat.lastRunDetail ?? undefined}>
+                          {outcomeWords(heartbeat.lastRunOutcome)}
+                          {heartbeat.lastRunDetail ? ` — ${heartbeat.lastRunDetail}` : ""}
+                        </span>
+                      ) : null}
+                    </label>
+                  </div>
+                  <button type="button" className="btn btn-ghost btn-small" aria-label={`Cancel ${heartbeat.name}`} disabled={heartbeat.cancelledAt !== null} onClick={() => void cancelHeartbeat(heartbeat)}>
+                    Cancel
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
 
         <form

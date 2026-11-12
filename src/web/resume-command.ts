@@ -6,7 +6,7 @@
 // lose it. Where there is no clipboard (a plain-HTTP LAN page) the line is
 // still shown, to copy by hand.
 import { useEffect, useState } from "react";
-import type { ResumeCommand } from "../shared/protocol.js";
+import type { HandoverReclaim, ResumeCommand } from "../shared/protocol.js";
 import { api, errorText } from "./api.js";
 
 export interface SessionRef {
@@ -43,4 +43,9 @@ export async function copyResumeCommand(resume: ResumeCommand): Promise<string> 
   ) ?? Promise.resolve(false));
   const said = copied ? `Copied: ${resume.command}` : `To resume it in a terminal, run: ${resume.command}`;
   return resume.live ? `${said} — close the chat here first, so only one process writes the session.` : said;
+}
+
+/** Reclaiming a handed-off session: the lock goes, and the client learns the line the handover held. */
+export async function reclaimHandover(ref: SessionRef): Promise<HandoverReclaim> {
+  return api<HandoverReclaim>("/api/sessions/reclaim", { body: { ...ref } });
 }

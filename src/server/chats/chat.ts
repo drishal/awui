@@ -42,10 +42,12 @@ import { planFromArgs } from "../harness/plans.js";
 import { branchMessages } from "../harness/session-files.js";
 import { rememberImage } from "../image-store.js";
 import type { HarnessAdapter, HarnessEvent, HarnessUsage, LiveChat } from "../harness/types.js";
+import type { Plan } from "../../shared/protocol.js";
 import type { ChatCheckpoints, CheckpointHost } from "../checkpoints.js";
 import { REWIND_COMMAND } from "../harness/rewind-extension.js";
 import { CONTINUE_TEXT } from "../../shared/limit-stop.js";
 import { isDenial } from "../../shared/approval.js";
+import { GATE_REQUEST_PREFIX } from "../orchestration/decisions.js";
 import { noteChat, noteSessionOfChat } from "../overview-events.js";
 
 export class ChatError extends Error {
@@ -774,6 +776,12 @@ export class Chat implements CheckpointHost {
   talkedAt: number | null = null;
   /** Last sign of use of any kind (events, sends, a viewer leaving): what the reaper's idle clock reads. */
   lastSeen = Date.now();
+  /**
+   * When this chat last became unviewed (no streams attached), or null while a viewer is
+   * attached: what the hibernation scheduler's hidden clock gates on. A chat someone is
+   * watching is not the scheduler's to take away.
+   */
+  unviewedSince: number | null = Date.now();
   onSession?: (chat: Chat) => void;
   onDisposed?: (chat: Chat) => void;
   /** The harness reported its subscription limits. */
@@ -793,7 +801,7 @@ export class Chat implements CheckpointHost {
   private chain: ChainStep[] = [];
   /** Why the chain waits: a run was stopped, or failed, or a step could not start. */
   private chainPaused: string | null = null;
-  /** When the user asked this chat to carry on after a usage limit resets; the timer is the server's, so it fires with no browser open. */
+  /** When the user asked this chat to carry on after a usage limit resets: the timer is the server's, so it fires with no browser open. */
   continueAt: number | null = null;
   private continueTimer?: NodeJS.Timeout;
   /**
@@ -826,8 +834,17 @@ export class Chat implements CheckpointHost {
    * Installed by the orchestrator the first time this chat delegates; absent otherwise.
    */
   delegated?: () => DelegatedTaskView[];
+  /** This chat's active worker proposal; no cross-chat plan id routes are needed. */
+  plan?: () => Plan | null;
   /** A denial with a corrective explanation. The orchestrator delivers this only to its own workers. */
   onDenied?: (chat: Chat, request: InteractionRequest, reason: string) => void;
+  /**
+   * The decision gate behind this chat's `dc-` requests: the orchestrator installs it with the
+   * worker's `request_decision` tool, and `answer` hands a gate question's recorded answer to it
+   * instead of the harness, which did not ask for one. Returns false when the decision was not
+   * this chat's or was already answered. Absent otherwise.
+   */
+  decisionGate?: (requestId: string, outcome: string, answer: InteractionAnswer, denialReason?: string) => boolean;
   private readonly log = new EventLog();
   private readonly timing = new Timing();
   private readonly reducer: EventReducer;
@@ -918,6 +935,21 @@ export class Chat implements CheckpointHost {
     return this.chain.length;
   }
 
+  /**
+   * Whether the harness child alone holds work a parked (hibernated) chat would lose: queued
+   * steering and follow-ups, background jobs still running, subagents still out. Past finishes
+   * (jobs done, results in) are on the transcript and survive the reopen.
+   */
+  get hasDeferredWork(): boolean {
+    const queue = this.reducer.queue;
+    if (queue.steering.length > 0 || queue.followUp.length > 0) return true;
+    return this.reducer.items.some((i) => {
+      if (i.kind !== "tool") return false;
+      if (i.jobs?.some((j) => j.status === "running")) return true;
+      return i.subagents?.runs.some((r) => r.status === "running" || r.status === "pending") ?? false;
+    });
+  }
+
   get subscriberCount(): number {
     return this.log.subscriberCount;
   }
@@ -964,6 +996,7 @@ export class Chat implements CheckpointHost {
       generation: this.generation,
       lastEventId: this.log.lastEventId,
       ...(this.delegated ? { delegated: this.delegated() } : {}),
+      ...(this.plan ? { plan: this.plan() ?? undefined } : {}),
       ...(this.lineage ? { lineage: this.lineage } : {}),
     };
   }
@@ -984,12 +1017,16 @@ export class Chat implements CheckpointHost {
   subscribe(subscriber: ChatSubscriber, lastEventId?: number): () => void {
     this.reducer.flushNow();
     this.lastSeen = Date.now();
+    // Watching the chat: it is not unviewed while a stream is attached.
+    this.unviewedSince = null;
     const unsubscribe = this.log.subscribe(subscriber, lastEventId, () => this.snapshot());
     this.noteViewers();
     return () => {
       // The idle clock starts when the last viewer leaves, not at the last message.
       this.lastSeen = Date.now();
       unsubscribe();
+      // Hidden again: the hibernation clock starts here.
+      this.unviewedSince = Date.now();
       this.noteViewers();
     };
   }
@@ -1254,12 +1291,12 @@ export class Chat implements CheckpointHost {
    */
   scheduleContinue(at: number | null): void {
     this.assertOpen();
+    if (at !== null && at <= Date.now()) throw new ChatError(400, "bad_continue", "That time has passed");
     this.clearContinue(false);
     if (at === null) {
       this.reducer.emit({ type: "snapshot", snapshot: this.snapshot() });
       return;
     }
-    if (at <= Date.now()) throw new ChatError(400, "bad_continue", "That time has passed");
     this.continueAt = at;
     const wait = Math.min(at - Date.now(), Chat.MAX_TIMER_MS);
     this.continueTimer = setTimeout(() => void this.runContinue(at), wait);
@@ -1279,6 +1316,8 @@ export class Chat implements CheckpointHost {
     this.continueAt = null;
     this.reducer.emit({ type: "snapshot", snapshot: this.snapshot() });
     if (this.status !== "idle" && this.status !== "error") return;
+    // A run that outlived the reset has no further continuation to schedule here; it may have its own result.
+    this.clearContinue(true);
     try {
       await this.send(CONTINUE_TEXT, "normal");
     } catch (error) {
@@ -1487,6 +1526,21 @@ export class Chat implements CheckpointHost {
 
   answer(requestId: string, answer: InteractionAnswer, denialReason?: string): string {
     this.assertOpen();
+    // A `dc-` request is this server's own decision gate, not the harness's: the person answers
+    // it through the same route, but the recorded answer goes to the gate, never to the harness,
+    // which did not ask a question of its own.
+    if (requestId.startsWith(GATE_REQUEST_PREFIX)) {
+      if (!this.decisionGate) throw new ChatError(409, "request_resolved", "This request was already answered or cancelled");
+      const request = this.reducer.pendingRequest(requestId);
+      if (!request) throw new ChatError(409, "request_resolved", "This request was already answered or cancelled");
+      if (denialReason && !isDenial(request, answer)) throw new ChatError(400, "bad_denial_reason", "A reason belongs only with this approval's Deny answer");
+      const outcome = describeAnswer(request, answer);
+      // The gate records the verdict and wakes the parked call; false is an already-answered decision.
+      if (!this.decisionGate(requestId, outcome, answer, denialReason)) throw new ChatError(409, "request_resolved", "This decision was already answered");
+      // The transcript item keeps the answer beside the question, as any request's outcome does.
+      this.reducer.resolveRequest(requestId, outcome, denialReason);
+      return outcome;
+    }
     const request = this.reducer.pendingRequest(requestId);
     if (!request) throw new ChatError(409, "request_resolved", "This request was already answered or cancelled");
     if (denialReason && !isDenial(request, answer)) throw new ChatError(400, "bad_denial_reason", "A reason belongs only with this approval's Deny answer");
@@ -1500,6 +1554,25 @@ export class Chat implements CheckpointHost {
     this.reducer.resolveRequest(requestId, outcome, denialReason);
     if (denialReason) this.onDenied?.(this, request, denialReason);
     return outcome;
+  }
+
+  /**
+   * Put one of this server's own pending decisions on the chat as a regular request item: the
+   * same card, stream, snapshot, and answer route as any harness question, so the person answers
+   * a worker's `request_decision` without knowing it came from the orchestrator. Routed through
+   * the reducer's request path, so the ask's push note and the overview refresh fire as they do
+   * for a harness question; the answer is resolved by `answer` through the installed gate.
+   */
+  addPendingDecision(request: InteractionRequest): void {
+    this.assertOpen();
+    if (!request.id.startsWith(GATE_REQUEST_PREFIX)) throw new ChatError(400, "bad_request_id", `A decision gate request's id starts with ${GATE_REQUEST_PREFIX}`);
+    this.apply({ type: "request", request });
+  }
+
+  /** The `dc-` request still waiting on the chat, or undefined: the gate's question as the person sees it. */
+  pendingDecision(requestId: string): InteractionRequest | undefined {
+    if (!requestId.startsWith(GATE_REQUEST_PREFIX)) return undefined;
+    return this.reducer.pendingRequest(requestId);
   }
 
   async dispose(reason: string): Promise<void> {

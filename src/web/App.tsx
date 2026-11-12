@@ -90,6 +90,7 @@ import { RestoreDialog } from "./components/RestoreDialog.js";
 import { SecondOpinionDialog } from "./components/SecondOpinionDialog.js";
 import { SideThreadDialog } from "./components/SideThreadDialog.js";
 import { HerdrDialog } from "./components/HerdrDialog.js";
+import { HandoverDialog } from "./components/HandoverDialog.js";
 import { collectChanges } from "./review.js";
 import { copyResumeCommand, useResumeCommand } from "./resume-command.js";
 import { chatMarkdown, downloadText, exportFileName } from "./export.js";
@@ -126,6 +127,7 @@ const RacePanel = lazy(() => import("./components/RacePanel.js").then((m) => ({ 
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js").then((m) => ({ default: m.TerminalPanel })));
 const GitHubPanel = lazy(() => import("./components/GitHubPanel.js").then((m) => ({ default: m.GitHubPanel })));
 const Dashboard = lazy(() => import("./components/Dashboard.js").then((m) => ({ default: m.Dashboard })));
+const WorkerPlanEditor = lazy(() => import("./components/WorkerPlanEditor.js").then((m) => ({ default: m.WorkerPlanEditor })));
 
 // Panels on-demand: a desktop with a dozen idle tabs doesn't need code for every
 // project workflow unless someone actually opens one of these dialogs.
@@ -282,6 +284,7 @@ export function App() {
   const [startFocus, setStartFocus] = useState(0);
 
   const [worktreeOpen, setWorktreeOpen] = useState(false);
+  const [workerPlanOpen, setWorkerPlanOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   /** The races panel: one comparison by id (just started, or reopened), or the list. */
   const [racesOpen, setRacesOpen] = useState<{ raceId: string | null } | null>(null);
@@ -302,6 +305,8 @@ export function App() {
   const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
   /** A session open in a herdr pane, being opened here: the choice to make first. */
   const [herdrAsk, setHerdrAsk] = useState<{ s: ProjectSession & { herdr: NonNullable<ProjectSession["herdr"]> }; newTab: boolean; workspace?: WorkspaceInfo } | null>(null);
+  /** A session a handover locked, being opened here: the choice to make first. */
+  const [handoverAsk, setHandoverAsk] = useState<{ s: ProjectSession & { handover: true }; newTab: boolean; workspace?: WorkspaceInfo } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   /** What the window-wide shortcuts call, kept current (the listener is added once). */
@@ -623,14 +628,14 @@ export function App() {
   }, [splash]);
 
   /** What opening a session needs: its project (registered with the server again if need be) and its chat, live or resumed from the file. */
-  const fetchSession = async (s: ProjectSession, target: WorkspaceInfo, ignoreHerdr = false): Promise<{ ws: WorkspaceInfo; snapshot: ChatSnapshot }> => {
+  const fetchSession = async (s: ProjectSession, target: WorkspaceInfo, ignoreHerdr = false, reclaim = false): Promise<{ ws: WorkspaceInfo; snapshot: ChatSnapshot }> => {
     const ws = target.id === workspace?.id ? Promise.resolve(target) : api<WorkspaceInfo>("/api/workspaces/open", { body: { path: target.path } });
     if (s.liveChatId) {
       const [opened, snapshot] = await Promise.all([ws, api<ChatSnapshot>(`/api/chats/${s.liveChatId}`)]);
       return { ws: opened, snapshot };
     }
     const opened = await ws;
-    const body = { harnessId: s.harnessId, workspaceId: opened.id, sessionId: s.id, ...(ignoreHerdr ? { ignoreHerdr: true } : {}) };
+    const body = { harnessId: s.harnessId, workspaceId: opened.id, sessionId: s.id, ...(ignoreHerdr ? { ignoreHerdr: true } : {}), ...(reclaim ? { reclaim: true } : {}) };
     return { ws: opened, snapshot: await api<ChatSnapshot>("/api/chats/resume", { body }) };
   };
 
@@ -1352,7 +1357,7 @@ export function App() {
   /** `workspace`: the session's project, when the caller knows it (a search reaches sessions the sidebar's list may not hold). */
   const openSession = async (
     s: ProjectSession,
-    { newTab = false, workspace: known, ignoreHerdr = false }: { newTab?: boolean; workspace?: WorkspaceInfo; ignoreHerdr?: boolean } = {},
+    { newTab = false, workspace: known, ignoreHerdr = false, reclaim = false }: { newTab?: boolean; workspace?: WorkspaceInfo; ignoreHerdr?: boolean; reclaim?: boolean } = {},
   ) => {
     leaveRoom();
     // Opening it here is reading it: no toast, the dot just goes. Awaited, so the
@@ -1374,6 +1379,13 @@ export function App() {
       setDrawerOpen(false);
       return;
     }
+    // A handover locked this session (its resume line was copied for a terminal): resuming
+    // it here during the handover would be a second writer, so ask (HandoverDialog).
+    if (s.handover && !s.liveChatId && !reclaim) {
+      setHandoverAsk({ s: { ...s, handover: s.handover }, newTab, ...(known ? { workspace: known } : {}) });
+      setDrawerOpen(false);
+      return;
+    }
     const target = known ?? overview.workspaces.find((w) => w.id === s.workspaceId);
     if (!target) return;
     // Its tab and loading screen first; the snapshot fills the same tab in.
@@ -1392,7 +1404,7 @@ export function App() {
     setOpening(true);
     setBanner(null);
     try {
-      const { ws, snapshot } = await (takeEarly(s) ?? fetchSession(s, target, ignoreHerdr));
+      const { ws, snapshot } = await (takeEarly(s) ?? fetchSession(s, target, ignoreHerdr, reclaim));
       if (token !== nav.current) return;
       if (ws.id !== workspace?.id) {
         setWorkspace(ws);
@@ -1776,6 +1788,7 @@ export function App() {
     const waitIdle = idle ? undefined : "Wait until the agent is idle";
     items.push({ id: "new", section: "Actions", label: "New chat", hint: workspace?.name, run: () => showStart() });
     if (workspace) {
+      items.push({ id: "worker-plan", section: "Project", label: "Worker plan…", hint: "Edit tasks, dependencies, and write scopes; only confirm starts workers", searchOnly: true, run: () => setWorkerPlanOpen(true) });
       items.push({ id: "worktrees", section: "Project", label: "Worktrees…", hint: "Create or open an isolated checkout", searchOnly: true, run: () => setWorktreeOpen(true) });
       items.push({ id: "terminal", section: "Project", label: "Terminal", hint: workspace.name, searchOnly: true, run: () => openTool("terminal") });
       items.push({ id: "github", section: "Project", label: "GitHub and pull requests…", hint: workspace.name, searchOnly: true, run: () => openTool("github") });
@@ -1991,7 +2004,19 @@ export function App() {
   const copyResume = () => {
     if (!resume) return;
     setMenuOpen(false);
-    void copyResumeCommand(resume).then((text) => setBanner({ level: "info", text, ...(resume.live ? { action: { label: "Close chat", run: () => void closeChat() } } : {}) }));
+    void copyResumeCommand(resume).then((text) =>
+      setBanner({
+        level: "info",
+        text: resume.held ? `${text} — the session is handed over: sending here is blocked until it is reclaimed.` : text,
+        ...(resume.live ? { action: { label: "Hand to terminal", run: () => {
+          if (!resumable) return;
+          void api<{ command: string }>("/api/sessions/handover", { body: { ...resumable } }).then(({ command }) => {
+            void closeChat();
+            setBanner({ level: "info", text: `${command} — handed to the terminal; bring it back from the session list.` });
+          }).catch((error: unknown) => fail(error));
+        } } } : {}),
+      }),
+    );
   };
 
   if (signedOut) {
@@ -2132,6 +2157,7 @@ export function App() {
             : undefined
         }
         onMarkSession={(s, change) => void markSessionAs(s, change)}
+        onReclaimSession={(s) => void openSession(s, { reclaim: true })}
         onReorderSessions={(harnessId, workspaceId, ids) => {
           const before = overview.orders?.[`${harnessId}:${workspaceId}`];
           orderSessions(`${harnessId}:${workspaceId}`, ids);
@@ -2686,6 +2712,9 @@ export function App() {
       />
 
       {pickerOpen ? <WorkspacePicker worktrees={workspace && !room.roomId ? () => setWorktreeOpen(true) : undefined} recent={recent} onOpen={async (p) => { await openWorkspace(p); }} onClose={() => setPickerOpen(false)} error={pickerError} /> : null}
+      {workerPlanOpen && chat ? <LazyPanel overlay><WorkerPlanEditor chatId={chat.chatId} plan={chat.plan ?? null} harnesses={boot.harnesses} leadHarness={chat.harnessId} models={chat.config.models} workspaceId={chat.workspace.id} onClose={() => setWorkerPlanOpen(false)} onPlan={(plan) => {
+        setChat((current) => current && current.chatId === chat.chatId ? { ...current, plan: plan ?? undefined } : current);
+      }} /></LazyPanel> : null}
       {worktreeOpen && workspace ? <LazyPanel overlay><WorktreePicker workspace={workspace} onOpen={async (path) => { await openWorkspace(path); }} onCompare={() => setCompareOpen(true)} onClose={() => setWorktreeOpen(false)} onSeeded={(text) => toasts.push({ key: "worktree-seeded", text, ms: 8000 })} /></LazyPanel> : null}
       {compareOpen && workspace ? <LazyPanel overlay><CompareDialog workspace={workspace} harnesses={boot.harnesses} initialHarness={harnessId} initialModel={startModel} onClose={() => setCompareOpen(false)} onDone={(snapshots, raceId) => {
         const first = snapshots[0];
@@ -2722,6 +2751,7 @@ export function App() {
           bot={botEditor.botId ? botsList?.find((b) => b.id === botEditor.botId) ?? null : null}
           harnesses={boot.harnesses}
           workspaces={boardWorkspaces}
+          sharedProfiles={boot.agentProfiles}
           defaultWorkspaceId={room.state?.room.workspaceId ?? workspace?.id ?? null}
           onSaved={() => void refreshBots()}
           onDeleted={() => void refreshBots()}
@@ -2752,6 +2782,18 @@ export function App() {
           onOpenHere={() => void openSession(herdrAsk.s, { newTab: herdrAsk.newTab, ignoreHerdr: true, ...(herdrAsk.workspace ? { workspace: herdrAsk.workspace } : {}) })}
           onClose={() => {
             setHerdrAsk(null);
+            void refreshSessions();
+          }}
+        />
+      ) : null}
+      {handoverAsk ? (
+        <HandoverDialog
+          session={handoverAsk.s}
+          harnessName={boot.harnesses.find((h) => h.id === handoverAsk.s.harnessId)?.displayName ?? handoverAsk.s.harnessId}
+          command={handoverAsk.s.handoverCommand ?? null}
+          onReclaim={() => void openSession(handoverAsk.s, { newTab: handoverAsk.newTab, reclaim: true, ...(handoverAsk.workspace ? { workspace: handoverAsk.workspace } : {}) })}
+          onClose={() => {
+            setHandoverAsk(null);
             void refreshSessions();
           }}
         />

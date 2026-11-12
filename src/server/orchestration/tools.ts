@@ -9,6 +9,7 @@
 // ever sees them).
 import { z } from "zod";
 import type { AgentStatusState, BotProfile } from "../../shared/protocol.js";
+import type { AgentProfileConfig } from "../config.js";
 import type { BoardManager } from "../boards/types.js";
 import { ChatError, type Chat } from "../chats/chat.js";
 import type { AgentStatuses } from "../agent-status.js";
@@ -18,6 +19,11 @@ import type { Workspaces } from "../workspaces.js";
 
 /** A brief or a follow-up an agent sends a child: bounded, because it becomes a prompt. */
 export const MAX_DELEGATE_BRIEF_CHARS = 32_000;
+/** How often a heartbeat may beat: at least 5 minutes apart, at most once a day. */
+export const MIN_HEARTBEAT_INTERVAL_MS = 5 * 60_000;
+export const MAX_HEARTBEAT_INTERVAL_MS = 24 * 60 * 60_000;
+/** A heartbeat runs at most this many times, so a forgotten one cannot run for ever. */
+export const MAX_HEARTBEAT_RUNS = 10_000;
 /** How many tasks one turn may wait on at once. */
 export const MAX_WAIT_TASKS = 4;
 /** A wait's own cap: under a proxy's idle timeout, over a quick tool call. */
@@ -26,6 +32,9 @@ export const DEFAULT_WAIT_MS = 55_000;
 /** Profiles one call may list, and the note a bot contributes. */
 export const MAX_PROFILES = 64;
 export const MAX_PROFILE_NOTE_CHARS = 120;
+/** The write scope's bounds (scope.ts judges with them): globs one delegation may carry. */
+import { MAX_WRITE_SCOPE_GLOBS, MAX_GLOB_CHARS } from "./scope.js";
+export { MAX_WRITE_SCOPE_GLOBS, MAX_GLOB_CHARS };
 
 const taskId = z.string().regex(/^[0-9a-f]{4,16}$/);
 
@@ -42,14 +51,19 @@ export const delegateTaskSchema = z
     role: z.string().min(1).max(64).optional(),
     title: z.string().min(1).max(120).optional(),
     workspaceId: z.string().min(1).max(128).optional(),
+    isolation: z.enum(["worktree"]).optional(),
     notify: z.enum(["wake", "none"]).optional(),
     clientRequestId: z.string().min(1).max(128).optional(),
+    writeScope: z.array(z.string().min(1).max(MAX_GLOB_CHARS)).max(MAX_WRITE_SCOPE_GLOBS).optional(),
   })
   .strict();
 
 export const taskStatusSchema = z.object({ taskId: taskId.optional() }).strict();
 
 export const taskCancelSchema = z.object({ taskId }).strict();
+
+/** One review-state report, as the caller's model reads it. */
+export const taskReviewSchema = z.object({ taskId }).strict();
 
 export const threadSendSchema = z.object({ taskId, text: z.string().min(1).max(MAX_DELEGATE_BRIEF_CHARS) }).strict();
 
@@ -61,13 +75,51 @@ export const threadWaitSchema = z
   .object({ taskIds: z.array(taskId).min(1).max(MAX_WAIT_TASKS), waitMs: z.number().int().min(0).max(MAX_WAIT_MS).optional() })
   .strict();
 
+export { planProposalSchema } from "./plans.js";
+const planEditContent = z.object({ title: z.string(), tasks: z.unknown(), maxParallel: z.number().int().min(1).max(4) }).strict();
+const planAttempt = { clientRequestId: z.string().min(1).max(128).optional() };
+export const planEditSchema = z.discriminatedUnion("action", [
+  planEditContent.extend({ action: z.literal("save"), planId: z.string().regex(/^[0-9a-f]{8,32}$/).optional(), ...planAttempt }).strict(),
+  z.object({ action: z.enum(["confirm", "cancel"]), planId: z.string().regex(/^[0-9a-f]{8,32}$/), ...planAttempt }).strict(),
+]);
+
 /** One status line, as the agent sets it: a state, and the sentence a person reads. */
 export const MAX_STATUS_COMMENT_CHARS = 200;
+
+/** One decision a worker may park on: a bounded question, at most a handful of options, and the
+ * caller's own stable id that makes a retry safe. */
+export const MAX_DECISION_IDS = 4;
+
+export const requestDecisionSchema = z
+  .object({
+    question: z.string().trim().min(1).max(200),
+    message: z.string().trim().max(2_000).optional(),
+    kind: z.enum(["confirm", "select"]).default("confirm"),
+    options: z.array(z.string().trim().min(1).max(200)).max(6).optional(),
+    decisionId: z.string().trim().min(1).max(128),
+    waitMs: z.number().int().min(0).max(MAX_WAIT_MS).optional(),
+  })
+  .strict();
 
 export const setStatusSchema = z
   .object({
     status: z.enum(["working", "blocked", "review", "done"]),
     comment: z.string().trim().max(MAX_STATUS_COMMENT_CHARS).default(""),
+  })
+  .strict();
+
+/**
+ * An agent heartbeat: a prompt on an interval, delivered to the chat that scheduled it
+ * — never to one the arguments name. The owner identity and workspace come from the
+ * calling chat server-side; `cancelId` cancels this chat's own heartbeat by id.
+ */
+export const scheduleHeartbeatSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    prompt: z.string().trim().min(1).max(MAX_DELEGATE_BRIEF_CHARS),
+    intervalMs: z.number().int().min(MIN_HEARTBEAT_INTERVAL_MS).max(MAX_HEARTBEAT_INTERVAL_MS),
+    maxRuns: z.number().int().min(1).max(MAX_HEARTBEAT_RUNS).optional(),
+    cancelId: z.string().min(1).max(64).optional(),
   })
   .strict();
 
@@ -110,11 +162,26 @@ export const ORCH_TOOLS: OrchTool[] = [
         role: stringProperty("What the child is for (review, research, test): a label, shown in the task list.", 64),
         title: stringProperty("A short name for the task; defaults to the brief's first line.", 120),
         workspaceId: stringProperty("Project id to work in; defaults to this chat's project."),
+        isolation: { type: "string", enum: ["worktree"], description: "Run the child in its own managed worktree of this project instead of your shared working tree, so its edits cannot collide with yours. Its finished work is recorded for review and applied into your checkout only after a person reviews it." },
         notify: { type: "string", enum: ["wake", "none"], description: "Wake this chat with the result when the child finishes (default), or report only when asked." },
         clientRequestId: stringProperty("A key for this request: sending it twice returns the same task instead of spawning another."),
+        writeScope: {
+          type: "array",
+          items: { type: "string", maxLength: MAX_GLOB_CHARS },
+          maxItems: MAX_WRITE_SCOPE_GLOBS,
+          description:
+            "Globs (project-relative) the child's file writes must match, so its edits stay inside its assignment; its private scratch dir is always allowed. Omit it for work that may touch the whole project.",
+        },
       },
       ["brief"],
     ),
+  },
+  {
+    name: "task_review",
+    description:
+      "Report how a finished isolated task stands with a person: unreviewed (waiting), applied into the lead checkout, discarded, or stale (the recorded heads moved, so the apply is guarded). " +
+      "With a taskId, that one task alone.",
+    parameters: object({ taskId: stringProperty("The isolated task to report.") }, ["taskId"]),
   },
   {
     name: "task_status",
@@ -122,6 +189,20 @@ export const ORCH_TOOLS: OrchTool[] = [
       "Report how your delegated tasks stand: state, harness and model, how long they have run, their last line, and their result once finished. " +
       "With a taskId, that one task alone.",
     parameters: object({ taskId: stringProperty("The task to report; omit it to list every task this chat started.") }),
+  },
+  {
+    name: "plan_workers",
+    description:
+      "Draft and edit a lead/worker plan before anyone starts work. save with no planId creates a draft; another save edits its tasks, harness/model, write scopes and dependencies. " +
+      "Confirm runs independent tasks in at most 4 parallel workers using the real catalog; dependencies start only after the previous ones succeed. Save is always free and confirm is the only start. " +
+      "Cancel closes the proposal (never a running worker). Completed workers still require review before integration.",
+    parameters: {
+      type: "object",
+      oneOf: [
+        object({ action: { type: "string", enum: ["save"] }, planId: stringProperty("Existing draft to replace; omit to create a draft."), title: stringProperty("Proposal title", 160), tasks: { type: "array", items: { type: "object" }, minItems: 1, maxItems: 16 }, maxParallel: { type: "integer", minimum: 1, maximum: 4 } }, ["action", "title", "tasks", "maxParallel"]),
+        object({ action: { type: "string", enum: ["confirm", "cancel"] }, planId: stringProperty("The draft to start or close.") }, ["action", "planId"]),
+      ],
+    },
   },
   {
     name: "task_cancel",
@@ -176,18 +257,55 @@ export const ORCH_TOOLS: OrchTool[] = [
     ),
   },
   {
+    name: "request_decision",
+    description:
+      "Ask the person for an explicit decision only they can make — an approach to take, a trade-off to accept, a resource to spend — and wait for the answer. " +
+      "The question appears as a regular prompt on this chat, which the person sees; approvals and questions the harness itself raises are not yours to send. " +
+      "The call parks until the person answers (or waitMs passes) and then returns the recorded answer verbatim; a denial's corrective reason rides beside it. " +
+      "The person is the only one who answers: never guess, never proceed without the answer, and never ask twice for the same decision — " +
+      "pass the same decisionId to re-read an answer you have already asked for.",
+    parameters: object(
+      {
+        question: stringProperty("The decision, as one short question the person reads on its own.", 200),
+        message: stringProperty("Context for the question: the options' trade-offs, what each costs.", 2_000),
+        kind: { type: "string", enum: ["confirm", "select"], description: "confirm: a yes/no question; select: one of the options you list." },
+        options: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 6, description: "The choices, for kind select (2-6); each one line." },
+        decisionId: stringProperty("A stable id for this decision, unique within this task: asking again with it returns the recorded answer instead of asking twice.", 128),
+        waitMs: { type: "integer", minimum: 0, maximum: MAX_WAIT_MS, description: `How long to wait for the answer, in ms (default ${DEFAULT_WAIT_MS}, at most ${MAX_WAIT_MS}).` },
+      },
+      ["question", "decisionId"],
+    ),
+  },
+  {
     name: "list_profiles",
     description:
       "List the workers you can delegate to: this project's saved bot profiles and one entry per installed harness at its default model. " +
       "Use it to pick a harness, model, and provider — a council picks distinct providers from this list.",
     parameters: object({ workspaceId: stringProperty("Project id to list for; defaults to this chat's project.") }),
   },
+  {
+    name: "schedule_heartbeat",
+    description:
+      "Schedule a prompt this chat itself receives on an interval (5 minutes to a day apart), so you can pick long work back up without anyone prompting you. " +
+      "The prompt is delivered to this exact chat session, including after it is closed and reopened, until it reaches maxRuns or is cancelled. " +
+      "With cancelId, cancel one of this chat's own heartbeats by id instead of scheduling. The schedule survives a server restart; no other chat can receive it.",
+    parameters: object(
+      {
+        name: stringProperty("A short name for the heartbeat, shown in the Routines dialog.", 80),
+        prompt: stringProperty("What to send this chat on each due run.", MAX_DELEGATE_BRIEF_CHARS),
+        intervalMs: { type: "integer", minimum: MIN_HEARTBEAT_INTERVAL_MS, maximum: MAX_HEARTBEAT_INTERVAL_MS, description: `How often to beat, in ms (at least ${MIN_HEARTBEAT_INTERVAL_MS}, at most ${MAX_HEARTBEAT_INTERVAL_MS}).` },
+        maxRuns: { type: "integer", minimum: 1, description: `Stop after this many runs (at most ${MAX_HEARTBEAT_RUNS}); omit for the cap.` },
+        cancelId: stringProperty("Cancel this chat's heartbeat with this id instead of scheduling a new one."),
+      },
+      ["name", "prompt", "intervalMs"],
+    ),
+  },
 ];
 
-/** One worker an agent can ask for by id: a saved bot profile, or a harness at its default model. */
+/** One worker an agent can ask for by id: a saved bot profile, a shared profile, or a harness at its default model. */
 export interface ToolProfile {
   id: string;
-  source: "bot" | "harness";
+  source: "bot" | "harness" | "shared";
   name: string;
   harnessId: string;
   harnessName: string;
@@ -207,6 +325,8 @@ export interface ToolContext {
   registry: HarnessRegistry;
   workspaces: Workspaces;
   boards?: BoardManager;
+  /** The shared agent profiles (config.yml's `agent_profiles:`); absent leaves none to list. */
+  profiles?: () => AgentProfileConfig[];
 }
 
 /** What a tool answers: the line the model reads, and the facts behind it. */
@@ -269,6 +389,25 @@ async function botProfile(bot: BotProfile, registry: HarnessRegistry): Promise<T
   };
 }
 
+/** A shared profile, keyed `shared:<name>` so it reads the same in a URL and a delegation call. */
+async function sharedProfile(profile: AgentProfileConfig, registry: HarnessRegistry): Promise<ToolProfile> {
+  const adapter = registry.get(profile.harness);
+  return {
+    id: `shared:${profile.name}`,
+    source: "shared",
+    name: profile.name,
+    harnessId: profile.harness,
+    harnessName: adapter?.displayName ?? profile.harness,
+    available: adapter !== undefined && (await registry.available(adapter.id)),
+    model: profile.model,
+    provider: providerOf(profile.model),
+    thinkingLevel: profile.thinking,
+    permissionMode: profile.permissionMode,
+    role: null,
+    note: profile.note,
+  };
+}
+
 /** Every worker this project offers, with what a delegation from this chat still has room for. */
 export async function listProfiles(
   ctx: ToolContext,
@@ -277,8 +416,10 @@ export async function listProfiles(
 ): Promise<ToolOutput> {
   const workspace = args.workspaceId ? await ctx.workspaces.get(args.workspaceId) : ctx.chat.workspace;
   const bots = ctx.boards ? await ctx.boards.listBots() : [];
+  const shared = ctx.profiles ? ctx.profiles() : [];
   const profiles: ToolProfile[] = [];
   for (const bot of bots.slice(0, MAX_PROFILES)) profiles.push(await botProfile(bot, ctx.registry));
+  for (const profile of shared.slice(0, Math.max(0, MAX_PROFILES - profiles.length))) profiles.push(await sharedProfile(profile, ctx.registry));
   // A read-only harness is never a delegation target: the child would carry the tools it denies.
   for (const adapter of ctx.registry.list()) {
     if (adapter.capabilities.readOnlyHarness) continue;

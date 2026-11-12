@@ -399,6 +399,17 @@
   color: var(--warn);
 }
 
+/* A session handed to a terminal (its resume line copied): a hollow diamond, so a
+   live writer's dot and a herdr pane's diamond stay distinct; the tooltip names the line. */
+.session-handover {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  border: 1px solid var(--accent);
+  transform: rotate(45deg);
+}
+
 .herdr-dialog-text {
   margin: 0;
   line-height: 1.5;

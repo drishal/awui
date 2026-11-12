@@ -441,7 +441,15 @@ export function createAtui(server: Server, opts: AtuiOptions) {
         if (!target) throw new Error("That session's project is not open on the server");
         const ws = await enterWorkspace(target);
         const body = { harnessId: s.harnessId, workspaceId: ws.id, sessionId: s.id, ...(again ? { ignoreHerdr: true } : {}) };
-        show(await server.call<ChatSnapshot>("/api/chats/resume", { body }), { newTab });
+        try {
+          show(await server.call<ChatSnapshot>("/api/chats/resume", { body }), { newTab });
+        } catch (error) {
+          // A handover locked it (its resume line was copied for a terminal): opening it here
+          // again is the reclaim, so the lock goes and the same native session resumes.
+          if (!(error instanceof ServerError && error.status === 409 && error.code === "session_handed")) throw error;
+          setBanner({ level: "warning", text: `Reclaiming “${s.title || "this session"}”: it was handed to a terminal. The pasted copy keeps working — it is the same native session.` });
+          show(await server.call<ChatSnapshot>("/api/chats/resume", { body: { ...body, reclaim: true } }), { newTab });
+        }
       }
       void refreshSessions();
     } catch (error) {

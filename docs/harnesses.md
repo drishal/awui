@@ -245,7 +245,7 @@ leaves a button that fails. Gate any server route on the flag too.
 | `supportsFork` | Fork from a finished turn | `App.tsx`, `app.ts` |
 | `supportsHandoff` | Being the target of a cross-harness handoff | `App.tsx`, `ComposerControls.tsx`, `app.ts` |
 | `supportsRewind` | Edit/Retry a past prompt in place | `App.tsx`, `SidePane.tsx`, `chat.ts` |
-| `supportsResumeCommand` | Copy resume command | `Sidebar.tsx`, `App.tsx`, `app.ts` |
+| `supportsResumeCommand` | Copy resume command | `Sidebar.tsx`, `App.tsx`, `app.ts`, `resume-command.ts`, `HandoverDialog.tsx`, `handover.ts` |
 | `supportsHtmlRender` | awui's render tool is wired into the child | `chats/manager.ts` |
 | `supportsExtensions`, `supportsInteractiveRequests` | Declared for honesty; no client reads them today | — |
 | `supportsProjectFolders` | The project folder flow (start-screen pick, folder chip, project chip, grouped sidebar). False: runs on home, flat dated history | `App.tsx`, `StartScreen.tsx`, `Sidebar.tsx`, `SidePane.tsx`, `start-screen.ts` |

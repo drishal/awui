@@ -8,22 +8,11 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { WorkspaceInfo, WorktreeCreated, WorktreeSeedReport } from "../shared/protocol.js";
+import type { WorkspaceInfo, WorktreeCreated, WorktreeInfo, WorktreeSeedReport } from "../shared/protocol.js";
 import { isWithin } from "./workspaces.js";
 import { ChatError } from "./chats/chat.js";
 import { git } from "./git.js";
 import { readJson, writeJsonChecked } from "./state-file.js";
-
-/** One managed worktree, as the routes and the panel carry it. */
-export interface WorktreeInfo {
-  id: string;
-  /** Absolute path inside the workspace. */
-  path: string;
-  branch: string;
-  /** The commit-ish the tree was created from. */
-  base: string;
-  createdAt: number;
-}
 
 /** What a create takes beyond the name and base: the project's own `awui.yml` shared entries. */
 export interface WorktreeCreateOptions {
@@ -38,6 +27,14 @@ export interface WorktreeCreateOptions {
 export interface WorktreeService {
   list(ws: WorkspaceInfo): Promise<WorktreeInfo[]>;
   create(ws: WorkspaceInfo, name: string, base: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated>;
+  /** A managed isolated checkout of an existing pull request's head branch. */
+  checkoutPr(ws: WorkspaceInfo, name: string, pr: number, headBranch: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated>;
+  /**
+   * Archive one managed checkout whose pull request merged: refused unless the PR
+   * really is merged, the tree is clean, and HEAD still sits on the branch the
+   * record names. A refusal keeps the worktree and names the problem.
+   */
+  archiveMerged(ws: WorkspaceInfo, id: string, pr: number): Promise<void>;
   prune(ws: WorkspaceInfo, id: string): Promise<void>;
   /** Drop a tree's record after something else removed the checkout (a race's cleanup). */
   forget(ws: WorkspaceInfo, id: string): Promise<void>;
@@ -55,11 +52,14 @@ const reasons: Record<string, string> = {
   no_dest: "Could not find a fresh worktree directory",
   dirty_tree: "Commit or resolve this worktree's changes before pruning",
   unknown_id: "That managed worktree is not in this project",
+  bad_pr: "GitHub has no pull request like that in this repository",
+  pr_taken: "That pull request already has a managed checkout",
+  pr_mismatch: "That managed worktree tracks a different pull request",
 };
 export function worktreeProblem(error: unknown): ChatError | undefined {
   if (!(error instanceof Error) || !(error.message in reasons)) return undefined;
   const code = error.message;
-  return new ChatError(code === "unknown_id" ? 404 : code === "name_taken" || code === "dirty_tree" ? 409 : code === "bad_base" ? 400 : 422, code, reasons[code] ?? "Worktree operation failed");
+  return new ChatError(code === "unknown_id" ? 404 : code === "name_taken" || code === "dirty_tree" || code === "pr_taken" ? 409 : code === "bad_base" || code === "bad_pr" ? 400 : 422, code, reasons[code] ?? "Worktree operation failed");
 }
 const SUFFIX_ATTEMPTS = 8;
 const operations = new Map<string, Promise<void>>();
@@ -86,11 +86,11 @@ const metaFile = (ws: WorkspaceInfo): string => path.join(ws.path, ".awui", "wor
  *  workspace drops out, nothing here writes it back. */
 function cleanEntry(ws: WorkspaceInfo, e: unknown): WorktreeInfo | null {
   if (typeof e !== "object" || e === null) return null;
-  const { id, path: p, branch, base, createdAt } = e as Record<string, unknown>;
+  const { id, path: p, branch, base, createdAt, pr } = e as Record<string, unknown>;
   if (typeof id !== "string" || typeof p !== "string" || typeof branch !== "string") return null;
   if (typeof base !== "string" || typeof createdAt !== "number") return null;
   if (!isWithin(ws.path, p)) return null;
-  return { id, path: p, branch, base, createdAt };
+  return { id, path: p, branch, base, createdAt, ...(typeof pr === "number" && Number.isInteger(pr) && pr > 0 ? { pr } : {}) };
 }
 
 async function loadMeta(ws: WorkspaceInfo): Promise<WorktreeInfo[]> {
@@ -196,6 +196,75 @@ export class ManagedWorktrees implements WorktreeService {
     return serial(ws, () => this.pruneOne(ws, id));
   }
 
+  /**
+   * A managed isolated checkout of an existing pull request: the PR's head branch
+   * is fetched from origin and a new tree checks out its own branch at that commit,
+   * so the checkout never moves the caller's branch and never shares git's index
+   * with another worktree. Names, validation, and the metadata commit run under the
+   * same per-workspace serialization as a task checkout; the base is the PR's head
+   * commit, so counts and an archive have one exact point.
+   */
+  async checkoutPr(ws: WorkspaceInfo, name: string, pr: number, headBranch: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated> {
+    return serial(ws, () => this.checkoutPrOne(ws, name, pr, headBranch, options));
+  }
+
+  private async checkoutPrOne(ws: WorkspaceInfo, name: string, pr: number, headBranch: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated> {
+    const s = slug(name);
+    if (!s || s !== name.trim() || !SLUG_PATTERN.test(s)) throw new Error("bad_name");
+    if (!Number.isInteger(pr) || pr < 1) throw new Error("bad_pr");
+    // The head branch comes from `gh pr view` server-side; a remote-tracking ref
+    // names it without touching the caller's own branches. `--` keeps a branch
+    // name that looks like an option from being read as one.
+    const ref = `refs/remotes/origin/${headBranch}`;
+    // A ref origin has not named yet exits 128 ("Needed a single revision"), which
+    // is an answer (fetch it below), not a failure; a repo without a remote exits 1.
+    let resolved = (await git(["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], { cwd: ws.path, okExit: [1, 128] }).catch(() => "")).trim();
+    if (!resolved) {
+      await git(["fetch", "origin", "--", headBranch], { cwd: ws.path, timeoutMs: 60_000 });
+      resolved = (await git(["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], { cwd: ws.path, okExit: [1, 128] }).catch(() => "")).trim();
+      if (!resolved) throw new Error("bad_pr");
+    }
+
+    const meta = await loadMeta(ws);
+    if (meta.some((t) => t.pr === pr)) throw new Error("pr_taken");
+    if (meta.some((t) => slug(path.basename(t.path).replace(/-[0-9a-f]{1,8}$/, "")) === s)) {
+      throw new Error("name_taken");
+    }
+
+    let dest = "";
+    for (let i = 0; i < SUFFIX_ATTEMPTS; i++) {
+      const cand = path.join(ws.path, ".awui", "worktrees", `pr-${pr}-${randomUUID().replace(/-/g, "").slice(0, 8)}`);
+      if (!(await existsDir(cand))) {
+        dest = cand;
+        break;
+      }
+    }
+    if (!dest) throw new Error("no_dest");
+    if (!isWithin(ws.path, dest)) throw new Error("bad_dest");
+
+    await ignoreControlArea(ws);
+    const branch = `awui/pr-${pr}-${randomUUID().replace(/-/g, "").slice(0, 8)}`;
+    // `-b <branch>` before the destination, `--` keeps it from being mistaken for
+    // an option, and the resolved base last — the legal syntax git accepts. A
+    // fresh awui/pr-… name cannot be checked out elsewhere, so this is the one
+    // form; a detached HEAD would not match the record on archive.
+    await git(["worktree", "add", "-b", branch, "--", dest, resolved], { cwd: ws.path });
+    if (!(await existsDir(dest))) throw new Error("create_failed");
+
+    const info: WorktreeInfo = { id: randomUUID().slice(0, 8), path: dest, branch, base: resolved, createdAt: Date.now(), pr };
+    meta.push(info);
+    // The record must be on disk before checkoutPr returns; if it cannot be saved,
+    // undo git's registration so metadata and git's worktree list stay consistent.
+    try {
+      await writeJsonChecked(metaFile(ws), meta);
+    } catch (err) {
+      await git(["worktree", "remove", "--force", "--", dest], { cwd: ws.path }).catch(() => undefined);
+      throw err;
+    }
+    const seeded = await seedWorktree(ws.path, dest, options?.shared ?? []).catch((): WorktreeSeedReport => ({ copied: [], linked: [], skipped: [{ path: INCLUDE_FILE, reason: "could not be read" }], more: 0 }));
+    return { ...info, seeded };
+  }
+
   private async pruneOne(ws: WorkspaceInfo, id: string): Promise<void> {
     const meta = await loadMeta(ws);
     const at = meta.findIndex((t) => t.id === id);
@@ -237,6 +306,58 @@ export class ManagedWorktrees implements WorktreeService {
       meta.splice(at, 1);
       await writeJsonChecked(metaFile(ws), meta);
     });
+  }
+
+  /**
+   * Archive one managed checkout after its pull request merged: the removal runs
+   * only when the PR really is merged in GitHub, the tree is clean (`.awui`
+   * aside), and HEAD still sits on the branch the record names — so no dirty,
+   * untracked, or moved-off work is ever taken away silently. A refusal keeps the
+   * worktree and names the problem; GitHub's own state is the only say on merged.
+   */
+  async archiveMerged(ws: WorkspaceInfo, id: string, pr: number): Promise<void> {
+    return serial(ws, () => this.archiveMergedOne(ws, id, pr));
+  }
+
+  private async archiveMergedOne(ws: WorkspaceInfo, id: string, pr: number): Promise<void> {
+    const meta = await loadMeta(ws);
+    const at = meta.findIndex((t) => t.id === id);
+    if (at < 0) throw new Error("unknown_id");
+    const tree = meta[at];
+    if (!tree) throw new Error("unknown_id");
+    if (!isWithin(ws.path, tree.path)) throw new Error("bad_path");
+    // The archive request names the PR it merged; a record that tracks another one
+    // (or none) is not this request's tree, whatever its path says.
+    if (tree.pr !== pr) throw new Error("pr_mismatch");
+    if (!(await existsDir(tree.path))) {
+      // Git's stale registration: drop the record, nothing to remove.
+      meta.splice(at, 1);
+      await writeJsonChecked(metaFile(ws), meta);
+      return;
+    }
+
+    const status = await git(["status", "--porcelain"], { cwd: tree.path });
+    const dirty = status
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0)
+      .filter((l) => !l.endsWith(".awui") && !l.includes(".awui/"));
+    if (dirty.length > 0) throw new Error("dirty_tree");
+
+    // `worktree remove` would take whatever is checked out there, so the branch the
+    // record names must be the one in the tree: a detached HEAD, or another branch,
+    // may hold commits that vanish with the folder and that no branch name names.
+    const head = (await git(["symbolic-ref", "-q", "HEAD"], { cwd: tree.path, okExit: [1] }).catch(() => "")).trim();
+    if (head !== `refs/heads/${tree.branch}`) throw new Error("moved");
+
+    await git(["worktree", "remove", "--", tree.path], { cwd: ws.path });
+    meta.splice(at, 1);
+    // Remove already happened; a failed save leaves the record listed and a retry
+    // of archive converges (the tree is gone, so the record drops out).
+    await writeJsonChecked(metaFile(ws), meta);
+    // The checkout's branch goes too once its PR is merged; `-d` refuses an
+    // unmerged one, which stays for the user, so no committed work is lost.
+    await git(["branch", "-d", "--", tree.branch], { cwd: ws.path }).catch(() => undefined);
   }
 }
 

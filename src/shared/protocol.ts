@@ -2,6 +2,9 @@
 // reference a harness SDK: adapters normalize into these types.
 import { z } from "zod";
 import type { BreakdownRules } from "./breakdown.js";
+import { workerPlanSchema, workerProposalSchema } from "./worker-plan.js";
+export const Plan = workerPlanSchema;
+export type Plan = z.infer<typeof workerPlanSchema>;
 
 export type HarnessId = string & { readonly __brand: "HarnessId" };
 export const asHarnessId = (id: string): HarnessId => id as HarnessId;
@@ -112,6 +115,8 @@ export interface SessionSummary {
   snoozedUntil?: number;
   /** Not seen yet: a dot on the row until it is opened here (a mark this server keeps). */
   unread?: true;
+  /** The server hibernated this chat's harness child: its session id is intact, opening it resumes the same native session. */
+  parked?: true;
   /** A live chat waiting on an answer or an approval. */
   asking?: true;
   /** Open in a herdr pane (its harness run there, not by this server), and what herdr says it does. */
@@ -133,6 +138,14 @@ export interface SessionSummary {
    */
   agentStatus?: AgentStatusLine;
   herdr?: { paneId: string; status: HerdrStatus };
+  /**
+   * A handover recorded exactly the resume line: the session is locked against a resume
+   * here until it is reclaimed (which one send does). The line is shown in the row and
+   * the dialog; the lock itself is the server's.
+   */
+  handover?: true;
+  /** The line the handover held, shown beside the lock (a handover mark only). */
+  handoverCommand?: string;
 }
 
 /** Who started a session that no person typed into. */
@@ -165,6 +178,8 @@ export interface WorktreeInfo {
   branch: string;
   base: string;
   createdAt: number;
+  /** The pull request this checkout tracks (a checkout-pr tree); absent for a task checkout. */
+  pr?: number;
 }
 
 /**
@@ -204,6 +219,45 @@ export interface WorktreeSeedReport {
 
 /** One created worktree together with what was seeded into it (the create response only). */
 export type WorktreeCreated = WorktreeInfo & { seeded: WorktreeSeedReport };
+
+/** One layer of a project's PR stack, newest first, as the panel draws it. */
+export interface PrStackLayer {
+  /** The layer's PR number. */
+  pr: number;
+  url: string;
+  title: string;
+  /** GitHub's state: OPEN, MERGED, CLOSED, DRAFT. */
+  state: string;
+  /** The branch this layer's PR targets (the layer below's head, or the stack's base). */
+  baseBranch: string;
+  /** The branch this layer's PR comes from. */
+  headBranch: string;
+  /** The managed checkout tracking this layer, when one exists. */
+  worktreeId?: string;
+  checks: GitHubCheckView[];
+}
+
+/** One reported check of a layer's PR (github.ts's parse, shared with the panel). */
+export interface GitHubCheckView {
+  name: string;
+  state: string;
+  link: string | null;
+}
+
+/** A project's PR stack, persisted in the state folder per project. */
+export interface PrStack {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  createdAt: number;
+  /** The branch the stack's bottom layer targets (main, typically). */
+  base: string;
+  /** Newest layer first. */
+  layers: PrStackLayer[];
+  /** Which layer a merge last merged through to (its PR number), when one ran. */
+  mergedThrough?: number;
+  mergedAt?: number;
+}
 
 /** How a race member stands: its chat's live run, or closed once that chat was closed. */
 export type RaceMemberStatus = "running" | "settled" | "failed" | "closed";
@@ -988,12 +1042,28 @@ export type DelegatedOutcome = "done" | "failed" | "cancelled" | "interrupted";
 
 /** How many of a chat's delegated tasks a snapshot carries. */
 export const MAX_DELEGATED_TASKS = 20;
+export const workerPlanSaveSchema = workerProposalSchema.extend({ planId: z.string().regex(/^[0-9a-f]{8,32}$/).optional() });
+export const workerPlanConfirmSchema = z.object({ planId: z.string().regex(/^[0-9a-f]{8,32}$/) }).strict();
 
 /**
  * One delegated task as the browser sees it. The child is an ordinary chat, so its
  * transcript is its own; this view carries only what a parent's panel needs, and a
  * result is bounded (the full answer is in the child chat).
  */
+export interface IntegrationRecord {
+  taskId: string;
+  workspaceId: string;
+  workspacePath: string;
+  worktreeId: string;
+  branch: string;
+  fork: string;
+  leadHead: string;
+  createdAt: number;
+  review: { decision: "apply" | "discard"; by: string; note: string; at: number } | null;
+  appliedAt: number | null;
+  discardedAt: number | null;
+}
+
 export interface DelegatedTaskView {
   id: string;
   parentChatId: string;
@@ -1015,6 +1085,16 @@ export interface DelegatedTaskView {
   result: { finalText: string; error: string | null; usage: SessionUsage | null } | null;
   /** A child waiting on an answer: its request's title, never the request body. */
   asking: string | null;
+  /**
+   * The write scope the child was held to (A5, see orchestration/scope.ts): the globs its tool
+   * writes must match (empty: anywhere in the project), its private scratch dir, and what the
+   * guard saw — attempted (every out-of-scope write seen), how many were blocked before they
+   * ran, and how many landed and could only be reported. A harness that cannot pre-empt writes
+   * reports the landed ones alone and says so; null for a task that carries no scope.
+   */
+  scope?: { globs: string[]; scratchDir: string | null; attempted: number; blocked: number; landed: number; recent: string[] } | null;
+  /** Whether this task ran in a managed isolated checkout, so its recorded heads can be reviewed. */
+  reviewable: boolean;
 }
 
 /** A chat another agent delegated: which task, and where in the tree. */
@@ -1066,6 +1146,8 @@ export interface ChatSnapshot {
   delegated?: DelegatedTaskView[];
   /** Set when another agent delegated this chat: what the header's lineage chip reads. */
   lineage?: ChatLineage;
+  /** The current lead/worker proposal, when this chat coordinates one. */
+  plan?: Plan | undefined;
 }
 
 /** How many context readings a chat keeps (server) and a client mirrors. */
@@ -1094,6 +1176,8 @@ export type ChatEvent =
   | { type: "todos"; todos: TodoItem[] }
   | { type: "checkpoints"; turns: number[] }
   | { type: "chain"; chain: ChainStep[]; paused: string | null }
+  /** One coordinator's proposal or run changed. */
+  | { type: "plan"; plan: Plan }
   /** One of this chat's delegated tasks changed: a panel row updates without polling. */
   | { type: "task"; task: DelegatedTaskView }
   | { type: "disposed"; reason: string };
@@ -1133,6 +1217,8 @@ export interface Bootstrap {
   build: string;
   /** "local": this machine, no sign-in. "password": signed in from another device. */
   auth: { mode: "local" | "password"; username: string | null; remoteEnabled: boolean };
+  /** This session's additive grants (grants.ts): everything a session may do beyond sign-in itself. Null: full access (local use, or a password session with no invitation). */
+  grants: string[] | null;
   harnesses: HarnessStatus[];
   roots: string[];
   home: string;
@@ -1142,6 +1228,8 @@ export interface Bootstrap {
   pairing: { urls: string[] };
   /** From config.yml's `breakdown:`: which changed paths a card counts as tests and as generated output (shared/breakdown.ts holds the defaults). */
   breakdown: BreakdownRules;
+  /** From config.yml's `agent_profiles:`: the shared seats every room and delegation can use. */
+  agentProfiles: AgentProfileSettings[];
   limits: { maxMessageChars: number };
 }
 
@@ -1167,6 +1255,19 @@ export const terminalCreateSchema = z.object({ cols: z.number().int().min(10).ma
 export const terminalWriteSchema = z.object({ data: z.string().max(16_384) });
 export const htmlRenderPreviewSchema = z.object({ theme: z.record(z.string().regex(/^--[a-z0-9-]+$/), z.string().max(1000).refine((value) => !/[;{}]/.test(value))).refine((value) => Object.keys(value).length <= 32), appearance: z.enum(["light", "dark"]) });
 export const gitHubPrSchema = z.object({ base: z.string().trim().min(1).max(120), title: z.string().trim().min(1).max(200), body: z.string().max(20_000).default("") });
+/** A managed checkout of an existing pull request: its number and the task name. */
+export const prCheckoutSchema = z.object({ pr: z.number().int().min(1).max(99_999), name: z.string().trim().min(1).max(64) });
+/** Stack a new PR above #above (that PR's head branch becomes the target), or start a stack on an explicit base. */
+export const prStackCreateSchema = z.object({
+  above: z.number().int().min(1).max(99_999).optional(),
+  base: z.string().trim().min(1).max(120).optional(),
+  title: z.string().trim().min(1).max(200),
+  body: z.string().max(20_000).default(""),
+  /** Push the checked-out branch to origin first: one deliberate action, never automatic. */
+  push: z.boolean().default(false),
+}).refine((input) => input.above !== undefined || input.base !== undefined, { message: "A stacked pull request needs the PR to stack above, or an explicit base branch" });
+/** Merge a stack bottom-up; optionally archive the managed checkouts whose PRs merged. */
+export const prStackMergeSchema = z.object({ archive: z.boolean().default(false) });
 export const compareStartSchema = z.object({ workspaceId: z.string().min(1).max(128), name: z.string().trim().min(1).max(64), base: z.string().trim().min(1).max(256), prompt: z.string().min(1).max(MAX_MESSAGE_CHARS), choices: z.array(z.object({ harnessId: z.string().min(1).max(64), model: z.string().min(1).max(512).optional() }).strict()).min(2).max(4) });
 /** Picking a race's winner: mark it, or also put its changes in the project's working tree. */
 export const raceWinnerSchema = z.object({ chatId: z.string().min(1).max(128), mode: z.enum(["keep", "apply"]).default("keep") });
@@ -1174,6 +1275,14 @@ export const raceWinnerSchema = z.object({ chatId: z.string().min(1).max(128), m
 export const raceCleanupSchema = z.object({ discard: z.array(z.string().min(1).max(128)).max(8).default([]) });
 /** One file of a race member's worktree, by its path in that worktree. */
 export const raceDiffQuery = z.object({ path: z.string().min(1).max(4096) });
+/** A person's review of a finished isolated worker's work: apply it into the lead checkout, or discard it. */
+export const taskReviewDecisionSchema = z.object({
+  decision: z.enum(["apply", "discard"]),
+  /** Why: the correction a reviewer leaves, kept on the record (≤2 000 chars). */
+  note: z.string().max(2000).default(""),
+  /** The project whose lead checkout the work applies into. */
+  workspaceId: z.string().min(1).max(128),
+});
 /** Allow a project's .envrc (direnv allow), within the workspace roots. */
 export const direnvAllowSchema = z.object({ workspaceId: z.string().min(1).max(128) });
 export const createChatSchema = z.object({
@@ -1190,6 +1299,8 @@ export const resumeChatSchema = z.object({
   sessionId: z.string().min(1).max(512),
   /** Resume it even though a herdr pane runs it: a second harness on the same session file, which the user chose. */
   ignoreHerdr: z.boolean().optional(),
+  /** Reclaim a handed-off session while resuming it: the handover lock is taken (the user chose to bring it back). */
+  reclaim: z.boolean().optional(),
 });
 /** A herdr pane to show (herdr's ids look like `w1:p2`). */
 export const herdrFocusSchema = z.object({ paneId: z.string().regex(/^[A-Za-z0-9:_-]{1,64}$/) });
@@ -1308,6 +1419,46 @@ export const MAX_PRECHECK_CHARS = 500;
 export const MAX_RUN_DETAIL_CHARS = 300;
 /** How many runs of a routine's history one read asks for. */
 export const MAX_RUNS_READ = 100;
+
+// ---- agent heartbeats -------------------------------------------------------
+// An agent-scoped heartbeat is a scheduled prompt routed through the same timer the
+// routines run on, owned by the chat whose harness child scheduled it. The owner is
+// kept server-side only (harness id plus native session id); no token travels with the
+// schedule, and the target chat is the owner's, never one the caller names. The Zod
+// schema for the tool call lives with the other orchestration schemas
+// (orchestration/tools.ts); these are the wire types every client reads.
+
+/** How often a heartbeat may beat: at least 5 minutes apart, at most once a day. */
+export const MIN_HEARTBEAT_INTERVAL_MS = 5 * 60_000;
+export const MAX_HEARTBEAT_INTERVAL_MS = 24 * 60 * 60_000;
+/** A heartbeat runs at most this many times, so a forgotten one cannot run for ever. */
+export const MAX_HEARTBEAT_RUNS = 10_000;
+
+/** What one schedule_heartbeat call spells when it schedules: the shape the store keeps. */
+export interface ScheduleHeartbeatInput {
+  name: string;
+  prompt: string;
+  intervalMs: number;
+  maxRuns?: number;
+}
+
+/** One heartbeat as the Routines dialog and the tool call read it. */
+export interface HeartbeatView {
+  id: string;
+  name: string;
+  prompt: string;
+  intervalMs: number;
+  maxRuns: number;
+  runs: number;
+  nextRunAt: number | null;
+  lastRunAt: number | null;
+  lastRunOutcome: RoutineOutcome | null;
+  lastRunDetail: string | null;
+  halted: string | null;
+  cancelledAt: number | null;
+  /** `harness:native` of the chat that scheduled this: what the UI marks it agent by. */
+  ownerSessionId: string;
+}
 /** `GET /api/routines/runs`: one routine's history, or every routine's, newest first. */
 export const routineRunsQuerySchema = z.object({
   routineId: z.string().min(1).max(64).optional(),
@@ -1486,6 +1637,17 @@ export interface ResumeCommand {
   /** `cd <project> && claude --resume <id>`, quoted for a POSIX shell or fish. */
   command: string;
   /** awui has the session open: closing it here first keeps one writer on the session. */
+  live: boolean;
+  /**
+   * A previous handover recorded exactly this line: the session is locked against a
+   * resume here until it is reclaimed (which one send does). Absent without one.
+   */
+  held?: true;
+}
+
+/** Reclaiming a handed-off session (POST /api/sessions/reclaim) or one lock too many: answers with the line the handover held. */
+export interface HandoverReclaim {
+  command: string | null;
   live: boolean;
 }
 
@@ -1704,6 +1866,13 @@ const markChangeShape = {
 const hasMark = (v: { pinned?: unknown; archived?: unknown; settled?: unknown; snoozedUntil?: unknown; unread?: unknown; replace?: unknown }): boolean =>
   v.replace === true || v.pinned !== undefined || v.archived !== undefined || v.settled !== undefined || v.snoozedUntil !== undefined || v.unread !== undefined;
 
+/**
+ * A parked mark is the server's own (the hibernation scheduler sets it, and only a
+ * reopen or a run clears it), so the marks route does not take one: a client that
+ * could set it could hide a live chat's harness without the conditions that gate it.
+ */
+export const SERVER_MARK_KEYS = ["parked"] as const;
+
 /** Pin or archive a session; pinning unarchives it and archiving unpins it. */
 export const sessionMarkSchema = z.object({ sessionId: z.string().min(1).max(512), ...markChangeShape }).refine(hasMark, { message: "empty mark" });
 
@@ -1724,6 +1893,8 @@ export interface SessionMarkState {
   settled?: true;
   snoozedUntil?: number;
   unread?: true;
+  /** The server hibernated this chat's harness child: the session id is intact, opening it resumes the same native session. */
+  parked?: true;
 }
 export const compactSchema = z.object({ instructions: z.string().max(10_000).optional() });
 /** A denial may explain the correction the agent should make. It is never a second implicit approval. */
@@ -1773,6 +1944,8 @@ export interface ServerSettingsValues {
   desktopBackground: boolean;
   /** config.yml's own ACP agents, as the Settings dialog lists them (environment values never leave the server). */
   acpAgents: AcpAgentSettings[];
+  /** config.yml's shared agent profiles: named harness/model/thinking/mode bundles every room and delegation can use. */
+  agentProfiles: AgentProfileSettings[];
 }
 
 /**
@@ -1789,6 +1962,45 @@ export interface AcpAgentSettings {
   /** The `authenticate` method id, or null. */
   authMethod: string | null;
 }
+
+/**
+ * One shared agent profile as the Settings dialog lists it: a named bundle of
+ * harness, model, thinking level, permission mode, and a note, kept in
+ * config.yml for every room and delegation to use. Credentials never appear
+ * here: a provider login stays in the harness's own auth.
+ */
+export interface AgentProfileSettings {
+  name: string;
+  harness: string;
+  /** `provider/id` as the harness's model list spells it; null is the harness default. */
+  model: string | null;
+  thinking: string | null;
+  /** The harness's own mode id, only when it declares permission modes. */
+  permissionMode: string | null;
+  /** One line a person or a delegating model reads. */
+  note: string | null;
+}
+
+/** One entry as the dialog saves it: the whole list is sent, in order. */
+export interface AgentProfilePatch {
+  name: string;
+  harness: string;
+  model?: string | null;
+  thinking?: string | null;
+  permissionMode?: string | null;
+  note?: string | null;
+}
+
+export const agentProfilePatchSchema = z
+  .object({
+    name: z.string().trim().min(1).max(64),
+    harness: z.string().trim().min(1).max(64),
+    model: z.string().trim().min(1).max(512).nullable().optional(),
+    thinking: z.string().trim().min(1).max(64).nullable().optional(),
+    permissionMode: z.string().trim().min(1).max(64).nullable().optional(),
+    note: z.string().trim().min(1).max(200).nullable().optional(),
+  })
+  .strict();
 
 /** One entry as the dialog saves it: a blank env value keeps the one already stored for that name. */
 export interface AcpAgentPatch {
@@ -1872,9 +2084,43 @@ export const settingsPatchSchema = z
     desktopBackground: z.boolean().optional(),
     /** The whole list, in order: what is missing is removed. A blank env value keeps the stored one. */
     acpAgents: z.array(acpAgentPatchSchema).max(16).optional(),
+    /** The whole list, in order: what is missing is removed. */
+    agentProfiles: z.array(agentProfilePatchSchema).max(64).optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>;
+
+// ---- Limited-session invitations (grants.ts) ---------------------------------
+/** The fixed grant vocabulary, mirrored here so clients validate against the same words. */
+export const GRANT_VALUES = ["chat.read", "chat.write", "chat.approve", "settings.manage", "workspaces.manage", "routines.manage", "boards.manage"] as const;
+export type GrantValue = (typeof GRANT_VALUES)[number];
+
+/** A new invitation from the Settings dialog: one name and the grants it allows. */
+export const inviteCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    grants: z.array(z.enum(GRANT_VALUES)).max(GRANT_VALUES.length),
+  })
+  .strict();
+export type InviteCreate = z.infer<typeof inviteCreateSchema>;
+
+/** An edit in place: `grants: null` keeps them, an empty list strips every grant on purpose. */
+export const invitePatchSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).nullable().optional(),
+    grants: z.array(z.enum(GRANT_VALUES)).max(GRANT_VALUES.length).nullable().optional(),
+  })
+  .strict();
+export type InvitePatch = z.infer<typeof invitePatchSchema>;
+
+/** A sign-in bound to one invitation: the cookie carries its id only. */
+export const inviteSignInSchema = z
+  .object({
+    username: z.string().max(128).optional(),
+    password: z.string().max(1024).optional(),
+    invite: z.string().min(1).max(64).optional(),
+  })
+  .strict();
 
 // ---- Board: rooms of named bots over the existing harnesses ----------------
 //

@@ -140,7 +140,9 @@ record instead of a `cancel_timeout` when the child is slow to settle. Both stay
 
 | Tool | Arguments | Serves |
 |---|---|---|
-| `delegate_task` | `brief` (1–32 000 chars), `harness`, `profile`, `model`, `thinkingLevel`, `permissionMode`, `role`, `title`, `workspaceId`, `notify`, `clientRequestId` | yes |
+| `delegate_task` | `brief` (1–32 000 chars), `harness`, `profile`, `model`, `thinkingLevel`, `permissionMode`, `role`, `title`, `workspaceId`, `isolation` (`worktree`), `notify`, `clientRequestId`, `writeScope` (≤8 globs of ≤128 chars) | yes |
+| `plan_workers` | `action` = `save` (title, ≤16 tasks with id/prompt/harness/model/writeScope/dependsOn, `maxParallel` 1–4, optional planId), `confirm` or `cancel` (planId) | yes |
+| `task_review` | `taskId` (isolated tasks only) | yes |
 | `task_status` | `taskId` (omitted: every task this chat started) | yes |
 | `task_cancel` | `taskId` (idempotent) | yes |
 | `thread_send` | `taskId`, `text` (1–32 000 chars) | yes |
@@ -148,6 +150,7 @@ record instead of a `cancel_timeout` when the child is slow to settle. Both stay
 | `thread_wait` | `taskIds` (1–4), `waitMs` (default 55 000, max 110 000) | yes |
 | `list_profiles` | `workspaceId` | yes |
 | `set_status` | `status` (`working`/`blocked`/`review`/`done`), `comment` (≤200 chars, optional) | yes |
+| `request_decision` | `question` (1–200 chars), `decisionId` (≤128 chars), `message` (≤2 000 chars, optional), `kind` (`confirm`/`select`), `options` (≤6, for select), `waitMs` (≤110 000, optional) | yes |
 
 `set_status` writes this chat's status line: one word for where the work stands and one
 sentence a person reads in the sidebar's row, the chat's header, and its hover card
@@ -159,6 +162,27 @@ previous line, and a chat the harness has not named yet answers `no_session`.
 harness at its default model — `{ id, source, name, harnessId, harnessName, available,
 model, provider, thinkingLevel, permissionMode, role, note }` — with how many delegation
 levels and tasks are left.
+
+## Decision gates
+
+`request_decision` is how a delegated worker blocks on an explicit human decision. The question
+goes on the worker's own chat as a regular request item — the same card, stream, and answer route
+as any harness question — so the person answers it without knowing it came from the orchestrator,
+and the parked call returns the recorded answer verbatim, a denial's corrective reason riding
+beside it (`Their correction: …`). Only a live delegated task's worker may ask (`not_delegated`
+otherwise): the tool binds to its calling task, and only the chat the question was raised on —
+matched by its harness session too, so a resumed worker still answers its own — records the
+answer; a cross-agent answer is denied (409), a second answer sees the first.
+
+A retry with the caller's own stable `decisionId` never asks twice: an answered decision returns
+its recorded verdict at once, a pending one parks again on it. A call whose `waitMs` passes
+returns `state: "pending"` with the question still on the chat — the person can still answer it,
+and the caller asks again with the same `decisionId`. Unresolved decisions persist in
+`$XDG_STATE_HOME/awui/orchestration/decisions.json` (the newest 200, resolved rows pruned after a
+week): a restart re-raises the question on the worker's chat when it opens and never auto-answers
+it, because only the person may answer. The worker's task row reads *Waiting* with the question's
+title while its decision stands, and the parent's `thread_wait` reports it, exactly as it does for
+a harness question.
 
 ## Skills
 
@@ -229,13 +253,50 @@ delegate again, because depth is what multiplies cost.
 `delegate_task` also takes a harness, a saved bot `profile` (its harness, model, and
 permission mode), `model`, `thinkingLevel`, `permissionMode`, `role` (a label), `title`, a
 `workspaceId` (an *open* project by id, never a path), `notify` (`wake` by default: the parent
-is woken with the result), and `clientRequestId` (a repeat returns the same task instead of
-spawning a second child).
+is woken with the result), `clientRequestId` (a repeat returns the same task instead of
+spawning a second child), and `writeScope` (see below).
 
 A child inherits the caller's permission mode. An explicit one must rank at or below the
 caller's own by the caller's own harness ordering (broadest last); a mode the caller does not
 have cannot be ranked and is never granted. A read-only harness (`awui`) can neither
 delegate nor host a child.
+
+## Write scopes
+
+A delegated task can be held to a **write scope**: an optional list of project-relative globs
+(`src/**`, `tests/**`, `**/*.test.*`) its file writes must match, plus a private scratch dir it
+alone was given. The guard (`orchestration/scope.ts`) judges every tool write and every harness
+permission request against it, so a worker's edits stay inside its assignment.
+
+- **The scratch dir** is `<project>/.awui/scratch/<taskId>`, inside the control folder the
+  agent's own file listings skip. A write there is always allowed, scoped or not.
+- **A pattern holding `..`** is refused before any work starts (`bad_scope`): a resolved path
+  never contains one, so such a pattern could only ever be dead weight the model trusts in vain.
+  A relative path's `..` segments are still resolved against the project, so `src/../notes.md`
+  is judged as `notes.md` — traversal cannot sneak past the glob.
+- **With no globs**, the worker may write anywhere inside the project; a path resolving outside
+  the project is still refused.
+
+**How it is enforced.** The assignment contract travels inside the brief between the
+hidden-envelope markers (the same markers Board consultations use, escaped in the brief first so
+a quoted contract is read as quoted) — a machine-readable payload the worker reads as a contract
+rather than prose. On top of that, two halves, declared honestly per harness:
+
+- **Prevent** (a harness whose `supportsInteractiveRequests` is declared): the harness raises
+  its own permission request before a write, and awui answers **Deny** on an ask the scope
+  refuses — before the tool runs. The child is told what was blocked and why, so it can re-plan
+  inside its assignment; the task's record counts the blocked write.
+- **Detect** (every harness whose tool events awui watches): a write that landed (or errored)
+  outside the scope is seen in the settled tool row and reported. The wording says
+  *"reported, not blocked"*, because it was: the record never claims a universal guarantee
+  across harnesses that cannot pre-empt writes.
+
+A harness that can only detect reports alone and honestly; the parent's `task_status` and
+`thread_read` answers carry the counts either way:
+
+```
+[write scope: src/** · 1 out-of-scope write (1 blocked, 0 landed)]
+```
 
 **How a task ends.** One watcher per running task follows the child's stream. A child that
 goes idle (or errors) with nothing pending is finished: `done` or `failed`, with its last
@@ -290,6 +351,39 @@ why the parent was not woken.
 `POST /api/orchestration/call`, whatever the tool. Over it, the call answers `too_many_calls` (429)
 with how long to wait, so a looping agent gets a clear answer instead of an unbounded run of
 delegations.
+
+## Review-gated integration
+
+"Completed" is not "reviewed". `delegate_task` with `isolation: "worktree"` runs the child in its
+own managed worktree of the project (`.awui/worktrees/task-…`, seeded like any managed tree, on
+its own `awui/…` branch) instead of the caller's shared working tree, so its edits cannot collide
+with the caller's. The fork point — the project's HEAD when the worktree was created — is recorded
+on the task. A task that shared the tree (the default) has nothing to review: its edits landed in
+the caller's own working tree, where the caller already sees them.
+
+When an isolated worker settles `done`, its work becomes a review record
+(`$XDG_STATE_HOME/awui/orchestration/integration.json`, mode 0600): the worktree, its branch, the
+fork point, and the lead checkout's HEAD as it stood then. The task's row and the `task_review`
+tool answer say **unreviewed** until a person decides. The person applies or discards from the
+chat's task panel (`POST /api/chats/:id/tasks/:taskId/review` with `decision`, `note`, and the
+project's `workspaceId`); `POST .../unreview` puts a decision back so a mis-taken discard can be
+decided again — only an applied review is final, because the work has already moved.
+
+An **apply** puts the worker's diff against the fork point into the lead checkout's working tree,
+unstaged, and only while both recorded heads still stand: the lead checkout at the recorded head,
+and the worker's branch at the fork. It is the same patch a race's apply writes — a clean lead
+checkout, fixed diff options (so the checkout's own `diff.noprefix` or a textconv driver cannot
+move a new file), and the patch carried as bytes. Nothing is committed, pushed, or moved; the
+branch stays as it was. A **mismatched head refuses before anything is written** (`lead_moved`,
+`worker_changed`) and keeps the worktree with an actionable sentence: merge or cherry-pick by
+hand, then discard the record. No work is ever erased by a stale state.
+
+**Cleanup refuses unreviewed modifications.** `POST .../review/cleanup` takes a settled worker's
+worktree and branch only after a decision exists on the record — an unreviewed worktree answers
+`unreviewed` and stays, however clean or dirty it is. A reviewed tree's uncommitted work is
+exactly what the person reviewed (the panel's diff route shows it), so a settled record removes
+behind that guard; git's own refusals (a lock, a nested checkout) keep the tree, and `-d` refuses
+a branch whose commits the lead lacks, so no committed work is lost.
 
 ## The task record
 
@@ -372,6 +466,7 @@ parsing the words:
 | `not_your_task` | 403 | the task belongs to another chat |
 | `store_failed` | 500 | the task record could not be written, so nothing started |
 | `unsupported` | 400 | that harness has no permission modes |
+| `bad_scope` | 400 | a `writeScope` pattern holds `..`; name paths inside the project |
 | `caller_read_only` | 403 | a read-only harness may not delegate |
 | `mode_escalation_denied` | 403 | a permission mode broader than the caller's own |
 | `max_depth` | 429 | the caller is already as deep as delegation goes |
