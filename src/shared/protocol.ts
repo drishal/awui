@@ -1,6 +1,7 @@
 // Wire protocol shared by the server and the browser. Nothing in here may
 // reference a harness SDK: adapters normalize into these types.
 import { z } from "zod";
+import type { BreakdownRules } from "./breakdown.js";
 
 export type HarnessId = string & { readonly __brand: "HarnessId" };
 export const asHarnessId = (id: string): HarnessId => id as HarnessId;
@@ -987,6 +988,8 @@ export interface Bootstrap {
   /** From config.yml: the shared look (theme null lets theme.yml decide, scale null is 100%). Re-read on every page load. */
   ui: { theme: ThemeChoice | null; textScale: number | null; chatWidth: ChatWidth | null; density: Density | null; toolStyle: ToolStyle | null; font: UiFont | null; autocollapseSidebar: boolean; showStatusBar: boolean; herdr: boolean };
   pairing: { urls: string[] };
+  /** From config.yml's `breakdown:`: which changed paths a card counts as tests and as generated output (shared/breakdown.ts holds the defaults). */
+  breakdown: BreakdownRules;
   limits: { maxMessageChars: number };
 }
 

@@ -66,6 +66,15 @@ herdr: true
 # session's is found by itself).
 # herdr_socket: ~/.config/herdr/sessions/work/herdr.sock
 
+# Which changed files a worktree or race card counts as tests and as generated
+# output, for its Source / Tests / Generated chip. Globs; `**` crosses folders
+# and a trailing `/` means everything under that folder. Anything matching
+# neither list is the project's own code. The defaults are listed here commented
+# out; uncomment a list to replace it, not to add to it.
+# breakdown:
+#   tests: ["**/*.test.*", "**/*.spec.*", "**/*_test.*", "**/__tests__/**", "**/test/**", "**/tests/**", "**/spec/**", "**/*.snap"]
+#   generated: ["**/*.min.*", "**/*.gen.*", "**/*.generated.*", "**/dist/**", "**/build/**", "**/out/**", "**/vendor/**", "**/node_modules/**", "**/*-lock.json", "**/*.lock", "**/package-lock.json", "**/pnpm-lock.yaml", "**/yarn.lock", "**/Cargo.lock", "**/go.sum"]
+
 # Agents delegating work to other agents: a chat's agent can hand a task to
 # another agent chat, watch it, stop it, and read the result back. Read again
 # every couple of seconds, so a change needs no restart; the Settings dialog

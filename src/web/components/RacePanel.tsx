@@ -5,10 +5,12 @@
 // cleaned up with the reasons git gives for keeping one. The server holds every
 // record (races.ts); this only draws it and asks.
 import { useEffect, useState } from "react";
+import type { BreakdownRules } from "../../shared/breakdown.js";
 import type { HarnessStatus, RaceCleanupResult, RaceMemberView, RaceSummary, RaceWinnerResult, ToolDiff } from "../../shared/protocol.js";
 import { ago } from "../turns.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
+import { CodeBreakdown } from "./CodeBreakdown.js";
 import { DiffView } from "./ToolBody.js";
 
 const STATUS_WORD: Record<RaceMemberView["status"], string> = { running: "running", settled: "finished", failed: "failed", closed: "chat closed" };
@@ -36,11 +38,14 @@ const CLEANUP_WORD: Record<string, string> = {
 export function RacePanel({
   initialRaceId,
   harnesses,
+  breakdown,
   onOpenChat,
   onClose,
 }: {
   initialRaceId: string | null;
   harnesses: HarnessStatus[];
+  /** config.yml's `breakdown:` globs, for the source / tests / generated chip. */
+  breakdown: BreakdownRules;
   onOpenChat(chatId: string): void;
   onClose(): void;
 }) {
@@ -161,6 +166,7 @@ export function RacePanel({
                   <span className="race-counts" title="Lines added and removed against the fork point">
                     +{member.added ?? 0} −{member.removed ?? 0}
                   </span>
+                  <CodeBreakdown files={member.files} rules={breakdown} />
                   <span className="race-branch muted">{member.branch}</span>
                   {member.status !== "closed" ? (
                     <button className="btn btn-small" onClick={() => onOpenChat(member.chatId)}>

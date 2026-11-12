@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { DEFAULT_BREAKDOWN_RULES, type BreakdownRules } from "../shared/breakdown.js";
 import { chatWidthSchema, densitySchema, themeChoiceSchema, toolStyleSchema, uiFontSchema, type ChatWidth, type Density, type ThemeChoice, type ToolStyle, type UiFont } from "../shared/protocol.js";
 import { IS_WINDOWS, defaultConfigDir } from "./platform-win.js";
 
@@ -163,6 +164,18 @@ const schema = z
     claude: z.object({ subagent_prompt_cache_ttl: z.enum(["5m", "1h"]).optional(), entrypoint: claudeEntrypointSchema.optional() }).strict().optional(),
     /** Herdr's API socket, when not the default session's (file-only; HERDR_SOCKET_PATH wins). */
     herdr_socket: z.string().trim().min(1).max(4096).optional(),
+    /**
+     * Which changed paths a worktree or race card counts as tests and as generated
+     * output (shared/breakdown.ts holds the defaults). File-only; globs, `**` crossing
+     * folders; anything that matches neither list is the project's own code.
+     */
+    breakdown: z
+      .object({
+        tests: z.array(z.string().trim().min(1).max(200)).max(64).optional(),
+        generated: z.array(z.string().trim().min(1).max(200)).max(64).optional(),
+      })
+      .strict()
+      .optional(),
     /** How each harness's CLI starts: its executable, and arguments for every chat child. File-only (see HarnessLaunch). */
     harnesses: z
       .object({
@@ -299,5 +312,18 @@ export function uiSettings(c: UserConfig | undefined, env: NodeJS.ProcessEnv = p
     toolStyle: c?.tool_style ?? null,
     font: c?.font ?? null,
     herdr: herdrEnabled(c, env),
+  };
+}
+
+/**
+ * The globs a card sorts changed files by: config.yml's `breakdown:` block over the
+ * defaults, so a project that names its tests differently can say so. Read on every
+ * page load (bootstrap), so a change needs no restart.
+ */
+export function breakdownRules(c: UserConfig | undefined): BreakdownRules {
+  const block = c?.breakdown;
+  return {
+    tests: block?.tests ?? DEFAULT_BREAKDOWN_RULES.tests,
+    generated: block?.generated ?? DEFAULT_BREAKDOWN_RULES.generated,
   };
 }

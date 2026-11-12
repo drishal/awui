@@ -22,6 +22,7 @@
 .race-member.is-winner { border-color: var(--accent); }
 .race-member-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .race-status, .race-counts { color: var(--text-2); font-size: 12px; }
+.race-breakdown { color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; cursor: help; }
 .race-winner { color: var(--accent); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
 .race-branch { font: 12px var(--font-mono); overflow-wrap: anywhere; }
 .race-answer { margin: 0; color: var(--text-2); font-size: 13px; white-space: pre-wrap; }

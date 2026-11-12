@@ -2565,7 +2565,7 @@ export function App() {
         // The comparison just started is the one to watch: its panel opens over the chats.
         if (raceId) setRacesOpen({ raceId });
       }} /></LazyPanel> : null}
-      {racesOpen ? <LazyPanel><RacePanel initialRaceId={racesOpen.raceId} harnesses={boot.harnesses} onOpenChat={(chatId) => void openChatById(chatId)} onClose={() => setRacesOpen(null)} /></LazyPanel> : null}
+      {racesOpen ? <LazyPanel><RacePanel initialRaceId={racesOpen.raceId} harnesses={boot.harnesses} breakdown={boot.breakdown} onOpenChat={(chatId) => void openChatById(chatId)} onClose={() => setRacesOpen(null)} /></LazyPanel> : null}
 
       {roomEditor ? (
         <RoomEditor

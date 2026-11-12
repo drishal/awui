@@ -110,7 +110,7 @@ import type { ThemeStore } from "./theme.js";
 import { readSettings, savedAcpAgent, writeSettings, type Requester, type SettingsContext } from "./settings.js";
 import { AcpAdapter } from "./harness/acp.js";
 import { readAwuiConfig, writeAwuiConfig } from "./awui-settings.js";
-import { readUserConfig, uiSettings } from "./user-config.js";
+import { breakdownRules, readUserConfig, uiSettings } from "./user-config.js";
 import { HerdrError, type Herdr } from "./herdr.js";
 import { SessionMarks } from "./session-marks.js";
 import { SessionOrder } from "./session-order.js";
@@ -566,13 +566,14 @@ export function createApp(deps: AppDeps) {
   app.use("/api", idempotency.handle);
 
   // A broken config.yml keeps the defaults here; the server logged why at startup.
-  const browserSettings = () => {
+  const userConfig = () => {
     try {
-      return uiSettings(readUserConfig(deps.configDir ?? null)?.config);
+      return readUserConfig(deps.configDir ?? null)?.config;
     } catch {
-      return uiSettings(undefined);
+      return undefined;
     }
   };
+  const browserSettings = () => uiSettings(userConfig());
 
   let statusAt = 0;
   app.get("/api/bootstrap", async (req, res) => {
@@ -594,6 +595,7 @@ export function createApp(deps: AppDeps) {
       home: deps.home,
       theme: { active: t.name ?? "built-in", ...(t.problem ? { problem: t.problem } : {}) },
       ui: browserSettings(),
+      breakdown: breakdownRules(userConfig()),
       pairing: { urls: deps.pairingUrls },
       limits: { maxMessageChars: MAX_MESSAGE_CHARS },
     };
