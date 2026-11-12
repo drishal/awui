@@ -2,7 +2,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+import { openSettings } from "./helpers.js";
 
 // A localhost server with its own settings folder, so the shared look
 // (theme, text size) can be saved to config.yml without signing in.
@@ -52,6 +53,9 @@ test.describe("shared look in config.yml", () => {
     await exited;
   });
 
+  /** Open a section of the two-pane dialog: the rail on the left is its list. */
+  const openSection = (settings: Locator, name: string) => settings.getByRole("tab", { name, exact: true }).click();
+
   test("theme and text size save to config.yml and apply at once", async ({ page }) => {
     const { base, configFile } = ctx as NonNullable<typeof ctx>;
     await page.goto(`${base}/`);
@@ -60,7 +64,8 @@ test.describe("shared look in config.yml", () => {
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings).toBeVisible();
     // No per-device look controls remain: theme and text size live in the server form.
-    await expect(settings.getByText("This device")).toBeVisible();
+    await expect(settings.getByRole("tab", { name: "This device", exact: true })).toHaveAttribute("aria-selected", "true");
+    await openSection(settings, "Appearance");
     await settings.getByRole("button", { name: "Theme" }).click();
     await settings.getByRole("listbox", { name: "Theme" }).getByRole("option", { name: "Dark" }).click();
     const slider = settings.getByRole("slider", { name: "Chat text size" });
@@ -87,6 +92,7 @@ test.describe("shared look in config.yml", () => {
     await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Settings" });
+    await openSection(settings, "Desktop app");
     const keep = settings.getByRole("switch", { name: "Keep running in the background" });
     await expect(keep).toBeChecked();
     await keep.click();
@@ -116,6 +122,7 @@ test.describe("shared look in config.yml", () => {
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings).toBeVisible();
+    await openSection(settings, "Appearance");
     await settings.getByRole("group", { name: "Density" }).getByRole("button", { name: "Compact" }).click();
     await settings.getByRole("button", { name: "Save", exact: true }).click();
     await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
@@ -132,6 +139,7 @@ test.describe("shared look in config.yml", () => {
 
     // Back to comfortable leaves no setting behind.
     await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await openSection(settings, "Appearance");
     await settings.getByRole("group", { name: "Density" }).getByRole("button", { name: "Comfortable" }).click();
     await settings.getByRole("button", { name: "Save", exact: true }).click();
     await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
@@ -157,6 +165,7 @@ test.describe("shared look in config.yml", () => {
 
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Settings" });
+    await openSection(settings, "Appearance");
     const row = settings.getByRole("group", { name: "Tool calls" });
     await expect(row.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "true");
     await row.getByRole("button", { name: "Lines" }).click();
@@ -217,10 +226,136 @@ test.describe("shared look in config.yml", () => {
 
     // Back to cards leaves no setting behind.
     await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await openSection(settings, "Appearance");
     await settings.getByRole("group", { name: "Tool calls" }).getByRole("button", { name: "Cards" }).click();
     await settings.getByRole("button", { name: "Save", exact: true }).click();
     await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
     expect(readFileSync(configFile, "utf8")).not.toContain("tool_style");
     await expect(page.locator("html")).not.toHaveAttribute("data-tool-style", "lines");
+  });
+
+  test("sections switch in place, keep an edit made in another one, and save with one Save", async ({ page }) => {
+    const { base, configFile } = ctx as NonNullable<typeof ctx>;
+    await page.goto(`${base}/`);
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await expect(settings.getByRole("tab", { name: "This device", exact: true })).toHaveAttribute("aria-selected", "true");
+    // The dialog keeps its size: the pane scrolls, the frame does not move between sections.
+    const frame = await settings.boundingBox();
+    await openSection(settings, "Appearance");
+    await settings.getByRole("button", { name: "Theme" }).click();
+    await settings.getByRole("listbox", { name: "Theme" }).getByRole("option", { name: "Light" }).click();
+    await expect(settings.getByText("Unsaved changes")).toBeVisible();
+    await openSection(settings, "Layout");
+    await expect(settings.getByRole("switch", { name: "Fold the sidebar away in narrow windows" })).toBeChecked();
+    await settings.getByRole("switch", { name: "Fold the sidebar away in narrow windows" }).click();
+    // The edit made in Appearance is still the form's: one Save writes both.
+    await expect(settings.getByText("Unsaved changes")).toBeVisible();
+    expect(await settings.boundingBox()).toEqual(frame);
+    await settings.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
+    const file = readFileSync(configFile, "utf8");
+    expect(file).toContain("theme: light");
+    expect(file).toContain("autocollapse_sidebar: false");
+    // Back where it was, and the value held.
+    await openSection(settings, "Appearance");
+    await expect(settings.getByRole("button", { name: "Theme" })).toContainText("Light");
+    await settings.getByRole("button", { name: "Close" }).click();
+  });
+
+  test("the search narrows the rail and the rows, and Escape clears it", async ({ page }) => {
+    const { base } = ctx as NonNullable<typeof ctx>;
+    await page.goto(`${base}/`);
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    const search = settings.getByRole("searchbox", { name: "Search settings" });
+    await search.fill("port");
+    // Only the section holding a matching row is left in the rail, and it opens by itself.
+    await expect(settings.getByRole("tab")).toHaveCount(1);
+    await expect(settings.getByRole("tab", { name: "Network and sign-in" })).toHaveAttribute("aria-selected", "true");
+    await expect(settings.getByLabel("Port")).toBeVisible();
+    // The rows it filtered out are still there for the next search, but take no room.
+    await expect(settings.getByLabel("Username")).toBeHidden();
+    // A word from a section's own name keeps the whole section.
+    await search.fill("folders");
+    await expect(settings.getByRole("tab", { name: "Folders and access" })).toHaveAttribute("aria-selected", "true");
+    await expect(settings.getByLabel("Workspace roots")).toBeVisible();
+    await expect(settings.getByLabel("Allowed hosts")).toBeVisible();
+    // Nothing matched: it says so.
+    await search.fill("zebra");
+    await expect(settings.getByRole("tab")).toHaveCount(0);
+    await expect(settings.getByText("Nothing matches “zebra”.")).toBeVisible();
+    // Escape empties the search rather than closing the dialog.
+    await search.press("Escape");
+    await expect(search).toHaveValue("");
+    await expect(settings).toBeVisible();
+    await expect(settings.getByRole("tab", { name: "Folders and access" })).toBeVisible();
+    await settings.getByRole("button", { name: "Close" }).click();
+  });
+
+  test("a setting that waits for a restart says so from any section", async ({ page }) => {
+    const { base, configFile } = ctx as NonNullable<typeof ctx>;
+    await page.goto(`${base}/`);
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await openSection(settings, "Network and sign-in");
+    await settings.getByLabel("Username").fill("alice");
+    await settings.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
+    expect(readFileSync(configFile, "utf8")).toContain("username: alice");
+    // The notice is in the bar under both panes: another section still shows it.
+    await openSection(settings, "Appearance");
+    await expect(settings.getByText("Saved; takes effect after a restart: username.")).toBeVisible();
+    await settings.getByRole("button", { name: "Close" }).click();
+  });
+
+  test("on a phone the rail is a list, and a section opens with a way back", async ({ page }) => {
+    const { base } = ctx as NonNullable<typeof ctx>;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${base}/`);
+    // A phone keeps the gear in the drawer.
+    await openSettings(page);
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    // The list first: the sections, and no pane behind them.
+    await expect(settings.getByRole("searchbox", { name: "Search settings" })).toBeVisible();
+    await expect(settings.getByRole("tab", { name: "Appearance", exact: true })).toBeVisible();
+    await expect(settings.getByRole("slider", { name: "Chat text size" })).toBeHidden();
+    await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
+    // The section, with the way back to the list.
+    await expect(settings.getByRole("slider", { name: "Chat text size" })).toBeVisible();
+    await expect(settings.getByRole("searchbox", { name: "Search settings" })).toBeHidden();
+    await expect(settings.getByRole("button", { name: "Sections" })).toBeVisible();
+    // Nothing runs off the side.
+    const overflow = await settings.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    await settings.getByRole("button", { name: "Sections" }).click();
+    await expect(settings.getByRole("searchbox", { name: "Search settings" })).toBeVisible();
+    await expect(settings.getByRole("slider", { name: "Chat text size" })).toBeHidden();
+    // The Save bar is under the list too, so a phone can always save.
+    await expect(settings.getByRole("button", { name: "Save", exact: true })).toBeVisible();
+  });
+
+  test("the rail takes the keyboard: Tab reaches it and the arrows move through it", async ({ page }) => {
+    const { base } = ctx as NonNullable<typeof ctx>;
+    await page.goto(`${base}/`);
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await settings.getByRole("searchbox", { name: "Search settings" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(settings.getByRole("tab", { name: "This device", exact: true })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(settings.getByRole("tab", { name: "Appearance", exact: true })).toBeFocused();
+    await expect(settings.getByRole("tab", { name: "Appearance", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(settings.getByRole("heading", { name: "Appearance" })).toBeVisible();
+    await page.keyboard.press("End");
+    await expect(settings.getByRole("tab", { name: "Folders and access" })).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowDown");
+    await expect(settings.getByRole("tab", { name: "This device", exact: true })).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Escape");
+    await expect(settings).toBeHidden();
   });
 });

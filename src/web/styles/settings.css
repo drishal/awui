@@ -1,19 +1,146 @@
 /* ---- settings ------------------------------------------------------------- */
-.settings-dialog .dialog-body {
-  max-height: min(84dvh, 820px);
-  overflow-y: auto;
-  /* Rows fade out at the bottom edge rather than being cut (as in the palette). The fade is taller than a
-     row, and the padding under the last row matches it, so a row is never cut through its text. */
-  padding-bottom: 40px;
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+/* Two panes in one dialog: a rail of sections with a search field over it, and
+   the open section scrolling on its own under a Save bar that never moves. The
+   dialog keeps one height, so switching sections never resizes it. */
+.settings-dialog {
+  width: min(900px, calc(100vw - 32px));
 }
 
-/* With the sticky Save bar the bar is the bottom edge: rows slide under its own fade, and a mask here would fade
-   the Save button itself. */
-.settings-dialog .dialog-body:has(.settings-form > .settings-foot) {
-  /* No padding under the bar either, or rows show through the gap between it and the dialog's edge. */
-  padding-bottom: 0;
+.settings-dialog .dialog-body {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: min(78dvh, 720px);
+  max-height: none;
+  /* The panes bleed to the dialog's edges; the head above them keeps its padding. */
+  overflow: hidden;
   mask-image: none;
+}
+
+.settings-dialog .sheet-grip {
+  grid-column: 1 / -1;
+}
+
+/* A section, or a row a search hides: `hidden` has to beat their own display (both are flex). */
+.settings-pane [hidden] {
+  display: none;
+}
+
+.settings-rail {
+  display: flex;
+  flex-direction: column;
+  grid-row: 2;
+  grid-column: 1;
+  gap: 8px;
+  min-height: 0;
+  margin-left: -18px;
+  padding: 12px 10px 12px 18px;
+  border-right: 1px solid var(--hairline);
+  background: var(--surface);
+  overflow-y: auto;
+}
+
+.settings-rail-search {
+  flex: none;
+  font-size: 13px;
+}
+
+.settings-rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-rail-item:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.settings-rail-item[aria-selected="true"] {
+  background: var(--active);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.settings-rail-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.settings-rail-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A section holding a field the save would be refused for. */
+.settings-rail-flag {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.settings-rail-empty {
+  margin: 2px 0 0;
+  padding: 0 10px;
+  font-size: 12.5px;
+  color: var(--muted-text);
+}
+
+.settings-pane {
+  grid-row: 2;
+  grid-column: 2;
+  min-height: 0;
+  margin-right: -18px;
+  padding: 14px 18px 36px;
+  overflow-y: auto;
+  /* Rows fade out at the bottom edge rather than being cut (as in the palette); the padding under
+     the last row matches the fade, so a row is never cut through its text. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
+}
+
+/* Phones show one pane at a time; this is the way back from a section to the list. */
+.settings-back {
+  display: none;
+}
+
+/* The bar under both panes: the form's state, the restart notice, and the one Save. */
+.settings-bar {
+  display: flex;
+  flex-direction: column;
+  grid-row: 3;
+  grid-column: 1 / -1;
+  gap: 8px;
+  margin: 0 -18px -18px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--hairline);
+  background: var(--card);
+}
+
+.settings-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .settings-form {
@@ -142,34 +269,13 @@
   font-size: 13px;
 }
 
-/* Save and Discard stay in reach at the bottom of the scrolling body while there is something to save. */
-.settings-foot {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 10px 0 2px;
-}
-
-/* A modal footer: it spans the dialog edge to edge (the body's 18px side padding) over a hairline, so the rows
-   passing under it end at a drawn edge rather than a cut, and its bottom gutter matches the sides. */
-.settings-form > .settings-foot {
-  position: sticky;
-  bottom: -1px;
-  z-index: 1;
-  margin: 0 -18px;
-  padding: 12px 18px 16px;
-  border-top: 1px solid var(--hairline);
-  background: var(--card);
-}
-
+/* What the form's state says: quiet until there is something to save. */
 .settings-foot-state {
-  margin-right: auto;
   font-size: 12.5px;
   color: var(--muted-text);
 }
 
-.settings-foot.is-dirty .settings-foot-state {
+.settings-foot-state.is-dirty {
   color: var(--text-2);
 }
 
@@ -192,13 +298,57 @@
 }
 
 .settings-version {
-  margin: 4px 0 0;
+  margin-right: auto;
   font-size: 12px;
   color: var(--muted-text);
-  text-align: right;
 }
 
 @media (max-width: 640px) {
+  /* One pane at a time: the rail is the list, and the section it opened is the detail. */
+  .settings-dialog .dialog-body {
+    grid-template-columns: minmax(0, 1fr);
+    height: min(74dvh, 640px);
+  }
+
+  .settings-rail {
+    grid-column: 1;
+    margin-right: -18px;
+    border-right: 0;
+  }
+
+  .settings-pane {
+    grid-column: 1;
+    margin-left: -18px;
+  }
+
+  .settings-dialog.is-detail .settings-rail {
+    display: none;
+  }
+
+  .settings-dialog:not(.is-detail) .settings-pane {
+    display: none;
+  }
+
+  .settings-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .settings-back:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--r-xs);
+  }
+
   .text-slider {
     width: 100%;
   }

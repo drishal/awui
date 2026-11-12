@@ -4,7 +4,14 @@
 // server-side the way startup checks the file (and refused if it would lock out
 // the device making it), and what takes a restart says so, with a Restart
 // button when systemd supervises.
-import { useEffect, useState, type CSSProperties } from "react";
+//
+// The dialog is two panes: a rail of sections with a search field over it, and
+// the one section that is open, scrolling on its own under a Save bar that
+// stays put. Every section stays mounted while another is shown, so the form
+// keeps one draft and one Save: switching sections never drops an edit. On a
+// phone the same two panes become a list and a detail: the rail, then the
+// section with a way back.
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle, UiFont } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
@@ -16,6 +23,8 @@ import { TEXT_SCALES } from "./Sidebar.js";
 import { IconPlus, IconRefresh, IconX } from "../icons.js";
 import type { NotifyState } from "../notify.js";
 import { chime, chimeOn, setChime } from "../attention.js";
+import { matchSettings, type SettingsSectionText } from "../settings-search.js";
+import { load as loadStored, save as saveStored } from "../storage.js";
 
 const NOTIFY_NOTE: Record<NotifyState["mode"], string> = {
   off: "When a run finishes, fails, or asks for an answer.",
@@ -34,6 +43,31 @@ const RESTART_LABEL: Record<RestartSetting, string> = {
   allowedHosts: "allowed hosts",
   allowedTailscaleUsers: "Tailscale users",
 };
+
+/** The dialog's sections, in the order they are read: the rail's list and the pane's headings. */
+const SECTIONS = [
+  { id: "device", label: "This device" },
+  { id: "look", label: "Appearance" },
+  { id: "layout", label: "Layout" },
+  { id: "agents", label: "Agents" },
+  { id: "desktop", label: "Desktop app" },
+  { id: "network", label: "Network and sign-in" },
+  { id: "access", label: "Folders and access" },
+  { id: "awui", label: "Awui harness" },
+] as const;
+
+type SectionId = (typeof SECTIONS)[number]["id"];
+
+const isSection = (id: string | undefined): id is SectionId => SECTIONS.some((s) => s.id === id);
+
+/** The section this browser opened Settings on last; a section a deep link names wins over it. */
+const LAST_SECTION = "settingsSection";
+
+/** The section to open on: the one this browser used last, else the first. */
+function openingSection(): SectionId {
+  const last = loadStored<string>(LAST_SECTION, "");
+  return isSection(last) ? last : "device";
+}
 
 const lines = (text: string) =>
   text
@@ -202,6 +236,15 @@ export function SettingsDialog({
   const [restarting, setRestarting] = useState(false);
   // The awui harness's own providers; null until loaded, false when the harness is off.
   const [awui, setAwui] = useState<AwuiSettingsState | null>(null);
+  const [active, setActive] = useState<SectionId>(openingSection);
+  const [query, setQuery] = useState("");
+  /** A phone shows the rail, then the section it was sent to; a wide screen shows both at once. */
+  const [detail, setDetail] = useState(false);
+  const pane = useRef<HTMLDivElement>(null);
+  const rail = useRef<HTMLDivElement>(null);
+  // What each row says, read from the page itself (every row carries data-settings-row), so the
+  // search cannot drift from the rows on screen. Rows a search hides stay in the page to be read.
+  const [index, setIndex] = useState<SettingsSectionText[]>([]);
 
   useEffect(() => {
     void api<ServerSettings>("/api/settings")
@@ -214,6 +257,21 @@ export function SettingsDialog({
       .then((c) => setAwui(draftAwui(c)))
       .catch(() => setAwui(null)); // harness not registered: no section
   }, []);
+
+  useEffect(() => {
+    const root = pane.current;
+    if (!root) return;
+    setIndex(
+      SECTIONS.map((s) => {
+        const panel = root.querySelector(`#settings-panel-${s.id}`);
+        return {
+          id: s.id,
+          label: s.label,
+          rows: Array.from(panel?.querySelectorAll<HTMLElement>("[data-settings-row]") ?? [], (el) => ({ key: el.dataset.settingsRow ?? "", text: el.textContent ?? "" })),
+        };
+      }),
+    );
+  }, [draft !== null, server !== null, awui?.rows.length]);
 
   const editable = Boolean(server?.editable && server.writable);
   const patch = server && draft ? patchOf(draft, server.values) : {};
@@ -342,379 +400,495 @@ export function SettingsDialog({
   ];
   const setAwuiRow = (i: number, change: Partial<AwuiProviderRow>) => awui && setAwui({ ...awui, saved: false, rows: awui.rows.map((x, j) => (j === i ? { ...x, ...change } : x)) });
 
+  // A section exists once it has something to show: the server's form once it loaded, the awui
+  // harness's own when the harness is registered.
+  const sections = SECTIONS.filter((s) => (s.id === "device" ? true : s.id === "awui" ? awui !== null : draft !== null));
+  const current = sections.find((s) => s.id === active)?.id ?? "device";
+  const currentLabel = SECTIONS.find((s) => s.id === current)?.label ?? "";
+  const matches = useMemo(() => matchSettings(index, query), [index, query]);
+  const railSections = matches ? sections.filter((s) => matches.sections.includes(s.id)) : sections;
+  /** Whether a row survives the search (every row does when nothing was typed). */
+  const shows = (id: SectionId, row: string) => {
+    const rows = matches?.rows[id];
+    return rows === undefined || rows.includes(row);
+  };
+  // A field the save would be refused for: the rail says which section holds it, so a fix is
+  // never hidden behind a section nobody opened.
+  const port = draft?.port.trim() ?? "";
+  const issues: Partial<Record<SectionId, string>> = {};
+  if (draft && editable && (port === "" || Number(port) < 1 || Number(port) > 65_535)) {
+    issues.network = port === "" ? "The port cannot be empty." : "The port must be between 1 and 65535.";
+  }
+
+  // Typing a search that no section's open rows match opens the first section that does: the
+  // pane never sits on an empty section while another holds what was asked for.
+  useEffect(() => {
+    if (!matches || matches.sections.length === 0 || matches.sections.includes(current)) return;
+    const first = matches.sections[0];
+    if (isSection(first)) setActive(first);
+  }, [matches, current]);
+
+  const choose = (id: SectionId) => {
+    setActive(id);
+    setDetail(true);
+    saveStored(LAST_SECTION, id);
+  };
+
+  /** Arrow keys move through the rail, as a tab list's do (the chosen section opens as it is passed). */
+  const railKeys = (e: KeyboardEvent<HTMLDivElement>) => {
+    const at = railSections.findIndex((s) => s.id === current);
+    const last = railSections.length - 1;
+    const next = e.key === "ArrowDown" ? (at >= last ? 0 : at + 1) : e.key === "ArrowUp" ? (at <= 0 ? last : at - 1) : e.key === "Home" ? 0 : e.key === "End" ? last : -1;
+    const target = railSections[next];
+    if (next < 0 || !target) return;
+    e.preventDefault();
+    choose(target.id);
+    rail.current?.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
+  };
+
   return (
-    <Dialog title="Settings" onClose={onClose} className="dialog-wide settings-dialog">
-      <section className="form-section" aria-labelledby="settings-device">
-        <h3 id="settings-device">This device</h3>
-        <div className="form-card">
-          <FormRow label="Other devices" desc={signedInAs ? `Signed in as ${signedInAs}.` : "Open awui on a phone by scanning a code."}>
-            <button type="button" className="btn btn-small" onClick={onPair}>
-              Pair phone
-            </button>
-            {signedInAs ? (
-              <button type="button" className="btn btn-small btn-ghost" onClick={onSignOut} title={`Signed in as ${signedInAs}`}>
-                Sign out
-              </button>
-            ) : null}
-          </FormRow>
-          <FormRow
-            label="Notifications"
-            descId="notify-note"
-            desc={
-              notifyError ??
-              `${NOTIFY_NOTE[notify.mode]}${notify.why === "insecure" ? " Push needs HTTPS (Tailscale Serve) or this machine." : notify.why === "no-push" ? " This browser has no push service." : ""}`
-            }
-          >
-            {notifyOn ? (
-              <button type="button" className="btn btn-small btn-ghost" disabled={notifyBusy} onClick={() => void notifyAction(onTestNotify)}>
-                Send a test
-              </button>
-            ) : null}
-            <Switch label="Notifications" describedBy="notify-note" checked={notifyOn} disabled={notifyBusy || notify.mode === "unsupported"} onChange={() => void notifyAction(onToggleNotify)} />
-          </FormRow>
-          <FormRow label="Sound" desc="A chime, in this browser, when a chat finishes out of sight or asks for an answer." toggle>
-            <Switch
-              label="Sound"
-              checked={chimes}
-              onChange={(on) => {
-                setChime(on);
-                setChimes(on);
-                if (on) chime();
-              }}
-            />
-          </FormRow>
-        </div>
-      </section>
-
-      {!draft ? (
-        <section className="form-section" aria-labelledby="settings-server">
-          <h3 id="settings-server">Server</h3>
-          {error ? (
-            <p className="notice notice-error" role="alert">
-              {error}
-            </p>
-          ) : (
-            <p className="form-note">Loading…</p>
-          )}
-        </section>
-      ) : (
-        <form
-          className="settings-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save();
+    <Dialog title="Settings" onClose={onClose} className={`dialog-wide settings-dialog${detail ? " is-detail" : ""}`}>
+      <div className="settings-rail">
+        <input
+          type="search"
+          className="input settings-rail-search"
+          aria-label="Search settings"
+          placeholder="Search settings"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setDetail(false);
           }}
-        >
-          <section className="form-section" aria-labelledby="settings-look">
-            <h3 id="settings-look">Appearance</h3>
-            <p className="form-note">
-              {server && !server.writable
-                ? "This server runs without a settings folder, so there is nothing to save to."
-                : server && !server.editable
-                  ? "These live in config.yml on the machine running the server; change them there."
-                  : "Saved to config.yml for every device: it applies here at once, and on other devices at their next page load (atui at its next start)."}
-            </p>
-            <div className="form-card">
-              <FormRow label="Theme" desc={draft.theme === "base16" && scheme?.name ? `The ${scheme.name} scheme from theme.yml.` : "Follow the system, or pin light or dark."}>
-                <Select label="Theme" value={draft.theme} disabled={!editable} options={themeOptions} onChange={(theme) => update({ theme: theme as ThemeChoice | "" })} />
-              </FormRow>
-              <FormRow label="Chat text size" desc="The conversation and the composer; menus keep their size.">
-                <div className="text-slider">
-                  <input
-                    type="range"
-                    className="text-slider-input"
-                    aria-label="Chat text size"
+          // Escape empties the search rather than closing the dialog: clearing a filter is what it means here.
+          onKeyDown={(e) => {
+            if (e.key !== "Escape" || !query) return;
+            e.preventDefault();
+            setQuery("");
+          }}
+        />
+        <div className="settings-rail-list" role="tablist" aria-label="Settings sections" aria-orientation="vertical" ref={rail} onKeyDown={railKeys}>
+          {railSections.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              id={`settings-tab-${s.id}`}
+              className="settings-rail-item"
+              aria-selected={current === s.id}
+              aria-controls={`settings-panel-${s.id}`}
+              aria-describedby={issues[s.id] ? `settings-issue-${s.id}` : undefined}
+              title={issues[s.id]}
+              tabIndex={current === s.id ? 0 : -1}
+              onClick={() => choose(s.id)}
+            >
+              <span className="settings-rail-label">{s.label}</span>
+              {issues[s.id] ? <span className="settings-rail-flag" aria-hidden="true" /> : null}
+            </button>
+          ))}
+        </div>
+        {matches && railSections.length === 0 ? <p className="settings-rail-empty">Nothing matches “{query.trim()}”.</p> : null}
+        {SECTIONS.filter((s) => issues[s.id]).map((s) => (
+          <span key={s.id} id={`settings-issue-${s.id}`} className="visually-hidden">
+            {issues[s.id]}
+          </span>
+        ))}
+      </div>
+
+      <div className="settings-pane" ref={pane}>
+        {/* Phones: the rail is the list, this is the section it opened. */}
+        <button type="button" className="settings-back" onClick={() => setDetail(false)}>
+          <span aria-hidden="true">‹</span> Sections
+        </button>
+
+        <section className="form-section" id="settings-panel-device" role="tabpanel" aria-labelledby="settings-device" hidden={current !== "device"}>
+          <h3 id="settings-device">This device</h3>
+          <div className="form-card">
+            <FormRow row="pair" hidden={!shows("device", "pair")} label="Other devices" desc={signedInAs ? `Signed in as ${signedInAs}.` : "Open awui on a phone by scanning a code."}>
+              <button type="button" className="btn btn-small" onClick={onPair}>
+                Pair phone
+              </button>
+              {signedInAs ? (
+                <button type="button" className="btn btn-small btn-ghost" onClick={onSignOut} title={`Signed in as ${signedInAs}`}>
+                  Sign out
+                </button>
+              ) : null}
+            </FormRow>
+            <FormRow
+              row="notify"
+              hidden={!shows("device", "notify")}
+              label="Notifications"
+              descId="notify-note"
+              desc={
+                notifyError ??
+                `${NOTIFY_NOTE[notify.mode]}${notify.why === "insecure" ? " Push needs HTTPS (Tailscale Serve) or this machine." : notify.why === "no-push" ? " This browser has no push service." : ""}`
+              }
+            >
+              {notifyOn ? (
+                <button type="button" className="btn btn-small btn-ghost" disabled={notifyBusy} onClick={() => void notifyAction(onTestNotify)}>
+                  Send a test
+                </button>
+              ) : null}
+              <Switch label="Notifications" describedBy="notify-note" checked={notifyOn} disabled={notifyBusy || notify.mode === "unsupported"} onChange={() => void notifyAction(onToggleNotify)} />
+            </FormRow>
+            <FormRow row="sound" hidden={!shows("device", "sound")} label="Sound" desc="A chime, in this browser, when a chat finishes out of sight or asks for an answer." toggle>
+              <Switch
+                label="Sound"
+                checked={chimes}
+                onChange={(on) => {
+                  setChime(on);
+                  setChimes(on);
+                  if (on) chime();
+                }}
+              />
+            </FormRow>
+          </div>
+        </section>
+
+        {!draft ? (
+          current === "device" || current === "awui" ? null : (
+            <section className="form-section" id={`settings-panel-${current}`} role="tabpanel" aria-labelledby="settings-loading">
+              <h3 id="settings-loading">{currentLabel}</h3>
+              {error ? (
+                <p className="notice notice-error" role="alert">
+                  {error}
+                </p>
+              ) : (
+                <p className="form-note">Loading…</p>
+              )}
+            </section>
+          )
+        ) : (
+          <form
+            id="settings-form"
+            className="settings-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void save();
+            }}
+          >
+            <section className="form-section" id="settings-panel-look" role="tabpanel" aria-labelledby="settings-look" hidden={current !== "look"}>
+              <h3 id="settings-look">Appearance</h3>
+              <p className="form-note">
+                {server && !server.writable
+                  ? "This server runs without a settings folder, so there is nothing to save to."
+                  : server && !server.editable
+                    ? "These live in config.yml on the machine running the server; change them there."
+                    : "Saved to config.yml for every device: it applies here at once, and on other devices at their next page load (atui at its next start)."}
+              </p>
+              <div className="form-card">
+                <FormRow row="theme" hidden={!shows("look", "theme")} label="Theme" desc={draft.theme === "base16" && scheme?.name ? `The ${scheme.name} scheme from theme.yml.` : "Follow the system, or pin light or dark."}>
+                  <Select label="Theme" value={draft.theme} disabled={!editable} options={themeOptions} onChange={(theme) => update({ theme: theme as ThemeChoice | "" })} />
+                </FormRow>
+                <FormRow row="text-size" hidden={!shows("look", "text-size")} label="Chat text size" desc="The conversation and the composer; menus keep their size.">
+                  <div className="text-slider">
+                    <input
+                      type="range"
+                      className="text-slider-input"
+                      aria-label="Chat text size"
+                      disabled={!editable}
+                      min={SCALE_MIN}
+                      max={SCALE_MAX}
+                      step={0.01}
+                      value={draft.textScale}
+                      style={{ "--slider-fill": `${SCALE_MAX <= SCALE_MIN ? 0 : Math.min(100, Math.max(0, ((draft.textScale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100))}%` } as CSSProperties}
+                      onChange={(e) => update({ textScale: Number(e.target.value) })}
+                    />
+                    {/* The reset slot sits before the value, so the value ends on the controls' right edge whether or not the slot is filled. */}
+                    <span className="text-slider-reset">
+                      {draft.textScale !== 1 ? (
+                        <button type="button" className="ghost-icon" aria-label="Reset text size" title="Reset to 100%" disabled={!editable} onClick={() => update({ textScale: 1 })}>
+                          <IconRefresh size={14} />
+                        </button>
+                      ) : null}
+                    </span>
+                    <output className="text-slider-value" aria-live="off">
+                      {Math.round(draft.textScale * 100)}%
+                    </output>
+                  </div>
+                </FormRow>
+                <FormRow row="width" hidden={!shows("look", "width")} label="Chat width" desc={WIDTH_NOTE[draft.chatWidth]}>
+                  <Segmented<ChatWidth>
+                    label="Chat width"
+                    value={draft.chatWidth}
                     disabled={!editable}
-                    min={SCALE_MIN}
-                    max={SCALE_MAX}
-                    step={0.01}
-                    value={draft.textScale}
-                    style={{ "--slider-fill": `${SCALE_MAX <= SCALE_MIN ? 0 : Math.min(100, Math.max(0, ((draft.textScale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100))}%` } as CSSProperties}
-                    onChange={(e) => update({ textScale: Number(e.target.value) })}
+                    options={[
+                      { value: "comfortable", label: "Comfortable", title: "960px" },
+                      { value: "wide", label: "Wide", title: "1400px" },
+                      { value: "full", label: "Full", title: "The whole pane" },
+                    ]}
+                    onChange={(chatWidth) => update({ chatWidth })}
                   />
-                  {/* The reset slot sits before the value, so the value ends on the controls' right edge whether or not the slot is filled. */}
-                  <span className="text-slider-reset">
-                    {draft.textScale !== 1 ? (
-                      <button type="button" className="ghost-icon" aria-label="Reset text size" title="Reset to 100%" disabled={!editable} onClick={() => update({ textScale: 1 })}>
-                        <IconRefresh size={14} />
-                      </button>
-                    ) : null}
-                  </span>
-                  <output className="text-slider-value" aria-live="off">
-                    {Math.round(draft.textScale * 100)}%
-                  </output>
-                </div>
-              </FormRow>
-              <FormRow label="Chat width" desc={WIDTH_NOTE[draft.chatWidth]}>
-                <Segmented<ChatWidth>
-                  label="Chat width"
-                  value={draft.chatWidth}
-                  disabled={!editable}
-                  options={[
-                    { value: "comfortable", label: "Comfortable", title: "960px" },
-                    { value: "wide", label: "Wide", title: "1400px" },
-                    { value: "full", label: "Full", title: "The whole pane" },
-                  ]}
-                  onChange={(chatWidth) => update({ chatWidth })}
-                />
-              </FormRow>
-              <FormRow label="Density" desc={draft.density === "compact" ? "Tighter rows and gaps, with a mouse (touch keeps the larger sizes)." : "Room to breathe between rows."}>
-                <Segmented<Density>
-                  label="Density"
-                  value={draft.density}
-                  disabled={!editable}
-                  options={[
-                    { value: "comfortable", label: "Comfortable" },
-                    { value: "compact", label: "Compact" },
-                  ]}
-                  onChange={(density) => update({ density })}
-                />
-              </FormRow>
-              <FormRow
-                label="Tool calls"
-                desc={draft.toolStyle === "lines" ? "Each call its own line under the run's counts, with no card around them." : "A run's calls grouped as one card, with a mark per call and an opened call's output under it."}
-              >
-                <Segmented<ToolStyle>
+                </FormRow>
+                <FormRow row="density" hidden={!shows("look", "density")} label="Density" desc={draft.density === "compact" ? "Tighter rows and gaps, with a mouse (touch keeps the larger sizes)." : "Room to breathe between rows."}>
+                  <Segmented<Density>
+                    label="Density"
+                    value={draft.density}
+                    disabled={!editable}
+                    options={[
+                      { value: "comfortable", label: "Comfortable" },
+                      { value: "compact", label: "Compact" },
+                    ]}
+                    onChange={(density) => update({ density })}
+                  />
+                </FormRow>
+                <FormRow
+                  row="tools"
+                  hidden={!shows("look", "tools")}
                   label="Tool calls"
-                  value={draft.toolStyle}
-                  disabled={!editable}
-                  options={[
-                    { value: "cards", label: "Cards", title: "One card per run" },
-                    { value: "lines", label: "Lines", title: "A line per call" },
-                  ]}
-                  onChange={(toolStyle) => update({ toolStyle })}
-                />
-              </FormRow>
-              <FormRow label="Font" desc={draft.font === "system" ? "This device's own system font, as other apps here use." : `${BUNDLED_FONT}, shipped with awui, so every device reads the same.`}>
-                <Segmented<UiFont>
-                  label="Font"
-                  value={draft.font}
-                  disabled={!editable}
-                  options={[
-                    { value: "bundled", label: BUNDLED_FONT, title: "Shipped with awui" },
-                    { value: "system", label: "System", title: "This device's font" },
-                  ]}
-                  onChange={(font) => update({ font })}
-                />
-              </FormRow>
-            </div>
-          </section>
+                  desc={draft.toolStyle === "lines" ? "Each call its own line under the run's counts, with no card around them." : "A run's calls grouped as one card, with a mark per call and an opened call's output under it."}
+                >
+                  <Segmented<ToolStyle>
+                    label="Tool calls"
+                    value={draft.toolStyle}
+                    disabled={!editable}
+                    options={[
+                      { value: "cards", label: "Cards", title: "One card per run" },
+                      { value: "lines", label: "Lines", title: "A line per call" },
+                    ]}
+                    onChange={(toolStyle) => update({ toolStyle })}
+                  />
+                </FormRow>
+                <FormRow row="font" hidden={!shows("look", "font")} label="Font" desc={draft.font === "system" ? "This device's own system font, as other apps here use." : `${BUNDLED_FONT}, shipped with awui, so every device reads the same.`}>
+                  <Segmented<UiFont>
+                    label="Font"
+                    value={draft.font}
+                    disabled={!editable}
+                    options={[
+                      { value: "bundled", label: BUNDLED_FONT, title: "Shipped with awui" },
+                      { value: "system", label: "System", title: "This device's font" },
+                    ]}
+                    onChange={(font) => update({ font })}
+                  />
+                </FormRow>
+              </div>
+            </section>
 
-          <section className="form-section" aria-labelledby="settings-layout">
-            <h3 id="settings-layout">Layout</h3>
-            <div className="form-card">
-              <FormRow label="Fold the sidebar away in narrow windows" desc="It comes back as a drawer from the edge." toggle>
-                <Switch label="Fold the sidebar away in narrow windows" checked={draft.autocollapseSidebar} disabled={!editable} onChange={(autocollapseSidebar) => update({ autocollapseSidebar })} />
-              </FormRow>
-              <FormRow label="Status bar" desc="Under the conversation: connection, harness, model, folder, version." toggle>
-                <Switch label="Status bar" checked={draft.showStatusBar} disabled={!editable} onChange={(showStatusBar) => update({ showStatusBar })} />
-              </FormRow>
-              <FormRow label="Work with herdr" desc="Mark the sessions open in its panes, and let atui in a pane report its chats." toggle>
-                <Switch label="Work with herdr" checked={draft.herdr} disabled={field("herdr")} onChange={(herdr) => update({ herdr })} />
-              </FormRow>
-            </div>
-          </section>
+            <section className="form-section" id="settings-panel-layout" role="tabpanel" aria-labelledby="settings-layout" hidden={current !== "layout"}>
+              <h3 id="settings-layout">Layout</h3>
+              <div className="form-card">
+                <FormRow row="autocollapse" hidden={!shows("layout", "autocollapse")} label="Fold the sidebar away in narrow windows" desc="It comes back as a drawer from the edge." toggle>
+                  <Switch label="Fold the sidebar away in narrow windows" checked={draft.autocollapseSidebar} disabled={!editable} onChange={(autocollapseSidebar) => update({ autocollapseSidebar })} />
+                </FormRow>
+                <FormRow row="status-bar" hidden={!shows("layout", "status-bar")} label="Status bar" desc="Under the conversation: connection, harness, model, folder, version." toggle>
+                  <Switch label="Status bar" checked={draft.showStatusBar} disabled={!editable} onChange={(showStatusBar) => update({ showStatusBar })} />
+                </FormRow>
+                <FormRow row="herdr" hidden={!shows("layout", "herdr")} label="Work with herdr" desc="Mark the sessions open in its panes, and let atui in a pane report its chats." toggle>
+                  <Switch label="Work with herdr" checked={draft.herdr} disabled={field("herdr")} onChange={(herdr) => update({ herdr })} />
+                </FormRow>
+              </div>
+            </section>
 
-          <section className="form-section" aria-labelledby="settings-agents">
-            <h3 id="settings-agents">Agents</h3>
-            <p className="form-note">The limits behind it — tasks per chat, how deep delegation goes, the wall clock, the call and wake budgets — live in config.yml under orchestration.</p>
-            <div className="form-card">
-              <FormRow label="Agents delegate to other agents" desc="A chat's agent can hand a task to another agent chat, watch it, stop it, and read the result back. Off: no chat is given the tools." toggle>
-                <Switch label="Agents delegate to other agents" checked={draft.orchestrationEnabled} disabled={!editable} onChange={(orchestrationEnabled) => update({ orchestrationEnabled })} />
-              </FormRow>
-            </div>
-          </section>
+            <section className="form-section" id="settings-panel-agents" role="tabpanel" aria-labelledby="settings-agents" hidden={current !== "agents"}>
+              <h3 id="settings-agents">Agents</h3>
+              <p className="form-note">The limits behind it — tasks per chat, how deep delegation goes, the wall clock, the call and wake budgets — live in config.yml under orchestration.</p>
+              <div className="form-card">
+                <FormRow row="delegate" hidden={!shows("agents", "delegate")} label="Agents delegate to other agents" desc="A chat's agent can hand a task to another agent chat, watch it, stop it, and read the result back. Off: no chat is given the tools." toggle>
+                  <Switch label="Agents delegate to other agents" checked={draft.orchestrationEnabled} disabled={!editable} onChange={(orchestrationEnabled) => update({ orchestrationEnabled })} />
+                </FormRow>
+              </div>
+            </section>
 
-          <section className="form-section" aria-labelledby="settings-desktop">
-            <h3 id="settings-desktop">Desktop app</h3>
+            <section className="form-section" id="settings-panel-desktop" role="tabpanel" aria-labelledby="settings-desktop" hidden={current !== "desktop"}>
+              <h3 id="settings-desktop">Desktop app</h3>
+              <div className="form-card">
+                <FormRow
+                  row="background"
+                  hidden={!shows("desktop", "background")}
+                  label="Keep running in the background"
+                  desc="Closing the window hides it to the tray, so finished runs and approvals still notify you. Quit from the tray or with Ctrl+Q. Off: closing the window quits the app."
+                  toggle
+                >
+                  <Switch label="Keep running in the background" checked={draft.desktopBackground} disabled={!editable} onChange={(desktopBackground) => update({ desktopBackground })} />
+                </FormRow>
+              </div>
+            </section>
+
+            <section className="form-section" id="settings-panel-network" role="tabpanel" aria-labelledby="settings-network" hidden={current !== "network"}>
+              <h3 id="settings-network">Network and sign-in</h3>
+              <p className="form-note">Takes effect when the server restarts.</p>
+              <div className="form-card">
+                <FormRow row="host" hidden={!shows("network", "host")} label="Listen on" desc={draft.host === "0.0.0.0" ? "Every network this machine is on (0.0.0.0); other devices sign in." : "This machine only (127.0.0.1): no sign-in needed here."}>
+                  <Segmented<Draft["host"]>
+                    label="Listen on"
+                    value={draft.host}
+                    disabled={field("host")}
+                    options={[
+                      { value: "127.0.0.1", label: "This machine", title: "127.0.0.1" },
+                      { value: "0.0.0.0", label: "All networks", title: "0.0.0.0, with sign-in" },
+                    ]}
+                    onChange={(host) => update({ host })}
+                  />
+                </FormRow>
+                <FormRow row="port" hidden={!shows("network", "port")} label="Port">
+                  <input className="input settings-port" aria-label="Port" inputMode="numeric" disabled={field("port")} value={draft.port} onChange={(e) => update({ port: e.target.value.replace(/\D/g, "") })} />
+                </FormRow>
+                <FormRow row="username" hidden={!shows("network", "username")} label="Username" desc="For signing in from other devices.">
+                  <input className="input" aria-label="Username" autoComplete="username" disabled={field("username")} value={draft.username} onChange={(e) => update({ username: e.target.value })} />
+                </FormRow>
+                <FormRow row="password" hidden={!shows("network", "password")} label="Password" desc={server?.values.hasPassword ? "Set. Type a new one to change it." : "Not set."}>
+                  <input
+                    className="input"
+                    type="password"
+                    aria-label="Password"
+                    autoComplete="new-password"
+                    disabled={field("hasPassword") || draft.removePassword}
+                    placeholder={server?.values.hasPassword ? "••••••••" : "Not set"}
+                    value={draft.password}
+                    onChange={(e) => update({ password: e.target.value })}
+                  />
+                </FormRow>
+                {server?.values.hasPassword && editable && !overridden("hasPassword") ? (
+                  <FormRow row="remove-password" hidden={!shows("network", "remove-password")} label="Remove the password from config.yml" desc="Other devices can no longer sign in with it." toggle>
+                    <Switch label="Remove the password from config.yml" checked={draft.removePassword} onChange={(removePassword) => update({ removePassword, password: "" })} />
+                  </FormRow>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="form-section" id="settings-panel-access" role="tabpanel" aria-labelledby="settings-access" hidden={current !== "access"}>
+              <h3 id="settings-access">Folders and access</h3>
+              <p className="form-note">One per line. Takes effect when the server restarts.</p>
+              <div className="form-card">
+                <FormRow row="roots" hidden={!shows("access", "roots")} label="Workspace roots" desc="The folders projects may be opened in." stack>
+                  <textarea
+                    className="input"
+                    aria-label="Workspace roots"
+                    rows={2}
+                    disabled={field("workspaceRoots")}
+                    placeholder="Your home folder"
+                    value={draft.workspaceRoots}
+                    onChange={(e) => update({ workspaceRoots: e.target.value })}
+                  />
+                </FormRow>
+                <FormRow row="hosts" hidden={!shows("access", "hosts")} label="Allowed hosts" desc="Names this server answers to besides localhost." stack>
+                  <textarea
+                    className="input"
+                    aria-label="Allowed hosts"
+                    rows={2}
+                    disabled={field("allowedHosts")}
+                    placeholder="e.g. machine.tailnet.ts.net"
+                    value={draft.allowedHosts}
+                    onChange={(e) => update({ allowedHosts: e.target.value })}
+                  />
+                </FormRow>
+                <FormRow row="tailscale" hidden={!shows("access", "tailscale")} label="Allowed Tailscale users" desc="Empty lets anyone on the tailnet who signs in." stack>
+                  <textarea
+                    className="input"
+                    aria-label="Allowed Tailscale users"
+                    rows={2}
+                    disabled={field("allowedTailscaleUsers")}
+                    placeholder="one login per line"
+                    value={draft.allowedTailscaleUsers}
+                    onChange={(e) => update({ allowedTailscaleUsers: e.target.value })}
+                  />
+                </FormRow>
+              </div>
+              {server && server.envOverrides.length > 0 ? (
+                <p className="form-note">Set by the environment, so config.yml cannot change: {server.envOverrides.join(", ")}.</p>
+              ) : null}
+            </section>
+          </form>
+        )}
+
+        {awui ? (
+          <section className="form-section" id="settings-panel-awui" role="tabpanel" aria-labelledby="settings-awui" hidden={current !== "awui"}>
+            <h3 id="settings-awui">Awui harness</h3>
+            <p className="form-note">The providers the read-only Awui chat can call, kept in its own agent folder.</p>
             <div className="form-card">
               <FormRow
-                label="Keep running in the background"
-                desc="Closing the window hides it to the tray, so finished runs and approvals still notify you. Quit from the tray or with Ctrl+Q. Off: closing the window quits the app."
+                row="share"
+                hidden={!shows("awui", "share")}
+                label="Share Pi's login"
+                desc={
+                  awui.piLogin
+                    ? "Use what your terminal pi is logged into. Pi's providers are copied in when you turn it on; ones you set here stay as they are."
+                    : "No pi login found (~/.pi/agent/auth.json): log into pi first to share it."
+                }
                 toggle
               >
-                <Switch label="Keep running in the background" checked={draft.desktopBackground} disabled={!editable} onChange={(desktopBackground) => update({ desktopBackground })} />
+                <Switch label="Share Pi's login" checked={awui.shareAuth} disabled={!awui.piLogin || awui.busy} onChange={(shareAuth) => setAwui({ ...awui, saved: false, shareAuth })} />
               </FormRow>
+              <div className="form-row is-stack" data-settings-row="providers" hidden={!shows("awui", "providers")}>
+                <span className="form-row-text">
+                  <span className="form-label">Providers</span>
+                  <span className="form-desc">Leave a key blank to keep the stored one; type - to clear it.</span>
+                </span>
+                {awui.rows.length > 0 ? (
+                  <div className="awui-providers">
+                    {awui.rows.map((r, i) => (
+                      <div className="awui-provider" key={i}>
+                        <input className="input" aria-label="Provider name" placeholder="name (e.g. litellm)" value={r.name} onChange={(e) => setAwuiRow(i, { name: e.target.value })} />
+                        <input className="input" aria-label="Base URL" placeholder="http://host:8085/v1" value={r.baseUrl} onChange={(e) => setAwuiRow(i, { baseUrl: e.target.value })} />
+                        <input className="input" aria-label="API kind" placeholder="openai-completions" value={r.api} onChange={(e) => setAwuiRow(i, { api: e.target.value })} />
+                        <input className="input" type="password" aria-label="API key" autoComplete="new-password" placeholder={r.hadKey ? "Set (type to change)" : "No key"} value={r.apiKey} onChange={(e) => setAwuiRow(i, { apiKey: e.target.value })} />
+                        <button type="button" className="ghost-icon" aria-label={`Remove ${r.name || "provider"}`} title="Remove provider" onClick={() => setAwui({ ...awui, saved: false, rows: awui.rows.filter((_, j) => j !== i) })}>
+                          <IconX size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="form-empty">None yet{awui.shareAuth ? "" : ": add one, or share Pi's login above"}.</p>
+                )}
+              </div>
             </div>
-          </section>
-
-          <section className="form-section" aria-labelledby="settings-network">
-            <h3 id="settings-network">Network and sign-in</h3>
-            <p className="form-note">Takes effect when the server restarts.</p>
-            <div className="form-card">
-              <FormRow label="Listen on" desc={draft.host === "0.0.0.0" ? "Every network this machine is on (0.0.0.0); other devices sign in." : "This machine only (127.0.0.1): no sign-in needed here."}>
-                <Segmented<Draft["host"]>
-                  label="Listen on"
-                  value={draft.host}
-                  disabled={field("host")}
-                  options={[
-                    { value: "127.0.0.1", label: "This machine", title: "127.0.0.1" },
-                    { value: "0.0.0.0", label: "All networks", title: "0.0.0.0, with sign-in" },
-                  ]}
-                  onChange={(host) => update({ host })}
-                />
-              </FormRow>
-              <FormRow label="Port">
-                <input className="input settings-port" aria-label="Port" inputMode="numeric" disabled={field("port")} value={draft.port} onChange={(e) => update({ port: e.target.value.replace(/\D/g, "") })} />
-              </FormRow>
-              <FormRow label="Username" desc="For signing in from other devices.">
-                <input className="input" aria-label="Username" autoComplete="username" disabled={field("username")} value={draft.username} onChange={(e) => update({ username: e.target.value })} />
-              </FormRow>
-              <FormRow label="Password" desc={server?.values.hasPassword ? "Set. Type a new one to change it." : "Not set."}>
-                <input
-                  className="input"
-                  type="password"
-                  aria-label="Password"
-                  autoComplete="new-password"
-                  disabled={field("hasPassword") || draft.removePassword}
-                  placeholder={server?.values.hasPassword ? "••••••••" : "Not set"}
-                  value={draft.password}
-                  onChange={(e) => update({ password: e.target.value })}
-                />
-              </FormRow>
-              {server?.values.hasPassword && editable && !overridden("hasPassword") ? (
-                <FormRow label="Remove the password from config.yml" desc="Other devices can no longer sign in with it." toggle>
-                  <Switch label="Remove the password from config.yml" checked={draft.removePassword} onChange={(removePassword) => update({ removePassword, password: "" })} />
-                </FormRow>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="form-section" aria-labelledby="settings-access">
-            <h3 id="settings-access">Folders and access</h3>
-            <p className="form-note">One per line. Takes effect when the server restarts.</p>
-            <div className="form-card">
-              <FormRow label="Workspace roots" desc="The folders projects may be opened in." stack>
-                <textarea
-                  className="input"
-                  aria-label="Workspace roots"
-                  rows={2}
-                  disabled={field("workspaceRoots")}
-                  placeholder="Your home folder"
-                  value={draft.workspaceRoots}
-                  onChange={(e) => update({ workspaceRoots: e.target.value })}
-                />
-              </FormRow>
-              <FormRow label="Allowed hosts" desc="Names this server answers to besides localhost." stack>
-                <textarea
-                  className="input"
-                  aria-label="Allowed hosts"
-                  rows={2}
-                  disabled={field("allowedHosts")}
-                  placeholder="e.g. machine.tailnet.ts.net"
-                  value={draft.allowedHosts}
-                  onChange={(e) => update({ allowedHosts: e.target.value })}
-                />
-              </FormRow>
-              <FormRow label="Allowed Tailscale users" desc="Empty lets anyone on the tailnet who signs in." stack>
-                <textarea
-                  className="input"
-                  aria-label="Allowed Tailscale users"
-                  rows={2}
-                  disabled={field("allowedTailscaleUsers")}
-                  placeholder="one login per line"
-                  value={draft.allowedTailscaleUsers}
-                  onChange={(e) => update({ allowedTailscaleUsers: e.target.value })}
-                />
-              </FormRow>
-            </div>
-            {server && server.envOverrides.length > 0 ? (
-              <p className="form-note">Set by the environment, so config.yml cannot change: {server.envOverrides.join(", ")}.</p>
+            {awui.error ? (
+              <p className="notice notice-error" role="alert">
+                {awui.error}
+              </p>
             ) : null}
           </section>
+        ) : null}
+      </div>
 
-          {error ? (
-            <p className="notice notice-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          {server && server.restartPending.length > 0 ? (
-            <div className="settings-restart" role="status">
-              <span>Saved; takes effect after a restart: {pendingText}.</span>
-              {server.canRestart && server.editable ? (
-                <button type="button" className="btn btn-small" disabled={restarting} onClick={() => void restart()}>
-                  {restarting ? "Restarting…" : "Restart server"}
-                </button>
-              ) : (
-                <span className="muted">Restart the server to apply.</span>
-              )}
-            </div>
-          ) : null}
-          {editable ? (
-            <div className={`settings-foot${dirty ? " is-dirty" : ""}`}>
+      {/* The bar under both panes: what the form's state says, and the one Save for the section that is open. */}
+      <div className="settings-bar">
+        {draft && error ? (
+          <p className="notice notice-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {server && server.restartPending.length > 0 ? (
+          <div className="settings-restart" role="status">
+            <span>Saved; takes effect after a restart: {pendingText}.</span>
+            {server.canRestart && server.editable ? (
+              <button type="button" className="btn btn-small" disabled={restarting} onClick={() => void restart()}>
+                {restarting ? "Restarting…" : "Restart server"}
+              </button>
+            ) : (
+              <span className="muted">Restart the server to apply.</span>
+            )}
+          </div>
+        ) : null}
+        <div className="settings-bar-row">
+          <span className="settings-version">awui v{version}</span>
+          {current === "awui" && awui ? (
+            <>
               <span className="settings-foot-state" role="status">
+                {awui.busy ? "Saving…" : awui.saved ? "Saved." : ""}
+              </span>
+              <button type="button" className="btn btn-small btn-ghost" onClick={() => setAwui({ ...awui, saved: false, rows: [...awui.rows, { name: "", baseUrl: "", api: "openai-completions", apiKey: "", hadKey: false }] })}>
+                <IconPlus size={13} /> Add provider
+              </button>
+              <button type="button" className="btn btn-small btn-primary" disabled={awui.busy} onClick={() => void saveAwui()}>
+                {awui.busy ? "Saving…" : "Save"}
+              </button>
+            </>
+          ) : editable ? (
+            <>
+              <span className={`settings-foot-state${dirty ? " is-dirty" : ""}`} role="status">
                 {saving ? "Saving…" : dirty ? "Unsaved changes" : saved ? "Saved." : ""}
               </span>
               <button type="button" className="btn btn-small btn-ghost" disabled={!dirty || saving} onClick={() => server && setDraft(draftOf(server.values))}>
                 Discard
               </button>
-              <button type="submit" className="btn btn-small btn-primary" disabled={!dirty || saving}>
+              <button type="submit" form="settings-form" className="btn btn-small btn-primary" disabled={!dirty || saving}>
                 {saving ? "Saving…" : "Save"}
               </button>
-            </div>
+            </>
           ) : null}
-        </form>
-      )}
-
-      {awui ? (
-        <section className="form-section" aria-labelledby="settings-awui">
-          <h3 id="settings-awui">Awui harness</h3>
-          <p className="form-note">The providers the read-only Awui chat can call, kept in its own agent folder.</p>
-          <div className="form-card">
-            <FormRow
-              label="Share Pi's login"
-              desc={
-                awui.piLogin
-                  ? "Use what your terminal pi is logged into. Pi's providers are copied in when you turn it on; ones you set here stay as they are."
-                  : "No pi login found (~/.pi/agent/auth.json): log into pi first to share it."
-              }
-              toggle
-            >
-              <Switch label="Share Pi's login" checked={awui.shareAuth} disabled={!awui.piLogin || awui.busy} onChange={(shareAuth) => setAwui({ ...awui, saved: false, shareAuth })} />
-            </FormRow>
-            <div className="form-row is-stack">
-              <span className="form-row-text">
-                <span className="form-label">Providers</span>
-                <span className="form-desc">Leave a key blank to keep the stored one; type - to clear it.</span>
-              </span>
-              {awui.rows.length > 0 ? (
-                <div className="awui-providers">
-                  {awui.rows.map((r, i) => (
-                    <div className="awui-provider" key={i}>
-                      <input className="input" aria-label="Provider name" placeholder="name (e.g. litellm)" value={r.name} onChange={(e) => setAwuiRow(i, { name: e.target.value })} />
-                      <input className="input" aria-label="Base URL" placeholder="http://host:8085/v1" value={r.baseUrl} onChange={(e) => setAwuiRow(i, { baseUrl: e.target.value })} />
-                      <input className="input" aria-label="API kind" placeholder="openai-completions" value={r.api} onChange={(e) => setAwuiRow(i, { api: e.target.value })} />
-                      <input className="input" type="password" aria-label="API key" autoComplete="new-password" placeholder={r.hadKey ? "Set (type to change)" : "No key"} value={r.apiKey} onChange={(e) => setAwuiRow(i, { apiKey: e.target.value })} />
-                      <button type="button" className="ghost-icon" aria-label={`Remove ${r.name || "provider"}`} title="Remove provider" onClick={() => setAwui({ ...awui, saved: false, rows: awui.rows.filter((_, j) => j !== i) })}>
-                        <IconX size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="form-empty">None yet{awui.shareAuth ? "" : ": add one, or share Pi's login above"}.</p>
-              )}
-            </div>
-          </div>
-          {awui.error ? (
-            <p className="notice notice-error" role="alert">
-              {awui.error}
-            </p>
-          ) : null}
-          <div className="settings-foot">
-            <span className="settings-foot-state" role="status">
-              {awui.busy ? "Saving…" : awui.saved ? "Saved." : ""}
-            </span>
-            <button type="button" className="btn btn-small btn-ghost" onClick={() => setAwui({ ...awui, saved: false, rows: [...awui.rows, { name: "", baseUrl: "", api: "openai-completions", apiKey: "", hadKey: false }] })}>
-              <IconPlus size={13} /> Add provider
-            </button>
-            <button type="button" className="btn btn-small btn-primary" disabled={awui.busy} onClick={() => void saveAwui()}>
-              {awui.busy ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </section>
-      ) : null}
-      <p className="settings-version">awui v{version}</p>
+        </div>
+      </div>
     </Dialog>
   );
 }

@@ -4,8 +4,31 @@
 // dialog's choices read the same way.
 import type { ReactNode } from "react";
 
-/** A toggle row is a <label>, so a click anywhere on its words flips the switch. */
-export function FormRow({ label, desc, descId, toggle = false, stack = false, children }: { label: string; desc?: string; descId?: string; toggle?: boolean; stack?: boolean; children: ReactNode }) {
+/**
+ * A toggle row is a <label>, so a click anywhere on its words flips the switch.
+ * `row` files the row under a key and `hidden` takes it out of view while the
+ * settings search has no use for it: it stays in the page, so its words stay
+ * searchable and its place in the card stays where it was.
+ */
+export function FormRow({
+  label,
+  desc,
+  descId,
+  toggle = false,
+  stack = false,
+  row,
+  hidden = false,
+  children,
+}: {
+  label: string;
+  desc?: string;
+  descId?: string;
+  toggle?: boolean;
+  stack?: boolean;
+  row?: string;
+  hidden?: boolean;
+  children: ReactNode;
+}) {
   const text = (
     <span className="form-row-text">
       <span className="form-label">{label}</span>
@@ -17,16 +40,17 @@ export function FormRow({ label, desc, descId, toggle = false, stack = false, ch
     </span>
   );
   const className = `form-row${stack ? " is-stack" : ""}${toggle ? " is-toggle" : ""}`;
+  const attrs = { "data-settings-row": row, hidden: hidden || undefined };
   if (toggle) {
     return (
-      <label className={className}>
+      <label className={className} {...attrs}>
         {text}
         <span className="form-control">{children}</span>
       </label>
     );
   }
   return (
-    <div className={className}>
+    <div className={className} {...attrs}>
       {text}
       <span className="form-control">{children}</span>
     </div>

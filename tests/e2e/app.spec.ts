@@ -35,6 +35,8 @@ test("settings opens from the sidebar gear and shows pairing plus the server", a
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(settings).toBeVisible();
   await expect(settings.getByRole("button", { name: "Pair phone" })).toBeVisible();
+  // The look controls live in the Appearance section of the rail.
+  await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
   await expect(settings.getByRole("button", { name: "Theme" })).toBeVisible();
   await expect(settings.getByRole("slider", { name: "Chat text size" })).toBeVisible();
   // The e2e server runs without a settings folder, so the server section is read-only.
@@ -819,6 +821,7 @@ test("chat text size comes from config.yml, read-only without a settings folder"
   await signInAndOpen(page);
   await openSettings(page);
   const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
   const slider = settings.getByRole("slider", { name: "Chat text size" });
   await expect(slider).toBeVisible();
   await expect(slider).toBeDisabled();
