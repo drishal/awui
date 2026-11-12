@@ -71,7 +71,11 @@ src/shared/protocol.ts        Wire types and Zod request schemas: the only contr
 src/shared/html-render.ts     Agent-rendered pages: bootstrap markup, theme payload, frame-height math (no harness types).
 src/shared/awui-mcp.ts        awui's tool servers and tools as OpenCode names them (`awui-r-<id>`, `<server>_<tool>`); one scheme for server and clients.
 src/shared/approval.ts        Which requests are plain approvals, and their Approve/Deny answers (the card and push notes).
-src/shared/review.ts         Review pins (a line's hash, following it through later edits) and the one prompt a batch of open threads becomes.
+src/shared/review.ts         Review pins (a line's hash, following it through later edits), the one prompt a batch of open
+                              threads becomes, and the attribution rule (which lines a chat's own diffs wrote, and which
+                              the file has since changed under).
+src/shared/breakdown.ts      A changed file's pile (source, tests, generated) by glob, and the lines each pile holds: the
+                              worktree/race card's chip, with the globs config.yml's `breakdown:` can replace.
 src/server/
   index.ts                    Startup: config, state-folder migration, registry, routes, listen, shutdown. A running server
                               writes server.json (port, pid) into the state folder for clients that have no port. Subcommands: `desktop`, `tui`, `tern`, `doctor`, `setup mcp`, `mcp`, `install tui|desktop|service`.
@@ -138,6 +142,10 @@ src/server/
   image-store.ts, notify.ts, limits.ts, session-marks.ts, run-command.ts, state-file.ts   Side features (see their header comments).
   idempotency.ts             An `Idempotency-Key` on a mutating request: one answer per key, ten minutes, in memory.
   review-threads.ts           Review threads per chat in the state folder (pins, notes, resolve, line moves), bounded and pruned.
+  attribution.ts              A chat's edited files as they are on disk now, hashed line by line (bounded, through the file
+                              viewer's confinement), for the review panel's "written by the agent" marks.
+  second-opinions.ts          One turn sent to another harness, recorded per chat in the state folder (bounded), plus the
+                              reply's opening words read back from that chat each time it is listed.
   project-files.ts            A project's files for @mention pickers (git ls-files, else a bounded walk).
   project-search.ts           Search in project: bounded `git grep -F` (else a scan of project-files' walk).
   file-view.ts                The file viewer: one of the project's own files (project-files' list), realpath-confined, bounded.
@@ -151,6 +159,10 @@ src/web/                      React 19 + Vite client. App.tsx is the shell; comp
                               styles/*.css (one file per area) in cascade order. docs/ui.md maps which part is where.
   api.ts, stream.ts           fetch wrapper (ApiError) and the reconnecting SSE stream.
   turns.ts                    Items → turns (prompt, process fold, answer); shared with atui.
+  rotation.ts                 Free context rotation: the 80 % offer, its words, and the read of a chat's own context figure.
+  attribution.ts              The review panel's attribution hook: the server's present-line read over shared/review.ts's rule,
+                              grouped per edit and counted per file. Only the review panel asks (the transcript's diffs would
+                              re-index the chat on every streaming event).
   tool-sentence.ts            A tool call worded as a sentence ("Read src/app.ts", "Couldn't run npm test") with the facts it holds (pure).
   tool-facts.ts               Facts read from a call's output (test runs, tsc/eslint, rg, git, installs, JSON arrays); claims an output only when sure (pure).
   tool-kinds.ts               The kinds of tool a run used (the card header's icon stack, an MCP server's monogram) (pure).
