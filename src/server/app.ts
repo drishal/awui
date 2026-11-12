@@ -128,6 +128,7 @@ import { Orchestrator } from "./orchestration/orchestrator.js";
 import { ORCH_TOOLS } from "./orchestration/tools.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "./orchestration/limits.js";
 import { orchestrationSkills } from "./orchestration/skills.js";
+import { answerMcp, isToolCall } from "./orchestration/mcp.js";
 
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
@@ -430,6 +431,76 @@ export function createApp(deps: AppDeps) {
       if (!orchFailed(res, error)) throw error;
     }
   });
+  /**
+   * The same tools as an MCP server over streamable HTTP: what a harness that can mount an HTTP
+   * MCP server connects to per chat, so no Node child is spawned for it. Stateless — every POST is
+   * one JSON-RPC message and one answer, and a notification is answered 202 — so it needs no
+   * session bookkeeping and a reconnecting client starts clean. The chat token travels in
+   * `Authorization: Bearer` (what MCP clients send, and the one header a harness can point at an
+   * environment variable), and is never echoed in a message, a header, or a log.
+   */
+  const orchMcpToken = (req: Request): string => {
+    const match = /^Bearer\s+(\S+)$/.exec((req.get("authorization") ?? "").trim());
+    return match?.[1] ?? "";
+  };
+  /**
+   * The chat this message speaks for. A tool call needs the live chat itself; a handshake, the
+   * catalogue, and the skills need only a token this server minted, because a starting child asks
+   * for them before its chat is stamped onto the token (the same rule as the GET routes here).
+   */
+  const orchMcpCaller = (req: Request, needsChat: boolean): Chat | undefined => {
+    orchOn();
+    const token = orchMcpToken(req);
+    if (token === "") throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+    const chat = manager.chatForOrchToken(token);
+    if (chat) {
+      if (chat.owner) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+      if ((chat.orchestration?.expiresAt ?? 0) <= Date.now()) throw new ChatError(401, "orch_token_expired", "This chat's tool token expired; restart the chat to get a new one");
+      return chat;
+    }
+    if (manager.knowsOrchToken(token) && !needsChat) return undefined;
+    throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+  };
+  app.post("/api/orchestration/mcp", express.json({ limit: "512kb" }), async (req, res) => {
+    try {
+      const chat = orchMcpCaller(req, isToolCall(req.body));
+      const answered = await answerMcp(req.body, {
+        tools: () => ORCH_TOOLS,
+        prompts: orchestrationSkills,
+        call: async (name, args) => {
+          // The chat was checked above for a call; this only satisfies the type when it was not.
+          if (!chat) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+          try {
+            const out = await orchestration.run(name, args, chat);
+            return { text: out.text };
+          } catch (error) {
+            // A refused call is a result the model reads, worded as the stdio bridge words it.
+            if (error instanceof ChatError) return { text: `${error.code}: ${error.message}`, failed: true };
+            // The tool's own schema refused the arguments: the same code the REST route answers, with
+            // the issue the model has to fix instead of the route map's generic line.
+            if (error instanceof ZodError) return { text: `invalid_request: ${error.issues[0]?.message ?? "Invalid request"}`, failed: true };
+            throw error;
+          }
+        },
+      });
+      if (answered.body === null) {
+        res.status(answered.status).end();
+        return;
+      }
+      res.status(answered.status).json(answered.body);
+    } catch (error) {
+      if (!orchFailed(res, error)) throw error;
+    }
+  });
+  // Streamable HTTP lets a server offer a GET stream back to the client. awui never sends a request
+  // of its own, so it declines the way the spec asks — `405` with `Allow` — instead of a 404 that a
+  // client reads as a broken endpoint and retries.
+  const mcpNoStream = (_req: Request, res: Response): void => {
+    res.setHeader("Allow", "POST");
+    res.status(405).end();
+  };
+  app.get("/api/orchestration/mcp", mcpNoStream);
+  app.delete("/api/orchestration/mcp", mcpNoStream);
 
   app.use("/api", security.requireAuth, (_req, res, next) => {
     // Session-bearing JSON must never be cached by a browser or proxy.
