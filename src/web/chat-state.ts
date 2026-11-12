@@ -1,5 +1,5 @@
 // Client-side fold of the chat event stream, reconciled by item id.
-import { type ChatEvent, type ChatItem, type ChatSnapshot, type ContextPoint, type ContextUsage, MAX_CONTEXT_HISTORY } from "../shared/protocol.js";
+import { type ChatEvent, type ChatItem, type ChatSnapshot, type ContextPoint, type ContextUsage, MAX_CONTEXT_HISTORY, MAX_DELEGATED_TASKS } from "../shared/protocol.js";
 
 export type ChatState = ChatSnapshot & { gone?: string };
 
@@ -91,6 +91,14 @@ function apply(state: ChatState | null, event: ChatEvent, index: Map<string, num
       return { ...state, checkpoints: event.turns };
     case "chain":
       return { ...state, chain: event.chain, chainPaused: event.paused };
+    // One delegated task changed: its panel row is replaced in place, or added in front when it
+    // is new (the server lists them newest first, and the panel shows them so).
+    case "task": {
+      const tasks = state.delegated ?? [];
+      const at = tasks.findIndex((task) => task.id === event.task.id);
+      const next = at < 0 ? [event.task, ...tasks] : tasks.map((task, i) => (i === at ? event.task : task));
+      return { ...state, delegated: next.slice(0, MAX_DELEGATED_TASKS) };
+    }
     case "disposed":
       return { ...state, status: "disposed", gone: event.reason };
     default:
