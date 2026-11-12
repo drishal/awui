@@ -277,6 +277,22 @@ function contextCategories(messages: unknown[]): ContextCategory[] {
   ];
 }
 
+/**
+ * Pi's own context figure from `get_session_stats` (`contextUsage`), with the
+ * breakdown estimated from `get_messages` as the panel labels it. `contextUsage`
+ * is absent while no model is selected, and Pi answers null tokens right after a
+ * compaction — it has no post-compaction response to measure yet — so the figure
+ * stays unknown there rather than standing our own character count in for it.
+ */
+export function contextFromStats(stats: Obj | null, messages: unknown[]): ContextUsage | null {
+  const usage = stats && isObj(stats.contextUsage) ? stats.contextUsage : null;
+  if (!usage) return null;
+  const window = typeof usage.contextWindow === "number" ? usage.contextWindow : 0;
+  const tokens = typeof usage.tokens === "number" && usage.tokens > 0 ? usage.tokens : null;
+  const percent = typeof usage.percent === "number" ? usage.percent : tokens !== null && window > 0 ? (tokens / window) * 100 : null;
+  return { tokens, window, percent, categories: contextCategories(messages) };
+}
+
 /** One `pi --mode rpc` child: JSON-lines commands on stdin, responses + session events on stdout. */
 class PiRpc {
   readonly child: ChildProcessWithoutNullStreams;
@@ -892,16 +908,7 @@ class PiLiveChat implements LiveChat {
       this.live.command<Obj>("get_session_stats").catch(() => null),
       this.live.command<Obj>("get_messages").catch(() => null),
     ]);
-    // contextUsage is absent while no model is selected; tokens are null right after compaction.
-    const usage = stats && isObj(stats.contextUsage) ? stats.contextUsage : null;
-    if (!usage) return null;
-    const window = typeof usage.contextWindow === "number" ? usage.contextWindow : 0;
-    const categories = contextCategories(data && Array.isArray(data.messages) ? data.messages : []);
-    // Pi knows the real total only after a response; until then the estimate stands in.
-    const known = typeof usage.tokens === "number" && usage.tokens > 0;
-    const tokens = known ? (usage.tokens as number) : categories.reduce((sum, c) => sum + c.tokens, 0);
-    const percent = known && typeof usage.percent === "number" ? usage.percent : window > 0 ? (tokens / window) * 100 : null;
-    return { tokens: tokens || null, window, percent, categories };
+    return contextFromStats(stats, data && Array.isArray(data.messages) ? data.messages : []);
   }
 
   async getUsage(): Promise<HarnessUsage | null> {
