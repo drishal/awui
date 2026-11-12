@@ -51,6 +51,7 @@ import {
   prWatchSchema,
   prUnwatchSchema,
   prRepairSchema,
+  accountSelectionSchema,
   prStackCreateSchema,
   prStackMergeSchema,
   projectConfigTrustSchema,
@@ -361,6 +362,7 @@ export async function createApp(deps: AppDeps) {
   const routineSession = (harnessId: string, nativeId: string): boolean => routineRuns.ownsSession(`${harnessId}:${nativeId}`);
   const limits = deps.limits ?? Limits.inMemory(registry);
   manager.onLimits = (account) => limits.report(account);
+  manager.limitedSources = async (source) => [...await limits.limitedSources(source)];
   const notifier = deps.notifier ?? Notifier.inMemory();
   const presence = deps.presence ?? PresenceTable.inMemory();
   // The server's own machine, sampled on a cadence: a warning or a recovery is one quiet
@@ -2317,6 +2319,15 @@ export async function createApp(deps: AppDeps) {
     const chat = manager.get(req.params.id);
     chat.abort().catch((error: unknown) => log(`abort failed: ${errorMessage(error)}`));
     res.status(202).json({ accepted: true });
+  });
+
+  app.get("/api/chats/:id/accounts", requireGrant("chat.read"), async (req, res) => {
+    res.json({ accounts: await manager.get(req.params.id).accounts() });
+  });
+  app.post("/api/chats/:id/account", requireGrant("chat.write"), async (req, res) => {
+    const { id } = body(accountSelectionSchema, req);
+    await manager.get(req.params.id).pinAccount(id);
+    res.json({ ok: true });
   });
 
   app.patch("/api/chats/:id/config", requireGrant("chat.write"), async (req, res) => {

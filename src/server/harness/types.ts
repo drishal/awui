@@ -18,9 +18,12 @@ import type {
   SlashCommand,
   SubagentRun,
   TodoItem,
+  OauthAccountChoice,
 } from "../../shared/protocol.js";
+
 import type { HandoffSeed } from "./handoff.js";
 import type { AgentReport } from "./subagents.js";
+
 export interface HarnessDiscovery {
   available: boolean;
   /** Short and comparable (versionLabel): 1.0.2, 2026.9.24. */
@@ -155,6 +158,8 @@ export interface LiveChat {
   getConfig(): Promise<ChatConfig>;
   /** Context window occupancy, or null when the harness cannot tell. */
   getContextUsage(): Promise<ContextUsage | null>;
+  /** Allowed credential index carried verbatim into native `/session pin`, an action scoped to this attached session. */
+  pinAccount?(index: number): Promise<void>;
   /** Session token totals, or null when the harness cannot tell. */
   getUsage(): Promise<HarnessUsage | null>;
   /** The harness's own todo list, if it keeps one. */
@@ -259,8 +264,10 @@ export interface HarnessAdapter {
    * usage across sessions. Null when the session cannot be read.
    */
   readUsage?(req: { cwd: string; nativeId: string }): Promise<UsageEntry[] | null>;
-  /** The subscription limits of every account the harness is signed in to (omp's `usage`). */
   usageLimits?(): Promise<LimitAccount[]>;
+  /** Stored provider OAuth accounts as opaque provider/index pairs with no identity or token text. */
+  accounts?(cwd: string): Promise<OauthAccountChoice[]>;
+  /** Read or pin a live child session's own provider credential, e.g. omp's `/session pin`. */
   /**
    * Whether another process of this harness holds the session right now (omp's session
    * lease), so a resume here would make a second writer. False when it cannot tell.

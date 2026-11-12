@@ -1161,6 +1161,7 @@ export class CodexAdapter implements HarnessAdapter {
     supportsPermissionMode: true,
     supportsResumeCommand: true,
     readOnlyHarness: false,
+    supportsAccountSelection: false,
     jobsSurviveRestart: false,
     supportsProjectFolders: true,
     webOnly: false,

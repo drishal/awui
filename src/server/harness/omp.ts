@@ -35,6 +35,7 @@ import {
   type TodoItem,
 } from "../../shared/protocol.js";
 import { commandOutputEvents, historyToItems, isObj, normalizeAgentEvent, type Obj, todoPhaseItems, usageEntries } from "./agent-events.js";
+import { parseProviderList, type ProviderAccount as OauthAccountChoice } from "../accounts.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
 import { branchMessages, fileMessages, forkSessionText, seedSessionText, sessionFileTimestamp, uuidv7 } from "./session-files.js";
 import { ompLimits } from "./limits.js";
@@ -607,6 +608,7 @@ export class OmpAdapter implements HarnessAdapter {
     supportsExtensions: true,
     supportsInteractiveRequests: true,
     supportsRename: true,
+    supportsAccountSelection: true,
     supportsModelSelection: true,
     supportsFork: true,
     supportsHandoff: true,
@@ -648,7 +650,17 @@ export class OmpAdapter implements HarnessAdapter {
     }
   }
 
-  /** Every signed-in account's limits; omp asks each provider, which takes a few seconds. */
+  async accounts(cwd: string): Promise<OauthAccountChoice[]> {
+    const names = new Set((await this.listModels(cwd).catch(() => [])).map((model) => model.provider).filter((provider): provider is string => !!provider && /^[a-z0-9][a-z0-9-]{0,63}$/i.test(provider)));
+    const result: OauthAccountChoice[] = [];
+    for (const provider of names) {
+      const output = await execHarness(this.cliCommand, ["token", provider, "--list"], { timeout: 15_000, env: this.env(), maxBuffer: 64 * 1024 }).catch(() => null);
+      if (!output) continue;
+      result.push(...parseProviderList(provider, output.stdout));
+    }
+    return result;
+  }
+
   async usageLimits(): Promise<LimitAccount[]> {
     const { stdout } = await execHarness(this.cliCommand, ["usage", "--json", "--redact"], { timeout: 30_000, env: this.env(), maxBuffer: 4 * 1024 * 1024 });
     return ompLimits(JSON.parse(stdout) as unknown);
@@ -1209,6 +1221,13 @@ class OmpLiveChat implements LiveChat {
     const state = await this.live.command<Obj>("get_state");
     return todoPhaseItems(state?.todoPhases);
   }
+
+  async pinAccount(index: number): Promise<void> {
+    if (!Number.isInteger(index) || index < 1 || index > 64) throw new Error("Native account index out of range");
+    await this.prompt(`/session pin ${index}`);
+  }
+
+  /** Example packages left unmodified by the operator's actual component harness. */
 
   async prompt(text: string, images?: ImageAttachment[]): Promise<void> {
     // A "/" command may run locally; its output comes before the response that says so.

@@ -141,6 +141,8 @@ interface FakeSession {
   title: string;
   messages: unknown[];
   updatedAt: Date;
+  /** The per-child auth-account slot used for tests of native pin behavior. */
+  pinAccount?: (index: number) => Promise<void>;
 }
 
 export interface FakeAdapterOptions {
@@ -208,6 +210,7 @@ export class FakeAdapter implements HarnessAdapter {
       supportsPermissionMode: true,
       supportsResumeCommand: true,
       readOnlyHarness: false,
+      supportsAccountSelection: false,
       jobsSurviveRestart: false,
       supportsProjectFolders: true,
       webOnly: false,

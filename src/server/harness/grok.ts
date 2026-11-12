@@ -682,6 +682,7 @@ export class GrokAdapter implements HarnessAdapter {
     supportsPermissionMode: false,
     supportsResumeCommand: true,
     readOnlyHarness: false,
+    supportsAccountSelection: false,
     jobsSurviveRestart: false,
     supportsProjectFolders: true,
     webOnly: false,

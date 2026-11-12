@@ -57,6 +57,15 @@ if (args[0] === "--version") {
   process.exit(0);
 }
 
+if (args.includes("models") && args.includes("--json")) {
+  console.log(JSON.stringify([{ provider: "fakeomp", id: "m1" }]));
+  process.exit(0);
+}
+if (args[0] === "token" && args.includes("--list")) {
+  console.log("1. account-one@example.test (active)\n2. account-two@example.test");
+  process.exit(0);
+}
+
 // `omp session lease --json -- <id>...`, as omp 18.18.6 prints it. $FAKE_OMP_HELD names the
 // sessions "another omp" holds (comma-separated); every other id is simply not held.
 if (args[0] === "session" && args[1] === "lease") {
@@ -224,6 +233,10 @@ if (args[0] === "acp") {
         });
       }
       case "prompt":
+        if (cmd.message.startsWith("/session pin ")) {
+          save({ ...load(), pinned: cmd.message.split(" ").at(-1) });
+          return ok(cmd.id, "prompt", {agentInvoked:false});
+        }
         if (cmd.message === "/context" && (process.env.FAKE_OMP_CONTEXT ?? "builtin") === "builtin") {
           out({
             type: "command_output",

@@ -248,6 +248,7 @@ test.describe("shared look in config.yml", () => {
     await expect(settings.getByText("Unsaved changes")).toBeVisible();
     // Wait for the dialog's one-shot transform before measuring; later panes must not resize it.
     const frame = await settings.boundingBox();
+    if (!frame) throw new Error("Settings has no dialog frame to measure");
     await openSection(settings, "Layout");
     await settings.getByRole("switch", { name: "Fold the sidebar away in narrow windows" }).click();
     // The edit made in Appearance is still the form's: one Save writes both.

@@ -20,6 +20,7 @@ import type {
   ImageRef,
   InteractionAnswer,
   InteractionRequest,
+  OauthAccountChoice,
   LimitAccount,
   PushNote,
   QueueState,
@@ -836,7 +837,11 @@ export class Chat implements CheckpointHost {
   delegated?: () => DelegatedTaskView[];
   /** This chat's active worker proposal; no cross-chat plan id routes are needed. */
   plan?: () => Plan | null;
-  /** A denial with a corrective explanation. The orchestrator delivers this only to its own workers. */
+  /** Whether this specific live session implements native OAuth pinning (`/session pin` on omp). */
+  supportsAccountSelection(): boolean {
+    return Boolean(this.live.pinAccount);
+  }
+  limitedFor?: (source: string) => Promise<string[]>;
   onDenied?: (chat: Chat, request: InteractionRequest, reason: string) => void;
   /**
    * The decision gate behind this chat's `dc-` requests: the orchestrator installs it with the
@@ -856,6 +861,7 @@ export class Chat implements CheckpointHost {
   private usage: SessionUsage | null = null;
   private todos: TodoItem[] = [];
   private settleWaiters: Array<() => void> = [];
+  private limitedAccounts: string[] = [];
   private unsubscribe: (() => void) | null = null;
   private readonly live: LiveChat;
 
@@ -982,7 +988,7 @@ export class Chat implements CheckpointHost {
       queue: { steering: [...this.reducer.queue.steering], followUp: [...this.reducer.queue.followUp] },
       pending: this.reducer.pendingRequests(),
       config: this.reducer.config,
-      capabilities: this.adapter.capabilities,
+      capabilities: { ...this.adapter.capabilities, supportsAccountSelection: !!this.live.pinAccount },
       extensionStatus: { ...this.reducer.extensionStatus },
       context: this.context,
       usage: this.usage,
@@ -997,6 +1003,7 @@ export class Chat implements CheckpointHost {
       lastEventId: this.log.lastEventId,
       ...(this.delegated ? { delegated: this.delegated() } : {}),
       ...(this.plan ? { plan: this.plan() ?? undefined } : {}),
+      limitedAccounts: [...this.limitedAccounts],
       ...(this.lineage ? { lineage: this.lineage } : {}),
     };
   }
@@ -1059,6 +1066,14 @@ export class Chat implements CheckpointHost {
   apply(event: HarnessEvent): void {
     if (event.type === "limits") {
       this.onLimits?.(event.account);
+      this.limitedAccounts = event.account.limited ? [event.account.id] : [];
+      if (event.account.limited && this.chain.length > 0) {
+        this.pauseChain(`The provider is limited (${event.account.id}); queued work waits until expiry or manual Continue`);
+      } else if (!event.account.limited && this.chainPaused?.startsWith("The provider is limited")) {
+        this.chainPaused = null;
+        this.emitChain();
+        this.chainSoon();
+      }
       return;
     }
     if (event.type === "request") this.onNews?.(this, "ask", event.request.title, event.request);
@@ -1107,7 +1122,7 @@ export class Chat implements CheckpointHost {
     if (status === "running") this.reducer.runPromptSeen = false;
     if (status === "running") this.onRunStart?.(this);
     // A run that ends on its own moves the chain on; one that fails stops it until you say.
-    if (!this.quiet && before === "running" && status === "idle") this.chainSoon();
+    if (!this.quiet && before === "running" && status === "idle") void this.settleChain();
     else if (status === "error" && before !== "starting") this.pauseChain("The run failed");
     // A run that ends on its own is news; one stopped from here is not.
     if (!this.quiet && before === "running" && status === "idle") this.onNews?.(this, "done", this.lastLine("assistant") ?? "Finished");
@@ -1118,6 +1133,53 @@ export class Chat implements CheckpointHost {
       for (const w of waiters) w();
     }
   }
+
+  private async settleChain(): Promise<void> {
+    await this.refreshLimits().catch(() => undefined);
+    if (this.status === "idle") this.chainSoon();
+  }
+
+  // Only a successful fresh report can clear a paused chain. Empty or missing data confirms nothing.
+  private async refreshLimits(): Promise<void> {
+    if (!this.limitedFor) return;
+    const latest = await this.limitedFor(this.adapter.displayName).catch(() => null);
+    if (latest === null || this.status === "disposed") return;
+    const wasLimited = this.limitedAccounts.length > 0;
+    this.limitedAccounts = latest;
+    this.reducer.emit({ type: "limits", accounts: [...latest] });
+    if (latest.length > 0) {
+      if (this.chain.length > 0) this.pauseChain(`The provider is limited (${latest.join(", ")}); queued work waits until expiry or manual Continue`);
+      return;
+    }
+    if (wasLimited && this.chainPaused?.startsWith("The provider is limited")) {
+      this.chainPaused = null;
+      this.emitChain();
+      this.chainSoon();
+    }
+  }
+
+  /** Account-selection belongs to a specific attached child, not its adapter's theoretical flag. */
+  async accounts(): Promise<OauthAccountChoice[]> {
+    if (!this.live.pinAccount) return [];
+    return this.adapter.accounts?.(this.workspace.path) ?? [];
+  }
+
+  /** Native account index (1-based) in this session's own auth stakes. Does not edit provider files. */
+  /** Choose one of this session's native provider accounts. The operation is a live child /session pin,
+   * never one of the undocumented launch flags or global account mutations. */
+  async pinAccount(id: string): Promise<void> {
+    this.assertOpen();
+    if (this.status !== "idle" && this.status !== "error") throw new ChatError(409, "busy", "Wait until this session is idle to choose an account");
+    if (!this.live.pinAccount) throw new ChatError(400, "unsupported", "This session cannot choose a stored provider account");
+    const account = (await this.accounts()).find((candidate) => candidate.id === id && candidate.supported);
+    if (!account) throw new ChatError(404, "unknown_account", "That account is not offered by this session");
+    const provider = this.snapshot().config.model?.split("/")[0];
+    if (provider && provider !== account.provider) throw new ChatError(409, "different_provider", `This session has a ${provider} model; its account must match`);
+
+    await this.live.pinAccount(account.index);
+    await this.waitSettled();
+  }
+
 
   /** The first line of the latest answer (or error notice), without Markdown marks. */
   private lastLine(kind: "assistant" | "notice"): string | null {
@@ -1340,7 +1402,11 @@ export class Chat implements CheckpointHost {
   }
 
   private async advanceChain(): Promise<void> {
-    if (this.chainPaused || this.status !== "idle") return;
+    if (this.chainPaused || this.limitedAccounts.length > 0 || this.status !== "idle") return;
+    if (this.limitedAccounts.length > 0) {
+      this.pauseChain(`The provider is limited (${this.limitedAccounts.join(", ")}); queued work waits until expiry or manual Continue`);
+      return;
+    }
     const [step, ...rest] = this.chain;
     if (!step) return;
     if (step.kind === "send") {

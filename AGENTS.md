@@ -144,7 +144,7 @@ src/server/
   project-upload.ts          One new file into a validated workspace root, exclusive create, 8 MB route cap.
   harness/jobs.ts, child-process.ts, event-hub.ts   Background worker state, bounded child RPC lifecycle and event buffering.
   git.ts, git-status.ts       Hardened git runner; the composer's git row.
-  image-store.ts, notify.ts, limits.ts, session-marks.ts, run-command.ts, state-file.ts   Side features (see their header comments).
+  image-store.ts, notify.ts, limits.ts, accounts.ts, run-command.ts, state-file.ts   Side features (see their header comments).
   agent-status.ts             The status line an agent sets for its chat (the orchestration `set_status` tool): one
                               word plus one bounded sentence, per native session, drawn in the sidebar and header.
   orchestration/decisions.ts  The decision gate behind a delegated worker's `request_decision` tool: a recorded

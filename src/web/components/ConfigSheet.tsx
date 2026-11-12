@@ -6,7 +6,7 @@
 // the sheet: the point of it was to get back to the message box.
 import { useState } from "react";
 import type { ChatState } from "../chat-state.js";
-import type { ConfigPatch, HarnessStatus } from "../../shared/protocol.js";
+import type { ConfigPatch, HarnessStatus, OauthAccountChoice } from "../../shared/protocol.js";
 import { handoffChoice } from "../handoff.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconCheck } from "../icons.js";
@@ -14,6 +14,7 @@ import { Dialog } from "./Dialog.js";
 import { ModelPicker } from "./ModelPicker.js";
 import { PermissionPicker } from "./PermissionPicker.js";
 import { ThinkingPicker } from "./ThinkingPicker.js";
+import { AccountPicker } from "./AccountPicker.js";
 
 export function ConfigSheet({
   chat,
@@ -34,6 +35,7 @@ export function ConfigSheet({
   const { config } = chat;
   const idle = chat.status === "idle" || chat.status === "error";
   const [pending, setPending] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<OauthAccountChoice[] | null>(null);
   const pick = (patch: ConfigPatch) => {
     void onConfig(patch);
     onClose();
@@ -86,6 +88,8 @@ export function ConfigSheet({
           />
         </div>
       ) : null}
+      {caps.supportsAccountSelection ? <AccountPicker chat={chat} /> : null}
+
       {caps.supportsPermissionMode && config.permissionModes?.length ? (
         <div className="config-row">
           <span className="config-row-label">Permission</span>

@@ -163,6 +163,22 @@ describe("a prompt sent after the harness is up", () => {
   });
 });
 
+describe("the child-only session pin operation", () => {
+  it("forwards the index once its existing harness is actually attached", async () => {
+    const hub = new EventHub();
+    const calls: number[] = [];
+    const real = {
+      nativeId: "omp-session",
+      subscribe: (l: HarnessEventListener) => hub.subscribe(l),
+      getConfig: async () => ({ model: "anthropic/m1", thinkingLevel: null, models: [], thinkingLevels: [] }),
+      pinAccount: async (index: number) => { calls.push(index); },
+    } as unknown as LiveChat;
+    const queued = new DeferredLiveChat("omp-session", { items: [], title: null }, async () => real, String);
+    await queued.pinAccount?.(2);
+    expect(calls).toEqual([2]);
+  });
+});
+
 describe("a harness that is already running when it comes up", () => {
   it("stays running, not Idle: its own settle ends the run", async () => {
     // A turn an extension started at load (Pi's background-tasks): the start is buffered before anyone subscribes.

@@ -60,6 +60,7 @@ export class AwuiAdapter extends PiAdapter {
     supportsQueueEdit: true,
     supportsPermissionMode: false,
     supportsResumeCommand: false,
+    supportsAccountSelection: false,
     jobsSurviveRestart: false,
     // A machine-wide chat surface: no project folder, and only the web UI lists it.
     supportsProjectFolders: false,

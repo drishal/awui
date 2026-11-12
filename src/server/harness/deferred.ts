@@ -124,6 +124,14 @@ export class DeferredLiveChat implements LiveChat {
     return (await this.harness()).listCommands();
   }
 
+  /** Native account pin exists on the wrapper too: it waits for the child just like every other native operation. */
+  /** A resumed harness exposes native provider account pin only after it is ready. */
+  async pinAccount(index: number): Promise<void> {
+    const child = await this.harness();
+    if (!child.pinAccount) return;
+    await child.pinAccount(index);
+  }
+
   async prompt(text: string, images?: ImageAttachment[]): Promise<void> {
     return (await this.harness(true)).prompt(text, images);
   }

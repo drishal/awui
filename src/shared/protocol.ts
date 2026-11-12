@@ -34,7 +34,8 @@ export interface HarnessCapabilities {
   supportsResumeCommand: boolean;
   /** A backgrounded job outlives the harness process that started it (Claude Code's task files). Without this, a job reloaded from a transcript as still running is reconciled to stopped, because the new process no longer holds it. */
   jobsSurviveRestart: boolean;
-  /** Whether chats are scoped to a project folder the start screen offers (pick, recents, a project chip). False for a machine-wide chat surface (awui): it runs on the home workspace and keeps a flat, ungrouped history. */
+  /** Per-session OAuth account pin: a native command, not a global account-router setting. */
+  supportsAccountSelection: boolean;
   supportsProjectFolders: boolean;
   /** The harness's chats only make sense on the web UI; terminal clients (atui) omit it from their harness lists. */
   webOnly: boolean;
@@ -1144,7 +1145,8 @@ export interface ChatSnapshot {
    * `task` events. Absent when the chat delegates nothing (the common case).
    */
   delegated?: DelegatedTaskView[];
-  /** Set when another agent delegated this chat: what the header's lineage chip reads. */
+  /** Current source accounts that say exhausted for this chat; no credential values make it into this list. */
+  limitedAccounts: string[];
   lineage?: ChatLineage;
   /** The current lead/worker proposal, when this chat coordinates one. */
   plan?: Plan | undefined;
@@ -1164,6 +1166,7 @@ export type ChatEvent =
   | { type: "item"; item: ChatItem }
   | { type: "delta"; itemId: string; field: "text" | "thinking" | "output"; append: string }
   | { type: "status"; status: ChatStatus }
+  | { type: "limits"; accounts: string[] }
   | { type: "queue"; queue: QueueState }
   | { type: "config"; config: ChatConfig }
   | { type: "title"; title: string; sessionId: string | null }
@@ -1908,6 +1911,17 @@ export const roomAnswerSchema = answerSchema;
  * which validates `args`; this checks only the envelope.
  */
 export const orchCallSchema = z.object({ tool: z.string().min(1).max(64), args: z.unknown().optional() }).strict();
+
+export type OauthAccountChoice = {
+  provider: string;
+  index: number;
+  /** The harness's provider-local id, not email/token/secret. */
+  id: string;
+  supported: boolean;
+  current?: boolean;
+};
+export const accountSelectionSchema = z.object({ id: z.string().regex(/^[\w-]+:[0-9]{1,2}$/i).max(65) }).strict();
+
 
 export interface PrWatchView {
   url: string;

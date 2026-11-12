@@ -41,6 +41,7 @@ const readState = () => JSON.parse(readFileSync(state, "utf8")) as {
   sessions: Record<string, { messages: unknown[] }>;
   spawns: Array<{ args: string[]; envPiDir: string | null }>;
   lastModel?: string;
+  pinned?: string;
 };
 
 async function openChat(resumeNativeId?: string) {
@@ -404,6 +405,26 @@ describe("firstPrompt", () => {
     expect(firstPrompt(jsonl)).toBe("list the last 5 commits");
     expect(firstPrompt(JSON.stringify({ type: "message", message: { role: "user", content: [{ type: "image" }] } }))).toBeNull();
     expect(firstPrompt(JSON.stringify({ type: "message", message: { role: "user", content: "y".repeat(200) } }))).toHaveLength(80);
+  });
+
+  it("finds native provider choice ids without exposing stored account identities", async () => {
+    await adapter.listModels(project);
+    const accounts = await adapter.accounts(project);
+    expect(accounts.map((row) => row.id)).toEqual(["fakeomp:1", "fakeomp:2"]);
+  });
+
+  it("pins the current child with its native account-index command", async () => {
+    const { live } = await openChat();
+    if (!live.pinAccount) throw new Error("Omp session must support native pinning");
+    await live.pinAccount(2);
+    await until(() => readState().pinned === "2");
+  });
+
+  it("old prompt from example knows /session pin only in this current session", async () => {
+    const { live } = await openChat();
+    if (!live.pinAccount) throw new Error("This live harness must declare its own pin implementation");
+    await live.pinAccount(1);
+    expect(readState().pinned).toBe("1");
   });
 
   it("asks omp's session lease whether another omp holds a session, and says no when it cannot tell", async () => {

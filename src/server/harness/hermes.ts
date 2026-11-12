@@ -1321,6 +1321,7 @@ export class HermesAdapter implements HarnessAdapter {
     supportsPermissionMode: false,
     supportsResumeCommand: false,
     readOnlyHarness: false,
+    supportsAccountSelection: false,
     jobsSurviveRestart: false,
     supportsProjectFolders: true,
     webOnly: false,

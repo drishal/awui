@@ -43,7 +43,8 @@ export class ChatManager {
   private reaper: NodeJS.Timeout;
   /** Any chat's harness reported its subscription limits. */
   onLimits?: (account: LimitAccount) => void;
-  /** File checkpoints before prompts, and where each session's list of them is kept. */
+  /** Return limits for this harness's own registry source, not a global wildcard. */
+  limitedSources?: (source: string) => Promise<string[]>;
   checkpoints?: { service: Checkpoints; sessionsDir: string };
   /** A run started in any chat. */
   onRunStart?: (chat: Chat) => void;
@@ -186,6 +187,7 @@ export class ChatManager {
     chat.onSession = (c) => this.claimSession(c);
     chat.onDisposed = (c) => this.forget(c);
     chat.onLimits = (account) => this.onLimits?.(account);
+    if (this.limitedSources) chat.limitedFor = (source) => this.limitedSources?.(source) ?? Promise.resolve([]);
     chat.onNews = (c, kind, body, request) => this.onNews?.(c, kind, body, request);
     chat.onDenied = (c, request, reason) => this.onDenied?.(c, request, reason);
     chat.onRunStart = (c) => this.onRunStart?.(c);

@@ -38,6 +38,15 @@ export class Limits {
     writeJson(this.file, [...this.reported.values()]).catch((error: unknown) => console.error(`awui: could not save limits: ${error instanceof Error ? error.message : String(error)}`));
   }
 
+  /** Recorded exhausted ids for one harness's own source, or undefined if its latest read failed. */
+  async limitedSources(source: string): Promise<Set<string>> {
+    const current = await this.get();
+    if (current.errors.includes(source)) throw new Error(`${source}: could not verify current quota report`);
+    const limited = new Set<string>();
+    for (const account of current.accounts) if (account.limited && account.source === source) limited.add(account.id);
+    return limited;
+  }
+
   /** Start the first poll now, so the first sidebar load finds an answer (a poll takes seconds: omp's `usage` and a Claude Code probe). */
   warm(): void {
     void this.poll();
