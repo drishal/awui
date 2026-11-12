@@ -75,6 +75,18 @@ export function RacePanel({
     else void loadList();
   }, [initialRaceId]);
 
+  // Members finish while the panel is open: read the race again every few seconds until none is running, so
+  // "running" does not stay on a chat that has long settled. A click in flight is never raced by a refresh.
+  const raceId = race?.id;
+  const anyRunning = race?.members.some((member) => member.status === "running") ?? false;
+  useEffect(() => {
+    if (!raceId || !anyRunning || busy) return;
+    const timer = window.setInterval(() => void loadRace(raceId), 3000);
+    return () => window.clearInterval(timer);
+    // loadRace only closes over setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raceId, anyRunning, busy]);
+
   /** Every action answers with the race as it stands, so one state update is enough. */
   const apply = (result: { race: RaceSummary }) => {
     setRace(result.race);
