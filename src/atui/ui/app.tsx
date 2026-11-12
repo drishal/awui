@@ -443,7 +443,7 @@ export function App(p: {
     }
     if (c) {
       const changed = collectChanges(c.items, c.workspace.path).length;
-      const noted = app.reviewComments(c.chatId).length;
+      const noted = app.reviewComments(c.chatId).filter((thread) => thread.status === "open").length;
       add({
         id: "review",
         label: "Review changes",

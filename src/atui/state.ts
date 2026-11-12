@@ -29,7 +29,7 @@ import type {
 } from "../shared/protocol.js";
 import { IMAGE_MIME_TYPES } from "../shared/protocol.js";
 import { applyEvents, type ChatState } from "../web/chat-state.js";
-import type { ReviewComment } from "../web/review.js";
+import type { ReviewAnchor, ReviewSendResult, ReviewThread } from "../shared/protocol.js";
 import { closeTab as closeTabIn, findTab, markUnread, NO_TABS, placeChat, placeTab, runningChats, syncActive, type Tab, type TabState } from "../web/tabs.js";
 import { appCommand } from "../web/commands.js";
 import { isBusy } from "../web/session-groups.js";
@@ -615,10 +615,73 @@ export function createAtui(server: Server, opts: AtuiOptions) {
 
   /** A prompt being edited in the composer: Enter replaces it (as the web UI's Edit does). */
   const [editing, setEditing] = createSignal<{ through: number; item: UserItem } | null>(null);
-  /** Review comments by chat, kept while atui runs (the web UI keeps its own per browser). */
-  const [comments, setComments] = createSignal<Record<string, ReviewComment[]>>({});
-  const reviewComments = (chatId: string): ReviewComment[] => comments()[chatId] ?? [];
-  const setReviewComments = (chatId: string, list: ReviewComment[]) => setComments((all) => ({ ...all, [chatId]: list }));
+  /**
+   * Review threads by chat, as the server holds them: the same ones the web
+   * panel shows, read when the review opens. Every write asks the server and
+   * keeps what it answers, so a resolve or a note lands for every device.
+   */
+  const [reviewThreads, setReviewThreads] = createSignal<Record<string, ReviewThread[]>>({});
+  const reviewComments = (chatId: string): ReviewThread[] => reviewThreads()[chatId] ?? [];
+  const putReviewThread = (chatId: string, thread: ReviewThread) =>
+    setReviewThreads((all) => ({ ...all, [chatId]: [thread, ...(all[chatId] ?? []).filter((t) => t.id !== thread.id)] }));
+
+  const loadReview = async (chatId: string): Promise<void> => {
+    try {
+      const body = await server.call<{ threads: ReviewThread[] }>(`/api/chats/${chatId}/review-threads`);
+      setReviewThreads((all) => ({ ...all, [chatId]: body.threads }));
+    } catch (error) {
+      fail(error);
+    }
+  };
+  const createReviewThread = async (chatId: string, anchor: ReviewAnchor, text: string): Promise<boolean> => {
+    try {
+      putReviewThread(chatId, await server.call<ReviewThread>(`/api/chats/${chatId}/review-threads`, { body: { anchor, text } }));
+      return true;
+    } catch (error) {
+      fail(error);
+      return false;
+    }
+  };
+  const replyReviewThread = async (chatId: string, threadId: string, text: string): Promise<boolean> => {
+    try {
+      putReviewThread(chatId, await server.call<ReviewThread>(`/api/chats/${chatId}/review-threads/${threadId}/notes`, { body: { text } }));
+      return true;
+    } catch (error) {
+      fail(error);
+      return false;
+    }
+  };
+  const resolveReviewThread = async (chatId: string, threadId: string, status: ReviewThread["status"]): Promise<boolean> => {
+    try {
+      putReviewThread(chatId, await server.call<ReviewThread>(`/api/chats/${chatId}/review-threads/${threadId}/status`, { body: { status } }));
+      return true;
+    } catch (error) {
+      fail(error);
+      return false;
+    }
+  };
+  const deleteReviewThread = async (chatId: string, threadId: string): Promise<boolean> => {
+    try {
+      await server.call(`/api/chats/${chatId}/review-threads/${threadId}`, { method: "DELETE" });
+      setReviewThreads((all) => ({ ...all, [chatId]: (all[chatId] ?? []).filter((t) => t.id !== threadId) }));
+      return true;
+    } catch (error) {
+      fail(error);
+      return false;
+    }
+  };
+  /** The chat's open threads as one prompt, composed by the server; nothing is cleared afterwards. */
+  const sendReview = async (chatId: string, stale: string[]): Promise<boolean> => {
+    try {
+      const result = await server.call<ReviewSendResult>(`/api/chats/${chatId}/review-threads/send`, { body: { target: { kind: "chat", chatId }, stale } });
+      setBanner({ level: "info", text: `Sent ${result.sent} ${result.sent === 1 ? "comment" : "comments"} to this chat` });
+      await loadReview(chatId);
+      return true;
+    } catch (error) {
+      fail(error);
+      return false;
+    }
+  };
   /** The prompt whose files the Undo dialog offers to put back. */
   const [undoTurn, setUndoTurn] = createSignal<number | null>(null);
   /** The files a restore put back, to put back as they were again (C-x z). */
@@ -761,7 +824,12 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     undoTurn,
     setUndoTurn,
     reviewComments,
-    setReviewComments,
+    loadReview,
+    createReviewThread,
+    replyReviewThread,
+    resolveReviewThread,
+    deleteReviewThread,
+    sendReview,
     runCommand,
     rerun,
     fork,

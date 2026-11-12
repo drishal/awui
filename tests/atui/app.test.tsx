@@ -490,14 +490,14 @@ describe("atui", () => {
     expect(readFileSync(path.join(repo, "app.ts"), "utf8")).toBe("const a = 2;\n");
   }, 40_000);
 
-  it("reviews the chat's changes: a comment on a line, and all of them sent as one prompt", async () => {
+  it("reviews the chat's changes: a thread on a line, resolved, and its open ones sent as one prompt", async () => {
     ui = await mount(path.join(server.root, "beta"), { height: 40 });
     await ui.type("edit please");
     ui.keys.pressEnter();
     await idle(ui);
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("d");
-    const view = await ui.until("Review changes  1 file · 0 comments");
+    const view = await ui.until("Review changes  1 file · 0 open");
     expect(view).toContain("src/app.ts");
     expect(view).toMatch(/▌\s+\d*\s*- a/);
     ui.keys.pressEnter();
@@ -505,12 +505,27 @@ describe("atui", () => {
     await ui.type("keep a");
     ui.keys.pressEnter();
     await ui.until("✎ keep a");
-    expect(await ui.frame()).toContain("1 comment");
+    expect(await ui.frame()).toContain("1 open");
+
+    // The thread resolves on the server and stays, struck through with a tick.
+    ui.keys.pressKey("r");
+    await ui.until("✓ keep a");
+    expect(await ui.frame()).toContain("1 resolved");
+    ui.keys.pressKey("r");
+    await ui.until("✎ keep a");
+
+    // One prompt, composed by the server; nothing is cleared and the panel stays.
     ui.keys.pressKey("s", { shift: true });
     await ui.until(() => ui?.app.chat()?.items.some((i) => i.kind === "user" && i.text.startsWith("Review comments on your changes")) ?? false, 15_000);
     const sent = ui.app.chat()?.items.filter((i) => i.kind === "user").pop() as { text: string };
+    expect(sent.text).toContain("1. src/app.ts");
     expect(sent.text).toContain("keep a");
-    expect(await ui.frame()).not.toContain("Esc close");
+    // The panel stays open with the thread still there; its notice is behind it, so Esc shows it.
+    expect(await ui.frame()).toContain("Esc close");
+    expect(await ui.frame()).toContain("✎ keep a");
+    expect(await ui.frame()).toContain("1 open");
+    ui.keys.pressEscape();
+    await ui.until("Sent 1 comment to this chat");
   }, 40_000);
 
   it("runs a command from an answer and puts its output in the message; quotes a selection", async () => {

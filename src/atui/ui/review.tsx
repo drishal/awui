@@ -1,11 +1,15 @@
 // Review changes (the web UI's Review, in a terminal): every file this chat
-// changed, each edit's lines under it with a line cursor; a comment on a line,
-// and all of them sent to the agent as one prompt. ↑/↓ (j/k) a line, ]/[ a
-// file, Enter or c comments, x removes one, S sends, Esc closes. Comments
-// stay with the chat while atui runs (atui/review.ts lays the rows out).
-import { createMemo, createSignal, For, Show } from "solid-js";
+// changed, each edit's lines under it with a line cursor, and the comment
+// threads the server keeps on those lines — a note added, a thread resolved or
+// deleted, and all the open ones sent to the agent as one prompt. ↑/↓ (j/k) a
+// line, ]/[ a file, Enter or c comments (or replies, when the line has a
+// thread), r resolves or reopens it, x deletes it, S sends, Esc closes. The
+// threads are the web panel's, so the same review is on every device
+// (atui/review.ts lays the rows out).
+import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
-import { collectChanges, reviewPrompt, type ReviewComment } from "../../web/review.js";
+import type { ReviewThread } from "../../shared/protocol.js";
+import { anchorOf, collectChanges, placeThreads } from "../../web/review.js";
 import { clip } from "../format.js";
 import { mix } from "../fx.js";
 import { firstStop, moveCursor, moveFile, reviewRows, windowStart, type ReviewRow } from "../review.js";
@@ -18,44 +22,60 @@ export function ReviewView(p: { onClose: () => void }) {
   const t = useTheme();
   const size = useTerminalDimensions();
   const chat = () => app.chat();
+  const chatId = () => chat()?.chatId ?? "";
   const files = createMemo(() => {
     const c = chat();
     return c ? collectChanges(c.items, c.workspace.path) : [];
   });
   const rows = createMemo(() => reviewRows(files()));
+  // The server's threads, where the lines they pin to are now drawn.
+  const placed = createMemo(() => placeThreads(files(), app.reviewComments(chatId())));
   const [at, setAt] = createSignal(firstStop(rows()));
-  const [writing, setWriting] = createSignal<{ key: string; draft: string } | null>(null);
+  const [writing, setWriting] = createSignal<{ key: string; threadId?: string; draft: string } | null>(null);
   const [sending, setSending] = createSignal(false);
-  const comments = () => app.reviewComments(chat()?.chatId ?? "");
-  const byKey = createMemo(() => new Map(comments().map((c) => [c.key, c])));
-  const height = () => Math.max(6, size().height - 6);
+  const height = () => Math.max(6, size().height - 8);
   const start = () => windowStart(rows().length, Math.max(0, at()), height());
   const shown = () => rows().slice(start(), start() + height());
   const current = () => rows()[at()] as Extract<ReviewRow, { kind: "line" }> | undefined;
-
-  const setComments = (list: ReviewComment[]) => {
-    const c = chat();
-    if (c) app.setReviewComments(c.chatId, list);
+  const onLine = () => {
+    const row = current();
+    return row ? (placed().placed.get(row.key) ?? []) : [];
   };
-  const save = () => {
+  const open = createMemo(() => app.reviewComments(chatId()).filter((thread) => thread.status === "open"));
+  const resolved = createMemo(() => app.reviewComments(chatId()).filter((thread) => thread.status === "resolved"));
+  const staleIds = () => [...placed().placed.values()].flat().concat(placed().detached).filter((entry) => entry.stale).map((entry) => entry.thread.id);
+
+  onMount(() => {
+    const c = chat();
+    if (c) void app.loadReview(c.chatId);
+  });
+
+  const save = async () => {
     const w = writing();
     const row = current();
     setWriting(null);
-    if (!w || !row || !w.draft.trim()) return;
-    setComments([...comments().filter((c) => c.key !== w.key), { key: w.key, path: row.path, line: row.line, text: w.draft.trim() }]);
+    const c = chat();
+    if (!w || !row || !w.draft.trim() || !c) return;
+    if (w.threadId) await app.replyReviewThread(c.chatId, w.threadId, w.draft.trim());
+    else await app.createReviewThread(c.chatId, anchorOf(row.path, row.line), w.draft.trim());
   };
+
+  const toggleResolve = async (thread: ReviewThread) => {
+    const c = chat();
+    if (c) await app.resolveReviewThread(c.chatId, thread.id, thread.status === "open" ? "resolved" : "open");
+  };
+
+  const remove = async (thread: ReviewThread) => {
+    const c = chat();
+    if (c) await app.deleteReviewThread(c.chatId, thread.id);
+  };
+
   const send = async () => {
-    if (comments().length === 0 || sending()) return;
-    // File order, then line order: the order the rows are in.
-    const order = new Map(rows().map((r, i) => [r.kind === "line" ? r.key : `#${i}`, i]));
-    const ordered = [...comments()].sort((a, b) => (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0));
+    const c = chat();
+    if (!c || open().length === 0 || sending()) return;
     setSending(true);
-    const ok = await app.send(reviewPrompt(ordered));
+    await app.sendReview(c.chatId, staleIds());
     setSending(false);
-    if (ok) {
-      setComments([]);
-      p.onClose();
-    }
   };
 
   useKeyboard((key) => {
@@ -68,7 +88,7 @@ export function ReviewView(p: { onClose: () => void }) {
         setWriting(null);
       } else if (key.name === "return") {
         key.preventDefault();
-        save();
+        void save();
       }
       return;
     }
@@ -83,8 +103,11 @@ export function ReviewView(p: { onClose: () => void }) {
     else if (key.name === "[" || key.name === "p") setAt((i) => moveFile(list, i, -1));
     else if ((key.name === "return" || key.name === "c") && current()) {
       const row = current() as Extract<ReviewRow, { kind: "line" }>;
-      setWriting({ key: row.key, draft: byKey().get(row.key)?.text ?? "" });
-    } else if (key.name === "x" && current()) setComments(comments().filter((c) => c.key !== current()?.key));
+      // A line that already has a thread takes the note into it; an empty one starts a thread.
+      const existing = onLine().find((entry) => entry.thread.status === "open");
+      setWriting({ key: row.key, ...(existing ? { threadId: existing.thread.id } : {}), draft: "" });
+    } else if (key.name === "r" && onLine()[0]) void toggleResolve((onLine()[0] as { thread: ReviewThread }).thread);
+    else if (key.name === "x" && onLine()[0]) void remove((onLine()[0] as { thread: ReviewThread }).thread);
     else if (key.name === "s" && key.shift) void send();
   });
 
@@ -95,7 +118,7 @@ export function ReviewView(p: { onClose: () => void }) {
       <box flexDirection="row" flexShrink={0} marginTop={1}>
         <text flexGrow={1} fg={t().text}>
           <b>Review changes</b>
-          <span style={{ fg: t().muted }}>{`  ${files().length} ${files().length === 1 ? "file" : "files"} · ${comments().length} ${comments().length === 1 ? "comment" : "comments"}`}</span>
+          <span style={{ fg: t().muted }}>{`  ${files().length} ${files().length === 1 ? "file" : "files"} · ${open().length} open${resolved().length > 0 ? ` · ${resolved().length} resolved` : ""}`}</span>
         </text>
       </box>
       <Show when={files().length > 0} fallback={<text fg={t().muted}>The agent has not edited any files in this chat.</text>}>
@@ -114,7 +137,7 @@ export function ReviewView(p: { onClose: () => void }) {
                 );
               }
               if (row.kind === "edit") return <text fg={t().muted}>{`  ${row.label}`}</text>;
-              const note = () => byKey().get(row.key);
+              const threads = () => placed().placed.get(row.key) ?? [];
               return (
                 <box flexDirection="column">
                   <box flexDirection="row" backgroundColor={here() ? mix(t().bg, t().selection, 0.85) : undefined} onMouseDown={() => setAt(index())}>
@@ -128,19 +151,22 @@ export function ReviewView(p: { onClose: () => void }) {
                       {row.line.kind === "hunk" || row.line.kind === "gap" ? clip(row.line.text || "⋯", 120) : `${SIGN[row.line.kind]} ${row.line.text}`}
                     </text>
                   </box>
-                  <Show when={note()}>
-                    {(n) => (
-                      <text fg={t().warn} wrapMode="word">
-                        {`        ✎ ${n().text}`}
-                      </text>
-                    )}
-                  </Show>
+                  <For each={threads()}>
+                    {(entry) => {
+                      const done = () => entry.thread.status === "resolved";
+                      return (
+                        <text fg={done() ? t().muted : t().warn} wrapMode="word">
+                          {`        ${done() ? "✓" : "✎"} ${entry.thread.notes.map((note) => note.text).join(" · ")}${entry.stale ? "  (line changed since)" : ""}`}
+                        </text>
+                      );
+                    }}
+                  </For>
                   <Show when={writing()?.key === row.key}>
                     <box flexDirection="row" paddingLeft={8} border={["left"]} borderColor={t().accent}>
                       <input
                         focused
                         flexGrow={1}
-                        placeholder="What should change here? Enter saves, Esc drops"
+                        placeholder={writing()?.threadId ? "Add to the thread: Enter saves, Esc drops" : "What should change here? Enter saves, Esc drops"}
                         textColor={t().text}
                         backgroundColor={t().surface}
                         focusedBackgroundColor={t().surface}
@@ -156,7 +182,9 @@ export function ReviewView(p: { onClose: () => void }) {
         </box>
       </Show>
       <text flexShrink={0} fg={t().muted} marginBottom={1}>
-        {sending() ? "Sending…" : `↑↓ line · ]/[ file · Enter comment · x remove · S send ${comments().length} · Esc close`}
+        {sending()
+          ? "Sending…"
+          : `↑↓ line · ]/[ file · Enter comment · r resolve · x delete · S send ${open().length} · Esc close`}
       </text>
     </box>
   );
