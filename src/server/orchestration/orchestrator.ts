@@ -209,20 +209,38 @@ export class Orchestrator {
   }
 
   private async cancel(caller: Chat, args: { taskId: string }): Promise<ToolOutput> {
-    const task = this.ownTask(caller, args.taskId);
+    const { task, settled, already } = await this.cancelOne(caller, args.taskId);
     // Idempotent: a finished task is returned as it stands, and asking is reading it.
+    if (already) return { text: `Task ${task.id} already finished (${task.outcome}).`, data: { task: viewOf(task) } };
+    const text = `Cancelled task ${task.id} (${task.title}). Its chat is ${settled ? "stopped" : "still stopping"}.`;
+    if (!settled) throw new ChatError(504, "cancel_timeout", `${text} It did not settle within ${CANCEL_SETTLE_MS / 1000}s`);
+    return { text, data: { task: viewOf(task) } };
+  }
+
+  /**
+   * The browser's cancel: the same stop, asked for by the chat whose panel shows the row instead of
+   * by the model. A chat that did not settle is not an error here — the record already says
+   * cancelled, and the panel would only turn a successful stop into a red banner.
+   */
+  async cancelFor(chat: Chat, taskId: string): Promise<DelegatedTaskView> {
+    await this.ready();
+    const { task } = await this.cancelOne(chat, taskId);
+    return viewOf(task);
+  }
+
+  /** Stop one task's whole subtree and report it; `already` is a task that had finished. */
+  private async cancelOne(caller: Chat, taskId: string): Promise<{ task: StoredTask; settled: boolean; already: boolean }> {
+    const task = this.ownTask(caller, taskId);
     if (task.state === "result_available") {
       this.consume([task]);
-      return { text: `Task ${task.id} already finished (${task.outcome}).`, data: { task: viewOf(task) } };
+      return { task, settled: true, already: true };
     }
     task.cancelRequestedAt = Date.now();
     task.generation += 1;
     // Depth first: everything the task's chat started stops before the chat itself.
     const belowSettled = await this.stopSubtree(task, 0);
     const settled = (await this.stopTask(task)) && belowSettled;
-    const text = `Cancelled task ${task.id} (${task.title}). Its chat is ${settled ? "stopped" : "still stopping"}.`;
-    if (!settled) throw new ChatError(504, "cancel_timeout", `${text} It did not settle within ${CANCEL_SETTLE_MS / 1000}s`);
-    return { text, data: { task: viewOf(task) } };
+    return { task, settled, already: false };
   }
 
   private async wait(caller: Chat, args: { taskIds: string[]; waitMs?: number }): Promise<ToolOutput> {

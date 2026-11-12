@@ -232,6 +232,36 @@ describe("delegated tasks", () => {
     expect(app.manager.list().some((c) => c.chatId === started.childChatId)).toBe(false);
   });
 
+  it("serves a chat's rows to its panel, and cancels one from the browser", async () => {
+    const { app, agent, chat, ws, token } = await setup();
+    const none = await agent.get(`/api/chats/${chat.chatId}/tasks`);
+    expect(none.status).toBe(200);
+    expect(none.body).toEqual({ tasks: [] });
+
+    const started = await delegate(agent, token, { brief: "slow work behind the panel", title: "Panel row" });
+    const listed = (await agent.get(`/api/chats/${chat.chatId}/tasks`)).body as { tasks: DelegatedTaskView[] };
+    expect(listed.tasks.map((task) => task.id)).toEqual([started.taskId]);
+    expect(listed.tasks[0]).toMatchObject({ title: "Panel row", state: "working" });
+
+    const stopped = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/cancel`).send({});
+    expect(stopped.status).toBe(200);
+    expect(stopped.body.task).toMatchObject({ id: started.taskId, state: "result_available", outcome: "cancelled" });
+    // A second click is the same answer rather than an error.
+    const again = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/cancel`).send({});
+    expect(again.body.task).toEqual(stopped.body.task);
+
+    // Refusals are the tool's own codes: an id nobody has, and a task of another chat.
+    const unknown = await agent.post(`/api/chats/${chat.chatId}/tasks/ffff/cancel`).send({});
+    expect(unknown.status).toBe(404);
+    expect(unknown.body.code).toBe("unknown_task");
+    const other = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    const second = await delegate(agent, token, { brief: "a task the other chat cannot stop", title: "Not yours" });
+    const refused = await agent.post(`/api/chats/${other.chatId}/tasks/${second.taskId}/cancel`).send({});
+    expect(refused.status).toBe(403);
+    expect(refused.body.code).toBe("not_your_task");
+    expect(app.manager.get(second.childChatId as string).status).not.toBe("disposed");
+  });
+
   it("returns the same task for a repeated clientRequestId", async () => {
     const { app, agent, token } = await setup();
     const one = await delegate(agent, token, { brief: "check the lockfile", clientRequestId: "round-1" });

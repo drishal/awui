@@ -1482,6 +1482,19 @@ export function createApp(deps: AppDeps) {
     res.json({ commands: await manager.get(req.params.id).commands() });
   });
 
+  // A chat's delegated tasks, for the panel above its composer: the same bounded rows its
+  // snapshot carries (`task` events keep them current), read fresh for a panel opened late.
+  app.get("/api/chats/:id/tasks", (req, res) => {
+    res.json({ tasks: orchestration.tasksFor(manager.get(req.params.id)) });
+  });
+
+  // The user stopping a child its chat's agent started. The tool's own cancel answers the model;
+  // this one answers the panel, so a child that is slow to settle still comes back cancelled
+  // rather than as a 504. Refusals are the tool's: unknown_task, not_your_task.
+  app.post("/api/chats/:id/tasks/:taskId/cancel", async (req, res) => {
+    res.json({ task: await orchestration.cancelFor(manager.get(req.params.id), req.params.taskId) });
+  });
+
   app.post("/api/chats/:id/models/refresh", async (req, res) => {
     const chat = manager.get(req.params.id);
     await chat.refreshModels();

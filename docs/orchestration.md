@@ -74,6 +74,18 @@ The tool catalogue is the one source of truth for names, descriptions, and param
 schemas; a bridge fetches it once at startup and registers what it finds. `text` is the
 line the model reads, composed on the server so the wording exists once.
 
+The browser reads and stops the same tasks behind `requireAuth`, as the chat whose panel shows them:
+
+```
+GET  /api/chats/:id/tasks                 → { tasks: DelegatedTaskView[] }
+POST /api/chats/:id/tasks/:taskId/cancel  → { task: DelegatedTaskView }
+```
+
+The rows are the ones the chat's snapshot carries, bounded the same way; the cancel is the stop
+`task_cancel` makes, refused with the same `unknown_task` and `not_your_task`, but answered with the
+record instead of a `cancel_timeout` when the child is slow to settle. Both stay reachable with
+`orchestration.enabled: false`, so a child that is already running can still be stopped.
+
 ## Tools
 
 | Tool | Arguments | Serves |
