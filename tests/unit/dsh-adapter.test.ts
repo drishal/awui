@@ -113,6 +113,15 @@ describe("the DeepSeek Harness adapter (scripted ACP app)", () => {
     }
   });
 
+  // The count and shutdown must agree on one name: a track list keyed by a label that shutdown
+  // looks up under another key stops nothing and counts zero, which reads as clean while leaking.
+  it("counts its own children while a chat runs, and stops them on shutdown", async () => {
+    const { live } = await openChat();
+    expect(liveDshChildren()).toBeGreaterThan(0);
+    await live.dispose();
+    expect(liveDshChildren()).toBe(0);
+  });
+
   it("opens at DSH's own model and effort, with the levels the route lists", async () => {
     expect(await adapter.listModels()).toEqual([]);
     const { chat, live } = await openChat();

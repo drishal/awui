@@ -143,7 +143,7 @@ class DshRpc extends AcpClient {
   /** The acp-flow row did not activate: the child has no ACP server, so it was stopped. */
   flowFailed = false;
   constructor(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, onFrame: (frame: Obj) => void) {
-    super({ label: "DeepSeek Harness", startLabel: "DSH", command, args, env, cwd, onFrame, errorText });
+    super({ key: "dsh", label: "DeepSeek Harness", startLabel: "DSH", command, args, env, cwd, onFrame, errorText });
     if (!args.includes("--patch")) return;
     // A plugin row that fails leaves DSH booted with no ACP server, silent until the handshake times out.
     let said = "";

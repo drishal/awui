@@ -22,6 +22,12 @@ export function answeredId(frame: Obj): string | null {
 }
 
 export interface AcpClientOptions {
+  /**
+   * The tracking key this child is registered under: one per owner (a config.yml agent, grok, dsh),
+   * never a display label. Two agents may share a display name, and a label-keyed list would let
+   * one agent's shutdown or Test kill the other's live chats.
+   */
+  key: string;
   /** The name a failure message uses for a child that died, stopped answering, or is gone ("grok"). */
   label: string;
   /** The name "could not start …" uses; the label when omitted (a short name for a long-winded app). */
@@ -37,12 +43,12 @@ export interface AcpClientOptions {
   errorText?(value: unknown): string;
 }
 
-/** Every ACP child this process spawned, with the adapter family it belongs to. */
+/** Every ACP child this process spawned, with the tracking key of the owner that spawned it. */
 const children = new Map<ChildProcessWithoutNullStreams, string>();
 let exitHookInstalled = false;
 
-function track(child: ChildProcessWithoutNullStreams, label: string): void {
-  children.set(child, label);
+function track(child: ChildProcessWithoutNullStreams, key: string): void {
+  children.set(child, key);
   // `close` as well as `exit`: a child that never spawned (a wrong command) emits only error and close.
   child.once("exit", () => children.delete(child));
   child.once("close", () => children.delete(child));
@@ -56,17 +62,17 @@ function track(child: ChildProcessWithoutNullStreams, label: string): void {
   }
 }
 
-/** How many of this family's children are alive (adapter tests assert it returns to zero). */
-export function liveAcpChildren(label?: string): number {
-  if (label === undefined) return children.size;
+/** How many of one owner's children are alive (adapter tests assert it returns to zero). */
+export function liveAcpChildren(key?: string): number {
+  if (key === undefined) return children.size;
   let count = 0;
-  for (const owner of children.values()) if (owner === label) count += 1;
+  for (const owner of children.values()) if (owner === key) count += 1;
   return count;
 }
 
-/** Stop every child of this family (`shutdown()`); the whole process's when no label is given. */
-export async function killAcpChildren(label?: string): Promise<void> {
-  const targets = [...children].filter(([, owner]) => label === undefined || owner === label).map(([child]) => child);
+/** Stop every child of one owner (`shutdown()`); the whole process's when no key is given. */
+export async function killAcpChildren(key?: string): Promise<void> {
+  const targets = [...children].filter(([, owner]) => key === undefined || owner === key).map(([child]) => child);
   await Promise.allSettled(targets.map((child) => terminateChild(child)));
 }
 
@@ -78,6 +84,7 @@ export class AcpClient {
   private readonly exitListeners = new Set<(message: string) => void>();
   private readonly label: string;
   private readonly startLabel: string;
+  private status: { code: number | null; signal: NodeJS.Signals | null } | null = null;
   private readonly calls: PendingRequests<string>;
 
   constructor(private readonly options: AcpClientOptions) {
@@ -95,7 +102,7 @@ export class AcpClient {
     );
     this.child = spawnHarness(options.command, options.args, { cwd: options.cwd, env: options.env, stdio: ["pipe", "pipe", "pipe"] });
     this.stderr = new StderrTail(this.child);
-    track(this.child, this.label);
+    track(this.child, options.key);
     const rl = readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity });
     rl.on("line", (line) => {
       if (!line.trim()) return;
@@ -124,7 +131,20 @@ export class AcpClient {
       for (const listener of this.exitListeners) listener(message);
     };
     this.child.once("error", (error) => onExit(`could not start ${this.startLabel} (${error.message})`));
-    this.child.once("exit", (code, signal) => onExit(`${this.label} exited (${signal ?? `code ${code}`})`));
+    this.child.once("exit", (code, signal) => {
+      // Kept apart from the message: a caller that answers a user (the Settings Test) may say this
+      // and nothing else, since the stderr tail above can hold a secret.
+      this.status = { code, signal };
+      onExit(`${this.label} exited (${signal ?? `code ${code}`})`);
+    });
+  }
+
+  /**
+   * How the child ended, as a code or a signal, or null when it never got that far (a command that
+   * could not start, or a child that is still running).
+   */
+  exitStatus(): { code: number | null; signal: NodeJS.Signals | null } | null {
+    return this.status;
   }
 
   onExit(listener: (message: string) => void): void {

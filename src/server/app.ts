@@ -631,9 +631,9 @@ export function createApp(deps: AppDeps) {
         warnings,
       } satisfies AcpAgentProbe);
     } catch (error) {
+      // The reason is the agent's own words or how its child ended: probeAgent never repeats a stderr
+      // tail, and shutdown is not called here — that would stop the live chats of the agent it tested.
       throw new ChatError(502, "acp_handshake_failed", error instanceof Error ? error.message : String(error));
-    } finally {
-      await adapter.shutdown();
     }
   });
 

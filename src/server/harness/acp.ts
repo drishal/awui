@@ -199,6 +199,7 @@ class AcpLiveChat implements LiveChat {
 
   async start(): Promise<void> {
     const rpc = new AcpClient({
+      key: this.adapter.childKey,
       label: this.adapter.displayName,
       command: this.adapter.cliCommand,
       args: this.adapter.childArgs,
@@ -586,6 +587,14 @@ function inputLine(raw: unknown): string {
   return oneLine(text ?? "", 500);
 }
 
+/**
+ * The tracking key a config.yml agent's children are registered under, unique per entry: two
+ * agents may share a free-text `name`, so a display label could not tell their chats apart.
+ */
+function childKey(agentId: string): string {
+  return `acp:${agentId}`;
+}
+
 /** One config.yml ACP agent, as a harness awui can open chats on. */
 export class AcpAdapter implements HarnessAdapter {
   readonly id: HarnessId;
@@ -638,6 +647,11 @@ export class AcpAdapter implements HarnessAdapter {
 
   get childArgs(): string[] {
     return this.agent.args;
+  }
+
+  /** What this entry's children are tracked under: its id, never the display name. */
+  get childKey(): string {
+    return childKey(this.agent.id);
   }
 
   /** The child's environment: the user's own (so the agent's login applies), plus this entry's variables. */
@@ -710,7 +724,7 @@ export class AcpAdapter implements HarnessAdapter {
    * offers. The Settings dialog's Test uses this, and so does discovery.
    */
   async probeAgent(cwd: string): Promise<{ probe: AcpProbe; warnings: string[] }> {
-    const rpc = new AcpClient({ label: this.displayName, command: this.cliCommand, args: this.childArgs, env: this.childEnv(), cwd, onFrame: () => undefined, errorText });
+    const rpc = new AcpClient({ key: this.childKey, label: this.displayName, command: this.cliCommand, args: this.childArgs, env: this.childEnv(), cwd, onFrame: () => undefined, errorText });
     try {
       const init = await rpc.request<Obj>("initialize", { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {}, clientInfo: { name: "awui", version: CLIENT_VERSION } }, READY_TIMEOUT_MS);
       const probe = probeFrom(init);
@@ -718,6 +732,14 @@ export class AcpAdapter implements HarnessAdapter {
       if (probe.protocolVersion !== null && probe.protocolVersion !== PROTOCOL_VERSION) warnings.push(`It speaks ACP protocol ${probe.protocolVersion}; awui expects ${PROTOCOL_VERSION}.`);
       if (this.agent.authMethod && !probe.authMethods.includes(this.agent.authMethod)) warnings.push(`config.yml names the auth method "${this.agent.authMethod}", which this agent does not offer.`);
       return { probe, warnings };
+    } catch (error) {
+      // A child that died is described by how it ended, never by its stderr tail: what an agent
+      // prints there is the user's command output and may hold a secret, and a Test is answerable
+      // without it. A failure that leaves the child running (a JSON-RPC error, a timeout) is the
+      // agent's own words, which carry no output of its own.
+      const ended = rpc.exitStatus();
+      if (ended) throw new Error(`${this.displayName} exited before it answered the initialize handshake (${ended.signal ? `signal ${ended.signal}` : `exit code ${ended.code}`})`);
+      throw error instanceof Error ? error : new Error(String(error));
     } finally {
       await rpc.kill().catch(() => undefined);
     }
@@ -804,11 +826,11 @@ export class AcpAdapter implements HarnessAdapter {
   }
 
   async shutdown(): Promise<void> {
-    await killAcpChildren(this.displayName);
+    await killAcpChildren(this.childKey);
   }
 }
 
-/** The ACP children a process has open under these adapters, for tests and shutdown checks. */
-export function liveAcpAdapterChildren(displayName: string): number {
-  return liveAcpChildren(displayName);
+/** The ACP children one config.yml entry has open, for tests and shutdown checks. */
+export function liveAcpAdapterChildren(agentId: string): number {
+  return liveAcpChildren(childKey(agentId));
 }

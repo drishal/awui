@@ -100,7 +100,7 @@ export function liveGrokChildren(): number {
 /** One grok child: the shared ACP transport, under this adapter's child count. */
 class GrokRpc extends AcpClient {
   constructor(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, onFrame: (frame: Obj) => void, onAnswered: (frame: Obj) => void) {
-    super({ label: "grok", command, args, env, cwd, onFrame, onAnswered });
+    super({ key: "grok", label: "grok", command, args, env, cwd, onFrame, onAnswered });
   }
 }
 

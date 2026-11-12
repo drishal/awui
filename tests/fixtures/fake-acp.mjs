@@ -14,6 +14,8 @@
 //   "config"  a config_option_update            "unknown" an update kind awui does not know
 //   "crash"   exit mid-run
 // Every prompt, session handshake, config value, auth method, permission answer,
+// $FAKE_ACP_DIE_ON_INIT prints that text on stderr and exits 7 at `initialize`: an agent that
+// says something on stderr and dies, which a failure message must not repeat.
 // and cancel is recorded in $FAKE_ACP_STATE so a test can see what went out.
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -213,6 +215,11 @@ async function handle(frame) {
   }
   if (method === "initialize") {
     record("initialize", { clientCapabilities: frame.params?.clientCapabilities ?? null, clientInfo: frame.params?.clientInfo ?? null });
+    // FAKE_ACP_DIE_ON_INIT: an agent that says something on stderr and dies before it answers.
+    if (process.env.FAKE_ACP_DIE_ON_INIT) {
+      process.stderr.write(`fake-acp: ${process.env.FAKE_ACP_DIE_ON_INIT}\n`);
+      process.exit(7);
+    }
     respond(frame.id, {
       // FAKE_ACP_NO_LOAD: a build that advertises neither loadSession nor resume (an app with no session history surface).
       agentCapabilities: process.env.FAKE_ACP_NO_LOAD ? { promptCapabilities: {} } : { loadSession: true, promptCapabilities: { image: true, embeddedContext: false }, mcpCapabilities: { http: true, sse: false } },
