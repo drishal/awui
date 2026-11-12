@@ -152,6 +152,8 @@ export function ReviewPanel({
     const index = buildLineIndex(files);
     const moves: Array<{ id: string; line: number }> = [];
     for (const thread of threads) {
+      // A removed line's number is the old file's: it stays where it was pinned (as the store keeps it).
+      if (thread.anchor.side === "del") continue;
       const at = reanchor(thread.anchor, index);
       if (at !== "stale" && at.line !== null && at.line !== thread.anchor.line) moves.push({ id: thread.id, line: at.line });
     }
