@@ -140,6 +140,35 @@ leaves a button that fails. Gate any server route on the flag too.
 | `supportsHtmlRender` | awui's render tool is wired into the child | `chats/manager.ts` |
 | `supportsExtensions`, `supportsInteractiveRequests` | Declared for honesty; no client reads them today | — |
 
+## The context ring: the harness's own figure, or nothing
+
+`LiveChat.getContextUsage()` feeds the composer's context ring. Answer it from
+something the harness itself reports, and answer `null` while it cannot say: the
+ring hides rather than showing a number awui worked out. The panel's *breakdown*
+(system prompt, tools, messages) is the one estimate, and it is labelled as one;
+the used/window total never is. A resumed chat seeds the figure from the
+harness's own file where the live report comes only with the next turn.
+
+| Harness | Where used and window come from | Unknown while |
+|---|---|---|
+| Pi | `get_session_stats`' `contextUsage` (`tokens`, `contextWindow`, `percent`) | no model is selected, or right after a compaction — Pi answers null tokens until a response measures the new context |
+| omp | `get_state`' `contextUsage` | the state carries no window |
+| Hermes | the usage gauge (`context_used`, `context_max`, `context_percent`) on `session.usage`, `session.info`, and the turn's `message.complete` | the gateway names no gauge at all |
+| Claude Code | `get_context_usage` (detail `summary`): `totalTokens` over `maxTokens`, with its own categories | a CLI too old to register the control request |
+| Codex | `thread/tokenUsage/updated`: `last.totalTokens` over `modelContextWindow`, which the app-server replays on `thread/resume` | no turn has reported token usage yet |
+| Grok Build | ACP `usage_update`'s `used`/`size`; without one, the last turn's prompt size over the model's `totalContextTokens` | the handshake names no window for the model |
+| DeepSeek Harness | `usage_update` while the chat runs, else the session log's last usage over its `contextWindow` | neither the stream nor the log carries it |
+| OpenCode | the last finished step's tokens over the model's context window | no step has finished, or the catalog has no window |
+| awui (read-only Pi) | Pi's, through the same adapter | as Pi |
+
+Two figures arrive *after* the event that settles a run — Hermes's turn usage
+rides `message.complete`, which the gateway sends before its `session.info` — so
+an adapter remembers the gauge from any payload that names it rather than
+reading one event kind. The clients only pick a colour from the percentage: 75 %
+turns the ring amber and 90 % red (`src/web/context-tone.ts`, with the atui and
+Tern meters ramping in their own ramps). Colours are the theme's tokens, never
+values in the component.
+
 ## 4. Every file a new harness touches
 
 From the commits that added OpenCode (`9708e6a`) and Grok (`7bd583b`).
