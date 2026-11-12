@@ -102,7 +102,8 @@ harness has:
 | Transport | Harnesses | What awui adds to the spawn |
 |---|---|---|
 | `-e` extension | Pi, omp (and the awui harness, which gets `eval_python` instead of the orchestration tools) | `orchestrateExtensionArgs(toolEnv)` / `renderHtmlExtensionArgs()`, resolved by `harness/render-extension.ts` (the binary's materialized copy, else the repo's `extensions/` file) |
-| stdio MCP server | Claude Code, Codex, DeepSeek Harness | one config object with two servers: `awui` (`extensions/render-html-mcp.mjs`) and `awui-orchestrate` (`extensions/orchestrate-mcp.mjs`); Claude Code also gets their `mcp__<server>__<tool>` names and `ToolSearch` in `--allowedTools`, and runs with its tool search forced on (`ENABLE_TOOL_SEARCH=true`), so those schemas are deferred and loaded on demand. The CLI's `CLAUDE_CODE_ENTRYPOINT` is removed unless config.yml's `claude.entrypoint` names awui (see [configuration](configuration.md)) |
+| stdio MCP server | Claude Code, Codex, DeepSeek Harness (only for `render_html`, or for the orchestration tools on a DSH build that does not advertise `mcpCapabilities.http`) | `awui` (`extensions/render-html-mcp.mjs`) and, when they cannot connect over HTTP, `awui-orchestrate` (`extensions/orchestrate-mcp.mjs`): a Claude Code `--mcp-config` object, a Codex `-c mcp_servers.*`, a DSH `mcpServers` entry. Claude Code also gets their `mcp__<server>__<tool>` names and `ToolSearch` in `--allowedTools`, and runs with its tool search forced on (`ENABLE_TOOL_SEARCH=true`), so those schemas are deferred and loaded on demand. The CLI's `CLAUDE_CODE_ENTRYPOINT` is removed unless config.yml's `claude.entrypoint` names awui (see [configuration](configuration.md)) |
+| HTTP MCP server | Claude Code, Codex, DeepSeek Harness | the orchestration tools, served by awui itself at `POST /api/orchestration/mcp`: a `{"type":"http"}` server in Claude Code's `--mcp-config` with `Authorization: Bearer ${AWUI_ORCH_TOKEN}` (the CLI expands that reference from the child's environment), `mcp_servers.awui-orchestrate.url` + `bearer_token_env_var` on Codex's command line, and an ACP `mcpServers` entry with `type: "http"` for DSH when its handshake advertises `mcpCapabilities.http`. No child process, and no file for the user to edit: every one of the three is wired per chat, from what the adapter already passes |
 | none | Hermes, OpenCode, Grok Build | their adapters mount no MCP server for awui today, so they are left unwired rather than invented |
 
 Each family is injected only when the chat was given its own two variables (`AWUI_RENDER_URL`/
@@ -113,10 +114,22 @@ is what arms them. `harness/render-token.ts` holds the MCP names (from the catal
 allow list cannot drift from what is served, and `scripts/build-binary.ts`'s `EXTENSIONS`
 list is what the compiled binary carries.
 
-The MCP bridge also offers the orchestration skills (`council`, `advisor`, `handoff`) as
-`prompts/list`/`prompts/get`, from `GET /api/orchestration/prompts`; the `-e` extension has no
-prompt API, so Pi and omp get the same words as the files under `skills/`. Whether a client shows
-MCP prompts as commands is unverified except for Claude Code.
+An MCP server awui hands a harness must arrive per chat, through the command line, the
+environment, or the session parameters the adapter already controls — never by writing to the
+user's own harness config (`~/.claude.json`, `~/.codex/config.toml`, `opencode.json`, …). Running
+a chat through awui is enough, the user configures nothing, their own MCP servers still load
+beside awui's, and nothing awui passes may tell the CLI to ignore them (`--strict-mcp-config`
+belongs to the usage probe, which wants no servers at all, never to a chat's child).
+
+The HTTP endpoint and the bridge also offer the orchestration skills (`council`, `advisor`,
+`handoff`) as `prompts/list`/`prompts/get`, from `GET /api/orchestration/prompts`; the `-e`
+extension has no prompt API, so Pi and omp get the same words as the files under `skills/`.
+Whether a client shows MCP prompts as commands is unverified except for Claude Code.
+
+Both MCP paths serve `tools/list` with `inputSchema`; the catalogue's own field is `parameters`,
+which the `-e` extension reads. That mapping is not cosmetic: Claude Code 2.1.322 and Codex
+0.167.0 validate the result against the protocol and drop a tool that lacks `inputSchema`, so it
+happens at the boundary in `orchestration/mcp.ts` and in `extensions/orchestrate-mcp.mjs`.
 
 ## 3. Capabilities: declare only what works
 

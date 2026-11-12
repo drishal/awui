@@ -12,7 +12,7 @@ import { herdrSocketPath } from "./herdr.js";
 import { HarnessRegistry } from "./harness/registry.js";
 import { configDir, configEnv, herdrEnabled, readUserConfig, type UserConfig } from "./user-config.js";
 import { IS_WINDOWS } from "./platform-win.js";
-import { orchestrateExtension, orchestrateMcpServer } from "./harness/render-extension.js";
+import { orchestrateExtension } from "./harness/render-extension.js";
 import { Workspaces } from "./workspaces.js";
 import type { HarnessStatus } from "../shared/protocol.js";
 
@@ -125,12 +125,12 @@ export function evaluate(i: DoctorInput): Check[] {
         : { name: "herdr", ok: "warn", detail: `enabled but no socket at ${i.herdr.socket}` },
     );
   }
-  // The delegation surface: a chat's child reaches it through two files awui loads into the
-  // harness (pi/omp's extension, or the MCP bridge), so one that cannot be found is a warning
-  // even though the server itself is fine.
+  // The delegation surface: a chat's child reaches it through the extension awui loads into the
+  // harness (pi/omp), or over the HTTP MCP endpoint awui serves itself (Claude Code, Codex, DSH), so
+  // a missing extension is a warning even though the server itself is fine.
   const o = i.orchestration;
   if (!o.enabled) out.push({ name: "Orchestration", ok: true, detail: "off (orchestration.enabled is false in config.yml)" });
-  else if (o.missingBridges.length > 0) out.push({ name: "Orchestration", ok: "warn", detail: `on, but ${o.missingBridges.join(" and ")} cannot be found, so no chat's agent gets the tools` });
+  else if (o.missingBridges.length > 0) out.push({ name: "Orchestration", ok: "warn", detail: `on, but ${o.missingBridges.join(" and ")} cannot be found, so the chats that load it get no tools` });
   else out.push({ name: "Orchestration", ok: true, detail: `on (max ${o.maxChildrenPerChat} children per chat, depth ${o.maxDepth}, ${o.maxLiveTasks} live tasks)` });
   return out;
 }
@@ -163,15 +163,12 @@ async function probePort(host: string, port: number): Promise<PortProbe> {
 }
 
 /**
- * The two files a chat's child needs for the orchestration tools: pi/omp load `orchestrate.ts`
- * with `-e`, and Claude Code, Codex, and DSH start `orchestrate-mcp.mjs` as an MCP server. A
- * missing one is what the doctor reports: the feature is on, but no agent can reach it.
+ * The file a chat's child needs for the orchestration tools: pi and omp load `orchestrate.ts` with
+ * `-e`. Claude Code, Codex, and DSH need no file at all — they connect to awui's own HTTP MCP
+ * endpoint — so a missing bridge here means only those two harnesses lose the tools.
  */
 function missingOrchestrationBridges(): string[] {
-  const missing: string[] = [];
-  if (orchestrateExtension() === null) missing.push("extensions/orchestrate.ts");
-  if (orchestrateMcpServer() === null) missing.push("extensions/orchestrate-mcp.mjs");
-  return missing;
+  return orchestrateExtension() === null ? ["extensions/orchestrate.ts"] : [];
 }
 
 function bunVersion(): string | null {

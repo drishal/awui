@@ -33,18 +33,30 @@ their token until they restart, but their calls are refused too.
 
 ### How the tools reach the agent
 
-Awui injects them two ways, and both repeat nothing: the names, descriptions, and
-parameter schemas are fetched from `GET /tools` once at startup, so
+Awui injects them three ways, and none repeats a definition: the names, descriptions, and
+parameter schemas come from `GET /tools` (or the catalogue served from it), so
 `orchestration/tools.ts` is still the one definition.
 
 | Harness | How | File |
 |---|---|---|
 | Pi, omp | an extension loaded with `-e`, one `registerTool` per catalogue entry | `extensions/orchestrate.ts` |
-| Claude Code, Codex, DeepSeek Harness | a second stdio MCP server (`awui-orchestrate`) beside `render_html`'s `awui` | `extensions/orchestrate-mcp.mjs` |
+| Claude Code, Codex, DeepSeek Harness | awui's own HTTP MCP endpoint, mounted per chat | `POST /api/orchestration/mcp` |
+| a DSH build whose ACP does not advertise `mcpCapabilities.http` | the stdio MCP server (`awui-orchestrate`), as a fallback | `extensions/orchestrate-mcp.mjs` |
 | Hermes, OpenCode, Grok Build | not wired: none of them mounts an MCP server for awui today | — |
 
+Nothing is installed into a user's harness config, and no adapter asks the user to add a server:
+the harness gets its own entry per chat, from what the adapter already passes. Claude Code reads a
+`{"type":"http","url","headers"}` server out of `--mcp-config` with
+`Authorization: Bearer ${AWUI_ORCH_TOKEN}` — a reference the CLI expands from the child's
+environment, which awui fills, so the token never sits in `ps`. Codex gets
+`mcp_servers.awui-orchestrate.url` and `bearer_token_env_var` as `-c` overrides on its command
+line, for the same reason. DSH is handed an ACP `mcpServers` entry with `type: "http"` in
+`session/new`; ACP expands no variables, so there the header carries the token's value, and it
+travels down the child's stdin rather than its command line. A harness that cannot do HTTP keeps
+the bridge, which speaks the same messages against the same routes.
+
 The extension refuses to load without both variables, so a stray copy in a project's
-extensions folder stays inert; the MCP server registers no tool without them.
+extensions folder stays inert; the MCP paths serve no tool without them.
 
 Claude Code is also given the tools in `--allowedTools` (as `mcp__awui-orchestrate__<tool>`),
 because its MCP tools need an allow rule to run without a prompt; Codex and DSH take the
@@ -53,8 +65,8 @@ from what is served.
 
 `awui doctor` prints one line for all of it:
 `✓ Orchestration: on (max 4 children per chat, depth 2, 12 live tasks)`, `!` when the surface is
-on but `extensions/orchestrate.ts` or `extensions/orchestrate-mcp.mjs` cannot be found (so no
-agent would be given the tools), and a plain `off` when config.yml has turned it off.
+on but `extensions/orchestrate.ts` cannot be found (so Pi and omp chats would get no tools), and a
+plain `off` when config.yml has turned it off.
 
 ## Endpoints
 
@@ -62,17 +74,47 @@ All are mounted before `requireAuth` (like `/api/render`): they authenticate by 
 token header alone, never a cookie, so a signed-in device elsewhere cannot mint one.
 
 ```
-```
 GET  /api/orchestration/tools              → { tools: [{ name, description, parameters }] }
 GET  /api/orchestration/prompts            → { prompts: [{ name, description, text }] }
 POST /api/orchestration/call               → { ok: true, text, data }
      X-Awui-Orch-Token: <32 hex>              or { ok: false, code, message }
      { "tool": "list_profiles", "args": {} }
+POST /api/orchestration/mcp                → one JSON-RPC answer, or 202 for a notification
+     Authorization: Bearer <32 hex>            (streamable HTTP MCP; no session, no stream)
+     { "jsonrpc": "2.0", "id": 1, "method": "tools/list" }
 ```
+
+The token header is the bridges' own; the MCP endpoint takes it as `Authorization: Bearer`
+because that is what an MCP client sends, and it is the one header a harness can point at a
+variable in its own environment. Both are the same token from the same store, and neither is
+ever echoed in a body, a header, or a log.
 
 The tool catalogue is the one source of truth for names, descriptions, and parameter
 schemas; a bridge fetches it once at startup and registers what it finds. `text` is the
 line the model reads, composed on the server so the wording exists once.
+
+## The HTTP MCP endpoint
+
+`POST /api/orchestration/mcp` is the same surface spoken as MCP: `initialize`, `ping`,
+`tools/list`, `tools/call`, `prompts/list`, `prompts/get`, and a notification (no id) answered
+`202` with an empty body. It answers `application/json` and keeps no session, so a reconnecting
+client starts clean and `initialize` may be repeated; `GET` and `DELETE` answer `405` with
+`Allow: POST`, because awui never sends a request of its own. A method it does not serve is a
+JSON-RPC error (`-32601`, never a crash), so a newer client's own probe can fall back to
+`initialize`.
+
+Nothing behind it is a second implementation: the tools are `orchestration/tools.ts`, the words
+are the same ones the bridges use, every call is `orchestrator.run` (so `callsPerMinute`, the
+caps, and the records are shared), and the refusal a tool answers — `code: message` — comes back
+as an `isError` result instead of a JSON-RPC error, exactly as it does through the stdio bridge.
+The catalogue is served with each tool's schema under `inputSchema`, which is what an MCP client
+validates; the REST route keeps the catalogue's own field name (`parameters`).
+
+The token rule is the sibling routes': a handshake, the catalogue, and the skills need only a
+token this server minted (a starting child asks before its chat is stamped onto the token), while
+`tools/call` needs the live chat itself. Both rules answer the same failures — `orch_off` 404,
+`bad_orch_token` 401, `orch_token_expired` 401 — in the `{ ok: false, code, message }` envelope.
+
 
 The browser reads and stops the same tasks behind `requireAuth`, as the chat whose panel shows them:
 
