@@ -9,6 +9,15 @@
   font-size: 13px;
 }
 
+/* Out of the layout entirely: a fallback that is a child of the app grid must not claim a cell. */
+.loader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  justify-content: center;
+  pointer-events: none;
+}
+
 .loader-track,
 .loader-run {
   fill: none;

@@ -45,6 +45,26 @@ test("settings opens from the sidebar gear and shows pairing plus the server", a
   await expect(settings).toBeHidden();
 });
 
+test("a slow settings chunk leaves the main column where it was", async ({ page }) => {
+  // The dialog is lazy; its loader sits in the app grid, and as a plain block it once took a cell and pushed <main> under the sidebar.
+  await page.route(/SettingsDialog-.*\.js$/, async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.continue();
+  });
+  await page.goto("/");
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+  await showSidebar(page);
+  const main = page.locator("main.main");
+  const before = await main.boundingBox();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("status", { name: "Opening settings…" })).toBeVisible();
+  const during = await main.boundingBox();
+  expect(during?.x).toBe(before?.x);
+  expect(during?.y).toBe(before?.y);
+  expect(during?.width).toBe(before?.width);
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+});
+
 test("the status bar can be hidden", async ({ page }) => {
   await signInAndOpen(page);
   const bar = page.locator(".status-bar");

@@ -116,8 +116,8 @@ const GitHubPanel = lazy(() => import("./components/GitHubPanel.js").then((m) =>
 
 // Panels on-demand: a desktop with a dozen idle tabs doesn't need code for every
 // project workflow unless someone actually opens one of these dialogs.
-function LazyPanel({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<Loader label="Opening…" />}>{children}</Suspense>;
+function LazyPanel({ children, overlay = false }: { children: React.ReactNode; overlay?: boolean }) {
+  return <Suspense fallback={<Loader label="Opening…" overlay={overlay} />}>{children}</Suspense>;
 }
 
 /** The tab Back shows when a room has no remembered chat tab: the nearest non-room tab, else none. */
@@ -2030,9 +2030,9 @@ export function App() {
         onClose={() => setDrawerOpen(false)}
         onCollapse={() => collapseSidebar(true)}
       />
-      {routinesOpen && boot ? <Suspense fallback={<Loader label="Opening routines…" />}><RoutinesDialog harnesses={available} workspaces={overview.workspaces} onClose={() => setRoutinesOpen(false)} /></Suspense> : null}
+      {routinesOpen && boot ? <Suspense fallback={<Loader label="Opening routines…" overlay />}><RoutinesDialog harnesses={available} workspaces={overview.workspaces} onClose={() => setRoutinesOpen(false)} /></Suspense> : null}
       {settingsOpen ? (
-        <Suspense fallback={<Loader label="Opening settings…" />}>
+        <Suspense fallback={<Loader label="Opening settings…" overlay />}>
         <SettingsDialog
           scheme={themeInfo?.source === "file" ? { name: themeInfo.name } : null}
           section={settingsSection}
@@ -2551,8 +2551,8 @@ export function App() {
       />
 
       {pickerOpen ? <WorkspacePicker worktrees={workspace && !room.roomId ? () => setWorktreeOpen(true) : undefined} recent={recent} onOpen={async (p) => { await openWorkspace(p); }} onClose={() => setPickerOpen(false)} error={pickerError} /> : null}
-      {worktreeOpen && workspace ? <LazyPanel><WorktreePicker workspace={workspace} onOpen={async (path) => { await openWorkspace(path); }} onCompare={() => setCompareOpen(true)} onClose={() => setWorktreeOpen(false)} onSeeded={(text) => toasts.push({ key: "worktree-seeded", text, ms: 8000 })} /></LazyPanel> : null}
-      {compareOpen && workspace ? <LazyPanel><CompareDialog workspace={workspace} harnesses={boot.harnesses} initialHarness={harnessId} initialModel={startModel} onClose={() => setCompareOpen(false)} onDone={(snapshots) => {
+      {worktreeOpen && workspace ? <LazyPanel overlay><WorktreePicker workspace={workspace} onOpen={async (path) => { await openWorkspace(path); }} onCompare={() => setCompareOpen(true)} onClose={() => setWorktreeOpen(false)} onSeeded={(text) => toasts.push({ key: "worktree-seeded", text, ms: 8000 })} /></LazyPanel> : null}
+      {compareOpen && workspace ? <LazyPanel overlay><CompareDialog workspace={workspace} harnesses={boot.harnesses} initialHarness={harnessId} initialModel={startModel} onClose={() => setCompareOpen(false)} onDone={(snapshots) => {
         const first = snapshots[0];
         if (first) showChat(first, { newTab: true });
         const second = snapshots[1];
@@ -2652,7 +2652,7 @@ export function App() {
       {shortcutsOpen ? <ShortcutSheet onClose={() => setShortcutsOpen(false)} /> : null}
       {promptsOpen ? <SavedPromptsDialog {...promptsOpen} onClose={() => setPromptsOpen(null)} /> : null}
       {timelineOpen && chat ? (
-        <Suspense fallback={<Loader label="Opening file timeline…" />}>
+        <Suspense fallback={<Loader label="Opening file timeline…" overlay />}>
         <TimelineDialog
           key={chat.chatId}
           chatId={chat.chatId}
@@ -2665,7 +2665,7 @@ export function App() {
         </Suspense>
       ) : null}
       {usageOpen ? (
-        <Suspense fallback={<Loader label="Opening usage…" />}>
+        <Suspense fallback={<Loader label="Opening usage…" overlay />}>
         <UsageDialog harnesses={boot.harnesses} limits={limits} onRefresh={refreshLimits} onOpenSession={(s, ws) => void openSession(s, ws ? { workspace: ws } : {})} onClose={() => setUsageOpen(false)} />
         </Suspense>
       ) : null}
