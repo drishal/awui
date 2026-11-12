@@ -283,13 +283,39 @@ describe("the DeepSeek Harness adapter (scripted ACP app)", () => {
       AWUI_ORCH_TOKEN: "t0ken",
     });
     expect(live.nativeId).toBeTruthy();
-    const mcps = recorded("mcps") as Array<Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>>;
+    const mcps = recorded("mcps") as Array<Array<Record<string, unknown>>>;
     expect(mcps.at(-1)?.map((server) => server.name)).toEqual(["awui", "awui-orchestrate"]);
-    expect(mcps.at(-1)?.[1]).toMatchObject({ args: [path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs")] });
-    expect(mcps.at(-1)?.[1]?.env).toEqual([
-      { name: "AWUI_ORCH_URL", value: "http://127.0.0.1:4783/api/orchestration" },
-      { name: "AWUI_ORCH_TOKEN", value: "t0ken" },
-    ]);
+    // render_html is still a stdio child; the orchestration tools are awui's own HTTP MCP server,
+    // mounted on this session because the build advertises `mcpCapabilities.http`. The header is
+    // how ACP carries a credential, and it stays in the session's params rather than its args.
+    expect(mcps.at(-1)?.[1]).toEqual({
+      name: "awui-orchestrate",
+      type: "http",
+      url: "http://127.0.0.1:4783/api/orchestration/mcp",
+      headers: [{ name: "Authorization", value: "Bearer t0ken" }],
+    });
+  });
+
+  it("mounts the stdio bridge on a build whose ACP cannot take an HTTP MCP server", async () => {
+    // ACP's `mcpCapabilities.http` is the build's own answer, so a build without it is never sent an
+    // entry it would refuse: the same tools arrive through awui's bridge instead.
+    await adapter.shutdown();
+    adapter = new DshAdapter({
+      command: script,
+      home,
+      env: { ...process.env, DSH_HOME: dshHome, FAKE_DSH_HOME: dshHome, FAKE_DSH_STATE: state, FAKE_DSH_MCP_HTTP: "0" },
+    });
+    const { live } = await openChat(undefined, { AWUI_ORCH_URL: "http://127.0.0.1:4783/api/orchestration", AWUI_ORCH_TOKEN: "t0ken" });
+    expect(live.nativeId).toBeTruthy();
+    const mcps = recorded("mcps") as Array<Array<Record<string, unknown>>>;
+    expect(mcps.at(-1)?.[0]).toMatchObject({
+      name: "awui-orchestrate",
+      args: [path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs")],
+      env: [
+        { name: "AWUI_ORCH_URL", value: "http://127.0.0.1:4783/api/orchestration" },
+        { name: "AWUI_ORCH_TOKEN", value: "t0ken" },
+      ],
+    });
   });
 
   it("leaves out a session whose own cwd is elsewhere", async () => {

@@ -546,7 +546,9 @@ rl.on("line", (line) => {
         protocolVersion: 1,
         agentInfo: { name: "deepseek-harness-acp", version: "0.0.1" },
         agentCapabilities: {
-          mcpCapabilities: { http: true },
+          // ACP's own answer for whether a session may mount an HTTP MCP server: FAKE_DSH_MCP_HTTP=0
+          // is a build that cannot, and must be served the stdio bridge instead.
+          mcpCapabilities: { http: process.env.FAKE_DSH_MCP_HTTP !== "0" },
           promptCapabilities: { image: process.env.FAKE_DSH_IMAGES === "1", audio: false, embeddedContext: false },
           sessionCapabilities: { close: {}, list: {}, resume: {} },
           ...(flow ? { _meta: { "acp-flow": { version: 1 } } } : {}),

@@ -506,7 +506,11 @@ class DshLiveChat implements LiveChat {
   private commitTimer: NodeJS.Timeout | null = null;
   private readonly openTools = new Map<string, { name: string; args: unknown }>();
   private readonly permissionOptions = new Map<string, string[]>();
-  private readonly mcpServers: unknown[];
+  /** The two shapes of the same set: the orchestration tools over HTTP, or through the stdio bridge. */
+  private readonly mcpHttp: unknown[];
+  private readonly mcpStdio: unknown[];
+  /** Set by the handshake: this build's ACP says whether it can mount an HTTP MCP server. */
+  private mcpHttpCapable = false;
   private readonly resumeId: string | null;
 
   constructor(
@@ -516,7 +520,8 @@ class DshLiveChat implements LiveChat {
     toolEnv: NodeJS.ProcessEnv | undefined,
   ) {
     this.resumeId = resumeId;
-    this.mcpServers = adapter.mcpServers(toolEnv);
+    this.mcpHttp = adapter.mcpServers(toolEnv, true);
+    this.mcpStdio = adapter.mcpServers(toolEnv, false);
   }
 
   get nativeId(): string | null {
@@ -559,7 +564,7 @@ class DshLiveChat implements LiveChat {
     try {
       const init = await rpc.request<Obj>("initialize", { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: "awui", version: CLIENT_VERSION } }, READY_TIMEOUT_MS);
       this.readInitialize(init);
-      const params: Obj = { cwd: this.cwd, mcpServers: this.mcpServers };
+      const params: Obj = { cwd: this.cwd, mcpServers: this.mcpHttpCapable ? this.mcpHttp : this.mcpStdio };
       const result = this.resumeId
         ? await rpc.request<Obj>("session/resume", { ...params, sessionId: this.resumeId }, READY_TIMEOUT_MS)
         : await rpc.request<Obj>("session/new", params, READY_TIMEOUT_MS);
@@ -588,6 +593,10 @@ class DshLiveChat implements LiveChat {
     const version = init.protocolVersion;
     if (typeof version === "number" && version !== 1) this.emit({ type: "notice", level: "warning", text: `DeepSeek Harness spoke ACP protocol ${version}; awui expects 1.` });
     const capabilities = isObj(init.agentCapabilities) ? init.agentCapabilities : {};
+    // ACP says here whether a session may mount an HTTP MCP server; a build without it still
+    // takes the stdio bridge, so the orchestration tools reach the agent either way.
+    const mcp = isObj(capabilities.mcpCapabilities) ? capabilities.mcpCapabilities : {};
+    this.mcpHttpCapable = mcp.http === true;
     const prompt = isObj(capabilities.promptCapabilities) ? capabilities.promptCapabilities : {};
     this.imageCapable = prompt.image === true;
     const sessions = isObj(capabilities.sessionCapabilities) ? capabilities.sessionCapabilities : {};
@@ -1296,15 +1305,17 @@ export class DshAdapter implements HarnessAdapter {
   }
 
   /**
-   * The MCP servers a chat's ACP session mounts: awui's render_html, and the
-   * orchestration tools, each when the chat was given that family's token.
+   * The MCP servers a chat's ACP session mounts: awui's render_html as a stdio child when a Node
+   * can run it, and the orchestration tools, each when the chat was given that family's token.
+   * The orchestration tools come over HTTP from awui itself, which needs no Node — but only when
+   * the build advertises `mcpCapabilities.http`; an older build gets the stdio bridge instead
+   * (extensions/orchestrate-mcp.mjs), which is why `http` is a choice and not a constant.
    */
-  mcpServers(toolEnv: NodeJS.ProcessEnv | undefined): unknown[] {
-    const node = nodeForMcp();
-    if (!node) return [];
+  mcpServers(toolEnv: NodeJS.ProcessEnv | undefined, http = true): unknown[] {
     const servers: unknown[] = [];
+    const node = nodeForMcp();
     const render = renderHtmlMcpServer();
-    if (render && toolEnv?.AWUI_RENDER_URL && toolEnv.AWUI_RENDER_TOKEN) {
+    if (node && render && toolEnv?.AWUI_RENDER_URL && toolEnv.AWUI_RENDER_TOKEN) {
       servers.push({
         name: HTML_RENDER_MCP_SERVER,
         command: node,
@@ -1315,17 +1326,30 @@ export class DshAdapter implements HarnessAdapter {
         ],
       });
     }
-    const orchestrate = orchestrateMcpServer();
-    if (orchestrate && toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
-      servers.push({
-        name: ORCH_MCP_SERVER,
-        command: node,
-        args: [orchestrate],
-        env: [
-          { name: "AWUI_ORCH_URL", value: toolEnv.AWUI_ORCH_URL },
-          { name: "AWUI_ORCH_TOKEN", value: toolEnv.AWUI_ORCH_TOKEN },
-        ],
-      });
+    if (toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
+      if (http) {
+        // ACP carries headers as name/value entries and expands nothing, so the token's value rides
+        // in the session's own params — a pipe to the child, never its command line.
+        servers.push({
+          name: ORCH_MCP_SERVER,
+          type: "http",
+          url: `${toolEnv.AWUI_ORCH_URL}/mcp`,
+          headers: [{ name: "Authorization", value: `Bearer ${toolEnv.AWUI_ORCH_TOKEN}` }],
+        });
+      } else {
+        const orchestrate = orchestrateMcpServer();
+        if (node && orchestrate) {
+          servers.push({
+            name: ORCH_MCP_SERVER,
+            command: node,
+            args: [orchestrate],
+            env: [
+              { name: "AWUI_ORCH_URL", value: toolEnv.AWUI_ORCH_URL },
+              { name: "AWUI_ORCH_TOKEN", value: toolEnv.AWUI_ORCH_TOKEN },
+            ],
+          });
+        }
+      }
     }
     return servers;
   }
