@@ -448,6 +448,20 @@
   overflow-wrap: anywhere;
 }
 
+/* An emoji-only prompt: a small round chip instead of a bubble — still an ordinary message,
+   so its actions row (and Copy, and Retry) stay. */
+.reaction {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bubble);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.reaction-emoji {
+  white-space: nowrap;
+}
+
 /* A prompt's time, Retry, Edit, and Copy. Like the row under an answer they sit quiet (45%) until the turn is
    hovered or has focus, and are always full on the latest turn, on touch screens (no hover there), and under
    reduced motion (a fade is the only thing the quiet was). */

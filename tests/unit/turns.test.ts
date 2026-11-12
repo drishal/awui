@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatItem } from "../../src/shared/protocol.js";
-import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, modelName, modelSwitches, relativePath, saysSomething, latestThought, readsAsReply, segmentStartsOpen, workAfterSegment, workSegments, toolLabel, type WorkSegment } from "../../src/web/turns.js";
+import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, isEmojiOnly, modelName, modelSwitches, relativePath, saysSomething, latestThought, readsAsReply, segmentStartsOpen, workAfterSegment, workSegments, toolLabel, type WorkSegment } from "../../src/web/turns.js";
 
 const tool = (id: string, category: "read" | "edit" | "command", extra: Record<string, unknown> = {}): ChatItem => ({
   kind: "tool",
@@ -320,5 +320,21 @@ describe("tool labels", () => {
     expect(toolLabel("mcp__awui__render_html")).toBe("render_html · awui");
     expect(toolLabel("mcp__github__create_issue")).toBe("create_issue · github");
     expect(toolLabel("Bash")).toBe("Bash");
+  });
+});
+
+describe("emoji-only prompts", () => {
+  it("reads a short emoji-only message as a reaction", () => {
+    expect(isEmojiOnly("👍")).toBe(true);
+    expect(isEmojiOnly("  🎉🎉  ")).toBe(true);
+    expect(isEmojiOnly("👍🏽")).toBe(true); // a modifier joins it
+    expect(isEmojiOnly("❤️")).toBe(true); // a variation selector joins it
+    expect(isEmojiOnly("🇮🇳")).toBe(true); // a flag is two regional indicators
+  });
+  it("never reads words, digits, or long emoji art as one", () => {
+    expect(isEmojiOnly("ok 👍")).toBe(false);
+    expect(isEmojiOnly("2")).toBe(false);
+    expect(isEmojiOnly("👍".repeat(7))).toBe(false);
+    expect(isEmojiOnly("")).toBe(false);
   });
 });

@@ -9,7 +9,7 @@ import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronUp, IconClock, 
 import { promptLink } from "../prompt-link.js";
 import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
 import { useToolStyle } from "../tool-style.js";
-import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, latestThought, modelName, modelSwitches, relativePath, sameChangeStat, saysSomething, segmentStartsOpen, toolLabel, type ChangeStat, type Turn, workAfterSegment, workSegments, type WorkSegment } from "../turns.js";
+import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, isEmojiOnly, latestThought, modelName, modelSwitches, relativePath, sameChangeStat, saysSomething, segmentStartsOpen, toolLabel, type ChangeStat, type Turn, workAfterSegment, workSegments, type WorkSegment } from "../turns.js";
 import { useNow } from "../hooks.js";
 import { callTime, toolSentence } from "../tool-sentence.js";
 import { testProgress } from "../tool-facts.js";
@@ -573,6 +573,7 @@ function UserPrompt({
   actions: PromptActions;
 }) {
   const long = item.text.length > LONG_PROMPT_CHARS || item.text.split("\n").length > LONG_PROMPT_LINES;
+  const reaction = isEmojiOnly(item.text);
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [retried, setRetried] = useState(0);
@@ -629,17 +630,22 @@ function UserPrompt({
             }}
           />
         ) : (
-          <div ref={bubble} className={`${item.interjected ? "interjection" : "bubble"}${long && !expanded ? " is-clamped" : ""}`} data-testid={item.interjected ? "interjection-row" : "user-prompt"} {...press}>
-            {quoteParts(item.text).map((part, i) =>
-              part.quote ? (
-                <blockquote key={i} className="bubble-quote">
-                  {part.text}
-                </blockquote>
-              ) : (
-                <span key={i} className="bubble-text">
-                  {part.text}
-                </span>
-              ),
+          // An emoji-only prompt is a reaction: small and round, still an ordinary message.
+          <div ref={bubble} className={reaction ? "reaction" : `${item.interjected ? "interjection" : "bubble"}${long && !expanded ? " is-clamped" : ""}`} data-testid={reaction ? "reaction" : item.interjected ? "interjection-row" : "user-prompt"} {...press}>
+            {reaction ? (
+              <span className="reaction-emoji">{item.text.trim()}</span>
+            ) : (
+              quoteParts(item.text).map((part, i) =>
+                part.quote ? (
+                  <blockquote key={i} className="bubble-quote">
+                    {part.text}
+                  </blockquote>
+                ) : (
+                  <span key={i} className="bubble-text">
+                    {part.text}
+                  </span>
+                ),
+              )
             )}
           </div>
         )}

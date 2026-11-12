@@ -48,6 +48,20 @@ export interface Turn {
   model?: string;
 }
 
+
+/** The most emoji a reaction-sized prompt may carry: more than that reads as art, not as a reaction. */
+const REACTION_MAX_CHARS = 12;
+
+/**
+ * A prompt made only of emoji (a 👍, a 🎉 with a modifier) reads as a reaction, not as a
+ * sentence: the chat draws it small. Letters, digits, and words never count, and anything
+ * longer than a couple of emoji does not either.
+ */
+export function isEmojiOnly(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0 || trimmed.length > REACTION_MAX_CHARS || /\p{L}|\p{Nd}/u.test(trimmed)) return false;
+  return /^(?:[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u{FE0F}\u{200D}\u{20E3}\s])+$/u.test(trimmed);
+}
 export function buildTurns(items: ChatItem[], status: ChatStatus): Turn[] {
   const groups: ChatItem[][] = [];
   let current: ChatItem[] = [];
