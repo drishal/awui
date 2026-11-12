@@ -26,6 +26,8 @@ import type { HarnessAdapter, HarnessDiscovery, HarnessEventListener, LiveChat, 
 const READY_TIMEOUT_MS = 60_000;
 /** How long abort waits for the cancelled turn's own result before settling it itself. */
 const ABORT_WAIT_MS = 30_000;
+/** How long a discovery verdict is reused: one handshake is a whole agent process, and every page load asks. */
+const DISCOVERY_CACHE_MS = 60_000;
 /** How many distinct unknown update kinds one chat notes before it stays quiet. */
 const MAX_UNKNOWN_NOTES = 5;
 const CLIENT_VERSION = embeddedVersion ?? "dev";
@@ -618,6 +620,8 @@ export class AcpAdapter implements HarnessAdapter {
     jobsSurviveRestart: false,
   };
   private catalog: ModelInfo[] = [];
+  /** The last handshake's verdict, reused for a minute (see discover). */
+  private discovered: { at: number; result: HarnessDiscovery } | null = null;
 
   constructor(
     private readonly agent: AcpAgentConfig,
@@ -719,11 +723,19 @@ export class AcpAdapter implements HarnessAdapter {
     }
   }
 
+  /**
+   * A handshake is a whole agent process, so the verdict is reused for a minute:
+   * every page load asks the registry again, and an ACP agent may boot its own
+   * model list and MCP servers before it answers. The Settings Test asks
+   * `probeAgent` directly, so it is never cached.
+   */
   async discover(): Promise<HarnessDiscovery> {
     const overrides = {} as Record<string, "set" | "unset">;
+    if (this.discovered && Date.now() - this.discovered.at < DISCOVERY_CACHE_MS) return this.discovered.result;
+    let result: HarnessDiscovery;
     try {
       const { probe, warnings } = await this.probeAgent(this.options.home);
-      return {
+      result = {
         available: true,
         ...(probe.version ? { version: probe.version } : {}),
         ...(probe.agentName && probe.version ? { versionDetail: `${probe.agentName} ${probe.version}` } : {}),
@@ -732,8 +744,11 @@ export class AcpAdapter implements HarnessAdapter {
       };
     } catch {
       // The reason names no path and no stderr: a command line is the user's, and its output may hold a secret.
-      return { available: false, reason: `The ACP agent did not answer initialize. Check its command and arguments under harnesses.acp in config.yml.`, warnings: [], overrides };
+      result = { available: false, reason: `The ACP agent did not answer initialize. Check its command and arguments under harnesses.acp in config.yml.`, warnings: [], overrides };
     }
+    // Only a working agent is cached: a command that failed is asked again at the registry's own throttle, so fixing it shows.
+    if (result.available) this.discovered = { at: Date.now(), result };
+    return result;
   }
 
   workspaceProblem(): string | null {
