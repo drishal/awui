@@ -43,7 +43,7 @@ import {
 } from "./codex-transcript.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import { HTML_RENDER_MCP_SERVER, splitRenderMarker } from "./render-token.js";
-import { ORCH_MCP_SERVER, orchestrateMcpServer, renderHtmlMcpServer } from "./render-extension.js";
+import { ORCH_MCP_SERVER, renderHtmlMcpServer } from "./render-extension.js";
 import { codexLimits } from "./limits.js";
 import { versionLabel } from "./version.js";
 import type {
@@ -117,9 +117,10 @@ function modeOf(approval: unknown, sandbox: unknown): string {
 }
 
 /**
- * The command line that gives a chat awui's MCP servers: render_html, and the
- * orchestration tools when the chat has a token. One `mcp_servers.<name>` block
- * each, and nothing else (the user's own servers are not on this child).
+ * The command line that gives a chat awui's MCP servers: render_html as a stdio child, and the
+ * orchestration tools over HTTP from awui itself, when the chat has that family's token. A
+ * `-c` override is this child's own config for one launch — it writes nothing to the user's
+ * `config.toml`, and their own `mcp_servers` still load beside awui's.
  */
 function toolsMcpConfig(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
   // The CLI runs on Node; a compiled awui binary is not one, so then the Node on PATH runs the server.
@@ -136,9 +137,11 @@ function toolsMcpConfig(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
   if (render && toolEnv?.AWUI_RENDER_URL && toolEnv.AWUI_RENDER_TOKEN) {
     server(HTML_RENDER_MCP_SERVER, render, { AWUI_RENDER_URL: toolEnv.AWUI_RENDER_URL, AWUI_RENDER_TOKEN: toolEnv.AWUI_RENDER_TOKEN });
   }
-  const orchestrate = orchestrateMcpServer();
-  if (orchestrate && toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
-    server(ORCH_MCP_SERVER, orchestrate, { AWUI_ORCH_URL: toolEnv.AWUI_ORCH_URL, AWUI_ORCH_TOKEN: toolEnv.AWUI_ORCH_TOKEN });
+  if (toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
+    // A streamable-HTTP server by URL, and the token by variable name: Codex reads
+    // `AWUI_ORCH_TOKEN` from this child's environment, so the value never reaches `ps`.
+    const base = `mcp_servers.${ORCH_MCP_SERVER}`;
+    args.push("-c", `${base}.url=${JSON.stringify(`${toolEnv.AWUI_ORCH_URL}/mcp`)}`, "-c", `${base}.bearer_token_env_var="AWUI_ORCH_TOKEN"`);
   }
   return args;
 }
@@ -389,7 +392,9 @@ class CodexLiveChat implements LiveChat {
 
   async start(): Promise<void> {
     const args = ["app-server", ...toolsMcpConfig(this.toolEnv), ...this.adapter.extraArgs];
-    const rpc = new CodexRpc(this.adapter.cliCommand, args, this.adapter.childEnv(), this.cwd, (frame) => this.onFrame(frame));
+    // The chat's tool variables ride in the child's environment: `bearer_token_env_var` names
+    // AWUI_ORCH_TOKEN, so Codex reads the token from here and it never reaches the command line.
+    const rpc = new CodexRpc(this.adapter.cliCommand, args, { ...this.adapter.childEnv(), ...this.toolEnv }, this.cwd, (frame) => this.onFrame(frame));
     this.rpc = rpc;
     rpc.onExit((message) => {
       if (this.disposed) return;

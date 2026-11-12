@@ -42,8 +42,10 @@ const record = (key, value) => {
   writeFileSync(statePath, JSON.stringify(state));
 };
 
-// What awui spawned this child with: the `-c` overrides a test asserts on.
+// What awui spawned this child with: the `-c` overrides a test asserts on, and the orchestration
+// token, which awui passes in the environment because `bearer_token_env_var` names it by variable.
 record("args", argv);
+record("env", { AWUI_ORCH_URL: process.env.AWUI_ORCH_URL ?? null, AWUI_ORCH_TOKEN: process.env.AWUI_ORCH_TOKEN ?? null });
 
 const out = (frame) => process.stdout.write(`${JSON.stringify(frame)}\n`);
 const respond = (id, result) => out({ id, result });

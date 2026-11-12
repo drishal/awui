@@ -111,11 +111,13 @@ describe("the codex adapter (scripted app-server)", () => {
       `mcp_servers.awui.args=${JSON.stringify([path.join(import.meta.dirname, "..", "..", "extensions", "render-html-mcp.mjs")])}`,
       `mcp_servers.awui.env.AWUI_RENDER_URL=${JSON.stringify(tokens.AWUI_RENDER_URL)}`,
       `mcp_servers.awui.env.AWUI_RENDER_TOKEN=${JSON.stringify(tokens.AWUI_RENDER_TOKEN)}`,
-      `mcp_servers.awui-orchestrate.command=${JSON.stringify(process.execPath)}`,
-      `mcp_servers.awui-orchestrate.args=${JSON.stringify([path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs")])}`,
-      `mcp_servers.awui-orchestrate.env.AWUI_ORCH_URL=${JSON.stringify(tokens.AWUI_ORCH_URL)}`,
-      `mcp_servers.awui-orchestrate.env.AWUI_ORCH_TOKEN=${JSON.stringify(tokens.AWUI_ORCH_TOKEN)}`,
+      // The orchestration tools are an HTTP server awui serves itself, with the token named by
+      // variable: no Node child, and the value stays out of this command line.
+      `mcp_servers.awui-orchestrate.url=${JSON.stringify(`${tokens.AWUI_ORCH_URL}/mcp`)}`,
+      `mcp_servers.awui-orchestrate.bearer_token_env_var="AWUI_ORCH_TOKEN"`,
     ]);
+    // Codex reads that variable from the child it starts, so awui hands the token over in its env.
+    expect(recorded("env").at(-1)).toMatchObject({ AWUI_ORCH_TOKEN: tokens.AWUI_ORCH_TOKEN });
   });
 
   it("starts on a model the account can run when the config names one it cannot", async () => {
