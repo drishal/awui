@@ -17,7 +17,6 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
-import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { execHarness, spawnHarness } from "../platform-win.js";
@@ -37,8 +36,8 @@ import {
   type SlashCommand,
   type TodoItem,
 } from "../../shared/protocol.js";
+import { AcpClient, killAcpChildren, liveAcpChildren } from "./acp-client.js";
 import { boundText, isObj, type Obj } from "./agent-events.js";
-import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import {
   decodeSessionLog,
@@ -135,139 +134,26 @@ function errorText(value: unknown): string {
   return typeof value === "string" && value ? value : "DeepSeek Harness reported an error";
 }
 
-/**
- * The id a response frame answers, or null. A frame with `method` is a request
- * or a notification, never a response: the agent's permission requests carry
- * their own ids and must not settle ours.
- */
-function answeredId(frame: Obj): string | null {
-  if (frame.method !== undefined) return null;
-  if (frame.result === undefined && frame.error === undefined) return null;
-  return typeof frame.id === "string" ? frame.id : null;
-}
-
-// Every DSH child this process spawned; killed on shutdown and on exit.
-const children = new Set<ChildProcessWithoutNullStreams>();
-let exitHookInstalled = false;
-function track(child: ChildProcessWithoutNullStreams): void {
-  children.add(child);
-  child.once("exit", () => children.delete(child));
-  if (!exitHookInstalled) {
-    exitHookInstalled = true;
-    process.once("exit", () => {
-      for (const c of children) c.kill("SIGKILL");
-    });
-  }
-}
-
 export function liveDshChildren(): number {
-  return children.size;
+  return liveAcpChildren("dsh");
 }
 
-/** One dsh child: JSON-RPC requests out, everything else handed to `onFrame`. */
-class DshRpc {
-  readonly child: ChildProcessWithoutNullStreams;
-  exited = false;
+/** One dsh child: the shared ACP transport, plus the acp-flow row's boot verdict. */
+class DshRpc extends AcpClient {
   /** The acp-flow row did not activate: the child has no ACP server, so it was stopped. */
   flowFailed = false;
-  private readonly stderr: StderrTail;
-  private exitListeners = new Set<(message: string) => void>();
-  private readonly calls = new PendingRequests<string>(
-    {
-      // String ids: the agent's numeric permission request ids must never settle ours.
-      formatId: (n) => `c${n}`,
-      encode: (id, payload) => ({ jsonrpc: "2.0", id, ...payload }),
-      answeredId,
-      outcome: (frame) => (frame.error !== undefined ? { error: new Error(errorText(frame.error)) } : { value: frame.result }),
-    },
-    (frame) => this.write(frame),
-  );
-
-  constructor(
-    command: string,
-    args: string[],
-    env: NodeJS.ProcessEnv,
-    cwd: string,
-    private readonly onFrame: (frame: Obj) => void,
-  ) {
-    this.child = spawnHarness(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
-    this.stderr = new StderrTail(this.child);
-    track(this.child);
-    if (args.includes("--patch")) {
-      // A plugin row that fails leaves DSH booted with no ACP server, silent until the handshake times out.
-      let said = "";
-      this.child.stderr.on("data", (chunk: Buffer) => {
-        if (this.flowFailed) return;
-        said = (said + chunk.toString("utf8")).slice(-4_000);
-        if (!FLOW_FAILED.test(said)) return;
-        this.flowFailed = true;
-        this.child.kill("SIGKILL");
-      });
-    }
-    const rl = readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity });
-    rl.on("line", (line) => {
-      if (!line.trim()) return;
-      let frame: unknown;
-      try {
-        frame = JSON.parse(line);
-      } catch {
-        return;
-      }
-      if (!isObj(frame)) return;
-      if (this.calls.accept(frame)) return;
-      this.onFrame(frame);
+  constructor(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, onFrame: (frame: Obj) => void) {
+    super({ label: "DeepSeek Harness", startLabel: "DSH", command, args, env, cwd, onFrame, errorText });
+    if (!args.includes("--patch")) return;
+    // A plugin row that fails leaves DSH booted with no ACP server, silent until the handshake times out.
+    let said = "";
+    this.child.stderr.on("data", (chunk: Buffer) => {
+      if (this.flowFailed) return;
+      said = (said + chunk.toString("utf8")).slice(-4_000);
+      if (!FLOW_FAILED.test(said)) return;
+      this.flowFailed = true;
+      this.child.kill("SIGKILL");
     });
-    this.child.stdin.on("error", () => undefined);
-    const onExit = (detail: string) => {
-      if (this.exited) return;
-      this.exited = true;
-      const reason = this.stderr.reason();
-      const message = reason ? `${detail}: ${reason}` : detail;
-      this.calls.failAll(message);
-      for (const l of this.exitListeners) l(message);
-    };
-    this.child.once("error", (error) => onExit(`could not start DSH (${error.message})`));
-    this.child.once("exit", (code, signal) => onExit(`DeepSeek Harness exited (${signal ?? `code ${code}`})`));
-  }
-
-  onExit(listener: (message: string) => void): void {
-    this.exitListeners.add(listener);
-  }
-
-  /** `null` timeout waits forever (a prompt's result comes when the turn ends). */
-  request<T = unknown>(method: string, params: Obj, timeoutMs?: number | null): Promise<T> {
-    return this.calls.send<T>({ method, params }, `DeepSeek Harness did not answer ${method}`, timeoutMs);
-  }
-
-  /** A notification (no id): session/cancel. */
-  notify(method: string, params: Obj): void {
-    this.tryWrite({ jsonrpc: "2.0", method, params });
-  }
-
-  /** The result of a request the agent made of this host, with that request's own id. */
-  respond(id: unknown, result: unknown): void {
-    this.tryWrite({ jsonrpc: "2.0", id, result });
-  }
-
-  respondError(id: unknown, code: number, message: string): void {
-    this.tryWrite({ jsonrpc: "2.0", id, error: { code, message } });
-  }
-
-  private tryWrite(frame: Obj): void {
-    try {
-      this.write(frame);
-    } catch {
-      // The child is gone; so is whatever it asked.
-    }
-  }
-
-  private write(frame: Obj): void {
-    if (this.exited) throw new Error("DeepSeek Harness is not running");
-    this.child.stdin.write(`${JSON.stringify(frame)}\n`);
-  }
-
-  kill(): Promise<void> {
-    return terminateChild(this.child);
   }
 }
 
@@ -1517,6 +1403,6 @@ export class DshAdapter implements HarnessAdapter {
   }
 
   async shutdown(): Promise<void> {
-    await Promise.allSettled([...children].map((child) => terminateChild(child)));
+    await killAcpChildren("dsh");
   }
 }

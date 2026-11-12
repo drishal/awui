@@ -5,11 +5,9 @@
 // is a child of its own, never a second writer on the leader's session).
 // Grok's `session/update` payloads are folded in grok-transcript.ts, shared with
 // the file reader, so a resumed chat and a running one cannot drift.
-import { type ChildProcessWithoutNullStreams } from "node:child_process";
-import { execHarness, spawnHarness } from "../platform-win.js";
+import { execHarness } from "../platform-win.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import readline from "node:readline";
 import { promisify } from "node:util";
 import {
   asHarnessId,
@@ -27,8 +25,8 @@ import {
   type TodoItem,
 } from "../../shared/protocol.js";
 import { embeddedVersion } from "../embedded.js";
+import { AcpClient, killAcpChildren, liveAcpChildren } from "./acp-client.js";
 import { boundText, isObj, type Obj } from "./agent-events.js";
-import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import { nodeForMcpServers, orchestrateMcpServer, ORCH_MCP_SERVER, renderHtmlMcpServer } from "./render-extension.js";
 import { HTML_RENDER_MCP_SERVER } from "./render-token.js";
@@ -95,138 +93,14 @@ function inputLine(raw: unknown): string {
   return oneLine(text ?? "", 500);
 }
 
-function errorText(value: unknown): string {
-  if (isObj(value) && typeof value.message === "string") return value.message;
-  return typeof value === "string" && value ? value : "grok reported an error";
-}
-
-/**
- * The id a response frame answers, or null. A frame with `method` is a request
- * or a notification, never a response: Grok's permission requests carry an id
- * (often a number) and must not settle the prompt that is in flight.
- */
-function answeredId(frame: Obj): string | null {
-  if (frame.method !== undefined) return null;
-  if (frame.result === undefined && frame.error === undefined) return null;
-  return typeof frame.id === "string" ? frame.id : null;
-}
-
-// Every grok child this process spawned; killed on shutdown and on exit.
-const children = new Set<ChildProcessWithoutNullStreams>();
-let exitHookInstalled = false;
-function track(child: ChildProcessWithoutNullStreams): void {
-  children.add(child);
-  child.once("exit", () => children.delete(child));
-  if (!exitHookInstalled) {
-    exitHookInstalled = true;
-    process.once("exit", () => {
-      for (const c of children) c.kill("SIGKILL");
-    });
-  }
-}
-
 export function liveGrokChildren(): number {
-  return children.size;
+  return liveAcpChildren("grok");
 }
 
-/** One grok child: JSON-RPC requests out, everything else handed to `onFrame`. */
-class GrokRpc {
-  readonly child: ChildProcessWithoutNullStreams;
-  exited = false;
-  private readonly stderr: StderrTail;
-  private exitListeners = new Set<(message: string) => void>();
-  private readonly calls = new PendingRequests<string>(
-    {
-      // String ids: a numeric permission request's id must never settle ours.
-      formatId: (n) => `c${n}`,
-      encode: (id, payload) => ({ jsonrpc: "2.0", id, ...payload }),
-      answeredId,
-      outcome: (frame) => (frame.error !== undefined ? { error: new Error(errorText(frame.error)) } : { value: frame.result }),
-    },
-    (frame) => this.write(frame),
-  );
-
-  constructor(
-    command: string,
-    args: string[],
-    env: NodeJS.ProcessEnv,
-    cwd: string,
-    private readonly onFrame: (frame: Obj) => void,
-    /** Called synchronously inside the line handler for a frame that answers one of our requests. */
-    private readonly onAnswered: (frame: Obj) => void,
-  ) {
-    this.child = spawnHarness(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
-    this.stderr = new StderrTail(this.child);
-    track(this.child);
-    const rl = readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity });
-    rl.on("line", (line) => {
-      if (!line.trim()) return;
-      let frame: unknown;
-      try {
-        frame = JSON.parse(line);
-      } catch {
-        return;
-      }
-      if (!isObj(frame)) return;
-      // The hook runs before any later line of this chunk is read: a response can
-      // change how the very next line must be handled.
-      if (this.calls.accept(frame)) {
-        this.onAnswered(frame);
-        return;
-      }
-      this.onFrame(frame);
-    });
-    this.child.stdin.on("error", () => undefined);
-    const onExit = (detail: string) => {
-      if (this.exited) return;
-      this.exited = true;
-      const reason = this.stderr.reason();
-      const message = reason ? `${detail}: ${reason}` : detail;
-      this.calls.failAll(message);
-      for (const l of this.exitListeners) l(message);
-    };
-    this.child.once("error", (error) => onExit(`could not start grok (${error.message})`));
-    this.child.once("exit", (code, signal) => onExit(`grok exited (${signal ?? `code ${code}`})`));
-  }
-
-  onExit(listener: (message: string) => void): void {
-    this.exitListeners.add(listener);
-  }
-
-  /** `null` timeout waits forever (a prompt's result comes when the turn ends). */
-  request<T = unknown>(method: string, params: Obj, timeoutMs?: number | null): Promise<T> {
-    return this.calls.send<T>({ method, params }, `grok did not answer ${method}`, timeoutMs);
-  }
-
-  /** A notification (no id): session/cancel. */
-  notify(method: string, params: Obj): void {
-    this.tryWrite({ jsonrpc: "2.0", method, params });
-  }
-
-  /** The result of a request Grok made of this host, with that request's own id. */
-  respond(id: unknown, result: unknown): void {
-    this.tryWrite({ jsonrpc: "2.0", id, result });
-  }
-
-  respondError(id: unknown, code: number, message: string): void {
-    this.tryWrite({ jsonrpc: "2.0", id, error: { code, message } });
-  }
-
-  private tryWrite(frame: Obj): void {
-    try {
-      this.write(frame);
-    } catch {
-      // The child is gone; so is whatever it asked.
-    }
-  }
-
-  private write(frame: Obj): void {
-    if (this.exited) throw new Error("grok is not running");
-    this.child.stdin.write(`${JSON.stringify(frame)}\n`);
-  }
-
-  kill(): Promise<void> {
-    return terminateChild(this.child);
+/** One grok child: the shared ACP transport, under this adapter's child count. */
+class GrokRpc extends AcpClient {
+  constructor(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, onFrame: (frame: Obj) => void, onAnswered: (frame: Obj) => void) {
+    super({ label: "grok", command, args, env, cwd, onFrame, onAnswered });
   }
 }
 
@@ -1138,6 +1012,6 @@ export class GrokAdapter implements HarnessAdapter {
   }
 
   async shutdown(): Promise<void> {
-    await Promise.allSettled([...children].map((child) => terminateChild(child)));
+    await killAcpChildren("grok");
   }
 }
