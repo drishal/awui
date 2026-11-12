@@ -666,6 +666,11 @@ function UserPrompt({
                 {formatWhen(item.at)}
               </span>
             ) : null}
+            {item.source === "agent" ? (
+              <span className="prompt-source" title="Sent by another agent or a routine, not typed here">
+                agent
+              </span>
+            ) : null}
             {canBranch ? (
               <>
                 <button

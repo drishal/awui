@@ -281,6 +281,9 @@ class EventReducer {
   /** This run's own prompt has echoed; a later user_message while the run goes is an interjection.
    *  The Chat resets it when a run starts (its setStatus). */
   runPromptSeen = false;
+  /** Sends waiting to be echoed that are not the user's own (delegation briefs, wakes); each marks
+   *  the next user_message as agent-authored. Bounded so a lost echo cannot mark far later ones. */
+  pendingAuthored = 0;
   private currentAssistant: string | null = null;
   private currentModel: string | undefined;
   private pendingDeltas: Array<{ itemId: string; field: "text" | "thinking" | "output"; append: string }> = [];
@@ -353,6 +356,9 @@ class EventReducer {
         // interjection (a steer, or a follow-up draining); the chat draws it as a divider row.
         const interjected = this.runPromptSeen && this.fx.status() === "running" && !event.command;
         this.runPromptSeen = true;
+        // The first pending non-user mark names this one (a delegation brief, a wake report).
+        const authored = !event.command && this.pendingAuthored > 0;
+        if (authored) this.pendingAuthored -= 1;
         this.put({
           kind: "user",
           id: this.nextId("u"),
@@ -361,6 +367,7 @@ class EventReducer {
           ...(event.images?.length ? { images: event.images } : {}),
           ...(event.command ? { command: true as const } : {}),
           ...(interjected ? { interjected: true as const } : {}),
+          ...(authored ? { source: "agent" as const } : {}),
           at: Date.now(),
         });
         if (!this.title && !event.command) this.setTitle(event.text.slice(0, 80));
@@ -1148,10 +1155,14 @@ export class Chat implements CheckpointHost {
 
   // ---- commands -------------------------------------------------------------
 
-  async send(text: string, mode: SendMode, images: ImageAttachment[] = [], options: { compactFirst?: boolean } = {}): Promise<void> {
+  async send(text: string, mode: SendMode, images: ImageAttachment[] = [], options: { compactFirst?: boolean; /** The message is another agent's or the server's (a delegation brief, a wake), so the item reads as one. */ origin?: "agent" } = {}): Promise<void> {
     this.assertOpen();
     // A prompt of the user's own takes the place of a scheduled continuation.
     this.clearContinue(true);
+    // The harness echoes the prompt back as a user_message; remember that this one is not the
+    // user's, so the item carries the provenance. Bounded: an echo that never comes cannot
+    // leave more than a few marks behind.
+    if (options.origin === "agent") this.reducer.pendingAuthored = Math.min(this.reducer.pendingAuthored + 1, 4);
     if (options.compactFirst && mode === "normal" && this.adapter.capabilities.supportsCompact && this.status === "idle") {
       // Compaction reports its own failure as a notice; the message goes either way.
       await this.compact();
@@ -1290,7 +1301,7 @@ export class Chat implements CheckpointHost {
       this.chain = rest;
       this.emitChain();
       try {
-        await this.send(step.text, "normal");
+        await this.send(step.text, "normal", [], { origin: "agent" });
       } catch (error) {
         this.chain = [step, ...this.chain];
         this.chainPaused = `Could not send the next message: ${errorMessage(error)}`;

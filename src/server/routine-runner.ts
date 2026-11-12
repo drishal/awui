@@ -122,7 +122,7 @@ export async function runRoutine(routine: Routine, workspace: WorkspaceInfo, ada
   const run = await runs.start(routine);
   const chat = await manager.create(adapter, workspace);
   await runs.attach(run.id, chat.chatId);
-  await chat.send(routine.prompt, "normal");
+  await chat.send(routine.prompt, "normal", [], { origin: "agent" });
   // The run outlives this call: the timer must not wait for the agent, and its
   // verdict is recorded whenever the chat settles.
   void followRoutineRun(chat, routine, run, hooks).catch(() => undefined);

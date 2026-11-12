@@ -303,7 +303,7 @@ export class Orchestrator {
       this.watch(task, child);
     }
     try {
-      await child.send(args.text, mode);
+      await child.send(args.text, mode, [], { origin: "agent" });
     } catch (error) {
       throw denial(409, "cannot_send", `Task ${task.id}'s chat refused the message: ${errorMessage(error)}`);
     }
@@ -478,7 +478,7 @@ export class Orchestrator {
       }
       // Watch before the prompt: the run can settle before send() returns.
       this.watch(task, child);
-      await child.send(args.brief, "normal");
+      await child.send(args.brief, "normal", [], { origin: "agent" });
     } catch (error) {
       await this.finish(task, "failed", errorMessage(error));
       return this.delegateOutput(task);
@@ -721,7 +721,7 @@ export class Orchestrator {
         return;
       }
       try {
-        await parent.send(wakeReport(pending), mode);
+        await parent.send(wakeReport(pending), mode, [], { origin: "agent" });
       } catch (error) {
         this.failWakes(pending, errorMessage(error));
         return;

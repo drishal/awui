@@ -195,6 +195,9 @@ describe("delegated tasks", () => {
     expect(childSnap.lineage).toEqual({ kind: "delegate", taskId: started.taskId, parentChatId: chat.chatId, parentTitle: null, depth: 1 });
     expect(childSnap.chatId).toBe(childId);
 
+    // The brief the parent agent sent is a user item marked agent-authored.
+    const brief = childSnap.items.find((i): i is Extract<ChatItem, { kind: "user" }> => i.kind === "user" && i.text === "summarise the readme");
+    expect(brief && brief.source).toBe("agent");
     // The parent is told by a task event, and its snapshot carries the row.
     await sse.waitFor(() => sse.chatEvents().some((e) => e.type === "task"));
     const parentSnap = (await agent.get(`/api/chats/${chat.chatId}`)).body as ChatSnapshot;

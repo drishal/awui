@@ -504,6 +504,18 @@
   white-space: nowrap;
 }
 
+
+/* Provenance: a prompt another agent or a routine sent, not one typed here. A quiet badge
+   beside the time, so agent-authored prompts are distinguishable without shouting. */
+.prompt-source {
+  margin-right: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .turn-prompt.is-editing .bubble-stack {
   width: min(100%, 680px);
   max-width: none;
