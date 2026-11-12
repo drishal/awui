@@ -37,6 +37,7 @@ import type {
   RotateResult,
   SecondOpinion,
   SecondOpinionResult,
+  SideThreadResult,
   SendMode,
   ServerSettings,
   ThemeChoice,
@@ -85,6 +86,7 @@ import { PairDialog, RenameDialog } from "./dialogs.js";
 import { ReviewPanel } from "./components/ReviewPanel.js";
 import { RestoreDialog } from "./components/RestoreDialog.js";
 import { SecondOpinionDialog } from "./components/SecondOpinionDialog.js";
+import { SideThreadDialog } from "./components/SideThreadDialog.js";
 import { HerdrDialog } from "./components/HerdrDialog.js";
 import { collectChanges } from "./review.js";
 import { copyResumeCommand, useResumeCommand } from "./resume-command.js";
@@ -344,6 +346,8 @@ export function App() {
   /** The turns sent to another harness for a second opinion, and whose sheet is open. */
   const [opinions, setOpinions] = useState<SecondOpinion[]>([]);
   const [opinionTurn, setOpinionTurn] = useState<number | null>(null);
+  /** The turn a side thread's question is being asked about, while its sheet is open. */
+  const [sideThreadTurn, setSideThreadTurn] = useState<number | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1626,6 +1630,15 @@ export function App() {
     else showChat(result.snapshot, { newTab: true });
   };
 
+  /** Ask a side question about a turn: the answer arrives in a chat of its own, opened beside this one. */
+  const askSideThread = async (question: string) => {
+    if (!chat || sideThreadTurn === null) return;
+    const result = await api<SideThreadResult>(`/api/chats/${chat.chatId}/side`, { body: { turn: sideThreadTurn, question } });
+    setSideThreadTurn(null);
+    if (wide) setSide((v) => ({ initial: result.snapshot, n: (v?.n ?? 0) + 1 }));
+    else showChat(result.snapshot, { newTab: true });
+  };
+
   const compact = async () => {
     setMenuOpen(false);
     if (!chat) return;
@@ -2489,6 +2502,7 @@ export function App() {
                   opinionsFor={(through) => opinions.filter((opinion) => opinion.turn === through)}
                   nameOfHarness={(harnessId) => boot.harnesses.find((h) => h.id === harnessId)?.displayName ?? harnessId}
                   onOpenOpinion={(chatId) => void openChatById(chatId)}
+                  onSideThread={(through) => setSideThreadTurn(through)}
                 />
                 {chat.gone ? <div className="banner banner-info">{chat.gone}</div> : null}
                 <Composer
@@ -2688,6 +2702,7 @@ export function App() {
           }}
         />
       ) : null}
+      {sideThreadTurn !== null && chat ? <SideThreadDialog turn={sideThreadTurn} onSubmit={askSideThread} onClose={() => setSideThreadTurn(null)} /> : null}
       {opinionTurn !== null && chat ? (
         <SecondOpinionDialog
           turn={opinionTurn}

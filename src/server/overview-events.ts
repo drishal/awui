@@ -48,7 +48,7 @@ const notes = new WeakMap<object, string>();
 export const overviewEvents = { subscribe: log.subscribe.bind(log), close: log.close.bind(log) };
 
 export function noteChat(chat: Chat): void {
-  if (chat.owner) return;
+  if (chat.owner || chat.side) return;
   const nativeId = chat.sessionId;
   if (!nativeId) return;
   notes.set(chat, nativeId);
@@ -56,13 +56,13 @@ export function noteChat(chat: Chat): void {
 }
 
 export function noteSessionOfChat(chat: Chat): void {
-  if (chat.owner || !chat.sessionId) return;
+  if (chat.owner || chat.side || !chat.sessionId) return;
   notes.set(chat, chat.sessionId);
   emitChat(chat, false);
 }
 
 export function noteChatDisposed(chat: Chat): void {
-  if (chat.owner) return;
+  if (chat.owner || chat.side) return;
   const nativeId = notes.get(chat) ?? chat.sessionId;
   if (!nativeId) return;
   const harnessId = chat.harnessId;

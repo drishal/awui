@@ -796,6 +796,13 @@ export class Chat implements CheckpointHost {
    */
   lineage?: ChatLineage;
   /**
+   * Set when this chat is a side thread: a throwaway conversation about one block of
+   * another chat's transcript, and this is that chat's id. Like `owner`, it keeps the chat
+   * out of every session list; unlike it, the chat is the user's own, opened beside its
+   * parent and left to be reaped when they move on. Server-only, never serialized.
+   */
+  side?: string;
+  /**
    * The tasks this chat delegated, newest first and bounded, as the snapshot carries them.
    * Installed by the orchestrator the first time this chat delegates; absent otherwise.
    */

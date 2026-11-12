@@ -185,8 +185,9 @@ export class ChatManager {
     // not in the chat: stamp them here so a resumed chat shows what it is.
     chat.lineage = this.lineageFor?.(chat);
     if (this.tasksFor && this.tasksFor(chat).length > 0) chat.delegated = () => this.tasksFor?.(chat) ?? [];
-    // Board-owned chats take no ordinary per-prompt checkpoints; a room-level design comes later.
-    if (this.checkpoints && !chat.owner) {
+    // Board-owned chats take no ordinary per-prompt checkpoints (a room-level design comes later),
+    // and neither does a side thread: it is a look at one block, not a run whose files go back.
+    if (this.checkpoints && !chat.owner && !chat.side) {
       chat.checkpoints = new ChatCheckpoints(this.checkpoints.service, chat, this.checkpoints.sessionsDir);
       void chat.checkpoints.start();
     }

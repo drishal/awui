@@ -67,7 +67,9 @@ import {
   threadStatusSchema,
   reanchorSchema,
   secondOpinionSchema,
+  sideThreadSchema,
   type SecondOpinionResult,
+  type SideThreadResult,
   sendThreadsSchema,
   type ReviewSendResult,
   type RotateResult,
@@ -103,7 +105,7 @@ import { Idempotency } from "./idempotency.js";
 import type { ChatManager } from "./chats/manager.js";
 import type { HarnessRegistry } from "./harness/registry.js";
 import type { HarnessAdapter, NativeSessionSummary } from "./harness/types.js";
-import { briefPrompt, isEmptySeed, toSeed, turnBrief } from "./harness/handoff.js";
+import { briefPrompt, isEmptySeed, sideThreadPrompt, toSeed, turnBrief } from "./harness/handoff.js";
 import { sniffImage } from "./images.js";
 import { deletePaste, resolvePaste, storePaste } from "./paste-store.js";
 import { projectFiles, searchFiles } from "./project-files.js";
@@ -271,8 +273,9 @@ export function createApp(deps: AppDeps) {
   const usageReader = new UsageReader();
   if (deps.checkpointsDir) manager.checkpoints = { service: new Checkpoints(deps.checkpointsDir), sessionsDir: path.join(deps.checkpointsDir, "sessions") };
   manager.onNews = (chat, kind, text, request) => {
-    // A board-owned chat's runs are the room's business: the room sends its own notes.
-    if (chat.owner) return;
+    // A board-owned chat's runs are the room's business: the room sends its own notes. A side
+    // thread's too: it is a question asked beside its parent, not a run that needs a phone.
+    if (chat.owner || chat.side) return;
     // A delegated child's finished or failed run is the parent agent's news, not the phone's: the
     // orchestrator wakes the parent with it. An ask (a question or an approval) still reaches the
     // user, who is the only one who can answer it.
@@ -292,7 +295,7 @@ export function createApp(deps: AppDeps) {
     if ((kind === "ask" || kind === "error") && chat.sessionId) marks.wake(chat.sessionId);
   };
   manager.onRunStart = (chat) => {
-    if (chat.owner) return;
+    if (chat.owner || chat.side) return;
     if (chat.sessionId) marks.wake(chat.sessionId);
   };
   const log = deps.log ?? ((m: string) => console.error(m));
@@ -1041,7 +1044,8 @@ export function createApp(deps: AppDeps) {
     const ws = await workspaces.get(String(req.query.workspaceId ?? ""));
     const problem = adapter.workspaceProblem(ws.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
-    const native = (await adapter.listSessions(ws.path)).filter((s) => !deps.boards?.ownsNativeSession(adapter.id, s.nativeId));
+    // Rooms' and side threads' sessions are theirs: neither belongs in a picker of ordinary chats.
+    const native = (await adapter.listSessions(ws.path)).filter((s) => !deps.boards?.ownsNativeSession(adapter.id, s.nativeId) && !manager.liveChatFor(adapter.id, s.nativeId)?.side);
     const seen = new Set<string>();
     const sessions: SessionSummary[] = native.map((s) => {
       seen.add(s.nativeId);
@@ -1050,7 +1054,7 @@ export function createApp(deps: AppDeps) {
     });
     // Live chats whose session the harness has not persisted yet.
     for (const chat of manager.list()) {
-      if (chat.owner || chat.harnessId !== adapter.id || chat.workspace.id !== ws.id || chat.status === "disposed") continue;
+      if (chat.owner || chat.side || chat.harnessId !== adapter.id || chat.workspace.id !== ws.id || chat.status === "disposed") continue;
       if (chat.nativeId && seen.has(chat.nativeId)) continue;
       sessions.unshift({
         id: chat.sessionId ?? `${adapter.id}:live-${chat.chatId}`,
@@ -1167,8 +1171,12 @@ export function createApp(deps: AppDeps) {
     const add = (adapter: HarnessAdapter, s: NativeSessionSummary, ws: WorkspaceInfo) => {
       const id = `${adapter.id}:${s.nativeId}`;
       if (sessions.has(id)) return;
+      const live = manager.liveChatFor(adapter.id, s.nativeId);
+      // A side thread's session is the harness's, saved like any other; the list leaves it
+      // out while this server holds it, the same way a room's sessions never appear here.
+      if (live?.side) return;
       projects.set(ws.id, ws);
-      sessions.set(id, toSession(adapter, s, ws, manager.liveChatFor(adapter.id, s.nativeId)));
+      sessions.set(id, toSession(adapter, s, ws, live));
     };
     const errors: string[] = [];
     const adapters = registry.list().filter((a) => registry.isAvailable(a.id));
@@ -1188,7 +1196,7 @@ export function createApp(deps: AppDeps) {
       }),
     );
     for (const chat of manager.list()) {
-      if (chat.owner || chat.status === "disposed") continue;
+      if (chat.owner || chat.side || chat.status === "disposed") continue;
       const id = chat.sessionId ?? `${chat.harnessId}:live-${chat.chatId}`;
       if (sessions.has(id)) continue;
       projects.set(chat.workspace.id, chat.workspace);
@@ -2035,6 +2043,48 @@ export function createApp(deps: AppDeps) {
       return secondOpinions.setReport(req.params.id, opinion.id, answer) ?? opinion;
     });
     res.json({ opinions });
+  });
+
+  /**
+   * A side thread: a question about one block of this chat's transcript, asked in a
+   * chat of its own so the main one is never touched. Read-only where awui's own
+   * harness is installed (it has no write or exec tools); otherwise a fork of this
+   * chat at that turn, which is as capable as the chat it came from and says so.
+   * Either way it is hidden from every session list: it is a look, not a session.
+   */
+  app.post("/api/chats/:id/side", async (req, res) => {
+    const chat = manager.get(req.params.id);
+    const { turn, question } = body(sideThreadSchema, req);
+    const turns = chat.userTurns();
+    if (turn > turns.length) throw new ChatError(400, "no_turn", `This chat has ${turns.length} turn${turns.length === 1 ? "" : "s"}`);
+    const snap = chat.snapshot();
+    const seed = toSeed(snap.items, { throughTurns: turn });
+    const picked = seed.turns[seed.turns.length - 1];
+    if (!picked) throw new ChatError(400, "no_turn", "That turn has nothing to ask about");
+    const prompt = sideThreadPrompt(picked, { from: chat.adapter.displayName, project: chat.workspace.name, question });
+    const awui = registry.get("awui");
+    let side: Chat;
+    let readOnly = false;
+    if (awui && registry.isAvailable(awui.id)) {
+      // awui's own harness reads, searches, and computes; it can neither edit nor run anything.
+      readOnly = true;
+      side = await manager.create(awui, chat.workspace);
+      await side.send(prompt, "normal").catch(() => undefined);
+    } else if (chat.adapter.capabilities.supportsFork && chat.nativeId) {
+      if (chat.status === "idle" || chat.status === "error") {
+        // A fork copies the turns up to this one: the question is its first new turn, and this chat keeps its own.
+        const forked = await chat.adapter.forkSession({ cwd: chat.workspace.path, nativeId: chat.nativeId, throughTurns: turn });
+        side = await manager.resume(chat.adapter, chat.workspace, forked.nativeId);
+        await side.send(question, "normal").catch(() => undefined);
+      } else {
+        throw new ChatError(409, "chat_busy", "Wait until the agent is idle, or install the Awui harness for a side thread while it works");
+      }
+    } else {
+      throw new ChatError(400, "no_side_thread", "A side thread needs awui's own harness (read-only), or a harness that can fork a session");
+    }
+    side.side = chat.chatId;
+    if (side.adapter.capabilities.supportsRename) await side.rename(`Side thread · ${chat.title || chat.workspace.name}`).catch(() => undefined);
+    res.status(201).json({ snapshot: side.snapshot(), readOnly } satisfies SideThreadResult);
   });
   // The chain: what a chat runs after its run settles, kept here so it goes on with no browser open.
   manager.onChainHandoff = async (chat, step, rest) => {

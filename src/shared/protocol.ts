@@ -436,6 +436,18 @@ export interface SecondOpinion {
   report: string | null;
 }
 
+/** A side thread just opened: the chat it runs in, and whether that chat was read-only by construction (the Awui harness). */
+export interface SideThreadResult {
+  snapshot: ChatSnapshot;
+  readOnly: boolean;
+}
+
+/** Open a side thread on one block: which turn, and the question it asks. */
+export const sideThreadSchema = z.object({
+  turn: z.number().int().min(1).max(10_000),
+  question: z.string().trim().min(1).max(MAX_OPINION_ASK_CHARS),
+});
+
 /** A second opinion just asked for: the record, and the chat it opens. */
 export interface SecondOpinionResult {
   opinion: SecondOpinion;

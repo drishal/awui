@@ -5,7 +5,7 @@
 //  - Hermes Desktop: flat-not-boxed, pinned prompts, red only for failures.
 import { createContext, Fragment, memo, startTransition, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssistantItem, ChatItem, ChatStatus, ImageRef, NoticeItem, RequestItem, SecondOpinion, ToolCategory, ToolItem, UserItem } from "../../shared/protocol.js";
-import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronUp, IconClock, IconCopy, IconEdit, IconFile, IconFork, IconImage, IconInfo, IconLink, IconRefresh, IconSearch, IconSpark, IconUndo, IconWarning, IconX, RaySpinner, Spinner, ToolIcon } from "../icons.js";
+import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronUp, IconClock, IconCopy, IconEdit, IconFile, IconFork, IconImage, IconInfo, IconLink, IconRefresh, IconSearch, IconSidebar, IconSpark, IconUndo, IconWarning, IconX, RaySpinner, Spinner, ToolIcon } from "../icons.js";
 import { promptLink } from "../prompt-link.js";
 import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
 import { useToolStyle } from "../tool-style.js";
@@ -706,6 +706,7 @@ function Answer({
   turnMarkdown,
   onTiming,
   onOpinion,
+  onSideThread,
 }: {
   item: AssistantItem;
   through: number;
@@ -713,6 +714,8 @@ function Answer({
   onFork: (through: number) => void;
   /** Ask another harness about this turn; absent where there is none to ask. */
   onOpinion?: ((through: number) => void) | undefined;
+  /** Ask a side question about this turn (a chat of its own, beside this one); absent in a pane without room. */
+  onSideThread?: ((through: number) => void) | undefined;
   /** The files as they were before this turn's prompt can be put back. */
   canRestore: boolean;
   onRestore: (through: number) => void;
@@ -738,6 +741,7 @@ function Answer({
     { label: "Quote in message", icon: <IconEdit size={16} />, run: () => addToDraft(asQuote(item.text)) },
     ...(onTiming ? [{ label: "Timing", icon: <IconClock size={16} />, run: onTiming }] : []),
     ...(onOpinion ? [{ label: "Second opinion", icon: <IconSpark size={16} />, run: () => onOpinion(through) }] : []),
+    ...(onSideThread ? [{ label: "Ask about this turn", icon: <IconSidebar size={16} />, run: () => onSideThread(through) }] : []),
     ...(canFork ? [{ label: "Fork from here", icon: <IconFork size={16} />, run: () => onFork(through) }] : []),
     ...(canRestore ? [{ label: "Undo file changes from here", icon: <IconUndo size={16} />, run: () => onRestore(through) }] : []),
   ];
@@ -764,6 +768,17 @@ function Answer({
           {onTiming ? (
             <button type="button" className="ghost-icon" aria-label="Timing" title="Timing: when each step and call of this turn ran" onClick={onTiming}>
               <IconClock size={14} />
+            </button>
+          ) : null}
+          {onSideThread ? (
+            <button
+              type="button"
+              className="ghost-icon"
+              aria-label="Ask about this turn"
+              title="Ask about this turn: a question in a chat of its own, beside this one"
+              onClick={() => onSideThread(through)}
+            >
+              <IconSidebar size={14} />
             </button>
           ) : null}
           {onOpinion ? (
@@ -1178,6 +1193,7 @@ function TurnBody({
   opinions,
   nameOfHarness,
   onOpinion,
+  onSideThread,
   onOpenOpinion,
 }: {
   turn: Turn;
@@ -1195,6 +1211,8 @@ function TurnBody({
   nameOfHarness?: ((harnessId: string) => string) | undefined;
   /** Ask another harness about this turn; absent where there is none to ask. */
   onOpinion?: ((through: number) => void) | undefined;
+  /** Ask a side question about this turn, in a chat of its own. */
+  onSideThread?: ((through: number) => void) | undefined;
   /** Open the chat an opinion runs in. */
   onOpenOpinion?: ((chatId: string) => void) | undefined;
   /** Opens the turn's Timing view; absent where there is none (a room's run). */
@@ -1227,7 +1245,7 @@ function TurnBody({
         <PlanCard key={p.id} plan={p.plan} onImplement={onImplement} />
       ))}
       {turn.answer ? (
-        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timing !== undefined ? timing : timingLabel(turnTiming(turn))} turnMarkdown={turn.prompt ? () => turnMarkdownOf(turn, workspace) : null} {...(onTiming ? { onTiming } : {})} {...(onOpinion ? { onOpinion } : {})} />
+        <Answer item={turn.answer} through={turn.through} canFork={canFork && turn.through > 0} onFork={onFork} canRestore={canRestore} onRestore={onRestore} timing={turn.live ? null : timing !== undefined ? timing : timingLabel(turnTiming(turn))} turnMarkdown={turn.prompt ? () => turnMarkdownOf(turn, workspace) : null} {...(onTiming ? { onTiming } : {})} {...(onOpinion ? { onOpinion } : {})} {...(onSideThread ? { onSideThread } : {})} />
       ) : null}
       {opinions && opinions.length > 0
         ? opinions.map((opinion) => (
@@ -1284,6 +1302,7 @@ const TurnView = memo(function TurnView({
   opinions,
   nameOfHarness,
   onOpinion,
+  onSideThread,
   onOpenOpinion,
 }: {
   turn: Turn;
@@ -1301,6 +1320,7 @@ const TurnView = memo(function TurnView({
   opinions?: SecondOpinion[] | undefined;
   nameOfHarness?: ((harnessId: string) => string) | undefined;
   onOpinion?: ((through: number) => void) | undefined;
+  onSideThread?: ((through: number) => void) | undefined;
   onOpenOpinion?: ((chatId: string) => void) | undefined;
   /** The latest turn's plan can be acted on (idle, nothing asked): Implement sends it on. */
   onImplement: (() => void) | null;
@@ -1330,7 +1350,7 @@ const TurnView = memo(function TurnView({
     <RetryContext.Provider value={retry}>
     <section className="turn" id={`turn-${turn.id}`} data-turn-id={turn.id} data-testid="turn">
       <UserPrompt item={turn.prompt} through={turn.through} canBranch={canBranch} hasCheckpoint={hasCheckpoint} actions={promptActions} />
-      <TurnBody turn={turn} open={open} onToggle={onToggle} workspace={workspace} canFork={canFork} onFork={onFork} canRestore={canRestore} onRestore={onRestore} onImplement={onImplement} onTiming={openTiming} {...(opinions ? { opinions } : {})} {...(nameOfHarness ? { nameOfHarness } : {})} {...(onOpinion ? { onOpinion } : {})} {...(onOpenOpinion ? { onOpenOpinion } : {})} />
+      <TurnBody turn={turn} open={open} onToggle={onToggle} workspace={workspace} canFork={canFork} onFork={onFork} canRestore={canRestore} onRestore={onRestore} onImplement={onImplement} onTiming={openTiming} {...(opinions ? { opinions } : {})} {...(nameOfHarness ? { nameOfHarness } : {})} {...(onOpinion ? { onOpinion } : {})} {...(onSideThread ? { onSideThread } : {})} {...(onOpenOpinion ? { onOpenOpinion } : {})} />
       {timingDialog}
     </section>
     </RetryContext.Provider>
@@ -1389,6 +1409,7 @@ export function Conversation({
   findRequest = null,
   pane = "main",
   onOpinion,
+  onSideThread,
   opinionsFor,
   nameOfHarness,
   onOpenOpinion,
@@ -1418,6 +1439,8 @@ export function Conversation({
   pane?: "main" | "side";
   /** Ask another harness about a settled turn: the sheet's harness picker sends it. */
   onOpinion?: (through: number) => void;
+  /** Ask a side question about a turn, in a chat of its own beside this one. */
+  onSideThread?: (through: number) => void;
   /** A turn's second opinions, by turn: what each answer's cards show. */
   opinionsFor?: (through: number) => SecondOpinion[];
   /** A harness id as its display name, for the cards' from → to line. */
@@ -1838,6 +1861,7 @@ export function Conversation({
                     {...(opinionsFor ? { opinions: opinionsFor(turn.through) } : {})}
                     {...(nameOfHarness ? { nameOfHarness } : {})}
                     {...(onOpinion ? { onOpinion } : {})}
+                    {...(onSideThread ? { onSideThread } : {})}
                     {...(onOpenOpinion ? { onOpenOpinion } : {})}
                   />
                 </Fragment>
