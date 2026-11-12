@@ -94,7 +94,7 @@ import { HandoverDialog } from "./components/HandoverDialog.js";
 import { collectChanges } from "./review.js";
 import { copyResumeCommand, useResumeCommand } from "./resume-command.js";
 import { chatMarkdown, downloadText, exportFileName } from "./export.js";
-import { IconEdit, IconGauge, IconMenu, IconMore, IconSearch, IconSidebar, IconSplit, IconTerminal, IconBranch } from "./icons.js";
+import { IconEdit, IconGauge, IconMenu, IconMore, IconSearch, IconSidebar, IconSplit, IconTerminal, IconBranch, IconAgents } from "./icons.js";
 import { applyHarnessAccents, harnessColor } from "./harness-colors.js";
 import { moveTab, pinnedCount, setPinned } from "./tab-order.js";
 import { closeTab, draftTab, findRoomTab, findTab, loadTabs, markUnread, placeChat, placeRoomTab, placeTab, runningChats, saveTabs, syncActive, syncRoomTitles, type Tab, type TabState } from "./tabs.js";
@@ -127,6 +127,7 @@ const RacePanel = lazy(() => import("./components/RacePanel.js").then((m) => ({ 
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js").then((m) => ({ default: m.TerminalPanel })));
 const GitHubPanel = lazy(() => import("./components/GitHubPanel.js").then((m) => ({ default: m.GitHubPanel })));
 const Dashboard = lazy(() => import("./components/Dashboard.js").then((m) => ({ default: m.Dashboard })));
+const ContextPanel = lazy(() => import("./components/ContextPanel.js").then((module) => ({ default: module.ContextPanel })));
 const WorkerPlanEditor = lazy(() => import("./components/WorkerPlanEditor.js").then((m) => ({ default: m.WorkerPlanEditor })));
 
 // Panels on-demand: a desktop with a dozen idle tabs doesn't need code for every
@@ -288,6 +289,9 @@ export function App() {
   const [compareOpen, setCompareOpen] = useState(false);
   /** The races panel: one comparison by id (just started, or reopened), or the list. */
   const [racesOpen, setRacesOpen] = useState<{ raceId: string | null } | null>(null);
+  const [contextClosed, setContextClosed] = useState(false);
+  const [contextDetailsCollapsed, setContextDetailsCollapsed] = useState(false);
+  const [contextSheet, setContextSheet] = useState(false);
   const [toolPanel, setToolPanel] = useState<null | "terminal" | "github">(null);
   const [toolWorkspace, setToolWorkspace] = useState<WorkspaceInfo | null>(null);
   const openTool = (kind: "terminal" | "github", ws = workspace) => { setToolWorkspace(ws); setToolPanel(kind); };
@@ -2305,6 +2309,9 @@ export function App() {
           {/* On a phone these two fold into the chat menu when there is one (header-tool), so the title keeps its room. */}
           {workspace && !room.roomId ? <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="Terminal" title="Open a project terminal" onClick={() => openTool("terminal")}><IconTerminal size={16} /></button> : null}
           {workspace && !room.roomId ? <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="GitHub and pull requests" title="Push or create a pull request" onClick={() => openTool("github")}><IconBranch size={16} /></button> : null}
+          {chat && !room.roomId ? (
+            <button type="button" className={`icon-btn${!contextClosed ? " is-on" : ""}`} aria-label={!wide ? "Expand chat context" : contextClosed ? "Show chat context" : "Hide chat context"} aria-expanded={!contextClosed} title="Active work, agent runs and review context" onClick={() => wide ? setContextClosed((value) => !value) : setContextSheet(true)}><IconAgents size={16} /></button>
+          ) : null}
           {wide && !room.roomId && (chat || side) ? (
             <button
               type="button"
@@ -2467,6 +2474,7 @@ export function App() {
           </div>
         ) : null}
 
+        <div className="context-work">
         <div
           ref={splitViewport}
           className={`chat-split${side ? " is-split" : ""}${toolPanel && toolWorkspace ? ` has-work-panel is-${toolPanel}` : ""}${split.dragging ? " is-dragging" : ""}`}
@@ -2685,6 +2693,24 @@ export function App() {
               onSignedOut={() => setSignedOut(true)}
             />
           ) : null}
+        </div>
+          {chat && (!wide ? contextSheet : !contextClosed) && !room.roomId ? <LazyPanel><ContextPanel chat={chat} expanded={wide && !side && !toolPanel && !viewer ? !contextDetailsCollapsed : true} onOpen={() => wide ? setContextDetailsCollapsed(false) : setContextSheet(true)} onClose={() => wide ? setContextDetailsCollapsed(true) : setContextSheet(false)} mode={!wide ? "sheet" : "inline"} onOpenChat={(id) => void openChatById(id)} onCancelTask={(task) => void cancelDelegated(task)} onReview={() => setReviewOpen(true)} onRace={(raceId) => setRacesOpen({ raceId })} onOpinion={(opinion) => void openChatById(opinion.chatId)} onUsage={() => {
+            const button = document.querySelector<HTMLButtonElement>(`[data-pane="main"] [data-testid="context-ring"]`);
+            if (button) button.click();
+          }} onQuestions={() => {
+            setContextSheet(false);
+            setContextDetailsCollapsed(true);
+            const cards = [...document.querySelectorAll<HTMLElement>('[data-pane="main"] [data-testid="approval-card"]')];
+            const current = cards[0];
+            if (!current) return;
+            current.scrollIntoView({ block: "center", behavior: "smooth" });
+            (current.querySelector<HTMLElement>("button, input, select, textarea") ?? current).focus({ preventScroll: true });
+          }} onSubagents={(toolId) => {
+            const row = document.querySelector<HTMLElement>(`[data-tool-id="${CSS.escape(toolId)}"]`);
+            const button = row?.querySelector<HTMLButtonElement>(".tool-head[aria-expanded=\"false\"]");
+            if (button) button.click();
+            (row ?? button)?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+          }} /></LazyPanel> : null}
         </div>
       </main>
       <ToastStack

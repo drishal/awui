@@ -9,7 +9,7 @@ const prompts = (page: Page) => page.getByTestId("user-prompt");
 /** The chat header's Review button, or the palette's action, opens the sheet. */
 async function openReview(page: Page): Promise<Locator> {
   await showSidebar(page);
-  await page.getByRole("button", { name: /^Review\b/ }).click();
+  await page.locator("button.review-open").click();
   const dialog = page.getByRole("dialog", { name: "Review changes" });
   await expect(dialog).toBeVisible();
   return dialog;

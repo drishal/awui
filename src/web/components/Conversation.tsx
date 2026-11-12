@@ -220,7 +220,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
       asked ? <IconCheck size={13} /> : <IconRefresh size={13} />
     ) : null;
   return (
-    <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} data-testid="tool-row" data-tool={item.name} data-status={item.status}>
+    <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} id={`tool-${item.id}`} data-tool-id={item.id} data-testid="tool-row" data-tool={item.name} data-status={item.status}>
       <div className="drow tool-line">
         <div className="tool-row-line">
           <button
@@ -367,7 +367,7 @@ function RequestRow({ item }: { item: RequestItem }) {
   const outcome = item.outcome ?? "Waiting for you…";
   const tone = /Denied|Cancelled|Dismissed/.test(outcome) ? "warn" : undefined;
   return (
-    <div className={`request-row${arrival}`} data-testid="request-row">
+    <div className={`request-row${arrival}`} id={`request-${item.request.id}`} data-request-id={item.request.id} data-testid="request-row">
       <DisclosureRow
         icon={item.outcome ? (tone ? <IconX size={14} /> : <IconCheck size={14} />) : <Spinner size={13} />}
         title={item.request.kind === "confirm" || item.request.options?.includes("Approve") ? "Approval" : "Question"}
