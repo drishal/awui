@@ -113,6 +113,11 @@ is what arms them. `harness/render-token.ts` holds the MCP names (from the catal
 allow list cannot drift from what is served, and `scripts/build-binary.ts`'s `EXTENSIONS`
 list is what the compiled binary carries.
 
+The MCP bridge also offers the orchestration skills (`council`, `advisor`, `handoff`) as
+`prompts/list`/`prompts/get`, from `GET /api/orchestration/prompts`; the `-e` extension has no
+prompt API, so Pi and omp get the same words as the files under `skills/`. Whether a client shows
+MCP prompts as commands is unverified except for Claude Code.
+
 ## 3. Capabilities: declare only what works
 
 Each flag hides or shows something; declaring one the agent cannot honour

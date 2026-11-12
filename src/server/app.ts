@@ -126,6 +126,7 @@ import { previewHtmlRender, PreviewError } from "./render-preview.js";
 import { Orchestrator } from "./orchestration/orchestrator.js";
 import { ORCH_TOOLS } from "./orchestration/tools.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "./orchestration/limits.js";
+import { orchestrationSkills } from "./orchestration/skills.js";
 
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
@@ -390,6 +391,23 @@ export function createApp(deps: AppDeps) {
       orchOn();
       if (token === "" || !manager.knowsOrchToken(token)) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
       res.json({ tools: ORCH_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })) });
+    } catch (error) {
+      if (!orchFailed(res, error)) throw error;
+    }
+  });
+  /**
+   * The orchestration skills as MCP prompts (council, advisor, handoff). The words come from
+   * skills/<name>/SKILL.md — read by orchestration/skills.ts, from the repo or the binary's
+   * embedded copy — so the file an agent can read and the prompt a client offers cannot drift.
+   * Same token rule as the catalogue: a starting child may read them before its chat exists.
+   */
+  app.get("/api/orchestration/prompts", async (req, res) => {
+    try {
+      const token = req.get("x-awui-orch-token") ?? "";
+      orchOn();
+      if (token === "" || !manager.knowsOrchToken(token)) throw new ChatError(401, "bad_orch_token", "Not a live chat's orchestration token");
+      const skills = await orchestrationSkills();
+      res.json({ prompts: skills.map(({ name, description, text }) => ({ name, description, text })) });
     } catch (error) {
       if (!orchFailed(res, error)) throw error;
     }

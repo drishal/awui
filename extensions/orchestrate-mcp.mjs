@@ -7,12 +7,15 @@
 //   AWUI_ORCH_URL    base, e.g. http://127.0.0.1:4783/api/orchestration
 //   AWUI_ORCH_TOKEN  the chat's orchestration token, sent as X-Awui-Orch-Token
 //
-// Without both it serves no tools. Names, descriptions, and parameter schemas
-// are not repeated here: the catalogue is fetched once from GET <url>/tools,
-// where orchestration/tools.ts is the one definition. A call is forwarded to
-// POST <url>/call and the answer's `text` is the tool's result; the server's
-// `{ ok: false, code, message }` becomes an error result reading `code: message`.
-// The token only ever travels in the header, never in a message or a log.
+// Without both it serves no tools and no prompts. Names, descriptions, and
+// parameter schemas are not repeated here: the catalogue is fetched once from
+// GET <url>/tools, where orchestration/tools.ts is the one definition. The three
+// skills (council, advisor, handoff) come the same way from GET <url>/prompts,
+// which serves skills/<name>/SKILL.md itself, so a prompt and the file an agent
+// could read cannot drift. A call is forwarded to POST <url>/call and the
+// answer's `text` is the tool's result; the server's `{ ok: false, code,
+// message }` becomes an error result reading `code: message`. The token only
+// ever travels in the header, never in a message or a log.
 
 import { createInterface } from "node:readline";
 
@@ -20,32 +23,53 @@ const URL_ENV = process.env.AWUI_ORCH_URL;
 const TOKEN = process.env.AWUI_ORCH_TOKEN;
 // Above the server's longest wait (thread_wait caps at 110 s), below a client's patience.
 const TIMEOUT_MS = 115_000;
-const CATALOGUE_TIMEOUT_MS = 10_000;
+// The catalogue and the prompt list are small documents a starting child asks for.
+const LIST_TIMEOUT_MS = 10_000;
 
 const text = (value) => ({ type: "text", text: value });
 const failure = (message) => ({ content: [text(message)], isError: true });
+/** An error's own message, for an error answer that names what went wrong without the token. */
+const describe = (error) => (error instanceof Error ? error.message : String(error));
 
-/** The tool catalogue, fetched once; a failure is retried by the next request rather than cached. */
-let catalogue = null;
-let fetching = null;
+/**
+ * A document the endpoint serves at `suffix`, fetched once and kept: the descriptions and
+ * schemas exist on the server only. A failed fetch rejects and is retried by the next request
+ * instead of being cached.
+ */
+const documents = new Map();
+const inflight = new Map();
 
-function loadCatalogue() {
-  if (catalogue) return Promise.resolve(catalogue);
-  fetching ??= fetch(`${URL_ENV}/tools`, { headers: { "X-Awui-Orch-Token": TOKEN }, signal: AbortSignal.timeout(CATALOGUE_TIMEOUT_MS) })
-    .then(async (response) => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const body = await response.json();
-      if (!Array.isArray(body?.tools)) throw new Error("the catalogue is not a tool list");
-      catalogue = body.tools;
-      fetching = null;
-      return catalogue;
-    })
-    .catch((error) => {
-      fetching = null;
-      throw error;
-    });
-  return fetching;
+function load(suffix, pick) {
+  const known = documents.get(suffix);
+  if (known) return Promise.resolve(known);
+  let pending = inflight.get(suffix);
+  if (!pending) {
+    pending = fetch(`${URL_ENV}${suffix}`, { headers: { "X-Awui-Orch-Token": TOKEN }, signal: AbortSignal.timeout(LIST_TIMEOUT_MS) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = await response.json();
+        const value = pick(body);
+        documents.set(suffix, value);
+        return value;
+      })
+      .finally(() => inflight.delete(suffix));
+    inflight.set(suffix, pending);
+  }
+  return pending;
 }
+
+const catalogue = () =>
+  load("/tools", (body) => {
+    if (!Array.isArray(body?.tools)) throw new Error("the catalogue is not a tool list");
+    return body.tools;
+  });
+
+/** The three skills with their words, the route having read skills/<name>/SKILL.md. */
+const skills = () =>
+  load("/prompts", (body) => {
+    if (!Array.isArray(body?.prompts)) throw new Error("the skills answer is not a prompt list");
+    return body.prompts;
+  });
 
 async function forward(name, args) {
   let response;
@@ -80,22 +104,49 @@ async function handle(message) {
   if (method === "initialize") {
     return send({
       id,
-      result: { protocolVersion: params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "awui-orchestrate", version: "1" } },
+      // The prompts capability rides with the tools: without the endpoint there is nothing to
+      // prompt with either. Whether a client shows MCP prompts as commands is the client's
+      // business; Claude Code does, Codex and DSH are unverified.
+      result: {
+        protocolVersion: params?.protocolVersion ?? "2025-06-18",
+        capabilities: URL_ENV && TOKEN ? { tools: {}, prompts: {} } : { tools: {} },
+        serverInfo: { name: "awui-orchestrate", version: "1" },
+      },
     });
   }
   if (method === "ping") return send({ id, result: {} });
   if (method === "tools/list") {
     if (!URL_ENV || !TOKEN) return send({ id, result: { tools: [] } });
     try {
-      return send({ id, result: { tools: await loadCatalogue() } });
+      return send({ id, result: { tools: await catalogue() } });
     } catch (error) {
-      return send({ id, error: { code: -32603, message: `could not read the orchestration tool catalogue: ${error instanceof Error ? error.message : String(error)}` } });
+      return send({ id, error: { code: -32603, message: `could not read the orchestration tool catalogue: ${describe(error)}` } });
     }
+  }
+  // The orchestration skills as prompts: the client offers them as commands and hands the
+  // text over as a user message, so the agent reads the same file an agent without prompts
+  // would read. Arguments are none: each skill is one fixed instruction.
+  if (method === "prompts/list") {
+    if (!URL_ENV || !TOKEN) return send({ id, result: { prompts: [] } });
+    try {
+      const served = await skills();
+      return send({ id, result: { prompts: served.map(({ name, description }) => ({ name, description })) } });
+    } catch (error) {
+      return send({ id, error: { code: -32603, message: `could not read the orchestration skills: ${describe(error)}` } });
+    }
+  }
+  if (method === "prompts/get") {
+    const name = params?.name;
+    if (!URL_ENV || !TOKEN) return send({ id, error: { code: -32602, message: `Unknown prompt: ${name}` } });
+    const served = await skills().catch(() => null);
+    const prompt = served?.find((entry) => entry.name === name);
+    if (!prompt) return send({ id, error: { code: -32602, message: `Unknown prompt: ${name}` } });
+    return send({ id, result: { description: prompt.description, messages: [{ role: "user", content: text(prompt.text) }] } });
   }
   if (method === "tools/call") {
     const name = params?.name;
     if (!URL_ENV || !TOKEN) return send({ id, error: { code: -32602, message: `Unknown tool: ${name}` } });
-    const tools = await loadCatalogue().catch(() => null);
+    const tools = await catalogue().catch(() => null);
     if (!tools || !tools.some((tool) => tool.name === name)) return send({ id, error: { code: -32602, message: `Unknown tool: ${name}` } });
     return send({ id, result: await forward(name, params?.arguments ?? {}) });
   }

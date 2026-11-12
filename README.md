@@ -88,6 +88,7 @@ macOS and Windows desktop packages exist (`npm --prefix apps/desktop run dist:ma
 | [Headless CLI](docs/usage.md#the-headless-cli) | `awui run`, `send`, `wait`, `chats` from a script |
 | [In a terminal](docs/terminal.md) | `atui` and `awui tern` |
 | [Harnesses](docs/harnesses.md) | adding or fixing a harness |
+| [Agents delegating to agents](docs/orchestration.md) | the orchestration tools, their limits, and the council/advisor/handoff skills |
 | [Architecture](docs/architecture.md) | how each agent is driven, adapters, approvals |
 | [Security](docs/security.md) | LAN, Tailscale, the threat model |
 | [Theme](docs/theme.md) | colours, base16, stylix |

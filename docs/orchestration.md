@@ -58,11 +58,13 @@ agent would be given the tools), and a plain `off` when config.yml has turned it
 
 ## Endpoints
 
-Both are mounted before `requireAuth` (like `/api/render`): they authenticate by the
+All are mounted before `requireAuth` (like `/api/render`): they authenticate by the
 token header alone, never a cookie, so a signed-in device elsewhere cannot mint one.
 
 ```
+```
 GET  /api/orchestration/tools              → { tools: [{ name, description, parameters }] }
+GET  /api/orchestration/prompts            → { prompts: [{ name, description, text }] }
 POST /api/orchestration/call               → { ok: true, text, data }
      X-Awui-Orch-Token: <32 hex>              or { ok: false, code, message }
      { "tool": "list_profiles", "args": {} }
@@ -88,6 +90,29 @@ line the model reads, composed on the server so the wording exists once.
 harness at its default model — `{ id, source, name, harnessId, harnessName, available,
 model, provider, thinkingLevel, permissionMode, role, note }` — with how many delegation
 levels and tasks are left.
+
+## Skills
+
+Three skills turn the tools into common habits. Each is plain markdown under `skills/` at the
+repo root — `council`, `advisor`, `handoff` — and each is written for an agent in any harness to
+follow using only the tools above. Nothing is installed into a harness's own skill folder.
+
+| Skill | Asks for | What it does |
+|---|---|---|
+| `council` | "council this diff", "put three models on it" | `list_profiles` for three providers, three `delegate_task` calls in one turn (role `review`), `thread_wait` on all three, one merged verdict, and at most one more round carrying the briefs, the verdicts, and the objections. It stops when all three approve or round 2 ends, and its score table says "no score" rather than inventing one. |
+| `advisor` | "ask an advisor", "what would another model say" | one `delegate_task` (role `review`) with a self-contained brief ending `Review only. Change nothing.`, then the answer reported with the model that gave it. |
+| `handoff` | "hand this to a fresh agent" | a zero-context briefing built from the `task_status` and `thread_read` records plus the current state — goal, done, decisions, files, next steps, pitfalls — delegated as a new chat. |
+
+How an agent gets those words depends on the harness. Claude Code, Codex, and DeepSeek Harness
+receive them as **MCP prompts** from the same `awui-orchestrate` server that carries the tools
+(`prompts/list` and `prompts/get`), backed by `GET /api/orchestration/prompts`, which serves
+`skills/<name>/SKILL.md` itself; the compiled binary embeds the same three files, so a packaged
+awui offers them too. Whether a client shows MCP prompts as commands is **unverified** except for
+Claude Code, which documents them; Codex and DSH may only expose them programmatically. Pi and omp
+have a tools-only extension API and no prompt mechanism, and Hermes, OpenCode, and Grok Build are
+not wired to awui's tools at all — there the skill is a file: ask the agent to read
+`skills/council/SKILL.md` and follow it, or paste the text in. The file and the prompt are one
+source, so they cannot drift.
 
 ## Reading a child's chat
 

@@ -36,13 +36,27 @@ function mcp(env: Record<string, string>) {
 
 interface Message {
   id: number | null;
-  result?: { protocolVersion?: string; capabilities?: unknown; tools?: Array<{ name: string }>; content?: Array<{ text: string }>; isError?: boolean };
+  result?: {
+    protocolVersion?: string;
+    capabilities?: unknown;
+    tools?: Array<{ name: string }>;
+    prompts?: Array<{ name: string; description?: string }>;
+    messages?: Array<{ role: string; content: { type: string; text: string } }>;
+    content?: Array<{ text: string }>;
+    isError?: boolean;
+  };
   error?: { code: number; message: string };
 }
 
 const TOOLS = [
   { name: "delegate_task", description: "Delegate one task.", parameters: { type: "object", properties: { brief: { type: "string" } }, required: ["brief"] } },
   { name: "task_status", description: "Report your tasks.", parameters: { type: "object", properties: {} } },
+];
+
+/** The skills the endpoint serves as prompts; the bridge repeats none of their words. */
+const PROMPTS = [
+  { name: "council", description: "Three reviewers, merged.", text: "# Council\n\nCall list_profiles, then delegate_task three times." },
+  { name: "advisor", description: "One reviewer.", text: "# Advisor\n\nReview only. Change nothing." },
 ];
 
 /** A stub endpoint: the catalogue, then whatever the test queues for each call. */
@@ -57,6 +71,11 @@ async function endpoint(answers: Array<{ status: number; body: unknown }>) {
         seen.push({ path: req.url, token, body: null });
         res.setHeader("content-type", "application/json");
         return res.end(JSON.stringify({ tools: TOOLS }));
+      }
+      if (req.url === "/api/orchestration/prompts") {
+        seen.push({ path: req.url, token, body: null });
+        res.setHeader("content-type", "application/json");
+        return res.end(JSON.stringify({ prompts: PROMPTS }));
       }
       const answer = answers.shift() ?? { status: 500, body: {} };
       seen.push({ path: req.url ?? "", token, body: JSON.parse(body) });
@@ -85,11 +104,22 @@ describe("the orchestration MCP server", () => {
       stub.close();
     };
     try {
-      expect((await s.call("initialize", { protocolVersion: "2025-06-18" })).result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} } });
+      // Both capabilities are advertised when the chat has an endpoint; neither without one.
+      expect((await s.call("initialize", { protocolVersion: "2025-06-18" })).result).toMatchObject({
+        protocolVersion: "2025-06-18",
+        capabilities: { tools: {}, prompts: {} },
+      });
       expect((await s.call("tools/list")).result?.tools).toEqual(TOOLS);
       // Fetched once: a second listing comes from memory, not the endpoint.
       expect((await s.call("tools/list")).result?.tools).toEqual(TOOLS);
       expect(stub.seen.filter((r) => r.path.endsWith("/tools"))).toHaveLength(1);
+      // The skills come the same way: listed by name and description, fetched once, and the
+      // prompt's message is exactly the text the server carries.
+      expect((await s.call("prompts/list")).result?.prompts).toEqual(PROMPTS.map(({ name, description }) => ({ name, description })));
+      expect((await s.call("prompts/get", { name: "advisor" })).result?.messages).toEqual([{ role: "user", content: { type: "text", text: PROMPTS[1]?.text } }]);
+      expect((await s.call("prompts/list")).result?.prompts).toHaveLength(2);
+      expect(stub.seen.filter((r) => r.path.endsWith("/prompts"))).toHaveLength(1);
+      expect((await s.call("prompts/get", { name: "steal_everything" })).error?.message).toMatch(/Unknown prompt/);
       const done = (await s.call("tools/call", { name: "delegate_task", arguments: { brief: "Do the thing" } })).result;
       expect(done?.content).toEqual([{ type: "text", text: "Delegated task ab12 to pi." }]);
       expect(done?.isError).toBeUndefined();
@@ -133,6 +163,9 @@ describe("the orchestration MCP server", () => {
     try {
       expect((await bare.call("initialize", {})).result?.capabilities).toEqual({ tools: {} });
       expect((await bare.call("tools/list")).result?.tools).toEqual([]);
+      // Prompts are not advertised without the endpoint, and a prompt nobody serves is unknown.
+      expect((await bare.call("prompts/list")).result).toEqual({ prompts: [] });
+      expect((await bare.call("prompts/get", { name: "council" })).error?.message).toMatch(/Unknown prompt/);
     } finally {
       bare.stop();
     }
@@ -141,6 +174,7 @@ describe("the orchestration MCP server", () => {
     try {
       const listed = await s.call("tools/list");
       expect(listed.error?.message).toContain("could not read the orchestration tool catalogue");
+      expect((await s.call("prompts/list")).error?.message).toContain("could not read the orchestration skills");
       expect(s.lines.join("\n")).not.toContain("c".repeat(32));
     } finally {
       s.stop();
