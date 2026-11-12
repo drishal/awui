@@ -42,6 +42,10 @@ interface Entry {
   at: number;
   done: boolean;
   answer: Answer | null;
+  /** The request ran and its answer was too big to keep: a repeat is refused, never run again. */
+  answerDropped: boolean;
+  /** When the client hung up before the answer came, or null while it is still listening. */
+  closedAt: number | null;
   /** Requests waiting for this one's answer instead of running their own. */
   wake: Array<() => void>;
 }
@@ -94,7 +98,7 @@ export class Idempotency {
       this.repeat(seen, id, route, hash, res, next);
       return;
     }
-    const entry: Entry = { route, hash, at: this.now(), done: false, answer: null, wake: [] };
+    const entry: Entry = { route, hash, at: this.now(), done: false, answer: null, answerDropped: false, closedAt: null, wake: [] };
     this.makeRoom();
     this.entries.set(id, entry);
     this.capture(res, entry, next);
@@ -110,8 +114,12 @@ export class Idempotency {
       replay(res, seen.answer);
       return;
     }
+    if (seen.answerDropped) {
+      answerNotKept(res);
+      return;
+    }
     if (seen.done) {
-      // Its answer was not worth keeping (a 5xx, or one too big): the key is spent, so run it again.
+      // Its answer was not worth keeping (a 5xx): a client may try again, so run it again.
       this.entries.delete(id);
       next();
       return;
@@ -120,6 +128,8 @@ export class Idempotency {
     void this.wait(seen).then(
       (answer) => {
         if (answer) replay(res, answer);
+        // Ran while this one waited, and its answer was too big: the key is spent either way.
+        else if (seen.answerDropped) answerNotKept(res);
         else next();
       },
       () => {
@@ -152,14 +162,14 @@ export class Idempotency {
     res.end = ((chunk?: unknown, ...rest: unknown[]) => {
       if (typeof chunk === "string") body = chunk;
       else if (chunk instanceof Uint8Array) body = Buffer.from(chunk).toString("utf8");
-      const tooBig = Buffer.byteLength(body) > this.maxBodyBytes;
-      this.finish(entry, tooBig ? null : { status: res.statusCode, body, type: String(res.getHeader("content-type") ?? "application/json") });
+      this.finish(entry, { status: res.statusCode, body, type: String(res.getHeader("content-type") ?? "application/json") });
       return (end as (chunk?: unknown, ...rest: unknown[]) => Response)(chunk, ...rest);
     }) as Response["end"];
-    // A client that hangs up before the answer leaves its request without one: settle it here, or
-    // its key would answer 409 (or wait) forever.
+    // A client that hangs up is not a request that did not run: the route keeps working and its
+    // answer is what the key's retry must get. Left running, bounded by the wait above and the
+    // sweep below, so a route that never answers stops blocking its key after a wait window.
     res.on("close", () => {
-      if (!entry.done) this.finish(entry, null);
+      if (!entry.done && entry.closedAt === null) entry.closedAt = this.now();
     });
     next();
   }
@@ -167,18 +177,33 @@ export class Idempotency {
   private finish(entry: Entry, answer: Answer | null): void {
     if (entry.done) return;
     entry.done = true;
-    // A 5xx is a failure rather than an answer: a client may try again and must get a fresh attempt.
-    entry.answer = answer && answer.status < 500 ? answer : null;
+    const keep = answer !== null && answer.status < 500;
+    if (keep && Buffer.byteLength(answer.body) > this.maxBodyBytes) {
+      // The request ran and its answer cannot be kept. Running it again would be the duplicate the
+      // key exists to prevent, so the key stays spent and its retry is refused.
+      entry.answerDropped = true;
+      entry.answer = null;
+    } else {
+      // A 5xx is a failure rather than an answer: a client may try again and must get a fresh attempt.
+      entry.answer = keep ? answer : null;
+    }
     entry.at = this.now();
     const wake = entry.wake;
     entry.wake = [];
     for (const resolve of wake) resolve();
   }
 
-  /** Forget answers past their window (checked when a key arrives: nothing here runs on a timer). */
+  /**
+   * Forget entries past their window (checked when a key arrives: nothing here runs on a timer). A
+   * request whose client hung up is let go after a wait window: whatever it was doing, its key must
+   * not block forever, and the next request carrying it runs instead.
+   */
   private sweep(): void {
     const now = this.now();
-    for (const [id, entry] of this.entries) if (entry.done && now - entry.at > this.ttlMs) this.entries.delete(id);
+    for (const [id, entry] of this.entries) {
+      const gone = entry.done ? now - entry.at > this.ttlMs : entry.closedAt !== null && now - entry.closedAt > this.waitMs;
+      if (gone) this.entries.delete(id);
+    }
   }
 
   /** Room for one more: the oldest stored answer leaves first, and a running request is never dropped. */
@@ -209,6 +234,14 @@ function skipped(req: Request): boolean {
 /** A body's identity: the parsed JSON as written, so a replay must repeat it exactly. */
 function digest(body: unknown): string {
   return createHash("sha256").update(body === undefined ? "" : JSON.stringify(body)).digest("base64url");
+}
+
+/**
+ * A repeat of a request that ran and whose answer was too big to keep. Running it again would be the
+ * duplicate the key exists to prevent, so it is refused: a new attempt needs a new key.
+ */
+function answerNotKept(res: Response): void {
+  res.status(409).json({ error: "That request already ran; its answer was too big to keep, so send it again with a new Idempotency-Key", code: "idempotency_answer_not_kept" });
 }
 
 function replay(res: Response, answer: Answer): void {

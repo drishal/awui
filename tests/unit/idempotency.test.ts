@@ -14,8 +14,9 @@ const KEY = "key-00000001";
 /** A small app with one mutating route that counts its runs, mounted the way app.ts mounts it. */
 function tinyApp(options: IdempotencyOptions = {}) {
   const idempotency = new Idempotency(options);
-  const runs = { things: 0, other: 0, slow: 0, hang: 0, failing: 0, upload: 0 };
+  const runs = { things: 0, other: 0, slow: 0, hang: 0, later: 0, failing: 0, upload: 0 };
   let release: (() => void) | null = null;
+  let releaseLater: (() => void) | null = null;
   const app = express();
   app.use("/api", express.json());
   app.use("/api", idempotency.handle);
@@ -30,6 +31,14 @@ function tinyApp(options: IdempotencyOptions = {}) {
   app.post("/api/hang", () => {
     runs.hang += 1;
     // Never answers: the test hangs up on it instead.
+  });
+  app.post("/api/later", async (_req, res) => {
+    runs.later += 1;
+    // Answers after the client hung up: the work was done either way.
+    await new Promise<void>((resolve) => {
+      releaseLater = resolve;
+    });
+    res.json({ run: runs.later });
   });
   app.post("/api/slow", async (_req, res) => {
     runs.slow += 1;
@@ -62,6 +71,8 @@ function tinyApp(options: IdempotencyOptions = {}) {
     }),
     /** Let the request that is parked in /api/slow answer. */
     release: () => release?.(),
+    /** Let the request that is parked in /api/later answer. */
+    releaseLater: () => releaseLater?.(),
   };
 }
 
@@ -119,15 +130,35 @@ describe("a repeat of a keyed request", () => {
     app.release();
   });
 
-  it("forgets a request the client hung up on, rather than blocking its key", async () => {
-    app = tinyApp({ waitMs: 100 });
-    const abandoned = request(app.server).post("/api/hang").set(IDEMPOTENCY_KEY_HEADER, KEY).send({});
-    // A Test runs when it is awaited: start it and leave the promise to fail when we hang up.
+  // The case the key exists for: the server did the work and the answer never reached the client. The
+  // key stays running, so the retry gets the answer the route produced instead of a second run.
+  it("keeps a request whose client hung up running, and answers its retry with what the route produced", async () => {
+    app = tinyApp({ waitMs: 5000 });
+    const abandoned = request(app.server).post("/api/later").set(IDEMPOTENCY_KEY_HEADER, KEY).send({});
     void abandoned.then((res) => res, () => undefined);
     await new Promise((resolve) => setTimeout(resolve, 30));
     abandoned.abort();
     await new Promise((resolve) => setTimeout(resolve, 30));
-    // The key is free again: this one reaches the route instead of waiting for an answer that never comes.
+    app.releaseLater();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const again = await request(app.server).post("/api/later").set(IDEMPOTENCY_KEY_HEADER, KEY).send({});
+    expect(again.status).toBe(200);
+    expect(again.body).toEqual({ run: 1 });
+    expect(again.headers["idempotent-replay"]).toBe("true");
+    expect(app.runs.later).toBe(1);
+  });
+
+  // A route that never answers must not hold its key: after a wait window the entry is let go, and a
+  // request carrying the key runs instead of waiting forever (or being refused forever).
+  it("lets a hung-up request that never answers go once its wait has passed", async () => {
+    let clock = 1_000_000;
+    app = tinyApp({ waitMs: 100, now: () => clock });
+    const abandoned = request(app.server).post("/api/hang").set(IDEMPOTENCY_KEY_HEADER, KEY).send({});
+    void abandoned.then((res) => res, () => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    abandoned.abort();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    clock += 1000;
     const next = request(app.server).post("/api/hang").set(IDEMPOTENCY_KEY_HEADER, KEY).send({});
     void next.then((res) => res, () => undefined);
     await new Promise((resolve) => setTimeout(resolve, 60));
@@ -184,12 +215,21 @@ describe("what the store remembers", () => {
     expect(recent.headers["idempotent-replay"]).toBe("true");
   });
 
-  it("runs an answer it cannot keep (too big) again, rather than truncating it", async () => {
+  // Ran once, answer too big to keep: a retry is refused rather than run again, since running it
+  // again is the duplicate the key exists to prevent. A new key is how a client retries for real.
+  it("refuses a retry when the answer it cannot keep was already produced", async () => {
     app = tinyApp({ maxBodyBytes: 16 });
-    const first = await request(app.server).post("/api/things").set(IDEMPOTENCY_KEY_HEADER, KEY).send({ a: "a long body that will not fit in sixteen bytes" });
+    const body = { a: "a long body that will not fit in sixteen bytes" };
+    const first = await request(app.server).post("/api/things").set(IDEMPOTENCY_KEY_HEADER, KEY).send(body);
     expect(first.status).toBe(201);
-    const again = await request(app.server).post("/api/things").set(IDEMPOTENCY_KEY_HEADER, KEY).send({ a: "a long body that will not fit in sixteen bytes" });
+    const again = await request(app.server).post("/api/things").set(IDEMPOTENCY_KEY_HEADER, KEY).send(body);
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("idempotency_answer_not_kept");
     expect(again.headers["idempotent-replay"]).toBeUndefined();
+    expect(app.runs.things).toBe(1);
+    // Nothing was stored against the spent key: a new key is a new request, which runs.
+    const fresh = await request(app.server).post("/api/things").set(IDEMPOTENCY_KEY_HEADER, "key-00000002").send(body);
+    expect(fresh.status).toBe(201);
     expect(app.runs.things).toBe(2);
   });
 
