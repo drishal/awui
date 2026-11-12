@@ -326,9 +326,12 @@ export function createApp(deps: AppDeps) {
     });
     if ((kind === "ask" || kind === "error") && chat.sessionId) marks.wake(chat.sessionId);
   };
+  // A run starting brings a settled session back to the list (that is what settled meant), but
+  // not a snoozed one: a snooze that keeps working stays quiet until it fails or asks for
+  // something, when the note above wakes it.
   manager.onRunStart = (chat) => {
     if (chat.owner || chat.side) return;
-    if (chat.sessionId) marks.wake(chat.sessionId);
+    if (chat.sessionId) marks.unsettle(chat.sessionId);
   };
   const log = deps.log ?? ((m: string) => console.error(m));
   // Delegated tasks: one record store in the state folder, shared by every chat in this process.

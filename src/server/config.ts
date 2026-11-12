@@ -36,6 +36,11 @@ export interface ServerConfig {
   orchestration: OrchestrationLimits;
   /** config.yml's `claude:` block: what a delegated Claude child is spawned with beyond the defaults. */
   claude: ClaudeSettings;
+  /**
+   * config.yml's `settle_after_days`: an hourly sweep settles sessions nobody touched for
+   * this many days. 0 turns the sweep off.
+   */
+  settleAfterDays: number;
   home: string;
 }
 
@@ -233,6 +238,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, file?: UserConf
     launch: launchSettings(file, env, home),
     orchestration: orchestrationLimits(file),
     claude: claudeSettings(file),
+    settleAfterDays: file?.settle_after_days ?? 0,
     home,
   };
 }

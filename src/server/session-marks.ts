@@ -5,6 +5,9 @@
 // how a session began (a routine's slot), which is the one origin only this
 // server can know: an agent-delegated child's comes from the orchestration
 // records instead.
+//
+// The one decision kept here besides the marks: which sessions a sweep settles
+// because nobody has touched them for days (config.yml's settle_after_days).
 import path from "node:path";
 import type { SessionMarkState, SessionOrigin } from "../shared/protocol.js";
 import { isObj, readJson, writeJson } from "./state-file.js";
@@ -38,6 +41,30 @@ function clean(raw: Record<string, unknown>): SessionMark {
 }
 
 const empty = (m: SessionMark) => !m.pinned && !m.archived && !m.settled && !m.snoozedUntil && !m.unread && !m.origin;
+
+/** A session as the sweep sees it: its id and the harness's own last-activity time. */
+export interface SweepCandidate {
+  id: string;
+  updatedAt: string | null;
+}
+
+/**
+ * The sessions to settle now: last touched more than `idleDays` ago, and not already
+ * somewhere on purpose (pinned, archived, settled, snoozed). A session with no time the
+ * harness can read is left alone — age unknown is not old.
+ */
+export function staleSessions(sessions: readonly SweepCandidate[], marks: SessionMarks, idleDays: number, now = Date.now()): string[] {
+  const cutoff = now - idleDays * 86_400_000;
+  const out: string[] = [];
+  for (const session of sessions) {
+    if (!session.updatedAt) continue;
+    const at = Date.parse(session.updatedAt);
+    if (!Number.isFinite(at) || at > cutoff) continue;
+    if (marks.get(session.id)) continue;
+    out.push(session.id);
+  }
+  return out;
+}
 
 export class SessionMarks {
   private readonly marks = new Map<string, SessionMark>();
@@ -126,13 +153,30 @@ export class SessionMarks {
     return out;
   }
 
-  /** Activity in the session (a run starts, it fails or asks): it is no longer settled or snoozed. */
+  /**
+   * The session failed or asked for something: it is awake whether it was settled or
+   * snoozed, since both mean "not now" rather than "not even if I am needed".
+   */
   wake(sessionId: string): void {
+    this.drop(sessionId, ["settled", "snoozedUntil"]);
+  }
+
+  /**
+   * A run started in the session: a settled one is back in the list (that is what settled
+   * meant), but a snoozed one stays quiet, so a snooze that keeps working does not return
+   * on its own — only a failure or a question wakes it (wake, above).
+   */
+  unsettle(sessionId: string): void {
+    this.drop(sessionId, ["settled"]);
+  }
+
+  private drop(sessionId: string, keys: ReadonlyArray<keyof SessionMark>): void {
     const mark = this.marks.get(sessionId);
-    if (!mark || (!mark.settled && !mark.snoozedUntil)) return;
-    const { settled: _s, snoozedUntil: _z, ...rest } = mark;
+    if (!mark || !keys.some((key) => key in mark)) return;
+    const next: SessionMark = { ...mark };
+    for (const key of keys) delete next[key];
     // Fire and forget: a failed write must not become an unhandled rejection (Node exits on one).
-    this.store(sessionId, rest).catch((error: unknown) => console.error(`awui: could not save session marks: ${error instanceof Error ? error.message : String(error)}`));
+    this.store(sessionId, next).catch((error: unknown) => console.error(`awui: could not save session marks: ${error instanceof Error ? error.message : String(error)}`));
   }
 
   private store(sessionId: string, mark: SessionMark): Promise<SessionMark> {

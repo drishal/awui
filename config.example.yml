@@ -53,6 +53,12 @@ autocollapse_sidebar: true
 # version. false hides it (phones hide it anyway).
 show_status_bar: true
 
+# Settle sessions nobody has touched for this many days (an hourly sweep), so
+# a long history stops filling the sidebar. Unset or 0 turns the sweep off.
+# A pinned, archived, snoozed, or already settled session is never touched, and
+# neither is one with a live chat here.
+# settle_after_days: 30
+
 # The desktop app: closing its window hides it to the tray, so finished runs
 # and approvals still notify you; quit from the tray or with Ctrl+Q. false
 # makes closing the window quit the app. Read each time the window closes.

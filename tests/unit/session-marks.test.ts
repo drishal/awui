@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SessionMarks } from "../../src/server/session-marks.js";
+import { SessionMarks, staleSessions } from "../../src/server/session-marks.js";
 import { asHarnessId, type ProjectSession, type SessionsOverview } from "../../src/shared/protocol.js";
 import { focusProject, groupByProject, placeOf, sidebarSections, snoozeInputAt, snoozeInputDefault, snoozeOptions } from "../../src/web/session-groups.js";
 
@@ -31,6 +31,41 @@ describe("session marks", () => {
     await m.setMany(["c", "d"], { unread: true });
     await m.setMany(["c", "d"], { unread: false });
     expect([m.get("c"), m.get("d")]).toEqual([undefined, undefined]);
+  });
+
+  it("a run starting unsettles a session but leaves a snooze alone", async () => {
+    const m = SessionMarks.inMemory();
+    await m.set("settled", { settled: true, unread: true });
+    await m.set("snoozed", { snoozedUntil: 9e12 });
+    m.unsettle("settled");
+    m.unsettle("snoozed");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(m.get("settled")).toEqual({ unread: true });
+    expect(m.get("snoozed")).toEqual({ snoozedUntil: 9e12 });
+    // Failing or asking wakes both.
+    m.wake("snoozed");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(m.get("snoozed")).toBeUndefined();
+  });
+
+  it("finds what an age sweep settles: old, and not already somewhere on purpose", async () => {
+    const m = SessionMarks.inMemory();
+    const now = Date.parse("2026-11-12T12:00:00Z");
+    const day = 86_400_000;
+    const ago = (days: number) => new Date(now - days * day).toISOString();
+    await m.set("pinned", { pinned: true });
+    await m.set("snoozed", { snoozedUntil: now + day });
+    const sessions = [
+      { id: "old", updatedAt: ago(10) },
+      { id: "fresh", updatedAt: ago(1) },
+      { id: "pinned", updatedAt: ago(30) },
+      { id: "snoozed", updatedAt: ago(30) },
+      { id: "unknown", updatedAt: null },
+      { id: "junk", updatedAt: "not a date" },
+    ];
+    expect(staleSessions(sessions, m, 7, now)).toEqual(["old"]);
+    // A week's grace: nothing is old enough yet.
+    expect(staleSessions(sessions, m, 60, now)).toEqual([]);
   });
 
   it("applies one change to a selection, and clears the selection in one go", async () => {

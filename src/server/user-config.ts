@@ -139,6 +139,12 @@ const schema = z
     /** Work with herdr (herdr.ts, atui/herdr.ts); on unless false. */
     herdr: z.boolean().optional(),
     /**
+     * Sessions nobody has touched for this many days are settled by an hourly sweep (so a
+     * year of routine nights does not fill the sidebar). Unset or 0 turns the sweep off; a
+     * pinned, archived, snoozed, or already settled session is never touched.
+     */
+    settle_after_days: z.number().int().min(1).max(3650).optional(),
+    /**
      * The orchestration surface's bounds (limits.ts holds the defaults and what each one means).
      * Every number is re-read while the server runs, so none of them needs a restart.
      */

@@ -27,7 +27,7 @@ import { runDoctor } from "./doctor.js";
 import { runMcpBridge } from "./mcp-bridge.js";
 import { applyOneTimeSetup, gatherMcpSetup, renderSetup, setupJson, type ApplyResult } from "./mcp-setup.js";
 import { runHeadlessCli } from "./cli-run.js";
-import { SessionMarks } from "./session-marks.js";
+import { SessionMarks, staleSessions, type SweepCandidate } from "./session-marks.js";
 import { AgentStatuses } from "./agent-status.js";
 import { ProjectConfigTrust } from "./project-config.js";
 import { TerminalManager } from "./terminal.js";
@@ -52,6 +52,8 @@ import { cleanupPastes } from "./paste-store.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 /** Bad settings (EX_CONFIG): retrying cannot help, so supervisors should not restart on it. */
 const EXIT_CONFIG = 78;
+/** One sweep settles at most this many sessions: a first run on a huge history writes one batch, not thousands. */
+const MAX_SETTLE_PER_SWEEP = 500;
 
 async function findRoot(): Promise<string> {
   let dir = here;
@@ -238,6 +240,33 @@ async function main(): Promise<void> {
     );
   }, 30_000);
   routineTimer.unref();
+  // Settling by age: config.yml's settle_after_days settles sessions nobody has touched for
+  // that long, so a year of routine nights does not pile up in the sidebar. The harness has the
+  // veto: a session with a live chat here is not stale, whatever its file says, and neither is
+  // one already pinned, archived, settled, or snoozed.
+  let settleTimer: NodeJS.Timeout | null = null;
+  if (config.settleAfterDays > 0) {
+    const settleDays = config.settleAfterDays;
+    const sweep = async (): Promise<void> => {
+      const candidates: SweepCandidate[] = [];
+      for (const adapter of registry.list().filter((a) => registry.isAvailable(a.id))) {
+        try {
+          for (const session of await adapter.listRecentSessions(RECENT_SESSIONS_PER_HARNESS)) {
+            if (manager.liveChatFor(adapter.id, session.nativeId)) continue;
+            candidates.push({ id: `${adapter.id}:${session.nativeId}`, updatedAt: session.updatedAt ? session.updatedAt.toISOString() : null });
+          }
+        } catch {
+          // A harness that cannot list right now keeps its sessions: they are not old, just unread.
+        }
+      }
+      const stale = staleSessions(candidates, marks, settleDays).slice(0, MAX_SETTLE_PER_SWEEP);
+      if (stale.length > 0) await marks.setMany(stale, { settled: true });
+    };
+    const first = setTimeout(() => void sweep().catch((error: unknown) => console.error(`awui: could not settle old sessions: ${error instanceof Error ? error.message : String(error)}`)), 60_000);
+    first.unref();
+    settleTimer = setInterval(() => void sweep().catch((error: unknown) => console.error(`awui: could not settle old sessions: ${error instanceof Error ? error.message : String(error)}`)), 60 * 60_000);
+    settleTimer.unref();
+  }
   await cleanupPastes().catch(() => undefined);
   const pasteCleanupTimer = setInterval(() => void cleanupPastes().catch(() => undefined), 24 * 60 * 60_000);
   pasteCleanupTimer.unref();
@@ -372,6 +401,7 @@ async function main(): Promise<void> {
     }, 5_000);
     clearInterval(routineTimer);
     clearInterval(pasteCleanupTimer);
+    if (settleTimer) clearInterval(settleTimer);
     server.close();
     terminals.shutdown();
     for (const socket of sockets) socket.destroy();
