@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolItem } from "../../src/shared/protocol.js";
-import { callTime, errorLine, toolSentence, toolWords } from "../../src/web/tool-sentence.js";
+import { callTime, errorLine, orchestrationTool, toolSentence, toolWords } from "../../src/web/tool-sentence.js";
 
 const WS = "/home/me/proj";
 function tool(over: Partial<ToolItem> & Pick<ToolItem, "name" | "category">): ToolItem {
@@ -219,5 +219,39 @@ describe("calls about background jobs", () => {
   });
   it("says a command was left running in the background, as which job", () => {
     expect(toolSentence(call("bash", { category: "command", args: JSON.stringify({ command: "npm run test:e2e" }), jobs: [job] }), "/w").facts).toEqual(["in background · bg_1"]);
+  });
+});
+
+describe("the orchestration surface", () => {
+  const call = (name: string, a: object = {}, extra: Partial<ToolItem> = {}) => tool({ name, category: "other", args: args(a), ...extra });
+  it("names the tool whichever bridge carried it, and nothing else", () => {
+    expect(orchestrationTool("delegate_task")).toBe("delegate_task");
+    expect(orchestrationTool("mcp__awui-orchestrate__thread_wait")).toBe("thread_wait");
+    // The render server's tool and an ordinary MCP tool are not the orchestration surface.
+    expect(orchestrationTool("mcp__awui__render_html")).toBeUndefined();
+    expect(orchestrationTool("mcp__github__list_issues")).toBeUndefined();
+    expect(orchestrationTool("read")).toBeUndefined();
+  });
+  it("words a delegation as who it went to, with the task's title", () => {
+    const delegation = call("delegate_task", { brief: "Summarise the readme\nand its links", harness: "pi", title: "Readme summary" });
+    expect(toolSentence(delegation, WS).text).toBe("Delegated to pi: Readme summary");
+    expect(toolSentence({ ...delegation, status: "running" }, WS).text).toBe("Delegating to pi: Readme summary");
+    expect(toolSentence({ ...delegation, status: "error" }, WS).text).toBe("Couldn't delegate to pi: Readme summary");
+    // No harness named: a profile, else any agent; no title: the brief's first line.
+    expect(toolSentence(call("delegate_task", { brief: "Check the lockfile" }), WS).text).toBe("Delegated to another agent: Check the lockfile");
+    expect(toolSentence(call("delegate_task", { brief: "x", profile: "reviewer" }), WS).target).toBe("reviewer");
+    // The MCP spelling reads the same as the extension's.
+    expect(toolSentence(call("mcp__awui-orchestrate__delegate_task", { brief: "x", harness: "omp" }), WS).text).toBe("Delegated to omp: x");
+  });
+  it("names the task each follow-up call touched", () => {
+    const mcp = (name: string, a: object) => call(`mcp__awui-orchestrate__${name}`, a);
+    expect(toolSentence(call("task_status", { taskId: "ab12" }), WS).text).toBe("Checked task ab12");
+    expect(toolSentence(call("task_status"), WS).text).toBe("Checked its tasks");
+    expect(toolSentence(call("task_cancel", { taskId: "ab12" }), WS).text).toBe("Stopped task ab12");
+    expect(toolSentence(call("thread_send", { taskId: "ab12", text: "go on" }), WS).text).toBe("Messaged task ab12");
+    expect(toolSentence(mcp("thread_read", { taskId: "ab12" }), WS).text).toBe("Read task ab12");
+    expect(toolSentence(mcp("thread_wait", { taskIds: ["ab12", "cd34"] }), WS).text).toBe("Waited on 2 tasks");
+    expect(toolSentence({ ...mcp("thread_wait", { taskIds: ["ab12"] }), status: "running" }, WS).text).toBe("Waiting on task ab12");
+    expect(toolSentence(call("list_profiles"), WS).text).toBe("Listed the agents");
   });
 });

@@ -3,7 +3,7 @@
 // the rest. Also the monogram and hue an MCP server's chip wears. Pure.
 import type { ChatItem, ToolCategory } from "../shared/protocol.js";
 import { toolFacts } from "./tool-facts.js";
-import { isPlanCall } from "./tool-sentence.js";
+import { isPlanCall, orchestrationTool } from "./tool-sentence.js";
 
 export interface ToolKind {
   /** Distinct per kind: the category, or `mcp:<server>`. */
@@ -19,6 +19,10 @@ export interface ToolKind {
 
 /** The kind of one call: its MCP server, a test run (a command whose output tool-facts reads as one), else its category. */
 export function toolKind(item: Extract<ChatItem, { kind: "tool" }>): ToolKind {
+  // A delegation through awui's own surface is an agent call, whichever bridge carried it (the
+  // extension's plain names, or the MCP server's `mcp__awui-orchestrate__…`): it wears the agents
+  // mark rather than its server's monogram.
+  if (orchestrationTool(item.name)) return { key: "agent", category: "agent" };
   const server = /^mcp__(.+?)__/.exec(item.name)?.[1];
   if (server) return { key: `mcp:${server}`, category: item.category, server };
   // Agents win over the call's own kind: omp's eval spawns them from inside code.

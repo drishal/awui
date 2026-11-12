@@ -68,3 +68,14 @@ describe("usedLabel", () => {
     expect(usedLabel(6)).toBe("Used 6 tools");
   });
 });
+
+describe("the orchestration surface", () => {
+  it("wears the agents mark, whichever bridge carried the call, and is one kind", () => {
+    expect(toolKinds([tool("delegate_task", "other")])[0]).toEqual({ key: "agent", category: "agent" });
+    // Not the MCP server's monogram: the same work under a different spelling is the same kind.
+    expect(toolKinds([tool("delegate_task", "other"), tool("mcp__awui-orchestrate__thread_wait", "other")]).map((k) => k.key)).toEqual(["agent"]);
+    // Another server's tool is still that server's, and a plain call is still its category.
+    expect(toolKinds([tool("mcp__github__list_issues", "other")])[0]?.key).toBe("mcp:github");
+    expect(toolKinds([tool("task_status_report", "other")])[0]?.key).toBe("other");
+  });
+});

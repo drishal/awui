@@ -51,6 +51,18 @@ function mcpParts(name: string): { server: string; tool: string } | undefined {
   return m ? { server: m[1] as string, tool: m[2] as string } : undefined;
 }
 
+/** The awui orchestration surface's tools, as the extension registers them (src/server/orchestration/tools.ts). */
+export const ORCHESTRATION_TOOLS = ["delegate_task", "task_status", "task_cancel", "thread_send", "thread_read", "thread_wait", "list_profiles"] as const;
+
+/** The MCP server the same tools reach Claude Code, Codex, and DSH through. */
+const ORCH_MCP_PREFIX = "mcp__awui-orchestrate__";
+
+/** The orchestration tool a call names, plain or as `mcp__awui-orchestrate__<tool>`; undefined for anything else. */
+export function orchestrationTool(name: string): string | undefined {
+  const bare = name.startsWith(ORCH_MCP_PREFIX) ? name.slice(ORCH_MCP_PREFIX.length) : name;
+  return (ORCHESTRATION_TOOLS as readonly string[]).includes(bare) ? bare : undefined;
+}
+
 /** Output lines, not counting the newline that ends it. */
 function lineCount(output: string): number {
   const trimmed = output.replace(/\n+$/, "");
@@ -107,6 +119,15 @@ const VERBS: Record<string, Record<Tense, string>> = {
   todo_list: { running: "Listing", done: "Listed", error: "Couldn't list" },
   todo_clear: { running: "Clearing", done: "Cleared", error: "Couldn't clear" },
   render: { running: "Rendering", done: "Rendered", error: "Couldn't render" },
+  // The orchestration surface: a delegation to another agent, then what follows it. Each names
+  // the task it touched, so a run of them reads as one thread of work.
+  delegate: { running: "Delegating to", done: "Delegated to", error: "Couldn't delegate to" },
+  task_status: { running: "Checking", done: "Checked", error: "Couldn't check" },
+  task_cancel: { running: "Stopping", done: "Stopped", error: "Couldn't stop" },
+  thread_send: { running: "Messaging", done: "Messaged", error: "Couldn't message" },
+  thread_read: { running: "Reading", done: "Read", error: "Couldn't read" },
+  thread_wait: { running: "Waiting on", done: "Waited on", error: "Couldn't wait on" },
+  list_profiles: { running: "Listing", done: "Listed", error: "Couldn't list" },
   other: { running: "Using", done: "Used", error: "Couldn't use" },
 };
 
@@ -182,6 +203,35 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
     if (str(args.action) === "spawn" && one) return make("jobstart", one.title ?? one.label, false, "in the background", [one.id]);
     return make("joblist", jobs.length === 1 ? named : "background jobs", Boolean(one), why, counts.length > 0 ? counts : jobs.length > 1 ? [plural(jobs.length, "job")] : []);
   }
+  // The orchestration surface: a delegation names the agent it went to (and the task's own
+  // title), every call after it names the task it touched. Read before the MCP branch, since the
+  // MCP server serves these same tools and they are not one server's own family.
+  const orchestration = orchestrationTool(item.name);
+  if (orchestration) {
+    const id = str(args.taskId);
+    const ids = Array.isArray(args.taskIds) ? args.taskIds.filter((v): v is string => typeof v === "string") : [];
+    switch (orchestration) {
+      case "delegate_task": {
+        const to = str(args.harness) ?? str(args.profile) ?? "another agent";
+        const title = str(args.title) ?? str(args.brief)?.split("\n")[0] ?? "";
+        return make("delegate", to, false, title ? `: ${commandLine(title, 50)}` : undefined, []);
+      }
+      case "thread_wait": {
+        const waited = ids.length > 1 ? plural(ids.length, "task") : ids[0] !== undefined ? `task ${ids[0]}` : "a task";
+        return make("thread_wait", waited, false, undefined, []);
+      }
+      case "task_status":
+        return make("task_status", id ? `task ${id}` : "its tasks", false, undefined, []);
+      case "thread_read":
+        return make("thread_read", id ? `task ${id}` : "a task", false, undefined, []);
+      case "thread_send":
+        return make("thread_send", id ? `task ${id}` : "a task", false, undefined, []);
+      case "task_cancel":
+        return make("task_cancel", id ? `task ${id}` : "a task", false, undefined, []);
+      default:
+        return make("list_profiles", "the agents", false, undefined, []);
+    }
+  }
 
   const mcp = mcpParts(item.name);
   if (mcp) return make("mcp", mcp.server, false, `: ${toolWords(mcp.tool)}`, []);
@@ -206,6 +256,7 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
     const todos = todoCount(args);
     return make("plan", "the plan", false, todos ? `(${plural(todos.total, "step")})` : undefined, todos && todos.total > 0 ? [`${todos.done} of ${todos.total} done`] : []);
   }
+
 
   switch (item.category) {
     case "read":
