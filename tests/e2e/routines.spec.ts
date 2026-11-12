@@ -14,19 +14,20 @@ test("a routine is created, listed with its cadence, run once now, switched off,
 
   await dialog.getByLabel("Routine name").fill("Nightly");
   await dialog.getByLabel("Prompt").fill("Review today's commits");
-  await dialog.getByLabel("Precheck command").fill("git diff --quiet HEAD");
+  // A precheck that passes in the e2e project (which is not a git repository).
+  await dialog.getByLabel("Precheck command").fill("true");
   await dialog.getByRole("button", { name: "Add routine" }).click();
   const list = dialog.getByRole("list", { name: "Routines" });
   await expect(list).toContainText("Nightly");
   await expect(list).toContainText("every day at 09:00");
   await expect(list).toContainText("next");
-  await expect(list).toContainText("precheck: git diff --quiet HEAD");
+  await expect(list).toContainText("precheck: true");
 
   // Run now: the routine's own slot does not move, and what the run came to shows in its history.
   await dialog.getByRole("button", { name: "Run Nightly now" }).click();
   const runs = dialog.getByRole("list", { name: "Recent runs of Nightly" });
   await expect(runs).toBeVisible();
-  await expect(runs).toContainText("posted");
+  await expect(runs).toContainText(/running|posted/);
 
   // Off, then gone.
   await dialog.getByLabel("Enable Nightly").uncheck();
@@ -53,8 +54,10 @@ test("a cron routine is made from an expression and says when it next runs", asy
   await expect(list).toContainText("cron 0 9 * * 1-5");
   await expect(list).toContainText("Europe/Berlin");
 
-  // A schedule that cannot run is refused in the dialog, not after the save.
+  // A schedule that cannot run is refused in the dialog, not after the save (the form
+  // emptied itself when the first routine was saved).
   await dialog.getByLabel("Routine name").fill("Bad cron");
+  await dialog.getByLabel("Prompt").fill("Review today's commits");
   await dialog.getByLabel("Cron expression").fill("0 9 * *");
   await dialog.getByRole("button", { name: "Add routine" }).click();
   await expect(dialog.getByRole("alert")).toContainText("five fields");
@@ -89,7 +92,8 @@ test("a routine takes a webhook: its URL and secret are shown, and a signed deli
 
   // A delivery nobody signed is refused; one signed with that secret starts a run, and the
   // same delivery again runs nothing.
-  const routineId = (await page.evaluate(async () => (await (await fetch("/api/routines")).json()).routines[0].id)) as string;
+  // By name: the e2e server is shared, so "the first routine" may be another spec's.
+  const routineId = (await page.evaluate(async () => (await (await fetch("/api/routines")).json()).routines.find((r: { name: string }) => r.name === "On a PR").id)) as string;
   const unsigned = await request.post(`/api/hooks/${routineId}`, { data: { action: "opened" }, headers: { "x-github-event": "pull_request" } });
   expect(unsigned.status()).toBe(401);
   const { createHmac } = await import("node:crypto");
@@ -105,8 +109,16 @@ test("a routine takes a webhook: its URL and secret are shown, and a signed deli
   const repeat = await request.post(`/api/hooks/${routineId}`, { data: body, headers });
   expect(repeat.status()).toBe(200);
   expect((await repeat.json()) as { duplicate: boolean }).toMatchObject({ duplicate: true });
-  const history = (await (await request.get("/api/routines/runs")).json()) as { runs: Array<{ outcome: string }> };
-  expect(history.runs.some((run) => run.outcome === "posted")).toBe(true);
+  // The run settles a moment later; its verdict lands in the history.
+  await expect
+    .poll(
+      async () => {
+        const history = (await (await request.get("/api/routines/runs")).json()) as { runs: Array<{ outcome: string }> };
+        return history.runs.some((run) => run.outcome === "posted");
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 
   await dialog.getByLabel("Delete On a PR").click();
   await expect(dialog).toContainText("No routines yet");

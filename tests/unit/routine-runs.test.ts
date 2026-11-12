@@ -72,12 +72,15 @@ describe("a routine's run history", () => {
     expect(runs.ownsChat("chat-2")).toBe(false);
   });
 
-  it("forgets a deleted routine's runs", async () => {
+  it("forgets a deleted routine's runs, but keeps hiding the sessions they opened", async () => {
     const runs = RoutineRuns.inMemory();
-    await runs.start(routine("r1"));
+    const run = await runs.start(routine("r1"));
+    await runs.finish(run.id, { outcome: "posted", detail: "done", sessionId: "fake:s1" });
     await runs.start(routine("r2"));
     await runs.forget("r1");
     expect(runs.list().map((run) => run.routineId)).toEqual(["r2"]);
+    // Deleting the routine must not pour its past nights back into the sidebar.
+    expect(runs.ownsSession("fake:s1")).toBe(true);
   });
 
   it("reads a file back, dropping what no longer validates", async () => {
@@ -95,6 +98,8 @@ describe("a routine's run history", () => {
       const runs = await RoutineRuns.open(dir);
       expect(runs.list().map((run) => run.id)).toEqual(["c", "a"]);
       expect(runs.list()[1]).toMatchObject({ chatId: "c1", sessionId: "fake:s1", detail: "ok" });
+      // A run's session is remembered as the routine's, and so is one listed beside the runs.
+      expect(runs.ownsSession("fake:s1")).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

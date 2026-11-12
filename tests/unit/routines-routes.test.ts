@@ -80,9 +80,11 @@ describe("the routines routes", () => {
     expect(sessions.sessions.map((s) => s.liveChatId)).not.toContain(history.runs[0]?.chatId);
     expect(sessions.sessions.map((s) => s.id)).not.toContain(history.runs[0]?.sessionId);
 
-    // Deleting the routine forgets its runs (and stops hiding their sessions).
+    // Deleting the routine forgets its runs, and keeps its sessions out of the list.
     await agent.delete(`/api/routines/${created.id}`).expect(200);
     expect(((await agent.get("/api/routines/runs").expect(200)).body as { runs: RoutineRun[] }).runs).toEqual([]);
+    const after = (await agent.get("/api/sessions").expect(200)).body as { sessions: Array<{ id: string; liveChatId?: string }> };
+    expect(after.sessions.map((s) => s.id)).not.toContain(history.runs[0]?.sessionId);
   });
 
   it("keeps a precheck, and refuses one longer than a command line", async () => {

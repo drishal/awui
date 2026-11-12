@@ -3,7 +3,9 @@
 // the list can say it after the chat it opened is gone. One entry is written when the
 // run starts and rewritten when it ends, so a server killed mid-run leaves a record
 // that says "launched"; a run's session is also how the session list knows a session
-// belongs to a routine rather than to the user (it is not shown among the user's).
+// belongs to a routine rather than to the user (it is not shown among the user's). The
+// sessions are kept after their run is pruned or its routine deleted, so a deleted
+// routine does not pour a year of nights back into the sidebar.
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Routine, RoutineOutcome, RoutineRun } from "../shared/protocol.js";
@@ -14,6 +16,8 @@ import { isObj, readJson, writeJson } from "./state-file.js";
 export const MAX_RUNS_PER_ROUTINE = 20;
 /** Everything together, so the file stays small however many routines there are. */
 export const MAX_RUNS = 200;
+/** Sessions remembered as a routine's own, after their run record went: the hidden-session list. */
+export const MAX_HIDDEN = 500;
 
 const OUTCOMES: readonly RoutineOutcome[] = ["launched", "skipped", "failed", "posted", "quiet"];
 const outcomeOf = (raw: unknown): RoutineOutcome | null => (OUTCOMES.includes(raw as RoutineOutcome) ? (raw as RoutineOutcome) : null);
@@ -44,6 +48,8 @@ function clean(raw: unknown): RoutineRun | null {
 export class RoutineRuns {
   /** Oldest first, so dropping from the front is dropping the oldest. */
   private runs: RoutineRun[] = [];
+  /** Sessions a routine opened, oldest first: hidden even after their run record is gone. */
+  private hidden = new Map<string, number>();
 
   private constructor(private readonly file: string | null) {}
 
@@ -54,8 +60,14 @@ export class RoutineRuns {
   static async open(stateDir: string): Promise<RoutineRuns> {
     const store = new RoutineRuns(path.join(stateDir, "routine-runs.json"));
     const raw = await readJson(store.file);
-    if (Array.isArray(raw)) store.runs = raw.map(clean).filter((r): r is RoutineRun => r !== null);
+    // A bare array is what this file held before the hidden sessions were kept beside the runs.
+    const runs = Array.isArray(raw) ? raw : isObj(raw) ? raw.runs : null;
+    if (Array.isArray(runs)) store.runs = runs.map(clean).filter((r): r is RoutineRun => r !== null);
     store.runs = store.runs.slice(-MAX_RUNS);
+    if (isObj(raw) && Array.isArray(raw.hidden)) {
+      for (const value of raw.hidden) if (typeof value === "string" && value) store.remember(value, 0);
+    }
+    for (const run of store.runs) if (run.sessionId) store.remember(run.sessionId, run.startedAt);
     return store;
   }
 
@@ -85,6 +97,7 @@ export class RoutineRuns {
     run.detail = runDetail(result.detail);
     if (result.chatId !== undefined) run.chatId = result.chatId;
     if (result.sessionId !== undefined) run.sessionId = sessionOf(result.sessionId);
+    if (run.sessionId) this.remember(run.sessionId, run.startedAt);
     await this.persist();
     return { ...run };
   }
@@ -103,7 +116,7 @@ export class RoutineRuns {
 
   /** Whether this session was opened by a routine: such a session is not listed among the user's own. */
   ownsSession(sessionId: string): boolean {
-    return this.runs.some((run) => run.sessionId === sessionId);
+    return this.hidden.has(sessionId) || this.runs.some((run) => run.sessionId === sessionId);
   }
 
   /** The same for a chat still starting, before its harness assigned a session. */
@@ -111,11 +124,24 @@ export class RoutineRuns {
     return this.runs.some((run) => run.chatId === chatId);
   }
 
-  /** A deleted routine leaves no runs behind. */
+  /**
+   * A deleted routine leaves no run records behind, but the sessions it opened stay known:
+   * un-hiding them would pour every night it ran back into the sidebar at once.
+   */
   async forget(routineId: string): Promise<void> {
     const before = this.runs.length;
     this.runs = this.runs.filter((run) => run.routineId !== routineId);
     if (this.runs.length !== before) await this.persist();
+  }
+
+  /** Remember a session as a routine's own, keeping the newest MAX_HIDDEN. */
+  private remember(sessionId: string, at: number): void {
+    if (!this.hidden.has(sessionId)) this.hidden.set(sessionId, at);
+    while (this.hidden.size > MAX_HIDDEN) {
+      const oldest = this.hidden.keys().next().value;
+      if (oldest === undefined) break;
+      this.hidden.delete(oldest);
+    }
   }
 
   /** Keep the newest few per routine and the newest few overall. */
@@ -129,6 +155,6 @@ export class RoutineRuns {
   }
 
   private persist(): Promise<void> {
-    return writeJson(this.file, this.runs);
+    return writeJson(this.file, { runs: this.runs, hidden: [...this.hidden.keys()] });
   }
 }
