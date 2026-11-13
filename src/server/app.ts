@@ -824,8 +824,11 @@ export async function createApp(deps: AppDeps) {
   // Guest links are not logins. A redeemed token becomes one browser-scoped,
   // signed invitation whose chat is immutable and whose history is text-only.
   // Owner-only operations still require semantic grants elsewhere, so visitors can't make
-  // themselves owners by knowing a URL or a shared invitation id.
-
+  // themselves owners by knowing a URL or a shared invitation id. These routes sit above the
+  // `/api` auth gate (the visitor's own routes below must), so the owner ones (list, create, send,
+  // dismiss, revoke: everything under /api/guests but redeem) are signed in here: a request with
+  // no cookie at all resolves to "full access" in grantsOf and would otherwise pass.
+  app.use("/api/guests", (req, res, next) => (req.path === "/redeem" ? next() : security.requireAuth(req, res, next)));
 
   app.get("/api/guests/:harnessId/:nativeId", requireGrant("chat.read"), async (req, res) => {
     res.json({ guests: await guests.list(req.params.nativeId) });

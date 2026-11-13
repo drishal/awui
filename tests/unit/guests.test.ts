@@ -12,8 +12,8 @@ let t: TestApp | undefined;
 afterEach(async () => { await t?.close(); });
 
 /** Real native fake session, settled, then shared by the owner. Returns the guest URL token. */
-async function fixture() {
-  const app = t = await makeTestApp();
+async function fixture(options: Parameters<typeof makeTestApp>[0] = {}) {
+  const app = t = await makeTestApp(options);
   const owner = await signedIn(app);
   const workspace = (await owner.post("/api/workspaces/open").send({ path: app.project })).body as { id: string };
   const chat = (await owner.post(`/api/chats`).send({ harnessId: "fake", workspaceId: workspace.id })).body as { chatId?: string };
@@ -102,6 +102,28 @@ describe("bounded expiring guest links", () => {
     expect(typeof pending[0]!.id).toBe("string");
     // Only the owner can release it; a guest cookie on an owner route is refused.
     expect((await guest.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/send`).send({})).status).toBe(403);
+  });
+
+  it("refuses every owner route to a request that carries no session at all", async () => {
+    // A password server reached from the LAN: with no cookie, grantsOf reads "full access", so only
+    // requireAuth stands between a stranger and the owner's routes.
+    const { guestId, native, workspace, token } = await fixture({ withPassword: true, lanHosts: ["192.168.1.50"] });
+    const guest = request.agent(t!.server);
+    await guest.post("/api/guests/redeem").send({ token });
+    await guest.post("/api/guest/messages").send({ text: "Queued", requestId: "nosession1" });
+    const pending = ((await guest.get("/api/guest")).body as { pending: Array<{ id: string }> }).pending;
+    const host = `192.168.1.50:${t!.port}`;
+    const bare = { get: (u: string) => request(t!.server).get(u).set("Host", host), post: (u: string) => request(t!.server).post(u).set("Host", host), delete: (u: string) => request(t!.server).delete(u).set("Host", host) };
+    const calls = [
+      await bare.get(`/api/guests/fake/${encodeURIComponent(native)}`),
+      await bare.post(`/api/guests/fake/${encodeURIComponent(native)}`).send({ workspaceId: workspace.id }),
+      await bare.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/send`).send({}),
+      await bare.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/dismiss`).send({}),
+      await bare.delete(`/api/guests/${guestId}`),
+    ];
+    for (const res of calls) expect(res.status).toBe(401);
+    // Nothing happened: the message is still queued for the owner.
+    expect(((await guest.get("/api/guest")).body as { pending: unknown[] }).pending).toHaveLength(1);
   });
 
   it("sends accepted visitor content on to the exact session once the owner releases it", async () => {
