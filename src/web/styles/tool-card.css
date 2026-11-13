@@ -696,9 +696,10 @@
   color: color-mix(in srgb, var(--ok) 80%, transparent);
 }
 
-/* A run with a failed call is not a success: the red row and its "failed" count say so, and a green check beside them contradicts both. */
+/* A run with a failed call is not a success: the red row and its "failed" count say so, and a check beside them contradicts
+   both (a phone already drops it). */
 .process-card.has-failed .process-status.is-done {
-  color: var(--muted-text);
+  display: none;
 }
 
 /* TestMeter.tsx: a running test command's progress under its row (and in a job's card). The fill is the
