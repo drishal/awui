@@ -799,6 +799,22 @@ export function App() {
   // neither make a second chat nor send the prompt twice. Any change to what it would send is a
   // new attempt, with new keys.
   const startAttempt = useRef<{ harness: string; path: string; model: string | null; thinking: string; text: string; images: PendingImage[]; create: string; send: string } | null>(null);
+  // A start's own words, held from the moment its chat is shown until that chat's first prompt has drawn. The
+  // snapshot a create returns predates the message, so without the hold the swap is three screens (start,
+  // an empty hero, the conversation); with it the start screen stays up and its box and words hand their
+  // places to the chat (morph.ts), one commit. `key` keeps the screen from remounting when its seed clears.
+  const [landing, setLanding] = useState<{ chatId: string; text: string; images: PendingImage[]; key: "seeded" | "plain" } | null>(null);
+  const holding = landing !== null && chat !== null && chat.chatId === landing.chatId && !chat.items.some((i) => i.kind === "user");
+  useEffect(() => {
+    if (!landing) return;
+    if (!holding) {
+      setLanding(null);
+      return;
+    }
+    // Never hold forever: a harness that does not echo the prompt falls back to the chat's own hero.
+    const timer = window.setTimeout(() => setLanding(null), START_HOLD_MS);
+    return () => window.clearTimeout(timer);
+  }, [landing, holding]);
   // The start screen's model chip: the harness's models for the folder, read before any chat
   // exists. A pick applies when the chat is created, never to this or the last chat.
   const [startModels, setStartModels] = useState<ModelInfo[]>([]);
@@ -872,6 +888,9 @@ export function App() {
       return false;
     }
     const token = beginOpen(null);
+    // What the chat's first prompt will read, and which start screen sent it (for the hold above).
+    const sent = text || (images.length > 0 ? "Look at the attached image." : " ");
+    const startKey = startSeed ? "seeded" : "plain";
     // Start ownership belongs to this submission, not whichever view next consumes the shared draft key.
     const originKey = startTabKey.current;
     const startHarness = harnessId;
@@ -891,7 +910,7 @@ export function App() {
       try {
         await api(`/api/chats/${snapshot.chatId}/messages`, {
           body: {
-            text: text || (images.length > 0 ? "Look at the attached image." : " "),
+            text: sent,
             mode: "normal",
             ...(images.length > 0 ? { images: images.map(({ mimeType, data }) => ({ mimeType, data })) } : {}),
           },
@@ -920,6 +939,7 @@ export function App() {
         const fresh = await api<ChatSnapshot>(`/api/chats/${snapshot.chatId}`).catch(() => snapshot);
         setTabState((st) => placeChat(st, fresh, { background: true, ...(from ? { forKey: from } : {}) }));
       } else {
+        setLanding({ chatId: snapshot.chatId, text: sent, images, key: startKey });
         showChat(snapshot);
       }
       void refreshSessions();
@@ -2543,7 +2563,7 @@ export function App() {
                 }}
               />
               </Suspense>
-            ) : chat && !hasPrompt ? (
+            ) : chat && !hasPrompt && !holding ? (
               <div className="hero">
                 <div className="hero-inner">
                   {chat.items.length > 0 ? (
@@ -2588,7 +2608,7 @@ export function App() {
                   />
                 </div>
               </div>
-            ) : chat ? (
+            ) : chat && !holding ? (
               <>
                 <Conversation
                   chatId={chat.chatId}
@@ -2647,7 +2667,8 @@ export function App() {
               </div>
             ) : (
               <StartScreen
-                key={startSeed ? "seeded" : "plain"}
+                key={landing ? landing.key : startSeed ? "seeded" : "plain"}
+                landing={holding ? landing : null}
                 harnesses={boot.harnesses}
                 harnessId={harnessId}
                 onHarness={chooseHarness}
@@ -2953,6 +2974,9 @@ export function App() {
 }
 
 /** Wide enough for a chat beside the main one. */
+/** The longest a start screen waits for its chat's first prompt before the chat shows as it is. */
+const START_HOLD_MS = 3000;
+
 const SPLIT_QUERY = "(min-width: 1180px)";
 
 /** What a mark change did, for its toast. */

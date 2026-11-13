@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { IMAGE_MIME_TYPES, MAX_IMAGES, type HarnessStatus, type ModelInfo } from "../../shared/protocol.js";
 import { useAddImagesToDraft } from "../draft-bus.js";
 import { useDismiss, useLeave } from "../hooks.js";
+import { handoff, type Box } from "../morph.js";
 import { IconArrowUp, IconChevronDown, IconFolder, IconImage, IconLink, IconPlus, IconX, Spinner } from "../icons.js";
 import { dataUrl, imageFiles, prepareImage, type PendingImage } from "../images.js";
 import { projectScoped } from "../harness-policy.js";
@@ -41,6 +42,7 @@ export function StartScreen({
   initialText = "",
   initialImages,
   initialLinkedHidden = null,
+  landing = null,
 }: {
   harnesses: HarnessStatus[];
   harnessId: string | null;
@@ -75,15 +77,24 @@ export function StartScreen({
   initialText?: string;
   initialImages?: PendingImage[];
   initialLinkedHidden?: number | null;
+  /**
+   * The words and images this screen just sent, while its chat waits for its first prompt to draw: the screen
+   * stays up, read-only, showing them, and leaves its box and words behind for the chat to glide from (morph.ts).
+   */
+  landing?: { text: string; images: PendingImage[] } | null;
   /** The draft and the attached images (a share). Return true once the chat took them. */
   onSend: (text: string, images: PendingImage[]) => Promise<boolean>;
 }) {
-  const [text, setText] = useState(initialText);
-  const [images, setImages] = useState<PendingImage[]>(initialImages ?? []);
+  const [draft, setText] = useState(initialText);
+  const [attached, setImages] = useState<PendingImage[]>(initialImages ?? []);
+  // Once sent, the screen shows what it sent however its own state is cleared meanwhile.
+  const text = landing ? landing.text : draft;
+  const images = landing ? landing.images : attached;
   const [linkedHidden, setLinkedHidden] = useState<number | null>(initialLinkedHidden);
   const [imageError, setImageError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
+  const card = useRef<HTMLDivElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const setup = (): StartSetup => startSetup(harnesses, harnessId, workspace?.name ?? null, text, images.length, busy);
   const heading = startHeading(setup());
@@ -105,6 +116,22 @@ export function StartScreen({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 260)}px`;
   }, [text]);
+
+  // While held, remember where the box and the words are, and hand those places to the chat when the screen goes.
+  // Measured on each render, not in the cleanup: by then the swap has already moved things.
+  const left = useRef<{ card: Box | null; words: Box | null; text: string } | null>(null);
+  useLayoutEffect(() => {
+    left.current = landing ? { card: card.current?.getBoundingClientRect() ?? null, words: area.current?.getBoundingClientRect() ?? null, text: landing.text } : null;
+  });
+  useLayoutEffect(
+    () => () => {
+      const mine = left.current;
+      if (!mine) return;
+      handoff("start-card", mine.card);
+      handoff(`start-prompt:${mine.text.trim()}`, mine.words);
+    },
+    [],
+  );
 
   // Focus once on desktop (a phone would open the keyboard at it).
   useEffect(() => {
@@ -161,7 +188,8 @@ export function StartScreen({
   };
 
   return (
-    <div className="hero start-screen" style={harnessColor(harnessId ?? undefined)}>
+    // Held, it is only a picture of what was sent: inert, so no second "Message" box takes focus or a click.
+    <div className={`hero start-screen${landing ? " is-leaving" : ""}`} style={harnessColor(harnessId ?? undefined)} inert={landing ? true : undefined}>
       <div className="hero-inner">
         <span className="hero-mark" aria-hidden="true">
           <svg viewBox="0 0 64 64" width="44" height="44" fill="none">
@@ -203,6 +231,7 @@ export function StartScreen({
         </ul>
         <div className="composer is-hero">
           <div
+            ref={card}
             className={`composer-card${dragging ? " is-dragging" : ""}`}
             onDragOver={(e) => {
               if (busy || !hasFiles(e)) return;

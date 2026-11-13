@@ -285,3 +285,30 @@ test("the start screen fits a phone: chips wrap, and sending works at 360 px", a
   await expect(page.getByTestId("user-prompt")).toHaveText(["hello from a phone"]);
   await expect(page.getByTestId("answer").last()).toContainText("Echo: hello from a phone");
 });
+
+test("sending from the start screen swaps it for the conversation at once, with no empty hero between", async ({ page }) => {
+  await signInAndOpen(page);
+  await expect(page.getByRole("heading", { name: /What should Fake do in alpha\?/ })).toBeVisible();
+  // Watch every DOM change from here: the chat's own hero (an empty chat's heading and box) must never be drawn, and the
+  // start screen must be gone in the same commit that draws the first prompt.
+  await page.evaluate(() => {
+    const seen = { emptyHero: false, bothAtOnce: false, boxes: 0 };
+    (window as unknown as { __swap: typeof seen }).__swap = seen;
+    new MutationObserver(() => {
+      if (document.querySelector(".hero:not(.start-screen)")) seen.emptyHero = true;
+      if (document.querySelector(".start-screen") && document.querySelector('[data-testid="user-prompt"]')) seen.bothAtOnce = true;
+      seen.boxes = Math.max(seen.boxes, document.querySelectorAll('textarea[aria-label="Message"]:not([inert] *)').length);
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  });
+  const input = page.getByRole("textbox", { name: box });
+  await input.fill("no flash please");
+  await input.press("Enter");
+  await expect(page.getByTestId("user-prompt")).toHaveText(["no flash please"]);
+  await expect(page.locator(".start-screen")).toHaveCount(0);
+  await expect(page.getByTestId("answer").last()).toContainText("Echo: no flash please");
+  const seen = await page.evaluate(() => (window as unknown as { __swap: { emptyHero: boolean; bothAtOnce: boolean; boxes: number } }).__swap);
+  expect(seen.emptyHero).toBe(false);
+  expect(seen.bothAtOnce).toBe(false);
+  // While the start screen is held it is inert, so there is never a second live "Message" box beside the chat's.
+  expect(seen.boxes).toBeLessThanOrEqual(1);
+});
