@@ -10,8 +10,9 @@
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  height: min(78dvh, 720px);
-  max-height: none;
+  height: auto;
+  min-height: 0;
+  max-height: min(70vh, 720px);
   /* The panes bleed to the dialog's edges; the head above them keeps its padding. */
   overflow: hidden;
   mask-image: none;
@@ -376,7 +377,9 @@
   /* One pane at a time: the rail is the list, and the section it opened is the detail. */
   .settings-dialog .dialog-body {
     grid-template-columns: minmax(0, 1fr);
-    height: min(74dvh, 640px);
+    height: auto;
+    min-height: 0;
+    max-height: min(70vh, 640px);
   }
 
   .settings-rail {
