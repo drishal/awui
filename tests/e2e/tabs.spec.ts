@@ -484,10 +484,12 @@ test("a session can be snoozed until the limit resets", async ({ page }) => {
 test("a project's folder shows its own monogram", async ({ page }) => {
   await signInAndOpen(page);
   await showSidebar(page);
-  // alpha is the project here: its badge is A, and the hue is part of the look.
+  // alpha is the project here: its badge is A, drawn in one of four theme colours (its slot), washed and edged, never hue-rotated.
   const badge = page.locator(".project-badge").first();
   await expect(badge).toHaveText("A");
-  await expect(badge).toHaveCSS("filter", /hue-rotate/);
+  await expect(badge).toHaveAttribute("data-slot", /^[1-4]$/);
+  await expect(badge).toHaveCSS("filter", "none");
+  await expect(badge).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 });
 
 test("a project's icon can be set on this device", async ({ page }) => {
