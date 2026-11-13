@@ -696,6 +696,11 @@
   color: color-mix(in srgb, var(--ok) 80%, transparent);
 }
 
+/* A run with a failed call is not a success: the red row and its "failed" count say so, and a green check beside them contradicts both. */
+.process-card.has-failed .process-status.is-done {
+  color: var(--muted-text);
+}
+
 /* TestMeter.tsx: a running test command's progress under its row (and in a job's card). The fill is the
    passed share, its last stretch red for what failed, and a light sweeps it while the run goes. */
 .test-meter {
