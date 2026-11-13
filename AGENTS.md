@@ -117,6 +117,7 @@ src/server/
   harness/agent-events.ts     Pi-family event and transcript normalization (Pi and omp share it); historyToItems.
   harness/session-files.ts    Pi/omp session JSONL: active branch by parentId, fork and seed writers.
   harness/claude-sessions.ts  Claude Code's session files.
+  harness/jsonl.ts            Streaming JSONL reads (never a whole session as one string) and `foldJsonlFile`: a listing's metadata folded once, then resumed from the saved byte offset as the append-only file grows.
   harness/tool-diff.ts        Every harness's edit result → one DiffLine[] shape.
   harness/subagents.ts        Delegation calls (omp task, pi-subagents, Claude Task) → SubagentRun[].
   harness/render-extension.ts The render_html and orchestration extensions' files, the -e args that load them (Pi/omp), and the orchestration MCP server's file.

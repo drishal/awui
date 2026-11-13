@@ -34,6 +34,7 @@ import { rewindExtension, rewindExtensionArgs, rewindWithExtension } from "./rew
 import { orchestrateExtensionArgs, renderHtmlExtension, renderHtmlExtensionArgs } from "./render-extension.js";
 import { versionLabel } from "./version.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
+import { foldJsonlFile, readJsonlEntries, type FoldProgress } from "./jsonl.js";
 import type {
   HarnessAdapter,
   HarnessDiscovery,
@@ -65,23 +66,6 @@ function defaultSessionDir(cwd: string, agentDir: string): string {
   return path.join(agentDir, "sessions", safe);
 }
 
-/** Session header + per-line entries of one Pi .jsonl file (torn last lines skipped). */
-async function readSessionFile(file: string): Promise<{ header: Obj | null; entries: Obj[] }> {
-  const text = await fs.readFile(file, "utf8");
-  const entries: Obj[] = [];
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const entry: unknown = JSON.parse(line);
-      if (isObj(entry)) entries.push(entry);
-    } catch {
-      // A torn last line from a crashed write; the rest still parses.
-    }
-  }
-  const header = entries.length > 0 && entries[0]?.type === "session" ? (entries[0] as Obj) : null;
-  return { header, entries };
-}
-
 interface SessionMeta {
   id: string;
   path: string;
@@ -104,64 +88,61 @@ function textContent(message: Obj): string {
 }
 
 /**
- * Parsed metadata per file, keyed by path and reused while mtime and size are
- * unchanged: every sidebar refresh lists every project's sessions, and only
- * the files being written to have changed since the last one.
+ * The running totals behind a session's metadata (pi's buildSessionInfo): the header, the latest
+ * session_info name, and a scan of the messages. Small and plain, so a listing can resume it from where a
+ * file's last read stopped (these logs only grow) instead of parsing a 60 MB session again for each new line.
  */
-const metaCache = new Map<string, { mtimeMs: number; size: number; meta: SessionMeta | null }>();
+interface MetaFold {
+  header: Obj | null;
+  first: boolean;
+  name: string;
+  firstMessage: string;
+  messageCount: number;
+  lastActivity: number;
+}
+
+const newMetaFold = (): MetaFold => ({ header: null, first: true, name: "", firstMessage: "", messageCount: 0, lastActivity: 0 });
+
+function foldMetaEntry(fold: MetaFold, entry: Obj): void {
+  if (fold.first) {
+    fold.first = false;
+    if (entry.type === "session") fold.header = entry;
+  }
+  if (entry.type === "session_info" && typeof entry.name === "string" && entry.name.trim()) fold.name = entry.name.trim();
+  if (entry.type !== "message" || !isObj(entry.message)) return;
+  fold.messageCount += 1;
+  const rawTs = entry.timestamp;
+  const ts = typeof rawTs === "number" ? rawTs : Date.parse(String(rawTs ?? ""));
+  if (Number.isFinite(ts)) fold.lastActivity = Math.max(fold.lastActivity, ts);
+  const role = entry.message.role;
+  if ((role === "user" || role === "assistant") && !fold.firstMessage) {
+    const text = textContent(entry.message);
+    if (text) fold.firstMessage = text;
+  }
+}
+
+/** Parsed metadata per file, resumed from the byte it stopped at: every sidebar refresh lists every project's sessions. */
+const metaCache = new Map<string, FoldProgress<MetaFold>>();
 const META_CACHE_MAX = 5000;
 
 async function sessionMeta(file: string): Promise<SessionMeta | null> {
-  let stat: { mtimeMs: number; size: number };
-  try {
-    stat = await fs.stat(file);
-  } catch {
+  const folded = await foldJsonlFile(file, metaCache.get(file), { init: newMetaFold, clone: (f) => ({ ...f }), push: foldMetaEntry });
+  if (!folded) {
     metaCache.delete(file);
     return null;
   }
-  const cached = metaCache.get(file);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.meta;
-  const meta = await readSessionMeta(file, stat.mtimeMs);
   if (metaCache.size >= META_CACHE_MAX) metaCache.clear();
-  metaCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, meta });
-  return meta;
-}
-
-/** Mirrors pi's buildSessionInfo: header, latest session_info name, user/assistant text scan. */
-async function readSessionMeta(file: string, statMtime: number): Promise<SessionMeta | null> {
-  let parsed: { header: Obj | null; entries: Obj[] };
-  try {
-    parsed = await readSessionFile(file);
-  } catch {
-    return null;
-  }
-  const { header, entries } = parsed;
+  metaCache.set(file, folded.progress);
+  const { header } = folded.state;
   if (!header || typeof header.id !== "string") return null;
-  let name = "";
-  let firstMessage = "";
-  let messageCount = 0;
-  let lastActivity = 0;
-  for (const entry of entries) {
-    if (entry.type === "session_info" && typeof entry.name === "string" && entry.name.trim()) name = entry.name.trim();
-    if (entry.type !== "message" || !isObj(entry.message)) continue;
-    messageCount += 1;
-    const rawTs = entry.timestamp;
-    const ts = typeof rawTs === "number" ? rawTs : Date.parse(String(rawTs ?? ""));
-    if (Number.isFinite(ts)) lastActivity = Math.max(lastActivity, ts as number);
-    const role = entry.message.role;
-    if ((role === "user" || role === "assistant") && !firstMessage) {
-      const text = textContent(entry.message);
-      if (text) firstMessage = text;
-    }
-  }
   return {
     id: header.id,
     path: file,
     cwd: typeof header.cwd === "string" ? header.cwd : "",
-    name,
-    firstMessage,
-    messageCount,
-    modified: new Date(lastActivity || statMtime),
+    name: folded.state.name,
+    firstMessage: folded.state.firstMessage,
+    messageCount: folded.state.messageCount,
+    modified: new Date(folded.state.lastActivity || folded.progress.mtimeMs),
   };
 }
 
@@ -560,7 +541,8 @@ export class PiAdapter implements HarnessAdapter {
     const dir = this.sessionDirFor(req.cwd, await this.resolveAgentDir());
     const meta = (await listSessionFiles(dir)).find((m) => m.id === req.nativeId);
     if (!meta) throw new Error("Session not found in Pi's session list");
-    const { header, entries } = await readSessionFile(meta.path);
+    const entries = await readJsonlEntries(meta.path);
+    const header = entries[0]?.type === "session" ? entries[0] : null;
     if (!header) throw new Error("Session file has no header");
     const branch = activeBranch(entries);
     let target: Obj | undefined = branch[branch.length - 1];

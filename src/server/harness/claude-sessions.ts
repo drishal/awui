@@ -265,37 +265,52 @@ export interface SessionMeta {
   prompts: number;
 }
 
+/** The running totals behind a listing's metadata: small and plain, so a listing can resume it from a file's saved byte offset. */
+export interface MetaFold {
+  cwd: string;
+  sessionId: string;
+  customTitle: string;
+  aiTitle: string;
+  firstPrompt: string;
+  prompts: number;
+  last: number | undefined;
+}
+
+export const newMetaFold = (): MetaFold => ({ cwd: "", sessionId: "", customTitle: "", aiTitle: "", firstPrompt: "", prompts: 0, last: undefined });
+
+/** One entry into the totals: first cwd and session id, newest titles, latest time, prompt count and the first prompt. */
+export function foldMetaEntry(fold: MetaFold, entry: Obj): void {
+  if (!fold.cwd && typeof entry.cwd === "string") fold.cwd = entry.cwd;
+  if (!fold.sessionId && typeof entry.sessionId === "string") fold.sessionId = entry.sessionId;
+  if (entry.type === "custom-title" && typeof entry.customTitle === "string" && entry.customTitle.trim()) fold.customTitle = entry.customTitle.trim();
+  if (entry.type === "ai-title" && typeof entry.aiTitle === "string" && entry.aiTitle.trim()) fold.aiTitle = entry.aiTitle.trim();
+  const at = ms(entry.timestamp);
+  if (at !== undefined) fold.last = Math.max(fold.last ?? 0, at);
+  const prompt = entry.isSidechain === true ? null : promptText(entry);
+  if (prompt !== null) {
+    fold.prompts += 1;
+    if (!fold.firstPrompt) fold.firstPrompt = prompt.replace(/\s+/g, " ").trim();
+  }
+}
+
+/** The totals as the listing's metadata; null for a file with no prompt in it. */
+export function finishMeta(fold: MetaFold, fallbackId: string): SessionMeta | null {
+  if (fold.prompts === 0) return null;
+  return {
+    sessionId: fold.sessionId || fallbackId,
+    cwd: fold.cwd,
+    title: fold.customTitle || fold.aiTitle || fold.firstPrompt.slice(0, 80) || "Untitled",
+    firstPrompt: fold.firstPrompt,
+    updatedAt: fold.last === undefined ? null : new Date(fold.last),
+    prompts: fold.prompts,
+  };
+}
+
 /** Listing metadata: the newest custom title, else Claude's own, else the first prompt. */
 export function sessionMeta(entries: Obj[], fallbackId: string): SessionMeta | null {
-  let cwd = "";
-  let sessionId = "";
-  let customTitle = "";
-  let aiTitle = "";
-  let firstPrompt = "";
-  let prompts = 0;
-  let last: number | undefined;
-  for (const entry of entries) {
-    if (!cwd && typeof entry.cwd === "string") cwd = entry.cwd;
-    if (!sessionId && typeof entry.sessionId === "string") sessionId = entry.sessionId;
-    if (entry.type === "custom-title" && typeof entry.customTitle === "string" && entry.customTitle.trim()) customTitle = entry.customTitle.trim();
-    if (entry.type === "ai-title" && typeof entry.aiTitle === "string" && entry.aiTitle.trim()) aiTitle = entry.aiTitle.trim();
-    const at = ms(entry.timestamp);
-    if (at !== undefined) last = Math.max(last ?? 0, at);
-    const prompt = entry.isSidechain === true ? null : promptText(entry);
-    if (prompt !== null) {
-      prompts += 1;
-      if (!firstPrompt) firstPrompt = prompt.replace(/\s+/g, " ").trim();
-    }
-  }
-  if (prompts === 0) return null;
-  return {
-    sessionId: sessionId || fallbackId,
-    cwd,
-    title: customTitle || aiTitle || firstPrompt.slice(0, 80) || "Untitled",
-    firstPrompt,
-    updatedAt: last === undefined ? null : new Date(last),
-    prompts,
-  };
+  const fold = newMetaFold();
+  for (const entry of entries) foldMetaEntry(fold, entry);
+  return finishMeta(fold, fallbackId);
 }
 
 export interface UsageBaseline {

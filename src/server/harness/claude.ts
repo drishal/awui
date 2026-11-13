@@ -31,12 +31,16 @@ import {
 } from "../../shared/protocol.js";
 import { historyToItems, isObj, textOf, type Obj } from "./agent-events.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
+import { foldJsonlFile, readJsonlEntries, type FoldProgress } from "./jsonl.js";
 import {
   forkSessionText,
   latestTodos,
-  parseEntries,
+  finishMeta,
+  foldMetaEntry,
+  newMetaFold,
   projectDirName,
   sessionMeta,
+  type MetaFold,
   transcriptMessages,
   usageBaseline,
   usageOfEntries,
@@ -476,7 +480,7 @@ class ClaudeLiveChat implements LiveChat {
   private async readResumed(id: string): Promise<{ entries: Obj[]; meta: ReturnType<typeof sessionMeta> }> {
     const file = await this.adapter.sessionFile(this.cwd, id);
     if (!file) throw new Error("Session not found in Claude Code's project folder");
-    const entries = parseEntries(await fs.readFile(file, "utf8"));
+    const entries = await readJsonlEntries(file);
     return { entries, meta: sessionMeta(entries, id) };
   }
 
@@ -782,7 +786,7 @@ class ClaudeLiveChat implements LiveChat {
   async history(): Promise<ChatItem[]> {
     const file = await this.adapter.sessionFile(this.cwd, this.sessionId);
     if (!file) return [];
-    return historyToItems(transcriptMessages(parseEntries(await fs.readFile(file, "utf8"))));
+    return historyToItems(transcriptMessages(await readJsonlEntries(file)));
   }
 
   async getConfig(): Promise<ChatConfig> {
@@ -1024,7 +1028,7 @@ export class ClaudeAdapter implements HarnessAdapter {
   private modelCache = new Map<string, ModelProbe>();
   private modelReads = new Map<string, Promise<ModelProbe>>();
   private usageCache: { at: number; accounts: LimitAccount[] } | null = null;
-  private metaCache = new Map<string, { mtimeMs: number; size: number; meta: SessionMeta | null }>();
+  private metaCache = new Map<string, { progress: FoldProgress<MetaFold> }>();
 
   constructor(private readonly options: ClaudeOptions) {
     this.cliCommand = options.command ?? (process.env.CLAUDE_BIN?.trim() || "claude");
@@ -1101,20 +1105,22 @@ export class ClaudeAdapter implements HarnessAdapter {
     return (await this.sessionFile(req.cwd, req.nativeId)) ? ["claude", "--resume", req.nativeId] : null;
   }
 
-  /** Listing metadata per file, reparsed only when its size or mtime changes. */
+  /**
+   * Listing metadata per file. A file that has only grown (these are append-only logs) is folded from the
+   * byte it stopped at, an unchanged one costs a stat, and nothing is held but the small totals: a
+   * 150 MB session is never read whole just to list its title.
+   */
   private async meta(file: string): Promise<{ meta: SessionMeta | null; mtimeMs: number }> {
-    const stat = await fs.stat(file).catch(() => null);
-    if (!stat) {
+    const cached = this.metaCache.get(file);
+    const folded = await foldJsonlFile(file, cached?.progress, { init: newMetaFold, clone: (f) => ({ ...f }), push: foldMetaEntry });
+    if (!folded) {
       this.metaCache.delete(file);
       return { meta: null, mtimeMs: 0 };
     }
-    const cached = this.metaCache.get(file);
-    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return { meta: cached.meta, mtimeMs: stat.mtimeMs };
-    const text = await fs.readFile(file, "utf8").catch(() => "");
-    const meta = sessionMeta(parseEntries(text), path.basename(file, ".jsonl"));
     if (this.metaCache.size >= 5000) this.metaCache.clear();
-    this.metaCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, meta });
-    return { meta, mtimeMs: stat.mtimeMs };
+    const meta = finishMeta(folded.state, path.basename(file, ".jsonl"));
+    this.metaCache.set(file, { progress: folded.progress });
+    return { meta, mtimeMs: folded.progress.mtimeMs };
   }
 
   private summary(meta: SessionMeta, mtimeMs: number): NativeSessionSummary {
@@ -1234,7 +1240,7 @@ export class ClaudeAdapter implements HarnessAdapter {
     const file = await this.sessionFile(req.cwd, req.nativeId);
     if (!file) throw new Error("Session not found in Claude Code's project folder");
     const id = randomUUID();
-    const body = forkSessionText(parseEntries(await fs.readFile(file, "utf8")), req.throughTurns, id);
+    const body = forkSessionText(await readJsonlEntries(file), req.throughTurns, id);
     const target = path.join(path.dirname(file), `${id}.jsonl`);
     const tmp = `${target}.${process.pid}.tmp`;
     await fs.writeFile(tmp, body, { mode: 0o600 });
@@ -1248,9 +1254,8 @@ export class ClaudeAdapter implements HarnessAdapter {
 
   async readUsage(req: { cwd: string; nativeId: string }): Promise<UsageEntry[] | null> {
     const file = await this.sessionFile(req.cwd, req.nativeId);
-    const text = file ? await fs.readFile(file, "utf8").catch(() => null) : null;
-    if (text === null) return null;
-    const entries = parseEntries(text);
+    const entries = file ? await readJsonlEntries(file).catch(() => null) : null;
+    if (entries === null) return null;
     const meta = sessionMeta(entries, req.nativeId);
     if (!meta || (meta.cwd && path.resolve(meta.cwd) !== path.resolve(req.cwd))) return null;
     return usageOfEntries(entries);
@@ -1258,9 +1263,8 @@ export class ClaudeAdapter implements HarnessAdapter {
 
   async readTranscript(req: { cwd: string; nativeId: string }): Promise<{ items: ChatItem[]; title: string | null } | null> {
     const file = await this.sessionFile(req.cwd, req.nativeId);
-    const text = file ? await fs.readFile(file, "utf8").catch(() => null) : null;
-    if (text === null) return null;
-    const entries = parseEntries(text);
+    const entries = file ? await readJsonlEntries(file).catch(() => null) : null;
+    if (entries === null) return null;
     const meta = sessionMeta(entries, req.nativeId);
     // Folder names are lossy, so the file's own cwd decides which project it is.
     if (!meta || (meta.cwd && path.resolve(meta.cwd) !== path.resolve(req.cwd))) return null;
