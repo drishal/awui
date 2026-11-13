@@ -386,7 +386,9 @@ An **apply** puts the worker's diff against the fork point into the lead checkou
 unstaged, and only while both recorded heads still stand: the lead checkout at the recorded head,
 and the worker's branch at the fork. It is the same patch a race's apply writes — a clean lead
 checkout, fixed diff options (so the checkout's own `diff.noprefix` or a textconv driver cannot
-move a new file), and the patch carried as bytes. Nothing is committed, pushed, or moved; the
+move a new file), and the patch carried as bytes. A worker must not commit, so its new files stay
+untracked, and the patch is built through a throwaway git index so it carries them: the worker's
+own index, status, and visible files are never touched. Nothing is committed, pushed, or moved; the
 branch stays as it was. A **mismatched head refuses before anything is written** (`lead_moved`,
 `worker_changed`) and keeps the worktree with an actionable sentence: merge or cherry-pick by
 hand, then discard the record. No work is ever erased by a stale state.
@@ -396,7 +398,11 @@ worktree and branch only after a decision exists on the record — an unreviewed
 `unreviewed` and stays, however clean or dirty it is. A reviewed tree's uncommitted work is
 exactly what the person reviewed (the panel's diff route shows it), so a settled record removes
 behind that guard; git's own refusals (a lock, a nested checkout) keep the tree, and `-d` refuses
-a branch whose commits the lead lacks, so no committed work is lost.
+a branch whose commits the lead lacks, so no committed work is lost. An applied record's forced
+removal is checked first: every untracked, non-ignored file in the worker's tree must be in the lead
+checkout too, or the cleanup answers `unapplied` and keeps the tree — a file the apply never carried
+(a record applied before the patch carried untracked files, or one the worker added afterwards) is
+work a `--force` removal would otherwise delete.
 
 ## The task record
 

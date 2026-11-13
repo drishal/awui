@@ -3,7 +3,8 @@
 // lead checkout's HEAD as the worker's own snapshot saw it, and the fork point — and a
 // person's explicit review decision unlocks applying it into the lead checkout. The
 // apply is races.ts's own: a clean lead checkout still at the recorded heads, a patch
-// generated with fixed diff options and carried as bytes (gitBuffer), written unstaged.
+// generated with fixed diff options and carried as bytes (worktreePatch, a worker's untracked
+// files included), written unstaged.
 // Nothing is committed, pushed, or moved, and a stale state never erases work: a
 // mismatched head keeps the worktree with an actionable reason instead.
 //
@@ -13,7 +14,7 @@
 // this service only ever touches worktrees it created for delegation isolation.
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { git, gitBuffer } from "../git.js";
+import { git, worktreePatch } from "../git.js";
 import { isObj, readJson, writeJsonChecked } from "../state-file.js";
 import { isWithin } from "../workspaces.js";
 import { ChatError, errorMessage } from "../chats/chat.js";
@@ -27,6 +28,8 @@ const DIFF_OPTIONS = ["--no-color", "--no-ext-diff", "--no-textconv", "--no-rela
 const PATCH_OPTIONS = ["--binary", ...DIFF_OPTIONS];
 /** A patch this route may write into the lead checkout; a larger one is merged by hand. */
 const MAX_PATCH_BYTES = 2 * 1024 * 1024;
+/** Untracked files a cleanup checks against the lead checkout before a forced removal; more than this is not verified. */
+const MAX_UNTRACKED_CHECKED = 200;
 /** A git read that must answer: past this, unknown counts as unsafe. */
 const READ = { timeoutMs: 20_000 };
 /** A git status that fails says nothing about the tree, so it counts as dirty: unknown is not safe. */
@@ -285,16 +288,17 @@ export class IntegrationReview {
 
   /**
    * The patch races.ts would write: the worker's worktree diffed against the fork point
-   * (its changes live there), applied into a clean lead checkout at the fork, with fixed
-   * options and carried as bytes (gitBuffer).
+   * (its changes live there, untracked files included), applied into a clean lead checkout
+   * at the fork, with fixed options and carried as bytes.
    */
   private async applyPatch(record: IntegrationRecord, workerTree: string, project: ReviewProject): Promise<boolean> {
     const status = await git(["status", "--porcelain", "--untracked-files=normal"], { cwd: project.root, ...READ });
     if (status.trim()) throw new ChatError(409, "dirty_checkout", "The lead checkout has uncommitted changes. Commit or stash them, then review again; nothing was changed");
     const head = (await git(["rev-parse", "--verify", "--end-of-options", "HEAD"], { cwd: project.root, ...READ })).trim();
     if (head !== record.fork) throw new ChatError(409, "head_moved", `The lead checkout's HEAD is not the fork point, so nothing was applied. Merge \`${record.branch}\` by hand instead`);
-    // Bytes, not text (gitBuffer): `git apply` writes these very bytes back.
-    const patch = await gitBuffer(["diff", ...PATCH_OPTIONS, record.fork], { cwd: workerTree, ...READ }).catch((error: unknown) => {
+    // Bytes, not text (worktreePatch reads through gitBuffer): `git apply` writes these very
+    // bytes back, and the patch carries the worker's untracked files too.
+    const patch = await worktreePatch(workerTree, record.fork, PATCH_OPTIONS, READ).catch((error: unknown) => {
       throw new ChatError(422, "git_failed", errorMessage(error));
     });
     if (patch.length === 0) return true; // Empty work is also an explicit review outcome; it must not erase or fabricate lead changes.
@@ -345,6 +349,11 @@ export class IntegrationReview {
     if (dirty && record.appliedAt === null && record.discardedAt === null) {
       throw new ChatError(409, "uncommitted", `Task ${taskId}'s worktree has uncommitted changes. Commit or resolve them first; nothing was removed`);
     }
+    // An applied review promises the worker's work is in the lead checkout, so a forced
+    // removal may only take a tree whose untracked files are there too: those are exactly
+    // the files a patch built from a plain diff drops, and --force would delete them.
+    // A discard is not checked — the person chose to throw that work away.
+    if (record.appliedAt !== null) await this.refuseStrayWork(taskId, tree, project.root);
     const head = (await git(["symbolic-ref", "-q", "HEAD"], { cwd: tree, ...READ, okExit: [1] }).catch(() => "")).trim();
     if (head !== `refs/heads/${record.branch}`) throw new ChatError(409, "moved", `The worktree's HEAD is no longer ${record.branch}; merge or delete it by hand`);
     // A reviewed tree may hold uncommitted work (exactly what the person reviewed); git's
@@ -358,6 +367,31 @@ export class IntegrationReview {
     // `-d` refuses a branch with commits the lead lacks; that refusal keeps committed work.
     const branchRemoved = await git(["branch", "-d", "--", record.branch], { cwd: project.root, ...READ }).then(() => true).catch(() => false);
     return { removed, branchRemoved, reason: branchRemoved ? null : "branch_kept" };
+  }
+  /**
+   * Refuse a forced removal while the worker's tree holds untracked, non-ignored files the
+   * lead checkout does not have. They are the work a patch built from a plain diff dropped
+   * (a record applied before untracked files were part of the patch, or a file the worker
+   * added after its review), and `worktree remove --force` would delete them. Unknown is not
+   * safe: a tree git cannot read for untracked work is kept as well.
+   */
+  private async refuseStrayWork(taskId: string, tree: string, root: string): Promise<void> {
+    const raw = await git(["ls-files", "--others", "--exclude-standard", "-z"], { cwd: tree, ...READ }).catch(() => null);
+    if (raw === null) throw new ChatError(409, "unapplied", `Task ${taskId}'s worktree could not be read for untracked work, so nothing was removed`);
+    const paths = raw.split("\0").filter((entry) => entry.length > 0);
+    if (paths.length > MAX_UNTRACKED_CHECKED) {
+      throw new ChatError(409, "unapplied", `Task ${taskId}'s worktree holds more than ${MAX_UNTRACKED_CHECKED} untracked files, too many to check against the lead checkout; nothing was removed`);
+    }
+    const stray: string[] = [];
+    for (const entry of paths) {
+      // A git path is project-relative; anything else is not a path this can judge, so it counts as stray.
+      if (entry.startsWith("/") || entry.split("/").includes("..")) stray.push(entry);
+      else if (!(await existsAt(path.join(root, entry)))) stray.push(entry);
+    }
+    if (stray.length === 0) return;
+    const shown = stray.slice(0, 3).join(", ");
+    const more = stray.length > 3 ? ` and ${stray.length - 3} more` : "";
+    throw new ChatError(409, "unapplied", `Task ${taskId}'s worktree holds files the review did not apply (${shown}${more}). Copy them out or apply them by hand, then clean up; nothing was removed`);
   }
 
   /**
@@ -419,6 +453,16 @@ function staleMessage(record: IntegrationRecord, reason: string | null, leadHead
 async function existsDir(target: string): Promise<boolean> {
   try {
     return (await fs.stat(target)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Whether anything at all is at this path: the lead checkout having the worker's file, whatever it is. */
+async function existsAt(target: string): Promise<boolean> {
+  try {
+    await fs.stat(target);
+    return true;
   } catch {
     return false;
   }

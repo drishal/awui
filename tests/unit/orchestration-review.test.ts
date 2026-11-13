@@ -6,7 +6,7 @@
 // and cleanup refuses unreviewed modifications. The route's own orchestration call is
 // driven through POST /api/orchestration/call, so isolation is exercised end to end.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IntegrationReview, type IntegrationRecord, type ReviewProject } from "../../src/server/orchestration/review.js";
@@ -372,6 +372,55 @@ describe("review-gated apply", () => {
     expect(decision.body.applied).toBe(true);
     expect(existsSync(path.join(app.project, "src", "g.txt"))).toBe(true);
     expect(existsSync(path.join(app.project, "g.txt"))).toBe(false);
+  }, 30_000);
+
+  it("applies a worker's untracked new file, and keeps the ones an apply never carried", async () => {
+    const app = await makeTestApp();
+    t = app;
+    repo(app.project);
+    const agent = await signedIn(app);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: app.project })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as { chatId: string };
+    const token = app.manager.list().find((c) => c.chatId === chat.chatId)?.orchestration?.token;
+    if (!token) throw new Error("no orchestration token");
+
+    const res = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "delegate_task", args: { brief: "edit", isolation: "worktree", notify: "none" } });
+    expect(res.status).toBe(200);
+    const started = res.body.data as { taskId: string };
+    await vi.waitFor(() => {
+      const task = app.manager.get(chat.chatId).snapshot().delegated?.find((t) => t.id === started.taskId);
+      expect(task?.outcome).toBe("done");
+    }, 20_000);
+
+    // The worker must not commit, so its new file is untracked: a patch built from a plain
+    // `git diff <fork>` omits it while the review still reports a clean apply.
+    const worktrees = (await agent.get(`/api/workspaces/${ws.id}/worktrees`)).body.worktrees as Array<{ path: string }>;
+    const tree = worktrees[0]?.path;
+    if (!tree) throw new Error("no managed worktree for the isolated worker");
+    writeFileSync(path.join(tree, "src", "new.ts"), "export const added = true;\n");
+    const decision = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/review`).send({ decision: "apply", note: "", workspaceId: ws.id });
+    expect(decision.status).toBe(200);
+    expect(decision.body.applied).toBe(true);
+    expect(readFileSync(path.join(app.project, "src", "new.ts"), "utf8")).toContain("added = true");
+    // The lead checkout really has it: the applied change is untracked there, as it was here.
+    expect(git(app.project, "status", "--porcelain")).toContain("?? src/new.ts");
+
+    // A file the apply never carried (here: added after the review) is work a forced removal
+    // would delete, so cleanup refuses and the tree stays.
+    writeFileSync(path.join(tree, "src", "later.ts"), "export const never = true;\n");
+    const refused = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/review/cleanup`).send({});
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("unapplied");
+    expect(refused.body.error).toContain("src/later.ts");
+    expect(existsSync(tree)).toBe(true);
+
+    // Once nothing stray is left, the reviewed tree goes as before.
+    rmSync(path.join(tree, "src", "later.ts"));
+    const cleaned = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/review/cleanup`).send({});
+    expect(cleaned.status).toBe(200);
+    expect(cleaned.body.removed).toBe(true);
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(path.join(app.project, "src", "new.ts"), "utf8")).toContain("added = true");
   }, 30_000);
 
   it("serves a worker file's diff against the fork point, bounded and confined", async () => {
