@@ -218,6 +218,10 @@
 .context-status.is-waiting { color: var(--warn); }
 .context-status.is-failed { color: var(--danger); }
 .context-status.is-done .context-status-dot { background: var(--ok); }
+/* Worker rows: a 2 px child-harness rule; agent icons in the category colour. */
+.context-row { box-shadow: none; }
+.context-row-icon { color: var(--muted-text); }
+.context-panel .context-row[data-harness] { box-shadow: inset 2px 0 0 var(--harness, var(--accent)); }
 .context-row-button {
   display: grid;
   place-items: center;

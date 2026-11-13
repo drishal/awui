@@ -144,7 +144,7 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
           {tasks.map((task) => {
             const readout = taskReadout(task);
             const childChatId = task.childChatId;
-            return <ContextRow key={task.id} icon={<IconAgents size={13} />} title={task.title || task.id} meta={`Agent · ${task.harnessId ?? "delegated"}`}
+            return <ContextRow key={task.id} icon={<IconAgents size={13} />} title={task.title || task.id} meta={`Agent · ${task.harnessId ?? "delegated"}`} harness={task.harnessId ?? null}
               note={task.reviewable && task.state === "result_available" ? "Worktree review actions live with the task on the composer/status stack." : undefined}
               aside={<ContextStatus tone={readout.tone}>{readout.word}</ContextStatus>}
               actions={<>

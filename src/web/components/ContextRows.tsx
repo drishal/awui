@@ -27,8 +27,8 @@ export function ContextList({ children }: { children: ReactNode }) {
  * One row of a card. `note` is a third line for a caveat that would otherwise be a
  * paragraph (a task whose review lives in the status stack); it is rare on purpose.
  */
-export function ContextRow({ icon, title, meta, note, aside, actions }: { icon?: ReactNode; title: string; meta?: ReactNode; note?: ReactNode; aside?: ReactNode; actions?: ReactNode }) {
-  return <li className="context-row">
+export function ContextRow({ icon, title, meta, note, aside, actions, harness }: { icon?: ReactNode; title: string; meta?: ReactNode; note?: ReactNode; aside?: ReactNode; actions?: ReactNode; harness?: string | null }) {
+  return <li className="context-row" style={harness ? ({ "--harness": `var(--harness-${harness}, var(--accent))` } as React.CSSProperties) : undefined}>
     {icon ? <span className="context-row-icon" aria-hidden="true">{icon}</span> : null}
     <span className="context-row-text">
       <span className="context-row-title" title={title}>{title}</span>
