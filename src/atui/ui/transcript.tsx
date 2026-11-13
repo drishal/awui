@@ -22,7 +22,7 @@ import { easeOut, flashAt, mix, unrollCounts } from "../fx.js";
 import { filetypeOf, taskBoxes, withCaret } from "../markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll, turnTone, type TurnTone } from "../minimap.js";
 import { latestThoughtLine, neatRow, sigmaFacts, thinkingMeta, workRuns, type WorkRun } from "../neat.js";
-import { accentOf, type Theme } from "../theme.js";
+import { accentOf, categoryTone, type Theme } from "../theme.js";
 import { highlightPreview } from "../words.js";
 import { useAtui, useTheme } from "./context.js";
 import { glideTo, Shimmer, Spinner, usePaced } from "./fx.js";
@@ -41,11 +41,11 @@ const IMAGE_ROWS = 8;
 const PULSE_TICKS = 4.5;
 const pulseOn = () => Math.floor(tick() / PULSE_TICKS) % 2 === 0;
 
-/** The row's bullet, neat-render's: quiet when done (success is the normal case), red on failure, filled and hollow in turn while it runs. */
-function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean }) {
+/** The row's bullet, neat-render's: the category's colour when it settles, red on failure, filled and hollow in turn while it runs. */
+function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean; category: ToolItem["category"] }) {
   const t = useTheme();
   const on = () => p.status !== "running" || pulseOn();
-  const color = () => (p.status === "error" || p.failedOutput ? t().danger : p.status === "running" ? (on() ? t().warn : t().muted) : t().muted);
+  const color = () => (p.status === "error" || p.failedOutput ? t().danger : p.status === "running" ? (on() ? t().warn : t().muted) : categoryTone(t(), p.category));
   return <span style={{ fg: color() }}>{on() ? "● " : "○ "}</span>;
 }
 
@@ -404,14 +404,14 @@ function ToolRow(p: { item: ToolItem; workspace: string }) {
       </Show>
       <box flexDirection="column" onMouseDown={() => setOpen(!open())}>
         <text wrapMode="none" truncate>
-          <Bullet status={p.item.status} failedOutput={row().failed} />
+          <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
           <b style={{ fg: t().text }}>{row().label}</b>
           <Show when={!wraps()}>
             <Show when={row().detail}>
               {(d) => (
-                <Show when={href()} fallback={<span style={{ fg: t().link }}>{`${row().glue}${d()}`}</span>}>
+                <Show when={href()} fallback={<span style={{ fg: t().text2 }}>{`${row().glue}${d()}`}</span>}>
                   {(url) => (
-                    <a href={url()} style={{ fg: t().link }}>
+                    <a href={url()} style={{ fg: t().text2 }}>
                       {`${row().glue}${d()}`}
                     </a>
                   )}
@@ -429,7 +429,7 @@ function ToolRow(p: { item: ToolItem; workspace: string }) {
               <text fg={t().muted} flexShrink={0}>
                 {"└ "}
               </text>
-              <text fg={t().link} wrapMode="word">
+              <text fg={t().text2} wrapMode="word">
                 {d()}
               </text>
             </box>
@@ -538,7 +538,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
       <box flexDirection="row" onMouseDown={() => setOpen(!open())}>
         <text flexShrink={1} minWidth={0} wrapMode="none" truncate>
           <span style={{ fg: t().border }}>{fork()}</span>
-          <Bullet status={p.item.status} failedOutput={row().failed} />
+          <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
           <b style={{ fg: t().text }}>{row().label}</b>
           <Show when={row().detail}>
             {(d) => (

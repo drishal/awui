@@ -3,7 +3,7 @@
 // UI's built-in dark palette. The terminal's own background shows through
 // everywhere but the panels that are drawn on a surface. The context's
 // colour ramps from green to amber to red as it fills.
-import type { ThemeInfo } from "../shared/protocol.js";
+import type { ThemeInfo, ToolItem } from "../shared/protocol.js";
 import { ramp } from "./fx.js";
 
 export interface Theme {
@@ -119,4 +119,24 @@ export function contextTone(theme: Theme, percent: number): string {
 
 export function accentOf(theme: Theme, token: string | undefined): string {
   return token && token in theme ? theme[token as keyof Theme] : theme.accent;
+}
+
+/** A tool category's colour, the web UI's --cat-* mapping in the terminal palette (the bullet and verb take it; the target stays --text-2). */
+export function categoryTone(theme: Theme, category: ToolItem["category"]): string {
+  switch (category) {
+    case "read":
+    case "search":
+      return theme.info;
+    case "edit":
+    case "write":
+      return theme.orange;
+    case "web":
+      return theme.link;
+    case "agent":
+      return theme.thinking;
+    case "other":
+      return theme.warn;
+    default:
+      return theme.muted;
+  }
 }
