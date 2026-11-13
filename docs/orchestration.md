@@ -53,7 +53,15 @@ guideline naming every tool as awui's. The words the model is told once (whose t
 delegate, not to poll) are `ORCH_INSTRUCTIONS` in `orchestration/tools.ts`, served as `instructions` by
 `GET /tools`, by the HTTP MCP endpoint and, through the same fetch, by the stdio bridge (Claude Code shows
 an MCP server's instructions with its tools); the Pi/omp extension passes them to Pi as its guideline. They
-stay under Codex's 4,000-byte limit. A bridge with no endpoint behind it claims none of this.
+stay under Codex's 4,000-byte limit.
+
+Where a harness does not show an MCP server's `instructions`, awui gives them another way: omp gets them as
+`--append-system-prompt` and Codex as the thread's `developerInstructions` (on start and on resume), only for
+a chat that has the orchestration tools. Checked with real runs that asked each model to quote the sentence
+"awui is the web UI running this chat" and say where it came from: Claude Code, OpenCode and Grok (the MCP
+server's instructions), Pi (its system prompt, from the extension's guideline), omp (the appended prompt) and
+Codex (developer instructions) all found it. DeepSeek Harness is unchecked (no key to run a model) and
+Hermes has no per-chat server. A bridge with no endpoint behind it claims none of this.
 
 Nothing is installed into a user's harness config by awui, and no adapter asks the user to add a
 server: the harness gets its own entry per chat, from what the adapter already passes. The one

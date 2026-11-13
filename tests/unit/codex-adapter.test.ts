@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { ORCH_INSTRUCTIONS } from "../../src/server/orchestration/tools.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { CodexAdapter, liveCodexChildren } from "../../src/server/harness/codex.js";
@@ -118,6 +119,18 @@ describe("the codex adapter (scripted app-server)", () => {
     ]);
     // Codex reads that variable from the child it starts, so awui hands the token over in its env.
     expect(recorded("env").at(-1)).toMatchObject({ AWUI_ORCH_TOKEN: tokens.AWUI_ORCH_TOKEN });
+  });
+
+  it("gives a thread awui's words as developer instructions only when it has the orchestration tools", async () => {
+    await openChat();
+    expect(calls("thread/start").at(-1)?.params).not.toHaveProperty("developerInstructions");
+    const toolEnv = { AWUI_ORCH_URL: "http://127.0.0.1:4783/api/orchestration", AWUI_ORCH_TOKEN: "t0ken" };
+    open.push(await adapter.openChat({ cwd: project, toolEnv }));
+    expect(calls("thread/start").at(-1)?.params).toMatchObject({ developerInstructions: ORCH_INSTRUCTIONS });
+    // A resumed thread is given them again: Codex keeps developer instructions per run, not in the rollout.
+    const first = open.at(-1);
+    open.push(await adapter.openChat({ cwd: project, toolEnv, resumeNativeId: first?.nativeId ?? "" }));
+    expect(calls("thread/resume").at(-1)?.params).toMatchObject({ developerInstructions: ORCH_INSTRUCTIONS });
   });
 
   it("starts on a model the account can run when the config names one it cannot", async () => {

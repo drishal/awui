@@ -12,6 +12,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractedExtensionPath } from "../embedded.js";
+import { ORCH_INSTRUCTIONS } from "../orchestration/tools.js";
 
 export const RENDER_TOOL_NAME = "render_html";
 
@@ -102,6 +103,16 @@ export function orchestrateExtensionArgs(toolEnv?: NodeJS.ProcessEnv): string[] 
   if (!toolEnv?.AWUI_ORCH_TOKEN) return [];
   const file = orchestrateExtension();
   return file ? ["-e", file] : [];
+}
+
+/**
+ * What a child is told about awui's orchestration tools in its own instructions, or undefined when it has
+ * none to call (no token). For a harness that neither lists an extension tool's guideline (omp) nor shows
+ * an MCP server's instructions (Codex): Claude Code, OpenCode and Grok show the MCP server's, Pi takes the
+ * extension's guideline, so those get no second copy.
+ */
+export function orchestrationInstructionsFor(toolEnv?: NodeJS.ProcessEnv): string | undefined {
+  return toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN ? ORCH_INSTRUCTIONS : undefined;
 }
 
 /** The orchestration MCP server (for Claude Code, Codex, and DSH): embedded copy in the binary, else the repo path. */

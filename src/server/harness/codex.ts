@@ -43,7 +43,7 @@ import {
 } from "./codex-transcript.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import { HTML_RENDER_MCP_SERVER, splitRenderMarker } from "./render-token.js";
-import { ORCH_MCP_SERVER, renderHtmlMcpServer } from "./render-extension.js";
+import { ORCH_MCP_SERVER, orchestrationInstructionsFor, renderHtmlMcpServer } from "./render-extension.js";
 import { codexLimits } from "./limits.js";
 import { versionLabel } from "./version.js";
 import type {
@@ -405,10 +405,13 @@ class CodexLiveChat implements LiveChat {
       this.dialogs.cancelAll();
       this.emit({ type: "fatal", message: `codex stopped unexpectedly (${message})` });
     });
+    // Codex does not show an MCP server's instructions to the model, so awui's words go in as the thread's developer instructions.
+    const guidance = orchestrationInstructionsFor(this.toolEnv);
+    const developer = guidance ? { developerInstructions: guidance } : {};
     try {
       await rpc.init;
       if (this.resumeId) {
-        const resumed = await rpc.request<Obj>("thread/resume", { threadId: this.resumeId, cwd: this.cwd }, READY_TIMEOUT_MS);
+        const resumed = await rpc.request<Obj>("thread/resume", { threadId: this.resumeId, cwd: this.cwd, ...developer }, READY_TIMEOUT_MS);
         this.threadId = str(isObj(resumed.thread) ? resumed.thread.id : "") || this.resumeId;
         this.sessionTitle = str(isObj(resumed.thread) ? resumed.thread.name : "") || null;
         this.setUsableModel(str(resumed.model) || null);
@@ -421,7 +424,7 @@ class CodexLiveChat implements LiveChat {
         const policy = POLICIES[this.permissionMode] as CodexPolicy;
         const started = await rpc.request<Obj>(
           "thread/start",
-          { cwd: this.cwd, approvalPolicy: policy.approval, sandbox: policy.sandbox, ...(this.startModel ? { model: this.startModel } : {}) },
+          { cwd: this.cwd, approvalPolicy: policy.approval, sandbox: policy.sandbox, ...(this.startModel ? { model: this.startModel } : {}), ...developer },
           READY_TIMEOUT_MS,
         );
         this.threadId = str(isObj(started.thread) ? started.thread.id : "");

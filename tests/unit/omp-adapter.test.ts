@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { ORCH_INSTRUCTIONS } from "../../src/server/orchestration/tools.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
@@ -111,6 +112,15 @@ describe("omp adapter (scripted omp)", () => {
     open.push(live);
     const armed = readState().spawns.at(-1)?.args ?? [];
     expect(armed.some((a: string) => a.endsWith("extensions/orchestrate.ts"))).toBe(true);
+  });
+
+  it("appends awui's words to omp's system prompt only for a child that has the orchestration tools", async () => {
+    await openChat();
+    expect(readState().spawns[0]?.args).not.toContain("--append-system-prompt");
+    open.push(await adapter.openChat({ cwd: project, toolEnv: { AWUI_ORCH_URL: "http://127.0.0.1:4783/api/orchestration", AWUI_ORCH_TOKEN: "t0ken" } }));
+    const args = readState().spawns.at(-1)?.args ?? [];
+    expect(args[args.indexOf("--append-system-prompt") + 1]).toBe(ORCH_INSTRUCTIONS);
+    expect(args.indexOf("--append-system-prompt")).toBeLessThan(args.indexOf("--cwd"));
   });
 
   it("replaces a past prompt in place through the rewind-to extension it starts omp with", async () => {
