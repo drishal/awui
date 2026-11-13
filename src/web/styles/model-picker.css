@@ -30,6 +30,21 @@
   opacity: 0.6;
 }
 
+/* The model belongs to the harness beside it: the same hue, a lighter wash and no edge, so the pair reads as one
+   "who and which" while the harness chip (identity's main mark) stays the stronger of the two. */
+.pill-trigger.model-trigger {
+  background: color-mix(in oklab, var(--harness, var(--muted)) 7%, var(--hover));
+}
+
+.pill-trigger.model-trigger:hover:not(:disabled),
+.pill-trigger.model-trigger[aria-expanded="true"] {
+  background: color-mix(in oklab, var(--harness, var(--muted)) 12%, var(--active));
+}
+
+.pill-trigger.model-trigger > .icon {
+  color: color-mix(in oklab, var(--harness, var(--muted)) 70%, var(--muted-text));
+}
+
 .pill-label {
   min-width: 0;
   overflow: hidden;
@@ -590,6 +605,21 @@ button.harness-chip:disabled {
 .permission-trigger > .icon:first-child {
   flex: none;
   color: var(--muted-text);
+}
+
+/* A mode the harness does not flag as cautious (the default that asks first, plan, accept edits) gets a green shield on a
+   faint wash, so the chip reads as guarded at a glance; the warning colour below is the one exception that turns it amber. */
+.permission-trigger:not(.is-caution) {
+  background: color-mix(in oklab, var(--ok) 8%, var(--hover));
+}
+
+.permission-trigger:not(.is-caution):hover:not(:disabled),
+.permission-trigger:not(.is-caution)[aria-expanded="true"] {
+  background: color-mix(in oklab, var(--ok) 13%, var(--active));
+}
+
+.permission-trigger:not(.is-caution) > .icon:first-child {
+  color: var(--ok);
 }
 
 .permission-trigger.is-caution,

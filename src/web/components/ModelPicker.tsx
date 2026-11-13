@@ -11,6 +11,7 @@ import { groupModels, type ModelGroup } from "../model-search.js";
 import { morphClip } from "../model-morph.js";
 import { load, save } from "../storage.js";
 import { Dot } from "./Dot.js";
+import { harnessColor } from "../harness-colors.js";
 
 const MAX_RECENT = 5;
 /** Visible vertical band for a popover under `el`: the viewport cut by any clipping ancestor. */
@@ -227,7 +228,8 @@ export function ModelPicker({
       <button
         ref={trigger}
         type="button"
-        className="pill-trigger"
+        className="pill-trigger model-trigger"
+        style={harnessColor(harnessId)}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={triggerLabel ? triggerLabel : `Model: ${label}`}
