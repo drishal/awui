@@ -412,6 +412,12 @@ describe("awui tern", () => {
     await until(() => open() && tiles().includes(shortTokens(tokensOf(report.totals))), "the report");
     expect(tern.find("picker", "layer")).toEqual([]);
     expect(tiles()).toContain(`${report.totals.calls} model call`);
+    // A sheet down the right edge, with the range as a switch in its head and the keys that step it beside it.
+    expect(tern.find("overlay", "layer")[0]?.p).toMatchObject({ side: "right", variant: "inset" });
+    tern.event({ ev: "action", id: "layer.usage.end.range.r90", act: "click" });
+    await until(() => tern.find("overlay", "layer")[0]?.p.meta === "last 90 days", "the 90 day range from its button");
+    tern.event({ ev: "action", id: "layer.usage.end.range.r30", act: "click" });
+    await until(() => tern.find("overlay", "layer")[0]?.p.meta === "last 30 days", "the 30 day range again");
     // A day's bar each (30 of them), a table row for the harness and the model, the footer's keys.
     expect(tern.find("chart", "layer")[0]?.p).toMatchObject({ kind: "bars" });
     expect(((tern.find("chart", "layer")[0]?.p.series ?? []) as unknown[]).length).toBe(30);
@@ -440,7 +446,7 @@ describe("awui tern", () => {
     // From the key, and a click on Close.
     tern.type("\x18u");
     await until(() => open() && tern.find("overlay", "layer")[0]?.p.meta === "last 30 days" && tiles().includes(shortTokens(tokensOf(report.totals))), "the report again");
-    tern.event({ ev: "action", id: "layer.usage.end", act: "click" });
+    tern.event({ ev: "action", id: "layer.usage.end.close", act: "click" });
     await until(() => !open(), "the Close button");
     expect(tern.errors).toEqual([]);
   });

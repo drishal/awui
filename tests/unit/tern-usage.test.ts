@@ -130,7 +130,7 @@ describe("the Tern Usage overlay", () => {
     name,
     supports: () => true,
     now: 0,
-    on: { close: () => undefined },
+    on: { close: () => undefined, range: () => undefined },
     ...over,
   });
 

@@ -145,7 +145,7 @@ export interface UsageCx {
   /** Whether this terminal announced the kind (session.caps.kinds). */
   supports: (kind: string) => boolean;
   now: number;
-  on: { close: () => void };
+  on: { close: () => void; range: (days: UsageRange) => void };
 }
 
 const muted = (key: string, text: string) => ui.text({ key }, span(text, "muted"));
@@ -240,14 +240,25 @@ export function usageNode(cx: UsageCx): Node {
     ? ui.row({ key: "busy", gap: "sm", align: "center" }, ui.spinner({ key: "s" }), ui.text({ key: "t" }, span(screen.report ? `Reading the last ${screen.days} days…` : "Reading sessions…", "muted")))
     : null;
   const failed = screen.error ? ui.text({ key: "error" }, span(`Could not read usage: ${screen.error}`, "error")) : null;
+  // A sheet down the right edge rather than a floating card: Usage is a screen to read and scroll, and the
+  // conversation behind it stays visible on the left (the web UI's Usage dialog is a wide panel too).
   return ui.overlay(
     {
       key: "usage",
-      anchor: "center",
+      side: "right",
+      variant: "inset",
       size: "lg",
       head: "Usage",
       meta: `last ${screen.days} days`,
-      end: ui.button({ key: "close", text: "Close", keys: ["esc"], variant: "quiet", size: "sm", onClick: cx.on.close }),
+      end: ui.row(
+        { key: "end", gap: "sm", align: "center" },
+        // The range as a segmented switch, beside the keys that step it: ←/→ still work.
+        ui.buttons(
+          { key: "range", variant: "joined", size: "sm", label: "Range" },
+          RANGES.map((days) => ui.button({ key: `r${days}`, text: `${days} days`, size: "sm", on: days === screen.days, variant: days === screen.days ? "primary" : "quiet", onClick: () => cx.on.range(days) })),
+        ),
+        ui.button({ key: "close", text: "Close", keys: ["esc"], variant: "quiet", size: "sm", onClick: cx.on.close }),
+      ),
       foot: ui.text({ key: "keys" }, span("←/→ range (7, 30, 90 days) · ↑/↓ Space Home End scroll · Esc closes", "muted")),
     },
     ui.scroll(

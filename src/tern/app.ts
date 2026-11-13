@@ -941,7 +941,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             name: (id) => app.boot()?.harnesses.find((x) => x.id === id)?.displayName ?? id,
             supports: (k) => session.caps.kinds.includes(k),
             now: Date.now(),
-            on: { close: () => setUsage(null) },
+            on: { close: () => setUsage(null), range: (days) => readUsage(days) },
           }),
         );
       } else if (timed) {
