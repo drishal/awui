@@ -395,3 +395,18 @@ describe("the codex adapter (scripted app-server)", () => {
     expect(chat.snapshot().items[0]).toMatchObject({ kind: "user", text: "look at this", imageCount: 1 });
   });
 });
+
+describe("the metadata child", () => {
+  it("is stopped once it has been idle, and a later listing starts it again", async () => {
+    const quick = new CodexAdapter({ command: script, home, probeIdleMs: 60, env: { ...process.env, CODEX_HOME: codexHome, FAKE_CODEX_HOME: codexHome, FAKE_CODEX_STATE: state } });
+    try {
+      await quick.listRecentSessions(5);
+      expect(liveCodexChildren()).toBe(1);
+      await until(() => liveCodexChildren() === 0, 3000);
+      await quick.listRecentSessions(5);
+      expect(liveCodexChildren()).toBe(1);
+    } finally {
+      await quick.shutdown();
+    }
+  });
+});

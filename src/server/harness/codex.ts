@@ -62,6 +62,8 @@ import type {
 const READY_TIMEOUT_MS = 60_000;
 /** A metadata probe answers within this, or it is killed. */
 const PROBE_TIMEOUT_MS = 20_000;
+/** How long the metadata child (about 140 MB) stays up with nothing to answer; the next probe starts it again in about a second. */
+const PROBE_IDLE_MS = 2 * 60_000;
 const MODEL_CACHE_MS = 5 * 60_000;
 /** Each limits probe starts a child, and plan windows move slowly. */
 const USAGE_CACHE_MS = 3 * 60_000;
@@ -290,6 +292,8 @@ export interface CodexOptions {
   args?: string[];
   home: string;
   env?: NodeJS.ProcessEnv;
+  /** How long the metadata child idles before it is stopped (tests shorten it). */
+  probeIdleMs?: number;
 }
 
 interface UserInputQuestion {
@@ -1172,6 +1176,8 @@ export class CodexAdapter implements HarnessAdapter {
   /** One app-server child for metadata (models, listings, forks, limits): short-lived probes would spawn one per sidebar refresh. */
   private probeRpc: CodexRpc | null = null;
   private probeReady: Promise<CodexRpc> | null = null;
+  private probesInFlight = 0;
+  private probeIdle: NodeJS.Timeout | null = null;
   private fileCache = new Map<string, string | null>();
 
   constructor(private readonly options: CodexOptions) {
@@ -1216,7 +1222,22 @@ export class CodexAdapter implements HarnessAdapter {
   }
 
   private async probe<T>(method: string, params: Obj): Promise<T> {
-    return (await this.ensureProbe()).request<T>(method, params, PROBE_TIMEOUT_MS);
+    this.probesInFlight += 1;
+    if (this.probeIdle) clearTimeout(this.probeIdle);
+    try {
+      return await (await this.ensureProbe()).request<T>(method, params, PROBE_TIMEOUT_MS);
+    } finally {
+      this.probesInFlight -= 1;
+      if (this.probesInFlight === 0) {
+        if (this.probeIdle) clearTimeout(this.probeIdle);
+        this.probeIdle = setTimeout(() => {
+          const idle = this.probeRpc;
+          this.probeRpc = null;
+          if (idle) void idle.kill().catch(() => undefined);
+        }, this.options.probeIdleMs ?? PROBE_IDLE_MS);
+        this.probeIdle.unref();
+      }
+    }
   }
 
   async discover(): Promise<HarnessDiscovery> {
@@ -1396,6 +1417,7 @@ export class CodexAdapter implements HarnessAdapter {
   }
 
   async shutdown(): Promise<void> {
+    if (this.probeIdle) clearTimeout(this.probeIdle);
     this.probeRpc = null;
     await Promise.allSettled([...children].map((c) => terminateChild(c)));
   }
