@@ -20,10 +20,8 @@ import type { OrchDenialCode } from "./types.js";
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 /** The name awui's MCP server answers with, the same one the stdio bridge uses. */
 export const MCP_SERVER_NAME = "awui-orchestrate";
-/** What an MCP client shows for this server, and tells the model on connect (extensions/orchestrate-mcp.mjs says the same words). */
+/** What an MCP client shows for this server (its words to the model are `instructions`, tools.ts's ORCH_INSTRUCTIONS). */
 export const MCP_SERVER_TITLE = "awui orchestration";
-export const MCP_INSTRUCTIONS =
-  "awui is the web UI running this chat. These tools are awui's own orchestration surface: hand a self-contained task to another awui chat (delegate_task), watch or cancel it (task_status, task_cancel), read or talk to it (thread_read, thread_send, thread_wait), and set the status line the person sees (set_status).";
 
 /** A catalogue entry as REST serves it: the parameter schema is `parameters`, as the Pi/omp extension reads it. */
 export interface McpCatalogueEntry {
@@ -52,6 +50,8 @@ export interface McpCallOutcome {
 export interface McpDeps {
   /** The tool catalogue, from orchestration/tools.ts: the one definition of every tool. */
   tools: () => McpCatalogueEntry[];
+  /** What the server tells the model on connect: whose these tools are and how to use them. */
+  instructions: string;
   /** The orchestration skills (council, advisor, handoff), read from skills/<name>/SKILL.md. */
   prompts: () => Promise<McpPromptEntry[]>;
   /** Run one tool call as the calling chat; a refused call answers with its own code and message. */
@@ -117,7 +117,7 @@ export async function answerMcp(message: unknown, deps: McpDeps): Promise<McpAns
         protocolVersion: typeof params.protocolVersion === "string" ? params.protocolVersion : MCP_PROTOCOL_VERSION,
         capabilities: { tools: {}, prompts: {} },
         serverInfo: { name: MCP_SERVER_NAME, title: MCP_SERVER_TITLE, version: "1" },
-        instructions: MCP_INSTRUCTIONS,
+        instructions: deps.instructions,
       });
     case "ping":
       return answer(id, {});

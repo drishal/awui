@@ -65,11 +65,16 @@ function load(suffix, pick) {
  * registerTool reads it); an MCP client validates `tools/list` against the protocol, where the
  * schema must be `inputSchema`, and Claude Code and Codex drop a tool that lacks it.
  */
+const toolsBody = () => load("/tools", (body) => body);
+
 const catalogue = () =>
-  load("/tools", (body) => {
+  toolsBody().then((body) => {
     if (!Array.isArray(body?.tools)) throw new Error("the catalogue is not a tool list");
     return body.tools.map(({ name, description, parameters }) => ({ name, description, inputSchema: parameters }));
   });
+
+/** What the server tells the model on connect, from the same document as the tools (absent from an older server). */
+const instructions = () => toolsBody().then((body) => (typeof body?.instructions === "string" ? body.instructions : ""));
 
 /** The three skills with their words, the route having read skills/<name>/SKILL.md. */
 const skills = () =>
@@ -109,6 +114,9 @@ async function handle(message) {
   // A notification (no id) needs no answer.
   if (id === undefined || id === null) return;
   if (method === "initialize") {
+    // Only with the endpoint: a bridge with nothing behind it serves no tools, so it claims none.
+    // bounded: a slow endpoint costs the model its guidance, never the client its handshake
+    const guidance = URL_ENV && TOKEN ? await Promise.race([instructions().catch(() => ""), new Promise((resolve) => setTimeout(resolve, 3000, ""))]) : "";
     return send({
       id,
       // The prompts capability rides with the tools: without the endpoint there is nothing to
@@ -118,10 +126,7 @@ async function handle(message) {
         protocolVersion: params?.protocolVersion ?? "2025-06-18",
         capabilities: URL_ENV && TOKEN ? { tools: {}, prompts: {} } : { tools: {} },
         serverInfo: { name: "awui-orchestrate", title: "awui orchestration", version: "1" },
-        // Only with the endpoint: a bridge with no chat behind it serves no tools, so it claims none.
-        ...(URL_ENV && TOKEN
-          ? { instructions: "awui is the web UI running this chat. These tools are awui's own orchestration surface: hand a self-contained task to another awui chat (delegate_task), watch or cancel it (task_status, task_cancel), read or talk to it (thread_read, thread_send, thread_wait), and set the status line the person sees (set_status)." }
-          : {}),
+        ...(guidance ? { instructions: guidance } : {}),
       },
     });
   }

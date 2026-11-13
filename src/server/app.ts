@@ -197,7 +197,7 @@ import { performRenderAction } from "./render-browser.js";
 import { GuestStore } from "./guests.js";
 import { Orchestrator } from "./orchestration/orchestrator.js";
 import { IntegrationReview, type IntegrationRecord, type ReviewProject } from "./orchestration/review.js";
-import { ORCH_TOOLS } from "./orchestration/tools.js";
+import { ORCH_INSTRUCTIONS, ORCH_TOOLS } from "./orchestration/tools.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "./orchestration/limits.js";
 import { orchestrationSkills } from "./orchestration/skills.js";
 import { answerMcp, isToolCall } from "./orchestration/mcp.js";
@@ -677,7 +677,7 @@ export async function createApp(deps: AppDeps) {
       const token = req.get("x-awui-orch-token") ?? "";
       orchOn();
       if (token === "" || !manager.knowsOrchToken(token)) throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
-      res.json({ tools: ORCH_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })) });
+      res.json({ tools: ORCH_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })), instructions: ORCH_INSTRUCTIONS });
     } catch (error) {
       if (!orchFailed(res, error)) throw error;
     }
@@ -763,6 +763,7 @@ export async function createApp(deps: AppDeps) {
       const chat = orchMcpCaller(req, isToolCall(req.body));
       const answered = await answerMcp(req.body, {
         tools: () => ORCH_TOOLS,
+        instructions: ORCH_INSTRUCTIONS,
         prompts: orchestrationSkills,
         call: async (name, args) => {
           // The chat was checked above for a call; this only satisfies the type when it was not.

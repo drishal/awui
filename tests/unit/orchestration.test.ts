@@ -47,6 +47,9 @@ describe("orchestration surface", () => {
       expect(tool.description.length).toBeGreaterThan(40);
       expect(tool.parameters.type).toBe("object");
     }
+    // Every description says whose tool it is, and the answer carries what the model is told once.
+    for (const tool of tools) expect(tool.description).toMatch(/^awui: /);
+    expect(res.body.instructions).toContain("awui is the web UI running this chat");
     // The brief is the one required argument of a delegation; a wait names its tasks.
     expect(tools.find((tool) => tool.name === "delegate_task")?.parameters.required).toEqual(["brief"]);
     expect(tools.find((tool) => tool.name === "thread_wait")?.parameters.required).toEqual(["taskIds"]);

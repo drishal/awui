@@ -90,18 +90,18 @@ export default function orchestrate(pi: Api): void {
     return { content: [text(`${code}: ${answer.message ?? "the call failed"}`)], details: { denial: code }, isError: true };
   };
 
-  const register = (tools: OrchToolDef[]): void => {
+  const register = (tools: OrchToolDef[], instructions: string): void => {
     // Without these a Pi chat lists no awui tool in its prompt, and an agent asked "do you have awui's tools?"
-    // finds a bare `delegate_task` it cannot place. One guideline names them all as awui's.
-    const names = tools.map((tool) => tool.name).join(", ");
-    const guideline = `Use delegate_task when a self-contained piece of work should run in another awui chat: ${names} are awui's orchestration tools (awui is the web UI that runs this chat), served by awui itself, not by an MCP server in your config.`;
+    // finds a bare `delegate_task` it cannot place. The server's own instructions (orchestration/tools.ts, the
+    // words the MCP servers give too) ride on the first tool, so Pi puts them in its system prompt once.
+    const guideline = instructions.trim();
     tools.forEach((tool, index) => {
       pi.registerTool({
         name: tool.name,
         label: `awui · ${tool.name}`,
         description: tool.description,
         promptSnippet: tool.description.split(/(?<=\.)\s/)[0] ?? tool.description,
-        ...(index === 0 ? { promptGuidelines: [guideline] } : {}),
+        ...(index === 0 && guideline ? { promptGuidelines: [guideline] } : {}),
         parameters: tool.parameters,
         execute: (_toolCallId, params) => call(tool.name, params ?? {}),
       });
@@ -109,11 +109,11 @@ export default function orchestrate(pi: Api): void {
   };
 
   void fetch(`${url}/tools`, { headers: { "X-Awui-Orch-Token": token }, signal: AbortSignal.timeout(CATALOGUE_TIMEOUT_MS) })
-    .then(async (response) => (response.ok ? ((await response.json()) as { tools?: OrchToolDef[] }) : null))
+    .then(async (response) => (response.ok ? ((await response.json()) as { tools?: OrchToolDef[]; instructions?: string }) : null))
     .then((body) => {
       // A catalogue that cannot be read leaves the child without these tools rather than
       // with a broken one; the run itself is unaffected.
-      if (Array.isArray(body?.tools)) register(body.tools);
+      if (Array.isArray(body?.tools)) register(body.tools, typeof body.instructions === "string" ? body.instructions : "");
     })
     .catch(() => undefined);
 }

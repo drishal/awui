@@ -5,7 +5,7 @@
 // allow list cannot drift from what the server serves.
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ORCH_TOOLS } from "../../src/server/orchestration/tools.js";
+import { ORCH_INSTRUCTIONS, ORCH_TOOLS } from "../../src/server/orchestration/tools.js";
 import { orchestrateExtension, orchestrateExtensionArgs, orchestrateMcpServer, ORCH_MCP_SERVER } from "../../src/server/harness/render-extension.js";
 import { orchestrationMcpToolNames } from "../../src/server/harness/render-token.js";
 
@@ -32,11 +32,19 @@ describe("the orchestration tools' files", () => {
   });
 });
 
+describe("what awui tells a harness about its tools", () => {
+  it("names every tool, says whose they are, and stays under Codex's 4,000-byte instruction limit", () => {
+    expect(ORCH_INSTRUCTIONS).toContain("awui is the web UI running this chat");
+    for (const tool of ORCH_TOOLS) expect(ORCH_INSTRUCTIONS).toContain(tool.name);
+    expect(Buffer.byteLength(ORCH_INSTRUCTIONS)).toBeLessThan(4000);
+  });
+});
+
 describe("how the Pi/omp extension introduces the tools", () => {
   it("registers each as awui's: a branded label and description, a prompt line, and one guideline naming them all", async () => {
     const registered: Array<Record<string, unknown>> = [];
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (async () => new Response(JSON.stringify({ tools: ORCH_TOOLS }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ tools: ORCH_TOOLS, instructions: ORCH_INSTRUCTIONS }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
     process.env.AWUI_ORCH_URL = "http://127.0.0.1:1/api/orchestration";
     process.env.AWUI_ORCH_TOKEN = "t0ken";
     delete (globalThis as Record<symbol, unknown>)[Symbol.for("awui-orchestrate.loaded")];
@@ -59,7 +67,6 @@ describe("how the Pi/omp extension introduces the tools", () => {
     }
     const guidelines = registered.flatMap((tool) => (tool.promptGuidelines as string[] | undefined) ?? []);
     expect(guidelines).toHaveLength(1);
-    expect(guidelines[0]).toContain("awui is the web UI");
-    for (const tool of ORCH_TOOLS) expect(guidelines[0]).toContain(tool.name);
+    expect(guidelines[0]).toBe(ORCH_INSTRUCTIONS);
   });
 });

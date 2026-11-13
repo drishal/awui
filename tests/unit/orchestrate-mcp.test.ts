@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import readline from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
-import { MCP_INSTRUCTIONS, MCP_SERVER_TITLE } from "../../src/server/orchestration/mcp.js";
+import { MCP_SERVER_TITLE } from "../../src/server/orchestration/mcp.js";
 
 const script = path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs");
 
@@ -56,6 +56,9 @@ const TOOLS = [
   { name: "task_status", description: "Report your tasks.", parameters: { type: "object", properties: {} } },
 ];
 
+/** What the endpoint tells a model on connect; the bridge repeats none of it. */
+const INSTRUCTIONS = "## awui\n\nawui is the web UI running this chat.";
+
 /** The skills the endpoint serves as prompts; the bridge repeats none of their words. */
 const PROMPTS = [
   { name: "council", description: "Three reviewers, merged.", text: "# Council\n\nCall list_profiles, then delegate_task three times." },
@@ -73,7 +76,7 @@ async function endpoint(answers: Array<{ status: number; body: unknown }>) {
       if (req.url === "/api/orchestration/tools") {
         seen.push({ path: req.url, token, body: null });
         res.setHeader("content-type", "application/json");
-        return res.end(JSON.stringify({ tools: TOOLS }));
+        return res.end(JSON.stringify({ tools: TOOLS, instructions: INSTRUCTIONS }));
       }
       if (req.url === "/api/orchestration/prompts") {
         seen.push({ path: req.url, token, body: null });
@@ -112,10 +115,10 @@ describe("the orchestration MCP server", () => {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {}, prompts: {} },
       });
-      // The server says whose it is, in the words the HTTP form uses (orchestration/mcp.ts), so a client shows one identity.
+      // The server says whose it is, in the words the endpoint serves (the HTTP form gives the same), so a client shows one identity.
       const hello = (await s.call("initialize", {})).result;
       expect(hello?.serverInfo).toMatchObject({ name: "awui-orchestrate", title: MCP_SERVER_TITLE });
-      expect(hello?.instructions).toBe(MCP_INSTRUCTIONS);
+      expect(hello?.instructions).toBe(INSTRUCTIONS);
       // The catalogue keys its schema `parameters`; an MCP client validates `inputSchema`, and
       // refuses a tool without it, so the bridge is where the two names meet.
       expect((await s.call("tools/list")).result?.tools).toEqual(TOOLS.map(({ name, description, parameters }) => ({ name, description, inputSchema: parameters })));

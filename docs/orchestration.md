@@ -49,7 +49,11 @@ parameter schemas come from `GET /tools` (or the catalogue served from it), so
 Every route says whose tools these are. Each description in the catalogue opens with `awui: `, the MCP
 servers answer `initialize` with a title and `instructions` (awui is the web UI running the chat), and the
 Pi/omp extensions register a `awui · <tool>` label, a prompt line for Pi's "Available tools" list, and one
-guideline naming every tool as awui's. A bridge with no endpoint behind it claims none of this.
+guideline naming every tool as awui's. The words the model is told once (whose tools these are, when to
+delegate, not to poll) are `ORCH_INSTRUCTIONS` in `orchestration/tools.ts`, served as `instructions` by
+`GET /tools`, by the HTTP MCP endpoint and, through the same fetch, by the stdio bridge (Claude Code shows
+an MCP server's instructions with its tools); the Pi/omp extension passes them to Pi as its guideline. They
+stay under Codex's 4,000-byte limit. A bridge with no endpoint behind it claims none of this.
 
 Nothing is installed into a user's harness config by awui, and no adapter asks the user to add a
 server: the harness gets its own entry per chat, from what the adapter already passes. The one
@@ -87,7 +91,7 @@ All are mounted before `requireAuth` (like `/api/render`): they authenticate by 
 token header alone, never a cookie, so a signed-in device elsewhere cannot mint one.
 
 ```
-GET  /api/orchestration/tools              → { tools: [{ name, description, parameters }] }
+GET  /api/orchestration/tools              → { tools: [{ name, description, parameters }], instructions }
 GET  /api/orchestration/prompts            → { prompts: [{ name, description, text }] }
 POST /api/orchestration/call               → { ok: true, text, data }
      X-Awui-Orch-Token: <32 hex>              or { ok: false, code, message }

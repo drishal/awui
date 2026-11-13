@@ -342,6 +342,24 @@ export const AWUI_TOOL_BRAND = "awui";
  */
 export const ORCH_TOOLS: OrchTool[] = DEFINED_TOOLS.map((tool) => ({ ...tool, description: `${AWUI_TOOL_BRAND}: ${tool.description}` }));
 
+/**
+ * What a harness is told about these tools once, beyond each description: whose they are, when they are worth
+ * reaching for, and the one habit that goes wrong (polling). Served by `GET /tools` (the Pi/omp extension puts it
+ * in Pi's system prompt), as the MCP server's `instructions` over HTTP and stdio (Claude Code shows it with the
+ * server), so every route says the same words. Kept under 4,000 bytes: Codex truncates a longer instruction.
+ */
+export const ORCH_INSTRUCTIONS = `## awui
+
+awui is the web UI running this chat. It serves the orchestration tools itself (${DEFINED_TOOLS.map((tool) => tool.name).join(", ")}), not an MCP server from your config. Ordinary coding tasks need none of them.
+
+- Delegate with delegate_task when a self-contained piece of work should run in another awui chat: a different harness or model, a second opinion, or work that can run in parallel. The child sees none of this conversation, so write a complete brief. It shares your working tree unless you pass isolation:"worktree".
+- list_profiles shows the harnesses, models and saved profiles you can delegate to; call it before naming one.
+- After delegating, thread_wait blocks until the child finishes or asks a question; task_status shows where your tasks stand, thread_read what a child said, thread_send continues it, task_cancel stops a run you no longer need. Don't poll in a loop: thread_wait is the wait.
+- plan_workers drafts a lead/worker plan for a person to confirm before any worker starts; resident_agent keeps one named chat to come back to.
+- set_status tells the person watching what you are doing (one word, one sentence). request_decision asks them a question only they can answer and waits.
+- schedule_heartbeat sends this chat a prompt on an interval, so long work can resume without anyone prompting you.
+- As a delegated child, do the work yourself; start no further delegates unless your task says to.`;
+
 /** One worker an agent can ask for by id: a saved bot profile, a shared profile, or a harness at its default model. */
 export interface ToolProfile {
   id: string;

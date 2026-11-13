@@ -44,7 +44,7 @@ describe("orchestration over HTTP MCP", () => {
     expect(hello.body).toMatchObject({
       jsonrpc: "2.0",
       id: 0,
-      result: { protocolVersion: "2025-11-25", capabilities: { tools: {}, prompts: {} }, serverInfo: { name: "awui-orchestrate", title: "awui orchestration" }, instructions: expect.stringContaining("awui is the web UI") },
+      result: { protocolVersion: "2025-11-25", capabilities: { tools: {}, prompts: {} }, serverInfo: { name: "awui-orchestrate", title: "awui orchestration" }, instructions: expect.stringContaining("awui is the web UI running this chat") },
     });
 
     const listed = await post(agent, token, { jsonrpc: "2.0", id: 1, method: "tools/list" });
