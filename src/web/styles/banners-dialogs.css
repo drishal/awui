@@ -498,9 +498,10 @@
   color: var(--muted-text);
 }
 
-/* The keyboard's row: the selected fill (the hover tint was too faint to follow on a dark card). */
+/* The keyboard's row: the selected fill with the sidebar's accent rule (the hover tint was too faint to follow on a dark card). */
 .palette-option.is-active {
-  background: var(--active);
+  background: color-mix(in oklab, var(--accent) var(--tint), var(--active));
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .palette-check {
