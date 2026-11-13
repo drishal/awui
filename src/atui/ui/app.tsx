@@ -42,6 +42,7 @@ import { BoardView } from "./board.js";
 import { DelegatedView } from "./delegated.js";
 import { ContextRailView } from "./rail.js";
 import { ReviewView } from "./review.js";
+import { GitView } from "./git.js";
 import { collectChanges } from "../../web/review.js";
 import { Toasts } from "./toasts.js";
 import { Transcript } from "./transcript.js";
@@ -79,6 +80,8 @@ export function App(p: {
   const [delegated, setDelegated] = createSignal<{ taskId?: string } | null>(null);
   const [rail, setRail] = createSignal(false);
   const [board, setBoard] = createSignal(false);
+  /** The git panel: the project's status, staging, and commits (C-x u). */
+  const [gitting, setGitting] = createSignal(false);
   /** A command run from an answer (C-x x), and what it gave once done. */
   const [running, setRunning] = createSignal<{ command: string; result: RunResult | null } | null>(null);
   const renderer = useRenderer();
@@ -318,6 +321,9 @@ export function App(p: {
       case "p":
         if (!app.chat()) return flash("No chat for active work yet");
         return setRail(true);
+      case "u":
+        if (!app.chat()) return flash("No chat to read the git status of");
+        return setGitting(true);
       case "z":
         if (!app.putBackable()) return flash("Nothing to put back: no files were undone here");
         return void app.putBack();
@@ -349,7 +355,7 @@ export function App(p: {
   };
 
   useKeyboard((key) => {
-    if (dialog() || app.undoTurn() !== null || reviewing() || running() || delegated() !== null || rail() || board()) return;
+    if (dialog() || app.undoTurn() !== null || reviewing() || running() || delegated() !== null || rail() || board() || gitting()) return;
     if (key.meta && !key.ctrl && key.name === "q") {
       key.preventDefault();
       return quoteSelection();
@@ -498,8 +504,10 @@ export function App(p: {
     add({ id: "board", label: "Agents: every session, by column", hint: leader("k"), keywords: "dashboard kanban needs working done", run: () => runLeader("k") });
     if (c) {
       const workers = c.delegated ?? [];
+      const git = app.git();
       add({ id: "delegated", label: "Delegated work: review a worker…", hint: leader("j"), disabled: workers.length > 0 ? undefined : "This chat has delegated nothing", run: () => runLeader("j") });
       add({ id: "active-work", label: "Active work: workers, jobs, questions, context", hint: leader("p"), run: () => runLeader("p") });
+      add({ id: "git", label: "Git: stage, commit, and the diffs", hint: leader("u"), ...(git ? { keywords: git.branch ?? "detached" } : {}), run: () => setGitting(true) });
     }
     if (c && runnables().length > 0) add({ id: "run", label: "Run a command from the answer…", hint: leader("x"), run: () => setDialog("run") });
     add({ id: "quote", label: "Quote the selection into the message", hint: "M-q", searchOnly: true, run: quoteSelection });
@@ -801,6 +809,9 @@ export function App(p: {
                 </Show>
                 <Show when={reviewing()}>
                   <ReviewView onClose={() => setReviewing(false)} />
+                </Show>
+                <Show when={gitting()}>
+                  <GitView onClose={() => setGitting(false)} />
                 </Show>
                 <Show when={delegated()}>
                   {(open) => (
