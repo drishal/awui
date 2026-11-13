@@ -659,6 +659,19 @@
   color: var(--info, var(--accent));
 }
 
+.git-state.tone-warn {
+  color: var(--warn);
+}
+
+/* The row's counts: changed is the attention colour, untracked the success one. */
+.git-counts .git-count-word.is-changed {
+  color: var(--warn);
+}
+
+.git-counts .git-count-word.is-untracked {
+  color: var(--ok);
+}
+
 .git-file-path {
   flex: 1;
   min-width: 0;

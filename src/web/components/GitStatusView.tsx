@@ -30,7 +30,7 @@ function Sync({ git }: { git: GitStatus }) {
 
 function Counts({ git }: { git: GitStatus }) {
   if (git.files.length === 0) return <span className="git-count is-clean">clean</span>;
-  return <>{countsLine(git)}</>;
+  return <>{countsLine(git).split(" · ").map((word, i) => <span key={i} className={`git-count-word${/changed|conflict|staged/.test(word) ? " is-changed" : ""}${/new|untracked/.test(word) ? " is-untracked" : ""}`}>{i > 0 ? " · " : ""}{word}</span>)}</>;
 }
 
 export function GitRow({ git, onOpen }: { git: GitStatus; onOpen: () => void }) {
