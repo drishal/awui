@@ -286,7 +286,7 @@ describe("awui tern", () => {
     await until(() => tern.text("main").includes("Echo: tool please") && app.chat()?.status === "idle", "the answer");
     const main = tern.text("main");
     expect(main).toContain("tool please");
-    expect(main).toMatch(/Worked for \d+s · /);
+    expect(main).toMatch(/Worked for (?:<1s|\d+(?:\.\d)?s) · /);
     expect(tern.find("md").some((n) => n.p.role === "awui.reply" && n.p.stream === false)).toBe(true);
     // The fold opens on a toggle from Tern, and holds the tool rows.
     const fold = tern.find("section").find((n) => n.p.role === "awui.fold");
@@ -813,7 +813,8 @@ describe("awui tern", () => {
     await until(() => (app.overview().sessions.length ?? 0) > 0, "the sessions");
     const tabs = () => (tern.find("tabs", "layer")[0]?.p.items ?? []) as Array<{ id: string; label: string }>;
     expect(tabs().map((t) => t.id)).toEqual(["needs", "working", "done"]);
-    expect(tabs()[2]?.label).toContain("Done");
+    // Tab labels are styled spans ("Done" + a muted count): check the words, not one string.
+    expect(JSON.stringify(tabs()[2]?.label)).toContain("Done");
     // The cursor starts on a column that holds something: its list has a selected card.
     await until(() => tern.find("list", "layer").some((n) => typeof n.p.selected === "string"), "a card under the cursor");
     // f narrows to one project; →/← move between the columns, and Enter opens the card under the cursor.
