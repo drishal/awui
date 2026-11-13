@@ -180,4 +180,24 @@ describe("the picker's routes", () => {
     config(root, "setup: echo ok\n");
     await agent.post(`/api/workspaces/${ws}/worktrees/ffffffff/setup`).expect(409);
   });
+
+  it("serves prompt skills only once the exact version is trusted, and refuses an invalid file", async () => {
+    const { ws, agent, root } = await project();
+    // No file, no skills.
+    await agent.get(`/api/workspaces/${ws}/project-skills`).expect(404);
+    config(root, "skills:\n  run-tests: Run the tests and report what fails\n  fix-lint: Fix every lint warning in src/\n");
+    // Untrusted: the skills are not served, the same hash the setup command's trust uses.
+    await agent.get(`/api/workspaces/${ws}/project-skills`).expect(409);
+    const shown = (await agent.get(`/api/workspaces/${ws}/project-config`).expect(200)).body.config as { hash: string };
+    await agent.post(`/api/workspaces/${ws}/project-config/trust`).send({ hash: shown.hash }).expect(200);
+    const served = (await agent.get(`/api/workspaces/${ws}/project-skills`).expect(200)).body as { hash: string; skills: Record<string, string> };
+    expect(served.hash).toBe(shown.hash);
+    expect(served.skills).toEqual({ "run-tests": "Run the tests and report what fails", "fix-lint": "Fix every lint warning in src/" });
+    // A commit that edits the file makes the skills untrusted again, and a bad key refuses the file.
+    config(root, "skills:\n  run-tests: Changed prompt\n");
+    await agent.get(`/api/workspaces/${ws}/project-skills`).expect(409);
+    config(root, "skills:\n  Not_Kebab: bad name shape\n");
+    const bad = await agent.get(`/api/workspaces/${ws}/project-skills`).expect(422);
+    expect(bad.body.error).toContain("skills");
+  });
 });

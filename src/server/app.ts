@@ -1109,6 +1109,17 @@ export async function createApp(deps: AppDeps) {
     const ws = await workspaces.get(req.params.id);
     res.json({ config: await projectConfigStatus(ws.path, projectTrust) });
   });
+  // A project's prompt skills (awui.yml `skills:`): text only, served only once this exact
+  // file version is trusted — an untrusted file's prompts are never shown as runnable.
+  app.get("/api/workspaces/:id/project-skills", requireGrant("chat.read"), async (req, res) => {
+    const ws = await workspaces.get(req.params.id);
+    const read = await readProjectConfig(ws.path);
+    if (!read) throw new ChatError(404, "no_config", `This project has no ${PROJECT_CONFIG_FILE}`);
+    if (read.problem) throw new ChatError(422, "config_invalid", read.problem);
+    if (!projectTrust.isTrusted(ws.path, read.hash)) throw new ChatError(409, "config_untrusted", `This version of ${PROJECT_CONFIG_FILE} has not been trusted yet`);
+    const skills = read.config.skills ?? {};
+    res.json({ hash: read.hash, skills });
+  });
   app.post("/api/workspaces/:id/project-config/trust", requireGrant("workspaces.manage"), async (req, res) => {
     const ws = await workspaces.get(req.params.id);
     const { hash } = body(projectConfigTrustSchema, req);

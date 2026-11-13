@@ -201,6 +201,8 @@ export interface ProjectConfigStatus {
     shared?: string[];
     /** One command the picker can run in a worktree, by hand, once the file is trusted. */
     setup?: string;
+    /** Named prompt skills (text only, no code) this file declares; used only when the version is trusted. */
+    skills?: Record<string, string>;
   };
   /** Why the file's settings cannot be used (bad YAML, an unknown key, a path that leaves the project). */
   problem?: string;

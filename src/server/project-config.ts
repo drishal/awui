@@ -22,6 +22,9 @@ export const MAX_SHARED_ENTRIES = 32;
 const MAX_ENTRY_CHARS = 256;
 /** A setup command's limit: long enough for a real install line, short enough to read. */
 export const MAX_SETUP_CHARS = 1_000;
+/** Prompt skills one file may declare, and the longest one text may be. */
+export const MAX_SKILL_ENTRIES = 32;
+export const MAX_SKILL_CHARS = 4_000;
 
 /** `awui.yml` as it is written: every key optional, nothing else allowed. */
 export const projectConfigSchema = z
@@ -32,6 +35,12 @@ export const projectConfigSchema = z
     shared: z.array(z.string().trim().min(1).max(MAX_ENTRY_CHARS)).max(MAX_SHARED_ENTRIES).optional(),
     /** One command run in a new worktree, by hand, once the file is trusted. */
     setup: z.string().trim().min(1).max(MAX_SETUP_CHARS).optional(),
+    /**
+     * Named prompt skills (G12's safe slice): text only, no code, no paths run.
+     * A harness's own skill surface never runs these as anything but prompts.
+     * z.record here does not chain .max, so the entry cap is checked when read.
+     */
+    skills: z.record(z.string().trim().min(1).max(64).regex(/^[a-z0-9-]+$/), z.string().trim().min(1).max(MAX_SKILL_CHARS)).optional(),
   })
   .strict();
 
@@ -82,6 +91,8 @@ export async function readProjectConfig(root: string): Promise<ProjectConfigFile
   // An entry that leaves the project is refused here rather than half-applied later.
   const escaped = (config.shared ?? []).find((entry) => !contained(entry));
   if (escaped !== undefined) return { hash, config: {}, problem: `${PROJECT_CONFIG_FILE}: shared entries stay inside the project (${escaped})` };
+  // The skills cap the schema cannot express: too many prompts are a dataset, not a config.
+  if (config.skills && Object.keys(config.skills).length > MAX_SKILL_ENTRIES) return { hash, config: {}, problem: `${PROJECT_CONFIG_FILE}: at most ${MAX_SKILL_ENTRIES} skills are allowed` };
   return { hash, config };
 }
 
@@ -131,7 +142,7 @@ export async function projectConfigStatus(root: string, trust: ProjectConfigTrus
     file: PROJECT_CONFIG_FILE,
     hash: read.hash,
     trusted: trust.isTrusted(root, read.hash),
-    config: { ...(read.config.base ? { base: read.config.base } : {}), ...(read.config.shared ? { shared: read.config.shared } : {}), ...(read.config.setup ? { setup: read.config.setup } : {}) },
+    config: { ...(read.config.base ? { base: read.config.base } : {}), ...(read.config.shared ? { shared: read.config.shared } : {}), ...(read.config.setup ? { setup: read.config.setup } : {}), ...(read.config.skills ? { skills: read.config.skills } : {}) },
     ...(read.problem ? { problem: read.problem } : {}),
   };
 }
