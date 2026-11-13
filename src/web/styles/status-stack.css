@@ -663,9 +663,10 @@
   color: var(--warn);
 }
 
-/* The row's counts: changed is the attention colour, untracked the success one. */
+/* The row's counts: changed is plain text (a dirty tree is the normal state of work, not a call for you, and orange
+   already means "needs you" elsewhere on the row), untracked the success one. */
 .git-counts .git-count-word.is-changed {
-  color: var(--warn);
+  color: var(--text);
 }
 
 .git-counts .git-count-word.is-untracked {
