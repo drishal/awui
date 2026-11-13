@@ -39,7 +39,7 @@ export interface Figure {
   label: string;
   value: string;
   sub: string;
-  tone?: "accent" | "success" | "warning";
+  tone?: "accent" | "success" | "warning" | "rare";
 }
 
 const cost = (t: UsageTotals) => dollars(t.cost, t.calls > t.unpriced);
@@ -53,7 +53,7 @@ export function figures(report: UsageReport): Figure[] {
     { label: "Tokens", value: shortTokens(tokensOf(t)), sub: plural(t.calls, "model call", "model calls"), tone: "accent" },
     { label: "Output", value: shortTokens(t.output), sub: `${shortTokens(t.input)} fresh input` },
     { label: "From cache", value: share === null ? "—" : `${Math.round(share * 100)}%`, sub: `${shortTokens(t.cachedInput)} input tokens`, tone: "success" },
-    { label: "Cost", value: cost(t), sub: t.unpriced > 0 ? `${plural(t.unpriced, "call", "calls")} not priced` : "every call priced", tone: "warning" },
+    { label: "Cost", value: cost(t), sub: t.unpriced > 0 ? `${plural(t.unpriced, "call", "calls")} not priced` : "every call priced", tone: "rare" },
     { label: "Chats", value: t.sessions.toLocaleString(), sub: `with calls in ${report.days} days` },
   ];
 }

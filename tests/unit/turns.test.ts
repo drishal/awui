@@ -176,6 +176,8 @@ describe("buildTurns", () => {
     expect(countSummary({ read: 1, search: 1, edit: 2, write: 1, command: 1, web: 1, other: 2 })).toBe("1 read, 1 search, 2 edits, …");
     expect(formatDuration(65_000)).toBe("1m 5s");
     expect(formatDuration(3_720_000)).toBe("1h 2m");
+    expect(formatDuration(400)).toBe("<1s");
+    expect(formatDuration(0)).toBe("<1s");
     expect(relativePath("/w/src/a.ts", "/w")).toBe("src/a.ts");
     expect(relativePath("/other/a.ts", "/w")).toBe("/other/a.ts");
   });

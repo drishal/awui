@@ -107,7 +107,7 @@ function sessionNode(usage: SessionUsage | null, supports: ContextCx["supports"]
     { label: "Uncached input", value: shortTokens(uncached) },
     { label: "Cached input", value: shortTokens(usage.cachedInput) },
     { label: "Output", value: shortTokens(usage.output) },
-    ...(usage.cost !== null ? [{ label: "Cost", value: `$${usage.cost.toFixed(usage.cost < 1 ? 4 : 2)}` }] : []),
+    ...(usage.cost !== null ? [{ label: "Cost", value: `$${usage.cost.toFixed(usage.cost < 1 ? 4 : 2)}`, tone: "rare" }] : []),
   ];
   const timing = [
     { label: "Turns", value: `${usage.turns} · ${usage.steps} ${usage.steps === 1 ? "step" : "steps"}` },

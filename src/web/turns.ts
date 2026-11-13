@@ -311,6 +311,9 @@ export function countSummary(counts: Turn["counts"]): string {
 
 export function formatDuration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
+  // A sub-second run reads as "<1s": "0s" reads as the letter O, and a tally
+  // that rounds to zero is not a time.
+  if (s === 0) return "<1s";
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
   const rest = s % 60;
