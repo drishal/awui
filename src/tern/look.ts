@@ -164,6 +164,15 @@ export function stylesheet(width: ChatWidth | null): string {
 /* A row's body is inset from the card's edge, as the web UI insets a diff or an output block, so neither
    touches the frame. */
 [data-role='awui.calls'] .sf-tool-body { padding: 2px 12px 10px; }
+/* Native agent rows keep their task to one readable line; both head and body
+   leave the fold's right border clear of progress figures and timings. */
+[data-role='awui.agent-row'] .sf-agent-name { flex: none; }
+[data-role='awui.agent-row'] .sf-agent-task { min-width: 0; max-width: 58%; }
+[data-role='awui.agent-row'] .sf-agent-row,
+[data-role='awui.agent-row'] .sf-tool-head { align-items: flex-start; min-height: 30px; padding-right: 12px; }
+[data-role='awui.agent-row'] .sf-tool-body { padding-right: 16px; }
+[data-role='awui.agent-row'] .sf-agent-st,
+[data-role='awui.agent-row'] .sf-tool-took { padding-right: 12px; }
 /* A thought reads as the web UI's: the word, then the reasoning's title, both quiet and in the reading font. */
 [data-role='awui.thought'] .sf-tool-title { font-weight: 400; color: var(--t3); }
 [data-role='awui.thought'] .sf-tool-target { font-family: var(--sans); color: var(--t3); }

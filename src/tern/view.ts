@@ -166,8 +166,11 @@ function agentNode(run: SubagentRun): Node {
     {
       key: run.id,
       name: run.agent,
-      task: run.task.split("\n")[0] ?? "",
+      agent: `Agent · ${run.agent}`,
+      role: "awui.agent-row",
       status,
+      title: run.task,
+      task: [span(run.task.replace(/\s+/g, " ").trim())],
       ...(run.model ? { model: run.model } : {}),
       stats: {
         ...(run.toolCount !== undefined ? { tools: run.toolCount } : {}),
