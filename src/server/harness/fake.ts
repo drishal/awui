@@ -29,7 +29,9 @@
 //   "moaref" a MoA turn's reference advice as Markdown notice folds, and its status line
 //   "noticefold" a reply, an extension's notice, then a second reply (a tool-less stretch between replies)
 //   "delegate" delegate a task through the real orchestration endpoint, then wait for it (a child chat appears);
-//              with "slow" the child runs the slow script, so a running row can be cancelled
+//              with "slow" the child runs the slow script, with "askchild" it waits on a question, so a
+//              running row can be cancelled, and with "worktree" it works in its own managed checkout and
+//              edits a file, so its patch can be reviewed
 //   "unsafe" a real write to unsafe-outside.ts in the project root, which a delegated child's write scope refuses
 //
 // Board rooms drive this adapter through the real server. A Board invocation is
@@ -851,7 +853,7 @@ class FakeLiveChat implements LiveChat {
         await this.call({ name: "ExitPlanMode", args: { plan }, output: "User has approved your plan." }, signal);
       }
       if (/\brender\b|\bhtmlrender\b/i.test(text)) await this.render(signal);
-      if (/\bdelegate\b/i.test(text)) await this.delegate(signal, /\bslow\b/i.test(text));
+      if (/\bdelegate\b/i.test(text)) await this.delegate(signal, text);
       if (/\bratelimit\b/i.test(text)) {
         // A stop on a usage limit, worded as Claude Code words it (the reset as an epoch after "|").
         const error = `Claude AI usage limit reached|${Math.floor(Date.now() / 1000) + 3600}`;
@@ -1278,7 +1280,7 @@ class FakeLiveChat implements LiveChat {
    * word, so it answers a plain echo and finishes; `slow` gives the child the
    * slow script instead, so a panel's own Cancel has a running row to stop.
    */
-  private async delegate(signal: AbortSignal, slow = false): Promise<void> {
+  private async delegate(signal: AbortSignal, text: string): Promise<void> {
     const url = this.toolEnv?.AWUI_ORCH_URL;
     const token = this.toolEnv?.AWUI_ORCH_TOKEN;
     const orch = async (tool: string, args: Record<string, unknown>): Promise<{ text: string; data: Record<string, unknown> | null; isError: boolean }> => {
@@ -1297,8 +1299,15 @@ class FakeLiveChat implements LiveChat {
         return { text: `Orchestration failed: ${error instanceof Error ? error.message : String(error)}`, data: null, isError: true };
       }
     };
-    const brief = slow ? "slow work on the parser" : "Reply with the word child.";
-    const started = await orch("delegate_task", { brief, role: "test", title: "Fake delegated task" });
+    // The parent's own words pick the child's script: `worktree` gives it a managed checkout and an
+    // edit to review, `slow` a stream long enough to act on, and `askchild` an approval it waits on
+    // (a live row with nothing to finish it but a cancel).
+    const slow = /\bslow\b/i.test(text);
+    const worktree = /\bworktree\b/i.test(text);
+    const ask = /\baskchild\b/i.test(text);
+    // A question, not an approval: an approval goes to the person already and leaves the task working.
+    const brief = ask ? "quiz about the plan" : slow ? "slow work on the parser" : worktree ? "edit the parser in your own checkout" : "Reply with the word child.";
+    const started = await orch("delegate_task", { brief, role: "test", title: "Fake delegated task", ...(worktree ? { isolation: "worktree" } : {}) });
     await this.call(
       { name: "delegate_task", args: { brief, role: "test", title: "Fake delegated task" }, output: started.text, ...(started.isError ? { isError: true } : {}) },
       signal,
