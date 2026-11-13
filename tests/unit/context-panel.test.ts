@@ -1,7 +1,7 @@
 // Derived rail facts: each worker/job is meaningful only at its native-call scope.
 import { describe, expect, it } from "vitest";
-import { jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, tokenCount, validatedFolds, type JobSummary, type RunSummary } from "../../src/web/context-panel.js";
-import type { ChatItem, DelegatedTaskView, RaceSummary } from "../../src/shared/protocol.js";
+import { gitSummary, jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, tokenCount, validatedFolds, type JobSummary, type RunSummary } from "../../src/web/context-panel.js";
+import type { ChatItem, DelegatedTaskView, GitStatus, RaceSummary } from "../../src/shared/protocol.js";
 
 describe("context facts from real per-chat tool state", () => {
   it("deduplicates repeated async wait views, using each report's own call id", () => {
@@ -41,6 +41,13 @@ describe("a row's status and figures in the panel's own words", () => {
     expect(taskReadout({ state: "result_available", outcome: "failed" })).toEqual({ tone: "failed", word: "Failed" });
     expect(taskReadout({ state: "result_available", outcome: "cancelled" })).toEqual({ tone: "quiet", word: "Cancelled" });
     expect(taskReadout({ state: "result_available", outcome: "interrupted" })).toEqual({ tone: "quiet", word: "Interrupted" });
+  });
+
+  it("summarizes the project line: branch, files, diff lines, and any operation", () => {
+    const git = { branch: "main", head: "abc1234", files: [{ path: "a.ts" }, { path: "b.ts" }], more: 3, operation: "rebase", added: 12, removed: 4 } as unknown as GitStatus;
+    expect(gitSummary(git)).toEqual({ branch: "main", files: 5, operation: "rebase", added: 12, removed: 4 });
+    expect(gitSummary({ ...git, branch: null, head: "abc1234" })).toMatchObject({ branch: "detached at abc1234" });
+    expect(gitSummary(null)).toBeNull();
   });
 
   it("writes token figures short, and says so when the harness did not report one", () => {

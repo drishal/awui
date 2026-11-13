@@ -1,5 +1,5 @@
 // Pure selectors for the right panel: the harness snapshot and current records decide what exists.
-import type { ChatSnapshot, DelegatedTaskView, RaceSummary } from "../shared/protocol.js";
+import type { ChatSnapshot, DelegatedTaskView, GitStatus, RaceSummary } from "../shared/protocol.js";
 
 export type ContextSectionId = "agents" | "tasks" | "jobs" | "questions" | "races" | "opinions" | "review" | "memory";
 
@@ -111,6 +111,27 @@ export function taskReadout(task: Pick<DelegatedTaskView, "state" | "outcome">):
           return { tone: "done", word: "Done" };
       }
   }
+}
+
+/** The project line the panel's summary card draws: the branch, the files it would show in review, and any operation under way. */
+export interface GitSummary {
+  branch: string;
+  files: number;
+  operation: GitStatus["operation"];
+  /** Lines against HEAD, as the diff badges draw them. */
+  added: number;
+  removed: number;
+}
+
+export function gitSummary(status: GitStatus | null): GitSummary | null {
+  if (!status) return null;
+  return {
+    branch: status.branch ?? `detached at ${status.head ?? "?"}`,
+    files: status.files.length + status.more,
+    operation: status.operation,
+    added: status.added,
+    removed: status.removed,
+  };
 }
 
 /** A token count as the panel writes it: 840 stays "840", 8 400 becomes "8.4k", never a raw six-digit figure. */

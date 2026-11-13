@@ -12,7 +12,9 @@ test("work happens along with its chart: context count follows the original tool
   await expect(panel.locator(".context-count")).toHaveCount(1);
   await expect(panel.locator(".context-count").first()).toHaveText("2");
   await expect(panel.getByRole("heading", { name: "Background jobs" })).toHaveCount(0);
-  // Each run reads one status word at the end of its row.
+  // What the chat is sits in the summary above the groups, and each run reads one status word.
+  await expect(panel.locator(".context-summary-title")).toContainText("subagents");
+  await expect(panel.locator(".context-summary-meta")).toContainText("fake");
   await expect(panel.locator(".context-status").first()).toHaveText("Done");
   const briefButton = panel.getByRole("button", { name: "Open scout run", exact: true }).first();
   await briefButton.click();

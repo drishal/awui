@@ -97,6 +97,35 @@
 /* ---- the scrolled detail ---- */
 .context-scroller { flex: 1; min-height: 0; padding: 9px 10px 20px; overflow: auto; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted-text) 30%, transparent) transparent; }
 
+/* The one card that is not a group: what this chat is, and where its project stands. */
+.context-summary {
+  padding: 9px 10px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.context-summary-main { display: grid; min-width: 0; gap: 3px; }
+.context-summary-title {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 550;
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.context-summary-meta { display: flex; min-width: 0; align-items: center; gap: 5px; margin: 0; overflow: hidden; color: var(--muted-text); font-size: var(--chat-small); text-overflow: ellipsis; white-space: nowrap; }
+.context-summary-sep { color: var(--hairline-strong); }
+.context-summary-git { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--hairline); font-size: var(--label-size); }
+.context-summary-branch-icon { color: var(--muted-text); }
+.context-summary-branch { min-width: 0; overflow: hidden; color: var(--text-2); font-family: var(--font-mono); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.context-summary-op { padding: 0 5px; border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: var(--r-control); color: var(--warn); font-size: 10px; white-space: nowrap; }
+.context-summary-diff { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--muted-text); font-variant-numeric: tabular-nums; }
+.context-summary-clean { color: var(--muted-text); }
+
 /* ---- one group: a small muted label, then its card ---- */
 .context-section { margin-top: 12px; }
 .context-section-head {

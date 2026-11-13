@@ -6,14 +6,15 @@
  * contexts fetched are bounded readings of its own project; ownership/actions
  * go through the host chat's native APIs, not via a second session model. */
 import { useEffect, useMemo, useState } from "react";
-import type { ChatSnapshot, DelegatedTaskView, RaceSummary, ReviewThread, SecondOpinion } from "../../shared/protocol.js";
+import type { ChatSnapshot, DelegatedTaskView, GitStatus, RaceSummary, ReviewThread, SecondOpinion } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { save, load } from "../storage.js";
-import { IconAgents, IconChevronRight, IconEdit, IconFork, IconGauge, IconSidebar, IconSpark, IconSplit, IconStop, IconTerminal, IconTool, IconWarning } from "../icons.js";
+import { IconAgents, IconBranch, IconChevronRight, IconEdit, IconFork, IconGauge, IconSidebar, IconSpark, IconSplit, IconStop, IconTerminal, IconTool, IconWarning } from "../icons.js";
 import { Dialog } from "./Dialog.js";
 import { ConfirmButton } from "./ConfirmButton.js";
+import { DiffBadge } from "./ToolBody.js";
 import { ContextCardAction, ContextGroup, ContextList, ContextQuiet, ContextRow, ContextRowButton, ContextStatus } from "./ContextRows.js";
-import { jobEntries, jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, tokenCount, validatedFolds, type ContextSectionId } from "../context-panel.js";
+import { gitSummary, jobEntries, jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, tokenCount, validatedFolds, type ContextSectionId } from "../context-panel.js";
 
 export interface ContextActions {
   onOpenChat: (chatId: string) => void;
@@ -40,6 +41,24 @@ type Props = ContextRailProps;
 type OpenState = Record<ContextSectionId, boolean>;
 const DEFAULT_OPEN: OpenState = { agents: true, tasks: true, jobs: true, questions: true, races: false, opinions: false, review: false, memory: false };
 const labels: Record<ContextSectionId, string> = { agents: "Agents and lineage", tasks: "Delegated work", jobs: "Background jobs", questions: "Questions and permissions", races: "Comparisons and races", opinions: "Second opinions", review: "Review comments", memory: "Context and usage" };
+const OPERATION_LABEL: Record<NonNullable<GitStatus["operation"]>, string> = { merge: "merge", rebase: "rebase", "cherry-pick": "cherry-pick", revert: "revert", bisect: "bisect" };
+
+/**
+ * The project's branch and counts for the summary card: one reading when the panel
+ * opens, again when the chat settles. The composer's git row already owns the live
+ * polling, so this never adds an interval.
+ */
+function useProjectGit(chatId: string, status: ChatSnapshot["status"], showing: boolean): GitStatus | null {
+  const [git, setGit] = useState<GitStatus | null>(null);
+  useEffect(() => {
+    if (!showing) return;
+    let live = true;
+    void api<{ status: GitStatus | null }>(`/api/chats/${chatId}/git`).then((answer) => { if (live) setGit(answer.status); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [chatId, status, showing]);
+  return git;
+}
+
 export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onOpenChat, onCancelTask, onReview, onRace, onOpinion, onUsage, onQuestions, onSubagents }: Props) {
   const [open, setOpen] = useState<OpenState>(() => ({ ...DEFAULT_OPEN, ...validatedFolds(load<Partial<OpenState>>("context.folds", {})) }));
   const [races, setRaces] = useState<RaceSummary[] | null>(null);
@@ -53,6 +72,8 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
   const running = taskAttention(tasks) + runs.filter((r) => r.status === "running" || r.status === "pending").length + jobs.filter((j) => j.status === "running").length;
   const numberOfRaces = raceCount(races, chat.workspace.id);
   const showing = mode === "sheet" || expanded;
+  const git = useProjectGit(chatId, chat.status, showing);
+  const project = gitSummary(git);
   const hasAttention = running + chat.pending.length;
 
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -92,6 +113,19 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
 
   const details = (
     <>
+      <div className="context-summary">
+        <div className="context-summary-main">
+          <p className="context-summary-title" title={chat.title || chat.harnessId}>{chat.title || chat.harnessId}</p>
+          <p className="context-summary-meta"><span className="context-summary-harness">{chat.harnessId}</span><span className="context-summary-sep" aria-hidden="true">·</span>{chat.workspace.name}</p>
+        </div>
+        {project ? <div className="context-summary-git">
+          <IconBranch size={12} className="context-summary-branch-icon" />
+          <span className="context-summary-branch" title={`On ${project.branch}`}>{project.branch}</span>
+          {project.operation ? <span className="context-summary-op">{OPERATION_LABEL[project.operation]} in progress</span> : null}
+          <span className="context-summary-diff">{project.files > 0 ? <><span className="context-summary-files">{project.files} {project.files === 1 ? "file" : "files"}</span><DiffBadge added={project.added} removed={project.removed} /></> : <span className="context-summary-clean">clean</span>}</span>
+        </div> : null}
+      </div>
+
       {runs.length > 0 || chat.lineage ? <ContextGroup id="agents" label={labels.agents} count={runs.length || undefined} open={open.agents} attention={runs.some((run) => run.status === "failed") ? "accent" : false} onToggle={toggle}>
         <ContextList>
           {chat.lineage ? <ContextRow icon={<IconFork size={13} />} title={`Delegated from ${chat.lineage.parentTitle ?? "another chat"}`} meta={`Depth ${chat.lineage.depth}`} actions={<ContextRowButton label="Open parent" onClick={() => onOpenChat(chat.lineage?.parentChatId ?? "")}><IconChevronRight size={13} /></ContextRowButton>} /> : null}
