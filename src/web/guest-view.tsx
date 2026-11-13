@@ -5,7 +5,6 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import { api, errorText } from "./api.js";
-import { installRipple } from "./ripple.js";
 import "./styles.css";
 
 interface GuestMeta {
@@ -164,12 +163,12 @@ export function GuestView({ token }: { token: string }) {
   );
 }
 
-/** The entry: /guest/:token renders the standalone view, anything else the app shell. */
+/** The entry: /guest/:token renders the standalone view, anything else the app shell.
+    The ripple listener is already installed by main.tsx; a second one would spawn two inks per press. */
 export function mountGuestOrApp(): void {
   const match = location.pathname.match(/^\/guest\/([A-Za-z0-9_-]+)\/?$/);
   const root = document.getElementById("root");
   if (!root) return;
-  installRipple();
   if (match) {
     import("./guest-view.js").then(({ GuestView }) => {
       createRoot(root).render(
