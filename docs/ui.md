@@ -85,6 +85,7 @@ All in `src/web/styles/tokens.css`. A base16 theme replaces the base colours
 (`theme.ts`); everything else is mixed from them, so a fix uses a token, never
 a literal colour.
 
+- **Harness marks and status dots:** the harness selectors (`HarnessMenu`, the start screen agent chip, and the phone config sheet) draw `HarnessMark.tsx`: a small locally bundled monochrome PNG mask in the harness accent, or the neutral ACP glyph for an unknown/custom id. Custom ACP marks come from Settings via `harness-icon-upload.ts` → a 64 × 64 PNG stored through `server/harness-marks.ts` (bounded, validated on read/write, versioned by content hash). Their inlay is not the running state; session rows/tabs keep the tiny identity dots, working rings, unread marks, and status explanations. Built-in icons are under `public/harness-marks/`, with exact source links and notices. The browser never downloads an icon registry. New harnesses add a mark only if their identity needs one, with docs/harnesses.md's file rows.
 - **Colours:** `--bg`, `--surface`, `--surface-2`, `--text`, `--text-2`,
   `--muted`, `--accent`, `--link`, `--ok`, `--warn`, `--danger`; derived
   `--hairline`, `--hairline-strong`, `--hover`, `--active`, and `--raised` (a

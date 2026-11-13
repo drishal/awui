@@ -10,6 +10,7 @@ import type { ConfigPatch, HarnessStatus, OauthAccountChoice } from "../../share
 import { handoffChoice } from "../handoff.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconCheck } from "../icons.js";
+import { HarnessMark } from "./HarnessMark.js";
 import { Dialog } from "./Dialog.js";
 import { ModelPicker } from "./ModelPicker.js";
 import { PermissionPicker } from "./PermissionPicker.js";
@@ -60,7 +61,7 @@ export function ConfigSheet({
                 void onHandoff(h.id).finally(() => setPending(null));
               }}
             >
-              <span className="harness-dot" style={harnessColor(h.id)} />
+              <span className="harness-dot" style={harnessColor(h.id)}><HarnessMark harness={h} /></span>
               <span className="config-choice-main">
                 <span className="config-choice-name">{h.displayName}</span>
                 <span className="config-choice-note">{pending === h.id ? "Handing off…" : note}</span>

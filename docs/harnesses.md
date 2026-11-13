@@ -108,6 +108,8 @@ like the rest of awui (tool output to 16 KB, args to 4 KB, diffs to 800 lines /
 40 KB), and an update kind this client does not know is noted once per chat and
 never crashes it. The Settings dialog's **ACP agents** section adds, removes, and tests entries; Test runs the handshake only (the agent's name and version, what it advertises, and its sign-in methods), and a change to the list takes effect at the next restart.
 
+Each saved entry can have an **Agent icon** for the harness selectors. The browser center-crops raster files and fits SVGs into a local 64 × 64 PNG (up to 8 MiB input, at most 64 KiB saved); it posts only that raster, not active SVG markup. Icons live in `$XDG_STATE_HOME/awui/harness-marks/<id>.png` (0600), and change/remove routes (`PUT`/`DELETE /api/settings/harness-marks/:id`) require `settings.manage` and an id already in the saved ACP list — a name never becomes a program or path. Reads require `chat.read` and serve PNG with `nosniff`; a content hash in the advertised URL refreshes a replacement. Nothing fetches an icon registry/CDN at runtime, and the icon does not imply the agent is installed or available.
+
 ## 2. The contract (`src/server/harness/types.ts`)
 
 `HarnessAdapter` is the harness; `LiveChat` is one open session. Read the doc
@@ -310,6 +312,8 @@ As needed, when the agent's tools or results look different from the others:
 | `harness/plans.ts` | It hands plans over for review. |
 | `herdr.ts` | herdr reports its panes' sessions in a shape `paneSessionId` does not know (the pane's `agent` must be awui's harness id). |
 | `src/atui/neat.ts`, `src/atui/fx.ts` | atui's one-character mark and spinner frames for it; without them it gets its initial and the default spinner. |
+| `src/web/components/HarnessMark.tsx`, `src/web/public/harness-marks/<id>.png` | Its recognizable mark in the web's harness selectors (monochrome, themed by accent, not its running/status dot). Unknown ids get the neutral ACP glyph; custom `harnesses.acp` entries can upload one locally instead. |
+| `src/server/harness-marks.ts` | Only for custom ACP icons (no brand SVG served as active content): a validated, stored 64 × 64 bounded PNG, served authenticated from the app's state-folder store. |
 
 ## 5. Tests
 

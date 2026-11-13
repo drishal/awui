@@ -1,7 +1,7 @@
 /* ---- settings ------------------------------------------------------------- */
 /* Two panes in one dialog: a rail of sections with a search field over it, and
    the open section scrolling on its own under a Save bar that never moves. The
-   dialog keeps one height, so switching sections never resizes it. */
+   frame follows its content (D2), holding width without reserving a blank tall pane. */
 .settings-dialog {
   width: min(900px, calc(100vw - 32px));
 }
@@ -329,6 +329,51 @@
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
 }
 
+.acp-agent-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--harness, var(--muted-text));
+}
+
+.acp-agent-mark > .harness-mark {
+  flex: none;
+  display: block;
+  background: var(--muted-text);
+}
+
+.acp-agent-mark-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.acp-agent-mark input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+
+.acp-agent-mark label.button {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.acp-agent-mark label.button:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.acp-agent-mark label.button.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .acp-agent-test {
   display: flex;
   align-items: center;
@@ -374,6 +419,14 @@
 }
 
 @media (max-width: 640px) {
+  .acp-agent-mark {
+    flex-wrap: wrap;
+  }
+
+  .acp-agent-mark-copy {
+    flex-basis: calc(100% - 32px);
+  }
+
   /* One pane at a time: the rail is the list, and the section it opened is the detail. */
   .settings-dialog .dialog-body {
     grid-template-columns: minmax(0, 1fr);

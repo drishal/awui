@@ -8,6 +8,7 @@ import type { HarnessStatus } from "../../shared/protocol.js";
 import { harnessColor } from "../harness-colors.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { IconCheck, IconChevronDown } from "../icons.js";
+import { HarnessMark } from "./HarnessMark.js";
 
 export interface HarnessChoice {
   harness: HarnessStatus;
@@ -135,7 +136,9 @@ export function HarnessMenu({
         onClick={() => (open ? close(false) : show())}
         onKeyDown={onTriggerKey}
       >
-        {variant === "row" ? <span className="harness-dot" aria-hidden="true" /> : null}
+        <span className="harness-dot">
+          <HarnessMark harness={current} />
+        </span>
         <span className="harness-row-name">{name}</span>
         {variant === "row" && current?.version ? (
           <span className="harness-row-meta" title={current.versionDetail ?? current.version}>
@@ -171,7 +174,9 @@ export function HarnessMenu({
               onMouseMove={() => enabled(i) && setActive(i)}
               onClick={() => pick(i)}
             >
-              <span className="harness-dot" aria-hidden="true" />
+              <span className="harness-dot">
+                <HarnessMark harness={c.harness} />
+              </span>
               <span className="harness-option-name">{c.harness.displayName}</span>
               <span className="harness-option-meta">{c.blocked ?? c.note ?? c.harness.version ?? ""}</span>
               {c.harness.id === currentId ? <IconCheck size={13} className="harness-option-check" /> : null}

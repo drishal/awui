@@ -2204,6 +2204,8 @@ export function App() {
         <SettingsDialog
           scheme={themeInfo?.source === "file" ? { name: themeInfo.name } : null}
           section={settingsSection}
+          harnesses={boot.harnesses}
+          onHarnessMark={(id, src) => setBoot((b) => (b ? { ...b, harnesses: b.harnesses.map((h) => (h.id === id ? { ...h, icon: src ?? undefined } : h)) } : b))}
           onPair={() => {
             setSettingsOpen(false);
             setPairOpen(true);

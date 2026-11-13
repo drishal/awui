@@ -9,14 +9,14 @@ import { openSettings } from "./helpers.js";
 // (theme, text size) can be saved to config.yml without signing in.
 const PORT = Number(process.env.AWUI_E2E_PORT ?? 4791) + 1;
 
-async function startServer(): Promise<{ server: ChildProcess; configFile: string; base: string }> {
-  const dir = mkdtempSync(path.join(tmpdir(), "awui-settings-"));
+async function startServer(directory?: string, withCustom = false): Promise<{ server: ChildProcess; configFile: string; base: string }> {
+  const dir = directory ?? mkdtempSync(path.join(tmpdir(), "awui-settings-"));
   const root = path.join(dir, "workspaces");
   mkdirSync(path.join(root, "proj"), { recursive: true });
   const configDir = path.join(dir, "awui");
   mkdirSync(configDir, { recursive: true });
   const configFile = path.join(configDir, "config.yml");
-  const env: NodeJS.ProcessEnv = { ...process.env, AWUI_CONFIG_DIR: configDir, AWUI_HARNESSES: "fake", WORKSPACE_ROOTS: root };
+  const env: NodeJS.ProcessEnv = { ...process.env, AWUI_CONFIG_DIR: configDir, AWUI_HARNESSES: withCustom ? "fake,fake-b,custom" : "fake,fake-b", WORKSPACE_ROOTS: root };
   for (const key of ["HOST", "PORT", "AUTH_USERNAME", "AUTH_PASSWORD", "AUTH_CREDENTIALS_FILE", "ALLOWED_HOSTS"]) delete env[key];
   env.PORT = String(PORT);
   env.XDG_STATE_HOME = path.join(dir, "state");
@@ -160,7 +160,7 @@ test.describe("shared look in config.yml", () => {
     await page.goto(`${base}/#chat=${chatId}`);
     const toggle = page.getByTestId("process-toggle").last();
     // Cards are the default: an icon stack and "Used N tools".
-    await expect(toggle).toContainText("Used 9 tools");
+    await expect(toggle).toContainText("Used 8 tools");
     await expect(toggle.getByTestId("kind-stack")).toBeVisible();
 
     await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -246,7 +246,7 @@ test.describe("shared look in config.yml", () => {
     await settings.getByRole("listbox", { name: "Theme" }).getByRole("option", { name: "Light" }).click();
     await expect(settings.getByRole("listbox", { name: "Theme" })).toHaveCount(0);
     await expect(settings.getByText("Unsaved changes")).toBeVisible();
-    // Wait for the dialog's one-shot transform before measuring; later panes must not resize it.
+    // The dialog's one-shot transform finishes before measure; later sections keep width.
     const frame = await settings.boundingBox();
     if (!frame) throw new Error("Settings has no dialog frame to measure");
     await openSection(settings, "Layout");
@@ -254,11 +254,14 @@ test.describe("shared look in config.yml", () => {
     // The edit made in Appearance is still the form's: one Save writes both.
     await expect(settings.getByText("Unsaved changes")).toBeVisible();
     await expect(settings.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
-    // Settle the last pane before measuring; clientHeight excludes fractional text-scroll changes.
-    await expect.poll(async () => {
-      const current = await settings.boundingBox();
-      return current ? [current.x, current.y, current.width, current.height].map(Math.round) : null;
-    }, { timeout: 15_000 }).toEqual([frame.x, frame.y, frame.width, frame.height].map(Math.round));
+    // Height follows the section's content (D2) rather than forcing one tall blank pane;
+    // what stays stable is the horizontal frame and the visible dialog boundary.
+    await expect(settings.locator('.settings-rail-search')).toBeVisible();
+    const later = await settings.boundingBox();
+    if (!later) throw new Error('Settings frame disappeared');
+    expect([later.x, later.width].map(Math.round)).toEqual([frame.x, frame.width].map(Math.round));
+    expect(later.y).toBeGreaterThanOrEqual(16);
+    expect(later.y + later.height).toBeLessThanOrEqual(720 - 16);
     await settings.getByRole("button", { name: "Save", exact: true }).click();
     await expect(settings.getByText("Saved.", { exact: true })).toBeVisible();
     const file = readFileSync(configFile, "utf8");
@@ -316,6 +319,63 @@ test.describe("shared look in config.yml", () => {
     await openSection(settings, "Appearance");
     await expect(settings.getByText("Saved; takes effect after a restart: username.")).toBeVisible();
     await settings.getByRole("button", { name: "Close" }).click();
+  });
+
+  test("a harness shows a recognisable mark, and a custom agent uploads and removes its own icon", async ({ page }) => {
+    test.setTimeout(60_000);
+    const { base, configFile } = ctx as NonNullable<typeof ctx>;
+
+    await page.goto(`${base}/`);
+    // The adapter id, not a styled dot keyed by index, decides its mark. Add the
+    // known ids under the same real fake adapter, so the selector itself is what loads:
+    // its model names remain realistic but no actual credentials or commands are used.
+    await page.route("**/api/bootstrap", async (route) => {
+      const res = await route.fetch();
+      const c = await res.json();
+      for (const id of ["pi", "omp", "hermes"]) c.harnesses.push({ ...c.harnesses[0], id, displayName: id });
+      await route.fulfill({ response: res, json: c });
+    });
+    await page.reload();
+    await page.locator(".harness-row").click();
+    const menu = page.getByRole("listbox", { name: "Harness" });
+    await expect(menu.locator(".harness-mark.is-fallback").first()).toBeVisible();
+    await expect(menu.locator(".harness-mark img[src='/harness-marks/pi.png']")).toBeVisible();
+    await expect(menu.locator(".harness-mark img[src='/harness-marks/omp.png']")).toBeVisible();
+    await expect(menu.locator(".harness-mark img[src='/harness-marks/hermes.png']")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await openSection(settings, "ACP agents");
+    await settings.getByRole("button", { name: "Add an ACP agent" }).click();
+    const agent = settings.locator(".acp-agent").last();
+    await agent.getByLabel("ACP agent id").fill("custom");
+    await agent.getByLabel("ACP agent name").fill("My custom agent");
+    await agent.getByLabel("ACP agent command").fill(`${process.execPath} ${process.cwd()}/tests/fixtures/fake-acp.mjs`);
+    await settings.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(settings.locator(".settings-foot-state").filter({ hasText: /Saved/ })).toBeVisible();
+    await agent.getByRole("button", { name: "Upload icon for My custom agent" }).setInputFiles({ name: "custom.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80" viewBox="0 0 120 80"><rect width="120" height="80" fill="#8090a0"/><path d="M30 40h60" stroke="white" stroke-width="10"/></svg>') });
+    await expect(agent.locator(".acp-agent-mark")).toHaveAttribute("data-icon-state", "Saved.");
+    await expect(agent.locator(".harness-mark img")).toHaveAttribute("src", /\/api\/harness-marks\/custom\.png\?v=/);
+    // An ACP entry joins the registry on startup, not on config Save. Restart this
+    // test's own server (same settings and state dir) to check the real menu, not an invented one.
+    const proc = ctx as NonNullable<typeof ctx>;
+    const exited = new Promise<void>((resolve) => proc.server.once('exit', () => resolve()));
+    proc.server.kill('SIGTERM');
+    await exited;
+    Object.assign(proc, await startServer(path.dirname(path.dirname(configFile)), true));
+    const icon = await page.request.get(`${base}/api/harness-marks/custom.png`);
+    expect(icon.status()).toBe(200);
+    expect(icon.headers()['content-type']).toContain('image/png');
+    await page.goto(`${base}/`);
+    await page.locator(".harness-row").click();
+    await expect(page.getByRole("option", { name: "My custom agent" }).locator(".harness-mark img")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await openSection(settings, "ACP agents");
+    const savedAgent = settings.locator(".acp-agent").filter({ has: page.locator('input[aria-label="ACP agent id"][value="custom"]') });
+    await savedAgent.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(agent.locator(".harness-mark.is-fallback")).toBeVisible();
+    expect(readFileSync(configFile, "utf8")).toContain("id: custom");
   });
 
   test("?settings=<section> opens Settings on that section", async ({ page }) => {

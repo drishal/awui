@@ -9,6 +9,9 @@ export type Plan = z.infer<typeof workerPlanSchema>;
 export type HarnessId = string & { readonly __brand: "HarnessId" };
 export const asHarnessId = (id: string): HarnessId => id as HarnessId;
 
+/** A config.yml ACP agent's id: a lowercase slug (user-config.ts checks the file against it), so the same word reads in a URL. */
+export const ACP_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
 export interface HarnessCapabilities {
   supportsSteer: boolean;
   supportsFollowUp: boolean;
@@ -65,6 +68,11 @@ export interface HarnessStatus {
   accent: string;
   /** The terminal command that logs it in to a provider (`opencode auth login`), when it has one. */
   setupCommand?: string;
+  /**
+   * The server's versioned URL for a custom ACP agent's uploaded icon (`/api/harness-marks/<id>.png?v=<hash>`),
+   * when one is stored. Built-ins draw the web's own `/harness-marks/<id>.png` and never carry one.
+   */
+  icon?: string;
 }
 
 /** Theme colour tokens a harness may take, in the order unclaimed harnesses get them (status hues last). */

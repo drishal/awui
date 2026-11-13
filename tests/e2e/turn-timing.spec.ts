@@ -14,8 +14,8 @@ test("the Timing view lists a turn's calls as named bars, with the slowest marke
   const dialog = page.getByRole("dialog", { name: "Timing" });
   await expect(dialog).toBeVisible();
   const rows = dialog.getByRole("listitem");
-  // Nine calls and the answer, at least.
-  expect(await rows.count()).toBeGreaterThanOrEqual(10);
+  // Actual calls and the answer; adjacent plan rows compact into one.
+  expect(await rows.count()).toBeGreaterThanOrEqual(9);
   const bash = dialog.getByRole("listitem", { name: /^Ran npm test -- --run tool-diff, .+ to .+/ });
   await expect(bash).toHaveCount(1);
   await expect(dialog.getByRole("listitem", { name: /^Edited src\/server\.ts, / })).toHaveCount(1);

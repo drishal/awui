@@ -12,7 +12,8 @@
 // phone the same two panes become a list and a detail: the rail, then the
 // section with a way back.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, AgentProfilePatch, AgentProfileSettings, Bootstrap, ChatWidth, Density, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle, UiFont } from "../../shared/protocol.js";
+import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, AgentProfilePatch, AgentProfileSettings, Bootstrap, ChatWidth, Density, HarnessStatus, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle, UiFont } from "../../shared/protocol.js";
+import { asHarnessId } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { FormRow } from "./FormRow.js";
@@ -26,6 +27,8 @@ import type { NotifyState } from "../notify.js";
 import { chime, chimeOn, setChime } from "../attention.js";
 import { matchSettings, type SettingsSectionText } from "../settings-search.js";
 import { load as loadStored, save as saveStored } from "../storage.js";
+import { HarnessMark } from "./HarnessMark.js";
+import { removeHarnessIcon, uploadHarnessIcon } from "../harness-icon-upload.js";
 
 const NOTIFY_NOTE: Record<NotifyState["mode"], string> = {
   off: "When a run finishes, fails, or asks for an answer.",
@@ -298,6 +301,8 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
 export function SettingsDialog({
   scheme,
   section,
+  harnesses,
+  onHarnessMark,
   onPair,
   signedInAs,
   onSignOut,
@@ -319,6 +324,10 @@ export function SettingsDialog({
   notify: NotifyState;
   onToggleNotify: () => Promise<void>;
   onTestNotify: () => Promise<void>;
+  /** Live server state, including the custom marks this machine uploaded. */
+  harnesses: Bootstrap["harnesses"];
+  /** A custom agent's stored mark changed: selectors follow the server's small PNG. */
+  onHarnessMark: (id: string, src: string | null) => void;
   /** The file's look settings changed: the open page follows without a reload. */
   onUiSaved: (ui: Partial<Bootstrap["ui"]>) => void;
   onClose: () => void;
@@ -331,6 +340,9 @@ export function SettingsDialog({
   const [restarting, setRestarting] = useState(false);
   /** Each ACP agent's last Test: its own line when it draws one, else its error. */
   const [acpTests, setAcpTests] = useState<Record<string, { busy: boolean; line?: string; error?: string }>>({});
+  /** Local upload overrides until the parent's live bootstrap carries the returned URL. */
+  const [iconOverrides, setIconOverrides] = useState<Record<string, string | undefined>>({});
+  const [iconStates, setIconStates] = useState<Record<string, { busy: boolean; notice?: string; error?: string }>>({});
   // The awui harness's own providers; null until loaded, false when the harness is off.
   const [awui, setAwui] = useState<AwuiSettingsState | null>(null);
   const [active, setActive] = useState<SectionId>(() => openingSection(section));
@@ -499,6 +511,26 @@ export function SettingsDialog({
 
   const setAcpRow = (i: number, change: Partial<AcpAgentRow>) => draft && update({ acpAgents: draft.acpAgents.map((row, j) => (j === i ? { ...row, ...change } : row)) });
   const setAgentProfileRow = (i: number, change: Partial<AgentProfileRow>) => draft && update({ agentProfiles: draft.agentProfiles.map((row, j) => (j === i ? { ...row, ...change } : row)) });
+  const markFor = (row: AcpAgentRow): { id: HarnessStatus["id"]; icon?: string } | undefined => {
+    const id = row.id.trim();
+    const existing = harnesses.find((h) => h.id === id);
+    return (id && savedAcpIds.includes(id)) || existing ? { id: existing?.id ?? asHarnessId(id), icon: iconOverrides[id] ?? existing?.icon } : undefined;
+  };
+  const changeHarnessMark = async (row: AcpAgentRow, file: File | null) => {
+    const id = row.id.trim();
+    if (!id || (file === null && !(iconOverrides[id] ?? harnesses.find((h) => h.id === id)?.icon))) return;
+    setIconStates((states) => ({ ...states, [id]: { busy: true } }));
+    try {
+      const next = file ? await uploadHarnessIcon(id, file) : await removeHarnessIcon(id);
+      setIconOverrides((prev) => ({ ...prev, [id]: next.icon ?? undefined }));
+      onHarnessMark(id, next.icon);
+    } catch (e) {
+      setIconStates((states) => ({ ...states, [id]: { busy: false, error: errorText(e) } }));
+      return;
+    }
+    setIconStates((states) => ({ ...states, [id]: { busy: false, notice: file ? "Saved." : "Removed. The neutral fallback is shown instead." } }));
+  };
+
   /** The ids config.yml has now: a row must be saved before the server can handshake with it. */
   const savedAcpIds = server?.values.acpAgents.map((agent) => agent.id) ?? [];
   /** One handshake, no model call: what the saved agent calls itself and what it advertises. */
@@ -877,6 +909,21 @@ export function SettingsDialog({
                             <textarea className="input" aria-label="ACP agent arguments" placeholder="--acp" rows={2} value={row.args} disabled={!editable} onChange={(e) => setAcpRow(i, { args: e.target.value })} />
                             <textarea className="input" aria-label="ACP agent environment" placeholder="GEMINI_API_KEY=" rows={2} value={row.env} disabled={!editable} onChange={(e) => setAcpRow(i, { env: e.target.value })} />
                             <input className="input" aria-label="ACP agent auth method" placeholder="auth method (optional)" value={row.authMethod} disabled={!editable} onChange={(e) => setAcpRow(i, { authMethod: e.target.value })} />
+                          </div>
+                          <div className="acp-agent-mark" data-icon-state={iconStates[row.id.trim()]?.error ?? iconStates[row.id.trim()]?.notice ?? ""}>
+                            <HarnessMark harness={markFor(row)} size={22} />
+                            <div className="acp-agent-mark-copy">
+                              <span className="form-label">Agent icon</span>
+                              <span className="form-desc">Optional. Cropped to square (SVGs fitted), converted to a 64 × 64 PNG in your browser, and saved in awui's own state folder. Never fetched from an icon service.</span>
+                            </div>
+                            <label className={`button${!editable || !savedAcpIds.includes(row.id.trim()) || iconStates[row.id.trim()]?.busy === true ? " is-disabled" : ""}`} aria-disabled={!editable || !savedAcpIds.includes(row.id.trim()) || iconStates[row.id.trim()]?.busy === true}>
+                              {iconOverrides[row.id.trim()] !== undefined || harnesses.find((h) => h.id === row.id.trim())?.icon ? "Change icon" : "Upload icon"}
+                              <input type="file" aria-label={`Upload icon for ${row.name || row.id.trim() || "agent"}`} accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" disabled={!editable || !savedAcpIds.includes(row.id.trim()) || iconStates[row.id.trim()]?.busy === true} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } }} onChange={(e) => { const file = e.target.files?.[0] ?? null; e.target.value = ""; if (file) void changeHarnessMark(row, file); }} />
+                            </label>
+                            {iconOverrides[row.id.trim()] !== undefined || harnesses.find((h) => h.id === row.id.trim())?.icon ? <button type="button" className="button btn-ghost" disabled={!editable || iconStates[row.id.trim()]?.busy === true} onClick={() => void changeHarnessMark(row, null)}>Remove</button> : null}
+                            {iconStates[row.id.trim()]?.busy ? <span className="form-desc">Preparing…</span> : null}
+                            {iconStates[row.id.trim()]?.notice ? <span className="form-desc">{iconStates[row.id.trim()]?.notice}</span> : null}
+                            {iconStates[row.id.trim()]?.error ? <span className="notice notice-error" role="alert">{iconStates[row.id.trim()]?.error}</span> : null}
                           </div>
                           <div className="acp-agent-test">
                             <button type="button" className="button" disabled={!editable || !savedAcpIds.includes(row.id.trim()) || acpTests[row.id]?.busy === true} onClick={() => void testAcp(row)}>

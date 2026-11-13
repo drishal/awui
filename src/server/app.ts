@@ -119,6 +119,9 @@ import { ChatError, errorMessage, type Chat } from "./chats/chat.js";
 import type { BoardManager } from "./boards/types.js";
 import { storedImage, rememberImage } from "./image-store.js";
 import { isHtmlRenderId, readHtmlRender, saveHtmlRender } from "./html-render.js";
+import { HarnessMarkStore, markRevision, markUrl } from "./harness-marks.js";
+import { ACP_AGENT_ID } from "../shared/protocol.js";
+
 import { Idempotency } from "./idempotency.js";
 import type { ChatManager } from "./chats/manager.js";
 import type { HarnessRegistry } from "./harness/registry.js";
@@ -935,6 +938,10 @@ export async function createApp(deps: AppDeps) {
   app.use("/api", (req, res, next) => {
     // An upload's body is the file itself, whatever type the browser names; its route reads it raw.
     if (req.method === "POST" && /^\/workspaces\/[^/]+\/upload$/.test(req.path)) return next();
+    // Same for a harness mark: the browser sends the PNG's bytes with a content type of
+    // its own choosing, so the PUT is matched before the JSON parsers and its route
+    // reads the body raw (64 KiB limit on the route, which is the only one that takes it).
+    if (req.method === "PUT" && /^\/settings\/harness-marks\/[^/]+$/.test(req.path)) return next();
     return (req.method === "POST" && /^\/(?:chats|rooms)\/[^/]+\/messages$/.test(req.path) ? messageJson : textJson)(req, res, next);
   });
 
@@ -946,6 +953,7 @@ export async function createApp(deps: AppDeps) {
 
   const browserSettings = () => uiSettings(userConfig());
 
+  const harnessMarks = new HarnessMarkStore(deps.stateDir);
   let statusAt = 0;
   app.get("/api/bootstrap", async (req, res) => {
     if (Date.now() - statusAt > 60_000 || req.query.refresh === "1") {
@@ -962,7 +970,12 @@ export async function createApp(deps: AppDeps) {
         remoteEnabled: security.username !== null,
       },
       grants: await grantsOf(req, res),
-      harnesses: registry.status(),
+      // A custom ACP agent's uploaded icon rides on its status row; built-ins draw the
+      // web's own mark and carry none (the state folder decides, per id).
+      harnesses: registry.status().map((h) => {
+        const bytes = harnessMarks.read(h.id);
+        return bytes ? { ...h, icon: `${markUrl(h.id)}?v=${markRevision(bytes)}` } : h;
+      }),
       roots: workspaces.rootList,
       home: deps.home,
       theme: { active: t.name ?? "built-in", ...(t.problem ? { problem: t.problem } : {}) },
@@ -1045,6 +1058,49 @@ export async function createApp(deps: AppDeps) {
     res.status(202).json({ restarting: true });
     // The same graceful stop as a SIGTERM from systemd, which then starts it again (Restart=always).
     setTimeout(() => process.kill(process.pid, "SIGTERM"), 300);
+  });
+
+  // ---- Custom icons for config.yml's ACP agents (harness-marks.ts) ----
+  // One store per app: its state folder is this server's, and the settings context is
+  // resolved at each call so a config.yml the dialog just saved is what the whitelist reads.
+  // An upload names an id the URL carries: the id is checked against the slug and the
+  // saved ACP list (never a built-in), so one entry cannot overwrite another's mark or
+  // a path outside the store's folder.
+  const savedMarkAgent = (id: string): { id: string } => {
+    const ctx = settingsCtx();
+    if (!ACP_AGENT_ID.test(id)) throw new ChatError(400, "bad_mark_id", "A harness id is a slug: lowercase letters, digits, or '-', at most 32 characters");
+    if (savedAcpAgent(ctx, id) === null) throw new ChatError(404, "unknown_acp_agent", `config.yml has no ACP agent "${id}"`);
+    return { id };
+  };
+  app.put(
+    "/api/settings/harness-marks/:id",
+    requireGrant("settings.manage"),
+    // The body is the PNG itself, read raw: the browser names its own content type, so
+    // the JSON parsers are bypassed for this PUT only (see the /api body matcher above).
+    express.raw({ type: () => true, limit: "64kb" }),
+    (req, res) => {
+      const { id } = savedMarkAgent(req.params.id);
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new ChatError(400, "bad_mark", "An icon must be a 64 × 64 PNG");
+      harnessMarks.save(id, req.body);
+      res.json({ icon: `${markUrl(id)}?v=${markRevision(req.body)}` });
+    },
+  );
+  app.delete("/api/settings/harness-marks/:id", requireGrant("settings.manage"), (req, res) => {
+    const { id } = savedMarkAgent(req.params.id);
+    harnessMarks.remove(id);
+    res.json({ icon: null });
+  });
+  // The stored bytes: an authenticated read (chat.read, the same grant the session lists
+  // take), served as image/png with nosniff. The id is slug-checked, so a path in the URL
+  // cannot climb out of the store's folder; a 1-hour private cache bounds it.
+  app.get("/api/harness-marks/:id.png", requireGrant("chat.read"), (req, res) => {
+    const id = req.params.id;
+    const bytes = harnessMarks.read(id);
+    if (bytes === null) throw new ChatError(404, "no_mark", "No icon is stored for that harness");
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(bytes);
   });
 
   // ---- Limited-session invitations (grants.ts): who may hold one, and what it allows ----

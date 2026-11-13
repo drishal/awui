@@ -10,6 +10,7 @@ import { harnessColor } from "../harness-colors.js";
 import { IconChevronDown } from "../icons.js";
 import { ConfigSheet } from "./ConfigSheet.js";
 import { HarnessMenu } from "./HarnessMenu.js";
+import { HarnessMark } from "./HarnessMark.js";
 import { ModelPicker } from "./ModelPicker.js";
 import { PermissionPicker } from "./PermissionPicker.js";
 import { ThinkingPicker } from "./ThinkingPicker.js";
@@ -59,6 +60,7 @@ export function ComposerControls({
   const idle = chat.status === "idle" || chat.status === "error";
   const { config } = chat;
   const [settings, setSettings] = useState(false);
+  const current = harnesses.find((h) => h.id === chat.harnessId);
 
   return (
     <div className="composer-controls">
@@ -101,7 +103,7 @@ export function ComposerControls({
         data-testid="config-chip"
         onClick={() => setSettings(true)}
       >
-        <span className="harness-dot" style={harnessColor(chat.harnessId)} />
+        <span className="harness-dot" style={harnessColor(chat.harnessId)}><HarnessMark harness={current} /></span>
         <span className="config-summary">{configSummary(chat, harnesses)}</span>
         <IconChevronDown size={12} />
       </button>

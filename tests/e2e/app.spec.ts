@@ -177,12 +177,13 @@ test("tool cards: the harness's numbered diff, a terminal, a search, a fetch", a
   await expect(tool("grep").locator(".tool-sentence")).toHaveText("Searched for listen\\( in src");
   await expect(tool("web_fetch").getByRole("link", { name: "https://example.com/docs/listen" })).toBeVisible();
   // Todos read as a checklist, never as JSON.
-  await expect(tool("TodoWrite").locator(".tool-sentence")).toHaveText("Updated the plan (3 steps)");
-  await tool("TodoWrite").getByRole("button").first().click();
-  await expect(tool("TodoWrite").locator(".todo-card-row.is-done")).toHaveText("Normalize each harness's diff");
-  await expect(tool("TodoWrite").locator(".todo-card-row.is-active")).toHaveText("Ship the diff view");
+  // Adjacent plans fold onto the lowercase `todo_write` row; no duplicate uppercase plan card.
   await expect(tool("todo_write").locator(".tool-sentence")).toHaveText("Updated the plan");
-  await expect(page.getByTestId("process-toggle").last()).toContainText("Used 9 tools");
+  await tool("todo_write").getByRole("button").first().click();
+  await expect(tool("todo_write").locator(".todo-card-row.is-done").first()).toHaveText("Normalize each harness's diff");
+  await expect(tool("todo_write").locator(".todo-card-row.is-done").last()).toHaveText("Ship the diff view");
+  await expect(tool("todo_write").locator(".tool-sentence")).toHaveText("Updated the plan");
+  await expect(page.getByTestId("process-toggle").last()).toContainText("Used 8 tools");
 });
 
 test("an expanded thought shows its text once, not in the header and the body", async ({ page }) => {
@@ -214,7 +215,7 @@ test("switch harness without reloading; capabilities change the composer", async
   await expect(page.locator(".chat-sub .badge")).toHaveText("Fake B");
 });
 
-test("the harness menu lists every harness in its own colour and works from the keyboard", async ({ page }) => {
+test("the harness menu lists every harness with its mark and accent and works from the keyboard", async ({ page }) => {
   await signInAndOpen(page);
   await showSidebar(page);
   const row = page.getByRole("complementary", { name: "Sessions" }).getByRole("button", { name: "Harness" });
@@ -224,10 +225,15 @@ test("the harness menu lists every harness in its own colour and works from the 
   const menu = page.getByRole("listbox", { name: "Harness" });
   await expect(menu).toBeFocused();
   await expect(menu.getByRole("option", { name: "Fake", exact: true })).toHaveAttribute("aria-selected", "true");
-  // Colours come from the server's accents, one per harness, not from per-harness CSS.
-  const dots = menu.locator(".harness-dot");
-  const colours = await dots.evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
+  // Each mark is coloured from the server's accent. Unknown/custom harnesses keep a
+  // neutral connection glyph, still beside their name, not a missing image.
+  const marks = menu.locator(".harness-mark");
+  await expect(marks).toHaveCount(2);
+  await expect(marks.first()).toHaveClass(/is-fallback/);
+  const colours = await marks.evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
   expect(new Set(colours).size).toBe(2);
+  const descriptors = await marks.evaluateAll((els) => els.map((el) => ({ label: el.getAttribute("aria-label"), hidden: el.getAttribute("aria-hidden") })));
+  expect(descriptors.every((d) => d.hidden === "true" && !d.label)).toBe(true);
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(menu).toHaveCount(0);

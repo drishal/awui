@@ -425,9 +425,11 @@
 }
 
 .harness-row .harness-dot {
-  width: 8px;
-  height: 8px;
-  margin-left: 2px;
+  width: 16px;
+  height: 16px;
+  margin-left: 0;
+  border-radius: 0;
+  background: none;
 }
 
 .harness-row-name {
@@ -455,7 +457,7 @@
 }
 
 /* The same quiet chip as the model, thinking, and permission ones beside it: the harness's
-   colour is its dot, not a fill, so the agent's name does not outrank the settings. */
+   colour identifies its mark, not a fill, so the agent's name does not outrank the settings. */
 button.harness-chip {
   justify-content: center;
   gap: 7px;
@@ -471,13 +473,11 @@ button.harness-chip {
   color: var(--text-2);
 }
 
-button.harness-chip::before {
-  content: "";
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--harness, var(--muted));
+button.harness-chip > .harness-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 0;
+  background: none;
 }
 
 button.harness-chip:hover:not(:disabled),
@@ -556,8 +556,10 @@ button.harness-chip:disabled {
 }
 
 .harness-option .harness-dot {
-  width: 8px;
-  height: 8px;
+  width: 17px;
+  height: 17px;
+  border-radius: 0;
+  background: none;
 }
 
 .harness-option-name {

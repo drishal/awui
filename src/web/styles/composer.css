@@ -786,8 +786,17 @@
 }
 
 .config-choice .harness-dot {
-  width: 8px;
-  height: 8px;
+  width: 17px;
+  height: 17px;
+  border-radius: 0;
+  background: none;
+}
+
+.composer-config-chip > .harness-dot {
+  width: 15px;
+  height: 15px;
+  border-radius: 0;
+  background: none;
 }
 
 .config-choice-main {

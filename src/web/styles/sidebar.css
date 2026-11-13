@@ -536,6 +536,42 @@
   margin: 0 2px;
 }
 
+/* Harness selectors carry recognisable marks; session rows above keep their tiny
+   identity/status dots. Local masks, or the built-in ACP glyph for custom agents. */
+.harness-dot .harness-mark {
+  display: block;
+  flex: none;
+  background: var(--harness, var(--muted));
+}
+
+.harness-dot .harness-mark > img {
+  display: block;
+  opacity: 0;
+}
+
+.harness-dot > .harness-mark {
+  vertical-align: middle;
+}
+
+.harness-mark {
+  display: block;
+  flex: none;
+}
+
+.harness-mark.is-custom > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.harness-dot .harness-mark.is-custom {
+  background: none;
+}
+
+.harness-dot .harness-mark.is-custom > img {
+  opacity: 1;
+}
+
 /* A run in progress (Hermes Desktop's sidebar): a spinning ring, harness-coloured in the All
    view. Reduced motion stops the spin and leaves the ring with its gap. */
 .working-ring {
