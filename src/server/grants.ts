@@ -1,9 +1,11 @@
 // Additive grants for limited remote sessions (E3). A password sign-in is full
-// access — that is the backwards-compatible default — unless the session was
-// issued for a specific invitation, in which case the cookie carries only the
-// invitation's id and the server resolves that id's allow list on every request
-// (so a revocation, or an edit to an invitation's grants, applies at once; no
-// entitlement travels in the cookie or a header).
+// access — that is the backwards-compatible default. A limited session is issued
+// by an invitation's own one-time secret, never the owner's password: the cookie
+// then carries only the invitation's id and the server resolves that id's allow
+// list on every request (so a revocation, or an edit to an invitation's grants,
+// applies at once, and a revoked invitation has no secret left to sign in with).
+// No entitlement travels in the cookie or a header, and only the secret's hash
+// is stored here.
 //
 // Grants are a small fixed vocabulary, not roles: there is no role that
 // duplicates all-authority. Local requests (this machine) are always full.
@@ -18,9 +20,9 @@
 // Everything an invitation does not name is refused with 403 `missing_grant`,
 // which names the grant so the invite UI can say what is missing.
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { isObj, readJson, writeJson } from "./state-file.js";
+import { isObj, readJson, writeJsonChecked } from "./state-file.js";
 
 /** The params shape a route's handler reads: its named keys stay strings. */
 type RouteParams<P extends object> = Request<P>;
@@ -42,11 +44,22 @@ export interface Invite {
   createdAt: number;
 }
 
+/** A stored invitation: the list's view, plus the one-way hash of its sign-in secret. */
+interface InviteRecord extends Invite {
+  secretHash: string;
+}
+
+/** A secret at rest: 256 random bits, so a plain SHA-256 is enough to verify a presented one. */
+const hashSecret = (secret: string): string => createHash("sha256").update(secret).digest("hex");
+
+/** What the panel sees: never the hash, only the name and the grants. */
+const view = (record: InviteRecord): Invite => ({ id: record.id, name: record.name, grants: [...record.grants], createdAt: record.createdAt });
+
 export class InviteStore {
-  private invites = new Map<string, Invite>();
+  private invites = new Map<string, InviteRecord>();
   private readonly ready: Promise<void>;
 
-  constructor(private readonly file: string | null) {
+  constructor(private readonly file: string | null, private readonly log: (message: string) => void = () => undefined) {
     this.ready = this.load();
   }
 
@@ -56,12 +69,15 @@ export class InviteStore {
     for (const [id, raw] of Object.entries(data)) {
       if (this.invites.size >= MAX_INVITES) break;
       if (!isObj(raw) || typeof raw.name !== "string" || raw.name.length === 0) continue;
+      // A row without a secret hash cannot sign in (it predates the secret): it is
+      // dropped, so the panel never lists an invitation whose link is dead on arrival.
+      if (typeof raw.secretHash !== "string" || !/^[0-9a-f]{64}$/.test(raw.secretHash)) continue;
       const grants = Array.isArray(raw.grants) ? [...new Set(raw.grants.filter(isGrant))] : [];
       // An invitation whose every grant was edited away would lock its holder out of
       // everything but sign-in; it is kept (the holder can still read their own grants),
       // but an empty list is only ever made on purpose, never by a malformed file.
       if (grants.length === 0) continue;
-      this.invites.set(id, { id, name: raw.name, grants, createdAt: typeof raw.createdAt === "number" ? raw.createdAt : Date.now() });
+      this.invites.set(id, { id, name: raw.name, grants, createdAt: typeof raw.createdAt === "number" ? raw.createdAt : Date.now(), secretHash: raw.secretHash });
     }
   }
 
@@ -71,49 +87,72 @@ export class InviteStore {
   }
 
   list(): Invite[] {
-    return [...this.invites.values()].sort((a, b) => b.createdAt - a.createdAt);
+    return [...this.invites.values()].sort((a, b) => b.createdAt - a.createdAt).map(view);
   }
 
   get(id: string): Invite | null {
-    return this.invites.get(id) ?? null;
+    const record = this.invites.get(id);
+    return record ? view(record) : null;
   }
 
   /** The invitation once the file has been read: what a request's gate resolves through. */
   async getAfterLoad(id: string): Promise<Invite | null> {
     await this.ready;
-    return this.invites.get(id) ?? null;
+    const record = this.invites.get(id);
+    return record ? view(record) : null;
   }
 
-  create(name: string, grants: Grant[]): Invite {
-    const id = createHash("sha256")
-      .update(`${Date.now()}\0${name}\0${grants.join(",")}\0${Math.random()}`)
-      .digest("base64url")
-      .slice(0, 22);
-    const invite: Invite = { id, name, grants: [...new Set(grants)], createdAt: Date.now() };
-    this.invites.set(id, invite);
+  /**
+   * A new invitation and the secret that signs it in, shown once. The id is random
+   * bytes (a name and a clock reading would be guessable), and only the secret's
+   * hash touches the file.
+   */
+  async create(name: string, grants: Grant[]): Promise<{ invite: Invite; secret: string }> {
+    await this.ready;
+    const id = randomBytes(16).toString("hex");
+    const secret = randomBytes(32).toString("base64url");
+    const record: InviteRecord = { id, name, grants: [...new Set(grants)], createdAt: Date.now(), secretHash: hashSecret(secret) };
+    this.invites.set(id, record);
     while (this.invites.size > MAX_INVITES) {
       const oldest = [...this.invites.values()].sort((a, b) => a.createdAt - b.createdAt)[0];
       if (!oldest) break;
       this.invites.delete(oldest.id);
     }
-    void writeJson(this.file, Object.fromEntries([...this.invites.values()].map((i) => [i.id, i])));
-    return invite;
+    this.persist();
+    return { invite: view(record), secret };
+  }
+
+  /** Whether a presented secret is the one this invitation was created with; constant-time on the hashes. */
+  async verifySecret(id: string, secret: string): Promise<boolean> {
+    await this.ready;
+    const record = this.invites.get(id);
+    if (!record || secret.length === 0) return false;
+    const given = Buffer.from(hashSecret(secret), "hex");
+    const expected = Buffer.from(record.secretHash, "hex");
+    return given.length === expected.length && timingSafeEqual(given, expected);
   }
 
   /** Edit one invitation's grants in place; a revoked id resolves to null at once. */
   update(id: string, name: string | null, grants: Grant[] | null): Invite | null {
-    const invite = this.invites.get(id);
-    if (!invite) return null;
-    if (name !== null && name.trim()) invite.name = name.trim().slice(0, 80);
-    if (grants !== null) invite.grants = [...new Set(grants)];
-    void writeJson(this.file, Object.fromEntries([...this.invites.values()].map((i) => [i.id, i])));
-    return invite;
+    const record = this.invites.get(id);
+    if (!record) return null;
+    if (name !== null && name.trim()) record.name = name.trim().slice(0, 80);
+    if (grants !== null) record.grants = [...new Set(grants)];
+    this.persist();
+    return view(record);
   }
 
   remove(id: string): boolean {
     const gone = this.invites.delete(id);
-    if (gone) void writeJson(this.file, Object.fromEntries([...this.invites.values()].map((i) => [i.id, i])));
+    if (gone) this.persist();
     return gone;
+  }
+
+  /** One serialized temp+rename; a failed save is logged, never an unhandled rejection. */
+  private persist(): void {
+    void writeJsonChecked(this.file, Object.fromEntries([...this.invites.values()].map((i) => [i.id, i]))).catch((error: unknown) => {
+      this.log(`invites: could not save the invitations: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 }
 

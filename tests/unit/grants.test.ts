@@ -1,14 +1,13 @@
 // Limited-session grants (grants.ts): the invite store, the per-route gate,
-// and how a session's grants ride an existing password sign-in.
-import { mkdtempSync } from "node:fs";
+// and the invitation's own secret as the only way a session becomes limited.
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { Request, Response } from "express";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GRANTS, InviteStore, invitesFileOf, makeRequireGrant } from "../../src/server/grants.js";
-import { hashPassword } from "../../src/server/auth.js";
 import { makeTestApp, PASS, USER, type TestApp } from "../helpers/app.js";
 
 let t: TestApp | null = null;
@@ -24,9 +23,14 @@ describe("the invite store", () => {
   it("creates, lists, edits, and removes invitations", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "awui-invites-"));
     const store = new InviteStore(invitesFileOf(dir));
-    const invite = store.create("Phone", ["chat.read"]);
+    const { invite, secret } = await store.create("Phone", ["chat.read"]);
     expect(invite.grants).toEqual(["chat.read"]);
     expect(store.list().map((i) => i.name)).toEqual(["Phone"]);
+    // The secret is 256 random bits; the file keeps only its SHA-256 hash, and the
+    // presented secret verifies against it (constant-time on the two hashes).
+    expect(await store.verifySecret(invite.id, secret)).toBe(true);
+    expect(await store.verifySecret(invite.id, `${secret.slice(0, -1)}A`)).toBe(false);
+    expect(await store.verifySecret("no-such-invite", secret)).toBe(false);
     // Unknown grants are dropped on load, so a hand-edited file widens nothing.
     // The store's write is one async temp+rename; a fresh store (a restart) that reads
     // the landed file is the signal — each poll awaits that store's own load first.
@@ -38,6 +42,10 @@ describe("the invite store", () => {
       },
       20_000,
     );
+    const file = readFileSync(invitesFileOf(dir), "utf8");
+    expect(file).not.toContain(secret);
+    expect(file).toContain(createHash("sha256").update(secret).digest("hex"));
+    // The list and the record never carry the secret itself.
     expect(store.update(invite.id, "Phone (read-only)", ["chat.read", "chat.approve"])?.grants).toEqual(["chat.read", "chat.approve"]);
     expect(store.update(invite.id, null, null)?.name).toBe("Phone (read-only)");
     expect(store.remove(invite.id)).toBe(true);
@@ -49,7 +57,7 @@ describe("the invite store", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "awui-invites-"));
     const file = invitesFileOf(dir);
     const first = new InviteStore(file);
-    const invite = first.create("Tablet", ["chat.read", "chat.approve"]);
+    const { invite } = await first.create("Tablet", ["chat.read", "chat.approve"]);
     // The store's write is one serialized temp+rename per file (state-file.ts); a fresh
     // store (a restart) reading the landed file is the signal here — deterministic time
     // control does not reach a fs rename, so each poll awaits that store's own load.
@@ -109,6 +117,7 @@ describe("the per-route gate", () => {
 });
 
 describe("limited sign-ins end to end", () => {
+  /** The owner's password sign-in: always a full session. */
   const signIn = async (invite?: string) => {
     const host = lanHost(t!.port);
     const res = await request(t!.server)
@@ -116,6 +125,19 @@ describe("limited sign-ins end to end", () => {
       .set("Host", host)
       .send({ username: USER, password: PASS, ...(invite ? { invite } : {}) });
     return String((res.headers["set-cookie"] as unknown as string[])[0]).split(";")[0] as string;
+  };
+
+  /** One invitation created through the route; its secret comes back only in this answer. */
+  const createInvite = async (fullCookie: string, name: string, grants: string[]) => {
+    const host = lanHost(t!.port);
+    const created = await request(t!.server).post("/api/invites").set("Host", host).set("Cookie", fullCookie).send({ name, grants });
+    return created.body as { invite: { id: string }; secret: string; url: string };
+  };
+
+  /** The invitation's own sign-in: its id and secret, never the owner's password. */
+  const inviteSignIn = async (inviteId: string, secret: string) => {
+    const host = lanHost(t!.port);
+    return request(t!.server).post("/api/login").set("Host", host).send({ invite: inviteId, inviteSecret: secret });
   };
 
   it("keeps a password sign-in full when no invitation is named", async () => {
@@ -150,10 +172,10 @@ describe("limited sign-ins end to end", () => {
     const host = lanHost(t.port);
     // The store is server-side; create one through the route with a full session first.
     const fullCookie = await signIn();
-    const created = await request(t.server).post("/api/invites").set("Host", host).set("Cookie", fullCookie).send({ name: "Phone", grants: ["chat.read"] });
-    const inviteId = (created.body as { invite: { id: string } }).invite.id;
-    const limitedCookie = await signIn(inviteId);
-
+    const created = await createInvite(fullCookie, "Phone", ["chat.read"]);
+    expect(created.url.startsWith("/login?invite=")).toBe(true);
+    expect(created.url).toContain(`key=${created.secret}`);
+    const limitedCookie = String((await inviteSignIn(created.invite.id, created.secret)).headers["set-cookie"] as unknown as string[]).split(";")[0] as string;
     // Reads work.
     const boot = await request(t.server).get("/api/bootstrap").set("Host", host).set("Cookie", limitedCookie);
     expect(boot.status).toBe(200);
@@ -188,44 +210,58 @@ describe("limited sign-ins end to end", () => {
     expect(files.status).toBe(200);
   });
 
-  it("revoking an invitation cuts its sessions off at once", async () => {
+  it("revoking an invitation ends its sign-in as well as its sessions", async () => {
     t = await makeTestApp({ withPassword: true, lanHosts: [LAN] });
     const host = lanHost(t.port);
     const fullCookie = await signIn();
-    const created = await request(t.server).post("/api/invites").set("Host", host).set("Cookie", fullCookie).send({ name: "Phone", grants: ["chat.read"] });
-    const inviteId = (created.body as { invite: { id: string } }).invite.id;
-    const limitedCookie = await signIn(inviteId);
+    const created = await createInvite(fullCookie, "Phone", ["chat.read"]);
+    const limitedCookie = String((await inviteSignIn(created.invite.id, created.secret)).headers["set-cookie"] as unknown as string[]).split(";")[0] as string;
     expect((await request(t.server).get("/api/sessions").set("Host", host).set("Cookie", limitedCookie)).status).toBe(200);
     // Revoke; the same cookie now resolves to an empty allow list.
-    const revoked = await request(t.server).delete(`/api/invites/${inviteId}`).set("Host", host).set("Cookie", fullCookie);
+    const revoked = await request(t.server).delete(`/api/invites/${created.invite.id}`).set("Host", host).set("Cookie", fullCookie);
     expect(revoked.status).toBe(200);
     const after = await request(t.server).get("/api/sessions").set("Host", host).set("Cookie", limitedCookie);
     expect(after.status).toBe(403);
     expect(after.body.code).toBe("missing_grant");
-    // A sign-in naming the dead invitation is a full session again (no live invitation named).
-    const renewedCookie = await signIn(inviteId);
-    expect((await request(t.server).get("/api/sessions").set("Host", host).set("Cookie", renewedCookie)).status).toBe(200);
-    expect((await request(t.server).get("/api/bootstrap").set("Host", host).set("Cookie", renewedCookie)).body.grants).toBeNull();
+    // Nothing can sign in with it again: the secret is checked against a store that no
+    // longer has the invitation, and the attempt mints no cookie.
+    const renewed = await inviteSignIn(created.invite.id, created.secret);
+    expect(renewed.status).toBe(401);
+    expect(renewed.body.code).toBe("bad_invite");
+    expect(renewed.headers["set-cookie"]).toBeUndefined();
+    // The owner's own password sign-in is unchanged: still a full session.
+    expect((await request(t.server).get("/api/bootstrap").set("Host", host).set("Cookie", await signIn())).body.grants).toBeNull();
   });
 
   it("a limited session cannot mint itself a wider invitation", async () => {
     t = await makeTestApp({ withPassword: true, lanHosts: [LAN] });
     const host = lanHost(t.port);
     const fullCookie = await signIn();
-    const created = await request(t.server).post("/api/invites").set("Host", host).set("Cookie", fullCookie).send({ name: "Phone", grants: ["chat.read"] });
-    const inviteId = (created.body as { invite: { id: string } }).invite.id;
-    const limitedCookie = await signIn(inviteId);
+    const created = await createInvite(fullCookie, "Phone", ["chat.read"]);
+    const limitedCookie = String((await inviteSignIn(created.invite.id, created.secret)).headers["set-cookie"] as unknown as string[]).split(";")[0] as string;
     const widen = await request(t.server).post("/api/invites").set("Host", host).set("Cookie", limitedCookie).send({ name: "Wide", grants: [...GRANTS] });
     expect(widen.status).toBe(403);
     const list = await request(t.server).get("/api/invites").set("Host", host).set("Cookie", limitedCookie);
     expect(list.status).toBe(403);
   });
 
-  it("an unknown invitation id signs in as a full session, not an empty one", async () => {
+  it("refuses a wrong secret, an unknown invitation, and a password that names one is still full", async () => {
     t = await makeTestApp({ withPassword: true, lanHosts: [LAN] });
     const host = lanHost(t.port);
-    const cookie = await signIn("no-such-invite");
-    const boot = await request(t.server).get("/api/bootstrap").set("Host", host).set("Cookie", cookie);
+    const fullCookie = await signIn();
+    const created = await createInvite(fullCookie, "Phone", ["chat.read"]);
+    // A wrong secret for a live invitation, and a secret for an unknown one: both 401,
+    // with no cookie minted (the invitation is the credential, not a label).
+    const wrong = await inviteSignIn(created.invite.id, `${created.secret.slice(0, -2)}AA`);
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.code).toBe("bad_invite");
+    expect(wrong.headers["set-cookie"]).toBeUndefined();
+    const unknown = await inviteSignIn("no-such-invite", created.secret);
+    expect(unknown.status).toBe(401);
+    // An id alone (no secret) is not a sign-in: it is the owner's own password login,
+    // which is full access as it always was — the invitation names nothing.
+    const owner = await signIn(created.invite.id);
+    const boot = await request(t.server).get("/api/bootstrap").set("Host", host).set("Cookie", owner);
     expect(boot.status).toBe(200);
     expect(boot.body.grants).toBeNull();
   });

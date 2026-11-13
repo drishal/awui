@@ -39,8 +39,8 @@ export function InvitationsPanel({ current }: { current: SectionIdOf }) {
   const [name, setName] = useState("");
   const [picked, setPicked] = useState<Set<GrantValue>>(new Set(["chat.read"]));
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
+  /** The link of the invitation just created: shown once, because the secret is never readable again. */
+  const [issued, setIssued] = useState<string | null>(null);
   const refresh = () => {
     void api<InvitesResponse>("/api/invites")
       .then((r) => setInvites(r))
@@ -54,9 +54,9 @@ export function InvitationsPanel({ current }: { current: SectionIdOf }) {
     setError(null);
     try {
       const input: InviteCreate = { name: name.trim(), grants: [...picked] };
-      await api("/api/invites", { method: "POST", body: input });
+      const made = await api<{ url: string }>("/api/invites", { method: "POST", body: input });
       setName("");
-      setSaved(true);
+      setIssued(new URL(made.url, location.origin).toString());
       refresh();
     } catch (e) {
       setError(errorText(e));
@@ -70,7 +70,7 @@ export function InvitationsPanel({ current }: { current: SectionIdOf }) {
       else next.add(grant);
       return next;
     });
-    setSaved(false);
+    setIssued(null);
   };
 
   const revoke = async (id: string) => {
@@ -89,7 +89,7 @@ export function InvitationsPanel({ current }: { current: SectionIdOf }) {
       <p className="form-note">A limited sign-in can only do what its invitation names. Revoke to cut a session off at once.</p>
       <div className="form-card">
         <FormRow row="new" label="New invitation" desc="One name and the grants it allows." stack>
-          <input className="input" aria-label="Invitation name" placeholder="e.g. Phone (read-only)" value={name} onChange={(e) => { setName(e.target.value); setSaved(false); }} />
+          <input className="input" aria-label="Invitation name" placeholder="e.g. Phone (read-only)" value={name} onChange={(e) => setName(e.target.value)} />
           <div className="invite-grants">
             {invites?.all.map((grant) => (
               <label className="invite-grant" key={grant}>
@@ -101,7 +101,17 @@ export function InvitationsPanel({ current }: { current: SectionIdOf }) {
           <button type="button" className="btn btn-small btn-primary" disabled={!name.trim() || picked.size === 0} onClick={() => void create()}>
             <IconPlus size={13} /> Create
           </button>
-          {saved ? <span className="form-desc" role="status">Created. Pair the device from its sign-in screen with this invitation.</span> : null}
+          {issued ? (
+            <div className="invite-issued">
+              <p className="form-desc" role="status">Created. This link is shown once: copy it now and give it to that device. It signs in without your password, and only for what the invitation allows.</p>
+              <div className="dialog-actions">
+                <code className="share-url">{issued}</code>
+                <button type="button" className="btn btn-small" onClick={() => void navigator.clipboard?.writeText(issued)}>
+                  Copy link
+                </button>
+              </div>
+            </div>
+          ) : null}
         </FormRow>
         <FormRow row="list" label="Issued invitations" desc="The newest first; revoke removes it and its holder's grants at once." stack>
           {invites && invites.invites.length > 0 ? (

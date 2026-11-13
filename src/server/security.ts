@@ -276,8 +276,9 @@ export class Security {
       return send(res, 401, "bad_credentials", "Wrong username or password");
     }
     this.limiter.succeed(who);
-    const invite = typeof res.locals.loginInvite === "string" ? res.locals.loginInvite : undefined;
-    res.setHeader("Set-Cookie", this.issueCookie(res.locals.authority as string, res.locals.hostKind === "remote", invite));
+    // The owner's password always mints a full session; a limited session signs in
+    // with its invitation's own secret instead (app.ts's login route).
+    res.setHeader("Set-Cookie", this.issueCookie(res.locals.authority as string, res.locals.hostKind === "remote"));
     res.json({ ok: true, username: auth.username });
   };
 

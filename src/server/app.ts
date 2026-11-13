@@ -463,8 +463,9 @@ export async function createApp(deps: AppDeps) {
   };
   // Limited-session invitations (grants.ts): in the state folder when one exists, in
   // memory when absent (tests). The per-route gate resolves the session's list at each
-  // use, so a revocation or an edit applies without a restart.
-  const invites = deps.invites ?? new InviteStore(deps.stateDir ? invitesFileOf(deps.stateDir) : null);
+  // use, so a revocation or an edit applies without a restart; only the secret's hash
+  // is kept, and a failed save is logged rather than left to reject unattended.
+  const invites = deps.invites ?? new InviteStore(deps.stateDir ? invitesFileOf(deps.stateDir) : null, log);
   const guests = deps.guests ?? new GuestStore(deps.stateDir ? `${deps.stateDir}/guest-sessions.json` : null);
   // The store reads its file once, at construction; the first request awaits that read
   // (express 5 runs async middlewares), so no gate resolves before the list is loaded.
@@ -564,17 +565,21 @@ export async function createApp(deps: AppDeps) {
     res.json({ ok: true, build, pressure: pressure.status() });
   });
 
-  // Sign-in for other devices; reachable without a session. A body may name one
-  // invitation (grants.ts): the cookie then carries its id only, and every request
-  // resolves that id's allow list — never the grants themselves — so a revocation or
-  // an edit to the invitation applies at once. An unknown id signs in as a full
-  // session (the backwards-compatible default) rather than an empty one.
+  // Sign-in for other devices; reachable without a session. A password sign-in is
+  // full access, as it always was. A limited session never uses that password: it
+  // presents one invitation's own secret (grants.ts), shown once at creation and kept
+  // only as a hash, and the cookie then carries that invitation's id — every request
+  // resolves the id's allow list, so a revocation or an edit applies at once and a
+  // revoked invitation has no secret left to sign in with.
   app.post("/api/login", express.json({ limit: "8kb" }), async (req, res, next) => {
     const invite = typeof req.body?.invite === "string" ? req.body.invite.slice(0, 64) : "";
-    // Per-request state, not the Security instance's: two sign-ins in flight mint
-    // their own cookies, each with its own invitation (or none).
-    res.locals.loginInvite = invite !== "" && (await invites.getAfterLoad(invite)) ? invite : undefined;
-    next();
+    const secret = typeof req.body?.inviteSecret === "string" ? req.body.inviteSecret.slice(0, 128) : "";
+    if (secret === "") return next();
+    if (invite === "") throw new ChatError(400, "invite_incomplete", "An invitation sign-in names the invitation and its secret");
+    if (!(await invites.verifySecret(invite, secret))) throw new ChatError(401, "bad_invite", "That invitation's secret is wrong, or the invitation has been revoked");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Set-Cookie", security.issueCookie(res.locals.authority as string, res.locals.hostKind === "remote", invite));
+    res.json({ ok: true, limited: true });
   }, security.login);
   app.post("/api/logout", security.logout);
 
@@ -1025,14 +1030,16 @@ export async function createApp(deps: AppDeps) {
   // ---- Limited-session invitations (grants.ts): who may hold one, and what it allows ----
   // Managing them needs settings.manage: a limited session must not mint itself a wider
   // invitation, and existing full password accounts keep managing them as they always did.
-  // The list answers no secrets: a name, its grants, and the id the invite UI sends back
-  // with a sign-in (the cookie then carries only that id — grants resolve server-side).
+  // The list answers no secrets: a name, its grants, and the id a signed-in client sends
+  // with the invitation's own secret. The secret comes back once, at creation, and is
+  // never readable again.
   app.get("/api/invites", requireGrant("settings.manage"), (req, res) => {
     res.json({ invites: invites.list(), all: [...GRANTS] });
   });
-  app.post("/api/invites", requireGrant("settings.manage"), (req, res) => {
+  app.post("/api/invites", requireGrant("settings.manage"), async (req, res) => {
     const input = body(inviteCreateSchema, req);
-    res.status(201).json({ invite: invites.create(input.name, input.grants) });
+    const made = await invites.create(input.name, input.grants);
+    res.status(201).json({ invite: made.invite, secret: made.secret, url: `/login?invite=${encodeURIComponent(made.invite.id)}&key=${encodeURIComponent(made.secret)}` });
   });
   app.patch("/api/invites/:id", requireGrant("settings.manage"), (req, res) => {
     const input = body(invitePatchSchema, req);
@@ -1043,8 +1050,8 @@ export async function createApp(deps: AppDeps) {
   app.delete("/api/invites/:id", requireGrant("settings.manage"), async (req, res) => {
     // Revocation is immediate: the next request whose cookie names this invitation
     // resolves to an empty allow list and is refused with 403 `missing_grant` — never
-    // a silent fall back to full access. The holder signs in again; without a live
-    // invitation named, that sign-in is a full session (the backwards-compatible default).
+    // a silent fall back to full access. The holder signs in again only with the secret
+    // it was created with, which a revoked invitation no longer has.
     if (!(await invites.remove(req.params.id))) throw new ChatError(404, "no_invite", "No such invitation");
     res.json({ ok: true });
   });

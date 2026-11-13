@@ -2170,12 +2170,14 @@ export const invitePatchSchema = z
   .strict();
 export type InvitePatch = z.infer<typeof invitePatchSchema>;
 
-/** A sign-in bound to one invitation: the cookie carries its id only. */
+/**
+ * A sign-in bound to one invitation: the invitation's id and the secret shown once at
+ * creation, never the owner's password. The cookie carries the id only.
+ */
 export const inviteSignInSchema = z
   .object({
-    username: z.string().max(128).optional(),
-    password: z.string().max(1024).optional(),
-    invite: z.string().min(1).max(64).optional(),
+    invite: z.string().min(1).max(64),
+    inviteSecret: z.string().min(1).max(128),
   })
   .strict();
 
