@@ -540,7 +540,7 @@ export function App() {
     // The same news as a card that opens the chat; two finishes of one chat are one card.
     for (const id of finished) {
       const s = overview.sessions.find((x) => x.liveChatId === id);
-      if (s) toasts.push({ key: `done:${id}`, text: `“${s.title}” finished`, sessionId: s.id, ms: 8000 });
+      if (s) toasts.push({ key: `done:${id}`, text: `“${s.title}” finished`, sessionId: s.id, ms: 8000, kind: "ok" });
     }
     if (finished.size > 0 && document.hidden) chime();
   }, [overview, chatId]);
@@ -557,7 +557,7 @@ export function App() {
     if (fresh.length > 0 && (document.hidden || fresh.some((id) => id !== chatId))) chime();
     for (const id of fresh) {
       const s = id === chatId ? undefined : overview.sessions.find((x) => x.liveChatId === id);
-      if (s) toasts.push({ key: `ask:${id}`, text: `“${s.title}” needs you`, sessionId: s.id, ms: 12000 });
+      if (s) toasts.push({ key: `ask:${id}`, text: `“${s.title}” needs you`, sessionId: s.id, ms: 12000, kind: "warn" });
     }
   }, [askingIds]);
   useEffect(() => primeAudio(), []);
@@ -1717,7 +1717,7 @@ export function App() {
   };
 
   /** Mark changes show an Undo (and Ctrl+Z) while their card does. */
-  const showToast = (text: string, undo: () => void) => toasts.push({ key: "undo", text, ms: 8000, action: { label: "Undo", run: undo } });
+  const showToast = (text: string, undo: () => void) => toasts.push({ key: "undo", text, ms: 8000, action: { label: "Undo", run: undo }, kind: "undo" });
   const undoToast = toasts.stack.find((t) => t.action && !t.leaving);
 
   const searchWorkspace = chat?.workspace ?? workspace;
@@ -2743,10 +2743,7 @@ export function App() {
         toasts={toasts}
         onOpen={(t) => {
           const s = overview.sessions.find((x) => x.id === t.sessionId);
-          if (s) {
-            toasts.dismiss(t.id);
-            void openSession(s);
-          }
+          if (s) void openSession(s);
         }}
       />
       <StatusBar

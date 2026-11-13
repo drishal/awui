@@ -20,6 +20,8 @@ export interface Toast {
   sessionId?: string;
   /** An action shown as a button (Undo). */
   action?: { label: string; run: () => void };
+  /** The card's meaning, for its 3 px rule and icon: finished, needs you, failed, or undo. */
+  kind?: "ok" | "warn" | "danger" | "undo" | null;
   /** When it goes (ms clock); `null` while it is held. */
   deadline: number | null;
   /** The time left, kept while it is held. */
@@ -28,7 +30,7 @@ export interface Toast {
   leaving?: { slot: number };
 }
 
-export type ToastInput = Pick<Toast, "key" | "text" | "sessionId" | "action"> & { ms: number };
+export type ToastInput = Pick<Toast, "key" | "text" | "sessionId" | "action"> & { ms: number; kind?: "ok" | "warn" | "danger" | "undo" | null };
 
 let counter = 0;
 
@@ -42,6 +44,7 @@ export function pushToast(stack: readonly Toast[], input: ToastInput, now: numbe
     count: (same?.count ?? 0) + 1,
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     ...(input.action ? { action: input.action } : {}),
+    ...(input.kind ? { kind: input.kind } : {}),
     deadline: held ? null : now + input.ms,
     left: input.ms,
   };

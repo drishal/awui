@@ -14,6 +14,7 @@ import { projectScoped } from "../harness-policy.js";
 import { recentForChip, startAction, startExamples, startHeading, startSendBlocked, startSetup, type StartSetup } from "../start-screen.js";
 import { HarnessMenu } from "./HarnessMenu.js";
 import { ModelPicker } from "./ModelPicker.js";
+import { harnessColor } from "../harness-colors.js";
 
 export function StartScreen({
   harnesses,
@@ -160,7 +161,7 @@ export function StartScreen({
   };
 
   return (
-    <div className="hero start-screen">
+    <div className="hero start-screen" style={harnessColor(harnessId ?? undefined)}>
       <div className="hero-inner">
         <span className="hero-mark" aria-hidden="true">
           <svg viewBox="0 0 64 64" width="44" height="44" fill="none">

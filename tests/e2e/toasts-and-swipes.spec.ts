@@ -39,10 +39,11 @@ test("two background chats finishing stack as cards that fan out on hover and op
   await expect(stack).toHaveAttribute("data-open", "true");
   await expect.poll(gap).toBeGreaterThan(40);
 
-  // A card is a link to its chat; opening it takes it away.
+  // A card is a link to its chat; opening it takes it away. Other notices (an ask
+  // from an earlier spec, say) may still be stacked; this one is gone.
   await cards(page).filter({ hasText: "stacked one" }).getByRole("link").click();
   await expect(tab(page, "stacked one")).toHaveAttribute("aria-selected", "true");
-  await expect(cards(page)).toHaveCount(1);
+  await expect(cards(page).filter({ hasText: "stacked one" })).toHaveCount(0);
 
   // The dismiss button sends the other away.
   await cards(page).getByRole("button", { name: "Dismiss" }).click();
@@ -68,8 +69,8 @@ test.describe("on a phone", () => {
 
 test("a notice card swipes sideways away, and a short swipe springs back", async ({ page }) => {
     await twoFinishInTheBackground(page, "swiped");
-    await expect(cards(page)).toHaveCount(2, { timeout: 25_000 });
-    const card = cards(page).first();
+    await expect(cards(page).filter({ hasText: "swiped one" })).toHaveCount(1, { timeout: 25_000 });
+    const card = cards(page).filter({ hasText: "swiped one" }).first();
     const box = await card.boundingBox();
     if (!box) throw new Error("no card");
     const y = box.y + box.height / 2;
@@ -82,10 +83,10 @@ test("a notice card swipes sideways away, and a short swipe springs back", async
     };
     // Short: it comes back.
     await drag(box.x + 120, box.x + 90);
-    await expect(cards(page)).toHaveCount(2);
-    // Long: it goes, and the other stays.
+    await expect(cards(page).filter({ hasText: "swiped one" })).toHaveCount(1);
+    // Long: it goes, and other notices (an earlier spec's ask) may stay.
     await drag(box.x + 250, box.x + 100);
-    await expect(cards(page)).toHaveCount(1);
+    await expect(cards(page).filter({ hasText: "swiped one" })).toHaveCount(0);
   });
 
   /** A finger dragged left along a row, through the DevTools touch input. */

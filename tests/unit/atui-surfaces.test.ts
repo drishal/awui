@@ -100,6 +100,7 @@ describe("the rail's flat list and its summary", () => {
     expect(toneOf(DARK, "failed")).toBe(DARK.danger);
     expect(toneOf(DARK, "quiet")).toBe(DARK.muted);
     expect(["working", "waiting", "failed"].map((tone) => toneDot(tone as "working"))).toEqual(["●", "●", "●"]);
-    expect(toneDot("done")).toBe("○");
+    expect(toneDot("done")).toBe("✓");
+    expect(toneDot("quiet")).toBe("○");
   });
 });

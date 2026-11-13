@@ -116,6 +116,7 @@ function ToastCard({ toast, slot, onOpen, onDismiss }: { toast: Toast; slot: num
       role="status"
       // An Undo card is "toast" (what the mark-change specs look for); a news card is "notice", so one of each never clashes.
       data-testid={action ? "toast" : "notice"}
+      data-kind={toast.kind ?? (action ? "undo" : null)}
       data-leaving={toast.leaving ? "" : undefined}
       style={{ "--slot": slot } as React.CSSProperties}
       onKeyDown={(e) => e.key === "Escape" && onDismiss()}

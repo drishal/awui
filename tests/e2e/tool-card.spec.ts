@@ -16,9 +16,9 @@ test("a run of calls is one card: a header that counts and stacks the kinds, a s
   await toggle.click();
   const rows = page.getByTestId("tool-row");
   await expect(rows).toHaveCount(8);
-  // The old todo row is not a second copy of the newest checklist.
-  await expect(rows.filter({ hasText: "Updated the plan" })).toHaveCount(2);
-  await expect(page.locator(".todo-card")).toHaveCount(1);
+  // Back-to-back plan updates fold into one row: the newest checklist, not a second copy.
+  await expect(rows.filter({ hasText: "Updated the plan" })).toHaveCount(1);
+  await expect(rows.filter({ hasText: "Updated the plan" }).locator(".tool-chevron")).toBeVisible();
   await expect(rows.first().locator(".tool-sentence")).toHaveText("Edited src/server.ts");
   await expect(page.locator('[data-tool="bash"] .tool-sentence')).toHaveText("Ran npm test -- --run tool-diff");
   await expect(page.locator('[data-tool="bash"] .tool-fact')).toHaveText("5 passed");

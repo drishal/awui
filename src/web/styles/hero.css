@@ -19,7 +19,7 @@
   display: flex;
   justify-content: center;
   margin-bottom: 14px;
-  color: var(--accent);
+  color: var(--harness, var(--accent));
 }
 
 .hero-mark svg {
