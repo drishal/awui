@@ -54,6 +54,8 @@ export function Composer(p: {
   onCompactChoice: (on: boolean | null) => void;
   /** A click on the footer's harness, model, or thinking level opens its picker. */
   onPick: (picker: "harness" | "models" | "thinking") => void;
+  /** A click on the context figure (or the rate beside it) opens the active-work panel, as C-x p does. */
+  onContext: () => void;
   /** What the status bar used to say, now in the footer: vim's mode, a waiting C-x, a passing hint. */
   status: { mode: "normal" | "insert" | null; leader: boolean; note: string | null };
   ref: (el: TextareaRenderable) => void;
@@ -513,7 +515,7 @@ export function Composer(p: {
             )}
           </Show>
         </box>
-        <text flexShrink={0}>
+        <text flexShrink={0} onMouseDown={() => p.onContext()}>
           {"  "}
           <Show when={queued() > 0}>
             <span style={{ fg: t().accent }}>{`+${queued()} queued  `}</span>

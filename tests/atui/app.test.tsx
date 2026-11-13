@@ -651,4 +651,107 @@ describe("atui", () => {
     await wait(400);
     expect(await ui.frame()).toContain("/fake-status");
   }, 30_000);
+
+  it("reviews a delegated worker's patch: its files, Apply with a confirmation, and Undo apply", async () => {
+    // A project of its own, a real git checkout: a worktree worker's patch is applied into it.
+    const root = path.join(server.root, "delegate-review");
+    mkdirSync(path.join(root, "src"), { recursive: true });
+    writeFileSync(path.join(root, "src", "app.ts"), "const a = 1;\nconst b = 1;\n");
+    writeFileSync(path.join(root, "README.md"), "# delegate-review\n");
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    git("add", ".");
+    git("commit", "-q", "-m", "init");
+
+    ui = await mount(root, { height: 40 });
+    await ui.type("delegate worktree please");
+    ui.keys.pressEnter();
+    await ui.until(() => ui?.app.chat()?.status === "idle", 40_000);
+    await ui.until(() => (ui?.app.chat()?.delegated?.length ?? 0) === 1);
+    // C-x j: one row a worker, with the word for how it stands.
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("j");
+    const list = await ui.until("Fake delegated task");
+    expect(list).toContain("1 worker");
+    expect(list).toContain("Delegated work");
+    // Opened: the worker's changed file and its diff, and the review that decides what happens to it.
+    ui.keys.pressEnter();
+    const detail = await ui.until("Apply patch into lead");
+    expect(detail).toContain("src/app.ts");
+    expect(detail).toContain("− a");
+    expect(detail).toContain("+ b");
+    expect(detail).toContain("Choose whether to apply its patch");
+    // Apply writes the lead checkout, so it asks first.
+    ui.keys.pressKey("a");
+    await ui.until("Apply patch into lead? y confirms");
+    ui.keys.pressKey("y");
+    await ui.until("Approved and applied into the lead checkout", 20_000);
+    expect(readFileSync(path.join(root, "src", "app.ts"), "utf8")).toContain("const changed = true;");
+    // Undo apply reverses that patch while the checkout still holds exactly it.
+    ui.keys.pressKey("u");
+    await ui.until("Choose whether to apply its patch", 20_000);
+    expect(readFileSync(path.join(root, "src", "app.ts"), "utf8")).toContain("const b = 1;");
+  }, 90_000);
+
+  it("opens a worker from the active-work panel, and cancels a running one only after a confirmation", async () => {
+    ui = await mount(path.join(server.root, "beta"), { height: 40 });
+    // A file changed first, so the Info tab the rail's context row opens has something to show.
+    await ui.type("edit please");
+    ui.keys.pressEnter();
+    await idle(ui);
+    // The child waits on a question, so its row is live until it is cancelled.
+    await ui.type("delegate askchild please");
+    ui.keys.pressEnter();
+    await ui.until(() => ui?.app.chat()?.delegated?.[0]?.state === "waiting_for_user", 20_000);
+    // C-x p: the rail, one card a group, the worker's row carrying its own status word.
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("p");
+    const rail = await ui.until("Delegated work");
+    expect(rail).toContain("Agent · fake");
+    expect(rail).toContain("Context and usage");
+    // Enter on the worker opens its own screen (its review lives there).
+    ui.keys.pressEnter();
+    await ui.until("Esc back");
+    // Esc back to the list, and x asks before stopping the worker.
+    await ui.escape();
+    await ui.until("Enter opens");
+    ui.keys.pressKey("x");
+    const asked = await ui.until("y confirms");
+    expect(asked).toContain("Cancel Fake delegated task?");
+    ui.keys.pressKey("y");
+    await ui.until(() => ui?.app.chat()?.delegated?.[0]?.outcome === "cancelled", 20_000);
+    // The rail's context row opens the Info tab, where the context and the session are drawn.
+    await ui.escape();
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("p");
+    await ui.until("Context used");
+    ui.keys.pressKey("END");
+    ui.keys.pressEnter();
+    await ui.until("Changed in this chat");
+    await idle(ui);
+  }, 90_000);
+
+  it("draws the agents board by column and opens the chat a card names", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 150 });
+    await ui.type("board please");
+    ui.keys.pressEnter();
+    await idle(ui);
+    // C-x k: three columns with their counts, and the shown session among them.
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("k");
+    await ui.until(() => (ui?.app.overview().sessions.length ?? 0) > 0);
+    const board = await ui.until("Needs you");
+    expect(board).toContain("Working");
+    expect(board).toContain("Done");
+    expect(board).toContain("Every project");
+    expect(board).toContain("board please");
+    // f narrows to one project, and Enter opens the card under the cursor.
+    ui.keys.pressKey("f");
+    const filtered = await ui.until("Any pull request");
+    expect(filtered).toContain("alpha · Any pull request");
+    ui.keys.pressEnter();
+    await ui.until("❯ board please");
+  }, 60_000);
 });

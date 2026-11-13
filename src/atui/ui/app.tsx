@@ -37,12 +37,16 @@ import { RAIL_WIDTH, Sidebar, SidebarRail, type SidebarTab } from "./sidebar.js"
 import { Splash } from "./splash.js";
 import { TabBar } from "./tabbar.js";
 import { UndoDialog } from "./undo.js";
+import { BoardView } from "./board.js";
+import { DelegatedView } from "./delegated.js";
+import { ContextRailView } from "./rail.js";
 import { ReviewView } from "./review.js";
 import { collectChanges } from "../../web/review.js";
 import { Toasts } from "./toasts.js";
 import { Transcript } from "./transcript.js";
 import { WhichKey } from "./whichkey.js";
 import { turnOffset, vimKey } from "../vim.js";
+import { buildTurns, turnOfTool } from "../../web/turns.js";
 
 type Dialog = "palette" | "models" | "harness" | "thinking" | "history" | "run" | null;
 
@@ -70,6 +74,10 @@ export function App(p: {
   const [showWork, setShowWork] = createSignal(true);
   const [compactChoice, setCompactChoice] = createSignal<boolean | null>(null);
   const [reviewing, setReviewing] = createSignal(false);
+  /** The delegated work panel, opened on one worker when a rail row named it. */
+  const [delegated, setDelegated] = createSignal<{ taskId?: string } | null>(null);
+  const [rail, setRail] = createSignal(false);
+  const [board, setBoard] = createSignal(false);
   /** A command run from an answer (C-x x), and what it gave once done. */
   const [running, setRunning] = createSignal<{ command: string; result: RunResult | null } | null>(null);
   const renderer = useRenderer();
@@ -178,6 +186,19 @@ export function App(p: {
     setRunning((r) => (r && r.command === command ? { command, result } : r));
   };
 
+  /** Bring a tool call's turn into view: the rail's run and job rows open the call they came from. */
+  const revealTool = (toolId: string) => {
+    const c = app.chat();
+    if (!c || !scroller) return flash("No transcript to show that call in");
+    const index = turnOfTool(buildTurns(c.items, c.status), toolId);
+    if (index === null) return flash("That call is no longer in this chat's transcript");
+    // A call the reader cannot see is one inside folded work: show the work, then go to its turn.
+    setShowWork(true);
+    const tops = scroller.content.getChildren().map((child) => (child as { y: number }).y);
+    const y = tops[index];
+    if (y !== undefined) glideTo(scroller, y);
+  };
+
   const leave = () => {
     setMode("insert");
     setFocus("composer");
@@ -277,6 +298,14 @@ export function App(p: {
       case "d":
         if (!app.chat()) return flash("No chat to review");
         return setReviewing(true);
+      case "j":
+        if (!app.chat()) return flash("No chat to show delegated work for");
+        return setDelegated({});
+      case "k":
+        return setBoard(true);
+      case "p":
+        if (!app.chat()) return flash("No chat for active work yet");
+        return setRail(true);
       case "z":
         if (!app.putBackable()) return flash("Nothing to put back: no files were undone here");
         return void app.putBack();
@@ -306,7 +335,7 @@ export function App(p: {
   };
 
   useKeyboard((key) => {
-    if (dialog() || app.undoTurn() !== null || reviewing() || running()) return;
+    if (dialog() || app.undoTurn() !== null || reviewing() || running() || delegated() !== null || rail() || board()) return;
     if (key.meta && !key.ctrl && key.name === "q") {
       key.preventDefault();
       return quoteSelection();
@@ -451,6 +480,12 @@ export function App(p: {
         disabled: changed > 0 ? undefined : "No files changed yet",
         run: () => setReviewing(true),
       });
+    }
+    add({ id: "board", label: "Agents: every session, by column", hint: leader("k"), keywords: "dashboard kanban needs working done", run: () => runLeader("k") });
+    if (c) {
+      const workers = c.delegated ?? [];
+      add({ id: "delegated", label: "Delegated work: review a worker…", hint: leader("j"), disabled: workers.length > 0 ? undefined : "This chat has delegated nothing", run: () => runLeader("j") });
+      add({ id: "active-work", label: "Active work: workers, jobs, questions, context", hint: leader("p"), run: () => runLeader("p") });
     }
     if (c && runnables().length > 0) add({ id: "run", label: "Run a command from the answer…", hint: leader("x"), run: () => setDialog("run") });
     add({ id: "quote", label: "Quote the selection into the message", hint: "M-q", searchOnly: true, run: quoteSelection });
@@ -605,7 +640,7 @@ export function App(p: {
 
   // A dialog takes the conversation's place rather than drawing over it: OpenTUI paints a bordered box's own body
   // after a sibling overlay, so a floating picker lets the cards behind it through.
-  const sheet = () => dialog() !== null || reviewing() || app.undoTurn() !== null || running() !== null;
+  const sheet = () => dialog() !== null || reviewing() || app.undoTurn() !== null || running() !== null || delegated() !== null || rail() || board();
   /** What the side panel leaves of the screen for a sheet. */
   const room = () => (sidebar() ? sideWidth() : RAIL_WIDTH);
 
@@ -690,6 +725,7 @@ export function App(p: {
                         compactChoice={compactChoice()}
                         onCompactChoice={setCompactChoice}
                         onPick={setDialog}
+                        onContext={() => setRail(true)}
                         ref={(el) => (composer = el)}
                       />
                     }
@@ -748,6 +784,54 @@ export function App(p: {
                 </Show>
                 <Show when={reviewing()}>
                   <ReviewView onClose={() => setReviewing(false)} />
+                </Show>
+                <Show when={delegated()}>
+                  {(open) => (
+                    <DelegatedView
+                      initialTaskId={open().taskId ?? null}
+                      onClose={() => setDelegated(null)}
+                      onOpenChat={(chatId) => {
+                        setDelegated(null);
+                        void app.openChat(chatId);
+                      }}
+                    />
+                  )}
+                </Show>
+                <Show when={rail()}>
+                  <ContextRailView
+                    onClose={() => setRail(false)}
+                    onChat={(chatId) => {
+                      setRail(false);
+                      void app.openChat(chatId);
+                    }}
+                    onTask={(taskId) => {
+                      setRail(false);
+                      setDelegated({ taskId });
+                    }}
+                    onTool={(toolId) => {
+                      setRail(false);
+                      revealTool(toolId);
+                    }}
+                    onReview={() => {
+                      setRail(false);
+                      setReviewing(true);
+                    }}
+                    onUsage={() => {
+                      setRail(false);
+                      setSidebar(true);
+                      setSideTab("info");
+                      leave();
+                    }}
+                  />
+                </Show>
+                <Show when={board()}>
+                  <BoardView
+                    onClose={() => setBoard(false)}
+                    onOpenSession={(session) => {
+                      setBoard(false);
+                      void app.openSession(session);
+                    }}
+                  />
                 </Show>
                 <Show when={app.undoTurn()}>{(turn) => <UndoDialog turn={turn()} onClose={() => app.setUndoTurn(null)} side={room()} />}</Show>
               </box>

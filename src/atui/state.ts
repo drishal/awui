@@ -550,6 +550,20 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     }
   };
 
+
+  /**
+   * Show a chat the server knows by id: a delegated worker's own chat, the chat a worker was
+   * delegated from, or an opinion's. The rail and the delegated panel open rows this way; a
+   * chat the server has since closed fails with its own message, as the browser's open does.
+   */
+  const openChat = async (chatId: string, { newTab = true }: { newTab?: boolean } = {}) => {
+    try {
+      show(await server.call<ChatSnapshot>(`/api/chats/${encodeURIComponent(chatId)}`), { newTab });
+      void refreshSessions();
+    } catch (error) {
+      fail(error);
+    }
+  };
   /** A new chat starts empty on screen; the server's chat is made on the first message. */
   /** Nothing on screen: an empty new chat, its server chat made on the first message. */
   const blank = () => {
@@ -969,6 +983,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     refreshGit,
     refreshLimits,
     openSession,
+    openChat,
     newChat,
     ensureChat,
     send,
