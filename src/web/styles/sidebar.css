@@ -586,6 +586,13 @@
   background: none;
 }
 
+/* The built-in glyph for an agent with no icon is an SVG drawn in currentColor: a tile behind it would
+   put a dark glyph on a solid harness colour (about 2:1 in light mode). */
+.harness-dot .harness-mark.is-fallback {
+  background: none;
+  color: var(--harness, var(--muted));
+}
+
 .harness-dot .harness-mark.is-custom > img {
   opacity: 1;
 }
