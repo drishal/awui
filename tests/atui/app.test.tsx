@@ -2,7 +2,8 @@
 // test renderer, driven by keys and clicks as a person would.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { RGBA, TextAttributes } from "@opentui/core";
 import path from "node:path";
 import { contextTone } from "../../src/atui/theme.js";
@@ -10,9 +11,19 @@ import { mount, startServer, wait, type Mounted } from "./helpers.js";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let ui: Mounted | null = null;
+/** The fake gh's record (tests write it, the server's gh reads it) and its call log. */
+let ghRecord = "";
+let ghCalls = "";
 
 beforeAll(async () => {
-  server = await startServer();
+  // The GitHub panel's tests point the server's gh at the fixture; the other tests never call it.
+  const ghBin = mkdtempSync(path.join(tmpdir(), "atui-gh-"));
+  const gh = path.join(ghBin, "gh");
+  writeFileSync(gh, readFileSync(path.resolve(import.meta.dirname, "../fixtures/fake-gh.mjs"), "utf8"));
+  execFileSync("chmod", ["755", gh]);
+  ghRecord = path.join(ghBin, "pr.json");
+  ghCalls = path.join(ghBin, "calls.jsonl");
+  server = await startServer({ env: { PATH: `${ghBin}:${process.env.PATH ?? ""}`, AWUI_GH_FIXTURE: ghRecord, AWUI_GH_CALLS: ghCalls } });
 });
 afterAll(async () => {
   await server.stop();
@@ -530,6 +541,8 @@ describe("atui", () => {
     await ui.type("d");
     const view = await ui.until("Review changes  1 file · 0 open");
     expect(view).toContain("src/app.ts");
+    // The attribution marks: the file head says which lines this chat wrote (the fake edit's own).
+    await ui.until("from this chat");
     expect(view).toMatch(/▌\s+\d*\s*- a/);
     ui.keys.pressEnter();
     await ui.until("What should change here?");
@@ -558,6 +571,118 @@ describe("atui", () => {
     expect(await ui.frame()).toContain("1 open");
     ui.keys.pressEscape();
     await ui.until("Sent 1 comment to this chat");
+  }, 40_000);
+
+  it("shows the GitHub panel: the branch, the PR's checks, the tour, and a new pull request", async () => {
+    const dir = path.join(server.root, "ghrepo");
+    mkdirSync(path.join(dir, "src"), { recursive: true });
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: dir });
+    writeFileSync(ghRecord, JSON.stringify({
+      current: { url: "https://github.com/acme/repo/pull/7", title: "Ordered auth work", state: "OPEN", isDraft: false },
+      prs: { 7: { url: "https://github.com/acme/repo/pull/7", title: "Ordered auth work", state: "OPEN", isDraft: false, baseRefName: "main", headRefName: "tour", headRefOid: "a01cdef" } },
+      checks: [{ name: "build", state: "pass", link: null }, { name: "e2e", state: "fail", link: null }],
+      nextPr: 10,
+      diff: [
+        "diff --git a/package-lock.json b/package-lock.json",
+        "--- a/package-lock.json",
+        "+++ b/package-lock.json",
+        "@@ -0,0 +1 @@",
+        "+{}",
+        "diff --git a/tests/core.spec.ts b/tests/core.spec.ts",
+        "--- a/tests/core.spec.ts",
+        "+++ b/tests/core.spec.ts",
+        "@@ -0,0 +1 @@",
+        "+expect(check()).toBe(true);",
+        "diff --git a/src/core.ts b/src/core.ts",
+        "--- a/src/core.ts",
+        "+++ b/src/core.ts",
+        "@@ -0,0 +1 @@",
+        "+export function check() { return verify(); }",
+        "",
+      ].join("\n"),
+    }));
+    ui = await mount(dir, { height: 44 });
+    ui.keys.pressKey("x", { ctrl: true });
+    await ui.type("p");
+    const panel = await ui.until("Pull request  https://github.com/acme/repo/pull/7");
+    expect(panel).toContain("main");
+    expect(panel).toContain("1/2 checks passing · failing: e2e");
+    expect(panel).toContain("Failing: e2e");
+    // t opens the guided tour: source first, then tests; ] steps, Esc goes back.
+    ui.keys.pressKey("t");
+    const tour = await ui.until("src/core.ts");
+    expect(tour).toMatch(/1 of 3 · source/);
+    await ui.type("]");
+    await ui.until("2 of 3 · tests");
+    ui.keys.pressEscape();
+    await ui.until("Pull request  https://github.com/acme/repo/pull/7");
+    // n opens the form: the title, then the target branch, then the description, then creates.
+    ui.keys.pressKey("n");
+    await ui.until("New pull request");
+    await ui.type("A change");
+    ui.keys.pressEnter();
+    await ui.until("Target branch");
+    ui.keys.pressEnter();
+    await ui.until("Description");
+    await ui.type("Why it matters");
+    ui.keys.pressEnter();
+    await ui.until("Created the pull request: https://github.com/acme/repo/pull/10", 15_000);
+    const calls = readFileSync(ghCalls, "utf8");
+    expect(calls).toContain('"--title","A change"');
+    expect(calls).toContain('"--base","main"');
+  }, 40_000);
+
+  it("works git from the panel: the diff, staging, unstaging, stage all, and a commit", async () => {
+    const repo = path.join(server.root, "gitrepo");
+    mkdirSync(path.join(repo, "src"), { recursive: true });
+    writeFileSync(path.join(repo, "src/app.ts"), "const a = 1;\n");
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, encoding: "utf8" });
+    git("init", "-q");
+    git("add", ".");
+    git("commit", "-qm", "init");
+    ui = await mount(repo, { height: 44 });
+    await ui.type("edit please");
+    ui.keys.pressEnter();
+    await idle(ui);
+    // C-x j opens the panel on the chat's project, the file under Changed with its word.
+    ui.keys.pressKey("x", { ctrl: true });
+    await ui.type("j");
+    const panel = await ui.until("M src/app.ts");
+    expect(panel).toContain("Stage");
+    expect(panel).not.toContain("Unstage");
+    // d opens the file's diff against HEAD; Esc goes back to the files.
+    ui.keys.pressKey("d");
+    const diff = await ui.until("Managed by the fake harness's edit command");
+    expect(diff).toContain("src/app.ts · not staged");
+    ui.keys.pressEscape();
+    await ui.until("M src/app.ts");
+    // Enter stages it: the row moves under Staged and offers Unstage.
+    ui.keys.pressEnter();
+    const staged = await ui.until("Unstage");
+    expect(staged).toContain("Staged");
+    expect(staged).toContain("1 staged");
+    // A fresh change and a new file: `a` stages everything the index does not have.
+    writeFileSync(path.join(repo, "src/app.ts"), "const a = 2;\n");
+    writeFileSync(path.join(repo, "notes.md"), "# notes\n");
+    ui.keys.pressKey("r");
+    await ui.until("(new)", 20_000);
+    ui.keys.pressKey("a");
+    await ui.until(() => (ui?.app.git()?.counts.staged ?? 0) >= 2);
+    // `u` takes it all back out of the index.
+    ui.keys.pressKey("u");
+    await ui.until(() => (ui?.app.git()?.counts.staged ?? 1) === 0);
+    // Stage the one file again (the cursor sits on it) and commit it from the message box; the untracked file stays.
+    ui.keys.pressEnter();
+    await ui.until(() => (ui?.app.git()?.counts.staged ?? 0) === 1);
+    ui.keys.pressKey("c");
+    await ui.until("Commit message: Enter commits, Esc drops");
+    await ui.type("commit from atui");
+    ui.keys.pressEnter();
+    await ui.until(() => (ui?.app.git()?.counts.staged ?? 1) === 0 && (ui?.app.git()?.counts.changed ?? 1) === 0);
+    expect(git("log", "--format=%s", "-1").trim()).toBe("commit from atui");
+    expect(await ui.frame()).toContain("notes.md");
+    // Esc closes the panel and the conversation is back.
+    ui.keys.pressEscape();
   }, 40_000);
 
   it("runs a command from an answer and puts its output in the message; quotes a selection", async () => {

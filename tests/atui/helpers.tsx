@@ -40,9 +40,12 @@ export async function startServer(opts: { port?: number; config?: string } = {})
       AWUI_HEARTBEAT_MS: "1000",
       WORKSPACE_ROOTS: root,
       XDG_STATE_HOME: path.join(base, "state"),
+      ...opts.env,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  // A server that dies mid-run (the clients then fail with "Cannot reach") must say why.
+  server.once("exit", (code, signal) => process.stderr.write(`[atui-test] server exited code=${code} signal=${signal}\n${output.slice(-2000)}\n`));
   let output = "";
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`server did not start:\n${output}`)), 20_000);
