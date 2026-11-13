@@ -366,6 +366,10 @@ export async function createApp(deps: AppDeps) {
   const routineRuns = deps.routineRuns ?? RoutineRuns.inMemory();
   const resumeIntents = deps.resumeIntents ?? ResumeIntents.inMemory();
   const handovers = deps.handovers ?? Handovers.inMemory();
+  // The manager's own resume refuses a handed session (H2): every side path — a PR
+  // watch's wake, a guest's history poll, a released guest message — goes through
+  // `manager.resume`, so the lock cannot be sidestepped by a route that forgot it.
+  manager.handedOver = (sessionId) => handovers.get(sessionId);
   /**
    * Whether a session was opened by a routine: not the user's chat, so the session lists
    * leave it out (Usage still counts it) and only a run with something to say is a note.
@@ -875,8 +879,11 @@ export async function createApp(deps: AppDeps) {
     if (!adapter) throw new ChatError(404, "unknown_harness", "No such harness");
     const workspace = await workspaces.get(info.workspace.id);
     const live = manager.liveChatFor(info.harnessId, info.nativeId);
-    const chat = live ?? await manager.resume(adapter, workspace, info.nativeId);
-    const items = live ? chat.snapshot().items : (await adapter.readTranscript?.({ cwd: workspace.path, nativeId: chat.nativeId ?? info.nativeId }) ?? null)?.items ?? [];
+    // A poll never starts a harness. A session handed to a terminal CLI has no live chat
+    // here, and resuming it would be the second writer the handover lock forbids; the
+    // stored transcript is all a text-only projection needs.
+    const transcript = !live && adapter.readTranscript ? await adapter.readTranscript({ cwd: workspace.path, nativeId: info.nativeId }).catch(() => null) : null;
+    const items = live ? live.snapshot().items : transcript?.items ?? [];
     res.json({ title: info.title, harnessId: info.harnessId, workspaceName: info.workspace.name, history: GuestStore.history(items), expiresAt: guest.expiresAt });
   });
   app.post("/api/guest/messages", express.json({ limit: "16kb" }), async (req, res) => {
@@ -891,8 +898,10 @@ export async function createApp(deps: AppDeps) {
     if (text === null) throw new ChatError(404, "guest_message_missing", "No queued guest message to release");
     const ref = await guests.target(req.params.id);
     await workspaces.get(ref.workspace.id);
-    const chat = await manager.resume(registry.get(ref.harnessId)!, ref.workspace, ref.nativeId);
     try {
+      // A handed-over session is refused inside the resume, and the message goes back to
+      // the queue like any other refusal: the owner can release it after reclaiming.
+      const chat = await manager.resume(registry.get(ref.harnessId)!, ref.workspace, ref.nativeId);
       await chat.send(text, "normal", [], { origin: "agent" });
       await guests.markSent(req.params.id, req.params.messageId);
       res.json({ ok: true });
@@ -2275,7 +2284,7 @@ export async function createApp(deps: AppDeps) {
       throw new ChatError(409, "session_held", `This session is open in another ${adapter.displayName}: close that one first, or opening it here would run a second ${adapter.displayName} on the same session`);
     }
     if (input.reclaim && handovers.has(input.sessionId)) await handovers.take(input.sessionId);
-    const chat = await manager.resume(adapter, ws, nativeId);
+    const chat = await manager.resume(adapter, ws, nativeId, undefined, { reclaim: input.reclaim === true });
     // Opening it read the session: a parked chat's mark said the live chat was gone, and this
     // one is back — the same native session, a new chat id, no second writer.
     void marks.set(`${adapter.id}:${nativeId}`, { parked: false }).catch(() => undefined);

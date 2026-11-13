@@ -135,4 +135,38 @@ describe("two-way resume handover", () => {
     const res = await request(t.server).post("/api/sessions/reclaim").set("Host", `192.168.1.50:${t.port}`).send({ harnessId: "fake", workspaceId: otherWs.id, sessionId });
     expect(res.status).toBe(401);
   });
+
+  it("does not let a guest's poll or a released guest message respawn a handed session", async () => {
+    t = await makeTestApp();
+    const agent = await signedIn(t);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body as { id: string; path: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    const sessionId = chat.sessionId as string;
+    const native = sessionId.slice("fake:".length);
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "Seed for the guest" }).expect(202);
+    await until(() => t!.manager.get(chat.chatId).status === "idle");
+    // Share the chat, and let the guest queue something the owner has not released.
+    const share = await agent.post(`/api/guests/fake/${encodeURIComponent(native)}`).send({ workspaceId: ws.id }).expect(200);
+    const guestId = (share.body as { guest: { id: string } }).guest.id;
+    const token = (share.body as { url: string }).url.slice("/guest/".length);
+    const guest = request.agent(t.server);
+    await guest.post("/api/guests/redeem").send({ token }).expect(200);
+    await guest.post("/api/guest/messages").send({ text: "From the guest", requestId: "guesthandover1" }).expect(202);
+    // The owner hands the session to a terminal: the live chat goes, the lock stays.
+    await agent.post("/api/sessions/handover").send({ harnessId: "fake", workspaceId: ws.id, sessionId }).expect(200);
+    expect(t.manager.list()).toHaveLength(0);
+    // A poll (every few seconds in the guest page) reads the stored transcript and never
+    // starts a harness on the locked session.
+    const history = await guest.get("/api/guest/history").expect(200);
+    expect((history.body as { history: Array<{ text: string }> }).history.some((row) => row.text.includes("Seed for the guest"))).toBe(true);
+    expect(t.manager.list()).toHaveLength(0);
+    // Releasing the guest's message is refused by the same lock, and the message stays queued.
+    const pending = (await guest.get("/api/guest")).body as { pending: Array<{ id: string }> };
+    const release = await agent.post(`/api/guests/${guestId}/messages/${pending.pending[0]!.id}/send`).send({});
+    expect(release.status).toBe(409);
+    expect(release.body.code).toBe("session_handed");
+    expect(t.manager.list()).toHaveLength(0);
+    expect(((await guest.get("/api/guest")).body as { pending: unknown[] }).pending).toHaveLength(1);
+  });
+
 });

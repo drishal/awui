@@ -88,6 +88,13 @@ export class ChatManager {
    */
   onRegistered?: (chat: Chat) => void;
   /**
+   * A session handed to a native CLI (handover.ts): the exact line that took it over.
+   * A resume refuses it — whichever side path asked (a PR watch, a guest poll, a guest
+   * message's release) — unless the caller is the owner's own reclaim, so the second
+   * writer the lock exists to prevent cannot start from a route nobody watched.
+   */
+  handedOver?: (sessionId: string) => string | null;
+  /**
    * Hibernation for idle finished chats. When set, the reaper parks (disposes) a chat that has
    * been hidden — unviewed and unread — past `afterMs`: its harness child goes, its session's
    * native id stays, and opening it again resumes the same native session. The hook records the
@@ -277,12 +284,23 @@ export class ChatManager {
     }
   }
 
-  async resume(adapter: HarnessAdapter, workspace: WorkspaceInfo, nativeId: string, owner?: ChatOwner): Promise<Chat> {
+  /**
+   * Open the session's one live chat, or hand back the one already open. A session
+   * locked by a handover is refused here rather than in each caller: `reclaim` is the
+   * owner's own resume after taking the lock, and nothing else passes it.
+   */
+  async resume(adapter: HarnessAdapter, workspace: WorkspaceInfo, nativeId: string, owner?: ChatOwner, options?: { reclaim?: boolean }): Promise<Chat> {
     const k = key(adapter.id, nativeId);
     const existing = this.liveChatFor(adapter.id, nativeId);
     if (existing) return existing;
     const inFlight = this.opening.get(k);
     if (inFlight) return inFlight;
+    // One live writer (rule 2): a session handed to a terminal CLI stays locked even when
+    // the caller never asked about handovers, so a poll or a release cannot respawn it.
+    if (options?.reclaim !== true) {
+      const command = this.handedOver?.(`${adapter.id}:${nativeId}`) ?? null;
+      if (command !== null) throw new ChatError(409, "session_handed", `This session was handed to a terminal (${command || "its command is no longer retained"}); reclaim it before resuming it here`);
+    }
     const problem = adapter.workspaceProblem(workspace.path);
     if (problem) throw new ChatError(422, "workspace_unsupported", problem);
     const open = (async () => {
