@@ -273,7 +273,7 @@ export function StartScreen({
               enterKeyHint="send"
             />
             <div className="composer-bar">
-              <div className="composer-controls">
+              <div className="composer-controls" data-harness-accent={harnesses.find((h) => h.id === harnessId)?.accent}>
                 <button
                   type="button"
                   className="icon-btn composer-attach"

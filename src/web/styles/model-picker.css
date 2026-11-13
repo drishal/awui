@@ -619,6 +619,11 @@ button.harness-chip:disabled {
   color: var(--ok);
 }
 
+/* DeepSeek Harness's accent is --ok, the shield's colour: its shield goes neutral rather than repeat the harness hue. */
+[data-harness-accent="ok"] .permission-trigger:not(.is-caution) > .icon:first-child {
+  color: var(--muted-text);
+}
+
 /* A caution chip says so with an edge as well as the colour, and its label stays --text for contrast on light schemes. */
 .permission-trigger.is-caution,
 .permission-trigger.is-caution:hover:not(:disabled) {

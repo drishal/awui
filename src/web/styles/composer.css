@@ -1020,6 +1020,11 @@
   --level-ink: 30%;
 }
 
+/* omp and awui's accent is --thinking: their reasoning chip ramps in grey so it never matches the harness chip. */
+[data-harness-accent="thinking"] .pill-trigger[data-level] {
+  --level-tone: var(--text-2);
+}
+
 .pill-trigger[data-level="medium"] {
   background: color-mix(in oklab, var(--level-tone) 6%, var(--hover));
   --level-ink: 40%;

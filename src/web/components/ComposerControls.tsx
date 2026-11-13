@@ -63,7 +63,7 @@ export function ComposerControls({
   const current = harnesses.find((h) => h.id === chat.harnessId);
 
   return (
-    <div className="composer-controls">
+    <div className="composer-controls" data-harness-accent={current?.accent}>
       <div className="composer-pickers">
         <HandoffChip chat={chat} harnesses={harnesses} onHandoff={onHandoff} />
         {caps.supportsModelSelection ? (

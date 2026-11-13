@@ -133,6 +133,14 @@ a literal colour.
   tool rows tint their row; the approval card is the loudest object; answer
   prose, paths, timestamps, model names, section labels, and card backgrounds
   stay grey. Never colour alone: glyph, word, and shape stay.
+- **The composer's chip row:** the harness chip leads (`--lead-tint` 12 % wash,
+  `--lead-edge` 32 % edge, in `--harness`). The model chip and a quiet context ring
+  are neutral; the reasoning chip is a 6-12 % `--thinking` wash with no edge; the
+  normal permission chip is a neutral pill with a green shield, and a cautious mode
+  is the only other edged chip (the harness chip then keeps just its mark). The row
+  carries `data-harness-accent`: a harness whose accent is `thinking` (omp, Awui)
+  ramps reasoning in grey, and one whose accent is `ok` (DeepSeek Harness) gets a
+  grey shield, so no two chips ever share a hue.
 
 ## 4. See it without touching real chats
 
