@@ -10,7 +10,7 @@
 import { appendFileSync } from "node:fs";
 import { createEffect, createMemo, createRoot, createSignal, on, onCleanup, untrack } from "solid-js";
 import { blobId, span, ui, html, type Key, type Node, type PropsOf, type Session, type Surface } from "@stencil-hq/tern";
-import type { ChatSnapshot, HarnessStatus, IntegrationRecord, InteractionRequest, RaceSummary, ReviewThread, SavedPrompt, SecondOpinion, SlashCommand } from "../shared/protocol.js";
+import type { ChatSnapshot, GitDiffSide, GitFileDiff, GitHubCheckView, HarnessStatus, IntegrationRecord, InteractionRequest, PrStack, RaceSummary, ReviewThread, SavedPrompt, SecondOpinion, SlashCommand, Tour } from "../shared/protocol.js";
 import type { ChatState } from "../web/chat-state.js";
 import { buildTurns, ago as agoMs } from "../web/turns.js";
 import { turnMarkdown } from "../web/turn-markdown.js";
@@ -41,10 +41,17 @@ import { contextCards, gitSummaryLine } from "../web/context-panel.js";
 import { railEntries, type RailEntry } from "../atui/rail.js";
 import { ACTION_KEYS, moveRow, taskRows, type TaskRow } from "../atui/delegated.js";
 import { reviewActions, type ReviewAction, type ReviewFacts } from "../web/delegated-tasks.js";
-import { collectChanges, type FileChanges } from "../web/review.js";
 import { BOARD_COLUMNS, boardCards, boardCounts, boardProjects, prStateOf, type PrFilter, type PrState, type PullRequestShape } from "../web/dashboard.js";
 import { stylesheet, themeSheet } from "./look.js";
+import { GIT_INPUT_ID, editMessage, gitNode, gitScreen, type GitScreen as GitScreenState } from "./git.js";
+import { REVIEW_INPUT_ID, reviewNode, reviewScreen, rowId, type ReviewScreenState } from "./review.js";
+import { GITHUB_INPUT_ID, TOUR_SCROLL_ID, editForm, formValue, githubForm, githubNode, githubState, nextField, tourNode, type GithubForm, type GithubState, type GithubStatusView, type TourView } from "./github.js";
 import { startExamples, startHeading, startSetup } from "../web/start-screen.js";
+import { collectChanges, placeThreads, type FileChanges, type PlacedThread } from "../web/review.js";
+import { firstStop, moveCursor, moveFile, reviewRows, type ReviewRow } from "../atui/review.js";
+import { anchorOf } from "../shared/review.js";
+import { mergeNotes, prNumberOf } from "../shared/github-words.js";
+import { editSignature, readMarks, type OriginMarks } from "../atui/attribution.js";
 
 export interface TernOptions {
   /** The server, for links into the web UI. */
@@ -82,6 +89,7 @@ const LEADER: Array<{ key: string; label: string }> = [
   { key: "l", label: "Chat width" },
   { key: "u", label: "Usage across chats" },
   { key: "y", label: "Copy the last answer" },
+  { key: "j", label: "Git" },
   { key: "q", label: "Quit" },
 ];
 
@@ -125,6 +133,15 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     // The context panel over the composer's chip; "Compacted ✓" for a moment after a compaction ends.
     const [contextOpen, setContextOpen] = createSignal(false);
     const [compacted, setCompacted] = createSignal(false);
+    // The Git screen (C-x j): null while closed; `busy` names the write in flight.
+    const [gitting, setGitting] = createSignal<GitScreenState | null>(null);
+    const [gitBusy, setGitBusy] = createSignal<string | null>(null);
+    // The Review screen (C-x d): the chat's changes, its threads, and the comment being written.
+    const [reviewing, setReviewing] = createSignal<ReviewScreenState | null>(null);
+    const [reviewMarks, setReviewMarks] = createSignal<{ chatId: string; signature: string; marks: OriginMarks } | null>(null);
+    const [sendingReview, setSendingReview] = createSignal(false);
+    // The GitHub screen (the palette's "GitHub"): the project's PR, its checks, its stack, and the tour.
+    const [githubing, setGithubing] = createSignal<GithubState | null>(null);
     let compactedTimer: ReturnType<typeof setTimeout> | undefined;
     let recall: Recall | null = null;
     let lastEsc = 0;
@@ -198,6 +215,10 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           setTiming(null);
           setQueueEdit(null);
           setContextOpen(false);
+          setGitting(null);
+          setReviewing(null);
+          setReviewMarks(null);
+          setGithubing(null);
         },
       ),
     );
@@ -244,7 +265,18 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       wasCompacting = compacting;
     });
     onCleanup(() => clearTimeout(compactedTimer));
-
+    // The dock's git row (and the Git screen) follow a run: the status is read again when one ends, as the web composer does.
+    createEffect(
+      on(
+        () => {
+          const c = app.chat();
+          return c ? (isBusy(c.status) ? "busy" : c.status) : "";
+        },
+        (state, before) => {
+          if (before === "busy" && state !== "busy") void app.refreshGit();
+        },
+      ),
+    );
     const harness = (): HarnessStatus | null => app.harness();
 
     // ---- the look: palette by theme and harness, the sheet once ---------------------------
@@ -418,10 +450,15 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it (C-x l cycles).
       CHAT_WIDTHS.forEach((w) => items.push({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, icon: "expand", keywords: "column layout measure", current: (app.boot()?.ui.chatWidth ?? null) === w }));
       if (c && buildTurns(c.items, c.status).length > 0) items.push({ id: "timing", label: "Timing of the latest turn", icon: "clock", keywords: "waterfall speed slow" });
-      items.push({ id: "x:u", label: "Usage", value: "C-x u", icon: "chart", keywords: "tokens cost limits spend" });
+      items.push({ id: "x:i", label: "Usage", value: "C-x i", icon: "chart", keywords: "tokens cost limits spend" });
       items.push({ id: "x:k", label: "Agents: every session, by column", value: "C-x k", icon: "kanban", keywords: "dashboard board needs working done" });
       if (c) items.push({ id: "x:p", label: "Active work: workers, jobs, questions, context", value: "C-x p", icon: "layers", keywords: "context panel rail" });
       if (c) items.push({ id: "x:j", label: "Delegated work: review a worker…", value: "C-x j", icon: "task", keywords: "task review apply patch", ...(c.delegated && c.delegated.length > 0 ? {} : { disabled: "This chat has delegated nothing" }) });
+      // The project's screens need a chat on the server (the git status rides on it); offered with the reason when there is none.
+      items.push({ id: "x:u", label: "Git: stage, commit, and the diffs", value: "C-x u", icon: "git", keywords: "branch status stage commit diff", ...(c ? {} : { disabled: "Open a chat first: the git screen reads this chat's project" }) });
+      items.push({ id: "review", label: "Review changes…", value: "C-x d", icon: "message", keywords: "comments review pin resolve attribution", ...(c ? {} : { disabled: "No chat to review" }) });
+      // The PR screens read the project alone; only the watch and the repair need a chat (their buttons say so).
+      items.push({ id: "github", label: "GitHub for this project…", icon: "pr", keywords: "pull request checks push stack merge watch tour ci repair" });
       if (c) items.push({ id: "context", label: "Context and usage", icon: "gauge", keywords: "window tokens cache compact", ...(c.context ? {} : { disabled: "This harness has not reported the context yet" }) });
       if (c) items.push({ id: "x:y", label: "Copy the last answer", value: "C-x y", icon: "copy" });
       if (app.putBackable()) items.push({ id: "x:z", label: "Put the undone files back", value: "C-x z", icon: "undo" });
@@ -482,6 +519,398 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       setUsage(null);
       setTiming(null);
       setContextOpen(true);
+    };
+
+    // ---- the Git screen: the chat's project's status, staged and committed by hand ---------
+    /** The screen's one error goes to the notice toast, which carries the server's own text (a remote device may not write this checkout). */
+    const gitWrite = async (kind: "stage" | "unstage", paths: string[]) => {
+      const c = app.chat();
+      if (!c || gitBusy()) return;
+      setGitBusy(kind);
+      try {
+        await app.server.call(`/api/chats/${c.chatId}/git/${kind}`, { body: { paths } });
+        say(kind === "stage" ? "Staged" : "Unstaged", "success");
+      } catch (error) {
+        say(error instanceof Error ? error.message : String(error), "error");
+      } finally {
+        setGitBusy(null);
+        void app.refreshGit();
+      }
+    };
+    const gitCommit = async () => {
+      const c = app.chat();
+      const message = gitting()?.message.trim();
+      if (!c || !message || gitBusy()) return;
+      setGitBusy("commit");
+      try {
+        await app.server.call(`/api/chats/${c.chatId}/git/commit`, { body: { message } });
+        setGitting((s) => (s ? { ...s, message: "", writing: false } : s));
+        say(`Committed ${app.git()?.lastCommit?.hash ?? ""} ${app.git()?.lastCommit?.subject ?? ""}`.trim(), "success");
+      } catch (error) {
+        say(error instanceof Error ? error.message : String(error), "error");
+      } finally {
+        setGitBusy(null);
+        void app.refreshGit();
+      }
+    };
+    const gitDiff = async (path: string, side: GitDiffSide) => {
+      const c = app.chat();
+      if (!c) return;
+      setGitting((s) => (s ? { ...s, diff: { path, side, body: null } } : s));
+      try {
+        const body = await app.server.call<GitFileDiff>(`/api/chats/${c.chatId}/git/diff?path=${encodeURIComponent(path)}&side=${side}`);
+        setGitting((s) => (s && s.diff?.path === path ? { ...s, diff: { path, side, body } } : s));
+      } catch (error) {
+        setGitting((s) => (s ? { ...s, diff: { path, side, body: { diff: null, note: error instanceof Error ? error.message : String(error) } } } : s));
+      }
+    };
+    /** Opens the screen (the git status is refreshed for it, as the Info tab's is). */
+    const openGit = () => {
+      if (!app.chat()) return say("Open a chat first: the git screen reads this chat's project");
+      setLeader(false);
+      setMenu(null);
+      setUsage(null);
+      setTiming(null);
+      void app.refreshGit();
+      setGitting(gitScreen());
+    };
+    /** The Git screen's keys: while the message field has them it takes typing; Esc closes the diff, then the focus, then the screen. */
+    const onGitKey = (key: Key): boolean => {
+      const g = gitting();
+      if (!g) return true;
+      const { name, ctrl } = key;
+      if (name === "escape" || (ctrl && name === "g")) {
+        if (g.diff) setGitting({ ...g, diff: null });
+        else if (g.writing) setGitting({ ...g, writing: false });
+        else setGitting(null);
+        return true;
+      }
+      if (!g.writing) {
+        if (name === "enter" && !key.shift && !ctrl && (app.git()?.counts.staged ?? 0) > 0) setGitting({ ...g, writing: true });
+        return true;
+      }
+      if (name === "enter" && !key.shift && !ctrl) {
+        if (g.message.trim() && (app.git()?.counts.staged ?? 0) > 0) void gitCommit();
+        return true;
+      }
+      if (name === "backspace") setGitting({ ...g, message: g.message.slice(0, -1) });
+      else if (key.text && !ctrl && !key.alt && !key.meta) setGitting({ ...g, message: g.message + key.text });
+      return true;
+    };
+
+    // ---- the Review screen: the chat's changes, its threads, one prompt to the agent -------
+    const reviewFiles = () => {
+      const c = app.chat();
+      return c ? collectChanges(c.items, c.workspace.path) : [];
+    };
+    const openReview = () => {
+      const c = app.chat();
+      if (!c) return say("No chat to review");
+      const files = collectChanges(c.items, c.workspace.path);
+      if (files.length === 0) return say("The agent has not edited any files in this chat");
+      setLeader(false);
+      setMenu(null);
+      setUsage(null);
+      setTiming(null);
+      setGitting(null);
+      void app.loadReview(c.chatId);
+      // The pins follow the lines the diffs show; a pin whose line moved is queued to the server so a batched prompt names it.
+      void app.reanchorReview(c.chatId);
+      const signature = editSignature(files);
+      if (reviewMarks()?.chatId === c.chatId && reviewMarks()?.signature === signature) {
+        setReviewing(reviewScreen(firstStop(reviewRows(files))));
+        return;
+      }
+      setReviewMarks(null);
+      setReviewing(reviewScreen(firstStop(reviewRows(files))));
+      void readMarks(app.server, c.chatId, files).then((marks) => setReviewMarks({ chatId: c.chatId, signature, marks }));
+    };
+    const reviewRowsNow = () => reviewRows(reviewFiles());
+    const moveCursorBy = (rows: ReviewRow[], by: number) => {
+      const s = reviewing();
+      if (!s) return;
+      const at = moveCursor(rows, Math.min(Math.max(0, s.at), Math.max(0, rows.length - 1)), by);
+      setReviewing({ ...s, at });
+      if (rows[at]?.kind === "line") surface.reveal(rowId(at), "nearest");
+    };
+    const moveFileBy = (rows: ReviewRow[], by: 1 | -1) => {
+      const s = reviewing();
+      if (!s) return;
+      const at = moveFile(rows, Math.min(Math.max(0, s.at), Math.max(0, rows.length - 1)), by);
+      setReviewing({ ...s, at });
+      if (rows[at]?.kind === "line") surface.reveal(rowId(at), "nearest");
+    };
+    /** The threads the cursor's line carries, placed the way the web panel places them. */
+    const threadsAt = (s: ReviewScreenState): { row: Extract<ReviewRow, { kind: "line" }>; threads: PlacedThread[] } | null => {
+      const row = reviewRowsNow()[s.at];
+      if (!row || row.kind !== "line") return null;
+      const c = app.chat();
+      const threads = c ? (placeThreads(reviewFiles(), app.reviewComments(c.chatId)).placed.get(row.key) ?? []) : [];
+      return { row, threads };
+    };
+    const startComment = () => {
+      const s = reviewing();
+      if (!s) return;
+      const at = threadsAt(s);
+      if (!at) return;
+      const existing = at.threads[0];
+      setReviewing({ ...s, writing: { key: at.row.key, ...(existing ? { threadId: existing.thread.id } : {}), text: "" } });
+    };
+    const saveComment = async () => {
+      const s = reviewing();
+      const c = app.chat();
+      const w = s?.writing;
+      const at = s ? threadsAt(s) : null;
+      if (!s || !c || !w) return;
+      const text = w.text.trim();
+      if (!text) return;
+      setReviewing({ ...s, writing: null });
+      if (w.threadId) await app.replyReviewThread(c.chatId, w.threadId, text);
+      else if (at) await app.createReviewThread(c.chatId, anchorOf(at.row.path, at.row.line), text);
+    };
+    const sendReviewComments = async () => {
+      const c = app.chat();
+      if (!c || sendingReview()) return;
+      const threads = app.reviewComments(c.chatId);
+      if (threads.filter((t) => t.status === "open").length === 0) return say("No open comments to send");
+      const placed = placeThreads(reviewFiles(), threads);
+      const stale = [...placed.placed.values()].flat().concat(placed.detached).filter((p) => p.stale).map((p) => p.thread.id);
+      setSendingReview(true);
+      await app.sendReview(c.chatId, stale);
+      setSendingReview(false);
+    };
+    /** The Review screen's keys: while the comment box has them it takes typing; then the cursor, then the thread keys. */
+    const onReviewKey = (key: Key): boolean => {
+      const s = reviewing();
+      if (!s) return true;
+      const { name, ctrl, shift } = key;
+      if (s.writing) {
+        if (name === "escape" || (ctrl && name === "g")) return setReviewing({ ...s, writing: null }), true;
+        if (name === "enter" && !shift && !ctrl) return void saveComment(), true;
+        if (name === "backspace") setReviewing({ ...s, writing: { ...s.writing, text: s.writing.text.slice(0, -1) } });
+        else if (key.text && !ctrl && !key.alt && !key.meta) setReviewing({ ...s, writing: { ...s.writing, text: s.writing.text + key.text } });
+        return true;
+      }
+      const rows = reviewRowsNow();
+      const c = app.chat();
+      if (name === "escape" || name === "q" || (ctrl && name === "g")) return setReviewing(null), true;
+      if (name === "down" || name === "j") return moveCursorBy(rows, 1), true;
+      if (name === "up" || name === "k") return moveCursorBy(rows, -1), true;
+      if (name === "pagedown") return moveCursorBy(rows, 8), true;
+      if (name === "pageup") return moveCursorBy(rows, -8), true;
+      if (name === "]" || name === "n") return moveFileBy(rows, 1), true;
+      if (name === "[" || name === "p") return moveFileBy(rows, -1), true;
+      if ((name === "enter" || name === "c") && rows[s.at]?.kind === "line") return startComment(), true;
+      if (name === "r" || name === "x") {
+        const at = threadsAt(s);
+        const thread = at?.threads[0]?.thread;
+        if (!at || !thread || !c) return true;
+        if (name === "r") void app.resolveReviewThread(c.chatId, thread.id, thread.status === "open" ? "resolved" : "open");
+        else void app.deleteReviewThread(c.chatId, thread.id);
+        return true;
+      }
+      if (name === "s" && shift) return void sendReviewComments(), true;
+      return true;
+    };
+
+    // ---- the GitHub screen: the project's PR, its checks, its stack, and the tour ----------
+    const githubSay = (error: unknown) => say(error instanceof Error ? error.message : String(error), "error");
+    /** Reads the status, then the checks and the current PR beside it (the web panel's order: the status carries why gh cannot be used). */
+    const refreshGithub = async () => {
+      const ws = app.workspace();
+      if (!ws) return say("Start awui tern in a project folder to work there");
+      setGithubing((s) => (s ? { ...s, busy: "load" } : s));
+      try {
+        const status = await app.server.call<GithubStatusView>(`/api/workspaces/${ws.id}/github`);
+        if (!status.available) {
+          setGithubing((s) => (s ? { ...s, status, checks: [], pr: null, stack: null, busy: null } : s));
+          return;
+        }
+        const [checks, current] = await Promise.allSettled([
+          app.server.call<{ checks: GitHubCheckView[] }>(`/api/workspaces/${ws.id}/github/checks`),
+          app.server.call<{ pr: { url: string; title: string; state: string; isDraft: boolean } | null }>(`/api/workspaces/${ws.id}/github/pr`),
+        ]);
+        const stack = await app.server
+          .call<{ stacks: PrStack[] }>(`/api/workspaces/${ws.id}/pr-stack`)
+          .then((r) => r.stacks[0] ?? null)
+          .catch(() => null);
+        const c = app.chat();
+        const watches = c
+          ? await app.server
+              .call<{ watches: Array<{ url: string }> }>(`/api/chats/${c.chatId}/pr-watches`)
+              .then((r) => r.watches)
+              .catch(() => [])
+          : [];
+        setGithubing((s) =>
+          s
+            ? {
+                ...s,
+                status,
+                checks: checks.status === "fulfilled" ? checks.value.checks : [],
+                pr: current.status === "fulfilled" ? current.value.pr : null,
+                stack,
+                watchedUrl: watches[0]?.url ?? null,
+                busy: null,
+              }
+            : s,
+        );
+      } catch (error) {
+        setGithubing((s) => (s ? { ...s, busy: null } : s));
+        githubSay(error);
+      }
+    };
+    const openGithub = () => {
+      setLeader(false);
+      setMenu(null);
+      setUsage(null);
+      setTiming(null);
+      setGitting(null);
+      setReviewing(null);
+      setGithubing(githubState());
+      void refreshGithub();
+    };
+    const githubPush = async () => {
+      const ws = app.workspace();
+      if (!ws || githubing()?.busy) return;
+      setGithubing((s) => (s ? { ...s, busy: "push" } : s));
+      try {
+        await app.server.call(`/api/workspaces/${ws.id}/github/push`, { body: {} });
+        say("Pushed the current branch", "success");
+      } catch (error) {
+        githubSay(error);
+      } finally {
+        setGithubing((s) => (s ? { ...s, busy: null } : s));
+        void refreshGithub();
+      }
+    };
+    const githubWatch = async (on: boolean) => {
+      const c = app.chat();
+      const url = githubing()?.pr?.url;
+      if (!c || !url || githubing()?.busy) return;
+      setGithubing((s) => (s ? { ...s, busy: "watch" } : s));
+      try {
+        await app.server.call(`/api/chats/${c.chatId}/pr-watch`, on ? { body: { url } } : { method: "DELETE", body: { url } });
+        setGithubing((s) => (s ? { ...s, watchedUrl: on ? url : null, busy: null } : s));
+        say(on ? "Watching this pull request: a real check or review change prompts you" : "Stopped watching this pull request", "success");
+      } catch (error) {
+        setGithubing((s) => (s ? { ...s, busy: null } : s));
+        githubSay(error);
+      }
+    };
+    /** The CI repair: one new chat of this chat's harness, carrying the failing checks and their evidence. */
+    const githubRepair = async () => {
+      const c = app.chat();
+      const ws = app.workspace();
+      const url = githubing()?.pr?.url;
+      if (!c || !ws || !url || githubing()?.busy) return;
+      setGithubing((s) => (s ? { ...s, busy: "repair" } : s));
+      try {
+        const done = await app.server.call<{ chat: { title: string; chatId: string } }>(`/api/workspaces/${ws.id}/pr-repair`, { body: { url, harnessId: c.harnessId } });
+        void app.refreshSessions();
+        setGithubing((s) => (s ? { ...s, busy: null } : s));
+        say(`Started the repair chat “${done.chat.title}”: it opens from the session list`, "success");
+      } catch (error) {
+        setGithubing((s) => (s ? { ...s, busy: null } : s));
+        githubSay(error);
+      }
+    };
+    const githubMerge = async () => {
+      const ws = app.workspace();
+      const stack = githubing()?.stack;
+      if (!ws || !stack || githubing()?.busy) return;
+      setGithubing((s) => (s ? { ...s, busy: "merge" } : s));
+      try {
+        const done = await app.server.call<{ stack: PrStack; refusal: { pr: number; message: string } | null; archiveRefusals: Array<{ pr: number; message: string }> }>(`/api/workspaces/${ws.id}/pr-stack/${stack.id}/merge`, { body: { archive: false } });
+        setGithubing((s) => (s ? { ...s, stack: done.stack, busy: null } : s));
+        const notes = mergeNotes(done);
+        if (notes) say(notes, "error");
+        else say("Merged the stack, bottom-up", "success");
+        void refreshGithub();
+      } catch (error) {
+        setGithubing((s) => (s ? { ...s, busy: null } : s));
+        githubSay(error);
+      }
+    };
+    const githubSubmit = async () => {
+      const ws = app.workspace();
+      const form = githubing()?.form;
+      if (!ws || !form || githubing()?.busy) return;
+      setGithubing((s) => (s ? { ...s, busy: "pr" } : s));
+      try {
+        if (form.kind === "pr") {
+          const made = await app.server.call<{ url: string }>(`/api/workspaces/${ws.id}/github/pr`, { body: { base: form.base.trim(), title: form.title.trim(), body: form.body } });
+          say(`Created the pull request: ${made.url}`, "success");
+        } else {
+          const above = Number(form.above);
+          const made = await app.server.call<{ stack: PrStack }>(
+            `/api/workspaces/${ws.id}/pr-stack`,
+            form.above.trim() === "" ? { body: { base: form.base.trim(), title: form.title.trim(), body: form.body, push: false } } : { body: { above, title: form.title.trim(), body: form.body, push: false } },
+          );
+          setGithubing((s) => (s ? { ...s, stack: made.stack } : s));
+          say(`Stacked the pull request${form.above.trim() === "" ? ` on ${form.base.trim()}` : ` above #${form.above.trim()}`}`, "success");
+        }
+        setGithubing((s) => (s ? { ...s, form: null, busy: null } : s));
+        void refreshGithub();
+      } catch (error) {
+        setGithubing((s) => (s ? { ...s, busy: null } : s));
+        githubSay(error);
+      }
+    };
+    /** The guided tour: the PR's reading order, cached by head (an explicit rebuild asks gh again). */
+    const githubTour = async (regenerate: boolean) => {
+      const ws = app.workspace();
+      const pr = prNumberOf(githubing()?.pr?.url ?? "");
+      if (!ws || pr === null) return say("No pull request for this branch yet");
+      setGithubing((s) => (s ? { ...s, tour: s.tour ? { ...s.tour, loading: true } : ({ tour: { pr, title: "", files: [], head: "", truncated: false }, stale: false, position: 0, loading: true } as TourView) } : s));
+      try {
+        const next = await app.server.call<{ tour: Tour; stale: boolean }>(`/api/workspaces/${ws.id}/pr-tour?pr=${pr}&regenerate=${regenerate}`);
+        setGithubing((s) => (s ? { ...s, tour: { tour: next.tour, stale: next.stale, position: regenerate ? 0 : (s.tour?.position ?? 0), loading: false } } : s));
+      } catch (error) {
+        setGithubing((s) => (s ? { ...s, tour: null } : s));
+        githubSay(error);
+      }
+    };
+    const githubStep = (by: 1 | -1) => {
+      setGithubing((s) => (s?.tour ? { ...s, tour: { ...s.tour, position: Math.max(0, s.tour.position + by) } } : s));
+    };
+    /** The GitHub screen's keys: the tour first, then the form's field, then the actions. */
+    const onGithubKey = (key: Key): boolean => {
+      const g = githubing();
+      if (!g) return true;
+      const { name, ctrl } = key;
+      if (g.tour) {
+        if (name === "escape" || (ctrl && name === "g")) return setGithubing({ ...g, tour: null }), true;
+        if (name === "]" || name === "n" || name === "right") return githubStep(1), true;
+        if (name === "[" || name === "p" || name === "left") return githubStep(-1), true;
+        if (name === "b") return void githubTour(true), true;
+        const to = name === "up" || (ctrl && name === "p") ? "line-up" : name === "down" || (ctrl && name === "n") ? "line-down" : name === "page_up" ? "page-up" : name === "page_down" || name === "space" ? "page-down" : name === "home" ? "start" : name === "end" ? "end" : null;
+        if (to) surface.scroll(TOUR_SCROLL_ID, to);
+        return true;
+      }
+      if (g.form) {
+        if (name === "escape" || (ctrl && name === "g")) return setGithubing({ ...g, form: null }), true;
+        if (name === "enter" && !key.shift && !ctrl) {
+          const next = nextField(g.form);
+          if (next) return setGithubing({ ...g, form: { ...g.form, field: next as GithubForm["field"] } }), true;
+          return void githubSubmit(), true;
+        }
+        if (name === "backspace") return setGithubing({ ...g, form: editForm(g.form, formValue(g.form).slice(0, -1)) }), true;
+        if (key.text && !ctrl && !key.alt && !key.meta) return setGithubing({ ...g, form: editForm(g.form, formValue(g.form) + key.text) }), true;
+        return true;
+      }
+      if (name === "escape" || (ctrl && name === "g")) return setGithubing(null), true;
+      if (name === "r") return void refreshGithub(), true;
+      if (name === "p") return void githubPush(), true;
+      if (name === "w") {
+        const watched = g.watchedUrl !== null && g.pr !== null && g.watchedUrl === g.pr.url;
+        return void githubWatch(!watched), true;
+      }
+      if (name === "t") return void githubTour(false), true;
+      if (name === "m") return void githubMerge(), true;
+      if (name === "x") return void githubRepair(), true;
+      if (name === "n") return setGithubing({ ...g, form: githubForm("pr") }), true;
+      if (name === "s") return setGithubing({ ...g, form: githubForm("stack") }), true;
+      return true;
     };
 
     /** Replaces the harness's whole queue (the web UI's queue edit: an edited or removed message). */
@@ -593,7 +1022,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           return openMenu("find");
         case "l":
           return void chooseWidth(nextChatWidth(app.boot()?.ui.chatWidth ?? null));
-        case "u":
+        case "i":
           return openUsage();
         case "j":
           return openDelegated();
@@ -605,6 +1034,10 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           const text = lastAnswer();
           return text ? copy(text) : say("No answer to copy yet");
         }
+        case "u":
+          return openGit();
+        case "d":
+          return openReview();
         case "q":
           return quit();
         default:
@@ -637,6 +1070,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             return;
           }
           if (item.id === "context") return openContext();
+          if (item.id === "review") return openReview();
+          if (item.id === "github") return openGithub();
           if (item.id === "web") {
             // A program cannot open a browser through Tern (links open on a click), so the link goes to the clipboard.
             const c = app.chat();
@@ -1327,6 +1762,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const delegatedShown = delegated() !== null && c ? delegatedNode({ rows: delegatedRows(), selected: delegatedSelected(), opened: delegatedRow(), review: reviewFacts(), reading: delegatedReading(), actions: delegatedActions(), changes: delegatedChanges(), note: delegatedNote(), writing: delegatedWriting(), confirming: delegatedConfirm()?.label ?? null, busy: delegatedBusy(), error: delegatedError(), supports: (k) => session.caps.kinds.includes(k), on: { close: () => setDelegated(null), back: () => setDelegatedOpened(null), select: setDelegatedSelected, open: (index) => setDelegatedOpened(delegatedRows()[index]?.key ?? null), act: delegatedAct, cancel: () => { const row = delegatedRow(); if (row) delegatedCancel(row); }, editNote: (from, to, text) => setDelegatedNote((value) => value.slice(0, from) + text + value.slice(to)), openChat: (chatId) => void app.openChat(chatId) } }) : undefined;
       const boardShown = boardOpen() ? boardNode({ cards: boardCardsNow(), counts: boardCountsNow(), cursor: boardCursor(), filter: boardFilter(), projectName: (id) => app.overview().workspaces.find((w) => w.id === id)?.name ?? "", harnessName, prs: boardPrs(), reading: boardReading(), on: { close: () => setBoardOpen(false), select: (column, at) => setBoardCursor({ column, at }), open: (s) => { setBoardOpen(false); void app.openSession(s); } } }) : undefined;
       const kind = screen || timed || details || railShown || delegatedShown || boardShown ? null : (m?.kind ?? caretKind());
+      // The Usage, Timing, context, and Git screens hold the keys: the composer's menu, whatever its text says, waits behind them.
+      const kind = screen || timed || details || gitting() || reviewing() || githubing() ? null : (m?.kind ?? caretKind());
       if (screen) {
         layer.push(
           usageNode({
@@ -1356,6 +1793,97 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         layer.push(delegatedShown);
       } else if (boardShown) {
         layer.push(boardShown);
+      } else if (gitting()) {
+        layer.push(
+          gitNode({
+            status: app.git(),
+            screen: gitting() as GitScreenState,
+            busy: gitBusy(),
+            on: {
+              close: () => setGitting(null),
+              write: (kind, paths) => void gitWrite(kind, paths),
+              commit: () => void gitCommit(),
+              message: (text) => setGitting((s) => (s ? { ...s, message: text } : s)),
+              focusMessage: () => setGitting((s) => (s ? { ...s, writing: true } : s)),
+              diff: (path, side) => void gitDiff(path, side),
+              closeDiff: () => setGitting((s) => (s ? { ...s, diff: null } : s)),
+              refresh: () => void app.refreshGit(),
+            },
+          }),
+        );
+      } else if (reviewing()) {
+        const r = app.chat();
+        const files = reviewFiles();
+        const rows = reviewRows(files);
+        const threads = r ? app.reviewComments(r.chatId) : [];
+        layer.push(
+          reviewNode({
+            screen: reviewing() as ReviewScreenState,
+            rows,
+            files,
+            placed: placeThreads(files, threads),
+            marks: reviewMarks()?.chatId === (r?.chatId ?? "") ? (reviewMarks()?.marks ?? null) : null,
+            open: threads.filter((t) => t.status === "open").length,
+            resolved: threads.filter((t) => t.status === "resolved").length,
+            sending: sendingReview(),
+            on: {
+              close: () => setReviewing(null),
+              cursor: (at) => moveCursorBy(rows, at - (reviewing()?.at ?? at)),
+              comment: () => startComment(),
+              text: (text) => setReviewing((s) => (s?.writing ? { ...s, writing: { ...s.writing, text } } : s)),
+              save: () => void saveComment(),
+              cancelWriting: () => setReviewing((s) => (s ? { ...s, writing: null } : s)),
+              resolve: (thread) => {
+                if (r) void app.resolveReviewThread(r.chatId, thread.id, thread.status === "open" ? "resolved" : "open");
+              },
+              remove: (thread) => {
+                if (r) void app.deleteReviewThread(r.chatId, thread.id);
+              },
+              send: () => void sendReviewComments(),
+            },
+          }),
+        );
+      } else if (githubing()) {
+        const g = githubing() as GithubState;
+        if (g.tour) {
+          layer.push(
+            tourNode({
+              view: g.tour,
+              on: {
+                close: () => setGithubing((s) => (s ? { ...s, tour: null } : s)),
+                step: githubStep,
+                rebuild: () => void githubTour(true),
+              },
+            }),
+          );
+        } else {
+          layer.push(
+            githubNode({
+              state: g,
+              hasSession: Boolean(app.chat()?.sessionId),
+              harnessId: app.chat()?.harnessId ?? null,
+              readOnlyHarness: app.chat()?.capabilities.readOnlyHarness ?? false,
+              on: {
+                close: () => setGithubing(null),
+                refresh: () => void refreshGithub(),
+                push: () => void githubPush(),
+                watch: () => void githubWatch(true),
+                unwatch: () => void githubWatch(false),
+                repair: () => void githubRepair(),
+                merge: () => void githubMerge(),
+                copyPr: () => {
+                  const url = (githubing() as GithubState | null)?.pr?.url;
+                  if (url) copy(url);
+                },
+                tour: () => void githubTour(false),
+                form: (kind) => setGithubing((s) => (s ? { ...s, form: githubForm(kind) } : s)),
+                text: (text) => setGithubing((s) => (s?.form ? { ...s, form: editForm(s.form, text) } : s)),
+                submit: () => void githubSubmit(),
+                cancelForm: () => setGithubing((s) => (s ? { ...s, form: null } : s)),
+              },
+            }),
+          );
+        }
       } else if (kind) {
         const items = menuItems();
         const shownMenu: Menu = m ?? { kind, query: "", selected: caretIndex() };
@@ -1475,7 +2003,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           dock: ui.col(ui.text({ key: "keys" }, span("C-c C-c quits · C-x s opens another session", "muted"))),
         });
       }
-      const want = focus() === "answer" && app.chat()?.pending[0] ? ANSWER_ID : EDITOR_ID;
+      // The Git screen's commit message takes the caret while it is being written; the dock's fields otherwise.
+      const want = gitting()?.writing ? GIT_INPUT_ID : reviewing()?.writing ? REVIEW_INPUT_ID : githubing()?.form ? GITHUB_INPUT_ID : focus() === "answer" && app.chat()?.pending[0] ? ANSWER_ID : EDITOR_ID;
       if (want !== focused) {
         focused = want;
         surface.focus(want);
@@ -1598,6 +2127,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         if (railOpen()) return setRailOpen(false);
         if (delegated() !== null) return setDelegated(null);
         if (boardOpen()) return setBoardOpen(false);
+        if (gitting()) return setGitting(null);
+        if (reviewing()) return setReviewing(null);
+        if (githubing()) return setGithubing(null);
         if (menu()) return setMenu(null);
         if (draft().draft.text) return setDraft((s) => setText(s, ""));
         if (now - lastCtrlC < DOUBLE_MS * 2) return quit();
@@ -1611,6 +2143,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (railOpen()) return onRailKey(key);
       if (delegated() !== null) return onDelegatedKey(key);
       if (boardOpen()) return onBoardKey(key);
+      if (gitting()) return onGitKey(key);
+      if (reviewing()) return onReviewKey(key);
+      if (githubing()) return onGithubKey(key);
       if (leader()) {
         if (name === "escape" || (ctrl && name === "g")) return setLeader(false);
         return runLeader(key.text ?? name);

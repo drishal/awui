@@ -3,7 +3,8 @@
 // the document the frames build. Driven by the bytes a pty would carry.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRoot } from "solid-js";
 import { connect } from "@stencil-hq/tern";
@@ -15,9 +16,19 @@ import { BASE, startServer, wait } from "./helpers.js";
 import { FakeTern } from "./tern-fake.js";
 
 let server: Awaited<ReturnType<typeof startServer>>;
+/** The fake gh's record and its call log (tests write the record, the server's gh reads both). */
+let ghRecord = "";
+let ghCalls = "";
 
 beforeAll(async () => {
-  server = await startServer();
+  // The GitHub screen's tests point the server's gh at the fixture; the other tests never call it.
+  const ghBin = mkdtempSync(path.join(tmpdir(), "atui-gh-"));
+  const gh = path.join(ghBin, "gh");
+  writeFileSync(gh, readFileSync(path.resolve(import.meta.dirname, "../fixtures/fake-gh.mjs"), "utf8"));
+  execFileSync("chmod", ["755", gh]);
+  ghRecord = path.join(ghBin, "pr.json");
+  ghCalls = path.join(ghBin, "calls.jsonl");
+  server = await startServer({ env: { PATH: `${ghBin}:${process.env.PATH ?? ""}`, AWUI_GH_FIXTURE: ghRecord, AWUI_GH_CALLS: ghCalls } });
 });
 afterAll(async () => {
   await server.stop();
@@ -816,4 +827,149 @@ describe("awui tern", () => {
     expect(tern.text("main")).toContain("board please");
     expect(tern.errors).toEqual([]);
   }, 60_000);
+  // ---- the Git, Review, and GitHub screens -----------------------------------------------
+
+  const leader = (key: string) => {
+    const { tern } = client as Client;
+    tern.type("\x18");
+    tern.type(key);
+  };
+
+  const repo = (name: string, withFile = true): string => {
+    const dir = path.join(server.root, name);
+    mkdirSync(path.join(dir, "src"), { recursive: true });
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    if (withFile) {
+      writeFileSync(path.join(dir, "src/app.ts"), "const a = 1;\n");
+      git("add", ".");
+      git("commit", "-qm", "init");
+    }
+    return dir;
+  };
+
+  const screens = () => (client as Client).tern.find("overlay", "layer").map((n) => String(n.p.head));
+
+/** The chat settled: idle with an answer on the record (a fresh chat's snapshot is idle before its run starts). */
+const settled = (c: Client) => c.until(() => (c.app.chat()?.status === "idle" && c.app.chat()?.items.some((i) => i.kind === "assistant")) === true, "the run settled");
+
+  it("works git from the C-x j screen: a file's diff, staging, and a commit", async () => {
+    const dir = repo("gittern");
+    client = await start("gittern");
+    const { tern, app, until } = client;
+    tern.type("edit please\r");
+    await settled(client as Client);
+    await until(() => (app.git()?.files.length ?? 0) === 1, "the edit on disk");
+    leader("j");
+    await until(() => screens().includes("Git"), "the git screen");
+    await until(() => tern.text("layer").includes("src/app.ts"), "the status");
+    const view = tern.text("layer");
+    expect(view).toContain("Stage");
+    // Click the file's path: its diff against HEAD opens, then Esc goes back to the files.
+    tern.event({ ev: "action", id: "layer.git.body.r1.p", act: "click" });
+    await until(() => tern.find("diff", "layer").length === 1, "the diff");
+    expect(tern.find("diff", "layer")[0]?.p.text).toContain("Managed by the fake harness's edit command");
+    tern.type("\x1b");
+    await until(() => tern.find("diff", "layer").length === 0, "the diff to close");
+    // Click the row's Stage word, then Enter opens the message box and typing commits.
+    tern.event({ ev: "action", id: "layer.git.body.r1.act", act: "click" });
+    await until(() => (app.git()?.counts.staged ?? 0) === 1 && tern.text("layer").includes("Unstage"), "staged");
+    tern.type("\r");
+    await until(() => tern.nodes.has("layer.git.body.commit.message"), "the message field");
+    tern.type("commit from tern\r");
+    await until(() => tern.text("layer").includes("Nothing to commit"), "the clean tree");
+    expect(execFileSync("git", ["log", "--format=%s", "-1"], { cwd: dir, encoding: "utf8" }).trim()).toBe("commit from tern");
+    expect(tern.errors).toEqual([]);
+  }, 30_000);
+
+  it("reviews from the C-x d screen: a comment on a line, its resolve, and the send", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("edit please\r");
+    await settled(client as Client);
+    leader("d");
+    await until(() => screens().includes("Review changes"), "the review screen");
+    expect(tern.text("layer")).toContain("src/app.ts");
+    expect(tern.text("layer")).toContain("from this chat");
+    // Enter opens the comment box on the cursor's line; typing and Enter saves the thread.
+    tern.type("\r");
+    await until(() => tern.nodes.has("layer.review.body.writing"), "the comment box");
+    tern.type("keep a\r");
+    await until(() => tern.text("layer").includes("✎ keep a"), "the thread");
+    expect(app.reviewComments(app.chat()?.chatId ?? "").length).toBe(1);
+    // r resolves it, and again reopens it (the transition reverses).
+    tern.type("r");
+    await until(() => tern.text("layer").includes("✓ keep a"), "resolved");
+    tern.type("r");
+    await until(() => tern.text("layer").includes("✎ keep a") && !tern.text("layer").includes("✓ keep a"), "reopened");
+    // The footer's Send button carries every open thread as one prompt to this chat.
+    tern.event({ ev: "action", id: "layer.review.foot.send", act: "click" });
+    await until(() => (app.chat()?.items.some((i) => i.kind === "user" && (i as { text: string }).text.startsWith("Review comments on your changes")) ?? false), "the send", 15_000);
+    expect(tern.errors).toEqual([]);
+  }, 30_000);
+
+  it("shows the GitHub screen: the branch, the PR and its checks, a new PR, and the guided tour", async () => {
+    repo("ghrepo", false);
+    writeFileSync(ghRecord, JSON.stringify({
+      current: { url: "https://github.com/acme/repo/pull/7", title: "Ordered auth work", state: "OPEN", isDraft: false },
+      prs: { 7: { url: "https://github.com/acme/repo/pull/7", title: "Ordered auth work", state: "OPEN", isDraft: false, baseRefName: "main", headRefName: "tour", headRefOid: "a01cdef" } },
+      checks: [{ name: "build", state: "pass", link: null }, { name: "e2e", state: "fail", link: null }],
+      nextPr: 10,
+      diff: [
+        "diff --git a/package-lock.json b/package-lock.json",
+        "--- a/package-lock.json",
+        "+++ b/package-lock.json",
+        "@@ -0,0 +1 @@",
+        "+{}",
+        "diff --git a/tests/core.spec.ts b/tests/core.spec.ts",
+        "--- a/tests/core.spec.ts",
+        "+++ b/tests/core.spec.ts",
+        "@@ -0,0 +1 @@",
+        "+expect(check()).toBe(true);",
+        "diff --git a/src/core.ts b/src/core.ts",
+        "--- a/src/core.ts",
+        "+++ b/src/core.ts",
+        "@@ -0,0 +1 @@",
+        "+export function check() { return verify(); }",
+        "",
+      ].join("\n"),
+    }));
+    client = await start("ghrepo");
+    const { tern, until } = client;
+    // The palette opens it: C-k, "github", Enter.
+    tern.type("\x0b");
+    await until(() => tern.find("picker", "layer").length === 1, "the palette");
+    tern.type("github");
+    const rows = () => ((tern.find("picker", "layer")[0]?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label).join(",");
+    await until(() => rows() === "GitHub for this project…", "the palette row");
+    tern.type("\r");
+    await until(() => screens().includes("GitHub"), "the github screen");
+    const view = () => tern.text("layer");
+    await until(() => view().includes("Pull request: https://github.com/acme/repo/pull/7"), "the PR");
+    expect(view()).toContain("main");
+    expect(view()).toContain("1/2 checks passing · failing: e2e");
+    expect(view()).toContain("build");
+    // The guided tour reads the PR file by file, source first and the lock file last.
+    tern.event({ ev: "action", id: "layer.github.body.acts.tour", act: "click" });
+    await until(() => screens().includes("Review guide"), "the tour");
+    await until(() => view().includes("src/core.ts"), "the first tour file");
+    expect(view()).toMatch(/1 of 3 · source/);
+    tern.type("]");
+    await until(() => view().includes("2 of 3 · tests"), "the second file");
+    tern.type("\x1b");
+    await until(() => screens().includes("GitHub"), "back to the PR");
+    // A new pull request: the form asks the title, then the base (main), then the description, then creates.
+    tern.type("n");
+    await until(() => tern.nodes.has("layer.github.body.form.field"), "the form");
+    tern.type("A change\r");
+    await until(() => view().includes("Target branch"), "the base field");
+    tern.type("\r");
+    await until(() => view().includes("Description"), "the body field");
+    tern.type("Why it matters\r");
+    await until(() => view().includes("Created the pull request: https://github.com/acme/repo/pull/10"), "the created PR", 15_000);
+    const calls = readFileSync(ghCalls, "utf8");
+    expect(calls).toContain('"--title","A change"');
+    expect(calls).toContain('"--base","main"');
+    expect(tern.errors).toEqual([]);
+  }, 40_000);
 });
