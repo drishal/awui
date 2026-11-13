@@ -300,6 +300,10 @@ rather than prose. On top of that, two halves, declared honestly per harness:
   *"reported, not blocked"*, because it was: the record never claims a universal guarantee
   across harnesses that cannot pre-empt writes.
 
+The guard lives as long as the run it was armed for. A task revived with `thread_send` after it
+settled is armed again with the same scope before the follow-up goes out, so a worker's second run
+is judged and counted exactly as its first was.
+
 A harness that can only detect reports alone and honestly; the parent's `task_status` and
 `thread_read` answers carry the counts either way:
 

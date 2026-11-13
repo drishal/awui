@@ -545,6 +545,11 @@ export class Orchestrator {
       task.cancelRequestedAt = null;
       task.wake = { pendingSince: null, deliveredAt: null, attempts: 0, skipped: null };
       task.childSessionId = child.sessionId ?? task.childSessionId;
+      // The guard left with the watcher (stopWatching deletes it), so the second run is
+      // re-armed with the same scope and the worker's own workspace: without it the writes
+      // of a revived scoped task would be neither refused nor counted.
+      const guard = task.scope ? makeGuard(task.scope, child.workspace.path, this.guardFields(child)) : null;
+      if (guard) this.guards.set(task.id, guard);
       // Watch before the prompt: a quick run can settle before send() returns.
       this.watch(task, child);
     }

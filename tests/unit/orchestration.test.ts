@@ -718,6 +718,25 @@ describe("write scopes", () => {
     expect(scope?.recent[0]).not.toContain("blocked outside");
   });
 
+  it("re-arms the write scope when a finished task is revived", async () => {
+    const { app, agent, token } = await setup();
+    // The first run's out-of-scope write is refused before the tool runs.
+    const started = await delegate(agent, token, { brief: "unsafe work on the parser", writeScope: ["src/**"] });
+    await waitUntil(() => taskRecords(app).find((r) => r.id === started.taskId)?.outcome !== null, 10_000, "the first settle");
+    const first = await call(agent, token, "task_status", { taskId: started.taskId });
+    const scopeOf = (res: Awaited<ReturnType<typeof call>>) => (res.body.data as { tasks: Array<{ scope: { attempted: number; blocked: number; landed: number } | null }> }).tasks[0]?.scope;
+    expect(scopeOf(first)).toMatchObject({ attempted: 1, blocked: 1, landed: 0 });
+
+    // A follow-up run on the same task is held to the same scope: the guard went with the
+    // watcher, so thread_send re-arms it. Without that the second ask waits for a person
+    // and its write is neither refused nor counted.
+    const revived = await call(agent, token, "thread_send", { taskId: started.taskId, text: "unsafe work on the lexer" });
+    expect(revived.body.data).toMatchObject({ queued: "sent", state: "working" });
+    await waitUntil(() => taskRecords(app).find((r) => r.id === started.taskId)?.outcome !== null, 10_000, "the revived settle");
+    const second = await call(agent, token, "task_status", { taskId: started.taskId });
+    expect(scopeOf(second)).toMatchObject({ attempted: 2, blocked: 2, landed: 0 });
+  });
+
   it("answers bad_scope for a pattern holding .., and leaves the child unspawned", async () => {
     const { app, agent, token } = await setup();
     const res = await call(agent, token, "delegate_task", { brief: "should never start", writeScope: ["../outside/**"] });
