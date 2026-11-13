@@ -9,7 +9,7 @@
 // view attached. The keys are atui's: C-k commands, C-x then a letter.
 import { appendFileSync } from "node:fs";
 import { createEffect, createMemo, createRoot, createSignal, on, onCleanup, untrack } from "solid-js";
-import { blobId, span, ui, html, type Key, type Node, type PropsOf, type Session, type Surface } from "@stencil-hq/tern";
+import { blobId, span, ui, type Key, type Node, type PropsOf, type Session, type Surface } from "@stencil-hq/tern";
 import type { HarnessStatus, InteractionRequest, SavedPrompt, SlashCommand } from "../shared/protocol.js";
 import type { ChatState } from "../web/chat-state.js";
 import { buildTurns, ago as agoMs } from "../web/turns.js";
@@ -78,7 +78,9 @@ const base64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
 
 export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
   return createRoot((dispose) => {
-    const surface: Surface = session.open({ mode: "inline", title: "awui", role: "awui.chat" });
+    // `closable`: the run lives on the server (C-x q says so), so closing the pane loses nothing and Tern asks
+    // nothing before it goes.
+    const surface: Surface = session.open({ mode: "inline", title: "awui", role: "awui.chat", closable: true });
 
     // ---- local state: what only this pane holds -----------------------------------------
     const [draft, setDraft] = createSignal<DraftState>(draftState());

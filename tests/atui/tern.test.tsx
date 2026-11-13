@@ -211,6 +211,12 @@ describe("awui tern", () => {
     }
   });
 
+  it("closes the pane without asking, since the run lives on the server", async () => {
+    client = await start();
+    // `closable` tells Tern closing the pane loses nothing: the chat keeps running on the server.
+    expect(client.tern.sent.find((m) => m.verb === "o")?.body).toMatchObject({ closable: true });
+  });
+
   it("sends a message and draws the prompt, the folded work, and the streamed answer", async () => {
     client = await start();
     const { tern, app, until } = client;
