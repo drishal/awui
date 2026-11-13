@@ -32,7 +32,7 @@ export function TaskReview({ chatId, taskId, workspaceId }: { chatId: string; ta
   return (
     <section className="task-review" aria-label={`Review ${taskId}`}>
       <p className="muted">
-        {record.appliedAt ? "Approved and applied into the lead checkout. The lead's files changed; no further automatic integration runs here."
+        {record.appliedAt ? "Approved and applied into the lead checkout. The lead's files changed; no further automatic integration runs here. Undo apply reverses that patch while the checkout still holds exactly it."
           : record.discardedAt ? "Reviewed without applying. The managed worktree stays until you clean it up."
             : state.headsMatch === false ? `Cannot apply yet: ${state.reason ?? "a recorded head moved"}. Open the worktree to inspect it.`
               : "The worker finished in its own checkout. Choose whether to apply its patch, or keep it without applying. Nothing starts until you choose."}
@@ -44,7 +44,7 @@ export function TaskReview({ chatId, taskId, workspaceId }: { chatId: string; ta
           <button type="button" className="btn btn-small btn-primary" disabled={busy || state.headsMatch === false} onClick={() => void act("review", { workspaceId, decision: "apply", note: note || undefined })}>Apply patch into lead</button>
           <button type="button" className="btn btn-small" disabled={busy} onClick={() => void act("review", { workspaceId, decision: "discard", note: note || undefined })}>Keep it unapplied</button>
         </> : <>
-          <button type="button" className="btn btn-small" disabled={busy || record.appliedAt !== null} onClick={() => void act("unreview")}>Back to review</button>
+          <button type="button" className="btn btn-small" disabled={busy} onClick={() => void act("unreview")}>{record.appliedAt ? "Undo apply" : "Back to review"}</button>
           {!record.appliedAt ? <ConfirmButton label="Remove managed worktree" confirmLabel="Discard this worktree?" className="btn btn-small" disabled={busy} onConfirm={() => void act("review/cleanup")} /> : null}
         </>}
       </div>

@@ -2548,7 +2548,10 @@ export async function createApp(deps: AppDeps) {
   });
   app.post("/api/chats/:id/tasks/:taskId/unreview", requireGrant("workspaces.manage"), async (req, res) => {
     if (!integrationLedger) throw new ChatError(501, "review_off", "Reviews are not wired on this server");
-    res.json({ record: await integrationLedger.unreview(req.params.taskId) });
+    // The inverse needs the project: an applied patch is reversed in the lead checkout there.
+    const record = integrationOf(req.params.id, req.params.taskId);
+    const ws = await workspaces.get(record.workspaceId);
+    res.json({ record: await integrationLedger.unreview(req.params.taskId, { root: ws.path, ws, trees: projectTrees as never }) });
   });
   app.get("/api/chats/:id/tasks/:taskId/review/diff", requireGrant("chat.read"), async (req, res) => {
     if (!integrationLedger) throw new ChatError(501, "review_off", "Reviews are not wired on this server");

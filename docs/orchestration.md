@@ -400,8 +400,14 @@ When an isolated worker settles `done`, its work becomes a review record
 fork point, and the lead checkout's HEAD as it stood then. The task's row and the `task_review`
 tool answer say **unreviewed** until a person decides. The person applies or discards from the
 chat's task panel (`POST /api/chats/:id/tasks/:taskId/review` with `decision`, `note`, and the
-project's `workspaceId`); `POST .../unreview` puts a decision back so a mis-taken discard can be
-decided again — only an applied review is final, because the work has already moved.
+project's `workspaceId`). `POST .../unreview` puts a decision back so a mis-taken one can be taken
+again: a discard left the worktree untouched, so it is cleared outright, and an applied review is
+undone by reversing the very patch it wrote — the same bytes read back from the worker's tree and
+applied backwards. That inverse holds only while both recorded heads still stand and the lead
+checkout still holds exactly that patch (`git apply --reverse --check`); a committed, edited, or
+otherwise changed checkout answers `heads_moved` or `changed_since_apply` and keeps the record, the
+worktree, and every file as they were. Nothing is reverted behind a person's back: the undo is one
+explicit request, and the worktree still has the work to apply again.
 
 An **apply** puts the worker's diff against the fork point into the lead checkout's working tree,
 unstaged, and only while both recorded heads still stand: the lead checkout at the recorded head,

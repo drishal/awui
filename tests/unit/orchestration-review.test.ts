@@ -292,6 +292,76 @@ describe("review-gated apply", () => {
     expect(again.status).toBe(200);
     expect(again.body.applied).toBe(true);
   }, 40_000);
+  it("takes an applied review back by reversing its own patch, and refuses once the lead has changed", async () => {
+    const app = await makeTestApp();
+    t = app;
+    repo(app.project);
+    const agent = await signedIn(app);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: app.project })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as { chatId: string };
+    const token = app.manager.list().find((c) => c.chatId === chat.chatId)?.orchestration?.token;
+    if (!token) throw new Error("no orchestration token");
+
+    const res = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "delegate_task", args: { brief: "edit", isolation: "worktree", notify: "none" } });
+    expect(res.status).toBe(200);
+    const started = res.body.data as { taskId: string };
+    await vi.waitFor(() => {
+      const task = app.manager.get(chat.chatId).snapshot().delegated?.find((t) => t.id === started.taskId);
+      expect(task?.outcome).toBe("done");
+    }, 20_000);
+    const decide = (decision: "apply" | "discard") => agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/review`).send({ decision, note: "", workspaceId: ws.id });
+    const applied = await decide("apply");
+    expect(applied.status).toBe(200);
+    expect(readFileSync(path.join(app.project, "src", "app.ts"), "utf8")).toContain("const changed = true;");
+
+    // The inverse is the applied patch, reversed: the lead checkout is back to the fork's own
+    // files, the worktree keeps the work, and the record is unreviewed again.
+    const back = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/unreview`).send({});
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    expect(back.body.record).toMatchObject({ review: null, appliedAt: null, discardedAt: null });
+    expect(readFileSync(path.join(app.project, "src", "app.ts"), "utf8")).toBe("const a = 1;\nconst b = 1;\n");
+    expect(git(app.project, "status", "--porcelain").trim()).toBe("");
+    // Deciding again still works: the same patch applies once more.
+    expect((await decide("apply")).body.applied).toBe(true);
+    expect(readFileSync(path.join(app.project, "src", "app.ts"), "utf8")).toContain("const changed = true;");
+
+    // A checkout edited since the apply refuses the inverse and leaves everything as it was.
+    writeFileSync(path.join(app.project, "src", "app.ts"), "const changed = true;\nconst byHand = true;\n");
+    const refused = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/unreview`).send({});
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("changed_since_apply");
+    expect(readFileSync(path.join(app.project, "src", "app.ts"), "utf8")).toContain("const byHand = true;");
+    expect(ledgerRows(app.stateDir).find((r) => r.taskId === started.taskId)).toMatchObject({ review: { decision: "apply" }, appliedAt: expect.any(Number) });
+  }, 30_000);
+
+  it("refuses to take an applied review back once the lead checkout moved", async () => {
+    const app = await makeTestApp();
+    t = app;
+    repo(app.project);
+    const agent = await signedIn(app);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: app.project })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as { chatId: string };
+    const token = app.manager.list().find((c) => c.chatId === chat.chatId)?.orchestration?.token;
+    if (!token) throw new Error("no orchestration token");
+
+    const res = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "delegate_task", args: { brief: "edit", isolation: "worktree", notify: "none" } });
+    expect(res.status).toBe(200);
+    const started = res.body.data as { taskId: string };
+    await vi.waitFor(() => {
+      const task = app.manager.get(chat.chatId).snapshot().delegated?.find((t) => t.id === started.taskId);
+      expect(task?.outcome).toBe("done");
+    }, 20_000);
+    expect((await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/review`).send({ decision: "apply", note: "", workspaceId: ws.id })).status).toBe(200);
+    // The applied work was committed: the lead is no longer at the recorded head, so there is
+    // no safe inverse and the record says so.
+    git(app.project, "commit", "-qam", "took the worker's patch");
+    const refused = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/unreview`).send({});
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("heads_moved");
+    expect(refused.body.error).toContain("lead_moved");
+    expect(git(app.project, "log", "-1", "--format=%s").trim()).toBe("took the worker's patch");
+  }, 30_000);
+
 
   it("accepts isolated no-op work once reviewed, instead of leaving it unclosable", async () => {
     const root = tempDir("awui-noop-review-");

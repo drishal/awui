@@ -396,19 +396,48 @@ export class IntegrationReview {
 
   /**
    * The inverse of a review: put the decision back, so a mis-taken one can be taken again.
-   * The decision and its timestamp are cleared; the worktree and the record stay. Only an
-   * applied review is final — the work has already moved into the lead checkout. A discard
-   * left the worktree untouched, so it is exactly the useful case: the person can decide
-   * again, apply this time.
+   * The decision, its timestamps, and the worktree all stay on the record. A discard left the
+   * worktree untouched, so clearing it is the whole inverse. An apply moved the worker's
+   * patch into the lead checkout, and its inverse is that same patch applied backwards —
+   * only while both recorded heads still stand (so the patch read back is the one that was
+   * applied) and the checkout still holds exactly it: a moved or edited checkout refuses and
+   * nothing is touched.
    */
-  async unreview(taskId: string): Promise<IntegrationRecord> {
+  async unreview(taskId: string, project: ReviewProject): Promise<IntegrationRecord> {
     await this.ready();
     const record = this.required(taskId);
-    if (record.appliedAt !== null) throw new ChatError(409, "already_settled", `Task ${taskId}'s work was already applied into the lead checkout; it cannot be unreviewed`);
+    if (record.appliedAt !== null) await this.unapply(record, project);
     record.review = null;
+    record.appliedAt = null;
     record.discardedAt = null;
     await this.write();
     return record;
+  }
+
+  /**
+   * Reverse an applied patch: the same bytes read back from the worker's tree, applied
+   * backwards into the lead checkout. Both recorded heads must still stand and the reverse
+   * must check clean, so a checkout that has moved or holds changes the apply did not leave
+   * refuses instead of reversing someone else's work.
+   */
+  private async unapply(record: IntegrationRecord, project: ReviewProject): Promise<void> {
+    if (!(await existsDir(project.root))) throw new ChatError(410, "workspace_gone", "The lead workspace is gone, so its applied work cannot be reversed from here");
+    const heads = await this.headsMatch(record, project);
+    if (!heads.match) throw new ChatError(409, "heads_moved", `Task ${record.taskId}'s recorded heads no longer match (${heads.reason ?? "moved"}), so the work this applied cannot be reversed from here; the record and the worktree are kept`);
+    const tree = await this.treePath(record, project);
+    if (tree === null || !(await existsDir(tree))) throw new ChatError(410, "worktree_gone", "This worker's worktree is gone, so the applied patch cannot be read back to reverse it");
+    const patch = await worktreePatch(tree, record.fork, PATCH_OPTIONS, READ).catch((error: unknown) => {
+      throw new ChatError(422, "git_failed", errorMessage(error));
+    });
+    // An empty patch is what an apply of nothing wrote, so clearing the decision is the inverse.
+    if (patch.length === 0) return;
+    if (patch.length > MAX_PATCH_BYTES) throw new ChatError(413, "patch_too_large", "This change is too large to reverse from here; undo it by hand instead");
+    await git(["apply", "--reverse", "--check", "-"], { cwd: project.root, ...READ, input: patch }).catch((error: unknown) => {
+      throw new ChatError(409, "changed_since_apply", `The lead checkout no longer holds exactly what this review applied (${errorMessage(error)}), so nothing was reversed; commit, stash, or put those files back, then try again`);
+    });
+    await git(["apply", "--reverse", "-"], { cwd: project.root, ...READ, input: patch }).catch((error: unknown) => {
+      throw new ChatError(409, "changed_since_apply", `The applied changes could not be reversed: ${errorMessage(error)}`);
+    });
   }
 
   /** One file of the worker's worktree, against its fork point, bounded like a race member's diff. */
