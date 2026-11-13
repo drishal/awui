@@ -1,13 +1,12 @@
-// A project's monogram (project-badge.ts): a letter, and a hue that does not move.
+// A project's monogram (project-badge.ts): a letter, and a colour slot that does not move.
 import { describe, expect, it } from "vitest";
 import { projectMonogram } from "../../src/web/project-badge.js";
 
 describe("a project's monogram", () => {
-  it("takes the first letter, in a hue inside the circle", () => {
+  it("takes the first letter, in one of the four badge colours", () => {
     const badge = projectMonogram("alpha");
     expect(badge.letter).toBe("A");
-    expect(badge.hue).toBeGreaterThanOrEqual(0);
-    expect(badge.hue).toBeLessThan(360);
+    expect([1, 2, 3, 4]).toContain(badge.slot);
     expect(projectMonogram("alpha")).toEqual(badge);
   });
 
@@ -18,8 +17,8 @@ describe("a project's monogram", () => {
     expect(projectMonogram("   ").letter).toBe("?");
   });
 
-  it("gives different names different hues, mostly", () => {
-    const hues = new Set(["alpha", "beta", "gamma", "webui", "dotfiles"].map((n) => projectMonogram(n).hue));
-    expect(hues.size).toBeGreaterThan(1);
+  it("gives different names different colours, mostly", () => {
+    const slots = new Set(["alpha", "beta", "gamma", "webui", "dotfiles"].map((n) => projectMonogram(n).slot));
+    expect(slots.size).toBeGreaterThan(1);
   });
 });
