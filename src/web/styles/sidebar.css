@@ -259,25 +259,22 @@
   overflow: hidden;
 }
 
-/* The chips share one row with the Filters button: they never wrap or squeeze their words, and
-   when a narrow sidebar cannot hold all three they scroll sideways inside their own box, so the
-   button at the end is never pushed out of the sidebar. */
+/* The chips share a row with the Filters button and never squeeze their words. When a narrow sidebar cannot hold all
+   three on one row the last one drops to a second row: every chip stays whole and reachable (a sideways scroller hid
+   "Today" behind a clipped edge with nothing to show it scrolled), and the button stays at the first row's end. */
 .quick-chips {
   display: flex;
   flex: 1 1 auto;
+  flex-wrap: wrap;
   gap: 4px;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.quick-chips::-webkit-scrollbar {
-  display: none;
 }
 
 .quick-filters .filter-chip {
-  flex: 0 0 32px;
-  width: 32px;
+  flex: 0 0 24px;
+  align-self: flex-start;
+  width: 24px;
+  height: 24px;
   justify-content: center;
   margin-left: auto;
   padding: 0;

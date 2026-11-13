@@ -92,17 +92,22 @@ test("Today shows today's sessions and is remembered after a reload", async ({ p
   await expect(chip(page, /^Today \d+$/)).toHaveAttribute("aria-pressed", "false");
 });
 
-test("the chips stay on one row and the Filters button stays inside the sidebar", async ({ page }) => {
+test("every chip stays whole and the Filters button stays inside the sidebar", async ({ page }) => {
   await signInAndOpen(page);
   await showSidebar(page);
   const aside = sidebar(page);
-  const chips = aside.getByRole("group", { name: "Filter sessions" }).locator(".quick-chip[aria-pressed]");
+  const group = aside.getByRole("group", { name: "Filter sessions" });
+  const chips = group.locator(".quick-chip[aria-pressed]");
   await expect(chips.first()).toBeVisible();
-  const boxes = await chips.evaluateAll((els) => els.map((el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), height: Math.round(r.height) }; }));
-  // One row: every chip starts at the same top and none has grown a second text line.
-  expect(new Set(boxes.map((b) => b.top)).size).toBe(1);
-  expect(Math.max(...boxes.map((b) => b.height))).toBeLessThan(32);
   const side = await aside.boundingBox();
+  const boxes = await chips.evaluateAll((els) => els.map((el) => { const r = el.getBoundingClientRect(); return { right: r.right, height: Math.round(r.height), clipped: el.scrollWidth > el.clientWidth }; }));
+  // No chip wrapped its own words (a second text line would make it taller), none is cut by the edge, none is scrolled out of reach.
+  expect(boxes.length).toBeGreaterThanOrEqual(3);
+  for (const b of boxes) {
+    expect(b.height).toBeLessThan(32);
+    expect(b.clipped).toBe(false);
+    expect(side && b.right <= side.x + side.width).toBe(true);
+  }
   const filters = await aside.getByRole("button", { name: /^Filters/ }).boundingBox();
   expect(side && filters && filters.x + filters.width <= side.x + side.width).toBe(true);
 });
