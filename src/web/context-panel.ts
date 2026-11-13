@@ -51,3 +51,64 @@ export function taskAttention(tasks: DelegatedTaskView[]): number {
 export function raceCount(races: RaceSummary[] | null, workspaceId: string): number {
   return (races ?? []).filter((race) => race.workspaceId === workspaceId && !race.winnerChatId).length;
 }
+
+/** How a row's status reads: its tone picks the dot's colour, its word says the same thing in text. */
+export type StatusTone = "working" | "waiting" | "done" | "failed" | "quiet";
+export interface StatusReadout {
+  tone: StatusTone;
+  word: string;
+}
+
+export function runReadout(status: RunSummary["status"]): StatusReadout {
+  switch (status) {
+    case "pending":
+      return { tone: "waiting", word: "Queued" };
+    case "running":
+      return { tone: "working", word: "Working" };
+    case "done":
+      return { tone: "done", word: "Done" };
+    case "failed":
+      return { tone: "failed", word: "Failed" };
+    case "stopped":
+      return { tone: "quiet", word: "Stopped" };
+  }
+}
+
+export function jobReadout(status: JobSummary["status"]): StatusReadout {
+  switch (status) {
+    case "running":
+      return { tone: "working", word: "Working" };
+    case "done":
+      return { tone: "done", word: "Done" };
+    case "failed":
+      return { tone: "failed", word: "Failed" };
+    case "stopped":
+      return { tone: "quiet", word: "Stopped" };
+  }
+}
+
+/**
+ * A delegated task's one status word. "Result available" is the protocol's state, not a
+ * person's: the outcome says whether that result is a finished job or a failure.
+ */
+export function taskReadout(task: Pick<DelegatedTaskView, "state" | "outcome">): StatusReadout {
+  switch (task.state) {
+    case "working":
+      return { tone: "working", word: "Working" };
+    case "waiting_for_user":
+      return { tone: "waiting", word: "Waiting for you" };
+    case "waiting_for_children":
+      return { tone: "waiting", word: "Waiting" };
+    case "result_available":
+      switch (task.outcome) {
+        case "failed":
+          return { tone: "failed", word: "Failed" };
+        case "cancelled":
+          return { tone: "quiet", word: "Cancelled" };
+        case "interrupted":
+          return { tone: "quiet", word: "Interrupted" };
+        default:
+          return { tone: "done", word: "Done" };
+      }
+  }
+}
