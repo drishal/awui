@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { GuestStore } from "../../src/server/guests.js";
-import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
+import { GUEST_TTL_MS, GuestStore } from "../../src/server/guests.js";
+import { makeTestApp, signedIn, tempDir, type TestApp } from "../helpers/app.js";
 import type { ChatItem } from "../../src/shared/protocol.js";
 
 let t: TestApp | undefined;
@@ -220,5 +220,41 @@ describe("bounded expiring guest links", () => {
     const after = await guest.get("/api/guest");
     expect(after.status).toBe(410);
     expect(after.body.code).toBe("guest_expired");
+  });
+});
+
+describe("the guest store's bounds", () => {
+  const target = (n: number, harnessId = "fake") => ({ harnessId, nativeId: `session-${n}`, workspace: { id: "w", path: "/tmp/project", name: "project" }, title: `link ${n}` });
+  const storeAt = (file: string, clock: () => number) => new GuestStore(file, clock);
+
+  it("prunes expired and revoked links instead of counting them against the cap", async () => {
+    let now = 1_000_000;
+    const file = path.join(tempDir("awui-guests-"), "guest-sessions.json");
+    const store = storeAt(file, () => now);
+    for (let i = 0; i < 32; i++) await store.create(target(i));
+    await expect(store.create(target(32))).rejects.toMatchObject({ code: "guest_limit" });
+    // Revoked links are not invitations any more: the next create drops them first.
+    for (const guest of await store.list()) await store.revoke(guest.id);
+    const fresh = await store.create(target(100));
+    expect((await store.list()).map((guest) => guest.title)).toEqual(["link 100"]);
+    // A restart after their TTL drops the expired records on load, and the next write
+    // leaves them out of the file too.
+    now += GUEST_TTL_MS + 1;
+    const reloaded = storeAt(file, () => now);
+    expect(await reloaded.list()).toEqual([]);
+    await reloaded.create(target(101));
+    const saved = readFileSync(file, "utf8");
+    expect(saved).not.toContain(fresh.record.id);
+    expect(saved).toContain("link 101");
+  });
+
+  it("keys the list by harness and native id, not the native id alone", async () => {
+    const store = storeAt(path.join(tempDir("awui-guests-"), "guest-sessions.json"), () => Date.now());
+    await store.create(target(1, "fake"));
+    await store.create(target(1, "fake-b"));
+    expect((await store.list("fake", "session-1")).map((guest) => guest.harnessId)).toEqual(["fake"]);
+    expect((await store.list("fake-b", "session-1")).map((guest) => guest.harnessId)).toEqual(["fake-b"]);
+    expect(await store.list("fake", "session-2")).toEqual([]);
+    expect(await store.list()).toHaveLength(2);
   });
 });

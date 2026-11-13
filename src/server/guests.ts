@@ -83,10 +83,16 @@ export class GuestStore {
       const parsed = wireGuest(raw);
       if (parsed) this.records.set(parsed.id, parsed);
     }
+    // Expired and revoked links from a previous process are not invitations any more:
+    // they go now, so they cannot hold the cap against the live ones.
+    this.prune();
   }
 
   async create(target: GuestTarget): Promise<{ record: GuestView; token: string }> {
     await this.ready;
+    // The cap counts live links, not every link ever made: a revoked or expired one is
+    // dropped here, so a long history of shares never locks the feature.
+    this.prune();
     if (this.records.size >= MAX_GUESTS) throw new ChatError(429, "guest_limit", "Revoke an older share before making another. At most 32 links are allowed.");
     const id = randomBytes(16).toString("hex");
     const token = randomBytes(32).toString("base64url");
@@ -176,9 +182,11 @@ export class GuestStore {
     return true;
   }
 
-  async list(nativeId?: string): Promise<GuestView[]> {
+  /** The live links for one session; both its harness and its native id name it (ids are harness-scoped). */
+  async list(harnessId?: string, nativeId?: string): Promise<GuestView[]> {
     await this.ready;
-    return [...this.records.values()].filter((record) => this.valid(record) && (!nativeId || record.target.nativeId === nativeId)).map((r) => this.view(r));
+    this.prune();
+    return [...this.records.values()].filter((record) => (!harnessId || record.target.harnessId === harnessId) && (!nativeId || record.target.nativeId === nativeId)).map((r) => this.view(r));
   }
 
   /**
@@ -186,6 +194,11 @@ export class GuestStore {
    * credentials, approval bodies, provider counts and full configuration never leave the owner.
    */
   static readonly history = (items: ChatItem[]) => items.flatMap((i) => i.kind === "user" || i.kind === "assistant" ? [{ id: i.id, kind: i.kind, text: i.text.slice(0, 16_384), ...(typeof i.at === "number" ? { at: i.at } : {}) }] : []).slice(-200);
+
+  /** Drop every record that is no longer a live invitation (revoked or past its TTL). */
+  private prune(): void {
+    for (const [id, record] of this.records) if (!this.valid(record)) this.records.delete(id);
+  }
 
   private valid(row: GuestRecord | undefined): row is GuestRecord {
     return row !== undefined && row.revokedAt === null && row.expiresAt > this.now();

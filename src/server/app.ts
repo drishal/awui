@@ -842,7 +842,7 @@ export async function createApp(deps: AppDeps) {
   app.use("/api/guests", (req, res, next) => (req.path === "/redeem" ? next() : security.requireAuth(req, res, next)));
 
   app.get("/api/guests/:harnessId/:nativeId", requireGrant("chat.read"), async (req, res) => {
-    res.json({ guests: await guests.list(req.params.nativeId) });
+    res.json({ guests: await guests.list(req.params.harnessId, req.params.nativeId) });
   });
   app.post("/api/guests/:harnessId/:nativeId", requireGrant("chat.write"), express.json({ limit: "8kb" }), async (req, res) => {
     const source = req.body as Record<string, unknown> | undefined;
