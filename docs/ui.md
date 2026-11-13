@@ -116,6 +116,22 @@ a literal colour.
   part "look off".
 - **Motion:** short and eased out; `prefers-reduced-motion` turns it all off
   (the rule at the end of `tokens.css`).
+- **Colour jobs (one hue, one job):** identity `--harness` (a dot, a chip wash,
+  a spinner — never body text or a large fill); attention `--warn` (needs you,
+  approvals, questions — never ordinary emphasis); outcome `--ok`/`--danger`
+  (added/removed, pass/fail, done/failed, Stop — never tool categories);
+  category `--cat-look`/`--cat-write`/`--cat-run`/`--cat-web`/`--cat-agent`/
+  `--cat-plan` (tool glyphs and kind-stack glyphs only — never row backgrounds,
+  labels, or paths); live/primary `--accent` (Send with a draft, focus — never
+  state). `--info` is the cyan "look" hue; `--brown` (base0F) and `--rare` are
+  harness hues, never status. Tints (`--tint` 10 %, `--tint-strong` 14 %,
+  `--edge` 40 %) build `--tone-wash`/`--tone-edge` from a per-element `--tone`
+  on the element that sets it; usage heat uses `--heat-0..4`; project badges
+  `--badge-1..4`.
+- **Restraint:** at rest ≤ 3 accent hues per region; only running and failed
+  tool rows tint their row; the approval card is the loudest object; answer
+  prose, paths, timestamps, model names, section labels, and card backgrounds
+  stay grey. Never colour alone: glyph, word, and shape stay.
 
 ## 4. See it without touching real chats
 

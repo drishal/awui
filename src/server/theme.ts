@@ -146,6 +146,8 @@ export function buildThemeVars(scheme: Scheme): { vars: Record<string, string>; 
     "--thinking": role("thinking", p.base0E as string, 3),
     // Gold, as in the built-in themes; base0F is a dark orange in most schemes and read as --orange.
     "--rare": role("rare", p.base0A as string, 4.5),
+    // base0F: brown, a harness hue that is neither status nor look.
+    "--brown": role("brown", p.base0F as string, 4.5),
     "--danger-hover": bright("base12", p.base08 as string),
     "--ok-hover": bright("base14", p.base0B as string),
   };

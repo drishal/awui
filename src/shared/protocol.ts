@@ -67,8 +67,8 @@ export interface HarnessStatus {
   setupCommand?: string;
 }
 
-/** Theme colour tokens a harness may take, in the order unclaimed harnesses get them. */
-export const HARNESS_ACCENTS = ["link", "thinking", "orange", "rare", "info", "ok"] as const;
+/** Theme colour tokens a harness may take, in the order unclaimed harnesses get them (status hues last). */
+export const HARNESS_ACCENTS = ["link", "thinking", "orange", "info", "rare", "brown", "ok"] as const;
 
 export interface WorkspaceInfo {
   id: string;

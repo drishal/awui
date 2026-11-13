@@ -32,7 +32,7 @@ describe("harness setup commands", () => {
 describe("harness accents", () => {
   it("keeps declared accents and gives the rest the colours nobody claimed", () => {
     const accents = assignAccents([adapter("pi", "link"), adapter("new"), adapter("omp", "thinking"), adapter("other"), adapter("odd", "not-a-token")]);
-    expect(Object.fromEntries(accents)).toEqual({ pi: "link", omp: "thinking", new: "orange", other: "rare", odd: "info" });
+    expect(Object.fromEntries(accents)).toEqual({ pi: "link", omp: "thinking", new: "orange", other: "info", odd: "rare" });
   });
 
   it("cycles through the palette once every colour is taken", () => {

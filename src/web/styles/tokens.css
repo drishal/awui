@@ -76,10 +76,11 @@
   --warn: #b45309;
   --ok: #15803d;
   --ok-hover: #116432;
-  --info: #0369a1;
+  --info: #0e7490;
   --orange: #c2410c;
   --thinking: #6d4fc2;
   --rare: #8a5a00;
+  --brown: #92400e;
   --shadow-strength: 0.08;
   /* How much of the text colour a hairline takes: a dark page needs a little more for a
      1px edge to read (a base16 theme inherits whichever scheme it is). */
@@ -112,10 +113,11 @@
     --warn: #f7ad31;
     --ok: #4ed17e;
     --ok-hover: #86efac;
-    --info: #93c5fd;
+    --info: #5ccfe6;
     --orange: #fb923c;
     --thinking: #b69cff;
     --rare: #d29922;
+    --brown: #d6a26a;
     --shadow-strength: 0.32;
     --hairline-mix: 13%;
     --raise-mix: 15%;
@@ -144,10 +146,11 @@
   --warn: #f7ad31;
   --ok: #4ed17e;
   --ok-hover: #86efac;
-  --info: #93c5fd;
+  --info: #5ccfe6;
   --orange: #fb923c;
   --thinking: #b69cff;
   --rare: #d29922;
+  --brown: #d6a26a;
   --shadow-strength: 0.32;
   --hairline-mix: 13%;
   --raise-mix: 15%;
@@ -175,6 +178,23 @@
   --heat-2: color-mix(in srgb, var(--accent) 40%, var(--card));
   --heat-3: color-mix(in srgb, var(--accent) 65%, var(--card));
   --heat-4: var(--accent);
+  --tint: 10%;
+  --tint-strong: 14%;
+  --edge: 40%;
+  --cat-look: var(--info);
+  --cat-write: var(--orange);
+  --cat-run: var(--muted-text);
+  --cat-web: var(--link);
+  --cat-agent: var(--thinking);
+  --cat-plan: var(--warn);
+  --badge-1: var(--accent);
+  --badge-2: var(--info);
+  --badge-3: var(--thinking);
+  --badge-4: var(--orange);
+  /* A per-element --tone sets these; var() resolves where declared, so [data-tone]
+     and the chips that set it declare them here. */
+  --tone-wash: color-mix(in oklab, var(--tone, var(--muted)) var(--tint), var(--surface-2));
+  --tone-edge: color-mix(in oklab, var(--tone, var(--muted)) var(--edge), transparent);
   --hairline-strong: color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 8%), transparent);
   --hover: color-mix(in srgb, var(--text) 6%, transparent);
   --active: color-mix(in srgb, var(--text) 10%, transparent);
@@ -371,6 +391,11 @@ h3,
   border: 0;
 }
 
+
+[data-tone], .harness-chip, .tool-row[data-category] {
+  --tone-wash: color-mix(in oklab, var(--tone, var(--muted)) var(--tint), var(--surface-2));
+  --tone-edge: color-mix(in oklab, var(--tone, var(--muted)) var(--edge), transparent);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
