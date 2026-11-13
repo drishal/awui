@@ -3,6 +3,13 @@
 // stored HTML is served from one fixed origin; all other requests, popups and
 // downloads are blocked. Actions manipulate only its controls in a memory-only
 // context, serialized per render id so consecutive clicks cannot interleave.
+// One Chromium serves every page — a page is a context, not a process — and the
+// browser closes once nothing has used it for a minute, so an idle server holds
+// no browser at all. WebRTC is closed off at launch: it is not an HTTP request,
+// so the route blocker cannot see it, and a sandboxed page may not reach STUN or
+// UDP hosts.
+// downloads are blocked. Actions manipulate only its controls in a memory-only
+// context, serialized per render id so consecutive clicks cannot interleave.
 import type { Browser, BrowserContext, Page } from "playwright-core";
 import type * as Playwright from "playwright-core";
 import type { z } from "zod";
@@ -17,6 +24,15 @@ const { chromium } = packagedRequire<typeof Playwright>("playwright-core");
 const ORIGIN = "http://preview.awui/";
 const CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'self'; sandbox allow-scripts allow-forms";
 const ACTION_TIMEOUT = 6000;
+/**
+ * Launch flags every preview page runs under: WebRTC is not HTTP, so the route blocker
+ * cannot abort it, and a page whose scripts are allowed must not reach STUN or UDP hosts.
+ */
+const LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp", "--disable-features=WebRtcHideLocalIpsWithMdns"];
+/** How long the shared browser stays up with nothing on it: a preview costs a process. */
+const IDLE_CLOSE_MS = 60_000;
+/** Pages one server keeps live; the oldest is closed when a new one would pass this. */
+const MAX_LIVE_PAGES = 16;
 
 export type RenderAction = z.infer<typeof renderActionSchema>;
 
@@ -28,9 +44,52 @@ export interface ActionPageReport {
   console: string[];
 }
 
-interface LivePage { browser: Browser; context: BrowserContext; page: Page; logs: string[] }
+interface LivePage { context: BrowserContext; page: Page; logs: string[] }
 const live = new Map<string, LivePage>();
 const lanes = new Map<string, Promise<unknown>>();
+/** The one Chromium every live page runs on, made on first use and closed when idle. */
+let shared: Browser | null = null;
+let idleTimer: NodeJS.Timeout | null = null;
+
+function disarmIdle(): void {
+  if (idleTimer !== null) clearTimeout(idleTimer);
+  idleTimer = null;
+}
+
+/** Arm the idle close once no page is live; a page opened first disarms it. */
+function armIdle(): void {
+  disarmIdle();
+  if (live.size > 0) return;
+  idleTimer = setTimeout(() => {
+    void releaseIdleBrowser();
+  }, IDLE_CLOSE_MS);
+  idleTimer.unref?.();
+}
+
+/**
+ * Close the shared browser once nothing is live. The timer calls this by itself after its
+ * window; a page that opens first disarms the timer, so a live context is never cut off.
+ */
+export async function releaseIdleBrowser(): Promise<void> {
+  disarmIdle();
+  if (live.size > 0) return;
+  const browser = shared;
+  shared = null;
+  await browser?.close().catch(() => undefined);
+}
+
+/** What this module holds — one browser at most, the pages on it, whether the idle close is armed. */
+export function previewState(): { browser: boolean; pages: number; idle: boolean } {
+  return { browser: shared !== null, pages: live.size, idle: idleTimer !== null };
+}
+
+/** The shared browser, launched on first use; an idle-closed one is made again next time. */
+async function browserFor(): Promise<Browser> {
+  disarmIdle();
+  if (shared !== null && shared.isConnected()) return shared;
+  shared = await chromium.launch({ headless: true, timeout: ACTION_TIMEOUT, args: LAUNCH_ARGS });
+  return shared;
+}
 
 export async function closeRenderPage(chatId: string, renderId: string): Promise<void> {
   const key = `${chatId}:${renderId}`;
@@ -39,7 +98,10 @@ export async function closeRenderPage(chatId: string, renderId: string): Promise
   lanes.delete(key);
   const previous = live.get(key);
   live.delete(key);
-  if (previous) await previous.browser.close().catch(() => undefined);
+  // The page's own context goes, never the shared browser: another chat's page may be on it,
+  // and the browser itself is closed by the idle timer once nothing is live.
+  if (previous) await previous.context.close().catch(() => undefined);
+  armIdle();
 }
 
 /** The passed-away chat relinquishes every live preview, never an outside actual page url. */
@@ -57,9 +119,10 @@ async function openPage(stateDir: string, chat: Chat, renderId: string, theme?: 
   if (!chat.ownsHtmlRender(renderId)) throw new ChatError(404, "render_missing", "The current chat did not publish that page.");
   const html = await readHtmlRender(stateDir, renderId);
   if (html === null) throw new ChatError(404, "render_missing", "The agent's saved page could not be found.");
-  const browser = await chromium.launch({ headless: true, timeout: ACTION_TIMEOUT });
+  const browser = await browserFor();
+  let context: BrowserContext | null = null;
   try {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block", acceptDownloads: false });
+    context = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block", acceptDownloads: false });
     context.setDefaultTimeout(ACTION_TIMEOUT);
     await context.route(/.*/, async (route) => await route.abort());
     await context.route(ORIGIN, async (route) => await route.fulfill({ contentType: "text/html", headers: { "Content-Security-Policy": CSP }, body: html }));
@@ -68,15 +131,18 @@ async function openPage(stateDir: string, chat: Chat, renderId: string, theme?: 
     page.on("console", (message) => { if (logs.length < 16) logs.push(message.text().replace(/\s+/g, " ").slice(0, 250)); });
     page.on("popup", (popup) => { void popup.close().catch(() => undefined); });
     await page.goto(`${ORIGIN}${theme ? htmlRenderThemeFragment(theme) : ""}`, { waitUntil: "domcontentloaded", timeout: ACTION_TIMEOUT });
-    const created = { browser, context, page, logs };
+    const created = { context, page, logs };
     live.set(`${chat.chatId}:${renderId}`, created);
-    if (live.size > 16) {
+    if (live.size > MAX_LIVE_PAGES) {
       const first = live.keys().next().value;
       if (first) await closeRenderPage(first.slice(0, first.indexOf(":")), first.slice(first.indexOf(":") + 1));
     }
     return created;
   } catch (error) {
-    await browser.close().catch(() => undefined);
+    // A context this call made and cannot use is this call's to drop; the browser stays for
+    // the next page, and goes by itself if nothing opens one.
+    await context?.close().catch(() => undefined);
+    armIdle();
     throw new ChatError(422, "browser_execution_failed", error instanceof Error ? error.message.slice(0, 500) : "Unable to create the action context");
   }
 }
@@ -90,11 +156,21 @@ async function currentElements(page: Page, selector?: string): Promise<ActionPag
   }));
 }
 
-/** The ordinary parent-to-frame theme transport; caller can't supply its own script. */
+/**
+ * The theme a page applies when the host changes it; the caller cannot supply its own script.
+ * The message is dispatched on the page's own window, not posted: this page is sandboxed, so
+ * its origin is opaque ("null") and `postMessage(message, "http://preview.awui/")` is dropped
+ * by the receiver's origin check — the theme would never apply. The bootstrap listens on
+ * `window` for exactly this method, and nothing but the validated theme travels in it.
+ */
 async function applyTheme(page: Page, theme?: HtmlRenderTheme): Promise<void> {
   if (!theme) return;
   await page.evaluate(({ method, theme }) => {
-    (globalThis as unknown as { postMessage: (message: { method: string; theme: unknown }, origin: string) => void }).postMessage({ method, theme }, "http://preview.awui/");
+    const view = globalThis as unknown as {
+      MessageEvent: new (type: string, init: { data: unknown }) => object;
+      dispatchEvent: (event: object) => boolean;
+    };
+    view.dispatchEvent(new view.MessageEvent("message", { data: { method, theme } }));
   }, { method: HTML_RENDER_THEME_MESSAGE, theme });
 }
 
