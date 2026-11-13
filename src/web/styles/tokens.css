@@ -186,7 +186,7 @@
   --cat-run: var(--muted-text);
   --cat-web: var(--link);
   --cat-agent: var(--thinking);
-  --cat-plan: var(--warn);
+  --cat-plan: var(--accent);
   --badge-1: var(--accent);
   --badge-2: var(--info);
   --badge-3: var(--thinking);
