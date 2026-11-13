@@ -94,6 +94,7 @@ const CARET_OFF = 4;
 /** Markdown as atui draws it: revealed at a steady pace while it streams (a blinking cursor where it writes), task lists as boxes, tables in rounded borders. */
 function Md(p: { text: string; streaming: boolean; fg: string }) {
   const t = useTheme();
+  const renderer = useRenderer();
   const paced = usePaced(
     () => p.text,
     () => p.streaming,
@@ -107,7 +108,7 @@ function Md(p: { text: string; streaming: boolean; fg: string }) {
   return (
     <markdown
       content={content()}
-      syntaxStyle={syntaxFor(t())}
+      syntaxStyle={syntaxFor(t(), renderer.nativeScene)}
       fg={p.fg}
       conceal
       streaming={p.streaming || paced().length < p.text.length}
@@ -271,6 +272,7 @@ function Thought(p: { item: AssistantItem }) {
  */
 function ToolDetails(p: { item: ToolItem; workspace: string }) {
   const t = useTheme();
+  const renderer = useRenderer();
   const size = useTerminalDimensions();
   const row = createMemo(() => neatRow(p.item, p.workspace));
   const tone = () => (p.item.status === "running" ? t().accent : p.item.status === "error" ? t().danger : t().border);
@@ -311,7 +313,7 @@ function ToolDetails(p: { item: ToolItem; workspace: string }) {
             diff={d()}
             view={size().width >= SPLIT_DIFF_WIDTH ? "split" : "unified"}
             filetype={filetypeOf(file())}
-            syntaxStyle={syntaxFor(t())}
+            syntaxStyle={syntaxFor(t(), renderer.nativeScene)}
             showLineNumbers
             wrapMode="word"
             fg={t().text}

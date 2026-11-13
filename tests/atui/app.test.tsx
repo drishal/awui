@@ -17,8 +17,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await server.stop();
 });
-afterEach(() => {
-  ui?.unmount();
+afterEach(async () => {
+  await ui?.unmount();
   ui = null;
 });
 

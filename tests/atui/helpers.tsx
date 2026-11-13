@@ -12,7 +12,8 @@ import { createAtui, type Atui } from "../../src/atui/state.js";
 import { App } from "../../src/atui/ui/app.js";
 import { startTicker } from "../../src/atui/ui/ticker.js";
 
-export const PORT = 4793;
+/** The suite's own server: a second run on this machine (another checkout, another agent) takes another port with ATUI_TEST_PORT. */
+export const PORT = Number(process.env.ATUI_TEST_PORT ?? 4793);
 export const BASE = `http://127.0.0.1:${PORT}`;
 
 export async function startServer(): Promise<{ root: string; stop: () => Promise<void> }> {
@@ -76,7 +77,8 @@ export interface Mounted {
   escape: () => Promise<void>;
   type: (text: string) => Promise<void>;
   exited: () => boolean;
-  unmount: () => void;
+  /** Close the app and wait for the renderer's terminal to be restored: the next mount has its own. */
+  unmount: () => Promise<void>;
 }
 
 export async function mount(cwd: string, opts: { harness?: string; width?: number; height?: number; vim?: boolean } = {}): Promise<Mounted> {
@@ -84,7 +86,8 @@ export async function mount(cwd: string, opts: { harness?: string; width?: numbe
   await app.init();
   startTicker();
   let exited = false;
-  const setup = await testRender(() => <App app={app} onExit={() => (exited = true)} vim={opts.vim ?? false} />, { width: opts.width ?? 140, height: opts.height ?? 36 });
+  // exitOnCtrlC: the app reads Ctrl+C itself (its second press quits), as main.tsx tells the real renderer.
+  const setup = await testRender(() => <App app={app} onExit={() => (exited = true)} vim={opts.vim ?? false} />, { width: opts.width ?? 140, height: opts.height ?? 36, exitOnCtrlC: false });
   const frame = async () => {
     await setup.renderOnce();
     return setup.captureCharFrame();
@@ -130,9 +133,9 @@ export async function mount(cwd: string, opts: { harness?: string; width?: numbe
       await wait(20);
     },
     exited: () => exited,
-    unmount: () => {
+    unmount: async () => {
       app.dispose();
-      setup.renderer.destroy();
+      await setup.dispose();
     },
   };
 }

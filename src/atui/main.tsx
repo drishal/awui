@@ -48,11 +48,16 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     // The tab's progress outlives atui unless it is taken away.
     if (shown) process.stdout.write(progressSequence(null));
     renderer.setTerminalTitle("");
+    // OpenTUI restores the terminal asynchronously: wait for it, or the line below and the shell's prompt land in it.
     renderer.destroy();
-    if (c && c.items.some((i) => i.kind === "user")) {
-      console.log(`The chat keeps running on the server: atui --chat ${c.chatId}, or ${parsed.url}/#chat=${c.chatId}`);
-    }
-    process.exit(0);
+    void renderer.closed
+      .catch(() => {})
+      .then(() => {
+        if (c && c.items.some((i) => i.kind === "user")) {
+          console.log(`The chat keeps running on the server: atui --chat ${c.chatId}, or ${parsed.url}/#chat=${c.chatId}`);
+        }
+        process.exit(0);
+      });
   };
   const renderer = await (async () => {
     const { createCliRenderer } = await import("@opentui/core");
