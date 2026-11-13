@@ -83,7 +83,7 @@ src/server/
 
   app.ts                      Every route (Express 5), SSE, error mapping. All /api routes but health/login/logout need auth. POST /api/render additionally requires AWUI_RENDER_TOKEN; trusted /terminal-shell.html is a web entry that reuses those origin/message checks for the PTY iframe.
   embedded.ts                 The binary's baked-in assets: embedded web bundle, extension sources, version; materializes extensions into state dir for `-e`.
-  compress.ts                 Text assets as brotli/gzip, compressed once and kept (app.ts serves the web folder and the binary's embedded copy through it); hashed /assets files are immutable.
+  compress.ts, static-web.ts  Text assets as brotli/gzip, compressed once and kept; static-web.ts serves the web folder and the binary's embedded copy through it (hashed /assets files immutable, index.html and sw.js never cached).
   clients.ts                  The terminal clients behind the command line: `awui tui` (or the binary symlinked as `atui`) runs atui, `awui tern` the Tern client. In the binary they run in-process (the `awui:clients` module); from source under Bun.
   clients-module.d.ts         The `awui:clients` module's types: the binary's bundled terminal clients (scripts/build-binary.ts bundles src/atui/embed.ts as it).
   cli-run.ts                  The headless CLI: `awui run|send|wait|chats` drives a server that is already running (found by `$AWUI_URL`, else server.json in the state folder), through the same JSON API the browser uses; it starts no harness and writes nothing.

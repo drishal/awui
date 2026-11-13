@@ -6,7 +6,7 @@ import helmet from "helmet";
 import { ZodError, type ZodType } from "zod";
 import { buildIdOf } from "./build-id.js";
 import { embeddedWeb } from "./embedded.js";
-import { compressed, compressible, negotiate } from "./compress.js";
+import { compressedStatic, embeddedHandler, setStaticHeaders } from "./static-web.js";
 import {
   answerSchema,
   workerPlanSaveSchema,
@@ -3011,28 +3011,7 @@ export async function createApp(deps: AppDeps) {
   const embedded = embeddedWeb();
   if (embedded) {
     // The binary carries the web bundle: serve it from memory, same caching rules as on disk.
-    app.get(/^\/(?!api\/).*/, async (req, res, next) => {
-      try {
-        const urlPath = req.path === "/" ? "/index.html" : req.path;
-        const file = embedded.get(urlPath) ?? embedded.get("/index.html");
-        if (!file) {
-          res.status(404).end();
-          return;
-        }
-        // index.html and the worker are how a deploy reaches a page; the rest is content-hashed.
-        res.setHeader("Cache-Control", cacheControlFor(embedded.has(urlPath) ? urlPath : "/index.html"));
-        res.setHeader("Content-Type", file.contentType);
-        const body = typeof file.text === "string" ? Buffer.from(file.text) : file.text;
-        const encoding = compressible(file.contentType, body.length) ? negotiate(req.headers["accept-encoding"]) : null;
-        res.vary("Accept-Encoding");
-        if (encoding) {
-          res.setHeader("Content-Encoding", encoding);
-          res.send(await compressed(urlPath, encoding, body).catch(() => (res.removeHeader("Content-Encoding"), body)));
-        } else res.send(file.text);
-      } catch (error) {
-        next(error);
-      }
-    });
+    app.get(/^\/(?!api\/).*/, embeddedHandler(embedded));
   } else if (deps.webDir && existsSync(path.join(deps.webDir, "index.html"))) {
     const webDir = deps.webDir;
     app.use(compressedStatic(webDir));
@@ -3074,54 +3053,3 @@ function readIndexHtml(dir: string): string | null {
   }
 }
 
-/** index.html and the worker are how a deploy reaches a page; Vite's hashed /assets files never change under their name. */
-function cacheControlFor(urlPath: string): string {
-  if (urlPath.endsWith(".html") || urlPath === "/index.html" || urlPath === "/sw.js") return "no-store";
-  if (urlPath.startsWith("/assets/")) return "public, max-age=31536000, immutable";
-  return "public, max-age=3600";
-}
-
-function setStaticHeaders(res: Response, filePath: string, webDir: string): void {
-  res.setHeader("Cache-Control", cacheControlFor(`/${path.relative(webDir, filePath).split(path.sep).join("/")}`));
-}
-
-/**
- * The web folder's text assets as brotli or gzip, compressed once and kept (compress.ts): about 1.2 MB of
- * script and style becomes about 0.3 MB. Anything it does not take (an image, a missing file, a client that
- * accepts no encoding) falls through to express.static unchanged.
- */
-function compressedStatic(webDir: string): RequestHandler {
-  const root = path.resolve(webDir);
-  return async (req, res, next) => {
-    try {
-      if (req.method !== "GET" && req.method !== "HEAD") return next();
-      const encoding = negotiate(req.headers["accept-encoding"]);
-      if (!encoding || req.path.endsWith("/")) return next();
-      let relative: string;
-      try {
-        relative = decodeURIComponent(req.path);
-      } catch {
-        return next();
-      }
-      const file = path.join(root, relative);
-      if (!file.startsWith(root + path.sep)) return next();
-      const stat = await fsp.stat(file).catch(() => null);
-      if (!stat?.isFile()) return next();
-      res.type(path.extname(file));
-      const contentType = String(res.getHeader("Content-Type") ?? "");
-      if (!compressible(contentType, stat.size)) {
-        res.removeHeader("Content-Type");
-        return next();
-      }
-      const body = await fsp.readFile(file);
-      const out = await compressed(`${file}:${stat.mtimeMs}:${stat.size}`, encoding, body).catch(() => null);
-      if (!out) return next();
-      res.setHeader("Content-Encoding", encoding);
-      res.vary("Accept-Encoding");
-      res.setHeader("Cache-Control", cacheControlFor(`/${relative.replace(/^\/+/, "")}`));
-      res.send(out);
-    } catch (error) {
-      next(error);
-    }
-  };
-}

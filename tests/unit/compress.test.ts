@@ -84,3 +84,31 @@ describe("static assets", () => {
     expect(escape.text).not.toMatch(/root:/);
   });
 });
+
+describe("the binary's embedded bundle", () => {
+  it("is compressed for a client that accepts it, uncached for the shell and immutable for hashed assets", async () => {
+    const { embeddedHandler } = await import("../../src/server/static-web.js");
+    const { default: express } = await import("express");
+    const script = `export const y = ${JSON.stringify("awui ".repeat(2000))};\n`;
+    const files = new Map([
+      ["/index.html", { text: "<!doctype html><title>awui</title>", contentType: "text/html; charset=utf-8" }],
+      ["/assets/main-xyz.js", { text: script, contentType: "text/javascript; charset=utf-8" }],
+      ["/icon.png", { text: Buffer.alloc(4000, 3), contentType: "image/png" }],
+    ]);
+    const app = express();
+    app.get(/^\/(?!api\/).*/, embeddedHandler(files));
+    const js = await request(app).get("/assets/main-xyz.js").set("Accept-Encoding", "br");
+    expect(js.headers["content-encoding"]).toBe("br");
+    expect(js.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+    expect(Number(js.headers["content-length"])).toBeLessThan(script.length / 4);
+    expect(js.text).toBe(script);
+    const plain = await request(app).get("/assets/main-xyz.js").set("Accept-Encoding", "identity");
+    expect(plain.headers["content-encoding"]).toBeUndefined();
+    expect(plain.text).toBe(script);
+    const shell = await request(app).get("/some/route");
+    expect(shell.headers["cache-control"]).toBe("no-store");
+    expect(shell.text).toContain("<title>awui</title>");
+    const png = await request(app).get("/icon.png").set("Accept-Encoding", "br");
+    expect(png.headers["content-encoding"]).toBeUndefined();
+  });
+});
