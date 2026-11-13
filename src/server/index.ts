@@ -18,6 +18,7 @@ import { cachedLanHosts, sampleLanHosts } from "./network.js";
 import { loadOrCreateSecret, Security } from "./security.js";
 import { GuestStore } from "./guests.js";
 import { InviteStore, invitesFileOf } from "./grants.js";
+import { bindFoldStores, flushFoldStores } from "./harness/jsonl.js";
 import { embeddedVersion, extractEmbeddedExtensions, isEmbedded } from "./embedded.js";
 import "./assets.gen.js";
 import { installTui } from "./install-tui.js";
@@ -135,6 +136,8 @@ async function main(): Promise<void> {
   if (migrateStateDir(config.stateDir) === "moved") console.log(`  state: moved from agent-web-ui to ${config.stateDir}`);
   // The binary's extension sources need to be real files for pi/omp's -e; write them before the adapters resolve them.
   await extractEmbeddedExtensions(config.stateDir);
+  // Listing metadata folded last run is picked up where it ended, instead of parsing every session again.
+  await bindFoldStores(config.stateDir);
   // Which settings the environment overrides (they beat config.yml), noted before the password leaves it.
   const envSet = new Set(["PORT", "HOST", "AUTH_USERNAME", "AUTH_PASSWORD", "WORKSPACE_ROOTS", "ALLOWED_HOSTS", "ALLOWED_TAILSCALE_USERS", "AWUI_HERDR"].filter((n) => process.env[n] !== undefined));
   // The agents' shells inherit process.env; the password must not reach them.
@@ -456,6 +459,7 @@ async function main(): Promise<void> {
       await boards.shutdown();
       await manager.shutdown();
       await registry.shutdown();
+      await flushFoldStores().catch(() => undefined);
     } finally {
       clearTimeout(force);
     }

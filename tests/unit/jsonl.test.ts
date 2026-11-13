@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { foldJsonlFile, readJsonlEntries, scanJsonlLines, type FoldProgress } from "../../src/server/harness/jsonl.js";
+import { foldJsonlFile, FoldStore, readJsonlEntries, scanJsonlLines, type FoldProgress } from "../../src/server/harness/jsonl.js";
 import type { Obj } from "../../src/server/harness/agent-events.js";
 
 let dir: string;
@@ -150,5 +150,63 @@ describe("Pi-family reads agree with the text readers they replace", () => {
     expect(read.messages).toEqual(fileMessages(text));
     expect(read.messages).toHaveLength(4);
     expect(read.head).toEqual({ type: "title", title: "A title" });
+  });
+});
+
+describe("FoldStore", () => {
+  const shape = ["n", "words"];
+  const entry = (n: number): FoldProgress<Count> => ({ size: 10, mtimeMs: 5, offset: 10, head: "h", tail: "", state: { n, words: "w" } });
+
+  it("keeps progress between runs and starts from it", async () => {
+    const first = new FoldStore<Count>("test-roundtrip", shape);
+    await first.bind(dir);
+    first.set("/a.jsonl", entry(3));
+    await first.flush();
+    const second = new FoldStore<Count>("test-roundtrip", shape);
+    await second.bind(dir);
+    expect(second.get("/a.jsonl")?.state.n).toBe(3);
+  });
+
+  it("drops a saved copy whose fold changed shape", async () => {
+    const first = new FoldStore<Count>("test-shape", shape);
+    await first.bind(dir);
+    first.set("/a.jsonl", entry(1));
+    await first.flush();
+    const second = new FoldStore<Count>("test-shape", [...shape, "extra"]);
+    await second.bind(dir);
+    expect(second.get("/a.jsonl")).toBeUndefined();
+  });
+
+  it("ignores malformed saved entries and keeps what this run folded first", async () => {
+    writeFileSync(path.join(dir, "fold-test-bad.json"), JSON.stringify({ version: `1:${shape.join(",")}`, entries: [["/ok", entry(1)], ["/bad", { size: "x" }], 7, ["/mine", entry(9)]] }));
+    const store = new FoldStore<Count>("test-bad", shape);
+    store.set("/mine", entry(2));
+    await store.bind(dir);
+    expect(store.get("/ok")?.state.n).toBe(1);
+    expect(store.get("/bad")).toBeUndefined();
+    expect(store.get("/mine")?.state.n).toBe(2);
+  });
+
+  it("refolds a file that changed since it was saved, with the same answer as a fresh fold", async () => {
+    writeFileSync(file, '{"w":"a"}\n{"w":"b"}\n');
+    const first = new FoldStore<Count>("test-stale", shape);
+    await first.bind(dir);
+    const folded = await foldJsonlFile(file, first.get(file), fold);
+    first.set(file, folded!.progress);
+    await first.flush();
+    writeFileSync(file, '{"w":"x"}\n{"w":"y"}\n{"w":"z"}\n');
+    const second = new FoldStore<Count>("test-stale", shape);
+    await second.bind(dir);
+    const again = await foldJsonlFile(file, second.get(file), fold);
+    expect(again?.state).toEqual({ n: 3, words: "xyz" });
+  });
+
+  it("keeps at most `max` files, newest last", () => {
+    const store = new FoldStore<Count>("test-max", shape, 2);
+    store.set("/1", entry(1));
+    store.set("/2", entry(2));
+    store.set("/3", entry(3));
+    expect(store.get("/1")).toBeUndefined();
+    expect(store.get("/3")?.state.n).toBe(3);
   });
 });

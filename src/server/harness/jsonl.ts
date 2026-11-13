@@ -7,6 +7,8 @@
 // handed on, so memory is the largest line, not the file. And because the files only grow, a listing
 // that has folded a file once resumes from the byte where it stopped instead of reading it again.
 import { promises as fs } from "node:fs";
+import path from "node:path";
+import { readJson, writeJson } from "../state-file.js";
 import { isObj, type Obj } from "./agent-events.js";
 
 const CHUNK_BYTES = 1024 * 1024;
@@ -150,4 +152,89 @@ function finishTail<S>(progress: FoldProgress<S>, fold: { clone: (state: S) => S
   const state = fold.clone(progress.state);
   fold.push(state, entry);
   return state;
+}
+
+/** Bump when a fold's meaning changes without its fields changing: saved progress of an older meaning is dropped. */
+const STORE_FORMAT = 1;
+/** How long after a change the saved copy is written: a listing folds many files in a burst. */
+const SAVE_DELAY_MS = 3000;
+const stores: Array<FoldStore<never>> = [];
+
+/**
+ * Fold progress per file, optionally kept in the state folder between runs. Folding every session once
+ * costs a second of parsing at startup on a long history (it parses every line of every file); with the
+ * progress saved, a restart only stats each file and reads what was appended since. A saved entry is only
+ * ever a starting point: `foldJsonlFile` checks it against the file's size, time, and first bytes, so a
+ * stale or foreign entry costs one refold, never a wrong answer. `shape` is the fold's field names, which
+ * drops the saved copy when a fold gains or loses one.
+ */
+export class FoldStore<S> {
+  private readonly map = new Map<string, FoldProgress<S>>();
+  private file: string | null = null;
+  private timer: NodeJS.Timeout | null = null;
+  private readonly version: string;
+
+  constructor(
+    private readonly name: string,
+    shape: string[],
+    private readonly max = 5000,
+  ) {
+    this.version = `${STORE_FORMAT}:${shape.join(",")}`;
+    stores.push(this as unknown as FoldStore<never>);
+  }
+
+  get(file: string): FoldProgress<S> | undefined {
+    return this.map.get(file);
+  }
+
+  set(file: string, progress: FoldProgress<S>): void {
+    // Newest last, so the oldest go first when the cap is reached.
+    this.map.delete(file);
+    this.map.set(file, progress);
+    while (this.map.size > this.max) this.map.delete(this.map.keys().next().value as string);
+    this.schedule();
+  }
+
+  delete(file: string): void {
+    if (this.map.delete(file)) this.schedule();
+  }
+
+  /** Keep this store in `dir` from now on, starting from what an earlier run saved there. */
+  async bind(dir: string): Promise<void> {
+    this.file = path.join(dir, `fold-${this.name}.json`);
+    const saved = await readJson(this.file);
+    if (!isObj(saved) || saved.version !== this.version || !Array.isArray(saved.entries)) return;
+    for (const entry of saved.entries) {
+      if (!Array.isArray(entry) || typeof entry[0] !== "string" || !isObj(entry[1])) continue;
+      const p = entry[1];
+      if (typeof p.size !== "number" || typeof p.mtimeMs !== "number" || typeof p.offset !== "number" || typeof p.head !== "string" || typeof p.tail !== "string" || !isObj(p.state)) continue;
+      // What this run folded before the load is newer than the file's copy.
+      if (!this.map.has(entry[0])) this.map.set(entry[0], p as unknown as FoldProgress<S>);
+    }
+    while (this.map.size > this.max) this.map.delete(this.map.keys().next().value as string);
+  }
+
+  private schedule(): void {
+    if (!this.file || this.timer) return;
+    this.timer = setTimeout(() => void this.flush().catch(() => undefined), SAVE_DELAY_MS);
+    this.timer.unref();
+  }
+
+  /** Write the saved copy now (a shutdown does, so a run's last folds are kept). */
+  async flush(): Promise<void> {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (!this.file) return;
+    await writeJson(this.file, { version: this.version, entries: [...this.map.entries()] });
+  }
+}
+
+/** Keep every fold store in `dir`, loading what an earlier run saved. */
+export async function bindFoldStores(dir: string): Promise<void> {
+  await Promise.all(stores.map((store) => store.bind(dir)));
+}
+
+/** Write every bound store now. */
+export async function flushFoldStores(): Promise<void> {
+  await Promise.all(stores.map((store) => store.flush()));
 }

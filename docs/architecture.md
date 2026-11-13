@@ -33,7 +33,7 @@ src/server/
   harness/hermes-canonical.ts  the canonical session wire, presented as the dialect the chat speaks
   harness/claude.ts         Claude Code adapter (`claude -p` stream-json child process)
   harness/claude-sessions.ts  Claude Code session files: listing, transcript, usage, fork
-  harness/jsonl.ts          streaming reads of a session's JSONL, and the listing's fold that resumes a grown file from its saved byte offset
+  harness/jsonl.ts          streaming reads of a session's JSONL, and the listing's fold that resumes a grown file from its saved byte offset (kept in the state folder, so a restart only stats each file)
   harness/opencode.ts       OpenCode adapter (HTTP API and events of one shared `opencode serve`)
   harness/opencode-server.ts  that server: started when needed, a password of awui's, events by session
   harness/opencode-messages.ts  OpenCode's messages, models, forms, and permissions in awui's terms

@@ -34,7 +34,7 @@ import { rewindExtension, rewindExtensionArgs, rewindWithExtension } from "./rew
 import { orchestrateExtensionArgs, renderHtmlExtension, renderHtmlExtensionArgs } from "./render-extension.js";
 import { versionLabel } from "./version.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
-import { foldJsonlFile, readJsonlEntries, type FoldProgress } from "./jsonl.js";
+import { foldJsonlFile, FoldStore, readJsonlEntries } from "./jsonl.js";
 import type {
   HarnessAdapter,
   HarnessDiscovery,
@@ -122,8 +122,7 @@ function foldMetaEntry(fold: MetaFold, entry: Obj): void {
 }
 
 /** Parsed metadata per file, resumed from the byte it stopped at: every sidebar refresh lists every project's sessions. */
-const metaCache = new Map<string, FoldProgress<MetaFold>>();
-const META_CACHE_MAX = 5000;
+const metaCache = new FoldStore<MetaFold>("pi-meta", Object.keys(newMetaFold()));
 
 async function sessionMeta(file: string): Promise<SessionMeta | null> {
   const folded = await foldJsonlFile(file, metaCache.get(file), { init: newMetaFold, clone: (f) => ({ ...f }), push: foldMetaEntry });
@@ -131,7 +130,6 @@ async function sessionMeta(file: string): Promise<SessionMeta | null> {
     metaCache.delete(file);
     return null;
   }
-  if (metaCache.size >= META_CACHE_MAX) metaCache.clear();
   metaCache.set(file, folded.progress);
   const { header } = folded.state;
   if (!header || typeof header.id !== "string") return null;

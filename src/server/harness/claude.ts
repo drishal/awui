@@ -31,7 +31,7 @@ import {
 } from "../../shared/protocol.js";
 import { historyToItems, isObj, textOf, type Obj } from "./agent-events.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
-import { foldJsonlFile, parseJsonlLine, readJsonlEntries, scanJsonlLines, type FoldProgress } from "./jsonl.js";
+import { foldJsonlFile, FoldStore, parseJsonlLine, readJsonlEntries, scanJsonlLines } from "./jsonl.js";
 import {
   forkSessionText,
   latestTodos,
@@ -996,6 +996,9 @@ class ClaudeLiveChat implements LiveChat {
   }
 }
 
+/** Listing metadata folded per session file, saved in the state folder between runs (jsonl.ts's FoldStore). */
+const metaCache = new FoldStore<MetaFold>("claude-meta", Object.keys(newMetaFold()));
+
 export class ClaudeAdapter implements HarnessAdapter {
   readonly id = asHarnessId("claude");
   readonly displayName = "Claude Code";
@@ -1029,7 +1032,6 @@ export class ClaudeAdapter implements HarnessAdapter {
   private modelCache = new Map<string, ModelProbe>();
   private modelReads = new Map<string, Promise<ModelProbe>>();
   private usageCache: { at: number; accounts: LimitAccount[] } | null = null;
-  private metaCache = new Map<string, { progress: FoldProgress<MetaFold> }>();
 
   constructor(private readonly options: ClaudeOptions) {
     this.cliCommand = options.command ?? (process.env.CLAUDE_BIN?.trim() || "claude");
@@ -1112,15 +1114,13 @@ export class ClaudeAdapter implements HarnessAdapter {
    * 150 MB session is never read whole just to list its title.
    */
   private async meta(file: string): Promise<{ meta: SessionMeta | null; mtimeMs: number }> {
-    const cached = this.metaCache.get(file);
-    const folded = await foldJsonlFile(file, cached?.progress, { init: newMetaFold, clone: (f) => ({ ...f }), push: foldMetaEntry });
+    const folded = await foldJsonlFile(file, metaCache.get(file), { init: newMetaFold, clone: (f) => ({ ...f }), push: foldMetaEntry });
     if (!folded) {
-      this.metaCache.delete(file);
+      metaCache.delete(file);
       return { meta: null, mtimeMs: 0 };
     }
-    if (this.metaCache.size >= 5000) this.metaCache.clear();
     const meta = finishMeta(folded.state, path.basename(file, ".jsonl"));
-    this.metaCache.set(file, { progress: folded.progress });
+    metaCache.set(file, folded.progress);
     return { meta, mtimeMs: folded.progress.mtimeMs };
   }
 
