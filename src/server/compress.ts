@@ -3,7 +3,8 @@
 // opening the app. Each text asset is compressed once, off the event loop, kept in memory next to its
 // source (a few hundred KB in all), and served as brotli or gzip to a client that accepts it. Only
 // `node:zlib`: no dependency, and the same code serves the web folder on disk and the binary's embedded copy.
-import { brotliCompress, gzip, constants } from "node:zlib";
+import { brotliCompress, createGzip, gzip, constants, type Gzip } from "node:zlib";
+import type { Request, RequestHandler, Response } from "express";
 import { promisify } from "node:util";
 
 const brotli = promisify(brotliCompress);
@@ -58,4 +59,58 @@ export function compressed(key: string, encoding: Encoding, body: Buffer): Promi
   if (cache.size >= MAX_ENTRIES) cache.delete(cache.keys().next().value as string);
   cache.set(at, entry);
   return entry;
+}
+
+/** A JSON answer smaller than this goes out as it is. */
+const API_MIN_BYTES = 2048;
+
+/**
+ * Large `/api` JSON answers (the session list is about 200 KB, a chat's snapshot and a diff more) as brotli
+ * or gzip, per request at a light level: cheap enough to do on every call, and several times smaller on a
+ * phone's connection. It wraps `res.end`, the last step of any route's answer, so no route knows about it, and
+ * mounted before the idempotency store it leaves that store the plain body to keep and replay.
+ */
+export function compressApi(): RequestHandler {
+  return (req, res, next) => {
+    const encoding = negotiate(req.headers["accept-encoding"]);
+    if (!encoding) return next();
+    const end = res.end.bind(res) as (chunk?: unknown, ...rest: unknown[]) => Response;
+    res.end = ((chunk?: unknown, ...rest: unknown[]) => {
+      const text = typeof chunk === "string";
+      const size = text ? Buffer.byteLength(chunk) : Buffer.isBuffer(chunk) ? chunk.length : 0;
+      const type = String(res.getHeader("Content-Type") ?? "");
+      if (size < API_MIN_BYTES || res.headersSent || res.getHeader("Content-Encoding") || !/json/i.test(type) || res.statusCode === 204 || res.statusCode === 304) return end(chunk, ...rest);
+      const raw = text ? Buffer.from(chunk, typeof rest[0] === "string" ? (rest[0] as BufferEncoding) : "utf8") : (chunk as Buffer);
+      const done = (error: Error | null, out: Buffer) => {
+        res.vary("Accept-Encoding");
+        if (error) return void end(chunk, ...rest);
+        res.setHeader("Content-Encoding", encoding);
+        res.setHeader("Content-Length", out.length);
+        end(out);
+      };
+      if (encoding === "br") brotliCompress(raw, { params: { [constants.BROTLI_PARAM_QUALITY]: 4, [constants.BROTLI_PARAM_SIZE_HINT]: raw.length } }, done);
+      else gzip(raw, { level: 5 }, done);
+      return res;
+    }) as typeof res.end;
+    next();
+  };
+}
+
+/**
+ * A server-sent stream as gzip, flushed after every event so a frame reaches the page as it is written. A
+ * chat's first frame is its whole snapshot (hundreds of KB for a long chat), the largest thing a phone loads
+ * when it opens one. Only for a client that asked (`?z=1`): other stream readers (the terminal clients) get
+ * plain text, since not every HTTP client delivers a compressed stream before it fills a buffer.
+ */
+export function gzipEventStream(req: Request, res: Response): { write: (chunk: string) => void; end: () => void; headers: Record<string, string> } {
+  const wanted = req.query.z === "1" && negotiate(req.headers["accept-encoding"]) !== null;
+  if (!wanted) return { write: (chunk) => void res.write(chunk), end: () => void res.end(), headers: {} };
+  const stream: Gzip = createGzip({ level: 4 });
+  stream.pipe(res);
+  // A flush is asked of the stream; its output reaches the socket through the pipe.
+  const write = (chunk: string) => {
+    stream.write(chunk);
+    stream.flush(constants.Z_SYNC_FLUSH);
+  };
+  return { write, end: () => void stream.end(), headers: { "Content-Encoding": "gzip", Vary: "Accept-Encoding" } };
 }

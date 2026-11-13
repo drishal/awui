@@ -193,7 +193,8 @@ export class ChatStream extends ReconnectingStream<ChatEvent> {
     super(
       {
         eventName: "chat",
-        url: (id, lastId) => `/api/chats/${encodeURIComponent(id)}/events${lastId !== null ? `?lastEventId=${lastId}` : ""}`,
+        // z=1: the server may send this stream gzipped (a long chat's snapshot is its largest frame).
+        url: (id, lastId) => `/api/chats/${encodeURIComponent(id)}/events?z=1${lastId !== null ? `&lastEventId=${lastId}` : ""}`,
         probe: (id) => `/api/chats/${encodeURIComponent(id)}`,
         terminal: (event) => event.type === "disposed",
       },

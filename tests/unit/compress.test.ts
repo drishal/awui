@@ -5,8 +5,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import request from "supertest";
-import { compressible, negotiate } from "../../src/server/compress.js";
-import { makeTestApp, type TestApp } from "../helpers/app.js";
+import express from "express";
+import http from "node:http";
+import { createGunzip, gunzipSync, brotliDecompressSync } from "node:zlib";
+import { compressApi, compressible, negotiate } from "../../src/server/compress.js";
+import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
 
 describe("negotiate", () => {
   it("prefers brotli, then gzip, and honours a refusal", () => {
@@ -110,5 +113,100 @@ describe("the binary's embedded bundle", () => {
     expect(shell.text).toContain("<title>awui</title>");
     const png = await request(app).get("/icon.png").set("Accept-Encoding", "br");
     expect(png.headers["content-encoding"]).toBeUndefined();
+  });
+});
+
+describe("compressed API answers", () => {
+  const big = { rows: Array.from({ length: 400 }, (_, i) => ({ id: i, text: "awui ".repeat(10) })) };
+  const app = express();
+  app.use(compressApi());
+  app.get("/big", (_req, res) => void res.json(big));
+  app.get("/small", (_req, res) => void res.json({ ok: true }));
+  app.get("/text", (_req, res) => void res.type("text/plain").send("x".repeat(5000)));
+  const server = http.createServer(app);
+  let port = 0;
+  beforeEach(async () => {
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    port = (server.address() as { port: number }).port;
+  });
+  afterEach(async () => {
+    await new Promise<void>((r) => server.close(() => r()));
+  });
+  function get(path: string, encoding?: string): Promise<{ headers: http.IncomingHttpHeaders; body: Buffer }> {
+    return new Promise((resolve, reject) => {
+      http
+        .get({ host: "127.0.0.1", port, path, headers: encoding ? { "accept-encoding": encoding } : {} }, (res) => {
+          const parts: Buffer[] = [];
+          res.on("data", (c: Buffer) => parts.push(c));
+          res.on("end", () => resolve({ headers: res.headers, body: Buffer.concat(parts) }));
+        })
+        .on("error", reject);
+    });
+  }
+
+  it("sends a large JSON answer as brotli or gzip that decodes to the same JSON", async () => {
+    const raw = JSON.stringify(big);
+    const br = await get("/big", "br, gzip");
+    expect(br.headers["content-encoding"]).toBe("br");
+    expect(br.headers["vary"]).toMatch(/Accept-Encoding/i);
+    expect(br.body.length).toBeLessThan(raw.length / 5);
+    expect(brotliDecompressSync(br.body).toString()).toBe(raw);
+    const gz = await get("/big", "gzip");
+    expect(gz.headers["content-encoding"]).toBe("gzip");
+    expect(gunzipSync(gz.body).toString()).toBe(raw);
+  });
+
+  it("leaves a small answer, a non-JSON answer, and a client that refuses alone", async () => {
+    expect((await get("/small", "br")).headers["content-encoding"]).toBeUndefined();
+    expect((await get("/text", "br")).headers["content-encoding"]).toBeUndefined();
+    const plain = await get("/big");
+    expect(plain.headers["content-encoding"]).toBeUndefined();
+    expect(JSON.parse(plain.body.toString())).toEqual(big);
+  });
+});
+
+describe("chat event stream", () => {
+  let t: TestApp;
+  beforeEach(async () => {
+    t = await makeTestApp();
+  });
+  afterEach(async () => {
+    await t.close();
+  });
+
+  async function open(query: string, encoding?: string) {
+    const agent = await signedIn(t);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as { chatId: string };
+    return new Promise<{ headers: http.IncomingHttpHeaders; text: string }>((resolve, reject) => {
+      const req = http.get({ host: "127.0.0.1", port: t.port, path: `/api/chats/${chat.chatId}/events${query}`, headers: encoding ? { "accept-encoding": encoding } : {} }, (res) => {
+        const out = res.headers["content-encoding"] === "gzip" ? res.pipe(createGunzip()) : res;
+        let text = "";
+        out.setEncoding?.("utf8");
+        out.on("data", (c: string) => {
+          text += c;
+          // The first frame is the snapshot: seeing it decoded before the stream ends proves each write is flushed.
+          if (text.includes("event: chat")) {
+            req.destroy();
+            resolve({ headers: res.headers, text });
+          }
+        });
+      });
+      req.on("error", (e) => (e as NodeJS.ErrnoException).code === "ECONNRESET" ? undefined : reject(e));
+    });
+  }
+
+  it("is gzipped, and flushed per event, only for a client that asks with z=1", async () => {
+    const z = await open("?z=1", "gzip, br");
+    expect(z.headers["content-encoding"]).toBe("gzip");
+    expect(z.text).toMatch(/event: chat\ndata: \{"type":"snapshot"/);
+  });
+
+  it("stays plain without z=1 or without Accept-Encoding", async () => {
+    const noFlag = await open("", "gzip");
+    expect(noFlag.headers["content-encoding"]).toBeUndefined();
+    expect(noFlag.text).toMatch(/event: chat/);
+    const noEncoding = await open("?z=1");
+    expect(noEncoding.headers["content-encoding"]).toBeUndefined();
   });
 });

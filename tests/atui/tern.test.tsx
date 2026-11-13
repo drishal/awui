@@ -41,6 +41,13 @@ function strip(value: unknown, keys: readonly string[]): unknown {
   return value;
 }
 
+/** The request's headers asking the server for a plain body: fetch hands a proxy the decoded bytes, so a copied `content-encoding` would not match them. */
+function plainHeaders(req: Request): Headers {
+  const headers = new Headers(req.headers);
+  headers.set("accept-encoding", "identity");
+  return headers;
+}
+
 /**
  * A server older than the client: the test server behind a proxy that takes
  * `keys` out of every JSON reply and every event of the chat stream.
@@ -50,7 +57,7 @@ function olderServer(keys: readonly string[]): { base: string; stop: () => void 
     port: 0,
     async fetch(req) {
       const url = new URL(req.url);
-      const upstream = await fetch(`${BASE}${url.pathname}${url.search}`, { method: req.method, headers: req.headers, body: req.method === "GET" ? null : await req.text() });
+      const upstream = await fetch(`${BASE}${url.pathname}${url.search}`, { method: req.method, headers: plainHeaders(req), body: req.method === "GET" ? null : await req.text() });
       const type = upstream.headers.get("content-type") ?? "";
       if (type.includes("application/json")) return Response.json(strip(await upstream.json(), keys), { status: upstream.status });
       if (!type.includes("text/event-stream") || !upstream.body) return upstream;
@@ -81,7 +88,7 @@ function slowStream(ms: number): { base: string; stop: () => void } {
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname.endsWith("/events")) await wait(ms);
-      return fetch(`${BASE}${url.pathname}${url.search}`, { method: req.method, headers: req.headers, body: req.method === "GET" ? null : await req.text() });
+      return fetch(`${BASE}${url.pathname}${url.search}`, { method: req.method, headers: plainHeaders(req), body: req.method === "GET" ? null : await req.text() });
     },
   });
   return { base: `http://127.0.0.1:${proxy.port}`, stop: () => void proxy.stop(true) };
@@ -97,7 +104,7 @@ function usageProxy(opts: { ms?: number; status?: number }): { base: string; sto
         if (opts.ms) await wait(opts.ms);
         if (opts.status) return Response.json({ error: "Usage cannot be read now", code: "usage_failed" }, { status: opts.status });
       }
-      return fetch(`${BASE}${url.pathname}${url.search}`, { method: req.method, headers: req.headers, body: req.method === "GET" ? null : await req.text() });
+      return fetch(`${BASE}${url.pathname}${url.search}`, { method: req.method, headers: plainHeaders(req), body: req.method === "GET" ? null : await req.text() });
     },
   });
   return { base: `http://127.0.0.1:${proxy.port}`, stop: () => void proxy.stop(true) };

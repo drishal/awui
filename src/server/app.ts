@@ -6,6 +6,7 @@ import helmet from "helmet";
 import { ZodError, type ZodType } from "zod";
 import { buildIdOf } from "./build-id.js";
 import { embeddedWeb } from "./embedded.js";
+import { compressApi, gzipEventStream } from "./compress.js";
 import { compressedStatic, embeddedHandler, setStaticHeaders } from "./static-web.js";
 import {
   answerSchema,
@@ -931,6 +932,8 @@ export async function createApp(deps: AppDeps) {
     res.setHeader("Cache-Control", "no-store");
     next();
   });
+  // Large JSON answers go out compressed (compress.ts), whichever route sent them.
+  app.use("/api", compressApi());
   // Only sending a message may carry images; every other body stays small.
   const textJson = express.json({ limit: `${Math.ceil((MAX_MESSAGE_CHARS * 4) / 1024) + 64}kb` });
   const messageJson = express.json({
@@ -2477,24 +2480,26 @@ export async function createApp(deps: AppDeps) {
   app.get("/api/chats/:id/events", requireGrant("chat.read"), (req, res) => {
     const chat = manager.get(req.params.id);
     const last = parseLastEventId(req.headers["last-event-id"] ?? req.query.lastEventId);
+    const out = gzipEventStream(req, res);
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-store, no-transform",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
+      ...out.headers,
     });
-    res.write("retry: 2000\n\n");
     let closed = false;
     const write = (chunk: string) => {
-      if (!closed) res.write(chunk);
+      if (!closed) out.write(chunk);
     };
+    write("retry: 2000\n\n");
     const unsubscribe = chat.subscribe(
       {
         send: (id: number, _event: ChatEvent, json: () => string) => write(`id: ${id}\nevent: chat\ndata: ${json()}\n\n`),
         close: () => {
           if (!closed) {
             closed = true;
-            res.end();
+            out.end();
           }
         },
       },
@@ -2505,6 +2510,7 @@ export async function createApp(deps: AppDeps) {
       closed = true;
       clearInterval(heartbeat);
       unsubscribe();
+      out.end();
     });
   });
 
