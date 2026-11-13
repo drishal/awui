@@ -10,11 +10,10 @@
 import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import type { GitFileDiff, GitDiffSide, GitStatus } from "../../shared/protocol.js";
-import { GROUP_LABEL, OPERATION_LABEL } from "../../shared/git-words.js";
-import { ago } from "../../web/turns.js";
+import { GROUP_LABEL, OPERATION_LABEL, branchWords, commitWords, countsLine, stateTone, syncWordsOf } from "../../shared/git-words.js";
 import { clip } from "../format.js";
 import { mix } from "../fx.js";
-import { countsWords, firstStop, gitRows, moveCursor, moveGroup, rowPaths, rowWords, stageAction, syncWords, type GitRow } from "../git.js";
+import { firstStop, gitRows, moveCursor, moveGroup, rowPaths, rowWords, stageAction, type GitRow } from "../git.js";
 import { windowStart } from "../review.js";
 import { useAtui, useTheme } from "./context.js";
 
@@ -145,13 +144,12 @@ export function GitView(p: { onClose: () => void }) {
   const facts = createMemo(() => {
     const s = g();
     if (!s) return [];
-    const counts = countsWords(s);
     const out: Array<[string, string]> = [
-      ["Branch", `${s.branch ?? `detached at ${s.head ?? "?"}`}${s.operation ? ` · ${OPERATION_LABEL[s.operation]}` : ""}`],
+      ["Branch", `${branchWords(s)}${s.operation ? ` · ${OPERATION_LABEL[s.operation]}` : ""}`],
       ["Upstream", s.upstream ? `${s.upstream} · ${s.ahead === 0 && s.behind === 0 ? "up to date" : `${s.ahead} ahead, ${s.behind} behind`}` : "none: this branch has not been pushed"],
-      ["Changes", counts.length > 0 ? `${counts.join(" · ")}${s.added || s.removed ? `  +${s.added} −${s.removed}` : ""}` : "working tree clean"],
+      ["Changes", countsLine(s)],
     ];
-    if (s.lastCommit) out.push(["Last commit", `${s.lastCommit.hash} ${clip(s.lastCommit.subject, 48)} — ${s.lastCommit.author}, ${ago(s.lastCommit.at)}`]);
+    if (s.lastCommit) out.push(["Last commit", `${s.lastCommit.hash} · ${commitWords(s.lastCommit)}`]);
     if (s.stashes > 0) out.push(["Stashes", String(s.stashes)]);
     return out;
   });
@@ -165,7 +163,7 @@ export function GitView(p: { onClose: () => void }) {
       <box flexDirection="row" flexShrink={0} marginTop={1}>
         <text flexGrow={1} fg={t().text}>
           <b>Git</b>
-          <span style={{ fg: t().muted }}>{g() ? `  ${(g() as GitStatus).branch ?? `detached ${(g() as GitStatus).head ?? ""}`} · ${syncWords(g() as GitStatus)}` : ""}</span>
+          <span style={{ fg: t().muted }}>{g() ? `  ${branchWords(g() as GitStatus)} · ${syncWordsOf(g() as GitStatus)}` : ""}</span>
         </text>
         <text flexShrink={0} fg={t().muted}>
           {g()?.root}
@@ -252,14 +250,13 @@ export function GitView(p: { onClose: () => void }) {
                     </text>
                   );
                 const words = () => rowWords(row);
-                const tone = () => (row.entry.state === "conflict" ? t().danger : row.entry.state === "untracked" ? t().warn : t().accent);
                 const toggle = () => (row.entry.side === "staged" ? "Unstage" : "Stage");
                 return (
                   <box flexDirection="row" backgroundColor={here() ? mix(t().bg, t().selection, 0.85) : undefined}>
                     <text flexShrink={0} fg={here() ? t().accent : t().border}>
                       {here() ? "▌" : " "}
                     </text>
-                    <text flexShrink={0} fg={tone()}>
+                    <text flexShrink={0} fg={t()[stateTone(row.entry.state) as "ok" | "warn" | "danger" | "info"]}>
                       {`${words().letter} `}
                     </text>
                     <text flexGrow={1} wrapMode="none" truncate fg={t().text2} onMouseDown={() => void openDiff(row)}>

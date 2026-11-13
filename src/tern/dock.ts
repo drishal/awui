@@ -4,6 +4,7 @@
 // composer), and a status strip. Pure apart from the handlers it attaches.
 import { span, ui, html, type Node, type Span } from "@stencil-hq/tern";
 import type { GitStatus, HarnessStatus, InteractionRequest, UsageLimits } from "../shared/protocol.js";
+import { countsLine } from "../shared/git-words.js";
 import type { ChatState } from "../web/chat-state.js";
 import type { ChipWords } from "../web/model-label.js";
 import { levelTitle } from "../web/config-summary.js";
@@ -296,7 +297,7 @@ function gitNode(git: GitStatus): Node {
   if (git.operation) right.push(span(`${git.operation} in progress  `, "warning"));
   if (dirty === 0) right.push(span("● clean", "success"));
   else {
-    right.push(span(`● ${dirty} changed  `, "warning"));
+    right.push(span(`● ${countsLine(git)}  `, "warning"));
     if (git.added || git.removed) right.push(span(`+${git.added}`, "ins"), span(" "), span(`−${git.removed}`, "del"));
   }
   return ui.row(

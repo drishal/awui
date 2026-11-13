@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GitFile, GitStatus } from "../../src/shared/protocol.js";
-import { countsWords, firstStop, gitRows, moveCursor, moveGroup, rowWords, stageAction, syncWords } from "../../src/atui/git.js";
+import { countsWords, firstStop, gitRows, moveCursor, moveGroup, rowWords, stageAction } from "../../src/atui/git.js";
+import { branchWords, commitWords, countsLine, stateTone, syncWordsOf } from "../../src/shared/git-words.js";
 
 const file = (path: string, over: Partial<GitFile> = {}): GitFile => ({ path, staged: null, unstaged: null, added: null, removed: null, ...over });
 
@@ -68,11 +69,11 @@ describe("the git panel's rows", () => {
   });
 
   it("words the header: sync, counts", () => {
-    expect(syncWords(status([]))).toBe("even");
-    expect(syncWords(status([], { ahead: 2 }))).toBe("↑2");
-    expect(syncWords(status([], { behind: 1 }))).toBe("↓1");
-    expect(syncWords(status([], { ahead: 2, behind: 1 }))).toBe("↑2 ↓1");
-    expect(syncWords(status([], { upstream: null }))).toBe("not pushed");
+    expect(syncWordsOf(status([]))).toBe("even");
+    expect(syncWordsOf(status([], { ahead: 2 }))).toBe("↑2");
+    expect(syncWordsOf(status([], { behind: 1 }))).toBe("↓1");
+    expect(syncWordsOf(status([], { ahead: 2, behind: 1 }))).toBe("↑2 ↓1");
+    expect(syncWordsOf(status([], { upstream: null }))).toBe("not pushed");
     expect(countsWords(status([], { counts: { staged: 2, changed: 1, untracked: 1, conflicts: 0 } }))).toEqual(["2 staged", "1 changed", "1 untracked"]);
     expect(countsWords(status([], { counts: { staged: 0, changed: 0, untracked: 0, conflicts: 3 } }))).toEqual(["3 conflicted"]);
   });
@@ -103,5 +104,28 @@ describe("the git panel's rows", () => {
     expect(stageAction(files(rows)[0]!)).toBe("unstage");
     expect(stageAction(files(rows)[1]!)).toBe("stage");
     expect(stageAction(files(rows)[2]!)).toBe("stage");
+  });
+});
+
+describe("the shared git words", () => {
+  it("tones every file state: work the index lacks warn, new ok, deletes danger, renames info", () => {
+    expect(stateTone("modified")).toBe("warn");
+    expect(stateTone("typechange")).toBe("warn");
+    expect(stateTone("added")).toBe("ok");
+    expect(stateTone("copied")).toBe("ok");
+    expect(stateTone("untracked")).toBe("ok");
+    expect(stateTone("deleted")).toBe("danger");
+    expect(stateTone("conflict")).toBe("danger");
+    expect(stateTone("renamed")).toBe("info");
+  });
+
+  it("words the branch, its sync, the counts, and the last commit alike on every surface", () => {
+    expect(branchWords({ branch: "main", head: "abc1234" })).toBe("main");
+    expect(branchWords({ branch: null, head: "abc1234" })).toBe("detached at abc1234");
+    expect(countsLine({ files: [], counts: { staged: 0, changed: 0, untracked: 0, conflicts: 0 } })).toBe("clean");
+    expect(countsLine({ files: [{} as GitFile], counts: { staged: 1, changed: 4, untracked: 2, conflicts: 0 } })).toBe("1 staged · 4 changed · 2 new");
+    expect(countsLine({ files: [{} as GitFile], counts: { staged: 0, changed: 1, untracked: 0, conflicts: 1 } })).toBe("1 conflict · 1 changed");
+    const at = Date.now() - 4 * 60_000;
+    expect(commitWords({ subject: "init", author: "t", at }, Date.now())).toBe("init · by t · 4m ago");
   });
 });

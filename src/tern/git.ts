@@ -8,8 +8,8 @@
 // the keys and calls the server.
 import { span, ui, type Node, type Spans } from "@stencil-hq/tern";
 import type { GitFileDiff, GitDiffSide, GitStatus } from "../shared/protocol.js";
-import { GROUP_LABEL, OPERATION_LABEL } from "../shared/git-words.js";
-import { countsWords, gitRows, rowWords, stageAction, syncWords } from "../atui/git.js";
+import { GROUP_LABEL, branchWords, commitWords, stateTone, syncWordsOf } from "../shared/git-words.js";
+import { countsWords, gitRows, rowWords, stageAction } from "../atui/git.js";
 import { unifiedDiff } from "../atui/format.js";
 
 /**
@@ -55,7 +55,8 @@ export interface GitCx {
   };
 }
 
-const tone = (state: string): string => (state === "conflict" ? "error" : state === "untracked" ? "warning" : "accent");
+/** A state tone as Tern's own colour. */
+const TONE: Record<string, string> = { warn: "warning", ok: "success", danger: "error", info: "info", muted: "muted" };
 
 const FACT_W = 12;
 
@@ -63,7 +64,7 @@ const FACT_W = 12;
 function factsNode(s: GitStatus): Node[] {
   const counts = countsWords(s);
   const rows: Array<[string, Exclude<Spans, string>]> = [
-    ["Branch", [span(`${s.branch ?? `detached at ${s.head ?? "?"}`}${s.operation ? ` · ${OPERATION_LABEL[s.operation]}` : ""}`, "strong")]],
+    ["Branch", [span(branchWords(s), "strong")]],
     [
       "Upstream",
       s.upstream
@@ -77,7 +78,8 @@ function factsNode(s: GitStatus): Node[] {
         : [span("working tree clean", "muted")],
     ],
   ];
-  if (s.lastCommit) rows.push(["Last commit", [span(s.lastCommit.hash, "mono"), span(` ${s.lastCommit.subject}`), span(`  ${s.lastCommit.author}`, "muted")]]);
+  if (s.lastCommit)
+    rows.push(["Last commit", [span(s.lastCommit.hash, "mono"), span(` ${s.lastCommit.subject}`), span(`  · by ${s.lastCommit.author}`, "muted")]]);
   if (s.stashes > 0) rows.push(["Stashes", [span(String(s.stashes))]]);
   return rows.map(([label, value], i) => ui.text({ key: `f${i}` }, span(`${label.padEnd(FACT_W)}`, "muted"), value));
 }
@@ -92,7 +94,7 @@ function fileNode(cx: GitCx, index: number, path: string): Node | null {
     { key: `r${index}`, gap: "sm", align: "center" },
     ui.text(
       { key: "p", grow: 1, truncate: "end", title: `Diff ${path} (${row.entry.side})`, onClick: () => cx.on.diff(row.entry.file.path, row.entry.side) },
-      span(`${words.letter} `, tone(row.entry.state)),
+      span(`${words.letter} `, TONE[stateTone(row.entry.state)]),
       span(words.path, "mono"),
       words.note ? span(`  (${words.note})`, "muted") : null,
     ),
@@ -119,7 +121,7 @@ export function gitNode(cx: GitCx): Node {
       anchor: "center",
       size: "lg",
       head: "Git",
-      ...(s ? { meta: `${s.branch ?? `detached ${s.head ?? ""}`} · ${syncWords(s)}` } : {}),
+      ...(s ? { meta: `${branchWords(s)} · ${syncWordsOf(s)}` } : {}),
       end: ui.button({ key: "close", text: "Close", keys: ["esc"], variant: "quiet", size: "sm", onClick: cx.on.close }),
       foot: ui.text({ key: "keys" }, span(cx.screen.diff ? "Esc back to the files · Esc closes" : "Click a path for its diff · click a file's Stage word to stage it · Esc closes", "muted")),
     },

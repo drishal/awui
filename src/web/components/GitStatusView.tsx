@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DirenvState, GitFileDiff, GitStatus } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
-import { GROUP_LABEL, groupFiles, OPERATION_LABEL, stateLetter, type GroupedFile } from "../git.js";
+import { GROUP_LABEL, branchWords, commitWords, countsLine, groupFiles, OPERATION_LABEL, stateLetter, stateTone, syncWordsOf, type GroupedFile } from "../git.js";
 import { ago } from "../turns.js";
 import { useNow } from "../hooks.js";
 import { IconBranch, IconCheck, IconChevronDown, IconChevronRight, IconRefresh, IconTerminal, IconX } from "../icons.js";
@@ -29,43 +29,15 @@ function Sync({ git }: { git: GitStatus }) {
 }
 
 function Counts({ git }: { git: GitStatus }) {
-  const { conflicts, staged, changed, untracked } = git.counts;
   if (git.files.length === 0) return <span className="git-count is-clean">clean</span>;
-  return (
-    <>
-      {conflicts > 0 ? (
-        <span className="git-count is-conflict" title={`${conflicts} conflicted`}>
-          {conflicts}
-          <span className="git-count-label"> {conflicts === 1 ? "conflict" : "conflicts"}</span>
-        </span>
-      ) : null}
-      {staged > 0 ? (
-        <span className="git-count is-staged" title={`${staged} staged`}>
-          {staged}
-          <span className="git-count-label"> staged</span>
-        </span>
-      ) : null}
-      {changed > 0 ? (
-        <span className="git-count is-changed" title={`${changed} changed, not staged`}>
-          {changed}
-          <span className="git-count-label"> changed</span>
-        </span>
-      ) : null}
-      {untracked > 0 ? (
-        <span className="git-count is-untracked" title={`${untracked} untracked`}>
-          {untracked}
-          <span className="git-count-label"> new</span>
-        </span>
-      ) : null}
-    </>
-  );
+  return <>{countsLine(git)}</>;
 }
 
 export function GitRow({ git, onOpen }: { git: GitStatus; onOpen: () => void }) {
   return (
     <button type="button" className="git-row" onClick={onOpen} data-testid="git-row" title="Git status: open for files and diffs">
       <IconBranch size={14} className="git-branch-icon" />
-      <span className="git-branch">{git.branch ?? `detached at ${git.head ?? "?"}`}</span>
+      <span className="git-branch">{branchWords(git)}</span>
       {git.operation ? <span className="git-op">{OPERATION_LABEL[git.operation]}</span> : null}
       <Sync git={git} />
       <span className="git-counts">
@@ -123,7 +95,7 @@ function FileRow({
     <li className={`git-file${open ? " is-open" : ""}`}>
       <button type="button" className="git-file-head" aria-expanded={open} onClick={toggle}>
         <IconChevronDown size={12} className="git-file-chevron" />
-        <span className={`git-state is-${state}`} title={state}>
+        <span className={`git-state tone-${stateTone(state)}`} title={state}>
           {stateLetter(state)}
         </span>
         <span className="git-file-path" title={file.from ? `${file.from} → ${file.path}` : file.path}>
@@ -282,7 +254,7 @@ export function GitPanel({ chatId, git, at, onRefresh, onClose }: { chatId: stri
           <dl className="git-facts">
             <dt>Branch</dt>
             <dd>
-              <code>{git.branch ?? `detached at ${git.head ?? "?"}`}</code>
+              <code>{branchWords(git)}</code>
               {git.operation ? <span className="git-op">{OPERATION_LABEL[git.operation]}</span> : null}
             </dd>
             <dt>Upstream</dt>
@@ -303,10 +275,7 @@ export function GitPanel({ chatId, git, at, onRefresh, onClose }: { chatId: stri
               {git.lastCommit ? (
                 <span className="git-commit">
                   <code>{git.lastCommit.hash}</code>
-                  <span className="git-commit-subject">{git.lastCommit.subject}</span>
-                  <span className="git-fact-meta">
-                    {git.lastCommit.author}, {ago(git.lastCommit.at, now)}
-                  </span>
+                  <span className="git-commit-subject">{commitWords(git.lastCommit, now)}</span>
                 </span>
               ) : (
                 <span className="muted">no commits yet</span>
@@ -318,12 +287,7 @@ export function GitPanel({ chatId, git, at, onRefresh, onClose }: { chatId: stri
                 <span className="muted">working tree clean</span>
               ) : (
                 <span className="git-fact-counts">
-                  {dotted([
-                    counts.conflicts ? `${counts.conflicts} conflicted` : "",
-                    counts.staged ? `${counts.staged} staged` : "",
-                    counts.changed ? `${counts.changed} changed` : "",
-                    counts.untracked ? `${counts.untracked} untracked` : "",
-                  ])}
+                  {countsLine(git)}
                   <DiffBadge added={git.added} removed={git.removed} />
                 </span>
               )}

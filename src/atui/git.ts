@@ -49,13 +49,6 @@ export function moveGroup(rows: GitRow[], at: number, by: 1 | -1): number {
   return first < 0 ? at : first;
 }
 
-/** What the panel writes beside the branch: how far from upstream, or that it has none. */
-export function syncWords(status: GitStatus): string {
-  if (!status.upstream) return "not pushed";
-  if (status.ahead === 0 && status.behind === 0) return "even";
-  return [status.ahead > 0 ? `↑${status.ahead}` : "", status.behind > 0 ? `↓${status.behind}` : ""].filter(Boolean).join(" ");
-}
-
 /** The changed counts, as the web panel's facts word them: staged, changed, new, conflicts. */
 export function countsWords(status: GitStatus): string[] {
   const { conflicts, staged, changed, untracked } = status.counts;

@@ -375,22 +375,6 @@
   vertical-align: 1px;
 }
 
-.git-count.is-staged {
-  color: var(--ok);
-}
-
-.git-count.is-changed {
-  color: var(--warn);
-}
-
-.git-count.is-untracked {
-  color: var(--muted-text);
-}
-
-.git-count.is-conflict {
-  color: var(--danger);
-}
-
 .git-count.is-clean {
   color: var(--muted-text);
 }
@@ -406,13 +390,6 @@
 .git-open {
   flex: none;
   color: var(--muted-text);
-}
-
-/* Only the narrowest screens drop the word: a 390px phone has room for "5 new". */
-@media (max-width: 360px) {
-  .git-count-label {
-    display: none;
-  }
 }
 
 /* Git panel: the same right-hand sheet as Review. */
@@ -670,18 +647,15 @@
   background: color-mix(in srgb, currentColor 14%, transparent);
 }
 
-.git-state.is-added,
-.git-state.is-untracked {
+.git-state.tone-ok {
   color: var(--ok);
 }
 
-.git-state.is-deleted,
-.git-state.is-conflict {
+.git-state.tone-danger {
   color: var(--danger);
 }
 
-.git-state.is-renamed,
-.git-state.is-copied {
+.git-state.tone-info {
   color: var(--info, var(--accent));
 }
 
