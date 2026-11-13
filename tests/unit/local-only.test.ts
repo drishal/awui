@@ -40,6 +40,9 @@ function gitFixture(project: string): void {
   runGit(project, "commit", "-qm", "change");
   runGit(project, "remote", "add", "origin", remote);
   runGit(project, "push", "-q", "-u", "origin", "feature");
+  // The checkout fetches the PR's own head ref and wants GitHub's headRefOid to match it.
+  const prHead = runGit(project, "rev-parse", "HEAD").trim();
+  runGit(project, "push", "-q", "origin", "HEAD:refs/pull/42/head");
   // One commit ahead of the pushed branch: a refused push leaves the remote behind.
   writeFileSync(path.join(project, "c.txt"), "later\n");
   runGit(project, "add", "c.txt");
@@ -48,7 +51,7 @@ function gitFixture(project: string): void {
   const gh = path.join(bin, "gh");
   writeFileSync(
     gh,
-    `#!/usr/bin/env node\nconst args = process.argv.slice(2);\nif (args[0] === "auth") process.exit(0);\nif (args[0] === "pr" && args[1] === "create") { console.log("https://github.com/example/repo/pull/42"); process.exit(0); }\nif (args[0] === "pr" && args[1] === "view") { console.log(JSON.stringify({ url: "https://github.com/example/repo/pull/42", title: "Audit", state: "OPEN", isDraft: false, baseRefName: "main", headRefName: "feature" })); process.exit(0); }\nprocess.exit(2);\n`,
+    `#!/usr/bin/env node\nconst args = process.argv.slice(2);\nif (args[0] === "auth") process.exit(0);\nif (args[0] === "pr" && args[1] === "create") { console.log("https://github.com/example/repo/pull/42"); process.exit(0); }\nif (args[0] === "pr" && args[1] === "view") { console.log(JSON.stringify({ url: "https://github.com/example/repo/pull/42", title: "Audit", state: "OPEN", isDraft: false, baseRefName: "main", headRefName: "feature", headRefOid: "${prHead}" })); process.exit(0); }\nprocess.exit(2);\n`,
   );
   chmodSync(gh, 0o755);
   process.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
