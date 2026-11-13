@@ -87,6 +87,22 @@ function promptTime(prompt: UserItem): Node | null {
 }
 
 /**
+ * What the prompt says about itself under its pill: when it was sent, and who sent it when not the person at
+ * this keyboard (the web UI's little "agent" or "guest" word beside the clock).
+ */
+function promptMeta(prompt: UserItem): Node | null {
+  const time = promptTime(prompt);
+  const source = prompt.source
+    ? ui.text(
+        { key: "src", role: "awui.prompt-source", title: prompt.source === "guest" ? "Released from a guest link by this chat's owner, not typed here" : "Sent by another agent or a routine, not typed here" },
+        prompt.source,
+      )
+    : null;
+  if (!time && !source) return null;
+  return ui.row({ key: "meta", role: "awui.prompt-meta", justify: "end", align: "center", gap: "sm" }, time, source);
+}
+
+/**
  * A phone's long-press menu (`actions.hold`) with the same entries as the right-click one. Tern 0.9.14
  * lists them on a long press and sends the pick as an action event with that name, which the node's
  * onMenu handler of the same name answers; SDK 0.2.0's types predate `hold`, hence the casts above.
@@ -539,6 +555,27 @@ function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
     // The web UI's Copy turn as Markdown: the prompt, one line a call, the replies, the answer.
     "copy-turn-as-markdown": () => cx.on.copyTurn(turn),
   };
+  // A steer the agent took mid-run is a note inside that run, not the next prompt: the web UI draws it as a
+  // divider row across the thread, so here it is Tern's rule labelled "while it ran" and the words quiet under
+  // it, still clickable for the same Retry/Copy menu a prompt has.
+  if (prompt.interjected) {
+    return ui.col(
+      { key: "ask", role: "awui.interjection" },
+      ui.rule({ key: "r", variant: "line", label: "while it ran", tone: "muted" }),
+      images.some(Boolean) ? ui.row({ key: "imgs", gap: "sm" }, images) : null,
+      ui.text({
+        key: "p",
+        role: "awui.interjection-text",
+        text: prompt.text,
+        title: "A steer the agent took while it ran",
+        onClick: () => cx.on.pick(picked ? null : turn.id),
+        onMenu: menu,
+        ...holdMenu(Object.keys(menu)),
+      } as PropsOf<"text">),
+      acts.length > 0 ? ui.row({ key: "acts", role: "awui.prompt-acts" }, acts) : null,
+      promptMeta(prompt),
+    );
+  }
   return ui.col(
     { key: "ask", role: "awui.ask" },
     images.some(Boolean) ? ui.row({ key: "imgs", gap: "sm" }, images) : null,
@@ -551,7 +588,7 @@ function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
       onMenu: menu,
       ...holdMenu(Object.keys(menu)),
     } as PropsOf<"text">),
-    promptTime(prompt),
+    promptMeta(prompt),
     acts.length > 0 ? ui.row({ key: "acts", role: "awui.prompt-acts" }, acts) : null,
     !prompt.text.trim() && (prompt.imageCount ?? 0) > 0 && !images.some(Boolean) ? ui.text({ key: "n", role: "awui.prompt-meta" }, plural(prompt.imageCount ?? 0, "image")) : null,
   );

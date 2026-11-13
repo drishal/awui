@@ -217,6 +217,19 @@ describe("awui tern", () => {
     expect(tern.errors).toEqual([]);
   });
 
+  it("draws a steer the agent took mid-run as the web UI's divider row, not a second prompt bubble", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("slow please\r");
+    await until(() => app.chat()?.status === "running", "the run to start");
+    tern.type("keep it short\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("keep it short"), "the steer to land");
+    expect(app.chat()?.items.find((item) => item.kind === "user" && item.text === "keep it short")).toMatchObject({ interjected: true });
+    expect(tern.find("rule", "main").some((n) => n.p.label === "while it ran")).toBe(true);
+    expect(tern.find("text", "main").some((n) => n.p.role === "awui.interjection-text")).toBe(true);
+    expect(tern.errors).toEqual([]);
+  });
+
   it("draws a background job's widget as a native job card", async () => {
     client = await start();
     const { tern, app, until } = client;

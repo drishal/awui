@@ -532,6 +532,45 @@ describe("the Tern conversation", () => {
     expect(text("last")).toBe("3 commands  2 failed");
     expect(foldHeadSpans(turn, { counts: { command: 1 }, items: [tool({})] } as unknown as WorkSegment, "only").map((s) => s.t).join("")).toBe("Worked for 27s · 1 command  +12 −3");
   });
+  describe("the prompt's row", () => {
+    const noop = () => undefined;
+    const all = (n: Node): Node[] => [n, ...n.children.flatMap(all)];
+    const chatOf = (items: ChatItem[]) => ({ chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status: "idle", items, capabilities: {}, checkpoints: [] }) as unknown as ChatState;
+    const cxOf = (chat: ChatState): ConversationCx => ({
+      chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map(), picked: null, blob: () => null,
+      on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop, copyTurn: noop, timing: noop },
+    });
+    const nodes = (cx: ConversationCx) => conversation(cx).flatMap(all);
+
+    it("draws a steer the agent took mid-run as the web UI's divider row, not a prompt bubble", () => {
+      const items: ChatItem[] = [
+        { kind: "user", id: "u1", text: "go", images: [] } as unknown as ChatItem,
+        { kind: "user", id: "u2", text: "keep it short", images: [], interjected: true, at: 1_700_000_000_000 } as unknown as ChatItem,
+        { kind: "assistant", id: "a1", text: "Done.", thinking: "", streaming: false },
+      ];
+      const drawn = nodes(cxOf(chatOf(items)));
+      const rule = drawn.find((n) => n.kind === "rule");
+      expect(rule?.props).toMatchObject({ variant: "line", label: "while it ran" });
+      expect(drawn.some((n) => n.props.role === "awui.interjection-text" && n.props.text === "keep it short")).toBe(true);
+      // The bubble is for the prompt the run started from; the steer is a note under the divider.
+      expect(drawn.filter((n) => n.props.role === "awui.prompt").map((n) => n.props.text)).toEqual(["go"]);
+    });
+
+    it("names who sent a prompt that was not typed here, beside its clock", () => {
+      const items = [{ kind: "user", id: "u1", text: "wake up", images: [], source: "agent", at: 1_700_000_000_000 } as unknown as ChatItem];
+      const meta = nodes(cxOf(chatOf(items))).find((n) => n.props.role === "awui.prompt-meta");
+      expect(meta).toBeDefined();
+      const source = all(meta as Node).find((n) => n.props.role === "awui.prompt-source");
+      expect(source?.props).toMatchObject({ text: "agent", title: "Sent by another agent or a routine, not typed here" });
+    });
+  });
+
+  it("peeks at a row's body on hover only when it holds more than a line", () => {
+    const one = toolNode(tool({ output: "Updated" }), "/w", () => undefined);
+    expect(one.props.hovercard).toBeUndefined();
+    const many = toolNode(tool({ output: "one\ntwo\nthree" }), "/w", () => undefined);
+    expect(many.props.hovercard).toBeDefined();
+  });
 });
 
 describe("awui tern's command line", () => {

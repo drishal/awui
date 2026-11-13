@@ -96,8 +96,18 @@ export const STYLESHEET = `
 [data-role='awui.prompt-acts'] { gap: 2px; }
 [data-role='awui.prompt-acts'] .sf-icon, [data-role='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 5px; border-radius: 8px; }
 [data-role='awui.prompt-acts'] .sf-icon:hover, [data-role='awui.answer-acts'] .sf-icon:hover { color: var(--t1); background: ${tint(9)}; }
-[data-role='awui.prompt-meta'] { font-size: 0.82em; color: var(--t4); }
-[data-role='awui.prompt-time'] { font-size: 0.8em; color: var(--t4); padding-right: 6px; }
+/* Under the pill: the clock, and the word for who sent it when not the person here ("agent", "guest"). */
+[data-role='awui.prompt-meta'] { font-size: 0.82em; color: var(--t4); padding-right: 6px; }
+[data-role='awui.prompt-time'] { font-size: 1em; color: var(--t4); }
+[data-role='awui.prompt-source'] { font-size: 1em; color: var(--t4); }
+/*
+ * A steer the agent took mid-run: the web UI's divider row ("while it ran") rather than a prompt bubble,
+ * since it is a note inside the run above it, not the next turn.
+ */
+[data-role='awui.interjection'] { align-items: stretch; gap: 3px; padding-top: 6px; }
+[data-role='awui.interjection-text'] { color: var(--t2); font-size: 0.94em; }
+[data-role='awui.interjection-text'].sf-act:hover { color: var(--t1); }
+[data-role='awui.interjection'] [data-role='awui.prompt-meta'] { padding-right: 0; }
 
 /*
  * The work between a prompt and its answer, as the web UI's card: a rounded frame whose head carries the
