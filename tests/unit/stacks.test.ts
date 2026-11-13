@@ -19,31 +19,36 @@ let root: string;
 let remote: string;
 let gh: string;
 const originalPath = process.env.PATH;
-/** The PRs the stand-in knows, keyed by number: state and branches. */
-let prs: Record<number, { state: string; base: string; head: string }>;
+/** The PRs the stand-in knows, keyed by number: state, branches, and the head commit it names. */
+let prs: Record<number, { state: string; base: string; head: string; oid: string }>;
 /** The merges the stand-in was asked for, in order. */
 let merges: number[];
-
+/** Whether the stand-in deletes a merged PR's head branch, as a repository with auto-delete on does. */
+let autoDeleteBranches: boolean;
 function ghScript(): string {
   return `#!/usr/bin/env node
 const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
 const args = process.argv.slice(2);
 const prs = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(root, "gh-prs.json"))}, "utf8"));
+const settings = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(root, "gh-settings.json"))}, "utf8"));
+const save = () => fs.writeFileSync(${JSON.stringify(path.join(root, "gh-prs.json"))}, JSON.stringify(prs));
 const record = (name, value) => { const all = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(root, "gh-log.json"))}, "utf8")); all.push(value); fs.writeFileSync(${JSON.stringify(path.join(root, "gh-log.json"))}, JSON.stringify(all)); };
+const headCommit = () => { try { return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(); } catch { return "0".repeat(40); } };
 if (args[0] === "auth") process.exit(0);
 if (args[0] === "pr" && args[1] === "view") {
   const n = Number(args[2] && /^\\d+$/.test(args[2]) ? args[2] : 0);
   const pr = prs[n];
   if (!pr) process.exit(1);
-  console.log(JSON.stringify({ url: "https://github.com/example/repo/pull/" + n, title: "PR " + n, state: pr.state, isDraft: false, baseRefName: pr.base, headRefName: pr.head }));
+  console.log(JSON.stringify({ url: "https://github.com/example/repo/pull/" + n, title: "PR " + n, state: pr.state, isDraft: false, baseRefName: pr.base, headRefName: pr.head, headRefOid: pr.oid }));
   process.exit(0);
 }
 if (args[0] === "pr" && args[1] === "create") {
   const base = args[args.indexOf("--base") + 1];
   const head = args[args.indexOf("--head") + 1];
   const n = 100 + Object.keys(prs).length;
-  prs[n] = { state: "OPEN", base, head };
-  fs.writeFileSync(${JSON.stringify(path.join(root, "gh-prs.json"))}, JSON.stringify(prs));
+  prs[n] = { state: "OPEN", base, head, oid: headCommit() };
+  save();
   record("create", args);
   console.log("https://github.com/example/repo/pull/" + n);
   process.exit(0);
@@ -52,7 +57,20 @@ if (args[0] === "pr" && args[1] === "merge") {
   const n = Number(args[2]);
   const pr = prs[n];
   if (!pr) process.exit(1);
-  if (pr.state === "CLEAN" || pr.state === "OPEN") { pr.state = "MERGED"; fs.writeFileSync(${JSON.stringify(path.join(root, "gh-prs.json"))}, JSON.stringify(prs)); record("merge", n); process.exit(0); }
+  record("merge-args", args);
+  // A PR's branch may move after the panel read its head: headMovedTo is the commit the
+  // branch stands at when the merge lands, so a merge naming the old head is refused.
+  const at = args.indexOf("--match-head-commit");
+  if (at !== -1 && args[at + 1] !== (pr.headMovedTo || pr.oid)) { console.error("Head branch was modified. Review and try the merge again."); process.exit(1); }
+  if (pr.state === "CLEAN" || pr.state === "OPEN") {
+    pr.state = "MERGED";
+    // GitHub retargets a stacked PR when the branch below goes: with auto-delete on, the
+    // upper layers now target this PR's base; with it off, nothing is retargeted.
+    if (settings.autoDeleteBranches) for (const key of Object.keys(prs)) if (prs[key].base === pr.head) prs[key].base = pr.base;
+    save();
+    record("merge", n);
+    process.exit(0);
+  }
   if (pr.state === "BLOCKED") { console.error("Pull request " + n + " is not mergeable: required checks are failing"); process.exit(1); }
   process.exit(1);
 }
@@ -105,15 +123,20 @@ async function app(): Promise<{ t: TestApp; agent: Awaited<ReturnType<typeof sig
   // The PR head branches live on the remote, as a real pull request's do: the
   // checkout-pr flow fetches its base from origin.
   git(root, "push", "-q", "origin", "main", "layer-1", "layer-2", "layer-3");
+  // Each PR names the commit its branch is at, as gh's headRefOid does: #42's head branch
+  // is layer-1's tip, and a merge must name exactly that.
+  const tip = (ref: string) => git(remote, "rev-parse", ref).trim();
   prs = {
-    41: { state: "MERGED", base: "main", head: "layer-0" },
-    42: { state: "OPEN", base: "main", head: "layer-1" },
-    43: { state: "OPEN", base: "layer-1", head: "layer-2" },
-    44: { state: "OPEN", base: "layer-2", head: "layer-3" },
+    41: { state: "MERGED", base: "main", head: "layer-0", oid: tip("main") },
+    42: { state: "OPEN", base: "main", head: "layer-1", oid: tip("layer-1") },
+    43: { state: "OPEN", base: "layer-1", head: "layer-2", oid: tip("layer-2") },
+    44: { state: "OPEN", base: "layer-2", head: "layer-3", oid: tip("layer-3") },
   };
   merges = [];
+  autoDeleteBranches = true;
   writeFileSync(path.join(root, "gh-prs.json"), JSON.stringify(prs));
   writeFileSync(path.join(root, "gh-log.json"), JSON.stringify(merges));
+  writeFileSync(path.join(root, "gh-settings.json"), JSON.stringify({ autoDeleteBranches }));
   gh = path.join(root, "gh");
   writeFileSync(gh, ghScript());
   chmodSync(gh, 0o755);
@@ -170,7 +193,7 @@ describe("stacked pull requests", () => {
     // The stand-in refuses BLOCKED PRs: mark the top one blocked, so the merge
     // merges the bottom two then stops. The stand-in minted 105/106 into the file,
     // so re-read it: the test's own object never saw those creates.
-    const onDisk = JSON.parse(readFileSync(path.join(root, "gh-prs.json"), "utf8")) as Record<string, { state: string; base: string; head: string }>;
+    const onDisk = JSON.parse(readFileSync(path.join(root, "gh-prs.json"), "utf8")) as Record<string, { state: string; base: string; head: string; oid: string }>;
     const top = before!.layers[0]!.pr;
     onDisk[String(top)] = { ...onDisk[String(top)]!, state: "BLOCKED" };
     writeFileSync(path.join(root, "gh-prs.json"), JSON.stringify(onDisk));
@@ -190,6 +213,15 @@ describe("stacked pull requests", () => {
     // carries the creates' argv arrays too; the merges are bare numbers).
     const logged = JSON.parse(readFileSync(path.join(root, "gh-log.json"), "utf8")) as Array<number | string[]>;
     expect(logged.filter((entry): entry is number => typeof entry === "number")).toEqual([first, before!.layers[1]!.pr]);
+    // Every layer was attempted, oldest first, and each attempt named the head commit GitHub
+    // had just reported: gh merges that commit or refuses, and the stand-in refuses a mismatch.
+    const mergeCalls = logged.filter((entry): entry is string[] => Array.isArray(entry) && entry[0] === "pr" && entry[1] === "merge");
+    expect(mergeCalls.map((call) => call[2])).toEqual([String(first), String(before!.layers[1]!.pr), String(top)]);
+    for (const call of mergeCalls) {
+      const at = call.indexOf("--match-head-commit");
+      expect(at).toBeGreaterThan(-1);
+      expect(call[at + 1]).toBe(onDisk[String(Number(call[2]))]!.oid);
+    }
   });
 
   it("refuses a merge refusal's actionable error and persists the layers that did merge", async () => {
@@ -197,13 +229,93 @@ describe("stacked pull requests", () => {
     await agent.post(`/api/workspaces/${wsId}/pr-stack`).send({ base: "main", title: "One layer" }).expect(201);
     const stack = await stackOf(agent, wsId);
     const pr = stack!.layers[0]!.pr;
-    prs[pr] = { ...prs[pr]!, state: "BLOCKED" };
-    writeFileSync(path.join(root, "gh-prs.json"), JSON.stringify(prs));
+    // The stand-in minted this number into its own file, so mark the row that is on disk:
+    // the view must still read it as a real PR, with its bases and head.
+    const onDisk = JSON.parse(readFileSync(path.join(root, "gh-prs.json"), "utf8")) as Record<string, { state: string }>;
+    const row = onDisk[String(pr)];
+    if (!row) throw new Error(`the stand-in minted no PR ${pr}`);
+    row.state = "BLOCKED";
+    writeFileSync(path.join(root, "gh-prs.json"), JSON.stringify(onDisk));
     const merged = await agent.post(`/api/workspaces/${wsId}/pr-stack/${stack!.id}/merge`).send({}).expect(200);
     const result = merged.body as { refusal: { pr: number; message: string } | null; mergedThrough: number | null };
     expect(result.refusal?.pr).toBe(pr);
     expect(result.refusal?.message).toContain("not mergeable");
     expect(result.mergedThrough).toBeNull();
+  });
+
+  it("refuses a layer that still targets the layer below it, merging nothing into it", async () => {
+    const { agent, wsId } = await app();
+    // Branch auto-delete off, as a repository may be: GitHub then leaves the upper PR
+    // targeting the layer below, and `gh pr merge` would put this layer's work into that
+    // branch instead of the stack's base while the panel reported the stack merged.
+    autoDeleteBranches = false;
+    writeFileSync(path.join(root, "gh-settings.json"), JSON.stringify({ autoDeleteBranches }));
+    git(root, "checkout", "-q", "layer-1");
+    await agent.post(`/api/workspaces/${wsId}/pr-stack`).send({ base: "main", title: "Layer one" }).expect(201);
+    const first = (await stackOf(agent, wsId))!.layers[0]!.pr;
+    git(root, "checkout", "-q", "layer-2");
+    await agent.post(`/api/workspaces/${wsId}/pr-stack`).send({ above: first, title: "Layer two" }).expect(201);
+    const before = await stackOf(agent, wsId);
+    const top = before!.layers[0]!.pr;
+
+    const merged = await agent.post(`/api/workspaces/${wsId}/pr-stack/${before!.id}/merge`).send({}).expect(200);
+    const result = merged.body as { stack: PrStack; mergedThrough: number | null; refusal: { pr: number; message: string } | null };
+    // The bottom layer merged; the next still targets `layer-1`, so it refuses and says how.
+    expect(result.mergedThrough).toBe(first);
+    expect(result.refusal?.pr).toBe(top);
+    expect(result.refusal?.message).toContain("targets `layer-1`");
+    expect(result.refusal?.message).toContain("--base main");
+    expect(result.stack.layers.find((l) => l.pr === top)?.state).toBe("OPEN");
+    // Exactly one merge ran: nothing was folded into the layer below.
+    const logged = JSON.parse(readFileSync(path.join(root, "gh-log.json"), "utf8")) as Array<number | string[]>;
+    expect(logged.filter((entry): entry is number => typeof entry === "number")).toEqual([first]);
+  });
+
+  it("refuses a merge when the layer's head moved since GitHub named it", async () => {
+    const { agent, wsId } = await app();
+    git(root, "checkout", "-q", "layer-1");
+    await agent.post(`/api/workspaces/${wsId}/pr-stack`).send({ base: "main", title: "Layer one" }).expect(201);
+    const stack = await stackOf(agent, wsId);
+    const pr = stack!.layers[0]!.pr;
+    // The branch moved to a commit GitHub's view does not name (headMovedTo), as it does
+    // between the panel's read and the merge: GitHub then refreshes the head it was asked
+    // about, so the requested merge names the old one and is refused.
+    const onDisk = JSON.parse(readFileSync(path.join(root, "gh-prs.json"), "utf8")) as Record<string, { state: string; base: string; head: string; oid: string; headMovedTo?: string }>;
+    const row = onDisk[String(pr)];
+    if (!row) throw new Error(`the stand-in minted no PR ${pr}`);
+    row.headMovedTo = "f".repeat(40);
+    writeFileSync(path.join(root, "gh-prs.json"), JSON.stringify(onDisk));
+    const merged = await agent.post(`/api/workspaces/${wsId}/pr-stack/${stack!.id}/merge`).send({}).expect(200);
+    const result = merged.body as { mergedThrough: number | null; refusal: { pr: number; message: string } | null };
+    expect(result.mergedThrough).toBeNull();
+    expect(result.refusal?.pr).toBe(pr);
+    expect(result.refusal?.message).toContain("Head branch was modified");
+  });
+
+  it("treats a layer merged elsewhere as through, and a closed one as a refusal", async () => {
+    const { agent, wsId } = await app();
+    git(root, "checkout", "-q", "layer-1");
+    await agent.post(`/api/workspaces/${wsId}/pr-stack`).send({ base: "main", title: "Layer one" }).expect(201);
+    const first = (await stackOf(agent, wsId))!.layers[0]!.pr;
+    git(root, "checkout", "-q", "layer-2");
+    await agent.post(`/api/workspaces/${wsId}/pr-stack`).send({ above: first, title: "Layer two" }).expect(201);
+    const before = await stackOf(agent, wsId);
+    const top = before!.layers[0]!.pr;
+    // The record's OPEN is not the truth: the bottom PR was merged by hand and the top one
+    // closed, so the merge records what GitHub says and stops at the layer that cannot merge.
+    const onDisk = JSON.parse(readFileSync(path.join(root, "gh-prs.json"), "utf8")) as Record<string, { state: string; base: string; head: string; oid: string }>;
+    onDisk[String(first)] = { ...onDisk[String(first)]!, state: "MERGED" };
+    onDisk[String(top)] = { ...onDisk[String(top)]!, state: "CLOSED" };
+    writeFileSync(path.join(root, "gh-prs.json"), JSON.stringify(onDisk));
+
+    const merged = await agent.post(`/api/workspaces/${wsId}/pr-stack/${before!.id}/merge`).send({}).expect(200);
+    const result = merged.body as { stack: PrStack; mergedThrough: number | null; refusal: { pr: number; message: string } | null };
+    expect(result.mergedThrough).toBe(first);
+    expect(result.stack.layers.find((l) => l.pr === first)?.state).toBe("MERGED");
+    expect(result.refusal?.pr).toBe(top);
+    expect(result.refusal?.message).toContain("CLOSED");
+    const logged = JSON.parse(readFileSync(path.join(root, "gh-log.json"), "utf8")) as Array<number | string[]>;
+    expect(logged.filter((entry): entry is number => typeof entry === "number")).toEqual([]);
   });
 });
 

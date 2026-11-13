@@ -249,9 +249,12 @@ export class PrStacks {
 
   /**
    * Merge bottom-up: the oldest open layer first, then the next, until a merge is
-   * refused or the stack is through. GitHub retargets each upper PR as the layer
-   * below merges, so one `gh pr merge --merge` per layer is the whole story. A
-   * refusal stops the merge with the layers that did merge persisted, never thrown
+   * refused or the stack is through. GitHub retargets each upper PR as the layer below
+   * merges — but only when that lower branch is deleted, so with branch auto-delete off
+   * an upper layer still targets the layer below it. Each layer is therefore read fresh
+   * here and refused unless it now targets the stack's own base, and the merge names the
+   * head commit just read: GitHub merges that one or refuses, never a head nobody saw.
+   * A refusal stops the merge with the layers that did merge persisted, never thrown
    * away; an archive refusal is collected beside it, its worktree kept.
    */
   async merge(id: string, archive?: (ws: WorkspaceInfo, pr: number, worktreeId: string | undefined) => Promise<void>): Promise<{
@@ -270,12 +273,47 @@ export class PrStacks {
       const ws = await this.workspaces.get(stack.workspaceId);
       const open = [...stack.layers].filter((l) => l.state === "OPEN" || l.state === "DRAFT").reverse();
       for (const layer of open) {
+        // The record's OPEN is not the truth: only what GitHub says now may decide a merge.
+        const fresh = await pullRequestDetail(ws, layer.pr);
+        if (!fresh) {
+          refusal = { pr: layer.pr, message: `GitHub has no pull request #${layer.pr} any more` };
+          break;
+        }
+        if (fresh.state === "MERGED") {
+          // Merged since the panel looked (by hand, or by another tool): it is through, and
+          // nothing here may merge it again.
+          layer.state = "MERGED";
+          layer.baseBranch = fresh.baseRefName;
+          mergedThrough = layer.pr;
+          await this.write();
+          continue;
+        }
+        if (fresh.state === "CLOSED") {
+          // A closed PR is not merged and never will be by this route; saying so here beats
+          // gh's own refusal only because it names the layer.
+          refusal = { pr: layer.pr, message: `#${layer.pr} is CLOSED, so it cannot merge; nothing after it was touched` };
+          break;
+        }
+        // A layer may only merge into the stack's own base. GitHub retargets it when the
+        // layer below merges, and with branch auto-delete off it does not, so a bare
+        // `gh pr merge` would fold this layer into the one below and report the stack
+        // merged while the work never reached the base.
+        if (fresh.baseRefName !== stack.base) {
+          refusal = {
+            pr: layer.pr,
+            message: `#${layer.pr} targets \`${fresh.baseRefName}\`, not the stack's base \`${stack.base}\`; retarget it (\`gh pr edit ${layer.pr} --base ${stack.base}\`) and merge the stack again, or merge it by hand`,
+          };
+          break;
+        }
         try {
-          await runGh(["pr", "merge", String(layer.pr), "--merge"], ws.path);
+          // The head just read is the one that merges: a push since then refuses here
+          // instead of merging a commit nobody reviewed.
+          await runGh(["pr", "merge", String(layer.pr), "--merge", "--match-head-commit", fresh.headRefOid], ws.path);
         } catch (error) {
           refusal = { pr: layer.pr, message: errorMessage(error) };
           break;
         }
+        layer.baseBranch = fresh.baseRefName;
         layer.state = "MERGED";
         mergedThrough = layer.pr;
         await this.write();

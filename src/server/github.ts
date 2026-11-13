@@ -89,16 +89,23 @@ export async function currentPullRequest(ws: WorkspaceInfo): Promise<{ url: stri
   }
 }
 
-/** One PR's detail by number, as the stack and the checkout flow carry it; null when GitHub has none. */
-export async function pullRequestDetail(ws: WorkspaceInfo, pr: number): Promise<{ url: string; title: string; state: string; isDraft: boolean; baseRefName: string; headRefName: string } | null> {
+/**
+ * One PR's detail by number, as the stack and the checkout flow carry it; null when GitHub
+ * has none. `headRefOid` is the commit GitHub calls the head right now: a caller that fetches
+ * or merges by it can tell whether what it got is what was read.
+ */
+export async function pullRequestDetail(ws: WorkspaceInfo, pr: number): Promise<{ url: string; title: string; state: string; isDraft: boolean; baseRefName: string; headRefName: string; headRefOid: string } | null> {
   try {
-    const result = await runGh(["pr", "view", String(pr), "--json", "url,title,state,isDraft,baseRefName,headRefName"], ws.path);
+    const result = await runGh(["pr", "view", String(pr), "--json", "url,title,state,isDraft,baseRefName,headRefName,headRefOid"], ws.path);
     const doc = JSON.parse(result) as Record<string, unknown>;
     const url = doc.url;
     const baseRefName = doc.baseRefName;
     const headRefName = doc.headRefName;
+    const headRefOid = doc.headRefOid;
     if (typeof url !== "string" || !/^https:\/\//.test(url)) return null;
     if (typeof baseRefName !== "string" || typeof headRefName !== "string") return null;
+    // A PR with no head commit is one GitHub is still creating; there is nothing to name or check.
+    if (typeof headRefOid !== "string" || !/^[0-9a-f]{40}$/.test(headRefOid)) return null;
     return {
       url,
       title: typeof doc.title === "string" ? doc.title : "",
@@ -106,6 +113,7 @@ export async function pullRequestDetail(ws: WorkspaceInfo, pr: number): Promise<
       isDraft: doc.isDraft === true,
       baseRefName,
       headRefName,
+      headRefOid,
     };
   } catch {
     return null;
