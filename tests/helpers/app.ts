@@ -69,6 +69,8 @@ export async function makeTestApp(options: {
   fakeStopDelayMs?: number;
   /** Serve the Settings routes over a config.yml in this test's own settings folder. */
   withSettings?: boolean;
+  /** A built web folder to serve (the compressed static assets); null in most tests. */
+  webDir?: string;
   /** Keep file checkpoints (in this test's own folder). */
   withCheckpoints?: boolean;
   /** Start tests needing a real PTY lifecycle; shuts down in close(). */
@@ -135,7 +137,7 @@ export async function makeTestApp(options: {
     security,
     theme: new ThemeStore(options.themeFile ?? null, options.themeFile != null, () => undefined),
     pairingUrls: [],
-    webDir: null,
+    webDir: options.webDir ?? null,
     heartbeatMs: options.heartbeatMs ?? 20_000,
     ...(options.configDir !== undefined ? { configDir: options.configDir } : { configDir: null }),
     // Nothing samples the machine in a test: the app under test gets a quiet monitor.
