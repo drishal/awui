@@ -676,18 +676,29 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 12px;
 }
 
+/* The dir takes the drawer's remaining width and ellipsises its head ("…/src/lib"),
+   keeping the tail where the file lives; the name stays whole. */
 .git-file-from,
 .git-file-dir {
   color: var(--muted-text);
 }
 
+.git-file-dir {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  direction: rtl;
+  text-align: left;
+}
+
 .git-file-name {
+  flex: none;
   color: var(--text);
   font-weight: 600;
 }
