@@ -1191,7 +1191,7 @@ export async function createApp(deps: AppDeps) {
     const detail = await pullRequestDetail(ws, input.pr);
     if (!detail) throw new ChatError(404, "bad_pr", `GitHub has no pull request #${input.pr} in this repository`);
     try {
-      const info = await trees.checkoutPr(ws, input.name, input.pr, detail.headRefName, { shared: config.shared ?? [] });
+      const info = await trees.checkoutPr(ws, input.name, input.pr, detail.headRefOid, { shared: config.shared ?? [] });
       res.status(201).json({ ...info, workspace: await workspaces.open(info.path) });
     } catch (error) {
       throw worktreeProblem(error) ?? error;

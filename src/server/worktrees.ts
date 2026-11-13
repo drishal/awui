@@ -55,11 +55,12 @@ const reasons: Record<string, string> = {
   bad_pr: "GitHub has no pull request like that in this repository",
   pr_taken: "That pull request already has a managed checkout",
   pr_mismatch: "That managed worktree tracks a different pull request",
+  pr_head_moved: "That pull request's head moved between reading it and fetching it; try the checkout again",
 };
 export function worktreeProblem(error: unknown): ChatError | undefined {
   if (!(error instanceof Error) || !(error.message in reasons)) return undefined;
   const code = error.message;
-  return new ChatError(code === "unknown_id" ? 404 : code === "name_taken" || code === "dirty_tree" || code === "pr_taken" ? 409 : code === "bad_base" || code === "bad_pr" ? 400 : 422, code, reasons[code] ?? "Worktree operation failed");
+  return new ChatError(code === "unknown_id" ? 404 : code === "name_taken" || code === "dirty_tree" || code === "pr_taken" || code === "pr_head_moved" ? 409 : code === "bad_base" || code === "bad_pr" ? 400 : 422, code, reasons[code] ?? "Worktree operation failed");
 }
 const SUFFIX_ATTEMPTS = 8;
 const operations = new Map<string, Promise<void>>();
@@ -197,33 +198,34 @@ export class ManagedWorktrees implements WorktreeService {
   }
 
   /**
-   * A managed isolated checkout of an existing pull request: the PR's head branch
-   * is fetched from origin and a new tree checks out its own branch at that commit,
-   * so the checkout never moves the caller's branch and never shares git's index
-   * with another worktree. Names, validation, and the metadata commit run under the
-   * same per-workspace serialization as a task checkout; the base is the PR's head
-   * commit, so counts and an archive have one exact point.
+   * A managed isolated checkout of an existing pull request: the PR's own head is fetched
+   * by number (`refs/pull/<n>/head`, which GitHub serves for any PR, fork or not) and a new
+   * tree checks out its own branch at that commit, so the checkout never moves the caller's
+   * branch and never shares git's index with another worktree. The commit must be the one
+   * gh just named: a same-named branch is not the PR (a fork's `main` is not origin's), and
+   * a head that moved between the read and the fetch is refused rather than checked out.
+   * Names, validation, and the metadata commit run under the same per-workspace
+   * serialization as a task checkout; the base is that head commit, so counts and an
+   * archive have one exact point.
    */
-  async checkoutPr(ws: WorkspaceInfo, name: string, pr: number, headBranch: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated> {
-    return serial(ws, () => this.checkoutPrOne(ws, name, pr, headBranch, options));
+  async checkoutPr(ws: WorkspaceInfo, name: string, pr: number, headCommit: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated> {
+    return serial(ws, () => this.checkoutPrOne(ws, name, pr, headCommit, options));
   }
 
-  private async checkoutPrOne(ws: WorkspaceInfo, name: string, pr: number, headBranch: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated> {
+  private async checkoutPrOne(ws: WorkspaceInfo, name: string, pr: number, headCommit: string, options?: WorktreeCreateOptions): Promise<WorktreeCreated> {
     const s = slug(name);
     if (!s || s !== name.trim() || !SLUG_PATTERN.test(s)) throw new Error("bad_name");
     if (!Number.isInteger(pr) || pr < 1) throw new Error("bad_pr");
-    // The head branch comes from `gh pr view` server-side; a remote-tracking ref
-    // names it without touching the caller's own branches. `--` keeps a branch
-    // name that looks like an option from being read as one.
-    const ref = `refs/remotes/origin/${headBranch}`;
-    // A ref origin has not named yet exits 128 ("Needed a single revision"), which
-    // is an answer (fetch it below), not a failure; a repo without a remote exits 1.
-    let resolved = (await git(["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], { cwd: ws.path, okExit: [1, 128] }).catch(() => "")).trim();
-    if (!resolved) {
-      await git(["fetch", "origin", "--", headBranch], { cwd: ws.path, timeoutMs: 60_000 });
-      resolved = (await git(["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], { cwd: ws.path, okExit: [1, 128] }).catch(() => "")).trim();
-      if (!resolved) throw new Error("bad_pr");
-    }
+    if (!/^[0-9a-f]{40}$/.test(headCommit)) throw new Error("bad_pr");
+    // `--` keeps the refspec from being read as an option; GitHub's own ref answers for a
+    // deleted or unknown PR with a fetch error, which is a bad number, not a bad tree.
+    await git(["fetch", "origin", "--", `pull/${pr}/head`], { cwd: ws.path, timeoutMs: 60_000 }).catch(() => {
+      throw new Error("bad_pr");
+    });
+    const fetched = (await git(["rev-parse", "--verify", "--end-of-options", "FETCH_HEAD^{commit}"], { cwd: ws.path, okExit: [1] })).trim();
+    if (!fetched) throw new Error("bad_pr");
+    if (fetched !== headCommit) throw new Error("pr_head_moved");
+    const resolved = fetched;
 
     const meta = await loadMeta(ws);
     if (meta.some((t) => t.pr === pr)) throw new Error("pr_taken");

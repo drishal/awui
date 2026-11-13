@@ -120,8 +120,7 @@ async function app(): Promise<{ t: TestApp; agent: Awaited<ReturnType<typeof sig
   writeFileSync(path.join(root, "a.txt"), "three\n");
   git(root, "add", ".");
   git(root, "commit", "-qm", "layer 3");
-  // The PR head branches live on the remote, as a real pull request's do: the
-  // checkout-pr flow fetches its base from origin.
+  // The PR head branches live on the remote, as a real pull request's do.
   git(root, "push", "-q", "origin", "main", "layer-1", "layer-2", "layer-3");
   // Each PR names the commit its branch is at, as gh's headRefOid does: #42's head branch
   // is layer-1's tip, and a merge must name exactly that.
@@ -132,6 +131,9 @@ async function app(): Promise<{ t: TestApp; agent: Awaited<ReturnType<typeof sig
     43: { state: "OPEN", base: "layer-1", head: "layer-2", oid: tip("layer-2") },
     44: { state: "OPEN", base: "layer-2", head: "layer-3", oid: tip("layer-3") },
   };
+  // GitHub serves every PR's head as `refs/pull/<n>/head`, which is what a checkout fetches:
+  // a fork's branch (`main`, say) is not this repository's branch of the same name.
+  for (const pr of [42, 43, 44]) git(remote, "update-ref", `refs/pull/${pr}/head`, prs[pr]!.oid);
   merges = [];
   autoDeleteBranches = true;
   writeFileSync(path.join(root, "gh-prs.json"), JSON.stringify(prs));
@@ -327,11 +329,41 @@ describe("checkout-pr and archive on merge", () => {
     expect(tree.pr).toBe(42);
     expect(tree.path.startsWith(path.join(root, ".awui", "worktrees", "pr-42-"))).toBe(true);
     expect(existsSync(tree.path)).toBe(true);
-    // The checkout's base is the PR head branch's commit as origin has it.
-    const headSha = git(root, "rev-parse", "origin/layer-1").trim();
-    expect(tree.base).toBe(headSha);
+    // The checkout's base is the head commit GitHub names for the PR.
+    expect(tree.base).toBe(git(remote, "rev-parse", "refs/pull/42/head").trim());
     const listed = (await agent.get(`/api/workspaces/${wsId}/worktrees`).expect(200)).body as { worktrees: Array<{ id: string; pr?: number }> };
     expect(listed.worktrees.find((w) => w.id === tree.id)?.pr).toBe(42);
+  });
+
+  it("checks out the pull request's own head commit, not a same-named branch", async () => {
+    const { agent, wsId } = await app();
+    // A fork's PR whose head branch is called `main`: this repository's own `main` is a
+    // different commit, so a checkout that trusted `origin/main` would take the wrong tree.
+    const forkMain = git(remote, "rev-parse", "layer-3").trim();
+    git(remote, "update-ref", "refs/pull/55/head", forkMain);
+    prs[55] = { state: "OPEN", base: "main", head: "main", oid: forkMain };
+    writeFileSync(path.join(root, "gh-prs.json"), JSON.stringify(prs));
+
+    const res = await agent.post(`/api/workspaces/${wsId}/worktrees/checkout-pr`).send({ pr: 55, name: "fork-main" }).expect(201);
+    const tree = res.body as { base: string; path: string };
+    expect(tree.base).toBe(forkMain);
+    // The work the PR carries, not this repository's main.
+    expect(readFileSync(path.join(tree.path, "a.txt"), "utf8")).toBe("three\n");
+    expect(git(root, "rev-parse", "origin/main").trim()).not.toBe(forkMain);
+  });
+
+  it("refuses a checkout whose fetched head is not the commit GitHub named", async () => {
+    const { agent, wsId } = await app();
+    // The PR's branch moved between gh's answer and the fetch: the tree would be a commit
+    // nobody named, so the checkout refuses instead of creating it.
+    git(remote, "update-ref", "refs/pull/56/head", git(remote, "rev-parse", "layer-2").trim());
+    prs[56] = { state: "OPEN", base: "main", head: "layer-2", oid: "f".repeat(40) };
+    writeFileSync(path.join(root, "gh-prs.json"), JSON.stringify(prs));
+    const res = await agent.post(`/api/workspaces/${wsId}/worktrees/checkout-pr`).send({ pr: 56, name: "moved-head" });
+    expect(res.status).toBe(409);
+    expect((res.body as { code?: string }).code).toBe("pr_head_moved");
+    const listed = (await agent.get(`/api/workspaces/${wsId}/worktrees`).expect(200)).body as { worktrees: Array<{ id: string }> };
+    expect(listed.worktrees).toHaveLength(0);
   });
 
   it("refuses a second checkout of the same PR, and an unknown one", async () => {
