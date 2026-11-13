@@ -1,0 +1,157 @@
+// Guest links: a real fake session shared by an owner, redeemed into one browser,
+// with owner-reviewed dispatch. Every case drives the actual routes.
+import { afterEach, describe, expect, it } from "vitest";
+import request from "supertest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { GuestStore } from "../../src/server/guests.js";
+import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
+import type { ChatItem } from "../../src/shared/protocol.js";
+
+let t: TestApp | undefined;
+afterEach(async () => { await t?.close(); });
+
+/** Real native fake session, settled, then shared by the owner. Returns the guest URL token. */
+async function fixture() {
+  const app = t = await makeTestApp();
+  const owner = await signedIn(app);
+  const workspace = (await owner.post("/api/workspaces/open").send({ path: app.project })).body as { id: string };
+  const chat = (await owner.post(`/api/chats`).send({ harnessId: "fake", workspaceId: workspace.id })).body as { chatId?: string };
+  if (!chat.chatId) throw new Error("No real native chat was started: " + JSON.stringify(chat));
+  await owner.post(`/api/chats/${chat.chatId}/messages`).send({ text: "Seed prompt" });
+  let sessionId: string | undefined;
+  for (let i = 0; i < 100 && !sessionId; i++) {
+    sessionId = app.manager.list().find((row) => row.chatId === chat.chatId)?.sessionId ?? undefined;
+    if (!sessionId) await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  if (!sessionId?.startsWith("fake:")) throw new Error("actual fake session missing: " + String(sessionId));
+  const native = sessionId.slice("fake:".length);
+  const share = await owner.post(`/api/guests/fake/${encodeURIComponent(native)}`).send({ workspaceId: workspace.id });
+  expect(share.status).toBe(200);
+  const guestId = (share.body as { guest: { id: string } }).guest.id;
+  const token = (share.body as { url: string }).url.slice("/guest/".length);
+  return { owner, workspace, native, guestId, token, chatId: chat.chatId };
+}
+
+/** Waits for a predicate, the shared pattern for live fake sessions. */
+async function until(predicate: () => boolean, ms = 8000) {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > ms) throw new Error("timeout");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
+describe("bounded expiring guest links", () => {
+  it("issues a hashed token, binds one browser, and refuses a second", async () => {
+    const { token } = await fixture();
+    // The plaintext token appears once (the create response); the store keeps only its hash.
+    expect(readFileSync(path.join(t!.stateDir, "guest-sessions.json"), "utf8")).not.toContain(token);
+    const guest = request.agent(t!.server);
+    const first = await guest.post("/api/guests/redeem").send({ token });
+    expect(first.status).toBe(200);
+    const meta = await guest.get("/api/guest");
+    expect(meta.status).toBe(200);
+    expect(meta.body).toMatchObject({ harnessId: "fake", browserSession: "bound", expiresAt: expect.any(Number) });
+    expect(meta.body.id).toMatch(/^[a-f0-9]{32}$/);
+    // A different browser (no cookie jar) is refused: the link is already claimed.
+    const second = await request(t!.server).post("/api/guests/redeem").send({ token });
+    expect(second.status).toBe(403);
+    expect(second.body.code).toBe("guest_in_use");
+  });
+
+  it("shows the guest only title, harness, workspace name, expiry, and pending queue", async () => {
+    const { token } = await fixture();
+    const jar = request.agent(t!.server);
+    const guest = await jar.post("/api/guests/redeem").send({ token });
+    expect(guest.status).toBe(200);
+    const view = guest.body.guest as Record<string, unknown>;
+    expect(Object.keys(view).sort()).toEqual(["browserSession", "expiresAt", "harnessId", "id", "pending", "title", "workspaceName"]);
+    expect(view).not.toHaveProperty("workspace");
+    expect(view).not.toHaveProperty("tokenHash");
+    const meta = await jar.get("/api/guest");
+    expect(Object.keys(meta.body).sort()).toEqual(["browserSession", "expiresAt", "harnessId", "id", "pending", "title", "workspaceName"]);
+  });
+
+  it("projects text-only history: user and assistant text, no tool output or thinking", async () => {
+    const rows: ChatItem[] = [
+      { kind: "user", id: "u1", text: "one visible prompt" },
+      { kind: "assistant", id: "a1", text: "explicit answer", thinking: "private thought", streaming: false },
+      { kind: "tool", id: "t1", name: "write", args: "{\"text\":\"x\"}", status: "done", category: "write", output: "secret tool output", truncated: false, summary: "w", paths: [] },
+      { kind: "request", id: "r1", text: "an approval request" },
+    ] as unknown as ChatItem[];
+    expect(GuestStore.history(rows)).toEqual([
+      { id: "u1", kind: "user", text: "one visible prompt", at: undefined },
+      { id: "a1", kind: "assistant", text: "explicit answer", at: undefined },
+    ]);
+  });
+
+  it("queues a guest message for owner review, idempotent by retry id", async () => {
+    const { guestId, token } = await fixture();
+    const guest = request.agent(t!.server);
+    await guest.post("/api/guests/redeem").send({ token });
+    const first = await guest.post("/api/guest/messages").send({ text: "Please consider this", requestId: "guestflow1" });
+    expect(first.status).toBe(202);
+    expect(first.body.accepted).toBe("owner_review");
+    // The same retry id and content is a no-op; a changed content with the same id is a conflict.
+    expect((await guest.post("/api/guest/messages").send({ text: "Please consider this", requestId: "guestflow1" })).status).toBe(202);
+    expect((await guest.post("/api/guest/messages").send({ text: "Different text", requestId: "guestflow1" })).status).toBe(409);
+    const pending = ((await guest.get("/api/guest")).body as { pending: Array<{ id: string; state?: string }> }).pending;
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.state === undefined || pending[0]!.state === "queued").toBe(true);
+    expect(typeof pending[0]!.id).toBe("string");
+    // Only the owner can release it; a guest cookie on an owner route is refused.
+    expect((await guest.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/send`).send({})).status).toBe(403);
+  });
+
+  it("sends accepted visitor content on to the exact session once the owner releases it", async () => {
+    const { owner, guestId, token, chatId } = await fixture();
+    const guest = request.agent(t!.server);
+    await guest.post("/api/guests/redeem").send({ token });
+    await guest.post("/api/guest/messages").send({ text: "A queued request", requestId: "clientchecka" });
+    const pending = ((await guest.get("/api/guest")).body as { pending: Array<{ id: string }> }).pending;
+    expect(pending).toHaveLength(1);
+    await until(() => t!.manager.get(chatId).status === "idle");
+    const sent = await owner.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/send`).send({});
+    expect(sent.status).toBe(200);
+    expect(sent.body.ok).toBe(true);
+    // The native session received exactly the guest text as its next prompt.
+    await until(() => t!.manager.get(chatId).snapshot().items.some((item) => item.kind === "user" && item.text === "A queued request"));
+    expect(t!.manager.get(chatId).snapshot().items.some((item) => item.kind === "user" && item.text === "A queued request")).toBe(true);
+    // The message is now sent: dismissing a sent message is refused, and the queue is empty.
+    expect((await guest.get("/api/guest")).body.pending).toHaveLength(0);
+    expect((await owner.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/dismiss`).send({})).status).toBe(404);
+  });
+
+  it("keeps the message queued when the session is busy, then releases it after", async () => {
+    const { owner, guestId, token, chatId } = await fixture();
+    const guest = request.agent(t!.server);
+    await guest.post("/api/guests/redeem").send({ token });
+    // While the seed run is still live, a release is refused and the message stays queued.
+    await guest.post("/api/guest/messages").send({ text: "While busy", requestId: "busycheck1" });
+    const pending = ((await guest.get("/api/guest")).body as { pending: Array<{ id: string }> }).pending;
+    const busy = await owner.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/send`).send({});
+    if (busy.status === 409) {
+      expect(busy.body.code).toBe("busy");
+      expect((await guest.get("/api/guest")).body.pending).toHaveLength(1);
+      // Wait for the seed run to settle, then the same release succeeds.
+      await until(() => t!.manager.get(chatId).status === "idle");
+      expect((await owner.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/send`).send({})).status).toBe(200);
+      await until(() => t!.manager.get(chatId).snapshot().items.some((item) => item.kind === "user" && item.text === "While busy"));
+    } else {
+      // The run already settled: the release went straight through.
+      expect(busy.status).toBe(200);
+    }
+  });
+
+  it("drops the guest's access as soon as the owner revokes the link", async () => {
+    const { owner, guestId, token } = await fixture();
+    const guest = request.agent(t!.server);
+    await guest.post("/api/guests/redeem").send({ token });
+    expect((await guest.get("/api/guest")).status).toBe(200);
+    expect((await owner.delete(`/api/guests/${guestId}`)).status).toBe(200);
+    const after = await guest.get("/api/guest");
+    expect(after.status).toBe(410);
+    expect(after.body.code).toBe("guest_expired");
+  });
+});

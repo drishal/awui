@@ -165,6 +165,9 @@ src/server/
                               viewer's confinement), for the review panel's "written by the agent" marks.
   second-opinions.ts          One turn sent to another harness, recorded per chat in the state folder (bounded), plus the
                               reply's opening words read back from that chat each time it is listed.
+  guests.ts                   Expiring single-chat guest links: SHA-256-hashed token and browser binding, one
+                              browser per link, a text-only history, and an owner-reviewed message queue; the web
+                              view is `src/web/guest-view.tsx` (standalone /guest/:token, outside the app shell).
   project-files.ts            A project's files for @mention pickers (git ls-files, else a bounded walk).
   project-search.ts           Search in project: bounded `git grep -F` (else a scan of project-files' walk).
   file-view.ts                The file viewer: one of the project's own files (project-files' list), realpath-confined, bounded.

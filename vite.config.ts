@@ -6,7 +6,9 @@ const backend = `http://127.0.0.1:${process.env.PORT ?? "4783"}`;
 
 export default defineConfig({
   root: "src/web",
-  base: "./",
+  // Root-relative assets: the guest page (/guest/:token) serves this same index.html,
+  // where a relative ./assets URL would resolve to /guest/assets and get index.html back.
+  base: "/",
   plugins: [react()],
   build: {
     outDir: "../../dist/web",

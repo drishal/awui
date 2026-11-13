@@ -545,6 +545,19 @@
   margin-top: 14px;
 }
 
+/* The guest link's URL in the Share dialog: bounded, breakable, quiet. */
+.share-url {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted-text);
+  padding: 6px 8px;
+  background: var(--surface);
+  border-radius: 6px;
+}
+
 /* Snoozing until a time you pick: one field and the two buttons. */
 .snooze-form {
   display: flex;

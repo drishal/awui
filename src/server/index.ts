@@ -15,6 +15,7 @@ import { HarnessRegistry } from "./harness/registry.js";
 import { hashPassword, loadCredentials, PasswordAuth } from "./auth.js";
 import { cachedLanHosts, sampleLanHosts } from "./network.js";
 import { loadOrCreateSecret, Security } from "./security.js";
+import { GuestStore } from "./guests.js";
 import { InviteStore, invitesFileOf } from "./grants.js";
 import { embeddedVersion, extractEmbeddedExtensions, isEmbedded } from "./embedded.js";
 import "./assets.gen.js";
@@ -341,6 +342,7 @@ async function main(): Promise<void> {
     presence,
     boards,
     checkpointsDir: path.join(config.stateDir, "checkpoints"),
+    guests: new GuestStore(path.join(config.stateDir, "guest-sessions.json")),
     stateDir: config.stateDir,
     invites: new InviteStore(invitesFileOf(config.stateDir)),
     orchestrationLimits: orchLimits,

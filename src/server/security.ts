@@ -223,6 +223,32 @@ export class Security {
     return this.session(req, authority)?.g ?? null;
   }
 
+  /**
+   * A guest link's browser key, from the same signed cookie shape but valid even on a
+   * local server without password sign-in. Guest routes are the only callers: this never
+   * becomes a full session, and `GuestStore` still checks expiry and revocation itself.
+   */
+  guestBrowserKey(req: Request, authority: string): string | null {
+    const password = this.options.password;
+    const value = this.readCookie(req);
+    if (!value) return null;
+    const dot = value.indexOf(".");
+    if (dot <= 0) return null;
+    const payload = value.slice(0, dot);
+    const given = Buffer.from(value.slice(dot + 1));
+    const expected = Buffer.from(this.sign(payload));
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
+    try {
+      const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { h?: string; exp?: number; f?: string; g?: unknown };
+      if (data.h !== authority || typeof data.exp !== "number" || data.exp <= Date.now()) return null;
+      if (password && data.f !== password.fingerprint) return null;
+      const g = typeof data.g === "string" && data.g.length <= 64 ? data.g : undefined;
+      return g ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   /** POST /api/login { username, password }. */
   login = async (req: Request, res: Response): Promise<void> => {
     res.setHeader("Cache-Control", "no-store");

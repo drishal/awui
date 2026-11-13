@@ -301,6 +301,9 @@ export function App() {
   const [opening, setOpening] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  /** The guest link's URL once created (Share); null when the dialog is closed. */
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
   const [closingChat, setClosingChat] = useState<ChatState | null>(null);
   const [closingBusy, setClosingBusy] = useState(false);
   const [pairOpen, setPairOpen] = useState(false);
@@ -1626,6 +1629,22 @@ export function App() {
       fail(e);
     }
   };
+
+  /** Shares this chat as an expiring guest link; the URL is shown once for copying. */
+  const shareChat = async (): Promise<void> => {
+    if (!chat?.sessionId) return;
+    setShareBusy(true);
+    try {
+      const native = chat.sessionId.includes(":") ? chat.sessionId.slice(chat.sessionId.indexOf(":") + 1) : chat.sessionId;
+      const out = await api<{ url: string }>(`/api/guests/${chat.harnessId}/${encodeURIComponent(native)}`, { body: { workspaceId: chat.workspace.id } });
+      setShareUrl(out.url);
+      setMenuOpen(false);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setShareBusy(false);
+    }
+  };
   const answer = async (requestId: string, a: InteractionAnswer, denialReason?: string) => {
     if (!chat) return;
     try {
@@ -2411,6 +2430,13 @@ export function App() {
                         </button>
                       </li>
                     ) : null}
+                    {chat.sessionId ? (
+                      <li role="none">
+                        <button type="button" role="menuitem" disabled={shareBusy} onClick={() => void shareChat()}>
+                          Share as guest link
+                        </button>
+                      </li>
+                    ) : null}
                     <li role="none">
                       <button type="button" role="menuitem" disabled={!hasPrompt} onClick={exportChat}>
                         Export as Markdown
@@ -2799,6 +2825,21 @@ export function App() {
             }
           }}
         />
+      ) : null}
+      {shareUrl ? (
+        <Dialog title="Guest link" onClose={() => setShareUrl(null)}>
+          <p>Anyone with this link sees this chat's text (replies included) for 24 hours, and can queue a message you send yourself. Messages never run before you release them.</p>
+          <p className="muted">The link is bound to the first browser that opens it; a second is refused.</p>
+          <div className="dialog-actions">
+            <code className="share-url">{shareUrl}</code>
+            <button type="button" className="btn" onClick={() => void navigator.clipboard?.writeText(new URL(shareUrl, location.origin).toString())}>
+              Copy link
+            </button>
+            <button type="button" className="btn btn-quiet" onClick={() => setShareUrl(null)}>
+              Done
+            </button>
+          </div>
+        </Dialog>
       ) : null}
       {herdrAsk ? (
         <HerdrDialog

@@ -188,6 +188,7 @@ import { PrStacks } from "./stacks.js";
 import { readTour } from "./pr-tour.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
 import { performRenderAction } from "./render-browser.js";
+import { GuestStore } from "./guests.js";
 import { Orchestrator } from "./orchestration/orchestrator.js";
 import { IntegrationReview, type IntegrationRecord, type ReviewProject } from "./orchestration/review.js";
 import { ORCH_TOOLS } from "./orchestration/tools.js";
@@ -220,6 +221,8 @@ export interface AppDeps {
   stateDir?: string | null;
   /** Limited-session invitations (grants.ts); in memory when absent. */
   invites?: InviteStore;
+  /** Expiring single-chat guest invitations and owner-reviewed queue; separate from native transcripts. */
+  guests?: GuestStore;
   heartbeatMs?: number;
   /** Pinned and archived sessions; in memory when absent. */
   marks?: SessionMarks;
@@ -459,15 +462,15 @@ export async function createApp(deps: AppDeps) {
   // memory when absent (tests). The per-route gate resolves the session's list at each
   // use, so a revocation or an edit applies without a restart.
   const invites = deps.invites ?? new InviteStore(deps.stateDir ? invitesFileOf(deps.stateDir) : null);
+  const guests = deps.guests ?? new GuestStore(deps.stateDir ? `${deps.stateDir}/guest-sessions.json` : null);
   // The store reads its file once, at construction; the first request awaits that read
   // (express 5 runs async middlewares), so no gate resolves before the list is loaded.
   const grantsOf: GrantsOfFn = async (req, res) => {
-    if (res.locals.local === true) return null;
-    const id = security.inviteId(req, res.locals.authority as string);
-    // A session bound to an invitation is limited for its cookie's lifetime: a revoked
-    // id resolves to an empty allow list (every gate refuses, 403 missing_grant) — never
-    // a silent fall back to full access. Only a session with no invitation is full.
-    if (id) return (await invites.getAfterLoad(id))?.grants ?? [];
+    // A guest link's cookie limits its session even on a local server without a password:
+    // only the invitation's allow list, never a silent fall back to full access. A revoked
+    // id resolves to an empty list (every gate refuses, 403 missing_grant).
+    const guestId = security.guestBrowserKey(req, res.locals.authority as string);
+    if (guestId) return (await invites.getAfterLoad(guestId))?.grants ?? [];
     return null;
   };
   const requireGrant = makeRequireGrant(grantsOf);
@@ -813,6 +816,88 @@ export async function createApp(deps: AppDeps) {
     });
     if (!ran.chat) throw new ChatError(409, "routine_skipped", ran.detail ?? "The precheck skipped this run");
     res.status(202).json({ ok: true, chatId: ran.chat.chatId, runId: ran.run?.id ?? null });
+  });
+
+  // Guest links are not logins. A redeemed token becomes one browser-scoped,
+  // signed invitation whose chat is immutable and whose history is text-only.
+  // Owner-only operations still require semantic grants elsewhere, so visitors can't make
+  // themselves owners by knowing a URL or a shared invitation id.
+
+
+  app.get("/api/guests/:harnessId/:nativeId", requireGrant("chat.read"), async (req, res) => {
+    res.json({ guests: await guests.list(req.params.nativeId) });
+  });
+  app.post("/api/guests/:harnessId/:nativeId", requireGrant("chat.write"), express.json({ limit: "8kb" }), async (req, res) => {
+    const source = req.body as Record<string, unknown> | undefined;
+    if (typeof source?.workspaceId !== "string") throw new ChatError(400, "invalid_target", "The selected chat's project is required");
+    const nativeId = Array.isArray(req.params.nativeId) ? req.params.nativeId[0] : req.params.nativeId;
+    if (nativeId.length < 1 || nativeId.length > 512) throw new ChatError(400, "invalid_target", "This is not a signed-in native session");
+    const harnessId = typeof req.params.harnessId === "string" ? req.params.harnessId : "";
+    const adapter = registry.get(harnessId);
+    if (!adapter) throw new ChatError(404, "unknown_harness", "The selected harness is not available");
+    const workspace = await workspaces.get(source.workspaceId);
+    const chat = manager.peek(`${harnessId}:${nativeId}`) ?? manager.list().find((candidate) => candidate.harnessId === harnessId && candidate.nativeId === nativeId) ?? await manager.resume(adapter, workspace, nativeId);
+    if (chat.owner || chat.side) throw new ChatError(403, "board_owned", "Board or side chats cannot be shared externally");
+    const out = await guests.create({ harnessId, nativeId, workspace, title: chat.title });
+    res.json({ guest: out.record, url: `/guest/${out.token}` });
+  });
+  app.post("/api/guests/redeem", express.json({ limit: "8kb" }), async (req, res) => {
+    const token = typeof req.body?.token === "string" ? req.body.token : "";
+    const activeCookie = security.guestBrowserKey(req, res.locals.authority as string) ?? undefined;
+    const active = await guests.redeem(token, activeCookie ?? undefined);
+    const sessionKey = active.browserKey;
+    res.setHeader("Set-Cookie", security.issueCookie(res.locals.authority as string, res.locals.hostKind === "remote", sessionKey));
+    res.json({ guest: active.view });
+  });
+  app.get("/api/guest", async (req, res) => {
+    const id = security.guestBrowserKey(req, res.locals.authority as string);
+    if (!id) throw new ChatError(401, "guest_required", "No active guest session admitted");
+    const guest = await guests.session(id);
+    res.json(guest);
+  });
+  app.get("/api/guest/history", async (req, res) => {
+    const id = security.guestBrowserKey(req, res.locals.authority as string);
+    if (!id) throw new ChatError(401, "guest_required", "No active guest session admitted");
+    const guest = await guests.session(id);
+    const info = await guests.target(guest.id);
+    const adapter = registry.get(info.harnessId);
+    if (!adapter) throw new ChatError(404, "unknown_harness", "No such harness");
+    const workspace = await workspaces.get(info.workspace.id);
+    const live = manager.liveChatFor(info.harnessId, info.nativeId);
+    const chat = live ?? await manager.resume(adapter, workspace, info.nativeId);
+    const items = live ? chat.snapshot().items : (await adapter.readTranscript?.({ cwd: workspace.path, nativeId: chat.nativeId ?? info.nativeId }) ?? null)?.items ?? [];
+    res.json({ title: info.title, harnessId: info.harnessId, workspaceName: info.workspace.name, history: GuestStore.history(items), expiresAt: guest.expiresAt });
+  });
+  app.post("/api/guest/messages", express.json({ limit: "16kb" }), async (req, res) => {
+    const id = security.guestBrowserKey(req, res.locals.authority as string);
+    if (!id) throw new ChatError(401, "guest_required", "No active guest session admitted");
+    if (typeof req.body?.text !== "string" || typeof req.body.requestId !== "string") throw new ChatError(400, "invalid_request", "Guest needs bounded text and a retry id");
+    await guests.offer(id, req.body.requestId, req.body.text);
+    res.status(202).json({ accepted: "owner_review" });
+  });
+  app.post("/api/guests/:id/messages/:messageId/send", requireGrant("chat.write"), async (req, res) => {
+    const text = await guests.claim(req.params.id, req.params.messageId);
+    if (text === null) throw new ChatError(404, "guest_message_missing", "No queued guest message to release");
+    const ref = await guests.target(req.params.id);
+    await workspaces.get(ref.workspace.id);
+    const chat = await manager.resume(registry.get(ref.harnessId)!, ref.workspace, ref.nativeId);
+    try {
+      await chat.send(text, "normal", [], { origin: "agent" });
+      await guests.markSent(req.params.id, req.params.messageId);
+      res.json({ ok: true });
+    } catch (error) {
+      await guests.requeue(req.params.id, req.params.messageId);
+      throw error;
+    }
+  });
+  app.post("/api/guests/:id/messages/:messageId/dismiss", requireGrant("chat.write"), async (req, res) => {
+    const result = await guests.dismiss(req.params.id, req.params.messageId);
+    if (!result) throw new ChatError(404, "guest_message_missing", "No queued guest message to dismiss");
+    res.json({ ok: true });
+  });
+  app.delete("/api/guests/:id", requireGrant("chat.write"), async (req, res) => {
+    if (!(await guests.revoke(req.params.id))) throw new ChatError(404, "guest_not_found", "No active guest invitation is available to revoke");
+    res.json({ ok: true });
   });
 
   app.use("/api", security.requireAuth, (_req, res, next) => {

@@ -1,0 +1,103 @@
+/* The standalone guest page (/guest/:token): one centered card, no app chrome.
+   Tokens come from styles.css (this file is imported after the base cascade). */
+
+.guest {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.guest-card {
+  width: min(680px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guest-head h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.guest-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.guest-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.guest-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--card);
+}
+
+.guest-item p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.guest-role {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.guest-assistant {
+  border-inline-start: 2px solid var(--accent);
+}
+
+.guest-notice {
+  margin: 0;
+  font-size: 13px;
+  color: var(--success, var(--text));
+}
+
+.guest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guest-form textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.guest-form button {
+  align-self: flex-end;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guest-card,
+  .guest-item {
+    transition: none;
+  }
+}
