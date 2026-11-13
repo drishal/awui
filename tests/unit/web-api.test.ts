@@ -60,3 +60,34 @@ describe("the browser client's idempotency keys", () => {
     expect(one).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
   });
 });
+
+describe("reads in flight", () => {
+  it("shares one request between identical reads that overlap, and hands each caller its own copy", async () => {
+    stubFetch();
+    const [a, b] = await Promise.all([api<{ ok: boolean }>("/api/sessions"), api<{ ok: boolean }>("/api/sessions")]);
+    expect(sent).toHaveLength(1);
+    expect(a).toEqual({ ok: true });
+    expect(a).not.toBe(b);
+    await api("/api/sessions");
+    expect(sent).toHaveLength(2);
+  });
+
+  it("does not join reads of different paths, or a read made after a change began", async () => {
+    stubFetch();
+    await Promise.all([api("/api/sessions"), api("/api/sessions?path=%2Fp")]);
+    expect(sent).toHaveLength(2);
+    sent.length = 0;
+    const first = api("/api/sessions");
+    const change = api("/api/chats/c1/rename", { body: { title: "x" } });
+    const second = api("/api/sessions");
+    await Promise.all([first, change, second]);
+    expect(sent.map((s) => s.url)).toEqual(["/api/sessions", "/api/chats/c1/rename", "/api/sessions"]);
+  });
+
+  it("gives every joined caller the same error", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ error: "nope", code: "bad" }), { status: 409 })) as unknown as typeof fetch;
+    const results = await Promise.allSettled([api("/api/x"), api("/api/x")]);
+    expect(results.map((r) => (r.status === "rejected" ? (r.reason as { code: string }).code : "ok"))).toEqual(["bad", "bad"]);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+});
