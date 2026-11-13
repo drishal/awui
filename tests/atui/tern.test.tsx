@@ -523,7 +523,7 @@ describe("awui tern", () => {
     await until(() => !open(), "Esc to close it");
 
     // From the key, and a click on Close.
-    tern.type("\x18u");
+    tern.type("\x18i");
     await until(() => open() && tern.find("overlay", "layer")[0]?.p.meta === "last 30 days" && tiles().includes(shortTokens(tokensOf(report.totals))), "the report again");
     tern.event({ ev: "action", id: "layer.usage.end.close", act: "click" });
     await until(() => !open(), "the Close button");
@@ -535,7 +535,7 @@ describe("awui tern", () => {
     try {
       client = await start("alpha", slow.base);
       const { tern, until } = client;
-      tern.type("\x18u");
+      tern.type("\x18i");
       await until(() => tern.text("layer").includes("Reading sessions"), "the wait");
       expect(tern.find("spinner", "layer").length).toBe(1);
       expect(tern.find("stats", "layer")).toEqual([]);
@@ -549,7 +549,7 @@ describe("awui tern", () => {
     try {
       client = await start("alpha", broken.base);
       const { tern, until } = client;
-      tern.type("\x18u");
+      tern.type("\x18i");
       await until(() => tern.text("layer").includes("Could not read usage: Usage cannot be read now"), "the error");
       expect(tern.find("stats", "layer")).toEqual([]);
       expect(tern.find("spinner", "layer")).toEqual([]);
@@ -853,14 +853,14 @@ describe("awui tern", () => {
 /** The chat settled: idle with an answer on the record (a fresh chat's snapshot is idle before its run starts). */
 const settled = (c: Client) => c.until(() => (c.app.chat()?.status === "idle" && c.app.chat()?.items.some((i) => i.kind === "assistant")) === true, "the run settled");
 
-  it("works git from the C-x j screen: a file's diff, staging, and a commit", async () => {
+  it("works git from the C-x u screen: a file's diff, staging, and a commit", async () => {
     const dir = repo("gittern");
     client = await start("gittern");
     const { tern, app, until } = client;
     tern.type("edit please\r");
     await settled(client as Client);
     await until(() => (app.git()?.files.length ?? 0) === 1, "the edit on disk");
-    leader("j");
+    leader("u");
     await until(() => screens().includes("Git"), "the git screen");
     await until(() => tern.text("layer").includes("src/app.ts"), "the status");
     const view = tern.text("layer");

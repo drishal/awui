@@ -602,8 +602,10 @@ describe("atui", () => {
       ].join("\n"),
     }));
     ui = await mount(dir, { height: 44 });
-    ui.keys.pressKey("x", { ctrl: true });
-    await ui.type("p");
+    // GitHub stands on the palette (no leader letter is free in both clients).
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.type("github");
+    ui.keys.pressEnter();
     const panel = await ui.until("Pull request  https://github.com/acme/repo/pull/7");
     expect(panel).toContain("main");
     expect(panel).toContain("1/2 checks passing · failing: e2e");
@@ -644,9 +646,9 @@ describe("atui", () => {
     await ui.type("edit please");
     ui.keys.pressEnter();
     await idle(ui);
-    // C-x j opens the panel on the chat's project, the file under Changed with its word.
+    // C-x u opens the panel on the chat's project, the file under Changed with its word.
     ui.keys.pressKey("x", { ctrl: true });
-    await ui.type("j");
+    await ui.type("u");
     const panel = await ui.until("M src/app.ts");
     expect(panel).toContain("Stage");
     expect(panel).not.toContain("Unstage");
