@@ -882,6 +882,9 @@ export class Orchestrator {
     const taskId = (out.data as { taskId: string }).taskId;
     const started = this.ownTask(caller, taskId);
     const { promise, resolve, reject } = Promise.withResolvers<void>();
+    // A worker can fail before the plan reaches this task's turn to be awaited; without a handler that rejection is unhandled
+    // (it crashes a Node process by default). The rejection is still there for whoever awaits `done`.
+    promise.catch(() => {});
     planWaiters.set(taskId, { resolve, reject });
     if (started.state === "result_available") {
       planWaiters.delete(taskId);
