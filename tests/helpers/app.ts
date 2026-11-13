@@ -50,6 +50,8 @@ export interface TestApp {
 }
 
 export async function makeTestApp(options: {
+  /** Extra real adapters for custom-ACP fixtures (not a mock: discovery still runs). */
+  extraHarnesses?: FakeAdapter[];
   allowedHosts?: string[];
   allowedTailscaleUsers?: string[];
   /** Configure a login so other devices can sign in. */
@@ -88,6 +90,7 @@ export async function makeTestApp(options: {
   const project = path.join(root, "proj");
   mkdirSync(project);
   const registry = new HarnessRegistry();
+  for (const adapter of options.extraHarnesses ?? []) registry.register(adapter);
   const fake = new FakeAdapter({ chunkDelayMs: options.chunkDelayMs ?? 2, ...(options.fakeStopDelayMs ? { stopDelayMs: options.fakeStopDelayMs } : {}) });
   registry.register(fake);
   registry.register(
@@ -150,7 +153,7 @@ export async function makeTestApp(options: {
     ...(options.withSettings
       ? {
           settings: {
-            configDir: path.join(root, "settings"),
+            configDir: options.configDir ?? path.join(root, "settings"),
             running: { port: 4783, host: "127.0.0.1" as const, username: "", password: null, workspaceRoots: [root], allowedHosts: [], allowedTailscaleUsers: [], acpAgents: "[]" },
             envSet: new Set<string>(),
             credentialsFile: path.join(root, "credentials.json"),
