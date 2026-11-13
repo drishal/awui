@@ -30,19 +30,10 @@
   opacity: 0.6;
 }
 
-/* The model belongs to the harness beside it: the same hue, a lighter wash and no edge, so the pair reads as one
-   "who and which" while the harness chip (identity's main mark) stays the stronger of the two. */
-.pill-trigger.model-trigger {
-  background: color-mix(in oklab, var(--harness, var(--muted)) 7%, var(--hover));
-}
-
-.pill-trigger.model-trigger:hover:not(:disabled),
-.pill-trigger.model-trigger[aria-expanded="true"] {
-  background: color-mix(in oklab, var(--harness, var(--muted)) 12%, var(--active));
-}
-
+/* The model is a setting, not a second identity mark: neutral, so it never repeats the harness hue beside it
+   (two chips of one hue read as one blob; the harness chip is the row's one leading colour). */
 .pill-trigger.model-trigger > .icon {
-  color: color-mix(in oklab, var(--harness, var(--muted)) 70%, var(--muted-text));
+  color: var(--muted-text);
 }
 
 .pill-label {

@@ -1007,9 +1007,9 @@
   color: var(--danger);
 }
 
-/* Neutral below 60 %, then the ramp the tones give; atui's contextTone agrees. */
+/* Quiet (neutral) until the warn tone takes over; atui's contextTone agrees. Green here would be a fourth hue in the row. */
 .context-ring.tone-ok {
-  color: var(--ok);
+  color: var(--muted-text);
 }
 
 /* Thinking chip: a ramp on --thinking by data-level. off/minimal stay neutral; from low up the wash deepens
