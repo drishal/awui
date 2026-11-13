@@ -29,7 +29,9 @@ test("Running lists only the chats that are working, and Clear filter brings the
   // The run ends; the chip stays on, so the list says nothing matches and offers the way out.
   await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });
   await showSidebar(page);
-  await sidebar(page).getByRole("button", { name: "Clear filter" }).click();
+  const clear = sidebar(page).getByRole("button", { name: "Clear filter" });
+  await expect(clear).toBeVisible({ timeout: 10_000 });
+  await clear.click();
   await expect(sidebar(page).getByRole("button", { name: "Clear filter" })).toHaveCount(0);
   await expect(row(page, "idle chat for the filter")).toHaveCount(1);
   await expect(row(page, "slow stream for the running filter")).toHaveCount(1);

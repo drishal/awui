@@ -296,6 +296,18 @@
   color: var(--text);
 }
 
+/* Needs you: the attention colour when there is something to answer; Running: the primary one. */
+.quick-chip[data-kind="needs"][data-nonzero] {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--text);
+}
+
+.quick-chip[data-kind="running"][data-nonzero] {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 .quick-count {
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
@@ -587,7 +599,8 @@
 }
 
 .session.is-active {
-  background: var(--active);
+  background: color-mix(in oklab, var(--harness, var(--accent)) var(--tint), var(--surface-2));
+  box-shadow: inset 2px 0 0 var(--harness, var(--accent));
 }
 
 .session-title {

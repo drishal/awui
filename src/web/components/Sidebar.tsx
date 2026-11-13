@@ -1270,7 +1270,7 @@ export function Sidebar(props: {
           {!selection.on ? (
             <div className="quick-filters" role="group" aria-label="Filter sessions">
               {chipsShown(quickCount, quick).map((f) => (
-                <button key={f} type="button" className="quick-chip" aria-pressed={quick === f} onClick={() => pickQuick(quick === f ? null : f)}>
+                <button key={f} type="button" className="quick-chip" data-kind={f} data-nonzero={quickCount[f] > 0 ? "" : undefined} aria-pressed={quick === f} onClick={() => pickQuick(quick === f ? null : f)}>
                   {QUICK_LABELS[f]} <span className="quick-count">{quickCount[f]}</span>
                 </button>
               ))}
