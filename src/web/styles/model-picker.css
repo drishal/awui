@@ -456,8 +456,9 @@
   margin-left: auto;
 }
 
-/* The same quiet chip as the model, thinking, and permission ones beside it: the harness's
-   colour identifies its mark, not a fill, so the agent's name does not outrank the settings. */
+/* The one chip that says who answers: a faint wash and edge in the harness's colour (identity is that hue's only job),
+   where the model, thinking, and permission chips beside it stay neutral. The wash is a tint, not a fill, so the
+   agent's name does not outrank the settings. */
 button.harness-chip {
   justify-content: center;
   gap: 7px;
@@ -469,7 +470,8 @@ button.harness-chip {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  background: var(--hover);
+  background: color-mix(in oklab, var(--harness, var(--muted)) var(--tint), var(--hover));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--harness, var(--muted)) 24%, transparent);
   color: var(--text-2);
 }
 
@@ -482,7 +484,7 @@ button.harness-chip > .harness-dot {
 
 button.harness-chip:hover:not(:disabled),
 button.harness-chip[aria-expanded="true"] {
-  background: var(--active);
+  background: color-mix(in oklab, var(--harness, var(--muted)) var(--tint-strong), var(--active));
   color: var(--text);
 }
 
