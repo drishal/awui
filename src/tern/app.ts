@@ -1023,10 +1023,18 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           heading.project ? [span(heading.before), span(heading.project, "accent"), span(heading.after)] : [span(heading.title)],
         ),
         ui.text({ key: "sub" }, span(sub, "muted")),
-        ui.row(
-          { key: "try", role: "awui.harnesses" },
-          startExamples(h?.id ?? null).map((text, i) => html.button({ key: `x${i}`, class: "pick", text, title: "Put this in the box", onClick: () => void setDraft((s) => setText(s, text)) })),
-        ),
+        // The three things to try as Tern's own suggested prompts (its chips, with the click that puts the
+        // words in the composer), rather than buttons of ours that only look like buttons.
+        ui.suggestions({
+          key: "try",
+          role: "awui.harnesses",
+          variant: "chips",
+          items: startExamples(h?.id ?? null).map((text, i) => ({ id: String(i), text })),
+          onActivate: (e) => {
+            const text = startExamples(h?.id ?? null)[Number(e.item)];
+            if (text) void setDraft((s) => setText(s, text));
+          },
+        }),
         recent.length > 0
           ? ui.list(
               {

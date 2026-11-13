@@ -152,11 +152,24 @@ describe("awui tern", () => {
     expect(tern.sent.some((m) => m.verb === "s" && (m.body as { name: string }).name === "awui")).toBe(true);
     expect(tern.sent.some((m) => m.verb === "s" && (m.body as { name: string }).name === "awui-theme")).toBe(true);
     expect(tern.text("main")).toContain("What should Fake do in alpha?");
-    expect(tern.text("main")).toContain("Explain this project's structure");
+    // The three things to try are Tern's suggested prompts, so their words live in the node's items.
+    expect((tern.find("suggestions", "main")[0]?.p.items as Array<{ text: string }>).map((i) => i.text)).toContain("Explain this project's structure");
     expect(tern.focus).toBe("dock.d.comp.ed");
     expect(tern.errors).toEqual([]);
   });
 
+  it("puts a suggested prompt in the composer, as the web UI's start screen chips do", async () => {
+    client = await start();
+    const { tern, until } = client;
+    const suggested = tern.find("suggestions", "main")[0];
+    if (!suggested) throw new Error("the start screen has no suggested prompts");
+    expect(suggested.p.variant).toBe("chips");
+    expect((suggested.p.items as unknown[]).length).toBe(3);
+    // Tern sends the suggestion's own id as the event's `item`, not the node's.
+    tern.event({ ev: "activate", id: suggested.id, item: "0" });
+    await until(() => tern.nodes.get("dock.d.comp.ed")?.p.text === "Explain this project's structure", "the suggestion in the composer");
+    expect(tern.errors).toEqual([]);
+  });
   it("asks Tern to hold startup typing until the start screen has its data, then never again", async () => {
     client = await start("alpha", BASE, { lateInit: true });
     const { tern, app, until } = client;
