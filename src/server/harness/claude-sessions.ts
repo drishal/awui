@@ -359,26 +359,29 @@ export function usageBaseline(entries: Obj[]): UsageBaseline {
  * the cost is unknown.
  */
 export function usageOfEntries(entries: Obj[]): UsageEntry[] {
-  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
   const calls = new Map<string, UsageEntry>();
-  for (const entry of entries) {
-    if (entry.type !== "assistant" || !isObj(entry.message)) continue;
-    const { id, usage, model } = entry.message;
-    if (typeof id !== "string" || !isObj(usage) || model === "<synthetic>") continue;
-    const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
-    const call: UsageEntry = {
-      at: Number.isFinite(at) ? at : 0,
-      model: typeof model === "string" ? model : null,
-      input: n(usage.input_tokens),
-      cachedInput: n(usage.cache_read_input_tokens),
-      cacheWrite: n(usage.cache_creation_input_tokens),
-      output: n(usage.output_tokens),
-      cost: null,
-    };
-    const seen = calls.get(id);
-    if (!seen || call.output >= seen.output) calls.set(id, call);
-  }
+  for (const entry of entries) foldUsageEntry(calls, entry);
   return [...calls.values()];
+}
+
+/** One entry's call into `calls` (keyed by the API message id: the file repeats it once per content block). */
+export function foldUsageEntry(calls: Map<string, UsageEntry>, entry: Obj): void {
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  if (entry.type !== "assistant" || !isObj(entry.message)) return;
+  const { id, usage, model } = entry.message;
+  if (typeof id !== "string" || !isObj(usage) || model === "<synthetic>") return;
+  const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+  const call: UsageEntry = {
+    at: Number.isFinite(at) ? at : 0,
+    model: typeof model === "string" ? model : null,
+    input: n(usage.input_tokens),
+    cachedInput: n(usage.cache_read_input_tokens),
+    cacheWrite: n(usage.cache_creation_input_tokens),
+    output: n(usage.output_tokens),
+    cost: null,
+  };
+  const seen = calls.get(id);
+  if (!seen || call.output >= seen.output) calls.set(id, call);
 }
 
 /** The newest TodoWrite list on the branch (Claude Code's own todos). */

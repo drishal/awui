@@ -174,7 +174,7 @@ export function fileMessages(text: string): Array<{ message: unknown; at: number
  * `fileMessages` straight from the file, a line at a time (a 60 MB session is never held as one string),
  * plus its first line parsed: omp's header, with the session's cwd and title.
  */
-export async function readFileMessages(file: string): Promise<{ head: Obj | null; messages: Array<{ message: unknown; at: number }> }> {
+export async function readFileMessages(file: string, usageOnly = false): Promise<{ head: Obj | null; messages: Array<{ message: unknown; at: number }> }> {
   const messages: Array<{ message: unknown; at: number }> = [];
   let head: Obj | null = null;
   let seen = false;
@@ -184,10 +184,15 @@ export async function readFileMessages(file: string): Promise<{ head: Obj | null
       head = parseJsonlLine(line);
     }
     if (!line.includes('"message"')) return;
+    // A usage read needs only an assistant message's usage block: the user and tool-result lines (the bulk
+    // of a long session) are never parsed, and what is kept is the few fields the report reads.
+    if (usageOnly && !line.includes('"usage"')) return;
     const parsed = parseJsonlLine(line);
     if (!parsed || parsed.type !== "message") return;
     const at = typeof parsed.timestamp === "string" ? Date.parse(parsed.timestamp) : NaN;
-    messages.push({ message: parsed.message, at: Number.isFinite(at) ? at : 0 });
+    let message = parsed.message;
+    if (usageOnly && isObj(message)) message = { role: message.role, usage: message.usage, model: message.model, timestamp: message.timestamp };
+    messages.push({ message, at: Number.isFinite(at) ? at : 0 });
   };
   const { tail } = await scanJsonlLines(file, take);
   if (tail.trim()) take(tail);

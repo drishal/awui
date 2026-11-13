@@ -31,12 +31,13 @@ import {
 } from "../../shared/protocol.js";
 import { historyToItems, isObj, textOf, type Obj } from "./agent-events.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
-import { foldJsonlFile, readJsonlEntries, type FoldProgress } from "./jsonl.js";
+import { foldJsonlFile, parseJsonlLine, readJsonlEntries, scanJsonlLines, type FoldProgress } from "./jsonl.js";
 import {
   forkSessionText,
   latestTodos,
   finishMeta,
   foldMetaEntry,
+  foldUsageEntry,
   newMetaFold,
   projectDirName,
   sessionMeta,
@@ -1254,11 +1255,30 @@ export class ClaudeAdapter implements HarnessAdapter {
 
   async readUsage(req: { cwd: string; nativeId: string }): Promise<UsageEntry[] | null> {
     const file = await this.sessionFile(req.cwd, req.nativeId);
-    const entries = file ? await readJsonlEntries(file).catch(() => null) : null;
-    if (entries === null) return null;
-    const meta = sessionMeta(entries, req.nativeId);
-    if (!meta || (meta.cwd && path.resolve(meta.cwd) !== path.resolve(req.cwd))) return null;
-    return usageOfEntries(entries);
+    if (!file) return null;
+    // Streamed: a session file reaches 160 MB, and the report needs only its calls and which project it is.
+    // A line is parsed when it carries token counts, or while the project (cwd) and a first prompt are not
+    // yet known; every other line (tool results, images) is skipped unparsed.
+    const meta = newMetaFold();
+    const calls = new Map<string, UsageEntry>();
+    const take = (line: string) => {
+      const counted = line.includes('"input_tokens"');
+      const needMeta = !meta.cwd || meta.prompts === 0;
+      if (!counted && !needMeta) return;
+      const entry = parseJsonlLine(line);
+      if (!entry) return;
+      if (needMeta) foldMetaEntry(meta, entry);
+      if (counted) foldUsageEntry(calls, entry);
+    };
+    try {
+      const { tail } = await scanJsonlLines(file, take);
+      if (tail.trim()) take(tail);
+    } catch {
+      return null;
+    }
+    const found = finishMeta(meta, req.nativeId);
+    if (!found || (found.cwd && path.resolve(found.cwd) !== path.resolve(req.cwd))) return null;
+    return [...calls.values()];
   }
 
   async readTranscript(req: { cwd: string; nativeId: string }): Promise<{ items: ChatItem[]; title: string | null } | null> {

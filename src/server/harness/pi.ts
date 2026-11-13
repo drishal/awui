@@ -604,7 +604,7 @@ export class PiAdapter implements HarnessAdapter {
     const dir = this.sessionDirFor(req.cwd, await this.resolveAgentDir());
     const meta = (await listSessionFiles(dir)).find((m) => m.id === req.nativeId);
     if (!meta || (meta.cwd && path.resolve(meta.cwd) !== path.resolve(req.cwd))) return null;
-    const read = await readFileMessages(meta.path).catch(() => null);
+    const read = await readFileMessages(meta.path, true).catch(() => null);
     return read === null ? null : usageEntries(read.messages);
   }
 

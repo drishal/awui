@@ -782,7 +782,7 @@ export class OmpAdapter implements HarnessAdapter {
    */
   async readUsage(req: { cwd: string; nativeId: string }): Promise<UsageEntry[] | null> {
     const file = await this.sessionFile(req.nativeId);
-    const read = file ? await readFileMessages(file).catch(() => null) : null;
+    const read = file ? await readFileMessages(file, true).catch(() => null) : null;
     if (read === null) return null;
     if (read.head && typeof read.head.cwd === "string" && path.resolve(read.head.cwd) !== path.resolve(req.cwd)) return null;
     return usageEntries(read.messages);
