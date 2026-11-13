@@ -36,4 +36,19 @@ describe("the event log", () => {
     // Further behind: one fresh snapshot, which carries the same state.
     expect(stream(log, 1)).toEqual([[5, "snapshot"]]);
   });
+
+  it("serializes a live event once, however many viewers watch the chat", () => {
+    const log = new EventLog();
+    const frames: string[] = [];
+    let stringified = 0;
+    const event: ChatEvent = { type: "status", status: "running" };
+    const spy = { ...event, toJSON() { stringified += 1; return { type: "status", status: "running" }; } } as unknown as ChatEvent;
+    for (let i = 0; i < 4; i += 1) log.subscribe({ send: (_id, _e, json) => frames.push(json()), close: () => undefined }, undefined, () => snap);
+    frames.length = 0;
+    log.record(spy);
+    expect(frames).toHaveLength(4);
+    expect(new Set(frames).size).toBe(1);
+    expect(JSON.parse(frames[0] as string)).toEqual(event);
+    expect(stringified).toBe(1);
+  });
 });

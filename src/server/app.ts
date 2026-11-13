@@ -2490,7 +2490,7 @@ export async function createApp(deps: AppDeps) {
     };
     const unsubscribe = chat.subscribe(
       {
-        send: (id: number, event: ChatEvent) => write(`id: ${id}\nevent: chat\ndata: ${JSON.stringify(event)}\n\n`),
+        send: (id: number, _event: ChatEvent, json: () => string) => write(`id: ${id}\nevent: chat\ndata: ${json()}\n\n`),
         close: () => {
           if (!closed) {
             closed = true;

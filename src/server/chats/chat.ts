@@ -79,7 +79,8 @@ function reconcileLoadedJobs(item: ChatItem, survivesRestart: boolean): ChatItem
 }
 
 export interface ChatSubscriber {
-  send(id: number, event: ChatEvent): void;
+  /** `json` is the event serialized, once for all of a chat's viewers (three tabs and a phone are four subscribers, one stringify). */
+  send(id: number, event: ChatEvent, json: () => string): void;
   close(): void;
 }
 
@@ -220,7 +221,9 @@ export class EventLog {
     if (event.type === "snapshot") this.entries = [];
     this.entries.push({ id, event });
     if (this.entries.length > MAX_LOG_EVENTS) this.entries.splice(0, this.entries.length - MAX_LOG_EVENTS);
-    for (const s of this.subscribers) s.send(id, event);
+    let text: string | undefined;
+    const json = () => (text ??= JSON.stringify(event));
+    for (const s of this.subscribers) s.send(id, event, json);
   }
 
   /**
@@ -231,9 +234,10 @@ export class EventLog {
     const oldest = this.entries[0]?.id ?? this.nextEventId;
     const canReplay = lastEventId !== undefined && lastEventId >= oldest - 1 && lastEventId <= this.nextEventId - 1;
     if (canReplay) {
-      for (const entry of this.entries) if (entry.id > lastEventId) subscriber.send(entry.id, entry.event);
+      for (const entry of this.entries) if (entry.id > lastEventId) subscriber.send(entry.id, entry.event, () => JSON.stringify(entry.event));
     } else {
-      subscriber.send(this.nextEventId - 1, { type: "snapshot", snapshot: snapshot() });
+      const fresh: ChatEvent = { type: "snapshot", snapshot: snapshot() };
+      subscriber.send(this.nextEventId - 1, fresh, () => JSON.stringify(fresh));
     }
     this.subscribers.add(subscriber);
     return () => this.subscribers.delete(subscriber);
