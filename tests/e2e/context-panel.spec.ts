@@ -65,3 +65,18 @@ test("returning to an ask card does not approve or deny it, and the narrow layou
   await expect(page.getByTestId("approval-card")).toContainText("Waiting for approval");
   await expect(page.getByRole("dialog", { name: "Active chat context" })).toHaveCount(0);
 });
+
+test("a short chat's composer sits on the bottom of the main column", async ({ page }) => {
+  // Tall enough that a one-prompt chat is shorter than the window: the case where the wrapper's own height shows.
+  await page.setViewportSize({ width: 1600, height: 1100 });
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "hello");
+  const main = await page.locator("main.main").boundingBox();
+  const work = await page.locator(".context-work").boundingBox();
+  const composer = await page.getByRole("textbox", { name: /message/i }).first().boundingBox();
+  expect(main && work && composer).toBeTruthy();
+  // The wrapper fills the column, and the composer is within a card's height of its bottom edge.
+  expect(Math.abs((work!.y + work!.height) - (main!.y + main!.height))).toBeLessThan(2);
+  expect((main!.y + main!.height) - (composer!.y + composer!.height)).toBeLessThan(160);
+});

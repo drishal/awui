@@ -2,6 +2,9 @@
 .context-work {
   position: relative;
   display: flex;
+  /* The wrapper is .main's one flex child now, as .chat-split was: without this it is only as tall as its
+     content, and a short chat's composer floats above the bottom instead of sitting on it. */
+  flex: 1;
   min-width: 0;
   min-height: 0;
 }
