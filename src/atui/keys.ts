@@ -26,7 +26,6 @@ export const LEADER_KEYS: PrefixKey[] = [
   { key: "t", label: "+thinking", menu: true },
   { key: "h", label: "+harness", menu: true },
   { key: "c", label: "compact context" },
-  { key: "p", label: "github panel" },
   { key: "z", label: "put undone files back" },
   { key: "d", label: "review changes" },
   { key: "j", label: "delegated work" },
