@@ -115,14 +115,14 @@
   color: var(--text);
   font-size: 13px;
   font-weight: 550;
-  letter-spacing: var(--tracking-tight);
+  letter-spacing: normal;
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 .context-summary-meta { display: flex; min-width: 0; align-items: center; gap: 5px; margin: 0; overflow: hidden; color: var(--muted-text); font-size: var(--chat-small); text-overflow: ellipsis; white-space: nowrap; }
 .context-summary-sep { color: var(--hairline-strong); }
-.context-summary-git { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--hairline); font-size: var(--label-size); }
+.context-summary-git { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: var(--label-size); }
 .context-summary-branch-icon { color: var(--muted-text); }
 .context-summary-branch { min-width: 0; overflow: hidden; color: var(--text-2); font-family: var(--font-mono); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .context-summary-op { padding: 0 5px; border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: var(--r-control); color: var(--warn); font-size: 10px; white-space: nowrap; }
