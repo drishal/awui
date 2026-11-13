@@ -2,6 +2,7 @@
 // validated, and a saved mark's life (bootstrap -> PNG -> delete) is one flow.
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { inflateSync } from "node:zlib";
 import path from "node:path";
 import request from "supertest";
 import { makeTestApp, PASS, USER, tempDir, type TestApp } from "../helpers/app.js";
@@ -18,6 +19,39 @@ function png(width: number): Buffer {
   data.writeUInt32BE(width, 20);
   Buffer.from([8, 6, 0, 0, 0, 0, 0, 0, 0]).copy(data, 24);
   return data;
+}
+
+/** The share of a 64x64 RGBA PNG's pixels that are not fully transparent (decodes every PNG filter type). */
+function opaqueShare(file: Buffer): number {
+  const width = file.readUInt32BE(16);
+  const height = file.readUInt32BE(20);
+  const idat: Buffer[] = [];
+  for (let at = 8; at < file.length; ) {
+    const size = file.readUInt32BE(at);
+    if (file.toString("latin1", at + 4, at + 8) === "IDAT") idat.push(file.subarray(at + 8, at + 8 + size));
+    at += 12 + size;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * 4;
+  const rows: Buffer[] = [];
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)] ?? 0;
+    const row = Buffer.from(raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)));
+    const up = y > 0 ? (rows[y - 1] as Buffer) : Buffer.alloc(stride);
+    for (let x = 0; x < stride; x++) {
+      const left = x >= 4 ? (row[x - 4] as number) : 0;
+      const upLeft = x >= 4 ? (up[x - 4] as number) : 0;
+      const above = up[x] as number;
+      const p = left + above - upLeft;
+      const paeth = Math.abs(p - left) <= Math.abs(p - above) && Math.abs(p - left) <= Math.abs(p - upLeft) ? left : Math.abs(p - above) <= Math.abs(p - upLeft) ? above : upLeft;
+      const add = filter === 1 ? left : filter === 2 ? above : filter === 3 ? (left + above) >> 1 : filter === 4 ? paeth : 0;
+      row[x] = ((row[x] as number) + add) & 0xff;
+    }
+    rows.push(row);
+  }
+  let opaque = 0;
+  for (const row of rows) for (let x = 3; x < stride; x += 4) if ((row[x] as number) > 16) opaque++;
+  return opaque / (width * height);
 }
 
 let t: TestApp;
@@ -87,4 +121,17 @@ describe("custom harness marks", () => {
     expect((await request(t.server).delete("/api/settings/harness-marks/custom").set("Host", host).set("Cookie", limited)).body.code).toBe("missing_grant");
     expect((await request(t.server).delete("/api/settings/harness-marks/custom").set("Host", host).set("Cookie", full)).status).toBe(200);
   });
+});
+
+describe("the shipped built-in marks", () => {
+  // A mark is a CSS mask, so a fully transparent PNG draws nothing and passes every size check:
+  // opencode.png shipped that way once. Each must cover a visible part of its 64x64 canvas.
+  for (const id of ["pi", "omp", "hermes", "claude", "codex", "opencode", "grok", "dsh"]) {
+    it(`${id} draws something`, () => {
+      const file = readFileSync(path.join(process.cwd(), `src/web/public/harness-marks/${id}.png`));
+      const share = opaqueShare(file);
+      expect(share).toBeGreaterThan(0.05);
+      expect(share).toBeLessThan(0.95);
+    });
+  }
 });

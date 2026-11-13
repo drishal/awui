@@ -11,7 +11,7 @@ Raster masks shipped with awui; the UI never fetches an icon service at runtime.
 | `hermes.png` | [Hermes alternate agent mark](https://github.com/homarr-labs/dashboard-icons/blob/d767d7327db7f8ebd3715b552523f61889eea41c/svg/hermes-agent-alt.svg) |
 | `claude.png` | [Claude star in T3 Code's ProviderIcon](https://github.com/pingdotgg/t3code/blob/main/apps/mobile/src/components/ProviderIcon.tsx), whole path retained for a crisp small mark vs converting the dashboard icon set's fill-tiled variant |
 | `codex.png` | [OpenAI mark](https://github.com/homarr-labs/dashboard-icons/blob/d767d7327db7f8ebd3715b552523f61889eea41c/svg/openai-light.svg) |
-| `opencode.png` | [OpenCode monochrome mark](https://github.com/homarr-labs/dashboard-icons/blob/d767d7327db7f8ebd3715b552523f61889eea41c/svg/opencode-dark.svg) |
+| `opencode.png` | [OpenCode monochrome mark](https://github.com/homarr-labs/dashboard-icons/blob/d767d7327db7f8ebd3715b552523f61889eea41c/svg/opencode-dark.svg); redrawn as a mask (the source's lower two thirds solid, its top third at partial alpha), since the first conversion came out fully transparent |
 | `grok.png` | [Grok mark](https://github.com/homarr-labs/dashboard-icons/blob/d767d7327db7f8ebd3715b552523f61889eea41c/svg/grok-dark.svg) |
 | `dsh.png` | [DeepSeek mark](https://github.com/homarr-labs/dashboard-icons/blob/d767d7327db7f8ebd3715b552523f61889eea41c/svg/deepseek.svg) |
 
