@@ -13,6 +13,7 @@ import { IconAgents, IconBranch, IconChevronRight, IconEdit, IconFork, IconGauge
 import { Dialog } from "./Dialog.js";
 import { ConfirmButton } from "./ConfirmButton.js";
 import { DiffBadge } from "./ToolBody.js";
+import { plainTitle } from "../plain-title.js";
 import { ContextGroup, ContextList, ContextQuiet, ContextRow, ContextRowButton, ContextStatus } from "./ContextRows.js";
 import { gitSummary, jobEntries, jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, tokenCount, validatedFolds, type ContextSectionId } from "../context-panel.js";
 
@@ -115,7 +116,7 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
     <>
       <div className="context-summary">
         <div className="context-summary-main">
-          <p className="context-summary-title" title={chat.title || chat.harnessId}>{chat.title || chat.harnessId}</p>
+          <p className="context-summary-title" title={plainTitle(chat.title || chat.harnessId)}>{plainTitle(chat.title || chat.harnessId)}</p>
           <p className="context-summary-meta"><span className="context-summary-harness">{chat.harnessId}</span><span className="context-summary-sep" aria-hidden="true">·</span>{chat.workspace.name}</p>
         </div>
         {project ? <div className="context-summary-git">
@@ -218,6 +219,6 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
         <button type="button" className="context-rail-button" title="Project comparisons and races" aria-label="Inspect project races" onClick={() => { if (inWorkspace.length === 0) { onRace(null); return; } onOpen(); if (!open.races) toggle("races"); }}><IconSplit size={16} />{numberOfRaces > 0 ? <span className="context-rail-badge">{numberOfRaces > 9 ? "9+" : numberOfRaces}</span> : null}</button>
       </div> : null}
     </div>
-    {expanded ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot"><span className="context-vertical-title">{chat.title || chat.harnessId}</span><span className={`context-live-grow${running || hasQuestions ? " is-on" : ""}`} /></div>}
+    {expanded ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot"><span className="context-vertical-title">{plainTitle(chat.title || chat.harnessId)}</span><span className={`context-live-grow${running || hasQuestions ? " is-on" : ""}`} /></div>}
   </aside>;
 }

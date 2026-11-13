@@ -6,6 +6,7 @@
 // place) is the main pane's: Make main swaps the two. Empty, it lists the
 // sessions to pick one from.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { plainTitle } from "../plain-title.js";
 import type { ChatSnapshot, HarnessStatus, ProjectSession, SessionsOverview, UsageLimits } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { projectScoped } from "../harness-policy.js";
@@ -170,7 +171,7 @@ export function SidePane({
       <header className="side-head">
         {chat ? (
           <div className="side-title">
-            <h2 title={chat.title || "New chat"}>{chat.title || "New chat"}</h2>
+            <h2 title={plainTitle(chat.title || "New chat")}>{plainTitle(chat.title || "New chat")}</h2>
             <div className="chat-sub">
               <span className="badge badge-harness" style={harnessColor(chat.harnessId)}>
                 {harness?.displayName ?? chat.harnessId}
