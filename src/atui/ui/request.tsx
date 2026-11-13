@@ -10,7 +10,7 @@ import { MAX_DENIAL_REASON_CHARS } from "../../shared/protocol.js";
 import { isApproval, optionsOf } from "../requests.js";
 import { useAtui, useTheme } from "./context.js";
 
-export function RequestCard(p: { request: InteractionRequest; more: number; active: boolean }) {
+export function RequestCard(p: { request: InteractionRequest; more: number; active: boolean; column: number }) {
   const app = useAtui();
   const t = useTheme();
   const options = createMemo(() => optionsOf(p.request));
@@ -66,7 +66,7 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
   });
 
   return (
-    <box flexDirection="column" flexShrink={0} marginLeft={2} marginRight={2} border borderStyle="rounded" borderColor={t().warn} paddingLeft={1} paddingRight={1}>
+    <box flexDirection="column" flexShrink={0} marginLeft={2} marginRight={2} width={p.column} alignSelf="center" border borderStyle="rounded" borderColor={t().warn} paddingLeft={1} paddingRight={1}>
       <text fg={t().warn}>
         {approval() ? "● Waiting for approval" : "● Waiting for your answer"}
         <Show when={labelled()}>

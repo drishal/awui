@@ -21,6 +21,7 @@ import { RunOutput } from "./runout.js";
 import type { UserItem } from "../../shared/protocol.js";
 import type { PaletteItem } from "../../web/palette.js";
 import { isBusy } from "../../web/session-groups.js";
+import { atuiColumn, chatWidthLabel, CHAT_WIDTHS, nextChatWidth } from "../../shared/chat-width.js";
 import { ago, STATUS_LABEL } from "../format.js";
 import { leader, LEADER_KEYS, VIM_HELP } from "../keys.js";
 import { harnessGlyph } from "../neat.js";
@@ -117,6 +118,12 @@ export function App(p: {
   const pending = createMemo(() => app.chat()?.pending[0] ?? null);
   const hasPrompt = createMemo(() => app.chat()?.items.some((i) => i.kind === "user") ?? false);
   const sideWidth = () => Math.min(36, Math.max(26, Math.floor(size().width * 0.24)));
+  /**
+   * The conversation's column: config.yml's `chat_width` (comfortable 104, wide 160, full the
+   * content) inside what the side panel leaves, minus the transcript's 2+2 padding. The composer's
+   * card, its menus, and an approval card draw at it; the footer under them stays the pane's status line.
+   */
+  const column = () => atuiColumn(app.boot()?.ui.chatWidth ?? null, size().width - (sidebar() ? sideWidth() : RAIL_WIDTH) - 4);
 
   // A run that ends: git and limits may have moved.
   createEffect(
@@ -249,6 +256,11 @@ export function App(p: {
     }
   };
 
+  /** Sets the shared chat width (config.yml's chat_width) and says which; a server that refuses it (a limited session) leaves its reason in the banner. */
+  const pickWidth = async (width: (typeof CHAT_WIDTHS)[number]) => {
+    if (await app.setChatWidth(width)) flash(`Chat width: ${chatWidthLabel(width)}`);
+  };
+
   const runLeader = (name: string) => {
     switch (name) {
       case "b":
@@ -327,6 +339,8 @@ export function App(p: {
         p.onGlass?.(on);
         return flash(on ? "Glass on: the terminal's background shows through" : "Glass off");
       }
+      case "l":
+        return void pickWidth(nextChatWidth(app.boot()?.ui.chatWidth ?? null));
       case "q":
         return p.onExit();
       default:
@@ -496,6 +510,8 @@ export function App(p: {
     add({ id: "panel", label: sidebar() && sideTab() === "info" ? "Show sessions" : "Show info: context, usage, git, limits", hint: leader("i"), run: () => runLeader("i") });
     add({ id: "work", label: showWork() ? "Fold the work" : "Show the work of every turn", hint: leader("e"), run: () => runLeader("e") });
     add({ id: "glass", label: app.glass() ? "Glass off: solid panels" : "Glass on: see the terminal through", hint: leader("g"), run: () => runLeader("g") });
+    // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it: every device draws it (C-x l cycles).
+    CHAT_WIDTHS.forEach((w) => add({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, keywords: "column layout measure", current: (boot?.ui.chatWidth ?? null) === w, run: () => void pickWidth(w) }));
     if (c?.capabilities.supportsCompact) add({ id: "compact", label: "Compact context", hint: leader("c"), disabled: idle ? undefined : "Wait until the agent is idle", run: () => runLeader("c") });
     const caps = c?.capabilities ?? app.harness()?.capabilities;
     add({ id: "model", label: "Choose model…", hint: "M-m", disabled: caps?.supportsModelSelection ? undefined : "This harness has no models to pick", run: () => setDialog("models") });
@@ -692,11 +708,11 @@ export function App(p: {
                         when={hasPrompt()}
                         fallback={<Splash question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
                       >
-                        <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} />
+                        <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} column={column} />
                       </Show>
                     }
                   >
-                    {(g) => <SwitchGhost title={g().title} harnessId={g().harnessId} sidebar={sidebar() ? sideWidth() : 3} />}
+                    {(g) => <SwitchGhost title={g().title} harnessId={g().harnessId} column={column} />}
                   </Show>
                   <Show when={app.banner()}>
                     {(b) => (
@@ -726,11 +742,12 @@ export function App(p: {
                         onCompactChoice={setCompactChoice}
                         onPick={setDialog}
                         onContext={() => setRail(true)}
+                        column={column()}
                         ref={(el) => (composer = el)}
                       />
                     }
                   >
-                    {(request) => <RequestCard request={request} more={(app.chat()?.pending.length ?? 1) - 1} active={focus() === "composer" && !dialog()} />}
+                    {(request) => <RequestCard request={request} more={(app.chat()?.pending.length ?? 1) - 1} active={focus() === "composer" && !dialog()} column={column()} />}
                   </Show>
                 </box>
               }

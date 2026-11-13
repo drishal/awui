@@ -1,7 +1,7 @@
 // atui render tests: the built server with fake harnesses, and atui mounted
 // in OpenTUI's test renderer against it.
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRoot } from "solid-js";
@@ -16,17 +16,25 @@ import { startTicker } from "../../src/atui/ui/ticker.js";
 export const PORT = Number(process.env.ATUI_TEST_PORT ?? 4793);
 export const BASE = `http://127.0.0.1:${PORT}`;
 
-export async function startServer(): Promise<{ root: string; stop: () => Promise<void> }> {
+/**
+ * A server of the suite's own. `port` and a `config.yml` body are for a test that needs a
+ * setting the server reads from the file (a chat width, a theme); the config folder is this
+ * run's own, never the developer's, and a test may rewrite the file mid-run (bootstrap re-reads it).
+ */
+export async function startServer(opts: { port?: number; config?: string } = {}): Promise<{ root: string; base: string; configDir: string; stop: () => Promise<void> }> {
   const base = mkdtempSync(path.join(tmpdir(), "atui-test-"));
   const root = path.join(base, "workspaces");
   for (const name of ["alpha", "beta"]) mkdirSync(path.join(root, name), { recursive: true });
+  const configDir = path.join(base, "config");
+  mkdirSync(configDir, { recursive: true });
+  if (opts.config !== undefined) writeFileSync(path.join(configDir, "config.yml"), opts.config);
   const server: ChildProcess = spawn("node", ["dist/server/server/index.js"], {
     env: {
       ...process.env,
-      AWUI_CONFIG_DIR: "",
+      AWUI_CONFIG_DIR: configDir,
       // Never the developer's herdr: this server's sessions are not in any pane.
       AWUI_HERDR: "0",
-      PORT: String(PORT),
+      PORT: String(opts.port ?? PORT),
       AWUI_HARNESSES: "fake,fake-b",
       AWUI_FAKE_DELAY_MS: "20",
       AWUI_HEARTBEAT_MS: "1000",
@@ -51,6 +59,8 @@ export async function startServer(): Promise<{ root: string; stop: () => Promise
   });
   return {
     root,
+    base: `http://127.0.0.1:${opts.port ?? PORT}`,
+    configDir,
     stop: async () => {
       if (server.exitCode !== null) return;
       const exited = new Promise((resolve) => server.once("exit", resolve));
@@ -77,12 +87,14 @@ export interface Mounted {
   escape: () => Promise<void>;
   type: (text: string) => Promise<void>;
   exited: () => boolean;
+  /** The terminal's size changed (a window resized): the next frame lays out at it. */
+  resize: (width: number, height: number) => void;
   /** Close the app and wait for the renderer's terminal to be restored: the next mount has its own. */
   unmount: () => Promise<void>;
 }
 
-export async function mount(cwd: string, opts: { harness?: string; width?: number; height?: number; vim?: boolean } = {}): Promise<Mounted> {
-  const app = createRoot(() => createAtui(new Server(BASE), { cwd, harness: opts.harness ?? "fake" }));
+export async function mount(cwd: string, opts: { harness?: string; width?: number; height?: number; vim?: boolean; base?: string } = {}): Promise<Mounted> {
+  const app = createRoot(() => createAtui(new Server(opts.base ?? BASE), { cwd, harness: opts.harness ?? "fake" }));
   await app.init();
   startTicker();
   let exited = false;
@@ -133,6 +145,7 @@ export async function mount(cwd: string, opts: { harness?: string; width?: numbe
       await wait(20);
     },
     exited: () => exited,
+    resize: (width, height) => setup.resize(width, height),
     unmount: async () => {
       app.dispose();
       await setup.dispose();

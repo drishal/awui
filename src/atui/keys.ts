@@ -36,6 +36,7 @@ export const LEADER_KEYS: PrefixKey[] = [
   { key: "e", label: "show all work" },
   { key: "v", label: "vim navigation" },
   { key: "g", label: "glass mode" },
+  { key: "l", label: "chat width" },
   { key: "q", label: "quit atui" },
 ];
 

@@ -9,6 +9,7 @@ import { batch, createEffect, createMemo, createSignal, on, untrack } from "soli
 import type {
   Bootstrap,
   ChatEvent,
+  ChatWidth,
   ChatSnapshot,
   CheckpointPreview,
   CheckpointRestored,
@@ -20,6 +21,7 @@ import type {
   RunResult,
   RunShell,
   SendMode,
+  ServerSettings,
   SessionPreview,
   SessionsOverview,
   ThemeInfo,
@@ -75,6 +77,8 @@ const SESSIONS_MS = 4000;
 const HERDR_AGAIN_MS = 10_000;
 const LIMITS_MS = 5 * 60_000;
 const GIT_WORKING_MS = 8000;
+/** How often the shared look is re-read: config.yml's `ui` block has no event of its own (bootstrap is cheap, and its harness status is cached a minute). */
+const UI_MS = 60_000;
 
 export function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -207,6 +211,32 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     }
   };
 
+  /**
+   * Re-read the shared look (config.yml's `ui` block), on a slow poll: the web UI's Settings
+   * dialog and the other terminal client write it, and neither has an event this client could
+   * follow. Only the look is patched, so the harness statuses this client filtered stay as they are.
+   */
+  const refreshUi = async () => {
+    try {
+      const b = await server.call<Bootstrap>("/api/bootstrap");
+      setBoot((cur) => (cur ? { ...cur, ui: b.ui } : cur));
+    } catch {
+      // the look stays as it was
+    }
+  };
+
+  /** Save the shared chat width, as the web UI's Settings dialog does; false when the server refused it (a limited session, say). */
+  const setChatWidth = async (chatWidth: ChatWidth): Promise<boolean> => {
+    try {
+      const next = await server.call<ServerSettings>("/api/settings", { method: "PUT", body: { chatWidth } });
+      setBoot((cur) => (cur ? { ...cur, ui: { ...cur.ui, chatWidth: next.values.chatWidth } } : cur));
+      return true;
+    } catch (error) {
+      fail(error);
+      return false;
+    }
+  };
+
   const refreshGit = async () => {
     const c = chat();
     if (!c) return setGit(null);
@@ -253,6 +283,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     timers.push(
       setInterval(() => void refreshSessions(), SESSIONS_MS),
       setInterval(() => void refreshLimits(), LIMITS_MS),
+      setInterval(() => void refreshUi(), UI_MS),
       setInterval(() => {
         if (busy()) void refreshGit();
       }, GIT_WORKING_MS),
@@ -982,6 +1013,8 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     refreshSessions,
     refreshGit,
     refreshLimits,
+    refreshUi,
+    setChatWidth,
     openSession,
     openChat,
     newChat,

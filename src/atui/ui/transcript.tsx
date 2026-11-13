@@ -7,9 +7,10 @@
 // did. Replies the agent wrote between tool calls show in order. C-x e folds
 // every turn to a "Worked for …" line (the web UI's), and a running turn keeps
 // that line, with its spinner, over its work. A clicked call is framed
-// omp-style (command, Output, outcome in the bottom edge). The column is capped
-// at a readable width and centred; a gutter on the right maps every turn and
-// scrolls on a click, and the prompt of the turn you are reading stays pinned
+// omp-style (command, Output, outcome in the bottom edge). The column stops at
+// config.yml's chat_width inside what the side panel leaves and centres: 104
+// characters (comfortable), 160 (wide), or the pane's whole width (full); a gutter on the right maps
+// every turn and scrolls on a click, and the prompt of the turn you are reading stays pinned
 // at the top.
 import { createEffect, createMemo, createResource, createSignal, For, Index, Match, on, onCleanup, Show, Switch, type Accessor } from "solid-js";
 import { BoxRenderable, type Renderable, type ScrollBoxRenderable } from "@opentui/core";
@@ -31,8 +32,6 @@ import { tick } from "./ticker.js";
 const OUTPUT_LINES = 14;
 /** A running command's last lines, shown under its row while it works. */
 const LIVE_LINES = 3;
-/** The transcript's widest column: past it, lines get too long to read. */
-export const MAX_COLUMN = 104;
 /** From this terminal width an edit's frame shows its diff side by side. */
 const SPLIT_DIFF_WIDTH = 150;
 /** Lines of a prompt's image, drawn with the terminal's image protocol or half blocks. */
@@ -825,7 +824,7 @@ function Answer(p: { item: AssistantItem }) {
   );
 }
 
-function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; onToggle: () => void; switchedTo: string | null }) {
+function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; onToggle: () => void; switchedTo: string | null; column: number }) {
   const t = useTheme();
   const hasProcess = () => p.turn().process.length > 0 || Boolean(p.turn().answer?.thinking.trim());
   // Work the agent did after writing its reply draws below it, as its own fold.
@@ -863,7 +862,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
   const sigmaShown = () => !p.turn().live && Boolean(p.turn().prompt) && (sigma().facts.length > 0 || sigma().failed !== null);
   const FILES_SHOWN = 4;
   return (
-    <box flexDirection="column" width="100%" maxWidth={MAX_COLUMN}>
+    <box flexDirection="column" width="100%" maxWidth={p.column}>
       <Show when={p.switchedTo}>
         {(name) => (
           <box flexDirection="row" marginTop={1}>
@@ -984,7 +983,7 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
   );
 }
 
-export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean }) {
+export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; column: Accessor<number> }) {
   const app = useAtui();
   const t = useTheme();
   const turns = createMemo(() => {
@@ -1046,6 +1045,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean }
                 open={isOpen(turn())}
                 onToggle={() => setOverrides((o) => ({ ...o, [turn().id]: !isOpen(turn()) }))}
                 switchedTo={switches().has(turn().id) ? modelName(switches().get(turn().id) as string, models()) : null}
+                column={p.column()}
               />
             )}
           </Index>
@@ -1053,10 +1053,10 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean }
         <Show when={pinned()}>
           {(prompt) => (
             <box position="absolute" top={0} left={0} width="100%" flexDirection="row" justifyContent="center" backgroundColor={app.glass() ? undefined : t().bg} zIndex={5}>
-              <box width="100%" maxWidth={MAX_COLUMN} paddingLeft={2} paddingRight={2} flexDirection="row">
+              <box width="100%" maxWidth={p.column()} paddingLeft={2} paddingRight={2} flexDirection="row">
                 <text fg={t().muted} wrapMode="none" truncate>
                   <span style={{ fg: t().ok }}>{"↑ "}</span>
-                  {clip(prompt().text, MAX_COLUMN)}
+                  {clip(prompt().text, p.column())}
                 </text>
               </box>
             </box>

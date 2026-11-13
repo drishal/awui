@@ -58,6 +58,8 @@ export function Composer(p: {
   onContext: () => void;
   /** What the status bar used to say, now in the footer: vim's mode, a waiting C-x, a passing hint. */
   status: { mode: "normal" | "insert" | null; leader: boolean; note: string | null };
+  /** The conversation's column: the card draws at it, while the footer under it stays the pane's status line. */
+  column: number;
   ref: (el: TextareaRenderable) => void;
 }) {
   const app = useAtui();
@@ -358,7 +360,7 @@ export function Composer(p: {
   return (
     <box flexDirection="column" flexShrink={0} marginLeft={2} marginRight={2}>
       <Show when={menu().length > 0}>
-        <box flexDirection="column" border borderStyle="rounded" borderColor={t().border} backgroundColor={t().surface} paddingLeft={1} paddingRight={1}>
+        <box flexDirection="column" width={p.column} alignSelf="center" border borderStyle="rounded" borderColor={t().border} backgroundColor={t().surface} paddingLeft={1} paddingRight={1}>
           <Show when={kind() !== "slash"}>
             <text fg={kind() === "skill" ? t().thinking : t().accent}>
               <b>{kind() === "skill" ? "Skills" : "Saved prompts"}</b>
@@ -387,7 +389,7 @@ export function Composer(p: {
         </box>
       </Show>
       <Show when={images().length > 0}>
-        <box flexDirection="row" flexWrap="wrap" paddingLeft={1}>
+        <box flexDirection="row" flexWrap="wrap" paddingLeft={1} width={p.column} alignSelf="center">
           <For each={images()}>
             {(image, i) => (
               <box flexDirection="column" marginRight={2}>
@@ -407,7 +409,7 @@ export function Composer(p: {
         </box>
       </Show>
       <Show when={fileMenu().length > 0}>
-        <box flexDirection="column" border borderStyle="rounded" borderColor={t().border} backgroundColor={t().surface} paddingLeft={1} paddingRight={1}>
+        <box flexDirection="column" width={p.column} alignSelf="center" border borderStyle="rounded" borderColor={t().border} backgroundColor={t().surface} paddingLeft={1} paddingRight={1}>
           <For each={fileMenu()}>
             {(file, i) => {
               const cut = file.lastIndexOf("/") + 1;
@@ -426,6 +428,8 @@ export function Composer(p: {
         </box>
       </Show>
       <box
+        width={p.column}
+        alignSelf="center"
         border
         borderStyle="rounded"
         borderColor={p.focused ? accentOf(t(), app.harness()?.accent) : t().border}
