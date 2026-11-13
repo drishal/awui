@@ -21,7 +21,7 @@ export const BASE = `http://127.0.0.1:${PORT}`;
  * setting the server reads from the file (a chat width, a theme); the config folder is this
  * run's own, never the developer's, and a test may rewrite the file mid-run (bootstrap re-reads it).
  */
-export async function startServer(opts: { port?: number; config?: string } = {}): Promise<{ root: string; base: string; configDir: string; stop: () => Promise<void> }> {
+export async function startServer(opts: { port?: number; config?: string; env?: Record<string, string | undefined> } = {}): Promise<{ root: string; base: string; configDir: string; stop: () => Promise<void> }> {
   const base = mkdtempSync(path.join(tmpdir(), "atui-test-"));
   const root = path.join(base, "workspaces");
   for (const name of ["alpha", "beta"]) mkdirSync(path.join(root, name), { recursive: true });

@@ -327,9 +327,6 @@ export function App(p: {
       case "u":
         if (!app.chat()) return flash("No chat to read the git status of");
         return setGitting(true);
-      case "p":
-        // The PR screens read the project alone; only the watch and the repair need a chat (their keys say so).
-        return setHubbing(true);
       case "z":
         if (!app.putBackable()) return flash("Nothing to put back: no files were undone here");
         return void app.putBack();
@@ -514,7 +511,7 @@ export function App(p: {
       add({ id: "delegated", label: "Delegated work: review a worker…", hint: leader("j"), disabled: workers.length > 0 ? undefined : "This chat has delegated nothing", run: () => runLeader("j") });
       add({ id: "active-work", label: "Active work: workers, jobs, questions, context", hint: leader("p"), run: () => runLeader("p") });
       add({ id: "git", label: "Git: stage, commit, and the diffs", hint: leader("u"), ...(git ? { keywords: git.branch ?? "detached" } : {}), run: () => setGitting(true) });
-      add({ id: "github", label: "GitHub: the pull request, its checks, and the stack", hint: leader("o"), run: () => setHubbing(true) });
+      add({ id: "github", label: "GitHub: the pull request, its checks, and the stack", run: () => setHubbing(true) });
     }
     if (c && runnables().length > 0) add({ id: "run", label: "Run a command from the answer…", hint: leader("x"), run: () => setDialog("run") });
     add({ id: "quote", label: "Quote the selection into the message", hint: "M-q", searchOnly: true, run: quoteSelection });
