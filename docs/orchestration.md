@@ -151,6 +151,7 @@ record instead of a `cancel_timeout` when the child is slow to settle. Both stay
 | `list_profiles` | `workspaceId` | yes |
 | `set_status` | `status` (`working`/`blocked`/`review`/`done`), `comment` (≤200 chars, optional) | yes |
 | `request_decision` | `question` (1–200 chars), `decisionId` (≤128 chars), `message` (≤2 000 chars, optional), `kind` (`confirm`/`select`), `options` (≤6, for select), `waitMs` (≤110 000, optional) | yes |
+| `schedule_heartbeat` | `name` (≤80 chars), `prompt` (1–32 000 chars), `intervalMs` (5 minutes to a day), `maxRuns` (≤10 000, optional), `cancelId` (optional) | yes |
 
 `set_status` writes this chat's status line: one word for where the work stands and one
 sentence a person reads in the sidebar's row, the chat's header, and its hover card
@@ -162,6 +163,12 @@ previous line, and a chat the harness has not named yet answers `no_session`.
 harness at its default model — `{ id, source, name, harnessId, harnessName, available,
 model, provider, thinkingLevel, permissionMode, role, note }` — with how many delegation
 levels and tasks are left.
+
+`schedule_heartbeat` prompts the calling chat itself on an interval, so a long piece of work can be
+picked back up without anyone typing. It belongs to the chat a person opened: a delegated worker is
+refused with `delegated_caller`, because a heartbeat would wake it after its task settled — with no
+watcher to read the answer and no write-scope guard to hold it. The schedule is keyed to the chat's
+own harness session, survives a restart, and only that session can cancel it.
 
 ## Decision gates
 
@@ -501,6 +508,7 @@ parsing the words:
 | `unsupported` | 400 | that harness has no permission modes |
 | `bad_scope` | 400 | a `writeScope` pattern holds `..`; name paths inside the project |
 | `caller_read_only` | 403 | a read-only harness may not delegate |
+| `delegated_caller` | 403 | a delegated worker may not schedule a heartbeat; the chat that delegated it can |
 | `mode_escalation_denied` | 403 | a permission mode broader than the caller's own |
 | `max_depth` | 429 | the caller is already as deep as delegation goes |
 | `too_many_tasks` | 429 | a per-chat, per-server, or depth cap |

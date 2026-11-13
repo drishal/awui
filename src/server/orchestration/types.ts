@@ -224,6 +224,7 @@ export const ORCH_DENIAL_CODES = [
   "max_depth",
   "too_many_tasks",
   "caller_read_only",
+  "delegated_caller",
   "unknown_harness",
   "harness_unavailable",
   "workspace_unsupported",

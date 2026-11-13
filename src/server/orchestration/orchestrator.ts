@@ -195,6 +195,10 @@ export class Orchestrator {
   private async scheduleHeartbeat(caller: Chat, args: { name: string; prompt: string; intervalMs: number; maxRuns?: number; cancelId?: string }): Promise<ToolOutput> {
     const heartbeats = this.deps.heartbeats;
     if (!heartbeats) throw denial(404, "orch_off", "Heartbeats are not wired on this server");
+    // A delegated child's run belongs to its task: a heartbeat would prompt it again after
+    // that task settled, with no watcher to read the answer and no guard to hold its scope.
+    // Only a chat the person opened may schedule one, and only that chat can cancel one.
+    if (caller.lineage) throw denial(403, "delegated_caller", "A delegated worker cannot schedule a heartbeat; the chat that delegated this task can schedule one for itself");
     if (!caller.sessionId || !caller.nativeId) throw denial(409, "no_session", "This chat has no session yet; schedule a heartbeat once the harness has named it");
     const prefix = `${caller.adapter.id}:`;
     if (!caller.sessionId.startsWith(prefix)) throw denial(409, "no_session", "This chat's session does not match its harness");

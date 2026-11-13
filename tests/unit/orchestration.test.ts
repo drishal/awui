@@ -777,6 +777,21 @@ describe("thread_send", () => {
     expect(refused.status).toBe(409);
     expect(refused.body).toMatchObject({ ok: false, code: "task_not_running" });
   });
+
+  it("refuses a delegated worker a heartbeat of its own", async () => {
+    const { app, agent, token } = await setup();
+    const started = await delegate(agent, token, { brief: "check the lockfile" });
+    await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 10_000 });
+    // The child is a live chat with its own orchestration token, and a heartbeat it
+    // scheduled would prompt it after its task settled: no watcher, no guard, nothing owed.
+    const childToken = tokenOf(app, String(started.childChatId));
+    const refused = await call(agent, childToken, "schedule_heartbeat", { name: "later", prompt: "carry on", intervalMs: 300_000 });
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ ok: false, code: "delegated_caller" });
+    // The chat that owns the work schedules one for itself as before.
+    const allowed = await call(agent, token, "schedule_heartbeat", { name: "later", prompt: "carry on", intervalMs: 300_000 });
+    expect(allowed.status).toBe(200);
+  });
 });
 
 describe("finish delivery", () => {
