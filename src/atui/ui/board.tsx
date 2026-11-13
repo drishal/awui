@@ -91,17 +91,27 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     setCursor(0);
   });
 
+  /** A filter change can empty the column the cursor stood in: it moves to the first column that still has a
+      card, so Enter always has one to open. */
+  const reclamp = () => {
+    const all = cards();
+    if ((all[column()] ?? []).length === 0) {
+      const first = BOARD_COLUMNS.find((id) => all[id].length > 0);
+      if (first) setColumn(first);
+    }
+    setCursor(0);
+  };
   const cycleProject = () => {
     const list: Array<string | null> = [null, ...projects().map((w) => w.id)];
     const next = list[(list.indexOf(project()) + 1) % list.length] ?? null;
     setProject(next);
-    setCursor(0);
+    reclamp();
     setNote(null);
   };
   const cyclePr = () => {
     const next = PR_FILTERS[(PR_FILTERS.indexOf(pr()) + 1) % PR_FILTERS.length] ?? "any";
     setPr(next);
-    setCursor(0);
+    reclamp();
     setNote(null);
   };
   const step = (by: 1 | -1) => {
@@ -136,10 +146,12 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   return (
     <box
       position="absolute"
-      top={1}
+      /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
+         the title bar, so a terminal-height overlay would put its last row off the frame. */
+      top={0}
+      bottom={0}
       left={Math.max(0, Math.floor((size().width - width()) / 2))}
       width={width()}
-      height={Math.max(8, size().height - 2)}
       zIndex={15}
       flexDirection="column"
       border

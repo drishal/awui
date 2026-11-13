@@ -261,10 +261,12 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
   return (
     <box
       position="absolute"
-      top={1}
+      /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
+         the title bar, so a terminal-height overlay would put its last row off the frame. */
+      top={0}
+      bottom={0}
       left={Math.max(0, Math.floor((size().width - width()) / 2))}
       width={width()}
-      height={Math.max(8, size().height - 2)}
       zIndex={15}
       flexDirection="column"
       border
@@ -390,7 +392,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
             : busy()
               ? "Working…"
               : row()
-                ? "↑↓ scroll · a apply · k keep · u undo apply · d remove worktree · n note · o open chat · x cancel · Esc back"
+                ? "↑↓ scroll · a apply · k keep · u undo · d remove · n note · o chat · x cancel · Esc back"
                 : "↑↓ worker · Enter opens · o open its chat · x cancel · Esc closes")}
       </text>
     </box>

@@ -105,10 +105,12 @@ export function ContextRailView(p: RailActions) {
   return (
     <box
       position="absolute"
-      top={1}
+      /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
+         the title bar, so a terminal-height overlay would put its last row off the frame. */
+      top={0}
+      bottom={0}
       left={Math.max(0, Math.floor((size().width - width()) / 2))}
       width={width()}
-      height={Math.max(8, size().height - 2)}
       zIndex={15}
       flexDirection="column"
       border
