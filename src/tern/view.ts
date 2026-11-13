@@ -388,6 +388,7 @@ export function toolNode(item: ToolItem, workspace: string, age: ConversationCx[
     {
       key: item.id,
       name: rowName(item),
+      role: `awui.tool-${item.category}`,
       title: sentence.verb,
       ...(target ? { target } : {}),
       targetKind,

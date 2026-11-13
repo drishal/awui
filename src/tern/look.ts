@@ -51,6 +51,9 @@ export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "li
         `--sf-c-rare: ${scheme.rare}`,
         `--awui-cost: ${scheme.rare}`,
         `--awui-npm: ${scheme.ok}`,
+        // The category colours the call glyphs take, one role each (the web UI's --cat-*).
+        `--sf-c-info: ${scheme.info}`,
+        `--sf-c-orange: ${scheme.orange}`,
       ]
     : [];
   return `[data-role='awui.page'], [data-role='awui.dock'] { ${[...own, ...vars].join("; ")}; }\n`;
@@ -156,6 +159,13 @@ export function stylesheet(width: ChatWidth | null): string {
 [data-role^='awui.fold'] > .sf-section-body::before { display: none; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-ic { width: 19px; height: 19px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--t3); background: none; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-ic svg { width: 14px; height: 14px; }
+/* The call's glyph takes the category colour, as the web UI's --cat-* mapping (the row text stays --t1). */
+[data-role='awui.tool-read'] .sf-tool-ic, [data-role='awui.tool-search'] .sf-tool-ic { color: var(--sf-c-info, var(--accent)); }
+[data-role='awui.tool-edit'] .sf-tool-ic, [data-role='awui.tool-write'] .sf-tool-ic { color: var(--sf-c-orange, var(--warn)); }
+[data-role='awui.tool-command'] .sf-tool-ic { color: var(--t3); }
+[data-role='awui.tool-web'] .sf-tool-ic { color: var(--sf-c-link, var(--accent)); }
+[data-role='awui.tool-agent'] .sf-tool-ic { color: var(--awui-thinking, var(--t3)); }
+[data-role='awui.tool-other'] .sf-tool-ic { color: var(--warn); }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-title { font-weight: 500; font-family: var(--sans); }
 /* The row's line is a flex row ending in a spacer: the facts go after it, to the right edge, as the web UI's. */
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-sp { order: 1; }
