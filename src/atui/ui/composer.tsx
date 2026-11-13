@@ -315,6 +315,11 @@ export function Composer(p: {
   };
 
   const tone = () => contextTone(t(), percent() ?? 0);
+  // What waits to go: steering and follow-ups the harness holds. A count, since the queue itself is its own picker.
+  const queued = () => (app.chat()?.queue.steering.length ?? 0) + (app.chat()?.queue.followUp.length ?? 0);
+  /** A repo's state in one word: what is uncommitted, or nothing. */
+  const gitWord = (g: NonNullable<ReturnType<typeof app.git>>) =>
+    g.counts.conflicts > 0 ? `${g.counts.conflicts} conflicted` : g.files.length === 0 ? "clean" : `${g.files.length} changed`;
 
   // How fast the agent writes: what the turn has streamed, sampled on the clock while it runs.
   const [rate, setRate] = createSignal<number | null>(null);
@@ -510,6 +515,25 @@ export function Composer(p: {
         </box>
         <text flexShrink={0}>
           {"  "}
+          <Show when={queued() > 0}>
+            <span style={{ fg: t().accent }}>{`+${queued()} queued  `}</span>
+          </Show>
+          {/* The project's git state, as the web UI's composer row has it: the branch, its distance from the upstream, what is uncommitted. */}
+          <Show when={app.git()}>
+            {(g) => (
+              <>
+                <span style={{ fg: t().accent }}>{g().branch ?? `detached ${g().head ?? ""}`}</span>
+                <Show when={g().upstream && (g().ahead > 0 || g().behind > 0)}>
+                  <span style={{ fg: t().muted }}>{` ${g().ahead > 0 ? `↑${g().ahead}` : ""}${g().behind > 0 ? `↓${g().behind}` : ""}`}</span>
+                </Show>
+                <Show when={g().added + g().removed > 0}>
+                  <span style={{ fg: t().ok }}>{` +${g().added}`}</span>
+                  <span style={{ fg: t().danger }}>{` −${g().removed}`}</span>
+                </Show>
+                <span style={{ fg: g().counts.conflicts > 0 ? t().danger : g().files.length === 0 ? t().muted : t().text2 }}>{` ${gitWord(g())}  `}</span>
+              </>
+            )}
+          </Show>
           {/* Gone the moment the run ends, not at the next sample. */}
           <Show when={app.chat()?.status === "running" && (rate() ?? 0) >= 1}>
             <span style={{ fg: t().muted }}>{`~${Math.round(rate() ?? 0)} tok/s `}</span>

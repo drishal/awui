@@ -43,6 +43,15 @@ export function Splash(p: { question: string; subtitle: string }) {
           {tip()}
         </text>
       </box>
+      {/* What an empty screen is for: the three keys that get you somewhere, quiet under the tip. */}
+      <Show when={size().width >= 60}>
+        <text fg={t().border} marginTop={1}>
+          <span style={{ fg: t().text2 }}>C-k</span> commands{" "}
+          <span style={{ fg: t().border }}>·</span> <span style={{ fg: t().text2 }}>C-r</span> history{" "}
+          <span style={{ fg: t().border }}>·</span> <span style={{ fg: t().text2 }}>C-x s</span> sessions{" "}
+          <span style={{ fg: t().border }}>·</span> <span style={{ fg: t().text2 }}>@</span> files
+        </text>
+      </Show>
     </box>
   );
 }

@@ -629,7 +629,7 @@ export function App(p: {
           </Show>
           <box flexDirection="column" flexGrow={1}>
             <TabBar />
-            <box flexDirection="row" flexShrink={0} paddingLeft={2} paddingRight={2}>
+            <box flexDirection="row" flexShrink={0} paddingLeft={2} paddingRight={2} border={["bottom"]} borderColor={t().border}>
               <text flexGrow={1} fg={t().text} wrapMode="none" truncate>
                 <b>{title()}</b>
               </text>

@@ -121,7 +121,7 @@ export function ReviewView(p: { onClose: () => void }) {
           <span style={{ fg: t().muted }}>{`  ${files().length} ${files().length === 1 ? "file" : "files"} · ${open().length} open${resolved().length > 0 ? ` · ${resolved().length} resolved` : ""}`}</span>
         </text>
       </box>
-      <Show when={files().length > 0} fallback={<text fg={t().muted}>The agent has not edited any files in this chat.</text>}>
+      <Show when={files().length > 0} fallback={<text flexGrow={1} fg={t().muted}>The agent has not edited any files in this chat.</text>}>
         <box flexDirection="column" flexGrow={1} marginTop={1} overflow="hidden">
           <For each={shown()}>
             {(row, i) => {

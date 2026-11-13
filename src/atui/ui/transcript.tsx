@@ -387,7 +387,7 @@ function ToolRow(p: { item: ToolItem; workspace: string }) {
   const running = () => p.item.status === "running";
   const failed = () => p.item.status === "error";
   const bad = (f: string) => failed() || /^(failed|exit [1-9])/.test(f);
-  const factColor = (f: string) => (bad(f) ? t().danger : t().ok);
+  const factColor = (f: string) => (bad(f) ? t().danger : t().muted);
   // A running command moves to its own wrapped `└ $` lines, so you can read what is executing.
   const wraps = () => running() && p.item.category === "command" && Boolean(row().detail);
   // What it prints meanwhile shows under it, a few lines, until the outcome takes their place.
@@ -905,7 +905,8 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       <Show when={sigmaShown()}>
         <box marginTop={1}>
           <text fg={t().muted} wrapMode="word">
-            {`Σ ${sigma().facts.join(" · ")}`}
+            <span style={{ fg: t().border }}>{"Σ "}</span>
+            {sigma().facts.join(" · ")}
             <Show when={sigma().failed}>
               {(failed) => (
                 <>
@@ -920,7 +921,8 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       <Show when={files().length > 0 && !p.turn().live}>
         <box marginTop={sigmaShown() ? 0 : 1}>
           <text fg={t().muted} wrapMode="word">
-            {`✎ Changed ${files().length} ${files().length === 1 ? "file" : "files"} · `}
+            <span style={{ fg: t().ok }}>{"✎ "}</span>
+            {`Changed ${files().length} ${files().length === 1 ? "file" : "files"} · `}
             {/* Each name is a link to its file, where the terminal has links. */}
             <Index each={files().slice(0, FILES_SHOWN)}>
               {(f, i) => (

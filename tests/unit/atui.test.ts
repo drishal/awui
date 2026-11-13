@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChatItem, InteractionRequest, LimitAccount, ToolItem } from "../../src/shared/protocol.js";
 import { parseArgs } from "../../src/atui/args.js";
-import { accountName, ago, clip, fileUrl, foldLabel, outputTail, streamedChars, tokens, toolTarget, unifiedDiff, windowLabel } from "../../src/atui/format.js";
+import { accountName, ago, clip, clipPath, fileUrl, foldLabel, outputTail, streamedChars, tokens, toolTarget, unifiedDiff, windowLabel } from "../../src/atui/format.js";
 import { isApproval, optionsOf } from "../../src/atui/requests.js";
 import { DARK, themeFrom } from "../../src/atui/theme.js";
 import { buildTurns } from "../../src/web/turns.js";
@@ -95,6 +95,10 @@ describe("atui formatting", () => {
     expect(accountName(claude)).toBe("Claude");
     expect(claude.windows.map((w) => windowLabel(w.label))).toEqual(["5h", "7d"]);
     expect(clip("a  long\n line", 8)).toBe("a long …");
+    // A path keeps its end, cut at a folder: the project's own name is the part that tells two apart.
+    expect(clipPath("/tmp/atui-scratch/workspaces/alpha", 24)).toBe("…/workspaces/alpha");
+    expect(clipPath("/tmp/atui-scratch/workspaces/alpha", 14)).toBe("…/alpha");
+    expect(clipPath("alpha", 14)).toBe("alpha");
   });
 });
 

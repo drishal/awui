@@ -8,7 +8,7 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { useKeyboard } from "@opentui/solid";
 import type { ProjectSession } from "../../shared/protocol.js";
 import { groupByProject, isBusy, sidebarSections } from "../../web/session-groups.js";
-import { clip } from "../format.js";
+import { clip, clipPath } from "../format.js";
 import { breathe, mix, spinnerFor } from "../fx.js";
 import { accentOf } from "../theme.js";
 import { useAtui, useTheme } from "./context.js";
@@ -163,15 +163,20 @@ export function Sidebar(p: {
       >
         <text fg={t().muted} wrapMode="none" truncate flexShrink={0}>
           <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{`${app.harness()?.displayName ?? ""}  `}</span>
-          {app.workspace()?.path ?? "no project"}
+          {clipPath(app.workspace()?.path ?? "no project", Math.max(6, width() - (app.harness()?.displayName?.length ?? 0) - 2))}
+        </text>
+        <text fg={t().border} wrapMode="none" flexShrink={0}>
+          {"─".repeat(Math.max(0, p.width - 4))}
         </text>
         <scrollbox flexGrow={1} marginTop={1} verticalScrollbarOptions={{ visible: false }}>
           <For each={rows()}>
             {(row, i) =>
               row.kind === "head" ? (
                 <text fg={row.color ?? t().muted} marginTop={i() === 0 ? 0 : 1}>
-                  {`${row.label} `}
-                  <span style={{ fg: t().muted }}>{String(row.count)}</span>
+                  {row.label}
+                  <Show when={row.count > 0}>
+                    <span style={{ fg: t().muted }}>{` ${row.count}`}</span>
+                  </Show>
                 </text>
               ) : (
                 <box

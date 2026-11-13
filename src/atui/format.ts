@@ -123,6 +123,18 @@ export function fileUrl(file: string, workspace: string): string {
   return `file://${abs.split("/").map(encodeURIComponent).join("/")}`;
 }
 
+/** A path too long for `width`, cut at a folder: "…/workspaces/alpha" keeps the end, where the project is. */
+export function clipPath(path: string, width: number): string {
+  if (path.length <= width) return path;
+  const parts = path.replace(/\/+$/, "").split("/").filter(Boolean);
+  // The most folders that fit, from the whole path down: the first tail short enough is the longest one.
+  for (let i = 0; i < parts.length; i++) {
+    const tail = `…/${parts.slice(i).join("/")}`;
+    if (tail.length <= width) return tail;
+  }
+  return `…${path.slice(-Math.max(0, width - 1))}`;
+}
+
 /** A short line of text, cut with an ellipsis. */
 export function clip(text: string, width: number): string {
   const line = text.replace(/\s+/g, " ").trim();
