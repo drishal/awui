@@ -181,6 +181,9 @@
   --tint: 10%;
   --tint-strong: 14%;
   --edge: 40%;
+  /* The composer row's one leading chip (the harness): stronger than any setting chip beside it. */
+  --lead-tint: 12%;
+  --lead-edge: 32%;
   --cat-look: var(--info);
   --cat-write: var(--orange);
   --cat-run: var(--muted-text);

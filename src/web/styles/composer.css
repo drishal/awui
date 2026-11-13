@@ -1012,32 +1012,33 @@
   color: var(--muted-text);
 }
 
-/* Thinking chip: a ramp on --thinking by data-level. off/minimal stay neutral; from low up the wash deepens
-   (10, 14, 18, 24 %) over the chip's own resting fill, with a 1px edge that appears at medium, so a glance tells how hard
-   the agent is asked to think. The label and the chevron take the hue too. */
-.pill-trigger[data-level="low"] {
-  background: color-mix(in oklab, var(--thinking) 10%, var(--hover));
+/* Thinking chip: a quiet ramp on --thinking by data-level. off/minimal/low stay neutral; from medium up the wash deepens
+   (6, 9, 12 %) over the chip's own resting fill with no edge, never stronger than the harness chip beside it; the word
+   carries the level, the hue only backs it. */
+.pill-trigger[data-level] {
+  --level-tone: var(--thinking);
+  --level-ink: 30%;
 }
 
 .pill-trigger[data-level="medium"] {
-  background: color-mix(in oklab, var(--thinking) 14%, var(--hover));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--thinking) 22%, transparent);
+  background: color-mix(in oklab, var(--level-tone) 6%, var(--hover));
+  --level-ink: 40%;
 }
 
 .pill-trigger[data-level="high"] {
-  background: color-mix(in oklab, var(--thinking) 18%, var(--hover));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--thinking) 32%, transparent);
+  background: color-mix(in oklab, var(--level-tone) 9%, var(--hover));
+  --level-ink: 45%;
 }
 
 .pill-trigger[data-level="xhigh"],
 .pill-trigger[data-level="max"],
 .pill-trigger[data-level="ultra"] {
-  background: color-mix(in oklab, var(--thinking) 24%, var(--hover));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--thinking) 44%, transparent);
+  background: color-mix(in oklab, var(--level-tone) 12%, var(--hover));
+  --level-ink: 50%;
 }
 
 .pill-trigger[data-level]:not([data-level=""]):not([data-level="off"]):not([data-level="minimal"]) {
-  color: color-mix(in oklab, var(--thinking) 55%, var(--text));
+  color: color-mix(in oklab, var(--level-tone) var(--level-ink), var(--text));
 }
 
 .pill-trigger[data-level]:not([data-level=""]):not([data-level="off"]):not([data-level="minimal"]) .pill-label {
@@ -1045,7 +1046,7 @@
 }
 
 .pill-trigger[data-level]:not([data-level=""]):not([data-level="off"]):not([data-level="minimal"]) .icon:last-child {
-  color: color-mix(in oklab, var(--thinking) 70%, var(--muted-text));
+  color: currentColor;
 }
 
 /* Context and usage panel (DeepSeek Harness's three popovers, as sections of one). */

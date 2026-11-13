@@ -462,9 +462,9 @@
   margin-left: auto;
 }
 
-/* The one chip that says who answers: a faint wash and edge in the harness's colour (identity is that hue's only job),
-   where the model, thinking, and permission chips beside it stay neutral. The wash is a tint, not a fill, so the
-   agent's name does not outrank the settings. */
+/* The one chip that says who answers, and the row's one leader: a wash and edge in the harness's colour (identity is
+   that hue's only job), where the model and permission chips beside it stay neutral and the thinking chip is quieter.
+   The wash is a tint, not a fill. */
 button.harness-chip {
   justify-content: center;
   gap: 7px;
@@ -476,9 +476,18 @@ button.harness-chip {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  background: color-mix(in oklab, var(--harness, var(--muted)) var(--tint), var(--hover));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--harness, var(--muted)) 24%, transparent);
-  color: var(--text-2);
+  background: color-mix(in oklab, var(--harness, var(--muted)) var(--lead-tint), var(--hover));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--harness, var(--muted)) var(--lead-edge), transparent);
+  color: var(--text);
+}
+
+/* 20 % text keeps the mark at about 3:1 on its own wash in low-chroma schemes. */
+button.harness-chip .harness-dot .harness-mark:not(.is-custom):not(.is-fallback) {
+  background: color-mix(in oklab, var(--harness, var(--muted)) 80%, var(--text));
+}
+
+button.harness-chip .harness-dot .harness-mark.is-fallback {
+  color: color-mix(in oklab, var(--harness, var(--muted)) 80%, var(--text));
 }
 
 button.harness-chip > .harness-dot {
@@ -490,8 +499,14 @@ button.harness-chip > .harness-dot {
 
 button.harness-chip:hover:not(:disabled),
 button.harness-chip[aria-expanded="true"] {
-  background: color-mix(in oklab, var(--harness, var(--muted)) var(--tint-strong), var(--active));
+  background: color-mix(in oklab, var(--harness, var(--muted)) calc(var(--lead-tint) + 5%), var(--active));
   color: var(--text);
+}
+
+/* Attention outranks identity: beside a cautious mode the harness keeps only its mark (Claude's gold is base0A, = --warn). */
+.composer-controls:has(.permission-trigger.is-caution) button.harness-chip {
+  background: var(--hover);
+  box-shadow: none;
 }
 
 button.harness-chip:disabled {
@@ -598,29 +613,22 @@ button.harness-chip:disabled {
   color: var(--muted-text);
 }
 
-/* A mode the harness does not flag as cautious (the default that asks first, plan, accept edits) gets a green shield on a
-   faint wash, so the chip reads as guarded at a glance; the warning colour below is the one exception that turns it amber. */
-.permission-trigger:not(.is-caution) {
-  background: color-mix(in oklab, var(--ok) 8%, var(--hover));
-}
-
-.permission-trigger:not(.is-caution):hover:not(:disabled),
-.permission-trigger:not(.is-caution)[aria-expanded="true"] {
-  background: color-mix(in oklab, var(--ok) 13%, var(--active));
-}
-
+/* A mode the harness does not flag as cautious (the default that asks first, plan, accept edits) is a neutral pill with
+   a green shield, so it reads as guarded without a second wash in the row; the warning colour below is the exception. */
 .permission-trigger:not(.is-caution) > .icon:first-child {
   color: var(--ok);
 }
 
+/* A caution chip says so with an edge as well as the colour, and its label stays --text for contrast on light schemes. */
 .permission-trigger.is-caution,
 .permission-trigger.is-caution:hover:not(:disabled) {
   background: color-mix(in srgb, var(--warn) 16%, transparent);
-  color: var(--warn);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--warn) var(--edge), transparent);
+  color: var(--text);
 }
 
 .permission-trigger.is-caution > .icon:first-child {
-  color: currentColor;
+  color: var(--warn);
 }
 
 .permission-menu {
