@@ -12,6 +12,7 @@ import { herdrSocketPath } from "./herdr.js";
 import { HarnessRegistry } from "./harness/registry.js";
 import { configDir, configEnv, herdrEnabled, readUserConfig, type UserConfig } from "./user-config.js";
 import { IS_WINDOWS } from "./platform-win.js";
+import { extractEmbeddedExtensions } from "./embedded.js";
 import { orchestrateExtension } from "./harness/render-extension.js";
 import { Workspaces } from "./workspaces.js";
 import type { HarnessStatus } from "../shared/protocol.js";
@@ -225,6 +226,13 @@ export async function gather(env: NodeJS.ProcessEnv = process.env): Promise<Doct
     stateDir.mode = statSync(config.stateDir).mode & 0o777;
   } catch (error) {
     stateDir.error = error instanceof Error ? error.message : String(error);
+  }
+  // The compiled binary carries its extensions and writes them out at startup; doctor is a separate process,
+  // so without this it would report the bundled orchestration extension missing on a server that has it.
+  try {
+    if (stateDir.error === null) await extractEmbeddedExtensions(config.stateDir);
+  } catch {
+    // Unwritable state folder: already reported above.
   }
   const exposed = config.host === "0.0.0.0" || config.allowedHosts.length > 0;
   const socket = herdrSocketPath(env, config.home ?? homedir(), userConfig?.herdr_socket);
