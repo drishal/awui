@@ -114,7 +114,7 @@ export function ReviewView(p: { onClose: () => void }) {
   const lineColor = (kind: string) => (kind === "add" ? t().ok : kind === "del" ? t().danger : t().text2);
 
   return (
-    <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={15} flexDirection="column" backgroundColor={t().bg} paddingLeft={2} paddingRight={2}>
+    <box flexGrow={1} flexDirection="column" backgroundColor={app.glass() ? undefined : t().bg} paddingLeft={2} paddingRight={2}>
       <box flexDirection="row" flexShrink={0} marginTop={1}>
         <text flexGrow={1} fg={t().text}>
           <b>Review changes</b>

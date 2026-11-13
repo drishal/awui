@@ -28,6 +28,8 @@ export function Picker(p: {
   onClose: () => void;
   firstHeading?: boolean;
   preview?: (item: PaletteItem) => Promise<PreviewText | null> | null;
+  /** Columns the side panel takes: the picker fits what is left of the screen, never under the panel. */
+  side?: number;
 }) {
   const t = useTheme();
   const size = useTerminalDimensions();
@@ -40,8 +42,9 @@ export function Picker(p: {
       setActive(first < 0 ? 0 : first);
     }),
   );
-  const previewing = () => Boolean(p.preview) && size().width >= PREVIEW_WIDTH;
-  const width = () => Math.min(previewing() ? 128 : 72, size().width - 4);
+  const room = () => size().width - (p.side ?? 0);
+  const previewing = () => Boolean(p.preview) && room() >= PREVIEW_WIDTH;
+  const width = () => Math.max(30, Math.min(previewing() ? 128 : 72, room() - 4));
   /** The list's own width: all of it, or about half beside a preview. */
   const listWidth = () => (previewing() ? Math.min(64, Math.floor(width() * 0.52)) : width() - 2);
   const [shownPreview] = createResource(
@@ -89,12 +92,11 @@ export function Picker(p: {
 
   return (
     <box
-      position="absolute"
-      top={2}
-      left={Math.max(0, Math.floor((size().width - width()) / 2))}
+      alignSelf="center"
+      marginTop={1}
       width={width()}
       height={height()}
-      zIndex={20}
+      flexShrink={0}
       flexDirection="column"
       border
       borderStyle="rounded"

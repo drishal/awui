@@ -11,7 +11,7 @@ import { useAtui, useTheme } from "./context.js";
 
 const CHANGE: Record<CheckpointFile["change"], string> = { restore: "put back", delete: "delete (new since)", recreate: "bring back" };
 
-export function UndoDialog(p: { turn: number; onClose: () => void }) {
+export function UndoDialog(p: { turn: number; onClose: () => void; side?: number }) {
   const app = useAtui();
   const t = useTheme();
   const size = useTerminalDimensions();
@@ -20,7 +20,7 @@ export function UndoDialog(p: { turn: number; onClose: () => void }) {
   const [skipped, setSkipped] = createSignal(new Set<string>());
   const [at, setAt] = createSignal(0);
   const [busy, setBusy] = createSignal(false);
-  const width = () => Math.min(76, size().width - 4);
+  const width = () => Math.max(30, Math.min(76, size().width - (p.side ?? 0) - 4));
   const ticked = () => files().filter((f) => !skipped().has(f.path));
   const toggle = (path: string) =>
     setSkipped((s) => {
@@ -51,11 +51,10 @@ export function UndoDialog(p: { turn: number; onClose: () => void }) {
 
   return (
     <box
-      position="absolute"
-      top={3}
-      left={Math.max(0, Math.floor((size().width - width()) / 2))}
+      alignSelf="center"
+      marginTop={2}
       width={width()}
-      zIndex={20}
+      flexShrink={0}
       flexDirection="column"
       border
       borderStyle="rounded"

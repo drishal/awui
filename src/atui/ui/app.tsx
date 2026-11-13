@@ -33,7 +33,7 @@ import { glideBy, glideTo, Shimmer } from "./fx.js";
 import { SwitchGhost } from "./ghost.js";
 import { Picker, type PreviewText } from "./picker.js";
 import { RequestCard } from "./request.js";
-import { Sidebar, SidebarRail, type SidebarTab } from "./sidebar.js";
+import { RAIL_WIDTH, Sidebar, SidebarRail, type SidebarTab } from "./sidebar.js";
 import { Splash } from "./splash.js";
 import { TabBar } from "./tabbar.js";
 import { UndoDialog } from "./undo.js";
@@ -603,6 +603,12 @@ export function App(p: {
   });
   createEffect(() => p.onTerminal?.(terminal()));
 
+  // A dialog takes the conversation's place rather than drawing over it: OpenTUI paints a bordered box's own body
+  // after a sibling overlay, so a floating picker lets the cards behind it through.
+  const sheet = () => dialog() !== null || reviewing() || app.undoTurn() !== null || running() !== null;
+  /** What the side panel leaves of the screen for a sheet. */
+  const room = () => (sidebar() ? sideWidth() : RAIL_WIDTH);
+
   return (
     <AtuiContext.Provider value={app}>
       <box flexDirection="column" width="100%" height="100%">
@@ -641,49 +647,110 @@ export function App(p: {
               </Show>
             </box>
             <Show
-              when={ghost()}
+              when={sheet()}
               fallback={
-                <Show
-                  when={hasPrompt()}
-                  fallback={<Splash question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
-                >
-                  <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} />
+                <box flexDirection="column" flexGrow={1}>
+                  <Show
+                    when={ghost()}
+                    fallback={
+                      <Show
+                        when={hasPrompt()}
+                        fallback={<Splash question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
+                      >
+                        <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} />
+                      </Show>
+                    }
+                  >
+                    {(g) => <SwitchGhost title={g().title} harnessId={g().harnessId} sidebar={sidebar() ? sideWidth() : 3} />}
+                  </Show>
+                  <Show when={app.banner()}>
+                    {(b) => (
+                      <box flexShrink={0} paddingLeft={2} paddingRight={2}>
+                        <text fg={b().level === "error" ? t().danger : b().level === "warning" ? t().warn : t().info} wrapMode="word">
+                          {b().text}
+                        </text>
+                      </box>
+                    )}
+                  </Show>
+                  <Show when={app.chat()?.gone}>
+                    {(gone) => (
+                      <box flexShrink={0} paddingLeft={2}>
+                        <text fg={t().warn}>{`${gone()} · ${leader("n")} for a new chat`}</text>
+                      </box>
+                    )}
+                  </Show>
+                  <Toasts />
+                  <Show
+                    when={pending()}
+                    keyed
+                    fallback={
+                      <Composer
+                        status={{ mode: vim() ? (normal() ? "normal" : "insert") : null, leader: leaderOn(), note: hint() }}
+                        focused={focus() === "composer" && !dialog() && !normal() && app.undoTurn() === null && !reviewing() && !running()}
+                        compactChoice={compactChoice()}
+                        onCompactChoice={setCompactChoice}
+                        onPick={setDialog}
+                        ref={(el) => (composer = el)}
+                      />
+                    }
+                  >
+                    {(request) => <RequestCard request={request} more={(app.chat()?.pending.length ?? 1) - 1} active={focus() === "composer" && !dialog()} />}
+                  </Show>
+                </box>
+              }
+            >
+              <box flexDirection="column" flexGrow={1}>
+                <Show when={dialog() === "palette"}>
+                  <Picker title="Commands" placeholder="Search commands, sessions, thinking…" items={paletteItems()} onClose={() => setDialog(null)} side={room()} />
                 </Show>
-              }
-            >
-              {(g) => <SwitchGhost title={g().title} harnessId={g().harnessId} sidebar={sidebar() ? sideWidth() : 3} />}
-            </Show>
-            <Show when={app.banner()}>
-              {(b) => (
-                <box flexShrink={0} paddingLeft={2} paddingRight={2}>
-                  <text fg={b().level === "error" ? t().danger : b().level === "warning" ? t().warn : t().info} wrapMode="word">
-                    {b().text}
-                  </text>
-                </box>
-              )}
-            </Show>
-            <Show when={app.chat()?.gone}>
-              {(gone) => (
-                <box flexShrink={0} paddingLeft={2}>
-                  <text fg={t().warn}>{`${gone()} · ${leader("n")} for a new chat`}</text>
-                </box>
-              )}
-            </Show>
-            <Show
-              when={pending()}
-              keyed
-              fallback={
-                <Composer
-                  status={{ mode: vim() ? (normal() ? "normal" : "insert") : null, leader: leaderOn(), note: hint() }}
-                  focused={focus() === "composer" && !dialog() && !normal() && app.undoTurn() === null && !reviewing() && !running()}
-                  compactChoice={compactChoice()}
-                  onCompactChoice={setCompactChoice}
-                  onPick={setDialog}
-                  ref={(el) => (composer = el)}
-                />
-              }
-            >
-              {(request) => <RequestCard request={request} more={(app.chat()?.pending.length ?? 1) - 1} active={focus() === "composer" && !dialog()} />}
+                <Show when={dialog() === "models"}>
+                  <Picker title="Model" placeholder="Search models…" items={modelItems()} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "harness"}>
+                  <Picker title="Harness" placeholder="Search harnesses…" items={harnessItems()} onClose={() => setDialog(null)} firstHeading={hasPrompt()} side={room()} />
+                </Show>
+                <Show when={dialog() === "thinking"}>
+                  <Picker title="Thinking" placeholder="Search levels…" items={thinkingItems()} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "run"}>
+                  <Picker
+                    title="Run a command from the answer"
+                    placeholder="Search commands…"
+                    firstHeading
+                    items={runnables().map((r, i) => ({
+                      id: `run:${i}`,
+                      section: `In ${app.chat()?.workspace.name ?? "the project"}, with ${r.shell}`,
+                      label: `$ ${r.command}`,
+                      run: () => void runOne(r.command, r.shell),
+                    }))}
+                    onClose={() => setDialog(null)}
+                    side={room()}
+                  />
+                </Show>
+                <Show when={running()}>
+                  {(r) => (
+                    <RunOutput
+                      command={r().command}
+                      result={r().result}
+                      onAdd={() => {
+                        const done = r().result;
+                        // Close the sheet first: it stands where the composer does, so the composer is only there to fill once it goes.
+                        setRunning(null);
+                        if (done) appendToComposer(`${runForMessage(r().command, done.output, runStatus(done))}\n\n`);
+                      }}
+                      onClose={() => setRunning(null)}
+                      side={room()}
+                    />
+                  )}
+                </Show>
+                <Show when={dialog() === "history"}>
+                  <Picker title="History" placeholder="Search sessions, projects, harnesses…" items={historyItems()} onClose={() => setDialog(null)} firstHeading preview={historyPreview} side={room()} />
+                </Show>
+                <Show when={reviewing()}>
+                  <ReviewView onClose={() => setReviewing(false)} />
+                </Show>
+                <Show when={app.undoTurn()}>{(turn) => <UndoDialog turn={turn()} onClose={() => app.setUndoTurn(null)} side={room()} />}</Show>
+              </box>
             </Show>
           </box>
         </box>
@@ -696,54 +763,6 @@ export function App(p: {
             }}
           />
         </Show>
-        <Show when={dialog() === "palette"}>
-          <Picker title="Commands" placeholder="Search commands, sessions, thinking…" items={paletteItems()} onClose={() => setDialog(null)} />
-        </Show>
-        <Show when={dialog() === "models"}>
-          <Picker title="Model" placeholder="Search models…" items={modelItems()} onClose={() => setDialog(null)} />
-        </Show>
-        <Show when={dialog() === "harness"}>
-          <Picker title="Harness" placeholder="Search harnesses…" items={harnessItems()} onClose={() => setDialog(null)} firstHeading={hasPrompt()} />
-        </Show>
-        <Show when={dialog() === "thinking"}>
-          <Picker title="Thinking" placeholder="Search levels…" items={thinkingItems()} onClose={() => setDialog(null)} />
-        </Show>
-        <Show when={dialog() === "run"}>
-          <Picker
-            title="Run a command from the answer"
-            placeholder="Search commands…"
-            firstHeading
-            items={runnables().map((r, i) => ({
-              id: `run:${i}`,
-              section: `In ${app.chat()?.workspace.name ?? "the project"}, with ${r.shell}`,
-              label: `$ ${r.command}`,
-              run: () => void runOne(r.command, r.shell),
-            }))}
-            onClose={() => setDialog(null)}
-          />
-        </Show>
-        <Show when={running()}>
-          {(r) => (
-            <RunOutput
-              command={r().command}
-              result={r().result}
-              onAdd={() => {
-                const done = r().result;
-                if (done) appendToComposer(`${runForMessage(r().command, done.output, runStatus(done))}\n\n`);
-                setRunning(null);
-              }}
-              onClose={() => setRunning(null)}
-            />
-          )}
-        </Show>
-        <Show when={dialog() === "history"}>
-          <Picker title="History" placeholder="Search sessions, projects, harnesses…" items={historyItems()} onClose={() => setDialog(null)} firstHeading preview={historyPreview} />
-        </Show>
-        <Show when={reviewing()}>
-          <ReviewView onClose={() => setReviewing(false)} />
-        </Show>
-        <Show when={app.undoTurn()}>{(turn) => <UndoDialog turn={turn()} onClose={() => app.setUndoTurn(null)} />}</Show>
-        <Toasts />
       </box>
     </AtuiContext.Provider>
   );

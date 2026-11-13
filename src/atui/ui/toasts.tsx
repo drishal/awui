@@ -1,5 +1,7 @@
-// News from sessions in the background, in the top right corner for a few
-// seconds: one finished, failed, or asks for you. A click opens it.
+// News from sessions in the background, in the corner above the composer for a
+// few seconds: one finished, failed, or asks for you. A click opens it. It sits
+// in the layout rather than floating: OpenTUI paints a bordered card's body over
+// a sibling overlay, so a floating toast would let the conversation through it.
 import { For, Show } from "solid-js";
 import { useTerminalDimensions } from "@opentui/solid";
 import { clip } from "../format.js";
@@ -20,10 +22,10 @@ export function Toasts() {
   };
   return (
     <Show when={app.toasts().length > 0 && size().width >= WIDTH + 10}>
-      <box position="absolute" top={1} left={size().width - WIDTH - 2} width={WIDTH} zIndex={30} flexDirection="column">
+      <box flexShrink={0} flexDirection="column" alignItems="flex-end" paddingLeft={2} paddingRight={2}>
         <For each={app.toasts()}>
           {(toast) => (
-            <box border borderStyle="rounded" borderColor={tone(toast.kind)} backgroundColor={t().surface} paddingLeft={1} paddingRight={1} marginBottom={1} onMouseDown={() => open(toast.sessionId, toast.id)}>
+            <box width={WIDTH} border borderStyle="rounded" borderColor={tone(toast.kind)} backgroundColor={t().surface} paddingLeft={1} paddingRight={1} marginTop={1} onMouseDown={() => open(toast.sessionId, toast.id)}>
               <text wrapMode="none" truncate>
                 <span style={{ fg: tone(toast.kind) }}>{head(toast.kind)}</span>
                 <span style={{ fg: t().text2 }}>{`  ${clip(toast.title, WIDTH - 16)}`}</span>

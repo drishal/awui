@@ -13,10 +13,10 @@ import { Spinner } from "./fx.js";
 /** Lines of output kept on screen: the rest of a long one scrolls. */
 const SHOWN_LINES = 400;
 
-export function RunOutput(p: { command: string; result: RunResult | null; onAdd: () => void; onClose: () => void }) {
+export function RunOutput(p: { command: string; result: RunResult | null; onAdd: () => void; onClose: () => void; side?: number }) {
   const t = useTheme();
   const size = useTerminalDimensions();
-  const width = () => Math.min(110, size().width - 4);
+  const width = () => Math.max(30, Math.min(110, size().width - (p.side ?? 0) - 4));
   useKeyboard((key) => {
     if (key.defaultPrevented) return;
     key.preventDefault();
@@ -30,12 +30,11 @@ export function RunOutput(p: { command: string; result: RunResult | null; onAdd:
   };
   return (
     <box
-      position="absolute"
-      top={2}
-      left={Math.max(0, Math.floor((size().width - width()) / 2))}
+      alignSelf="center"
+      marginTop={1}
       width={width()}
-      height={Math.max(8, size().height - 6)}
-      zIndex={20}
+      height={Math.max(8, size().height - 8)}
+      flexShrink={0}
       flexDirection="column"
       border
       borderStyle="rounded"
