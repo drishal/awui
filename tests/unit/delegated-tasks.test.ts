@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { asHarnessId, type DelegatedTaskView } from "../../src/shared/protocol.js";
-import { metaText, stateClass, stateWords, taskElapsed, taskLine, tasksMeta } from "../../src/web/delegated-tasks.js";
+import { guardWords, metaText, reviewActions, reviewWords, scopeWords, stateClass, stateWords, taskElapsed, taskLine, tasksMeta } from "../../src/web/delegated-tasks.js";
 
 const task = (over: Partial<DelegatedTaskView> = {}): DelegatedTaskView => ({
   id: "ab12",
@@ -81,5 +81,40 @@ describe("the group's meta line", () => {
     expect(tasksMeta([])).toBeNull();
     expect(tasksMeta([task(), task({ id: "b", state: "waiting_for_user" }), task({ id: "c", state: "result_available", outcome: "done" })])).toBe("2 working · 1 finished");
     expect(tasksMeta([task({ state: "result_available", outcome: "failed" })])).toBe("1 finished");
+  });
+});
+
+describe("a worker's scope and the guard's count", () => {
+  it("writes the write scope as its globs, or says it had none, with the scratch folder when it has one", () => {
+    expect(scopeWords(task())).toBeNull();
+    expect(scopeWords(task({ scope: { globs: ["src/**", "docs/*.md"], scratchDir: null, attempted: 0, blocked: 0, landed: 0, recent: [] } }))).toBe("Scope src/**, docs/*.md");
+    expect(scopeWords(task({ scope: { globs: [], scratchDir: ".awui/scratch/ab12", attempted: 0, blocked: 0, landed: 0, recent: [] } }))).toBe("Scope anywhere in the project · scratch .awui/scratch/ab12");
+  });
+
+  it("says nothing when the guard saw nothing, and counts what it blocked and what landed", () => {
+    expect(guardWords(task())).toBeNull();
+    expect(guardWords(task({ scope: { globs: [], scratchDir: null, attempted: 0, blocked: 0, landed: 0, recent: [] } }))).toBeNull();
+    expect(guardWords(task({ scope: { globs: [], scratchDir: null, attempted: 3, blocked: 2, landed: 1, recent: ["write unsafe-outside.ts"] } }))).toBe("Out of scope: 2 blocked before it ran · 1 landed and reported · write unsafe-outside.ts");
+    expect(guardWords(task({ scope: { globs: [], scratchDir: null, attempted: 1, blocked: 0, landed: 0, recent: [] } }))).toBe("Out of scope: 1 seen");
+  });
+});
+
+describe("a review's words and the actions it offers", () => {
+  const open = { review: null, appliedAt: null, discardedAt: null, headsMatch: true, reason: null };
+  const applied = { review: { decision: "apply" as const, note: "", by: "local", at: 5 }, appliedAt: 5, discardedAt: null, headsMatch: true, reason: null };
+
+  it("says what the record is, in the browser's words", () => {
+    expect(reviewWords(open)).toContain("Choose whether to apply its patch");
+    expect(reviewWords({ ...open, appliedAt: 5, review: applied.review })).toContain("Approved and applied into the lead checkout");
+    expect(reviewWords({ ...open, discardedAt: 6, review: { decision: "discard", note: "", by: "local", at: 6 } })).toContain("Reviewed without applying");
+    expect(reviewWords({ ...open, headsMatch: false, reason: "lead_moved" })).toBe("Cannot apply yet: lead_moved. Open the worktree to inspect it.");
+  });
+
+  it("offers apply and keep until something is decided, then the inverse; apply is off when a head moved", () => {
+    expect(reviewActions(open).map((a) => [a.id, a.enabled])).toEqual([["apply", true], ["discard", true]]);
+    expect(reviewActions({ ...open, headsMatch: false, reason: "lead_moved" })[0]).toMatchObject({ id: "apply", enabled: false, why: "lead_moved" });
+    expect(reviewActions({ ...open, headsMatch: null }).map((a) => a.enabled)).toEqual([true, true]);
+    expect(reviewActions(applied).map((a) => [a.id, a.label, a.confirms])).toEqual([["unreview", "Undo apply", false]]);
+    expect(reviewActions({ ...open, discardedAt: 6, review: { decision: "discard", note: "", by: "local", at: 6 } }).map((a) => [a.id, a.confirms])).toEqual([["unreview", false], ["cleanup", true]]);
   });
 });

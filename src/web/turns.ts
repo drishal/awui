@@ -261,6 +261,15 @@ export function workAfterSegment(turn: Turn): WorkSegment | null {
 }
 
 /**
+ * The turn whose work holds this tool call: its process, or the work it did after its answer.
+ * The rail's run and job rows open the call they came from, and each client finds it there.
+ */
+export function turnOfTool(turns: Turn[], toolId: string): number | null {
+  const at = turns.findIndex((turn) => turn.process.some((item) => item.id === toolId) || turn.workAfter.some((item) => item.id === toolId));
+  return at < 0 ? null : at;
+}
+
+/**
  * Whether a stretch's fold starts open: the one still running is open, while a stretch that already ends in a
  * reply has been read, so it folds away as the reply lands. A live failed call keeps its stretch open (its
  * failure is being seen now); a settled turn opens nothing, and its failures are read from the tally.

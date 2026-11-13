@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatItem } from "../../src/shared/protocol.js";
-import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, isEmojiOnly, modelName, modelSwitches, relativePath, saysSomething, latestThought, readsAsReply, segmentStartsOpen, workAfterSegment, workSegments, toolLabel, type WorkSegment } from "../../src/web/turns.js";
+import { buildTurns, changeStatLabel, turnOfTool, countParts, countSummary, formatDuration, isEmojiOnly, modelName, modelSwitches, relativePath, saysSomething, latestThought, readsAsReply, segmentStartsOpen, workAfterSegment, workSegments, toolLabel, type WorkSegment } from "../../src/web/turns.js";
 
 const tool = (id: string, category: "read" | "edit" | "command", extra: Record<string, unknown> = {}): ChatItem => ({
   kind: "tool",
@@ -336,5 +336,24 @@ describe("emoji-only prompts", () => {
     expect(isEmojiOnly("2")).toBe(false);
     expect(isEmojiOnly("👍".repeat(7))).toBe(false);
     expect(isEmojiOnly("")).toBe(false);
+  });
+});
+
+describe("finding the call a rail row came from", () => {
+  it("names the turn whose work holds the call, before or after its answer, and null when it is gone", () => {
+    const items: ChatItem[] = [
+      { kind: "user", id: "u1", text: "one", at: 1 } as ChatItem,
+      tool("t1", "read"),
+      { kind: "user", id: "u2", text: "two", at: 2 } as ChatItem,
+      tool("t2", "read"),
+      { kind: "assistant", id: "a2", text: "done", thinking: "", streaming: false } as ChatItem,
+      tool("t3", "read"),
+    ];
+    const turns = buildTurns(items, "idle");
+    expect(turnOfTool(turns, "t1")).toBe(0);
+    expect(turnOfTool(turns, "t2")).toBe(1);
+    // Work the agent did after writing its answer is still that turn's.
+    expect(turnOfTool(turns, "t3")).toBe(1);
+    expect(turnOfTool(turns, "gone")).toBeNull();
   });
 });
