@@ -15,6 +15,7 @@ import type {
   GitStatus,
   ImageAttachment,
   InteractionAnswer,
+  ModelInfo,
   ProjectSession,
   RunResult,
   RunShell,
@@ -32,6 +33,7 @@ import { applyEvents, type ChatState } from "../web/chat-state.js";
 import type { ReviewAnchor, ReviewSendResult, ReviewThread } from "../shared/protocol.js";
 import { closeTab as closeTabIn, findTab, markUnread, NO_TABS, placeChat, placeTab, runningChats, syncActive, type Tab, type TabState } from "../web/tabs.js";
 import { appCommand } from "../web/commands.js";
+import { chipWords } from "../web/model-label.js";
 import { isBusy } from "../web/session-groups.js";
 import { newsBetween, type News } from "./assist.js";
 import { imageModeFrom, imageProtocol, type ImageMode } from "./images.js";
@@ -296,6 +298,95 @@ export function createAtui(server: Server, opts: AtuiOptions) {
       },
     ),
   );
+  // ---- the start screen's catalog, before any chat exists ---------------------------------
+
+  /** What the models route answers: a harness's models, thinking levels, and default for this project. */
+  interface CatalogAnswer {
+    models: ModelInfo[];
+    thinkingLevels?: string[];
+    defaultModel?: { model: string; thinkingLevel: string | null } | null;
+  }
+  /** The start screen's catalog: what the chips name and the pickers offer before a chat exists. */
+  const [startCatalog, setStartCatalog] = createSignal<{ models: ModelInfo[]; thinkingLevels: string[]; defaultModel: { model: string; thinkingLevel: string | null } | null } | null>(null);
+  /** What the start screen's pickers chose: the chat its first message creates starts on these. */
+  const [startPick, setStartPick] = createSignal<{ model?: string; thinkingLevel?: string }>({});
+  /** Which answer the client has asked for last: one for a screen the user has left is dropped. */
+  let catalogSeq = 0;
+  const loadStartCatalog = async (forHarness: string, forWs: WorkspaceInfo, refresh = false): Promise<void> => {
+    const seq = ++catalogSeq;
+    const query = `workspaceId=${encodeURIComponent(forWs.id)}${refresh ? "&refresh=1" : ""}`;
+    try {
+      const answer = await server.call<CatalogAnswer>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?${query}`);
+      if (seq !== catalogSeq) return;
+      setStartCatalog({ models: answer.models, thinkingLevels: answer.thinkingLevels ?? [], defaultModel: answer.defaultModel ?? null });
+    } catch {
+      if (seq === catalogSeq) setStartCatalog(null);
+    }
+  };
+
+  const startKey = createMemo(() => (chat() ? null : harnessId() && workspace() ? `${harnessId()}\0${workspace()?.id}` : null));
+  // Another harness or project — or a chat opening — drops the screen's answer and pick: the chips and
+  // pickers of the old screen must not be offered for the new one, and its answer must not arrive after.
+  createEffect(
+    on(startKey, (key) => {
+      catalogSeq += 1;
+      setStartCatalog(null);
+      setStartPick({});
+      const h = untrack(harnessId);
+      const ws = untrack(workspace);
+      if (!key || !h || !ws) return;
+      void loadStartCatalog(h, ws);
+    }),
+  );
+
+  /** The chips' words: the open chat's model and level, else the start screen's catalog and pick (web/model-label.ts). */
+  const chips = createMemo(() => {
+    const c = chat();
+    if (c) return chipWords({ models: c.config.models, thinkingLevels: c.config.thinkingLevels, defaultModel: null, model: c.config.model, thinkingLevel: c.config.thinkingLevel });
+    const catalog = startCatalog();
+    const pick = startPick();
+    return chipWords({ models: catalog?.models ?? [], thinkingLevels: catalog?.thinkingLevels ?? [], defaultModel: catalog?.defaultModel ?? null, model: pick.model ?? null, thinkingLevel: pick.thinkingLevel ?? null });
+  });
+  /** The models the model picker offers: the open chat's own, else the start screen's catalog. */
+  const pickerModels = createMemo<ModelInfo[]>(() => chat()?.config.models ?? startCatalog()?.models ?? []);
+  /** The level the thinking picker offers: the chosen model's own when it lists them, else the harness's. */
+  const pickerLevels = createMemo<string[]>(() => {
+    const c = chat();
+    if (c) return c.config.thinkingLevels;
+    const catalog = startCatalog();
+    const model = catalog?.models.find((m) => m.key === (startPick().model ?? catalog.defaultModel?.model));
+    return model?.levels?.length ? model.levels : (catalog?.thinkingLevels ?? []);
+  });
+
+  /** A model picked before a chat exists is kept for the chat the first message makes; a chat's own is set now. */
+  const pickModel = async (key: string): Promise<void> => {
+    const c = chat();
+    if (c) return configure({ model: key });
+    const catalog = startCatalog();
+    const model = catalog?.models.find((m) => m.key === key);
+    const levels = model?.levels?.length ? model.levels : (catalog?.thinkingLevels ?? []);
+    setStartPick((pick) => ({ model: key, ...(pick.thinkingLevel && levels.includes(pick.thinkingLevel) ? { thinkingLevel: pick.thinkingLevel } : {}) }));
+  };
+
+  /** The same for a thinking level: the start screen's pick waits for its chat, a chat's own is set now. */
+  const pickThinking = async (level: string): Promise<void> => {
+    const c = chat();
+    if (c) return configure({ thinkingLevel: level });
+    setStartPick((pick) => ({ ...pick, thinkingLevel: level }));
+  };
+
+  /** Ask the harness for its list again: a chat's own arrives as a config event, the start screen's from the catalog. */
+  const refreshModels = async (): Promise<void> => {
+    const c = chat();
+    try {
+      if (c) return void (await server.call(`/api/chats/${c.chatId}/models/refresh`, { body: {} }));
+      const h = harnessId();
+      const ws = workspace();
+      if (h && ws) await loadStartCatalog(h, ws, true);
+    } catch (error) {
+      fail(error);
+    }
+  };
 
   // ---- lookups for the composer and pickers ---------------------------------------------
 
@@ -485,7 +576,10 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     const h = harnessId();
     if (!ws) throw new Error("Start atui in a project folder, or open a session from the list");
     if (!h) throw new Error("No harness is available");
-    const snapshot = await server.call<ChatSnapshot>("/api/chats", { body: { harnessId: h, workspaceId: ws.id } });
+    // A model or level picked on the start screen applies to this chat's start, before anything runs.
+    const pick = startPick();
+    const body = { harnessId: h, workspaceId: ws.id, ...(pick.model ? { model: pick.model } : {}), ...(pick.thinkingLevel ? { thinkingLevel: pick.thinkingLevel } : {}) };
+    const snapshot = await server.call<ChatSnapshot>("/api/chats", { body });
     show(snapshot);
     return snapshot;
   };
@@ -860,6 +954,12 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     setGlass,
     imageMode,
     contextHistory,
+    chips,
+    pickerModels,
+    pickerLevels,
+    pickModel,
+    pickThinking,
+    refreshModels,
     searchFiles,
     usageReport,
     preview,

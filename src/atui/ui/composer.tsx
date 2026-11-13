@@ -15,7 +15,7 @@ import { useKeyboard, usePaste } from "@opentui/solid";
 import { IMAGE_MIME_TYPES, MAX_IMAGES, type SavedPrompt, type SlashCommand } from "../../shared/protocol.js";
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../../web/commands.js";
 import { blanks, matchPrompts, nextBlank, promptGist } from "../../web/prompt-blanks.js";
-import { modelName } from "../../web/turns.js";
+import { levelTitle } from "../../web/config-summary.js";
 import { applyMention, ghostCompletion, mentionAt } from "../assist.js";
 import { streamedChars, tokens } from "../format.js";
 import { mix, shimmer, sparkline, streamRate } from "../fx.js";
@@ -344,11 +344,9 @@ export function Composer(p: {
     }),
   );
 
-  const model = () => {
-    const c = app.chat();
-    if (!c?.config.model) return null;
-    return modelName(c.config.model, c.config.models);
-  };
+  // The chips' words: the chat's model and level, else the start screen's catalog default (web/model-label.ts).
+  const caps = () => app.chat()?.capabilities ?? app.harness()?.capabilities;
+  const words = () => app.chips();
 
   return (
     <box flexDirection="column" flexShrink={0} marginLeft={2} marginRight={2}>
@@ -484,15 +482,17 @@ export function Composer(p: {
           <text flexShrink={0} wrapMode="none" fg={accentOf(t(), app.harness()?.accent)} onMouseDown={() => p.onPick("harness")}>
             {`${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾`}
           </text>
-          <Show when={model()}>
+          <Show when={caps()?.supportsModelSelection}>
             <text flexShrink={1} wrapMode="none" truncate fg={t().text2} onMouseDown={() => p.onPick("models")}>
-              {`  ${model()} ▾`}
+              {`  ${words().name} ▾`}
             </text>
           </Show>
-          <Show when={app.chat()?.config.thinkingLevel}>
-            <text flexShrink={0} wrapMode="none" fg={t().muted} onMouseDown={() => p.onPick("thinking")}>
-              {`  ${app.chat()?.config.thinkingLevel} ▾`}
-            </text>
+          <Show when={caps()?.supportsThinkingLevel ? words().level : null}>
+            {(level) => (
+              <text flexShrink={0} wrapMode="none" fg={t().muted} onMouseDown={() => p.onPick("thinking")}>
+                {`  ${levelTitle(level())} ▾`}
+              </text>
+            )}
           </Show>
           <Show when={app.editing() !== null}>
             <text flexShrink={0} wrapMode="none" fg={t().accent}>

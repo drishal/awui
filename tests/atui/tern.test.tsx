@@ -301,17 +301,31 @@ describe("awui tern", () => {
     await until(() => tern.nodes.get(fold.id)?.p.collapsed === false, "the fold to stay open");
   });
 
-  it("offers the model before the first message: the chip starts the chat and opens the picker", async () => {
+  it("names the harness's default on the start screen, and a pick there starts the first chat on it", async () => {
     client = await start();
     const { tern, app, until } = client;
-    const chip = tern.nodes.get("dock.d.comp.chips.l.m");
-    expect(chip?.p.text).toBe("Model ⌄");
+    // The catalog's answer, not a bare "Model": the harness's own default and its level.
+    await until(() => String(tern.nodes.get("dock.d.comp.chips.l.m")?.p.text).startsWith("Fake Echo"), "the default model's name");
+    expect(tern.text("dock")).toContain("Low");
     expect(app.chat()).toBeNull();
     tern.event({ ev: "action", id: "dock.d.comp.chips.l.m", act: "click" });
     const labels = () => ((tern.find("picker", "layer")[0]?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label);
     await until(() => labels().includes("Fake Echo"), "the model picker");
-    expect(app.chat()).not.toBeNull();
-    expect(String(tern.nodes.get("dock.d.comp.chips.l.m")?.p.text)).not.toBe("Model ⌄");
+    // Opening the picker starts no chat; the pick waits for the one the first message makes.
+    expect(app.chat()).toBeNull();
+    tern.type("slow");
+    await until(() => labels().join(",") === "Fake Slow", "the model query");
+    tern.type("\r");
+    await until(() => tern.find("picker", "layer").length === 0 && String(tern.nodes.get("dock.d.comp.chips.l.m")?.p.text).startsWith("Fake Slow"), "the pick on the chip");
+    // M-t then "high": the level is picked beside the model, both applied when the chat starts.
+    tern.event({ ev: "action", id: "dock.d.comp.chips.l.t", act: "click" });
+    await until(() => tern.text("layer").includes("Thinking"), "the thinking menu");
+    tern.type("high\r");
+    await until(() => tern.text("dock").includes("High"), "the level on the chip");
+    tern.type("hello please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: hello please"), "the answer");
+    expect(app.chat()?.config.model).toBe("fake/slow");
+    expect(app.chat()?.config.thinkingLevel).toBe("high");
   });
 
   it("words the live line with the run's phase once it has held steady", async () => {
@@ -451,6 +465,9 @@ describe("awui tern", () => {
   it("opens thinking and permission as searchable picker sheets", async () => {
     client = await start();
     const { tern, app, until } = client;
+    // A chat first: the permission picker reads the chat's own modes (the thinking picker works before it too).
+    tern.type("tool please\r");
+    await until(() => app.chat()?.status === "idle", "the first answer");
     tern.type("\x18");
     tern.type("t");
     await until(() => tern.text("layer").includes("Thinking"), "the thinking menu");

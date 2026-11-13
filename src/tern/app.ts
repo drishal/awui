@@ -344,15 +344,13 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       sessionRows(app.overview(), { here: app.workspace()?.id ?? null, current: app.chat()?.sessionId ?? null, harnessName: (id) => app.boot()?.harnesses.find((h) => h.id === id)?.displayName ?? id });
 
     const modelItems = (): MenuItem[] => {
-      const config = app.chat()?.config;
-      if (!config) return [];
-      return config.models.map((m) => ({ id: m.key, label: m.name, detail: m.id, group: m.provider, current: m.key === config.model || m.id === config.model, icon: "model" }));
+      const current = app.chips().model?.key ?? null;
+      return app.pickerModels().map((m) => ({ id: m.key, label: m.name, detail: m.id, group: m.provider, current: m.key === current, icon: "model" }));
     };
 
     const thinkingItems = (): MenuItem[] => {
-      const config = app.chat()?.config;
-      if (!config) return [];
-      return config.thinkingLevels.map((l) => ({ id: l, label: l, current: l === config.thinkingLevel }));
+      const current = app.chips().level;
+      return app.pickerLevels().map((l) => ({ id: l, label: l, current: l === current }));
     };
 
     const permissionItems = (): MenuItem[] => {
@@ -392,6 +390,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const caps = c?.capabilities ?? harness()?.capabilities;
       if (caps?.supportsModelSelection) items.push({ id: "x:m", label: "Change the model…", value: "C-x m", icon: "model" });
       if (caps?.supportsThinkingLevel) items.push({ id: "x:t", label: "Change the thinking level…", value: "C-x t", icon: "thinking" });
+      if (caps?.supportsModelSelection) items.push({ id: "models-refresh", label: "Refresh models", icon: "model", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }) });
       if (c?.capabilities.supportsPermissionMode && c.config.permissionModes?.length) items.push({ id: "permission", label: "Change the permission mode…", icon: "shield" });
       items.push({ id: "x:h", label: c ? "Hand off to another harness…" : "Choose the harness…", value: "C-x h", icon: "handoff" });
       if (c?.capabilities.supportsCompact) items.push({ id: "x:c", label: "Compact the context", value: "C-x c", icon: "compaction", ...(idle ? {} : { disabled: "Wait until the agent is idle" }) });
@@ -421,11 +420,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
 
     const openMenu = (kind: MenuKind) => {
       setLeader(false);
-      // The model and thinking pickers read the chat's config: a new chat is started on the server first.
-      if ((kind === "model" || kind === "thinking") && !app.chat()) {
-        void app.ensureChat().then((c) => c && openMenu(kind));
-        return;
-      }
+      // The model and thinking pickers read the chat's config, or the start screen's catalog when no chat exists yet:
+      // a pick there is kept and handed to the chat the first message creates.
       const items = kind === "model" ? modelItems() : kind === "thinking" ? thinkingItems() : kind === "permission" ? permissionItems() : kind === "harness" ? harnessItems() : [];
       const current = Math.max(0, items.findIndex((i) => i.current));
       setMenu({ kind, query: "", selected: current });
@@ -594,6 +590,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           if (item.id.startsWith("x:")) return runLeader(item.id.slice(2));
           if (item.id === "stop") return app.stop();
           if (item.id === "permission") return openMenu("permission");
+          if (item.id === "models-refresh") return void app.refreshModels();
           if (item.id === "timing") {
             const c = app.chat();
             if (c) openTiming(buildTurns(c.items, c.status).length - 1);
@@ -616,9 +613,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           return;
         }
         case "model":
-          return void app.configure({ model: item.id });
+          return void app.pickModel(item.id);
         case "thinking":
-          return void app.configure({ thinkingLevel: item.id });
+          return void app.pickThinking(item.id);
         case "permission":
           return void app.configure({ permissionMode: item.id });
         case "harness":
@@ -883,6 +880,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const dockNode = dock({
         chat: c,
         harness: h,
+        chips: app.chips(),
         git: app.git(),
         limits: app.limits(),
         connected: app.conn() !== "reconnecting",

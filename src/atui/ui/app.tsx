@@ -462,8 +462,10 @@ export function App(p: {
     add({ id: "work", label: showWork() ? "Fold the work" : "Show the work of every turn", hint: leader("e"), run: () => runLeader("e") });
     add({ id: "glass", label: app.glass() ? "Glass off: solid panels" : "Glass on: see the terminal through", hint: leader("g"), run: () => runLeader("g") });
     if (c?.capabilities.supportsCompact) add({ id: "compact", label: "Compact context", hint: leader("c"), disabled: idle ? undefined : "Wait until the agent is idle", run: () => runLeader("c") });
-    add({ id: "model", label: "Choose model…", hint: "M-m", disabled: c?.capabilities.supportsModelSelection ? undefined : "Start a chat first", run: () => setDialog("models") });
-    if (c?.capabilities.supportsThinkingLevel) add({ id: "thinking", label: "Choose thinking level…", hint: "M-t", run: () => setDialog("thinking") });
+    const caps = c?.capabilities ?? app.harness()?.capabilities;
+    add({ id: "model", label: "Choose model…", hint: "M-m", disabled: caps?.supportsModelSelection ? undefined : "This harness has no models to pick", run: () => setDialog("models") });
+    if (caps?.supportsThinkingLevel) add({ id: "thinking", label: "Choose thinking level…", hint: "M-t", run: () => setDialog("thinking") });
+    add({ id: "refresh-models", label: "Refresh models", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }), run: () => void app.refreshModels() });
     add({ id: "harness", label: hasPrompt() ? "Choose harness, or hand this chat off…" : "Choose harness…", hint: "M-h", run: () => setDialog("harness") });
     add({ id: "quit", label: "Quit atui", hint: leader("q"), searchOnly: true, run: p.onExit });
     const sessions = app.overview().sessions;
@@ -487,19 +489,20 @@ export function App(p: {
     return items;
   };
 
+  /** The models to offer: the chat's own list, else the start screen's catalog (which the first message's chat starts on). */
   const modelItems = (): PaletteItem[] => {
     const c = app.chat();
-    if (!c) return [];
-    const idle = c.status === "idle" || c.status === "error";
-    return c.config.models.map((m) => ({
+    const idle = !c || c.status === "idle" || c.status === "error";
+    const current = app.chips().model?.key ?? null;
+    return app.pickerModels().map((m) => ({
       id: m.key,
       section: m.provider,
       label: m.name,
       hint: m.provider,
       keywords: m.key,
-      current: m.key === c.config.model,
+      current: m.key === current,
       disabled: idle ? undefined : "Wait until the agent is idle",
-      run: () => void app.configure({ model: m.key }),
+      run: () => void app.pickModel(m.key),
     }));
   };
 
@@ -535,15 +538,17 @@ export function App(p: {
 
   const thinkingItems = (): PaletteItem[] => {
     const c = app.chat();
-    if (!c?.capabilities.supportsThinkingLevel) return [];
-    const idle = c.status === "idle" || c.status === "error";
-    return c.config.thinkingLevels.map((level) => ({
+    const caps = c?.capabilities ?? app.harness()?.capabilities;
+    if (!caps?.supportsThinkingLevel) return [];
+    const idle = !c || c.status === "idle" || c.status === "error";
+    const current = app.chips().level;
+    return app.pickerLevels().map((level) => ({
       id: level,
       section: "Thinking",
       label: level,
-      current: level === c.config.thinkingLevel,
+      current: level === current,
       disabled: idle ? undefined : "Wait until the agent is idle",
-      run: () => void app.configure({ thinkingLevel: level }),
+      run: () => void app.pickThinking(level),
     }));
   };
 

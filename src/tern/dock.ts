@@ -5,6 +5,7 @@
 import { span, ui, html, type Node, type Span } from "@stencil-hq/tern";
 import type { GitStatus, HarnessStatus, InteractionRequest, UsageLimits } from "../shared/protocol.js";
 import type { ChatState } from "../web/chat-state.js";
+import type { ChipWords } from "../web/model-label.js";
 import { levelTitle } from "../web/config-summary.js";
 import { isBusy } from "../web/session-groups.js";
 import { blanks } from "../web/prompt-blanks.js";
@@ -32,6 +33,8 @@ export function inputReady(s: { chat: { gone?: string } | null; conn: Connection
 export interface DockCx {
   chat: ChatState | null;
   harness: HarnessStatus | null;
+  /** The model and thinking chips' words as atui's state works them out (web/model-label.ts): the chat's, else the start screen's default. */
+  chips: ChipWords;
   git: GitStatus | null;
   limits: UsageLimits | null;
   connected: boolean;
@@ -309,9 +312,7 @@ function composerNode(cx: DockCx): Node {
   const chat = cx.chat;
   const busy = isBusy(chat?.status);
   const config = chat?.config;
-  const model = config?.models.find((m) => m.key === config.model || m.id === config.model);
-  const modelLabel = model?.name ?? config?.model ?? null;
-  const level = config?.thinkingLevel ?? null;
+  const words = cx.chips;
   const permission = config?.permissionModes?.find((m) => m.id === config.permissionMode);
   const caps = chat?.capabilities ?? cx.harness?.capabilities;
   const percent = chat?.context?.percent ?? null;
@@ -348,11 +349,11 @@ function composerNode(cx: DockCx): Node {
       ui.row(
         { key: "l", gap: "sm", align: "center" },
         cx.harness ? html.button({ key: "h", class: "chip harness-chip", text: cx.harness.displayName, title: chat ? "Hand off to another harness (C-x h)" : "The harness for this chat (C-x h)", onClick: cx.on.pickHarness }) : null,
-        // Before the first message there is no chat to read the model from: the chips still offer the pickers (picking starts the chat).
-        caps?.supportsModelSelection ? html.button({ key: "m", class: "chip", text: `${modelLabel ?? "Model"} ⌄`, title: "Model (C-x m)", onClick: cx.on.pickModel }) : null,
+        // Before the first message the chips name the harness's own default (the start screen's catalog); a pick waits for the chat it starts.
+        caps?.supportsModelSelection ? html.button({ key: "m", class: "chip", text: `${words.name} ⌄`, title: "Model (C-x m)", onClick: cx.on.pickModel }) : null,
         // The effort glyph goes inside the chip, before its level, as the web UI's thinking chip draws it.
         caps?.supportsThinkingLevel
-          ? html.button({ key: "t", class: "chip think", title: "Thinking (C-x t)", onClick: cx.on.pickThinking }, level ? ui.effort({ key: "e", level }) : null, `${level ? levelTitle(level) : "Thinking"} ⌄`)
+          ? html.button({ key: "t", class: "chip think", title: "Thinking (C-x t)", onClick: cx.on.pickThinking }, words.level ? ui.effort({ key: "e", level: words.level }) : null, words.level ? `${levelTitle(words.level)} ⌄` : "⌄")
           : null,
         // The web UI's permission pill: the mode in force, open mid-run too; a mode that asks nothing is marked.
         chat?.capabilities.supportsPermissionMode && config?.permissionModes?.length

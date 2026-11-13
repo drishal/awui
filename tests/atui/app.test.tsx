@@ -46,7 +46,7 @@ describe("atui", () => {
     expect(f).toContain("● Echo: showcase tool edit please");
     expect(f).toMatch(/Σ \d+ calls · /);
     expect(f).not.toContain("Worked for");
-    expect(f).toContain("Fake Echo ▾  low ▾");
+    expect(f).toContain("Fake Echo ▾  Low ▾");
     // Clicked, a call is framed on the tree's trunk, its outcome in the bottom edge.
     await ui.click("Edit src/app.ts");
     const framed = await ui.until("╰─ Added 1 line, removed 1 line");
@@ -164,6 +164,24 @@ describe("atui", () => {
     expect(failure?.text).not.toContain("✗");
   }, 30_000);
 
+  it("names the harness's default model and level on the start screen, and starts the first chat on a pick there", async () => {
+    ui = await mount(path.join(server.root, "alpha"));
+    // Before any chat: the catalog's answer, not a bare "Model" and "Thinking".
+    const f = await ui.until("Fake Echo ▾");
+    expect(ui.app.chat()).toBeNull();
+    expect(f).toContain("Fake Echo ▾  Low ▾");
+    // Alt+M offers the catalog's models; the pick is kept for the chat the first message makes.
+    ui.keys.pressKey("m", { meta: true });
+    await ui.until("Search models…");
+    await ui.type("slow");
+    ui.keys.pressEnter();
+    await ui.until(() => ui?.app.chips().name === "Fake Slow");
+    expect(ui.app.chat()).toBeNull();
+    await ui.type("hello there");
+    ui.keys.pressEnter();
+    await ui.until(() => ui?.app.chat()?.status === "idle" && ui?.app.chat()?.config.model === "fake/slow", 15_000);
+  }, 30_000);
+
   it("changes thinking, model, and harness directly, hands the chat off, and opens history", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 50 });
     await ui.type("remember the harness");
@@ -176,7 +194,7 @@ describe("atui", () => {
     await ui.type("high");
     ui.keys.pressEnter();
     await ui.until(() => ui?.app.chat()?.config.thinkingLevel === "high");
-    expect(await ui.until("high ▾")).toContain("Fake Echo ▾");
+    expect(await ui.until("High ▾")).toContain("Fake Echo ▾");
     // Alt+M: the models.
     ui.keys.pressKey("m", { meta: true });
     await ui.until("Search models…");
