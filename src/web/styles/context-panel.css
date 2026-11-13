@@ -255,8 +255,8 @@
 .context-foot-button:hover { background: var(--hover); color: var(--text); }
 .context-question { display: grid; gap: 2px; }
 .context-question p { display: flex; gap: 6px; margin: 0; padding: 6px 7px 2px; color: var(--text-2); font-size: 12px; line-height: 1.4; }
-.context-question p .icon { margin-top: 2px; color: var(--accent); }
-.context-question .context-foot-button { justify-content: flex-start; padding-left: 7px; color: var(--accent); }
+.context-question p .icon { margin-top: 2px; color: var(--warn); }
+.context-question .context-foot-button { justify-content: flex-start; padding-left: 7px; color: var(--warn); }
 
 /* ---- context usage: the number, then its one thin track ---- */
 .context-percent { color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; }

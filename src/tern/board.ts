@@ -133,7 +133,7 @@ export function boardNode(cx: BoardCx): Node {
         key: "cols",
         role: "awui.board-columns",
         active: cx.cursor.column,
-        items: BOARD_COLUMNS.map((id) => ({ id, label: `${BOARD_TITLES[id]} ${cx.counts[id]}` })),
+        items: BOARD_COLUMNS.map((id) => ({ id, label: id === "needs" && cx.counts[id] > 0 ? [span(BOARD_TITLES[id], "warning"), span(` ${cx.counts[id]}`, "muted")] : [span(BOARD_TITLES[id]), span(` ${cx.counts[id]}`, "muted")] })),
         onSelect: (e) => {
           const column = BOARD_COLUMNS.find((id) => id === e.item);
           if (column) cx.on.select(column, 0);

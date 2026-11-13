@@ -131,6 +131,12 @@
   animation: pulse 1.2s ease-in-out infinite;
 }
 
+/* A request waiting on the person here: the attention colour, as the approval card's. */
+.status.is-asking::before {
+  background: var(--warn);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
 .status-stopping::before {
   background: var(--warn);
 }

@@ -179,7 +179,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
             const at = () => (active() ? clampCursor(columnCards(), cursor()) : -1);
             return (
               <box flexDirection="column" width={columnWidth()} flexShrink={0} paddingRight={1}>
-                <text flexShrink={0} fg={active() ? t().accent : t().muted} wrapMode="none" truncate>
+                <text flexShrink={0} fg={active() ? (id === "needs" && counts()[id] > 0 ? t().warn : t().accent) : t().muted} wrapMode="none" truncate>
                   <b>{BOARD_TITLES[id]}</b>
                   <span style={{ fg: t().muted }}>{` ${counts()[id]}`}</span>
                 </text>

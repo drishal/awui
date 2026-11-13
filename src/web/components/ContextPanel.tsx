@@ -164,7 +164,7 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
         </ContextList>
       </ContextGroup> : null}
 
-      {hasQuestions ? <ContextGroup id="questions" label={labels.questions} count={chat.pending.length} open={open.questions} attention="accent" onToggle={toggle}>
+      {hasQuestions ? <ContextGroup id="questions" label={labels.questions} count={chat.pending.length} open={open.questions} attention="warn" onToggle={toggle}>
         <div className="context-question">
           <p><IconWarning size={13} />This chat needs a human answer before it can proceed.</p>
           <button type="button" className="context-foot-button" onClick={onQuestions}>Jump to the request<IconChevronRight size={12} /></button>
