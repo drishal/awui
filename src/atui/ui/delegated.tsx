@@ -38,7 +38,7 @@ const factsOf = (answer: ReviewAnswer | null): ReviewFacts | null =>
       }
     : null;
 
-export function DelegatedView(p: { onClose: () => void; initialTaskId?: string | null; onOpenChat: (chatId: string) => void }) {
+export function DelegatedView(p: { onClose: () => void; initialTaskId?: string | null; onOpenChat: (chatId: string) => void; side?: number }) {
   const app = useAtui();
   const t = useTheme();
   const size = useTerminalDimensions();
@@ -73,7 +73,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
   });
   const diffRows = createMemo(() => reviewRows(changes() ?? []));
   const height = () => Math.max(4, size().height - 6);
-  const width = () => Math.min(120, size().width - 6);
+  const width = () => Math.max(30, Math.min(120, size().width - (p.side ?? 0) - 4));
   const start = () => rowWindow(rows().length, at(), height());
   const tick = setInterval(() => setNow(Date.now()), 1000);
   onCleanup(() => clearInterval(tick));
@@ -265,7 +265,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
          the title bar, so a terminal-height overlay would put its last row off the frame. */
       top={0}
       bottom={0}
-      left={Math.max(0, Math.floor((size().width - width()) / 2))}
+      left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
       width={width()}
       zIndex={15}
       flexDirection="column"

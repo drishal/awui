@@ -11,7 +11,7 @@ import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import type { GitFileDiff, GitDiffSide, GitStatus } from "../../shared/protocol.js";
 import { GROUP_LABEL, OPERATION_LABEL, branchWords, commitWords, countsLine, stateTone, syncWordsOf } from "../../shared/git-words.js";
-import { clip } from "../format.js";
+import { clip, clipPath } from "../format.js";
 import { mix } from "../fx.js";
 import { firstStop, gitRows, moveCursor, moveGroup, rowPaths, rowWords, stageAction, type GitRow } from "../git.js";
 import { windowStart } from "../review.js";
@@ -161,12 +161,12 @@ export function GitView(p: { onClose: () => void }) {
   return (
     <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={15} flexDirection="column" backgroundColor={t().bg} paddingLeft={2} paddingRight={2}>
       <box flexDirection="row" flexShrink={0} marginTop={1}>
-        <text flexGrow={1} fg={t().text}>
+        <text flexGrow={1} fg={t().text} wrapMode="none" truncate>
           <b>Git</b>
-          <span style={{ fg: t().muted }}>{g() ? `  ${branchWords(g() as GitStatus)} · ${syncWordsOf(g() as GitStatus)}` : ""}</span>
+          <span style={{ fg: t().muted }}>{g() ? `  ${(g() as GitStatus).branch ?? `detached ${(g() as GitStatus).head ?? ""}`} · ${syncWordsOf(g() as GitStatus)}` : ""}</span>
         </text>
-        <text flexShrink={0} fg={t().muted}>
-          {g()?.root}
+        <text flexShrink={0} fg={t().muted} wrapMode="none" truncate>
+          {clipPath(g()?.root ?? "", Math.max(16, Math.floor(size().width / 3)))}
         </text>
       </box>
       <Show when={g()} fallback={<text fg={t().muted}>{chat() ? "Reading the project's status…" : "Open a chat first: the panel reads this chat's project"}</text>}>
@@ -204,7 +204,7 @@ export function GitView(p: { onClose: () => void }) {
                   </text>
                 </Show>
               </Show>
-              <text flexShrink={0} fg={t().muted} marginBottom={1}>
+              <text flexShrink={0} fg={t().muted} marginBottom={1} wrapMode="none" truncate>
                 ↑↓ scroll · Esc back to the files
               </text>
             </box>
@@ -277,10 +277,8 @@ export function GitView(p: { onClose: () => void }) {
               <text fg={t().ok}>Nothing to commit — the working tree is clean</text>
             </Show>
           </box>
-          <text flexShrink={0} fg={t().muted} marginBottom={1}>
-            {busy()
-              ? `${busy()}…`
-              : `↑↓ file · {/} group · Enter stage/unstage · a stage all · u unstage all · c commit · d diff · r refresh · Esc close`}
+          <text flexShrink={0} fg={t().muted} marginBottom={1} wrapMode="none" truncate>
+            {busy() ? `${busy()}…` : size().width < 112 ? "↑↓ file · Enter stage/unstage · Esc close" : "↑↓ file · {/} group · Enter stage/unstage · a all · u undo · c commit · d diff · r refresh · Esc close"}
           </text>
         </Show>
       </Show>

@@ -26,6 +26,8 @@ export interface RailActions {
   onReview: () => void;
   /** The Info tab: the context window, the session's tokens, git, and the limits. */
   onUsage: () => void;
+  /** The sidebar/rail's width: this sheet centres inside the conversation column. */
+  side?: number;
   onClose: () => void;
 }
 
@@ -58,7 +60,7 @@ export function ContextRailView(p: RailActions) {
   const here = () => entries()[at()] as RailEntry | undefined;
   // The rows are drawn with their headings, so the window is measured in drawn lines, not rows.
   const height = () => Math.max(6, size().height - 10);
-  const width = () => Math.min(110, size().width - 6);
+  const width = () => Math.max(30, Math.min(110, size().width - (p.side ?? 0) - 4));
   const start = () => rowWindow(entries().length, at(), height());
 
   const open = (row: ContextCardRow) => {
@@ -109,7 +111,7 @@ export function ContextRailView(p: RailActions) {
          the title bar, so a terminal-height overlay would put its last row off the frame. */
       top={0}
       bottom={0}
-      left={Math.max(0, Math.floor((size().width - width()) / 2))}
+      left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
       width={width()}
       zIndex={15}
       flexDirection="column"

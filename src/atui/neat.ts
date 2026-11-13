@@ -15,6 +15,7 @@
 // Worked out apart from the drawing so it can be tested.
 import type { AssistantItem, ChatItem, ToolItem } from "../shared/protocol.js";
 import { relativePath, type Turn } from "../web/turns.js";
+import { toolFacts } from "../web/tool-facts.js";
 
 export interface NeatRow {
   label: string;
@@ -22,6 +23,8 @@ export interface NeatRow {
   /** Between label and detail: "" gives `Update(path)`. */
   glue: string;
   facts: string[];
+  /** The output itself says a test/build/typecheck failed despite a successful call. */
+  failed?: boolean;
   /** The model's own remark on a command (its leading `# comment` lines), shown dim above the call. */
   note?: string;
   /** An edit's first changed lines, under the outcome. */
@@ -131,8 +134,10 @@ export function neatRow(item: ToolItem, workspace: string): NeatRow {
       const guessed = failed && reported === null ? /exit(?:ed)?(?: with)?(?: code|status)?:? (\d+)/i.exec(item.output.slice(-300)) : null;
       const code = reported ?? (guessed ? guessed[1] : null);
       const facts = code && code !== "0" ? [`exit ${code}`] : [];
-      if (lines) facts.push(plural(lines, "line"));
-      return { label, glue: " ", detail: label === "Bash" ? `$ ${command}` : (command.split("\n").find((l) => l.trim()) ?? command), facts: outcome(facts), ...(note ? { note } : {}) };
+      const parsed = toolFacts(item);
+      if (parsed.facts.length > 0) facts.push(...parsed.facts);
+      else if (lines) facts.push(plural(lines, "line"));
+      return { label, glue: " ", detail: label === "Bash" ? `$ ${command}` : (command.split("\n").find((l) => l.trim()) ?? command), facts: outcome(facts), ...(parsed.failed ? { failed: true } : {}), ...(note ? { note } : {}) };
     }
     case "search": {
       const q = str(a.pattern) ?? str(a.query) ?? str(a.regex) ?? str(a.name) ?? str(a.glob) ?? item.summary;

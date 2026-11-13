@@ -37,7 +37,7 @@ const PR_READS = 8;
 /** One column's cards, the cursor kept inside the column's own list. */
 const clampCursor = (cards: BoardCard[], at: number): number => (cards.length === 0 ? 0 : Math.min(at, cards.length - 1));
 
-export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSession) => void }) {
+export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSession) => void; side?: number }) {
   const app = useAtui();
   const t = useTheme();
   const size = useTerminalDimensions();
@@ -138,7 +138,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     }
   });
 
-  const width = () => Math.min(160, size().width - 2);
+  const width = () => Math.max(30, Math.min(160, size().width - (p.side ?? 0) - 4));
   const columnWidth = () => Math.max(18, Math.floor((width() - 4) / 3) - 1);
   const height = () => Math.max(6, size().height - 8);
   const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} · ${PR_FILTER_LABELS[pr()]}`;
@@ -150,7 +150,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
          the title bar, so a terminal-height overlay would put its last row off the frame. */
       top={0}
       bottom={0}
-      left={Math.max(0, Math.floor((size().width - width()) / 2))}
+      left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
       width={width()}
       zIndex={15}
       flexDirection="column"
@@ -167,8 +167,8 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
         <text flexGrow={1} fg={t().muted} wrapMode="none" truncate>
           {filterLine()}
         </text>
-        <text flexShrink={0} fg={note() ? t().warn : t().muted}>
-          {note() ?? "←→ column · ↑↓ card · Enter opens · f project · r pull request · Esc closes"}
+        <text flexShrink={0} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
+          {note() ?? (width() < 120 ? "Enter opens · Esc closes" : "←→ column · ↑↓ card · Enter opens · f project · r pull request · Esc closes")}
         </text>
       </box>
       <box flexDirection="row" flexGrow={1} overflow="hidden" marginTop={1}>
@@ -208,7 +208,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                                 <span style={{ fg: t().border }}>{"   └ "}</span>
                                 <span style={{ fg: harnessAccent(child.harnessId) }}>{"● "}</span>
                                 <span style={{ fg: t().text2 }}>{plainTitle(child.title) || "Untitled"}</span>
-                                <span style={{ fg: child.asking ? t().warn : isBusy(child.status) ? t().accent : t().muted }}>{` ${child.asking ? "needs you" : isBusy(child.status) ? "working" : "done"}`}</span>
+                                <span style={{ fg: child.asking ? t().warn : isBusy(child.status) ? t().accent : t().muted }}>{child.asking || isBusy(child.status) ? ` ${child.asking ? "needs you" : "working"}` : " "}<Show when={!child.asking && !isBusy(child.status)} fallback={null}><span style={{ fg: t().ok }}>✓</span></Show></span>
                               </text>
                             )}
                           </For>

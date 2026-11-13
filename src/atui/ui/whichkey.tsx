@@ -24,7 +24,7 @@ export function WhichKey(p: { state: Partial<Record<string, string>>; onPick: (k
                 <text wrapMode="none" truncate onMouseDown={() => p.onPick(k.key)}>
                   <span style={{ fg: t().accent }}>{k.key}</span>
                   <span style={{ fg: t().muted }}>{" → "}</span>
-                  <span style={{ fg: k.menu ? t().danger : t().text2 }}>{label(k)}</span>
+                  <span style={{ fg: k.menu ? t().thinking : t().text2 }}>{label(k)}</span>
                 </text>
               )}
             </For>

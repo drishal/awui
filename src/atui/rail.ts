@@ -46,5 +46,5 @@ export function toneOf(theme: Theme, tone: StatusTone): string {
   }
 }
 
-/** The glyph a row's dot is drawn with: filled while it works or waits, hollow once it is quiet. */
-export const toneDot = (tone: StatusTone): string => (tone === "quiet" || tone === "done" ? "○" : "●");
+/** The glyph a row's dot is drawn with: filled while it works or waits, checked on completion, hollow once quiet. */
+export const toneDot = (tone: StatusTone): string => (tone === "done" ? "✓" : tone === "quiet" ? "○" : "●");

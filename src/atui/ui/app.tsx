@@ -824,6 +824,7 @@ export function App(p: {
                 <Show when={delegated()}>
                   {(open) => (
                     <DelegatedView
+                      side={room()}
                       initialTaskId={open().taskId ?? null}
                       onClose={() => setDelegated(null)}
                       onOpenChat={(chatId) => {
@@ -835,6 +836,7 @@ export function App(p: {
                 </Show>
                 <Show when={rail()}>
                   <ContextRailView
+                    side={room()}
                     onClose={() => setRail(false)}
                     onChat={(chatId) => {
                       setRail(false);
@@ -862,6 +864,7 @@ export function App(p: {
                 </Show>
                 <Show when={board()}>
                   <BoardView
+                    side={room()}
                     onClose={() => setBoard(false)}
                     onOpenSession={(session) => {
                       setBoard(false);

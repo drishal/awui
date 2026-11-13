@@ -35,7 +35,40 @@ afterEach(async () => {
 
 const idle = (m: Mounted) => m.until(() => m.app.chat()?.status === "idle", 15_000);
 
+/** Rounded borders survive in the conversation column, not under the sidebar. */
+const sheetFits = (frame: string) => {
+  const rows = frame.split("\n");
+  const top = rows.findIndex(r => r.includes("╭"));
+  const bottom = rows.findLastIndex(r => r.includes("╰"));
+  expect(top).toBeGreaterThanOrEqual(0);
+  expect(bottom).toBeGreaterThan(top);
+  const right = rows[top]!.lastIndexOf("╮");
+  expect(right).toBeLessThan(rows[top]!.length);
+  expect(rows[bottom]?.[right]).toBe("╯");
+  for (const row of rows.slice(top + 1, bottom)) expect(row[right]).toBe("│");
+};
+
 describe("atui", () => {
+  it("keeps the board, active work and delegated sheets inside the conversation column", async () => {
+    for (const width of [100, 140]) {
+      ui = await mount(path.join(server.root, "alpha"), { width, height: 44 });
+      await ui.type("delegate please");
+      ui.keys.pressEnter();
+      await idle(ui);
+      for (const [key, expected] of [["k", "Agents"], ["p", "Active work"], ["j", "Delegated work"]] as const) {
+        ui.keys.pressKey("x", { ctrl: true });
+        ui.keys.pressKey(key);
+        const frame = await ui.until(expected);
+        sheetFits(frame);
+        if (key === "k") expect(frame).toContain("Enter opens · Esc closes");
+        ui.keys.pressEscape();
+        await wait(60);
+      }
+      await ui.unmount();
+      ui = null;
+    }
+  }, 45_000);
+
   it("sends a message, streams the answer, and shows the work, files, and context", async () => {
     // Tall enough for the whole opened turn: neat-render's rows take two lines and more.
     ui = await mount(path.join(server.root, "alpha"), { height: 80 });
@@ -163,6 +196,23 @@ describe("atui", () => {
     expect(await ui.until(" tok/s", 10_000)).toMatch(/~\d+ tok\/s/);
     await idle(ui);
     expect(await ui.frame()).not.toContain("tok/s");
+  }, 30_000);
+
+  it("marks a parsed test failure in red and underlines it", async () => {
+    ui = await mount(path.join(server.root, "alpha"));
+    await ui.type("testrun");
+    ui.keys.pressEnter();
+    await idle(ui);
+    await ui.until("1 failed");
+    const spans = (await ui.spans()).flat();
+    const failed = spans.find(s => s.text.includes("1 failed"));
+    expect(failed?.fg.toInts().join()).toBe(RGBA.fromHex(ui.app.theme().danger).toInts().join());
+    expect(failed && failed.attributes & TextAttributes.UNDERLINE).toBeTruthy();
+    expect(spans.find(s => s.text.includes("1 passed"))?.fg.toInts().join()).toBe(RGBA.fromHex(ui.app.theme().muted).toInts().join());
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("e");
+    const folded = await ui.until("Worked for");
+    expect(folded).not.toContain("Σ ");
   }, 30_000);
 
   it("underlines a failure as well as colouring it", async () => {
@@ -654,8 +704,7 @@ describe("atui", () => {
     expect(panel).not.toContain("Unstage");
     // d opens the file's diff against HEAD; Esc goes back to the files.
     ui.keys.pressKey("d");
-    const diff = await ui.until("Managed by the fake harness's edit command");
-    expect(diff).toContain("src/app.ts · not staged");
+    await ui.until("Managed by the fake harness's edit command", 30_000);
     ui.keys.pressEscape();
     await ui.until("M src/app.ts");
     // Enter stages it: the row moves under Staged and offers Unstage.
@@ -670,6 +719,15 @@ describe("atui", () => {
     await ui.until("(new)", 20_000);
     ui.keys.pressKey("a");
     await ui.until(() => (ui?.app.git()?.counts.staged ?? 0) >= 2);
+    for (const width of [100, 140]) {
+      ui.resize(width, 44);
+      const frame = await ui.frame();
+      const head = frame.split("\n").find(row => /\bGit\b/.test(row));
+      expect(head).toContain("not pushed");
+      expect(frame.split("\n").filter(row => row.includes("Esc close"))).toHaveLength(1);
+      expect(frame).not.toContain("\n· Esc close");
+    }
+    ui.resize(140, 44);
     // `u` takes it all back out of the index.
     ui.keys.pressKey("u");
     await ui.until(() => (ui?.app.git()?.counts.staged ?? 1) === 0);

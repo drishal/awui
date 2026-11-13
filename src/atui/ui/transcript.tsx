@@ -42,10 +42,10 @@ const PULSE_TICKS = 4.5;
 const pulseOn = () => Math.floor(tick() / PULSE_TICKS) % 2 === 0;
 
 /** The row's bullet, neat-render's: quiet when done (success is the normal case), red on failure, filled and hollow in turn while it runs. */
-function Bullet(p: { status: "running" | "done" | "error" }) {
+function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean }) {
   const t = useTheme();
   const on = () => p.status !== "running" || pulseOn();
-  const color = () => (p.status === "running" ? (on() ? t().warn : t().muted) : p.status === "error" ? t().danger : t().muted);
+  const color = () => (p.status === "error" || p.failedOutput ? t().danger : p.status === "running" ? (on() ? t().warn : t().muted) : t().muted);
   return <span style={{ fg: color() }}>{on() ? "● " : "○ "}</span>;
 }
 
@@ -385,7 +385,7 @@ function ToolRow(p: { item: ToolItem; workspace: string }) {
   const preview = createMemo(() => (row().diff ? highlightPreview(row().diff ?? []) : null));
   const running = () => p.item.status === "running";
   const failed = () => p.item.status === "error";
-  const bad = (f: string) => failed() || /^(failed|exit [1-9])/.test(f);
+  const bad = (f: string) => failed() || /^(?:[1-9]\d* failed|exit [1-9])/.test(f);
   const factColor = (f: string) => (bad(f) ? t().danger : t().muted);
   // A running command moves to its own wrapped `└ $` lines, so you can read what is executing.
   const wraps = () => running() && p.item.category === "command" && Boolean(row().detail);
@@ -404,7 +404,7 @@ function ToolRow(p: { item: ToolItem; workspace: string }) {
       </Show>
       <box flexDirection="column" onMouseDown={() => setOpen(!open())}>
         <text wrapMode="none" truncate>
-          <Bullet status={p.item.status} />
+          <Bullet status={p.item.status} failedOutput={row().failed} />
           <b style={{ fg: t().text }}>{row().label}</b>
           <Show when={!wraps()}>
             <Show when={row().detail}>
@@ -520,7 +520,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
   const [open, setOpen] = createSignal(false);
   const row = createMemo(() => neatRow(p.item, p.workspace));
   const running = () => p.item.status === "running";
-  const bad = (f: string) => p.item.status === "error" || /^(failed|exit [1-9])/.test(f);
+  const bad = (f: string) => p.item.status === "error" || /^(?:[1-9]\d* failed|exit [1-9])/.test(f);
   const tail = createMemo(() => (running() && p.item.category === "command" ? outputTail(p.item.output, LIVE_LINES) : []));
   const href = () => (p.item.paths[0] ? fileUrl(p.item.paths[0], p.workspace) : null);
   // A remark above the call takes the top corner, so the call under it joins the trunk with a tee.
@@ -538,7 +538,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
       <box flexDirection="row" onMouseDown={() => setOpen(!open())}>
         <text flexShrink={1} minWidth={0} wrapMode="none" truncate>
           <span style={{ fg: t().border }}>{fork()}</span>
-          <Bullet status={p.item.status} />
+          <Bullet status={p.item.status} failedOutput={row().failed} />
           <b style={{ fg: t().text }}>{row().label}</b>
           <Show when={row().detail}>
             {(d) => (
@@ -859,7 +859,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
   const files = () => p.turn().changedFiles.map((f) => relativePath(f, p.workspace));
   // A finished turn closes with what it did, neat-render's Σ line: calls, time, reasoning, failures.
   const sigma = createMemo(() => sigmaFacts(p.turn()));
-  const sigmaShown = () => !p.turn().live && Boolean(p.turn().prompt) && (sigma().facts.length > 0 || sigma().failed !== null);
+  const sigmaShown = () => p.open && !p.turn().live && Boolean(p.turn().prompt) && (sigma().facts.length > 0 || sigma().failed !== null);
   const FILES_SHOWN = 4;
   return (
     <box flexDirection="column" width="100%" maxWidth={p.column}>
@@ -904,7 +904,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       <Show when={sigmaShown()}>
         <box marginTop={1}>
           <text fg={t().muted} wrapMode="word">
-            <span style={{ fg: t().border }}>{"Σ "}</span>
+            <span style={{ fg: t().muted }}>{"Σ "}</span>
             {sigma().facts.join(" · ")}
             <Show when={sigma().failed}>
               {(failed) => (
