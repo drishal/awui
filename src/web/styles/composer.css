@@ -905,6 +905,26 @@
   color: var(--bg);
 }
 
+/* Send with a draft is the primary action; disabled keeps its quiet grey. */
+.round-btn:not(:disabled):not(.is-stop) {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.round-btn:not(:disabled):not(.is-stop):hover {
+  background: var(--accent-hover);
+}
+
+/* Stop: a danger wash and icon, not a solid red fill. */
+.round-btn.is-stop:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.round-btn.is-stop:not(:disabled):hover {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
 .round-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--text) 82%, var(--bg));
 }
@@ -976,6 +996,41 @@
 
 .context-ring.tone-danger {
   color: var(--danger);
+}
+
+/* Neutral below 60 %, then the ramp the tones give; atui's contextTone agrees. */
+.context-ring.tone-ok {
+  color: var(--ok);
+}
+
+/* Thinking chip: a ramp on --thinking by data-level (off/minimal neutral, low 6 %,
+   medium 10 %, high 14 %, xhigh/max 18 %). */
+.pill-trigger[data-level="low"] {
+  background: color-mix(in oklab, var(--thinking) 6%, transparent);
+}
+
+.pill-trigger[data-level="medium"] {
+  background: color-mix(in oklab, var(--thinking) 10%, transparent);
+}
+
+.pill-trigger[data-level="high"] {
+  background: color-mix(in oklab, var(--thinking) 14%, transparent);
+}
+
+.pill-trigger[data-level="xhigh"],
+.pill-trigger[data-level="max"],
+.pill-trigger[data-level="ultra"] {
+  background: color-mix(in oklab, var(--thinking) 18%, transparent);
+}
+
+.pill-trigger[data-level]:not([data-level=""]):not([data-level="off"]):not([data-level="minimal"]) .pill-label {
+  color: var(--text);
+}
+
+.pill-trigger[data-level="xhigh"] .icon:first-child,
+.pill-trigger[data-level="max"] .icon:first-child,
+.pill-trigger[data-level="ultra"] .icon:first-child {
+  color: var(--thinking);
 }
 
 /* Context and usage panel (DeepSeek Harness's three popovers, as sections of one). */

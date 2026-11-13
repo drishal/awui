@@ -103,6 +103,7 @@ export function PermissionPicker({
         title={mode?.description ?? "Permission mode"}
         disabled={disabled}
         data-testid="permission-picker"
+        data-mode={mode?.id ?? ""}
         onClick={() => (open ? close(false) : show())}
         onKeyDown={onTriggerKey}
       >

@@ -138,6 +138,7 @@ export function ThinkingPicker({
         title="Thinking effort"
         disabled={disabled}
         data-testid="thinking-picker"
+        data-level={current ?? ""}
         onClick={() => (open ? close() : setOpen(true))}
       >
         <span className="pill-label">
