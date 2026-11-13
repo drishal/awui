@@ -474,12 +474,14 @@ export async function createApp(deps: AppDeps) {
   // The store reads its file once, at construction; the first request awaits that read
   // (express 5 runs async middlewares), so no gate resolves before the list is loaded.
   const grantsOf: GrantsOfFn = async (req, res) => {
-    // A guest link's cookie limits its session even on a local server without a password:
-    // only the invitation's allow list, never a silent fall back to full access. A revoked
-    // id resolves to an empty list (every gate refuses, 403 missing_grant).
-    const guestId = security.guestBrowserKey(req, res.locals.authority as string);
-    if (guestId) return (await invites.getAfterLoad(guestId))?.grants ?? [];
-    return null;
+    // A guest link's cookie is never a session: it has no grants at all, and requireAuth
+    // refuses it on every owner route (even on a local server without a password).
+    if (security.guestBrowserKey(req, res.locals.authority as string) !== null) return [];
+    // A limited session names one invitation; anything else is the owner's full session.
+    // An id that no longer exists — revoked, or from before invitations had a secret —
+    // resolves to an empty list, so every gate refuses with 403 missing_grant.
+    const invite = security.inviteId(req, res.locals.authority as string);
+    return invite === null ? null : (await invites.getAfterLoad(invite))?.grants ?? [];
   };
   const requireGrant = makeRequireGrant(grantsOf);
   // Delegated tasks: one record store in the state folder, shared by every chat in this process.
@@ -861,7 +863,7 @@ export async function createApp(deps: AppDeps) {
     const activeCookie = security.guestBrowserKey(req, res.locals.authority as string) ?? undefined;
     const active = await guests.redeem(token, activeCookie ?? undefined);
     const sessionKey = active.browserKey;
-    res.setHeader("Set-Cookie", security.issueCookie(res.locals.authority as string, res.locals.hostKind === "remote", sessionKey));
+    res.setHeader("Set-Cookie", security.issueGuestCookie(res.locals.authority as string, res.locals.hostKind === "remote", sessionKey));
     res.json({ guest: active.view });
   });
   app.get("/api/guest", async (req, res) => {

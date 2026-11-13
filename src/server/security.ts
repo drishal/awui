@@ -25,6 +25,8 @@ import { isObj, readJson, writeJson } from "./state-file.js";
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const PROXY_HEADERS = ["tailscale-user-login", "tailscale-user-name", "x-forwarded-for", "x-forwarded-host", "x-real-ip", "forwarded"];
 const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** A guest link's cookie lives no longer than the link itself (guests.ts's 24-hour TTL). */
+const GUEST_COOKIE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const FAIL_DELAY_MS = 400;
 /** Signed-out sessions remembered at once; each is a few dozen bytes. */
 const MAX_REVOKED = 10_000;
@@ -191,7 +193,9 @@ export class Security {
     const expected = Buffer.from(this.sign(payload));
     if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
     try {
-      const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { h?: string; exp?: number; f?: string; n?: unknown; g?: unknown };
+      const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { k?: unknown; h?: string; exp?: number; f?: string; n?: unknown; g?: unknown };
+      // A guest link's cookie is not a session, whatever it otherwise looks like.
+      if (data.k !== undefined) return null;
       // A cookie from before the password changed is void, and so is one whose device signed out.
       if (data.h !== authority || typeof data.exp !== "number" || data.exp <= now || data.f !== password.fingerprint) return null;
       const n = typeof data.n === "string" ? data.n : undefined;
@@ -224,10 +228,22 @@ export class Security {
   }
 
   /**
-   * A guest link's browser key, from the same signed cookie shape but valid even on a
-   * local server without password sign-in. Guest routes are the only callers: this never
-   * becomes a full session, and `GuestStore` still checks expiry and revocation itself.
+   * A guest link's cookie: the same signed shape, marked `k: "guest"` at a 24-hour
+   * lifetime (the link's own TTL). It is valid even on a local server without password
+   * sign-in, and it is never a session — `session()` refuses the marker, so `requireAuth`
+   * and the grant resolver cannot read it as one. Guest routes are the only callers, and
+   * `GuestStore` still checks expiry and revocation itself.
    */
+  issueGuestCookie(authority: string, secure: boolean, browserKey: string, now = Date.now()): string {
+    const body = { v: 2, k: "guest", h: authority, iat: now, exp: now + GUEST_COOKIE_MAX_AGE_MS, f: this.options.password?.fingerprint ?? "", n: randomBytes(12).toString("base64url"), g: browserKey };
+    const payload = Buffer.from(JSON.stringify(body)).toString("base64url");
+    const value = `${payload}.${this.sign(payload)}`;
+    const attrs = [`${this.cookieName}=${value}`, "Path=/", "HttpOnly", "SameSite=Strict", `Max-Age=${GUEST_COOKIE_MAX_AGE_MS / 1000}`];
+    if (secure) attrs.push("Secure");
+    return attrs.join("; ");
+  }
+
+  /** The guest link's browser key, from a cookie that says it is one; null on any other cookie. */
   guestBrowserKey(req: Request, authority: string): string | null {
     const password = this.options.password;
     const value = this.readCookie(req);
@@ -239,7 +255,8 @@ export class Security {
     const expected = Buffer.from(this.sign(payload));
     if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
     try {
-      const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { h?: string; exp?: number; f?: string; g?: unknown };
+      const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { k?: unknown; h?: string; exp?: number; f?: string; g?: unknown };
+      if (data.k !== "guest") return null;
       if (data.h !== authority || typeof data.exp !== "number" || data.exp <= Date.now()) return null;
       if (password && data.f !== password.fingerprint) return null;
       const g = typeof data.g === "string" && data.g.length <= 64 ? data.g : undefined;
@@ -248,7 +265,6 @@ export class Security {
       return null;
     }
   }
-
   /** POST /api/login { username, password }. */
   login = async (req: Request, res: Response): Promise<void> => {
     res.setHeader("Cache-Control", "no-store");
@@ -290,8 +306,13 @@ export class Security {
     res.json({ ok: true });
   };
 
-  /** Local requests pass; everything else needs a password session. */
+  /**
+   * Local requests pass; everything else needs a password session. A guest link's cookie
+   * is refused first and everywhere, even on a local server: it opens the guest's own
+   * three routes (mounted above this gate) and no owner route, whatever else it carries.
+   */
   requireAuth = (req: Request, res: Response, next: NextFunction): void => {
+    if (this.guestBrowserKey(req, res.locals.authority as string) !== null) return send(res, 401, "guest_required", "This is a guest link, not a sign-in; it opens only its own chat");
     if (res.locals.local === true) return next();
     if (!this.hasSession(req, res.locals.authority as string)) {
       return send(res, 401, "unauthenticated", "Sign in with your username and password", { auth: "password" });

@@ -100,8 +100,11 @@ describe("bounded expiring guest links", () => {
     expect(pending).toHaveLength(1);
     expect(pending[0]!.state === undefined || pending[0]!.state === "queued").toBe(true);
     expect(typeof pending[0]!.id).toBe("string");
-    // Only the owner can release it; a guest cookie on an owner route is refused.
-    expect((await guest.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/send`).send({})).status).toBe(403);
+    // Only the owner can release it; a guest cookie is a guest everywhere, so an owner
+    // route refuses it before any grant is read (401, not 403 missing_grant).
+    const release = await guest.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/send`).send({});
+    expect(release.status).toBe(401);
+    expect(release.body.code).toBe("guest_required");
   });
 
   it("refuses every owner route to a request that carries no session at all", async () => {
@@ -124,6 +127,48 @@ describe("bounded expiring guest links", () => {
     for (const res of calls) expect(res.status).toBe(401);
     // Nothing happened: the message is still queued for the owner.
     expect(((await guest.get("/api/guest")).body as { pending: unknown[] }).pending).toHaveLength(1);
+  });
+
+  it("refuses a guest cookie on every owner route, on a password server and on this machine", async () => {
+    // On a password server the cookie used to pass requireAuth as a session and then read
+    // /api/bootstrap (home, roots, username). The guest marker makes it a guest everywhere;
+    // the guest's own three routes stay open, and they never learn any of that.
+    for (const options of [{ withPassword: true, lanHosts: ["192.168.1.50"] }, {}]) {
+      t = await makeTestApp(options);
+      const owner = await signedIn(t);
+      const workspace = (await owner.post("/api/workspaces/open").send({ path: t.project })).body as { id: string };
+      const chat = (await owner.post("/api/chats").send({ harnessId: "fake", workspaceId: workspace.id })).body as { chatId: string };
+      await owner.post(`/api/chats/${chat.chatId}/messages`).send({ text: "Seed prompt" });
+      await until(() => t!.manager.list().find((row) => row.chatId === chat.chatId)?.sessionId !== undefined);
+      const sessionId = t!.manager.list().find((row) => row.chatId === chat.chatId)?.sessionId as string;
+      const native = sessionId.slice("fake:".length);
+      const share = await owner.post(`/api/guests/fake/${encodeURIComponent(native)}`).send({ workspaceId: workspace.id });
+      const token = (share.body as { url: string }).url.slice("/guest/".length);
+      const host = options.withPassword ? `192.168.1.50:${t.port}` : undefined;
+      const guest = request.agent(t.server);
+      // The cookie is bound to the authority it was issued for: a LAN guest redeems over the LAN host.
+      const redeem = host ? guest.post("/api/guests/redeem").set("Host", host) : guest.post("/api/guests/redeem");
+      expect((await redeem.send({ token })).status).toBe(200);
+      const call = (method: "get" | "post", url: string) => {
+        const req = method === "get" ? guest.get(url) : guest.post(url).send({});
+        return host ? req.set("Host", host) : req;
+      };
+      for (const url of ["/api/bootstrap", "/api/sessions", "/api/chats", "/api/workspaces", "/api/settings", "/api/invites", "/api/guests"]) {
+        const res = await call("get", url);
+        expect(res.status, url).toBe(401);
+        expect(res.body.code, url).toBe("guest_required");
+      }
+      expect((await call("post", "/api/workspaces/open")).status).toBe(401);
+      // The guest's own routes still work, and answer no owner material.
+      const meta = await call("get", "/api/guest");
+      expect(meta.status).toBe(200);
+      expect(meta.body).not.toHaveProperty("home");
+      const history = await call("get", "/api/guest/history");
+      expect(history.status).toBe(200);
+      expect(Object.keys(history.body).sort()).toEqual(["expiresAt", "harnessId", "history", "title", "workspaceName"]);
+      await t.close();
+      t = undefined;
+    }
   });
 
   it("sends accepted visitor content on to the exact session once the owner releases it", async () => {
