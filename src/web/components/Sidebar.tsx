@@ -1269,11 +1269,13 @@ export function Sidebar(props: {
           </div>
           {!selection.on ? (
             <div className="quick-filters" role="group" aria-label="Filter sessions">
-              {chipsShown(quickCount, quick).map((f) => (
-                <button key={f} type="button" className="quick-chip" data-kind={f} data-nonzero={quickCount[f] > 0 ? "" : undefined} aria-pressed={quick === f} onClick={() => pickQuick(quick === f ? null : f)}>
-                  {QUICK_LABELS[f]} <span className="quick-count">{quickCount[f]}</span>
-                </button>
-              ))}
+              <div className="quick-chips">
+                {chipsShown(quickCount, quick).map((f) => (
+                  <button key={f} type="button" className="quick-chip" data-kind={f} data-nonzero={quickCount[f] > 0 ? "" : undefined} aria-pressed={quick === f} onClick={() => pickQuick(quick === f ? null : f)}>
+                    {QUICK_LABELS[f]} <span className="quick-count">{quickCount[f]}</span>
+                  </button>
+                ))}
+              </div>
               <SidebarFilters hide={hide} counts={hideCount} onChange={pickHide} />
             </div>
           ) : null}
