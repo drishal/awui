@@ -299,16 +299,25 @@ function previewHead(text: string, lines = 12, chars = 1200): string {
 
 /**
  * What a tool row shows while the pointer rests on it: Tern has no hover event to fetch a file with, so
- * this is the call's own body (its diff, its output, its command), bounded, never a request.
+ * this is the call's own body (its diff, its output, its command), bounded, never a request. A preview of
+ * one line ("Updated") is not worth a card floating over the chat, so those get none.
  */
 function rowPreview(item: ToolItem, path: string | undefined): Node | null {
   if (item.subagents) return null;
+  const worth = (text: string) => text.trim().split("\n").length >= 2 || text.trim().length > 120;
   if (item.diff && item.diff.lines.length > 0) {
     const lines = item.diff.lines.slice(0, 12);
     return ui.diff({ text: unifiedDiff(path ?? "file", { lines, added: lines.filter((l) => l.kind === "add").length, removed: lines.filter((l) => l.kind === "del").length }) });
   }
-  if (item.output.trim()) return item.category === "read" ? ui.code({ text: previewHead(item.output), ...(path ? { path } : {}) }) : ui.ansi({ text: previewHead(item.output) });
-  if (item.category === "command" && item.summary) return ui.code({ text: previewHead(item.summary, 6) });
+  if (item.output.trim()) {
+    const text = previewHead(item.output);
+    if (!worth(text)) return null;
+    return item.category === "read" ? ui.code({ text, ...(path ? { path } : {}) }) : ui.ansi({ text });
+  }
+  if (item.category === "command" && item.summary) {
+    const text = previewHead(item.summary, 6);
+    return worth(text) ? ui.code({ text }) : null;
+  }
   return null;
 }
 

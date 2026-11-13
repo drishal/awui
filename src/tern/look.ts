@@ -117,7 +117,7 @@ export const STYLESHEET = `
  */
 [data-role^='awui.fold'] { border: 1px solid ${tint(10)}; border-radius: 12px; background: ${tint(2)}; }
 /* A closed card is as tall as an open card's row and in the same text size, as the web UI's are. */
-[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 1em; padding: 6px 12px !important; min-height: 30px; }
+[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 1em; padding: 7px 12px !important; min-height: 34px; }
 /* Tern's head hover is a pill 3 px wider than its section on each side: inside the card, it fills the frame
    exactly instead, rounded with it (the top corners while open, all four when the card is closed). */
 [data-role^='awui.fold'] > .sf-section-head { margin: 0 !important; border-radius: 11px 11px 0 0; }
@@ -135,7 +135,7 @@ export const STYLESHEET = `
 [data-role='awui.calls'] > * { padding: 0; }
 /* The row's head carries the padding, so its hover lights the whole row edge to edge, as the web UI's rows do,
    not Tern's inset pill; the last closed row rounds with the card's bottom corners. */
-[data-role='awui.calls'] .sf-tool-head { margin: 0 !important; padding: 4px 12px !important; border-radius: 0 !important; }
+[data-role='awui.calls'] .sf-tool-head { margin: 0 !important; padding: 6px 12px !important; border-radius: 0 !important; }
 [data-role='awui.calls'] > :last-child.collapsed .sf-tool-head { border-radius: 0 0 11px 11px !important; }
 [data-role='awui.calls'] > * + * { border-top: 1px solid ${tint(6)}; }
 [data-role^='awui.fold'] > .sf-section-body { margin: 0; padding: 0; border: 0; }
@@ -147,6 +147,9 @@ export const STYLESHEET = `
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-sp { order: 1; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-meta { order: 2; font-family: var(--sans); color: var(--t3); }
 [data-role='awui.calls'] .sf-tool.st-done .sf-tool-st { color: var(--ok); }
+/* A row's body is inset from the card's edge, as the web UI insets a diff or an output block, so neither
+   touches the frame. */
+[data-role='awui.calls'] .sf-tool-body { padding: 2px 12px 10px; }
 /* A thought reads as the web UI's: the word, then the reasoning's title, both quiet and in the reading font. */
 [data-role='awui.thought'] .sf-tool-title { font-weight: 400; color: var(--t3); }
 [data-role='awui.thought'] .sf-tool-target { font-family: var(--sans); color: var(--t3); }

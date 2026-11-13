@@ -373,6 +373,13 @@ describe("the Tern conversation", () => {
     expect(toolNode(tool({ output: "ok\n", at: 1000, endedAt: 2600 }), "/w", () => undefined).props.took).toBe(1600);
   });
 
+  it("peeks at a row's body on hover only when it holds more than a line", () => {
+    const one = toolNode(tool({ output: "Updated" }), "/w", () => undefined);
+    expect(one.props.hovercard).toBeUndefined();
+    const many = toolNode(tool({ output: "one\ntwo\nthree" }), "/w", () => undefined);
+    expect(many.props.hovercard).toBeDefined();
+  });
+
   it("keeps a running command open, following its output, timed from its age", () => {
     const node = toolNode(tool({ status: "running", args: JSON.stringify({ command: "sleep 9" }), output: "1\n2\n", at: 1000 }), "/w", () => 4200);
     expect(node.props).toMatchObject({ status: "running", age: 4200, collapsed: false, preview: { tail: 4 } });
