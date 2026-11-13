@@ -198,6 +198,7 @@ src/web/                      React 19 + Vite client. App.tsx is the shell; comp
                               app's shortcuts, shares, and prompt links (?new, ?sessions, ?share, ?prompt).
                               public/sw.js: push, Approve/Deny from a notification, the share target, the
                               offline page (it never caches the app).
+  morph.ts                    One surface across a swap: what leaves a screen leaves its box behind (`handoff`), what arrives glides from it (`land`); FLIP on the Web Animations API (never view-transitions), `motionOff` the one reduced-motion check for element.animate() (queue-glide.ts is its older, queue-only cousin).
   turn-time.ts                A turn's time and speed as hover text: the prompt's clock time, the answer row's "24s · first token 1.2s" (pure; nothing unknown is shown).
   waterfall.ts                A turn's time as rows on a nice axis (steps, calls, subagent runs, the slowest call), for the Timing dialog (pure).
   sticky-prompt.ts            The sticky prompt bar: which turn's prompt has scrolled out above the view (pure; StickyPrompt.tsx measures and draws).

@@ -23,6 +23,7 @@ import { Dot } from "./Dot.js";
 import { SecondOpinionCard } from "./SecondOpinionCard.js";
 import { Rolling } from "./Rolling.js";
 import { Arrivals, ArrivalsContext, useArrival } from "../arrivals.js";
+import { motionOff } from "../morph.js";
 import { claimLanding, glideOffset } from "../queue-glide.js";
 import { Markdown } from "./Markdown.js";
 import { QuoteButton } from "./QuoteButton.js";
@@ -592,7 +593,7 @@ function UserPrompt({
       const el = bubble.current;
       if (!el) return;
       const off = glideOffset(spot, el.getBoundingClientRect());
-      if (off && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      if (off && !motionOff()) {
         // On the spring (motion.css), so it lands with a little give, like the prompt it becomes.
         const easing = getComputedStyle(el).getPropertyValue("--spring").trim() || "cubic-bezier(0.16, 1, 0.3, 1)";
         el.animate([{ transform: `translate(${off.dx}px, ${off.dy}px)`, opacity: 0.6 }, { transform: "none", opacity: 1 }], { duration: 520, easing });
