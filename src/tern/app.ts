@@ -9,8 +9,8 @@
 // view attached. The keys are atui's: C-k commands, C-x then a letter.
 import { appendFileSync } from "node:fs";
 import { createEffect, createMemo, createRoot, createSignal, on, onCleanup, untrack } from "solid-js";
-import { blobId, span, ui, type Key, type Node, type PropsOf, type Session, type Surface } from "@stencil-hq/tern";
-import type { HarnessStatus, InteractionRequest, SavedPrompt, SlashCommand } from "../shared/protocol.js";
+import { blobId, span, ui, html, type Key, type Node, type PropsOf, type Session, type Surface } from "@stencil-hq/tern";
+import type { ChatSnapshot, HarnessStatus, IntegrationRecord, InteractionRequest, RaceSummary, ReviewThread, SavedPrompt, SecondOpinion, SlashCommand } from "../shared/protocol.js";
 import type { ChatState } from "../web/chat-state.js";
 import { buildTurns, ago as agoMs } from "../web/turns.js";
 import { turnMarkdown } from "../web/turn-markdown.js";
@@ -33,6 +33,15 @@ import { stepRange, USAGE_SCROLL_ID, usageNode, type UsageScreen } from "./usage
 import { findHits } from "./find.js";
 import { TIMING_SCROLL_ID, timingNode } from "./timing.js";
 import { CONTEXT_SCROLL_ID, contextNode } from "./context.js";
+import { railNode, toolPlace } from "./rail.js";
+import { DELEGATED_SCROLL_ID, delegatedNode } from "./delegated.js";
+import { boardFilterLine, boardNode, cursorCard, moveCard, moveColumn, nextPrFilter, nextProject, type BoardCursor } from "./board.js";
+import { contextCards, gitSummaryLine } from "../web/context-panel.js";
+import { railEntries, type RailEntry } from "../atui/rail.js";
+import { ACTION_KEYS, moveRow, taskRows, type TaskRow } from "../atui/delegated.js";
+import { reviewActions, type ReviewAction, type ReviewFacts } from "../web/delegated-tasks.js";
+import { collectChanges, type FileChanges } from "../web/review.js";
+import { BOARD_COLUMNS, boardCards, boardCounts, boardProjects, prStateOf, type PrFilter, type PrState, type PullRequestShape } from "../web/dashboard.js";
 import { STYLESHEET, themeSheet } from "./look.js";
 import { startExamples, startHeading, startSetup } from "../web/start-screen.js";
 
@@ -66,6 +75,9 @@ const LEADER: Array<{ key: string; label: string }> = [
   { key: "e", label: "Open or fold all work" },
   { key: "f", label: "Show failed calls" },
   { key: "g", label: "Find in chat" },
+  { key: "j", label: "Delegated work" },
+  { key: "k", label: "Agents board" },
+  { key: "p", label: "Active work" },
   { key: "u", label: "Usage across chats" },
   { key: "y", label: "Copy the last answer" },
   { key: "q", label: "Quit" },
@@ -402,6 +414,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (c) items.push({ id: "x:g", label: "Find in chat…", value: "C-x g", icon: "search", keywords: "search transcript" });
       if (c && buildTurns(c.items, c.status).length > 0) items.push({ id: "timing", label: "Timing of the latest turn", icon: "clock", keywords: "waterfall speed slow" });
       items.push({ id: "x:u", label: "Usage", value: "C-x u", icon: "chart", keywords: "tokens cost limits spend" });
+      items.push({ id: "x:k", label: "Agents: every session, by column", value: "C-x k", icon: "kanban", keywords: "dashboard board needs working done" });
+      if (c) items.push({ id: "x:p", label: "Active work: workers, jobs, questions, context", value: "C-x p", icon: "layers", keywords: "context panel rail" });
+      if (c) items.push({ id: "x:j", label: "Delegated work: review a worker…", value: "C-x j", icon: "task", keywords: "task review apply patch", ...(c.delegated && c.delegated.length > 0 ? {} : { disabled: "This chat has delegated nothing" }) });
       if (c) items.push({ id: "context", label: "Context and usage", icon: "gauge", keywords: "window tokens cache compact", ...(c.context ? {} : { disabled: "This harness has not reported the context yet" }) });
       if (c) items.push({ id: "x:y", label: "Copy the last answer", value: "C-x y", icon: "copy" });
       if (app.putBackable()) items.push({ id: "x:z", label: "Put the undone files back", value: "C-x z", icon: "undo" });
@@ -568,6 +583,12 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           return openMenu("find");
         case "u":
           return openUsage();
+        case "j":
+          return openDelegated();
+        case "k":
+          return openBoard();
+        case "p":
+          return openRail();
         case "y": {
           const text = lastAnswer();
           return text ? copy(text) : say("No answer to copy yet");
@@ -794,6 +815,356 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       };
     });
 
+    // ---- the work surfaces: active work, delegated work, the agents board --------------------
+    // Each is an overlay in Tern's layer, drawn by its own module; the state, the keys, and the
+    // server calls live here, as they do for the Usage and Timing screens.
+    const [railOpen, setRailOpen] = createSignal(false);
+    const [railSelected, setRailSelected] = createSignal(0);
+    const [railRaces, setRailRaces] = createSignal<RaceSummary[] | null>(null);
+    const [railOpinions, setRailOpinions] = createSignal<SecondOpinion[] | null>(null);
+    const [railThreads, setRailThreads] = createSignal<ReviewThread[] | null>(null);
+    const [delegated, setDelegated] = createSignal<{ taskId?: string } | null>(null);
+    const [delegatedSelected, setDelegatedSelected] = createSignal(0);
+    const [delegatedOpened, setDelegatedOpened] = createSignal<string | null>(null);
+    const [delegatedReview, setDelegatedReview] = createSignal<{ record: IntegrationRecord; headsMatch: boolean | null; reason: string | null } | null>(null);
+    const [delegatedReading, setDelegatedReading] = createSignal(false);
+    const [delegatedChanges, setDelegatedChanges] = createSignal<FileChanges[] | null>(null);
+    const [delegatedNote, setDelegatedNote] = createSignal("");
+    const [delegatedWriting, setDelegatedWriting] = createSignal(false);
+    const [delegatedConfirm, setDelegatedConfirm] = createSignal<{ label: string; run: () => void } | null>(null);
+    const [delegatedBusy, setDelegatedBusy] = createSignal(false);
+    const [delegatedError, setDelegatedError] = createSignal<string | null>(null);
+    const [boardOpen, setBoardOpen] = createSignal(false);
+    const [boardCursor, setBoardCursor] = createSignal<BoardCursor>({ column: "needs", at: 0 });
+    const [boardProject, setBoardProject] = createSignal<string | null>(null);
+    const [boardPr, setBoardPr] = createSignal<PrFilter>("any");
+    const [boardPrs, setBoardPrs] = createSignal<Record<string, PullRequestShape | null>>({});
+    const [boardReading, setBoardReading] = createSignal(false);
+    const [clockTick, setClockTick] = createSignal(0);
+    const clockTimer = setInterval(() => setClockTick((n) => n + 1), 1000);
+    onCleanup(() => clearInterval(clockTimer));
+
+    const harnessName = (id: string) => app.boot()?.harnesses.find((h) => h.id === id)?.displayName ?? id;
+
+    /** The rail's cards, from the chat's snapshot and the records its own project keeps. */
+    const railCards = createMemo(() => {
+      void clockTick();
+      const c = shownChat();
+      if (!c) return [];
+      return contextCards({ chat: c, races: railRaces(), opinions: railOpinions(), threads: railThreads() });
+    });
+    const railList = createMemo(() => railEntries(railCards()));
+
+    const openRail = () => {
+      const c = app.chat();
+      if (!c) return say("No chat for active work yet");
+      setLeader(false);
+      setMenu(null);
+      setUsage(null);
+      setTiming(null);
+      setContextOpen(false);
+      setBoardOpen(false);
+      setDelegated(null);
+      setRailSelected(0);
+      setRailOpen(true);
+      setRailRaces(null);
+      setRailOpinions(null);
+      setRailThreads(null);
+      app.server.call<{ races: RaceSummary[] }>("/api/races").then((r) => setRailRaces(r.races), () => setRailRaces([]));
+      app.server.call<{ opinions: SecondOpinion[] }>(`/api/chats/${c.chatId}/second-opinion`).then((r) => setRailOpinions(r.opinions), () => setRailOpinions([]));
+      app.server.call<{ threads: ReviewThread[] }>(`/api/chats/${c.chatId}/review-threads`).then((r) => setRailThreads(r.threads), () => setRailThreads([]));
+    };
+
+    /** Open what a rail row is about: a worker's review, a call's turn, a comment, a chat, the context panel. */
+    const pickRail = (entry: RailEntry) => {
+      const row = entry.row;
+      setRailOpen(false);
+      if (row.taskId) return openDelegated(row.taskId);
+      switch (row.target.kind) {
+        case "chat":
+          return void app.openChat(row.target.chatId);
+        case "tool": {
+          const c = shownChat();
+          const place = c ? toolPlace(buildTurns(c.items, c.status), row.target.toolId, PAGE_ID) : null;
+          if (!place) return say("That call is no longer in this chat's transcript");
+          // The fold and the turn's place in the window are drawn first: the reveal follows that frame.
+          setShown((n) => Math.max(n, buildTurns(c?.items ?? [], c?.status ?? "idle").length - place.turn));
+          setFolds((map) => new Map(map).set(place.fold, true));
+          surface.reveal(place.row, "start");
+          return;
+        }
+        case "review":
+          return say("Review comments open in the browser or atui: the threads are the server's, so both see the same ones");
+        case "race":
+          return say("A comparison opens in the browser: its chats and their diffs are the web UI's Race panel");
+        case "usage":
+          return openContext();
+        case "questions":
+          return; // The request card is in the dock already.
+      }
+    };
+
+    const onRailKey = (key: Key) => {
+      const { name, ctrl } = key;
+      const entries = railList();
+      if (name === "escape" || (ctrl && name === "g")) return setRailOpen(false);
+      if (name === "up" || name === "k" || (ctrl && name === "p")) return setRailSelected((i) => moveRow(entries.length, i, -1));
+      if (name === "down" || name === "j" || (ctrl && name === "n")) return setRailSelected((i) => moveRow(entries.length, i, 1));
+      if (name === "page_up") return setRailSelected((i) => moveRow(entries.length, i, -8));
+      if (name === "page_down" || name === "space") return setRailSelected((i) => moveRow(entries.length, i, 8));
+      if (name === "home") return setRailSelected(0);
+      if (name === "end") return setRailSelected(moveRow(entries.length, entries.length, 0));
+      const entry = entries[railSelected()];
+      if (!entry) return;
+      if (name === "enter") return pickRail(entry);
+      if (name === "o") {
+        if (entry.row.target.kind === "chat") return void app.openChat(entry.row.target.chatId);
+        return say("This row is not a chat: Enter opens what it is about");
+      }
+    };
+
+    /** The facts a worker's review screen reads: the record, whether its heads stand, and why not. */
+    const reviewFacts = createMemo((): ReviewFacts | null => {
+      const answer = delegatedReview();
+      if (!answer) return null;
+      return {
+        review: answer.record.review ? { decision: answer.record.review.decision, note: answer.record.review.note, by: answer.record.review.by, at: answer.record.review.at } : null,
+        appliedAt: answer.record.appliedAt,
+        discardedAt: answer.record.discardedAt,
+        headsMatch: answer.headsMatch,
+        reason: answer.reason,
+      };
+    });
+    const delegatedActions = createMemo(() => {
+      const facts = reviewFacts();
+      return facts ? reviewActions(facts) : [];
+    });
+    const delegatedRows = createMemo(() => {
+      void clockTick();
+      const c = app.chat();
+      return c ? taskRows(c.delegated ?? [], Date.now(), harnessName) : [];
+    });
+    const delegatedRow = createMemo(() => delegatedRows().find((row) => row.key === delegatedOpened()) ?? null);
+
+    const openDelegated = (taskId?: string) => {
+      const c = app.chat();
+      if (!c) return say("No chat to show delegated work for");
+      setLeader(false);
+      setMenu(null);
+      setUsage(null);
+      setTiming(null);
+      setContextOpen(false);
+      setRailOpen(false);
+      setBoardOpen(false);
+      setDelegatedError(null);
+      setDelegatedNote("");
+      setDelegatedConfirm(null);
+      setDelegated({ ...(taskId ? { taskId } : {}) });
+      setDelegatedOpened(taskId ?? null);
+      setDelegatedSelected(0);
+      setDelegatedReview(null);
+      setDelegatedChanges(null);
+      // Opened again later, the worker is read again: its record may have changed while it was closed.
+      delegatedReadFor = null;
+    };
+
+    /** A worker's record and the changes its chat recorded, read once when its screen opens. */
+    const readDelegated = (row: TaskRow) => {
+      const c = app.chat();
+      if (!c) return;
+      setDelegatedReview(null);
+      setDelegatedChanges(null);
+      setDelegatedNote("");
+      if (row.reviewable) {
+        setDelegatedReading(true);
+        app.server
+          .call<{ record: IntegrationRecord; headsMatch: boolean | null; reason: string | null }>(`/api/chats/${c.chatId}/tasks/${row.key}/review`)
+          .then(setDelegatedReview, (cause: unknown) => setDelegatedError(cause instanceof Error ? cause.message : String(cause)))
+          .finally(() => setDelegatedReading(false));
+      }
+      if (row.task.childChatId) {
+        app.server.call<ChatSnapshot>(`/api/chats/${encodeURIComponent(row.task.childChatId)}`).then(
+          (snapshot) => setDelegatedChanges(collectChanges(snapshot.items, snapshot.workspace.path)),
+          // A worker's chat is closed once its run settles and nothing holds it; its patch still reviews.
+          () => setDelegatedChanges([]),
+        );
+      } else setDelegatedChanges([]);
+    };
+
+    let delegatedReadFor: string | null = null;
+    createEffect(() => {
+      const row = delegatedRow();
+      if (!row || delegatedReadFor === row.key) return;
+      delegatedReadFor = row.key;
+      readDelegated(row);
+    });
+
+    /** One write against a worker: a review decision, a cleanup, or its cancel. */
+    const delegatedCall = async (taskId: string, path: string, body?: unknown) => {
+      const c = app.chat();
+      if (!c || delegatedBusy()) return;
+      setDelegatedBusy(true);
+      setDelegatedError(null);
+      try {
+        // Always a POST: a cancel and a cleanup carry no body, and a bodyless call would be read as a GET.
+        await app.server.call(`/api/chats/${c.chatId}/tasks/${taskId}/${path}`, { method: "POST", ...(body === undefined ? {} : { body }) });
+        const row = delegatedRows().find((r) => r.key === taskId);
+        if (row && row.key === delegatedOpened()) {
+          delegatedReadFor = row.key;
+          readDelegated(row);
+        }
+      } catch (cause) {
+        // A local-only refusal (403 local_only) and a moved head are the server's words, shown as they came.
+        setDelegatedError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setDelegatedBusy(false);
+        setDelegatedConfirm(null);
+      }
+    };
+
+    const delegatedAct = (action: ReviewAction) => {
+      const taskId = delegatedOpened();
+      if (!taskId) return;
+      if (!action.enabled) return setDelegatedError(action.why ?? "That action is not available now");
+      setDelegatedError(null);
+      const run = () => {
+        const workspaceId = delegatedReview()?.record.workspaceId;
+        const note = delegatedNote();
+        switch (action.id) {
+          case "apply":
+            return void delegatedCall(taskId, "review", { workspaceId, decision: "apply", ...(note ? { note } : {}) });
+          case "discard":
+            return void delegatedCall(taskId, "review", { workspaceId, decision: "discard", ...(note ? { note } : {}) });
+          case "unreview":
+            return void delegatedCall(taskId, "unreview");
+          case "cleanup":
+            return void delegatedCall(taskId, "review/cleanup");
+        }
+      };
+      if (action.confirms) return setDelegatedConfirm({ label: action.label, run });
+      run();
+    };
+
+    const delegatedCancel = (row: TaskRow) => {
+      if (row.finished) return setDelegatedError(`${row.title} has finished; there is nothing left to cancel`);
+      setDelegatedError(null);
+      setDelegatedConfirm({ label: `Cancel ${row.title}`, run: () => void delegatedCall(row.key, "cancel") });
+    };
+
+    const onDelegatedKey = (key: Key) => {
+      const { name, ctrl } = key;
+      if (delegatedWriting()) {
+        if (name === "escape") {
+          setDelegatedWriting(false);
+          setDelegatedNote("");
+        } else if (name === "enter") setDelegatedWriting(false);
+        return;
+      }
+      const pending = delegatedConfirm();
+      if (pending) {
+        setDelegatedConfirm(null);
+        if (name === "y") return pending.run();
+        return setDelegatedError(null);
+      }
+      if (name === "escape" || (ctrl && name === "g")) {
+        const id = delegatedOpened();
+        if (id) {
+          // Back to the list with the cursor on the worker that was open (its id, read before it is cleared).
+          setDelegatedOpened(null);
+          setDelegatedSelected(Math.max(0, delegatedRows().findIndex((row) => row.key === id)));
+          return;
+        }
+        return setDelegated(null);
+      }
+      const row = delegatedRow();
+      if (!row) {
+        const list = delegatedRows();
+        if (name === "down" || name === "j" || (ctrl && name === "n")) return setDelegatedSelected((i) => moveRow(list.length, i, 1));
+        if (name === "up" || name === "k" || (ctrl && name === "p")) return setDelegatedSelected((i) => moveRow(list.length, i, -1));
+        const current = list[delegatedSelected()];
+        if (!current) return;
+        if (name === "enter") return setDelegatedOpened(current.key);
+        if (name === "o") return current.task.childChatId ? void app.openChat(current.task.childChatId) : setDelegatedError("This worker has no chat of its own yet");
+        if (name === "x") return delegatedCancel(current);
+        return;
+      }
+      const to = name === "down" || name === "j" ? "line-down" : name === "up" || name === "k" ? "line-up" : name === "page_down" || name === "space" ? "page-down" : name === "page_up" ? "page-up" : name === "home" ? "start" : name === "end" ? "end" : null;
+      if (to) return surface.scroll(DELEGATED_SCROLL_ID, to);
+      if (name === "o") return row.task.childChatId ? void app.openChat(row.task.childChatId) : setDelegatedError("This worker has no chat of its own yet");
+      if (name === "x") return delegatedCancel(row);
+      if (name === "n" && delegatedActions().length > 0) return setDelegatedWriting(true);
+      const action = delegatedActions().find((candidate) => ACTION_KEYS[candidate.id] === name);
+      if (action) return delegatedAct(action);
+    };
+
+    // ---- the agents board -------------------------------------------------------------------
+
+    const boardProjectsList = createMemo(() => boardProjects(app.overview()));
+    const boardPrStates = createMemo(() => {
+      const out: Record<string, PrState> = {};
+      for (const [id, value] of Object.entries(boardPrs())) out[id] = prStateOf(value);
+      return out;
+    });
+    const boardCardsNow = createMemo(() => boardCards(app.overview(), { project: boardProject(), pr: boardPr(), prStates: boardPrStates(), working: (s) => isBusy(s.status) }));
+    const boardCountsNow = createMemo(() => boardCounts(boardCardsNow()));
+    const boardFilter = createMemo(() => boardFilterLine(boardProject() ? (boardProjectsList().find((w) => w.id === boardProject())?.name ?? null) : null, app.overview().sessions.filter((s) => !s.archived).length, boardPr()));
+
+    const openBoard = () => {
+      setLeader(false);
+      setMenu(null);
+      setUsage(null);
+      setTiming(null);
+      setContextOpen(false);
+      setRailOpen(false);
+      setDelegated(null);
+      setBoardOpen(true);
+      setBoardReading(true);
+      // The cursor starts on the first column that holds something, so Enter opens a card at once.
+      const cards = boardCardsNow();
+      const first = BOARD_COLUMNS.find((id) => cards[id].length > 0);
+      if (first) setBoardCursor({ column: first, at: 0 });
+      void app.refreshSessions().finally(() => {
+        setBoardReading(false);
+        const now = boardCardsNow();
+        const wanted = BOARD_COLUMNS.find((id) => now[id].length > 0);
+        if (wanted) setBoardCursor((cursor) => (now[cursor.column].length > 0 ? cursor : { column: wanted, at: 0 }));
+      });
+      // Each project's pull request, once: gh is slow and a badge is decoration.
+      void (async () => {
+        const read: Record<string, PullRequestShape | null> = {};
+        for (const project of boardProjectsList().slice(0, 8)) {
+          read[project.id] = await app.server.call<{ pr: PullRequestShape | null }>(`/api/workspaces/${project.id}/github/pr`).then((answer) => answer.pr, () => null);
+        }
+        setBoardPrs(read);
+      })();
+    };
+
+    const onBoardKey = (key: Key) => {
+      const { name, ctrl } = key;
+      if (name === "escape" || (ctrl && name === "g")) return setBoardOpen(false);
+      const cards = boardCardsNow();
+      if (name === "left" || name === "h") return setBoardCursor((cursor) => moveColumn(cards, cursor, -1));
+      if (name === "right" || name === "l") return setBoardCursor((cursor) => moveColumn(cards, cursor, 1));
+      if (name === "up" || name === "k") return setBoardCursor((cursor) => moveCard(cards, cursor, -1));
+      if (name === "down" || name === "j") return setBoardCursor((cursor) => moveCard(cards, cursor, 1));
+      if (name === "f") {
+        setBoardProject((current) => nextProject(boardProjectsList().map((w) => w.id), current));
+        setBoardCursor({ column: boardCursor().column, at: 0 });
+        return;
+      }
+      if (name === "r") {
+        setBoardPr((current) => nextPrFilter(current));
+        setBoardCursor({ column: boardCursor().column, at: 0 });
+        return;
+      }
+      if (name === "enter") {
+        const card = cursorCard(cards, boardCursor());
+        if (!card) return say("Nothing in this column to open");
+        setBoardOpen(false);
+        void app.openSession(card.session);
+      }
+    };
+
     const view = () => {
       const c = shownChat();
       const h = harness();
@@ -933,8 +1304,12 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const timed = timing() !== null && c ? buildTurns(c.items, c.status)[timing() as number] : undefined;
       // The context panel: over the chip, with the chat's figures and the draft as it is now.
       const details = contextOpen() && c?.context ? contextNode({ chat: c, draft: draft().draft, compacted: compacted(), supports: (k) => session.caps.kinds.includes(k), on: { close: () => setContextOpen(false) } }) : undefined;
-      // The Usage, Timing, and context screens hold the keys: the composer's menu, whatever its text says, waits behind them.
-      const kind = screen || timed || details ? null : (m?.kind ?? caretKind());
+      // The Usage, Timing, context, and work surfaces hold the keys: the composer's menu, whatever its
+      // text says, waits behind them.
+      const railShown = railOpen() && c ? railNode({ chat: { title: plainTitle(c.title) || "New chat", harnessId: h?.displayName ?? c.harnessId, workspace: c.workspace.name }, cards: railCards(), selected: railSelected(), project: gitSummaryLine(app.git()), on: { close: () => setRailOpen(false), select: setRailSelected, pick: (index) => { const entry = railList()[index]; if (entry) pickRail(entry); } } }) : undefined;
+      const delegatedShown = delegated() !== null && c ? delegatedNode({ rows: delegatedRows(), selected: delegatedSelected(), opened: delegatedRow(), review: reviewFacts(), reading: delegatedReading(), actions: delegatedActions(), changes: delegatedChanges(), note: delegatedNote(), writing: delegatedWriting(), confirming: delegatedConfirm()?.label ?? null, busy: delegatedBusy(), error: delegatedError(), supports: (k) => session.caps.kinds.includes(k), on: { close: () => setDelegated(null), back: () => setDelegatedOpened(null), select: setDelegatedSelected, open: (index) => setDelegatedOpened(delegatedRows()[index]?.key ?? null), act: delegatedAct, cancel: () => { const row = delegatedRow(); if (row) delegatedCancel(row); }, editNote: (from, to, text) => setDelegatedNote((value) => value.slice(0, from) + text + value.slice(to)), openChat: (chatId) => void app.openChat(chatId) } }) : undefined;
+      const boardShown = boardOpen() ? boardNode({ cards: boardCardsNow(), counts: boardCountsNow(), cursor: boardCursor(), filter: boardFilter(), projectName: (id) => app.overview().workspaces.find((w) => w.id === id)?.name ?? "", harnessName, prs: boardPrs(), reading: boardReading(), on: { close: () => setBoardOpen(false), select: (column, at) => setBoardCursor({ column, at }), open: (s) => { setBoardOpen(false); void app.openSession(s); } } }) : undefined;
+      const kind = screen || timed || details || railShown || delegatedShown || boardShown ? null : (m?.kind ?? caretKind());
       if (screen) {
         layer.push(
           usageNode({
@@ -958,6 +1333,12 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         );
       } else if (details) {
         layer.push(details);
+      } else if (railShown) {
+        layer.push(railShown);
+      } else if (delegatedShown) {
+        layer.push(delegatedShown);
+      } else if (boardShown) {
+        layer.push(boardShown);
       } else if (kind) {
         const items = menuItems();
         const shownMenu: Menu = m ?? { kind, query: "", selected: caretIndex() };
@@ -1197,6 +1578,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         if (usage()) return setUsage(null);
         if (timing() !== null) return setTiming(null);
         if (contextOpen()) return setContextOpen(false);
+        if (railOpen()) return setRailOpen(false);
+        if (delegated() !== null) return setDelegated(null);
+        if (boardOpen()) return setBoardOpen(false);
         if (menu()) return setMenu(null);
         if (draft().draft.text) return setDraft((s) => setText(s, ""));
         if (now - lastCtrlC < DOUBLE_MS * 2) return quit();
@@ -1207,6 +1591,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (screen) return onUsageKey(key, screen);
       if (timing() !== null) return onTimingKey(key);
       if (contextOpen()) return onContextKey(key);
+      if (railOpen()) return onRailKey(key);
+      if (delegated() !== null) return onDelegatedKey(key);
+      if (boardOpen()) return onBoardKey(key);
       if (leader()) {
         if (name === "escape" || (ctrl && name === "g")) return setLeader(false);
         return runLeader(key.text ?? name);

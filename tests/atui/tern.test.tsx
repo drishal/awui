@@ -2,6 +2,8 @@
 // client's real state and view, and a stand-in Tern (tern-fake.ts) that keeps
 // the document the frames build. Driven by the bytes a pty would carry.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createRoot } from "solid-js";
 import { connect } from "@stencil-hq/tern";
@@ -674,4 +676,97 @@ describe("awui tern", () => {
     await Promise.race([running, wait(3000).then(() => Promise.reject(new Error("C-c C-c did not quit")))]);
     expect(app.chat()?.chatId).toBeTruthy();
   });
+
+  it("draws the active work rail and opens the worker a row names", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    // A worker waiting on a question: a live row in the rail's delegated-work card.
+    tern.type("delegate askchild please\r");
+    await until(() => app.chat()?.delegated?.[0]?.state === "waiting_for_user", "the worker", 30_000);
+    tern.type("\x18p");
+    await until(() => tern.text("layer").includes("Active work"), "the rail");
+    const layer = tern.text("layer");
+    expect(layer).toContain("Delegated work");
+    expect(layer).toContain("Fake delegated task");
+    expect(layer).toContain("Context used");
+    // The rail's cards are Tern's own cards of items, with the status word at each row's right edge.
+    const cards = tern.find("card", "layer").map((n) => n.p.head);
+    expect(JSON.stringify(cards)).toContain("Delegated work");
+    const items = tern.find("item", "layer").map((n) => n.p.label);
+    expect(items).toContain("Fake delegated task");
+    expect(items).toContain("Context used");
+    // Enter opens the worker's own screen (its review lives there); Esc closes that, Esc the rail.
+    tern.type("\r");
+    await until(() => tern.text("layer").includes("Esc back"), "the worker's screen");
+    tern.type("\x1b");
+    await wait(120);
+    tern.type("\x1b");
+    await until(() => tern.find("overlay", "layer").length === 0, "the rail to close");
+    expect(tern.errors).toEqual([]);
+  }, 60_000);
+
+  it("reviews a delegated worker's patch: its diff, Apply with a confirmation, and Undo apply", async () => {
+    // A git checkout of its own: a worktree worker's patch is applied into it, and reversed.
+    const root = path.join(server.root, "tern-delegated");
+    mkdirSync(path.join(root, "src"), { recursive: true });
+    writeFileSync(path.join(root, "src", "app.ts"), "const a = 1;\nconst b = 1;\n");
+    writeFileSync(path.join(root, "README.md"), "# tern-delegated\n");
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    git("add", ".");
+    git("commit", "-q", "-m", "init");
+
+    client = await start("tern-delegated");
+    const { tern, app, until } = client;
+    tern.type("delegate worktree please\r");
+    await until(() => app.chat()?.status === "idle" && (app.chat()?.delegated?.length ?? 0) === 1, "the worker", 60_000);
+    tern.type("\x18j");
+    await until(() => tern.text("layer").includes("Delegated work"), "the panel");
+    tern.type("\r");
+    await until(() => tern.text("layer").includes("Apply patch into lead"), "the review");
+    // The worker's changed file is a Tern diff of the same unified text the other clients draw.
+    const diffs = tern.find("diff", "layer");
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0]?.p.path).toBe("src/app.ts");
+    expect(String(diffs[0]?.p.text)).toContain("-a");
+    expect(tern.text("layer")).toContain("Choose whether to apply its patch");
+    // Apply writes the lead checkout, so it asks first.
+    tern.type("a");
+    await until(() => tern.text("layer").includes("y confirms"), "the confirmation");
+    tern.type("y");
+    await until(() => tern.text("layer").includes("Approved and applied into the lead checkout"), "the applied record");
+    expect(readFileSync(path.join(root, "src", "app.ts"), "utf8")).toContain("const changed = true;");
+    // Undo apply reverses that patch while the checkout still holds exactly it.
+    tern.type("u");
+    await until(() => tern.text("layer").includes("Choose whether to apply its patch"), "the record cleared");
+    expect(readFileSync(path.join(root, "src", "app.ts"), "utf8")).toContain("const b = 1;");
+    expect(tern.errors).toEqual([]);
+  }, 120_000);
+
+  it("draws the agents board as a column a tab, filters by project, and opens the card Enter is on", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("board please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: board please"), "the run");
+    tern.type("\x18k");
+    await until(() => tern.text("layer").includes("Agents"), "the board");
+    await until(() => (app.overview().sessions.length ?? 0) > 0, "the sessions");
+    const tabs = () => (tern.find("tabs", "layer")[0]?.p.items ?? []) as Array<{ id: string; label: string }>;
+    expect(tabs().map((t) => t.id)).toEqual(["needs", "working", "done"]);
+    expect(tabs()[2]?.label).toContain("Done");
+    // The cursor starts on a column that holds something: its list has a selected card.
+    await until(() => tern.find("list", "layer").some((n) => typeof n.p.selected === "string"), "a card under the cursor");
+    // f narrows to one project; →/← move between the columns, and Enter opens the card under the cursor.
+    tern.type("f");
+    await until(() => !JSON.stringify(tern.find("overlay", "layer")[0]?.p.meta ?? "").includes("Every project"), "the project filter");
+    tern.type("\x1b[C");
+    tern.type("\x1b[C");
+    await until(() => tern.find("tabs", "layer")[0]?.p.active === "done", "the last column");
+    tern.type("\r");
+    await until(() => tern.find("overlay", "layer").length === 0, "the board to close on the chat it opened");
+    expect(tern.text("main")).toContain("board please");
+    expect(tern.errors).toEqual([]);
+  }, 60_000);
 });
