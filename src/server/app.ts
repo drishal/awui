@@ -904,7 +904,7 @@ export async function createApp(deps: AppDeps) {
       // A handed-over session is refused inside the resume, and the message goes back to
       // the queue like any other refusal: the owner can release it after reclaiming.
       const chat = await manager.resume(registry.get(ref.harnessId)!, ref.workspace, ref.nativeId);
-      await chat.send(text, "normal", [], { origin: "agent" });
+      await chat.send(text, "normal", [], { origin: "guest" });
       await guests.markSent(req.params.id, req.params.messageId);
       res.json({ ok: true });
     } catch (error) {

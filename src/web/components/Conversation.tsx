@@ -668,9 +668,9 @@ function UserPrompt({
                 {formatWhen(item.at)}
               </span>
             ) : null}
-            {item.source === "agent" ? (
-              <span className="prompt-source" title="Sent by another agent or a routine, not typed here">
-                agent
+            {item.source ? (
+              <span className="prompt-source" title={item.source === "guest" ? "Released from a guest link by this chat's owner, not typed here" : "Sent by another agent or a routine, not typed here"}>
+                {item.source}
               </span>
             ) : null}
             {canBranch ? (

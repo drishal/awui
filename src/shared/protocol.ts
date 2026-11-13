@@ -464,8 +464,12 @@ export interface UserItem {
   /** A "/" command the harness answered itself: no stored turn, so forks do not count it. */
   /** Accepted as a steer after this turn's prompt: a mid-run note, not the next prompt bubble. */
   interjected?: boolean;
-  /** Authored by another agent or the server (a delegation brief, a wake report, a routine), not typed here: drawn with a small provenance badge. */
-  source?: "agent";
+  /**
+   * Not typed here: another agent or the server wrote it (a delegation brief, a wake
+   * report, a routine), or the owner released it from a guest link. Drawn with a small
+   * provenance badge, and never counted as the user's own prompt.
+   */
+  source?: "agent" | "guest";
   command?: true;
   /** Epoch ms when the harness recorded it, when known. */
   at?: number;

@@ -182,9 +182,11 @@ describe("bounded expiring guest links", () => {
     const sent = await owner.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/send`).send({});
     expect(sent.status).toBe(200);
     expect(sent.body.ok).toBe(true);
-    // The native session received exactly the guest text as its next prompt.
+    // The native session received exactly the guest text as its next prompt, marked as the
+    // guest's release rather than as the user's own or another agent's message.
     await until(() => t!.manager.get(chatId).snapshot().items.some((item) => item.kind === "user" && item.text === "A queued request"));
-    expect(t!.manager.get(chatId).snapshot().items.some((item) => item.kind === "user" && item.text === "A queued request")).toBe(true);
+    const released = t!.manager.get(chatId).snapshot().items.find((item) => item.kind === "user" && item.text === "A queued request");
+    expect(released).toMatchObject({ kind: "user", source: "guest" });
     // The message is now sent: dismissing a sent message is refused, and the queue is empty.
     expect((await guest.get("/api/guest")).body.pending).toHaveLength(0);
     expect((await owner.post(`/api/guests/${guestId}/messages/${pending[0]!.id}/dismiss`).send({})).status).toBe(404);
