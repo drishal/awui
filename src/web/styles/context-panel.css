@@ -125,6 +125,26 @@
 .context-summary-op { padding: 0 5px; border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: var(--r-control); color: var(--warn); font-size: 10px; white-space: nowrap; }
 .context-summary-diff { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--muted-text); font-variant-numeric: tabular-nums; }
 .context-summary-clean { color: var(--muted-text); }
+/* The card's last row is the way into review: the review-comments group is left out when it is
+   empty, so the action lives here where every chat has it. */
+.context-summary-action {
+  display: flex;
+  width: calc(100% + 8px);
+  align-items: center;
+  gap: 6px;
+  margin: 8px -4px -4px;
+  padding: 7px 4px 4px;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.context-summary-action:hover { background: var(--hover); color: var(--text); }
+.context-summary-action-open { margin-left: auto; color: var(--muted-text); }
 
 /* ---- one group: a small muted label, then its card ---- */
 .context-section { margin-top: 12px; }
@@ -215,9 +235,8 @@
 .context-row-button:hover { background: var(--active); color: var(--text); }
 .context-row-button.is-danger:hover { color: var(--danger); }
 
-/* ---- a card's own last lines: one quiet sentence, or one action ---- */
+/* ---- a card's own last line: one quiet sentence ---- */
 .context-quiet { margin: 0; padding: 6px 7px; color: var(--muted-text); font-size: 12px; line-height: 1.4; }
-.context-card-action { margin-top: 2px; border-top: 1px solid var(--hairline); }
 .context-foot-button {
   display: flex;
   width: 100%;

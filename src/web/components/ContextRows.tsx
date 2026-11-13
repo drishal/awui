@@ -54,8 +54,3 @@ export function ContextRowButton({ label, onClick, danger = false, children }: {
 export function ContextQuiet({ children }: { children: ReactNode }) {
   return <p className="context-quiet">{children}</p>;
 }
-
-/** A card's last row when it holds an action rather than data (Review's "Open file review"). */
-export function ContextCardAction({ onClick, icon, children }: { onClick: () => void; icon?: ReactNode; children: ReactNode }) {
-  return <div className="context-card-action"><button type="button" className="context-foot-button" onClick={onClick}>{icon}{children}</button></div>;
-}

@@ -13,7 +13,7 @@ import { IconAgents, IconBranch, IconChevronRight, IconEdit, IconFork, IconGauge
 import { Dialog } from "./Dialog.js";
 import { ConfirmButton } from "./ConfirmButton.js";
 import { DiffBadge } from "./ToolBody.js";
-import { ContextCardAction, ContextGroup, ContextList, ContextQuiet, ContextRow, ContextRowButton, ContextStatus } from "./ContextRows.js";
+import { ContextGroup, ContextList, ContextQuiet, ContextRow, ContextRowButton, ContextStatus } from "./ContextRows.js";
 import { gitSummary, jobEntries, jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, tokenCount, validatedFolds, type ContextSectionId } from "../context-panel.js";
 
 export interface ContextActions {
@@ -124,6 +124,9 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
           {project.operation ? <span className="context-summary-op">{OPERATION_LABEL[project.operation]} in progress</span> : null}
           <span className="context-summary-diff">{project.files > 0 ? <><span className="context-summary-files">{project.files} {project.files === 1 ? "file" : "files"}</span><DiffBadge added={project.added} removed={project.removed} /></> : <span className="context-summary-clean">clean</span>}</span>
         </div> : null}
+        <button type="button" className="context-summary-action" onClick={() => onReview()}>
+          <IconEdit size={12} />Review changes<IconChevronRight size={12} className="context-summary-action-open" />
+        </button>
       </div>
 
       {runs.length > 0 || chat.lineage ? <ContextGroup id="agents" label={labels.agents} count={runs.length || undefined} open={open.agents} attention={runs.some((run) => run.status === "failed") ? "accent" : false} onToggle={toggle}>
@@ -187,7 +190,6 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
         <ContextList>
           {threads.slice(0, 12).map((thread) => <ContextRow key={thread.id} icon={<IconEdit size={13} />} title={`${thread.anchor.path}:${thread.anchor.line ?? "?"}`} meta={thread.notes?.[0]?.text ?? "Comment thread"} aside={<ContextStatus tone={thread.status === "open" ? "waiting" : "quiet"}>{thread.status === "open" ? "Open" : "Resolved"}</ContextStatus>} actions={<ContextRowButton label={`Open comment on ${thread.anchor.path}:${thread.anchor.line ?? "?"}`} onClick={() => onReview(thread)}><IconChevronRight size={13} /></ContextRowButton>} />)}
         </ContextList>
-        <ContextCardAction onClick={() => onReview()} icon={<IconEdit size={12} />}>Open file review</ContextCardAction>
       </ContextGroup> : null}
 
       <ContextGroup id="memory" label={labels.memory} open={open.memory} attention={chat.context?.percent && chat.context.percent >= 80 ? "warn" : false} onToggle={toggle}>
