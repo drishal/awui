@@ -8,6 +8,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import readline from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
+import { MCP_INSTRUCTIONS, MCP_SERVER_TITLE } from "../../src/server/orchestration/mcp.js";
 
 const script = path.join(import.meta.dirname, "..", "..", "extensions", "orchestrate-mcp.mjs");
 
@@ -39,6 +40,8 @@ interface Message {
   result?: {
     protocolVersion?: string;
     capabilities?: unknown;
+    serverInfo?: { name: string; title?: string };
+    instructions?: string;
     tools?: Array<{ name: string; inputSchema?: unknown }>;
     prompts?: Array<{ name: string; description?: string }>;
     messages?: Array<{ role: string; content: { type: string; text: string } }>;
@@ -109,6 +112,10 @@ describe("the orchestration MCP server", () => {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {}, prompts: {} },
       });
+      // The server says whose it is, in the words the HTTP form uses (orchestration/mcp.ts), so a client shows one identity.
+      const hello = (await s.call("initialize", {})).result;
+      expect(hello?.serverInfo).toMatchObject({ name: "awui-orchestrate", title: MCP_SERVER_TITLE });
+      expect(hello?.instructions).toBe(MCP_INSTRUCTIONS);
       // The catalogue keys its schema `parameters`; an MCP client validates `inputSchema`, and
       // refuses a tool without it, so the bridge is where the two names meet.
       expect((await s.call("tools/list")).result?.tools).toEqual(TOOLS.map(({ name, description, parameters }) => ({ name, description, inputSchema: parameters })));
@@ -165,6 +172,8 @@ describe("the orchestration MCP server", () => {
     const bare = mcp({ AWUI_ORCH_URL: "", AWUI_ORCH_TOKEN: "" });
     try {
       expect((await bare.call("initialize", {})).result?.capabilities).toEqual({ tools: {} });
+      // No endpoint, no claim: a bridge with nothing behind it does not tell the model it has awui's tools.
+      expect((await bare.call("initialize", {})).result?.instructions).toBeUndefined();
       expect((await bare.call("tools/list")).result?.tools).toEqual([]);
       // Prompts are not advertised without the endpoint, and a prompt nobody serves is unknown.
       expect((await bare.call("prompts/list")).result).toEqual({ prompts: [] });

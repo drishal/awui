@@ -46,6 +46,11 @@ parameter schemas come from `GET /tools` (or the catalogue served from it), so
 | OpenCode | a second server registered at runtime on OpenCode's shared server, `awui-o-<id>`, beside the chat's `awui-r-<id>` render server; its session allows only the chat's own pair and denies every other chat's | `extensions/orchestrate-mcp.mjs` |
 | Hermes | not per chat yet: it mounts MCP servers only from its own config, so the user adds awui's bridge there once (`awui setup mcp`) | `extensions/orchestrate-mcp.mjs`, run as `awui mcp` |
 
+Every route says whose tools these are. Each description in the catalogue opens with `awui: `, the MCP
+servers answer `initialize` with a title and `instructions` (awui is the web UI running the chat), and the
+Pi/omp extensions register a `awui · <tool>` label, a prompt line for Pi's "Available tools" list, and one
+guideline naming every tool as awui's. A bridge with no endpoint behind it claims none of this.
+
 Nothing is installed into a user's harness config by awui, and no adapter asks the user to add a
 server: the harness gets its own entry per chat, from what the adapter already passes. The one
 harness without a per-chat transport is Hermes: one gateway owns its whole profile, so awui cannot

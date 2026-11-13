@@ -45,6 +45,9 @@ interface Api {
     name: string;
     label: string;
     description: string;
+    /** Pi lists a tool in the system prompt's "Available tools" only when it has one; omp ignores both fields. */
+    promptSnippet?: string;
+    promptGuidelines?: string[];
     parameters: unknown;
     execute(toolCallId: string, params: Record<string, unknown>): Promise<ToolResult>;
   }): void;
@@ -88,15 +91,21 @@ export default function orchestrate(pi: Api): void {
   };
 
   const register = (tools: OrchToolDef[]): void => {
-    for (const tool of tools) {
+    // Without these a Pi chat lists no awui tool in its prompt, and an agent asked "do you have awui's tools?"
+    // finds a bare `delegate_task` it cannot place. One guideline names them all as awui's.
+    const names = tools.map((tool) => tool.name).join(", ");
+    const guideline = `Use delegate_task when a self-contained piece of work should run in another awui chat: ${names} are awui's orchestration tools (awui is the web UI that runs this chat), served by awui itself, not by an MCP server in your config.`;
+    tools.forEach((tool, index) => {
       pi.registerTool({
         name: tool.name,
-        label: tool.name,
+        label: `awui · ${tool.name}`,
         description: tool.description,
+        promptSnippet: tool.description.split(/(?<=\.)\s/)[0] ?? tool.description,
+        ...(index === 0 ? { promptGuidelines: [guideline] } : {}),
         parameters: tool.parameters,
         execute: (_toolCallId, params) => call(tool.name, params ?? {}),
       });
-    }
+    });
   };
 
   void fetch(`${url}/tools`, { headers: { "X-Awui-Orch-Token": token }, signal: AbortSignal.timeout(CATALOGUE_TIMEOUT_MS) })

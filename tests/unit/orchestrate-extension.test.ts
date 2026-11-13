@@ -31,3 +31,35 @@ describe("the orchestration tools' files", () => {
     expect(names).toContain("mcp__awui-orchestrate__thread_wait");
   });
 });
+
+describe("how the Pi/omp extension introduces the tools", () => {
+  it("registers each as awui's: a branded label and description, a prompt line, and one guideline naming them all", async () => {
+    const registered: Array<Record<string, unknown>> = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ tools: ORCH_TOOLS }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+    process.env.AWUI_ORCH_URL = "http://127.0.0.1:1/api/orchestration";
+    process.env.AWUI_ORCH_TOKEN = "t0ken";
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for("awui-orchestrate.loaded")];
+    try {
+      const mod = (await import("../../extensions/orchestrate.js")) as { default: (pi: { registerTool(tool: Record<string, unknown>): void }) => void };
+      mod.default({ registerTool: (tool) => registered.push(tool) });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } finally {
+      globalThis.fetch = realFetch;
+      delete process.env.AWUI_ORCH_URL;
+      delete process.env.AWUI_ORCH_TOKEN;
+      delete (globalThis as Record<symbol, unknown>)[Symbol.for("awui-orchestrate.loaded")];
+    }
+    expect(registered).toHaveLength(ORCH_TOOLS.length);
+    for (const tool of registered) {
+      expect(tool.label).toBe(`awui · ${String(tool.name)}`);
+      expect(String(tool.description)).toMatch(/^awui: /);
+      expect(String(tool.promptSnippet)).toMatch(/^awui: /);
+      expect(String(tool.description)).toContain(String(tool.promptSnippet));
+    }
+    const guidelines = registered.flatMap((tool) => (tool.promptGuidelines as string[] | undefined) ?? []);
+    expect(guidelines).toHaveLength(1);
+    expect(guidelines[0]).toContain("awui is the web UI");
+    for (const tool of ORCH_TOOLS) expect(guidelines[0]).toContain(tool.name);
+  });
+});

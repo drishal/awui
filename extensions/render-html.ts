@@ -34,6 +34,8 @@ interface Api {
     name: string;
     label: string;
     description: string;
+    /** Pi lists a tool in the system prompt's "Available tools" only when it has one; omp ignores it. */
+    promptSnippet?: string;
     parameters: unknown;
     execute(toolCallId: string, params: { html: string; title: string; height: number }): Promise<ToolResult>;
   }): void;
@@ -71,9 +73,10 @@ export default function renderHtml(pi: Api): void {
 
   pi.registerTool({
     name: "render_html",
-    label: "Render HTML",
+    label: "awui · Render HTML",
+    promptSnippet: "awui: show a finished HTML page (chart, table, diagram, mockup) inline in this chat, above your final reply.",
     description:
-      "Show a finished HTML page (chart, table, diagram, mockup) inline in this chat, above your final text reply; call it before writing that reply. " +
+      "awui: show a finished HTML page (chart, table, diagram, mockup) inline in this chat, above your final text reply; call it before writing that reply. " +
       "Write one complete, self-contained document with inline <style> and <script> and no external <script src> for its logic (remote data urls over https are fine). " +
       "Style it from the reader's theme variables, already set on :root and matching the light or dark page around the frame: " +
       THEME_VARS +
@@ -124,8 +127,9 @@ export default function renderHtml(pi: Api): void {
   });
   pi.registerTool({
     name: "browser_action",
-    label: "Page action",
-    description: "Use a bounded action on a known agent-rendered page: snapshot, click a non-link button/input, fill a text/textarea/select control, scroll, screenshot or close. renderId comes from render_html; this never permits arbitrary site URLs, a JavaScript evaluator, popup tabs, storage or remote network. Enumerate a selector, then click/fill the current page; do not treat this as a normal unrestricted web browser.",
+    label: "awui · Page action",
+    promptSnippet: "awui: take one bounded action (snapshot, click, fill, scroll, screenshot, close) on a page you rendered with render_html.",
+    description: "awui: use a bounded action on a known agent-rendered page: snapshot, click a non-link button/input, fill a text/textarea/select control, scroll, screenshot or close. renderId comes from render_html; this never permits arbitrary site URLs, a JavaScript evaluator, popup tabs, storage or remote network. Enumerate a selector, then click/fill the current page; do not treat this as a normal unrestricted web browser.",
     parameters: {
       type: "object",
       required: ["renderId", "action"],

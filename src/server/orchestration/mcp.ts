@@ -20,6 +20,10 @@ import type { OrchDenialCode } from "./types.js";
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 /** The name awui's MCP server answers with, the same one the stdio bridge uses. */
 export const MCP_SERVER_NAME = "awui-orchestrate";
+/** What an MCP client shows for this server, and tells the model on connect (extensions/orchestrate-mcp.mjs says the same words). */
+export const MCP_SERVER_TITLE = "awui orchestration";
+export const MCP_INSTRUCTIONS =
+  "awui is the web UI running this chat. These tools are awui's own orchestration surface: hand a self-contained task to another awui chat (delegate_task), watch or cancel it (task_status, task_cancel), read or talk to it (thread_read, thread_send, thread_wait), and set the status line the person sees (set_status).";
 
 /** A catalogue entry as REST serves it: the parameter schema is `parameters`, as the Pi/omp extension reads it. */
 export interface McpCatalogueEntry {
@@ -112,7 +116,8 @@ export async function answerMcp(message: unknown, deps: McpDeps): Promise<McpAns
       return answer(id, {
         protocolVersion: typeof params.protocolVersion === "string" ? params.protocolVersion : MCP_PROTOCOL_VERSION,
         capabilities: { tools: {}, prompts: {} },
-        serverInfo: { name: MCP_SERVER_NAME, version: "1" },
+        serverInfo: { name: MCP_SERVER_NAME, title: MCP_SERVER_TITLE, version: "1" },
+        instructions: MCP_INSTRUCTIONS,
       });
     case "ping":
       return answer(id, {});

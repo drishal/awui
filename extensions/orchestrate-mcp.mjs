@@ -117,7 +117,11 @@ async function handle(message) {
       result: {
         protocolVersion: params?.protocolVersion ?? "2025-06-18",
         capabilities: URL_ENV && TOKEN ? { tools: {}, prompts: {} } : { tools: {} },
-        serverInfo: { name: "awui-orchestrate", version: "1" },
+        serverInfo: { name: "awui-orchestrate", title: "awui orchestration", version: "1" },
+        // Only with the endpoint: a bridge with no chat behind it serves no tools, so it claims none.
+        ...(URL_ENV && TOKEN
+          ? { instructions: "awui is the web UI running this chat. These tools are awui's own orchestration surface: hand a self-contained task to another awui chat (delegate_task), watch or cancel it (task_status, task_cancel), read or talk to it (thread_read, thread_send, thread_wait), and set the status line the person sees (set_status)." }
+          : {}),
       },
     });
   }

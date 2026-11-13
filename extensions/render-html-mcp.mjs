@@ -26,7 +26,7 @@ const THEME_VARS = "--bg --surface --surface-2 --border --text --text-2 --muted 
 const TOOL = {
   name: "render_html",
   description:
-    "Show a finished HTML page (chart, table, diagram, mockup) inline in this chat, above your final text reply; call it before writing that reply. " +
+    "awui: show a finished HTML page (chart, table, diagram, mockup) inline in this chat, above your final text reply; call it before writing that reply. " +
     "Write one complete, self-contained document with inline <style> and <script> and no external <script src> for its logic (remote data urls over https are fine). " +
     "Style it from the reader's theme variables, already set on :root and matching the light or dark page around the frame: " +
     THEME_VARS +
@@ -46,7 +46,7 @@ const TOOL = {
 const BROWSER_TOOL = {
   name: "browser_action",
   description:
-    "Take a small bounded action on a previously agent-rendered page in this chat. Allowed actions: snapshot (enumerate controls), click (non-link button only), fill (text input textarea or select), scroll (bounded distance), screenshot (returns an image resource), close (tear down in-memory tab). " +
+    "awui: take a small bounded action on a previously agent-rendered page in this chat. Allowed actions: snapshot (enumerate controls), click (non-link button only), fill (text input textarea or select), scroll (bounded distance), screenshot (returns an image resource), close (tear down in-memory tab). " +
     "Pass the page's renderId (the id from the render_html result) and a bounded CSS selector. No URL, remote navigation, arbitrary JavaScript, cookies, storage profiles, new windows, or data exfiltration is supported: only stored HTML on a fixed render-origin is controllable. Use snapshot to learn controls before filling/clicking. Close inactive in-memory pages when done.",
   inputSchema: {
     type: "object",
@@ -100,7 +100,14 @@ async function handle(message) {
   if (method === "initialize") {
     return send({
       id,
-      result: { protocolVersion: params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "awui", version: "1" } },
+      result: {
+        protocolVersion: params?.protocolVersion ?? "2025-06-18",
+        capabilities: { tools: {} },
+        serverInfo: { name: "awui", title: "awui", version: "1" },
+        ...(URL_ENV && TOKEN
+          ? { instructions: "awui is the web UI running this chat. render_html shows a finished HTML page inline in the chat; browser_action drives a page you rendered. Both are awui's own tools, not a third-party server." }
+          : {}),
+      },
     });
   }
   if (method === "ping") return send({ id, result: {} });

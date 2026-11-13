@@ -154,7 +154,7 @@ const stringProperty = (description: string, maxLength?: number): Record<string,
   ...(maxLength !== undefined ? { maxLength } : {}),
 });
 
-export const ORCH_TOOLS: OrchTool[] = [
+const DEFINED_TOOLS: OrchTool[] = [
   {
     name: "delegate_task",
     description:
@@ -331,6 +331,16 @@ export const ORCH_TOOLS: OrchTool[] = [
     ),
   },
 ];
+
+/** What a harness is told these tools are: a model that sees `delegate_task` in a list has no way to know whose it is. */
+export const AWUI_TOOL_BRAND = "awui";
+
+/**
+ * The catalogue every bridge serves (the Pi/omp extension, the MCP bridge, OpenCode's and Codex's own
+ * registrations). Each description opens with the brand, so a harness that lists its tools by description
+ * (Pi's "Available tools", an MCP client's tool picker) shows these as awui's, not as anonymous names.
+ */
+export const ORCH_TOOLS: OrchTool[] = DEFINED_TOOLS.map((tool) => ({ ...tool, description: `${AWUI_TOOL_BRAND}: ${tool.description}` }));
 
 /** One worker an agent can ask for by id: a saved bot profile, a shared profile, or a harness at its default model. */
 export interface ToolProfile {
