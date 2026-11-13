@@ -6,10 +6,11 @@
 // thread), r resolves or reopens it, x deletes it, S sends, Esc closes. The
 // threads are the web panel's, so the same review is on every device
 // (atui/review.ts lays the rows out).
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import type { ReviewThread } from "../../shared/protocol.js";
 import { anchorOf, collectChanges, placeThreads } from "../../web/review.js";
+import { readMarks, type OriginMarks } from "../attribution.js";
 import { clip } from "../format.js";
 import { mix } from "../fx.js";
 import { firstStop, moveCursor, moveFile, reviewRows, windowStart, type ReviewRow } from "../review.js";
@@ -32,10 +33,26 @@ export function ReviewView(p: { onClose: () => void }) {
   const placed = createMemo(() => placeThreads(files(), app.reviewComments(chatId())));
   const [at, setAt] = createSignal(firstStop(rows()));
   const [writing, setWriting] = createSignal<{ key: string; threadId?: string; draft: string } | null>(null);
+  // Which lines the agent wrote and which have changed since (shared/review.ts's rule over the server's present-file read).
   const [sending, setSending] = createSignal(false);
+  // Which lines the agent wrote and which have changed since (shared/review.ts's rule over the server's present-file read).
+  const [marks, setMarks] = createSignal<OriginMarks | null>(null);
+  let marksRead = 0;
+  createEffect(() => {
+    const c = chat();
+    const list = c ? collectChanges(c.items, c.workspace.path) : [];
+    if (!c || list.length === 0) return setMarks(null);
+    const mine = ++marksRead;
+    void readMarks(app.server, c.chatId, list).then((m) => mine === marksRead && setMarks(m));
+  });
   const height = () => Math.max(6, size().height - 8);
   const start = () => windowStart(rows().length, Math.max(0, at()), height());
   const shown = () => rows().slice(start(), start() + height());
+  /** Whether the line a comment key sits on (`toolId:index`) reads as changed by someone else since. */
+  const lineChanged = (key: string): boolean => {
+    const at = key.lastIndexOf(":");
+    return marks()?.byTool.get(key.slice(0, at))?.get(Number(key.slice(at + 1))) === "changed";
+  };
   const current = () => rows()[at()] as Extract<ReviewRow, { kind: "line" }> | undefined;
   const onLine = () => {
     const row = current();
@@ -47,7 +64,10 @@ export function ReviewView(p: { onClose: () => void }) {
 
   onMount(() => {
     const c = chat();
-    if (c) void app.loadReview(c.chatId);
+    if (!c) return;
+    void app.loadReview(c.chatId);
+    // A pin the agent's later edits moved to another line is queued to the server, so a batched prompt names it.
+    void app.reanchorReview(c.chatId);
   });
 
   const save = async () => {
@@ -133,6 +153,11 @@ export function ReviewView(p: { onClose: () => void }) {
                     <b style={{ fg: t().text }}>{row.path}</b>
                     <span style={{ fg: t().ok }}>{`  +${row.added}`}</span>
                     <span style={{ fg: t().danger }}>{` −${row.removed}`}</span>
+                    <Show when={marks()?.byPath.get(row.path)}>
+                      {(counts) => (
+                        <span style={{ fg: t().muted }}>{`  · ${counts().agent} from this chat${counts().changed > 0 ? `, ${counts().changed} changed since` : ""}`}</span>
+                      )}
+                    </Show>
                   </text>
                 );
               }
@@ -150,6 +175,9 @@ export function ReviewView(p: { onClose: () => void }) {
                     <text flexGrow={1} wrapMode="none" truncate fg={lineColor(row.line.kind)}>
                       {row.line.kind === "hunk" || row.line.kind === "gap" ? clip(row.line.text || "⋯", 120) : `${SIGN[row.line.kind]} ${row.line.text}`}
                     </text>
+                    <Show when={lineChanged(row.key)}>
+                      <text flexShrink={0} fg={t().warn}>↯ changed since</text>
+                    </Show>
                   </box>
                   <For each={threads()}>
                     {(entry) => {

@@ -37,6 +37,8 @@ import { closeTab as closeTabIn, findTab, markUnread, NO_TABS, placeChat, placeT
 import { appCommand } from "../web/commands.js";
 import { chipWords } from "../web/model-label.js";
 import { isBusy } from "../web/session-groups.js";
+import { collectChanges } from "../web/review.js";
+import { pinMoves } from "../shared/review.js";
 import { newsBetween, type News } from "./assist.js";
 import { imageModeFrom, imageProtocol, type ImageMode } from "./images.js";
 import { followChat, idempotencyKey, Server, ServerError, type Connection } from "./client.js";
@@ -129,6 +131,8 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     setTabs((st) => placeChat(st, snapshot, { newTab }));
     follow(snapshot);
   };
+  /** A chat the server made on its own (a repair chat) opens here, in a tab of its own by default. */
+  const showChat = (snapshot: ChatSnapshot, opts: { newTab?: boolean } = {}) => show(snapshot, opts);
 
   /**
    * Show a chat and stream it from where its snapshot left off; a tab's cached
@@ -829,6 +833,24 @@ export function createAtui(server: Server, opts: AtuiOptions) {
       return false;
     }
   };
+  /**
+   * A pass over the open threads: a pin the diffs have moved to another line is
+   * queued to the server, so the stored anchor (what a batched prompt names) is
+   * the line it sits on now. Best-effort: the pins stay where they are and the
+   * next pass tries again.
+   */
+  const reanchorReview = async (chatId: string): Promise<void> => {
+    const c = chat();
+    const files = c && c.chatId === chatId ? collectChanges(c.items, c.workspace.path) : [];
+    const moves = pinMoves(files, reviewComments(chatId));
+    if (moves.length === 0) return;
+    try {
+      await server.call(`/api/chats/${chatId}/review-threads/reanchor`, { body: { moves } });
+      await loadReview(chatId);
+    } catch {
+      // keep the pins where they are
+    }
+  };
   /** The prompt whose files the Undo dialog offers to put back. */
   const [undoTurn, setUndoTurn] = createSignal<number | null>(null);
   /** The files a restore put back, to put back as they were again (C-x z). */
@@ -977,6 +999,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     resolveReviewThread,
     deleteReviewThread,
     sendReview,
+    reanchorReview,
     runCommand,
     rerun,
     fork,
@@ -1017,6 +1040,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     setChatWidth,
     openSession,
     openChat,
+    showChat,
     newChat,
     ensureChat,
     send,
