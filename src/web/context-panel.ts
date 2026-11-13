@@ -112,3 +112,12 @@ export function taskReadout(task: Pick<DelegatedTaskView, "state" | "outcome">):
       }
   }
 }
+
+/** A token count as the panel writes it: 840 stays "840", 8 400 becomes "8.4k", never a raw six-digit figure. */
+export function tokenCount(value: number | null): string {
+  if (value === null) return "unknown";
+  if (value < 1000) return String(value);
+  if (value < 10_000) return `${(value / 1000).toFixed(1)}k`;
+  if (value < 1_000_000) return `${Math.round(value / 1000)}k`;
+  return `${(value / 1_000_000).toFixed(1)}M`;
+}

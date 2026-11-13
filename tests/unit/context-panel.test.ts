@@ -1,6 +1,6 @@
 // Derived rail facts: each worker/job is meaningful only at its native-call scope.
 import { describe, expect, it } from "vitest";
-import { jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, validatedFolds, type JobSummary, type RunSummary } from "../../src/web/context-panel.js";
+import { jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, tokenCount, validatedFolds, type JobSummary, type RunSummary } from "../../src/web/context-panel.js";
 import type { ChatItem, DelegatedTaskView, RaceSummary } from "../../src/shared/protocol.js";
 
 describe("context facts from real per-chat tool state", () => {
@@ -41,5 +41,14 @@ describe("a row's status and figures in the panel's own words", () => {
     expect(taskReadout({ state: "result_available", outcome: "failed" })).toEqual({ tone: "failed", word: "Failed" });
     expect(taskReadout({ state: "result_available", outcome: "cancelled" })).toEqual({ tone: "quiet", word: "Cancelled" });
     expect(taskReadout({ state: "result_available", outcome: "interrupted" })).toEqual({ tone: "quiet", word: "Interrupted" });
+  });
+
+  it("writes token figures short, and says so when the harness did not report one", () => {
+    expect(tokenCount(840)).toBe("840");
+    expect(tokenCount(8400)).toBe("8.4k");
+    expect(tokenCount(21_150)).toBe("21k");
+    expect(tokenCount(100_000)).toBe("100k");
+    expect(tokenCount(1_250_000)).toBe("1.3M");
+    expect(tokenCount(null)).toBe("unknown");
   });
 });

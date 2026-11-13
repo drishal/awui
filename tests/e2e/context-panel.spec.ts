@@ -7,8 +7,13 @@ test("work happens along with its chart: context count follows the original tool
   await newChat(page);
   await sendAndWait(page, "subagents");
   const panel = page.getByRole("complementary", { name: "Chat context" });
+  // One group has rows, so it is the only one with a count: an empty group is left out, not shown as "0".
   await expect(panel.getByRole("heading", { name: "Agents and lineage" })).toBeVisible();
+  await expect(panel.locator(".context-count")).toHaveCount(1);
   await expect(panel.locator(".context-count").first()).toHaveText("2");
+  await expect(panel.getByRole("heading", { name: "Background jobs" })).toHaveCount(0);
+  // Each run reads one status word at the end of its row.
+  await expect(panel.locator(".context-status").first()).toHaveText("Done");
   const briefButton = panel.getByRole("button", { name: "Open scout run", exact: true }).first();
   await briefButton.click();
   const toolRow = page.getByTestId("tool-row").filter({ hasText: "Ran 2 agents: scout, worker" });
@@ -60,7 +65,9 @@ test("returning to an ask card does not approve or deny it, and the narrow layou
   await page.getByRole("button", { name: "Expand chat context", exact: true }).click();
   const sheet = page.getByRole("dialog", { name: "Active chat context" });
   await expect(sheet).toContainText("This chat needs a human answer");
-  await expect(sheet.locator(".context-count").nth(1)).toHaveText("1");
+  // Selected by section, not by position: empty groups are omitted, so the counts shift.
+  await expect(sheet.locator(".context-section-questions .context-count")).toHaveText("1");
+  await expect(sheet.getByRole("heading", { name: "Delegated work" })).toHaveCount(0);
   await sheet.getByRole("button", { name: "Jump to the request", exact: true }).click();
   await expect(page.getByTestId("approval-card")).toContainText("Waiting for approval");
   await expect(page.getByRole("dialog", { name: "Active chat context" })).toHaveCount(0);
