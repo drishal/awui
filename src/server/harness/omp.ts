@@ -37,10 +37,11 @@ import {
 import { commandOutputEvents, historyToItems, isObj, normalizeAgentEvent, type Obj, todoPhaseItems, usageEntries } from "./agent-events.js";
 import { parseProviderList, type ProviderAccount as OauthAccountChoice } from "../accounts.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
-import { branchMessages, fileMessages, forkSessionText, seedSessionText, sessionFileTimestamp, uuidv7 } from "./session-files.js";
+import { branchMessagesOfEntries, forkSessionText, readFileMessages, seedSessionText, sessionFileTimestamp, uuidv7 } from "./session-files.js";
 import { ompLimits } from "./limits.js";
 import { rewindExtension, rewindExtensionArgs, rewindWithExtension } from "./rewind-extension.js";
 import { orchestrateExtensionArgs, renderHtmlExtension, renderHtmlExtensionArgs } from "./render-extension.js";
+import { readJsonlEntries } from "./jsonl.js";
 import { versionLabel } from "./version.js";
 import { EventHub } from "./event-hub.js";
 import { seedTranscript, type HandoffSeed } from "./handoff.js";
@@ -781,36 +782,25 @@ export class OmpAdapter implements HarnessAdapter {
    */
   async readUsage(req: { cwd: string; nativeId: string }): Promise<UsageEntry[] | null> {
     const file = await this.sessionFile(req.nativeId);
-    const text = file ? await fs.readFile(file, "utf8").catch(() => null) : null;
-    if (text === null) return null;
-    const head = text.slice(0, text.indexOf("\n") >= 0 ? text.indexOf("\n") : text.length);
-    try {
-      const parsed: unknown = JSON.parse(head);
-      if (isObj(parsed) && typeof parsed.cwd === "string" && path.resolve(parsed.cwd) !== path.resolve(req.cwd)) return null;
-    } catch {
-      // no header line
-    }
-    return usageEntries(fileMessages(text));
+    const read = file ? await readFileMessages(file).catch(() => null) : null;
+    if (read === null) return null;
+    if (read.head && typeof read.head.cwd === "string" && path.resolve(read.head.cwd) !== path.resolve(req.cwd)) return null;
+    return usageEntries(read.messages);
   }
 
   async readTranscript(req: { cwd: string; nativeId: string }): Promise<{ items: ChatItem[]; title: string | null } | null> {
     const file = await this.sessionFile(req.nativeId);
-    const text = file ? await fs.readFile(file, "utf8").catch(() => null) : null;
-    if (text === null) return null;
+    const entries = file ? await readJsonlEntries(file).catch(() => null) : null;
+    if (entries === null) return null;
     let title: string | null = null;
     let cwd: string | null = null;
-    for (const line of text.split("\n", 2)) {
-      try {
-        const head: unknown = JSON.parse(line);
-        if (!isObj(head)) continue;
-        if (typeof head.title === "string" && head.title.trim()) title = head.title.trim();
-        if (head.type === "session" && typeof head.cwd === "string") cwd = head.cwd;
-      } catch {
-        // not a header line
-      }
+    // The header lines: the first two entries of the file.
+    for (const head of entries.slice(0, 2)) {
+      if (typeof head.title === "string" && head.title.trim()) title = head.title.trim();
+      if (head.type === "session" && typeof head.cwd === "string") cwd = head.cwd;
     }
     if (cwd && path.resolve(cwd) !== path.resolve(req.cwd)) return null;
-    const messages = branchMessages(text).filter((m) => !(isObj(m) && m.role === "assistant" && (m.stopReason === "error" || m.stopReason === "aborted")));
+    const messages = branchMessagesOfEntries(entries).filter((m) => !(isObj(m) && m.role === "assistant" && (m.stopReason === "error" || m.stopReason === "aborted")));
     return { items: historyToItems(messages), title };
   }
 

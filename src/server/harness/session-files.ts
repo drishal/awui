@@ -5,6 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { isObj, type Obj } from "./agent-events.js";
 import { toolRecordText, type SeedEntry } from "./handoff.js";
+import { parseJsonlLine, scanJsonlLines } from "./jsonl.js";
 
 /** Time-ordered session id, the shape both harnesses mint for new sessions. */
 export function uuidv7(now = Date.now()): string {
@@ -170,6 +171,30 @@ export function fileMessages(text: string): Array<{ message: unknown; at: number
 }
 
 /**
+ * `fileMessages` straight from the file, a line at a time (a 60 MB session is never held as one string),
+ * plus its first line parsed: omp's header, with the session's cwd and title.
+ */
+export async function readFileMessages(file: string): Promise<{ head: Obj | null; messages: Array<{ message: unknown; at: number }> }> {
+  const messages: Array<{ message: unknown; at: number }> = [];
+  let head: Obj | null = null;
+  let seen = false;
+  const take = (line: string) => {
+    if (!seen) {
+      seen = true;
+      head = parseJsonlLine(line);
+    }
+    if (!line.includes('"message"')) return;
+    const parsed = parseJsonlLine(line);
+    if (!parsed || parsed.type !== "message") return;
+    const at = typeof parsed.timestamp === "string" ? Date.parse(parsed.timestamp) : NaN;
+    messages.push({ message: parsed.message, at: Number.isFinite(at) ? at : 0 });
+  };
+  const { tail } = await scanJsonlLines(file, take);
+  if (tail.trim()) take(tail);
+  return { head, messages };
+}
+
+/**
  * The messages a Pi-family session's file holds on its active branch, as the
  * harness's get_messages would list them, read without starting it: after
  * the latest compaction, its summary, then the entries it kept (from
@@ -177,22 +202,29 @@ export function fileMessages(text: string): Array<{ message: unknown; at: number
  * custom messages come through in the roles historyToItems reads.
  */
 export function branchMessages(text: string): unknown[] {
-  const entries: Obj[] = [];
-  let sawHeader = false;
+  const parsed: Obj[] = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(line);
+      const entry: unknown = JSON.parse(line);
+      if (isObj(entry)) parsed.push(entry);
     } catch {
-      continue; // a torn last line while the harness appends
+      // a torn last line while the harness appends
     }
-    if (!isObj(parsed)) continue;
-    if (!sawHeader && (parsed.type === "title" || parsed.type === "session")) {
-      if (parsed.type === "session") sawHeader = true;
+  }
+  return branchMessagesOfEntries(parsed);
+}
+
+/** `branchMessages` over entries already parsed (a streamed read): leading title lines and the one header are not entries. */
+export function branchMessagesOfEntries(parsed: Obj[]): unknown[] {
+  const entries: Obj[] = [];
+  let sawHeader = false;
+  for (const entry of parsed) {
+    if (!sawHeader && (entry.type === "title" || entry.type === "session")) {
+      if (entry.type === "session") sawHeader = true;
       continue;
     }
-    entries.push(parsed);
+    entries.push(entry);
   }
   const branch = activeBranch(entries);
   let compaction = -1;

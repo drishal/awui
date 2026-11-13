@@ -123,3 +123,32 @@ describe("foldJsonlFile", () => {
     expect(await foldJsonlFile(path.join(dir, "missing.jsonl"), undefined, fold)).toBeNull();
   });
 });
+
+describe("Pi-family reads agree with the text readers they replace", () => {
+  const header = { type: "session", version: 3, id: "s1", timestamp: "2026-01-01T00:00:00.000Z", cwd: "/p" };
+  const msg = (id: string, parentId: string | null, role: string, text: string, ts: string) => ({ type: "message", id, parentId, timestamp: ts, message: { role, content: [{ type: "text", text }] } });
+  const lines = [
+    { type: "title", title: "A title" },
+    header,
+    msg("a", null, "user", "héllo 日本", "2026-01-01T00:00:01.000Z"),
+    msg("b", "a", "assistant", "hi", "2026-01-01T00:00:02.000Z"),
+    msg("c", "b", "user", "side branch", "2026-01-01T00:00:03.000Z"),
+    msg("d", "b", "user", "main branch", "2026-01-01T00:00:04.000Z"),
+  ];
+  const text = `${lines.map((l) => JSON.stringify(l)).join("\n")}\n{"type":"message","torn`;
+
+  it("branchMessagesOfEntries matches branchMessages", async () => {
+    writeFileSync(file, text);
+    const { branchMessages, branchMessagesOfEntries } = await import("../../src/server/harness/session-files.js");
+    expect(branchMessagesOfEntries(await readJsonlEntries(file))).toEqual(branchMessages(text));
+  });
+
+  it("readFileMessages matches fileMessages and returns the first line", async () => {
+    writeFileSync(file, text);
+    const { fileMessages, readFileMessages } = await import("../../src/server/harness/session-files.js");
+    const read = await readFileMessages(file);
+    expect(read.messages).toEqual(fileMessages(text));
+    expect(read.messages).toHaveLength(4);
+    expect(read.head).toEqual({ type: "title", title: "A title" });
+  });
+});

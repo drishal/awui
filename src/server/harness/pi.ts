@@ -29,7 +29,7 @@ import {
 import { historyToItems, isObj, normalizeAgentEvent, piTodos, type Obj, usageEntries } from "./agent-events.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
 import { seedTranscript, type HandoffSeed } from "./handoff.js";
-import { branchMessages, fileMessages, seedSessionText, sessionFileTimestamp, uuidv7 } from "./session-files.js";
+import { branchMessagesOfEntries, readFileMessages, seedSessionText, sessionFileTimestamp, uuidv7 } from "./session-files.js";
 import { rewindExtension, rewindExtensionArgs, rewindWithExtension } from "./rewind-extension.js";
 import { orchestrateExtensionArgs, renderHtmlExtension, renderHtmlExtensionArgs } from "./render-extension.js";
 import { versionLabel } from "./version.js";
@@ -604,16 +604,16 @@ export class PiAdapter implements HarnessAdapter {
     const dir = this.sessionDirFor(req.cwd, await this.resolveAgentDir());
     const meta = (await listSessionFiles(dir)).find((m) => m.id === req.nativeId);
     if (!meta || (meta.cwd && path.resolve(meta.cwd) !== path.resolve(req.cwd))) return null;
-    const text = await fs.readFile(meta.path, "utf8").catch(() => null);
-    return text === null ? null : usageEntries(fileMessages(text));
+    const read = await readFileMessages(meta.path).catch(() => null);
+    return read === null ? null : usageEntries(read.messages);
   }
 
   async readTranscript(req: { cwd: string; nativeId: string }): Promise<{ items: ChatItem[]; title: string | null } | null> {
     const dir = this.sessionDirFor(req.cwd, await this.resolveAgentDir());
     const meta = (await listSessionFiles(dir)).find((m) => m.id === req.nativeId);
     if (!meta || (meta.cwd && path.resolve(meta.cwd) !== path.resolve(req.cwd))) return null;
-    const text = await fs.readFile(meta.path, "utf8").catch(() => null);
-    return text === null ? null : { items: historyToItems(branchMessages(text)), title: meta.name || null };
+    const entries = await readJsonlEntries(meta.path).catch(() => null);
+    return entries === null ? null : { items: historyToItems(branchMessagesOfEntries(entries)), title: meta.name || null };
   }
 
   protected spawnEnv(cwd: string, toolEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
