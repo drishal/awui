@@ -575,6 +575,10 @@ Usage:
   awui send <chatId> "<prompt>"  Send another prompt to a chat that is open there
   awui wait <chatId>     Wait for that chat's run to settle and print its answer [--timeout <seconds>]
   awui chats [--json]    List the chats open on the running server
+  awui inspect <chatId>  Print one chat's state (status, counts, the last answer) [--json]
+  awui logs <chatId>     Print a chat's transcript, one item per line [--tail <n>] [--json]
+  awui attach <sessionId> --harness <id> --project <path>
+                         Resume a session from the sidebar's list as a live chat here
   awui desktop [args]    The optional desktop app (Electron): attaches to a running server, or starts one
                          [--install-icon: add it to the application menu (~/.local/share/applications)]
   awui install tui       Put the \`atui\` command on the PATH (~/.local/bin/atui, a link to this awui)
@@ -638,7 +642,7 @@ if (client) {
       process.exit(1);
     },
   );
-} else if (args[0] === "run" || args[0] === "send" || args[0] === "wait" || args[0] === "chats") {
+} else if (args[0] === "run" || args[0] === "send" || args[0] === "wait" || args[0] === "chats" || args[0] === "inspect" || args[0] === "logs" || args[0] === "attach") {
   // The headless CLI (cli-run.ts): a client of a server that is already running, so it starts no harness.
   runHeadlessCli(args, { env: process.env, out: (line) => process.stdout.write(`${line}\n`), err: (line) => process.stderr.write(`${line}\n`) }).then(
     (code) => process.exit(code),

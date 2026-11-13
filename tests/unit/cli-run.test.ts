@@ -191,4 +191,64 @@ describe("the headless CLI against a running server", () => {
       await t.close();
     }
   });
+
+  it("inspects a chat's state and prints its transcript through logs", async () => {
+    const t = await makeTestApp();
+    try {
+      const c = collector({ AWUI_URL: `http://127.0.0.1:${t.port}` });
+      expect(await runHeadlessCli(["run", "--project", t.project, "--harness", "fake", "--wait", "hello logs"], c.io)).toBe(EXIT_OK);
+      const chatId = /^awui: chat (\S+)$/.exec(c.err[0] ?? "")?.[1] as string;
+
+      const seen = collector({ AWUI_URL: `http://127.0.0.1:${t.port}` });
+      expect(await runHeadlessCli(["inspect", chatId, "--json"], seen.io)).toBe(EXIT_OK);
+      const object = JSON.parse(seen.out[0] ?? "null") as { chatId?: unknown; status?: unknown; items?: unknown; answer?: unknown };
+      expect(object.chatId).toBe(chatId);
+      expect(object.status).toBe("idle");
+      expect(object.items).toBeGreaterThanOrEqual(2);
+      expect(String(object.answer)).toContain("Echo: hello logs");
+
+      // The text form: one tab row, then a counts row, then the answer.
+      const text = collector({ AWUI_URL: `http://127.0.0.1:${t.port}` });
+      expect(await runHeadlessCli(["inspect", chatId], text.io)).toBe(EXIT_OK);
+      expect(text.out[0]?.split("\t").slice(0, 2)).toEqual([chatId, "idle"]);
+
+      const logs = collector({ AWUI_URL: `http://127.0.0.1:${t.port}` });
+      expect(await runHeadlessCli(["logs", chatId], logs.io)).toBe(EXIT_OK);
+      expect(logs.out[0]).toContain("user\thello logs");
+      expect(logs.out.at(-1)).toContain("Echo: hello logs");
+      // --tail cuts from the head, so one line means the last item (the answer).
+      const tail = collector({ AWUI_URL: `http://127.0.0.1:${t.port}` });
+      expect(await runHeadlessCli(["logs", chatId, "--tail", "1"], tail.io)).toBe(EXIT_OK);
+      expect(tail.out).toHaveLength(1);
+      expect(tail.out[0]).toContain("assistant\tEcho: hello logs");
+    } finally {
+      await t.close();
+    }
+  });
+
+  it("attaches a listed session as a live chat and refuses an unknown one", async () => {
+    const t = await makeTestApp();
+    try {
+      // A closed chat leaves its native session in the sidebar's list: attach resumes it.
+      const c = collector({ AWUI_URL: `http://127.0.0.1:${t.port}` });
+      expect(await runHeadlessCli(["run", "--project", t.project, "--harness", "fake", "--wait", "for attach"], c.io)).toBe(EXIT_OK);
+      const chatId = /^awui: chat (\S+)$/.exec(c.err[0] ?? "")?.[1] as string;
+      // Closing it parks the session; the snapshot route still names the session id.
+      const snapshot = JSON.parse((await (await fetch(`http://127.0.0.1:${t.port}/api/chats/${chatId}`)).text())) as { sessionId?: string };
+      const sessionId = snapshot.sessionId as string;
+      expect(sessionId.startsWith("fake:")).toBe(true);
+
+      const unknown = collector({ AWUI_URL: `http://127.0.0.1:${t.port}` });
+      expect(await runHeadlessCli(["attach", "fake:no-such-session", "--harness", "fake"], unknown.io)).toBe(EXIT_FAILED);
+      expect(unknown.err[0]).toContain("no session fake:no-such-session");
+
+      const back = collector({ AWUI_URL: `http://127.0.0.1:${t.port}` });
+      expect(await runHeadlessCli(["attach", sessionId, "--harness", "fake", "--json"], back.io)).toBe(EXIT_OK);
+      const attached = JSON.parse(back.out[0] ?? "null") as { chatId?: unknown; status?: unknown };
+      expect(attached.chatId).toBeTypeOf("string");
+      expect(attached.status).toBe("idle");
+    } finally {
+      await t.close();
+    }
+  });
 });

@@ -29,18 +29,24 @@ const POLL_MS = 400;
 /** A health probe's timeout: a stale endpoint file must not hang the command. */
 const PROBE_MS = 1500;
 
-export const CLI_USAGE = `awui run/send/wait/chats: drive the running awui server, for scripts
+export const CLI_USAGE = `awui run/send/wait/chats/inspect/attach/logs: drive the running awui server, for scripts
 
 Usage:
   awui run [--harness <id>] [--project <path>] [--model <id>] [--wait] [--json] "<prompt>"
   awui send <chatId> "<prompt>"
   awui wait <chatId> [--timeout <seconds>]
   awui chats [--json]
+  awui inspect <chatId> [--json]
+  awui logs <chatId> [--tail <n>] [--json]
+  awui attach <sessionId> --harness <id> --project <path> [--reclaim] [--ignore-herdr] [--json]
 
 run starts a chat and prints its id; with --wait it waits until the run settles
 and prints the answer (the id goes to stderr, so stdout is the answer alone).
 send adds a prompt to a chat that is open on the server. wait waits for that
 chat's run and prints the answer. chats lists the chats open there, newest first.
+inspect prints one chat's state (status, title, counts, the last answer).
+logs prints its transcript, one item per line (kind, then the text).
+attach resumes one session from the sidebar's list as a live chat here.
 
 --json prints one object: {"chatId", "status", "answer", "error"?, "usage"?}.
 
@@ -54,6 +60,9 @@ export type Command =
   | { kind: "send"; chatId: string; prompt: string }
   | { kind: "wait"; chatId: string; timeoutSeconds: number }
   | { kind: "chats"; json: boolean }
+  | { kind: "inspect"; chatId: string; json: boolean }
+  | { kind: "logs"; chatId: string; tail: number | null; json: boolean }
+  | { kind: "attach"; sessionId: string; harness: string; project: string | null; reclaim: boolean; ignoreHerdr: boolean; json: boolean }
   | { kind: "help" };
 
 /** What the CLI reads and writes; a test hands in its own collectors instead of the process's streams. */
@@ -133,13 +142,75 @@ function parseChats(args: string[]): Command | { error: string } {
   return { kind: "chats", json: args.includes("--json") };
 }
 
+/** One chat id and no options: `inspect` reads a chat the server already holds. */
+function parseInspect(args: string[]): Command | { error: string } {
+  let chatId: string | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === "--json") continue;
+    if (arg.startsWith("--")) return { error: `unknown option ${arg}` };
+    if (chatId !== null) return { error: `unexpected word ${arg}` };
+    chatId = arg;
+  }
+  if (!chatId) return { error: "a chat id is needed (see `awui chats`)" };
+  return { kind: "inspect", chatId, json: args.includes("--json") };
+}
+
+/** A chat id and an optional --tail: `logs` prints the transcript as it is on the server. */
+function parseLogs(args: string[]): Command | { error: string } {
+  let chatId: string | null = null;
+  let tail: number | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === "--tail") {
+      const value = valueAfter(args, i);
+      i += 1;
+      const n = Number(value);
+      if (!value || !Number.isInteger(n) || n <= 0) return { error: "--tail takes a number of items" };
+      tail = n;
+    } else if (arg === "--json") continue;
+    else if (arg.startsWith("--")) return { error: `unknown option ${arg}` };
+    else if (chatId !== null) return { error: `unexpected word ${arg}` };
+    else chatId = arg;
+  }
+  if (!chatId) return { error: "a chat id is needed (see `awui chats`)" };
+  return { kind: "logs", chatId, tail, json: args.includes("--json") };
+}
+
+/** A namespaced session id plus its harness: `attach` resumes it through the same resume the web uses. */
+function parseAttach(args: string[]): Command | { error: string } {
+  let sessionId: string | null = null;
+  let harness: string | null = null;
+  let project: string | null = null;
+  let reclaim = false;
+  let ignoreHerdr = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === "--harness" || arg === "--project") {
+      const value = valueAfter(args, i);
+      if (value === null || value === "") return { error: `${arg} needs a value` };
+      i += 1;
+      if (arg === "--harness") harness = value;
+      else project = value;
+    } else if (arg === "--reclaim") reclaim = true;
+    else if (arg === "--ignore-herdr") ignoreHerdr = true;
+    else if (arg === "--json") continue;
+    else if (arg.startsWith("--")) return { error: `unknown option ${arg}` };
+    else if (sessionId !== null) return { error: `unexpected word ${arg}` };
+    else sessionId = arg;
+  }
+  if (!sessionId) return { error: "a session id is needed (see `awui chats --json` or the sidebar)" };
+  if (!harness) return { error: "--harness is needed (the session's harness, e.g. fake, omp, claude)" };
+  return { kind: "attach", sessionId, harness, project, reclaim, ignoreHerdr, json: args.includes("--json") };
+}
+
 /**
  * The command line as one command, or what is wrong with it. Pure: parsing
  * decides which of the four commands and nothing about the server.
  */
 export function parseCommand(args: string[]): Command | { error: string } {
   const [name, ...rest] = args;
-  if (name === undefined) return { error: "expected a command: run, send, wait, or chats" };
+  if (name === undefined) return { error: "expected a command: run, send, wait, chats, inspect, attach, or logs" };
   if (rest.includes("--help") || rest.includes("-h")) return { kind: "help" };
   switch (name) {
     case "run":
@@ -150,8 +221,14 @@ export function parseCommand(args: string[]): Command | { error: string } {
       return parseWait(rest);
     case "chats":
       return parseChats(rest);
+    case "inspect":
+      return parseInspect(rest);
+    case "logs":
+      return parseLogs(rest);
+    case "attach":
+      return parseAttach(rest);
     default:
-      return { error: `unknown command ${name} (run, send, wait, or chats)` };
+      return { error: `unknown command ${name} (run, send, wait, chats, inspect, attach, or logs)` };
   }
 }
 
@@ -416,6 +493,74 @@ async function listChats(command: Extract<Command, { kind: "chats" }>, io: CliIo
   return EXIT_OK;
 }
 
+/** One chat's state as `inspect` prints it, without the whole transcript. */
+function inspectOf(snapshot: ChatSnapshot, outcome: Outcome): string {
+  return JSON.stringify({
+    chatId: snapshot.chatId,
+    status: snapshot.status,
+    title: snapshot.title,
+    harnessId: snapshot.harnessId,
+    workspace: snapshot.workspace.path,
+    items: snapshot.items.length,
+    pending: snapshot.pending.length,
+    queue: snapshot.queue.steering.length + snapshot.queue.followUp.length,
+    answer: outcome.answer,
+    ...(outcome.error === null ? {} : { error: outcome.error }),
+    ...(snapshot.usage === null ? {} : { usage: snapshot.usage }),
+  });
+}
+
+async function inspectChat(command: Extract<Command, { kind: "inspect" }>, io: CliIo): Promise<number> {
+  const base = await findServer(io.env);
+  const snapshot = await api<ChatSnapshot>(base, chatRoute(command.chatId));
+  const outcome = outcomeOf(snapshot);
+  if (command.json) io.out(inspectOf(snapshot, outcome));
+  else {
+    io.out([snapshot.chatId, snapshot.status, snapshot.harnessId, snapshot.title].join("\t"));
+    io.out(`items ${snapshot.items.length} · pending ${snapshot.pending.length} · queue ${snapshot.queue.steering.length + snapshot.queue.followUp.length} · ${snapshot.workspace.path}`);
+    if (outcome.answer !== "") io.out(outcome.answer);
+    if (outcome.error !== null) io.err(`awui: ${outcome.error}`);
+  }
+  return outcome.error === null ? EXIT_OK : EXIT_FAILED;
+}
+
+/** One transcript item as `logs` prints it: kind, then the text (a tool call names its target). */
+function logLine(item: ChatItem): string {
+  if (item.kind === "tool") return `tool\t${item.name}\t${item.summary}`;
+  if (item.kind === "notice") return `notice\t${item.level}\t${item.text}`;
+  if (item.kind === "request") return `request\t${item.request.title}${item.request.message ? ` — ${item.request.message}` : ""}`;
+  return `${item.kind}\t${item.text}`;
+}
+
+async function logsOfChat(command: Extract<Command, { kind: "logs" }>, io: CliIo): Promise<number> {
+  const base = await findServer(io.env);
+  const snapshot = await api<ChatSnapshot>(base, chatRoute(command.chatId));
+  const items = command.tail === null ? snapshot.items : snapshot.items.slice(-command.tail);
+  if (command.json) io.out(JSON.stringify(items));
+  else if (items.length === 0) io.err("awui: the chat has no transcript yet");
+  else for (const item of items) io.out(logLine(item));
+  return EXIT_OK;
+}
+
+async function attachSession(command: Extract<Command, { kind: "attach" }>, io: CliIo): Promise<number> {
+  const base = await findServer(io.env);
+  // The workspace is resolved from the session list, never guessed: the server refuses a
+  // session that is not in the workspace it names (resume throws session_not_found).
+  const overview = await api<SessionsOverview>(base, "/api/sessions");
+  const session = overview.sessions.find((row) => row.id === command.sessionId);
+  if (!session) {
+    io.err(`awui: no session ${command.sessionId} on that server (see \`awui chats --json\`, whose live rows name their sessions)`);
+    return EXIT_FAILED;
+  }
+  const created = await api<ChatSnapshot>(base, "/api/chats/resume", {
+    method: "POST",
+    body: { harnessId: command.harness, workspaceId: session.workspaceId, sessionId: command.sessionId, ...(command.reclaim ? { reclaim: true } : {}), ...(command.ignoreHerdr ? { ignoreHerdr: true } : {}) },
+  });
+  if (command.json) io.out(JSON.stringify({ chatId: created.chatId, status: created.status, title: created.title }));
+  else io.out(created.chatId);
+  return EXIT_OK;
+}
+
 /** `awui run|send|wait|chats`: the exit code, after printing what the command found. */
 export async function runHeadlessCli(args: string[], io: CliIo): Promise<number> {
   const command = parseCommand(args);
@@ -438,6 +583,12 @@ export async function runHeadlessCli(args: string[], io: CliIo): Promise<number>
         return await waitOnChat(command, io);
       case "chats":
         return await listChats(command, io);
+      case "inspect":
+        return await inspectChat(command, io);
+      case "logs":
+        return await logsOfChat(command, io);
+      case "attach":
+        return await attachSession(command, io);
     }
   } catch (error) {
     io.err(`awui: ${error instanceof Error ? error.message : String(error)}`);
