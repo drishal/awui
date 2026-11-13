@@ -44,6 +44,22 @@ test("work happens along with its chart: context count follows the original tool
   await expect(panel.locator(".context-section-memory .context-section-body")).toHaveCount(0);
 });
 
+test("a slow context chunk reserves the panel instead of clipping its label", async ({ page }) => {
+  await page.route(/ContextPanel-.*\.js$/, async route => {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+  await signInAndOpen(page);
+    await newChat(page);
+  await send(page, "hello");
+  const loading = page.getByRole("status", { name: "Opening…", exact: true });
+  await expect(loading).toBeVisible();
+  const label = await loading.locator(".loader-label").boundingBox();
+  const viewport = await page.evaluate(() => innerWidth);
+  expect(label!.x + label!.width).toBeLessThan(viewport - 8);
+  await expect(loading).toHaveCount(0);
+});
+
 test("background jobs and their native tool references remain reachable without duplicating job data", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);

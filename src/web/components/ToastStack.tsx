@@ -47,6 +47,30 @@ export function ToastStack({ toasts, onOpen }: { toasts: Toasts; onOpen: (t: Toa
   const open = pointer || focus || pinned;
   const holding = pointer || focus || pinned;
   const { hold, release } = toasts;
+  const frame = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = frame.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const place = () => {
+      // News belongs in the conversation, never over the composer's prompt or its sticky bar.
+      // On phones the status stack can grow, so use its real top edge rather than a fixed height.
+      const composer = document.querySelector<HTMLElement>('[data-pane="main"] .composer');
+      if (!composer) return;
+      const top = composer.getBoundingClientRect().top;
+      const fan = open ? cards.length * 50 : 6 * (cards.length - 1);
+      const gap = 12;
+      const y = Math.max(window.innerHeight - top + fan + gap, 30 + fan);
+      root.style.setProperty("--toast-bottom", `${y}px`);
+    };
+    const observer = new ResizeObserver(place);
+    const composer = document.querySelector('[data-pane="main"] .composer');
+    if (composer) observer.observe(composer);
+    const context = document.querySelector('[data-pane="main"] .chat-body');
+    if (context) observer.observe(context);
+    observer.observe(document.documentElement);
+    place();
+    return () => observer.disconnect();
+  }, [cards.length, open]);
   useEffect(() => (holding ? hold() : release()), [holding, hold, release]);
   useEffect(() => {
     if (toasts.stack.length === 0) setPinned(false);
@@ -56,6 +80,7 @@ export function ToastStack({ toasts, onOpen }: { toasts: Toasts; onOpen: (t: Toa
     <div
       className="toast-stack"
       data-testid="toast-stack"
+      ref={frame}
       data-open={open}
       style={{ "--n": cards.length } as React.CSSProperties}
       onPointerEnter={(e) => e.pointerType === "mouse" && setPointer(true)}

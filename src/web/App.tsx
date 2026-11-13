@@ -132,8 +132,8 @@ const WorkerPlanEditor = lazy(() => import("./components/WorkerPlanEditor.js").t
 
 // Panels on-demand: a desktop with a dozen idle tabs doesn't need code for every
 // project workflow unless someone actually opens one of these dialogs.
-function LazyPanel({ children, overlay = false }: { children: React.ReactNode; overlay?: boolean }) {
-  return <Suspense fallback={<Loader label="Opening…" overlay={overlay} />}>{children}</Suspense>;
+function LazyPanel({ children, overlay = false, contextPanel = false }: { children: React.ReactNode; overlay?: boolean; contextPanel?: boolean }) {
+  return <Suspense fallback={contextPanel ? <aside className="context-panel is-expanded" aria-label="Chat context"><Loader label="Opening…" /></aside> : <Loader label="Opening…" overlay={overlay} />}>{children}</Suspense>;
 }
 
 /** The tab Back shows when a room has no remembered chat tab: the nearest non-room tab, else none. */
@@ -2720,7 +2720,7 @@ export function App() {
             />
           ) : null}
         </div>
-          {chat && (!wide ? contextSheet : !contextClosed) && !room.roomId ? <LazyPanel><ContextPanel chat={chat} expanded={wide && !side && !toolPanel && !viewer ? !contextDetailsCollapsed : !side && !toolPanel && !viewer} onOpen={() => wide ? setContextDetailsCollapsed(false) : setContextSheet(true)} onClose={() => wide ? setContextDetailsCollapsed(true) : setContextSheet(false)} mode={!wide ? "sheet" : "inline"} onOpenChat={(id) => void openChatById(id)} onCancelTask={(task) => void cancelDelegated(task)} onReview={() => setReviewOpen(true)} onRace={(raceId) => setRacesOpen({ raceId })} onOpinion={(opinion) => void openChatById(opinion.chatId)} onUsage={() => {
+          {chat && (!wide ? contextSheet : !contextClosed) && !room.roomId ? <LazyPanel contextPanel><ContextPanel chat={chat} expanded={wide && !side && !toolPanel && !viewer ? !contextDetailsCollapsed : !side && !toolPanel && !viewer} onOpen={() => wide ? setContextDetailsCollapsed(false) : setContextSheet(true)} onClose={() => wide ? setContextDetailsCollapsed(true) : setContextSheet(false)} mode={!wide ? "sheet" : "inline"} onOpenChat={(id) => void openChatById(id)} onCancelTask={(task) => void cancelDelegated(task)} onReview={() => setReviewOpen(true)} onRace={(raceId) => setRacesOpen({ raceId })} onOpinion={(opinion) => void openChatById(opinion.chatId)} onUsage={() => {
             const button = document.querySelector<HTMLButtonElement>(`[data-pane="main"] [data-testid="context-ring"]`);
             if (button) button.click();
           }} onQuestions={() => {
@@ -2743,7 +2743,10 @@ export function App() {
         toasts={toasts}
         onOpen={(t) => {
           const s = overview.sessions.find((x) => x.id === t.sessionId);
-          if (s) void openSession(s);
+          if (s) {
+            toasts.dismiss(t.id);
+            void openSession(s);
+          }
         }}
       />
       <StatusBar

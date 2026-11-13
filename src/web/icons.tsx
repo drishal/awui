@@ -54,6 +54,11 @@ export const IconFlask = (p: IconProps) => (
     <path d="M4.6 10h6.8" />
   </Svg>
 );
+export const IconFilter = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.5 3.5h11l-4.25 4.5v4L6.75 13V8L2.5 3.5z" />
+  </Svg>
+);
 export const IconSearch = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="7" cy="7" r="4.25" />

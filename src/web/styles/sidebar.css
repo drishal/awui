@@ -253,9 +253,22 @@
 
 .quick-filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
   margin: 4px 0 2px;
+  overflow: hidden;
+}
+
+.quick-filters .filter-chip {
+  flex: 0 0 32px;
+  width: 32px;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0;
+}
+
+.quick-filters .filter-chip .quick-count {
+  font-size: 10px;
 }
 
 .quick-chip {
@@ -716,8 +729,8 @@
   top: calc(100% + 4px);
   bottom: auto;
   left: 0;
-  right: auto;
-  width: min(300px, calc(100vw - 32px));
+  right: 0;
+  width: auto;
   max-height: min(320px, 50dvh);
   overflow-y: auto;
   transform-origin: top left;

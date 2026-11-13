@@ -4,6 +4,7 @@
 // list is never a mystery. Pure state lives in sidebar-filter.ts; this draws it.
 import { useRef, useState } from "react";
 import { HIDE_GROUPS, HIDE_HINTS, HIDE_LABELS, type HideGroup } from "../sidebar-filter.js";
+import { IconFilter } from "../icons.js";
 
 export function SidebarFilters({ hide, counts, onChange }: {
   hide: readonly HideGroup[];
@@ -26,7 +27,7 @@ export function SidebarFilters({ hide, counts, onChange }: {
         title="Hide kinds of session"
         onClick={() => setAt(at ? null : (button.current?.getBoundingClientRect() ?? null))}
       >
-        Filters{hide.length > 0 ? <span className="quick-count">{hide.length}</span> : null}
+        <span aria-hidden="true"><IconFilter size={14} /></span><span className="visually-hidden">Filters</span>{hide.length > 0 ? <span className="quick-count">{hide.length}</span> : null}
       </button>
       {at ? (
         <>

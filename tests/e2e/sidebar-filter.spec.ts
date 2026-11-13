@@ -6,7 +6,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
-const chip = (page: Page, name: RegExp) => sidebar(page).getByRole("group", { name: "Filter sessions" }).getByRole("button", { name });
+const chip = (page: Page, name: RegExp) => sidebar(page).getByRole("group", { name: "Filter sessions" }).locator(".quick-chip[aria-pressed]").filter({ hasText: name });
 const row = (page: Page, title: string) => sidebar(page).locator(".session-item", { hasText: title });
 const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: new RegExp(title) });
 const search = (page: Page) => sidebar(page).getByRole("searchbox", { name: "Search sessions" });

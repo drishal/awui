@@ -1650,6 +1650,8 @@
   transition: opacity 0.12s var(--ease-out);
 }
 
+.answer-timing-short { display: none; }
+
 .answer:hover .answer-timing,
 .answer:focus-within .answer-timing {
   opacity: 1;
@@ -1659,6 +1661,11 @@
   .answer-timing {
     opacity: 1;
   }
+}
+
+@media (max-width: 560px) {
+  .answer-timing-full { display: none; }
+  .answer-timing-short { display: inline; }
 }
 
 .answer-error {
@@ -1810,23 +1817,31 @@
   font-style: italic;
 }
 
-/* A round-cornered chevron button, not a worded pill: a 128px chip on the way down the thread sat on a line
-   of the last card. At 34px it fits the pane's margin beside the column, over padding rather than text. */
+/* Jump occupies the reserved right gutter, never the final row's chevron.
+   A 24px local fade separates it visually without adding another click target. */
 .jump {
   position: absolute;
-  right: 16px;
-  bottom: 14px;
+  right: max(8px, calc((100% - var(--chat-col)) / 2 - 56px));
+  bottom: 0;
   z-index: 5;
   display: inline-grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 48px;
+  height: 36px;
   padding: 0;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--r-control);
+  border: 0;
+  border-top: 1px solid var(--hairline-strong);
+  border-radius: 0;
   background: var(--card);
   color: var(--text-2);
-  box-shadow: var(--shadow-soft);
+}
+
+.jump::before {
+  content: "";
+  position: absolute;
+  inset: -24px 0 100%;
+  pointer-events: none;
+  background: linear-gradient(transparent, var(--card));
 }
 
 /* The prompt of the turn being read, once it has scrolled off the top (StickyPrompt). It overlays the

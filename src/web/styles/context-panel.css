@@ -27,6 +27,9 @@
 }
 .context-panel.is-expanded { flex-basis: 280px; }
 
+.context-work > .context-panel > .loader { margin: auto; padding: 14px; }
+.context-work > .context-panel > .loader .loader-label { white-space: normal; text-align: center; }
+
 /* ---- the header: the panel's name, and the one control that folds it away ---- */
 .context-top {
   display: flex;

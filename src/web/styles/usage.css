@@ -478,24 +478,24 @@
   width: var(--heat-cell);
   height: var(--heat-cell);
   border-radius: 3px;
-  background: var(--hover);
+  background: var(--heat-0);
   transition: transform var(--dur-hover) var(--ease-out);
 }
 
 .usage-heat-cell[data-level="1"] {
-  background: color-mix(in srgb, var(--accent) 22%, var(--hover));
+  background: var(--heat-1);
 }
 
 .usage-heat-cell[data-level="2"] {
-  background: color-mix(in srgb, var(--accent) 45%, var(--hover));
+  background: var(--heat-2);
 }
 
 .usage-heat-cell[data-level="3"] {
-  background: color-mix(in srgb, var(--accent) 70%, var(--hover));
+  background: var(--heat-3);
 }
 
 .usage-heat-cell[data-level="4"] {
-  background: var(--accent);
+  background: var(--heat-4);
 }
 
 .usage-heat-cell.is-today {

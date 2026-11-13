@@ -109,6 +109,17 @@ describe("buildTurns", () => {
     expect(t.live).toBe(false);
   });
 
+  it("folds back-to-back plan updates to the last checklist", () => {
+    const a = tool("t1", "command", { name: "todo_write", category: "other", args: JSON.stringify({ ops: [{ op: "start", task: "Read" }] }) });
+    const b = tool("t2", "command", { name: "TodoWrite", category: "other", args: JSON.stringify({ todos: [{ content: "Read", status: "completed" }] }) });
+    const c = tool("t3", "command", { name: "read", category: "read" });
+    const d = tool("t4", "command", { name: "ExitPlanMode", category: "other", plan: "1. Read" });
+    const [turn] = buildTurns([{ kind: "user", id: "u", text: "plan" }, a, b, c, d], "idle");
+    expect(turn?.process.map(i => i.id)).toEqual(["t2", "t3", "t4"]);
+    // Only drawing is folded: aggregate tool counts still describe the actual calls.
+    expect(turn?.counts).toEqual({ read: 1, other: 3 });
+  });
+
   it("has no answer while work follows the last text, and marks the last turn live", () => {
     const items: ChatItem[] = [
       { kind: "user", id: "u1", text: "go" },

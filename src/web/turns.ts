@@ -2,6 +2,7 @@
 // did (folded into one "Worked for …" line), and the final answer. Pattern
 // from DeepSeek Harness (process fold) with OpenCode-style tool counts.
 import type { AssistantItem, ChatItem, ChatStatus, HtmlRenderRef, NoticeItem, ToolCategory, UserItem } from "../shared/protocol.js";
+import { isPlanCall } from "./tool-sentence.js";
 
 /** The lines a turn's edits and writes added and removed, over the files they changed. */
 export interface ChangeStat {
@@ -73,6 +74,14 @@ export function buildTurns(items: ChatItem[], status: ChatStatus): Turn[] {
     current.push(item);
   }
   if (current.length > 0) groups.push(current);
+
+  // A run of plan/todo calls is one progressively updated checklist, not a log
+  // of every intermediate state. Keep the last call and its id so references
+  // into a segment stay valid; calls across a reply remain separate stretches.
+  const compactPlans = (source: ChatItem[]): ChatItem[] => source.filter((item, at) => {
+    const next = source[at + 1];
+    return !(item.kind === "tool" && next?.kind === "tool" && isPlanCall(item.name, item.plan !== undefined) && isPlanCall(next.name, next.plan !== undefined));
+  });
 
   const busy = status === "running" || status === "stopping" || status === "compacting";
   let userTurns = 0;
@@ -171,8 +180,8 @@ export function buildTurns(items: ChatItem[], status: ChatStatus): Turn[] {
       index,
       through,
       prompt,
-      process,
-      workAfter: afterWork,
+      process: compactPlans(process),
+      workAfter: compactPlans(afterWork),
       answer,
       errors,
       after,

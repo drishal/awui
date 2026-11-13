@@ -170,6 +170,11 @@
      dimmer chrome colour (icons, hairlines); a theme file overrides both. */
   --muted-text: var(--muted);
   --hairline: color-mix(in srgb, var(--text) var(--hairline-mix), transparent);
+  --heat-0: color-mix(in srgb, var(--text) 8%, var(--card));
+  --heat-1: color-mix(in srgb, var(--accent) 20%, var(--card));
+  --heat-2: color-mix(in srgb, var(--accent) 40%, var(--card));
+  --heat-3: color-mix(in srgb, var(--accent) 65%, var(--card));
+  --heat-4: var(--accent);
   --hairline-strong: color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 8%), transparent);
   --hover: color-mix(in srgb, var(--text) 6%, transparent);
   --active: color-mix(in srgb, var(--text) 10%, transparent);

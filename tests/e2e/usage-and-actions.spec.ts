@@ -46,6 +46,12 @@ test("Usage draws a heatmap of the days, shaded by tokens or by cost, and the ar
   await expect(grid.locator('[data-level="4"][aria-label*="900k tokens"]')).toHaveCount(1);
   await expect(grid.locator('[aria-label*="· 1.0k tokens ·"]')).toHaveAttribute("data-level", "1");
   await expect(grid.locator('[data-level="0"]')).toHaveCount(1);
+  await page.emulateMedia({ colorScheme: "light" });
+  const colors = await grid.evaluate(el => [0,1,2,3,4].map(level => getComputedStyle(el.querySelector(`[data-level="${level}"]`) ?? el).backgroundColor));
+  expect(new Set(colors).size).toBe(colors.length);
+  const card = await grid.locator('[data-level="0"]').evaluate(el => getComputedStyle(el.closest(".usage-heat") as Element).backgroundColor);
+  expect(colors[0]).not.toBe(card);
+  await page.emulateMedia({ colorScheme: "dark" });
   // Cost: the dearest day takes the darkest shade.
   await heat.getByRole("button", { name: "Cost" }).click();
   await expect(grid.locator('[data-level="4"][aria-label$="$12.50"]')).toHaveCount(1);

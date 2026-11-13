@@ -17,6 +17,27 @@ test("a long run shows every call without a more-calls fold", async ({ page }) =
   await expect(page.getByRole("button", { name: /^Show \d+ more calls?$/ })).toHaveCount(0);
 });
 
+test("Jump to latest never covers the final row's chevron", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 620 });
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "manycalls");
+  const card = page.locator(".process-card").last();
+  const toggle = card.getByTestId("process-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  const conversation = page.locator(".conversation");
+  // A user wheel event ends the auto-pin; a programmatic scrollTop does not.
+  await conversation.hover();
+  await page.mouse.wheel(0, -700);
+  await page.waitForTimeout(300);
+  const jump = page.getByRole("button", { name: "Jump to latest" });
+  await expect(jump).toBeVisible();
+  // Clicking proves the hit target: a covered chevron fails Playwright's actionability check.
+  // Its own open also re-pins the end, so Jump goes after the click; that is expected.
+  await page.getByTestId("tool-row").last().locator(".tool-chevron").click();
+  await expect(jump).toBeHidden();
+});
+
 test("find in chat reaches a call inside a closed card", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);

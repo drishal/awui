@@ -52,7 +52,21 @@ test("two background chats finishing stack as cards that fan out on hover and op
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test("a notice card swipes sideways away, and a short swipe springs back", async ({ page }) => {
+  test("a notice docks clear of the composer and the last prompt", async ({ page }) => {
+  await twoFinishInTheBackground(page, "phone-dock");
+  const toast = cards(page).first();
+  await expect(toast).toBeVisible();
+  const a = await toast.boundingBox();
+  const composer = await page.locator('[data-pane="main"] .composer').boundingBox();
+  const prompt = await page.getByTestId("user-prompt").last().boundingBox();
+  expect(a!.y + a!.height).toBeLessThan(composer!.y);
+  expect(a!.y).toBeGreaterThan(prompt!.y + prompt!.height);
+  const timing = await page.getByTestId("answer-timing").last().locator(".answer-timing-short").innerText();
+  expect(timing).toMatch(/^(?:<1s|\d+(?:\.\d)?s|\d+m)/);
+  await expect(page.getByTestId("answer-timing").last().locator(".answer-timing-full")).toBeHidden();
+});
+
+test("a notice card swipes sideways away, and a short swipe springs back", async ({ page }) => {
     await twoFinishInTheBackground(page, "swiped");
     await expect(cards(page)).toHaveCount(2, { timeout: 25_000 });
     const card = cards(page).first();

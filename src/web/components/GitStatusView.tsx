@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DirenvState, GitFileDiff, GitStatus } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
-import { GROUP_LABEL, branchWords, commitWords, countsLine, groupFiles, OPERATION_LABEL, stateLetter, stateTone, syncWordsOf, type GroupedFile } from "../git.js";
+import { GROUP_LABEL, branchWords, commitWords, countsLine, groupFiles, OPERATION_LABEL, stateLetter, stateTone, syncWordsOf, type GroupedFile } from "../../shared/git-words.js";
 import { ago } from "../turns.js";
 import { useNow } from "../hooks.js";
 import { IconBranch, IconCheck, IconChevronDown, IconChevronRight, IconRefresh, IconTerminal, IconX } from "../icons.js";

@@ -112,6 +112,13 @@ a.toast-text:hover {
   height: 26px;
 }
 
+@media (max-width: 819px) {
+  .toast-stack {
+    top: auto;
+    bottom: calc(var(--toast-bottom, 150px) + env(safe-area-inset-bottom));
+  }
+}
+
 @media (hover: none) {
   .toast kbd {
     display: none;

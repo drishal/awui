@@ -111,6 +111,11 @@
     padding: 4px 12px 36px;
   }
 
+  .jump {
+    right: 0;
+    width: 34px;
+  }
+
   .sticky-prompt {
     padding-inline: 12px;
   }

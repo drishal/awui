@@ -461,7 +461,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 10px 0 12px;
+  margin: 10px 16px 12px;
   padding: 10px 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);

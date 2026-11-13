@@ -252,7 +252,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
               ) : null}
             </span>
             <span className="tool-facts">
-              {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : sentence.facts.length > 0 ? <span className="tool-fact">{sentence.facts.map((fact,i) => <span key={i} className={sentence.failed && /\bfailed\b/.test(fact) ? "is-failed" : undefined}>{i > 0 ? " · " : ""}{fact}</span>)}</span> : null}
+              {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : sentence.facts.length > 0 ? <span className="tool-fact">{sentence.facts.map((fact, i) => <Fragment key={i}><span className={sentence.failed && /\bfailed\b/i.test(fact) ? "is-failed" : undefined}>{fact}</span>{i < sentence.facts.length - 1 ? " · " : null}</Fragment>)}</span> : null}
               {time ? <span className="tool-time"><Rolling text={time} /></span> : null}
             </span>
             {/* Ask to retry cannot sit inside this button, so its twin holds its place here, unseen: the status mark and
