@@ -1050,8 +1050,9 @@ function ProcessFold({
               </span>
             ) : null}
           </span>
-          {/* Outside the label, which ellipsises: the count stays whole on a narrow screen, and shows with the fold closed. */}
-          {leading && turn.changeStat ? <ChangeCounts stat={turn.changeStat} /> : null}
+          {/* Outside the label, which ellipsises: the count stays whole on a narrow screen, and shows with the fold closed.
+              The ChangedFiles row below the answer repeats it when it renders, so a settled turn with files shows one. */}
+          {leading && turn.changeStat && (turn.live || turn.changedFiles.length === 0) ? <ChangeCounts stat={turn.changeStat} /> : null}
           {/* The run's status sits in the rows' status column, as a row's does: the icon stack then lines up with the
               rows' icons, and the spinner giving way to the check moves nothing. */}
           {live || wasLive ? (

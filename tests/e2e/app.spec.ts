@@ -142,14 +142,14 @@ test("an edit row carries its +N −M badge", async ({ page }) => {
   await expect(row.locator(".diff-line.is-add .diff-text")).toHaveText("b");
 });
 
-test("a finished turn's line counts show on its fold line and its Changed files row", async ({ page }) => {
+test("a finished turn's counts show once, on its Changed files row", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
   await sendAndWait(page, "please edit the app, then read a tool");
   const turn = page.getByTestId("turn").last();
-  // With the fold closed, the counts stand beside "Worked for …".
+  // A settled turn with files renders the Changed files row, so the fold head repeats no diffstat.
   await expect(turn.getByTestId("process-toggle")).toHaveAttribute("aria-expanded", "false");
-  await expect(turn.getByTestId("process-toggle").getByTestId("change-stat")).toHaveText("+1 −1");
+  await expect(turn.getByTestId("process-toggle").getByTestId("change-stat")).toHaveCount(0);
   // The Changed files row carries them with the file count, and still opens its list.
   const changed = turn.getByTestId("changed-files");
   await expect(changed.getByTestId("change-stat")).toHaveText("+1 −1 · 1 file");
