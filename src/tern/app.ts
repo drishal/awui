@@ -30,6 +30,7 @@ import { conversation, firstFailedCall, headNode, PAGE_ID, PAGE_KEY, plural, TUR
 import { ANSWER_ID, dock, EDITOR_ID, inputReady } from "./dock.js";
 import { AT_CARET, filterItems, menuNode, moveSelection, sessionRows, SHEETS, type Menu, type MenuItem, type MenuKind } from "./overlays.js";
 import { stepRange, USAGE_SCROLL_ID, usageNode, type UsageScreen } from "./usage.js";
+import { chatWidthLabel, CHAT_WIDTHS, nextChatWidth } from "../shared/chat-width.js";
 import { findHits } from "./find.js";
 import { TIMING_SCROLL_ID, timingNode } from "./timing.js";
 import { CONTEXT_SCROLL_ID, contextNode } from "./context.js";
@@ -42,7 +43,7 @@ import { ACTION_KEYS, moveRow, taskRows, type TaskRow } from "../atui/delegated.
 import { reviewActions, type ReviewAction, type ReviewFacts } from "../web/delegated-tasks.js";
 import { collectChanges, type FileChanges } from "../web/review.js";
 import { BOARD_COLUMNS, boardCards, boardCounts, boardProjects, prStateOf, type PrFilter, type PrState, type PullRequestShape } from "../web/dashboard.js";
-import { STYLESHEET, themeSheet } from "./look.js";
+import { stylesheet, themeSheet } from "./look.js";
 import { startExamples, startHeading, startSetup } from "../web/start-screen.js";
 
 export interface TernOptions {
@@ -78,6 +79,7 @@ const LEADER: Array<{ key: string; label: string }> = [
   { key: "j", label: "Delegated work" },
   { key: "k", label: "Agents board" },
   { key: "p", label: "Active work" },
+  { key: "l", label: "Chat width" },
   { key: "u", label: "Usage across chats" },
   { key: "y", label: "Copy the last answer" },
   { key: "q", label: "Quit" },
@@ -246,7 +248,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const harness = (): HarnessStatus | null => app.harness();
 
     // ---- the look: palette by theme and harness, the sheet once ---------------------------
-    surface.stylesheet("awui", STYLESHEET);
+    // The chat width (config.yml's chat_width) sets the page and dock caps: a change re-sends the sheet under its name.
+    createEffect(() => surface.stylesheet("awui", stylesheet(app.boot()?.ui.chatWidth ?? null)));
     // Tern's appearance (a `theme` event when it switches): a theme file's scheme is used only in its own.
     const [dark, setDark] = createSignal(session.caps.dark);
     createEffect(() => {
@@ -412,6 +415,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       items.push({ id: "x:e", label: allWork() ? "Fold all work" : "Open all work", value: "C-x e", icon: "expand" });
       if (c) items.push({ id: "x:f", label: "Show failed calls", value: "C-x f", icon: "x-circle", ...(c.items.some((i) => i.kind === "tool" && i.status === "error") ? {} : { disabled: "No call has failed in this chat" }) });
       if (c) items.push({ id: "x:g", label: "Find in chat…", value: "C-x g", icon: "search", keywords: "search transcript" });
+      // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it (C-x l cycles).
+      CHAT_WIDTHS.forEach((w) => items.push({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, icon: "expand", keywords: "column layout measure", current: (app.boot()?.ui.chatWidth ?? null) === w }));
       if (c && buildTurns(c.items, c.status).length > 0) items.push({ id: "timing", label: "Timing of the latest turn", icon: "clock", keywords: "waterfall speed slow" });
       items.push({ id: "x:u", label: "Usage", value: "C-x u", icon: "chart", keywords: "tokens cost limits spend" });
       items.push({ id: "x:k", label: "Agents: every session, by column", value: "C-x k", icon: "kanban", keywords: "dashboard board needs working done" });
@@ -542,6 +547,11 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       readUsage(30);
     };
 
+    /** Sets the shared chat width (config.yml's chat_width) through the server's settings route, and says which; a refusal leaves its reason in a notice. */
+    const chooseWidth = async (width: (typeof CHAT_WIDTHS)[number]) => {
+      if (await app.setChatWidth(width)) say(`Chat width: ${chatWidthLabel(width)}`, "success");
+    };
+
     const runLeader = (key: string) => {
       setLeader(false);
       setMenu(null);
@@ -581,6 +591,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           return showFailed();
         case "g":
           return openMenu("find");
+        case "l":
+          return void chooseWidth(nextChatWidth(app.boot()?.ui.chatWidth ?? null));
         case "u":
           return openUsage();
         case "j":
@@ -611,6 +623,11 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       switch (m.kind) {
         case "palette":
           if (item.id.startsWith("x:")) return runLeader(item.id.slice(2));
+          if (item.id.startsWith("width:")) {
+            const width = CHAT_WIDTHS.find((w) => `width:${w}` === item.id);
+            if (width) void chooseWidth(width);
+            return;
+          }
           if (item.id === "stop") return app.stop();
           if (item.id === "permission") return openMenu("permission");
           if (item.id === "models-refresh") return void app.refreshModels();

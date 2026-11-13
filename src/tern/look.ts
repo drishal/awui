@@ -6,6 +6,8 @@
 // shapes our own roles (`awui.*`) and `el` classes, and colours come from
 // Tern's variables (--t1…, --l1…, --accent) and the theme sheet's (--awui-*), so a
 // light pane, a dark one, and a base16 scheme all read right.
+import { ternColumn } from "../shared/chat-width.js";
+import type { ChatWidth } from "../shared/protocol.js";
 import { DARK, LIGHT, type Theme } from "../atui/theme.js";
 
 /**
@@ -64,15 +66,22 @@ const SOLID = "var(--tv-bg, var(--panel, var(--page)))";
 /** A tint laid on the solid background, so a card in the dock is opaque. */
 const solidTint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%, ${SOLID})`;
 
-/** The sheet, under one name so a later send replaces it. Reading width as the web UI's thread. */
-export const STYLESHEET = `
-[data-role='awui.page'] { width: 100%; max-width: 780px; margin: 0 auto; font-family: var(--sans); gap: 18px; }
+/**
+ * The sheet, under one name so a later send replaces it. The page and the dock read at the
+ * web UI's thread width, from config.yml's chat_width (comfortable is the 780px column it has
+ * always drawn); the prompt bubble, the tab strip, and the tables are shares of the page, so
+ * they follow it without a value of their own.
+ */
+export function stylesheet(width: ChatWidth | null): string {
+  const { page, dock, recent } = ternColumn(width);
+  return `
+[data-role='awui.page'] { width: 100%; max-width: ${page}; margin: 0 auto; font-family: var(--sans); gap: 18px; }
 [data-role='awui.page'] .md { font-family: var(--sans); }
 /*
  * The dock floats over the conversation as it scrolls: a solid backdrop (blurred too, for a translucent
  * window whose background is itself see-through) so what scrolls under it never shows through its cards.
  */
-[data-role='awui.dock'] { width: 100%; max-width: 792px; margin: 0 auto; font-family: var(--sans); gap: 8px; padding-top: 6px; background: ${SOLID}; backdrop-filter: blur(24px); }
+[data-role='awui.dock'] { width: 100%; max-width: ${dock}; margin: 0 auto; font-family: var(--sans); gap: 8px; padding-top: 6px; background: ${SOLID}; backdrop-filter: blur(24px); }
 
 /* The header: the title on its own line, then the harness badge, status, and project, as the web UI's. */
 [data-role='awui.head'] { gap: 4px; padding: 2px 0 10px; border-bottom: 1px solid ${tint(8)}; }
@@ -174,7 +183,7 @@ export const STYLESHEET = `
 .pick { border-radius: 8px; padding: 4px 13px; background: ${tint(7)}; color: var(--t2); }
 .pick:hover { background: ${tint(12)}; }
 .pick.on { color: ${HARNESS}; background: ${tint(18, HARNESS)}; }
-[data-role='awui.recent'] { width: 100%; max-width: 560px; }
+[data-role='awui.recent'] { width: 100%; max-width: ${recent}; }
 
 /* The dock: queued steps, the git row, the composer card, the status strip. */
 [data-role='awui.queue'] { gap: 4px; padding: 6px 14px; border-radius: 16px; background: ${solidTint(5)}; font-size: 0.9em; }
@@ -247,3 +256,4 @@ export const STYLESHEET = `
 /* Tabs along the top, when there are two or more. */
 [data-role='awui.tabs'] { margin-bottom: -6px; }
 `;
+}

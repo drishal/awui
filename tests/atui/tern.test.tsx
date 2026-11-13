@@ -160,6 +160,53 @@ describe("awui tern", () => {
     expect(tern.errors).toEqual([]);
   });
 
+  it("draws the chat at config.yml's chat_width, and C-x l or the palette saves the next one", async () => {
+    const file = path.join(server.configDir, "config.yml");
+    writeFileSync(file, "chat_width: wide\n");
+    try {
+      client = await start();
+      const { tern, until } = client;
+      /** The last `awui` sheet sent: Tern installs a sheet by name, so a later send replaces it. */
+      const sheet = () =>
+        (
+          tern.sent.filter((m) => m.verb === "s" && (m.body as { name?: string }).name === "awui").at(-1)?.body as { css?: string } | undefined
+        )?.css ?? "";
+      await until(() => sheet().includes("max-width: 1400px"), "the wide sheet");
+      expect(sheet()).toContain("max-width: 1412px");
+      expect(sheet()).toContain("max-width: 1005px");
+
+      // Wide is saved for every device already; the next press saves full through the settings route.
+      tern.type("\x18l");
+      await until(() => sheet().includes("max-width: 100%"), "the full sheet");
+      await until(() => readFileSync(file, "utf8").includes("chat_width: full"), "the saved width");
+
+      // And round to comfortable, which is the 780px column the sheet has always drawn.
+      tern.type("\x18l");
+      await until(() => sheet().includes("max-width: 780px"), "the comfortable sheet");
+
+      // The palette lists all three; take full from it.
+      tern.type("\x0b");
+      await until(() => tern.find("picker", "layer").length === 1, "the palette");
+      tern.type("chat width");
+      await until(
+        () =>
+          ((tern.find("picker", "layer")[0]?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label).join() ===
+          "Chat width: Comfortable,Chat width: Wide,Chat width: Full",
+        "the three width rows",
+      );
+      tern.type("\x1b[B");
+      tern.type("\x1b[B");
+      tern.type("\r");
+      await until(() => sheet().includes("max-width: 100%"), "full from the palette");
+      expect(readFileSync(file, "utf8")).toContain("chat_width: full");
+      expect(tern.text("main")).toContain("What should Fake do in alpha?");
+      expect(tern.errors).toEqual([]);
+    } finally {
+      // Every later test draws the column it has always drawn.
+      writeFileSync(file, "chat_width: comfortable\n");
+    }
+  }, 30_000);
+
   it("puts a suggested prompt in the composer, as the web UI's start screen chips do", async () => {
     client = await start();
     const { tern, until } = client;
