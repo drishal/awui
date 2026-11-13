@@ -15,7 +15,7 @@ import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
 import type { UsageLimits } from "../../shared/protocol.js";
 import { limitResetAt } from "../../shared/limit-stop.js";
 import { coarse, useRowSwipe } from "../gestures.js";
-import { focusProject, groupByProject, historySections, isBusy, localeWeekStart, movedOrder, projectRows, sidebarSections, snoozeOptions, wakeLabel, type ProjectGroup } from "../session-groups.js";
+import { focusProject, groupByProject, historySections, isWorking as statusWorking, localeWeekStart, movedOrder, projectRows, sidebarSections, snoozeOptions, wakeLabel, type ProjectGroup } from "../session-groups.js";
 import { applyHidden, applyQuick, asHideGroups, asQuickFilter, chipsShown, escapeClears, hideCounts, provenanceOf, quickCounts, QUICK_LABELS, type HideGroup, type QuickFilter } from "../sidebar-filter.js";
 import { load, save } from "../storage.js";
 import { harnessColor } from "../harness-colors.js";
@@ -1040,7 +1040,7 @@ export function Sidebar(props: {
   const isActiveSession = (s: ProjectSession) =>
     (props.activeSessionId !== null && s.id === props.activeSessionId) || (s.liveChatId !== undefined && s.liveChatId === props.activeChatId);
   // What each session is doing now: the open chat's live status beats the listing's.
-  const isWorking = (s: ProjectSession) => (isActiveSession(s) ? isBusy(props.activeStatus) : isBusy(s.status));
+  const isWorking = (s: ProjectSession) => (isActiveSession(s) ? statusWorking(props.activeStatus) : statusWorking(s.status));
   // The quick filter (Running, Needs you, Today), kept per device; it narrows the overview before anything groups it.
   const [quick, setQuick] = useState<QuickFilter | null>(() => asQuickFilter(load<unknown>("sidebarFilter", null)));
   const pickQuick = (next: QuickFilter | null) => {

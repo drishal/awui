@@ -27,7 +27,7 @@ import {
 } from "../dashboard.js";
 import { harnessColor } from "../harness-colors.js";
 import { previewLine, sessionPreview } from "../session-preview.js";
-import { isBusy } from "../session-groups.js";
+import { isWorking } from "../session-groups.js";
 import { ago } from "../turns.js";
 import { plainTitle } from "../plain-title.js";
 import { Select } from "./Select.js";
@@ -57,7 +57,7 @@ export function Dashboard({ overview, harnesses, onOpenSession, onClose }: {
     return out;
   }, [prs]);
   const cards = useMemo(
-    () => boardCards(overview, { project: project || null, pr, prStates, working: (s) => isBusy(s.status) }),
+    () => boardCards(overview, { project: project || null, pr, prStates, working: (s) => isWorking(s.status) }),
     [overview, project, pr, prStates],
   );
   const counts = boardCounts(cards);
@@ -196,8 +196,8 @@ function Card({ card, eager, names, harnessName, projectName, pr, onOpen, onOpen
                   <span className="harness-dot" style={harnessColor(child.harnessId)} role="img" aria-label={names.get(child.harnessId) ?? child.harnessId} />
                   {plainTitle(child.title)}
                 </span>
-                <span className={`dashboard-child-state is-${child.asking ? "needs" : isBusy(child.status) ? "working" : "done"}`}>
-                  {child.asking ? "needs you" : isBusy(child.status) ? "working" : "done"}
+                <span className={`dashboard-child-state is-${child.asking ? "needs" : isWorking(child.status) ? "working" : "done"}`}>
+                  {child.asking ? "needs you" : isWorking(child.status) ? "working" : "done"}
                 </span>
               </button>
             </li>

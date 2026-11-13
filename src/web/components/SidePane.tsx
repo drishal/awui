@@ -17,7 +17,7 @@ import type { ChatState } from "../chat-state.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconSearch, IconSwap, IconX, Spinner } from "../icons.js";
 import { sentAttachments } from "../images.js";
-import { isBusy } from "../session-groups.js";
+import { isWorking } from "../session-groups.js";
 import { ago } from "../turns.js";
 import { Composer } from "./Composer.js";
 import { Conversation } from "./Conversation.js";
@@ -44,7 +44,7 @@ function Picker({
   const project = (id: string) => overview.workspaces.find((w) => w.id === id)?.name ?? "";
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const live = (s: ProjectSession) => (s.liveChatId ? (isBusy(s.status ?? "idle") ? 0 : 1) : 2);
+    const live = (s: ProjectSession) => (s.liveChatId ? (isWorking(s.status ?? "idle") ? 0 : 1) : 2);
     return overview.sessions
       .filter((s) => projectScoped(harnesses, s.harnessId) && !s.archived && (!q || `${s.title} ${name(s.harnessId)} ${project(s.workspaceId)}`.toLowerCase().includes(q)))
       .sort((a, b) => live(a) - live(b) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
@@ -64,7 +64,7 @@ function Picker({
           return (
             <li key={s.id} style={harnessColor(s.harnessId)}>
               <button type="button" disabled={here} title={here ? "Already open on the left" : undefined} onClick={() => onPick(s)}>
-                <span className={`side-pick-dot${s.liveChatId ? (isBusy(s.status ?? "idle") ? " is-busy" : " is-live") : ""}`} aria-hidden="true" />
+                <span className={`side-pick-dot${s.liveChatId ? (isWorking(s.status ?? "idle") ? " is-busy" : " is-live") : ""}`} aria-hidden="true" />
                 <span className="side-pick-title">{s.title || "New chat"}</span>
                 <span className="side-pick-meta">
                   <span className="badge badge-harness">{name(s.harnessId)}</span>

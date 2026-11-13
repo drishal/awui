@@ -5,7 +5,7 @@
 // metadata (the sidebar's overview, the sessions' status lines, the GitHub lookup awui
 // makes on request): no transcript ever reaches it from here.
 import type { ProjectSession, SessionsOverview, WorkspaceInfo } from "../shared/protocol.js";
-import { isBusy, recency } from "./session-groups.js";
+import { isWorking, recency } from "./session-groups.js";
 
 export type BoardColumn = "needs" | "working" | "done";
 
@@ -72,7 +72,7 @@ export interface BoardOptions {
 }
 
 /** Where a session stands: asking for you, running, or done for now. */
-export function columnOf(s: ProjectSession, working: (s: ProjectSession) => boolean = (x) => isBusy(x.status)): BoardColumn {
+export function columnOf(s: ProjectSession, working: (s: ProjectSession) => boolean = (x) => isWorking(x.status)): BoardColumn {
   if (s.asking) return "needs";
   if (working(s)) return "working";
   return "done";
@@ -96,7 +96,7 @@ function passesPr(s: ProjectSession, opts: BoardOptions): boolean {
  * is on the board (a child whose parent is not listed is a card of its own).
  */
 export function boardCards(overview: SessionsOverview, opts: BoardOptions = {}): Record<BoardColumn, BoardCard[]> {
-  const working = opts.working ?? ((s: ProjectSession) => isBusy(s.status));
+  const working = opts.working ?? ((s: ProjectSession) => isWorking(s.status));
   const visible = overview.sessions.filter((s) => !s.archived && (!opts.project || s.workspaceId === opts.project) && passesPr(s, opts));
   const byLiveChat = new Map<string, ProjectSession>();
   for (const s of visible) if (s.liveChatId) byLiveChat.set(s.liveChatId, s);

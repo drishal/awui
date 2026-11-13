@@ -13,7 +13,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import type { ChatStatus } from "../../shared/protocol.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconPin, IconPlus, IconRooms, IconX } from "../icons.js";
-import { isBusy } from "../session-groups.js";
+import { isWorking } from "../session-groups.js";
 import { clampDrag, dropSlot, slideOf, type TabRect } from "../tab-order.js";
 import type { Tab } from "../tabs.js";
 import { SlidingIndicator } from "./SlidingIndicator.js";
@@ -156,7 +156,7 @@ export function TabStrip({
       <div className={`tab-list${drag ? " is-dragging" : ""}`} role="tablist" aria-label="Open tabs" ref={strip}>
         {tabs.map((tab, i) => {
           const status = statusOf(tab);
-          const working = isBusy(status);
+          const working = isWorking(status);
           const selected = i === active;
           const name = harnessName(tab.harnessId);
           // A room's tab says "Room" where a chat's names its harness.

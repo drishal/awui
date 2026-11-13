@@ -12,6 +12,16 @@ export function isBusy(status: ChatStatus | null | undefined): boolean {
   return status !== null && status !== undefined && BUSY.has(status);
 }
 
+/**
+ * A chat the lists and rings may call working: busy, minus "starting". A resumed chat shows from its file while
+ * its harness spawns (deferred.ts), and that is a start-up, not a turn: calling it working moved the row into
+ * the Working section, counted it under Running, and put it back a moment later. Stopping and closing still use
+ * isBusy, since a starting harness has to be stopped too.
+ */
+export function isWorking(status: ChatStatus | null | undefined): boolean {
+  return status !== "starting" && isBusy(status);
+}
+
 export interface ProjectGroup {
   workspace: WorkspaceInfo;
   /** Newest activity first. */
@@ -58,7 +68,7 @@ export function placeOf(s: ProjectSession, opts: GroupOptions): Place {
   if (s.archived) return "archived";
   const onScreen = opts.isActive?.(s) ?? false;
   if (!onScreen && s.asking) return "needs";
-  if (!onScreen && isBusy(s.status)) return "working";
+  if (!onScreen && isWorking(s.status)) return "working";
   if (s.snoozedUntil && s.snoozedUntil > (opts.now ?? Date.now())) return "snoozed";
   if (s.settled) return "settled";
   if (s.pinned) return "pinned";

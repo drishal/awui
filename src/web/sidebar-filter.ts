@@ -7,7 +7,7 @@
 // knows of the chat on screen (whose live status beats the listing's), and
 // gets a narrowed overview back that every existing grouping understands.
 import type { Checkout, ProjectSession, SessionsOverview } from "../shared/protocol.js";
-import { isBusy, isTrunkBranch, placeOf, recency, type GroupOptions } from "./session-groups.js";
+import { isTrunkBranch, isWorking, placeOf, recency, type GroupOptions } from "./session-groups.js";
 
 export type QuickFilter = "running" | "needs" | "today";
 
@@ -33,7 +33,7 @@ const startOfDay = (ms: number): number => {
  * of a chat asking for an answer (asking, and live); "Today" is last activity
  * since local midnight, a session with no known activity never.
  */
-export function matchesQuick(s: ProjectSession, filter: QuickFilter, now: number, working: Working = (x) => isBusy(x.status)): boolean {
+export function matchesQuick(s: ProjectSession, filter: QuickFilter, now: number, working: Working = (x) => isWorking(x.status)): boolean {
   if (filter === "running") return working(s);
   if (filter === "needs") return s.asking === true && s.liveChatId !== undefined;
   return recency(s) >= startOfDay(now);

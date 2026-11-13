@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSession, SessionsOverview, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { asHarnessId } from "../../src/shared/protocol.js";
-import { archivedCount, dateGroup, focusProject, groupByProject, headCutoff, movedOrder, pinnedSessions, plainPreview, projectRows, sessionScope } from "../../src/web/session-groups.js";
+import { archivedCount, dateGroup, focusProject, groupByProject, headCutoff, isBusy, isWorking, movedOrder, pinnedSessions, placeOf, plainPreview, projectRows, sessionScope } from "../../src/web/session-groups.js";
 
 const ws = (id: string): WorkspaceInfo => ({ id, path: `/home/u/${id}`, name: id });
 const s = (id: string, workspaceId: string, harness: string, updatedAt: string, title = id): ProjectSession => ({
@@ -245,5 +245,20 @@ describe("the current project's focused view", () => {
 describe("the hover card's answer", () => {
   it("reads as plain text", () => {
     expect(plainPreview("## Done\n\n- line 1 with **markdown**\n- see [docs](https://x)\n```ts\ncode\n```\nend")).toBe("Done\n\n• line 1 with markdown\n• see docs\n\nend");
+  });
+});
+
+describe("what counts as working", () => {
+  it("leaves out a chat whose harness is only starting, which is busy but not on a turn", () => {
+    expect(isBusy("starting")).toBe(true);
+    expect(isWorking("starting")).toBe(false);
+    for (const status of ["running", "stopping", "compacting"] as const) expect(isWorking(status)).toBe(true);
+    for (const status of ["idle", "error", "disposed", null, undefined] as const) expect(isWorking(status)).toBe(false);
+  });
+  it("keeps a resumed chat out of the Working list until it runs a turn", () => {
+    const none = { currentId: null, query: "", harnessId: null };
+    const resumed: ProjectSession = { ...s("r1", "webui", "pi", "2026-10-01T10:00:00Z"), liveChatId: "c1", status: "starting" };
+    expect(placeOf(resumed, none)).not.toBe("working");
+    expect(placeOf({ ...resumed, status: "running" }, none)).toBe("working");
   });
 });
