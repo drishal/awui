@@ -23,7 +23,7 @@ import { Dot } from "./Dot.js";
 import { SecondOpinionCard } from "./SecondOpinionCard.js";
 import { Rolling } from "./Rolling.js";
 import { Arrivals, ArrivalsContext, useArrival } from "../arrivals.js";
-import { motionOff } from "../morph.js";
+import { handheld, land, motionOff, pending } from "../morph.js";
 import { claimLanding, glideOffset } from "../queue-glide.js";
 import { Markdown } from "./Markdown.js";
 import { QuoteButton } from "./QuoteButton.js";
@@ -586,6 +586,20 @@ function UserPrompt({
   const copyLink = () => navigator.clipboard?.writeText(promptLink(window.location.origin, item.text));
   const arrival = useArrival(item.id);
   const bubble = useRef<HTMLDivElement>(null);
+  // The first prompt of a chat a start screen just sent: its words lift out of that screen's box (morph.ts) and
+  // gather a bubble as they go. It mounts with the chat, so it is no arrival (useArrival); the handoff is the sign.
+  useLayoutEffect(() => {
+    const key = `start-prompt:${item.text.trim()}`;
+    if (!pending(key)) return;
+    const el = bubble.current;
+    const small = handheld();
+    const run = land(key, el, { spring: true, duration: small ? 300 : 460, delay: small ? 0 : 40, from: { opacity: 0.6 } });
+    if (!run || !el) return;
+    el.classList.add("is-lifting");
+    const done = () => el.classList.remove("is-lifting");
+    run.addEventListener("finish", done);
+    run.addEventListener("cancel", done);
+  }, []);
   // A prompt that was a queued message glides from the queue row it left, then lights up softly (queue-glide.ts).
   useEffect(() => {
     if (!arrival) return;
@@ -1641,7 +1655,9 @@ export function Conversation({
     turnCountRef.current = turnsRef.current.length;
     setShowJump(false);
     const thread = scroller.current?.firstElementChild;
-    if (thread && !reducedMotion()) {
+    // Not under a start screen's handoff: its words lift out of the box into the first prompt, and a fading thread would dim them
+    // (and put them under the dock) just as they set off.
+    if (thread && !reducedMotion() && !pending("start-card")) {
       thread.animate([{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: 220, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
     }
   }, [chatId]);

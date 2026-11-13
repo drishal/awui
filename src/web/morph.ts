@@ -25,6 +25,14 @@ export function motionOff(): boolean {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 
+/**
+ * A phone or a touch screen: the keyboard opening or closing resizes the viewport mid-glide, so a whole card
+ * does not travel there; only small things (a prompt lifting into its bubble) do.
+ */
+export function handheld(): boolean {
+  return window.matchMedia?.("(pointer: coarse), (max-width: 600px)").matches ?? false;
+}
+
 /** Leave `box` behind for `key` (null forgets it): the place something was when it went away. */
 export function handoff(key: string, box: Box | null, now = Date.now()): void {
   if (box) boxes.set(key, { box, at: now });
@@ -66,7 +74,7 @@ export interface LandOptions {
   height?: boolean;
   /** Extra values for the first frame, e.g. an opacity to rise from. */
   from?: Keyframe;
-  /** A class that holds while it glides (the CSS clips a card to its animated height with it). */
+  /** A class that holds while it glides (the CSS clips a card to its animated height with it, and holds its contents back). */
   while?: string;
 }
 
@@ -91,7 +99,7 @@ export function land(key: string, el: HTMLElement | null, opts: LandOptions = {}
   if (!move) return null;
   const easing = getComputedStyle(el).getPropertyValue(opts.spring ? "--spring" : "--ease-out").trim() || "ease-out";
   const hold = opts.while;
-  if (hold && move.dh) el.classList.add(hold);
+  if (hold) el.classList.add(hold);
   const run = el.animate(
     [
       { transform: `translate(${move.dx}px, ${move.dy}px)`, ...(move.dh ? { height: `${from.height}px` } : {}), ...opts.from },

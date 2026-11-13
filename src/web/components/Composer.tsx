@@ -39,6 +39,7 @@ import { RotationHint } from "./RotationHint.js";
 import { COLD_RESUME_OFF_KEY, coldResumeHint, lastActivity } from "../cold-resume.js";
 import { ROTATION_OFF_KEY, chatRotation } from "../rotation.js";
 import { useDismiss, useLeave, useMediaQuery, useMorph, useNow } from "../hooks.js";
+import { handheld, land } from "../morph.js";
 import { composerFolded } from "../composer-fold.js";
 import { DirenvRow, GitPanel, GitRow } from "./GitStatusView.js";
 import { useGitStatus } from "../git.js";
@@ -704,6 +705,11 @@ export function Composer({
   const phone = useMediaQuery("(max-width: 600px)");
   const pillRow = composerFolded({ phone, hero: Boolean(hero), closed, writing, text, images: images.length, pastes: pastes.length, menuOpen, dragging });
   useMorph(cardRef, pillRow, MORPH_PARTS);
+  // A chat that a start screen just made: the box glides down from where the start screen's was (morph.ts) on an
+  // ease, not the spring, since a large surface that bounces looks cheap. Nothing waits for it, so nothing is left to do.
+  useLayoutEffect(() => {
+    if (!hero && !handheld()) land("start-card", cardRef.current, { height: true, while: "is-landing" });
+  }, []);
   const model = chat.config.models.find((m) => m.key === chat.config.model);
   const blind = images.length > 0 && model?.vision === false;
   const pending = closed ? [] : chat.pending;

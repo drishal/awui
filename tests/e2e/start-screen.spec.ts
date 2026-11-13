@@ -312,3 +312,38 @@ test("sending from the start screen swaps it for the conversation at once, with 
   // While the start screen is held it is inert, so there is never a second live "Message" box beside the chat's.
   expect(seen.boxes).toBeLessThanOrEqual(1);
 });
+
+// What a send from the start screen animates (morph.ts): the box glides down to the dock, the words lift into the first
+// prompt. Sampled by animation id on every frame from the Enter, since both are over in half a second.
+const flightsAfterSend = async (page: import("@playwright/test").Page, text: string): Promise<string[]> => {
+  await page.evaluate(() => {
+    const ids = new Set<string>();
+    (window as unknown as { __flights: Set<string> }).__flights = ids;
+    const tick = () => {
+      for (const a of document.getAnimations()) if (a.id.startsWith("morph:")) ids.add(a.id);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+  const input = page.getByRole("textbox", { name: box });
+  await input.fill(text);
+  await input.press("Enter");
+  await expect(page.getByTestId("answer").last()).toContainText(`Echo: ${text}`);
+  await page.waitForTimeout(700);
+  return page.evaluate(() => [...(window as unknown as { __flights: Set<string> }).__flights].sort());
+};
+
+test("the start screen's box glides to the dock and its words lift into the first prompt", async ({ page }) => {
+  await signInAndOpen(page);
+  expect(await flightsAfterSend(page, "glide me")).toEqual(["morph:start-card", "morph:start-prompt"]);
+  // Nothing is left clipped or mid-flight once it has landed.
+  await expect(page.locator(".composer-card.is-landing")).toHaveCount(0);
+  await expect(page.locator(".bubble.is-lifting")).toHaveCount(0);
+});
+
+test("with reduced motion the swap is still one step, and nothing glides", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await signInAndOpen(page);
+  expect(await flightsAfterSend(page, "hold still")).toEqual([]);
+  await expect(page.getByTestId("user-prompt")).toHaveText(["hold still"]);
+});

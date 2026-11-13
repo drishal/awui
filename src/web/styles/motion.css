@@ -589,3 +589,56 @@
 .word-in {
   animation: word-in var(--dur-enter) var(--ease-out);
 }
+
+/* Start screen -> chat (morph.ts). Once a send has its chat, the heading, mark and examples leave first and quickly
+   (140 ms, up and out); the box itself stays, held, until the chat's dock takes over its place. */
+.start-screen.is-leaving .hero-mark,
+.start-screen.is-leaving .hero-title,
+.start-screen.is-leaving .hero-sub,
+.start-screen.is-leaving .hero-examples {
+  animation: hero-leave 0.14s var(--ease-out) forwards;
+}
+
+@keyframes hero-leave {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* The dock gliding down from the start screen's box: its height runs from one to the other, and what does not fit yet
+   is clipped, not spilled over the conversation. */
+.composer-card.is-landing {
+  overflow: hidden;
+}
+
+/* The dock's own contents (its hint, its chips) come in once the card has set off, so they do not sit under the words
+   that are lifting out of the box. */
+.composer-card.is-landing > * {
+  animation: landing-content 0.4s var(--ease-out) both;
+}
+
+@keyframes landing-content {
+  0%,
+  35% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* The first prompt's words come first and the bubble gathers around them, so it reads as words settling
+   into a message, not a bubble flying in. */
+/* Above the dock while it lifts: the words start where the box is, and would otherwise slide out from under its card. */
+.bubble.is-lifting {
+  position: relative;
+  z-index: 3;
+  animation: bubble-gather 0.24s var(--ease-out) both;
+}
+
+@keyframes bubble-gather {
+  from {
+    background-color: transparent;
+  }
+}
