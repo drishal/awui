@@ -135,6 +135,8 @@ src/server/
   terminal.ts, terminal-backend.ts  Bounded project PTYs: real @lydell/node-pty for source/Node, Bun.Terminal in the compiled app. Validated cwd, process-tree kill on last disconnect/server exit, 1 MiB replay, 60 s exit retention. Never a shell-pipe wrapper; only explicit interactive shells.
   binary-runtime.ts          Browser preview's CommonJS package beside the executable. The trusted PTY page is src/web/terminal-shell.html, not a server module.
   render-preview.ts          Authenticated bounded Chromium capture of an agent's own stored page; in-memory fixed-origin rendering, no other network/fetch/cookies/storage, timeout, console cap and certainly no app frame sharing.
+  render-browser.ts          Per-chat saved-page actions through `browser_action`: bounded selectors and read/mutate/screen actions, fixed in-memory origin and serialized scopes; owner-disposed tabs, never arbitrary URLs, eval scripts or resource may open remote cookie state.
+
   stacks.ts                  Stacked pull requests per project: "stack above #N" makes the PR below's head the target, the ordered stack saved in the state folder, merge-through bottom-up with `gh pr merge --merge` only; per-layer status and checks from the same bounded gh calls.
   pr-watches.ts              Opt-in PR poller keyed by one chat's native session; dedupe, retries, actual gh check/run logs and per-session repair markers. Polling never invents a transcript; uses real workspace IDs.
   github.ts                  Bounded local gh/git workflows: existing-PR lookup, explicit push, PR create, PR detail by number, normalized checks; never reads or sends credentials to a browser.

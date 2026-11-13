@@ -43,6 +43,24 @@ const TOOL = {
   },
 };
 
+const BROWSER_TOOL = {
+  name: "browser_action",
+  description:
+    "Take a small bounded action on a previously agent-rendered page in this chat. Allowed actions: snapshot (enumerate controls), click (non-link button only), fill (text input textarea or select), scroll (bounded distance), screenshot (returns an image resource), close (tear down in-memory tab). " +
+    "Pass the page's renderId (the id from the render_html result) and a bounded CSS selector. No URL, remote navigation, arbitrary JavaScript, cookies, storage profiles, new windows, or data exfiltration is supported: only stored HTML on a fixed render-origin is controllable. Use snapshot to learn controls before filling/clicking. Close inactive in-memory pages when done.",
+  inputSchema: {
+    type: "object",
+    required: ["renderId", "action"],
+    properties: {
+      renderId: { type: "string", description: "The 32-hex page id returned by render_html (not a URL)." },
+      action: { type: "string", enum: ["snapshot", "click", "fill", "scroll", "screenshot", "close"], description: "The one bounded per-page action or lifecycle command" },
+      selector: { type: "string", description: "Bounded CSS selector (max 512 bytes) required for click/fill. Optional on snapshot to restrict listing." },
+      value: { type: "string", description: "For fill: text (up to 4096 chars) to assign to a text input or editable control." },
+      amount: { type: "number", description: "For scroll: signed integer CSS pixels within ±10000." },
+    },
+  },
+};
+
 const text = (value) => ({ type: "text", text: value });
 const failure = (message) => ({ content: [text(message)], isError: true });
 
@@ -86,10 +104,37 @@ async function handle(message) {
     });
   }
   if (method === "ping") return send({ id, result: {} });
-  if (method === "tools/list") return send({ id, result: { tools: URL_ENV && TOKEN ? [TOOL] : [] } });
+  if (method === "tools/list") return send({ id, result: { tools: URL_ENV && TOKEN ? [TOOL, BROWSER_TOOL] : [] } });
   if (method === "tools/call") {
-    if (params?.name !== TOOL.name || !URL_ENV || !TOKEN) return send({ id, error: { code: -32602, message: `Unknown tool: ${params?.name}` } });
-    return send({ id, result: await render(params.arguments ?? {}) });
+    if (!URL_ENV || !TOKEN || ![TOOL.name, BROWSER_TOOL.name].includes(params?.name)) return send({ id, error: { code: -32602, message: `Unknown tool: ${params?.name}` } });
+    if (params.name === TOOL.name) return send({ id, result: await render(params.arguments ?? {}) });
+    const base = URL_ENV.replace(/\/$/, "");
+    try {
+      const args = params.arguments;
+      const bytes = {
+        renderId: typeof args?.renderId === "string" ? args.renderId : "",
+        action: typeof args?.action === "string" ? args.action : "",
+        ...(typeof args.selector === "string" ? { selector: args.selector } : {}),
+        ...(typeof args.value === "string" ? { value: args.value } : {}),
+        ...(args.theme && ["snapshot", "screenshot"].includes(args.action) ? { theme: args.theme } : {}),
+        ...(typeof args.amount === "number" ? { amount: args.amount } : {}),
+      };
+      const response = await fetch(`${base}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Awui-Render-Token": TOKEN },
+        body: JSON.stringify(bytes),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const message = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const description = `Page action refused (HTTP ${response.status}): ${typeof message?.message === "string" ? message.message : JSON.stringify(message)}`;
+        return send({ id, result: failure(description.slice(0, 400)) });
+      }
+      if (message === null || typeof message !== "object") return send({ id, result: failure("page tool returned not a JSON result") });
+      return send({ id, result: { content: [text(JSON.stringify(message))] } });
+    } catch (error) {
+      return send({ id, result: { content: [text(`page action unavailable: ${error instanceof Error ? error.message : String(error)}`)], isError: true } });
+    }
   }
   send({ id, error: { code: -32601, message: `Method not found: ${method}` } });
 }

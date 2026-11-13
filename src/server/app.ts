@@ -46,6 +46,7 @@ import {
   terminalCreateSchema,
   terminalWriteSchema,
   htmlRenderPreviewSchema,
+  renderActionSchema,
   worktreeCreateSchema,
   prTourRequestSchema,
   prRepairSchema,
@@ -182,9 +183,11 @@ import { ManagedWorktrees, worktreeProblem } from "./worktrees.js";
 import { PROJECT_CONFIG_FILE, projectConfigStatus, ProjectConfigTrust, readProjectConfig } from "./project-config.js";
 import { Races, raceChatsFor, type RaceRecord } from "./races.js";
 import { githubStatus, pushBranch, createPullRequest, pullRequestChecks, currentPullRequest, pullRequestDetail, mergePullRequest, runGh } from "./github.js";
+import { closeRenderPage } from "./render-browser.js";
 import { PrStacks } from "./stacks.js";
 import { readTour } from "./pr-tour.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
+import { performRenderAction } from "./render-browser.js";
 import { Orchestrator } from "./orchestration/orchestrator.js";
 import { IntegrationReview, type IntegrationRecord, type ReviewProject } from "./orchestration/review.js";
 import { ORCH_TOOLS } from "./orchestration/tools.js";
@@ -588,8 +591,28 @@ export async function createApp(deps: AppDeps) {
     res.json({ id: saved.id, url: `/api/chats/${chat.chatId}/html-render/${saved.id}` });
   });
 
-  // The orchestration tools in a chat's harness child call back here to delegate, watch, or
-  // read another chat. Like /api/render these routes sit before requireAuth and
+  // Per-page agent actions use the render HTML tool's own chat-scoped token,
+  // not the orchestrator's task namespace. Every action serves locally stored
+  // HTML for an id the authenticated chat itself produces, never an arbitrary URL.
+  app.post("/api/render/action", express.json({ limit: "16kb" }), async (req, res) => {
+    const stateDir = deps.stateDir;
+    if (!stateDir) throw new ChatError(404, "render_off", "The page driver is not wired on this server");
+    const token = req.get("x-awui-render-token") ?? "";
+    const chat = token !== "" ? manager.chatForRenderToken(token) : undefined;
+    if (!chat || chat.owner) throw new ChatError(403, "bad_render_token", "Not this chat's render token");
+    const result = await performRenderAction(stateDir, chat, renderActionSchema.parse(req.body));
+    const response: { renderId: string; action: string; elements: unknown[]; console: string[]; image?: { id: string; url: string } } = {
+      renderId: result.renderId,
+      action: result.action,
+      elements: result.elements,
+      console: result.console,
+    };
+    const image = result.image?.length ? rememberImage("image/png", result.image.toString("base64")) : undefined;
+    if (image) response.image = { id: image.id, url: `/api/images/${image.id}` };
+    res.json(response);
+  });
+
+  // The orchestration tools in a chat's harness child call back here to delegate, watch, or  // read another chat. Like /api/render these routes sit before requireAuth and
   // authenticate with the random token the child was spawned with (`AWUI_ORCH_TOKEN`,
   // a header) rather than a cookie: the token names the one chat the call speaks for, so a
   // signed-in device elsewhere cannot mint one or reach another chat's tasks through it.

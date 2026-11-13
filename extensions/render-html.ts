@@ -51,7 +51,17 @@ const MAX_HTML_BYTES = 512 * 1024;
 const TIMEOUT_MS = 10_000;
 const THEME_VARS = "--bg --surface --surface-2 --border --text --text-2 --muted --accent --accent-hover --link --ok --danger --warn --info --orange --thinking --font-sans --font-mono";
 
+export function renderActionOps(url: string, token: string, args: { renderId: string; action: string; selector?: string; value?: string; amount?: number; theme?: { appearance: "dark" | "light"; variables: Record<string, string> } }): Promise<Response> {
+  return fetch(`${url.replace(/\/$/, "")}/action`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Awui-Render-Token": token },
+    body: JSON.stringify(args),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+}
+
 export default function renderHtml(pi: Api): void {
+
   const url = process.env.AWUI_RENDER_URL;
   const token = process.env.AWUI_RENDER_TOKEN;
   if (!url || !token) return;
@@ -110,6 +120,48 @@ export default function renderHtml(pi: Api): void {
         content: [text(`Rendered "${title}" into the chat. The page is above; do not describe or restate it in your reply.`)],
         details: { htmlRender: { id: page.id, title, height }, url: page.url },
       };
+    },
+  });
+  pi.registerTool({
+    name: "browser_action",
+    label: "Page action",
+    description: "Use a bounded action on a known agent-rendered page: snapshot, click a non-link button/input, fill a text/textarea/select control, scroll, screenshot or close. renderId comes from render_html; this never permits arbitrary site URLs, a JavaScript evaluator, popup tabs, storage or remote network. Enumerate a selector, then click/fill the current page; do not treat this as a normal unrestricted web browser.",
+    parameters: {
+      type: "object",
+      required: ["renderId", "action"],
+      properties: {
+        renderId: { type: "string", description: "32-hex id from render_html (not a URL)" },
+        action: { type: "string", enum: ["snapshot", "click", "fill", "scroll", "screenshot", "close"] },
+        selector: { type: "string", description: "One exact CSS control selector, ≤512 chars" },
+        value: { type: "string", description: "For fill, text to type or option label to select (≤4096 chars)" },
+        amount: { type: "number", description: "For scroll, integer offset ±10000 CSS pixel" },
+        theme: { type: "object", description: "Optional current HtmlRenderTheme ({appearance:dark|light,variables}) for snapshot/screenshot presentation only; no executable CSS/JS." },
+      },
+    },
+    async execute(_id, params) {
+      const args = params as unknown as { renderId: string; action: "snapshot" | "click" | "fill" | "scroll" | "screenshot" | "close"; selector?: string; value?: string; amount?: number; theme?: { appearance: "dark" | "light"; variables: Record<string, string> } };
+      if (typeof args.renderId !== "string" || /^[0-9a-f]{32}$/.test(args.renderId) === false) return { content: [text("renderId must be the 32-hex id from render_html, not a site URL")], details: {} };
+      if (args.action !== "close" && args.action !== "snapshot" && args.action !== "screenshot" && !["click", "fill", "scroll"].includes(args.action)) {
+        return { content: [text(`Unsupported browser action; use snapshot, click, fill, scroll, screenshot or close.`)], details: {} };
+      }
+      if (args.action === "scroll" && (typeof args.amount !== "number" || !Number.isInteger(args.amount) || Math.abs(args.amount) > 10000)) {
+        return { content: [text("scroll amount must be an integer within +/-10000 CSS pixels")], details: {} };
+      }
+      if (args.action !== "click" && args.action !== "fill" && args.action !== "scroll" && args.action !== "snapshot" && args.action !== "close" && args.action !== "screenshot") {
+        return { content: [text("A known bounded action is required")], details: {} };
+      }
+      if (typeof args.selector === "string" && args.selector.length > 512 || typeof args.value === "string" && args.value.length > 4096) {
+        return { content: [text("Selector/value too large; keep them within the documented 512/4096 limits")], details: {} };
+      }
+      if (args.action === "fill" && (typeof args.selector !== "string" || args.selector.length < 1 || typeof args.value !== "string")) {
+        return { content: [text("fill needs one precise CSS selector and bounded input value")], details: {} };
+      }
+      if (args.action === "click" && (typeof args.selector !== "string" || args.selector.length < 1)) {
+        return { content: [text("click needs one precise button or local input selector")], details: {} };
+      }
+      const result = await renderActionOps(url, token, args);
+      const body = await result.text();
+      return { content: [text(body)], details: {}, isError: !result.ok };
     },
   });
 }

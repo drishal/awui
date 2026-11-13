@@ -23,6 +23,8 @@ import { ORCH_MCP_SERVER, RENDER_TOOL_NAME } from "./render-extension.js";
 export const HTML_RENDER_MCP_SERVER = "awui";
 /** The MCP tool as Claude Code names it (mcp__<server>__<tool>); Pi and omp's extension registers plain `render_html`. */
 export const HTML_RENDER_MCP_TOOL = `mcp__${HTML_RENDER_MCP_SERVER}__${RENDER_TOOL_NAME}`;
+export const BROWSER_ACTION_TOOL = `mcp__${HTML_RENDER_MCP_SERVER}__browser_action`;
+export const BROWSER_ACTION_TOOLS = [HTML_RENDER_MCP_TOOL, BROWSER_ACTION_TOOL];
 /**
  * The orchestration tools as an MCP client names them (`mcp__awui-orchestrate__<tool>`),
  * from the catalogue itself so the allow list cannot drift from what is served.

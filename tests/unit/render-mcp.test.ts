@@ -28,7 +28,7 @@ afterEach(async () => {
 /** The MCP server on stdio, with `env`; `call` sends a request and waits for its answer. */
 function mcp(env: Record<string, string>) {
   const child = spawn(process.execPath, [server], { env: { ...process.env, ...env }, stdio: ["pipe", "pipe", "inherit"] });
-  const waiting = new Map<number, (m: { result?: Record<string, unknown>; error?: { message: string } }) => void>();
+  const waiting = new Map<number, (m: { result?: { content?: Array<{ text: string }>; isError?: boolean; tools?: Array<{ name: string }> }; error?: { message: string } }) => void>();
   readline.createInterface({ input: child.stdout }).on("line", (line) => {
     const m = JSON.parse(line) as { id: number; result?: Record<string, unknown>; error?: { message: string } };
     waiting.get(m.id)?.(m);
@@ -36,7 +36,7 @@ function mcp(env: Record<string, string>) {
   let id = 0;
   return {
     call: (method: string, params?: unknown) =>
-      new Promise<{ result?: Record<string, unknown>; error?: { message: string } }>((resolve) => {
+      new Promise<{ result?: { content?: Array<{ text: string }>; isError?: boolean; tools?: Array<{ name: string }> }; error?: { message: string } }>((resolve) => {
         waiting.set(++id, resolve);
         child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
       }),
@@ -62,7 +62,7 @@ describe("the render_html MCP server", () => {
     try {
       expect((await s.call("initialize", { protocolVersion: "2025-06-18" })).result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} } });
       const tools = (await s.call("tools/list")).result?.tools as Array<{ name: string }>;
-      expect(tools.map((x) => x.name)).toEqual(["render_html"]);
+      expect(tools.map((x) => x.name)).toEqual(["render_html", "browser_action"]);
       const done = (await s.call("tools/call", { name: "render_html", arguments: { html: "<h1>Hi</h1>", title: "Chart", height: 5000 } })).result as { content: Array<{ text: string }> };
       expect(posted).toEqual([{ token: "tok", body: { html: "<h1>Hi</h1>", title: "Chart", height: 2000 } }]);
       const split = splitRenderMarker(done.content[0]?.text ?? "");
@@ -72,6 +72,36 @@ describe("the render_html MCP server", () => {
       expect((await s.call("nope")).error?.message).toMatch(/not found/);
     } finally {
       s.stop();
+      endpoint.close();
+    }
+  });
+
+  it("lets the local render driver match by URL only, not arbitrary remote pages", async () => {
+    const posted: Array<{ token?: string; body: string }> = [];
+    const endpoint = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => body += chunk);
+      req.on("end", () => {
+        posted.push({ token: req.headers["x-awui-render-token"] as string | undefined, body });
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ renderId: "ac".repeat(16), action: "snapshot", elements: [{ role: "button", label: "hello", selector: "#done" }], console: [] }));
+      });
+    });
+    await new Promise<void>((r) => endpoint.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${(endpoint.address() as AddressInfo).port}/api/render`;
+    const m = mcp({ AWUI_RENDER_URL: base, AWUI_RENDER_TOKEN: "owner-render-token" });
+    try {
+      const listed = (await m.call("tools/list")).result?.tools as Array<{ name: string }>;
+      expect(listed.some((tool) => tool.name === "browser_action")).toBe(true);
+      const answer = await m.call("tools/call", { name: "browser_action", arguments: { renderId: "ac".repeat(16), action: "snapshot" } });
+      expect(answer.result?.content?.[0]?.text).toContain("hello");
+      expect(answer.result?.content?.[0]?.text).toContain("hello");
+      expect(posted[0]?.token).toBe("owner-render-token");
+      const sent = posted[0];
+      if (!sent) throw new Error("browser action did not reach the owner route");
+      expect(JSON.parse(sent.body)).toEqual({ renderId: "ac".repeat(16), action: "snapshot" });
+    } finally {
+      m.stop();
       endpoint.close();
     }
   });

@@ -48,7 +48,7 @@ import { claudeLimits, claudeUsageLimits } from "./limits.js";
 import { promptCacheExpiresAt, promptCacheTtlMs } from "./prompt-cache.js";
 import { ORCH_MCP_SERVER, renderHtmlMcpServer } from "./render-extension.js";
 import { orchestrationMcpToolNames } from "./render-token.js";
-import { HTML_RENDER_MCP_SERVER, HTML_RENDER_MCP_TOOL, splitRenderMarker } from "./render-token.js";
+import { HTML_RENDER_MCP_SERVER, HTML_RENDER_MCP_TOOL, BROWSER_ACTION_TOOL, splitRenderMarker } from "./render-token.js";
 import { versionLabel } from "./version.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import type {
@@ -99,7 +99,7 @@ function toolsMcpArgs(toolEnv: NodeJS.ProcessEnv | undefined): string[] {
   const render = renderHtmlMcpServer();
   if (render && toolEnv?.AWUI_RENDER_URL && toolEnv.AWUI_RENDER_TOKEN) {
     servers[HTML_RENDER_MCP_SERVER] = { type: "stdio", command: node, args: [render], env: { AWUI_RENDER_URL: toolEnv.AWUI_RENDER_URL, AWUI_RENDER_TOKEN: toolEnv.AWUI_RENDER_TOKEN } };
-    allowed.push(HTML_RENDER_MCP_TOOL);
+    allowed.push(HTML_RENDER_MCP_TOOL, BROWSER_ACTION_TOOL);
   }
   if (toolEnv?.AWUI_ORCH_URL && toolEnv.AWUI_ORCH_TOKEN) {
     // The header's value is a reference, not the token: the CLI expands `${VAR}` from the child's

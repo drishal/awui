@@ -1910,6 +1910,22 @@ export const roomAnswerSchema = answerSchema;
  * arguments the model produced. The per-tool schema lives in orchestration/tools.ts,
  * which validates `args`; this checks only the envelope.
  */
+export const htmlRenderActionThemeSchema = z.object({
+  appearance: z.enum(["dark", "light"]),
+  variables: z.record(z.string().regex(/^--(?:bg|surface|surface-2|border|text|text-2|muted|accent|accent-fg|accent-hover|link|danger|warn|ok|info|orange|thinking|font-sans|font-mono)$/), z.string().max(128)),
+}).strict();
+const actionWithTheme = { theme: htmlRenderActionThemeSchema.optional() };
+
+export const renderActionSchema = z.discriminatedUnion("action", [
+  z.object({ ...actionWithTheme, action: z.literal("snapshot"), renderId: z.string().regex(/^[0-9a-f]{32}$/), selector: z.string().trim().min(1).max(512).optional() }).strict(),
+  z.object({ action: z.literal("click"), renderId: z.string().regex(/^[0-9a-f]{32}$/), selector: z.string().trim().min(1).max(512) }).strict(),  z.object({ action: z.literal("fill"), renderId: z.string().regex(/^[0-9a-f]{32}$/), selector: z.string().trim().min(1).max(512), value: z.string().max(4096) }).strict(),
+  z.object({ action: z.literal("scroll"), renderId: z.string().regex(/^[0-9a-f]{32}$/), amount: z.number().int().min(-10000).max(10000) }).strict(),
+  z.object({ ...actionWithTheme, action: z.literal("screenshot"), renderId: z.string().regex(/^[0-9a-f]{32}$/) }).strict(),
+  z.object({ action: z.literal("close"), renderId: z.string().regex(/^[0-9a-f]{32}$/) }).strict(),
+]);
+
+export type RenderAction = z.infer<typeof renderActionSchema>;
+
 export const orchCallSchema = z.object({ tool: z.string().min(1).max(64), args: z.unknown().optional() }).strict();
 
 export type OauthAccountChoice = {

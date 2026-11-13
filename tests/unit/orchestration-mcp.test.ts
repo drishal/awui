@@ -121,7 +121,7 @@ describe("orchestration over HTTP MCP", () => {
     const wrongHeader = await agent.post("/api/orchestration/mcp").set("x-awui-orch-token", token).send(init);
     expect(wrongHeader.status).toBe(401);
 
-    const wrong = await post(agent, token.replace(/.$/, "0"), init);
+    const wrong = await post(agent, `${token.slice(0, -1)}${token.endsWith("0") ? "1" : "0"}`, init);
     expect(wrong.status).toBe(401);
     expect(wrong.body.code).toBe("bad_orch_token");
 
