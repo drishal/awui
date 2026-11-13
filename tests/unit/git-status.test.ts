@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { gitFileDiff, gitStatus, parseNumstat, parsePorcelain } from "../../src/server/git-status.js";
 import { clearDirenvCache } from "../../src/server/direnv.js";
-import { groupFiles } from "../../src/web/git.js";
+import { groupFiles } from "../../src/shared/git-words.js";
 import { tempDir } from "../helpers/app.js";
 
 const git = (cwd: string, ...args: string[]) =>

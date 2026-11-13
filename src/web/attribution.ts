@@ -8,38 +8,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { AttributionSnapshot } from "../shared/protocol.js";
 import { api } from "./api.js";
 import { attributeLines, type FileChanges, type LineOrigin } from "./review.js";
+import { groupMarks, type OriginMarks } from "../shared/review.js";
 
-/** The agent's lines, by tool id and line index, and the counts a file's header shows. */
-export interface OriginMarks {
-  byTool: Map<string, Map<number, LineOrigin>>;
-  /** Per path: how many of its marked lines the agent wrote, and how many have changed since. */
-  byPath: Map<string, { agent: number; changed: number }>;
-}
-
-/** `toolId:index` keys, as shared/review.ts makes them, grouped for drawing: one lookup per edit and one count per file. */
-export function groupMarks(files: FileChanges[], marks: ReadonlyMap<string, LineOrigin>): OriginMarks {
-  const byTool = new Map<string, Map<number, LineOrigin>>();
-  const byPath = new Map<string, { agent: number; changed: number }>();
-  const pathOf = new Map<string, string>();
-  for (const file of files) {
-    const counts = byPath.get(file.path) ?? { agent: 0, changed: 0 };
-    byPath.set(file.path, counts);
-    for (const edit of file.edits) pathOf.set(edit.tool.id, file.path);
-  }
-  for (const [key, origin] of marks) {
-    const at = key.lastIndexOf(":");
-    if (at < 0) continue;
-    const toolId = key.slice(0, at);
-    const index = Number(key.slice(at + 1));
-    if (!Number.isInteger(index)) continue;
-    let lines = byTool.get(toolId);
-    if (!lines) byTool.set(toolId, (lines = new Map()));
-    lines.set(index, origin);
-    const counts = byPath.get(pathOf.get(toolId) ?? "");
-    if (counts) counts[origin] += 1;
-  }
-  return { byTool, byPath };
-}
+/** The agent's lines, grouped for drawing: moved to shared/review.ts, which the terminal clients run too. */
+export { groupMarks, type OriginMarks };
 
 /** A stable name for the edits a chat holds now: the read is asked for again only when it changes. */
 function editSignature(files: FileChanges[]): string {

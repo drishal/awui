@@ -174,3 +174,57 @@ export function agentHashes(files: FileChanges[]): Map<string, Set<string>> {
   }
   return out;
 }
+
+/** The agent's lines, by tool id and line index, and the counts a file's header shows. */
+export interface OriginMarks {
+  byTool: Map<string, Map<number, LineOrigin>>;
+  /** Per path: how many of its marked lines the agent wrote, and how many have changed since. */
+  byPath: Map<string, { agent: number; changed: number }>;
+}
+
+/** `toolId:index` keys, as commentKey makes them, grouped for drawing: one lookup per edit and one count per file. */
+export function groupMarks(files: FileChanges[], marks: ReadonlyMap<string, LineOrigin>): OriginMarks {
+  const byTool = new Map<string, Map<number, LineOrigin>>();
+  const byPath = new Map<string, { agent: number; changed: number }>();
+  const pathOf = new Map<string, string>();
+  for (const file of files) {
+    const counts = byPath.get(file.path) ?? { agent: 0, changed: 0 };
+    byPath.set(file.path, counts);
+    for (const edit of file.edits) pathOf.set(edit.tool.id, file.path);
+  }
+  for (const [key, origin] of marks) {
+    const at = key.lastIndexOf(":");
+    if (at < 0) continue;
+    const toolId = key.slice(0, at);
+    const index = Number(key.slice(at + 1));
+    if (!Number.isInteger(index)) continue;
+    let lines = byTool.get(toolId);
+    if (!lines) byTool.set(toolId, (lines = new Map()));
+    lines.set(index, origin);
+    const counts = byPath.get(pathOf.get(toolId) ?? "");
+    if (counts) counts[origin] += 1;
+  }
+  return { byTool, byPath };
+}
+
+/** Where a pin has moved to, found again in the chat's own diffs: its id and its new file line. */
+export interface PinMove {
+  id: string;
+  line: number;
+}
+
+/**
+ * The open threads whose pin the index now finds at another line: the moves a
+ * client queues so the stored anchor (what a batched prompt names) follows.
+ * A removed line's number is the old file's: it stays where it was pinned.
+ */
+export function pinMoves(files: FileChanges[], threads: ReviewThread[]): PinMove[] {
+  const index = buildLineIndex(files);
+  const moves: PinMove[] = [];
+  for (const thread of threads) {
+    if (thread.status !== "open" || thread.anchor.side === "del") continue;
+    const at = reanchor(thread.anchor, index);
+    if (at !== "stale" && at.line !== null && at.line !== thread.anchor.line) moves.push({ id: thread.id, line: at.line });
+  }
+  return moves;
+}
