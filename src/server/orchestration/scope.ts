@@ -13,7 +13,8 @@ import { ENVELOPE_BEGIN, ENVELOPE_END } from "../envelope.js";
 import { toolCategory, toolPaths } from "../harness/agent-events.js";
 import type { InteractionRequest } from "../../shared/protocol.js";
 import type { TaskScope } from "./types.js";
-import { isAbsolute, resolve, sep } from "node:path";
+import { realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, resolve, sep } from "node:path";
 
 /** Globs one delegation may carry, and the most one pattern may weigh. */
 export const MAX_WRITE_SCOPE_GLOBS = 8;
@@ -71,7 +72,32 @@ export function scratchDirFor(workspacePath: string, taskId: string): string {
   return resolve(workspacePath, ".awui", "scratch", taskId);
 }
 
-/** The workspace-relative form of a path, or null when it resolves outside the project. */
+/**
+ * Where a path really is: the deepest ancestor that exists is resolved through every symlink
+ * on it, and the part that does not exist yet is appended as written. `ln -s / src/out` in a
+ * worker's tree therefore reads as its target rather than as its name, so a write through it
+ * is judged by where it lands.
+ */
+function realPath(path: string, workspacePath: string): string {
+  const abs = isAbsolute(path) ? resolve(path) : resolve(workspacePath, path);
+  const rest: string[] = [];
+  let at = abs;
+  for (;;) {
+    try {
+      const real = realpathSync(at);
+      return rest.length === 0 ? real : resolve(real, ...rest.reverse());
+    } catch {
+      const parent = dirname(at);
+      // Nothing above the root resolves either: the path cannot be placed, and its own
+      // resolved string is the most this can say about it.
+      if (parent === at) return abs;
+      rest.push(basename(at));
+      at = parent;
+    }
+  }
+}
+
+/** The workspace-relative form of a path, or null when it resolves outside the project. Both are real paths. */
 export function relativeToWorkspace(path: string, workspacePath: string): string | null {
   if (path.length > MAX_PATH_CHARS) return null;
   const abs = isAbsolute(path) ? resolve(path) : resolve(workspacePath, path);
@@ -81,11 +107,16 @@ export function relativeToWorkspace(path: string, workspacePath: string): string
   return abs.startsWith(prefix) ? abs.slice(prefix.length) : null;
 }
 
-/** Whether a path resolves inside `dir` (itself inside the project). */
+/** Where a written path lands, as the workspace-relative form the globs are matched against. */
+function realRelative(path: string, workspacePath: string): string | null {
+  return relativeToWorkspace(realPath(path, workspacePath), workspacePath);
+}
+
+/** Whether a path's real location is inside `dir` (itself inside the project). */
 function insideDir(path: string, dir: string, workspacePath: string): boolean {
   if (path.length > MAX_PATH_CHARS) return false;
-  const abs = isAbsolute(path) ? resolve(path) : resolve(workspacePath, path);
-  const base = resolve(dir);
+  const abs = realPath(path, workspacePath);
+  const base = realPath(dir, workspacePath);
   if (abs === base) return true;
   const prefix = base.endsWith(sep) ? base : base + sep;
   return abs.startsWith(prefix);
@@ -96,9 +127,14 @@ export function scopeWords(scope: TaskScope): string {
   return clip(scope.globs.length > 0 ? scope.globs.join(", ") : "the whole project", 160);
 }
 
-/** Whether one file path may be written: a scope glob, the task's scratch dir, or (with no globs) anywhere in the project. */
+/**
+ * Whether one file path may be written: a scope glob, the task's scratch dir, or (with no
+ * globs) anywhere in the project. The path is judged where it really lands, so a symlink the
+ * worker made (`ln -s / src/out`) cannot carry a write out of the project under a name that
+ * matches the scope.
+ */
 export function judgePath(path: string, guard: ScopeGuard): ScopeVerdict {
-  const relative = relativeToWorkspace(path, guard.workspacePath);
+  const relative = realRelative(path, guard.workspacePath);
   if (relative === null) return { ok: false, path: clip(path), why: "it resolves outside this task's project" };
   if (guard.scope.scratchDir && insideDir(path, guard.scope.scratchDir, guard.workspacePath)) return { ok: true };
   if (guard.scope.globs.length === 0) return { ok: true };
@@ -107,8 +143,81 @@ export function judgePath(path: string, guard: ScopeGuard): ScopeVerdict {
 }
 
 const COMMAND_KEYS = ["command", "cmd", "script"];
-/** Repo moves a worker must not make: people guard them through git-actions.ts; a worker's envelope refuses them outright. Matched anywhere in the command, so a `echo git commit` reads as one too — the guard is conservative on purpose. */
-const REPO_MOVE = /\bgit\s+(?:-{1,2}[\w-]+\s+)*(commit|push|pull|merge|rebase|branch|checkout|switch|tag|cherry-pick|reset|clean)\b/;
+/**
+ * Git's own global options that take a separate value (`git -C <dir> commit`), so the word
+ * after them is still an option's argument and not the subcommand.
+ */
+const GIT_OPTION_VALUE: Record<string, true> = {
+  "-c": true,
+  "-C": true,
+  "--config-env": true,
+  "--exec-path": true,
+  "--git-dir": true,
+  "--work-tree": true,
+  "--namespace": true,
+  "--super-prefix": true,
+  "--attr-source": true,
+};
+/** Git subcommands that move history, a branch, the index, a worktree, or the remote. */
+const GIT_MOVES: Record<string, true> = {
+  commit: true,
+  push: true,
+  pull: true,
+  fetch: true,
+  merge: true,
+  rebase: true,
+  revert: true,
+  branch: true,
+  checkout: true,
+  switch: true,
+  tag: true,
+  "cherry-pick": true,
+  reset: true,
+  restore: true,
+  clean: true,
+  stash: true,
+  am: true,
+  apply: true,
+  rm: true,
+  mv: true,
+  "update-ref": true,
+  "symbolic-ref": true,
+  worktree: true,
+  remote: true,
+  submodule: true,
+  "filter-branch": true,
+  "filter-repo": true,
+};
+/** `gh pr` subcommands that change the pull request or the branch behind it. */
+const GH_PR_MOVES: Record<string, true> = { create: true, merge: true, close: true, reopen: true, ready: true, edit: true };
+
+/**
+ * Repo moves a worker must not make: people guard them through git-actions.ts and the PR
+ * panel; a worker's envelope refuses them outright. The command is split into words and the
+ * first non-option word after `git` is the subcommand, so the spellings that hide one —
+ * `git -C . commit`, `git -c user.name=x commit`, `git --git-dir=.git push` — are read as the
+ * move they are. Matched anywhere in the command, so `echo git commit` reads as one too: the
+ * guard is conservative on purpose, and a command that is not a repo move is never parsed.
+ */
+function isRepoMove(command: string): boolean {
+  const words = command.split(/[\s;|&()<>\n\r]+/).filter((word) => word.length > 0);
+  for (let i = 0; i < words.length; i += 1) {
+    const word = words[i] ?? "";
+    // `/usr/bin/git` and `git.exe` are git too: only the program's own name counts.
+    const program = word.slice(word.lastIndexOf("/") + 1).replace(/\.exe$/i, "");
+    if (program === "git") {
+      let at = i + 1;
+      while (at < words.length) {
+        const next = words[at] ?? "";
+        if (!next.startsWith("-")) break;
+        at += GIT_OPTION_VALUE[next] ? 2 : 1;
+      }
+      if (GIT_MOVES[words[at] ?? ""]) return true;
+    }
+    if (program === "gh" && words[i + 1] === "pr" && GH_PR_MOVES[words[i + 2] ?? ""]) return true;
+  }
+  return false;
+}
 
 /** The first line of a command, as the record names a repo move. */
 function firstLine(text: string, max = 200): string {
@@ -142,7 +251,7 @@ export function judgeCall(name: string, args: unknown, guard: ScopeGuard): Scope
   if (category === "command") {
     const command = commandOf(args);
     // Other shell text is not parsed: a command that writes outside the project is the harness's own business, and the record says the guard saw no repo move rather than claiming the tree is safe.
-    if (command && REPO_MOVE.test(command)) return { ok: false, path: firstLine(command), why: SCOPE_REPO_WHY };
+    if (command && isRepoMove(command)) return { ok: false, path: firstLine(command), why: SCOPE_REPO_WHY };
     return { ok: true };
   }
   return { ok: true };
@@ -175,9 +284,9 @@ export function judgeRequest(request: InteractionRequest, guard: ScopeGuard): Sc
   const category = named !== null ? toolCategory(named) : null;
   if (category !== null && category !== "edit" && category !== "write" && category !== "command") return { ok: true };
   if (category === "command") {
-    return REPO_MOVE.test(text) ? { ok: false, path: firstLine(request.message || request.title), why: SCOPE_REPO_WHY } : { ok: true };
+    return isRepoMove(text) ? { ok: false, path: firstLine(request.message || request.title), why: SCOPE_REPO_WHY } : { ok: true };
   }
-  if (category === null && !REPO_MOVE.test(text)) return { ok: true };
+  if (category === null && !isRepoMove(text)) return { ok: true };
   for (const path of requestPaths(request.title, request.message ?? "")) {
     const verdict = judgePath(path, guard);
     if (!verdict.ok) return verdict;
@@ -211,7 +320,7 @@ export function judgeSettled(name: string, argsText: string, guard: ScopeGuard):
     } catch {
       command = null;
     }
-    if (category === "command" && command && REPO_MOVE.test(command)) return { ok: false, path: firstLine(command), why: SCOPE_REPO_WHY };
+    if (category === "command" && command && isRepoMove(command)) return { ok: false, path: firstLine(command), why: SCOPE_REPO_WHY };
     return { ok: true };
   }
   const paths: string[] = [];

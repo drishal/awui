@@ -285,6 +285,20 @@ permission request against it, so a worker's edits stay inside its assignment.
   is judged as `notes.md` — traversal cannot sneak past the glob.
 - **With no globs**, the worker may write anywhere inside the project; a path resolving outside
   the project is still refused.
+- **A path is judged where it really lands.** The deepest part of it that exists is resolved
+  through every symlink before the globs are matched, so a worker's own `ln -s / src/out` cannot
+  carry a write out of the project under a name the scope allows; a link that stays inside is
+  fine, and a path with no existing ancestor is judged as written.
+- **Repo moves are refused outright**, in the tool call and in a permission request's words: the
+  command is read as words, the first non-option word after `git` is its subcommand, and global
+  options with values (`-C <dir>`, `-c key=value`, `--git-dir=<dir>`) are skipped the way git
+  skips them. `commit`, `push`, `pull`, `fetch`, `merge`, `rebase`, `revert`, `branch`,
+  `checkout`, `switch`, `tag`, `cherry-pick`, `reset`, `restore`, `clean`, `stash`, `am`,
+  `apply`, `rm`, `mv`, `update-ref`, `symbolic-ref`, `worktree`, `remote`, `submodule`,
+  `filter-branch`, and `filter-repo` are moves, as are `gh pr create|merge|close|reopen|ready|edit`.
+  Reads (`git status`, `git diff`, `git log`, `git rev-parse`, `gh pr view`, `gh pr checks`) and
+  staging (`git add`) stay allowed: the guard refuses what moves history, a branch, the remote,
+  or a worktree, and it never claims a shell command it did not read.
 
 **How it is enforced.** The assignment contract travels inside the brief between the
 hidden-envelope markers (the same markers Board consultations use, escaped in the brief first so

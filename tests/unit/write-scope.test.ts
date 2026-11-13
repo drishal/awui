@@ -3,7 +3,10 @@
 // pre-empt writes. Pure on purpose, like the module it judges with; the boundary (chat.ts) and
 // the orchestrator (delegate, watch) see the same verdicts and wording, so the counts and rows
 // never disagree with the guard.
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
 import { normalizeScope, scratchDirFor, judgePath, judgeSettled, wouldRefuse, blockedNotice, landedNotice, scopeNote, makeGuard, assignmentEnvelope, MAX_WRITE_SCOPE_GLOBS } from "../../src/server/orchestration/scope.js";
 import type { TaskScope } from "../../src/server/orchestration/types.js";
 import type { InteractionRequest } from "../../src/shared/protocol.js";
@@ -165,6 +168,85 @@ describe("the wording", () => {
     const note = scopeNote(scopeOf({ globs: ["src/**"], attempted: 3, blocked: 2, landed: 1 }));
     expect(note).toContain("3 out-of-scope writes (2 blocked, 1 landed)");
     expect(scopeNote(scopeOf({ attempted: 1, blocked: 1, landed: 0 }))).toContain("1 out-of-scope write (1 blocked, 0 landed)");
+  });
+});
+
+describe("repo moves, however they are spelled", () => {
+  const bashVerdict = (command: string) => judgeSettled("bash", JSON.stringify({ command }), makeGuard(scopeOf({}), workspace, { prevent: true, detect: true })!);
+
+  it("reads the git options that used to hide the subcommand", () => {
+    for (const command of [
+      "git -C . commit -m 'ship it'",
+      "git -C /somewhere/else push origin main",
+      "git -c user.name=x commit -m 'ship it'",
+      "git -cuser.name=x commit -m 'ship it'",
+      "git --git-dir=.git push",
+      "git --git-dir .git push origin main",
+      "git --work-tree=/tmp push",
+      "/usr/bin/git commit -m x",
+    ]) {
+      const verdict = bashVerdict(command);
+      expect(verdict.ok, command).toBe(false);
+      if (!verdict.ok) expect(verdict.why).toContain("repo moves");
+    }
+  });
+
+  it("reads the subcommands that move history, refs, and worktrees", () => {
+    for (const command of ["git update-ref refs/heads/main HEAD", "git stash", "git am < body.patch", "git worktree add ../elsewhere HEAD", "git reset --hard HEAD~1", "git fetch origin", "gh pr merge 12 --merge", "gh pr close 12"]) {
+      expect(bashVerdict(command).ok, command).toBe(false);
+    }
+  });
+
+  it("never calls a read or a local commit of the index a repo move", () => {
+    for (const command of ["git status --porcelain", "git diff HEAD", "git log -3 --oneline", "git rev-parse HEAD", "git add -A", "git show HEAD:src/app.ts", "gh pr view 12", "gh pr checks 12", "npm test"]) {
+      expect(bashVerdict(command).ok, command).toBe(true);
+    }
+  });
+
+  it("holds a permission request's words to the same reading", () => {
+    const guard = makeGuard(scopeOf({}), workspace, { prevent: true, detect: true })!;
+    expect(wouldRefuse(request({ title: "Allow tool: bash", message: "git -C . commit -am wip" }), guard)).toBe(true);
+    expect(wouldRefuse(request({ title: "Allow tool: bash", message: "gh pr merge 12" }), guard)).toBe(true);
+    expect(wouldRefuse(request({ title: "Allow tool: bash", message: "git status" }), guard)).toBe(false);
+  });
+});
+
+describe("paths are judged where they really land", () => {
+  const roots: string[] = [];
+  afterAll(() => {
+    for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  const project = (): string => {
+    const dir = mkdtempSync(path.join(tmpdir(), "awui-scope-symlink-"));
+    roots.push(dir);
+    mkdirSync(path.join(dir, "src", "real"), { recursive: true });
+    return dir;
+  };
+
+  it("refuses a write through a symlink that leaves the project", () => {
+    const root = project();
+    symlinkSync(tmpdir(), path.join(root, "src", "out"));
+    const guard = makeGuard(scopeOf({ globs: ["src/**"], scratchDir: null }), root, { prevent: true, detect: true })!;
+    const verdict = judgePath("src/out/escape.txt", guard);
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("expected a refusal");
+    expect(verdict.why).toContain("outside this task's project");
+  });
+
+  it("allows a symlink whose target is inside the scope", () => {
+    const root = project();
+    symlinkSync(path.join(root, "src", "real"), path.join(root, "src", "link"));
+    const guard = makeGuard(scopeOf({ globs: ["src/**"], scratchDir: null }), root, { prevent: true, detect: true })!;
+    expect(judgePath("src/link/a.ts", guard).ok).toBe(true);
+  });
+
+  it("refuses a scratch-dir write that really lands outside it", () => {
+    const root = project();
+    const scratch = path.join(root, ".awui", "scratch", "beef");
+    mkdirSync(scratch, { recursive: true });
+    symlinkSync(tmpdir(), path.join(scratch, "out"));
+    const guard = makeGuard(scopeOf({ globs: ["src/**"], scratchDir: scratch }), root, { prevent: true, detect: true })!;
+    expect(judgePath(path.join(scratch, "out", "escape.txt"), guard).ok).toBe(false);
   });
 });
 
