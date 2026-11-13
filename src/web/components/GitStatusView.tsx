@@ -100,7 +100,10 @@ function FileRow({
         </span>
         <span className="git-file-path" title={file.from ? `${file.from} → ${file.path}` : file.path}>
           {file.from && side !== "unstaged" ? <span className="git-file-from">{file.from} → </span> : null}
-          <span className="git-file-dir">{dir}</span>
+          {/* The span is rtl so its head ellipsises; the bdi keeps the text itself left-to-right, or the trailing "/" jumps to the front. */}
+          <span className="git-file-dir">
+            <bdi dir="ltr">{dir}</bdi>
+          </span>
           <span className="git-file-name">{name}</span>
         </span>
         {lines && lines.added !== null && lines.removed !== null ? (
