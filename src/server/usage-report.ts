@@ -18,7 +18,13 @@ const BUDGET_MS = 6000;
 const PARALLEL = 6;
 const TOP_MODELS = 12;
 const TOP_SESSIONS = 8;
-const CACHED_SESSIONS = 600;
+/**
+ * What is kept between reports is bounded by calls, since that is what costs memory (about 100 bytes each);
+ * a cap of 600 sessions once lay below the number of sessions in a long history, so each report evicted what
+ * the next one needed and every one re-read the files.
+ */
+const CACHED_SESSIONS = 5000;
+const CACHED_CALLS = 600_000;
 
 const zero = (): UsageTotals => ({ input: 0, cachedInput: 0, cacheWrite: 0, output: 0, cost: 0, calls: 0, unpriced: 0 });
 
@@ -116,6 +122,14 @@ export function buildReport(
 /** Reads sessions' calls, keeping each session's between reports (the newest version of each). */
 export class UsageReader {
   private cache = new Map<string, { version: string; entries: UsageEntry[] | null }>();
+  private cachedCalls = 0;
+
+  private forget(id: string): void {
+    const old = this.cache.get(id);
+    if (!old) return;
+    this.cachedCalls -= old.entries?.length ?? 0;
+    this.cache.delete(id);
+  }
 
   private async entriesOf(target: UsageTarget, refresh: boolean): Promise<UsageEntry[] | null> {
     if (!target.read) return null;
@@ -124,9 +138,10 @@ export class UsageReader {
     const hit = this.cache.get(session.id);
     if (hit && hit.version === version && !session.liveChatId && !refresh) return hit.entries;
     const entries = await target.read().catch(() => null);
-    this.cache.delete(session.id);
+    this.forget(session.id);
     this.cache.set(session.id, { version, entries });
-    if (this.cache.size > CACHED_SESSIONS) this.cache.delete(this.cache.keys().next().value as string);
+    this.cachedCalls += entries?.length ?? 0;
+    while (this.cache.size > 1 && (this.cache.size > CACHED_SESSIONS || this.cachedCalls > CACHED_CALLS)) this.forget(this.cache.keys().next().value as string);
     return entries;
   }
 

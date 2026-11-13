@@ -107,6 +107,17 @@ describe("usage, added up", () => {
     expect(cut.truncated).toBe(true);
   });
 
+  it("keeps every session of a long history between reports, so a second report reads no file", async () => {
+    const reader = new UsageReader();
+    let reads = 0;
+    const targets = Array.from({ length: 1500 }, (_, i) => ({ session: session(`s${i}`), read: async () => (reads++, [call("2026-10-15T08:00:00Z")]) }));
+    const opts = { days: 7, tz: 0, now: NOW, workspaces: [], unreadable: [] };
+    await reader.report(targets, opts);
+    expect(reads).toBe(1500);
+    const again = await reader.report(targets, opts);
+    expect([reads, again.totals.calls]).toEqual([1500, 1500]);
+  });
+
   it("validates an explicit report refresh", () => {
     expect(usageReportSchema.safeParse({ refresh: "true" }).success).toBe(false);
     expect(usageReportSchema.parse({ refresh: "1" }).refresh).toBe("1");
