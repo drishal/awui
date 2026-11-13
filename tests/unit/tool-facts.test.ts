@@ -31,16 +31,19 @@ describe("test runners", () => {
     expect(f.kind).toBe("test");
     expect(f.facts).toEqual(["25 passed", "1 failed"]);
     expect(f.error).toBe("keeps the order of two lists");
+    expect(f.failed).toBe(true);
   });
   it("reads a passing Vitest run, with colour codes in the way", () => {
     const f = toolFacts(bash("\u001b[32m✓\u001b[39m tests/unit/a.test.ts\n Test Files  1 passed (1)\n      Tests  24 passed (24)\n   Duration  201ms"));
     expect(f.facts).toEqual(["24 passed"]);
     expect(f.error).toBeUndefined();
+    expect(f.failed).toBeUndefined();
   });
   it("reads Jest's summary and the failing test's name", () => {
     const f = toolFacts(bash("FAIL src/a.test.js\n  ● math › adds\n\n    expect(received).toBe(expected)\n\nTests:       1 failed, 2 skipped, 5 passed, 8 total\nTime:        1.2 s"));
     expect(f.facts).toEqual(["5 passed", "1 failed", "2 skipped"]);
     expect(f.error).toBe("adds");
+    expect(f.failed).toBe(true);
   });
   it("reads pytest's last line and the first failure", () => {
     const f = toolFacts(bash("FAILED tests/test_x.py::test_adds - assert 1 == 2\n===== 1 failed, 2 passed in 0.12s =====", "pytest"));
@@ -73,6 +76,7 @@ describe("compilers", () => {
     expect(f.kind).toBe("typecheck");
     expect(f.facts).toEqual(["2 errors in 1 file"]);
     expect(f.error).toBe("src/server/zz.ts:1: TS2322: Type 'string' is not assignable to type 'number'.");
+    expect(f.failed).toBe(true);
     expect(f.rows).toEqual([
       { file: "src/server/zz.ts", line: 1, text: "TS2322: Type 'string' is not assignable to type 'number'." },
       { file: "src/server/zz.ts", line: 2, text: "TS2322: Type 'number' is not assignable to type 'string'." },
@@ -87,6 +91,7 @@ describe("compilers", () => {
     const f = toolFacts(bash(out, "eslint src"));
     expect(f.facts).toEqual(["1 error", "1 warning"]);
     expect(f.error).toBe("/home/me/proj/src/a.ts:12: 'x' is defined but never used");
+    expect(f.failed).toBe(true);
   });
   it("says nothing of clean output", () => {
     expect(toolFacts(bash("", "tsc --noEmit"))).toEqual({ facts: [] });

@@ -220,7 +220,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
       asked ? <IconCheck size={13} /> : <IconRefresh size={13} />
     ) : null;
   return (
-    <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} id={`tool-${item.id}`} data-tool-id={item.id} data-testid="tool-row" data-tool={item.name} data-status={item.status}>
+    <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} id={`tool-${item.id}`} data-tool-id={item.id} data-testid="tool-row" data-outcome={sentence.failed ? "fail" : undefined} data-tool={item.name} data-status={item.status}>
       <div className="drow tool-line">
         <div className="tool-row-line">
           <button
@@ -252,7 +252,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
               ) : null}
             </span>
             <span className="tool-facts">
-              {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : factText ? <span className="tool-fact">{factText}</span> : null}
+              {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : sentence.facts.length > 0 ? <span className="tool-fact">{sentence.facts.map((fact,i) => <span key={i} className={sentence.failed && /\bfailed\b/.test(fact) ? "is-failed" : undefined}>{i > 0 ? " · " : ""}{fact}</span>)}</span> : null}
               {time ? <span className="tool-time"><Rolling text={time} /></span> : null}
             </span>
             {/* Ask to retry cannot sit inside this button, so its twin holds its place here, unseen: the status mark and
@@ -831,7 +831,7 @@ function Answer({
           ) : null}
           {timing ? (
             <span className="answer-timing" data-testid="answer-timing">
-              {timing}
+              <span className="answer-timing-full">{timing}</span><span className="answer-timing-short">{timing.split(" · ")[0]}</span>
             </span>
           ) : null}
         </div>

@@ -24,6 +24,8 @@ export interface ToolSentence {
   facts: string[];
   /** The first line of the failure, for a call that errored. */
   error?: string;
+  /** A parsed result tally contains failures, independent of the command's exit status. */
+  failed?: boolean;
   /** The whole sentence as plain words, for a name and for the live phase. */
   text: string;
 }
@@ -179,7 +181,7 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
     // A run that finished with a failing test says which one, though the call itself did not fail.
     const error = parsed.error ?? (item.status === "error" ? errorLine(item.output) : undefined);
     const tail = rest ? (rest.startsWith(":") ? rest : ` ${rest}`) : "";
-    return { verb, target, ...(rest ? { rest } : {}), code, facts: known, ...(error ? { error } : {}), text: `${verb}${target ? ` ${target}` : ""}${tail}` };
+    return { verb, target, ...(rest ? { rest } : {}), code, facts: known, ...(error ? { error } : {}), ...(parsed.failed ? { failed: true } : {}), text: `${verb}${target ? ` ${target}` : ""}${tail}` };
   };
 
   if (item.subagents) {

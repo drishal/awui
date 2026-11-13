@@ -33,7 +33,19 @@ test("a test run's summary is read from its output: the counts and the failing t
   await sendAndWait(page, "testrun");
   const row = page.locator('[data-tool="bash"]');
   await expect(row.locator(".tool-fact")).toHaveText("1 passed · 1 failed");
+  await expect(row).toHaveAttribute("data-outcome", "fail");
+  await expect(row.locator(".tool-fact .is-failed")).toHaveText("1 failed");
+  const failureColour = await row.locator(".tool-fact .is-failed").evaluate(el => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--danger)";
+    el.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return { danger: getComputedStyle(el).color, expected: colour };
+  });
+  expect(failureColour.danger).toBe(failureColour.expected);
   await expect(row.getByTestId("tool-error")).toHaveText("keeps the order of two lists");
+  expect(await row.locator(".tool-status").evaluate(el => getComputedStyle(el).color)).toBe(await row.locator(".tool-facts").evaluate(el => getComputedStyle(el).color));
 });
 
 test("an opened call is one tile: the sentence keeps its verb and facts, the body says the command and the reason once", async ({ page }) => {

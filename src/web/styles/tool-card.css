@@ -293,6 +293,15 @@
   color: var(--danger);
 }
 
+.tool-row[data-outcome="fail"] .tool-status {
+  color: var(--muted-text);
+}
+
+.tool-fact .is-failed,
+.io-text .is-test-failure {
+  color: var(--danger);
+}
+
 .tool-chevron {
   flex: none;
   color: var(--muted-text);

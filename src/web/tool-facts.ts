@@ -20,6 +20,8 @@ export interface ToolFacts {
   facts: string[];
   /** The first failing test, the first compiler error. */
   error?: string;
+  /** A test/build/typecheck summary reports failures, even if the harness's call itself succeeded. */
+  failed?: boolean;
   rows?: FactRow[];
 }
 
@@ -82,7 +84,7 @@ function jsTests(lines: string[]): ToolFacts | undefined {
       break;
     }
   }
-  return { kind: "test", facts: tally(passed, failed, skipped), ...(error ? { error } : {}) };
+  return { kind: "test", facts: tally(passed, failed, skipped), ...(error ? { error } : {}), ...(failed > 0 ? { failed: true } : {}) };
 }
 
 /** pytest's `===== 1 failed, 2 passed in 0.12s =====`. */
@@ -94,7 +96,7 @@ function pytest(lines: string[]): ToolFacts | undefined {
   const skipped = count(summary, "skipped");
   if (passed + failed + skipped === 0) return undefined;
   const failure = lines.find((l) => /^(?:FAILED|ERROR) \S+/.test(l));
-  return { kind: "test", facts: tally(passed, failed, skipped), ...(failure ? { error: cut(failure.replace(/^(?:FAILED|ERROR) /, "")) } : {}) };
+  return { kind: "test", facts: tally(passed, failed, skipped), ...(failure ? { error: cut(failure.replace(/^(?:FAILED|ERROR) /, "")) } : {}), ...(failed > 0 ? { failed: true } : {}) };
 }
 
 /** cargo test's `test result: FAILED. 3 passed; 1 failed; ...` (one per test binary) and go test's `--- FAIL:` and `ok  pkg` lines. */
@@ -111,7 +113,7 @@ function cargoOrGo(lines: string[]): ToolFacts | undefined {
     }
     const fail = lines.find((l) => /^test .+ \.\.\. FAILED$/.test(l));
     const name = fail ? /^test (.+) \.\.\. FAILED$/.exec(fail)?.[1] : undefined;
-    return { kind: "test", facts: tally(passed, failed, ignored), ...(name ? { error: cut(name) } : {}) };
+    return { kind: "test", facts: tally(passed, failed, ignored), ...(name ? { error: cut(name) } : {}), ...(failed > 0 ? { failed: true } : {}) };
   }
   const verbose = lines.filter((l) => /^\s*--- (?:PASS|FAIL):/.test(l));
   const packages = lines.filter((l) => /^(?:ok|FAIL)\s+\S+\s+(?:[\d.]+s|\(cached\))/.test(l));
@@ -121,11 +123,11 @@ function cargoOrGo(lines: string[]): ToolFacts | undefined {
     const error = name ? { error: cut(name) } : {};
     if (verbose.length > 0) {
       const failed = verbose.filter((l) => /--- FAIL:/.test(l)).length;
-      return { kind: "test", facts: tally(verbose.length - failed, failed, 0), ...error };
+      return { kind: "test", facts: tally(verbose.length - failed, failed, 0), ...error, ...(failed > 0 ? { failed: true } : {}) };
     }
     const failed = packages.filter((l) => l.startsWith("FAIL")).length;
     const ok = packages.length - failed;
-    return { kind: "test", facts: [...(ok > 0 ? [`${plural(ok, "package")} ok`] : []), ...(failed > 0 ? [`${failed} failed`] : [])], ...error };
+    return { kind: "test", facts: [...(ok > 0 ? [`${plural(ok, "package")} ok`] : []), ...(failed > 0 ? [`${failed} failed`] : [])], ...error, ...(failed > 0 ? { failed: true } : {}) };
   }
   return undefined;
 }
@@ -148,6 +150,7 @@ function compiler(lines: string[]): ToolFacts | undefined {
       kind: "typecheck",
       facts: [`${plural(errors, "error")} in ${plural(files.size, "file")}`],
       ...(first?.file ? { error: cut(`${first.file}:${first.line}: ${first.text}`) } : {}),
+      failed: true,
       rows,
     };
   }
@@ -164,7 +167,7 @@ function compiler(lines: string[]): ToolFacts | undefined {
       if (m && !first) first = cut(`${file}:${m[1]}: ${m[2]}`);
     }
     const facts = [e > 0 ? plural(e, "error") : "", w > 0 ? plural(w, "warning") : ""].filter(Boolean);
-    return { kind: "build", facts, ...(first ? { error: first } : {}) };
+    return { kind: "build", facts, ...(first ? { error: first } : {}), ...(e > 0 ? { failed: true } : {}) };
   }
   return undefined;
 }

@@ -9,6 +9,7 @@ import type { LineOrigin } from "../../shared/review.js";
 import { IconCheck, IconCircle, IconDot, IconFile, IconGlobe, IconSearch, IconTerminal, IconX } from "../icons.js";
 import { parseJsonContainer } from "../json-tree.js";
 import { relativePath } from "../turns.js";
+import { toolFacts } from "../tool-facts.js";
 import { FileLink } from "./FileLink.js";
 import { JsonTree } from "./JsonTree.js";
 
@@ -245,6 +246,8 @@ function CardHead({ icon, children, meta, repeats }: { icon: ReactNode; children
 function Output({ item, label = "Output", json = false }: { item: ToolItem; label?: string | null; json?: boolean }) {
   const failed = item.status === "error";
   const text = item.output || (item.status === "running" ? "" : "(no output)");
+  const failedTest = toolFacts(item).failed === true && item.category === "command";
+  const outputLines = failedTest ? text.split("\n") : [];
   if (!text && item.status === "running") {
     return (
       <div className="io-section">
@@ -270,7 +273,7 @@ function Output({ item, label = "Output", json = false }: { item: ToolItem; labe
   return (
     <div className="io-section">
       {label ? <span className="io-label">{label}{item.truncated ? " (truncated)" : ""}</span> : null}
-      <pre className={`io-text${failed ? " is-error" : ""}`}>{text}</pre>
+      <pre className={`io-text${failed ? " is-error" : ""}`}>{failedTest ? outputLines.map((line, i) => <span key={i} className={/^\s*(?:FAIL\b|×\s)/.test(line) ? "is-test-failure" : undefined}>{line}{i < outputLines.length - 1 ? "\n" : ""}</span>) : text}</pre>
     </div>
   );
 }
