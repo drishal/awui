@@ -12,6 +12,7 @@ import { RoomManager } from "../../src/server/boards/manager.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
 import { HarnessRegistry } from "../../src/server/harness/registry.js";
 import type { Herdr } from "../../src/server/herdr.js";
+import type { DeviceHost } from "../../src/server/device-host.js";
 import { Security } from "../../src/server/security.js";
 import { PressureMonitor } from "../../src/server/pressure.js";
 import type { InteractionRequest, PushNote } from "../../src/shared/protocol.js";
@@ -72,6 +73,8 @@ export async function makeTestApp(options: {
   withTerminal?: boolean;
   /** Herdr's panes (a stand-in socket's); none otherwise, whatever herdr runs on this machine. */
   herdr?: Herdr;
+  /** Device hosts (the fake in tests); none otherwise, so the devices route answers 404. */
+  deviceHosts?: DeviceHost[];
   /** The orchestration surface's limits, over the built-in defaults (config.yml's `orchestration:`). */
   orchestrationLimits?: Partial<OrchestrationLimits>;
   /** The routines' run history, when a test drives a routine itself (in memory otherwise). */
@@ -142,6 +145,7 @@ export async function makeTestApp(options: {
     ...(terminals ? { terminals } : {}),
     boards,
     ...(options.herdr ? { herdr: options.herdr } : {}),
+    ...(options.deviceHosts ? { deviceHosts: options.deviceHosts } : {}),
     ...(options.withCheckpoints ? { checkpointsDir: path.join(root, ".state", "checkpoints") } : {}),
     ...(options.withSettings
       ? {

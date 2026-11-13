@@ -137,6 +137,7 @@ import { readAwuiConfig, writeAwuiConfig } from "./awui-settings.js";
 import { breakdownRules, readUserConfig, uiSettings } from "./user-config.js";
 import { agentProfiles } from "./config.js";
 import { HerdrError, type Herdr } from "./herdr.js";
+import type { DeviceHost } from "./device-host.js";
 import { SessionMarks } from "./session-marks.js";
 import { Handovers } from "./handover.js";
 import { AgentStatuses } from "./agent-status.js";
@@ -262,6 +263,8 @@ export interface AppDeps {
   modelCatalog?: ModelCatalog;
   /** Herdr's panes, to mark the sessions they run; none when absent (tests that do not ask for it). */
   herdr?: Herdr;
+  /** Device hosts (emulators/simulators, device-host.ts); none when absent — the route answers 404. */
+  deviceHosts?: DeviceHost[];
   /** Board rooms; without one the board routes answer 404 and ownership filtering is a no-op. */
   boards?: BoardManager;
   /** Agent-set status lines (agent-status.ts); in memory when absent (tests). */
@@ -2305,6 +2308,15 @@ export async function createApp(deps: AppDeps) {
       throw error;
     }
     res.json({ ok: true });
+  });
+
+  // Device hosts (G13's interface, device-host.ts): what emulator/simulator farms hold,
+  // read-only. No host is configured without one; nothing here starts or stops a device,
+  // and a real adb/xcrun integration is documented as outstanding.
+  app.get("/api/devices", requireGrant("chat.read"), async (_req, res) => {
+    if (!deps.deviceHosts || deps.deviceHosts.length === 0) throw new ChatError(404, "no_device_hosts", "No device hosts are configured");
+    const lists = await Promise.all(deps.deviceHosts.map(async (host) => ({ host: host.id, ...(await host.list()) })));
+    res.json({ hosts: lists });
   });
 
   // An image under a prompt (see image-store): the id is the hash of its bytes, so it never changes.

@@ -168,6 +168,10 @@ src/server/
   guests.ts                   Expiring single-chat guest links: SHA-256-hashed token and browser binding, one
                               browser per link, a text-only history, and an owner-reviewed message queue; the web
                               view is `src/web/guest-view.tsx` (standalone /guest/:token, outside the app shell).
+  device-host.ts              Device hosts (G13's interface): an emulator/simulator farm a future terminal surface
+                              could drive; one read-only listing route (`GET /api/devices`), the fake host
+                              (tests/helpers/fake-device-host.ts) is the only implementation, real adb/xcrun
+                              integration and device verification are outstanding.
   project-files.ts            A project's files for @mention pickers (git ls-files, else a bounded walk).
   project-search.ts           Search in project: bounded `git grep -F` (else a scan of project-files' walk).
   file-view.ts                The file viewer: one of the project's own files (project-files' list), realpath-confined, bounded.
