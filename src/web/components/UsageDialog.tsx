@@ -85,7 +85,7 @@ function Heatmap({ byDay }: { byDay: UsageReport["byDay"] }) {
           <SlidingIndicator target={metricsRef} active={metric === "tokens" ? 0 : 1} of="button" className="segmented-pill" />
         </div>
       </div>
-      <div className="usage-heat-scroll">
+      <div className="usage-heat-scroll" data-sparse={weeks < 5 ? "" : undefined} style={{ "--heat-weeks": weeks } as React.CSSProperties}>
         <div className="usage-heat-months" style={{ gridTemplateColumns: `repeat(${weeks}, var(--heat-cell))` }} aria-hidden="true">
           {months.map((m) => (
             <span key={m.col} style={{ gridColumn: m.col + 1 }}>

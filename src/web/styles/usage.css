@@ -457,6 +457,13 @@
   width: max-content;
 }
 
+/* A 7-day range is 1–2 columns: stretch them across the card instead of leaving it empty. */
+.usage-heat-scroll[data-sparse] .usage-heat-months,
+.usage-heat-scroll[data-sparse] .usage-heat-row {
+  width: 100%;
+  grid-template-columns: repeat(var(--heat-weeks, 1), minmax(0, 1fr)) !important;
+}
+
 .usage-heat-months {
   height: 14px;
   color: var(--muted-text);
