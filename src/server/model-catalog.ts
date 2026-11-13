@@ -21,6 +21,8 @@ const FRESH_MS = 60_000;
 const MAX_ENTRIES = 96;
 /** A harness's whole catalog can be long (Hermes lists ~280 models); this bounds one saved entry. */
 const MAX_MODELS = 2000;
+/** How many projects a restart refreshes behind its start: the ones looked at last (each ask is a spawn). */
+const MAX_WARM_PROJECTS = 3;
 
 export interface CatalogAnswer {
   models: ModelInfo[];
@@ -85,6 +87,48 @@ export class ModelCatalog {
       for (const adapter of adapters) {
         if (await this.has(adapter.id, cwd)) continue;
         await this.fetch(adapter, cwd).catch(() => undefined);
+      }
+    });
+    return this.warming;
+  }
+
+  /**
+   * Refresh the saved answers that have gone stale, for the projects asked about most recently (at most
+   * `projects` of them), one harness at a time behind `warm` so it never spawns all at once: a restart
+   * then names a model at the first look instead of after a spawn. `adapters` are the harnesses to use
+   * (the available ones); an entry for a harness not listed is left alone. With nothing saved, the answer
+   * for `fallbackCwd` is filled in instead. Failures are swallowed, and reported once at most: a harness
+   * that is down must neither fail startup nor repeat itself for every project.
+   */
+  warmSaved(adapters: CatalogAdapter[], opts: { projects?: number; fallbackCwd?: string | null; onError?: (error: unknown) => void } = {}): Promise<void> {
+    const { projects = MAX_WARM_PROJECTS, fallbackCwd = null, onError } = opts;
+    this.warming = this.warming.then(async () => {
+      await this.load();
+      let reported = false;
+      const note = (error: unknown): void => {
+        if (reported) return;
+        reported = true;
+        onError?.(error);
+      };
+      const dirs: string[] = [];
+      // Most recently asked for first: `used` is what eviction sorts by.
+      for (const [key] of [...this.entries].sort((a, b) => b[1].used - a[1].used)) {
+        const cwd = key.slice(key.indexOf("\0") + 1);
+        if (!dirs.includes(cwd)) dirs.push(cwd);
+        if (dirs.length >= projects) break;
+      }
+      if (dirs.length === 0) {
+        if (!fallbackCwd) return;
+        for (const adapter of adapters) await this.fetch(adapter, fallbackCwd).catch(note);
+        return;
+      }
+      for (const cwd of dirs) {
+        for (const adapter of adapters) {
+          const entry = this.entries.get(keyOf(adapter.id, cwd));
+          // Only an answer this project already has, and only once it has gone stale: each ask is a spawn.
+          if (!entry || this.now() - entry.at < FRESH_MS) continue;
+          await this.fetch(adapter, cwd).catch(note);
+        }
       }
     });
     return this.warming;

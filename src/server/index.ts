@@ -7,6 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { createApp, RECENT_SESSIONS_PER_HARNESS } from "./app.js";
 import { ChatManager } from "./chats/manager.js";
+import { ModelCatalog } from "./model-catalog.js";
 import { RoomManager } from "./boards/manager.js";
 import { ConfigError, loadConfig, migrateStateDir, orchestrationLimits } from "./config.js";
 import type { OrchestrationLimits } from "./orchestration/limits.js";
@@ -283,6 +284,9 @@ async function main(): Promise<void> {
   await cleanupPastes().catch(() => undefined);
   const pasteCleanupTimer = setInterval(() => void cleanupPastes().catch(() => undefined), 24 * 60 * 60_000);
   pasteCleanupTimer.unref();
+  // The start screen's model answers, shared with the app's models route: after listen, the saved ones are
+  // refreshed behind startup so a restart names a model at the first look (model-catalog.ts, warmSaved).
+  const modelCatalog = new ModelCatalog(path.join(config.stateDir, "model-catalog.json"));
   const order = await SessionOrder.open(config.stateDir);
   const prompts = await SavedPrompts.open(config.stateDir);
   const reviewThreads = await ReviewThreads.open(config.stateDir);
@@ -317,6 +321,7 @@ async function main(): Promise<void> {
     home: config.home,
     registry,
     manager,
+    modelCatalog,
     workspaces,
     security,
     theme,
@@ -406,6 +411,17 @@ async function main(): Promise<void> {
       console.log("  (no built UI found; run `npm run build`, or use `npm run dev`)");
     }
   });
+
+  // The start screen names a model at the first look after a restart: the saved answers for the projects
+  // looked at last are refreshed behind startup, one harness at a time, never holding the server's start.
+  // With nothing saved, the first workspace root's project is filled in; a harness that is down is noted once.
+  void modelCatalog.warmSaved(
+    registry.list().filter((adapter) => registry.isAvailable(adapter.id)),
+    {
+      fallbackCwd: workspaces.rootList[0] ?? config.home,
+      onError: (error) => console.error(`awui: could not warm the model catalog: ${error instanceof Error ? error.message : String(error)}`),
+    },
+  );
 
   let stopping = false;
   const shutdown = async (signal: string) => {

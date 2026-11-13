@@ -129,4 +129,65 @@ describe("model catalog", () => {
     expect(claude.state.asks).toBe(1);
     expect(await catalog.has("claude", "/p")).toBe(true);
   });
+
+  it("refreshes the stale answers of the projects asked about last, one harness at a time", async () => {
+    let now = 0;
+    const catalog = new ModelCatalog(null, () => now);
+    const pi = harness("pi");
+    const omp = harness("omp");
+    const claude = harness("claude");
+    await catalog.get(pi.adapter, "/oldest");
+    now = 1_000;
+    await catalog.get(pi.adapter, "/a");
+    now = 2_000;
+    await catalog.get(omp.adapter, "/b");
+    now = 3_000;
+    await catalog.get(claude.adapter, "/c");
+
+    now = 200_000;
+    let release!: () => void;
+    claude.state.gate = new Promise((r) => (release = r));
+    // The two projects asked about last: /c (claude) and /b (omp). Nothing in /a or /oldest is touched.
+    const warming = catalog.warmSaved([pi.adapter, omp.adapter, claude.adapter], { projects: 2 });
+    await settle();
+    expect([pi.state.asks, omp.state.asks, claude.state.asks]).toEqual([2, 1, 2]);
+    release();
+    await warming;
+    expect([pi.state.asks, omp.state.asks, claude.state.asks]).toEqual([2, 2, 2]);
+
+    // Fresh answers are not asked for again, and a harness handed in that has no saved answer is left alone.
+    now = 210_000;
+    const extra = harness("grok");
+    await catalog.warmSaved([pi.adapter, omp.adapter, claude.adapter, extra.adapter], { projects: 2 });
+    expect([pi.state.asks, omp.state.asks, claude.state.asks, extra.state.asks]).toEqual([2, 2, 2, 0]);
+  });
+
+  it("fills the first project's answers when nothing is saved, and reports a failing harness once", async () => {
+    const catalog = new ModelCatalog(null);
+    const pi = harness("pi");
+    const omp = harness("omp");
+    pi.state.fail = true;
+    const errors: unknown[] = [];
+    await catalog.warmSaved([pi.adapter, omp.adapter], { fallbackCwd: "/root", onError: (error) => errors.push(error) });
+    expect([pi.state.asks, omp.state.asks]).toEqual([1, 1]);
+    expect(await catalog.has("omp", "/root")).toBe(true);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("asks two stale projects again, says once when the harness fails for both, and keeps the last answers", async () => {
+    let now = 0;
+    const catalog = new ModelCatalog(null, () => now);
+    const pi = harness("pi");
+    const omp = harness("omp");
+    await catalog.get(pi.adapter, "/a");
+    await catalog.get(pi.adapter, "/b");
+    await catalog.get(omp.adapter, "/a");
+    now = 200_000;
+    pi.state.fail = true;
+    const errors: unknown[] = [];
+    await catalog.warmSaved([pi.adapter, omp.adapter], { onError: (error) => errors.push(error) });
+    expect([pi.state.asks, omp.state.asks]).toEqual([4, 2]);
+    expect(errors).toHaveLength(1);
+    expect((await catalog.get(pi.adapter, "/a")).models).toHaveLength(1);
+  });
 });

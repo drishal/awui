@@ -59,6 +59,7 @@ src/server/
   workspaces.ts             roots, realpath confinement, folder browsing
   theme.ts                  base16/base24 parsing, contrast-checked CSS variables
   app.ts, index.ts          Express 5 routes, SSE, startup/shutdown
+  model-catalog.ts          one harness's models per project for the start screen: served at any age, saved, a stale one refreshed behind it
   clients.ts                the terminal clients behind the command line: `awui tui` (or the binary as `atui`) and `awui tern`
   clients-module.d.ts       the `awui:clients` module the binary's build bundles (the two clients' entry points)
   install-tui.ts            `awui install tui`: the `atui` symlink (the binary carries the client itself)
@@ -75,6 +76,8 @@ src/tern/                  The Tern pane surface, sharing atui state without own
 ```
 
 **Project isolation.** `Workspaces.open` and every `Workspaces.get` re-resolve the realpath; a replaced project directory cannot quietly point elsewhere and remain an approved workspace. `ManagedWorktrees` creates separate real checkouts under `.awui/worktrees` inside that validated project, serializes create/prune/metadata updates per root, and uses checked atomic metadata writes (`state-file.ts:writeJsonChecked`, preserving unrelated existing stores' write behavior). The native session file stays in its harness's own store and is not cloned into a backing db.
+
+**Model catalog.** The start screen's model and thinking chips ask `/api/harnesses/:id/models?workspaceId=` before any chat exists, and an answer costs a harness spawn (Pi ~4.5 s, OpenCode or omp ~3 s). `model-catalog.ts` keeps one answer per harness and project in `${stateDir}/model-catalog.json`, serves it at once whatever its age, and starts one refresh behind it once it is a minute old; the first look at a project also fills in the other available harnesses' answers there, one spawn at a time. A restart does not wait on a spawn either: after `listen`, `warmSaved` refreshes the saved answers that have gone stale for the three projects asked about last, using the available harnesses only, and fills in the first workspace root's project when nothing is saved yet. Nothing blocks the server's start, and a harness that fails is noted once rather than per project; the route still serves the last answer.
 
 **Status versus transcript.** `/api/overview/events` holds only arrivals that are useful offscreen: chat native id, title, live status and pending question, and room summary. Its replay is bounded at 500 lightweight items and never includes harness text or tool output. The browser opens one refcounted connection through `stream.ts` on the first `useSessions`/`useRooms` mount and closes when both are gone; stale snapshot marker events trigger fallback `/api/sessions` and `/api/rooms` reads (while harness files remain source of truth). Board `RoomManager.subscribe` reuses the room's event log to derive summaries: it never rebuilds native harness streams or mutates their states from a projection.
 
