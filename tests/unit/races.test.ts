@@ -243,6 +243,20 @@ describe("race routes", () => {
     expect(readFileSync(path.join(race.app.project, "blob.bin"))).toEqual(binary);
   }, 30_000);
 
+  it("applies a winner's untracked new files, not only what it committed", async () => {
+    const race = await startRace("edit");
+    await settled(race);
+    const [winner] = two(race);
+    // A member need not commit: its new file is untracked in its own worktree, and a patch
+    // built from a plain `git diff <fork>` would leave it behind while reporting success.
+    writeFileSync(path.join(winner.tree, "src", "loose.ts"), "export const loose = true;\n");
+    const applied = (await race.agent.post(`/api/races/${race.raceId}/winner`).send({ chatId: winner.chatId, mode: "apply" })).body as RaceWinnerResult;
+    expect(applied.applied).toBe(true);
+    expect(readFileSync(path.join(race.app.project, "src", "loose.ts"), "utf8")).toContain("loose = true");
+    // The read never touched the member's own index or visible state.
+    expect(git(winner.tree, "status", "--porcelain")).toContain("?? src/loose.ts");
+  }, 30_000);
+
   it("runs one write per project at a time, so two comparisons cannot apply at once", async () => {
     const race = await startRace("edit");
     const other = await anotherRace(race, "edit", "try2");

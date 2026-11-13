@@ -11,7 +11,7 @@ import path from "node:path";
 import type { ChatItem, ChatStatus, RaceCleanupResult, RaceFile, RaceFileDiff, RaceMemberStatus, RaceMemberView, RaceSummary, RaceWinnerResult, WorkspaceInfo } from "../shared/protocol.js";
 import type { Chat } from "./chats/chat.js";
 import { ChatError, errorMessage } from "./chats/chat.js";
-import { git, gitBuffer } from "./git.js";
+import { git, worktreePatch } from "./git.js";
 import { parseUnified } from "../shared/unified-diff.js";
 import { isObj, readJson, writeJsonChecked } from "./state-file.js";
 import { isWithin } from "./workspaces.js";
@@ -438,8 +438,9 @@ export class Races {
 
   /**
    * Pick a winner. `keep` only records it. `apply` also puts its changes against the
-   * fork point into the project's working tree, unstaged, and only when that checkout
-   * is clean and still at the fork point; nothing is committed, pushed, or moved.
+   * fork point into the project's working tree, unstaged and untracked files included, and
+   * only when that checkout is clean and still at the fork point; nothing is committed,
+   * pushed, or moved.
    */
   async pickWinner(race: RaceRecord, chatId: string, mode: "keep" | "apply", project: RaceProject): Promise<RaceWinnerResult> {
     const member = race.members.find((m) => m.chatId === chatId);
@@ -453,8 +454,9 @@ export class Races {
         if (status.trim()) throw new ChatError(409, "dirty_checkout", "This project has uncommitted changes. Commit or stash them, then pick apply again; nothing was changed");
         const head = (await git(["rev-parse", "--verify", "--end-of-options", "HEAD"], { cwd: project.root, ...READ })).trim();
         if (head !== member.fork) throw new ChatError(409, "head_moved", `The project's HEAD has moved past the fork point, so nothing was applied. Merge its branch \`${member.branch}\` by hand instead`);
-        // Bytes, not text (see `gitBuffer`): `git apply` writes these very bytes back.
-        const patch = await gitBuffer(["diff", ...PATCH_OPTIONS, member.fork], { cwd: member.path, ...READ }).catch((error: unknown) => {
+        // Bytes, not text (see `worktreePatch`): `git apply` writes these very bytes back. A
+        // member need not commit, so its new files are untracked, and the patch carries them.
+        const patch = await worktreePatch(member.path, member.fork, PATCH_OPTIONS, READ).catch((error: unknown) => {
           throw new ChatError(422, "git_failed", errorMessage(error));
         });
         if (patch.length === 0) throw new ChatError(409, "nothing_to_apply", "This member changed nothing against its fork point");
