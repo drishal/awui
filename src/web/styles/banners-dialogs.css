@@ -320,6 +320,13 @@
   .review-label {
     display: none;
   }
+
+  /* An icon + count badge, no border: the header action reads at a glance. */
+  .review-open {
+    border: 0;
+    padding: 0 4px;
+    background: none;
+  }
 }
 
 .review-count {
