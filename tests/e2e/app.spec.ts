@@ -230,8 +230,11 @@ test("the harness menu lists every harness with its mark and accent and works fr
   const marks = menu.locator(".harness-mark");
   await expect(marks).toHaveCount(2);
   await expect(marks.first()).toHaveClass(/is-fallback/);
-  const colours = await marks.evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
+  // The fallback glyph is drawn in currentColor with no tile behind it, so the accent is its text colour.
+  const colours = await marks.evaluateAll((els) => els.map((el) => getComputedStyle(el).color));
   expect(new Set(colours).size).toBe(2);
+  const tiles = await marks.evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
+  expect(tiles.every((c) => c === "rgba(0, 0, 0, 0)")).toBe(true);
   const descriptors = await marks.evaluateAll((els) => els.map((el) => ({ label: el.getAttribute("aria-label"), hidden: el.getAttribute("aria-hidden") })));
   expect(descriptors.every((d) => d.hidden === "true" && !d.label)).toBe(true);
   await page.keyboard.press("ArrowDown");
