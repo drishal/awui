@@ -28,6 +28,9 @@ export const rowId = (index: number): string => `layer.review.body.r${index}`;
 /** The writing input's node id (it is the scroll's last row), for `surface.focus`. */
 export const REVIEW_INPUT_ID = "layer.review.body.writing";
 
+/** A line's number column: right-aligned in five cells, in mono. */
+const lineNo = (line: { line?: number }): string => (line.line !== undefined ? String(line.line).padStart(5) : "     ");
+
 export interface ReviewCx {
   screen: ReviewScreenState;
   rows: ReviewRow[];
@@ -116,7 +119,7 @@ export function reviewNode(cx: ReviewCx): Node {
         ui.text(
           { key: "l", grow: 1, truncate: "end" },
           [
-            span(line.line !== undefined ? String(line.line).padStart(5) : "     ", "muted"),
+            span(lineNo(line), "mono"),
             span(" "),
             ...lineSpans(row),
             ...(changed ? [span("  ↯ changed since", "warning")] : []),
