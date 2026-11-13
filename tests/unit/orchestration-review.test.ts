@@ -550,3 +550,49 @@ describe("review gate guards", () => {
     expect(readFileSync(path.join(app.project, "notes.txt"), "utf8")).toBe("mine\n");
   }, 30_000);
 });
+
+describe("a review decision's target", () => {
+  it("refuses a foreign chat's decision and a workspace the record is not in", async () => {
+    const app = await makeTestApp();
+    t = app;
+    repo(app.project);
+    const elsewhere = path.join(app.root, "elsewhere");
+    mkdirSync(elsewhere, { recursive: true });
+    repo(elsewhere);
+    const agent = await signedIn(app);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: app.project })).body as { id: string };
+    const elsewhereWs = (await agent.post("/api/workspaces/open").send({ path: elsewhere })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as { chatId: string };
+    const other = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as { chatId: string };
+    const token = app.manager.list().find((c) => c.chatId === chat.chatId)?.orchestration?.token;
+    if (!token) throw new Error("no orchestration token");
+    const res = await agent.post("/api/orchestration/call").set("x-awui-orch-token", token).send({ tool: "delegate_task", args: { brief: "edit", isolation: "worktree", notify: "none" } });
+    expect(res.status).toBe(200);
+    const started = res.body.data as { taskId: string };
+    await vi.waitFor(() => {
+      const task = app.manager.get(chat.chatId).snapshot().delegated?.find((t) => t.id === started.taskId);
+      expect(task?.outcome).toBe("done");
+    }, 20_000);
+
+    // Another chat in the same project does not own the task: both directions are refused.
+    const foreign = await agent.post(`/api/chats/${other.chatId}/tasks/${started.taskId}/review`).send({ decision: "apply", note: "", workspaceId: ws.id });
+    expect(foreign.status).toBe(403);
+    expect(foreign.body.code).toBe("not_your_task");
+    const foreignInverse = await agent.post(`/api/chats/${other.chatId}/tasks/${started.taskId}/unreview`).send({});
+    expect(foreignInverse.status).toBe(403);
+
+    // The owner's chat, but a swap of the project the record belongs to: refused by the
+    // record, not trusted from the body, and nothing is written or decided.
+    const swapped = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/review`).send({ decision: "apply", note: "", workspaceId: elsewhereWs.id });
+    expect(swapped.status).toBe(409);
+    expect(swapped.body.code).toBe("wrong_workspace");
+    expect(ledgerRows(app.stateDir).find((row) => row.taskId === started.taskId)?.review).toBeNull();
+    expect(git(app.project, "status", "--porcelain").trim()).toBe("");
+    expect(git(elsewhere, "status", "--porcelain").trim()).toBe("");
+
+    // The owner's own decision still applies normally.
+    const own = await agent.post(`/api/chats/${chat.chatId}/tasks/${started.taskId}/review`).send({ decision: "apply", note: "", workspaceId: ws.id });
+    expect(own.status).toBe(200);
+    expect(own.body.applied).toBe(true);
+  }, 30_000);
+});

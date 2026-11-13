@@ -2575,7 +2575,12 @@ export async function createApp(deps: AppDeps) {
     requireThisMachine(req, res);
     if (!integrationLedger) throw new ChatError(501, "review_off", "Reviews are not wired on this server");
     const input = body(taskReviewDecisionSchema, req);
-    const ws = await workspaces.get(input.workspaceId);
+    // The chat must own the task, and the record's project must be the one the request
+    // names: an apply writes the lead checkout, so a foreign chat or a swapped workspace
+    // is refused here rather than trusted from the body.
+    const record = integrationOf(req.params.id, req.params.taskId);
+    if (record.workspaceId !== input.workspaceId) throw new ChatError(409, "wrong_workspace", "This task's review belongs to another project");
+    const ws = await workspaces.get(record.workspaceId);
     const by = requester(req, res);
     const who = by.local ? "local" : by.authority || by.kind;
     const result = await integrationLedger.reviewTask(req.params.taskId, input.decision, input.note, who, {

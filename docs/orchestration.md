@@ -400,7 +400,9 @@ When an isolated worker settles `done`, its work becomes a review record
 fork point, and the lead checkout's HEAD as it stood then. The task's row and the `task_review`
 tool answer say **unreviewed** until a person decides. The person applies or discards from the
 chat's task panel (`POST /api/chats/:id/tasks/:taskId/review` with `decision`, `note`, and the
-project's `workspaceId`). `POST .../unreview` puts a decision back so a mis-taken one can be taken
+record's own `workspaceId`); both the decision and `POST .../unreview` go through the chat's
+ownership check, and a decision naming a different project than the record answers
+`409 wrong_workspace` before anything is written. `POST .../unreview` puts a decision back so a mis-taken one can be taken
 again: a discard left the worktree untouched, so it is cleared outright, and an applied review is
 undone by reversing the very patch it wrote — the same bytes read back from the worker's tree and
 applied backwards. That inverse holds only while both recorded heads still stand and the lead
