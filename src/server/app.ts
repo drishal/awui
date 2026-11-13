@@ -984,6 +984,15 @@ export async function createApp(deps: AppDeps) {
     authority: String(res.locals.authority ?? ""),
     tailscaleUser: res.locals.hostKind === "remote" ? String(req.headers["tailscale-user-login"] ?? "").toLowerCase() || null : null,
   });
+  /**
+   * Plain reads are open to a signed-in device elsewhere; changing this machine's git
+   * checkout — staging, committing, pushing, merging a stack, checking out a PR, or
+   * applying a reviewed worker into the lead checkout — is not. Tailscale Serve arrives
+   * via loopback but is still a remote device, so it needs the machine itself too.
+   */
+  const requireThisMachine = (req: Request, res: Response): void => {
+    if (!requester(req, res).local || res.locals.hostKind === "remote" || req.headers["tailscale-user-login"]) throw new ChatError(403, "local_only", "Changing this machine's git checkout or pull requests needs the machine itself");
+  };
   app.get("/api/settings", requireGrant("settings.manage"), (_req, res) => {
     res.json(readSettings(settingsCtx(), true));
   });
@@ -1200,6 +1209,7 @@ export async function createApp(deps: AppDeps) {
   // the head branch is looked up server-side with gh, so the client names only the
   // number and a task name, and the tree runs through the ordinary workspace flow.
   app.post("/api/workspaces/:id/worktrees/checkout-pr", requireGrant("workspaces.manage"), async (req, res) => {
+    requireThisMachine(req, res);
     const ws = await workspaces.get(req.params.id);
     const input = body(prCheckoutSchema, req);
     const read = await readProjectConfig(ws.path);
@@ -1235,6 +1245,8 @@ export async function createApp(deps: AppDeps) {
     res.json({ stacks: await Promise.all(stacks.map((stack) => prStacks.view(stack))) });
   });
   app.post("/api/workspaces/:id/pr-stack", requireGrant("workspaces.manage"), async (req, res) => {
+    // A stack layer may push its branch and open a pull request: not a remote device's call.
+    requireThisMachine(req, res);
     const ws = await workspaces.get(req.params.id);
     const input = body(prStackCreateSchema, req);
     const stack = prStacks.list(ws.id)[0] ?? (await prStacks.create(ws.id, ws.name, input.base ?? "main"));
@@ -1244,6 +1256,7 @@ export async function createApp(deps: AppDeps) {
     res.status(201).json({ stack: await prStacks.view(result.stack), layer: result.layer });
   });
   app.post("/api/workspaces/:id/pr-stack/:stackId/merge", requireGrant("workspaces.manage"), async (req, res) => {
+    requireThisMachine(req, res);
     const ws = await workspaces.get(req.params.id);
     const input = body(prStackMergeSchema, req);
     prStacks.required(req.params.stackId);
@@ -1291,8 +1304,11 @@ export async function createApp(deps: AppDeps) {
     res.json(await races.diff(race, req.params.chatId, file, await raceProject(race)));
   });
   app.post("/api/races/:id/winner", requireGrant("chat.write"), async (req, res) => {
-    const race = raceOf(req.params.id);
     const input = body(raceWinnerSchema, req);
+    // Only `apply` writes: it puts the winner's changes into the checkout, so it is the
+    // git panel's write class, not a remote device's call.
+    if (input.mode === "apply") requireThisMachine(req, res);
+    const race = raceOf(req.params.id);
     res.json(await races.pickWinner(race, input.chatId, input.mode, await raceProject(race)));
   });
   app.post("/api/races/:id/cleanup", requireGrant("chat.write"), async (req, res) => {
@@ -1448,9 +1464,11 @@ export async function createApp(deps: AppDeps) {
   });
 
   app.post("/api/workspaces/:id/github/push", requireGrant("chat.write"), async (req, res) => {
+    requireThisMachine(req, res);
     res.json(await pushBranch(await workspaces.get(req.params.id)));
   });
   app.post("/api/workspaces/:id/github/pr", requireGrant("chat.write"), async (req, res) => {
+    requireThisMachine(req, res);
     const ws = await workspaces.get(req.params.id);
     const input = body(gitHubPrSchema, req);
     res.status(201).json(await createPullRequest(ws, input.base, input.title, input.body));
@@ -2550,6 +2568,9 @@ export async function createApp(deps: AppDeps) {
     res.json({ record, headsMatch: heads?.match ?? null, reason: heads?.reason ?? null });
   });
   app.post("/api/chats/:id/tasks/:taskId/review", requireGrant("workspaces.manage"), async (req, res) => {
+    // An apply writes the reviewed worker's changes into the lead checkout: the same
+    // bound as the git panel's own writes, checked before the record or the project.
+    requireThisMachine(req, res);
     if (!integrationLedger) throw new ChatError(501, "review_off", "Reviews are not wired on this server");
     const input = body(taskReviewDecisionSchema, req);
     const ws = await workspaces.get(input.workspaceId);
@@ -2649,9 +2670,9 @@ export async function createApp(deps: AppDeps) {
 
   const gitWrite = async (req: Request<{ id: string }>, res: Response, run: (cwd: string) => Promise<GitStatus>) => {
     const chat = manager.get(req.params.id);
-    // A remote device may read the project's git status but cannot change it; even a full session has this bound.
-    // Tailscale Serve arrives via loopback but remains a remote trusted principal; its requests do not count as this machine.
-    if (!requester(req, res).local || res.locals.hostKind === "remote" || req.headers["tailscale-user-login"]) throw new ChatError(403, "local_only", "Changing this machine's git checkout needs the machine itself");
+    // A remote device may read the project's git status but cannot change it; even a
+    // full session has this bound (the same check gates every other checkout write).
+    requireThisMachine(req, res);
     try {
       return await run(chat.workspace.path);
     } catch (error) {
