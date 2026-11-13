@@ -302,6 +302,62 @@
   color: var(--danger);
 }
 
+/* Tool rows by category: the glyph takes --cat-*, the row text stays --text. */
+.tool-plain-lead,
+.kind-chip {
+  color: var(--cat-run);
+}
+
+.tool-row[data-category="read"] .tool-plain-lead,
+.tool-row[data-category="read"] .kind-chip,
+.tool-row[data-category="search"] .tool-plain-lead,
+.tool-row[data-category="search"] .kind-chip,
+.tool-row[data-category="fetch"] .tool-plain-lead,
+.tool-row[data-category="fetch"] .kind-chip {
+  color: var(--cat-look);
+}
+
+.tool-row[data-category="edit"] .tool-plain-lead,
+.tool-row[data-category="edit"] .kind-chip,
+.tool-row[data-category="write"] .tool-plain-lead,
+.tool-row[data-category="write"] .kind-chip {
+  color: var(--cat-write);
+}
+
+.tool-row[data-category="web"] .tool-plain-lead,
+.tool-row[data-category="web"] .kind-chip {
+  color: var(--cat-web);
+}
+
+.tool-row[data-category="agent"] .tool-plain-lead,
+.tool-row[data-category="agent"] .kind-chip {
+  color: var(--cat-agent);
+}
+
+.tool-row[data-category="other"] .tool-plain-lead,
+.tool-row[data-category="other"] .kind-chip {
+  color: var(--cat-plan);
+}
+
+/* Running: a harness rule and tint; failed: a danger one. Done rows stay grey. */
+.tool-row[data-status="running"] {
+  box-shadow: inset 2px 0 0 var(--harness, var(--accent));
+  background: color-mix(in srgb, var(--harness, var(--accent)) 6%, transparent);
+}
+
+.tool-row[data-status="error"] {
+  box-shadow: inset 2px 0 0 var(--danger);
+}
+
+.tool-row[data-outcome="fail"] {
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
+}
+
+/* Done ✓ quiet at 80 %: the status column's resting colour. */
+.tool-row[data-status="done"]:not([data-outcome="fail"]) .tool-status {
+  color: color-mix(in srgb, var(--ok) 80%, transparent);
+}
+
 .tool-chevron {
   flex: none;
   color: var(--muted-text);

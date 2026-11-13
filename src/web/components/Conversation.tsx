@@ -220,7 +220,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
       asked ? <IconCheck size={13} /> : <IconRefresh size={13} />
     ) : null;
   return (
-    <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} id={`tool-${item.id}`} data-tool-id={item.id} data-testid="tool-row" data-outcome={sentence.failed ? "fail" : undefined} data-tool={item.name} data-status={item.status}>
+    <div className={`tool-row${arrival}${live ? " is-live" : ""}${failed ? " is-failed" : ""}${open ? " is-open" : ""}`} id={`tool-${item.id}`} data-tool-id={item.id} data-testid="tool-row" data-outcome={sentence.failed ? "fail" : undefined} data-category={item.category} data-tool={item.name} data-status={item.status}>
       <div className="drow tool-line">
         <div className="tool-row-line">
           <button
