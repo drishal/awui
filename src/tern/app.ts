@@ -1929,7 +1929,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       return {
         main: ui.col(ui.col({ key: PAGE_KEY, role: "awui.page" }, main)),
         dock: ui.col(dockNode),
-        layer: ui.col(layer),
+        layer: ui.col({ key: "layer", role: "awui.layer" }, layer),
       };
     };
 

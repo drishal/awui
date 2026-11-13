@@ -46,6 +46,11 @@ export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "li
         `--bad: ${scheme.danger}`,
         `--sf-c-error: ${scheme.danger}`,
         `--sf-c-del: ${scheme.danger}`,
+        // Cost is the amber the web UI's rare token is (money the harnesss priced), and a package
+        // install is the success one, each one role in both lookups.
+        `--sf-c-rare: ${scheme.rare}`,
+        `--awui-cost: ${scheme.rare}`,
+        `--awui-npm: ${scheme.ok}`,
       ]
     : [];
   return `[data-role='awui.page'], [data-role='awui.dock'] { ${[...own, ...vars].join("; ")}; }\n`;
@@ -255,5 +260,11 @@ export function stylesheet(width: ChatWidth | null): string {
 
 /* Tabs along the top, when there are two or more. */
 [data-role='awui.tabs'] { margin-bottom: -6px; }
+
+/*
+ * The layer's sheets (the board, active work, git, review, and every overlay): a solid backdrop
+ * like the dock's, so what scrolls under them never shows through, and their cards read on it.
+ */
+[data-role='awui.layer'] { background: ${SOLID}; }
 `;
 }
