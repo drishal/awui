@@ -228,11 +228,12 @@ export function UsageDialog({
         ) : null}
         {report && t ? (
           <div className={`usage-report${busy ? " is-stale" : ""}`}>
+            {/* Only a figure that means something is tinted: tokens (the accent), and the cache share once at least half of the input is a hit. Money is not a warning. */}
             <div className="usage-cards">
               <Card label="Tokens" value={shortTokens(tokensOf(t))} sub={`${t.calls.toLocaleString()} model ${t.calls === 1 ? "call" : "calls"}`} tone="accent" />
               <Card label="Output" value={shortTokens(t.output)} sub={`${shortTokens(t.input)} fresh input`} />
-              <Card label="From cache" value={share === null ? "—" : `${Math.round(share * 100)}%`} sub={`${shortTokens(t.cachedInput)} input tokens`} tone="ok" />
-              <Card label="Cost" value={cost(t)} sub={t.unpriced > 0 ? `${t.unpriced.toLocaleString()} ${t.unpriced === 1 ? "call" : "calls"} not priced` : "every call priced"} tone="warn" />
+              <Card label="From cache" value={share === null ? "—" : `${Math.round(share * 100)}%`} sub={`${shortTokens(t.cachedInput)} input tokens`} tone={share !== null && share >= 0.5 ? "ok" : undefined} />
+              <Card label="Cost" value={cost(t)} sub={t.unpriced > 0 ? `${t.unpriced.toLocaleString()} ${t.unpriced === 1 ? "call" : "calls"} not priced` : "every call priced"} />
               <Card label="Chats" value={t.sessions.toLocaleString()} sub={`with calls in ${days} days`} />
             </div>
 
