@@ -9,7 +9,7 @@ import type { Node } from "@stencil-hq/tern";
 import { applyEdit, draftState, editKey, lineStep, redo, setText, undo, wordStep, type DraftState } from "../../src/tern/draft.js";
 import { filterItems, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
 import { askShape, decorations, dock, inputReady, placeholder, type DockCx } from "../../src/tern/dock.js";
-import { themeSheet } from "../../src/tern/look.js";
+import { stylesheet, themeSheet } from "../../src/tern/look.js";
 import { findHits } from "../../src/tern/find.js";
 import { timingNode } from "../../src/tern/timing.js";
 import { contextNode } from "../../src/tern/context.js";
@@ -269,6 +269,28 @@ describe("the Tern client's typeahead", () => {
     expect(inputReady({ ...booted, opening: true })).toBe(false);
     expect(inputReady({ ...booted, chat: {}, conn: "connected", opening: true })).toBe(false);
     expect(inputReady({ ...booted, chat: { gone: "This chat was closed" }, conn: "connecting" })).toBe(true);
+  });
+});
+
+describe("the Tern sheet's page and dock", () => {
+  const rule = (css: string, role: string) => css.split("\n").find((line) => line.startsWith(`[data-role='${role}'] {`)) ?? "";
+
+  it("insets the page and the dock from a narrow pane's edge, with the longhands Tern reads", () => {
+    for (const width of [null, "wide", "full"] as const) {
+      for (const role of ["awui.page", "awui.dock"]) {
+        const line = rule(stylesheet(width), role);
+        expect(line).toContain("padding-left: clamp(");
+        expect(line).toContain("padding-right: clamp(");
+        // Tern drops a declaration it does not know, silently: padding-inline is one it does not.
+        expect(line).not.toContain("padding-inline");
+      }
+    }
+  });
+
+  it("widens the column's cap by the gutter, so a roomy pane still draws the column's own width", () => {
+    expect(rule(stylesheet(null), "awui.page")).toContain("max-width: calc(780px + 2 * clamp(");
+    expect(rule(stylesheet("wide"), "awui.page")).toContain("max-width: calc(1400px + 2 * clamp(");
+    expect(rule(stylesheet("full"), "awui.page")).toContain("max-width: 100%;");
   });
 });
 

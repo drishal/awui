@@ -74,22 +74,31 @@ const SOLID = "var(--tv-bg, var(--panel, var(--page)))";
 /** A tint laid on the solid background, so a card in the dock is opaque. */
 const solidTint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%, ${SOLID})`;
 
+/** The space between the pane's edge and the page or dock: 18px on a small pane, growing with its width to 44px. */
+const GUTTER = "clamp(18px, 4vw, 44px)";
+
 /**
  * The sheet, under one name so a later send replaces it. The page and the dock read at the
  * web UI's thread width, from config.yml's chat_width (comfortable is the 780px column it has
  * always drawn); the prompt bubble, the tab strip, and the tables are shares of the page, so
  * they follow it without a value of their own.
+ *
+ * A pane narrower than the column (a vertical monitor, a split) used to run the text and the
+ * composer to its very edge, while a wide pane kept a generous margin: the page and the dock
+ * carry a gutter that grows with the pane, and the column's cap is widened by it so a roomy
+ * pane still draws exactly the column's width.
  */
 export function stylesheet(width: ChatWidth | null): string {
   const { page, dock, recent } = ternColumn(width);
+  const cap = (length: string) => (length === "100%" ? length : `calc(${length} + 2 * ${GUTTER})`);
   return `
-[data-role='awui.page'] { width: 100%; max-width: ${page}; margin: 0 auto; font-family: var(--sans); gap: 18px; }
+[data-role='awui.page'] { width: 100%; max-width: ${cap(page)}; margin: 0 auto; padding-left: ${GUTTER}; padding-right: ${GUTTER}; font-family: var(--sans); gap: 18px; }
 [data-role='awui.page'] .md { font-family: var(--sans); }
 /*
  * The dock floats over the conversation as it scrolls: a solid backdrop (blurred too, for a translucent
  * window whose background is itself see-through) so what scrolls under it never shows through its cards.
  */
-[data-role='awui.dock'] { width: 100%; max-width: ${dock}; margin: 0 auto; font-family: var(--sans); gap: 8px; padding-top: 6px; background: ${SOLID}; backdrop-filter: blur(24px); }
+[data-role='awui.dock'] { width: 100%; max-width: ${cap(dock)}; margin: 0 auto; padding-left: ${GUTTER}; padding-right: ${GUTTER}; font-family: var(--sans); gap: 8px; padding-top: 6px; background: ${SOLID}; backdrop-filter: blur(24px); }
 
 /* The header: the title on its own line, then the harness badge, status, and project, as the web UI's. */
 [data-role='awui.head'] { gap: 4px; padding: 2px 0 10px; border-bottom: 1px solid ${tint(8)}; }

@@ -189,8 +189,8 @@ describe("awui tern", () => {
         (
           tern.sent.filter((m) => m.verb === "s" && (m.body as { name?: string }).name === "awui").at(-1)?.body as { css?: string } | undefined
         )?.css ?? "";
-      await until(() => sheet().includes("max-width: 1400px"), "the wide sheet");
-      expect(sheet()).toContain("max-width: 1412px");
+      await until(() => sheet().includes("max-width: calc(1400px + "), "the wide sheet");
+      expect(sheet()).toContain("max-width: calc(1412px + ");
       expect(sheet()).toContain("max-width: 1005px");
 
       // Wide is saved for every device already; the next press saves full through the settings route.
@@ -200,7 +200,7 @@ describe("awui tern", () => {
 
       // And round to comfortable, which is the 780px column the sheet has always drawn.
       tern.type("\x18l");
-      await until(() => sheet().includes("max-width: 780px"), "the comfortable sheet");
+      await until(() => sheet().includes("max-width: calc(780px + "), "the comfortable sheet");
 
       // The palette lists all three; take full from it.
       tern.type("\x0b");
