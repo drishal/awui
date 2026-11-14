@@ -21,6 +21,12 @@ describe("sparkline", () => {
     expect(s.path.startsWith("M3 25 L117 3")).toBe(true);
   });
 
+  it("closes the line down to the floor for the full view's area, and names where it ends", () => {
+    const s = sparkline(pts(0, 100))!;
+    expect(s.end).toEqual({ x: SPARK_W - 3, y: 3 });
+    expect(s.area).toBe(`${s.path} L${SPARK_W - 3} ${SPARK_H - 3} L3 ${SPARK_H - 3} Z`);
+  });
+
   it("thins a long history to 60 points, keeping the ends", () => {
     const values = Array.from({ length: 500 }, (_, i) => i / 5);
     const out = downsample(values);

@@ -23,6 +23,10 @@ export interface Spark {
   points: SparkPoint[];
   /** SVG path data of the line. */
   path: string;
+  /** The same line closed down to the box's floor, for the soft area the full view fills under it. */
+  area: string;
+  /** The latest reading, where the full view draws its dot. */
+  end: { x: number; y: number };
   /** Where the 90 % line sits. */
   warnY: number;
   label: string;
@@ -57,9 +61,12 @@ export function sparkline(history: ContextPoint[]): Spark | null {
   const y = (pct: number) => +(PAD + inner * (1 - pct / 100)).toFixed(2);
   const points = thin.map((p, i): SparkPoint => ({ x: +(PAD + ((SPARK_W - PAD * 2) * i) / (thin.length - 1)).toFixed(2), y: y(p.value), drop: p.drop }));
   const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
+  const head = points[0] as SparkPoint;
+  const end = points[points.length - 1] as SparkPoint;
+  const area = `${path} L${end.x} ${SPARK_H - PAD} L${head.x} ${SPARK_H - PAD} Z`;
   const first = Math.round((thin[0] as { value: number }).value);
   const last = Math.round((thin[thin.length - 1] as { value: number }).value);
   const compactions = thin.filter((p) => p.drop).length;
   const label = `Context per turn: ${first}% … ${last}%${compactions > 0 ? `, compacted ${compactions} ${compactions === 1 ? "time" : "times"}` : ""}`;
-  return { points, path, warnY: y(90), label };
+  return { points, path, area, end: { x: end.x, y: end.y }, warnY: y(90), label };
 }
