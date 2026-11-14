@@ -87,9 +87,10 @@ const LEADER: Array<{ key: string; label: string }> = [
   { key: "k", label: "Agents board" },
   { key: "p", label: "Active work" },
   { key: "l", label: "Chat width" },
-  { key: "u", label: "Usage across chats" },
+  { key: "i", label: "Usage across chats" },
   { key: "y", label: "Copy the last answer" },
-  { key: "j", label: "Git" },
+  { key: "u", label: "Git" },
+  { key: "d", label: "Review changes" },
   { key: "q", label: "Quit" },
 ];
 
