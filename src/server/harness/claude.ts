@@ -173,7 +173,10 @@ export interface ClaudeOptions {
    * delegated child gets, as Claude Code gives its own subagents. Absent means the CLI's default.
    */
   subagentPromptCacheTtl?: "5m" | "1h";
-  /** config.yml's `claude.entrypoint`: the name sent as CLAUDE_CODE_ENTRYPOINT. Absent: none is sent (the CLI says `sdk-cli`). */
+  /**
+   * config.yml's `claude.entrypoint`: the name sent as CLAUDE_CODE_ENTRYPOINT, `awui` by default
+   * (config.ts's claudeSettings). Absent: none is sent, so the CLI labels the chat `sdk-cli`.
+   */
   entrypoint?: string;
   home: string;
   env?: NodeJS.ProcessEnv;
@@ -1061,7 +1064,8 @@ export class ClaudeAdapter implements HarnessAdapter {
   childEnv(): NodeJS.ProcessEnv {
     const env = { ...(this.options.env ?? process.env) };
     delete env.CLAUDECODE;
-    // A value inherited from a parent session names that client, not awui: drop it first, then say who we are if asked to.
+    // A value inherited from a parent session names that client, not awui: drop it first, then say who we
+    // are (`awui` unless config.yml opted out). A shell inside a Claude session hands one down.
     delete env.CLAUDE_CODE_ENTRYPOINT;
     if (this.options.entrypoint) env.CLAUDE_CODE_ENTRYPOINT = this.options.entrypoint;
     if (!env.ENABLE_TOOL_SEARCH?.trim()) env.ENABLE_TOOL_SEARCH = "true";

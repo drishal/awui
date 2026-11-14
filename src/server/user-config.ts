@@ -112,6 +112,14 @@ const claudeEntrypointSchema = z
   .regex(/^[A-Za-z][A-Za-z0-9._-]{0,31}$/, "must be a plain name: letters, digits, '.', '_' or '-', at most 32 characters, starting with a letter")
   .refine((v) => !(CLAUDE_BUILT_IN_ENTRYPOINTS as readonly string[]).includes(v.toLowerCase()) && !/^sdk-/i.test(v), "must not be one of Claude Code's own labels (cli, sdk-*, claude-vscode, claude-desktop, claude-code)");
 
+/**
+ * `false`, or the key with nothing after it, asks for the CLI's own label instead of awui's: the variable is
+ * removed and the chat is `sdk-cli`, which drains the 5-hour window 1.7–3× faster for the same tokens
+ * (anthropics/claude-code#97074). It exists because a label is a claim about who is calling, and that is the
+ * user's call to make.
+ */
+const claudeEntrypointValueSchema = z.union([z.literal(false), claudeEntrypointSchema], { error: "must be a plain name of awui's own, or false to leave Claude Code's own label (sdk-cli) alone" });
+
 const schema = z
   .object({
     port: z.number().int().optional(),
@@ -173,9 +181,10 @@ const schema = z
     /**
      * Claude Code's own settings (file-only: read at startup, no Settings dialog field). The prompt
      * cache lifetime its subagents use, `5m` or `1h`, which a delegated child here is given too, and an
-     * `entrypoint` name for `CLAUDE_CODE_ENTRYPOINT` (see ClaudeSettings.entrypoint).
+     * `entrypoint` name for `CLAUDE_CODE_ENTRYPOINT` (see ClaudeSettings.entrypoint), `awui` unless the
+     * file opts out with `false`.
      */
-    claude: z.object({ subagent_prompt_cache_ttl: z.enum(["5m", "1h"]).optional(), entrypoint: claudeEntrypointSchema.optional() }).strict().optional(),
+    claude: z.object({ subagent_prompt_cache_ttl: z.enum(["5m", "1h"]).optional(), entrypoint: claudeEntrypointValueSchema.nullable().optional() }).strict().optional(),
     /** Herdr's API socket, when not the default session's (file-only; HERDR_SOCKET_PATH wins). */
     herdr_socket: z.string().trim().min(1).max(4096).optional(),
     /**

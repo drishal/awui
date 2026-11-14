@@ -150,9 +150,8 @@ export interface ClaudeSettings {
   subagentPromptCacheTtl: "5m" | "1h" | null;
   /**
    * `claude.entrypoint`: a name of awui's own for the `CLAUDE_CODE_ENTRYPOINT` its Claude chats announce
-   * themselves with. null (the default): the variable is removed, so the CLI labels the chat `sdk-cli`.
-   * Never one of Claude Code's own labels (the schema refuses them). Anthropic has not said whether a custom
-   * name is allowed (anthropics/claude-code#97074), which is why it is opt-in.
+   * themselves with. `awui` unless the file opts out; null means send nothing, so the CLI labels the chat
+   * `sdk-cli`. Never one of Claude Code's own labels (the schema refuses them).
    */
   entrypoint: string | null;
 }
@@ -192,7 +191,13 @@ export function acpAgents(c: UserConfig | undefined, home: string): AcpAgentConf
 }
 
 export function claudeSettings(c: UserConfig | undefined): ClaudeSettings {
-  return { subagentPromptCacheTtl: c?.claude?.subagent_prompt_cache_ttl ?? null, entrypoint: c?.claude?.entrypoint ?? null };
+  const asked = c?.claude?.entrypoint;
+  return {
+    subagentPromptCacheTtl: c?.claude?.subagent_prompt_cache_ttl ?? null,
+    // awui names itself unless config.yml says `false` (or leaves the key empty). A label of its own is what
+    // keeps a chat metered like an interactive session instead of the CLI's `sdk-cli` default.
+    entrypoint: asked === false || asked === null ? null : (asked ?? "awui"),
+  };
 }
 
 /** One shared agent profile, as config.yml's `agent_profiles:` states it. */
