@@ -150,7 +150,10 @@ export function stylesheet(width: ChatWidth | null): string {
  */
 [data-role^='awui.fold'] { border: 1px solid ${tint(10)}; border-radius: 12px; background: ${tint(2)}; }
 /* A closed card is as tall as an open card's row and in the same text size, as the web UI's are. */
-[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 1em; padding: 7px 12px !important; min-height: 34px; }
+[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 1em; padding: 7px 12px 7px 10px !important; min-height: 34px; }
+/* The chevron at the head's right end, pointing down while closed and up while open, as the web UI's card's. */
+[data-role^='awui.fold'] > .sf-section-head .sf-chev { order: 9; margin-left: 6px; color: var(--t3); transform: rotate(180deg); }
+[data-role^='awui.fold'].collapsed > .sf-section-head .sf-chev { transform: none; }
 /* Tern's head hover is a pill 3 px wider than its section on each side: inside the card, it fills the frame
    exactly instead, rounded with it (the top corners while open, all four when the card is closed). */
 [data-role^='awui.fold'] > .sf-section-head { margin: 0 !important; border-radius: 11px 11px 0 0; }
@@ -172,6 +175,10 @@ export function stylesheet(width: ChatWidth | null): string {
 [data-role='awui.calls'] > :last-child.collapsed .sf-tool-head { border-radius: 0 0 11px 11px !important; }
 [data-role='awui.calls'] > * + * { border-top: 1px solid ${tint(6)}; }
 [data-role^='awui.fold'] > .sf-section-body { margin: 0; padding: 0; border: 0; }
+/* One settled call is its own card: its rows with no head, so no hairline over them, and the corners are its own. */
+[data-role='awui.fold-single'] > [data-role='awui.calls'] { border-top: 0; }
+[data-role='awui.fold-single'] [data-role='awui.calls'] > :first-child .sf-tool-head { border-radius: 11px 11px 0 0 !important; }
+[data-role='awui.fold-single'] [data-role='awui.calls'] > :only-child.collapsed .sf-tool-head { border-radius: 11px !important; }
 [data-role^='awui.fold'] > .sf-section-body::before { display: none; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-ic { width: 19px; height: 19px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--t3); background: none; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-ic svg { width: 14px; height: 14px; }
@@ -183,6 +190,8 @@ export function stylesheet(width: ChatWidth | null): string {
 [data-role='awui.tool-agent'] .sf-tool-ic { color: var(--awui-thinking, var(--t3)); }
 [data-role='awui.tool-other'] .sf-tool-ic { color: var(--warn); }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-title { font-weight: 500; font-family: var(--sans); }
+/* Words after the verb ("Updated the plan") read in the reading font; a path, command, or pattern keeps the code font. */
+[data-role='awui.calls'] .sf-tool-target.text { font-family: var(--sans); }
 /* The row's line is a flex row ending in a spacer: the facts go after it, to the right edge, as the web UI's. */
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-sp { order: 1; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-meta { order: 2; font-family: var(--sans); color: var(--t3); }

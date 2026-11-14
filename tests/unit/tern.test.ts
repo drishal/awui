@@ -13,7 +13,7 @@ import { stylesheet, themeSheet } from "../../src/tern/look.js";
 import { findHits } from "../../src/tern/find.js";
 import { timingNode } from "../../src/tern/timing.js";
 import { contextNode } from "../../src/tern/context.js";
-import { conversation, firstFailedCall, foldHead, foldHeadSpans, PAGE_ID, toolNode, type ConversationCx } from "../../src/tern/view.js";
+import { conversation, firstFailedCall, foldHead, foldHeadSpans, foldTitle, PAGE_ID, singleCall, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
 import { clientCommand, sourceRun } from "../../src/server/clients.js";
 import { DARK, LIGHT } from "../../src/atui/theme.js";
@@ -479,8 +479,8 @@ describe("the Tern conversation", () => {
     const buildTurnsOf = (chat: ChatState) => buildTurns(chat.items, chat.status);
     const reply = (id: string, text: string): ChatItem => ({ kind: "assistant", id, text, thinking: "", streaming: false });
     const prompt = { kind: "user", id: "u1", text: "go", images: [] } as unknown as ChatItem;
-    /** Two stretches of work with a reply between them; the first ran `first`. */
-    const twoStretches = (first: Partial<ToolItem>): ChatItem[] => [prompt, tool({ id: "t1", ...first }), reply("a1", "Found it."), tool({ id: "t2", status: "running" })];
+    /** Two stretches of work with a reply between them; the first ran `first` and one more call (one settled call alone is a card, not a fold). */
+    const twoStretches = (first: Partial<ToolItem>): ChatItem[] => [prompt, tool({ id: "t1", ...first }), tool({ id: "t1b" }), reply("a1", "Found it."), tool({ id: "t2", status: "running" })];
     const folds = (cx: ConversationCx) => conversation(cx).flatMap(all).filter((n) => n.kind === "section" && String(n.props.role).startsWith("awui.fold"));
 
     it("starts open while it runs, and a stretch that already ended in a reply folds unless a call in it failed", () => {
@@ -496,7 +496,7 @@ describe("the Tern conversation", () => {
     it("lets a fold the user toggled stay as they left it, and opens nothing in a settled turn", () => {
       const live = chatOf(twoStretches({ status: "error" }), "running");
       expect(folds(cxOf(live, { folds: new Map([["u1#0", false]]) })).map((n) => n.props.collapsed)).toEqual([true, false]);
-      const settled = chatOf([prompt, tool({ id: "t1", status: "error" }), reply("a1", "It broke.")], "idle");
+      const settled = chatOf([prompt, tool({ id: "t1", status: "error" }), tool({ id: "t1b" }), reply("a1", "It broke.")], "idle");
       expect(folds(cxOf(settled)).map((n) => n.props.collapsed)).toEqual([true]);
       expect(folds(cxOf(settled, { folds: new Map([["u1#0", true]]) })).map((n) => n.props.collapsed)).toEqual([false]);
     });
@@ -547,9 +547,20 @@ describe("the Tern conversation", () => {
   it("words a fold the web UI's way", () => {
     const turn = { live: false, startedAt: 0, endedAt: 27_000 } as Turn;
     const seg = { counts: { command: 3 } } as unknown as WorkSegment;
-    expect(foldHead(turn, seg, "only")).toBe("Worked for 27s · 3 commands");
-    expect(foldHead(turn, seg, "last")).toBe("3 commands");
-    expect(foldHead({ ...turn, live: true }, seg, "only")).toBe("Working · 3 commands");
+    expect(foldHead(turn, seg, "only")).toBe("Worked for 27s · Used 3 tools");
+    expect(foldHead(turn, seg, "last")).toBe("Used 3 tools");
+    expect(foldHead({ ...turn, live: true }, seg, "only")).toBe("Working · Used 3 tools");
+    // What they were by kind is the head's hover text.
+    expect(foldTitle({ counts: { command: 3, edit: 1 } } as unknown as WorkSegment)).toBe("1 edit, 3 commands");
+  });
+
+  it("draws one settled call as its own card, as the web UI does", () => {
+    const thought = { kind: "assistant", id: "a0", text: "", thinking: "hm", streaming: false } as ChatItem;
+    expect(singleCall(false, [thought, tool({})])).toBe(true);
+    // A live stretch keeps its header, and two calls or a notice among them make a fold.
+    expect(singleCall(true, [tool({})])).toBe(false);
+    expect(singleCall(false, [tool({}), tool({ id: "t2" })])).toBe(false);
+    expect(singleCall(false, [tool({}), { kind: "notice", id: "n", text: "x", level: "info" } as unknown as ChatItem])).toBe(false);
   });
 
   it("adds the turn's +/− to the first stretch and a tally of failed calls", () => {
@@ -557,9 +568,12 @@ describe("the Tern conversation", () => {
     const items = [tool({ status: "error" }), tool({ id: "t2" }), tool({ id: "t3", status: "error" })];
     const seg = { counts: { command: 3 }, items } as unknown as WorkSegment;
     const text = (place: "first" | "last") => foldHeadSpans(turn, seg, place).map((s) => s.t).join("");
-    expect(text("first")).toBe("Worked for 27s · 3 commands  +12 −3  2 failed");
-    expect(text("last")).toBe("3 commands  2 failed");
-    expect(foldHeadSpans(turn, { counts: { command: 1 }, items: [tool({})] } as unknown as WorkSegment, "only").map((s) => s.t).join("")).toBe("Worked for 27s · 1 command  +12 −3");
+    expect(text("first")).toBe("Worked for 27s · Used 3 tools  +12 −3  2 failed");
+    expect(text("last")).toBe("Used 3 tools  2 failed");
+    expect(foldHeadSpans(turn, { counts: { command: 1 }, items: [tool({})] } as unknown as WorkSegment, "only").map((s) => s.t).join("")).toBe("Worked for 27s · Used 1 tool  +12 −3");
+    // A settled turn's "Changed N files" row under the answer carries the +/−, so the head does not repeat it.
+    const changed = { ...turn, changedFiles: ["/w/a.ts"] } as Turn;
+    expect(foldHeadSpans(changed, seg, "first").map((s) => s.t).join("")).toBe("Worked for 27s · Used 3 tools  2 failed");
   });
   describe("the prompt's row", () => {
     const noop = () => undefined;

@@ -11,7 +11,7 @@ import { span, ui, html, type IconName, type Json, type Node, type PropsOf, type
 import { formatFullWhen, formatWhen } from "../web/turn-time.js";
 import { iconStack, toolKind, toolKinds, type ToolKind } from "../web/tool-kinds.js";
 import type { AssistantItem, ChatItem, HarnessStatus, JobBlock, JobTone, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../shared/protocol.js";
-import { buildTurns, countSummary, formatDuration, latestThought, segmentStartsOpen, workAfterSegment, workSegments, type Turn, type WorkSegment } from "../web/turns.js";
+import { buildTurns, countParts, formatDuration, latestThought, segmentStartsOpen, workAfterSegment, workSegments, type Turn, type WorkSegment } from "../web/turns.js";
 import { isBusy } from "../web/session-groups.js";
 import { plainTitle } from "../web/plain-title.js";
 import { chatJobs, jobElapsed, jobStart, type ChatJob } from "../web/jobs.js";
@@ -489,24 +489,39 @@ export function firstFailedCall(turns: Turn[], page: string): { turn: number; fo
   return null;
 }
 
-/** A stretch's fold line: "Worked for 27s · 3 commands", "Working · 2 reads" while it runs, "1 command" between replies. */
+/** How many calls a stretch made, from its counts by kind. */
+const callCount = (segment: WorkSegment) => Object.values(segment.counts).reduce((sum, n) => sum + (n ?? 0), 0);
+
+/**
+ * A stretch's fold line, worded as the web UI's card header: "Worked for 27s · Used 3 tools", "Working · Used 2
+ * tools" while it runs, "Used 1 tool" between replies. What the calls were by kind is the head's hover text
+ * (`foldTitle`), as the web UI's count's title.
+ */
 export function foldHead(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only"): string {
-  const counts = countSummary(segment.counts);
+  const calls = callCount(segment);
+  const used = calls > 0 ? `Used ${plural(calls, "tool")}` : "";
   const live = turn.live && (place === "last" || place === "only");
-  if (!live && (place === "middle" || place === "last")) return counts ? counts.charAt(0).toUpperCase() + counts.slice(1) : "Worked";
-  if (live) return counts ? `Working · ${counts}` : "Working";
+  if (!live && (place === "middle" || place === "last")) return used || "Worked";
+  if (live) return used ? `Working · ${used}` : "Working";
   const duration = turn.startedAt !== undefined ? formatDuration((turn.endedAt ?? turn.startedAt) - turn.startedAt) : null;
   const head = duration ? `Worked for ${duration}` : "Worked";
-  return counts ? `${head} · ${counts}` : head;
+  return used ? `${head} · ${used}` : head;
+}
+
+/** The fold head's hover text: everything the stretch ran, by kind ("1 edit, 3 commands"). */
+export function foldTitle(segment: WorkSegment): string {
+  return countParts(segment.counts).map((p) => `${p.n} ${p.word}`).join(", ");
 }
 
 /**
- * The fold line with what the web UI's header adds to it: the turn's +/− on the first stretch, and a tally of
- * failed calls (a settled turn opens nothing, so the tally is how a failure is found; C-x f goes to it).
+ * The fold line with what the web UI's header adds to it: the turn's +/− on the first stretch (unless the
+ * "Changed N files" row under the answer says it already), and a tally of failed calls (a settled turn opens
+ * nothing, so the tally is how a failure is found; C-x f goes to it).
  */
 export function foldHeadSpans(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only"): Span[] {
   const spans: Span[] = [span(foldHead(turn, segment, place), "muted")];
-  const stat = place === "first" || place === "only" ? turn.changeStat : null;
+  const changedRow = !turn.live && (turn.changedFiles?.length ?? 0) > 0;
+  const stat = (place === "first" || place === "only") && !changedRow ? turn.changeStat : null;
   if (stat) {
     const more = stat.partial ? "+" : "";
     if (stat.added > 0) spans.push(span(`  +${stat.added}${more}`, "ins"));
@@ -535,9 +550,26 @@ export function foldHeadNode(turn: Turn, segment: WorkSegment, place: "first" | 
           more > 0 ? ui.text({ key: "more", role: "awui.kinds-more" }, `+${more}`) : null,
         )
       : null,
-    ui.text({ key: "t", grow: 1, truncate: "end" }, words),
+    ui.text({ key: "t", grow: 1, truncate: "end", title: foldTitle(segment) }, words),
     stat.length > 0 ? ui.text({ key: "s", role: "awui.work-stat" }, stat.flatMap((s, i) => (i > 0 ? [" ", s] : [s]))) : null,
   );
+}
+
+/**
+ * Whether a stretch is one settled call (with its thoughts): the web UI draws it as its own card, since a
+ * "Worked for 1s · Used 1 tool" header over that one call would only say it twice. A live stretch keeps its
+ * header, which carries the phase while the run goes.
+ */
+export function singleCall(live: boolean, items: ChatItem[]): boolean {
+  return !live && items.filter((item) => item.kind === "tool").length === 1 && items.every((item) => item.kind === "tool" || item.kind === "assistant");
+}
+
+/**
+ * That one call's card: the rows in the fold's frame with no head over them. The keys are the fold's (`w<n>` or
+ * `after`, then `items`), so "Show failed calls" finds the row by the same id either way.
+ */
+function singleCard(key: string, children: Node[]): Node {
+  return ui.col({ key, role: "awui.fold-single" }, ui.col({ key: "items", role: "awui.calls" }, children));
 }
 
 /** The prompt: a pill, its images, and (picked) the things a past prompt offers. */
@@ -669,17 +701,19 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
       });
       if (answerThought) children.push(thoughtNode(answerThought, cx, `${answerThought.id}~t`));
       parts.push(
-        ui.section(
-          {
-            key: `w${i}`,
-            role: live ? "awui.fold-live" : "awui.fold",
-            head: foldHeadNode(turn, segment, place),
-            collapsible: true,
-            collapsed: !open,
-            onToggle: (e) => cx.on.fold(key, !e.collapsed),
-          },
-          ui.col({ key: "items", role: "awui.calls" }, children),
-        ),
+        singleCall(live, segment.items)
+          ? singleCard(`w${i}`, children)
+          : ui.section(
+              {
+                key: `w${i}`,
+                role: live ? "awui.fold-live" : "awui.fold",
+                head: foldHeadNode(turn, segment, place),
+                collapsible: true,
+                collapsed: !open,
+                onToggle: (e) => cx.on.fold(key, !e.collapsed),
+              },
+              ui.col({ key: "items", role: "awui.calls" }, children),
+            ),
       );
     }
     if (segment.reply) parts.push(ui.md({ key: `r${i}`, role: "awui.reply", stream: segment.reply.streaming }, segment.reply.text));
@@ -711,17 +745,19 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
       return n === null ? [] : Array.isArray(n) ? n : [n];
     });
     parts.push(
-      ui.section(
-        {
-          key: "after",
-          role: turn.live ? "awui.fold-live" : "awui.fold",
-          head: foldHeadNode(turn, after, "last"),
-          collapsible: true,
-          collapsed: !open,
-          onToggle: (e) => cx.on.fold(after.key, !e.collapsed),
-        },
-        ui.col({ key: "items", role: "awui.calls" }, children),
-      ),
+      singleCall(turn.live, after.items)
+        ? singleCard("after", children)
+        : ui.section(
+            {
+              key: "after",
+              role: turn.live ? "awui.fold-live" : "awui.fold",
+              head: foldHeadNode(turn, after, "last"),
+              collapsible: true,
+              collapsed: !open,
+              onToggle: (e) => cx.on.fold(after.key, !e.collapsed),
+            },
+            ui.col({ key: "items", role: "awui.calls" }, children),
+          ),
     );
   }
   if (answer?.error) parts.push(ui.card({ key: "failed", tone: "error", head: [span("The run failed", "error")] }, ui.text({ key: "e", text: answer.error })));

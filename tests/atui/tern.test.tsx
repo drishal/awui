@@ -287,19 +287,30 @@ describe("awui tern", () => {
   it("sends a message and draws the prompt, the folded work, and the streamed answer", async () => {
     client = await start();
     const { tern, app, until } = client;
-    tern.type("tool please");
-    await until(() => tern.nodes.get("dock.d.comp.ed")?.p.text === "tool please", "the draft");
+    tern.type("manycalls please");
+    await until(() => tern.nodes.get("dock.d.comp.ed")?.p.text === "manycalls please", "the draft");
     tern.type("\r");
-    await until(() => tern.text("main").includes("Echo: tool please") && app.chat()?.status === "idle", "the answer");
+    await until(() => tern.text("main").includes("Echo: manycalls please") && app.chat()?.status === "idle", "the answer");
     const main = tern.text("main");
-    expect(main).toContain("tool please");
-    expect(main).toMatch(/Worked for (?:<1s|\d+(?:\.\d)?s) · /);
+    expect(main).toContain("manycalls please");
+    expect(main).toMatch(/Worked for (?:<1s|\d+(?:\.\d)?s) · Used 12 tools/);
     expect(tern.find("md").some((n) => n.p.role === "awui.reply" && n.p.stream === false)).toBe(true);
     // The fold opens on a toggle from Tern, and holds the tool rows.
     const fold = tern.find("section").find((n) => n.p.role === "awui.fold");
     expect(fold).toBeDefined();
     expect(tern.find("tool").length).toBeGreaterThan(0);
     expect(tern.nodes.get("dock.d.comp.ed")?.p.text ?? "").toBe("");
+    expect(tern.errors).toEqual([]);
+  });
+
+  it("draws one settled call as its own card, with no fold header over it", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("tool please\r");
+    await until(() => tern.text("main").includes("Echo: tool please") && app.chat()?.status === "idle", "the answer");
+    expect(tern.find("col", "main").some((n) => n.p.role === "awui.fold-single")).toBe(true);
+    expect(tern.find("section", "main").some((n) => n.p.role === "awui.fold")).toBe(false);
+    expect(tern.text("main")).not.toContain("Worked for");
     expect(tern.errors).toEqual([]);
   });
 
@@ -392,7 +403,8 @@ describe("awui tern", () => {
   it("toggles a fold from Tern's event and keeps it open", async () => {
     client = await start();
     const { tern, app, until } = client;
-    tern.type("tool please\r");
+    // Several calls: one settled call alone is a card of its own, with no fold to toggle.
+    tern.type("manycalls please\r");
     await until(() => app.chat()?.status === "idle" && tern.find("section").some((n) => n.p.role === "awui.fold"), "the fold");
     const fold = tern.find("section").find((n) => n.p.role === "awui.fold") as { id: string; p: Record<string, unknown> };
     expect(fold.p.collapsed).toBe(true);
@@ -449,8 +461,9 @@ describe("awui tern", () => {
     await until(() => tern.text("layer").includes("No call has failed in this chat"), "the notice");
     expect(tern.reveals).toEqual([]);
 
-    tern.type("toolfail\r");
-    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: toolfail"), "the failing run");
+    // A read before the failing command, so the two make a fold (one call alone is a card with no fold to open).
+    tern.type("tool toolfail\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("Echo: tool toolfail"), "the failing run");
     const fold = tern.find("section").filter((n) => n.p.role === "awui.fold").at(-1) as { id: string; p: Record<string, unknown> };
     // The head is a node of its own (the icon stack, the words, the +/−); the prop names it by id.
     expect(tern.text(String(fold.p.head))).toContain("1 failed");
