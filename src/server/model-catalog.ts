@@ -72,6 +72,30 @@ export class ModelCatalog {
     return answerOf(await this.fetch(adapter, cwd));
   }
 
+  /**
+   * The kept answer for `adapterId` in `cwd` at any age, or null: never asks the harness. For a chat that is
+   * still starting, whose own harness cannot say yet which models it has.
+   */
+  async peek(adapterId: string, cwd: string): Promise<CatalogAnswer | null> {
+    await this.load();
+    const entry = this.entries.get(keyOf(adapterId, cwd));
+    return entry ? answerOf(entry) : null;
+  }
+
+  /**
+   * Keep the models a started chat's harness listed, when nothing is kept for that harness and folder yet, so
+   * the next resume has a list to show while its harness starts. Stamped as already stale (no default model is
+   * known from a chat), so the start screen's next look still refreshes it behind its answer.
+   */
+  async learn(adapterId: string, cwd: string, config: { models: ModelInfo[]; thinkingLevels: string[] }): Promise<void> {
+    await this.load();
+    const key = keyOf(adapterId, cwd);
+    if (this.entries.has(key) || config.models.length === 0) return;
+    this.entries.set(key, { models: config.models.slice(0, MAX_MODELS), thinkingLevels: config.thinkingLevels, defaultModel: null, at: 0, used: this.now() });
+    this.evict();
+    this.save();
+  }
+
   /** Whether an answer is kept for `adapter` in `cwd`, at any age. */
   async has(adapterId: string, cwd: string): Promise<boolean> {
     await this.load();

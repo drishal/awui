@@ -46,6 +46,26 @@ function statuses(chat: { subscribe(s: ChatSubscriber): () => void }): ChatStatu
 }
 
 describe("resume from the session file", () => {
+  it("tells the catalog what the harness listed once it is up", async () => {
+    const { manager, adapter, nativeId } = await storedSession(50);
+    const learned: Array<{ adapterId: string; models: number }> = [];
+    manager.configLearned = (adapterId, _cwd, config) => void learned.push({ adapterId, models: config.models.length });
+    const chat = await manager.resume(adapter, ws, nativeId);
+    await until(() => chat.status === "idle");
+    expect(learned).toEqual([{ adapterId: adapter.id, models: expect.any(Number) }]);
+    expect(learned[0]?.models).toBeGreaterThan(0);
+  });
+  it("lists the saved catalog's models while Starting, and the harness's own once it is up", async () => {
+    const { manager, adapter, nativeId } = await storedSession(300);
+    const models = await adapter.listModels();
+    manager.placeholderConfig = async () => ({ model: null, thinkingLevel: null, models, thinkingLevels: ["low"] });
+    const chat = await manager.resume(adapter, ws, nativeId);
+    expect(chat.status).toBe("starting");
+    expect(chat.snapshot().config.models).toEqual(models);
+    expect(chat.snapshot().config.model).toBeNull();
+    await until(() => chat.status === "idle");
+    expect(chat.snapshot().config.model).toBe("fake/echo");
+  });
   it("shows the transcript at once, Starting, then Idle with the harness's config", async () => {
     const { manager, adapter, nativeId } = await storedSession(300);
     const t0 = Date.now();

@@ -397,6 +397,11 @@ export async function createApp(deps: AppDeps) {
       }, 15_000);
   pressureTimer?.unref();
   const modelCatalog = deps.modelCatalog ?? new ModelCatalog(deps.stateDir ? path.join(deps.stateDir, "model-catalog.json") : null);
+  manager.placeholderConfig = async (adapterId, cwd) => {
+    const saved = await modelCatalog.peek(adapterId, cwd);
+    return saved && saved.models.length > 0 ? { model: null, thinkingLevel: null, models: saved.models, thinkingLevels: saved.thinkingLevels } : null;
+  };
+  manager.configLearned = (adapterId, cwd, config) => void modelCatalog.learn(adapterId, cwd, config).catch(() => undefined);
   const chatSearcher = new ChatSearcher();
   const usageReader = new UsageReader();
   if (deps.checkpointsDir) manager.checkpoints = { service: new Checkpoints(deps.checkpointsDir), sessionsDir: path.join(deps.checkpointsDir, "sessions") };

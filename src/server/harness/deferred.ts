@@ -48,6 +48,8 @@ export class DeferredLiveChat implements LiveChat {
     private readonly transcript: { items: ChatItem[]; title: string | null },
     start: () => Promise<LiveChat>,
     describe: (error: unknown) => string,
+    /** The models and levels shown while the harness starts (the saved catalog's): the harness's own config replaces it. */
+    private readonly placeholder: ChatConfig | null = null,
   ) {
     this.ready = start().then(
       async (live) => {
@@ -105,7 +107,7 @@ export class DeferredLiveChat implements LiveChat {
   }
 
   async getConfig(): Promise<ChatConfig> {
-    return this.real ? this.real.getConfig() : NO_CONFIG;
+    return this.real ? this.real.getConfig() : (this.placeholder ?? NO_CONFIG);
   }
 
   async getContextUsage(): Promise<ContextUsage | null> {

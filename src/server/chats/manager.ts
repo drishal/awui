@@ -2,7 +2,7 @@
 // native session: `harnessId + nativeId -> chatId`. Another terminal or
 // process running the same harness is NOT locked out (documented in README).
 import { randomBytes, randomUUID } from "node:crypto";
-import type { ChatLineage, DelegatedTaskView, InteractionRequest, LimitAccount, Plan, PushNote, WorkspaceInfo } from "../../shared/protocol.js";
+import type { ChatConfig, ChatLineage, DelegatedTaskView, InteractionRequest, LimitAccount, Plan, PushNote, WorkspaceInfo } from "../../shared/protocol.js";
 import { DeferredLiveChat } from "../harness/deferred.js";
 import type { HarnessAdapter, LiveChat } from "../harness/types.js";
 import { Chat, ChatError, errorMessage, type ChatOwner } from "./chat.js";
@@ -94,6 +94,14 @@ export class ChatManager {
    * writer the lock exists to prevent cannot start from a route nobody watched.
    */
   handedOver?: (sessionId: string) => string | null;
+  /**
+   * The model list a resumed chat shows while its harness is still starting (the saved catalog's answer
+   * for that harness and folder; null when there is none). Only the list: which model the session is on
+   * is the harness's to say, so none is named until it is up.
+   */
+  placeholderConfig?: (adapterId: string, cwd: string) => Promise<ChatConfig | null>;
+  /** A resumed chat's harness came up and listed its models: the catalog can keep them for the next resume's placeholder. */
+  configLearned?: (adapterId: string, cwd: string, config: ChatConfig) => void;
   /**
    * Hibernation for idle finished chats. When set, the reaper parks (disposes) a chat that has
    * been hidden — unviewed and unread — past `afterMs`: its harness child goes, its session's
@@ -317,10 +325,13 @@ export class ChatManager {
       const transcript = adapter.readTranscript ? await adapter.readTranscript({ cwd: workspace.path, nativeId }).catch(() => null) : null;
       let live: LiveChat;
       if (transcript) {
+        const placeholder = await this.placeholderConfig?.(adapter.id, workspace.path).catch(() => null);
         live = new DeferredLiveChat(nativeId, transcript, async () => {
           await prepareSpawnEnv(workspace.path);
-          return adapter.openChat(req);
-        }, (error) => `${adapter.displayName} failed to resume: ${errorMessage(error)}`);
+          const real = await adapter.openChat(req);
+          void real.getConfig().then((config) => this.configLearned?.(adapter.id, workspace.path, config), () => undefined);
+          return real;
+        }, (error) => `${adapter.displayName} failed to resume: ${errorMessage(error)}`, placeholder ?? null);
       } else {
         const known = await adapter.listSessions(workspace.path);
         if (!known.some((s) => s.nativeId === nativeId)) {

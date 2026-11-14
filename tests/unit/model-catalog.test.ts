@@ -61,6 +61,25 @@ describe("model catalog", () => {
     expect((await catalog.get(adapter, "/p")).defaultModel?.model).toBe("pi/two");
   });
 
+  it("peeks at what it kept without asking, and learns a started chat's list only where nothing is kept", async () => {
+    const catalog = new ModelCatalog(null, () => 100_000);
+    const { adapter, state } = harness("pi");
+    expect(await catalog.peek("pi", "/p")).toBeNull();
+    await catalog.learn("pi", "/p", { models: state.models, thinkingLevels: ["low"] });
+    expect(await catalog.peek("pi", "/p")).toEqual({ models: state.models, thinkingLevels: ["low"], defaultModel: null });
+    expect(state.asks).toBe(0);
+    // Learned answers are stale already: the first real look asks the harness and replaces it.
+    expect((await catalog.get(adapter, "/p")).defaultModel).toBeNull();
+    await settle();
+    expect(state.asks).toBe(1);
+    expect((await catalog.get(adapter, "/p")).defaultModel?.model).toBe("pi/one");
+    // An answer the harness gave is never replaced by a chat's, and an empty list is never learned.
+    await catalog.learn("pi", "/p", { models: [], thinkingLevels: [] });
+    await catalog.learn("pi", "/q", { models: [], thinkingLevels: [] });
+    expect(await catalog.peek("pi", "/q")).toBeNull();
+    expect((await catalog.peek("pi", "/p"))?.defaultModel?.model).toBe("pi/one");
+  });
+
   it("keeps the last answer when a refresh behind it fails, and fails only with nothing to serve", async () => {
     let now = 0;
     const catalog = new ModelCatalog(null, () => now);
