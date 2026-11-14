@@ -73,6 +73,8 @@ const tint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%,
 const SOLID = "var(--tv-bg, var(--panel, var(--page)))";
 /** A tint laid on the solid background, so a card in the dock is opaque. */
 const solidTint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%, ${SOLID})`;
+/** The prompt bubble: the web UI's --bubble, the accent a tenth into a raised surface. */
+const BUBBLE = `color-mix(in srgb, var(--accent) 10%, ${solidTint(9)})`;
 
 /** The space between the pane's edge and the page or dock: 18px on a small pane, growing with its width to 44px. */
 const GUTTER = "clamp(18px, 4vw, 44px)";
@@ -122,10 +124,10 @@ export function stylesheet(width: ChatWidth | null): string {
 .state.asks::before { color: var(--warn); }
 .state.failed::before { color: var(--bad); }
 
-/* A prompt: a pill on the right, as in the web UI. */
+/* A prompt: a pill on the right, as in the web UI, tinted with the accent as its --bubble is. */
 [data-role='awui.ask'] { align-items: flex-end; gap: 4px; }
-[data-role='awui.prompt'] { align-self: flex-end; max-width: 82%; padding: 9px 15px; border-radius: 14px; background: ${tint(11)}; }
-[data-role='awui.prompt'].sf-act:hover { background: ${tint(15)}; }
+[data-role='awui.prompt'] { align-self: flex-end; max-width: 82%; padding: 10px 16px; border-radius: 14px; background: ${BUBBLE}; }
+[data-role='awui.prompt'].sf-act:hover { background: color-mix(in srgb, ${INK} 5%, ${BUBBLE}); }
 [data-role='awui.prompt-acts'] { gap: 2px; }
 [data-role='awui.prompt-acts'] .sf-icon, [data-role='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 5px; border-radius: 8px; }
 [data-role='awui.prompt-acts'] .sf-icon:hover, [data-role='awui.answer-acts'] .sf-icon:hover { color: var(--t1); background: ${tint(9)}; }
@@ -214,6 +216,11 @@ export function stylesheet(width: ChatWidth | null): string {
 [data-role='awui.working'] { color: var(--t2); }
 [data-role='awui.after'] { color: var(--t3); font-size: 0.9em; }
 [data-role='awui.render'] { border-radius: 12px; }
+/* A plan: the web UI's card, edged and washed in the accent, its head a small uppercase "Plan" in the accent. */
+[data-role='awui.plan'] { border: 1px solid ${tint(30, "var(--accent)")}; border-radius: 12px; background: ${tint(5, "var(--accent)")}; box-shadow: none !important; }
+[data-role='awui.plan'] .md > :first-child { margin-top: 0 !important; }
+[data-role='awui.plan'] > .sf-card-head { color: var(--accent); font-size: 0.82em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+[data-role='awui.plan'] > .sf-card-head .sf-chev { color: var(--t3); }
 
 /* The empty chat: a welcome with the harnesses and this project's recent sessions. */
 [data-role='awui.welcome'] { align-items: center; gap: 14px; padding-top: 12vh; }
@@ -245,6 +252,10 @@ export function stylesheet(width: ChatWidth | null): string {
 /* The todo card over the composer, as the web UI's status stack. */
 /* One panel radius for every dock card (todos, queue, request, composer), so they stack as one column. */
 [data-role='awui.todos'] { border-radius: 16px; background: ${solidTint(4)} !important; }
+/* Rows as close as the web UI's tree, and a finished item a small check in the success colour rather than a filled disc. */
+[data-role='awui.todos'] .sf-ck-ph { min-height: 22px; }
+[data-role='awui.todos'] .sf-ck-item { min-height: 20px; }
+[data-role='awui.todos'] .sf-ck-item.st-done .sf-ck-g { background: none !important; color: var(--ok) !important; }
 .send { border-radius: 999px; min-width: 26px; padding: 2px 8px; text-align: center; color: var(--t1); background: ${tint(16)}; }
 .send.ready { color: var(--page, #000); background: ${INK}; }
 .send.stop { color: var(--page, #000); background: ${HARNESS}; }

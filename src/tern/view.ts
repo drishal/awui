@@ -701,7 +701,8 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
   });
 
   for (const plan of turn.plans) {
-    parts.push(ui.card({ key: `plan-${plan.id}`, head: [span("Plan", "strong")], collapsible: true, collapsed: false }, ui.md({ key: "m" }, plan.plan)));
+    // The web UI's plan card: a "Plan" eyebrow in the accent over the plan, its own title the plan's heading.
+    parts.push(ui.card({ key: `plan-${plan.id}`, role: "awui.plan", head: [span("Plan")], collapsible: true, collapsed: false }, ui.md({ key: "m" }, plan.plan)));
   }
   for (const page of turn.renders) {
     // Tern runs no scripts, so an agent's HTML page opens in the browser, from the web UI's copy of this chat.
