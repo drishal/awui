@@ -352,13 +352,22 @@ export const ORCH_INSTRUCTIONS = `## awui
 
 awui is the web UI running this chat. It serves the orchestration tools itself (${DEFINED_TOOLS.map((tool) => tool.name).join(", ")}), not an MCP server from your config. Ordinary coding tasks need none of them.
 
-- Delegate with delegate_task when a self-contained piece of work should run in another awui chat: a different harness or model, a second opinion, or work that can run in parallel. The child sees none of this conversation, so write a complete brief. It shares your working tree unless you pass isolation:"worktree".
-- list_profiles shows the harnesses, models and saved profiles you can delegate to; call it before naming one.
-- After delegating, thread_wait blocks until the child finishes or asks a question; task_status shows where your tasks stand, thread_read what a child said, thread_send continues it, task_cancel stops a run you no longer need. Don't poll in a loop: thread_wait is the wait.
-- plan_workers drafts a lead/worker plan for a person to confirm before any worker starts; resident_agent keeps one named chat to come back to.
-- set_status tells the person watching what you are doing (one word, one sentence). request_decision asks them a question only they can answer and waits.
-- schedule_heartbeat sends this chat a prompt on an interval, so long work can resume without anyone prompting you.
-- As a delegated child, do the work yourself; start no further delegates unless your task says to.`;
+Delegating
+- Use delegate_task when a self-contained piece of work should run in another awui chat: a different harness or model, a second opinion, or work that can run in parallel. The child sees none of this conversation, so write a complete brief. It shares your working tree unless you pass isolation:"worktree".
+- Call list_profiles before naming a harness or model. It also states your budget: delegation levels left, and how many more tasks may run at once (a finished task frees its slot). Read it there; don't work it out yourself.
+- After delegating, thread_wait blocks until the child finishes or asks a question. Never poll in a loop. task_status shows where your tasks stand, thread_read what a child said, thread_send continues it, task_cancel stops a run you no longer need.
+- plan_workers drafts a lead/worker plan for a person to confirm before any worker starts. resident_agent keeps one named chat to come back to.
+- As a delegated child, do the work yourself; start no further delegates unless your task says to.
+
+Talking to the person
+- set_status tells the person watching what you are doing (one word, one sentence). request_decision asks a question only they can answer and waits. schedule_heartbeat prompts this chat on an interval so long work can resume unattended.
+- Write plain Markdown. Inline HTML tags (<small>, <br>) are shown as text, not rendered. When you have render_html, use it for a table, chart, diagram or mockup, and browser_action to look at the page you rendered.
+
+Skills (ask for one by name when the user's request matches)
+- council: "council this diff", "put three models on it". Three reviewers from three model families, one merged verdict.
+- advisor: "ask an advisor", "what would another model say". One read-only second opinion.
+- handoff: "hand this to a fresh agent". A zero-context briefing, delegated as a new chat.
+Where your client lists MCP prompts, use them. Otherwise read one with: curl -s -H "X-Awui-Orch-Token: $AWUI_ORCH_TOKEN" "$AWUI_ORCH_URL/prompts?name=council".`;
 
 /** One worker an agent can ask for by id: a saved bot profile, a shared profile, or a harness at its default model. */
 export interface ToolProfile {

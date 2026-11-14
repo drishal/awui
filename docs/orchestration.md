@@ -49,8 +49,12 @@ parameter schemas come from `GET /tools` (or the catalogue served from it), so
 Every route says whose tools these are. Each description in the catalogue opens with `awui: `, the MCP
 servers answer `initialize` with a title and `instructions` (awui is the web UI running the chat), and the
 Pi/omp extensions register a `awui · <tool>` label, a prompt line for Pi's "Available tools" list, and one
-guideline naming every tool as awui's. The words the model is told once (whose tools these are, when to
-delegate, not to poll) are `ORCH_INSTRUCTIONS` in `orchestration/tools.ts`, served as `instructions` by
+guideline naming every tool as awui's. The words the model is told once are `ORCH_INSTRUCTIONS` in
+`orchestration/tools.ts`, in three groups: *delegating* (when to, writing a complete brief, `list_profiles` before
+naming a model and for the budget, `thread_wait` instead of polling, a child does its own work), *talking to the
+person* (`set_status`, `request_decision`, `schedule_heartbeat`; plain Markdown, since inline HTML such as
+`<small>` is shown as text; `render_html` for a table or chart and `browser_action` to look at it) and *skills*
+(the three below, each with the words that call for it, and how to read one). They are served as `instructions` by
 `GET /tools`, by the HTTP MCP endpoint and, through the same fetch, by the stdio bridge (Claude Code shows
 an MCP server's instructions with its tools); the Pi/omp extension passes them to Pi as its guideline. They
 stay under Codex's 4,000-byte limit.
@@ -100,7 +104,7 @@ token header alone, never a cookie, so a signed-in device elsewhere cannot mint 
 
 ```
 GET  /api/orchestration/tools              → { tools: [{ name, description, parameters }], instructions }
-GET  /api/orchestration/prompts            → { prompts: [{ name, description, text }] }
+GET  /api/orchestration/prompts[?name=council]  → { prompts: [{ name, description, text }] }, or just the one named
 POST /api/orchestration/call               → { ok: true, text, data }
      X-Awui-Orch-Token: <32 hex>              or { ok: false, code, message }
      { "tool": "list_profiles", "args": {} }
@@ -194,6 +198,17 @@ refused with `delegated_caller`, because a heartbeat would wake it after its tas
 watcher to read the answer and no write-scope guard to hold it. The schedule is keyed to the chat's
 own harness session, survives a restart, and only that session can cancel it.
 
+### Tools that are not orchestration
+
+Three more tools come from awui's own extension and MCP files, not from the catalogue above, and each
+harness gets only the ones it can carry (the transport table is in [harnesses.md](harnesses.md)):
+
+| Tool | What it does | Chats that have it |
+|---|---|---|
+| `render_html` | Publishes one self-contained HTML page (a chart, table, diagram, mockup) above the turn's answer, in a sandboxed frame that receives the theme as CSS variables ([usage](usage.md)) | Pi, omp, Awui, Claude Code, Codex, DSH, OpenCode, Grok Build; not Hermes |
+| `browser_action` | Looks at and drives a page the chat rendered (snapshot, click, fill, scroll, screenshot) in a bounded headless browser; never an arbitrary URL | the chats that have `render_html` |
+| `eval_python` | Runs a short snippet in a throwaway tmp dir, with a timeout and bounded output | the Awui harness only |
+
 ## Decision gates
 
 `request_decision` is how a delegated worker blocks on an explicit human decision. The question
@@ -241,6 +256,20 @@ receive them as **MCP prompts** from the same `awui-orchestrate` server that car
 (`prompts/list` and `prompts/get`), backed by `GET /api/orchestration/prompts`, which serves
 `skills/<name>/SKILL.md` itself; the compiled binary embeds the same three files, so a packaged
 awui offers them too. Grok Build gets that server too, as an ACP stdio entry on the session.
+Pi and omp have no prompt mechanism, but their chats carry awui's token in the environment, so the guidance
+names each skill with the words that call for it and tells the agent to read one with
+`curl -s -H "X-Awui-Orch-Token: $AWUI_ORCH_TOKEN" "$AWUI_ORCH_URL/prompts?name=council"` (the same words, one
+skill, an unknown name answers `invalid_request` and lists the three). The same sentence goes to every harness,
+since the guidance is one text.
+
+| Harness | How the skill reaches the agent |
+|---|---|
+| Claude Code, Codex, DeepSeek Harness | MCP prompts from `awui-orchestrate`; named in the guidance |
+| Grok Build | the same server as an ACP stdio entry; shown only if Grok's client lists prompts |
+| OpenCode | MCP prompts from its per-chat `awui-o-<id>` server, where its client shows them |
+| Pi, omp | named in the guidance; read with the `curl` above |
+| Hermes | no awui tools in a chat yet: read `skills/<name>/SKILL.md` or paste it |
+
 Whether a client shows MCP prompts as commands is **unverified** except for Claude Code, which
 documents them; Codex, DSH, and Grok may only expose them programmatically. Pi and omp have a
 tools-only extension API and no prompt mechanism, OpenCode gets the prompts from that same

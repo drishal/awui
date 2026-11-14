@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChatSnapshot, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { ORCH_SKILL_NAMES, orchestrationSkills } from "../../src/server/orchestration/skills.js";
+import { ORCH_INSTRUCTIONS } from "../../src/server/orchestration/tools.js";
 import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
 
 const root = path.join(import.meta.dirname, "..", "..");
@@ -92,11 +93,24 @@ describe("the orchestration skills", () => {
       expect(prompt.description.length).toBeGreaterThan(40);
     }
 
+    // `?name=` narrows it to one skill (Pi and omp read theirs with curl); an unknown name says what exists.
+    const one = await agent.get("/api/orchestration/prompts?name=council").set("x-awui-orch-token", token);
+    expect((one.body.prompts as Array<{ name: string }>).map((prompt) => prompt.name)).toEqual(["council"]);
+    const unknown = await agent.get("/api/orchestration/prompts?name=nope").set("x-awui-orch-token", token);
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.message).toContain("council, advisor, handoff");
+
     // Same rule as the catalogue: no token, no prompts, and never another chat's.
     const absent = await agent.get("/api/orchestration/prompts");
     expect(absent.status).toBe(401);
     expect(absent.body.code).toBe("bad_orch_token");
     expect((await agent.get("/api/orchestration/prompts").set("x-awui-orch-token", "0".repeat(32))).status).toBe(401);
+  });
+
+  it("tells every harness about each skill by name, inside Codex's 4,000-byte limit", () => {
+    expect(Buffer.byteLength(ORCH_INSTRUCTIONS)).toBeLessThan(4000);
+    for (const name of ORCH_SKILL_NAMES) expect(ORCH_INSTRUCTIONS).toContain(`- ${name}: `);
+    expect(ORCH_INSTRUCTIONS).toContain("/prompts?name=");
   });
 
   it("builds every served skill into the binary's assets", () => {

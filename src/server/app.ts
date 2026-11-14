@@ -698,7 +698,11 @@ export async function createApp(deps: AppDeps) {
       const token = req.get("x-awui-orch-token") ?? "";
       orchOn();
       if (token === "" || !manager.knowsOrchToken(token)) throw denial(401, "bad_orch_token", "Not a live chat's orchestration token");
-      const skills = await orchestrationSkills();
+      const all = await orchestrationSkills();
+      // `?name=council` narrows the answer to one skill, for an agent that reads it with curl (Pi and omp have no prompt mechanism).
+      const only = typeof req.query.name === "string" ? req.query.name : null;
+      const skills = only === null ? all : all.filter((skill) => skill.name === only);
+      if (only !== null && skills.length === 0) throw denial(400, "invalid_request", `No skill named ${only}; they are ${all.map((skill) => skill.name).join(", ")}`);
       res.json({ prompts: skills.map(({ name, description, text }) => ({ name, description, text })) });
     } catch (error) {
       if (!orchFailed(res, error)) throw error;
