@@ -221,6 +221,7 @@ export function stylesheet(width: ChatWidth | null): string {
 [data-role='awui.plan'] .md > :first-child { margin-top: 0 !important; }
 [data-role='awui.plan'] > .sf-card-head { color: var(--accent); font-size: 0.82em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
 [data-role='awui.plan'] > .sf-card-head .sf-chev { color: var(--t3); }
+[data-role='awui.plan'] > .sf-card-head .sf-icon { color: var(--accent); }
 
 /* The empty chat: a welcome with the harnesses and this project's recent sessions. */
 [data-role='awui.welcome'] { align-items: center; gap: 14px; padding-top: 12vh; }

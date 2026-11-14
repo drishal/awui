@@ -556,6 +556,14 @@ export function foldHeadNode(turn: Turn, segment: WorkSegment, place: "first" | 
 }
 
 /**
+ * A plan's Markdown without a leading heading that only says "Plan": the card's eyebrow already does, and a
+ * larger "Plan" under the small one flips the hierarchy. A heading that names the plan stays.
+ */
+export function planBody(plan: string): string {
+  return plan.replace(/^\s*#{1,6}[ \t]+(the[ \t]+)?plan[ \t]*:?[ \t]*#*[ \t]*(\r?\n|$)/i, "").replace(/^\s*\n/, "");
+}
+
+/**
  * Whether a stretch is one settled call (with its thoughts): the web UI draws it as its own card, since a
  * "Worked for 1s · Used 1 tool" header over that one call would only say it twice. A live stretch keeps its
  * header, which carries the phase while the run goes.
@@ -701,8 +709,8 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
   });
 
   for (const plan of turn.plans) {
-    // The web UI's plan card: a "Plan" eyebrow in the accent over the plan, its own title the plan's heading.
-    parts.push(ui.card({ key: `plan-${plan.id}`, role: "awui.plan", head: [span("Plan")], collapsible: true, collapsed: false }, ui.md({ key: "m" }, plan.plan)));
+    // The web UI's plan card: the plan glyph and a "Plan" eyebrow in the accent over the plan, its own title the plan's heading.
+    parts.push(ui.card({ key: `plan-${plan.id}`, role: "awui.plan", icon: "plan", head: [span("Plan")], collapsible: true, collapsed: false }, ui.md({ key: "m" }, planBody(plan.plan))));
   }
   for (const page of turn.renders) {
     // Tern runs no scripts, so an agent's HTML page opens in the browser, from the web UI's copy of this chat.

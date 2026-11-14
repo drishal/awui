@@ -13,7 +13,7 @@ import { stylesheet, themeSheet } from "../../src/tern/look.js";
 import { findHits } from "../../src/tern/find.js";
 import { timingNode } from "../../src/tern/timing.js";
 import { contextNode } from "../../src/tern/context.js";
-import { conversation, firstFailedCall, foldHead, foldHeadSpans, foldTitle, PAGE_ID, singleCall, toolNode, type ConversationCx } from "../../src/tern/view.js";
+import { conversation, firstFailedCall, foldHead, foldHeadSpans, foldTitle, PAGE_ID, planBody, singleCall, toolNode, type ConversationCx } from "../../src/tern/view.js";
 import { parseTernArgs } from "../../src/tern/args.js";
 import { clientCommand, sourceRun } from "../../src/server/clients.js";
 import { DARK, LIGHT } from "../../src/atui/theme.js";
@@ -561,6 +561,15 @@ describe("the Tern conversation", () => {
     expect(singleCall(true, [tool({})])).toBe(false);
     expect(singleCall(false, [tool({}), tool({ id: "t2" })])).toBe(false);
     expect(singleCall(false, [tool({}), { kind: "notice", id: "n", text: "x", level: "info" } as unknown as ChatItem])).toBe(false);
+  });
+
+  it("drops a plan's leading heading that only repeats the card's eyebrow", () => {
+    expect(planBody("## Plan\n\n1. Read the code")).toBe("1. Read the code");
+    expect(planBody("# The plan:\n- a")).toBe("- a");
+    // A heading that names the plan, or one further down, stays.
+    expect(planBody("## Plan: split the reducer\n- a")).toBe("## Plan: split the reducer\n- a");
+    expect(planBody("Intro\n## Plan\n- a")).toBe("Intro\n## Plan\n- a");
+    expect(planBody("## Planning notes\n- a")).toBe("## Planning notes\n- a");
   });
 
   it("adds the turn's +/− to the first stretch and a tally of failed calls", () => {
