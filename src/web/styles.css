@@ -49,6 +49,7 @@
 @import "./styles/timeline.css";
 @import "./styles/chain.css";
 @import "./styles/timing.css";
+@import "./styles/usage-details.css";
 @import "./styles/board.css";
 @import "./styles/jobs.css";
 @import "./styles/worktrees.css";

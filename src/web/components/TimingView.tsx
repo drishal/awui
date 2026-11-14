@@ -26,7 +26,7 @@ export function TimingView({ turn, workspace }: { turn: Turn; workspace: string 
   return (
     <div className="timing" data-testid="timing">
       <p className="timing-total">
-        {atLabel(Math.max(...rows.map((r) => r.end)))} from prompt to {turn.live ? "now" : "settle"}
+        <strong>{atLabel(Math.max(...rows.map((r) => r.end)))}</strong> from prompt to {turn.live ? "now" : "settle"}
       </p>
       <div className="timing-line timing-axisrow" aria-hidden="true">
         <span />
@@ -40,7 +40,7 @@ export function TimingView({ turn, workspace }: { turn: Turn; workspace: string 
         <span />
       </div>
       <div className="timing-rows" role="list" ref={list} onKeyDown={onKey}>
-        {rows.map((r) => {
+        {rows.map((r, i) => {
           const left = (r.start / total) * 100;
           const width = Math.max(((r.end - r.start) / total) * 100, 0.6);
           return (
@@ -54,7 +54,7 @@ export function TimingView({ turn, workspace }: { turn: Turn; workspace: string 
                 {ticks.map((t) => (
                   <span key={t.ms} className="timing-grid" style={{ left: `${(t.ms / total) * 100}%` }} />
                 ))}
-                <span className="timing-bar" style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%` }} />
+                <span className="timing-bar" style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%`, "--i": i } as React.CSSProperties} />
               </span>
               <span className="timing-dur" aria-hidden="true">
                 {atLabel(r.end - r.start)}

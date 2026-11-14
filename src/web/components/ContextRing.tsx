@@ -9,9 +9,9 @@
 // rule and the amber/red lines). Beside it, the draft's estimated size once it
 // is worth a mention (token-estimate.ts), which stays even where the ring is
 // hidden; the panel adds what sending it does to the context.
-import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatItem, ChatStatus, ContextCategory, ContextPoint, ContextUsage, SessionUsage } from "../../shared/protocol.js";
-import { contextTone, hasContextFigure } from "../context-tone.js";
+import { CONTEXT_DANGER_PERCENT, CONTEXT_WARN_PERCENT, contextTone, hasContextFigure } from "../context-tone.js";
 import { coarse } from "../gestures.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { sparkline, SPARK_H, SPARK_W } from "../sparkline.js";
@@ -38,17 +38,22 @@ function duration(ms: number): string {
   return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
 }
 
-/** Category colours: the system prompt grey, tools purple, messages blue (DeepSeek Harness), the rest after. */
+/**
+ * Category colours, one meaning each: amber stays the "nearly full" tone, so system context is brown; messages
+ * take the accent and instruction files the cool info colour (they were two near-identical blues). An id that
+ * is not named (a harness's own kind) takes the next of the fallbacks.
+ */
 const SWATCH: Record<string, string> = {
   system: "var(--muted-text)",
   "system-prompt": "var(--muted-text)",
   tools: "var(--thinking)",
   "system-tools": "var(--thinking)",
-  messages: "var(--link)",
+  "system-context": "var(--brown)",
+  "instruction-files": "var(--info)",
   skills: "var(--ok)",
-  "system-context": "var(--warn)",
+  messages: "var(--accent)",
 };
-const FALLBACK = ["var(--accent)", "var(--danger)", "var(--text-2)"];
+const FALLBACK = ["var(--orange)", "var(--rare)", "var(--text-2)"];
 const swatch = (c: ContextCategory, i: number) => SWATCH[c.id] ?? FALLBACK[i % FALLBACK.length];
 
 function Row({
@@ -92,9 +97,8 @@ function Row({
 const share = (pct: number) => (pct < 1 ? "<1%" : `${Math.round(pct)}%`);
 
 /**
- * The sections. Drawn in the anchored popover, the phone's bottom sheet, and the
- * full dialog alike; `onShowMore` adds the popover's foot, and `details` the two
- * parts only the dialog has room for.
+ * The sections, for the anchored popover and the phone's bottom sheet; `onShowMore`
+ * adds the foot that opens the full view (DetailsBody, below).
  */
 function UsageBody({
   context,
@@ -105,9 +109,6 @@ function UsageBody({
   compacting,
   compacted,
   onShowMore,
-  details,
-  turn,
-  workspace,
 }: {
   context: ContextUsage;
   usage: SessionUsage | null;
@@ -118,11 +119,6 @@ function UsageBody({
   compacted: boolean;
   /** The compact view's foot: opens the full dialog. */
   onShowMore?: (() => void) | undefined;
-  /** The full dialog: the space left in the window, and the latest turn's time. */
-  details: boolean;
-  /** The latest turn of the chat, for its waterfall; null where there is none (or none with times). */
-  turn: Turn | null;
-  workspace: string;
 }) {
   const pct = Math.max(0, Math.min(100, context.percent ?? 0));
   const categories = context.categories?.filter((x) => x.tokens > 0) ?? [];
@@ -179,9 +175,6 @@ function UsageBody({
             state={compacting && x.id === "messages" ? "busy" : look !== null && look !== x.id ? "dim" : undefined}
           />
         ))}
-        {details && context.tokens !== null ? (
-          <Row label="Free space" value={compact(context.window - context.tokens)} title={`${full(context.window - context.tokens)} tokens left of ${full(context.window)}`} />
-        ) : null}
         {compacted ? (
           <p className="usage-note usage-compacted" role="status" data-testid="compacted">
             Compacted ✓
@@ -226,15 +219,6 @@ function UsageBody({
         </section>
       ) : null}
 
-      {details ? (
-        <section className="usage-section" aria-label="This turn">
-          <div className="usage-head">
-            <span>This turn</span>
-          </div>
-          {turn ? <TimingView turn={turn} workspace={workspace} /> : <p className="usage-note" data-testid="usage-timing-empty">No times reported for this chat yet.</p>}
-        </section>
-      ) : null}
-
       {onShowMore ? (
         <button type="button" className="usage-more" data-testid="usage-more" onClick={onShowMore}>
           Show more
@@ -242,6 +226,280 @@ function UsageBody({
         </button>
       ) : null}
     </>
+  );
+}
+
+/** Per-element sizes and colours travel as custom properties set through the style prop (CSSOM, so the strict CSP allows them). */
+const vars = (v: Record<string, string | number>) => v as CSSProperties;
+
+/** A figure and its unit apart ("46s" → 46 and s), for the tiles; anything else stays whole. */
+function figureUnit(text: string): { figure: string; unit: string } {
+  const m = /^(\d+(?:\.\d+)?)(ms|s)$/.exec(text);
+  return m ? { figure: m[1] as string, unit: m[2] as string } : { figure: text, unit: "" };
+}
+
+const sharePct = (n: number, whole: number) => {
+  if (whole <= 0) return "—";
+  const p = (n / whole) * 100;
+  return p > 0 && p < 0.1 ? "<0.1%" : p < 10 ? `${p.toFixed(1)}%` : `${Math.round(p)}%`;
+};
+
+/**
+ * The full view's body: the window as a hero (its headline, history, a meter of every part, and the
+ * legend that is also the interactive rows), the session's tokens and timing as cards, and the latest
+ * turn's waterfall. The popover and the phone sheet keep UsageBody's plainer list; this is only for the
+ * dialog, which has the room. Every hook the list had survives (the headline's test id, the dimming rows,
+ * the sparkline's label, the draft note), so the two read the same to a test or a screen reader.
+ */
+function DetailsBody({
+  context,
+  usage,
+  draft,
+  canCompact,
+  history,
+  compacting,
+  compacted,
+  turn,
+  workspace,
+}: {
+  context: ContextUsage;
+  usage: SessionUsage | null;
+  draft: DraftSize | null;
+  canCompact: boolean;
+  history: ContextPoint[];
+  compacting: boolean;
+  compacted: boolean;
+  /** The latest turn of the chat, for its waterfall; null where there is none (or none with times). */
+  turn: Turn | null;
+  workspace: string;
+}) {
+  const pct = Math.max(0, Math.min(100, context.percent ?? 0));
+  const categories = context.categories?.filter((x) => x.tokens > 0) ?? [];
+  const [look, setLook] = useState<string | null>(null);
+  const looked = categories.find((x) => x.id === look) ?? null;
+  const spark = useMemo(() => sparkline(history), [history]);
+  const warning = draft ? draftWarning(draft, canCompact) : null;
+  const inUse = context.tokens ?? categories.reduce((n, x) => n + x.tokens, 0);
+  const free = context.tokens !== null ? Math.max(0, context.window - context.tokens) : null;
+  const headline = looked ? share((looked.tokens / context.window) * 100) : share(pct);
+
+  const uncached = usage ? usage.input + usage.cacheWrite : 0;
+  const inputTotal = usage ? uncached + usage.cachedInput : 0;
+  const used = usage !== null && usage.steps > 0 ? usage : null;
+  const tokenTotal = used ? inputTotal + used.output : 0;
+  const cacheHit = inputTotal > 0 && used ? Math.round((used.cachedInput / inputTotal) * 100) : null;
+  const timed = usage !== null && (usage.llmMs !== null || usage.tokensPerSecond !== null);
+  const llm = figureUnit(used?.llmMs != null ? duration(used.llmMs) : "—");
+  const ttft = figureUnit(used?.ttftMs != null ? duration(used.ttftMs) : "—");
+  const mix = used
+    ? [
+        { id: "cached", label: "Cached input", note: "Read back from the cache", n: used.cachedInput, color: "var(--info)" },
+        { id: "uncached", label: "Uncached input", note: "Sent fresh or written to cache", n: uncached, color: "var(--orange)" },
+        { id: "output", label: "Output", note: "Written by the model", n: used.output, color: "var(--ok)" },
+      ]
+    : [];
+
+  return (
+    <div className="usage-dash">
+      <section className="usage-section usage-hero" aria-label="Context" data-tone={contextTone(pct)} style={vars({ "--s": 0 })}>
+        <div className="usage-hero-top">
+          <div>
+            <div className="usage-card-head usage-head-tight">
+              <span className="usage-eyebrow">Context window</span>
+              {compacted ? (
+                <span className="usage-pill usage-compacted" role="status" data-testid="compacted">
+                  Compacted ✓
+                </span>
+              ) : null}
+            </div>
+            <div className="usage-figure">
+              <strong className="usage-big" data-testid="context-headline">
+                <Rolling text={headline} />
+              </strong>
+              <div className="usage-figure-words">
+                <span className="usage-figure-label">{looked ? looked.label : "of context used"}</span>
+                <span className="usage-figure-sub">
+                  {looked ? (
+                    <>
+                      <b>{compact(looked.tokens)}</b> tokens · {share((looked.tokens / Math.max(1, inUse)) * 100)} of what is used
+                    </>
+                  ) : context.tokens !== null ? (
+                    <>
+                      <b>{compact(context.tokens)}</b> of {compact(context.window)} tokens{free !== null ? ` · ${compact(free)} free` : ""}
+                    </>
+                  ) : (
+                    <>{compact(context.window)} token window</>
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+          {spark ? (
+            <div className="usage-trend">
+              <span className="usage-eyebrow">Per turn</span>
+              <svg className="usage-spark" viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} width={SPARK_W} height={SPARK_H} role="img" aria-label={spark.label} data-testid="context-sparkline">
+                <path className="usage-spark-area" d={spark.area} />
+                <line className="usage-spark-warn" x1="0" x2={SPARK_W} y1={spark.warnY} y2={spark.warnY} />
+                <path className="usage-spark-line" d={spark.path} fill="none" pathLength="1" />
+                {spark.points.map((p, i) => (p.drop ? <circle key={i} className="usage-spark-drop" cx={p.x} cy={p.y} r="2.5" /> : null))}
+                <circle className="usage-spark-halo" cx={spark.end.x} cy={spark.end.y} r="4" />
+                <circle className="usage-spark-end" cx={spark.end.x} cy={spark.end.y} r="1.8" />
+              </svg>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="usage-meter-wrap">
+          <div className="usage-bar usage-meter" aria-hidden="true">
+            <div className="usage-meter-fill">
+              {categories.length > 0 ? (
+                categories.map((x, i) => <span key={x.id} className={look !== null && look !== x.id ? "is-dim" : undefined} style={vars({ "--w": `${(x.tokens / context.window) * 100}%`, "--c": swatch(x, i) as string })} />)
+              ) : (
+                <span style={vars({ "--w": `${pct}%`, "--c": "var(--accent)" })} />
+              )}
+            </div>
+          </div>
+          <span className="usage-mark" data-mark="warn" data-label={`${CONTEXT_WARN_PERCENT}%`} style={vars({ "--at": `${CONTEXT_WARN_PERCENT}%` })} aria-hidden="true" />
+          <span className="usage-mark" data-mark="danger" data-label={`${CONTEXT_DANGER_PERCENT}%`} style={vars({ "--at": `${CONTEXT_DANGER_PERCENT}%` })} aria-hidden="true" />
+        </div>
+
+        <div className="usage-parts">
+          {categories.map((x, i) => (
+            <div
+              key={x.id}
+              className="usage-row"
+              title={`${full(x.tokens)} tokens (estimated)`}
+              data-state={compacting && x.id === "messages" ? "busy" : look !== null && look !== x.id ? "dim" : undefined}
+              style={vars({ "--c": swatch(x, i) as string, "--share": `${(x.tokens / Math.max(1, inUse)) * 100}%`, "--i": i })}
+              tabIndex={0}
+              onMouseEnter={() => setLook(x.id)}
+              onMouseLeave={() => setLook((cur) => (cur === x.id ? null : cur))}
+              onFocus={() => setLook(x.id)}
+              onBlur={() => setLook((cur) => (cur === x.id ? null : cur))}
+            >
+              <span className="usage-swatch" aria-hidden="true" />
+              <span className="usage-label">{x.label}</span>
+              <span className="usage-value">{compact(x.tokens)}</span>
+              <span className="usage-pct">{share((x.tokens / Math.max(1, inUse)) * 100)}</span>
+              <span className="usage-share" aria-hidden="true" />
+            </div>
+          ))}
+          {free !== null ? (
+            <div className="usage-row" title={`${full(free)} tokens left of ${full(context.window)}`}>
+              <span className="usage-swatch is-free" aria-hidden="true" />
+              <span className="usage-label">Free space</span>
+              <span className="usage-value">{compact(free)}</span>
+              <span className="usage-pct">{share((free / context.window) * 100)}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {draft ? (
+          <p className={`usage-note usage-draft${draft.near ? " is-near" : ""}`} data-testid="draft-row">
+            {draftRow(draft)}
+            {warning ? <strong>{warning}</strong> : null}
+          </p>
+        ) : null}
+      </section>
+
+      {used ? (
+        <section className="usage-section" aria-label="Tokens" style={vars({ "--s": 1 })}>
+          <div className="usage-card-head">
+            <span className="usage-eyebrow">Tokens this session</span>
+            {cacheHit !== null ? (
+              <span className="usage-pill" title={`${full(used.cachedInput)} of ${full(inputTotal)} input tokens read from the cache`}>
+                {cacheHit}% cache hit
+              </span>
+            ) : null}
+          </div>
+          <div className="usage-total">
+            <span className="usage-total-figure">{full(tokenTotal)}</span>
+            <span className="usage-total-unit">tokens</span>
+          </div>
+          <div className="usage-mix" aria-hidden="true">
+            {mix.map((m) => (m.n > 0 ? <span key={m.id} style={vars({ "--w": `${(m.n / Math.max(1, tokenTotal)) * 100}%`, "--c": m.color })} /> : null))}
+          </div>
+          <ul className="usage-mix-list">
+            {mix.map((m) => (
+              <li key={m.id}>
+                <span className="usage-swatch" style={vars({ "--c": m.color })} aria-hidden="true" />
+                <span className="usage-label">
+                  {m.label}
+                  <small>{m.note}</small>
+                </span>
+                <span className="usage-value">{full(m.n)}</span>
+                <span className="usage-pct">{sharePct(m.n, tokenTotal)}</span>
+              </li>
+            ))}
+          </ul>
+          {used.cost !== null ? (
+            <div className="usage-cost">
+              <span className="usage-eyebrow">Cost</span>
+              <span className="usage-cost-figure">${used.cost.toFixed(used.cost < 1 ? 4 : 2)}</span>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {used ? (
+        <section className="usage-section" aria-label="Session" style={vars({ "--s": 2 })}>
+          <div className="usage-card-head">
+            <span className="usage-eyebrow">Session</span>
+            <span className="usage-meta">{timed ? "Measured by this server" : "Timing is measured from runs this server watches"}</span>
+          </div>
+          <dl className="usage-tiles">
+            <div className="usage-tile">
+              <dt>{used.turns === 1 ? "Turn" : "Turns"}</dt>
+              <dd>
+                {used.turns}
+                <small>
+                  {used.steps} {used.steps === 1 ? "step" : "steps"}
+                </small>
+              </dd>
+            </div>
+            <div className="usage-tile">
+              <dt>LLM time</dt>
+              <dd>
+                {llm.figure}
+                {llm.unit ? <span className="usage-unit">{llm.unit}</span> : null}
+                <small>model working</small>
+              </dd>
+            </div>
+            <div className="usage-tile">
+              <dt>First token</dt>
+              <dd>
+                {ttft.figure}
+                {ttft.unit ? <span className="usage-unit">{ttft.unit}</span> : null}
+                <small>average</small>
+              </dd>
+            </div>
+            <div className="usage-tile">
+              <dt>Throughput</dt>
+              <dd>
+                {used.tokensPerSecond !== null ? used.tokensPerSecond : "—"}
+                {used.tokensPerSecond !== null ? <span className="usage-unit">tok/s</span> : null}
+                <small>output</small>
+              </dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
+
+      <section className="usage-section" aria-label="This turn" style={vars({ "--s": 3 })}>
+        <div className="usage-card-head">
+          <span className="usage-eyebrow">Latest turn</span>
+          {turn ? (
+            <ul className="usage-key" aria-hidden="true">
+              <li style={vars({ "--c": "var(--thinking)" })}>Thinking</li>
+              <li style={vars({ "--c": "var(--accent)" })}>Tool call</li>
+              <li style={vars({ "--c": "var(--ok)" })}>Reply</li>
+              <li style={vars({ "--c": "var(--warn)" })}>Slowest</li>
+            </ul>
+          ) : null}
+        </div>
+        {turn ? <TimingView turn={turn} workspace={workspace} /> : <p className="usage-note" data-testid="usage-timing-empty">No times reported for this chat yet.</p>}
+      </section>
+    </div>
   );
 }
 
@@ -276,7 +534,7 @@ function ContextDetails({
   }, [items, status]);
   return (
     <Dialog title="Context, usage, and timing" onClose={onClose} className="usage-details">
-      <UsageBody context={context} usage={usage} draft={draft} canCompact={canCompact} history={history} compacting={compacting} compacted={compacted} details turn={turn} workspace={timing?.workspace ?? ""} />
+      <DetailsBody context={context} usage={usage} draft={draft} canCompact={canCompact} history={history} compacting={compacting} compacted={compacted} turn={turn} workspace={timing?.workspace ?? ""} />
     </Dialog>
   );
 }
@@ -374,7 +632,7 @@ export function ContextRing({
   const c = 2 * Math.PI * r;
   const tone = contextTone(pct);
   const detail = `${Math.round(pct)}% of context used${context.tokens !== null ? ` · ${compact(context.tokens)} / ${compact(context.window)} tokens` : ""}`;
-  const peek = { context, usage, draft: size, canCompact, history, compacting, compacted, details: false as const, turn: null, workspace: "" };
+  const peek = { context, usage, draft: size, canCompact, history, compacting, compacted };
 
   return (
     <div className="context-ring-wrap" ref={wrap}>

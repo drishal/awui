@@ -1,0 +1,391 @@
+/* The context chip's full dialog ("Context, usage, and timing"): a small dashboard of cards. The window
+   first (its headline, history, a meter of every part, the legend that is also the rows), then the
+   session's tokens and timing, then the latest turn's waterfall. Everything is scoped to .usage-details
+   or to classes only DetailsBody uses, so the popover, the phone sheet and the standalone Timing dialog
+   keep their plainer look. Colours come from tokens only; the one fill-in on open is switched off by the
+   global reduced-motion rule (and repeated here for the properties it names). */
+
+/* The dashboard grid: the hero across, tokens + session side by side, the turn across. */
+.usage-dash {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  grid-template-areas: "ctx ctx" "tok ses" "turn turn";
+  gap: 12px;
+}
+.usage-dash > [aria-label="Context"] { grid-area: ctx; }
+.usage-dash > [aria-label="Tokens"] { grid-area: tok; }
+.usage-dash > [aria-label="Session"] { grid-area: ses; }
+.usage-dash > [aria-label="This turn"] { grid-area: turn; }
+
+/* Every section becomes a card: a hairline edge, a lit top edge, a faint lift off the dialog. */
+.usage-dash .usage-section {
+  position: relative;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 100%, var(--text) 2%), var(--surface));
+  box-shadow: inset 0 0 0 1px var(--hairline), inset 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent);
+}
+.usage-dash .usage-section + .usage-section { border-top: 0; }
+
+.usage-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 20px;
+  margin-bottom: 10px;
+}
+.usage-eyebrow {
+  color: var(--muted-text);
+  font-size: var(--label-size);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+.usage-meta { color: var(--muted-text); font-size: 12px; }
+
+/* ---- 1. Hero: the context window ---------------------------------------------------- */
+.usage-hero {
+  --tone-c: var(--accent);
+  padding: 18px 18px 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--tone-c) 11%, transparent), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 100%, var(--text) 2%), var(--surface));
+}
+.usage-hero[data-tone="warn"] { --tone-c: var(--warn); }
+.usage-hero[data-tone="danger"] { --tone-c: var(--danger); }
+
+.usage-hero-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+.usage-figure { display: flex; align-items: flex-end; gap: 14px; margin-top: 8px; }
+.usage-big {
+  color: var(--text);
+  font-size: 48px;
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: -0.035em;
+  transition: color var(--dur-hover) var(--ease-out);
+}
+.usage-hero[data-tone="warn"] .usage-big { color: var(--warn); }
+.usage-hero[data-tone="danger"] .usage-big { color: var(--danger); }
+.usage-figure-words { display: grid; gap: 2px; padding-bottom: 1px; min-width: 0; }
+.usage-figure-label {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.usage-figure-sub { color: var(--muted-text); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.usage-figure-sub b { color: var(--text-2); font-weight: 500; }
+
+/* The history, larger than the popover's, with a soft area under the line. */
+.usage-trend { display: grid; justify-items: end; gap: 6px; }
+.usage-details .usage-spark { display: block; width: 168px; max-width: none; height: auto; margin: 0; overflow: visible; }
+.usage-spark-area { fill: var(--accent); fill-opacity: 0.14; stroke: none; }
+.usage-details .usage-spark-line { stroke: var(--accent); stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
+.usage-details .usage-spark-warn { stroke: color-mix(in srgb, var(--warn) 55%, transparent); stroke-width: 1; stroke-dasharray: 2 3; }
+.usage-spark-end { fill: var(--accent); }
+.usage-spark-halo { fill: var(--accent); fill-opacity: 0.22; }
+.usage-spark-drop { fill: var(--card); stroke: var(--warn); stroke-width: 1.25; }
+
+/* The window meter: the whole window, each category in its colour, the free part hatched. */
+.usage-meter-wrap { position: relative; padding-bottom: 18px; }
+.usage-details .usage-meter {
+  display: flex;
+  gap: 1px;
+  height: 12px;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--text) 5%, transparent) 4px 5px),
+    color-mix(in srgb, var(--text) 4%, transparent);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+/* Full width, so each segment's percentage is of the whole window (an auto-width box would collapse them). */
+.usage-meter-fill { display: flex; flex: 1 1 100%; gap: 1px; height: 100%; }
+.usage-details .usage-meter span {
+  flex: none;
+  width: var(--w);
+  min-width: 2px;
+  height: 100%;
+  background: linear-gradient(180deg, var(--c), color-mix(in oklab, var(--c) 70%, var(--card)));
+  transition: opacity var(--dur-hover) var(--ease-out);
+}
+.usage-details .usage-meter span.is-dim { opacity: 0.22; }
+/* The 75 % and 90 % lines (context-tone.ts) under the meter: quiet, lit once the window passes them. */
+.usage-mark {
+  position: absolute;
+  top: -3px;
+  left: var(--at);
+  width: 1px;
+  height: 18px;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+.usage-mark::after {
+  content: attr(data-label);
+  position: absolute;
+  top: 19px;
+  left: 0;
+  transform: translateX(-50%);
+  color: var(--muted-text);
+  font: 500 10px/1 var(--font-mono);
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+}
+.usage-hero[data-tone="warn"] .usage-mark[data-mark="warn"],
+.usage-hero[data-tone="danger"] .usage-mark[data-mark="warn"] { background: var(--warn); }
+.usage-hero[data-tone="warn"] .usage-mark[data-mark="warn"]::after,
+.usage-hero[data-tone="danger"] .usage-mark[data-mark="warn"]::after { color: var(--warn); opacity: 1; }
+.usage-hero[data-tone="danger"] .usage-mark[data-mark="danger"] { background: var(--danger); }
+.usage-hero[data-tone="danger"] .usage-mark[data-mark="danger"]::after { color: var(--danger); opacity: 1; }
+
+/* The legend IS the interactive rows: two columns, each row with its share of what is used. */
+.usage-parts {
+  columns: 2;
+  column-gap: 20px;
+  margin: 2px -8px 0;
+}
+.usage-details .usage-row {
+  break-inside: avoid;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto 38px;
+  align-items: center;
+  column-gap: 10px;
+  position: relative;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 8px 3px;
+  border-radius: var(--r-sm);
+  transition: opacity var(--dur-hover) var(--ease-out), background-color var(--dur-hover) var(--ease-out);
+}
+.usage-details .usage-row[tabindex] { cursor: default; }
+.usage-details .usage-row[tabindex]:hover,
+.usage-details .usage-row[tabindex]:focus-visible { background: var(--hover); }
+.usage-details .usage-row[data-state="dim"] { opacity: 0.38; }
+.usage-details .usage-swatch {
+  width: 10px; height: 10px; border-radius: 3px;
+  background: var(--c);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent);
+  transition: box-shadow var(--dur-hover) var(--ease-out);
+}
+.usage-details .usage-row[tabindex]:hover .usage-swatch,
+.usage-details .usage-row[tabindex]:focus-visible .usage-swatch { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 28%, transparent); }
+.usage-swatch.is-free {
+  background: repeating-linear-gradient(135deg, transparent 0 2px, color-mix(in srgb, var(--text) 22%, transparent) 2px 3px);
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+.usage-details .usage-label { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.usage-details .usage-value { color: var(--text); font-weight: 500; text-align: right; }
+.usage-pct { color: var(--muted-text); font-size: 11.5px; text-align: right; }
+/* The share of the used context, as a hairline under the row. */
+.usage-share {
+  position: absolute;
+  left: 28px; right: 8px; bottom: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  overflow: hidden;
+}
+.usage-share::before {
+  content: "";
+  display: block;
+  width: var(--share);
+  min-width: 2px;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in oklab, var(--c) 80%, transparent);
+}
+
+/* The draft-size note and the warning: one calm strip at the hero's foot. */
+.usage-details .usage-note { margin: 0; font-size: 12px; color: var(--muted-text); }
+.usage-details .usage-draft {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  margin: 12px -4px 0;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.usage-details .usage-draft::before {
+  content: "";
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.usage-details .usage-draft.is-near {
+  background: color-mix(in oklab, var(--warn) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--warn) 30%, transparent);
+  color: var(--text-2);
+}
+.usage-details .usage-draft.is-near::before { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); }
+.usage-details .usage-draft strong { color: var(--warn); font-weight: 600; }
+
+/* A pill, used for the cache hit and the "Compacted" status. */
+.usage-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 9px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--tone, var(--ok)) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tone, var(--ok)) 28%, transparent);
+  color: color-mix(in oklab, var(--tone, var(--ok)) 85%, var(--text));
+  font-size: 11.5px; font-weight: 600;
+}
+.usage-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+/* ---- 2. Tokens this session ---------------------------------------------------------- */
+.usage-total { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 12px; }
+.usage-total-figure { color: var(--text); font-size: 24px; font-weight: 600; letter-spacing: -0.025em; line-height: 1; }
+.usage-total-unit { color: var(--muted-text); font-size: 12px; }
+
+/* Cached is cool and solid (read back), uncached is warm (sent fresh), output green (the model's words, as reply bars are). */
+.usage-mix {
+  display: flex; gap: 2px; height: 8px; margin-bottom: 10px;
+  border-radius: 999px; overflow: hidden;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.usage-mix span {
+  flex: none; width: var(--w); min-width: 3px; height: 100%;
+  background: linear-gradient(180deg, var(--c), color-mix(in oklab, var(--c) 70%, var(--card)));
+}
+.usage-mix-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.usage-mix-list li {
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 44px; align-items: center; column-gap: 10px;
+  min-height: 34px;
+}
+.usage-mix-list .usage-label { display: grid; line-height: 1.25; }
+.usage-mix-list .usage-label small { color: var(--muted-text); font-size: 11px; }
+.usage-cost {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+.usage-cost-figure { color: var(--text); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+
+/* ---- 3. Session: four stat tiles ----------------------------------------------------- */
+.usage-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.usage-tile {
+  display: grid; align-content: start; gap: 4px;
+  min-width: 0;
+  padding: 10px 12px 11px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.usage-tile dt { color: var(--muted-text); font-size: 11.5px; font-weight: 500; }
+.usage-tile dd { margin: 0; color: var(--text); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; white-space: nowrap; }
+.usage-tile dd .usage-unit { margin-left: 2px; color: var(--muted-text); font-size: 12px; font-weight: 500; letter-spacing: 0; }
+.usage-tile dd small { display: block; margin-top: 2px; color: var(--muted-text); font-size: 11px; font-weight: 400; letter-spacing: 0; }
+
+/* ---- 4. This turn: the waterfall, refined (scoped overrides of timing.css) ----------- */
+.usage-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; }
+.usage-key li { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-text); font-size: 11.5px; }
+.usage-key li::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
+
+.usage-details .timing-total { margin: -2px 0 12px; color: var(--muted-text); font-size: 12px; }
+.usage-details .timing-total strong { margin-right: 6px; color: var(--text); font-size: 22px; font-weight: 600; letter-spacing: -0.025em; }
+
+@media (min-width: 641px) {
+  .usage-details .timing-line { grid-template-columns: minmax(0, 38%) minmax(0, 1fr) 56px; gap: 12px; }
+}
+.usage-details .timing-axisrow { margin: 0 -6px 4px; padding: 0 6px; }
+.usage-details .timing-axis { position: relative; height: 16px; color: var(--muted-text); font: 500 10px/16px var(--font-mono); letter-spacing: 0.02em; }
+.usage-details .timing-tick { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.usage-details .timing-tick:first-child { transform: none; }
+.usage-details .timing-tick:last-child { transform: translateX(-100%); }
+.usage-details .timing-rows { display: flex; flex-direction: column; margin: 0 -6px; max-height: none; overflow: visible; }
+.usage-details .timing-row {
+  min-height: 28px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  transition: background-color var(--dur-hover) var(--ease-out);
+}
+.usage-details .timing-row:hover,
+.usage-details .timing-row:focus-visible { background: var(--hover); }
+.usage-details .timing-label { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-2); }
+/* A kind dot before each label, so the eye can follow a colour down the list. */
+.usage-details .timing-label::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--k); }
+.usage-details .timing-row.is-thinking .timing-label { color: var(--muted-text); }
+.usage-details .timing-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-details .timing-slowest {
+  flex: none; padding: 1px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 30%, transparent);
+  color: var(--warn); font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+}
+.usage-details .timing-track {
+  position: relative; height: 16px;
+  background: linear-gradient(color-mix(in srgb, var(--text) 5%, transparent), color-mix(in srgb, var(--text) 5%, transparent)) center / 100% 1px no-repeat;
+}
+.usage-details .timing-grid { position: absolute; top: -6px; bottom: -6px; width: 1px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.usage-details .timing-grid:first-child { background: var(--hairline); }
+.usage-details .timing-row { --k: var(--accent); }
+.usage-details .timing-row.is-thinking { --k: var(--thinking); }
+.usage-details .timing-row.is-reply { --k: var(--ok); }
+.usage-details .timing-row.is-agent { --k: var(--orange); }
+.usage-details .timing-row.is-subagent { --k: color-mix(in srgb, var(--orange) 65%, transparent); }
+.usage-details .timing-row.is-slowest { --k: var(--warn); }
+.usage-details .timing-row .timing-bar {
+  position: absolute; top: 3px; bottom: 3px;
+  min-width: 3px;
+  border-radius: var(--r-xs);
+  background: linear-gradient(180deg, var(--k), color-mix(in oklab, var(--k) 68%, var(--card)));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k) 40%, transparent);
+  transform-origin: left center;
+}
+.usage-details .timing-row.is-slowest .timing-bar { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent), 0 0 14px color-mix(in srgb, var(--warn) 30%, transparent); }
+.usage-details .timing-row.is-running .timing-bar { opacity: 0.7; }
+.usage-details .timing-dur { color: var(--muted-text); font: 500 11px var(--font-mono); text-align: right; white-space: nowrap; }
+.usage-details .timing-row:hover .timing-dur,
+.usage-details .timing-row:focus-visible .timing-dur { color: var(--text); }
+.usage-details .timing-row.is-slowest .timing-dur { color: var(--warn); }
+
+/* ---- Motion: one fill-in on open (the global reduced-motion rule turns all of it off) - */
+@keyframes usage-sweep { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes usage-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes usage-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes usage-fade { from { opacity: 0; translate: 0 4px; } to { opacity: 1; translate: 0 0; } }
+.usage-dash .usage-meter-fill,
+.usage-dash .usage-mix { animation: usage-sweep 720ms var(--ease-out) 80ms both; }
+.usage-dash .usage-share::before { transform-origin: left; animation: usage-grow 640ms var(--ease-out) calc(160ms + var(--i, 0) * 40ms) both; }
+.usage-dash .usage-spark-line { stroke-dasharray: 1; animation: usage-draw 900ms var(--ease-out) 120ms both; }
+.usage-dash .usage-spark-area,
+.usage-dash .usage-spark-end,
+.usage-dash .usage-spark-halo { animation: usage-fade 400ms var(--ease-out) 700ms both; }
+.usage-dash .timing-bar { animation: usage-grow 480ms var(--ease-out) calc(220ms + var(--i, 0) * 24ms) both; }
+.usage-dash > .usage-section { animation: usage-fade 320ms var(--ease-out) calc(var(--s, 0) * 50ms) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---- Phone: the dialog is a sheet; the grid becomes one column ----------------------- */
+@media (max-width: 520px) {
+  .usage-dash { grid-template-columns: minmax(0, 1fr); grid-template-areas: "ctx" "tok" "ses" "turn"; gap: 10px; }
+  .usage-dash .usage-section { padding: 14px; }
+  .usage-hero-top { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .usage-trend { justify-items: stretch; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .usage-details .usage-spark { width: 100%; max-width: 168px; justify-self: end; }
+  .usage-big { font-size: 42px; }
+  .usage-parts { columns: 1; }
+  .usage-details .usage-row { min-height: 40px; }
+}
+
+/* The waterfall's own phone form (timing.css breaks at 640 px): label over track. */
+@media (max-width: 640px) {
+  .usage-details .timing-line { grid-template-columns: minmax(0, 1fr) 52px; gap: 2px 8px; }
+  .usage-details .timing-row .timing-track { grid-column: 1 / -1; grid-row: 2; }
+  .usage-details .timing-axisrow { grid-template-columns: minmax(0, 1fr); }
+  .usage-details .timing-axisrow > :first-child,
+  .usage-details .timing-axisrow > :last-child { display: none; }
+  .usage-details .timing-row { padding: 5px 6px; }
+}
