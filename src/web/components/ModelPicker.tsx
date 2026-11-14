@@ -43,6 +43,7 @@ export function ModelPicker({
   defaultModel = null,
   harnessId,
   disabled,
+  loading = false,
   onSelect,
   onRefresh,
   emptyLabel = "No model",
@@ -58,6 +59,8 @@ export function ModelPicker({
   defaultModel?: { model: string; thinkingLevel: string | null } | null;
   harnessId: string;
   disabled: boolean;
+  /** The harness has not said which model the chat is on yet: the chip reads "Loading…" instead of "No model". */
+  loading?: boolean;
   onSelect: (key: string) => void;
   /** Re-read the harness's models (new local servers, catalogs, config edits). */
   onRefresh: () => Promise<void>;
@@ -96,7 +99,7 @@ export function ModelPicker({
   // The reasoning word: a level picked in this picker's own footer (the start screen) says itself; with none, only
   // the harness's own default names its level. A chat's chip leaves the level to its own Thinking row.
   const reasoningLabel = onThinking && thinking ? levelTitle(thinking) : !current && currentModel?.reasoning && defaultModel?.thinkingLevel ? levelTitle(defaultModel.thinkingLevel) : null;
-  const label = nameLabel ? (reasoningLabel ? `${nameLabel} · ${reasoningLabel}` : nameLabel) : (current ?? emptyLabel);
+  const label = nameLabel ? (reasoningLabel ? `${nameLabel} · ${reasoningLabel}` : nameLabel) : (current ?? (loading ? "Loading…" : emptyLabel));
   const chipLabel = triggerLabel ?? shortName(label);
 
   const sections = useMemo<Array<ModelGroup & { recent?: boolean }>>(() => {

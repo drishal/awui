@@ -2497,7 +2497,7 @@ export function App() {
         </div>
       </Dialog> : null}
       <UpdateBanner />
-        {chat && chat.config.models.length === 0 && chat.capabilities.supportsModelSelection ? (
+        {chat && chat.status !== "starting" && chat.config.models.length === 0 && chat.capabilities.supportsModelSelection ? (
           <div className="banner banner-warning">
             {chatHarness?.setupCommand ? (
               <>

@@ -642,3 +642,9 @@
     background-color: transparent;
   }
 }
+
+/* A resumed chat's pickers while its harness starts: a slow fade, so the empty chips read as "on its way". */
+.composer-pickers.is-loading > * { animation: picker-loading 1.2s ease-in-out infinite; }
+@keyframes picker-loading {
+  50% { opacity: 0.45; }
+}

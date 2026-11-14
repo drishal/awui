@@ -61,10 +61,12 @@ export function ComposerControls({
   const { config } = chat;
   const [settings, setSettings] = useState(false);
   const current = harnesses.find((h) => h.id === chat.harnessId);
+  // A resumed chat's harness is still coming up: its pickers fade in and out until its own models arrive.
+  const loading = chat.status === "starting";
 
   return (
     <div className="composer-controls" data-harness-accent={current?.accent}>
-      <div className="composer-pickers">
+      <div className={`composer-pickers${loading ? " is-loading" : ""}`} aria-busy={loading || undefined}>
         <HandoffChip chat={chat} harnesses={harnesses} onHandoff={onHandoff} />
         {caps.supportsModelSelection ? (
           <ModelPicker
@@ -72,6 +74,7 @@ export function ComposerControls({
             current={config.model}
             harnessId={chat.harnessId}
             disabled={!idle}
+            loading={loading && config.model === null}
             onSelect={(model) => void onConfig({ model })}
             onRefresh={onRefreshModels}
           />
