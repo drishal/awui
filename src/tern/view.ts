@@ -600,27 +600,8 @@ function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
     // The web UI's Copy turn as Markdown: the prompt, one line a call, the replies, the answer.
     "copy-turn-as-markdown": () => cx.on.copyTurn(turn),
   };
-  // A steer the agent took mid-run is a note inside that run, not the next prompt: the web UI draws it as a
-  // divider row across the thread, so here it is Tern's rule labelled "while it ran" and the words quiet under
-  // it, still clickable for the same Retry/Copy menu a prompt has.
-  if (prompt.interjected) {
-    return ui.col(
-      { key: "ask", role: "awui.interjection" },
-      ui.rule({ key: "r", variant: "line", label: "while it ran", tone: "muted" }),
-      images.some(Boolean) ? ui.row({ key: "imgs", gap: "sm" }, images) : null,
-      ui.text({
-        key: "p",
-        role: "awui.interjection-text",
-        text: prompt.text,
-        title: "A steer the agent took while it ran",
-        onClick: () => cx.on.pick(picked ? null : turn.id),
-        onMenu: menu,
-        ...holdMenu(Object.keys(menu)),
-      } as PropsOf<"text">),
-      acts.length > 0 ? ui.row({ key: "acts", role: "awui.prompt-acts" }, acts) : null,
-      promptMeta(prompt),
-    );
-  }
+  // A steer or follow-up sent while a run was going is an ordinary prompt bubble, as in the web UI: it is still
+  // what the person said, and a divider row made it read as the agent's own note.
   return ui.col(
     { key: "ask", role: "awui.ask" },
     images.some(Boolean) ? ui.row({ key: "imgs", gap: "sm" }, images) : null,

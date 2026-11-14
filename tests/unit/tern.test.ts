@@ -585,18 +585,16 @@ describe("the Tern conversation", () => {
     });
     const nodes = (cx: ConversationCx) => conversation(cx).flatMap(all);
 
-    it("draws a steer the agent took mid-run as the web UI's divider row, not a prompt bubble", () => {
+    it("draws a steer the agent took mid-run as an ordinary prompt bubble, as the web UI does", () => {
       const items: ChatItem[] = [
         { kind: "user", id: "u1", text: "go", images: [] } as unknown as ChatItem,
         { kind: "user", id: "u2", text: "keep it short", images: [], interjected: true, at: 1_700_000_000_000 } as unknown as ChatItem,
         { kind: "assistant", id: "a1", text: "Done.", thinking: "", streaming: false },
       ];
       const drawn = nodes(cxOf(chatOf(items)));
-      const rule = drawn.find((n) => n.kind === "rule");
-      expect(rule?.props).toMatchObject({ variant: "line", label: "while it ran" });
-      expect(drawn.some((n) => n.props.role === "awui.interjection-text" && n.props.text === "keep it short")).toBe(true);
-      // The bubble is for the prompt the run started from; the steer is a note under the divider.
-      expect(drawn.filter((n) => n.props.role === "awui.prompt").map((n) => n.props.text)).toEqual(["go"]);
+      expect(drawn.some((n) => n.kind === "rule")).toBe(false);
+      // The steer is what the person said, so it is a bubble like the prompt the run started from.
+      expect(drawn.filter((n) => n.props.role === "awui.prompt").map((n) => n.props.text)).toEqual(["go", "keep it short"]);
     });
 
     it("names who sent a prompt that was not typed here, beside its clock", () => {
