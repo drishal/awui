@@ -159,7 +159,9 @@ export function stylesheet(width: ChatWidth | null): string {
 [data-role='awui.kinds'] { gap: 3px; }
 [data-role='awui.kinds'] .sf-icon { padding: 1px; color: var(--t3); background: none; }
 [data-role='awui.kinds'] .sf-icon svg { width: 13px; height: 13px; }
-[data-role='awui.kinds-more'] { margin-left: 8px; font-size: 0.85em; color: var(--t3); }
+/* "+N" past three kinds sits tight against the stack in a smaller weight, as the web UI's .kind-more, so it reads
+   as more glyphs rather than the start of the sentence or a diff count. */
+[data-role='awui.kinds-more'] { margin-left: 0; padding-left: 3px; font-size: 0.78em; font-weight: 500; color: var(--t3); }
 [data-role='awui.work-stat'] { font-family: var(--mono, monospace); font-size: 0.88em; white-space: nowrap; padding-right: 4px; }
 [data-role='awui.calls'] { gap: 0; border-top: 1px solid ${tint(8)}; }
 [data-role='awui.calls'] > * { padding: 0; }
@@ -202,15 +204,17 @@ export function stylesheet(width: ChatWidth | null): string {
 [data-role='awui.agent-row'] .sf-tool-body { padding-right: 16px; }
 [data-role='awui.agent-row'] .sf-agent-st,
 [data-role='awui.agent-row'] .sf-tool-took { padding-right: 12px; }
-/* A thought reads as the web UI's: the word, then the reasoning's title, both quiet and in the reading font. */
-[data-role='awui.thought'] .sf-tool-title { font-weight: 400; color: var(--t3); }
-[data-role='awui.thought'] .sf-tool-target { font-family: var(--sans); color: var(--t3); }
+/* A thought reads as the web UI's, in the reading font: the word quietest, then the reasoning's title, which is what you read. */
+[data-role='awui.thought'] .sf-tool-title { font-weight: 400; color: var(--t4); }
+[data-role='awui.thought'] .sf-tool-target { font-family: var(--sans); color: var(--t2); }
 [data-role='awui.thought'] .md { color: var(--t3); }
 [data-role='awui.note'] { color: var(--t3); font-size: 0.92em; }
 /* A note among a card's calls (an answered approval) keeps the rows' inset rather than touching the card's edge. */
 [data-role='awui.calls'] > [data-role='awui.note'] { padding: 4px 12px; }
-[data-role='awui.answer-acts'] { gap: 10px; margin-top: -6px; }
+[data-role='awui.answer-acts'] { gap: 2px; margin-top: -6px; }
 [data-role='awui.changed'] { font-size: 0.88em; color: var(--t3); }
+/* The changed line is already the smaller size: its +/− keeps it, as the same figures in a fold head read, not shrunk twice. */
+[data-role='awui.changed'] [data-role='awui.work-stat'] { font-size: 1em; }
 [data-role='awui.changed'] .sf-icon { color: var(--t3); }
 [data-role='awui.changed'] .sf-t-path { font-family: var(--mono, monospace); color: var(--t2); }
 [data-role='awui.working'] { color: var(--t2); }
