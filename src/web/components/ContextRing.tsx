@@ -309,6 +309,20 @@ export function ContextRing({
 
   useDismiss(wrap, open, () => setOpen(false), { escape: true });
 
+  // The context panel's "Open context and timings" row asks this ring (the main pane's own, so a split
+  // pane's is untouched) for the full view, not the small popover a click gives. App.tsx sends the event.
+  const present = hasContextFigure(context);
+  useEffect(() => {
+    const el = ring.current;
+    if (!present || !el) return undefined;
+    const show = () => {
+      setOpen(false);
+      setDetails(true);
+    };
+    el.addEventListener("awui:context-details", show);
+    return () => el.removeEventListener("awui:context-details", show);
+  }, [present]);
+
   // The ring sits anywhere in the composer's wrapped control row, so the panel
   // pulls itself back inside the viewport and inside the room above the ring.
   // Measured from the layout box, since the opening animation scales the

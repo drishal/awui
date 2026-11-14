@@ -2745,7 +2745,8 @@ export function App() {
         </div>
           {chat && (!wide ? contextSheet : !contextClosed) && !room.roomId ? <LazyPanel contextPanel><ContextPanel chat={chat} expanded={wide && !side && !toolPanel && !viewer ? !contextDetailsCollapsed : !side && !toolPanel && !viewer} onOpen={() => wide ? setContextDetailsCollapsed(false) : setContextSheet(true)} onClose={() => wide ? setContextDetailsCollapsed(true) : setContextSheet(false)} mode={!wide ? "sheet" : "inline"} onOpenChat={(id) => void openChatById(id)} onCancelTask={(task) => void cancelDelegated(task)} onReview={() => setReviewOpen(true)} onRace={(raceId) => setRacesOpen({ raceId })} onOpinion={(opinion) => void openChatById(opinion.chatId)} onUsage={() => {
             const button = document.querySelector<HTMLButtonElement>(`[data-pane="main"] [data-testid="context-ring"]`);
-            if (button) button.click();
+            // Not a click: that opens the ring's small popover. This asks for the full view (ContextRing.tsx listens).
+            button?.dispatchEvent(new CustomEvent("awui:context-details"));
           }} onQuestions={() => {
             setContextSheet(false);
             setContextDetailsCollapsed(true);
