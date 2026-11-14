@@ -853,6 +853,9 @@ class FakeLiveChat implements LiveChat {
         await this.call({ name: "ExitPlanMode", args: { plan }, output: "User has approved your plan." }, signal);
       }
       if (/\brender\b|\bhtmlrender\b/i.test(text)) await this.render(signal);
+      // The same page through omp's `write xd://render_html` device, whose result keeps
+      // the tool's text only: the reference rides that text's last line instead of details.
+      if (/\bxdrender\b/i.test(text)) await this.render(signal, true);
       if (/\bdelegate\b/i.test(text)) await this.delegate(signal, text);
       if (/\bratelimit\b/i.test(text)) {
         // A stop on a usage limit, worded as Claude Code words it (the reset as an epoch after "|").
@@ -1243,12 +1246,13 @@ class FakeLiveChat implements LiveChat {
    * comes back in the result's details, exactly as the pi/omp extension does.
    * Without an endpoint the call still completes, with a noting output.
    */
-  private async render(signal: AbortSignal): Promise<void> {
+  private async render(signal: AbortSignal, device = false): Promise<void> {
     const title = "Fake report";
     const html = `<!doctype html><html><head><style>body{font-family:var(--font-sans)}h1{color:var(--accent)}</style></head><body><h1>${title}</h1><p>Rendered by the fake harness.</p></body></html>`;
     const height = 160;
     let output = "Rendered (no endpoint; page not stored)";
     let details: Record<string, unknown> | undefined;
+    let page: { id: string; url: string } | null = null;
     const url = this.toolEnv?.AWUI_RENDER_URL;
     const token = this.toolEnv?.AWUI_RENDER_TOKEN;
     if (url && token) {
@@ -1259,7 +1263,7 @@ class FakeLiveChat implements LiveChat {
           body: JSON.stringify({ html, title, height }),
         });
         if (response.ok) {
-          const page = (await response.json()) as { id: string; url: string };
+          page = (await response.json()) as { id: string; url: string };
           output = `Rendered "${title}" into the chat.`;
           details = { htmlRender: { id: page.id, title, height }, url: page.url };
         } else {
@@ -1268,6 +1272,11 @@ class FakeLiveChat implements LiveChat {
       } catch (error) {
         output = `Render failed: ${error instanceof Error ? error.message : String(error)}`;
       }
+    }
+    if (device) {
+      const marked = page ? `${output}\nawui-html-render: ${JSON.stringify({ id: page.id, title, height })}` : output;
+      await this.call({ name: "write", args: { path: "xd://render_html", content: JSON.stringify({ html, title, height }) }, output: marked }, signal);
+      return;
     }
     await this.call({ name: "render_html", args: { html, title, height }, output, ...(details ? { details } : {}) }, signal);
   }

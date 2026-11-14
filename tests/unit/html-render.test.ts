@@ -49,6 +49,34 @@ describe("agent HTML renders", () => {
     sse.close();
   });
 
+  it("publishes a page whose reference arrives only on the device result's text", async () => {
+    const { agent, ws, t } = await setup();
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    const sse = openSse(t as TestApp, chat.chatId, agent.cookie);
+    await sse.waitFor(() => sse.chatEvents().some((e) => e.type === "snapshot"));
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "xdrender" });
+    await sse.waitFor(() => sse.chatEvents().some((e) => e.type === "status" && e.status === "idle"));
+
+    // omp's `write xd://render_html` keeps only the tool's text, so the reference is
+    // lifted off that text's last line and the card shows the text without it.
+    const snap = (await agent.get(`/api/chats/${chat.chatId}`)).body as ChatSnapshot;
+    const tool = snap.items.find((i) => i.kind === "tool" && i.name === "write");
+    expect(tool && tool.kind === "tool" ? tool.output : null).toBe('Rendered "Fake report" into the chat.');
+    const page = tool && tool.kind === "tool" ? tool.htmlRender : undefined;
+    expect(page).toMatchObject({ title: "Fake report", height: 160 });
+    expect(page?.id).toMatch(/^[0-9a-f]{32}$/);
+    // Ownership follows the reference, so the frame and browser_action can reach it.
+    expect((await agent.get(`/api/chats/${chat.chatId}/html-render/${page!.id}`)).status).toBe(200);
+
+    // A reload re-reads the transcript and finds the same reference on the result's text.
+    const nativeId = chat.sessionId!.split(":")[1] ?? "";
+    const history = await t.fake.readTranscript({ cwd: t.project, nativeId });
+    const replayed = history?.items.find((i) => i.kind === "tool" && i.name === "write");
+    expect(replayed && replayed.kind === "tool" ? replayed.htmlRender?.id : undefined).toBe(page!.id);
+    expect(replayed && replayed.kind === "tool" ? replayed.output : null).toBe('Rendered "Fake report" into the chat.');
+    sse.close();
+  });
+
   it("rejects a page posted with a token no live chat holds", async () => {
     const { agent } = await setup();
     const res = await agent.post("/api/render").set("x-awui-render-token", "0".repeat(32)).send({ html: "<p>x</p>", title: "x", height: 120 });

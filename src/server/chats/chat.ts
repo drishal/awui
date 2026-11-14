@@ -38,7 +38,7 @@ import { boundText, editShape, exitCodeOf, historyToItems, NO_RESULT_TEXT, strin
 import { argsDiff, resultDiff } from "../harness/tool-diff.js";
 import { applyReports, detailReports, hasAgentCells, runsFromArgs, runsFromDetails, settleRuns, transcriptFile, transcriptRecords, type AgentReport } from "../harness/subagents.js";
 import { applyJobReports, jobsFromCall, mergeJob } from "../harness/jobs.js";
-import { htmlRenderRef, isHtmlRenderCall } from "../harness/render-token.js";
+import { htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "../harness/render-token.js";
 import { planFromArgs } from "../harness/plans.js";
 import { branchMessages } from "../harness/session-files.js";
 import { rememberImage } from "../image-store.js";
@@ -465,7 +465,12 @@ class EventReducer {
         const id = `t:${event.toolCallId}`;
         this.dirtyTools.delete(id);
         const item = this.get(id);
-        const bounded = boundText(event.output);
+        // A render call publishes a page: its result's details carry the reference, and a
+        // harness that keeps only the tool's text (omp's `write xd://render_html` device)
+        // leaves that reference on the result's last line instead.
+        const renderCall = this.renderCalls.delete(event.toolCallId);
+        const marked = renderCall ? splitRenderMarker(event.output) : null;
+        const bounded = boundText(marked?.details ? marked.text : event.output);
         const base: ToolItem =
           item && item.kind === "tool"
             ? item
@@ -490,7 +495,7 @@ class EventReducer {
           if (runs) settled.subagents = settleRuns(runs, event.output, event.isError);
         }
         // A render call publishes a page; its result's details carry the reference.
-        const page = this.renderCalls.delete(event.toolCallId) ? htmlRenderRef(event.details) : undefined;
+        const page = marked ? htmlRenderRef(event.details) ?? htmlRenderRef(marked.details) : undefined;
         // A failed edit keeps the diff it tried, but changed nothing to count.
         const { diffStat: _attempted, ...uncounted } = settled;
         // A shell call's exit rides on the item when the harness reported one (OpenCode does).

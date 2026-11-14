@@ -51,6 +51,11 @@ const MIN_HEIGHT = 80;
 const MAX_HEIGHT = 2000;
 const MAX_HTML_BYTES = 512 * 1024;
 const TIMEOUT_MS = 10_000;
+// omp's `write xd://render_html` device runs this tool but keeps only its content,
+// so its details never reach awui. The reference also rides on the last line of
+// the text, as the MCP server's does; awui lifts it off and the card shows the
+// text without it. The details still carry it for a native Pi/omp call.
+const RENDER_MARKER = "awui-html-render:";
 const THEME_VARS = "--bg --surface --surface-2 --border --text --text-2 --muted --accent --accent-hover --link --ok --danger --warn --info --orange --thinking --font-sans --font-mono";
 
 export function renderActionOps(url: string, token: string, args: { renderId: string; action: string; selector?: string; value?: string; amount?: number; theme?: { appearance: "dark" | "light"; variables: Record<string, string> } }): Promise<Response> {
@@ -120,7 +125,7 @@ export default function renderHtml(pi: Api): void {
         return { content: [text(`could not reach the chat's render endpoint: ${reason}`)], details: {}, isError: true };
       }
       return {
-        content: [text(`Rendered "${title}" into the chat. The page is above; do not describe or restate it in your reply.`)],
+        content: [text(`Rendered "${title}" into the chat. The page is above; do not describe or restate it in your reply.\n${RENDER_MARKER} ${JSON.stringify({ id: page.id, title, height })}`)],
         details: { htmlRender: { id: page.id, title, height }, url: page.url },
       };
     },

@@ -5,7 +5,7 @@ import { MAX_IMAGES, type BackgroundJob, type ChatItem, type TodoItem, type Tool
 import { argsDiff, resultDiff } from "./tool-diff.js";
 import { imageRefs } from "../image-store.js";
 import { applyReports, asyncReports, detailReports, hasAgentCells, isAgentTool, notifyReports, runsFromArgs, runsFromDetails, settleRuns, type AgentReport } from "./subagents.js";
-import { htmlRenderRef, isHtmlRenderCall } from "./render-token.js";
+import { htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "./render-token.js";
 import { planFromArgs } from "./plans.js";
 import { applyJobReports, jobReports, jobsFromCall } from "./jobs.js";
 import type { HarnessEvent, StepUsage, UsageEntry } from "./types.js";
@@ -662,7 +662,11 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
       }
       case "toolResult": {
         const tool = tools.get(String(raw.toolCallId));
-        const bounded = boundText(toolResultText(raw));
+        const renderCall = renderCalls.has(String(raw.toolCallId));
+        // A harness that keeps only a tool result's text (omp's `write xd://render_html`
+        // device) carries the page's reference on the last line; the card shows the rest.
+        const marked = renderCall ? splitRenderMarker(toolResultText(raw)) : null;
+        const bounded = boundText(marked?.details ? marked.text : toolResultText(raw));
         if (tool) {
           tool.output = bounded.text;
           tool.truncated = bounded.truncated;
@@ -678,7 +682,7 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
             if (runs) tool.subagents = settleRuns(runs, bounded.text, tool.status === "error");
           }
           // A render call's page reference survives in its result's details, so a reload re-arms the frame.
-          const page = renderCalls.has(String(raw.toolCallId)) ? htmlRenderRef(raw.details) : undefined;
+          const page = renderCall ? htmlRenderRef(raw.details) ?? htmlRenderRef(marked?.details) : undefined;
           if (page) tool.htmlRender = page;
           // A shell call's exit rides on the item when the harness reported one (OpenCode does).
           if (tool.category === "command") {
