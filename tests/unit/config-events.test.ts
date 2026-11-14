@@ -150,6 +150,9 @@ describe("agent event normalization", () => {
     expect(toolPaths({ target: "docs/README.md" })).toEqual(["docs/README.md"]);
     expect(toolPaths({ file_path: "/x/y.ts", edits: [{ path: "z.ts" }, "w.ts"] })).toEqual(["/x/y.ts", "z.ts", "w.ts"]);
     expect(toolPaths("nope")).toEqual([]);
+    // A tool device or a URL names no workspace file: it must not read as a changed file.
+    expect(toolPaths({ path: "xd://render_html", content: "{}" })).toEqual([]);
+    expect(toolPaths({ path: "https://example.com/x" })).toEqual([]);
     // omp's patch block names its file in the header: the header shows the file, not the JSON.
     expect(toolSummary({ i: "do it", input: "[src/a.ts#AB12]\nPUT 1.=2:\n+x\n" })).toBe("src/a.ts");
     expect(toolPaths({ i: "do it", input: "[src/a.ts#AB12]\nPUT 1.=2:\n+x\n" })).toEqual(["src/a.ts"]);

@@ -421,7 +421,9 @@ class EventReducer {
       case "tool_start": {
         this.finishStreaming();
         const category = toolCategory(event.name);
-        const edits = category === "edit" || category === "write";
+        // A write to a tool device (`write xd://render_html`) changes no file: no diff, no change count.
+        const paths = toolPaths(event.args);
+        const edits = (category === "edit" || category === "write") && paths.length > 0;
         const runs = category === "agent" ? runsFromArgs(event.args) : null;
         const plan = planFromArgs(event.name, event.args);
         const tool: ToolItem = {
@@ -434,7 +436,7 @@ class EventReducer {
           truncated: false,
           category,
           summary: toolSummary(event.args, event.name),
-          paths: toolPaths(event.args),
+          paths,
           ...(edits ? editShape(argsDiff(event.args), null) : {}),
           ...(runs ? { subagents: runs } : {}),
           ...(plan ? { plan } : {}),
@@ -486,7 +488,7 @@ class EventReducer {
                 summary: "",
                 paths: [],
               };
-        const edits = base.category === "edit" || base.category === "write";
+        const edits = (base.category === "edit" || base.category === "write") && base.paths.length > 0;
         // The harness's own diff beats the arguments' one; with neither, its output's own count.
         const reported = edits ? resultDiff(event.details, event.output) : null;
         const settled: ToolItem = { ...base, ...(!edits ? {} : reported ? editShape(reported, null) : base.diff ? {} : editShape(null, bounded.text)) };

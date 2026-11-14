@@ -167,6 +167,9 @@ export function toolCategory(name: string): ToolCategory {
 
 const PATH_KEYS = ["path", "file_path", "filePath", "file", "filename", "target", "target_file", "target_directory", "notebook_path"];
 
+/** A slot that is not a workspace file: an agent tool device (`xd://render_html`) or a URL. */
+const NOT_A_FILE = /^[a-z][a-z0-9+.-]*:\/\//i;
+
 /** File paths named in tool arguments, as given (absolute or relative). */
 export function toolPaths(args: unknown): string[] {
   if (!isObj(args)) return [];
@@ -193,7 +196,7 @@ export function toolPaths(args: unknown): string[] {
       }
     }
   }
-  return [...new Set(out)];
+  return [...new Set(out.filter((p) => !NOT_A_FILE.test(p)))];
 }
 
 const oneLine = (text: string) => text.replace(/\s+/g, " ").trim().slice(0, 160);
@@ -636,7 +639,9 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
           const id = String(block.id);
           const name = String(block.name ?? "tool");
           const category = toolCategory(name);
-          const edits = category === "edit" || category === "write";
+          // A write to a tool device (`write xd://render_html`) changes no file: no diff, no change count.
+          const paths = toolPaths(block.arguments);
+          const edits = (category === "edit" || category === "write") && paths.length > 0;
           const tool: ToolItem = {
             kind: "tool",
             id: `t:${id}`,
@@ -647,7 +652,7 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
             truncated: false,
             category,
             summary: toolSummary(block.arguments, name),
-            paths: toolPaths(block.arguments),
+            paths,
             ...(edits ? editShape(argsDiff(block.arguments), null) : {}),
             ...(category === "agent" ? withRuns(runsFromArgs(block.arguments)) : {}),
             ...withPlan(planFromArgs(name, block.arguments)),
