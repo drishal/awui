@@ -274,6 +274,12 @@ export function stylesheet(width: ChatWidth | null): string {
 .answer .n { color: var(--t4); margin-right: 6px; }
 /* An approval is a tool row's ask panel. Tern draws an Enter keycap on Allow; Enter sends the composer here, so none is shown. */
 [data-role='awui.approval'] .sf-tool-ask-btn .sf-kbd, [data-role='awui.approval'] .sf-tool-ask-btn .kbd { display: none; }
+/* Its reason is a sentence, not a path, so it reads in the reading font, a step below the title. */
+[data-role='awui.approval'] .sf-tool-target.text { font-family: var(--sans); color: var(--t2); }
+/* Allow is solid ink and Deny a bordered neutral, as .answer.primary and .answer.deny (the web card's): Tern's
+   accent-filled Allow was the loudest thing on the screen, and its bare-text Deny did not read as a button. */
+[data-role='awui.approval'] .sf-tool-ask-foot > .sf-tool-ask-btn:last-child { background: ${INK} !important; color: var(--page, #000) !important; box-shadow: none !important; }
+[data-role='awui.approval'] .sf-tool-ask-foot > .sf-tool-ask-btn:first-child { border-radius: 8px; box-shadow: inset 0 0 0 1px ${tint(18)} !important; }
 
 /*
  * Motion, after the web UI's (styles/motion.css): short and eased out, with what you just did landing on a
