@@ -877,7 +877,7 @@ export function SettingsDialog({
                   ) : (
                     <p className="form-empty">None yet.</p>
                   )}
-                  <button type="button" className="button" disabled={!editable} onClick={() => update({ agentProfiles: [...draft.agentProfiles, { name: "", harness: "", model: "", thinking: "", permissionMode: "", note: "" }] })}>
+                  <button type="button" className="btn btn-small settings-add" disabled={!editable} onClick={() => update({ agentProfiles: [...draft.agentProfiles, { name: "", harness: "", model: "", thinking: "", permissionMode: "", note: "" }] })}>
                     Add a shared profile
                   </button>
                 </div>
@@ -916,17 +916,17 @@ export function SettingsDialog({
                               <span className="form-label">Agent icon</span>
                               <span className="form-desc">Optional. Cropped to square (SVGs fitted), converted to a 64 × 64 PNG in your browser, and saved in awui's own state folder. Never fetched from an icon service.</span>
                             </div>
-                            <label className={`button${!editable || !savedAcpIds.includes(row.id.trim()) || iconStates[row.id.trim()]?.busy === true ? " is-disabled" : ""}`} aria-disabled={!editable || !savedAcpIds.includes(row.id.trim()) || iconStates[row.id.trim()]?.busy === true}>
+                            <label className={`btn btn-small${!editable || !savedAcpIds.includes(row.id.trim()) || iconStates[row.id.trim()]?.busy === true ? " is-disabled" : ""}`} aria-disabled={!editable || !savedAcpIds.includes(row.id.trim()) || iconStates[row.id.trim()]?.busy === true}>
                               {iconOverrides[row.id.trim()] !== undefined || harnesses.find((h) => h.id === row.id.trim())?.icon ? "Change icon" : "Upload icon"}
                               <input type="file" aria-label={`Upload icon for ${row.name || row.id.trim() || "agent"}`} accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" disabled={!editable || !savedAcpIds.includes(row.id.trim()) || iconStates[row.id.trim()]?.busy === true} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } }} onChange={(e) => { const file = e.target.files?.[0] ?? null; e.target.value = ""; if (file) void changeHarnessMark(row, file); }} />
                             </label>
-                            {iconOverrides[row.id.trim()] !== undefined || harnesses.find((h) => h.id === row.id.trim())?.icon ? <button type="button" className="button btn-ghost" disabled={!editable || iconStates[row.id.trim()]?.busy === true} onClick={() => void changeHarnessMark(row, null)}>Remove</button> : null}
+                            {iconOverrides[row.id.trim()] !== undefined || harnesses.find((h) => h.id === row.id.trim())?.icon ? <button type="button" className="btn btn-small btn-ghost" disabled={!editable || iconStates[row.id.trim()]?.busy === true} onClick={() => void changeHarnessMark(row, null)}>Remove</button> : null}
                             {iconStates[row.id.trim()]?.busy ? <span className="form-desc">Preparing…</span> : null}
                             {iconStates[row.id.trim()]?.notice ? <span className="form-desc">{iconStates[row.id.trim()]?.notice}</span> : null}
                             {iconStates[row.id.trim()]?.error ? <span className="notice notice-error" role="alert">{iconStates[row.id.trim()]?.error}</span> : null}
                           </div>
                           <div className="acp-agent-test">
-                            <button type="button" className="button" disabled={!editable || !savedAcpIds.includes(row.id.trim()) || acpTests[row.id]?.busy === true} onClick={() => void testAcp(row)}>
+                            <button type="button" className="btn btn-small" disabled={!editable || !savedAcpIds.includes(row.id.trim()) || acpTests[row.id]?.busy === true} onClick={() => void testAcp(row)}>
                               Test
                             </button>
                             {(() => {
@@ -943,7 +943,7 @@ export function SettingsDialog({
                   ) : (
                     <p className="form-empty">None yet.</p>
                   )}
-                  <button type="button" className="button" disabled={!editable} onClick={() => update({ acpAgents: [...draft.acpAgents, { id: "", name: "", command: "", args: "", env: "", envNames: [], authMethod: "" }] })}>
+                  <button type="button" className="btn btn-small settings-add" disabled={!editable} onClick={() => update({ acpAgents: [...draft.acpAgents, { id: "", name: "", command: "", args: "", env: "", envNames: [], authMethod: "" }] })}>
                     Add an ACP agent
                   </button>
                 </div>

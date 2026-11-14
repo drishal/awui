@@ -359,19 +359,24 @@
   overflow: hidden;
 }
 
-.acp-agent-mark label.button {
+.acp-agent-mark label.btn {
   cursor: pointer;
   white-space: nowrap;
 }
 
-.acp-agent-mark label.button:focus-within {
+.acp-agent-mark label.btn:focus-within {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.acp-agent-mark label.button.is-disabled {
+.acp-agent-mark label.btn.is-disabled {
   opacity: 0.45;
   pointer-events: none;
+}
+
+/* "Add a …" under a list: a compact button at the start, not a bar across the card. */
+.settings-add {
+  align-self: flex-start;
 }
 
 .acp-agent-test {
