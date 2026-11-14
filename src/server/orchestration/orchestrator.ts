@@ -40,6 +40,7 @@ import {
   threadSendSchema,
   threadWaitSchema,
   requestDecisionSchema,
+  budgetLine,
   setStatus,
   setStatusSchema,
   type ToolContext,
@@ -413,13 +414,13 @@ export class Orchestrator {
     if (args.taskId) {
       const task = this.ownTask(caller, args.taskId);
       this.consume([task]);
-      return { text: this.describe([task]), data: { tasks: [viewOf(task)] } };
+      return { text: `${this.describe([task])}\n\n${this.budgetOf(caller)}`, data: { tasks: [viewOf(task)] } };
     }
     const mine = this.viewsFor(caller.chatId, caller.sessionId).slice(0, 50);
     if (mine.length === 0) return { text: "This chat has not delegated any tasks.", data: { tasks: [] } };
     const tasks = mine.map((view) => this.tasks.find((task) => task.id === view.id)).filter((task): task is StoredTask => task !== undefined);
     this.consume(tasks);
-    return { text: this.describe(tasks), data: { tasks: mine } };
+    return { text: `${this.describe(tasks)}\n\n${this.budgetOf(caller)}`, data: { tasks: mine } };
   }
 
   private async cancel(caller: Chat, args: { taskId: string }): Promise<ToolOutput> {
@@ -516,7 +517,7 @@ export class Orchestrator {
     // The parent has the results now: no wake would still be news.
     this.consume(tasks);
     return {
-      text: this.describe(tasks, pendingRequest),
+      text: `${this.describe(tasks, pendingRequest)}\n\n${this.budgetOf(caller)}`,
       data: { tasks: tasks.map(viewOf), ...(pendingRequest ? { pendingRequest } : {}) },
     };
   }
@@ -1655,6 +1656,10 @@ export class Orchestrator {
 
   private context(caller: Chat): ToolContext {
     return { chat: caller, registry: this.deps.registry, workspaces: this.deps.workspaces, boards: this.deps.boards, profiles: this.deps.profiles };
+  }
+
+  private budgetOf(caller: Chat): string {
+    return budgetLine(this.remainingDepth(caller), this.remainingTasks(caller));
   }
 
   private remainingDepth(caller: Chat): number {

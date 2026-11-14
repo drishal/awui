@@ -466,6 +466,15 @@ async function sharedProfile(profile: AgentProfileConfig, registry: HarnessRegis
   };
 }
 
+/**
+ * A chat's delegation budget in the words an agent should repeat, not recompute: depth is how many
+ * more generations may delegate; tasks is how many more may run at once, since a finished task
+ * gives its slot back (the lifetime and server-wide caps only ever lower the figure).
+ */
+export function budgetLine(remainingDepth: number, remainingTasks: number): string {
+  return `Delegation budget: ${remainingDepth} level(s) left; ${remainingTasks} more task(s) may run at once (a finished task frees its slot).`;
+}
+
 /** Every worker this project offers, with what a delegation from this chat still has room for. */
 export async function listProfiles(
   ctx: ToolContext,
@@ -508,7 +517,7 @@ export async function listProfiles(
   const text = [
     `${profiles.length} profiles in project "${workspace.name}".`,
     ...lines,
-    `${remainingDepth} delegation level(s) left for this chat, ${remainingTasks} task(s).`,
+    budgetLine(remainingDepth, remainingTasks),
   ].join("\n");
   return { text, data: { profiles, workspace, remainingDepth, remainingTasks } };
 }

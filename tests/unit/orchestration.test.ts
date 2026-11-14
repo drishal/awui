@@ -117,6 +117,18 @@ describe("orchestration surface", () => {
     expect(res.body.text).toContain(`Critic · Fake · fake/slow · review`);
   });
 
+  it("states the delegation budget in words, and a finished task gives its slot back", async () => {
+    const { agent, token } = await setup();
+    const line = (text: string) => text.match(/Delegation budget: .*/)?.[0];
+    const before = await call(agent, token, "list_profiles", {});
+    expect(line(before.body.text as string)).toBe("Delegation budget: 2 level(s) left; 4 more task(s) may run at once (a finished task frees its slot).");
+    const started = await delegate(agent, token, { brief: "slow work on the parser" });
+    const waited = await call(agent, token, "thread_wait", { taskIds: [started.taskId], waitMs: 15_000 });
+    // The wait ends on a finished task, so its slot is free again: the line the model repeats says 4, not 3.
+    expect(line(waited.body.text as string)).toContain("4 more task(s) may run at once");
+    expect(line((await call(agent, token, "task_status", {})).body.text as string)).toContain("4 more task(s) may run at once");
+  });
+
   it("serves the catalogue to a child's token while its chat is still starting", async () => {
     // A bridge fetches the catalogue the moment it loads, before the manager has a chat to stamp.
     const manager = new ChatManager();

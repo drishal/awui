@@ -179,7 +179,14 @@ previous line, and a chat the harness has not named yet answers `no_session`.
 `list_profiles` lists the project's saved bot profiles and one entry per installed
 harness at its default model — `{ id, source, name, harnessId, harnessName, available,
 model, provider, thinkingLevel, permissionMode, role, note }` — with how many delegation
-levels and tasks are left.
+levels and tasks are left. That line is the **delegation budget** and is worded for the model to repeat:
+"Delegation budget: 2 level(s) left; 4 more task(s) may run at once (a finished task frees its slot)."
+`task_status` and `thread_wait` end with the same line, so the figure is current at the moment a child
+finishes. The levels are `maxDepth` minus this chat's depth; the tasks are the smallest of `maxChildrenPerChat`
+minus this chat's unfinished tasks, `maxTasksPerChat` minus every task it ever started, and `maxLiveTasks` minus
+the server's unfinished ones (see [Limits](#limits)). Only unfinished tasks hold a slot, so the first figure
+returns to its cap when a child's result is available; an agent that subtracts one for a finished task is
+wrong.
 
 `schedule_heartbeat` prompts the calling chat itself on an interval, so a long piece of work can be
 picked back up without anyone typing. It belongs to the chat a person opened: a delegated worker is
