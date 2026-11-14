@@ -94,6 +94,13 @@ export function stylesheet(width: ChatWidth | null): string {
   return `
 [data-role='awui.page'] { width: 100%; max-width: ${cap(page)}; margin: 0 auto; padding-left: ${GUTTER}; padding-right: ${GUTTER}; font-family: var(--sans); gap: 18px; }
 [data-role='awui.page'] .md { font-family: var(--sans); }
+/* Code stays in the code font inside the reading font's prose, as the web UI's: the rule above reached it too. */
+[data-role='awui.page'] .md code, [data-role='awui.page'] .md pre, [data-role='awui.page'] .md pre * { font-family: var(--code-font, var(--tv-font, var(--mono, monospace))); }
+/*
+ * Markdown's headings and code take the pane's ink, as the web UI's do, not the accent and green of the omp
+ * theme tokens Tern reads them from (a plan's "## Plan" read as a link).
+ */
+[data-role='awui.page'], [data-role='awui.dock'] { --omp-mdHeading: var(--t1); --omp-mdCode: var(--t1); --omp-mdCodeBlock: var(--t2); }
 /*
  * The dock floats over the conversation as it scrolls: a solid backdrop (blurred too, for a translucent
  * window whose background is itself see-through) so what scrolls under it never shows through its cards.
