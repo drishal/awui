@@ -354,7 +354,7 @@ function composerNode(cx: DockCx): Node {
         caps?.supportsModelSelection ? html.button({ key: "m", class: "chip", text: `${words.name} ⌄`, title: "Model (C-x m)", onClick: cx.on.pickModel }) : null,
         // The effort glyph goes inside the chip, before its level, as the web UI's thinking chip draws it.
         caps?.supportsThinkingLevel
-          ? html.button({ key: "t", class: "chip think", title: "Thinking (C-x t)", onClick: cx.on.pickThinking }, words.level ? ui.effort({ key: "e", level: words.level }) : null, words.level ? `${levelTitle(words.level)} ⌄` : "⌄")
+          ? html.button({ key: "t", class: "chip think", title: "Thinking (C-x t)", onClick: cx.on.pickThinking }, words.level ? ui.effort({ key: "e", level: words.level }) : null, words.level ? `${levelTitle(words.level)} ⌄` : "Thinking ⌄")
           : null,
         // The web UI's permission pill: the mode in force, open mid-run too; a mode that asks nothing is marked.
         chat?.capabilities.supportsPermissionMode && config?.permissionModes?.length
