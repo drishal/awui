@@ -7,6 +7,7 @@
 // Tern's variables (--t1…, --l1…, --accent) and the theme sheet's (--awui-*), so a
 // light pane, a dark one, and a base16 scheme all read right.
 import { ternColumn } from "../shared/chat-width.js";
+import { SIDEBAR_WIDTH } from "./sidebar.js";
 import type { ChatWidth } from "../shared/protocol.js";
 import { DARK, LIGHT, type Theme } from "../atui/theme.js";
 
@@ -80,6 +81,18 @@ const BUBBLE = `color-mix(in srgb, var(--accent) 10%, ${solidTint(9)})`;
 const GUTTER = "clamp(18px, 4vw, 44px)";
 
 /**
+ * While the sidebar shows, the page and the dock take the pane beside it: each is as wide as what is left, up to
+ * its cap, and centred in that space rather than in the whole pane (so on a roomy pane the column still sits in
+ * the middle of what you read, and on a narrow one it starts at the sidebar's edge instead of under it).
+ */
+function besideSidebar(pageCap: string, dockCap: string): string {
+  const side = `${SIDEBAR_WIDTH}px`;
+  const rule = (role: string, max: string) =>
+    `[data-role='${role}'] { width: calc(100% - ${side}) !important; margin-left: calc(${side} + max(0px, (100% - ${side} - ${max}) / 2)) !important; margin-right: auto !important; }\n`;
+  return rule("awui.page", pageCap) + rule("awui.dock", dockCap);
+}
+
+/**
  * The sheet, under one name so a later send replaces it. The page and the dock read at the
  * web UI's thread width, from config.yml's chat_width (comfortable is the 780px column it has
  * always drawn); the prompt bubble, the tab strip, and the tables are shares of the page, so
@@ -90,10 +103,10 @@ const GUTTER = "clamp(18px, 4vw, 44px)";
  * carry a gutter that grows with the pane, and the column's cap is widened by it so a roomy
  * pane still draws exactly the column's width.
  */
-export function stylesheet(width: ChatWidth | null): string {
+export function stylesheet(width: ChatWidth | null, sidebar = false): string {
   const { page, dock, recent } = ternColumn(width);
   const cap = (length: string) => (length === "100%" ? length : `calc(${length} + 2 * ${GUTTER})`);
-  return `
+  return `${sidebar ? besideSidebar(cap(page), cap(dock)) : ""}
 [data-role='awui.page'] { width: 100%; max-width: ${cap(page)}; margin: 0 auto; padding-left: ${GUTTER}; padding-right: ${GUTTER}; font-family: var(--sans); gap: 18px; }
 [data-role='awui.page'] .md { font-family: var(--sans); }
 /* Code stays in the code font inside the reading font's prose, as the web UI's: the rule above reached it too. */
@@ -324,5 +337,28 @@ export function stylesheet(width: ChatWidth | null): string {
  * like the dock's, so what scrolls under them never shows through, and their cards read on it.
  */
 [data-role='awui.layer'] { background: ${SOLID}; }
+
+/*
+ * The sessions sidebar (sidebar.ts), after the web's (styles/sidebar.css): a flat column the web sidebar's width
+ * with one hairline on its right, not a floating card (Tern sizes a side sheet by name, so the width is ours); rows
+ * the web's height and radius, a tint under the hovered one and a firmer one under the session on screen.
+ */
+[data-role='awui.sidebar'] > .sf-ov-card { width: ${SIDEBAR_WIDTH}px !important; max-width: ${SIDEBAR_WIDTH}px !important; min-width: 0 !important; background: var(--tv-bg, var(--panel)) !important; backdrop-filter: none !important; box-shadow: none !important; border: 0 !important; border-right: 1px solid color-mix(in srgb, var(--t1) 8%, transparent) !important; border-radius: 0 !important; }
+[data-role='awui.sidebar'] { font-family: var(--sans); }
+[data-role='awui.side-new'] { width: 100%; min-height: 32px; justify-content: center; border-radius: 8px; }
+[data-role='awui.side-harness'] { color: var(--t3); font-size: 0.85em; padding-left: 2px; }
+[data-role='awui.side-label'] { font-size: 0.92em; font-weight: 600; min-height: 26px; padding-right: 8px; }
+[data-role='awui.side-label'] .sf-icon { width: 14px; height: 14px; }
+[data-role='awui.side-count'] { font-size: 0.85em; font-weight: 500; }
+[data-role='awui.side-project'] > .sf-section-head { min-height: 28px; }
+[data-role='awui.side-project'] > .sf-section-head > .sf-head { flex: 1 1 auto; min-width: 0; }
+[data-role='awui.side-project'] > .sf-section-head > .sf-head [data-role='awui.side-label'] { padding-right: 8px; font-weight: 500; }
+[data-role='awui.side-rows'] .sf-item { min-height: 30px; padding: 0 8px; border-radius: 8px; transition: background-color 0.12s ${EASE_OUT}; }
+[data-role='awui.side-rows'] .sf-item:hover { background: color-mix(in srgb, var(--t1) 5%, transparent); }
+[data-role='awui.side-rows'] .sf-item-label { color: var(--t2); }
+[data-role='awui.side-rows'] .sf-item-value { font-size: 0.85em; }
+[data-role='awui.side-current'] { background: color-mix(in srgb, var(--t1) 9%, transparent) !important; }
+[data-role='awui.side-current'] .sf-item-label { color: var(--t1); }
+[data-role='awui.side-note'], [data-role='awui.side-foot'] { font-size: 0.85em; padding-left: 8px; }
 `;
 }

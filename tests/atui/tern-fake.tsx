@@ -78,8 +78,10 @@ export class FakeTern {
     const body = JSON.parse(rest) as Record<string, unknown>;
     this.sent.push({ verb, body });
     if (verb === "q" && body.q === "hello") {
+      // 140 columns of 8 px is a pane under the sidebar's 1200 px, so it starts folded and the layer holds only
+      // what a test opens; the sidebar's own test widens the pane with a resize.
       this.#reply(
-        `${ESC}_tsp;r;${JSON.stringify({ r: "hello", v: 1, term: "tern", ver: "0.8.3", kinds: KINDS, features: ["blobs", "settle", "adopt", "dock", "scroll", "styles", "flow"], apc: 65536, credits: 2, cols: 160, cell: { w: 8, h: 16 }, dark: true, reduceMotion: false, hour12: false })}${ESC}\\`,
+        `${ESC}_tsp;r;${JSON.stringify({ r: "hello", v: 1, term: "tern", ver: "0.8.3", kinds: KINDS, features: ["blobs", "settle", "adopt", "dock", "scroll", "styles", "flow"], apc: 65536, credits: 2, cols: 140, cell: { w: 8, h: 16 }, dark: true, reduceMotion: false, hour12: false })}${ESC}\\`,
       );
     } else if (verb === "f") this.#frame(body as { sf: string; s: number; ops: unknown[][] });
   }

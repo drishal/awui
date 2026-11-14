@@ -43,6 +43,7 @@ import { ACTION_KEYS, moveRow, taskRows, type TaskRow } from "../atui/delegated.
 import { reviewActions, type ReviewAction, type ReviewFacts } from "../web/delegated-tasks.js";
 import { BOARD_COLUMNS, boardCards, boardCounts, boardProjects, prStateOf, type PrFilter, type PrState, type PullRequestShape } from "../web/dashboard.js";
 import { stylesheet, themeSheet } from "./look.js";
+import { SIDEBAR_AUTO_FOLD, sidebarModel, sidebarNode } from "./sidebar.js";
 import { GIT_INPUT_ID, editMessage, gitNode, gitScreen, type GitScreen as GitScreenState } from "./git.js";
 import { REVIEW_INPUT_ID, reviewNode, reviewScreen, rowId, type ReviewScreenState } from "./review.js";
 import { GITHUB_INPUT_ID, TOUR_SCROLL_ID, editForm, formValue, githubForm, githubNode, githubState, nextField, tourNode, type GithubForm, type GithubState, type GithubStatusView, type TourView } from "./github.js";
@@ -69,6 +70,7 @@ const DOUBLE_MS = 800;
 /** The C-x keys the Tern client has, in atui's table's words. */
 const LEADER: Array<{ key: string; label: string }> = [
   { key: "s", label: "Sessions" },
+  { key: "b", label: "Show or hide the sidebar" },
   { key: "n", label: "New chat" },
   { key: "a", label: "New chat in a new tab" },
   { key: "]", label: "Next tab" },
@@ -98,6 +100,14 @@ const LEADER: Array<{ key: string; label: string }> = [
 const NOTICE_AFTER_OSC_MS = 400;
 
 const base64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
+
+/** A copy of `set` with `id` in it or out of it. */
+const toggled = (set: ReadonlySet<string>, id: string, on: boolean): ReadonlySet<string> => {
+  const next = new Set(set);
+  if (on) next.add(id);
+  else next.delete(id);
+  return next;
+};
 
 export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
   return createRoot((dispose) => {
@@ -133,6 +143,15 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const [queueEdit, setQueueEdit] = createSignal<{ field: "steering" | "followUp"; index: number } | null>(null);
     // The context panel over the composer's chip; "Compacted ✓" for a moment after a compaction ends.
     const [contextOpen, setContextOpen] = createSignal(false);
+    // The sessions sidebar (C-x b): open on a pane as wide as the web UI keeps its sidebar, folded below that,
+    // unless toggled; crossing the width again forgets the toggle, as the web UI's narrow-window fold does.
+    const paneWidthOf = (cols: number, cell: { w: number } | undefined) => cols * (cell?.w ?? session.caps.cell.w);
+    const [paneWidth, setPaneWidth] = createSignal(paneWidthOf(session.caps.cols, session.caps.cell));
+    const [sidebarToggled, setSidebarToggled] = createSignal<boolean | null>(null);
+    const sidebarShown = () => sidebarToggled() ?? paneWidth() >= SIDEBAR_AUTO_FOLD;
+    const [sideFolded, setSideFolded] = createSignal<ReadonlySet<string>>(new Set());
+    const [sideExpanded, setSideExpanded] = createSignal<ReadonlySet<string>>(new Set());
+    const toggleSidebar = () => setSidebarToggled(!sidebarShown());
     const [compacted, setCompacted] = createSignal(false);
     // The Git screen (C-x j): null while closed; `busy` names the write in flight.
     const [gitting, setGitting] = createSignal<GitScreenState | null>(null);
@@ -281,8 +300,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const harness = (): HarnessStatus | null => app.harness();
 
     // ---- the look: palette by theme and harness, the sheet once ---------------------------
-    // The chat width (config.yml's chat_width) sets the page and dock caps: a change re-sends the sheet under its name.
-    createEffect(() => surface.stylesheet("awui", stylesheet(app.boot()?.ui.chatWidth ?? null)));
+    // The chat width (config.yml's chat_width) sets the page and dock caps, and the sidebar moves them right while it
+    // shows: a change re-sends the sheet under its name.
+    createEffect(() => surface.stylesheet("awui", stylesheet(app.boot()?.ui.chatWidth ?? null, sidebarShown())));
     // Tern's appearance (a `theme` event when it switches): a theme file's scheme is used only in its own.
     const [dark, setDark] = createSignal(session.caps.dark);
     createEffect(() => {
@@ -432,6 +452,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const idle = c ? !isBusy(c.status) : true;
       const items: MenuItem[] = [
         { id: "x:s", label: "Browse sessions", value: "C-x s", icon: "session" },
+        { id: "x:b", label: sidebarShown() ? "Hide the sidebar" : "Show the sidebar", value: "C-x b", icon: "sidebar", keywords: "sessions list projects" },
         { id: "x:n", label: "New chat", value: "C-x n", icon: "plus" },
         { id: "x:a", label: "New chat in a new tab", value: "C-x a", icon: "tabs-h" },
       ];
@@ -990,6 +1011,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         case "s":
           void app.refreshSessions();
           return openMenu("sessions");
+        case "b":
+          return toggleSidebar();
         case "n":
           return app.newChat();
         case "a":
@@ -1751,6 +1774,26 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       });
 
       const layer: (Node | null)[] = [];
+      // The sidebar first, so every other sheet and toast draws over it.
+      if (sidebarShown()) {
+        const now = Date.now();
+        layer.push(
+          sidebarNode({
+            model: sidebarModel(app.overview(), { harnessId: harness()?.id ?? null, here: app.workspace()?.id ?? null, current: c?.sessionId ?? null, folded: sideFolded(), expanded: sideExpanded(), now }),
+            harnessName: harness()?.displayName ?? "Sessions",
+            current: c?.sessionId ?? null,
+            now,
+            on: {
+              open: (s) => void app.openSession(s),
+              newChat: () => app.newChat(),
+              fold: (id, folded) => setSideFolded((set) => toggled(set, id, folded)),
+              more: (id) => setSideExpanded((set) => toggled(set, id, !set.has(id))),
+              sessions: () => runLeader("s"),
+              hide: () => setSidebarToggled(false),
+            },
+          }),
+        );
+      }
       const m = menu();
       const screen = usage();
       // The Timing overlay's turn, read again each frame so a run still going ends at this frame's now.
@@ -2235,6 +2278,11 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             // Events reach the handlers the view attached before this loop sees them; the rest need nothing.
             if (input.type === "key") onKey(input.key);
             else if (input.event.ev === "theme") setDark(input.event.dark);
+            else if (input.event.ev === "resize") {
+              const before = paneWidth() >= SIDEBAR_AUTO_FOLD;
+              setPaneWidth(paneWidthOf(input.event.cols, input.event.cell));
+              if (before !== paneWidth() >= SIDEBAR_AUTO_FOLD) setSidebarToggled(null);
+            }
           } catch (error) {
             say(error instanceof Error ? error.message : String(error), "error");
           }

@@ -412,6 +412,40 @@ describe("awui tern", () => {
     await until(() => tern.nodes.get(fold.id)?.p.collapsed === false, "the fold to stay open");
   });
 
+  it("shows the sessions sidebar on a wide pane, hides it with C-x b, and opens a session from its row", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("sidebar row please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("sidebar row please"), "the first chat's answer");
+    // A new chat leaves the first one for the sidebar to list.
+    tern.type("\x18");
+    tern.type("n");
+    await until(() => tern.text("main").includes("What should Fake do in alpha?"), "the new chat's start screen");
+    const sidebar = () => tern.find("overlay", "layer").find((n) => n.p.role === "awui.sidebar");
+    // The stand-in's pane starts under 1200 px, so the sidebar is folded until the pane grows past it.
+    expect(sidebar()).toBeUndefined();
+    tern.event({ ev: "resize", cols: 160, cell: { w: 8, h: 16 } });
+    await until(() => sidebar() !== undefined && tern.text("layer").includes("sidebar row please"), "the sidebar on a wide pane");
+    expect(sidebar()?.p).toMatchObject({ side: "left", modal: false });
+    expect(tern.sent.some((m) => m.verb === "s" && String((m.body as { css?: string }).css ?? "").includes("calc(100% - 272px)"))).toBe(true);
+    tern.type("\x18");
+    tern.type("b");
+    await until(() => sidebar() === undefined, "C-x b to hide it");
+    tern.type("\x18");
+    tern.type("b");
+    await until(() => sidebar() !== undefined, "C-x b to show it again");
+    // One click on a row is Tern's select, and opens the session as the web sidebar's click does.
+    const rows = tern.find("list", "layer").find((n) => n.p.role === "awui.side-rows") as { id: string; c: string[] };
+    const row = rows.c.find((id) => tern.text(id).includes("sidebar row please"));
+    expect(row).toBeDefined();
+    tern.event({ ev: "select", id: rows.id, item: row });
+    await until(() => !tern.text("main").includes("What should Fake do in alpha?") && tern.text("main").includes("sidebar row please"), "the row's session to open");
+    // A pane that narrows past the line folds it again.
+    tern.event({ ev: "resize", cols: 100, cell: { w: 8, h: 16 } });
+    await until(() => sidebar() === undefined, "the narrow pane to fold it");
+    expect(tern.errors).toEqual([]);
+  }, 30_000);
+
   it("names the harness's default on the start screen, and a pick there starts the first chat on it", async () => {
     client = await start();
     const { tern, app, until } = client;
