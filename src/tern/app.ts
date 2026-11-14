@@ -434,12 +434,12 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         { id: "x:n", label: "New chat", value: "C-x n", icon: "plus" },
         { id: "x:a", label: "New chat in a new tab", value: "C-x a", icon: "tabs-h" },
       ];
-      if (app.tabs().tabs.length > 1) items.push({ id: "x:]", label: "Next tab", value: "C-x ]" }, { id: "x:[", label: "Previous tab", value: "C-x [" });
-      if (app.tabs().tabs.length > 0) items.push({ id: "x:w", label: "Close this tab", value: "C-x w" });
+      if (app.tabs().tabs.length > 1) items.push({ id: "x:]", label: "Next tab", value: "C-x ]", icon: "arrow-right" }, { id: "x:[", label: "Previous tab", value: "C-x [", icon: "arrow-left" });
+      if (app.tabs().tabs.length > 0) items.push({ id: "x:w", label: "Close this tab", value: "C-x w", icon: "x" });
       const caps = c?.capabilities ?? harness()?.capabilities;
       if (caps?.supportsModelSelection) items.push({ id: "x:m", label: "Change the model…", value: "C-x m", icon: "model" });
-      if (caps?.supportsThinkingLevel) items.push({ id: "x:t", label: "Change the thinking level…", value: "C-x t", icon: "thinking" });
-      if (caps?.supportsModelSelection) items.push({ id: "models-refresh", label: "Refresh models", icon: "model", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }) });
+      if (caps?.supportsThinkingLevel) items.push({ id: "x:t", label: "Change the thinking level…", value: "C-x t", icon: "brain" });
+      if (caps?.supportsModelSelection) items.push({ id: "models-refresh", label: "Refresh models", icon: "restart", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }) });
       if (c?.capabilities.supportsPermissionMode && c.config.permissionModes?.length) items.push({ id: "permission", label: "Change the permission mode…", icon: "shield" });
       items.push({ id: "x:h", label: c ? "Hand off to another harness…" : "Choose the harness…", value: "C-x h", icon: "handoff" });
       if (c?.capabilities.supportsCompact) items.push({ id: "x:c", label: "Compact the context", value: "C-x c", icon: "compaction", ...(idle ? {} : { disabled: "Wait until the agent is idle" }) });
