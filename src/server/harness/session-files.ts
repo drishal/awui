@@ -125,7 +125,8 @@ const NO_USAGE = {
  * message entry per line chained through parentId (both harnesses rebuild
  * context by walking from the leaf). Assistant entries carry zero usage and a
  * "handoff" model so session totals and provider replay treat them as foreign.
- * Tool records become assistant text; a foreign tool call cannot be replayed.
+ * Tool records become assistant text (a foreign tool call cannot be replayed),
+ * which historyToItems draws as tool rows again by the record's marker.
  */
 export function seedSessionText(options: { id: string; cwd: string; now: Date; entries: SeedEntry[] }): string {
   const lines = [JSON.stringify({ type: "session", version: 3, id: options.id, timestamp: options.now.toISOString(), cwd: options.cwd })];

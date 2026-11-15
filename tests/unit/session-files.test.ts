@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { branchMessages, forkSessionText, seedSessionText, uuidv7 } from "../../src/server/harness/session-files.js";
+import { historyToItems, toolCategory } from "../../src/server/harness/agent-events.js";
 
 /** A Pi-family file: title slot, header, then a tree of entries. */
 function sessionText(): string {
@@ -96,5 +97,15 @@ describe("uuidv7", () => {
     const messages = branchMessages(`${lines.map((l) => JSON.stringify(l)).join("\n")}\n{"type":"message","id":"torn`) as Array<Record<string, unknown>>;
     expect(messages.map((m) => m.role)).toEqual(["compactionSummary", "user", "assistant", "branchSummary", "user"]);
     expect(messages.map((m) => (typeof m.content === "string" ? m.content : ""))).toEqual(["", "kept", "", "", "new"]);
+  });
+});
+
+describe("a handoff seed read back", () => {
+  it("draws a tool record as the tool row it was, and only when the seed wrote it", () => {
+    const record = (model: string) => ({ role: "assistant", model, content: [{ type: "text", text: "[Handed off from another harness] bash: ls -la\ntotal 0\nREADME.md" }], timestamp: 5 });
+    const [row] = historyToItems([record("handoff")]);
+    expect(row).toMatchObject({ kind: "tool", name: "bash", summary: "ls -la", output: "total 0\nREADME.md", status: "done", category: toolCategory("bash"), at: 5 });
+    // The same words from a real model are its own text, not a record.
+    expect(historyToItems([record("deepseek-v4.1-flash")])[0]).toMatchObject({ kind: "assistant" });
   });
 });

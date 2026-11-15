@@ -578,6 +578,37 @@ const withPlan = (plan: string | null) => (plan ? { plan } : {});
 /** What a call that never got a result says, in place of its output: a cancelled question, an interrupted run. */
 export const NO_RESULT_TEXT = "No result: the run ended before this call answered.";
 
+/** The opening of a handed-off tool record (handoff.ts writes them; a foreign call cannot be stored as a call). */
+export const TOOL_RECORD_MARK = "[Handed off from another harness] ";
+
+/**
+ * A seeded assistant message that is a tool record, as the row it came from: drawn
+ * as prose it is a wall of raw output, and a second handoff would read it as the
+ * turn's answer. Only a message the seed wrote ("handoff" model) qualifies.
+ */
+function handoffRecord(raw: Obj, text: string, thinking: string, id: () => string): ToolItem | null {
+  if (raw.model !== "handoff" || thinking || !text.startsWith(TOOL_RECORD_MARK)) return null;
+  const firstLine = text.indexOf("\n");
+  const head = text.slice(TOOL_RECORD_MARK.length, firstLine < 0 ? undefined : firstLine);
+  const colon = head.indexOf(": ");
+  const name = colon < 0 ? head : head.slice(0, colon);
+  if (!name) return null;
+  const at = typeof raw.timestamp === "number" ? { at: raw.timestamp } : {};
+  return {
+    kind: "tool",
+    id: id(),
+    name,
+    args: "{}",
+    status: "done",
+    output: firstLine < 0 ? "" : text.slice(firstLine + 1),
+    truncated: false,
+    category: toolCategory(name),
+    summary: colon < 0 ? name : head.slice(colon + 2),
+    paths: [],
+    ...at,
+  };
+}
+
 /** Rebuild display items from the active branch's message list. */
 export function historyToItems(messages: unknown[]): ChatItem[] {
   const items: ChatItem[] = [];
@@ -621,6 +652,11 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
       case "assistant": {
         const { text, thinking } = assistantParts(raw);
         const error = assistantError(raw);
+        const record = handoffRecord(raw, text, thinking, () => nextId("t"));
+        if (record) {
+          items.push(record);
+          break;
+        }
         if (text || thinking || error) {
           items.push({
             kind: "assistant",
