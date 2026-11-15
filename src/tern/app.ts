@@ -1789,6 +1789,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
               more: (id) => setSideExpanded((set) => toggled(set, id, !set.has(id))),
               sessions: () => runLeader("s"),
               hide: () => setSidebarToggled(false),
+              pickHarness: () => openMenu("harness"),
             },
           }),
         );

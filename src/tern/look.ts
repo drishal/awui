@@ -346,18 +346,29 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.sidebar'] > .sf-ov-card { width: ${SIDEBAR_WIDTH}px !important; max-width: ${SIDEBAR_WIDTH}px !important; min-width: 0 !important; background: var(--tv-bg, var(--panel)) !important; backdrop-filter: none !important; box-shadow: none !important; border: 0 !important; border-right: 1px solid color-mix(in srgb, var(--t1) 8%, transparent) !important; border-radius: 0 !important; }
 [data-role='awui.sidebar'] { font-family: var(--sans); }
 [data-role='awui.side-new'] { width: 100%; min-height: 32px; justify-content: center; border-radius: 8px; }
-[data-role='awui.side-harness'] { color: var(--t3); font-size: 0.85em; padding-left: 2px; }
+/* The harness the list is scoped to is the web's harness switch: a filled row that opens the picker, a chevron at its end. */
+[data-role='awui.side-harness'] { width: 100%; min-height: 30px; justify-content: flex-start; padding: 0 10px !important; border-radius: 8px; background: ${tint(6)} !important; color: var(--t1) !important; font-weight: 500; }
+[data-role='awui.side-harness']:hover { background: ${tint(10)} !important; }
+[data-role='awui.side-harness']::after { content: '⌄'; margin-left: auto; color: var(--t3); position: relative; top: -3px; }
 [data-role='awui.side-label'] { font-size: 0.92em; font-weight: 600; min-height: 26px; padding-right: 8px; }
 [data-role='awui.side-label'] .sf-icon { width: 14px; height: 14px; }
 [data-role='awui.side-count'] { font-size: 0.85em; font-weight: 500; }
 [data-role='awui.side-project'] > .sf-section-head { min-height: 28px; }
 [data-role='awui.side-project'] > .sf-section-head > .sf-head { flex: 1 1 auto; min-width: 0; }
 [data-role='awui.side-project'] > .sf-section-head > .sf-head [data-role='awui.side-label'] { padding-right: 8px; font-weight: 500; }
+/* A project's monogram, the web's .project-badge: a wash of one of four colours with the letter in it. */
+[data-role^='awui.side-badge'] { --badge: var(--sf-accent, var(--accent)); display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 6px; background: color-mix(in srgb, var(--badge) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--badge) 28%, transparent); color: var(--badge); font-size: 11px; font-weight: 700; line-height: 1; }
+[data-role='awui.side-badge-2'] { --badge: var(--sf-c-info, var(--accent)); }
+[data-role='awui.side-badge-3'] { --badge: var(--awui-thinking, var(--accent)); }
+[data-role='awui.side-badge-4'] { --badge: var(--sf-c-orange, var(--warn)); }
+/* A fixed section's rows sit in by the width of a project's chevron, so every title starts on one line. */
+[data-role='awui.side-block'] > [data-role='awui.side-rows'] { padding-left: 29px; }
 [data-role='awui.side-rows'] .sf-item { min-height: 30px; padding: 0 8px; border-radius: 8px; transition: background-color 0.12s ${EASE_OUT}; }
 [data-role='awui.side-rows'] .sf-item:hover { background: color-mix(in srgb, var(--t1) 5%, transparent); }
 [data-role='awui.side-rows'] .sf-item-label { color: var(--t2); }
-[data-role='awui.side-rows'] .sf-item-value { font-size: 0.85em; }
-[data-role='awui.side-current'] { background: color-mix(in srgb, var(--t1) 9%, transparent) !important; }
+[data-role='awui.side-rows'] .sf-item-value { font-size: 0.85em; font-variant-numeric: tabular-nums; }
+/* The session on screen, as the web's .session.is-active: the accent's tint and a 2px bar of it on the left edge. */
+[data-role='awui.side-current'] { background: color-mix(in srgb, var(--sf-accent, var(--accent)) 12%, transparent) !important; box-shadow: inset 2px 0 0 var(--sf-accent, var(--accent)); }
 [data-role='awui.side-current'] .sf-item-label { color: var(--t1); }
 /* Folded, the sidebar is a rail of three buttons down the left edge, where its own head was: no surface, no line. */
 [data-role='awui.side-rail'] > .sf-ov-card { width: ${SIDEBAR_RAIL}px !important; max-width: ${SIDEBAR_RAIL}px !important; min-width: 0 !important; background: transparent !important; backdrop-filter: none !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }

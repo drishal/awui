@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSession, SessionsOverview, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { asHarnessId } from "../../src/shared/protocol.js";
-import { PROJECT_ROWS, rowStatus, sidebarModel, sidebarNode, type SidebarState } from "../../src/tern/sidebar.js";
+import { PROJECT_ROWS, rowEdge, sidebarModel, sidebarNode, type SidebarState } from "../../src/tern/sidebar.js";
 
 const ws = (id: string): WorkspaceInfo => ({ id, path: `/home/u/${id}`, name: id });
 const s = (id: string, workspaceId: string, over: Partial<ProjectSession> = {}): ProjectSession => ({
@@ -56,17 +56,19 @@ describe("the Tern sidebar's model", () => {
   it("offers Show N more on a cut project and Show fewer on an expanded one", () => {
     const many: SessionsOverview = { workspaces: [ws("webui")], sessions: Array.from({ length: PROJECT_ROWS + 2 }, (_, i) => s(`w${i}`, "webui")), errors: [] };
     const button = (expanded: boolean) => {
-      const node = sidebarNode({ model: sidebarModel(many, at({ expanded: new Set(expanded ? ["webui"] : []) })), harnessName: "Pi", current: null, now, on: { open() {}, newChat() {}, fold() {}, more() {}, sessions() {}, hide() {} } });
+      const node = sidebarNode({ model: sidebarModel(many, at({ expanded: new Set(expanded ? ["webui"] : []) })), harnessName: "Pi", current: null, now, on: { open() {}, newChat() {}, fold() {}, more() {}, sessions() {}, hide() {}, pickHarness() {} } });
       return JSON.stringify(node.toJSON()).match(/"text":"(Show [^"]+)"/)?.[1];
     };
     expect(button(false)).toBe("Show 2 more");
     expect(button(true)).toBe("Show fewer");
   });
 
-  it("words a row's right edge by what it is doing, else by its age", () => {
-    expect(rowStatus(s("a", "w", { asking: true, status: "running" }), now)).toMatchObject({ t: "needs you", s: "warning" });
-    expect(rowStatus(s("b", "w", { status: "running" }), now)).toMatchObject({ t: "working", s: "accent" });
-    expect(rowStatus(s("c", "w", { status: "error" }), now)).toMatchObject({ t: "failed", s: "error" });
-    expect(rowStatus(s("d", "w"), now)).toMatchObject({ t: "2h ago", s: "dim" });
+  it("draws a row's right edge as a toned dot when it is busy, then its narrow age, after its project in a fixed section", () => {
+    const words = (spans: { t: string; s?: string }[]) => spans.map((x) => [x.t, x.s]);
+    expect(words(rowEdge(s("a", "w", { asking: true, status: "running" }), now))).toEqual([["● ", "warning"], ["2h", "dim"]]);
+    expect(words(rowEdge(s("b", "w", { status: "running" }), now))).toEqual([["● ", "accent"], ["2h", "dim"]]);
+    expect(words(rowEdge(s("c", "w", { status: "error" }), now))).toEqual([["● ", "error"], ["2h", "dim"]]);
+    expect(words(rowEdge(s("d", "w"), now))).toEqual([["2h", "dim"]]);
+    expect(words(rowEdge(s("e", "w", { updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha"))).toEqual([["alpha · ", "dim"], ["now", "dim"]]);
   });
 });

@@ -10,7 +10,8 @@
 import { span, ui, type IconName, type Node, type Span } from "@stencil-hq/tern";
 import type { ProjectSession, SessionsOverview, WorkspaceInfo } from "../shared/protocol.js";
 import { groupByProject, isWorking, sidebarSections } from "../web/session-groups.js";
-import { ago } from "../web/turns.js";
+import { shortAgo } from "../web/turns.js";
+import { projectMonogram } from "../web/project-badge.js";
 import { plainTitle } from "../web/plain-title.js";
 
 /** The sheet's width in CSS pixels: the web sidebar's default. */
@@ -75,12 +76,22 @@ export function sidebarModel(overview: SessionsOverview, at: SidebarState): Side
   return { names: new Map(overview.workspaces.map((w) => [w.id, w.name])), blocks: [...fixed("needs", "Needs you", sections.needs), ...fixed("working", "Working", sections.working), ...fixed("pinned", "Pinned", sections.pinned), ...projects], hidden: snoozed + settled + archived };
 }
 
-/** A row's right edge: what it is doing when that is news, else how long ago it last moved. */
-export function rowStatus(s: ProjectSession, now: number): Span {
-  if (s.asking) return span("needs you", "warning");
-  if (isWorking(s.status)) return span("working", "accent");
-  if (s.status === "error") return span("failed", "error");
-  return span(s.updatedAt ? ago(Date.parse(s.updatedAt) || 0, now) : "", "dim");
+/** What a row is doing when that is news, as the dot's tone: asking, working, or failed; null when it is idle. */
+export function rowTone(s: ProjectSession): "warning" | "accent" | "error" | null {
+  if (s.asking) return "warning";
+  if (isWorking(s.status)) return "accent";
+  if (s.status === "error") return "error";
+  return null;
+}
+
+/**
+ * A row's right edge, the web sidebar's: a toned dot when the row is doing something, then its age in the narrow form
+ * ("1m", not "1m ago"), so the title keeps the width; in a section that is not one project, the project's name first.
+ */
+export function rowEdge(s: ProjectSession, now: number, project?: string): Span[] {
+  const tone = rowTone(s);
+  const age = s.updatedAt ? shortAgo(Date.parse(s.updatedAt) || 0, now) : "";
+  return [...(project ? [span(age ? `${project} · ` : project, "dim")] : []), ...(tone ? [span("● ", tone)] : []), span(age, "dim")];
 }
 
 export interface SidebarCx {
@@ -96,11 +107,13 @@ export interface SidebarCx {
     more: (workspaceId: string) => void;
     sessions: () => void;
     hide: () => void;
+    /** The harness picker: the scope row is the web sidebar's harness switch. */
+    pickHarness: () => void;
   };
 }
 
-/** A block's rows as Tern's list: the title, then at the right edge what the row is doing or how long ago it moved
- *  (in a project) or its project (in Needs you, Working, Pinned); the session on screen is marked. */
+/** A block's rows as Tern's list: the title, then at the right edge its dot and age, after its project in Needs you,
+ *  Working, and Pinned; the session on screen is marked. */
 function rowsNode(block: SidebarBlock, cx: SidebarCx): Node {
   const byKey = new Map(block.rows.map((s, i) => [`s${i}`, s]));
   const open = (item: string) => {
@@ -114,8 +127,8 @@ function rowsNode(block: SidebarBlock, cx: SidebarCx): Node {
         key: `s${i}`,
         role: s.id === cx.current ? "awui.side-current" : "awui.side-row",
         label: [span(s.title ? plainTitle(s.title) : "Untitled"), ...(s.unread ? [span(" •", "accent")] : [])],
-        // A fixed section already says what its rows are doing, so its rows name their project instead, as the web's.
-        value: [block.workspace ? rowStatus(s, cx.now) : span(cx.model.names.get(s.workspaceId) ?? "", "dim")],
+        // A fixed section's rows are not one project's, so they name theirs, as the web's.
+        value: rowEdge(s, cx.now, block.workspace ? undefined : (cx.model.names.get(s.workspaceId) ?? "")),
       }),
     ),
   );
@@ -128,14 +141,20 @@ const LABEL: Record<string, { tone: string; icon: IconName }> = {
   pinned: { tone: "muted", icon: "pin" },
 };
 
-/** A label row: the glyph and the words on the left, the count at the right edge. */
-function labelNode(key: string, words: Node | Span[], count: number, icon?: IconName): Node {
+/** A label row: the glyph (or a project's monogram) and the words on the left, the count at the right edge. */
+function labelNode(key: string, words: Node | Span[], count: number, icon?: IconName | Node): Node {
   return ui.row(
     { key, role: "awui.side-label", align: "center", gap: "sm" },
-    icon ? ui.icon({ key: "i", name: icon }) : null,
+    typeof icon === "string" ? ui.icon({ key: "i", name: icon }) : (icon ?? null),
     ui.text({ key: "t", grow: 1, truncate: "end" }, words as Span[]),
     ui.text({ key: "n", role: "awui.side-count" }, span(String(count), "dim")),
   );
+}
+
+/** A project's monogram, the web's folder badge: its first letter in one of four colours taken from its name. */
+function badge(name: string): Node {
+  const { letter, slot } = projectMonogram(name);
+  return ui.text({ key: "b", role: `awui.side-badge-${slot}` }, span(letter));
 }
 
 /**
@@ -154,7 +173,7 @@ export function sidebarNode(cx: SidebarCx): Node {
       {
         key: block.key,
         role: "awui.side-project",
-        head: labelNode("head", [span(block.title, "strong"), ...(block.branch ? [span(`  ${block.branch}`, "dim")] : [])], total),
+        head: labelNode("head", [span(block.title, "strong"), ...(block.branch ? [span(`  ${block.branch}`, "dim")] : [])], total, badge(block.title)),
         collapsible: true,
         collapsed: block.folded,
         onToggle: (e) => cx.on.fold(ws.id, e.collapsed ?? false),
@@ -182,7 +201,7 @@ export function sidebarNode(cx: SidebarCx): Node {
     ui.scroll(
       { key: "body", role: "awui.side", gap: "md" },
       ui.button({ key: "new", role: "awui.side-new", icon: "plus", text: "New chat", title: "New chat (C-x n)", onClick: () => cx.on.newChat(null) }),
-      ui.text({ key: "harness", role: "awui.side-harness" }, span(cx.harnessName)),
+      ui.button({ key: "harness", role: "awui.side-harness", text: cx.harnessName, variant: "quiet", title: "Switch harness", onClick: cx.on.pickHarness }),
       ...(blocks.length > 0 ? blocks : [ui.text({ key: "empty", role: "awui.side-note" }, span("No chats yet. Start one in the composer.", "dim"))]),
     ),
   );
