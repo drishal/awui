@@ -321,6 +321,12 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* Deny and Approve sit together at the right, as the web card's .approval-actions (a spacer, then the answers). */
 [data-role='awui.approval'] .sf-tool-ask-foot { justify-content: flex-end; gap: 8px; }
 [data-role='awui.approval'] .sf-tool-ask-foot > .sf-tool-sp { display: none; }
+/* One row, as the web card reads: the question at the left, its answers at the right, wrapping under it only when the
+   reason is long. The card's fill is the composer's neutral one (the web's --card), so only the warn edge says warning. */
+[data-role='awui.approval'] { flex-direction: row !important; flex-wrap: wrap; align-items: center; background: ${cardTint(7)} !important; }
+[data-role='awui.approval'] > .sf-tool-head { flex: 1 1 320px; min-width: 0; border-bottom: 0 !important; box-shadow: none !important; }
+[data-role='awui.approval'] > .sf-tool-body:empty { display: none; }
+[data-role='awui.approval'] > .sf-tool-ask { flex: 0 0 auto; margin-left: auto; background: none !important; border: 0 !important; box-shadow: none !important; padding: 4px 8px 4px 0 !important; }
 /* Its reason is a sentence, not a path, so it reads in the reading font, a step below the title. */
 [data-role='awui.approval'] .sf-tool-target.text { font-family: var(--sans); color: var(--t2); }
 /* Allow is solid ink and Deny a bordered neutral, as .answer.primary and .answer.deny (the web card's): Tern's
