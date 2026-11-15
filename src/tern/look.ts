@@ -269,8 +269,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.brand'] { font-size: 1.6em; font-weight: 600; letter-spacing: 0.02em; font-family: var(--mono, monospace); color: ${HARNESS}; }
 [data-role='awui.start-title'] { font-size: 1.45em; font-weight: 600; text-align: center; }
 [data-role='awui.harnesses'] { gap: 8px; justify-content: center; flex-wrap: wrap; }
-/* The accent stays the title's project word; the three suggestions' marks are the second grey. */
-[data-role='awui.harnesses'] svg { color: var(--t3); }
+/* The suggestions are text only, as the web's .hero-example: one glyph three times in a row was the start screen's noise. */
+[data-role='awui.harnesses'] .sf-sug-ic { display: none; }
 /* Controls are 8 px round, as the web UI's --r-control; only Send and dots stay circular. */
 .pick { border-radius: 8px; padding: 4px 13px; background: ${tint(7)}; color: var(--t2); }
 .pick:hover { background: ${tint(12)}; }
