@@ -91,7 +91,8 @@ export function rowTone(s: ProjectSession): "warning" | "accent" | "error" | nul
 export function rowEdge(s: ProjectSession, now: number, project?: string): Span[] {
   const tone = rowTone(s);
   const age = s.updatedAt ? shortAgo(Date.parse(s.updatedAt) || 0, now) : "";
-  return [...(project ? [span(age ? `${project} · ` : project, "dim")] : []), ...(tone ? [span("● ", tone)] : []), span(age, "dim")];
+  // The project and the age part with a "·" only when no dot stands between them ("alpha ● 2m", not "alpha · ● 2m").
+  return [...(project ? [span(tone ? `${project} ` : age ? `${project} · ` : project, "dim")] : []), ...(tone ? [span("● ", tone)] : []), span(age, "dim")];
 }
 
 export interface SidebarCx {

@@ -70,5 +70,6 @@ describe("the Tern sidebar's model", () => {
     expect(words(rowEdge(s("c", "w", { status: "error" }), now))).toEqual([["● ", "error"], ["2h", "dim"]]);
     expect(words(rowEdge(s("d", "w"), now))).toEqual([["2h", "dim"]]);
     expect(words(rowEdge(s("e", "w", { updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha"))).toEqual([["alpha · ", "dim"], ["now", "dim"]]);
+    expect(words(rowEdge(s("f", "w", { asking: true, updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha"))).toEqual([["alpha ", "dim"], ["● ", "warning"], ["now", "dim"]]);
   });
 });
