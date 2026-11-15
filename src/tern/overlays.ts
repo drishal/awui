@@ -136,9 +136,9 @@ export function filterItems(items: readonly MenuItem[], query: string): MenuItem
 
 /** The palette's sections, in order, and which command ids each holds; anything unnamed falls into the last. */
 const PALETTE_GROUPS: ReadonlyArray<readonly [string, (id: string) => boolean]> = [
-  ["Chats", (id) => ["x:s", "x:b", "x:n", "x:a", "x:]", "x:[", "x:w"].includes(id)],
+  ["Chats", (id) => ["x:s", "x:n", "x:a", "x:]", "x:[", "x:w"].includes(id)],
   ["Agent", (id) => ["x:m", "x:t", "models-refresh", "permission", "x:h", "x:c", "stop"].includes(id)],
-  ["View", (id) => ["x:e", "x:f", "x:g", "timing", "x:i", "x:k", "x:p", "context"].includes(id) || id.startsWith("width:")],
+  ["View", (id) => ["x:b", "x:e", "x:f", "x:g", "timing", "x:i", "x:k", "x:p", "context"].includes(id) || id.startsWith("width:")],
   ["Project", (id) => ["x:j", "x:u", "review", "github"].includes(id)],
   ["More", () => true],
 ];
