@@ -256,6 +256,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* An older answer's row waits at 45% until its turn is hovered or focused, as the web's .answer-actions: four icons
    under every answer read as noise. */
 [data-role='awui.answer-acts-past'] { opacity: 0.45; transition: opacity 0.16s ${EASE_OUT}; }
+/* A turn ends a little further from the next prompt than its own parts sit from each other, so two turns do not read as one stream. */
+[data-role^='awui.turn'] + [data-role^='awui.turn'] { margin-top: 14px; }
 [data-role^='awui.turn']:hover [data-role='awui.answer-acts-past'], [data-role='awui.answer-acts-past']:focus-within { opacity: 1; }
 [data-role='awui.changed'] { font-size: 0.88em; color: var(--t3); }
 /* The changed line is already the smaller size: its +/− keeps it, as the same figures in a fold head read, not shrunk twice. */
