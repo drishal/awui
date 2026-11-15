@@ -142,7 +142,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* The project after them, at their size and ink: three greys and two sizes in one line read as three things. */
 [data-role='awui.head-project'] { font-size: 0.86em; color: var(--t2); }
 /* A dot sets it off from the state before it, which otherwise read as one phrase ("Needs you alpha"). */
-[data-role='awui.head-project']::before { content: '·'; margin-right: 6px; color: var(--t4); }
+[data-role='awui.head-project']::before { content: '·'; margin: 0 6px 0 -4px; color: var(--t4); }
 .state::before { content: '●'; margin-right: 5px; color: var(--t4); }
 .state.idle::before { color: var(--ok); }
 .state.busy::before { color: ${HARNESS}; }
