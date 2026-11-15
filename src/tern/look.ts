@@ -256,7 +256,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.agent-row'] .sf-tool-took { padding-right: 12px; }
 /* A thought reads as the web UI's, in the reading font: the word quietest, then the reasoning's title, which is what you read. */
 [data-role='awui.thought'] .sf-tool-title { font-weight: 400; color: var(--t4); }
-[data-role='awui.thought'] .sf-tool-target { font-family: var(--sans); color: var(--t2); }
+[data-role='awui.thought'] .sf-tool-target { font-family: var(--sans); }
+[data-role='awui.calls'] [data-role='awui.thought'].sf-tool.inline .sf-tool-target { color: var(--t2); }
 [data-role='awui.thought'] .md { color: var(--t3); }
 [data-role='awui.note'] { color: var(--t3); font-size: 0.92em; }
 /* A note among a card's calls (an answered approval) keeps the rows' inset rather than touching the card's edge. */
