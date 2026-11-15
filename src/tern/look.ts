@@ -273,6 +273,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* Rows as close as the web UI's tree, and a finished item a small check in the success colour rather than a filled disc. */
 [data-role='awui.todos'] .sf-ck-ph { min-height: 22px; }
 [data-role='awui.todos'] .sf-ck-item { min-height: 20px; }
+/* A phase's "0/1" in the reading font with even figures: in Tern's mono its slashed zero read as an 8. */
+[data-role='awui.todos'] .sf-ck-ph > .n { font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 0.85em; color: var(--t3); }
 [data-role='awui.todos'] .sf-ck-item.st-done .sf-ck-g { background: none !important; color: var(--ok) !important; }
 .send { border-radius: 999px; min-width: 26px; padding: 2px 8px; text-align: center; color: var(--t1); background: ${tint(16)}; }
 .send.ready { color: var(--page, #000); background: ${INK}; }
