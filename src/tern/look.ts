@@ -395,6 +395,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 .pk-sheet { background: ${cardTint(5)} !important; backdrop-filter: none !important; }
 /* Close is a button beside Choose, bordered, not a bare word that reads as a caption. */
 .pk-sheet .pk-btn.esc { box-shadow: inset 0 0 0 1px ${tint(12)}; color: var(--t2); }
+/* Choose is the footer's primary, solid ink as Approve is, so the pair reads quiet then solid; Tern's own fill was a near twin of Close. */
+.pk-sheet .pk-btn.primary { background: ${INK} !important; color: var(--page, #000) !important; box-shadow: none !important; }
 .pk-sheet .pk-fact { color: var(--t3); font-size: 0.85em; font-variant-numeric: tabular-nums; }
 /* On the chosen row its keys step up a grey, so the accent tint does not swallow them. */
 .pk-sheet .pk-row.sel .pk-fact { color: var(--t2); }
