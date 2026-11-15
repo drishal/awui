@@ -422,7 +422,7 @@ describe("awui tern", () => {
     tern.type("n");
     await until(() => tern.text("main").includes("What should Fake do in alpha?"), "the new chat's start screen");
     const sidebar = () => tern.find("overlay", "layer").find((n) => n.p.role === "awui.sidebar");
-    // The stand-in's pane starts under 1200 px, so the sidebar is folded until the pane grows past it.
+    // The stand-in's pane starts under 150 columns, so the sidebar is folded until the pane grows past it.
     expect(sidebar()).toBeUndefined();
     tern.event({ ev: "resize", cols: 160, cell: { w: 8, h: 16 } });
     await until(() => sidebar() !== undefined && tern.text("layer").includes("sidebar row please"), "the sidebar on a wide pane");

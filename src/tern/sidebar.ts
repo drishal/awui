@@ -15,8 +15,12 @@ import { plainTitle } from "../web/plain-title.js";
 
 /** The sheet's width in CSS pixels: the web sidebar's default. */
 export const SIDEBAR_WIDTH = 272;
-/** Below this pane width the sidebar folds away by itself, as the web UI's does under 1200 px. */
-export const SIDEBAR_AUTO_FOLD = 1200;
+/**
+ * Below this many columns the sidebar folds away by itself, as the web UI's does under 1200 px: about that width at
+ * Tern's default 13 px font. Columns, not pixels, because Tern's cell size is in device pixels and says nothing of the
+ * display's scale (a 700 px pane at 2x read as 1360 px), while the column count is the same at any scale.
+ */
+export const SIDEBAR_AUTO_FOLD = 150;
 /** The rows a project shows before "Show N more", as the web sidebar's first stretch. */
 export const PROJECT_ROWS = 6;
 

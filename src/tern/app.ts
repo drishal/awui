@@ -145,10 +145,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const [contextOpen, setContextOpen] = createSignal(false);
     // The sessions sidebar (C-x b): open on a pane as wide as the web UI keeps its sidebar, folded below that,
     // unless toggled; crossing the width again forgets the toggle, as the web UI's narrow-window fold does.
-    const paneWidthOf = (cols: number, cell: { w: number } | undefined) => cols * (cell?.w ?? session.caps.cell.w);
-    const [paneWidth, setPaneWidth] = createSignal(paneWidthOf(session.caps.cols, session.caps.cell));
+    const [paneCols, setPaneCols] = createSignal(session.caps.cols);
     const [sidebarToggled, setSidebarToggled] = createSignal<boolean | null>(null);
-    const sidebarShown = () => sidebarToggled() ?? paneWidth() >= SIDEBAR_AUTO_FOLD;
+    const sidebarShown = () => sidebarToggled() ?? paneCols() >= SIDEBAR_AUTO_FOLD;
     const [sideFolded, setSideFolded] = createSignal<ReadonlySet<string>>(new Set());
     const [sideExpanded, setSideExpanded] = createSignal<ReadonlySet<string>>(new Set());
     const toggleSidebar = () => setSidebarToggled(!sidebarShown());
@@ -2279,9 +2278,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             if (input.type === "key") onKey(input.key);
             else if (input.event.ev === "theme") setDark(input.event.dark);
             else if (input.event.ev === "resize") {
-              const before = paneWidth() >= SIDEBAR_AUTO_FOLD;
-              setPaneWidth(paneWidthOf(input.event.cols, input.event.cell));
-              if (before !== paneWidth() >= SIDEBAR_AUTO_FOLD) setSidebarToggled(null);
+              const before = paneCols() >= SIDEBAR_AUTO_FOLD;
+              setPaneCols(input.event.cols);
+              if (before !== paneCols() >= SIDEBAR_AUTO_FOLD) setSidebarToggled(null);
             }
           } catch (error) {
             say(error instanceof Error ? error.message : String(error), "error");
