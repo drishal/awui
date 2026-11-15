@@ -360,6 +360,10 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
  * like the dock's, so what scrolls under them never shows through, and their cards read on it.
  */
 [data-role='awui.layer'] { background: ${SOLID}; }
+/* A picker sheet (the palette, sessions, models) is a solid card, not Tern's frosted glass: through the blur the
+   conversation and sidebar behind it showed as smudges. Its row shortcuts and Close step back a tier. */
+.pk-sheet { background: ${cardTint(5)} !important; backdrop-filter: none !important; }
+.pk-sheet .pk-fact { color: var(--t3); font-size: 0.85em; font-variant-numeric: tabular-nums; }
 
 /*
  * The sessions sidebar (sidebar.ts), after the web's (styles/sidebar.css): a flat column the web sidebar's width,
