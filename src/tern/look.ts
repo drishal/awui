@@ -23,7 +23,8 @@ import { DARK, LIGHT, type Theme } from "../atui/theme.js";
  */
 export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "light" | null, dark: boolean): string {
   const scheme = polarity ? ((polarity === "dark") === dark ? theme : null) : dark ? DARK : LIGHT;
-  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${(scheme ?? theme).thinking}`];
+  // How much ink a raised card mixes in: half on a light pane, where the dark pane's 7% turned every card grey.
+  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${(scheme ?? theme).thinking}`, `--awui-lift: ${dark ? 1 : 0.5}`];
   const vars = scheme
     ? [
         `--t1: ${scheme.text}`,
@@ -74,6 +75,8 @@ const tint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%,
 const SOLID = "var(--tv-bg, var(--panel, var(--page)))";
 /** A tint laid on the solid background, so a card in the dock is opaque. */
 const solidTint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%, ${SOLID})`;
+/** A raised card's fill: the solid tint scaled by the pane's --awui-lift, so it stays a lift and not a grey slab on a light pane. */
+const cardTint = (pct: number) => `color-mix(in srgb, ${INK} calc(${pct}% * var(--awui-lift, 1)), ${SOLID})`;
 /** The prompt bubble: the web UI's --bubble, the accent a tenth into a raised surface. */
 const BUBBLE = `color-mix(in srgb, var(--accent) 10%, ${solidTint(9)})`;
 
@@ -252,11 +255,11 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.recent'] { width: 100%; max-width: ${recent}; }
 
 /* The dock: queued steps, the git row, the composer card, the status strip. */
-[data-role='awui.queue'] { gap: 4px; padding: 6px 14px; border-radius: 16px; background: ${solidTint(5)}; font-size: 0.9em; }
+[data-role='awui.queue'] { gap: 4px; padding: 6px 14px; border-radius: 16px; background: ${cardTint(5)}; font-size: 0.9em; }
 /* The git row is the composer's caption, not a bubble of its own: the web dock dropped its fill too. */
 [data-role='awui.git'] { align-items: center; gap: 10px; padding: 2px 14px; border-radius: 8px; font-size: 0.86em; color: var(--t3); }
 [data-role='awui.git'].sf-act:hover { background: ${tint(9)}; }
-[data-role^='awui.composer'] { gap: 6px; padding: 9px 10px 8px; border-radius: 16px; background: ${solidTint(7)}; border: 1px solid ${tint(10)}; }
+[data-role^='awui.composer'] { gap: 6px; padding: 9px 10px 8px; border-radius: 16px; background: ${cardTint(7)}; border: 1px solid ${tint(10)}; }
 [data-role='awui.composer-busy'] { border-color: ${tint(40, HARNESS)}; }
 [data-role^='awui.composer'] .sf-editor { background: transparent; box-shadow: none; border: 0; outline: 0; padding-left: 4px; }
 [data-role='awui.chips'] { align-items: center; gap: 6px; }
@@ -269,7 +272,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 
 /* The todo card over the composer, as the web UI's status stack. */
 /* One panel radius for every dock card (todos, queue, request, composer), so they stack as one column. */
-[data-role='awui.todos'] { border-radius: 16px; background: ${solidTint(4)} !important; }
+[data-role='awui.todos'] { border-radius: 16px; background: ${cardTint(4)} !important; }
 /* Rows as close as the web UI's tree, and a finished item a small check in the success colour rather than a filled disc. */
 [data-role='awui.todos'] .sf-ck-ph { min-height: 22px; }
 [data-role='awui.todos'] .sf-ck-item { min-height: 20px; }
@@ -281,7 +284,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 .send.stop { color: var(--page, #000); background: ${HARNESS}; }
 
 /* An approval or a question from the agent, above the composer. */
-[data-role='awui.request'] { gap: 8px; padding: 12px 14px; border-radius: 16px; background: ${solidTint(7)}; border: 1px solid ${tint(30, 'var(--warn)')}; }
+[data-role='awui.request'] { gap: 8px; padding: 12px 14px; border-radius: 16px; background: ${cardTint(7)}; border: 1px solid ${tint(30, 'var(--warn)')}; }
 [data-role='awui.request-title'] { font-weight: 600; }
 [data-role='awui.request-buttons'] { gap: 6px; flex-wrap: wrap; }
 .answer { border-radius: 8px; padding: 3px 12px; background: ${tint(9)}; color: var(--t1); }
