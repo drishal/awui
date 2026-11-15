@@ -183,7 +183,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
  */
 [data-role^='awui.fold'] { border: 1px solid ${tint(10)}; border-radius: 12px; background: ${tint(2)}; }
 /* A closed card is as tall as an open card's row and in the same text size, as the web UI's are. */
-[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 1em; padding: 7px 12px 7px 10px !important; min-height: 34px; }
+[data-role^='awui.fold'] > .sf-section-head { color: var(--t3); font-size: 1em; padding: 7px 12px 7px 13px !important; min-height: 34px; }
 /* The chevron at the head's right end, pointing down while closed and up while open, as the web UI's card's. */
 [data-role^='awui.fold'] > .sf-section-head .sf-chev { order: 9; margin-left: 6px; color: var(--t3); transform: rotate(180deg); }
 [data-role^='awui.fold'].collapsed > .sf-section-head .sf-chev { transform: none; }
