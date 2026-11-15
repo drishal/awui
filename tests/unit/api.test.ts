@@ -212,6 +212,27 @@ describe("chat lifecycle over HTTP + SSE", () => {
     sse.close();
   });
 
+  it("carries a prompt's picture across a handoff, copied or briefed", async () => {
+    const dot = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    for (const fakeBBriefOnly of [false, true]) {
+      const { agent, ws } = await setup({ fakeBBriefOnly });
+      const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+      const sse = openSse(t as TestApp, chat.chatId, agent.cookie);
+      await sse.waitFor(() => sse.chatEvents().some((e) => e.type === "snapshot"));
+      await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "why is it stuck", images: [{ mimeType: "image/png", data: dot }] });
+      await sse.waitFor(() => sse.chatEvents().some((e) => e.type === "status" && e.status === "idle"));
+      const moved = await agent.post(`/api/chats/${chat.chatId}/handoff`).send({ harness: "fake-b" });
+      expect(moved.status).toBe(201);
+      const target = (t as TestApp).manager.get((moved.body as ChatSnapshot).chatId);
+      await sse.waitFor(() => target.snapshot().items.some((i) => i.kind === "user" && (i.images?.length ?? 0) > 0));
+      const first = target.snapshot().items.find((i) => i.kind === "user");
+      expect(first?.kind === "user" && first.images).toHaveLength(1);
+      expect(first?.kind === "user" && first.text).not.toContain("could not be carried over");
+      if (fakeBBriefOnly) expect(first?.kind === "user" && first.text).toContain("attached to this briefing as image 1");
+      sse.close();
+    }
+  });
+
   it("returns 409 for a normal send while busy, and steers / queues follow-ups", async () => {
     const { agent, ws, t } = await setup({ chunkDelayMs: 15 });
     const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;

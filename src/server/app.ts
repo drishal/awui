@@ -2850,7 +2850,12 @@ export async function createApp(deps: AppDeps) {
         throw new ChatError(502, "handoff_failed", `${target.displayName} could not take this session: ${errorMessage(error)}`);
       }
       const brief = briefPrompt(seed, { from: chat.adapter.displayName, project: chat.workspace.name, draft });
-      await moved.send(brief, "normal", [], { origin: "agent" }).catch(() => undefined);
+      // The pictures ride along; a harness that refuses them still gets the record, without them.
+      const sent = await moved.send(brief.text, "normal", brief.images, { origin: "agent" }).then(
+        () => true,
+        () => false,
+      );
+      if (!sent && brief.images.length > 0) await moved.send(brief.text, "normal", [], { origin: "agent" }).catch(() => undefined);
       // After the send: some harnesses only have a session to name once the first prompt is in.
       if (seed.title && target.capabilities.supportsRename) await moved.rename(seed.title).catch(() => undefined);
       return moved;

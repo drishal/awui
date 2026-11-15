@@ -62,7 +62,7 @@ describe("uuidv7", () => {
       now: new Date("2026-01-01T00:00:00.000Z"),
       entries: [
         { role: "user", text: "q" },
-        { role: "tool", name: "read", summary: "README.md", output: "body" },
+        { role: "tool", name: "read", summary: "README.md", output: "body", diff: "" },
         { role: "assistant", text: "a", thinking: "hmm" },
       ],
     });

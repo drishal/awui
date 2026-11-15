@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChatSnapshot, SideThreadResult } from "../../src/shared/protocol.js";
 import { FakeAdapter } from "../../src/server/harness/fake.js";
-import { sideThreadPrompt } from "../../src/server/harness/handoff.js";
+import { sideThreadPrompt, type HandoffTurn } from "../../src/server/harness/handoff.js";
 import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
 
 let t: TestApp | null = null;
@@ -21,7 +21,13 @@ async function until(check: () => boolean, ms = 10_000) {
   }
 }
 
-const turn = { prompt: { text: "Add a retry" }, answer: { text: "Done." }, tools: [{ name: "Edit", summary: "src/app.ts", output: "" }] };
+const turn: HandoffTurn = {
+  prompt: { text: "Add a retry", images: [] },
+  steps: [
+    { kind: "tool", name: "Edit", summary: "src/app.ts", output: "", diff: "" },
+    { kind: "text", text: "Done." },
+  ],
+};
 
 async function asked(turnNumber = 1) {
   const agent = await signedIn(t as TestApp);

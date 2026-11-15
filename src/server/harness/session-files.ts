@@ -135,7 +135,9 @@ export function seedSessionText(options: { id: string; cwd: string; now: Date; e
   for (const entry of options.entries) {
     let message: Obj;
     if (entry.role === "user") {
-      message = { role: "user", content: [{ type: "text", text: entry.text }] };
+      // Pictures in Pi's own block shape, ahead of the text as a prompt sent with images has them.
+      const images = (entry.images ?? []).map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
+      message = { role: "user", content: [...images, { type: "text", text: entry.text }] };
     } else {
       const content: Obj[] = [];
       if (entry.role === "tool") content.push({ type: "text", text: toolRecordText(entry) });

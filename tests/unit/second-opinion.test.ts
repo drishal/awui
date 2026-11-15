@@ -2,7 +2,7 @@
 // routes that ask another harness, refuse the wrong ones, and read the reply back.
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChatItem, ChatSnapshot, SecondOpinion, SecondOpinionResult } from "../../src/shared/protocol.js";
-import { OPINION_MAX_CHARS, turnBrief } from "../../src/server/harness/handoff.js";
+import { OPINION_MAX_CHARS, turnBrief, type HandoffTurn } from "../../src/server/harness/handoff.js";
 import { reportExcerpt, SecondOpinions } from "../../src/server/second-opinions.js";
 import { makeTestApp, signedIn, tempDir, type TestApp } from "../helpers/app.js";
 
@@ -20,10 +20,12 @@ async function until(check: () => boolean, ms = 10_000) {
   }
 }
 
-const turn = {
-  prompt: { text: "Add a retry" },
-  answer: { text: "Added retry() and a test." },
-  tools: [{ name: "Edit", summary: "src/app.ts (+12 −3)", output: "ok" }],
+const turn: HandoffTurn = {
+  prompt: { text: "Add a retry", images: [] },
+  steps: [
+    { kind: "tool", name: "Edit", summary: "src/app.ts (+12 −3)", output: "ok", diff: "" },
+    { kind: "text", text: "Added retry() and a test." },
+  ],
 };
 
 describe("turnBrief", () => {
@@ -44,10 +46,12 @@ describe("turnBrief", () => {
 
   it("gives up tool output before the turn itself, and never the question", () => {
     // Ten calls' output is more than the budget allows beside the prompt and the answer.
-    const long = {
-      prompt: { text: "p".repeat(8_000) },
-      answer: { text: "a".repeat(8_000) },
-      tools: Array.from({ length: 10 }, (_, i) => ({ name: "Run", summary: `npm test ${i}`, output: "x".repeat(4_000) })),
+    const long: HandoffTurn = {
+      prompt: { text: "p".repeat(8_000), images: [] },
+      steps: [
+        ...Array.from({ length: 10 }, (_, i) => ({ kind: "tool" as const, name: "Run", summary: `npm test ${i}`, output: "x".repeat(4_000), diff: "" })),
+        { kind: "text", text: "a".repeat(8_000) },
+      ],
     };
     const brief = turnBrief(long, { from: "Pi", project: "proj", ask: "Is this right?" });
     expect(brief.length).toBeLessThanOrEqual(OPINION_MAX_CHARS);

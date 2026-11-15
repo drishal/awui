@@ -292,7 +292,10 @@ export class FakeAdapter implements HarnessAdapter {
       session.messages.push({ timestamp: Date.now(), ...message });
     };
     for (const entry of seedTranscript(req.seed)) {
-      if (entry.role === "user") push({ role: "user", content: entry.text });
+      if (entry.role === "user") {
+        const images = (entry.images ?? []).map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
+        push({ role: "user", content: images.length > 0 ? [...images, { type: "text", text: entry.text }] : entry.text });
+      }
       else if (entry.role === "assistant") {
         const content: unknown[] = [];
         if (entry.thinking) content.push({ type: "thinking", thinking: entry.thinking });
