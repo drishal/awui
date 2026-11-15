@@ -376,7 +376,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* The harness the list is scoped to is the web's harness switch: a filled row that opens the picker, a chevron at its end. */
 [data-role='awui.side-harness'] { width: 100%; min-height: 30px; justify-content: flex-start; padding: 0 10px !important; border-radius: 8px; background: ${tint(6)} !important; color: var(--t1) !important; font-weight: 500; }
 [data-role='awui.side-harness']:hover { background: ${tint(10)} !important; }
-[data-role='awui.side-harness']::after { content: '⌄'; margin-left: auto; color: var(--t3); position: relative; top: -3px; }
+[data-role='awui.side-harness']::before { content: '●'; margin-right: 7px; font-size: 0.8em; color: ${HARNESS}; }
+/* The chevron is two borders turned, not a text glyph: it sits on the label's centre line and matches Tern's own chevrons below. */
+[data-role='awui.side-harness']::after { content: ''; margin-left: auto; width: 5px; height: 5px; border-right: 1.5px solid var(--t3); border-bottom: 1.5px solid var(--t3); transform: translateY(-2px) rotate(45deg); }
 [data-role='awui.side-label'] { font-size: 0.92em; font-weight: 600; min-height: 26px; padding-right: 8px; }
 [data-role='awui.side-label'] .sf-icon { width: 14px; height: 14px; }
 [data-role='awui.side-count'] { font-size: 0.85em; font-weight: 500; }
