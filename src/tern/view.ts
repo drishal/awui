@@ -669,7 +669,7 @@ function preambleNode(turn: Turn, cx: ConversationCx): Node {
 }
 
 /** One turn: its prompt, then each stretch of work and the reply after it, then what it changed. */
-function turnNode(turn: Turn, cx: ConversationCx): Node {
+function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
   if (!turn.prompt) return preambleNode(turn, cx);
   const parts: (Node | null)[] = [];
   if (turn.prompt) parts.push(promptNode(turn, turn.prompt, cx));
@@ -761,7 +761,8 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
   } else if (answer?.text.trim()) {
     parts.push(
       ui.row(
-        { key: "acts", role: "awui.answer-acts" },
+        // The latest answer's actions show in full; an older one's are faint until its turn is hovered, as the web's.
+        { key: "acts", role: latest ? "awui.answer-acts" : "awui.answer-acts-past" },
         ui.icon({ key: "copy", name: "copy", title: "Copy the answer", aria: "Copy the answer", onClick: () => cx.on.copy(answer.text) }),
         ui.icon({ key: "markdown", name: "markdown", title: "Copy the turn as Markdown", aria: "Copy the turn as Markdown", onClick: () => cx.on.copyTurn(turn) }),
         ui.icon({ key: "timing", name: "clock", title: "Timing: every step, call, and subagent run", aria: "Timing", onClick: () => cx.on.timing(turn) }),
@@ -835,7 +836,7 @@ export function conversation(cx: ConversationCx): Node[] {
       html.button({ key: "earlier", class: "chip", text: `Show ${Math.min(from, TURN_WINDOW)} earlier ${from === 1 ? "turn" : "turns"} (${from} hidden)`, onClick: cx.on.showEarlier }),
     );
   }
-  for (const turn of turns.slice(from)) out.push(turnNode(turn, cx));
+  for (const turn of turns.slice(from)) out.push(turnNode(turn, cx, turn === turns[turns.length - 1]));
   if (cx.chat.gone) out.push(ui.card({ key: "gone", tone: "muted", head: [span(cx.chat.gone, "muted")] }, ui.text({ key: "t", text: "Open the session again from the list (C-x s) to go on." })));
   return out;
 }

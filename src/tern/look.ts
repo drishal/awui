@@ -151,8 +151,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.prompt'] { align-self: flex-end; max-width: 82%; padding: 10px 16px; border-radius: 14px; background: ${BUBBLE}; }
 [data-role='awui.prompt'].sf-act:hover { background: color-mix(in srgb, ${INK} 5%, ${BUBBLE}); }
 [data-role='awui.prompt-acts'] { gap: 2px; }
-[data-role='awui.prompt-acts'] .sf-icon, [data-role='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 5px; border-radius: 8px; }
-[data-role='awui.prompt-acts'] .sf-icon:hover, [data-role='awui.answer-acts'] .sf-icon:hover { color: var(--t1); background: ${tint(9)}; }
+[data-role='awui.prompt-acts'] .sf-icon, [data-role^='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 5px; border-radius: 8px; }
+[data-role='awui.prompt-acts'] .sf-icon:hover, [data-role^='awui.answer-acts'] .sf-icon:hover { color: var(--t1); background: ${tint(9)}; }
 /* Under the pill: the clock, and the word for who sent it when not the person here ("agent", "guest"). */
 [data-role='awui.prompt-meta'] { font-size: 0.82em; color: var(--t3); padding-right: 6px; }
 [data-role='awui.prompt-time'] { font-size: 1em; color: var(--t3); }
@@ -233,7 +233,11 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.note'] { color: var(--t3); font-size: 0.92em; }
 /* A note among a card's calls (an answered approval) keeps the rows' inset rather than touching the card's edge. */
 [data-role='awui.calls'] > [data-role='awui.note'] { padding: 4px 12px; }
-[data-role='awui.answer-acts'] { gap: 2px; margin-top: -6px; }
+[data-role^='awui.answer-acts'] { gap: 2px; margin-top: -6px; }
+/* An older answer's row waits at 45% until its turn is hovered or focused, as the web's .answer-actions: four icons
+   under every answer read as noise. */
+[data-role='awui.answer-acts-past'] { opacity: 0.45; transition: opacity 0.16s ${EASE_OUT}; }
+[data-role^='awui.turn']:hover [data-role='awui.answer-acts-past'], [data-role='awui.answer-acts-past']:focus-within { opacity: 1; }
 [data-role='awui.changed'] { font-size: 0.88em; color: var(--t3); }
 /* The changed line is already the smaller size: its +/− keeps it, as the same figures in a fold head read, not shrunk twice. */
 [data-role='awui.changed'] [data-role='awui.work-stat'] { font-size: 1em; }
@@ -331,7 +335,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.turn-new'] [data-role='awui.reply'] { animation: awui-rise 0.18s ${EASE_OUT}; }
 [data-role='awui.turn-new'] [data-role='awui.calls'] > * { animation: awui-row 0.28s ${EASE_OUT}; }
 [data-role='awui.turn-new'] [data-role='awui.kinds'] .sf-icon { animation: awui-pop 0.38s ${SPRING}; }
-[data-role='awui.turn-new'] [data-role='awui.answer-acts'], [data-role='awui.turn-new'] [data-role='awui.changed'] { animation: awui-slide 0.22s ${EASE_OUT}; }
+[data-role='awui.turn-new'] [data-role^='awui.answer-acts'], [data-role='awui.turn-new'] [data-role='awui.changed'] { animation: awui-slide 0.22s ${EASE_OUT}; }
 [data-role^='awui.fold'] > .sf-section-body { animation: awui-unfurl 0.28s ${SPRING}; }
 [data-role='awui.calls'] .sf-tool-body { animation: awui-unfurl 0.24s ${SPRING}; }
 [data-role='awui.request'] { animation: awui-rise 0.38s ${SPRING}; }
