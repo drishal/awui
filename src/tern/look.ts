@@ -291,6 +291,11 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* A chip that opens a picker ends in the sidebar switch's drawn chevron, not a text "⌄" that rode above the label's centre. */
 .chip.menu::after { content: ''; display: inline-block; vertical-align: middle; width: 4px; height: 4px; margin-left: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; opacity: 0.7; transform: translateY(-2px) rotate(45deg); }
 .chip.think.menu::after { margin-left: 2px; }
+/* The context ring: a visible track under its arc, a step larger, its figure the third grey, clear of Send. */
+[data-role^='awui.composer'] .sf-meter { gap: 5px; margin-right: 4px; }
+[data-role^='awui.composer'] .sf-mt-ring { width: 14px; height: 14px; }
+[data-role^='awui.composer'] .sf-mt-ring .track { stroke: ${tint(18)}; opacity: 1; }
+[data-role^='awui.composer'] .sf-mt-lbl { font-size: 0.8em; color: var(--t3); font-variant-numeric: tabular-nums; }
 /* The harness chip is a chip like its neighbours, told apart by its colour dot rather than a tinted fill. */
 .chip.harness-chip::before { content: '●'; margin-right: 5px; color: ${HARNESS}; }
 .chip.caution { color: var(--warn); background: ${tint(14, 'var(--warn)')}; }
