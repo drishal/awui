@@ -165,7 +165,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 
 /* A prompt: a pill on the right, as in the web UI, tinted with the accent as its --bubble is. */
 [data-role='awui.ask'] { align-items: flex-end; gap: 4px; }
-[data-role='awui.prompt'] { align-self: flex-end; max-width: 82%; padding: 10px 16px; border-radius: 14px; background: ${BUBBLE}; }
+[data-role='awui.prompt'] { align-self: flex-end; max-width: min(82%, 560px); padding: 10px 16px; border-radius: 14px; background: ${BUBBLE}; }
 /* The reader's own text (the prompt and the reply) is a step above the process rows, as the web sets it at its chat font and the rows a little under it. */
 [data-role='awui.prompt'], [data-role='awui.reply'] .md, [data-role='awui.reply'].md { font-size: 1.08em; }
 [data-role='awui.prompt'].sf-act:hover { background: color-mix(in srgb, ${INK} 5%, ${BUBBLE}); }
