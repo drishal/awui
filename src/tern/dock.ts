@@ -324,7 +324,8 @@ function composerNode(cx: DockCx): Node {
   const sizeText = size ? span(size.label, size.near ? "warning" : "muted") : null;
   const sizeContext = size && size.from !== null && size.to !== null ? span(`  ·  context ${Math.round(size.from)}% → ${Math.round(size.to)}%`, size.near ? "warning" : "dim") : null;
   return ui.col(
-    { key: "comp", role: busy ? "awui.composer-busy" : "awui.composer" },
+    // While a request waits for the user, the card holding it is the only coloured edge: a harness-tinted composer under it said "still running" beside "needs you".
+    { key: "comp", role: busy && !chat?.pending.length ? "awui.composer-busy" : "awui.composer" },
     ui.editor({
       key: "ed",
       text: cx.draft.text,
