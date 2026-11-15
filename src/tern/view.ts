@@ -655,8 +655,13 @@ function workingNode(turn: Turn, cx: ConversationCx, foldOpen: boolean): Node {
 }
 
 /** A live turn's line while it waits on the person: still, in the third grey, pointing at the dock's question. */
-function waitingNode(): Node {
-  return ui.row({ key: "working", role: "awui.waiting", gap: "sm", align: "center" }, ui.icon({ key: "i", name: "pause" }), ui.text({ key: "w", text: "Waiting for you" }));
+function waitingNode(subject?: string): Node {
+  // Naming what it waits on ("Allow tool: read") makes the line more than the fold head's own words, in the quieter grey beside the call.
+  return ui.row(
+    { key: "working", role: "awui.waiting", gap: "sm", align: "center" },
+    ui.icon({ key: "i", name: "pause" }),
+    ui.text({ key: "w" }, "Waiting for you", subject ? span(` · ${subject}`, "muted") : ""),
+  );
 }
 
 /**
@@ -774,7 +779,7 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
   // still line does (no spinner or clock), so a live turn never stands empty under its prompt.
   if (turn.live) {
     if (cx.chat.pending.length === 0) parts.push(workingNode(turn, cx, liveOpen));
-    else if (!waitingSaid) parts.push(waitingNode());
+    else if (!waitingSaid) parts.push(waitingNode(cx.chat.pending[0]?.title.replace(/\?$/, "")));
   } else if (answer?.text.trim()) {
     parts.push(
       ui.row(
