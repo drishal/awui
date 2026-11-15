@@ -776,7 +776,7 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
         // The latest answer's actions show in full; an older one's are faint until its turn is hovered, as the web's.
         { key: "acts", role: latest ? "awui.answer-acts" : "awui.answer-acts-past" },
         ui.icon({ key: "copy", name: "copy", title: "Copy the answer", aria: "Copy the answer", onClick: () => cx.on.copy(answer.text) }),
-        ui.icon({ key: "markdown", name: "doc", title: "Copy the turn as Markdown", aria: "Copy the turn as Markdown", onClick: () => cx.on.copyTurn(turn) }),
+        ui.icon({ key: "markdown", name: "clipboard", title: "Copy the turn as Markdown", aria: "Copy the turn as Markdown", onClick: () => cx.on.copyTurn(turn) }),
         ui.icon({ key: "timing", name: "clock", title: "Timing: every step, call, and subagent run", aria: "Timing", onClick: () => cx.on.timing(turn) }),
         turn.through > 0 && cx.chat.capabilities.supportsFork
           ? ui.icon({ key: "fork", name: "branch", title: "Fork: a new session through this answer", aria: "Fork", onClick: () => cx.on.fork(turn.through) })
