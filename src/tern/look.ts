@@ -387,6 +387,10 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
    conversation and sidebar behind it showed as smudges. Its row shortcuts and Close step back a tier. */
 .pk-sheet { background: ${cardTint(5)} !important; backdrop-filter: none !important; }
 .pk-sheet .pk-fact { color: var(--t3); font-size: 0.85em; font-variant-numeric: tabular-nums; }
+/* The list fades out above the footer instead of cutting a row through its letters, and the screen behind a picker
+   steps back so its words do not compete with the sheet's. */
+.pk-sheet .pk-center { mask-image: linear-gradient(to bottom, var(--t1) calc(100% - 22px), transparent); }
+.sf-region.sf-layer:has(> .sf-picker) { background: color-mix(in srgb, ${SOLID} 55%, transparent); }
 
 /*
  * The sessions sidebar (sidebar.ts), after the web's (styles/sidebar.css): a flat column the web sidebar's width,
