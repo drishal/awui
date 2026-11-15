@@ -387,13 +387,15 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* A picker sheet (the palette, sessions, models) is a solid card, not Tern's frosted glass: through the blur the
    conversation and sidebar behind it showed as smudges. Its row shortcuts and Close step back a tier. */
 .pk-sheet { background: ${cardTint(5)} !important; backdrop-filter: none !important; }
+/* Close is a button beside Choose, bordered, not a bare word that reads as a caption. */
+.pk-sheet .pk-btn.esc { box-shadow: inset 0 0 0 1px ${tint(12)}; color: var(--t2); }
 .pk-sheet .pk-fact { color: var(--t3); font-size: 0.85em; font-variant-numeric: tabular-nums; }
 /* The list fades out above the footer instead of cutting a row through its letters, and the screen behind a picker
    steps back so its words do not compete with the sheet's. */
 .pk-sheet .pk-center { mask-image: linear-gradient(to bottom, var(--t1) calc(100% - 44px), transparent); }
 /* The chosen row is the sidebar's current session and the web's .palette-option.is-active: the accent's tint and its 2px bar. */
 .pk-sheet .pk-row.sel { background: color-mix(in srgb, var(--sf-accent, var(--accent)) 12%, transparent) !important; box-shadow: inset 2px 0 0 var(--sf-accent, var(--accent)) !important; }
-.sf-region.sf-layer:has(> .sf-picker) { background: color-mix(in srgb, ${SOLID} 72%, transparent); }
+.sf-region.sf-layer:has(> .sf-picker) { background: color-mix(in srgb, ${SOLID} 80%, transparent); }
 
 /*
  * The sessions sidebar (sidebar.ts), after the web's (styles/sidebar.css): a flat column the web sidebar's width,
