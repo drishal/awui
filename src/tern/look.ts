@@ -286,6 +286,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.plan'] .md > :first-child { margin-top: 0 !important; }
 /* The steps' numbers are tabular, so 1–9 take one width and the text keeps one edge. */
 [data-role='awui.plan'] .md ol { font-variant-numeric: tabular-nums; }
+/* A step's row is 19.6px, so the seven-line preview (115.5px) ends on the sixth step's last pixel and the fade never cuts a line in half. */
+[data-role='awui.plan'] .md ol > li, [data-role='awui.plan'] .md ol > li + li { margin: 3.1px 0 0 !important; }
+[data-role='awui.plan'] .md ol > li:first-child { margin-top: 0 !important; }
 [data-role='awui.plan'] > .sf-card-head { color: color-mix(in srgb, var(--accent) var(--awui-plan-head-mix, 100%), var(--t1)); font-size: 0.82em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
 [data-role='awui.plan'] > .sf-card-head .sf-chev { color: var(--t3); }
 [data-role='awui.plan'] > .sf-card-head .sf-icon { color: var(--accent); }
