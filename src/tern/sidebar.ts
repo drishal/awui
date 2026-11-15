@@ -15,6 +15,8 @@ import { plainTitle } from "../web/plain-title.js";
 
 /** The sheet's width in CSS pixels: the web sidebar's default. */
 export const SIDEBAR_WIDTH = 272;
+/** The folded rail's width: one small button and its margins. */
+export const SIDEBAR_RAIL = 44;
 /**
  * Below this many columns the sidebar folds away by itself, as the web UI's does under 1200 px: about that width at
  * Tern's default 13 px font. Columns, not pixels, because Tern's cell size is in device pixels and says nothing of the
@@ -182,6 +184,22 @@ export function sidebarNode(cx: SidebarCx): Node {
       ui.button({ key: "new", role: "awui.side-new", icon: "plus", text: "New chat", title: "New chat (C-x n)", onClick: () => cx.on.newChat(null) }),
       ui.text({ key: "harness", role: "awui.side-harness" }, span(cx.harnessName)),
       ...(blocks.length > 0 ? blocks : [ui.text({ key: "empty", role: "awui.side-note" }, span("No chats yet. Start one in the composer.", "dim"))]),
+    ),
+  );
+}
+
+/**
+ * The sidebar folded: a rail down the left edge with the buttons that bring it back, start a chat, and search, as
+ * the web UI's header keeps a Show sidebar button when its sidebar is closed. Without it the only way back was a key.
+ */
+export function sidebarRail(on: { show: () => void; newChat: () => void; sessions: () => void }): Node {
+  return ui.overlay(
+    { key: "sidebar-rail", role: "awui.side-rail", side: "left", modal: false },
+    ui.col(
+      { key: "r", gap: "xs", align: "center" },
+      ui.button({ key: "show", icon: "sidebar", variant: "quiet", size: "sm", title: "Show the sidebar (C-x b)", onClick: on.show }),
+      ui.button({ key: "new", icon: "plus", variant: "quiet", size: "sm", title: "New chat (C-x n)", onClick: on.newChat }),
+      ui.button({ key: "find", icon: "search", variant: "quiet", size: "sm", title: "Search sessions (C-x s)", onClick: on.sessions }),
     ),
   );
 }

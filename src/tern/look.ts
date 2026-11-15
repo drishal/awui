@@ -7,7 +7,7 @@
 // Tern's variables (--t1…, --l1…, --accent) and the theme sheet's (--awui-*), so a
 // light pane, a dark one, and a base16 scheme all read right.
 import { ternColumn } from "../shared/chat-width.js";
-import { SIDEBAR_WIDTH } from "./sidebar.js";
+import { SIDEBAR_RAIL, SIDEBAR_WIDTH } from "./sidebar.js";
 import type { ChatWidth } from "../shared/protocol.js";
 import { DARK, LIGHT, type Theme } from "../atui/theme.js";
 
@@ -81,12 +81,12 @@ const BUBBLE = `color-mix(in srgb, var(--accent) 10%, ${solidTint(9)})`;
 const GUTTER = "clamp(18px, 4vw, 44px)";
 
 /**
- * While the sidebar shows, the page and the dock take the pane beside it: each is as wide as what is left, up to
- * its cap, and centred in that space rather than in the whole pane (so on a roomy pane the column still sits in
- * the middle of what you read, and on a narrow one it starts at the sidebar's edge instead of under it).
+ * Beside the sidebar (or its folded rail), the page and the dock take the rest of the pane: each is as wide as what
+ * is left, up to its cap, and centred in that space rather than in the whole pane (so on a roomy pane the column
+ * still sits in the middle of what you read, and on a narrow one it starts at the sidebar's edge instead of under it).
  */
-function besideSidebar(pageCap: string, dockCap: string): string {
-  const side = `${SIDEBAR_WIDTH}px`;
+function besideSidebar(width: number, pageCap: string, dockCap: string): string {
+  const side = `${width}px`;
   const rule = (role: string, max: string) =>
     `[data-role='${role}'] { width: calc(100% - ${side}) !important; margin-left: calc(${side} + max(0px, (100% - ${side} - ${max}) / 2)) !important; margin-right: auto !important; }\n`;
   return rule("awui.page", pageCap) + rule("awui.dock", dockCap);
@@ -103,10 +103,10 @@ function besideSidebar(pageCap: string, dockCap: string): string {
  * carry a gutter that grows with the pane, and the column's cap is widened by it so a roomy
  * pane still draws exactly the column's width.
  */
-export function stylesheet(width: ChatWidth | null, sidebar = false): string {
+export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | null = null): string {
   const { page, dock, recent } = ternColumn(width);
   const cap = (length: string) => (length === "100%" ? length : `calc(${length} + 2 * ${GUTTER})`);
-  return `${sidebar ? besideSidebar(cap(page), cap(dock)) : ""}
+  return `${sidebar ? besideSidebar(sidebar === "open" ? SIDEBAR_WIDTH : SIDEBAR_RAIL, cap(page), cap(dock)) : ""}
 [data-role='awui.page'] { width: 100%; max-width: ${cap(page)}; margin: 0 auto; padding-left: ${GUTTER}; padding-right: ${GUTTER}; font-family: var(--sans); gap: 18px; }
 [data-role='awui.page'] .md { font-family: var(--sans); }
 /* Code stays in the code font inside the reading font's prose, as the web UI's: the rule above reached it too. */
@@ -359,6 +359,9 @@ export function stylesheet(width: ChatWidth | null, sidebar = false): string {
 [data-role='awui.side-rows'] .sf-item-value { font-size: 0.85em; }
 [data-role='awui.side-current'] { background: color-mix(in srgb, var(--t1) 9%, transparent) !important; }
 [data-role='awui.side-current'] .sf-item-label { color: var(--t1); }
+/* Folded, the sidebar is a rail of three buttons down the left edge, where its own head was: no surface, no line. */
+[data-role='awui.side-rail'] > .sf-ov-card { width: ${SIDEBAR_RAIL}px !important; max-width: ${SIDEBAR_RAIL}px !important; min-width: 0 !important; background: transparent !important; backdrop-filter: none !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
+[data-role='awui.side-rail'] .sf-ov-body { padding: 14px 6px !important; }
 [data-role='awui.side-note'], [data-role='awui.side-foot'] { font-size: 0.85em; padding-left: 8px; }
 `;
 }

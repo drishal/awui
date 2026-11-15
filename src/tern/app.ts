@@ -43,7 +43,7 @@ import { ACTION_KEYS, moveRow, taskRows, type TaskRow } from "../atui/delegated.
 import { reviewActions, type ReviewAction, type ReviewFacts } from "../web/delegated-tasks.js";
 import { BOARD_COLUMNS, boardCards, boardCounts, boardProjects, prStateOf, type PrFilter, type PrState, type PullRequestShape } from "../web/dashboard.js";
 import { stylesheet, themeSheet } from "./look.js";
-import { SIDEBAR_AUTO_FOLD, sidebarModel, sidebarNode } from "./sidebar.js";
+import { SIDEBAR_AUTO_FOLD, sidebarModel, sidebarNode, sidebarRail } from "./sidebar.js";
 import { GIT_INPUT_ID, editMessage, gitNode, gitScreen, type GitScreen as GitScreenState } from "./git.js";
 import { REVIEW_INPUT_ID, reviewNode, reviewScreen, rowId, type ReviewScreenState } from "./review.js";
 import { GITHUB_INPUT_ID, TOUR_SCROLL_ID, editForm, formValue, githubForm, githubNode, githubState, nextField, tourNode, type GithubForm, type GithubState, type GithubStatusView, type TourView } from "./github.js";
@@ -299,9 +299,9 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const harness = (): HarnessStatus | null => app.harness();
 
     // ---- the look: palette by theme and harness, the sheet once ---------------------------
-    // The chat width (config.yml's chat_width) sets the page and dock caps, and the sidebar moves them right while it
-    // shows: a change re-sends the sheet under its name.
-    createEffect(() => surface.stylesheet("awui", stylesheet(app.boot()?.ui.chatWidth ?? null, sidebarShown())));
+    // The chat width (config.yml's chat_width) sets the page and dock caps, and the sidebar (or its folded rail) moves
+    // them right: a change re-sends the sheet under its name.
+    createEffect(() => surface.stylesheet("awui", stylesheet(app.boot()?.ui.chatWidth ?? null, sidebarShown() ? "open" : "rail")));
     // Tern's appearance (a `theme` event when it switches): a theme file's scheme is used only in its own.
     const [dark, setDark] = createSignal(session.caps.dark);
     createEffect(() => {
@@ -1792,7 +1792,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             },
           }),
         );
-      }
+      } else layer.push(sidebarRail({ show: () => setSidebarToggled(true), newChat: () => app.newChat(), sessions: () => runLeader("s") }));
       const m = menu();
       const screen = usage();
       // The Timing overlay's turn, read again each frame so a run still going ends at this frame's now.

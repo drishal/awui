@@ -164,6 +164,9 @@ async function start(project = "alpha", base = BASE, opts: { lateInit?: boolean;
   };
 }
 
+/** The layer's sheets a test opened: everything but the sessions sidebar and its folded rail, which stay drawn. */
+const sheets = (tern: FakeTern) => tern.find("overlay", "layer").filter((n) => !String(n.p.role ?? "").startsWith("awui.side"));
+
 describe("awui tern", () => {
   it("opens one inline surface with the stylesheet and theme sheet, and the web UI's start screen", async () => {
     client = await start();
@@ -393,8 +396,8 @@ describe("awui tern", () => {
     tern.type("\x1b");
     await until(() => tern.find("picker", "layer").length === 0, "the palette to close");
     tern.type("/");
-    await until(() => tern.find("overlay", "layer").length === 1, "the / menu");
-    expect(tern.find("overlay", "layer")[0]?.p.anchor).toEqual({ caret: "dock.d.comp.ed" });
+    await until(() => sheets(tern).length === 1, "the / menu");
+    expect(sheets(tern)[0]?.p.anchor).toEqual({ caret: "dock.d.comp.ed" });
     expect(tern.text("layer")).toContain("/new");
     tern.type("\t");
     await until(() => String(tern.nodes.get("dock.d.comp.ed")?.p.text).startsWith("/new "), "the completion");
@@ -422,8 +425,17 @@ describe("awui tern", () => {
     tern.type("n");
     await until(() => tern.text("main").includes("What should Fake do in alpha?"), "the new chat's start screen");
     const sidebar = () => tern.find("overlay", "layer").find((n) => n.p.role === "awui.sidebar");
-    // The stand-in's pane starts under 150 columns, so the sidebar is folded until the pane grows past it.
+    const rail = () => tern.find("overlay", "layer").find((n) => n.p.role === "awui.side-rail");
+    // The stand-in's pane starts under 150 columns, so the sidebar is folded to its rail until the pane grows past it.
     expect(sidebar()).toBeUndefined();
+    // Folded, a rail keeps the way back on screen: its first button shows the sidebar again.
+    expect(rail()).toBeDefined();
+    const show = tern.find("button", "layer").find((n) => n.id.includes("sidebar-rail") && n.p.icon === "sidebar") as { id: string };
+    tern.event({ ev: "action", id: show.id, act: "click" });
+    await until(() => sidebar() !== undefined && rail() === undefined, "the rail's button to show the sidebar");
+    tern.type("\x18");
+    tern.type("b");
+    await until(() => sidebar() === undefined && rail() !== undefined, "C-x b to fold it to the rail");
     tern.event({ ev: "resize", cols: 160, cell: { w: 8, h: 16 } });
     await until(() => sidebar() !== undefined && tern.text("layer").includes("sidebar row please"), "the sidebar on a wide pane");
     expect(sidebar()?.p).toMatchObject({ side: "left", modal: false });
@@ -532,7 +544,7 @@ describe("awui tern", () => {
     const report = await app.usageReport(30);
     expect(report.totals.calls).toBeGreaterThan(0);
     const tiles = () => JSON.stringify(tern.find("stats", "layer")[0]?.p.items ?? []);
-    const open = () => tern.find("overlay", "layer").some((n) => n.p.head === "Usage");
+    const open = () => sheets(tern).some((n) => n.p.head === "Usage");
 
     // From the palette: filter to the entry and take it.
     tern.type("\x0b");
@@ -546,11 +558,11 @@ describe("awui tern", () => {
     expect(tern.find("picker", "layer")).toEqual([]);
     expect(tiles()).toContain(`${report.totals.calls} model call`);
     // A sheet down the right edge, with the range as a switch in its head and the keys that step it beside it.
-    expect(tern.find("overlay", "layer")[0]?.p).toMatchObject({ side: "right", variant: "inset" });
+    expect(sheets(tern)[0]?.p).toMatchObject({ side: "right", variant: "inset" });
     tern.event({ ev: "action", id: "layer.usage.end.range.r90", act: "click" });
-    await until(() => tern.find("overlay", "layer")[0]?.p.meta === "last 90 days", "the 90 day range from its button");
+    await until(() => sheets(tern)[0]?.p.meta === "last 90 days", "the 90 day range from its button");
     tern.event({ ev: "action", id: "layer.usage.end.range.r30", act: "click" });
-    await until(() => tern.find("overlay", "layer")[0]?.p.meta === "last 30 days", "the 30 day range again");
+    await until(() => sheets(tern)[0]?.p.meta === "last 30 days", "the 30 day range again");
     // A day's bar each (30 of them), a table row for the harness and the model, the footer's keys.
     expect(tern.find("chart", "layer")[0]?.p).toMatchObject({ kind: "bars" });
     expect(((tern.find("chart", "layer")[0]?.p.series ?? []) as unknown[]).length).toBe(30);
@@ -560,10 +572,10 @@ describe("awui tern", () => {
 
     // The arrows change the range (a new read), and the scroll keys reach the body.
     tern.type("\x1b[D");
-    await until(() => tern.find("overlay", "layer")[0]?.p.meta === "last 7 days" && ((tern.find("chart", "layer")[0]?.p.series ?? []) as unknown[]).length === 7, "the 7 day range");
+    await until(() => sheets(tern)[0]?.p.meta === "last 7 days" && ((tern.find("chart", "layer")[0]?.p.series ?? []) as unknown[]).length === 7, "the 7 day range");
     tern.type("\x1b[D");
     await wait(100);
-    expect(tern.find("overlay", "layer")[0]?.p.meta).toBe("last 7 days");
+    expect(sheets(tern)[0]?.p.meta).toBe("last 7 days");
     tern.type("\x1b[B");
     tern.type("\x1b[F");
     await until(() => tern.scrolls.length === 2, "the scrolls");
@@ -578,7 +590,7 @@ describe("awui tern", () => {
 
     // From the key, and a click on Close.
     tern.type("\x18i");
-    await until(() => open() && tern.find("overlay", "layer")[0]?.p.meta === "last 30 days" && tiles().includes(shortTokens(tokensOf(report.totals))), "the report again");
+    await until(() => open() && sheets(tern)[0]?.p.meta === "last 30 days" && tiles().includes(shortTokens(tokensOf(report.totals))), "the report again");
     tern.event({ ev: "action", id: "layer.usage.end.close", act: "click" });
     await until(() => !open(), "the Close button");
     expect(tern.errors).toEqual([]);
@@ -608,7 +620,7 @@ describe("awui tern", () => {
       expect(tern.find("stats", "layer")).toEqual([]);
       expect(tern.find("spinner", "layer")).toEqual([]);
       tern.type("\x1b");
-      await until(() => tern.find("overlay", "layer").length === 0, "Esc to close it");
+      await until(() => sheets(tern).length === 0, "Esc to close it");
     } finally {
       broken.stop();
     }
@@ -813,7 +825,7 @@ describe("awui tern", () => {
     tern.type("\x1b");
     await wait(120);
     tern.type("\x1b");
-    await until(() => tern.find("overlay", "layer").length === 0, "the rail to close");
+    await until(() => sheets(tern).length === 0, "the rail to close");
     expect(tern.errors).toEqual([]);
   }, 60_000);
 
@@ -873,12 +885,12 @@ describe("awui tern", () => {
     await until(() => tern.find("list", "layer").some((n) => typeof n.p.selected === "string"), "a card under the cursor");
     // f narrows to one project; →/← move between the columns, and Enter opens the card under the cursor.
     tern.type("f");
-    await until(() => !JSON.stringify(tern.find("overlay", "layer")[0]?.p.meta ?? "").includes("Every project"), "the project filter");
+    await until(() => !JSON.stringify(sheets(tern)[0]?.p.meta ?? "").includes("Every project"), "the project filter");
     tern.type("\x1b[C");
     tern.type("\x1b[C");
     await until(() => tern.find("tabs", "layer")[0]?.p.active === "done", "the last column");
     tern.type("\r");
-    await until(() => tern.find("overlay", "layer").length === 0, "the board to close on the chat it opened");
+    await until(() => sheets(tern).length === 0, "the board to close on the chat it opened");
     expect(tern.text("main")).toContain("board please");
     expect(tern.errors).toEqual([]);
   }, 60_000);
@@ -903,7 +915,7 @@ describe("awui tern", () => {
     return dir;
   };
 
-  const screens = () => (client as Client).tern.find("overlay", "layer").map((n) => String(n.p.head));
+  const screens = () => sheets((client as Client).tern).map((n) => String(n.p.head));
 
 /** The chat settled: idle with an answer on the record (a fresh chat's snapshot is idle before its run starts). */
 const settled = (c: Client) => c.until(() => (c.app.chat()?.status === "idle" && c.app.chat()?.items.some((i) => i.kind === "assistant")) === true, "the run settled");
