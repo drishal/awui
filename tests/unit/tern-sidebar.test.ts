@@ -71,9 +71,9 @@ describe("the Tern sidebar's model", () => {
     expect(words(rowEdge(s("d", "w"), now))).toEqual([["2h", "dim"]]);
     expect(words(rowEdge(s("g", "w", { liveChatId: "c1" }), now))).toEqual([["● ", "success"], ["2h", "dim"]]);
     expect(words(rowEdge(s("h", "w", { liveChatId: "c1", status: "running" }), now))).toEqual([["● ", "accent"], ["2h", "dim"]]);
-    expect(words(rowEdge(s("e", "w", { updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha"))).toEqual([["alpha · ", "dim"], ["now", "dim"]]);
+    expect(words(rowEdge(s("e", "w", { updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha"))).toEqual([["alpha ", "dim"], ["now", "dim"]]);
     expect(words(rowEdge(s("f", "w", { asking: true, updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha"))).toEqual([["alpha ", "dim"], ["● ", "warning"], ["now", "dim"]]);
     // In Needs you and Working the section's label carries the tone, so the row leaves its dot out.
-    expect(words(rowEdge(s("f", "w", { asking: true, updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha", false))).toEqual([["alpha · ", "dim"], ["now", "dim"]]);
+    expect(words(rowEdge(s("f", "w", { asking: true, updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha", false))).toEqual([["alpha ", "dim"], ["now", "dim"]]);
   });
 });
