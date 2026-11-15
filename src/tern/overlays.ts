@@ -134,6 +134,25 @@ export function filterItems(items: readonly MenuItem[], query: string): MenuItem
   return [...inLabel, ...elsewhere];
 }
 
+/** The palette's sections, in order, and which command ids each holds; anything unnamed falls into the last. */
+const PALETTE_GROUPS: ReadonlyArray<readonly [string, (id: string) => boolean]> = [
+  ["Chats", (id) => ["x:s", "x:b", "x:n", "x:a", "x:]", "x:[", "x:w"].includes(id)],
+  ["Agent", (id) => ["x:m", "x:t", "models-refresh", "permission", "x:h", "x:c", "stop"].includes(id)],
+  ["View", (id) => ["x:e", "x:f", "x:g", "timing", "x:i", "x:k", "x:p", "context"].includes(id) || id.startsWith("width:")],
+  ["Project", (id) => ["x:j", "x:u", "review", "github"].includes(id)],
+  ["More", () => true],
+];
+
+/**
+ * The unfiltered palette under section headings (chats, the agent, the view, the project), so a long list has a
+ * shape to scan. Rows keep their order within a section. A query's hits stay one ranked list instead: grouping them
+ * would bury the best hit under a heading.
+ */
+export function groupPalette(items: readonly MenuItem[]): MenuItem[] {
+  const rank = (item: MenuItem) => PALETTE_GROUPS.findIndex(([, has]) => has(item.id));
+  return items.map((item) => ({ item, at: rank(item) })).sort((a, b) => a.at - b.at).map(({ item, at }) => ({ ...item, group: PALETTE_GROUPS[at]?.[0] ?? "More" }));
+}
+
 /** Move the selection by `by` rows, wrapping, skipping nothing (a disabled row can be selected, not picked). */
 export function moveSelection(menu: Menu, count: number, by: number): Menu {
   if (count === 0) return { ...menu, selected: 0 };

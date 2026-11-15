@@ -28,7 +28,7 @@ import { isDenial } from "../shared/approval.js";
 import { applyEdit, draftState, editKey, insert, lineStep, moveTo, setText, undo as undoDraft, type DraftState } from "./draft.js";
 import { conversation, firstFailedCall, headNode, PAGE_ID, PAGE_KEY, plural, TURN_WINDOW } from "./view.js";
 import { ANSWER_ID, dock, EDITOR_ID, inputReady } from "./dock.js";
-import { AT_CARET, filterItems, menuNode, moveSelection, sessionRows, SHEETS, type Menu, type MenuItem, type MenuKind } from "./overlays.js";
+import { AT_CARET, filterItems, groupPalette, menuNode, moveSelection, sessionRows, SHEETS, type Menu, type MenuItem, type MenuKind } from "./overlays.js";
 import { stepRange, USAGE_SCROLL_ID, usageNode, type UsageScreen } from "./usage.js";
 import { chatWidthLabel, CHAT_WIDTHS, nextChatWidth } from "../shared/chat-width.js";
 import { findHits } from "./find.js";
@@ -495,6 +495,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const rows: Partial<Record<MenuKind, () => MenuItem[]>> = { palette: paletteItems, sessions: sessionItems, model: modelItems, thinking: thinkingItems, permission: permissionItems, harness: harnessItems, find: () => findItems(m.query), leader: leaderItems };
       const all = rows[m.kind]?.() ?? [];
       // Find's rows are already the query's hits: filtering them again would drop a row whose label lacks a word.
+      if (m.kind === "palette" && !m.query.trim()) return groupPalette(all);
       return m.kind === "find" || !SHEETS.has(m.kind) ? all : filterItems(all, m.query);
     });
 

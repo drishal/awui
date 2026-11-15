@@ -7,7 +7,7 @@ import type { ChatItem, InteractionRequest, ProjectSession, SessionsOverview, To
 import type { ChatState } from "../../src/web/chat-state.js";
 import type { Node } from "@stencil-hq/tern";
 import { applyEdit, draftState, editKey, lineStep, redo, setText, undo, wordStep, type DraftState } from "../../src/tern/draft.js";
-import { filterItems, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
+import { filterItems, groupPalette, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
 import { askShape, decorations, dock, inputReady, placeholder, type DockCx } from "../../src/tern/dock.js";
 import { stylesheet, themeSheet } from "../../src/tern/look.js";
 import { findHits } from "../../src/tern/find.js";
@@ -100,6 +100,25 @@ describe("the Tern menus", () => {
     expect(filterItems(items, "ses").map((i) => i.id)).toEqual(["a", "c"]);
     expect(filterItems(items, "start").map((i) => i.id)).toEqual(["b"]);
     expect(filterItems(items, "chat zzz")).toEqual([]);
+  });
+
+  it("put the palette's commands under sections, in section order, each keeping its own order", () => {
+    const rows = [
+      { id: "x:q", label: "Quit" },
+      { id: "x:m", label: "Change the model…" },
+      { id: "x:s", label: "Browse sessions" },
+      { id: "width:wide", label: "Chat width: Wide" },
+      { id: "x:n", label: "New chat" },
+      { id: "x:u", label: "Git" },
+    ];
+    expect(groupPalette(rows).map((i) => [i.id, i.group])).toEqual([
+      ["x:s", "Chats"],
+      ["x:n", "Chats"],
+      ["x:m", "Agent"],
+      ["width:wide", "View"],
+      ["x:u", "Project"],
+      ["x:q", "More"],
+    ]);
   });
 
   it("mark where the words are, and wrap the selection", () => {
