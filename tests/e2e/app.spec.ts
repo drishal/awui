@@ -253,6 +253,8 @@ test("steer and follow-up while running, shown in the status stack", async ({ pa
   await signInAndOpen(page);
   await newChat(page);
   await send(page, "slow work");
+  // The start screen is held, inert, until the chat draws; words typed before then are dropped, so wait for the chat.
+  await expect(page.getByTestId("chat-status")).toHaveText("Working");
   const box = page.getByRole("textbox", { name: "Message" });
   await box.fill("then summarize");
   await page.getByRole("button", { name: "Follow-up" }).click();

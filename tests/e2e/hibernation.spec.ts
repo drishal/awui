@@ -12,12 +12,14 @@ test("a parked chat reopens with its conversation and works again", async ({ pag
   await sendAndWait(page, "hello there");
   // Park it by hand through the same dispose the scheduler takes; the reopen is the part
   // the client sees: the tab's session id reopens the native session, no second writer.
-  await page.evaluate(async () => {
+  const parked = await page.evaluate(async () => {
     const id = window.location.hash.slice("#chat=".length);
     await fetch(`/api/chats/${id}/dispose`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    return id;
   });
-  // The tab's banner says why the chat is gone; the tab itself stays.
-  await expect(page.locator(".banner-info")).toBeVisible();
+  // The tab's banner names why the chat is gone, but only for the moment before its session reopens on its own (a
+  // gone chat comes back through its tab at once), so the chat id changing is the steady thing to wait for.
+  await expect.poll(() => page.evaluate(() => window.location.hash)).not.toBe(`#chat=${parked}`);
   // Reopen through the sidebar row: the same session, its conversation present.
   await page.locator(".session").filter({ hasText: "hello there" }).first().click();
   await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });

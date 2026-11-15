@@ -37,6 +37,8 @@ test("a queued follow-up leaves the queue and becomes the next prompt", async ({
   await signInAndOpen(page);
   await newChat(page);
   await send(page, "slow work");
+  // The start screen is held, inert, until the chat draws; words typed before then are dropped, so wait for the chat.
+  await expect(page.getByTestId("chat-status")).toHaveText("Working");
   await page.getByRole("textbox", { name: "Message" }).fill("then summarize");
   await page.getByRole("button", { name: "Follow-up" }).click();
   const row = page.getByTestId("queue-row").filter({ hasText: "then summarize" });
