@@ -359,7 +359,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* A phase's "0/1" in the reading font with even figures: in Tern's mono its slashed zero read as an 8. */
 /* A phase name sits a step under the card's head (Todos): the same weight and ink made three levels read as one. */
 [data-role='awui.todos'] .sf-ck-ph > .t { font-weight: 500; color: var(--t2); }
-[data-role='awui.todos'] .sf-ck-ph > .n { font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 0.85em; color: var(--t3); }
+[data-role='awui.todos'] .sf-ck-ph > .n { font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 0.8em; color: var(--t3); }
 [data-role='awui.todos'] .sf-ck-item.st-done .sf-ck-g { background: none !important; color: var(--ok) !important; }
 /* The done tick fills the ring's box, so the status column is one size down its rows. */
 [data-role='awui.todos'] .sf-ck-item.st-done .sf-ck-g svg { width: 14px; height: 14px; }
