@@ -145,7 +145,9 @@ export function askIcon(r: InteractionRequest): string {
 /** An approval as a tool row waiting for its yes: Tern draws the buttons, and a click reaches `answer` with the option's index. */
 function approvalNode(r: InteractionRequest, shape: AskShape, cx: DockCx): Node {
   const options = optionsOf(r);
-  const first = (r.message ?? "").split("\n").find((l) => l.trim()) ?? "";
+  // The message is the reason under the title, never a target inside the sentence: "Allow tool: read The fake agent
+  // wants to read README.md" ran title and reason together at one volume. The web card keeps them on two lines too.
+  const reason = (r.message ?? "").trim();
   const name = askIcon(r);
   const alwaysLabel = shape.always === null ? null : options[shape.always]?.label.replace(/ \(.*\)$/, "");
   const alwaysTitle = shape.always === null ? undefined : options[shape.always]?.label;
@@ -155,7 +157,6 @@ function approvalNode(r: InteractionRequest, shape: AskShape, cx: DockCx): Node 
       role: "awui.approval",
       name,
       title: r.title.replace(/\?$/, ""),
-      ...(first ? { target: first, targetKind: name === "bash" ? "command" : "text" } : {}),
       status: "ask",
       confirm: "card",
       ask: {
@@ -171,7 +172,7 @@ function approvalNode(r: InteractionRequest, shape: AskShape, cx: DockCx): Node 
         ...(shape.always !== null ? { always: () => cx.on.answer(r, shape.always as number) } : {}),
       },
     },
-    r.message && (r.message.includes("\n") || r.message.length > 120) ? ui.text({ key: "m", text: r.message }) : null,
+    reason ? ui.text({ key: "m", role: "awui.approval-reason", text: reason }) : null,
   );
 }
 
