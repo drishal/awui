@@ -501,14 +501,15 @@ describe("the Tern conversation", () => {
       expect(folds(cxOf(settled, { folds: new Map([["u1#0", true]]) })).map((n) => n.props.collapsed)).toEqual([false]);
     });
 
-    it("words the live line with the phase it is given, else Working, and keeps compaction, stopping, and a wait on an answer", () => {
+    it("words the live line with the phase it is given, else Working, keeps compaction and stopping, and steps aside for an answer", () => {
       const line = (cx: ConversationCx) => String(conversation(cx).flatMap(all).find((n) => n.kind === "shimmer")?.props.text);
       const chat = chatOf(twoStretches({}), "running");
       expect(line(cxOf(chat, { phase: "Running npm test" }))).toBe("Running npm test");
       expect(line(cxOf(chat))).toBe("Working");
       expect(line(cxOf({ ...chat, status: "compacting" }, { phase: "Writing" }))).toBe("Compacting the context");
       expect(line(cxOf({ ...chat, status: "stopping" }, { phase: "Writing" }))).toBe("Stopping");
-      expect(line(cxOf({ ...chat, pending: [{ id: "r1" }] } as unknown as ChatState, { phase: "Writing" }))).toBe("Waiting for your answer");
+      // Waiting on an answer, the fold's head says so and there is no live line.
+      expect(line(cxOf({ ...chat, pending: [{ id: "r1" }] } as unknown as ChatState, { phase: "Writing" }))).toBe("undefined");
     });
 
     it("finds the first failed call of the latest turn that has one, at the id its row is drawn with", () => {
@@ -551,6 +552,7 @@ describe("the Tern conversation", () => {
     expect(foldHead(turn, seg, "only")).toBe("Worked for 27s · Used 3 tools");
     expect(foldHead(turn, seg, "last")).toBe("Used 3 tools");
     expect(foldHead({ ...turn, live: true }, seg, "only")).toBe("Working · Used 3 tools");
+    expect(foldHead({ ...turn, live: true }, seg, "only", true)).toBe("Waiting for you · Used 3 tools");
     // What they were by kind is the head's hover text.
     expect(foldTitle({ counts: { command: 3, edit: 1 } } as unknown as WorkSegment)).toBe("1 edit, 3 commands");
   });

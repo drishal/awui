@@ -440,7 +440,8 @@ function noticeNode(item: NoticeItem): Node {
 
 function requestNode(item: RequestItem): Node {
   const outcome = item.outcome ? ` — ${item.outcome}` : "";
-  return ui.text({ key: item.id, role: "awui.note" }, span("Asked ", "muted"), span(item.request.title), span(outcome, "dim"));
+  // The title is the harness's question ("Allow tool: read?"), so it is quoted: "Asked Allow tool: read" read as broken.
+  return ui.text({ key: item.id, role: "awui.note" }, span("Asked ", "muted"), span(`“${item.request.title.replace(/\?$/, "")}”`), span(outcome, "dim"));
 }
 
 /** One item of a stretch of work. */
@@ -497,12 +498,13 @@ const callCount = (segment: WorkSegment) => Object.values(segment.counts).reduce
  * tools" while it runs, "Used 1 tool" between replies. What the calls were by kind is the head's hover text
  * (`foldTitle`), as the web UI's count's title.
  */
-export function foldHead(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only"): string {
+export function foldHead(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only", waiting = false): string {
   const calls = callCount(segment);
   const used = calls > 0 ? `Used ${plural(calls, "tool")}` : "";
   const live = turn.live && (place === "last" || place === "only");
   if (!live && (place === "middle" || place === "last")) return used || "Worked";
-  if (live) return used ? `Working · ${used}` : "Working";
+  // A run held on an approval says so in its head, the one place it is said (the live line under it steps aside).
+  if (live) return [waiting ? "Waiting for you" : "Working", used].filter(Boolean).join(" · ");
   const duration = turn.startedAt !== undefined ? formatDuration((turn.endedAt ?? turn.startedAt) - turn.startedAt) : null;
   const head = duration ? `Worked for ${duration}` : "Worked";
   return used ? `${head} · ${used}` : head;
@@ -518,8 +520,8 @@ export function foldTitle(segment: WorkSegment): string {
  * "Changed N files" row under the answer says it already), and a tally of failed calls (a settled turn opens
  * nothing, so the tally is how a failure is found; C-x f goes to it).
  */
-export function foldHeadSpans(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only"): Span[] {
-  const spans: Span[] = [span(foldHead(turn, segment, place), "muted")];
+export function foldHeadSpans(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only", waiting = false): Span[] {
+  const spans: Span[] = [span(foldHead(turn, segment, place, waiting), "muted")];
   const changedRow = !turn.live && (turn.changedFiles?.length ?? 0) > 0;
   const stat = (place === "first" || place === "only") && !changedRow ? turn.changeStat : null;
   if (stat) {
@@ -536,8 +538,8 @@ export function foldHeadSpans(turn: Turn, segment: WorkSegment, place: "first" |
  * The fold's head as the web UI's card header draws it: the kinds of tool the stretch used as a stack of
  * round icons ("+N" past three), the words, and the turn's +/− at the right edge.
  */
-export function foldHeadNode(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only"): Node {
-  const spans = foldHeadSpans(turn, segment, place);
+export function foldHeadNode(turn: Turn, segment: WorkSegment, place: "first" | "middle" | "last" | "only", waiting = false): Node {
+  const spans = foldHeadSpans(turn, segment, place, waiting);
   const stat = spans.filter((s) => s.s === "ins" || s.s === "del").map((s) => span(s.t.trim(), s.s));
   const words = spans.filter((s) => s.s !== "ins" && s.s !== "del");
   const { shown, more } = iconStack(toolKinds(segment.items));
@@ -635,8 +637,7 @@ function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
  * it under the phase; open, the thought is in the fold already.
  */
 function workingNode(turn: Turn, cx: ConversationCx, foldOpen: boolean): Node {
-  // While the agent waits on an answer, the line says so: "Working" under the fold's own "Working" head said nothing new.
-  const words = cx.chat.status === "compacting" ? "Compacting the context" : cx.chat.status === "stopping" ? "Stopping" : cx.chat.pending.length > 0 ? "Waiting for your answer" : cx.phase || "Working";
+  const words = cx.chat.status === "compacting" ? "Compacting the context" : cx.chat.status === "stopping" ? "Stopping" : cx.phase || "Working";
   const thought = foldOpen ? null : latestThought(turn);
   return ui.row(
     { key: "working", role: "awui.working", gap: "sm", align: "center" },
@@ -663,7 +664,7 @@ function preambleNode(turn: Turn, cx: ConversationCx): Node {
     rows(turn.process),
     answer?.text.trim() ? ui.md({ key: "answer", role: "awui.reply", stream: answer.streaming }, answer.text) : null,
     rows([...turn.workAfter, ...turn.errors, ...turn.after]),
-    turn.live ? workingNode(turn, cx, true) : null,
+    turn.live && cx.chat.pending.length === 0 ? workingNode(turn, cx, true) : null,
   );
 }
 
@@ -697,7 +698,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
               {
                 key: `w${i}`,
                 role: live ? "awui.fold-live" : "awui.fold",
-                head: foldHeadNode(turn, segment, place),
+                head: foldHeadNode(turn, segment, place, cx.chat.pending.length > 0),
                 collapsible: true,
                 collapsed: !open,
                 onToggle: (e) => cx.on.fold(key, !e.collapsed),
@@ -742,7 +743,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
             {
               key: "after",
               role: turn.live ? "awui.fold-live" : "awui.fold",
-              head: foldHeadNode(turn, after, "last"),
+              head: foldHeadNode(turn, after, "last", cx.chat.pending.length > 0),
               collapsible: true,
               collapsed: !open,
               onToggle: (e) => cx.on.fold(after.key, !e.collapsed),
@@ -754,8 +755,10 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
   if (answer?.error) parts.push(ui.card({ key: "failed", tone: "error", head: [span("The run failed", "error")] }, ui.text({ key: "e", text: answer.error })));
   for (const e of turn.errors) parts.push(ui.text({ key: e.id, role: "awui.note" }, span(e.text, "error")));
 
-  if (turn.live) parts.push(workingNode(turn, cx, liveOpen));
-  else if (answer?.text.trim()) {
+  // While the run waits on an approval the fold's head says so and the dock holds the question, so no live line.
+  if (turn.live) {
+    if (cx.chat.pending.length === 0) parts.push(workingNode(turn, cx, liveOpen));
+  } else if (answer?.text.trim()) {
     parts.push(
       ui.row(
         { key: "acts", role: "awui.answer-acts" },
