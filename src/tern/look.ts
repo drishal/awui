@@ -246,7 +246,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role^='awui.turn']:hover [data-role='awui.answer-acts-past'], [data-role='awui.answer-acts-past']:focus-within { opacity: 1; }
 [data-role='awui.changed'] { font-size: 0.88em; color: var(--t3); }
 /* The changed line is already the smaller size: its +/− keeps it, as the same figures in a fold head read, not shrunk twice. */
-[data-role='awui.changed'] [data-role='awui.work-stat'] { font-size: 1em; }
+[data-role='awui.changed'] [data-role='awui.work-stat'] { font-size: 1em; padding-left: 6px; }
 [data-role='awui.changed'] .sf-icon { color: var(--t3); }
 [data-role='awui.changed'] .sf-t-path { font-family: var(--mono, monospace); color: var(--t2); }
 [data-role='awui.working'] { color: var(--t2); }
