@@ -396,6 +396,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* Close is a button beside Choose, bordered, not a bare word that reads as a caption. */
 .pk-sheet .pk-btn.esc { box-shadow: inset 0 0 0 1px ${tint(12)}; color: var(--t2); }
 .pk-sheet .pk-fact { color: var(--t3); font-size: 0.85em; font-variant-numeric: tabular-nums; }
+/* On the chosen row its keys step up a grey, so the accent tint does not swallow them. */
+.pk-sheet .pk-row.sel .pk-fact { color: var(--t2); }
 /* The list fades out above the footer instead of cutting a row through its letters, and the screen behind a picker
    steps back so its words do not compete with the sheet's. */
 .pk-sheet .pk-center { mask-image: linear-gradient(to bottom, var(--t1) calc(100% - 44px), transparent); }
