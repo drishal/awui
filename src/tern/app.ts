@@ -460,16 +460,16 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const caps = c?.capabilities ?? harness()?.capabilities;
       if (caps?.supportsModelSelection) items.push({ id: "x:m", label: "Change the model…", value: "C-x m", icon: "model" });
       if (caps?.supportsThinkingLevel) items.push({ id: "x:t", label: "Change the thinking level…", value: "C-x t", icon: "brain" });
-      if (caps?.supportsModelSelection) items.push({ id: "models-refresh", label: "Refresh models", icon: "restart", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }) });
+      if (caps?.supportsModelSelection) items.push({ id: "models-refresh", label: "Refresh models", icon: "repeat", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }) });
       if (c?.capabilities.supportsPermissionMode && c.config.permissionModes?.length) items.push({ id: "permission", label: "Change the permission mode…", icon: "shield" });
-      items.push({ id: "x:h", label: c ? "Hand off to another harness…" : "Choose the harness…", value: "C-x h", icon: "handoff" });
+      items.push({ id: "x:h", label: c ? "Hand off to another harness…" : "Choose the harness…", value: "C-x h", icon: c ? "handoff" : "swap" });
       if (c?.capabilities.supportsCompact) items.push({ id: "x:c", label: "Compact the context", value: "C-x c", icon: "compaction", ...(idle ? {} : { disabled: "Wait until the agent is idle" }) });
       if (c && isBusy(c.status)) items.push({ id: "stop", label: "Stop the agent", value: "Esc Esc", icon: "stop" });
       items.push({ id: "x:e", label: allWork() ? "Fold all work" : "Open all work", value: "C-x e", icon: "expand" });
       if (c) items.push({ id: "x:f", label: "Show failed calls", value: "C-x f", icon: "x-circle", ...(c.items.some((i) => i.kind === "tool" && i.status === "error") ? {} : { disabled: "No call has failed in this chat" }) });
       if (c) items.push({ id: "x:g", label: "Find in chat…", value: "C-x g", icon: "search", keywords: "search transcript" });
       // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it (C-x l cycles).
-      CHAT_WIDTHS.forEach((w) => items.push({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, icon: "expand", keywords: "column layout measure", current: (app.boot()?.ui.chatWidth ?? null) === w }));
+      CHAT_WIDTHS.forEach((w) => items.push({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, icon: "columns", keywords: "column layout measure", current: (app.boot()?.ui.chatWidth ?? null) === w }));
       if (c && buildTurns(c.items, c.status).length > 0) items.push({ id: "timing", label: "Timing of the latest turn", icon: "clock", keywords: "waterfall speed slow" });
       items.push({ id: "x:i", label: "Usage", value: "C-x i", icon: "chart", keywords: "tokens cost limits spend" });
       items.push({ id: "x:k", label: "Agents: every session, by column", value: "C-x k", icon: "kanban", keywords: "dashboard board needs working done" });
