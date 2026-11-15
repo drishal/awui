@@ -471,7 +471,7 @@ describe("the Tern conversation", () => {
   describe("the fold of a live turn", () => {
     const noop = () => undefined;
     const all = (n: Node): Node[] => [n, ...n.children.flatMap(all)];
-    const chatOf = (items: ChatItem[], status: ChatState["status"]) => ({ chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status, items, capabilities: {}, checkpoints: [] }) as unknown as ChatState;
+    const chatOf = (items: ChatItem[], status: ChatState["status"]) => ({ chatId: "c", workspace: { id: "w", path: "/w", name: "w" }, status, items, pending: [], capabilities: {}, checkpoints: [] }) as unknown as ChatState;
     const cxOf = (chat: ChatState, over: Partial<ConversationCx> = {}): ConversationCx => ({
       chat, harness: null, webUrl: "http://x", now: 0, phase: "", age: () => undefined, supports: () => true, shown: 30, folds: new Map(), picked: null, blob: () => null,
       on: { fold: noop, pick: noop, showEarlier: noop, retry: noop, edit: noop, fork: noop, undo: noop, copy: noop, copyTurn: noop, timing: noop }, ...over,
@@ -501,13 +501,14 @@ describe("the Tern conversation", () => {
       expect(folds(cxOf(settled, { folds: new Map([["u1#0", true]]) })).map((n) => n.props.collapsed)).toEqual([false]);
     });
 
-    it("words the live line with the phase it is given, else Working, and keeps compaction and stopping", () => {
+    it("words the live line with the phase it is given, else Working, and keeps compaction, stopping, and a wait on an answer", () => {
       const line = (cx: ConversationCx) => String(conversation(cx).flatMap(all).find((n) => n.kind === "shimmer")?.props.text);
       const chat = chatOf(twoStretches({}), "running");
       expect(line(cxOf(chat, { phase: "Running npm test" }))).toBe("Running npm test");
       expect(line(cxOf(chat))).toBe("Working");
       expect(line(cxOf({ ...chat, status: "compacting" }, { phase: "Writing" }))).toBe("Compacting the context");
       expect(line(cxOf({ ...chat, status: "stopping" }, { phase: "Writing" }))).toBe("Stopping");
+      expect(line(cxOf({ ...chat, pending: [{ id: "r1" }] } as unknown as ChatState, { phase: "Writing" }))).toBe("Waiting for your answer");
     });
 
     it("finds the first failed call of the latest turn that has one, at the id its row is drawn with", () => {

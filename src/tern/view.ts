@@ -635,7 +635,8 @@ function promptNode(turn: Turn, prompt: UserItem, cx: ConversationCx): Node {
  * it under the phase; open, the thought is in the fold already.
  */
 function workingNode(turn: Turn, cx: ConversationCx, foldOpen: boolean): Node {
-  const words = cx.chat.status === "compacting" ? "Compacting the context" : cx.chat.status === "stopping" ? "Stopping" : cx.phase || "Working";
+  // While the agent waits on an answer, the line says so: "Working" under the fold's own "Working" head said nothing new.
+  const words = cx.chat.status === "compacting" ? "Compacting the context" : cx.chat.status === "stopping" ? "Stopping" : cx.chat.pending.length > 0 ? "Waiting for your answer" : cx.phase || "Working";
   const thought = foldOpen ? null : latestThought(turn);
   return ui.row(
     { key: "working", role: "awui.working", gap: "sm", align: "center" },
