@@ -141,7 +141,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.dock'] { width: 100%; max-width: ${cap(dock)}; margin: 0 auto; padding-left: calc(${GUTTER} + 6px); padding-right: calc(${GUTTER} + 6px); font-family: var(--sans); gap: 8px; padding-top: 6px; background: ${SOLID}; backdrop-filter: blur(24px); position: relative; }
 /* A row scrolling under the dock used to be sliced by its hard top edge, so a half-drawn line sat just above the card. A short fade
    of the page colour above the edge lets it dissolve instead. */
-[data-role='awui.dock']::before { content: ''; position: absolute; left: 0; right: 0; top: -16px; height: 16px; pointer-events: none; background: linear-gradient(to bottom, transparent, ${SOLID}); }
+[data-role='awui.dock']::before { content: ''; position: absolute; left: 0; right: 0; top: -9px; height: 9px; pointer-events: none; background: linear-gradient(to bottom, transparent, ${SOLID}); }
 /* Tern's dim tone blends a quarter below the theme's muted (about 3.7:1). Our dim spans carry content — ages, project
    names, the key legend — so they keep the muted grey's 6.5:1; the current row's age steps up to the second grey below. */
 [data-role^='awui.'] .sf-t-dim, .pk-sheet .sf-t-dim { color: var(--t3) !important; }
