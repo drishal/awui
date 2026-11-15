@@ -279,7 +279,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 .pick:hover { background: ${tint(12)}; }
 .pick.on { color: ${HARNESS}; background: ${tint(18, HARNESS)}; }
 /* Recents span the column, so their left edge is the composer's; what is centred above stays centred. */
-[data-role='awui.recent'] { width: 100%; margin-top: 6px; }
+[data-role='awui.recent-head'] { align-self: stretch; margin: 18px 0 -10px; padding-left: 12px; font-size: 0.86em; }
+[data-role='awui.recent'] { width: 100%; margin-top: 0; }
 [data-role='awui.recent'] .sf-icon { color: var(--t3); }
 
 /* The dock: queued steps, the git row, the composer card, the status strip. */

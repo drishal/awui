@@ -2008,6 +2008,10 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             if (text) void setDraft((s) => setText(s, text));
           },
         }),
+        // The composer's keys sit with the things to try, which go into that composer, not under the recents as their caption.
+        ui.text({ key: "keys" }, span("Enter sends · / commands · @ files · # saved prompts", "dim")),
+        // The recents get a head of their own, so they read as this project's chats rather than more suggestions.
+        recent.length > 0 && here ? ui.text({ key: "recent-head", role: "awui.recent-head" }, span(`Recent in ${here.name}`, "dim")) : null,
         recent.length > 0
           ? ui.list(
               {
@@ -2026,7 +2030,6 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
               recent.map((s, i) => ui.item({ key: `s${i}`, label: s.title ? plainTitle(s.title) : "Untitled", ...(s.harnessId === harness()?.id ? {} : { detail: app.boot()?.harnesses.find((x) => x.id === s.harnessId)?.displayName ?? s.harnessId }), value: s.updatedAt ? shortAgo(new Date(s.updatedAt).getTime()) : "", icon: "session" })),
             )
           : null,
-        ui.text({ key: "keys" }, span("Enter sends · / commands · @ files · # saved prompts", "dim")),
       );
     };
 
