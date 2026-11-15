@@ -24,7 +24,7 @@ import { DARK, LIGHT, type Theme } from "../atui/theme.js";
 export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "light" | null, dark: boolean): string {
   const scheme = polarity ? ((polarity === "dark") === dark ? theme : null) : dark ? DARK : LIGHT;
   // How much ink a raised card mixes in: half on a light pane, where the dark pane's 7% turned every card grey.
-  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${(scheme ?? theme).thinking}`, `--awui-lift: ${dark ? 1 : 0.5}`];
+  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${(scheme ?? theme).thinking}`, `--awui-lift: ${dark ? 100 : 50}%`];
   const vars = scheme
     ? [
         `--t1: ${scheme.text}`,
@@ -75,8 +75,12 @@ const tint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%,
 const SOLID = "var(--tv-bg, var(--panel, var(--page)))";
 /** A tint laid on the solid background, so a card in the dock is opaque. */
 const solidTint = (pct: number, color = INK) => `color-mix(in srgb, ${color} ${pct}%, ${SOLID})`;
-/** A raised card's fill: the solid tint scaled by the pane's --awui-lift, so it stays a lift and not a grey slab on a light pane. */
-const cardTint = (pct: number) => `color-mix(in srgb, ${INK} calc(${pct}% * var(--awui-lift, 1)), ${SOLID})`;
+/**
+ * A raised card's fill: the solid tint scaled by the pane's --awui-lift, so it stays a lift and not a grey slab on a light pane.
+ * The scaling is a second mix back toward the background, not calc() on the percentage: Tern's renderer drops a color-mix
+ * whose percentage is a calc(), which left every card transparent.
+ */
+const cardTint = (pct: number) => `color-mix(in srgb, ${solidTint(pct)} var(--awui-lift, 100%), ${SOLID})`;
 /** The prompt bubble: the web UI's --bubble, the accent a tenth into a raised surface. */
 const BUBBLE = `color-mix(in srgb, var(--accent) 10%, ${solidTint(9)})`;
 
