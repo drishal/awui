@@ -337,6 +337,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* A phase's "0/1" in the reading font with even figures: in Tern's mono its slashed zero read as an 8. */
 [data-role='awui.todos'] .sf-ck-ph > .n { font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 0.85em; color: var(--t3); }
 [data-role='awui.todos'] .sf-ck-item.st-done .sf-ck-g { background: none !important; color: var(--ok) !important; }
+/* The done tick fills the ring's box, so the status column is one size down its rows. */
+[data-role='awui.todos'] .sf-ck-item.st-done .sf-ck-g svg { width: 14px; height: 14px; }
 .send { border-radius: 999px; min-width: 26px; padding: 2px 8px; text-align: center; color: var(--t1); background: ${tint(16)}; }
 .send.ready { color: var(--page, #000); background: ${INK}; }
 .send.stop { color: var(--page, #000); background: ${HARNESS}; }
