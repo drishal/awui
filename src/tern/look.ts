@@ -58,7 +58,7 @@ export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "li
         `--sf-c-orange: ${scheme.orange}`,
       ]
     : [];
-  return `[data-role='awui.page'], [data-role='awui.dock'], [data-role='awui.sidebar'], [data-role='awui.side-rail'] { ${[...own, ...vars].join("; ")}; }\n`;
+  return `[data-role='awui.page'], [data-role='awui.dock'], [data-role='awui.layer'], [data-role='awui.sidebar'], [data-role='awui.side-rail'] { ${[...own, ...vars].join("; ")}; }\n`;
 }
 
 /** A colour that follows the theme sheet's harness colour, mixed into the pane's ink. */
