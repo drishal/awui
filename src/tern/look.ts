@@ -58,7 +58,7 @@ export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "li
         `--sf-c-orange: ${scheme.orange}`,
       ]
     : [];
-  return `[data-role='awui.page'], [data-role='awui.dock'] { ${[...own, ...vars].join("; ")}; }\n`;
+  return `[data-role='awui.page'], [data-role='awui.dock'], [data-role='awui.sidebar'], [data-role='awui.side-rail'] { ${[...own, ...vars].join("; ")}; }\n`;
 }
 
 /** A colour that follows the theme sheet's harness colour, mixed into the pane's ink. */
@@ -346,11 +346,11 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.layer'] { background: ${SOLID}; }
 
 /*
- * The sessions sidebar (sidebar.ts), after the web's (styles/sidebar.css): a flat column the web sidebar's width
- * with one hairline on its right, not a floating card (Tern sizes a side sheet by name, so the width is ours); rows
+ * The sessions sidebar (sidebar.ts), after the web's (styles/sidebar.css): a flat column the web sidebar's width,
+ * a step off the page as the web's --surface is (3% of the ink), with one hairline on its right, not a floating card (Tern sizes a side sheet by name, so the width is ours); rows
  * the web's height and radius, a tint under the hovered one and a firmer one under the session on screen.
  */
-[data-role='awui.sidebar'] > .sf-ov-card { width: ${SIDEBAR_WIDTH}px !important; max-width: ${SIDEBAR_WIDTH}px !important; min-width: 0 !important; background: var(--tv-bg, var(--panel)) !important; backdrop-filter: none !important; box-shadow: none !important; border: 0 !important; border-right: 1px solid color-mix(in srgb, var(--t1) 8%, transparent) !important; border-radius: 0 !important; }
+[data-role='awui.sidebar'] > .sf-ov-card { width: ${SIDEBAR_WIDTH}px !important; max-width: ${SIDEBAR_WIDTH}px !important; min-width: 0 !important; background: color-mix(in srgb, ${INK} 3%, ${SOLID}) !important; backdrop-filter: none !important; box-shadow: none !important; border: 0 !important; border-right: 1px solid color-mix(in srgb, var(--t1) 8%, transparent) !important; border-radius: 0 !important; }
 [data-role='awui.sidebar'] { font-family: var(--sans); }
 [data-role='awui.side-new'] { width: 100%; min-height: 32px; justify-content: center; border-radius: 8px; }
 /* The harness the list is scoped to is the web's harness switch: a filled row that opens the picker, a chevron at its end. */
