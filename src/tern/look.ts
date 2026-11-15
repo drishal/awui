@@ -429,6 +429,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* The session on screen, as the web's .session.is-active: the accent's tint and a 2px bar of it on the left edge. */
 [data-role='awui.side-current'] { background: color-mix(in srgb, var(--sf-accent, var(--accent)) 12%, transparent) !important; box-shadow: inset 2px 0 0 var(--sf-accent, var(--accent)); }
 [data-role='awui.side-current'] .sf-item-label { color: var(--t1); }
+/* Its age steps up a grey with it: the third grey on the accent's tint was the faintest text on the screen. */
+[data-role='awui.side-current'] .sf-item-value .sf-t-dim { color: var(--t2); }
 /* Folded, the sidebar is a rail of three buttons down the left edge, where its own head was: no surface, no line. */
 [data-role='awui.side-rail'] > .sf-ov-card { width: ${SIDEBAR_RAIL}px !important; max-width: ${SIDEBAR_RAIL}px !important; min-width: 0 !important; background: transparent !important; backdrop-filter: none !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
 [data-role='awui.side-rail'] .sf-ov-body { padding: 14px 6px !important; }
