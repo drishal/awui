@@ -373,7 +373,7 @@ function composerNode(cx: DockCx): Node {
           ? ui.meter({ key: "ctx", style: "ring", value: percent / 100, thresholds: { warn: 0.65, bad: 0.9 }, label: `${Math.round(percent)}%`, title: `Context: ${Math.round(percent)}% of ${tokens(chat?.context?.window ?? 0)} tokens — click for the panel`, aria: `Context ${Math.round(percent)}% full`, onClick: cx.on.openContext })
           : null,
         busy && !ready
-          ? html.button({ key: "go", class: "send stop", text: "■", title: "Stop (Esc Esc)", onClick: cx.on.stop })
+          ? html.button({ key: "go", class: chat?.pending.length ? "send stop asking" : "send stop", text: "■", title: "Stop (Esc Esc)", onClick: cx.on.stop })
           : html.button({ key: "go", class: ready ? "send ready" : "send", text: "↑", title: busy ? "Steer (Enter)" : "Send (Enter)", onClick: cx.on.send }),
       ),
     ),

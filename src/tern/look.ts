@@ -352,6 +352,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 .send { border-radius: 999px; min-width: 26px; padding: 2px 8px; text-align: center; color: var(--t1); background: ${tint(16)}; }
 .send.ready { color: var(--page, #000); background: ${INK}; }
 .send.stop { color: var(--page, #000); background: ${HARNESS}; }
+/* While a request waits, Approve is the one filled control: Stop steps down to the plain send button's tint. */
+.send.stop.asking { color: var(--t1); background: ${tint(16)}; }
 
 /* An approval or a question from the agent, above the composer. */
 [data-role='awui.request'] { gap: 8px; padding: 12px 14px; border-radius: 16px; background: ${cardTint(7)}; border: 1px solid ${tint(30, 'var(--warn)')}; }
