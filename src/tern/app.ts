@@ -1785,7 +1785,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             now,
             on: {
               open: (s) => void app.openSession(s),
-              newChat: () => app.newChat(),
+              newChat: (ws) => app.newChat(ws ? { newTab: true, workspace: ws } : {}),
               fold: (id, folded) => setSideFolded((set) => toggled(set, id, folded)),
               more: (id) => setSideExpanded((set) => toggled(set, id, !set.has(id))),
               sessions: () => runLeader("s"),

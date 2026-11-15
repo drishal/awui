@@ -612,12 +612,17 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     });
   };
 
-  /** A new chat, in the shown tab (it takes the tab's place, as in the web UI) or, with `newTab`, a tab of its own. */
-  const newChat = ({ newTab = false }: { newTab?: boolean } = {}) => {
+  /**
+   * A new chat, in the shown tab (it takes the tab's place, as in the web UI) or, with `newTab`, a tab of its own. With
+   * `workspace` (a project's "+" in the sidebar) it starts in that project, as the web UI's project button does.
+   */
+  const newChat = ({ newTab = false, workspace: into }: { newTab?: boolean; workspace?: WorkspaceInfo | null } = {}) => {
     remember();
-    const placeholder: Omit<Tab, "key"> = { chatId: null, sessionId: null, harnessId: harnessId() ?? "", workspacePath: workspace()?.path ?? "", title: "New chat" };
+    const target = into ?? workspace();
+    const placeholder: Omit<Tab, "key"> = { chatId: null, sessionId: null, harnessId: harnessId() ?? "", workspacePath: target?.path ?? "", title: "New chat" };
     setTabs((st) => (st.tabs.length === 0 ? st : placeTab(st, placeholder, { newTab })));
     blank();
+    if (into && into.id !== workspace()?.id) void enterWorkspace(into).catch(fail);
   };
 
   const createChat = async (): Promise<ChatState> => {

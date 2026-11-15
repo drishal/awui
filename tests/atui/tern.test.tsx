@@ -457,6 +457,19 @@ describe("awui tern", () => {
     expect(tern.errors).toEqual([]);
   }, 30_000);
 
+  it("starts a chat in a tab of its own from a project's plus in the sidebar", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.event({ ev: "resize", cols: 160, cell: { w: 8, h: 16 } });
+    tern.type("project plus please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("project plus please"), "the first chat's answer");
+    const plus = () => tern.find("button", "layer").find((n) => n.p.icon === "plus" && String(n.p.title).startsWith("New chat in alpha"));
+    await until(() => plus() !== undefined, "the project's plus");
+    tern.event({ ev: "action", id: (plus() as { id: string }).id, act: "click" });
+    await until(() => tern.text("main").includes("What should Fake do in alpha?") && ((tern.find("tabs", "main")[0]?.p.items ?? []) as unknown[]).length === 2, "a second tab with a start screen");
+    expect(tern.errors).toEqual([]);
+  }, 30_000);
+
   it("names the harness's default on the start screen, and a pick there starts the first chat on it", async () => {
     client = await start();
     const { tern, app, until } = client;

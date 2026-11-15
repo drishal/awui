@@ -145,12 +145,13 @@ const LABEL: Record<string, { tone: string; icon: IconName }> = {
 };
 
 /** A label row: the glyph (or a project's monogram) and the words on the left, the count at the right edge. */
-function labelNode(key: string, words: Node | Span[], count: number, icon?: IconName | Node): Node {
+function labelNode(key: string, words: Node | Span[], count: number, icon?: IconName | Node, action?: Node): Node {
   return ui.row(
     { key, role: "awui.side-label", align: "center", gap: "sm" },
     typeof icon === "string" ? ui.icon({ key: "i", name: icon }) : (icon ?? null),
     ui.text({ key: "t", grow: 1, truncate: "end" }, words as Span[]),
     ui.text({ key: "n", role: "awui.side-count" }, span(String(count), "dim")),
+    action ?? null,
   );
 }
 
@@ -176,7 +177,9 @@ export function sidebarNode(cx: SidebarCx): Node {
       {
         key: block.key,
         role: "awui.side-project",
-        head: labelNode("head", [span(block.title, "strong"), ...(block.branch ? [span(`  ${block.branch}`, "dim")] : [])], total, badge(block.title)),
+        // The "+" beside a project starts a chat in it, in a tab of its own, as the web sidebar's project button does.
+        head: labelNode("head", [span(block.title, "strong"), ...(block.branch ? [span(`  ${block.branch}`, "dim")] : [])], total, badge(block.title),
+          ui.button({ key: "new", role: "awui.side-project-new", icon: "plus", variant: "quiet", size: "sm", title: `New chat in ${block.title} in a new tab`, onClick: () => cx.on.newChat(ws) })),
         collapsible: true,
         collapsed: block.folded,
         onToggle: (e) => cx.on.fold(ws.id, e.collapsed ?? false),
