@@ -87,10 +87,11 @@ export function rowTone(s: ProjectSession): "warning" | "accent" | "error" | nul
 /**
  * A row's right edge, the web sidebar's: a toned dot when the row is doing something, then its age in the narrow form
  * ("1m", not "1m ago"), so the title keeps the width; in a section that is not one project, the project's name first.
- * A quiet row open in this server carries the web's green live dot instead.
+ * A quiet row open in this server carries the web's green live dot instead. In Needs you and Working the section's
+ * label already carries the tone, so `toned` false leaves the dot out there ("alpha · 2m").
  */
-export function rowEdge(s: ProjectSession, now: number, project?: string): Span[] {
-  const tone = rowTone(s) ?? (s.liveChatId ? "success" : null);
+export function rowEdge(s: ProjectSession, now: number, project?: string, toned = true): Span[] {
+  const tone = toned ? (rowTone(s) ?? (s.liveChatId ? "success" : null)) : null;
   const age = s.updatedAt ? shortAgo(Date.parse(s.updatedAt) || 0, now) : "";
   // The project and the age part with a "·" only when no dot stands between them ("alpha ● 2m", not "alpha · ● 2m").
   return [...(project ? [span(tone ? `${project} ` : age ? `${project} · ` : project, "dim")] : []), ...(tone ? [span("● ", tone)] : []), span(age, "dim")];
@@ -130,7 +131,7 @@ function rowsNode(block: SidebarBlock, cx: SidebarCx): Node {
         role: s.id === cx.current ? "awui.side-current" : "awui.side-row",
         label: [span(s.title ? plainTitle(s.title) : "Untitled"), ...(s.unread ? [span(" •", "accent")] : [])],
         // A fixed section's rows are not one project's, so they name theirs, as the web's.
-        value: rowEdge(s, cx.now, block.workspace ? undefined : (cx.model.names.get(s.workspaceId) ?? "")),
+        value: rowEdge(s, cx.now, block.workspace ? undefined : (cx.model.names.get(s.workspaceId) ?? ""), block.key !== "needs" && block.key !== "working"),
       }),
     ),
   );
