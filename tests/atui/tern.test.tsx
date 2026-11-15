@@ -457,6 +457,19 @@ describe("awui tern", () => {
     expect(tern.errors).toEqual([]);
   }, 30_000);
 
+  it("draws the tab strip from the first tab on a wide pane, with buttons to close it and add another", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.event({ ev: "resize", cols: 160, cell: { w: 8, h: 16 } });
+    tern.type("tab strip please\r");
+    await until(() => app.chat()?.status === "idle" && tern.text("main").includes("tab strip please"), "the first chat's answer");
+    // One tab is enough on a wide pane, as the web's strip; the buttons at its end close it and add another.
+    await until(() => tern.find("tabs", "main")[0] !== undefined, "the strip with a single tab");
+    expect(tern.find("button", "main").some((n) => n.p.icon === "plus" && String(n.p.title).includes("new tab"))).toBe(true);
+    expect(tern.find("button", "main").some((n) => n.p.icon === "x" && String(n.p.title).includes("Close this tab"))).toBe(true);
+    expect(tern.errors).toEqual([]);
+  }, 30_000);
+
   it("starts a chat in a tab of its own from a project's plus in the sidebar", async () => {
     client = await start();
     const { tern, app, until } = client;

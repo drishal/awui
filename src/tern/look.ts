@@ -435,8 +435,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 .chip, .pick, .answer, .send, [data-role='awui.prompt'], [data-role='awui.git'] { transition: background-color 0.12s ${EASE_OUT}, color 0.12s ${EASE_OUT}; }
 .sf-still [data-role^='awui.'], .sf-still [data-role^='awui.'] * { animation: none !important; transition: none !important; }
 
-/* Tabs along the top, when there are two or more. */
-[data-role='awui.tabs'] { margin-bottom: -6px; }
+/* Tabs along the top: the strip, then close and new-tab buttons at its end. */
+[data-role='awui.tabbar'] { margin-bottom: -6px; }
+[data-role='awui.tabs'] { margin-bottom: 0; }
 
 /*
  * The layer's sheets (the board, active work, git, review, and every overlay): a solid backdrop

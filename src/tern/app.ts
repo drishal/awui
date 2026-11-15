@@ -1646,15 +1646,22 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const h = harness();
       const tabs = app.tabs();
       const main: (Node | null)[] = [];
-      if (tabs.tabs.length > 1) {
+      // The web's rule: the strip shows from the first tab on a wide pane, and from the second on a narrow one.
+      if (tabs.tabs.length >= (paneCols() < SIDEBAR_AUTO_FOLD ? 2 : 1)) {
         main.push(
-          ui.tabs({
-            key: "tabs",
-            role: "awui.tabs",
-            active: tabs.tabs[tabs.active]?.key ?? "",
-            items: tabs.tabs.map((t) => ({ id: t.key, label: t.unread ? [span(t.title ? plainTitle(t.title) : "New chat"), span(" ●", "accent")] : t.title ? plainTitle(t.title) : "New chat" })),
-            onSelect: (e) => void app.switchTab(tabs.tabs.findIndex((t) => t.key === e.item)),
-          }),
+          ui.row(
+            { key: "tabbar", role: "awui.tabbar", align: "center", gap: "xs" },
+            ui.tabs({
+              key: "tabs",
+              role: "awui.tabs",
+              grow: 1,
+              active: tabs.tabs[tabs.active]?.key ?? "",
+              items: tabs.tabs.map((t) => ({ id: t.key, label: t.unread ? [span(t.title ? plainTitle(t.title) : "New chat"), span(" ●", "accent")] : t.title ? plainTitle(t.title) : "New chat" })),
+              onSelect: (e) => void app.switchTab(tabs.tabs.findIndex((t) => t.key === e.item)),
+            }),
+            ui.button({ key: "close", icon: "x", variant: "quiet", size: "sm", title: "Close this tab (C-x w)", onClick: () => void app.closeTab(app.tabs().active) }),
+            ui.button({ key: "add", icon: "plus", variant: "quiet", size: "sm", title: "New chat in a new tab (C-x a)", onClick: () => app.newChat({ newTab: true }) }),
+          ),
         );
       }
       const opening = app.opening();
