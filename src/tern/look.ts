@@ -373,6 +373,11 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* Folded, the sidebar is a rail of three buttons down the left edge, where its own head was: no surface, no line. */
 [data-role='awui.side-rail'] > .sf-ov-card { width: ${SIDEBAR_RAIL}px !important; max-width: ${SIDEBAR_RAIL}px !important; min-width: 0 !important; background: transparent !important; backdrop-filter: none !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
 [data-role='awui.side-rail'] .sf-ov-body { padding: 14px 6px !important; }
+/* Its buttons read at the second ink and take a full hit square each, a little apart: at the third ink and 20px they were easy to miss. */
+[data-role='awui.side-rail'] .sf-ov-body > .sf-col { gap: 6px !important; }
+[data-role='awui.side-rail'] .sf-button.only-ic { width: 30px !important; height: 30px !important; justify-content: center; border-radius: 8px !important; color: var(--t2) !important; }
+[data-role='awui.side-rail'] .sf-button.only-ic .sf-btn-ic, [data-role='awui.side-rail'] .sf-button.only-ic .ico { width: 15px !important; height: 15px !important; }
+[data-role='awui.side-rail'] .sf-button.only-ic:hover { color: var(--t1) !important; background: ${tint(8)} !important; }
 [data-role='awui.side-note'], [data-role='awui.side-foot'] { font-size: 0.85em; padding-left: 8px; }
 `;
 }
