@@ -291,6 +291,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 .answer .n { color: var(--t4); margin-right: 6px; }
 /* An approval is a tool row's ask panel. Tern draws an Enter keycap on Allow; Enter sends the composer here, so none is shown. */
 [data-role='awui.approval'] .sf-tool-ask-btn .sf-kbd, [data-role='awui.approval'] .sf-tool-ask-btn .kbd { display: none; }
+/* Tern's "Needs your approval" chip says what the warning border and the Approve and Deny buttons already say. */
+[data-role='awui.approval'] .sf-tool-askchip { display: none; }
 /* Its reason is a sentence, not a path, so it reads in the reading font, a step below the title. */
 [data-role='awui.approval'] .sf-tool-target.text { font-family: var(--sans); color: var(--t2); }
 /* Allow is solid ink and Deny a bordered neutral, as .answer.primary and .answer.deny (the web card's): Tern's
