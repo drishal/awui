@@ -254,7 +254,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.render'] { border-radius: 12px; }
 /* A plan: the web UI's card, edged and washed in the accent, its head a small uppercase "Plan" in the accent. */
 /* Its edge is the web's: the accent 30% into the hairline, not 30% over nothing, which made it the loudest card on screen. */
-[data-role='awui.plan'] { border: 1px solid color-mix(in srgb, var(--accent) 20%, ${tint(10)}); border-radius: 12px; background: ${tint(5, "var(--accent)")}; box-shadow: none !important; }
+[data-role='awui.plan'] { border: 1px solid color-mix(in srgb, var(--accent) 20%, ${tint(10)}); border-radius: 12px; background: color-mix(in srgb, var(--accent) 4%, ${cardTint(5)}); box-shadow: none !important; }
 [data-role='awui.plan'] .md > :first-child { margin-top: 0 !important; }
 [data-role='awui.plan'] > .sf-card-head { color: var(--accent); font-size: 0.82em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
 [data-role='awui.plan'] > .sf-card-head .sf-chev { color: var(--t3); }
