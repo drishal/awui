@@ -378,12 +378,12 @@ function composerNode(cx: DockCx): Node {
   );
 }
 
-/** The strip under the composer: connection, model, project, the limits closest to running out, and the keys. */
+/**
+ * The strip under the composer: connection, project, speed and cost, the limits closest to running out, and the keys.
+ * The harness, model, and thinking level are the composer's chips right above it, so the strip does not say them again.
+ */
 function statusNode(cx: DockCx): Node {
   const chat = cx.chat;
-  const config = chat?.config;
-  const model = config?.models.find((m) => m.key === config.model || m.id === config.model)?.name ?? config?.model;
-  const what = [cx.harness?.displayName, model, config?.thinkingLevel ? levelTitle(config.thinkingLevel) : null].filter(Boolean).join(" · ");
   const tight = (cx.limits?.accounts ?? [])
     .flatMap((a) => a.windows.filter((w) => w.used !== null).map((w) => ({ a, w })))
     .sort((x, y) => (y.w.used ?? 0) - (x.w.used ?? 0))[0];
@@ -391,7 +391,6 @@ function statusNode(cx: DockCx): Node {
   return ui.status(
     { key: "st" },
     ui.seg({ key: "conn", icon: cx.connected ? "success" : "warning", tone: cx.connected ? "success" : "warning", priority: 9 }, cx.connected ? "Connected" : "Reconnecting"),
-    what ? ui.seg({ key: "model", icon: "model", priority: 7 }, what) : null,
     cx.project ? ui.seg({ key: "proj", icon: "folder", priority: 3, min: { w: "14ch" } }, cx.project) : null,
     usage && usage.tokensPerSecond ? ui.seg({ key: "rate", icon: "fast", priority: 2 }, ui.rate({ key: "r", value: Math.round(usage.tokensPerSecond), unit: "tok/s" })) : null,
     usage?.cost ? ui.seg({ key: "cost", icon: "cost", priority: 2 }, usage.cost < 0.01 ? "<$0.01" : `$${usage.cost.toFixed(2)}`) : null,
