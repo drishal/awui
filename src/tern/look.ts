@@ -373,14 +373,14 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.approval'] { flex-direction: row !important; flex-wrap: wrap; align-items: center; background: ${cardTint(7)} !important; }
 [data-role='awui.approval'] > .sf-tool-head { flex: 1 1 320px; min-width: 0; border-bottom: 0 !important; box-shadow: none !important; }
 [data-role='awui.approval'] > .sf-tool-body:empty { display: none; }
-[data-role='awui.approval'] > .sf-tool-ask { flex: 0 0 auto; margin-left: auto; background: none !important; border: 0 !important; box-shadow: none !important; padding: 4px 8px 4px 0 !important; }
+[data-role='awui.approval'] > .sf-tool-ask { flex: 0 0 auto; margin-left: auto; background: none !important; border: 0 !important; box-shadow: none !important; padding: 8px 10px 0 0 !important; }
 /* Its reason is a sentence under the title, at the third grey and a step smaller, not a target inside the sentence. */
 [data-role='awui.approval'] > .sf-tool-body { flex-basis: 100% !important; min-width: 0; padding: 0 16px 8px 36px; }
 [data-role='awui.approval-reason'] { color: var(--t3); font-family: var(--sans); font-size: 0.92em; line-height: 1.35; }
 /* Allow is solid ink and Deny a bordered neutral, as .answer.primary and .answer.deny (the web card's): Tern's
    accent-filled Allow was the loudest thing on the screen, and its bare-text Deny did not read as a button. */
 [data-role='awui.approval'] .sf-tool-ask-foot > .sf-tool-ask-btn:last-child { background: ${INK} !important; color: var(--page, #000) !important; box-shadow: none !important; }
-[data-role='awui.approval'] .sf-tool-ask-foot > .sf-tool-ask-btn:first-child { border-radius: 8px; box-shadow: inset 0 0 0 1px ${tint(18)} !important; }
+[data-role='awui.approval'] .sf-tool-ask-foot > .sf-tool-ask-btn:first-child { border-radius: 8px; box-shadow: inset 0 0 0 1px ${tint(26)} !important; }
 
 /*
  * Motion, after the web UI's (styles/motion.css): short and eased out, with what you just did landing on a
