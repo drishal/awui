@@ -342,7 +342,7 @@ export function toolNode(item: ToolItem, workspace: string, age: ConversationCx[
   const exit = /^exit (\d+)$/.exec(sentence.facts.find((f) => f.startsWith("exit ")) ?? "");
   const meta: string[] = [];
   if (sentence.rest && !sentence.rest.startsWith(":")) meta.push(sentence.rest);
-  if (item.diffStat && (item.diffStat.added || item.diffStat.removed)) meta.push(`+${item.diffStat.added}`, `−${item.diffStat.removed}`);
+  if (item.diffStat && (item.diffStat.added || item.diffStat.removed)) meta.push(...(item.diffStat.added ? [`+${item.diffStat.added}`] : []), ...(item.diffStat.removed ? [`−${item.diffStat.removed}`] : []));
   else meta.push(...sentence.facts.filter((f) => !f.startsWith("exit ")));
   const path = item.paths[0] ? shortPath(item.paths[0], workspace) : undefined;
   const took = !running && item.at !== undefined && item.endedAt !== undefined ? item.endedAt - item.at : undefined;
@@ -793,7 +793,7 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
     // when that differs from the row's own ("Changed 1 file · … · 1 file" said it twice).
     const files: (string | Span)[] = [span(`Changed ${plural(turn.changedFiles.length, "file")} · `, "muted")];
     turn.changedFiles.slice(0, 6).forEach((f, i) => {
-      if (i > 0) files.push(span(", ", "dim"));
+      if (i > 0) files.push(span(",\u00a0", "dim")); // a plain space after the comma is trimmed from a span's edge, running the paths together
       files.push(span(shortPath(f, ws), "path", { href: fileUrl(f, ws) }));
     });
     if (turn.changedFiles.length > 6) files.push(span(` and ${turn.changedFiles.length - 6} more`, "dim"));
@@ -807,9 +807,10 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
         stat
           ? ui.text(
               { key: "s", role: "awui.work-stat" },
-              span(`+${stat.added}`, "ins"),
-              " ",
-              span(`−${stat.removed}`, "del"),
+              // The web's DiffBadge hides a side that is zero ("+4" for a new file, not "+4 −0").
+              stat.added ? span(`+${stat.added}`, "ins") : "",
+              stat.added && stat.removed ? " " : "",
+              stat.removed ? span(`−${stat.removed}`, "del") : "",
               stat.files !== turn.changedFiles.length ? span(` · ${plural(stat.files, "file")}`, "muted") : "",
             )
           : null,
