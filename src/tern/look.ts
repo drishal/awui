@@ -261,11 +261,14 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.brand'] { font-size: 1.6em; font-weight: 600; letter-spacing: 0.02em; font-family: var(--mono, monospace); color: ${HARNESS}; }
 [data-role='awui.start-title'] { font-size: 1.45em; font-weight: 600; text-align: center; }
 [data-role='awui.harnesses'] { gap: 8px; justify-content: center; flex-wrap: wrap; }
+/* The accent stays the title's project word; the three suggestions' marks are the second grey. */
+[data-role='awui.harnesses'] svg { color: var(--t3); }
 /* Controls are 8 px round, as the web UI's --r-control; only Send and dots stay circular. */
 .pick { border-radius: 8px; padding: 4px 13px; background: ${tint(7)}; color: var(--t2); }
 .pick:hover { background: ${tint(12)}; }
 .pick.on { color: ${HARNESS}; background: ${tint(18, HARNESS)}; }
 [data-role='awui.recent'] { width: 100%; max-width: ${recent}; }
+[data-role='awui.recent'] .sf-icon { color: var(--t3); }
 
 /* The dock: queued steps, the git row, the composer card, the status strip. */
 [data-role='awui.queue'] { gap: 4px; padding: 6px 14px; border-radius: 16px; background: ${cardTint(5)}; font-size: 0.9em; }

@@ -12,7 +12,7 @@ import { createEffect, createMemo, createRoot, createSignal, on, onCleanup, untr
 import { blobId, span, ui, html, type Key, type Node, type PropsOf, type Session, type Surface } from "@stencil-hq/tern";
 import type { ChatSnapshot, GitDiffSide, GitFileDiff, GitHubCheckView, HarnessStatus, IntegrationRecord, InteractionRequest, PrStack, RaceSummary, ReviewThread, SavedPrompt, SecondOpinion, SlashCommand, Tour } from "../shared/protocol.js";
 import type { ChatState } from "../web/chat-state.js";
-import { buildTurns, ago as agoMs } from "../web/turns.js";
+import { buildTurns, ago as agoMs, shortAgo } from "../web/turns.js";
 import { turnMarkdown } from "../web/turn-markdown.js";
 import { plainTitle } from "../web/plain-title.js";
 import { isBusy } from "../web/session-groups.js";
@@ -2023,7 +2023,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
                 },
               },
               // A row names its harness only when it is not the one this screen starts, which the heading names already.
-              recent.map((s, i) => ui.item({ key: `s${i}`, label: s.title ? plainTitle(s.title) : "Untitled", ...(s.harnessId === harness()?.id ? {} : { detail: app.boot()?.harnesses.find((x) => x.id === s.harnessId)?.displayName ?? s.harnessId }), value: s.updatedAt ? agoMs(new Date(s.updatedAt).getTime()) : "", icon: "session" })),
+              recent.map((s, i) => ui.item({ key: `s${i}`, label: s.title ? plainTitle(s.title) : "Untitled", ...(s.harnessId === harness()?.id ? {} : { detail: app.boot()?.harnesses.find((x) => x.id === s.harnessId)?.displayName ?? s.harnessId }), value: s.updatedAt ? shortAgo(new Date(s.updatedAt).getTime()) : "", icon: "session" })),
             )
           : null,
         ui.text({ key: "keys" }, span("Enter sends · C-k commands · C-x s sessions · C-x q quits", "dim")),
