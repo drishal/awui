@@ -101,7 +101,7 @@ export function decorations(text: string): Array<{ from: number; to: number; s: 
 export function placeholder(chat: ChatState | null, harness: HarnessStatus | null, editing: number | null, queueEdit: DockCx["queueEdit"] = null): string {
   if (editing !== null) return `Edit message ${editing}: Enter runs it again, Esc keeps the original`;
   if (queueEdit) return `Edit the queued ${queueEdit.field === "steering" ? "steering" : "follow-up"} message: Enter replaces it, Esc keeps it`;
-  if (!chat) return harness ? `Message ${harness.displayName}… (/ commands, @ files, # saved prompts)` : "Message the agent…";
+  if (!chat) return harness ? `Message ${harness.displayName}…` : "Message the agent…";
   if (chat.status === "running") return chat.capabilities.supportsSteer ? "Steer the agent…" : chat.capabilities.supportsFollowUp ? "Queue a follow-up…" : "The agent is working…";
   if (chat.status === "compacting") return "Compacting the context…";
   return "Message the agent…";

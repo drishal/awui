@@ -2026,7 +2026,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
               recent.map((s, i) => ui.item({ key: `s${i}`, label: s.title ? plainTitle(s.title) : "Untitled", ...(s.harnessId === harness()?.id ? {} : { detail: app.boot()?.harnesses.find((x) => x.id === s.harnessId)?.displayName ?? s.harnessId }), value: s.updatedAt ? shortAgo(new Date(s.updatedAt).getTime()) : "", icon: "session" })),
             )
           : null,
-        ui.text({ key: "keys" }, span("Enter sends · C-x s sessions · C-x q quits", "dim")),
+        ui.text({ key: "keys" }, span("Enter sends · / commands · @ files · # saved prompts", "dim")),
       );
     };
 
