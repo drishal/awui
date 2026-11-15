@@ -228,6 +228,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.calls'] [data-role='awui.tool-other'].sf-tool.inline .sf-tool-ic { color: var(--t3); }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-title { font-weight: 500; font-family: var(--sans); }
 /* A command's copy button took 30px from its row, so its facts ended left of every other row's; out of the flow it shows over the empty trailing slot on hover. */
+/* Tern colours a shell command's verb and flags with its own fixed greens and blues; here the command stays the row's ink, the verb one step bolder and the flags one grey down, so the glyph keeps the only colour. */
+[data-role='awui.calls'] .sf-tool-target.command .cmd, [data-role='awui.approval'] .sf-tool-target.command .cmd { color: var(--t1); font-weight: 500; }
+[data-role='awui.calls'] .sf-tool-target.command .flag, [data-role='awui.approval'] .sf-tool-target.command .flag { color: var(--t2); }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-head { position: relative; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-copy { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
 /* Words after the verb ("Updated the plan") read in the reading font; a path, command, or pattern keeps the code font. */
