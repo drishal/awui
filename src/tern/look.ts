@@ -390,6 +390,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* The list fades out above the footer instead of cutting a row through its letters, and the screen behind a picker
    steps back so its words do not compete with the sheet's. */
 .pk-sheet .pk-center { mask-image: linear-gradient(to bottom, var(--t1) calc(100% - 22px), transparent); }
+/* The chosen row is the sidebar's current session and the web's .palette-option.is-active: the accent's tint and its 2px bar. */
+.pk-sheet .pk-row.sel { background: color-mix(in srgb, var(--sf-accent, var(--accent)) 12%, transparent) !important; box-shadow: inset 2px 0 0 var(--sf-accent, var(--accent)) !important; }
 .sf-region.sf-layer:has(> .sf-picker) { background: color-mix(in srgb, ${SOLID} 55%, transparent); }
 
 /*
