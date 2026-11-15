@@ -1135,7 +1135,10 @@ describe("decision gates", () => {
 
   it("returns the recorded answer to a retry with the same decisionId, and asks once", async () => {
     const { app, agent, token } = await setup();
-    const started = await delegate(agent, token, { brief: "slow pick the migration approach" });
+    // A retry is only taken from a live worker. The slow script ends on a wall clock, so on a loaded machine the child had settled
+    // by the retry and the call was refused (403 not_delegated). The "ask" script parks the child on an approval nobody answers,
+    // so it stays live for as long as the test runs, whatever the load.
+    const started = await delegate(agent, token, { brief: "ask before picking the migration approach" });
     const child = app.manager.get(started.childChatId as string);
     const workerToken = tokenOf(app, started.childChatId as string);
     const first = call(agent, workerToken, "request_decision", { question: "Which migration approach?", kind: "select", options: ["Expand and contract", "Big bang"], decisionId: "approach" });
