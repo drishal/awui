@@ -212,14 +212,15 @@ export function sidebarNode(cx: SidebarCx): Node {
  * The sidebar folded: a rail down the left edge with the buttons that bring it back, start a chat, and search, as
  * the web UI's header keeps a Show sidebar button when its sidebar is closed. Without it the only way back was a key.
  */
-export function sidebarRail(on: { show: () => void; newChat: () => void; sessions: () => void }): Node {
+export function sidebarRail(on: { show: () => void; newChat: () => void; sessions: () => void }, asks = false): Node {
   return ui.overlay(
     { key: "sidebar-rail", role: "awui.side-rail", side: "left", modal: false },
     ui.col(
       { key: "r", gap: "xs", align: "center" },
       ui.button({ key: "show", icon: "sidebar", variant: "quiet", size: "sm", title: "Show the sidebar (C-x b)", onClick: on.show }),
       ui.button({ key: "new", icon: "plus", variant: "quiet", size: "sm", title: "New chat (C-x n)", onClick: on.newChat }),
-      ui.button({ key: "find", icon: "search", variant: "quiet", size: "sm", title: "Search sessions (C-x s)", onClick: on.sessions }),
+      // A session waiting on you is still seen with the sidebar folded: a warning dot on the sessions button.
+      ui.button({ key: "find", ...(asks ? { role: "awui.side-rail-asks" } : {}), icon: "search", variant: "quiet", size: "sm", title: asks ? "Search sessions (C-x s): a session needs you" : "Search sessions (C-x s)", onClick: on.sessions }),
     ),
   );
 }

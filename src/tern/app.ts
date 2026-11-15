@@ -1794,7 +1794,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
             },
           }),
         );
-      } else layer.push(sidebarRail({ show: () => setSidebarToggled(true), newChat: () => app.newChat(), sessions: () => runLeader("s") }));
+      } else layer.push(sidebarRail({ show: () => setSidebarToggled(true), newChat: () => app.newChat(), sessions: () => runLeader("s") }, app.overview().sessions.some((s) => s.asking && !s.archived)));
       const m = menu();
       const screen = usage();
       // The Timing overlay's turn, read again each frame so a run still going ends at this frame's now.
