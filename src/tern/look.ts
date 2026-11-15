@@ -210,6 +210,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-title { font-weight: 500; font-family: var(--sans); }
 /* Words after the verb ("Updated the plan") read in the reading font; a path, command, or pattern keeps the code font. */
 [data-role='awui.calls'] .sf-tool-target.text { font-family: var(--sans); }
+/* The verb and its object are one sentence: a word space between them (Tern's 8 px row gap reads as two columns). */
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-line { column-gap: 4px; }
 /* The row's line is a flex row ending in a spacer: the facts go after it, to the right edge, as the web UI's. */
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-sp { order: 1; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-meta { order: 2; font-family: var(--sans); color: var(--t3); }
