@@ -265,7 +265,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.plan'] > .sf-card-head .sf-icon { color: var(--accent); }
 
 /* The empty chat: a welcome with the harnesses and this project's recent sessions. */
-[data-role='awui.welcome'] { align-items: center; gap: 14px; padding-top: 12vh; }
+/* About centred in the room above the dock, as the web's .hero (place-items: center), not hung from the top over an empty
+   half: the page column has no height of its own to centre in, so the pad is half the pane less about half the block. */
+[data-role='awui.welcome'] { align-items: center; gap: 14px; padding-top: max(24px, calc(50vh - 250px)); }
 [data-role='awui.brand'] { font-size: 1.6em; font-weight: 600; letter-spacing: 0.02em; font-family: var(--mono, monospace); color: ${HARNESS}; }
 [data-role='awui.start-title'] { font-size: 1.45em; font-weight: 600; text-align: center; }
 [data-role='awui.harnesses'] { gap: 8px; justify-content: center; flex-wrap: wrap; }
