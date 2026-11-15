@@ -389,7 +389,7 @@ function statusNode(cx: DockCx): Node {
     .sort((x, y) => (y.w.used ?? 0) - (x.w.used ?? 0))[0];
   const usage = chat?.usage;
   return ui.status(
-    { key: "st" },
+    { key: "st", role: "awui.strip" },
     ui.seg({ key: "conn", icon: cx.connected ? "success" : "warning", tone: cx.connected ? "success" : "warning", priority: 9 }, cx.connected ? "Connected" : "Reconnecting"),
     cx.project ? ui.seg({ key: "proj", icon: "folder", priority: 3, min: { w: "14ch" } }, cx.project) : null,
     usage && usage.tokensPerSecond ? ui.seg({ key: "rate", icon: "fast", priority: 2 }, ui.rate({ key: "r", value: Math.round(usage.tokensPerSecond), unit: "tok/s" })) : null,

@@ -272,6 +272,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.recent'] .sf-icon { color: var(--t3); }
 
 /* The dock: queued steps, the git row, the composer card, the status strip. */
+/* The status strip is a line of quiet words under the composer, not a band of its own (Tern fills a status bar by default). */
+[data-role='awui.strip'] { background: transparent !important; box-shadow: none !important; }
 [data-role='awui.queue'] { gap: 4px; padding: 6px 14px; border-radius: 16px; background: ${cardTint(5)}; font-size: 0.9em; }
 /* The git row is the composer's caption, not a bubble of its own: the web dock dropped its fill too. */
 [data-role='awui.git'] { align-items: center; gap: 10px; padding: 2px 14px; border-radius: 8px; font-size: 0.86em; color: var(--t3); }
