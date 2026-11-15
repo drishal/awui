@@ -290,7 +290,10 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.plan'] .md ol > li, [data-role='awui.plan'] .md ol > li + li { margin: 3.1px 0 0 !important; }
 [data-role='awui.plan'] .md ol > li:first-child { margin-top: 0 !important; }
 [data-role='awui.plan'] > .sf-card-head { color: color-mix(in srgb, var(--accent) var(--awui-plan-head-mix, 100%), var(--t1)); font-size: 0.82em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
-[data-role='awui.plan'] > .sf-card-head .sf-chev { color: var(--t3); }
+[data-role='awui.plan'] > .sf-card-head .sf-chev { color: var(--t3); transform: rotate(180deg); }
+[data-role='awui.plan'].collapsed > .sf-card-head .sf-chev { transform: none; }
+/* A clamped preview has its own opener (the fade's "more lines" row), so the head's chevron waits until the card is open and can be closed. */
+[data-role='awui.plan'].collapsed.clamped > .sf-card-head .sf-chev { visibility: hidden; }
 [data-role='awui.plan'] > .sf-card-head .sf-icon { color: var(--accent); }
 
 /* The empty chat: a welcome with the harnesses and this project's recent sessions. */
