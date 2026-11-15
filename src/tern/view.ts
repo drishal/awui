@@ -820,7 +820,7 @@ export function headNode(chat: ChatState | null, harness: HarnessStatus | null, 
       { key: "meta", role: "awui.head-meta" },
       harness ? html.span({ key: "harness", class: "harness", text: harness.displayName }) : null,
       html.span({ key: "state", class: stateClass, text: state }),
-      project ? ui.text({ key: "project" }, span(project, "muted")) : null,
+      project ? ui.text({ key: "project", role: "awui.head-project" }, span(project)) : null,
     ),
   );
 }

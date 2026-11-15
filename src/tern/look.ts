@@ -137,7 +137,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
    competed with the title and the active tab). */
 .harness { font-size: 0.86em; color: var(--t2); }
 .harness::before { content: '●'; margin-right: 5px; color: ${HARNESS}; }
-.state { font-size: 0.86em; color: var(--t3); }
+.state { font-size: 0.86em; color: var(--t2); }
+/* The project after them, at their size and ink: three greys and two sizes in one line read as three things. */
+[data-role='awui.head-project'] { font-size: 0.86em; color: var(--t2); }
 .state::before { content: '●'; margin-right: 5px; color: var(--t4); }
 .state.idle::before { color: var(--ok); }
 .state.busy::before { color: ${HARNESS}; }
