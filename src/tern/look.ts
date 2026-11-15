@@ -203,7 +203,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.kinds'] .sf-icon svg { width: 13px; height: 13px; }
 /* "+N" past three kinds sits tight against the stack in a smaller weight, as the web UI's .kind-more, so it reads
    as more glyphs rather than the start of the sentence or a diff count. */
-[data-role='awui.kinds-more'] { margin-left: 0; padding-left: 3px; margin-right: 4px; font-size: 0.86em; font-weight: 500; color: var(--t3); }
+[data-role='awui.kinds-more'] { margin-left: 0; padding-left: 3px; margin-right: 4px; font-size: 0.92em; font-weight: 500; color: var(--t3); }
 [data-role='awui.work-stat'] { font-family: var(--mono, monospace); font-size: 0.88em; white-space: nowrap; padding-right: 4px; }
 [data-role='awui.calls'] { gap: 0; border-top: 1px solid ${tint(8)}; }
 [data-role='awui.calls'] > * { padding: 0; }
