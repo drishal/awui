@@ -364,7 +364,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.approval'] > .sf-tool-body:empty { display: none; }
 [data-role='awui.approval'] > .sf-tool-ask { flex: 0 0 auto; margin-left: auto; background: none !important; border: 0 !important; box-shadow: none !important; padding: 4px 8px 4px 0 !important; }
 /* Its reason is a sentence under the title, at the third grey and a step smaller, not a target inside the sentence. */
-[data-role='awui.approval'] > .sf-tool-body { flex-basis: 100% !important; min-width: 0; padding: 2px 16px 2px 20px; }
+[data-role='awui.approval'] > .sf-tool-body { flex-basis: 100% !important; min-width: 0; padding: 0 16px 8px 36px; }
 [data-role='awui.approval-reason'] { color: var(--t3); font-family: var(--sans); font-size: 0.92em; line-height: 1.35; }
 /* Allow is solid ink and Deny a bordered neutral, as .answer.primary and .answer.deny (the web card's): Tern's
    accent-filled Allow was the loudest thing on the screen, and its bare-text Deny did not read as a button. */
