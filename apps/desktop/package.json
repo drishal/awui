@@ -1,6 +1,6 @@
 {
   "name": "awui-desktop",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "The optional desktop app for awui: one window over the awui server this machine runs, or one it starts itself.",
   "license": "MIT",

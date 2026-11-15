@@ -1,6 +1,6 @@
 {
   "name": "awui",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "Local, private coding-agent control for pi, omp, Hermes, Claude Code, Codex, OpenCode, Grok Build and DeepSeek Harness, with awui/atui/Tern clients",
   "repository": {
