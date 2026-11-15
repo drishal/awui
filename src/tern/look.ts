@@ -144,14 +144,13 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 
 /* The header: the title on its own line, then the harness badge, status, and project, as the web UI's. */
 [data-role='awui.head'] { gap: 4px; padding: 2px 0 10px; border-bottom: 1px solid ${tint(8)}; }
-[data-role='awui.head-meta'] { align-items: center; gap: 10px; }
+[data-role='awui.head-meta'] { align-items: center; gap: 14px; }
 [data-role='awui.title'] { font-weight: 600; font-size: 1.15em; }
 /* The harness under the title: its colour dot and name, no chip, as the web header's tag (a filled pill there
    competed with the title and the active tab). */
 .harness { font-size: 0.86em; color: var(--t2); }
 .harness::before { content: '●'; margin-right: 5px; color: ${HARNESS}; }
-/* The harness and state are two statuses on one line: a dot parts them as it parts the state and project. */
-.harness::after { content: '·'; margin-left: 6px; color: var(--t4); }
+/* The harness and state are two statuses, each led by its own dot, so nothing else parts them; the "·" is only before the project. */
 .state { font-size: 0.86em; color: var(--t2); }
 /* The project after them, at their size and ink: three greys and two sizes in one line read as three things. */
 [data-role='awui.head-project'] { font-size: 0.86em; color: var(--t2); }
