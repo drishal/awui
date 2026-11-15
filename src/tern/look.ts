@@ -34,6 +34,7 @@ export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "li
     `--awui-plan-edge: ${dark ? 20 : 24}%`,
     `--awui-plan-head-mix: ${dark ? 100 : 78}%`,
     `--awui-plan-wash-mix: ${dark ? 3 : 0}%`,
+    `--awui-acts-rest: ${dark ? 0.45 : 0.62}`,
   ];
   const vars = scheme
     ? [
@@ -263,7 +264,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role^='awui.answer-acts'] { gap: 0; margin: -8px 0 0 -6px; }
 /* An older answer's row waits at 45% until its turn is hovered or focused, as the web's .answer-actions: four icons
    under every answer read as noise. */
-[data-role='awui.answer-acts-past'] { opacity: 0.45; transition: opacity 0.16s ${EASE_OUT}; }
+/* On a near-white page the same 45% of the third grey is under 2:1, so the resting row there is a little firmer. */
+[data-role='awui.answer-acts-past'] { opacity: var(--awui-acts-rest, 0.45); transition: opacity 0.16s ${EASE_OUT}; }
 /* A turn ends a little further from the next prompt than its own parts sit from each other, so two turns do not read as one stream. */
 [data-role^='awui.turn'] + [data-role^='awui.turn'] { margin-top: 14px; }
 [data-role^='awui.turn']:hover [data-role='awui.answer-acts-past'], [data-role='awui.answer-acts-past']:focus-within { opacity: 1; }
