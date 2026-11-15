@@ -460,7 +460,8 @@ function workItem(item: ChatItem, cx: ConversationCx): Node | Node[] | null {
     case "notice":
       return noticeNode(item);
     case "request":
-      return requestNode(item);
+      // A question still open is the dock's approval row; saying it here too repeated it a third time under the header.
+      return !item.outcome && cx.chat.pending.some((p) => p.id === item.request.id) ? null : requestNode(item);
     default:
       return null;
   }
@@ -691,7 +692,7 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
         return n === null ? [] : Array.isArray(n) ? n : [n];
       });
       if (answerThought) children.push(thoughtNode(answerThought, cx, `${answerThought.id}~t`));
-      parts.push(
+      if (children.length > 0) parts.push(
         singleCall(live, segment.items)
           ? singleCard(`w${i}`, children)
           : ui.section(
