@@ -2021,7 +2021,8 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
                   if (s) void app.openSession(s);
                 },
               },
-              recent.map((s, i) => ui.item({ key: `s${i}`, label: s.title ? plainTitle(s.title) : "Untitled", detail: app.boot()?.harnesses.find((x) => x.id === s.harnessId)?.displayName ?? s.harnessId, value: s.updatedAt ? agoMs(new Date(s.updatedAt).getTime()) : "", icon: "session" })),
+              // A row names its harness only when it is not the one this screen starts, which the heading names already.
+              recent.map((s, i) => ui.item({ key: `s${i}`, label: s.title ? plainTitle(s.title) : "Untitled", ...(s.harnessId === harness()?.id ? {} : { detail: app.boot()?.harnesses.find((x) => x.id === s.harnessId)?.displayName ?? s.harnessId }), value: s.updatedAt ? agoMs(new Date(s.updatedAt).getTime()) : "", icon: "session" })),
             )
           : null,
         ui.text({ key: "keys" }, span("Enter sends · C-k commands · C-x s sessions · C-x q quits", "dim")),
