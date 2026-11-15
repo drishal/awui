@@ -154,8 +154,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.prompt-acts'] .sf-icon, [data-role='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 5px; border-radius: 8px; }
 [data-role='awui.prompt-acts'] .sf-icon:hover, [data-role='awui.answer-acts'] .sf-icon:hover { color: var(--t1); background: ${tint(9)}; }
 /* Under the pill: the clock, and the word for who sent it when not the person here ("agent", "guest"). */
-[data-role='awui.prompt-meta'] { font-size: 0.82em; color: var(--t4); padding-right: 6px; }
-[data-role='awui.prompt-time'] { font-size: 1em; color: var(--t4); }
+[data-role='awui.prompt-meta'] { font-size: 0.82em; color: var(--t3); padding-right: 6px; }
+[data-role='awui.prompt-time'] { font-size: 1em; color: var(--t3); }
 [data-role='awui.prompt-source'] { font-size: 1em; color: var(--t4); }
 
 /*
