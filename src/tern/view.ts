@@ -563,6 +563,9 @@ export function foldHeadNode(turn: Turn, segment: WorkSegment, place: "first" | 
   );
 }
 
+/** How many lines of a long plan show before its fade, as the web's plan card (its PREVIEW_LINES). */
+const PLAN_PREVIEW_LINES = 8;
+
 /**
  * A plan's Markdown without a leading heading that only says "Plan": the card's eyebrow already does, and a
  * larger "Plan" under the small one flips the hierarchy. A heading that names the plan stays.
@@ -731,7 +734,10 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
 
   for (const plan of turn.plans) {
     // The web UI's plan card: the plan glyph and a "Plan" eyebrow in the accent over the plan, its own title the plan's heading.
-    parts.push(ui.card({ key: `plan-${plan.id}`, role: "awui.plan", icon: "plan", head: [span("Plan")], collapsible: true, collapsed: false }, ui.md({ key: "m" }, planBody(plan.plan))));
+    // A plan past eight lines opens as a preview behind a fade, as the web's plan card does (PREVIEW_LINES), the chevron opening the rest.
+    const body = planBody(plan.plan);
+    const long = body.split("\n").filter((l) => l.trim() !== "").length > PLAN_PREVIEW_LINES;
+    parts.push(ui.card({ key: `plan-${plan.id}`, role: "awui.plan", icon: "plan", head: [span("Plan")], collapsible: true, collapsed: long, ...(long ? { preview: { lines: PLAN_PREVIEW_LINES } } : {}) }, ui.md({ key: "m" }, body)));
   }
   for (const page of turn.renders) {
     // Tern runs no scripts, so an agent's HTML page opens in the browser, from the web UI's copy of this chat.
