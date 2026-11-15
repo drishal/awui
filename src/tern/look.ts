@@ -442,7 +442,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.side-rail'] .sf-button.only-ic .sf-btn-ic, [data-role='awui.side-rail'] .sf-button.only-ic .ico { width: 15px !important; height: 15px !important; }
 [data-role='awui.side-rail'] .sf-button.only-ic:hover { color: var(--t1) !important; background: ${tint(8)} !important; }
 [data-role='awui.side-rail-asks'] { position: relative; }
-[data-role='awui.side-rail-asks']::after { content: ''; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--warn, var(--sf-c-warning)); box-shadow: 0 0 0 2px ${SOLID}; }
+[data-role='awui.side-rail-asks']::after { content: ''; position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn, var(--sf-c-warning)); box-shadow: 0 0 0 2px ${SOLID}; }
 [data-role='awui.side-note'], [data-role='awui.side-foot'] { font-size: 0.85em; padding-left: 8px; }
 `;
 }
