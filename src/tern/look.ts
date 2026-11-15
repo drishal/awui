@@ -25,7 +25,7 @@ export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "li
   const scheme = polarity ? ((polarity === "dark") === dark ? theme : null) : dark ? DARK : LIGHT;
   // How much ink a raised card mixes in: under a third on a light pane, where the dark pane's 7% turned every card a
   // grey well; the web's light --card is a percent off its page, so a light card reads as the page with an edge.
-  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${(scheme ?? theme).thinking}`, `--awui-lift: ${dark ? 100 : 30}%`, `--awui-plan-edge: ${dark ? 20 : 30}%`];
+  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${(scheme ?? theme).thinking}`, `--awui-lift: ${dark ? 100 : 30}%`, `--awui-plan-edge: ${dark ? 20 : 24}%`];
   const vars = scheme
     ? [
         `--t1: ${scheme.text}`,
