@@ -28,16 +28,16 @@ describe("atui's column", () => {
 
 describe("Tern's caps", () => {
   it("keeps the sheet's 780px page and 792px dock for comfortable", () => {
-    expect(ternColumn(null)).toEqual({ page: "780px", dock: "792px", recent: "560px" });
-    expect(ternColumn("comfortable")).toEqual({ page: "780px", dock: "792px", recent: "560px" });
+    expect(ternColumn(null)).toEqual({ page: "780px", dock: "792px" });
+    expect(ternColumn("comfortable")).toEqual({ page: "780px", dock: "792px" });
   });
 
   it("gives wide the web UI's 1400px column, the dock 12px wider", () => {
-    expect(ternColumn("wide")).toEqual({ page: "1400px", dock: "1412px", recent: "1005px" });
+    expect(ternColumn("wide")).toEqual({ page: "1400px", dock: "1412px" });
   });
 
   it("gives full the pane", () => {
-    expect(ternColumn("full")).toEqual({ page: "100%", dock: "100%", recent: "100%" });
+    expect(ternColumn("full")).toEqual({ page: "100%", dock: "100%" });
   });
 });
 

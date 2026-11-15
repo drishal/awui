@@ -194,7 +194,6 @@ describe("awui tern", () => {
         )?.css ?? "";
       await until(() => sheet().includes("max-width: calc(1400px + "), "the wide sheet");
       expect(sheet()).toContain("max-width: calc(1412px + ");
-      expect(sheet()).toContain("max-width: 1005px");
 
       // Wide is saved for every device already; the next press saves full through the settings route.
       tern.type("\x18l");

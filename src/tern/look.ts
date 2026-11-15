@@ -111,7 +111,7 @@ function besideSidebar(width: number, pageCap: string, dockCap: string): string 
  * pane still draws exactly the column's width.
  */
 export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | null = null): string {
-  const { page, dock, recent } = ternColumn(width);
+  const { page, dock } = ternColumn(width);
   const cap = (length: string) => (length === "100%" ? length : `calc(${length} + 2 * ${GUTTER})`);
   return `${sidebar ? besideSidebar(sidebar === "open" ? SIDEBAR_WIDTH : SIDEBAR_RAIL, cap(page), cap(dock)) : ""}
 [data-role='awui.page'] { width: 100%; max-width: ${cap(page)}; margin: 0 auto; padding-left: ${GUTTER}; padding-right: ${GUTTER}; font-family: var(--sans); gap: 18px; }
@@ -267,7 +267,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 .pick { border-radius: 8px; padding: 4px 13px; background: ${tint(7)}; color: var(--t2); }
 .pick:hover { background: ${tint(12)}; }
 .pick.on { color: ${HARNESS}; background: ${tint(18, HARNESS)}; }
-[data-role='awui.recent'] { width: 100%; max-width: ${recent}; }
+/* Recents span the column, so their left edge is the composer's; what is centred above stays centred. */
+[data-role='awui.recent'] { width: 100%; margin-top: 6px; }
 [data-role='awui.recent'] .sf-icon { color: var(--t3); }
 
 /* The dock: queued steps, the git row, the composer card, the status strip. */

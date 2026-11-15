@@ -16,8 +16,6 @@ export const ATUI_WIDE = 160;
 /** Tern's reading column in CSS pixels; the dock runs 12px wider, as the web composer runs 8px wider. */
 const TERN_COMFORTABLE = 780;
 const TERN_DOCK_EXTRA = 12;
-/** The start screen's list of recent sessions, as the share of the page it has always taken (560 of 780px). */
-const TERN_RECENT_SHARE = 560 / TERN_COMFORTABLE;
 /** Tern's wide page: the web UI's wide column. */
 const TERN_WIDE = 1400;
 
@@ -46,7 +44,6 @@ export function atuiColumn(width: ChatWidth | null, content: number): number {
 export interface TernColumn {
   page: string;
   dock: string;
-  recent: string;
 }
 
 /**
@@ -55,7 +52,7 @@ export interface TernColumn {
  * the tables are shares of the page, so they need no value of their own.
  */
 export function ternColumn(width: ChatWidth | null): TernColumn {
-  if (width === "full") return { page: "100%", dock: "100%", recent: "100%" };
+  if (width === "full") return { page: "100%", dock: "100%" };
   const page = width === "wide" ? TERN_WIDE : TERN_COMFORTABLE;
-  return { page: `${page}px`, dock: `${page + TERN_DOCK_EXTRA}px`, recent: `${Math.round(page * TERN_RECENT_SHARE)}px` };
+  return { page: `${page}px`, dock: `${page + TERN_DOCK_EXTRA}px` };
 }
