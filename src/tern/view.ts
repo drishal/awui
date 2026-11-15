@@ -772,7 +772,8 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
   }
   if (!turn.live && turn.changedFiles.length > 0) {
     const ws = cx.chat.workspace.path;
-    // The web UI's row: a pen, the count, the paths in mono, and the turn's +/− with the file count at the right.
+    // The web UI's row: a pen, the count, the paths in mono, and the turn's +/− at the right, with its file count only
+    // when that differs from the row's own ("Changed 1 file · … · 1 file" said it twice).
     const files: (string | Span)[] = [span(`Changed ${plural(turn.changedFiles.length, "file")} · `, "muted")];
     turn.changedFiles.slice(0, 6).forEach((f, i) => {
       if (i > 0) files.push(span(", ", "dim"));
@@ -791,7 +792,7 @@ function turnNode(turn: Turn, cx: ConversationCx): Node {
               span(`+${stat.added}`, "ins"),
               " ",
               span(`−${stat.removed}`, "del"),
-              span(` · ${plural(stat.files, "file")}`, "muted"),
+              stat.files !== turn.changedFiles.length ? span(` · ${plural(stat.files, "file")}`, "muted") : "",
             )
           : null,
       ),
