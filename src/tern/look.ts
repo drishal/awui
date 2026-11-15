@@ -25,7 +25,16 @@ export function themeSheet(theme: Theme, harness: string, polarity: "dark" | "li
   const scheme = polarity ? ((polarity === "dark") === dark ? theme : null) : dark ? DARK : LIGHT;
   // How much ink a raised card mixes in: under a third on a light pane, where the dark pane's 7% turned every card a
   // grey well; the web's light --card is a percent off its page, so a light card reads as the page with an edge.
-  const own = [`--awui-harness: ${harness}`, `--awui-thinking: ${(scheme ?? theme).thinking}`, `--awui-lift: ${dark ? 100 : 30}%`, `--awui-plan-edge: ${dark ? 20 : 24}%`];
+  // A light pane's plan wash goes neutral: the accent's 3% read as the loudest card beside the neutral folds, while its
+  // edge and head already say "plan" there. The head darkens toward the text in light to clear 4.5:1 on the pale card.
+  const own = [
+    `--awui-harness: ${harness}`,
+    `--awui-thinking: ${(scheme ?? theme).thinking}`,
+    `--awui-lift: ${dark ? 100 : 30}%`,
+    `--awui-plan-edge: ${dark ? 20 : 24}%`,
+    `--awui-plan-head-mix: ${dark ? 100 : 78}%`,
+    `--awui-plan-wash-mix: ${dark ? 3 : 0}%`,
+  ];
   const vars = scheme
     ? [
         `--t1: ${scheme.text}`,
@@ -128,7 +137,10 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
  * The dock floats over the conversation as it scrolls: a solid backdrop (blurred too, for a translucent
  * window whose background is itself see-through) so what scrolls under it never shows through its cards.
  */
-[data-role='awui.dock'] { width: 100%; max-width: ${cap(dock)}; margin: 0 auto; padding-left: ${GUTTER}; padding-right: ${GUTTER}; font-family: var(--sans); gap: 8px; padding-top: 6px; background: ${SOLID}; backdrop-filter: blur(24px); }
+[data-role='awui.dock'] { width: 100%; max-width: ${cap(dock)}; margin: 0 auto; padding-left: calc(${GUTTER} + 6px); padding-right: calc(${GUTTER} + 6px); font-family: var(--sans); gap: 8px; padding-top: 6px; background: ${SOLID}; backdrop-filter: blur(24px); }
+/* Tern's dim tone blends a quarter below the theme's muted (about 3.7:1). Our dim spans carry content — ages, project
+   names, the key legend — so they keep the muted grey's 6.5:1; the current row's age steps up to the second grey below. */
+[data-role^='awui.'] .sf-t-dim, .pk-sheet .sf-t-dim { color: var(--t3) !important; }
 
 /* The header: the title on its own line, then the harness badge, status, and project, as the web UI's. */
 [data-role='awui.head'] { gap: 4px; padding: 2px 0 10px; border-bottom: 1px solid ${tint(8)}; }
@@ -138,6 +150,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
    competed with the title and the active tab). */
 .harness { font-size: 0.86em; color: var(--t2); }
 .harness::before { content: '●'; margin-right: 5px; color: ${HARNESS}; }
+/* The harness and state are two statuses on one line: a dot parts them as it parts the state and project. */
+.harness::after { content: '·'; margin-left: 6px; color: var(--t4); }
 .state { font-size: 0.86em; color: var(--t2); }
 /* The project after them, at their size and ink: three greys and two sizes in one line read as three things. */
 [data-role='awui.head-project'] { font-size: 0.86em; color: var(--t2); }
@@ -250,18 +264,20 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.changed'] .sf-icon { color: var(--t3); }
 [data-role='awui.changed'] .sf-t-path { font-family: var(--mono, monospace); color: var(--t2); }
 [data-role='awui.working'] { color: var(--t2); }
-/* While it waits on the person the line is still: third grey, no spinner or clock. */
-[data-role='awui.waiting'] { color: var(--t2); }
-/* The pause glyph takes the warning colour of the request it waits on (the header's Needs you dot, the approval's edge); the words stay quiet. */
+/* While it waits on the person the line is still: the first ink and no spinner or clock, so it is found mid-pane. */
+[data-role='awui.waiting'] { color: var(--t1); font-weight: 500; }
+/* The pause glyph takes the warning colour of the request it waits on (the header's Needs you dot, the approval's edge). */
 [data-role='awui.waiting'] .sf-icon { color: var(--warn, var(--sf-c-warning)); width: 13px; height: 13px; }
 [data-role='awui.after'] { color: var(--t3); font-size: 0.9em; }
 [data-role='awui.render'] { border-radius: 12px; }
-/* A plan: the web UI's card, edged and washed in the accent, its head a small uppercase "Plan" in the accent. */
+/* A plan: the web UI's card, edged in the accent and washed in it on a dark pane, its head a small uppercase "Plan" in the accent. */
 /* Its edge is the web's: the accent 30% into the hairline, not 30% over nothing, which made it the loudest card on screen. */
 /* The accent's share of its edge is a var because a near-white page needs more of it for the card's edge to survive. */
-[data-role='awui.plan'] { border: 1px solid color-mix(in srgb, var(--accent) var(--awui-plan-edge, 20%), ${tint(10)}); border-radius: 12px; background: color-mix(in srgb, var(--accent) 3%, ${tint(2)}) !important; box-shadow: none !important; margin-top: 6px; }
+[data-role='awui.plan'] { border: 1px solid color-mix(in srgb, var(--accent) var(--awui-plan-edge, 20%), ${tint(10)}); border-radius: 12px; background: color-mix(in srgb, var(--accent) var(--awui-plan-wash-mix, 3%), ${tint(2)}) !important; box-shadow: none !important; margin-top: 6px; }
 [data-role='awui.plan'] .md > :first-child { margin-top: 0 !important; }
-[data-role='awui.plan'] > .sf-card-head { color: var(--accent); font-size: 0.82em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+/* The steps' numbers are tabular, so 1–9 take one width and the text keeps one edge. */
+[data-role='awui.plan'] .md ol { font-variant-numeric: tabular-nums; }
+[data-role='awui.plan'] > .sf-card-head { color: color-mix(in srgb, var(--accent) var(--awui-plan-head-mix, 100%), var(--t1)); font-size: 0.82em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
 [data-role='awui.plan'] > .sf-card-head .sf-chev { color: var(--t3); }
 [data-role='awui.plan'] > .sf-card-head .sf-icon { color: var(--accent); }
 
@@ -279,7 +295,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 .pick:hover { background: ${tint(12)}; }
 .pick.on { color: ${HARNESS}; background: ${tint(18, HARNESS)}; }
 /* Recents span the column, so their left edge is the composer's; what is centred above stays centred. */
-[data-role='awui.recent-head'] { align-self: stretch; margin: 18px 0 -10px; padding-left: 12px; font-size: 0.86em; }
+[data-role='awui.recent-head'] { align-self: stretch; margin: 18px 0 -10px; padding-left: 12px; font-size: 0.86em; color: var(--t2); font-weight: 500; }
 [data-role='awui.recent'] { width: 100%; margin-top: 0; }
 [data-role='awui.recent'] .sf-icon { color: var(--t3); }
 
@@ -315,6 +331,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* Rows as close as the web UI's tree, and a finished item a small check in the success colour rather than a filled disc. */
 [data-role='awui.todos'] .sf-ck-ph { min-height: 22px; }
 [data-role='awui.todos'] .sf-ck-item { min-height: 20px; }
+/* A phase's partial ring was the same glyph as the effort and context meters and read as a spinner; its "0/1" count carries it. */
+[data-role='awui.todos'] .sf-ck-ph > .sf-ck-g, [data-role='awui.todos'] .sf-ck-ph > .sf-icon, [data-role='awui.todos'] .sf-ck-ph > svg.sf-ring { display: none; }
 /* A phase's "0/1" in the reading font with even figures: in Tern's mono its slashed zero read as an 8. */
 [data-role='awui.todos'] .sf-ck-ph > .n { font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 0.85em; color: var(--t3); }
 [data-role='awui.todos'] .sf-ck-item.st-done .sf-ck-g { background: none !important; color: var(--ok) !important; }
@@ -346,8 +364,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.approval'] > .sf-tool-head { flex: 1 1 320px; min-width: 0; border-bottom: 0 !important; box-shadow: none !important; }
 [data-role='awui.approval'] > .sf-tool-body:empty { display: none; }
 [data-role='awui.approval'] > .sf-tool-ask { flex: 0 0 auto; margin-left: auto; background: none !important; border: 0 !important; box-shadow: none !important; padding: 4px 8px 4px 0 !important; }
-/* Its reason is a sentence, not a path, so it reads in the reading font, a step below the title. */
-[data-role='awui.approval'] .sf-tool-target.text { font-family: var(--sans); color: var(--t2); }
+/* Its reason is a sentence under the title, at the third grey and a step smaller, not a target inside the sentence. */
+[data-role='awui.approval'] > .sf-tool-body { flex-basis: 100% !important; min-width: 0; padding: 2px 16px 2px 20px; }
+[data-role='awui.approval-reason'] { color: var(--t3); font-family: var(--sans); font-size: 0.92em; line-height: 1.35; }
 /* Allow is solid ink and Deny a bordered neutral, as .answer.primary and .answer.deny (the web card's): Tern's
    accent-filled Allow was the loudest thing on the screen, and its bare-text Deny did not read as a button. */
 [data-role='awui.approval'] .sf-tool-ask-foot > .sf-tool-ask-btn:last-child { background: ${INK} !important; color: var(--page, #000) !important; box-shadow: none !important; }
@@ -400,13 +419,21 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* Choose is the footer's primary, solid ink as Approve is, so the pair reads quiet then solid; Tern's own fill was a near twin of Close. */
 .pk-sheet .pk-btn.primary { background: ${INK} !important; color: var(--page, #000) !important; box-shadow: none !important; }
 .pk-sheet .pk-fact { color: var(--t3); font-size: 0.85em; font-variant-numeric: tabular-nums; }
+/* A shortcut is a word in the reading face, with even figures, as the status strip's keys: the palette's mono keys were
+   the only two-typeface row in the app. */
+.pk-sheet .sf-kbd, .pk-sheet .kbd { font-family: var(--sans); font-variant-numeric: tabular-nums; }
 /* On the chosen row its keys step up a grey, so the accent tint does not swallow them. */
 .pk-sheet .pk-row.sel .pk-fact { color: var(--t2); }
+/* A group's head is a label, as the web's .model-group-head (semibold, small, uppercase, muted), not one more row of the list. */
+.pk-sheet .pk-row.grp { font-weight: 600; font-size: 0.78em; letter-spacing: 0.05em; text-transform: uppercase; color: var(--t3); }
 /* The list fades out above the footer instead of cutting a row through its letters, and the screen behind a picker
    steps back so its words do not compete with the sheet's. */
-.pk-sheet .pk-center { mask-image: linear-gradient(to bottom, var(--t1) calc(100% - 44px), transparent); }
+.pk-sheet .pk-center { position: relative; mask-image: linear-gradient(to bottom, var(--t1) calc(100% - 44px), transparent); }
+/* A second fade in the sheet's own fill hides the half row the footer's border used to slice: the fade starts above it,
+   so the last thing the eye sees is a gap, not a clipped letter. */
+.pk-sheet .pk-center::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 22px; pointer-events: none; background: linear-gradient(to bottom, transparent, ${cardTint(5)}); }
 /* The chosen row is the sidebar's current session and the web's .palette-option.is-active: the accent's tint and its 2px bar. */
-.pk-sheet .pk-row.sel { background: color-mix(in srgb, var(--sf-accent, var(--accent)) 12%, transparent) !important; box-shadow: inset 2px 0 0 var(--sf-accent, var(--accent)) !important; }
+.pk-sheet .pk-row.sel { background: color-mix(in srgb, var(--sf-accent, var(--accent)) 12%, transparent) !important; box-shadow: inset 2px 0 0 var(--sf-accent, var(--accent)) !important; border-radius: 0 8px 8px 0 !important; }
 .sf-region.sf-layer:has(> .sf-picker) { background: color-mix(in srgb, ${SOLID} 80%, transparent); }
 
 /*
@@ -443,10 +470,10 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.side-rows'] .sf-item-label::before { content: ''; display: inline-block; flex: none; width: 6px; height: 6px; margin: 0 9px 0 1px; border-radius: 50%; background: ${HARNESS}; vertical-align: middle; transform: translateY(-1px); }
 [data-role='awui.side-rows'] .sf-item-value { font-size: 0.85em; font-variant-numeric: tabular-nums; }
 /* The session on screen, as the web's .session.is-active: the accent's tint and a 2px bar of it on the left edge. */
-[data-role='awui.side-current'] { background: color-mix(in srgb, var(--sf-accent, var(--accent)) 12%, transparent) !important; box-shadow: inset 2px 0 0 var(--sf-accent, var(--accent)); }
+[data-role='awui.side-current'] { background: color-mix(in srgb, var(--sf-accent, var(--accent)) 12%, transparent) !important; box-shadow: inset 2px 0 0 var(--sf-accent, var(--accent)); border-radius: 0 8px 8px 0 !important; }
 [data-role='awui.side-current'] .sf-item-label { color: var(--t1); }
 /* Its age steps up a grey with it: the third grey on the accent's tint was the faintest text on the screen. */
-[data-role='awui.side-current'] .sf-item-value .sf-t-dim { color: var(--t2); }
+[data-role='awui.side-current'] .sf-item-value .sf-t-dim { color: var(--t2) !important; }
 /* Folded, the sidebar is a rail of three buttons down the left edge, where its own head was: no surface, no line. */
 [data-role='awui.side-rail'] > .sf-ov-card { width: ${SIDEBAR_RAIL}px !important; max-width: ${SIDEBAR_RAIL}px !important; min-width: 0 !important; background: transparent !important; backdrop-filter: none !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
 [data-role='awui.side-rail'] .sf-ov-body { padding: 14px 6px !important; }
@@ -456,7 +483,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.side-rail'] .sf-button.only-ic .sf-btn-ic, [data-role='awui.side-rail'] .sf-button.only-ic .ico { width: 15px !important; height: 15px !important; }
 [data-role='awui.side-rail'] .sf-button.only-ic:hover { color: var(--t1) !important; background: ${tint(8)} !important; }
 [data-role='awui.side-rail-asks'] { position: relative; }
-[data-role='awui.side-rail-asks']::after { content: ''; position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn, var(--sf-c-warning)); box-shadow: 0 0 0 2px ${SOLID}; }
+[data-role='awui.side-rail-asks']::after { content: ''; position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn, var(--sf-c-warning)); box-shadow: 0 0 0 2px ${SOLID}; }
 [data-role='awui.side-note'], [data-role='awui.side-foot'] { font-size: 0.85em; padding-left: 8px; }
 `;
 }
