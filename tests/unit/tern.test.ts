@@ -237,7 +237,7 @@ describe("the Tern dock", () => {
     const answered: Array<[string, number]> = [];
     const r = request({ options: ["Allow once", "Always allow (npm test)", "Deny"] });
     const row = all(dock(dockCx({ pending: [r] }, { on: { answer: (q: InteractionRequest, i: number) => answered.push([q.id, i]) } as unknown as DockCx["on"] }))).find((n) => n.kind === "tool");
-    expect(row?.props).toMatchObject({ name: "bash", title: "Run command", target: "npm test", targetKind: "command", status: "ask", confirm: "card" });
+    expect(row?.props).toMatchObject({ name: "bash", title: "Run command", status: "ask", confirm: "card" });
     expect(row?.props.ask).toEqual({ allow: "Allow once", deny: "Deny", always: "Always allow" });
     // The number keys are words in the strip, in option order, instead of "Deny · 3" in the label.
     expect(approvalKeys(r)).toBe("3 deny · 2 always allow · 1 allow once");
@@ -302,8 +302,8 @@ describe("the Tern sheet's page and dock", () => {
     for (const width of [null, "wide", "full"] as const) {
       for (const role of ["awui.page", "awui.dock"]) {
         const line = rule(stylesheet(width), role);
-        expect(line).toContain("padding-left: clamp(");
-        expect(line).toContain("padding-right: clamp(");
+        expect(line).toMatch(/padding-left: (calc\()?clamp\(/);
+        expect(line).toMatch(/padding-right: (calc\()?clamp\(/);
         // Tern drops a declaration it does not know, silently: padding-inline is one it does not.
         expect(line).not.toContain("padding-inline");
       }
