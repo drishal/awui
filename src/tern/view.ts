@@ -343,7 +343,12 @@ export function toolNode(item: ToolItem, workspace: string, age: ConversationCx[
   const meta: string[] = [];
   if (sentence.rest && !sentence.rest.startsWith(":")) meta.push(sentence.rest);
   if (item.diffStat && (item.diffStat.added || item.diffStat.removed)) meta.push(...(item.diffStat.added ? [`+${item.diffStat.added}`] : []), ...(item.diffStat.removed ? [`−${item.diffStat.removed}`] : []));
-  else meta.push(...sentence.facts.filter((f) => !f.startsWith("exit ")));
+  else {
+    // A search's scope ("in src") and its result count ("2 results in 2 files") are one phrase: joined, they no longer read as two "in"s side by side.
+    const facts = sentence.facts.filter((f) => !f.startsWith("exit "));
+    if (meta.length > 0 && facts.length > 0) meta.splice(0, meta.length, [...meta, ...facts].join(" · "));
+    else meta.push(...facts);
+  }
   const path = item.paths[0] ? shortPath(item.paths[0], workspace) : undefined;
   const took = !running && item.at !== undefined && item.endedAt !== undefined ? item.endedAt - item.at : undefined;
 
