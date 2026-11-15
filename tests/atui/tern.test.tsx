@@ -368,7 +368,7 @@ describe("awui tern", () => {
     tern.type("ask please\r");
     await until(() => tern.nodes.has("dock.d.req"), "the approval card");
     // Tern's own ask panel draws the buttons: the row carries their labels.
-    expect(tern.find("tool", "dock")[0]?.p).toMatchObject({ status: "ask", ask: { allow: "Approve · 1", deny: "Deny · 2" } });
+    expect(tern.find("tool", "dock")[0]?.p).toMatchObject({ status: "ask", ask: { allow: "Approve", deny: "Deny" } });
     tern.type("1");
     await until(() => !tern.nodes.has("dock.d.req") && app.chat()?.status === "idle", "the approval to go");
     expect(tern.text("main")).toContain("Approved");

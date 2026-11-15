@@ -8,7 +8,7 @@ import type { ChatState } from "../../src/web/chat-state.js";
 import type { Node } from "@stencil-hq/tern";
 import { applyEdit, draftState, editKey, lineStep, redo, setText, undo, wordStep, type DraftState } from "../../src/tern/draft.js";
 import { filterItems, groupPalette, matchRanges, moveSelection, sessionRows } from "../../src/tern/overlays.js";
-import { askShape, decorations, dock, inputReady, placeholder, type DockCx } from "../../src/tern/dock.js";
+import { approvalKeys, askShape, decorations, dock, inputReady, placeholder, type DockCx } from "../../src/tern/dock.js";
 import { stylesheet, themeSheet } from "../../src/tern/look.js";
 import { findHits } from "../../src/tern/find.js";
 import { timingNode } from "../../src/tern/timing.js";
@@ -238,7 +238,11 @@ describe("the Tern dock", () => {
     const r = request({ options: ["Allow once", "Always allow (npm test)", "Deny"] });
     const row = all(dock(dockCx({ pending: [r] }, { on: { answer: (q: InteractionRequest, i: number) => answered.push([q.id, i]) } as unknown as DockCx["on"] }))).find((n) => n.kind === "tool");
     expect(row?.props).toMatchObject({ name: "bash", title: "Run command", target: "npm test", targetKind: "command", status: "ask", confirm: "card" });
-    expect(row?.props.ask).toEqual({ allow: "Allow once · 1", deny: "Deny · 3", always: "Always allow · 2" });
+    expect(row?.props.ask).toEqual({ allow: "Allow once", deny: "Deny", always: "Always allow" });
+    // The number keys are words in the strip, in option order, instead of "Deny · 3" in the label.
+    expect(approvalKeys(r)).toBe("1 allow once · 2 always allow · 3 deny");
+    expect(JSON.stringify(dock(dockCx({ pending: [r] })))).toContain("1 allow once · 2 always allow · 3 deny");
+    expect(approvalKeys(undefined)).toBeNull();
     const on = row?.handlers?.onAction;
     void on?.["allow"]?.({ act: "allow" } as never);
     void on?.["always"]?.({ act: "always" } as never);

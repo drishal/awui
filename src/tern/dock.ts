@@ -147,7 +147,6 @@ function approvalNode(r: InteractionRequest, shape: AskShape, cx: DockCx): Node 
   const options = optionsOf(r);
   const first = (r.message ?? "").split("\n").find((l) => l.trim()) ?? "";
   const name = askIcon(r);
-  const key = (i: number) => (i < 9 ? ` · ${i + 1}` : "");
   const alwaysLabel = shape.always === null ? null : options[shape.always]?.label.replace(/ \(.*\)$/, "");
   const alwaysTitle = shape.always === null ? undefined : options[shape.always]?.label;
   return ui.tool(
@@ -160,9 +159,10 @@ function approvalNode(r: InteractionRequest, shape: AskShape, cx: DockCx): Node 
       status: "ask",
       confirm: "card",
       ask: {
-        allow: `${options[shape.allow]?.label ?? "Approve"}${key(shape.allow)}`,
-        deny: `Deny${key(shape.deny)}`,
-        always: alwaysLabel === null || alwaysLabel === undefined ? false : `${alwaysLabel}${key(shape.always as number)}`,
+        // The number keys live in the strip ("1 approve · 2 deny"): inside a label, "Deny · 2" read as a count.
+        allow: options[shape.allow]?.label ?? "Approve",
+        deny: "Deny",
+        always: alwaysLabel === null || alwaysLabel === undefined ? false : alwaysLabel,
       },
       ...(alwaysTitle && alwaysTitle !== alwaysLabel ? { intent: alwaysTitle } : {}),
       onAction: {
@@ -378,6 +378,16 @@ function composerNode(cx: DockCx): Node {
   );
 }
 
+/** An open approval's number keys as words for the strip, in option order ("1 approve · 2 deny"), or null. */
+export function approvalKeys(r: InteractionRequest | undefined): string | null {
+  const shape = r ? askShape(r) : null;
+  if (!r || !shape) return null;
+  const options = optionsOf(r);
+  const words: [number, string][] = [[shape.allow, options[shape.allow]?.label ?? "Approve"], [shape.deny, "Deny"]];
+  if (shape.always !== null) words.push([shape.always, options[shape.always]?.label.replace(/ \(.*\)$/, "") ?? "Always"]);
+  return words.filter(([i]) => i < 9).sort((a, b) => a[0] - b[0]).map(([i, w]) => `${i + 1} ${w.toLowerCase()}`).join(" · ");
+}
+
 /**
  * The strip under the composer: connection, project, speed and cost, the limits closest to running out, and the keys.
  * The harness, model, and thinking level are the composer's chips right above it, so the strip does not say them again.
@@ -395,7 +405,7 @@ function statusNode(cx: DockCx): Node {
     usage && usage.tokensPerSecond && chat && isBusy(chat.status) ? ui.seg({ key: "rate", icon: "fast", priority: 2 }, ui.rate({ key: "r", value: Math.round(usage.tokensPerSecond), unit: "tok/s" })) : null,
     usage?.cost ? ui.seg({ key: "cost", icon: "cost", priority: 2 }, usage.cost < 0.01 ? "<$0.01" : `$${usage.cost.toFixed(2)}`) : null,
     tight ? ui.seg({ key: "limit", icon: "gauge", side: "right", priority: 4, tone: (tight.w.used ?? 0) > 0.8 ? "warning" : "neutral" }, `${accountName(tight.a)} ${windowLabel(tight.w.label)} ${Math.round((tight.w.used ?? 0) * 100)}%`) : null,
-    ui.seg({ key: "keys", side: "right", priority: 6, actions: { click: "palette" }, onAction: { palette: cx.on.palette } }, cx.leader ? "C-x …" : "C-k commands · C-x more"),
+    ui.seg({ key: "keys", side: "right", priority: 6, actions: { click: "palette" }, onAction: { palette: cx.on.palette } }, cx.leader ? "C-x …" : (!cx.denying && approvalKeys(chat?.pending[0])) || "C-k commands · C-x more"),
     // Named, since a bare "dev" or "0.9.1" at the edge read as noise.
     ui.seg({ key: "v", side: "right", priority: 1 }, span(`awui ${cx.version}`, "dim")),
   );
