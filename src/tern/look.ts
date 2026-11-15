@@ -251,7 +251,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.changed'] .sf-t-path { font-family: var(--mono, monospace); color: var(--t2); }
 [data-role='awui.working'] { color: var(--t2); }
 /* While it waits on the person the line is still: third grey, no spinner or clock. */
-[data-role='awui.waiting'] { color: var(--t3); }
+[data-role='awui.waiting'] { color: var(--t2); }
 /* The pause glyph takes the warning colour of the request it waits on (the header's Needs you dot, the approval's edge); the words stay quiet. */
 [data-role='awui.waiting'] .sf-icon { color: var(--warn, var(--sf-c-warning)); width: 13px; height: 13px; }
 [data-role='awui.after'] { color: var(--t3); font-size: 0.9em; }

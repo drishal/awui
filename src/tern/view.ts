@@ -651,7 +651,7 @@ function workingNode(turn: Turn, cx: ConversationCx, foldOpen: boolean): Node {
 
 /** A live turn's line while it waits on the person: still, in the third grey, pointing at the dock's question. */
 function waitingNode(): Node {
-  return ui.row({ key: "working", role: "awui.waiting", gap: "sm", align: "center" }, ui.icon({ key: "i", name: "pause" }), ui.text({ key: "w" }, span("Waiting for you", "muted")));
+  return ui.row({ key: "working", role: "awui.waiting", gap: "sm", align: "center" }, ui.icon({ key: "i", name: "pause" }), ui.text({ key: "w", text: "Waiting for you" }));
 }
 
 /**
