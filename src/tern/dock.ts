@@ -396,7 +396,8 @@ function statusNode(cx: DockCx): Node {
     usage?.cost ? ui.seg({ key: "cost", icon: "cost", priority: 2 }, usage.cost < 0.01 ? "<$0.01" : `$${usage.cost.toFixed(2)}`) : null,
     tight ? ui.seg({ key: "limit", icon: "gauge", side: "right", priority: 4, tone: (tight.w.used ?? 0) > 0.8 ? "warning" : "neutral" }, `${accountName(tight.a)} ${windowLabel(tight.w.label)} ${Math.round((tight.w.used ?? 0) * 100)}%`) : null,
     ui.seg({ key: "keys", side: "right", priority: 6, actions: { click: "palette" }, onAction: { palette: cx.on.palette } }, cx.leader ? "C-x …" : "C-k commands · C-x more"),
-    ui.seg({ key: "v", side: "right", priority: 1 }, span(cx.version, "dim")),
+    // Named, since a bare "dev" or "0.9.1" at the edge read as noise.
+    ui.seg({ key: "v", side: "right", priority: 1 }, span(`awui ${cx.version}`, "dim")),
   );
 }
 
