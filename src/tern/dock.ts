@@ -378,14 +378,18 @@ function composerNode(cx: DockCx): Node {
   );
 }
 
-/** An open approval's number keys as words for the strip, in option order ("1 approve · 2 deny"), or null. */
+/**
+ * An open approval's number keys as words for the strip, in the order Tern draws its buttons (Deny, Always, then the
+ * solid Approve at the right), so the words read across as the buttons do ("2 deny · 1 approve"), or null.
+ */
 export function approvalKeys(r: InteractionRequest | undefined): string | null {
   const shape = r ? askShape(r) : null;
   if (!r || !shape) return null;
   const options = optionsOf(r);
-  const words: [number, string][] = [[shape.allow, options[shape.allow]?.label ?? "Approve"], [shape.deny, "Deny"]];
+  const words: [number, string][] = [[shape.deny, "Deny"]];
   if (shape.always !== null) words.push([shape.always, options[shape.always]?.label.replace(/ \(.*\)$/, "") ?? "Always"]);
-  return words.filter(([i]) => i < 9).sort((a, b) => a[0] - b[0]).map(([i, w]) => `${i + 1} ${w.toLowerCase()}`).join(" · ");
+  words.push([shape.allow, options[shape.allow]?.label ?? "Approve"]);
+  return words.filter(([i]) => i < 9).map(([i, w]) => `${i + 1} ${w.toLowerCase()}`).join(" · ");
 }
 
 /**

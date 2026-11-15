@@ -240,8 +240,8 @@ describe("the Tern dock", () => {
     expect(row?.props).toMatchObject({ name: "bash", title: "Run command", target: "npm test", targetKind: "command", status: "ask", confirm: "card" });
     expect(row?.props.ask).toEqual({ allow: "Allow once", deny: "Deny", always: "Always allow" });
     // The number keys are words in the strip, in option order, instead of "Deny · 3" in the label.
-    expect(approvalKeys(r)).toBe("1 allow once · 2 always allow · 3 deny");
-    expect(JSON.stringify(dock(dockCx({ pending: [r] })))).toContain("1 allow once · 2 always allow · 3 deny");
+    expect(approvalKeys(r)).toBe("3 deny · 2 always allow · 1 allow once");
+    expect(JSON.stringify(dock(dockCx({ pending: [r] })))).toContain("3 deny · 2 always allow · 1 allow once");
     expect(approvalKeys(undefined)).toBeNull();
     const on = row?.handlers?.onAction;
     void on?.["allow"]?.({ act: "allow" } as never);
