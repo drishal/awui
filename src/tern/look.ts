@@ -154,7 +154,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.prompt'] { align-self: flex-end; max-width: 82%; padding: 10px 16px; border-radius: 14px; background: ${BUBBLE}; }
 [data-role='awui.prompt'].sf-act:hover { background: color-mix(in srgb, ${INK} 5%, ${BUBBLE}); }
 [data-role='awui.prompt-acts'] { gap: 2px; }
-[data-role='awui.prompt-acts'] .sf-icon, [data-role^='awui.answer-acts'] .sf-icon { color: var(--t3); padding: 5px; border-radius: 8px; }
+/* Tern sizes an icon's box to the glyph, so padding alone pushed each 14px glyph into its neighbour: a 26px box centres it. */
+[data-role='awui.prompt-acts'] .sf-icon, [data-role^='awui.answer-acts'] .sf-icon { color: var(--t3); width: 26px; height: 26px; padding: 0; display: inline-grid; place-items: center; box-sizing: border-box; border-radius: 8px; }
 [data-role='awui.prompt-acts'] .sf-icon:hover, [data-role^='awui.answer-acts'] .sf-icon:hover { color: var(--t1); background: ${tint(9)}; }
 /* Under the pill: the clock, and the word for who sent it when not the person here ("agent", "guest"). */
 [data-role='awui.prompt-meta'] { font-size: 0.82em; color: var(--t3); padding-right: 6px; }
@@ -238,7 +239,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.note'] { color: var(--t3); font-size: 0.92em; }
 /* A note among a card's calls (an answered approval) keeps the rows' inset rather than touching the card's edge. */
 [data-role='awui.calls'] > [data-role='awui.note'] { padding: 4px 12px; }
-[data-role^='awui.answer-acts'] { gap: 2px; margin-top: -6px; }
+[data-role^='awui.answer-acts'] { gap: 0; margin: -8px 0 0 -6px; }
 /* An older answer's row waits at 45% until its turn is hovered or focused, as the web's .answer-actions: four icons
    under every answer read as noise. */
 [data-role='awui.answer-acts-past'] { opacity: 0.45; transition: opacity 0.16s ${EASE_OUT}; }
