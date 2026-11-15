@@ -392,7 +392,7 @@ function statusNode(cx: DockCx): Node {
     { key: "st", role: "awui.strip" },
     ui.seg({ key: "conn", icon: cx.connected ? "success" : "warning", tone: cx.connected ? "success" : "warning", priority: 9 }, cx.connected ? "Connected" : "Reconnecting"),
     cx.project ? ui.seg({ key: "proj", icon: "folder", priority: 3, min: { w: "14ch" } }, cx.project) : null,
-    usage && usage.tokensPerSecond ? ui.seg({ key: "rate", icon: "fast", priority: 2 }, ui.rate({ key: "r", value: Math.round(usage.tokensPerSecond), unit: "tok/s" })) : null,
+    usage && usage.tokensPerSecond && chat && isBusy(chat.status) ? ui.seg({ key: "rate", icon: "fast", priority: 2 }, ui.rate({ key: "r", value: Math.round(usage.tokensPerSecond), unit: "tok/s" })) : null,
     usage?.cost ? ui.seg({ key: "cost", icon: "cost", priority: 2 }, usage.cost < 0.01 ? "<$0.01" : `$${usage.cost.toFixed(2)}`) : null,
     tight ? ui.seg({ key: "limit", icon: "gauge", side: "right", priority: 4, tone: (tight.w.used ?? 0) > 0.8 ? "warning" : "neutral" }, `${accountName(tight.a)} ${windowLabel(tight.w.label)} ${Math.round((tight.w.used ?? 0) * 100)}%`) : null,
     ui.seg({ key: "keys", side: "right", priority: 6, actions: { click: "palette" }, onAction: { palette: cx.on.palette } }, cx.leader ? "C-x …" : "C-k commands · C-x more"),
