@@ -63,12 +63,14 @@ describe("the Tern sidebar's model", () => {
     expect(button(true)).toBe("Show fewer");
   });
 
-  it("draws a row's right edge as a toned dot when it is busy, then its narrow age, after its project in a fixed section", () => {
+  it("draws a row's right edge as a toned dot when it is busy (green when only open here), then its narrow age, after its project in a fixed section", () => {
     const words = (spans: { t: string; s?: string }[]) => spans.map((x) => [x.t, x.s]);
     expect(words(rowEdge(s("a", "w", { asking: true, status: "running" }), now))).toEqual([["● ", "warning"], ["2h", "dim"]]);
     expect(words(rowEdge(s("b", "w", { status: "running" }), now))).toEqual([["● ", "accent"], ["2h", "dim"]]);
     expect(words(rowEdge(s("c", "w", { status: "error" }), now))).toEqual([["● ", "error"], ["2h", "dim"]]);
     expect(words(rowEdge(s("d", "w"), now))).toEqual([["2h", "dim"]]);
+    expect(words(rowEdge(s("g", "w", { liveChatId: "c1" }), now))).toEqual([["● ", "success"], ["2h", "dim"]]);
+    expect(words(rowEdge(s("h", "w", { liveChatId: "c1", status: "running" }), now))).toEqual([["● ", "accent"], ["2h", "dim"]]);
     expect(words(rowEdge(s("e", "w", { updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha"))).toEqual([["alpha · ", "dim"], ["now", "dim"]]);
     expect(words(rowEdge(s("f", "w", { asking: true, updatedAt: "2026-11-10T11:59:40Z" }), now, "alpha"))).toEqual([["alpha ", "dim"], ["● ", "warning"], ["now", "dim"]]);
   });

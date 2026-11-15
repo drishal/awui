@@ -425,6 +425,8 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.side-rows'] .sf-item { min-height: 30px; padding: 0 8px; border-radius: 8px; transition: background-color 0.12s ${EASE_OUT}; }
 [data-role='awui.side-rows'] .sf-item:hover { background: color-mix(in srgb, var(--t1) 5%, transparent); }
 [data-role='awui.side-rows'] .sf-item-label { color: var(--t2); }
+/* Every row leads with its harness's dot, as the web's .harness-dot (the list is one harness's, so the colour is the scope's). */
+[data-role='awui.side-rows'] .sf-item-label::before { content: ''; display: inline-block; flex: none; width: 6px; height: 6px; margin: 0 9px 0 1px; border-radius: 50%; background: ${HARNESS}; vertical-align: middle; transform: translateY(-1px); }
 [data-role='awui.side-rows'] .sf-item-value { font-size: 0.85em; font-variant-numeric: tabular-nums; }
 /* The session on screen, as the web's .session.is-active: the accent's tint and a 2px bar of it on the left edge. */
 [data-role='awui.side-current'] { background: color-mix(in srgb, var(--sf-accent, var(--accent)) 12%, transparent) !important; box-shadow: inset 2px 0 0 var(--sf-accent, var(--accent)); }

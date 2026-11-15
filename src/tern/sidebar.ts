@@ -87,9 +87,10 @@ export function rowTone(s: ProjectSession): "warning" | "accent" | "error" | nul
 /**
  * A row's right edge, the web sidebar's: a toned dot when the row is doing something, then its age in the narrow form
  * ("1m", not "1m ago"), so the title keeps the width; in a section that is not one project, the project's name first.
+ * A quiet row open in this server carries the web's green live dot instead.
  */
 export function rowEdge(s: ProjectSession, now: number, project?: string): Span[] {
-  const tone = rowTone(s);
+  const tone = rowTone(s) ?? (s.liveChatId ? "success" : null);
   const age = s.updatedAt ? shortAgo(Date.parse(s.updatedAt) || 0, now) : "";
   // The project and the age part with a "·" only when no dot stands between them ("alpha ● 2m", not "alpha · ● 2m").
   return [...(project ? [span(tone ? `${project} ` : age ? `${project} · ` : project, "dim")] : []), ...(tone ? [span("● ", tone)] : []), span(age, "dim")];
