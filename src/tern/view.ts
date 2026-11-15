@@ -649,6 +649,11 @@ function workingNode(turn: Turn, cx: ConversationCx, foldOpen: boolean): Node {
   );
 }
 
+/** A live turn's line while it waits on the person: still, in the third grey, pointing at the dock's question. */
+function waitingNode(): Node {
+  return ui.row({ key: "working", role: "awui.waiting", gap: "sm", align: "center" }, ui.icon({ key: "i", name: "pause" }), ui.text({ key: "w" }, span("Waiting for you", "muted")));
+}
+
 /**
  * What comes before any prompt (startup notices, or what a compaction kept), as the web UI draws it: plain rows,
  * not a fold (the "Earlier conversation was compacted" notice must show), and the reply among them in its place.
@@ -677,6 +682,8 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
   const segments = workSegments(turn);
   // Whether the live stretch's fold is open: the working line shows the latest thought only while it is closed.
   let liveOpen = false;
+  // Whether a live fold's head already says "Waiting for you", so the turn need not say it again below.
+  let waitingSaid = false;
   segments.forEach((segment, i) => {
     const place = segments.length === 1 ? "only" : i === 0 ? "first" : i === segments.length - 1 ? "last" : "middle";
     const live = turn.live && (place === "last" || place === "only") && turn.workAfter.length === 0;
@@ -692,6 +699,7 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
         return n === null ? [] : Array.isArray(n) ? n : [n];
       });
       if (answerThought) children.push(thoughtNode(answerThought, cx, `${answerThought.id}~t`));
+      if (live && children.length > 0 && !singleCall(live, segment.items)) waitingSaid = true;
       if (children.length > 0) parts.push(
         singleCall(live, segment.items)
           ? singleCard(`w${i}`, children)
@@ -737,6 +745,7 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
       const n = workItem(item, cx);
       return n === null ? [] : Array.isArray(n) ? n : [n];
     });
+    if (turn.live && !singleCall(turn.live, after.items)) waitingSaid = true;
     parts.push(
       singleCall(turn.live, after.items)
         ? singleCard("after", children)
@@ -756,9 +765,11 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
   if (answer?.error) parts.push(ui.card({ key: "failed", tone: "error", head: [span("The run failed", "error")] }, ui.text({ key: "e", text: answer.error })));
   for (const e of turn.errors) parts.push(ui.text({ key: e.id, role: "awui.note" }, span(e.text, "error")));
 
-  // While the run waits on an approval the fold's head says so and the dock holds the question, so no live line.
+  // While the run waits on an approval the dock holds the question: a live fold's head says "Waiting for you", else a
+  // still line does (no spinner or clock), so a live turn never stands empty under its prompt.
   if (turn.live) {
     if (cx.chat.pending.length === 0) parts.push(workingNode(turn, cx, liveOpen));
+    else if (!waitingSaid) parts.push(waitingNode());
   } else if (answer?.text.trim()) {
     parts.push(
       ui.row(

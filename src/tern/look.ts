@@ -250,6 +250,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role='awui.changed'] .sf-icon { color: var(--t3); }
 [data-role='awui.changed'] .sf-t-path { font-family: var(--mono, monospace); color: var(--t2); }
 [data-role='awui.working'] { color: var(--t2); }
+/* While it waits on the person the line is still: third grey, no spinner or clock. */
+[data-role='awui.waiting'] { color: var(--t3); }
+[data-role='awui.waiting'] .sf-icon { color: var(--t3); width: 13px; height: 13px; }
 [data-role='awui.after'] { color: var(--t3); font-size: 0.9em; }
 [data-role='awui.render'] { border-radius: 12px; }
 /* A plan: the web UI's card, edged and washed in the accent, its head a small uppercase "Plan" in the accent. */
