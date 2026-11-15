@@ -227,6 +227,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* Plans, questions, and MCP calls share "other"; amber on them read as a warning, so they keep the quiet grey. */
 [data-role='awui.calls'] [data-role='awui.tool-other'].sf-tool.inline .sf-tool-ic { color: var(--t3); }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-title { font-weight: 500; font-family: var(--sans); }
+/* A command's copy button took 30px from its row, so its facts ended left of every other row's; out of the flow it shows over the empty trailing slot on hover. */
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-head { position: relative; }
+[data-role='awui.calls'] .sf-tool.inline .sf-tool-copy { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
 /* Words after the verb ("Updated the plan") read in the reading font; a path, command, or pattern keeps the code font. */
 [data-role='awui.calls'] .sf-tool-target.text { font-family: var(--sans); }
 /* The verb and its object are one sentence: a word space between them (Tern's 8 px row gap reads as two columns). */
