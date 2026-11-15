@@ -344,6 +344,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* One panel radius for every dock card (todos, queue, request, composer), so they stack as one column. */
 [data-role='awui.todos'] { border-radius: 16px; background: ${cardTint(4)} !important; }
 /* Rows as close as the web UI's tree, and a finished item a small check in the success colour rather than a filled disc. */
+/* The head's chevron points as the fold's and the plan's do: down while closed, up while open. */
+[data-role='awui.todos'] > .sf-card-head .sf-chev { transform: rotate(180deg); }
+[data-role='awui.todos'].collapsed > .sf-card-head .sf-chev { transform: none; }
 [data-role='awui.todos'] .sf-ck-ph { min-height: 22px; }
 [data-role='awui.todos'] .sf-ck-item { min-height: 20px; }
 /* A phase's partial ring was the same glyph as the effort and context meters and read as a spinner; its "0/1" count carries it. */
