@@ -217,13 +217,15 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 [data-role^='awui.fold'] > .sf-section-body::before { display: none; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-ic { width: 19px; height: 19px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--t3); background: none; }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-ic svg { width: 14px; height: 14px; }
-/* The call's glyph takes the category colour, as the web UI's --cat-* mapping (the row text stays --t1). */
-[data-role='awui.tool-read'] .sf-tool-ic, [data-role='awui.tool-search'] .sf-tool-ic { color: var(--sf-c-info, var(--accent)); }
-[data-role='awui.tool-edit'] .sf-tool-ic, [data-role='awui.tool-write'] .sf-tool-ic { color: var(--sf-c-orange, var(--warn)); }
-[data-role='awui.tool-command'] .sf-tool-ic { color: var(--t3); }
-[data-role='awui.tool-web'] .sf-tool-ic { color: var(--sf-c-link, var(--accent)); }
-[data-role='awui.tool-agent'] .sf-tool-ic { color: var(--awui-thinking, var(--t3)); }
-[data-role='awui.tool-other'] .sf-tool-ic { color: var(--warn); }
+/* The call's glyph takes the category colour, as the web UI's --cat-* mapping (the row text stays --t1). The size rule above sets
+   the quiet grey on ".sf-tool.inline .sf-tool-ic", which is more specific than a bare role, so these name the same path to win. */
+[data-role='awui.calls'] [data-role='awui.tool-read'].sf-tool.inline .sf-tool-ic, [data-role='awui.calls'] [data-role='awui.tool-search'].sf-tool.inline .sf-tool-ic { color: var(--sf-c-info, var(--accent)); }
+[data-role='awui.calls'] [data-role='awui.tool-edit'].sf-tool.inline .sf-tool-ic, [data-role='awui.calls'] [data-role='awui.tool-write'].sf-tool.inline .sf-tool-ic { color: var(--sf-c-orange, var(--warn)); }
+[data-role='awui.calls'] [data-role='awui.tool-command'].sf-tool.inline .sf-tool-ic { color: var(--t3); }
+[data-role='awui.calls'] [data-role='awui.tool-web'].sf-tool.inline .sf-tool-ic { color: var(--sf-c-link, var(--accent)); }
+[data-role='awui.calls'] [data-role='awui.tool-agent'].sf-tool.inline .sf-tool-ic { color: var(--awui-thinking, var(--t3)); }
+/* Plans, questions, and MCP calls share "other"; amber on them read as a warning, so they keep the quiet grey. */
+[data-role='awui.calls'] [data-role='awui.tool-other'].sf-tool.inline .sf-tool-ic { color: var(--t3); }
 [data-role='awui.calls'] .sf-tool.inline .sf-tool-title { font-weight: 500; font-family: var(--sans); }
 /* Words after the verb ("Updated the plan") read in the reading font; a path, command, or pattern keeps the code font. */
 [data-role='awui.calls'] .sf-tool-target.text { font-family: var(--sans); }
