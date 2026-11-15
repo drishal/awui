@@ -351,17 +351,17 @@ function composerNode(cx: DockCx): Node {
         { key: "l", gap: "sm", align: "center" },
         cx.harness ? html.button({ key: "h", class: "chip harness-chip", text: cx.harness.displayName, title: chat ? "Hand off to another harness (C-x h)" : "The harness for this chat (C-x h)", onClick: cx.on.pickHarness }) : null,
         // Before the first message the chips name the harness's own default (the start screen's catalog); a pick waits for the chat it starts.
-        caps?.supportsModelSelection ? html.button({ key: "m", class: "chip", text: `${words.name} ⌄`, title: "Model (C-x m)", onClick: cx.on.pickModel }) : null,
+        caps?.supportsModelSelection ? html.button({ key: "m", class: "chip menu", text: words.name, title: "Model (C-x m)", onClick: cx.on.pickModel }) : null,
         // The effort glyph goes inside the chip, before its level, as the web UI's thinking chip draws it.
         caps?.supportsThinkingLevel
-          ? html.button({ key: "t", class: "chip think", title: "Thinking (C-x t)", onClick: cx.on.pickThinking }, words.level ? ui.effort({ key: "e", level: words.level }) : null, words.level ? `${levelTitle(words.level)} ⌄` : "Thinking ⌄")
+          ? html.button({ key: "t", class: "chip think menu", title: "Thinking (C-x t)", onClick: cx.on.pickThinking }, words.level ? ui.effort({ key: "e", level: words.level }) : null, words.level ? levelTitle(words.level) : "Thinking")
           : null,
         // The web UI's permission pill: the mode in force, open mid-run too; a mode that asks nothing is marked.
         chat?.capabilities.supportsPermissionMode && config?.permissionModes?.length
           ? html.button(
-              { key: "p", class: permission?.caution ? "chip think caution" : "chip think", title: permission?.description ?? "Permission mode", onClick: cx.on.pickPermission },
+              { key: "p", class: permission?.caution ? "chip think menu caution" : "chip think menu", title: permission?.description ?? "Permission mode", onClick: cx.on.pickPermission },
               ui.icon({ key: "i", name: "shield" }),
-              `${permission?.label ?? config.permissionMode ?? "Default"} ⌄`,
+              permission?.label ?? config.permissionMode ?? "Default",
             )
           : null,
       ),

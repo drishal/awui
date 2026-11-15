@@ -262,9 +262,9 @@ describe("the Tern dock", () => {
     ];
     const chip = (permissionMode: string) =>
       all(dock(dockCx({ capabilities: { supportsPermissionMode: true } as ChatState["capabilities"], config: { models: [], permissionModes: modes, permissionMode } as unknown as ChatState["config"] }))).find((n) => n.props.key === "p");
-    expect(JSON.stringify(chip("default"))).toContain("Ask first ⌄");
-    expect(chip("default")?.props.class).toBe("chip think");
-    expect(chip("yolo")?.props.class).toBe("chip think caution");
+    expect(JSON.stringify(chip("default"))).toContain("Ask first");
+    expect(chip("default")?.props.class).toBe("chip think menu");
+    expect(chip("yolo")?.props.class).toBe("chip think menu caution");
     expect(all(dock(dockCx({}))).some((n) => n.props.key === "p")).toBe(false);
   });
 

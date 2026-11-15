@@ -283,6 +283,9 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 .chip { border-radius: 8px; padding: 2px 10px; font-size: 0.86em; color: var(--t2); background: ${tint(8)}; }
 .chip:hover { background: ${tint(13)}; color: var(--t1); }
 .chip.think { display: inline-flex; align-items: center; gap: 5px; }
+/* A chip that opens a picker ends in the sidebar switch's drawn chevron, not a text "⌄" that rode above the label's centre. */
+.chip.menu::after { content: ''; display: inline-block; vertical-align: middle; width: 4px; height: 4px; margin-left: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; opacity: 0.7; transform: translateY(-2px) rotate(45deg); }
+.chip.think.menu::after { margin-left: 2px; }
 /* The harness chip is a chip like its neighbours, told apart by its colour dot rather than a tinted fill. */
 .chip.harness-chip::before { content: '●'; margin-right: 5px; color: ${HARNESS}; }
 .chip.caution { color: var(--warn); background: ${tint(14, 'var(--warn)')}; }
