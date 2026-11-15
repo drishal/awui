@@ -810,11 +810,11 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
     // The web UI's row: a pen, the count, the paths in mono, and the turn's +/− at the right, with its file count only
     // when that differs from the row's own ("Changed 1 file · … · 1 file" said it twice).
     const files: (string | Span)[] = [span(`Changed ${plural(turn.changedFiles.length, "file")} · `, "muted")];
-    turn.changedFiles.slice(0, 6).forEach((f, i) => {
+    turn.changedFiles.slice(0, 3).forEach((f, i) => {
       if (i > 0) files.push(span(",\u00a0", "dim")); // a plain space after the comma is trimmed from a span's edge, running the paths together
       files.push(span(shortPath(f, ws), "path", { href: fileUrl(f, ws) }));
     });
-    if (turn.changedFiles.length > 6) files.push(span(` and ${turn.changedFiles.length - 6} more`, "dim"));
+    if (turn.changedFiles.length > 3) files.push(span(` +${turn.changedFiles.length - 3}`, "dim"));
     const stat = turn.changeStat;
     parts.push(
       ui.row(
