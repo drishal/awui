@@ -790,7 +790,8 @@ function turnNode(turn: Turn, cx: ConversationCx, latest = true): Node {
       ui.row(
         { key: "changed", role: "awui.changed", align: "center", gap: "sm" },
         ui.icon({ key: "i", name: "pen" }),
-        ui.text({ key: "t", grow: 1, truncate: "end" }, files),
+        // The +/− follows the files it counts, not 600 px away at the column's edge.
+        ui.text({ key: "t", truncate: "end" }, files),
         stat
           ? ui.text(
               { key: "s", role: "awui.work-stat" },
