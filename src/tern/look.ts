@@ -271,7 +271,7 @@ export function stylesheet(width: ChatWidth | null, sidebar: "open" | "rail" | n
 /* The changed line is already the smaller size: its +/− keeps it, as the same figures in a fold head read, not shrunk twice. */
 [data-role='awui.changed'] [data-role='awui.work-stat'] { font-size: 1em; padding-left: 6px; }
 [data-role='awui.changed'] .sf-icon { color: var(--t3); }
-[data-role='awui.changed'] .sf-t-path { font-family: var(--mono, monospace); color: var(--t2); }
+[data-role='awui.changed'] .sf-t-path { font-family: var(--mono, monospace); font-size: 0.92em; color: var(--t2); }
 [data-role='awui.working'] { color: var(--t2); }
 /* While it waits on the person the line is still: the first ink and no spinner or clock, so it is found mid-pane. */
 [data-role='awui.waiting'] { color: var(--t1); font-weight: 500; }
