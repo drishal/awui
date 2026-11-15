@@ -23,7 +23,7 @@ import { HarnessMenu } from "./HarnessMenu.js";
 import { WorkingRing } from "./WorkingRing.js";
 import { SessionCard } from "./SessionCard.js";
 import { agentStatusText } from "../agent-status.js";
-import { ago } from "../turns.js";
+import { ago, shortAgo } from "../turns.js";
 import { SidebarFilters } from "./SidebarFilters.js";
 import { ProjectBadge } from "./ProjectBadge.js";
 import { ProjectIconDialog } from "./ProjectIconDialog.js";
@@ -44,16 +44,7 @@ export const TEXT_SCALES: Array<[string, number]> = [
 ];
 
 function relativeTime(iso: string | null): string {
-  if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  const min = Math.round(diff / 60_000);
-  if (min < 1) return "now";
-  if (min < 60) return `${min}m`;
-  const h = Math.round(min / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.round(h / 24);
-  if (d < 30) return `${d}d`;
-  return new Date(iso).toLocaleDateString();
+  return iso ? shortAgo(new Date(iso).getTime()) : "";
 }
 
 

@@ -355,6 +355,18 @@ export function ago(at: number, now = Date.now()): string {
   return new Date(at).toLocaleDateString();
 }
 
+/** The same age as a list's narrow column says it: "now", "3m", "2h", "4d", else the date (the web sidebar's). */
+export function shortAgo(at: number, now = Date.now()): string {
+  const min = Math.round((now - at) / 60_000);
+  if (min < 1) return "now";
+  if (min < 60) return `${min}m`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.round(h / 24);
+  if (d < 30) return `${d}d`;
+  return new Date(at).toLocaleDateString();
+}
+
 /** Where the model changes between turns: turn id → the model it switched to. Turns that name no model are skipped over. */
 export function modelSwitches(turns: Turn[]): Map<string, string> {
   const switches = new Map<string, string>();
