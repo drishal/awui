@@ -4,7 +4,9 @@ awui is a local, private web UI for the coding agents you already use: **Pi**, *
 
 Each agent keeps its own models, logins, settings, tools, and session files. awui gives it one window — on your desktop, on your phone over Tailscale, or in a terminal with `atui` and `awui tern` — and adds what a terminal does not have: tabs, checkpoints, search across chats, review comments, usage, and notifications.
 
-![awui](docs/screenshots/start.png)
+[![A one-minute tour of awui](docs/awui-poster.jpg)](docs/awui.mp4)
+
+▶ [Watch the one-minute tour](docs/awui.mp4) (1080p, with sound).
 
 ## Install
 
