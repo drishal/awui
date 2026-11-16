@@ -1,6 +1,6 @@
 // A call the harness never answers: a cancelled question, or a lost result. The
 // run says when it is over, and no row may still spin after that.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatSnapshot, ToolItem } from "../../src/shared/protocol.js";
 import { NO_RESULT_TEXT } from "../../src/server/harness/agent-events.js";
 import { makeTestApp, signedIn, type TestApp } from "../helpers/app.js";
@@ -34,6 +34,33 @@ describe("a call left open when its run ends", () => {
     await until(() => tools(live().snapshot()).length === 1);
     await until(() => live().status === "idle");
 
+    const [tool] = tools(live().snapshot());
+    expect(tool).toMatchObject({ name: "ask_user", status: "done", output: NO_RESULT_TEXT });
+    expect(tool?.endedAt).toBeTypeOf("number");
+  });
+
+  it("is closed when a stop is taken but never confirmed, instead of spinning on an idle chat", async () => {
+    t = await makeTestApp();
+    const agent = await signedIn(t);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    const live = () => (t as TestApp).manager.get(chat.chatId);
+
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "stopstuck" });
+    await until(() => tools(live().snapshot()).length === 1);
+    expect(tools(live().snapshot())[0]?.status).toBe("running");
+
+    // The harness never settles, so the stop gives up waiting after its cap: skip that wait.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const stopping = live().abort();
+      await vi.advanceTimersByTimeAsync(20_001);
+      await stopping;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(live().status).toBe("idle");
     const [tool] = tools(live().snapshot());
     expect(tool).toMatchObject({ name: "ask_user", status: "done", output: NO_RESULT_TEXT });
     expect(tool?.endedAt).toBeTypeOf("number");

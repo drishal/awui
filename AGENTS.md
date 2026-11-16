@@ -384,7 +384,8 @@ if every test passes.
   `interleaved` (a reply, a command, then the answer), `ticking` (a command
   whose output arrives a line at a time), `afterreply` (the answer, then a tool
   call after it), `unfinished` (a call whose result never comes: the run
-  settles with it open), `midcompact` (compact inside a run, then carry on),
+  settles with it open), `stopstuck` (a call left open and a stop the harness
+  takes but never settles), `midcompact` (compact inside a run, then carry on),
   `contended` (refuse a prompt while a run is going), `testrun` (a command
   printing a Vitest summary with one failure), `toolfail` (a command call that
   errors), `imagecall` (a read of a picture, its result an image block), `manycalls`

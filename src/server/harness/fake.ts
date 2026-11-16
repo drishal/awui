@@ -13,6 +13,7 @@
 //   "interleaved" reply, run a command, then answer (a reply between tool calls)
 //   "afterreply" the answer first, then a tool call after it
 //   "unfinished" a call whose result never comes; the run settles with it open
+//   "stopstuck" a call left open, and a stop the harness takes but never settles (until the chat closes)
 //   "midcompact" compact the context inside the run, then carry on
 //   "contended" refuse a prompt because a run is going (pi's "already processing")
 //   "ticking" run a command whose output arrives a line at a time
@@ -356,6 +357,8 @@ class FakeLiveChat implements LiveChat {
   private thinkingLevel = "low";
   private permissionMode = "default";
   private disposed = false;
+  /** Ends a "stopstuck" run, which nothing but closing the chat finishes. */
+  private unstick: (() => void) | null = null;
 
   constructor(
     private readonly session: FakeSession,
@@ -534,6 +537,8 @@ class FakeLiveChat implements LiveChat {
       resolve(null);
       this.emit({ type: "request_cancelled", requestId: id, outcome: "cancelled" });
     }
+    // A run that takes the stop but never reports itself over: only closing the chat ends it.
+    if (this.unstick && !this.disposed) return;
     this.abortController?.abort();
     await this.running?.catch(() => undefined);
   }
@@ -581,6 +586,8 @@ class FakeLiveChat implements LiveChat {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    this.unstick?.();
+    this.unstick = null;
     await this.abort();
     this.listeners.clear();
   }
@@ -719,6 +726,14 @@ class FakeLiveChat implements LiveChat {
         this.emit({ type: "tool_start", toolCallId: "unfinished-1", name: "ask_user", args: { questions: [{ id: "q1", prompt: "Tea?" }] } });
         await this.pause(signal);
         this.emit({ type: "settled" });
+        return;
+      }
+      if (/\bstopstuck\b/i.test(text)) {
+        // A stop the harness takes without ever saying the run is over, with a question open (pi did this once).
+        this.emit({ type: "tool_start", toolCallId: "stuck-1", name: "ask_user", args: { questions: [{ id: "q1", prompt: "Coffee?" }] } });
+        await new Promise<void>((resolve) => {
+          this.unstick = resolve;
+        });
         return;
       }
       if (/\bticking\b/i.test(text)) {

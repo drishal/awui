@@ -753,6 +753,12 @@ class EventReducer {
     return item;
   }
 
+  /** What a settle ends, for a stop the harness took but never confirmed: the streaming reply and every open call. */
+  endUnsettled(): void {
+    this.finishStreaming();
+    this.closeRunningTools();
+  }
+
   private finishStreaming(): void {
     const current = this.currentAssistant ? this.get(this.currentAssistant) : undefined;
     if (current && current.kind === "assistant" && current.streaming) this.put({ ...current, streaming: false, endedAt: Date.now() });
@@ -1502,7 +1508,12 @@ export class Chat implements CheckpointHost {
       this.reducer.notice("error", `Stop failed: ${errorMessage(error)}`);
     }
     await this.waitSettled();
-    if (this.status === "stopping") this.setStatus("idle");
+    if (this.status === "stopping") {
+      // The harness took the stop but never said the run was over (pi stopped inside an ask_user
+      // question did this): end what its settle would have, so no row spins on an idle chat.
+      this.reducer.endUnsettled();
+      this.setStatus("idle");
+    }
   }
 
   async setConfig(patch: ConfigPatch): Promise<void> {
