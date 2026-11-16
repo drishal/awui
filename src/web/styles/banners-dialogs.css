@@ -394,7 +394,10 @@
   color: var(--text);
   width: min(600px, calc(100vw - 32px));
   max-height: min(560px, calc(100dvh - 32px));
-  box-shadow: var(--shadow-float), 0 0 0 1px var(--hairline-strong);
+  /* A real border, not a spread shadow: the shadow ring faded out at the corners, where the float shadow
+     sits densest, so the card looked open at three corners and closed at the rest. */
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-float);
   overflow: hidden;
 }
 
@@ -498,10 +501,23 @@
   color: var(--muted-text);
 }
 
-/* The keyboard's row: the selected fill with the sidebar's accent rule (the hover tint was too faint to follow on a dark card). */
+/* The keyboard's row: the selected fill with the sidebar's accent rule (the hover tint was too faint to follow on
+   a dark card). The rule is a bar of its own, inset from the row's squared-off ends: an inset shadow follows the
+   row's 8px radius and draws a bracket instead. */
 .palette-option.is-active {
+  position: relative;
   background: color-mix(in oklab, var(--accent) var(--tint), var(--active));
-  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.palette-option.is-active::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 .palette-check {
