@@ -254,12 +254,11 @@ test.describe("shared look in config.yml", () => {
     // The edit made in Appearance is still the form's: one Save writes both.
     await expect(settings.getByText("Unsaved changes")).toBeVisible();
     await expect(settings.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
-    // Height follows the section's content (D2) rather than forcing one tall blank pane;
-    // what stays stable is the horizontal frame and the visible dialog boundary.
+    // The frame keeps one size whichever section is open: switching never makes it jump.
     await expect(settings.locator('.settings-rail-search')).toBeVisible();
     const later = await settings.boundingBox();
     if (!later) throw new Error('Settings frame disappeared');
-    expect([later.x, later.width].map(Math.round)).toEqual([frame.x, frame.width].map(Math.round));
+    expect([later.x, later.y, later.width, later.height].map(Math.round)).toEqual([frame.x, frame.y, frame.width, frame.height].map(Math.round));
     expect(later.y).toBeGreaterThanOrEqual(16);
     expect(later.y + later.height).toBeLessThanOrEqual(720 - 16);
     await settings.getByRole("button", { name: "Save", exact: true }).click();

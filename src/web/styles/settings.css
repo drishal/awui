@@ -1,7 +1,8 @@
 /* ---- settings ------------------------------------------------------------- */
 /* Two panes in one dialog: a rail of sections with a search field over it, and
    the open section scrolling on its own under a Save bar that never moves. The
-   frame follows its content (D2), holding width without reserving a blank tall pane. */
+   frame keeps one size on wide screens (Appearance's, the tallest), so switching
+   sections never makes it jump; a phone's sheet still follows its content. */
 .settings-dialog {
   width: min(900px, calc(100vw - 32px));
 }
@@ -10,9 +11,9 @@
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  height: auto;
+  height: min(70vh, 720px);
   min-height: 0;
-  max-height: min(70vh, 720px);
+  max-height: none;
   /* The panes bleed to the dialog's edges; the head above them keeps its padding. */
   overflow: hidden;
   mask-image: none;
