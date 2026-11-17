@@ -42,7 +42,26 @@ export const STARTER: Scheme = {
 };
 
 const HEX = /^#?([0-9a-fA-F]{6})$/;
-const WORDS: Record<string, string> = { "text-2": "secondary text", "muted-text": "muted text", "control-border": "control borders", accent: "the accent", link: "links", text: "text" };
+// Every role buildThemeVars can nudge, in words: the colour roles are named by the colour a base16 author picked, since
+// "ok" or "rare" are awui's names and mean nothing to them.
+const WORDS: Record<string, string> = {
+  "text-2": "secondary text",
+  "muted-text": "muted text",
+  muted: "comments",
+  "control-border": "control borders",
+  accent: "the accent",
+  link: "links",
+  text: "text",
+  danger: "red text",
+  warn: "warning text",
+  ok: "green text",
+  info: "cyan text",
+  orange: "orange text",
+  thinking: "purple text",
+  rare: "yellow text",
+  brown: "brown text",
+};
+const listWords = new Intl.ListFormat("en", { type: "conjunction" });
 
 export function ThemeEditor({ title, initial, onSave, onClose }: { title: string; initial: Scheme; onSave: (scheme: Scheme) => Promise<void>; onClose: () => void }) {
   const [name, setName] = useState(initial.name);
@@ -139,7 +158,7 @@ export function ThemeEditor({ title, initial, onSave, onClose }: { title: string
               </span>
             </div>
           </div>
-          {adjusted.length > 0 ? <p className="theme-editor-note">Contrast is raised for {adjusted.map((r) => WORDS[r] ?? r).join(", ")}, so every text stays readable.</p> : null}
+          {adjusted.length > 0 ? <p className="theme-editor-note">Contrast is raised for {listWords.format(adjusted.map((r) => WORDS[r] ?? r))}, so every text stays readable.</p> : null}
           {mismatch ? <p className="theme-editor-note">The background reads as {polarity === "dark" ? "light" : "dark"}, but the variant says {polarity}: buttons and the page's light/dark details follow the variant.</p> : null}
           {error ? (
             <p className="notice notice-error" role="alert">
