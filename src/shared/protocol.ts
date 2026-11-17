@@ -1201,6 +1201,8 @@ export type ChatEvent =
 
 export interface ThemeInfo {
   source: "file" | "none";
+  /** The theme library's id when the active scheme comes from ~/.config/awui/themes; absent for theme.yml. */
+  scheme?: string;
   name: string | null;
   polarity: "dark" | "light" | null;
   /** CSS custom properties, already contrast-checked. */
@@ -1210,6 +1212,57 @@ export interface ThemeInfo {
   /** Why no scheme is active, when a file was configured but unusable. */
   problem?: string;
 }
+
+/** A theme library id: the file's name in ~/.config/awui/themes, without `.yml`. */
+export const themeIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, "a theme id is lower-case letters, digits, and dashes");
+
+/** One scheme the theme picker offers: a library file, or theme.yml (id null). */
+export interface ThemeEntry {
+  /** The library id; null for theme.yml (written by stylix/home-manager, never changed from here). */
+  id: string | null;
+  name: string;
+  polarity: "dark" | "light";
+  /** The scheme's own colours, `#rrggbb` keyed base00…base0F (base10…base17 for base24): the swatches, and what Edit and Duplicate start from. */
+  palette: Record<string, string>;
+  /** CSS custom properties, contrast-checked, as the page applies them (a live preview uses these). */
+  vars: Record<string, string>;
+  themeColor: string | null;
+  fonts: { sans?: string; mono?: string };
+  /** A symlinked file (home-manager's) or theme.yml: listed and usable, not edited or deleted from here. */
+  readOnly: boolean;
+  /** Why the file cannot be used; such an entry is listed so it can be deleted, never applied. */
+  problem?: string;
+}
+
+/** GET /api/themes. */
+export interface ThemeList {
+  themes: ThemeEntry[];
+  /** The library id config.yml selects (`theme_scheme`), even when that file has since gone; null for theme.yml. */
+  selected: string | null;
+  /** The library folder exists or can be made (no AWUI_CONFIG_DIR=""): Upload and New work. */
+  writable: boolean;
+  /** At most this many themes in the library. */
+  max: number;
+}
+
+const themeColorSchema = z.string().regex(/^#?[0-9a-fA-F]{6}$/, "a colour is 6-digit hex");
+const themeFontSchema = z.string().regex(/^[A-Za-z0-9 -]{1,64}$/, "a font name is letters, digits, spaces, and dashes");
+/** A scheme as the theme editor sends it: the server checks it again exactly as it checks a file. */
+export const themeSchemeSchema = z
+  .object({
+    name: z.string().trim().min(1).max(60),
+    variant: z.enum(["dark", "light"]),
+    palette: z.record(z.string().regex(/^base(0[0-9A-F]|1[0-7])$/), themeColorSchema).refine((p) => Object.keys(p).length >= 16 && Object.keys(p).length <= 24, "a palette has base00…base0F, and base10…base17 for base24"),
+    fonts: z.object({ sans: themeFontSchema.optional(), mono: themeFontSchema.optional() }).strict().optional(),
+  })
+  .strict();
+/** POST /api/themes: an uploaded .yml, or the editor's scheme. `id` asks for that id (Undo after a delete puts it back). */
+export const themeCreateSchema = z.union([
+  z.object({ yaml: z.string().min(1).max(64 * 1024), id: themeIdSchema.optional() }).strict(),
+  themeSchemeSchema.extend({ id: themeIdSchema.optional() }).strict(),
+]);
+/** PUT /api/themes/:id: the edited scheme; the id (its file name) stays. */
+export const themeUpdateSchema = themeSchemeSchema;
 
 /** config.yml's `theme`: the default look on every device. `custom` is the legacy name for `base16`. */
 export const themeChoiceSchema = z.enum(["system", "light", "dark", "base16", "custom"]);
@@ -1241,7 +1294,7 @@ export interface Bootstrap {
   home: string;
   theme: { active: string; problem?: string };
   /** From config.yml: the shared look (theme null lets theme.yml decide, scale null is 100%). Re-read on every page load. */
-  ui: { theme: ThemeChoice | null; textScale: number | null; chatWidth: ChatWidth | null; density: Density | null; toolStyle: ToolStyle | null; font: UiFont | null; autocollapseSidebar: boolean; showStatusBar: boolean; herdr: boolean };
+  ui: { theme: ThemeChoice | null; themeScheme: string | null; textScale: number | null; chatWidth: ChatWidth | null; density: Density | null; toolStyle: ToolStyle | null; font: UiFont | null; autocollapseSidebar: boolean; showStatusBar: boolean; herdr: boolean };
   pairing: { urls: string[] };
   /** From config.yml's `breakdown:`: which changed paths a card counts as tests and as generated output (shared/breakdown.ts holds the defaults). */
   breakdown: BreakdownRules;
@@ -1993,6 +2046,8 @@ export interface ServerSettingsValues {
   allowedTailscaleUsers: string[];
   /** Shared look for every device; null theme lets a theme.yml decide, null scale is 100%. */
   theme: ThemeChoice | null;
+  /** config.yml's `theme_scheme`: the library theme `base16` uses; null is theme.yml. */
+  themeScheme: string | null;
   textScale: number | null;
   /** null is comfortable. */
   chatWidth: ChatWidth | null;
@@ -2141,6 +2196,7 @@ export const settingsPatchSchema = z
     allowedHosts: z.array(z.string().trim().min(1).max(255)).max(64).optional(),
     allowedTailscaleUsers: z.array(z.string().trim().min(1).max(255)).max(64).optional(),
     theme: themeChoiceSchema.nullable().optional(),
+    themeScheme: themeIdSchema.nullable().optional(),
     textScale: z.number().min(0.5).max(2).nullable().optional(),
     chatWidth: chatWidthSchema.nullable().optional(),
     density: densitySchema.nullable().optional(),

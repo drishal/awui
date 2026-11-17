@@ -45,6 +45,10 @@ import {
   inviteCreateSchema,
   invitePatchSchema,
   settingsPatchSchema,
+  themeCreateSchema,
+  themeUpdateSchema,
+  type ThemeEntry,
+  type ThemeList,
   terminalCreateSchema,
   terminalWriteSchema,
   htmlRenderPreviewSchema,
@@ -123,6 +127,8 @@ import { storedImage, rememberImage } from "./image-store.js";
 import { isHtmlRenderId, readHtmlRender, saveHtmlRender } from "./html-render.js";
 import { HarnessMarkStore, markRevision, markUrl } from "./harness-marks.js";
 import { ACP_AGENT_ID } from "../shared/protocol.js";
+import type { Scheme } from "../shared/theme-scheme.js";
+import { MAX_THEMES, type LibraryTheme } from "./theme-library.js";
 
 import { Idempotency } from "./idempotency.js";
 import type { ChatManager } from "./chats/manager.js";
@@ -1148,6 +1154,54 @@ export async function createApp(deps: AppDeps) {
 
   app.get("/api/theme", async (_req, res) => {
     res.json(await theme.get());
+  });
+
+  // ---- The theme library (theme-library.ts): ~/.config/awui/themes/<id>.yml ----
+  // Listing is a plain read, like /api/theme: every signed-in device draws the picker.
+  // Adding, editing, and removing files beside config.yml needs what saving Settings
+  // does. The id in a URL is slug-checked by the library, so it never names a path.
+  const library = () => {
+    if (!theme.library) throw new ChatError(404, "no_theme_library", "This server keeps no theme library");
+    return theme.library;
+  };
+  const wireTheme = ({ scheme: _scheme, ...entry }: LibraryTheme): ThemeEntry => entry;
+  const schemeOf = (input: { name: string; variant: "dark" | "light"; palette: Record<string, string>; fonts?: { sans?: string | undefined; mono?: string | undefined } | undefined }): Scheme => ({
+    name: input.name,
+    polarity: input.variant,
+    palette: input.palette,
+    fonts: { ...(input.fonts?.sans ? { sans: input.fonts.sans } : {}), ...(input.fonts?.mono ? { mono: input.fonts.mono } : {}) },
+  });
+  app.get("/api/themes", async (_req, res) => {
+    const themes: ThemeEntry[] = [];
+    // theme.yml first: stylix's or home-manager's, read-only here, id null.
+    const file = await theme.fileEntry();
+    if (file.info.source === "file" && file.scheme) {
+      themes.push({ id: null, name: file.scheme.name, polarity: file.scheme.polarity, palette: file.scheme.palette, vars: file.info.vars, themeColor: file.info.themeColor, fonts: file.info.fonts, readOnly: true });
+    } else if (file.info.problem) {
+      themes.push({ id: null, name: "theme.yml", polarity: "dark", palette: {}, vars: {}, themeColor: null, fonts: {}, readOnly: true, problem: file.info.problem });
+    }
+    for (const entry of (await theme.library?.list()) ?? []) themes.push(wireTheme(entry));
+    res.json({ themes, selected: browserSettings().themeScheme, writable: theme.library?.writable ?? false, max: MAX_THEMES } satisfies ThemeList);
+  });
+  app.post("/api/themes", requireGrant("settings.manage"), async (req, res) => {
+    const input = body(themeCreateSchema, req);
+    const made = "yaml" in input ? await library().create({ text: input.yaml }, input.id) : await library().create({ scheme: schemeOf(input) }, input.id);
+    res.status(201).json(wireTheme(made));
+  });
+  app.put("/api/themes/:id", requireGrant("settings.manage"), async (req, res) => {
+    res.json(wireTheme(await library().update(req.params.id, schemeOf(body(themeUpdateSchema, req)))));
+  });
+  // The answer carries the YAML the file held, so the client's Undo can POST it back under the same id.
+  app.delete("/api/themes/:id", requireGrant("settings.manage"), async (req, res) => {
+    res.json(await library().remove(req.params.id));
+  });
+  // Export: the normalized file as a download, never rendered (nosniff, attachment, text only).
+  app.get("/api/themes/:id/file", async (req, res) => {
+    const { text } = await library().read(req.params.id);
+    res.setHeader("Content-Type", "text/yaml; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${req.params.id}.yml"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(text);
   });
 
   app.get("/api/workspaces/browse", requireGrant("workspaces.manage"), async (req, res) => {

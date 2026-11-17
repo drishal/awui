@@ -8,16 +8,20 @@ import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 import { DEFAULT_BREAKDOWN_RULES, type BreakdownRules } from "../shared/breakdown.js";
-import { chatWidthSchema, densitySchema, themeChoiceSchema, toolStyleSchema, uiFontSchema, type ChatWidth, type Density, type ThemeChoice, type ToolStyle, type UiFont } from "../shared/protocol.js";
+import { chatWidthSchema, densitySchema, themeChoiceSchema, themeIdSchema, toolStyleSchema, uiFontSchema, type ChatWidth, type Density, type ThemeChoice, type ToolStyle, type UiFont } from "../shared/protocol.js";
 import { IS_WINDOWS, defaultConfigDir } from "./platform-win.js";
 
 export const CONFIG_FILE = "config.yml";
 export const THEME_FILE = "theme.yml";
+/** The theme library's folder beside config.yml: one base16/base24 scheme per `<id>.yml`. */
+export const THEMES_DIR = "themes";
 
 /** What the browser needs from config.yml; re-read on every page load. */
 export interface UiSettings {
   /** null: no preference, so a theme.yml is used when present. */
   theme: ThemeChoice | null;
+  /** config.yml's `theme_scheme`: the theme library's id that `base16` uses; null is theme.yml. */
+  themeScheme: string | null;
   autocollapseSidebar: boolean;
   /** Show the bar under the conversation (connection, harness, model, folder, version). */
   showStatusBar: boolean;
@@ -129,6 +133,8 @@ const schema = z
     allowed_hosts: z.array(z.string()).optional(),
     allowed_tailscale_users: z.array(z.string()).optional(),
     theme: themeChoiceSchema.optional(),
+    /** Which theme library file (~/.config/awui/themes/<id>.yml) `theme: base16` uses; theme.yml when unset. */
+    theme_scheme: themeIdSchema.optional(),
     autocollapse_sidebar: z.boolean().optional(),
     /** Show the bar under the conversation; on unless false. */
     show_status_bar: z.boolean().optional(),
@@ -356,6 +362,7 @@ export function uiSettings(c: UserConfig | undefined, env: NodeJS.ProcessEnv = p
   const theme = c?.theme === "custom" ? "base16" : (c?.theme ?? null);
   return {
     theme,
+    themeScheme: c?.theme_scheme ?? null,
     autocollapseSidebar: c?.autocollapse_sidebar ?? true,
     showStatusBar: c?.show_status_bar ?? true,
     textScale: c?.text_scale ?? null,

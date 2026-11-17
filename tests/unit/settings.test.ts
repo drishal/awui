@@ -44,6 +44,7 @@ describe("settings", () => {
       allowedHosts: [],
       allowedTailscaleUsers: [],
       theme: "base16",
+      themeScheme: null,
       textScale: null,
       chatWidth: null,
       density: null,

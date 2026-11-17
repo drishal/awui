@@ -87,6 +87,7 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
     allowedHosts: c.allowed_hosts ?? [],
     allowedTailscaleUsers: c.allowed_tailscale_users ?? [],
     theme: c.theme === "custom" ? "base16" : (c.theme ?? null),
+    themeScheme: c.theme_scheme ?? null,
     textScale: c.text_scale ?? null,
     chatWidth: c.chat_width ?? null,
     density: c.density ?? null,
@@ -209,6 +210,7 @@ export function writeSettings(ctx: SettingsContext, patch: SettingsPatch, who: R
   if (patch.allowedHosts !== undefined) set(["allowed_hosts"], patch.allowedHosts);
   if (patch.allowedTailscaleUsers !== undefined) set(["allowed_tailscale_users"], patch.allowedTailscaleUsers);
   if (patch.theme !== undefined) set(["theme"], patch.theme);
+  if (patch.themeScheme !== undefined) set(["theme_scheme"], patch.themeScheme);
   if (patch.textScale !== undefined) set(["text_scale"], patch.textScale);
   if (patch.chatWidth !== undefined) set(["chat_width"], patch.chatWidth);
   if (patch.density !== undefined) set(["density"], patch.density);

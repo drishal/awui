@@ -10,6 +10,14 @@ The built-in light and dark themes follow your system. A base16 or base24 scheme
 - **Live updates:** the file is re-resolved (realpath and mtime) on each request, so a home-manager switch shows up the next time a tab becomes visible.
 - **Fonts:** the web UI ships Inter (text) and JetBrains Mono (code), SIL OFL, subset and served from `/fonts` (`src/web/public/fonts/README.md` says how they were made); config.yml's `font: system` (Settings → Font) uses the device's own fonts instead. An optional `fonts.sans` / `fonts.mono` goes first in the font stacks either way, with those fallbacks. Nerd Font codepoints (a session's icon-marked title) are always covered: each stack ends with the Symbols Nerd Font names, and a Nerd Font symbols woff2 ships with the app as the last resort for a machine without that pack installed, sized by `unicode-range` so it only downloads where a page actually contains one.
 
+## The theme library
+
+More schemes than one live in `~/.config/awui/themes/`, one base16 or base24 file each, named by its id (`gruvbox-dark.yml` is the theme `gruvbox-dark`). `theme_scheme: <id>` in `config.yml`, with `theme: base16`, makes one the look on every device; without it `base16` means `theme.yml`. Every client follows: the web UI, atui, and the Tern client all read the active scheme from `/api/theme`.
+
+- **Files:** any of the accepted formats can be dropped in by hand or uploaded; what awui writes is always normalized tinted-theming YAML (`system`, `name`, `variant`, `palette:`), so a file it saved reads the same anywhere base16 is understood. Up to 100 themes; a listing reads at most 200 files.
+- **Read-only themes:** `theme.yml`, and any file in `themes/` that is a symlink (home-manager's `xdg.configFile`), are listed and can be chosen but are never edited or deleted from awui.
+- **A pick that breaks:** a `theme_scheme` whose file was removed or no longer parses falls back to `theme.yml` (or the built-in themes), and the problem is reported where `theme.yml`'s are. A file that does not parse is still listed, with its reason, so it can be removed.
+
 ## Shared settings and terminal surfaces
 
 - **Automatic** (`""` in config) uses `theme.yml` when present, otherwise follows the system. `system`, `light`, `dark`, `base16`, and the legacy `custom` selector alias are accepted. `base16` is also settable directly in `config.yml`.

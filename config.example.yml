@@ -30,7 +30,8 @@ auth:
 # allowed_tailscale_users: [you@example.com]
 
 # The shared look on every device: theme is system (follow light/dark),
-# light, dark, or base16 (theme.yml in this folder: a base16/base24 scheme).
+# light, dark, or base16 (theme.yml in this folder: a base16/base24 scheme;
+# theme_scheme names one of themes/<id>.yml here instead).
 # text_scale sizes the conversation (1 = 100%); chat_width sets how wide it
 # runs: comfortable (960 px), wide (1400 px), or full (the whole pane);
 # density is comfortable or compact (tighter sidebar rows, turns, tool rows,
@@ -39,6 +40,7 @@ auth:
 # font is bundled (Inter and JetBrains Mono, shipped with awui, the same on every
 # device) or system (each device's own fonts).
 theme: system
+# theme_scheme: gruvbox-dark
 # text_scale: 1.1
 # chat_width: wide
 # density: compact

@@ -75,6 +75,8 @@ src/shared/review.ts         Review pins (a line's hash, following it through la
                               threads becomes, and the attribution rule (which lines a chat's own diffs wrote, and which
                               the file has since changed under).
 src/shared/unified-diff.ts   Bounded unified-diff parsing shared by server and browser diffs.
+src/shared/theme-scheme.ts   A base16/base24 scheme as data, its contrast-checked CSS variables, and the YAML awui writes; the
+                              theme editor previews with the same roles the server serves.
 src/shared/breakdown.ts      A changed file's pile (source, tests, generated) by glob, and the lines each pile holds: the
                               worktree/race card's chip, with the globs config.yml's `breakdown:` can replace.
 src/server/
@@ -149,6 +151,8 @@ src/server/
   direnv.ts                  Project .envrc evaluation for harness spawns and explicit terminal semantics, isolated/cached by validated project directory.
   git-actions.ts, checkouts.ts, session-order.ts   Stage/unstage/commit action guards, branch/worktree grouping, hand-ordered session arrays.
   project-upload.ts          One new file into a validated workspace root, exclusive create, 8 MB route cap.
+  theme.ts, theme-library.ts  The active scheme (config.yml's `theme_scheme` from the library, else theme.yml) and the library itself:
+                              ~/.config/awui/themes/<id>.yml, slug ids, every write parsed then normalized, symlinks read-only.
   harness/jobs.ts, child-process.ts, event-hub.ts   Background worker state, bounded child RPC lifecycle and event buffering.
   git.ts, git-status.ts       Hardened git runner; the composer's git row.
   image-store.ts, notify.ts, limits.ts, accounts.ts, run-command.ts, state-file.ts   Side features (see their header comments).

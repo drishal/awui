@@ -1,6 +1,6 @@
 # Configuration
 
-**`config.yml`** (YAML, so it can carry comments; every key optional). It is read at startup; `theme`, `text_scale`, `chat_width`, `density`, `tool_style`, `font`, `autocollapse_sidebar`, `show_status_bar`, and `herdr` are re-read on every page load, and `orchestration` every couple of seconds. An unknown key or a wrong type stops the server with the key named (exit 78, which the autostart unit does not retry), rather than being guessed at.
+**`config.yml`** (YAML, so it can carry comments; every key optional). It is read at startup; `theme`, `theme_scheme`, `text_scale`, `chat_width`, `density`, `tool_style`, `font`, `autocollapse_sidebar`, `show_status_bar`, and `herdr` are re-read on every page load, and `orchestration` every couple of seconds. An unknown key or a wrong type stops the server with the key named (exit 78, which the autostart unit does not retry), rather than being guessed at.
 
 The **Settings** dialog (gear left of the collapse button) edits the same file: the shared look (theme, chat text size, chat width, density), pairing and sign-out, and every key below but `harnesses` and the `orchestration` block's numbers (the dialog shows only its on/off switch). The server checks a save exactly as startup checks the file, so it can never leave a server that will not start; port, host, login, roots, and allowed hosts/users wait for a restart (with a Restart button when systemd supervises). Any signed-in device may change them, except a change that would shut that device out once it applies (a LAN phone switching `host` to `127.0.0.1`, a Tailscale Serve device dropping its own host name or login from the allow lists): that one is refused and has to be made on the machine running the server. A setting an environment variable overrides is shown as such and cannot be changed from the file.
 
@@ -13,6 +13,7 @@ The **Settings** dialog (gear left of the collapse button) edits the same file: 
 | `allowed_hosts` | — | Extra `Host` values (e.g. your `*.ts.net` Serve name). |
 | `allowed_tailscale_users` | — | Optional Tailscale logins; when set, Serve requests must also carry one of them. |
 | `theme` | — | Shared look on every device: `system`, `light`, `dark`, or `base16` (`theme.yml`; `custom` is accepted as the old name). Unset: `theme.yml` when there is one, else `system`. |
+| `theme_scheme` | — | Which theme library file `base16` uses: an id from `themes/` beside this file (`gruvbox-dark` for `themes/gruvbox-dark.yml`). Unset: `theme.yml`. A pick whose file has gone or no longer parses falls back to `theme.yml`, and the Settings dialog says why. |
 | `text_scale` | `1` | Shared chat text size (a scale on the 14.5px base, 0.5–2). |
 | `chat_width` | `comfortable` | How wide the conversation and composer run: `comfortable` (960 px), `wide` (1400 px), or `full` (the whole pane). Review drawers keep their own width. The terminal clients read it too: atui's column is 104 characters, 160, or the whole pane; Tern's page is 780 px, 1400, or the pane. |
 | `density` | `comfortable` | How tight the web UI sits: `comfortable` (the default look) or `compact` (tighter sidebar rows, turn gaps, tool rows, composer, and tab strip). Phones keep their comfortable touch sizes. |
@@ -34,6 +35,8 @@ The **Settings** dialog (gear left of the collapse button) edits the same file: 
 | `harnesses.acp` | — | Other ACP agents, each a harness of its own without any code: `[{ id, name, command, args, env, auth_method }]`, at most 16, ids lowercase slugs that may not take a built-in harness's id. The agent keeps its own login, models, and session files; `env` values are never read back out to a browser, and `auth_method` names the `authenticate` method to call (never a secret). The Settings dialog's **ACP agents** section adds, removes, and tests these entries (Test is one `initialize` handshake: no model call, no session); a change takes effect at the next restart, since the adapters are built at startup. See [Any ACP agent](harnesses.md#any-acp-agent-from-config). |
 
 **`theme.yml`**: a base16/base24 scheme (see [Theme](theme.md)); the dotfiles' stylix module writes it.
+
+**`themes/<id>.yml`**: the theme library, one base16/base24 scheme per file (see [Theme](theme.md#the-theme-library)); `theme_scheme` picks one.
 
 **Environment variables** win over `config.yml`, for services and tests:
 

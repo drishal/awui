@@ -17,6 +17,8 @@ import { Security } from "../../src/server/security.js";
 import { PressureMonitor } from "../../src/server/pressure.js";
 import type { InteractionRequest, PushNote } from "../../src/shared/protocol.js";
 import { ThemeStore } from "../../src/server/theme.js";
+import { ThemeLibrary } from "../../src/server/theme-library.js";
+import { readUserConfig, THEMES_DIR, uiSettings } from "../../src/server/user-config.js";
 import { Workspaces } from "../../src/server/workspaces.js";
 import { TerminalManager } from "../../src/server/terminal.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "../../src/server/orchestration/limits.js";
@@ -135,7 +137,17 @@ export async function makeTestApp(options: {
     manager,
     workspaces,
     security,
-    theme: new ThemeStore(options.themeFile ?? null, options.themeFile != null, () => undefined),
+    // The theme library sits beside the test's own config.yml (configDir), never the developer's.
+    theme: new ThemeStore(options.themeFile ?? null, options.themeFile != null, () => undefined, {
+      library: new ThemeLibrary(options.configDir ? path.join(options.configDir, THEMES_DIR) : null),
+      selected: () => {
+        try {
+          return uiSettings(readUserConfig(options.configDir ?? null)?.config).themeScheme;
+        } catch {
+          return null;
+        }
+      },
+    }),
     pairingUrls: [],
     webDir: options.webDir ?? null,
     heartbeatMs: options.heartbeatMs ?? 20_000,

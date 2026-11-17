@@ -53,8 +53,9 @@ import { Limits } from "./limits.js";
 import { Notifier, roomPushNote } from "./notify.js";
 import { PresenceTable } from "./presence.js";
 import { ThemeStore } from "./theme.js";
+import { ThemeLibrary } from "./theme-library.js";
 import { Herdr, herdrSocketPath } from "./herdr.js";
-import { configDir, configEnv, herdrEnabled, migrateConfigDir, readUserConfig, UserConfigError, type UserConfig } from "./user-config.js";
+import { configDir, configEnv, herdrEnabled, migrateConfigDir, readUserConfig, THEMES_DIR, uiSettings, UserConfigError, type UserConfig } from "./user-config.js";
 import { Workspaces } from "./workspaces.js";
 import { cleanupPastes } from "./paste-store.js";
 
@@ -201,7 +202,20 @@ async function main(): Promise<void> {
   for (const adapter of registry.list()) {
     if (registry.isAvailable(adapter.id)) void adapter.listRecentSessions(RECENT_SESSIONS_PER_HARNESS).catch(() => undefined);
   }
-  const theme = new ThemeStore(config.themeFile, config.themeFileExplicit, (m) => console.error(`awui: ${m}`));
+  const themeLog = (m: string) => console.error(`awui: ${m}`);
+  // The library pick is read from config.yml on each request, so the Settings dialog's switch needs no restart;
+  // a config.yml that no longer parses keeps theme.yml (startup already said why).
+  const selectedTheme = () => {
+    try {
+      return uiSettings(readUserConfig(config.configDir)?.config).themeScheme;
+    } catch {
+      return null;
+    }
+  };
+  const theme = new ThemeStore(config.themeFile, config.themeFileExplicit, themeLog, {
+    library: new ThemeLibrary(config.configDir ? path.join(config.configDir, THEMES_DIR) : null, themeLog),
+    selected: selectedTheme,
+  });
   const active = await theme.get();
   console.log(`  theme: ${active.name ?? "built-in light/dark"}`);
   const manager = new ChatManager();
