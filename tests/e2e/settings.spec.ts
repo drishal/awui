@@ -66,7 +66,7 @@ test.describe("shared look in config.yml", () => {
     // No per-device look controls remain: theme and text size live in the server form.
     await expect(settings.getByRole("tab", { name: "This device", exact: true })).toHaveAttribute("aria-selected", "true");
     await openSection(settings, "Appearance");
-    await settings.getByRole("button", { name: "Theme" }).click();
+    await settings.getByRole("button", { name: "Theme", exact: true }).click();
     await settings.getByRole("listbox", { name: "Theme" }).getByRole("option", { name: "Dark" }).click();
     const slider = settings.getByRole("slider", { name: "Chat text size" });
     await slider.fill("1.22");
@@ -242,7 +242,7 @@ test.describe("shared look in config.yml", () => {
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings.getByRole("tab", { name: "This device", exact: true })).toHaveAttribute("aria-selected", "true");
     await openSection(settings, "Appearance");
-    await settings.getByRole("button", { name: "Theme" }).click();
+    await settings.getByRole("button", { name: "Theme", exact: true }).click();
     await settings.getByRole("listbox", { name: "Theme" }).getByRole("option", { name: "Light" }).click();
     await expect(settings.getByRole("listbox", { name: "Theme" })).toHaveCount(0);
     await expect(settings.getByText("Unsaved changes")).toBeVisible();
@@ -269,7 +269,7 @@ test.describe("shared look in config.yml", () => {
     expect(file).toContain("autocollapse_sidebar: false");
     // Back where it was, and the value held.
     await openSection(settings, "Appearance");
-    await expect(settings.getByRole("button", { name: "Theme" })).toContainText("Light");
+    await expect(settings.getByRole("button", { name: "Theme", exact: true })).toContainText("Light");
     await settings.getByRole("button", { name: "Close" }).click();
   });
 

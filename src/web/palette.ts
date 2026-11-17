@@ -1,6 +1,7 @@
 // The command palette's items and their ranking. Matching is the model
 // picker's (punctuation- and space-insensitive); a section name matches too,
 // so "theme dark" or "model opus" find their entries.
+import type { ReactNode } from "react";
 import { normalize } from "./model-search.js";
 
 export interface PaletteItem {
@@ -19,6 +20,10 @@ export interface PaletteItem {
   disabled?: string;
   /** The current choice (a model, the theme): checked. */
   current?: boolean;
+  /** Drawn before the label (a theme's swatch). */
+  icon?: ReactNode;
+  /** Shown while the row is highlighted, undone when it no longer is (a theme on the whole page). */
+  preview?: () => void;
   run: () => void;
 }
 

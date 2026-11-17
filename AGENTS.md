@@ -229,6 +229,11 @@ src/web/                      React 19 + Vite client. App.tsx is the shell; comp
   highlight.ts, file-bus.ts   The file viewer's colours (a small tokenizer, no dependency); opening it from any path on the page.
   shortcuts.ts                Every key the app answers: the shortcut sheet's table, and the palette's hints.
   split-layout.ts             Main/side width ratio and pointer/keyboard separator. Saved only when settled; preserves editor and attached-file identity during Make main, not a transcript store.
+  themes.ts                   The theme choices as one list for the theme menu, the palette, and Settings (System, Light, Dark, then
+                              theme.yml and the library), the current pick, and the library read; theme.ts paints a preview without saving.
+  components/ThemeMenu.tsx, ThemeLibrary.tsx, ThemeEditor.tsx, ThemeSwatch.tsx   The sidebar's theme menu (hover previews,
+                              click saves), Settings' scheme cards (upload, edit, duplicate, export, delete with Undo), the
+                              base16 editor (portaled to <body>, preview from shared/theme-scheme.ts), and the small swatch; styles/themes.css.
   overview-stream.ts          One EventSource per tab (reference-counted) for lightweight session statuses and room summaries; reconnect/full-refresh on gap.
   context-panel.ts             Dedupe actual subagents by native reported run identity; count background jobs, unfinished delegated workers and valid per-browser folds from the existing snapshot, not session-shared new state.
   components/ContextPanel.tsx  Borderless per-chat right rail and ~280 px detail for workers, runs, jobs, pending human questions, project races/opinions/review and usage. Links open true child/tool/review views; activates no agent nor approval.

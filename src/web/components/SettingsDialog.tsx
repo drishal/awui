@@ -12,7 +12,7 @@
 // phone the same two panes become a list and a detail: the rail, then the
 // section with a way back.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, AgentProfilePatch, AgentProfileSettings, Bootstrap, ChatWidth, Density, HarnessStatus, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ToolStyle, UiFont } from "../../shared/protocol.js";
+import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, AgentProfilePatch, AgentProfileSettings, Bootstrap, ChatWidth, Density, HarnessStatus, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ThemeList, ToolStyle, UiFont } from "../../shared/protocol.js";
 import { asHarnessId } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
@@ -28,6 +28,8 @@ import { chime, chimeOn, setChime } from "../attention.js";
 import { matchSettings, type SettingsSectionText } from "../settings-search.js";
 import { load as loadStored, save as saveStored } from "../storage.js";
 import { HarnessMark } from "./HarnessMark.js";
+import { ThemeLibrary } from "./ThemeLibrary.js";
+import { schemeKey } from "../themes.js";
 import { removeHarnessIcon, uploadHarnessIcon } from "../harness-icon-upload.js";
 
 const NOTIFY_NOTE: Record<NotifyState["mode"], string> = {
@@ -215,6 +217,8 @@ interface Draft {
   allowedHosts: string;
   allowedTailscaleUsers: string;
   theme: ThemeChoice | "";
+  /** The scheme `base16` uses: a library id, or null for theme.yml. */
+  themeScheme: string | null;
   textScale: number;
   chatWidth: ChatWidth;
   density: Density;
@@ -245,6 +249,7 @@ function draftOf(v: ServerSettingsValues): Draft {
     allowedHosts: v.allowedHosts.join("\n"),
     allowedTailscaleUsers: v.allowedTailscaleUsers.join("\n"),
     theme: v.theme ?? "",
+    themeScheme: v.themeScheme,
     textScale: v.textScale ?? 1,
     chatWidth: v.chatWidth ?? "comfortable",
     density: v.density ?? "comfortable",
@@ -274,6 +279,7 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   if (!same(lines(d.allowedHosts), v.allowedHosts)) p.allowedHosts = lines(d.allowedHosts);
   if (!same(lines(d.allowedTailscaleUsers), v.allowedTailscaleUsers)) p.allowedTailscaleUsers = lines(d.allowedTailscaleUsers);
   if ((d.theme || null) !== v.theme) p.theme = d.theme || null;
+  if (d.themeScheme !== v.themeScheme) p.themeScheme = d.themeScheme;
   if (d.textScale !== (v.textScale ?? 1)) p.textScale = d.textScale;
   // Comfortable is the default: saved as no setting at all.
   const width = d.chatWidth === "comfortable" ? null : d.chatWidth;
@@ -299,7 +305,8 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
 }
 
 export function SettingsDialog({
-  scheme,
+  themes,
+  onThemeFile,
   section,
   harnesses,
   onHarnessMark,
@@ -313,8 +320,10 @@ export function SettingsDialog({
   onUiSaved,
   onClose,
 }: {
-  /** A theme.yml is loaded: offer its scheme. */
-  scheme: { name: string | null } | null;
+  /** The theme library (theme.yml and ~/.config/awui/themes), shared with the theme menu so both stay current. */
+  themes: { list: ThemeList | null; refresh: () => Promise<ThemeList | null> };
+  /** A theme's file was edited: the page re-reads the active scheme. */
+  onThemeFile: (id: string) => void;
   /** The section to open on (a `?settings=<id>` link); the one last used otherwise. */
   section?: string;
   onPair: () => void;
@@ -403,6 +412,7 @@ export function SettingsDialog({
       setSaved(true);
       if (
         patch.theme !== undefined ||
+        patch.themeScheme !== undefined ||
         patch.textScale !== undefined ||
         patch.chatWidth !== undefined ||
         patch.density !== undefined ||
@@ -414,6 +424,7 @@ export function SettingsDialog({
       ) {
         onUiSaved({
           theme: next.values.theme,
+          themeScheme: next.values.themeScheme,
           textScale: next.values.textScale,
           chatWidth: next.values.chatWidth,
           density: next.values.density,
@@ -500,12 +511,14 @@ export function SettingsDialog({
 
   const pendingText = server?.restartPending.map((k) => RESTART_LABEL[k]).join(", ") ?? "";
 
+  // The scheme `base16` means in the form: the library pick, else theme.yml.
+  const chosenScheme = draft ? (themes.list?.themes.find((t) => t.id === draft.themeScheme && !t.problem) ?? null) : null;
   const themeOptions = [
     { value: "", label: "Automatic", hint: "theme.yml if present, else the system" },
     { value: "system", label: "System" },
     { value: "light", label: "Light" },
     { value: "dark", label: "Dark" },
-    { value: "base16", label: "base16", ...(scheme?.name ? { hint: scheme.name } : {}) },
+    { value: "base16", label: "base16", ...(chosenScheme ? { hint: chosenScheme.name } : {}) },
   ];
   const setAwuiRow = (i: number, change: Partial<AwuiProviderRow>) => awui && setAwui({ ...awui, saved: false, rows: awui.rows.map((x, j) => (j === i ? { ...x, ...change } : x)) });
 
@@ -738,8 +751,23 @@ export function SettingsDialog({
                     : "Saved to config.yml for every device: it applies here at once, and on other devices at their next page load (atui at its next start)."}
               </p>
               <div className="form-card">
-                <FormRow row="theme" hidden={!shows("look", "theme")} label="Theme" desc={draft.theme === "base16" && scheme?.name ? `The ${scheme.name} scheme from theme.yml.` : "Follow the system, or pin light or dark."}>
+                <FormRow
+                  row="theme"
+                  hidden={!shows("look", "theme")}
+                  label="Theme"
+                  desc={draft.theme === "base16" ? (chosenScheme ? `The ${chosenScheme.name} scheme${chosenScheme.id === null ? " from theme.yml" : ""}.` : "A base16 scheme: choose one below.") : "Follow the system, pin light or dark, or use a base16 scheme."}
+                >
                   <Select label="Theme" value={draft.theme} disabled={!editable} options={themeOptions} onChange={(theme) => update({ theme: theme as ThemeChoice | "" })} />
+                </FormRow>
+                <FormRow row="schemes" hidden={!shows("look", "schemes")} label="Schemes" desc="base16 and base24 themes, kept in ~/.config/awui/themes. Choosing one makes the theme base16." stack>
+                  <ThemeLibrary
+                    list={themes.list}
+                    refresh={themes.refresh}
+                    chosen={draft.theme === "base16" ? schemeKey(draft.themeScheme) : draft.theme || "auto"}
+                    editable={editable}
+                    onChoose={(themeScheme) => update({ theme: "base16", themeScheme })}
+                    onChanged={onThemeFile}
+                  />
                 </FormRow>
                 <FormRow row="text-size" hidden={!shows("look", "text-size")} label="Chat text size" desc="The conversation and the composer; menus keep their size.">
                   <div className="text-slider">

@@ -8,7 +8,7 @@ import { rankItems, type PaletteItem } from "../palette.js";
 
 const PAGE = 8;
 
-export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClose: () => void }) {
+export function CommandPalette({ items, onClose, onPreviewEnd }: { items: PaletteItem[]; onClose: () => void; /** Undo what a highlighted item's `preview` showed. */ onPreviewEnd?: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const [query, setQuery] = useState("");
@@ -30,6 +30,20 @@ export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClo
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
+
+  // A highlighted theme shows on the page; moving off it, or closing without choosing, puts the old one back.
+  const previewed = useRef(false);
+  const highlighted = shown[active];
+  useEffect(() => {
+    if (highlighted?.preview && !highlighted.disabled) {
+      highlighted.preview();
+      previewed.current = true;
+    } else if (previewed.current) {
+      previewed.current = false;
+      onPreviewEnd?.();
+    }
+  }, [highlighted]);
+  useEffect(() => () => void (previewed.current && onPreviewEnd?.()), []);
 
   const run = (item: PaletteItem | undefined) => {
     if (!item || item.disabled) return;
@@ -114,6 +128,7 @@ export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClo
                   onPointerMove={() => !item.disabled && i !== active && setActive(i)}
                   onClick={() => run(item)}
                 >
+                  {item.icon ?? null}
                   {/* Label and detail share one baseline: centred on their own, the smaller detail rode high. */}
                   <span className="palette-text">
                     <span className="palette-label">{item.label}</span>

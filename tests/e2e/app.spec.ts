@@ -37,7 +37,7 @@ test("settings opens from the sidebar gear and shows pairing plus the server", a
   await expect(settings.getByRole("button", { name: "Pair phone" })).toBeVisible();
   // The look controls live in the Appearance section of the rail.
   await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
-  await expect(settings.getByRole("button", { name: "Theme" })).toBeVisible();
+  await expect(settings.getByRole("button", { name: "Theme", exact: true })).toBeVisible();
   await expect(settings.getByRole("slider", { name: "Chat text size" })).toBeVisible();
   // The e2e server runs without a settings folder, so the server section is read-only.
   await expect(settings).toContainText("nothing to save to");

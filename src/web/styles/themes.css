@@ -1,0 +1,540 @@
+/* ---- themes: swatches, the theme menu, Settings' scheme cards, the theme editor ----
+   A swatch and the editor's preview draw only from the base tokens (--bg, --surface, --text…), which a scheme
+   sets on the element itself and the built-ins get from tokens.css by data-swatch; the derived tokens
+   (--hairline, --card) are worked out on :root and would show the page's theme instead. */
+
+.theme-swatch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--r-xs);
+  box-shadow: 0 0 0 1px var(--hairline-strong);
+}
+
+.theme-swatch.is-sm {
+  width: 30px;
+  height: 20px;
+}
+
+.theme-swatch.is-md {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-sm);
+}
+
+.theme-swatch-face {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* System: light on the left, dark on the right, split on a slant. */
+.theme-swatch.is-split > .theme-swatch-face:last-child {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(58% 0, 100% 0, 100% 100%, 42% 100%);
+}
+
+.theme-swatch-face i,
+.theme-swatch-face b {
+  display: block;
+}
+
+.sw-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8%;
+  width: 28%;
+  padding: 9% 4%;
+  background: var(--surface);
+}
+
+.sw-side > i {
+  height: 6%;
+  min-height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-2) 55%, transparent);
+}
+
+.sw-side > i.sw-on {
+  background: var(--accent);
+}
+
+.sw-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 7%;
+  min-width: 0;
+  padding: 9% 7% 7%;
+}
+
+.sw-line {
+  width: 82%;
+  height: 6%;
+  min-height: 2px;
+  border-radius: 2px;
+  background: var(--text);
+}
+
+.sw-line.sw-short {
+  width: 56%;
+  background: var(--text-2);
+}
+
+.sw-chips {
+  display: flex;
+  gap: 5%;
+}
+
+.sw-chips > i {
+  flex: 1;
+  aspect-ratio: 1;
+  max-width: 14%;
+  border-radius: 50%;
+}
+
+.sw-chips > i:nth-child(1) { background: var(--danger); }
+.sw-chips > i:nth-child(2) { background: var(--warn); }
+.sw-chips > i:nth-child(3) { background: var(--ok); }
+.sw-chips > i:nth-child(4) { background: var(--info); }
+.sw-chips > i:nth-child(5) { background: var(--accent); }
+.sw-chips > i:nth-child(6) { background: var(--thinking); }
+
+.sw-input {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: auto;
+  height: 16%;
+  padding: 0 4%;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+
+.sw-input > b {
+  height: 60%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* A small swatch keeps the panel, one line, and three chips: the rest would be dust. */
+.theme-swatch.is-sm .sw-side { width: 30%; padding: 3px 2px; gap: 2px; }
+.theme-swatch.is-sm .sw-side > i:not(.sw-on),
+.theme-swatch.is-sm .sw-short,
+.theme-swatch.is-sm .sw-input,
+.theme-swatch.is-sm .sw-chips > i:nth-child(n + 4) { display: none; }
+.theme-swatch.is-sm .sw-main { gap: 3px; padding: 4px 3px; }
+.theme-swatch.is-sm .sw-chips { gap: 2px; }
+.theme-swatch.is-sm .sw-chips > i { max-width: none; flex: none; width: 5px; height: 5px; }
+
+.theme-swatch.is-broken {
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--surface) 6px 12px);
+}
+
+/* ---- the theme menu (sidebar head) ---- */
+
+.theme-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Placed fixed by ThemeMenu on wide screens (the sidebar would clip it); phones take the model picker's sheet. */
+.theme-pop {
+  z-index: 60;
+  width: min(300px, calc(100vw - 24px));
+}
+
+.theme-list {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0;
+}
+
+.theme-option {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.theme-option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-option.is-current .theme-option-name {
+  font-weight: 600;
+}
+
+.theme-option-note {
+  flex: none;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.theme-manage {
+  flex: none;
+  padding: 9px 14px;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.theme-manage:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* ---- Settings → Appearance → Schemes ---- */
+
+.theme-library {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.theme-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.theme-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--hairline);
+}
+
+.theme-card.is-chosen {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.theme-card-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 6px 4px;
+  border: 0;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.theme-card-pick:disabled {
+  cursor: default;
+}
+
+.theme-card-pick:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.theme-card-pick .theme-swatch {
+  margin-bottom: 4px;
+}
+
+.theme-card-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-card-note {
+  color: var(--muted-text);
+  font-size: 11.5px;
+}
+
+.theme-card.is-broken .theme-card-note {
+  color: var(--danger);
+}
+
+.theme-card-actions {
+  display: flex;
+  gap: 2px;
+  padding: 0 4px 4px;
+}
+
+.theme-card-actions .ghost-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.theme-library-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-library-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* ---- the theme editor ---- */
+
+.dialog.theme-editor {
+  width: min(860px, calc(100vw - 32px));
+}
+
+.theme-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 330px);
+  gap: 20px;
+}
+
+.theme-editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.theme-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.theme-editor-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.theme-colors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 14px;
+}
+
+.theme-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.theme-color input[type="color"] {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  cursor: pointer;
+}
+
+.theme-color input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.theme-color input[type="color"]::-webkit-color-swatch { border: 0; border-radius: var(--r-xs); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.theme-color input[type="color"]::-moz-color-swatch { border: 0; border-radius: var(--r-xs); }
+
+.theme-color-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.theme-color-key {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.theme-color-role {
+  overflow: hidden;
+  color: var(--muted-text);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-color-hex.input {
+  flex: none;
+  width: 84px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.theme-color-hex[aria-invalid="true"] {
+  box-shadow: 0 0 0 1px var(--danger);
+}
+
+.theme-editor-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* The preview takes the scheme's variables on its own box, so only the base tokens are used inside. */
+.theme-preview {
+  display: flex;
+  min-height: 230px;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.tp-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  width: 38%;
+  padding: 10px 8px;
+  background: var(--surface);
+}
+
+.tp-brand {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.tp-row {
+  overflow: hidden;
+  padding: 4px 6px;
+  border-radius: var(--r-xs);
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-row.is-on {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tp-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.tp-prompt {
+  align-self: flex-end;
+  max-width: 90%;
+  padding: 5px 8px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.tp-muted {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.tp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tp-chip {
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  font-size: 11px;
+}
+
+.tp-chip.is-ok { color: var(--ok); }
+.tp-chip.is-warn { color: var(--warn); }
+.tp-chip.is-danger { color: var(--danger); }
+
+.tp-link {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+.tp-composer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 6px 6px 6px 9px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--muted);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.tp-send {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.theme-editor-note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.theme-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+}
+
+@media (max-width: 819px) {
+  .theme-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .theme-editor-side {
+    order: -1;
+  }
+
+  .theme-preview {
+    min-height: 170px;
+  }
+
+  .theme-colors {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .theme-card-actions .ghost-icon {
+    width: 36px;
+    height: 36px;
+  }
+}

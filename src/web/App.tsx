@@ -109,7 +109,10 @@ import { useSplitLayout } from "./split-layout.js";
 import { useSessions } from "./sessions.js";
 import { useSidebarLayout } from "./sidebar-layout.js";
 import { forgetWorkspace, load, rememberWorkspace, save } from "./storage.js";
-import { themeModeOf, useTheme } from "./theme.js";
+import { endPreview, previewTheme, themeModeOf, useTheme } from "./theme.js";
+import { currentThemeKey, entryInfo, optionLook, themeOptions, useThemeList, type ThemeOption } from "./themes.js";
+import { ThemeMenu } from "./components/ThemeMenu.js";
+import { ThemeSwatch } from "./components/ThemeSwatch.js";
 import { retryMode } from "./tool-retry.js";
 import { plainTitle } from "./plain-title.js";
 import { agentStatusText } from "./agent-status.js";
@@ -151,7 +154,7 @@ function nonRoomTabToShow(state: TabState, remembered: string | null): number {
 }
 export function App() {
   const { banner, setBanner, fail } = useBanner();
-  const { themeInfo, initTheme, setThemeMode } = useTheme();
+  const { themeInfo, initTheme, setThemeMode, setThemeInfo, refreshTheme } = useTheme();
   const [harnessId, setHarnessId] = useState<string | null>(() => load<string | null>("harness", null));
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
   const [recent, setRecent] = useState<string[]>(() => load<string[]>("recentWorkspaces", []));
@@ -408,6 +411,17 @@ export function App() {
   // ---- shared look: config.yml rules every device; a save applies here at once ----
 
   const themeMode = themeModeOf(themeInfo, boot?.ui.theme ?? null);
+  // The theme library, shared by the theme menu, the palette, and Settings; read once signed in.
+  const themeLib = useThemeList(boot !== null);
+  const themeChoices = themeOptions(themeLib.list);
+  const themeKey = currentThemeKey(boot?.ui, themeMode);
+  // Another scheme chosen (here, in Settings, or by Undo): the page reads the one /api/theme now serves.
+  const servedScheme = useRef(boot?.ui.themeScheme);
+  useEffect(() => {
+    if (!boot || servedScheme.current === boot.ui.themeScheme) return;
+    servedScheme.current = boot.ui.themeScheme;
+    void refreshTheme();
+  }, [boot?.ui.themeScheme]);
   const textScale = boot?.ui.textScale ?? 1;
   useEffect(() => {
     setThemeMode(themeMode);
@@ -1812,14 +1826,34 @@ export function App() {
     downloadText(exportFileName(chat.title), chatMarkdown(chat, name));
   };
 
-  /** The shared look, as Settings saves it: config.yml's theme, for every device. */
-  const chooseTheme = async (theme: ThemeChoice) => {
+  /**
+   * The shared look, as Settings saves it: config.yml's theme (and, for a scheme, `theme_scheme`), for every
+   * device. It shows here before the save answers, and goes back if the save is refused.
+   */
+  const chooseTheme = async (option: ThemeOption) => {
+    const before = boot ? { theme: boot.ui.theme, themeScheme: boot.ui.themeScheme } : null;
+    const scheme = option.theme === "base16";
+    if (option.entry) {
+      servedScheme.current = option.themeScheme;
+      setThemeInfo(entryInfo(option.entry));
+    }
+    setBoot((b) => (b ? { ...b, ui: { ...b.ui, theme: option.theme, ...(scheme ? { themeScheme: option.themeScheme } : {}) } } : b));
     try {
-      const next = await api<ServerSettings>("/api/settings", { method: "PUT", body: { theme } });
-      setBoot((b) => (b ? { ...b, ui: { ...b.ui, theme: next.values.theme, textScale: next.values.textScale, chatWidth: next.values.chatWidth, density: next.values.density, toolStyle: next.values.toolStyle, font: next.values.font, autocollapseSidebar: next.values.autocollapseSidebar } } : b));
+      const next = await api<ServerSettings>("/api/settings", { method: "PUT", body: { theme: option.theme, ...(scheme ? { themeScheme: option.themeScheme } : {}) } });
+      setBoot((b) => (b ? { ...b, ui: { ...b.ui, theme: next.values.theme, themeScheme: next.values.themeScheme } } : b));
+      if (scheme) void refreshTheme();
     } catch (e) {
+      if (before) setBoot((b) => (b ? { ...b, ui: { ...b.ui, ...before } } : b));
+      void refreshTheme();
       fail(e);
     }
+  };
+
+  /** Settings at Appearance, where the theme library is managed. */
+  const openThemeSettings = () => {
+    setSettingsSection("look");
+    setSettingsOpen(true);
+    setDrawerOpen(false);
   };
 
   const paletteItems = (): PaletteItem[] => {
@@ -1969,15 +2003,23 @@ export function App() {
         run: () => chooseHarness(h.id),
       });
     }
-    const themes: Array<[ThemeChoice, string]> = [
-      ["system", "System"],
-      ["light", "Light"],
-      ["dark", "Dark"],
-      ...(themeInfo?.source === "file" ? ([["base16", themeInfo.name ?? "Base16 scheme"]] as Array<[ThemeChoice, string]>) : []),
-    ];
-    for (const [choice, label] of themes) {
-      items.push({ id: `theme:${choice}`, section: "Theme", label: `Theme: ${label}`, hint: "every device", searchOnly: true, current: choice === themeMode, run: () => void chooseTheme(choice) });
+    // Each theme with its swatch; the highlighted one shows on the page until the palette moves on or closes.
+    for (const option of themeChoices) {
+      const look = optionLook(option);
+      items.push({
+        id: `theme:${option.key}`,
+        section: "Theme",
+        label: `Theme: ${option.label}`,
+        hint: option.note ?? "every device",
+        keywords: option.entry ? "base16 scheme" : undefined,
+        searchOnly: true,
+        current: option.key === themeKey,
+        icon: <ThemeSwatch option={option} size="sm" />,
+        preview: () => previewTheme(look.mode, look.info),
+        run: () => void chooseTheme(option),
+      });
     }
+    items.push({ id: "theme:manage", section: "Theme", label: "Manage themes…", hint: "upload, make, edit", keywords: "base16 scheme theme library", searchOnly: true, run: () => openThemeSettings() });
     return items;
   };
 
@@ -2127,6 +2169,7 @@ export function App() {
             <span className="usage-link-label">Usage</span>
           </button>
         }
+        themeMenu={boot ? <ThemeMenu options={themeChoices} current={themeKey} onOpen={() => void themeLib.refresh()} onChoose={(option) => void chooseTheme(option)} onManage={() => openThemeSettings()} /> : null}
         tabs={
           tabState.tabs.length >= 2 ? (
             <nav className="drawer-tabs" aria-label="Open tabs">
@@ -2222,7 +2265,10 @@ export function App() {
       {settingsOpen ? (
         <Suspense fallback={<Loader label="Opening settings…" overlay />}>
         <SettingsDialog
-          scheme={themeInfo?.source === "file" ? { name: themeInfo.name } : null}
+          themes={themeLib}
+          onThemeFile={(id) => {
+            if (id === boot.ui.themeScheme) void refreshTheme();
+          }}
           section={settingsSection}
           harnesses={boot.harnesses}
           onHarnessMark={(id, src) => setBoot((b) => (b ? { ...b, harnesses: b.harnesses.map((h) => (h.id === id ? { ...h, icon: src ?? undefined } : h)) } : b))}
@@ -2929,7 +2975,7 @@ export function App() {
           onClose={() => setReviewOpen(false)}
         />
       ) : null}
-      {paletteOpen ? <CommandPalette items={paletteItems()} onClose={() => setPaletteOpen(false)} /> : null}
+      {paletteOpen ? <CommandPalette items={paletteItems()} onClose={() => setPaletteOpen(false)} onPreviewEnd={endPreview} /> : null}
       {shortcutsOpen ? <ShortcutSheet onClose={() => setShortcutsOpen(false)} /> : null}
       {promptsOpen ? <SavedPromptsDialog {...promptsOpen} onClose={() => setPromptsOpen(null)} /> : null}
       {timelineOpen && chat ? (

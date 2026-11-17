@@ -230,6 +230,16 @@ export const IconSettings = (p: IconProps) => (
   </Svg>
 );
 
+/** A painter's palette: the theme menu. */
+export const IconPalette = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 1.75a6.25 6.25 0 0 0 0 12.5c.9 0 1.4-.55 1.4-1.25 0-.75-.6-1.05-.6-1.75 0-.75.6-1.25 1.4-1.25h1.55a2.5 2.5 0 0 0 2.5-2.5C14.25 4.3 11.45 1.75 8 1.75z" />
+    <circle cx="4.9" cy="7.2" r=".7" fill="currentColor" stroke="none" />
+    <circle cx="6.6" cy="4.6" r=".7" fill="currentColor" stroke="none" />
+    <circle cx="9.7" cy="4.6" r=".7" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
 export const IconSidebar = (p: IconProps) => (
   <Svg {...p}>
     <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75" />

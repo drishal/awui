@@ -1015,6 +1015,8 @@ export function Sidebar(props: {
   footer?: React.ReactNode;
   /** Above the sessions on a phone: the open tabs (the tab strip is hidden there). */
   tabs?: React.ReactNode;
+  /** Beside the Settings button: the theme menu. */
+  themeMenu?: React.ReactNode;
   onClose: () => void;
   /** Wide screens: fold the sidebar away (the chat header gets the expand button). */
   onCollapse: () => void;
@@ -1163,6 +1165,7 @@ export function Sidebar(props: {
       >
         <div className="sidebar-head">
           <span className="brand">awui</span>
+          {props.themeMenu}
           <button type="button" className="icon-btn sidebar-settings" aria-label="Settings" title="Settings" onClick={props.onSettings}>
             <IconSettings size={16} />
           </button>

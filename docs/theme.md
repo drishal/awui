@@ -2,7 +2,7 @@
 
 Colours come from CSS custom properties; a base16 scheme can drive them all.
 
-The built-in light and dark themes follow your system. A base16 or base24 scheme in `~/.config/awui/theme.yml` is listed in the Settings theme menu as **base16** (its own name shows on hover); `theme: base16` in `config.yml` makes it the default everywhere.
+The built-in light and dark themes follow your system. A base16 or base24 scheme in `~/.config/awui/theme.yml` is listed in the Settings theme menu as **base16** (its own name shows on hover) and among the schemes below; `theme: base16` in `config.yml` makes it the default everywhere.
 
 - **Accepted formats:** tinted-theming (`system`, `name`, `variant`, nested `palette:`), the stylix-generated shape (`name` + `palette:`, hex without `#`), and legacy flat base16 (`scheme:` + top-level `base00`…).
 - **Validation:** only exact 6-digit hex is accepted, because colors become CSS custom properties applied through the CSSOM.
@@ -16,6 +16,8 @@ More schemes than one live in `~/.config/awui/themes/`, one base16 or base24 fil
 
 - **Files:** any of the accepted formats can be dropped in by hand or uploaded; what awui writes is always normalized tinted-theming YAML (`system`, `name`, `variant`, `palette:`), so a file it saved reads the same anywhere base16 is understood. Up to 100 themes; a listing reads at most 200 files.
 - **Read-only themes:** `theme.yml`, and any file in `themes/` that is a symlink (home-manager's `xdg.configFile`), are listed and can be chosen but are never edited or deleted from awui.
+- **Switching:** the palette button beside Settings opens the theme menu: System, Light, and Dark, then every scheme, each with a small swatch of its page, panels, text, and accent colours. Pointing at one (or moving to it with the arrow keys) shows it on the whole page; leaving the list or Escape puts the current one back, and a click saves it to `config.yml` for every device. The command palette offers the same list (`theme gruvbox`), previewing the highlighted one until it moves on or closes.
+- **Managing:** Settings → Appearance → Schemes shows every scheme as a card. Choosing one is part of the form, saved with its Save; the rest act on the file at once. **Upload .yml** adds a file (64 KB at most, in any accepted format); **New theme** and **Edit** open the editor: a name, Dark or Light, and the sixteen colours by picker or hex, beside a live preview built with the same contrast check the server applies (it names the roles it had to raise). **Duplicate** makes an editable copy, of a read-only theme too; **Export** downloads the file; **Delete** offers **Undo**, which puts the same file back under the same id. The theme in use cannot be deleted until another is chosen.
 - **A pick that breaks:** a `theme_scheme` whose file was removed or no longer parses falls back to `theme.yml` (or the built-in themes), and the problem is reported where `theme.yml`'s are. A file that does not parse is still listed, with its reason, so it can be removed.
 
 ## Shared settings and terminal surfaces

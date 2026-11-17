@@ -1,5 +1,7 @@
 // Theme application through the CSSOM (style.setProperty), never injected
-// <style> text, so the CSP needs no 'unsafe-inline'.
+// <style> text, so the CSP needs no 'unsafe-inline'. A preview (the theme menu
+// and the palette, while a theme is pointed at) paints the page the same way
+// without becoming the theme: endPreview puts back the one last applied.
 import { useEffect, useState } from "react";
 import type { ThemeChoice, ThemeInfo } from "../shared/protocol.js";
 import { api } from "./api.js";
@@ -15,7 +17,30 @@ function setMetaThemeColor(color: string | null): void {
   meta.setAttribute("content", color ?? fallback);
 }
 
+/** The theme the page holds, as last applied; a preview paints over it until endPreview. */
+let committed: { mode: ThemeMode; info: ThemeInfo | null } = { mode: "system", info: null };
+let previewing = false;
+
 export function applyTheme(mode: ThemeMode, info: ThemeInfo | null): void {
+  committed = { mode, info };
+  previewing = false;
+  paint(mode, info);
+}
+
+/** Show a theme on the page without choosing it. */
+export function previewTheme(mode: ThemeMode, info: ThemeInfo | null): void {
+  previewing = true;
+  paint(mode, info);
+}
+
+/** Back to the theme the page holds, after a preview. */
+export function endPreview(): void {
+  if (!previewing) return;
+  previewing = false;
+  paint(committed.mode, committed.info);
+}
+
+function paint(mode: ThemeMode, info: ThemeInfo | null): void {
   const root = document.documentElement;
   for (const name of applied) root.style.removeProperty(name);
   applied = [];
@@ -81,6 +106,13 @@ export function useTheme() {
     setThemeMode(themeModeOf(info, choice));
   };
 
+  /** Read the active scheme again (a switch, or an edit of the one in use); the old one stays when the read fails. */
+  const refreshTheme = async (): Promise<ThemeInfo | null> => {
+    const t = await fetchTheme();
+    if (t) setThemeInfo((prev) => (JSON.stringify(prev) === JSON.stringify(t) ? prev : t));
+    return t;
+  };
+
   useEffect(() => {
     applyTheme(themeMode, themeInfo);
   }, [themeMode, themeInfo]);
@@ -95,5 +127,5 @@ export function useTheme() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
-  return { themeMode, themeInfo, initTheme, setThemeMode };
+  return { themeMode, themeInfo, initTheme, setThemeMode, setThemeInfo, refreshTheme };
 }
