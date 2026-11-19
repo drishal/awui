@@ -36,7 +36,7 @@ export const LEADER_KEYS: PrefixKey[] = [
   { key: "x", label: "run a command" },
   { key: "f", label: "compact or full" },
   { key: "e", label: "show all work" },
-  { key: "v", label: "vim mode" },
+  { key: "v", label: "keybinds" },
   { key: "g", label: "glass mode" },
   { key: "l", label: "chat width" },
   { key: "q", label: "quit atui" },
@@ -56,10 +56,26 @@ export const WHICH_KEY_CELL = 26;
 /** The air a which-key line keeps inside its cell, so one column never reads as part of the next. */
 export const WHICH_KEY_AIR = 2;
 /** NORMAL mode's reminder as it starts, short enough for the composer's footer (the README has them all). */
-export const VIM_HELP = "j/k scroll · gg/G top/bottom · {/} turns · i type";
+/** The style's keys on one line, for a narrow terminal's hint. */
+export const KEYS_HELP: Record<KeybindStyle, string> = {
+  emacs: LEADER_HELP,
+  vim: "j/k gg/G {/} · SPC actions · : commands · i type",
+};
 
-/** The C-x hint for a key: "C-x n". */
-export const leader = (key: string): string => `C-x ${key}`;
+/** NORMAL's reminder as it starts, short enough for the composer's footer. */
+export const VIM_HELP = "j/k scroll · gg/G top/bottom · {/} turns · SPC actions · : commands · i type";
+
+/** The leader hint for a key: "C-x n" or "SPC n". */
+/** The two keybind styles atui ships: the Emacs chords, or vim's NORMAL-first keys. */
+export type KeybindStyle = "emacs" | "vim";
+
+/** The leader key's name in each style: the chords and the panel's footer cue read it. */
+export function leaderPrefix(style: KeybindStyle): string {
+  return style === "vim" ? "SPC" : "C-x";
+}
+
+/** The C-x hint for a key: "C-x n" in the Emacs style, "SPC n" in vim's. */
+export const leader = (key: string, style: KeybindStyle = "emacs"): string => `${leaderPrefix(style)} ${key}`;
 
 /**
  * Which-key's grid for `count` entries in `width` columns: as many columns of

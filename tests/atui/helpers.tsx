@@ -97,13 +97,13 @@ export interface Mounted {
   unmount: () => Promise<void>;
 }
 
-export async function mount(cwd: string, opts: { harness?: string; width?: number; height?: number; vim?: boolean; base?: string } = {}): Promise<Mounted> {
+export async function mount(cwd: string, opts: { harness?: string; width?: number; height?: number; vim?: boolean; keybinds?: "emacs" | "vim"; base?: string } = {}): Promise<Mounted> {
   const app = createRoot(() => createAtui(new Server(opts.base ?? BASE), { cwd, harness: opts.harness ?? "fake" }));
   await app.init();
   startTicker();
   let exited = false;
   // exitOnCtrlC: the app reads Ctrl+C itself (its second press quits), as main.tsx tells the real renderer.
-  const setup = await testRender(() => <App app={app} onExit={() => (exited = true)} vim={opts.vim ?? false} showThoughts={app.showThoughts()} onShowThoughts={app.setShowThoughts} />, { width: opts.width ?? 140, height: opts.height ?? 36, exitOnCtrlC: false });
+  const setup = await testRender(() => <App app={app} onExit={() => (exited = true)} keybinds={opts.keybinds ?? (opts.vim ? "vim" : "emacs")} showThoughts={app.showThoughts()} onShowThoughts={app.setShowThoughts} />, { width: opts.width ?? 140, height: opts.height ?? 36, exitOnCtrlC: false });
   const frame = async () => {
     await setup.renderOnce();
     return setup.captureCharFrame();

@@ -313,24 +313,47 @@ describe("atui", () => {
     expect(history).toContain("alpha");
   }, 40_000);
 
-  it("moves around in vim mode: Esc for NORMAL, j/k and gg/G, : for commands, i to type again", async () => {
+  it("lives in the vim keybind style: NORMAL at start, i to type, motions, : and the jumplist", async () => {
     // Wide enough for NORMAL's whole hint beside the context and its sparkline (a narrower footer cuts the hint).
-    ui = await mount(path.join(server.root, "beta"), { vim: true, height: 30, width: 170 });
-    expect(await ui.frame()).toContain("-- INSERT --");
+    ui = await mount(path.join(server.root, "beta"), { keybinds: "vim", height: 30, width: 170 });
+    // The vim style starts in NORMAL: the footer says so, and the Emacs chords are off.
+    expect(await ui.until("-- NORMAL --")).toContain("-- NORMAL --");
+    ui.keys.pressKey("k", { ctrl: true });
+    expect(await ui.frame()).not.toContain("Search commands, sessions, thinking…");
+    // i goes to INSERT; Esc comes back to NORMAL, where letters move instead of typing.
+    ui.keys.pressKey("i");
+    await ui.until("-- INSERT --");
     await ui.type("slow stream for scrolling");
     ui.keys.pressEnter();
     await ui.until("Echo: slow stream for scrolling");
     await idle(ui);
     await ui.escape();
     expect(await ui.until("-- NORMAL --")).toContain("gg/G top/bottom");
-    // In NORMAL, letters move instead of typing: nothing reaches the composer.
+    // The pinned prompt, once the view has really settled, is the jump test's clock:
+    // it shows exactly when the top has scrolled away.
+    const pinned = async (want: boolean, ms = 5000) => {
+      for (const start = Date.now(); Date.now() - start < ms; ) {
+        if ((await ui!.frame()).includes("↑ slow stream for scrolling") === want) return;
+        await wait(50);
+      }
+      throw new Error(`the pinned prompt did not ${want ? "appear" : "vanish"}`);
+    };
     const before = await ui.frame();
     ui.keys.pressKey("g");
     ui.keys.pressKey("g");
-    await wait(60);
+    await wait(80);
     expect(await ui.frame()).not.toBe(before);
-    ui.keys.pressKey("g", { shift: true });
-    await wait(60);
+    await pinned(false);
+    // gg left the bottom behind; G leaves the settled top. The jumplist is bottom → top,
+    // so Ctrl+O steps back to the bottom (the pin stays) and Ctrl+I forward to the top.
+    // (The typing path delivers the real G byte; the mock's shift-modified key does not.)
+    await ui.type("G");
+    await pinned(true);
+    ui.keys.pressKey("o", { ctrl: true });
+    await pinned(true);
+    ui.keys.pressKey("i", { ctrl: true });
+    await pinned(false);
+    // In NORMAL nothing reaches the composer: stray letters are not typed.
     ui.keys.pressKey("k");
     ui.keys.pressKey("x");
     await wait(60);
@@ -340,7 +363,7 @@ describe("atui", () => {
     await ui.until("Search commands, sessions, thinking…");
     await ui.escape();
     expect(await ui.frame()).toContain("-- NORMAL --");
-    // i: back to typing.
+    // ":" then "quit" would leave; typing again is i.
     ui.keys.pressKey("i");
     await ui.until("-- INSERT --");
     await ui.type("typed again");
@@ -1100,4 +1123,74 @@ describe("atui's density at 80 columns", () => {
     ui.keys.pressKey("1");
     await ui.until(() => (ui?.app.chat()?.pending.length ?? 1) === 0, 20_000);
   }, 45_000);
+});
+
+describe("atui's keybind styles", () => {
+  it("switches styles with the leader's v, and each style's keys are its own", async () => {
+    // Emacs first: C-x opens the leader panel; the vim keys are not bound.
+    ui = await mount(path.join(server.root, "beta"), { width: 150, height: 36 });
+    await ui.type("hello there");
+    ui.keys.pressEnter();
+    await ui.until("Echo: hello there");
+    await idle(ui);
+    ui.keys.pressKey("x", { ctrl: true });
+    const panel = await ui.until("C-x …");
+    expect(panel).toContain("v → keybinds (vim)");
+    ui.keys.pressKey("v");
+    // The vim style: NORMAL at once, the footer says it, and the Emacs chords are off.
+    const normal = await ui.until("-- NORMAL --");
+    expect(normal).toContain("Vim keybinds");
+    ui.keys.pressKey("k", { ctrl: true });
+    expect(await ui.frame()).not.toContain("Search commands, sessions, thinking…");
+    // Space is the leader: its panel lists the same actions, and v switches back.
+    await ui.type(" ");
+    const spc = await ui.until("SPC …");
+    expect(spc).toContain("v → keybinds (emacs)");
+    ui.keys.pressKey("v");
+    // Emacs again: its chords work and the panel says vim is the other way (no mode marker to wait for).
+    ui.keys.pressKey("x", { ctrl: true });
+    expect(await ui.until("C-x …")).toContain("v → keybinds (vim)");
+    await ui.escape();
+  }, 40_000);
+
+  it("gives vim its tabs, its new chat, its close, and its quit", async () => {
+    ui = await mount(path.join(server.root, "beta"), { keybinds: "vim", width: 150, height: 36 });
+    await ui.until("-- NORMAL --");
+    // o: a new chat, straight into INSERT.
+    ui.keys.pressKey("o");
+    await ui.until("What should Fake do in");
+    await ui.type("first tab in vim");
+    ui.keys.pressEnter();
+    await ui.until("Echo: first tab in vim");
+    await idle(ui);
+    // A second chat in a tab of its own (Space then a, vim's leader), then gt steps between them.
+    await ui.escape();
+    await ui.until("-- NORMAL --");
+    await ui.type(" ");
+    ui.keys.pressKey("a");
+    await ui.until("What should Fake do in");
+    await ui.type("second tab in vim");
+    ui.keys.pressEnter();
+    await ui.until("Echo: second tab in vim");
+    await idle(ui);
+    await ui.escape();
+    await ui.until("-- NORMAL --");
+    expect(await ui.frame()).toContain("2 F second tab in vim");
+    ui.keys.pressKey("g");
+    ui.keys.pressKey("t");
+    await ui.until("❯ first tab in vim");
+    ui.keys.pressKey("2");
+    ui.keys.pressKey("g");
+    ui.keys.pressKey("t");
+    await ui.until("❯ second tab in vim");
+    // q closes the shown tab, as :bd; the other one stays.
+    ui.keys.pressKey("q");
+    await ui.until(() => ui?.app.tabs().tabs.length === 1, 5000);
+    expect(await ui.frame()).toContain("❯ first tab in vim");
+    expect(await ui.frame()).not.toContain("2 F second tab in vim");
+    // ZZ quits, the chat keeping running on the server.
+    ui.keys.pressKey("Z");
+    ui.keys.pressKey("Z");
+    expect(ui.exited()).toBe(true);
+  }, 60_000);
 });

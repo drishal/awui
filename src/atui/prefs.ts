@@ -8,12 +8,13 @@ import path from "node:path";
 
 export interface AtuiPrefs {
   vim?: boolean;
+  /** Which keybind style atui starts in: the Emacs chords, or vim's NORMAL-first keys. */
+  keybinds?: "emacs" | "vim";
   /** Headers show reasoning next to the work by default; C-t folds all reasoning. */
   showThoughts?: boolean;
   /** No fills behind the transcript, composer, and status line: the terminal's own background shows through. */
   glass?: boolean;
 }
-
 export function prefsFile(env: Record<string, string | undefined> = process.env): string {
   const base = env.XDG_CONFIG_HOME || path.join(env.HOME || homedir(), ".config");
   return path.join(base, "awui", "atui.json");
@@ -26,6 +27,8 @@ export function readPrefs(file = prefsFile()): AtuiPrefs {
     const r = raw as Record<string, unknown>;
     return {
       ...(typeof r.vim === "boolean" ? { vim: r.vim } : {}),
+      ...(typeof r.vim === "boolean" && !("keybinds" in r) ? { keybinds: r.vim ? "vim" : "emacs" } : {}),
+      ...(typeof r.keybinds === "string" && (r.keybinds === "emacs" || r.keybinds === "vim") ? { keybinds: r.keybinds } : {}),
       ...(typeof r.showThoughts === "boolean" ? { showThoughts: r.showThoughts } : {}),
       ...(typeof r.glass === "boolean" ? { glass: r.glass } : {}),
     };

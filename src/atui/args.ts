@@ -10,18 +10,22 @@ Usage: atui [options]
   --harness <id>      the harness for new chats (pi, omp, hermes, claude, …)
   --resume [id]       resume a session: the given one, or this project's newest
   --chat <id>         attach to a chat that is open on the server
-  --vim, --no-vim     vim navigation: Esc for NORMAL (j/k, gg/G, {/}, :), i to type
-                      (default: as last set with C-x v, or $ATUI_VIM=1)
+  --keybinds <style>  the keybind style: emacs (the C-x chords, default) or
+                      vim (NORMAL keys: j/k, :, Space actions, i to type);
+                      remembered; --vim/--no-vim are its old names
+                      (default: as last set, or $ATUI_KEYBINDS, or $ATUI_VIM)
   --images <mode>     how prompt images are drawn: auto (ask the terminal), kitty
                       (kitty, Ghostty), sixel, blocks, or off (default $ATUI_IMAGES, auto)
   --no-herdr          in a herdr pane, do not report the chats' state to herdr
                       (the server's herdr setting turns it off for every atui)
   -h, --help          this help
 
-Starts in the current folder's project. Keys, in Emacs notation (C- is Ctrl,
-M- is Alt): C-k commands, C-x then a letter for the rest (C-x lists them),
-Enter sends, S-Enter or C-j adds a line, C-v pastes an image (or drop image
-files on the terminal), Esc Esc stops the agent, C-c C-c quits.`;
+Starts in the current folder's project. In the Emacs style, keys are written
+the Emacs way (C- is Ctrl, M- is Alt): C-k commands, C-x then a letter for the
+rest (C-x lists them), Enter sends, S-Enter or C-j adds a line, C-v pastes an
+image (or drop image files on the terminal), Esc Esc stops the agent, C-c C-c
+quits. --keybinds vim lives in NORMAL instead: j/k scroll, : commands, Space
+actions, i types; C-x v switches styles.`;
 
 export const DEFAULT_URL = "http://127.0.0.1:4783";
 
@@ -53,8 +57,12 @@ export function parseArgs(argv: string[], env: Record<string, string | undefined
       const mode = imageModeFrom(value() ?? "", {});
       if (!mode) return { error: "--images takes auto, kitty, sixel, blocks, or off" };
       out.images = mode;
-    } else if (arg === "--vim") out.vim = true;
-    else if (arg === "--no-vim") out.vim = false;
+    } else if (arg === "--keybinds") {
+      const v = value();
+      if (v !== "emacs" && v !== "vim") return { error: "--keybinds takes emacs or vim" };
+      out.keybinds = v;
+    } else if (arg === "--vim") out.keybinds = "vim";
+    else if (arg === "--no-vim") out.keybinds = "emacs";
     else if (arg === "--no-herdr") out.herdr = false;
     else return { error: `Unknown option ${arg}` };
   }

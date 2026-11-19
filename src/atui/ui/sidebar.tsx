@@ -55,6 +55,8 @@ export function Sidebar(p: {
   onCollapse: () => void;
   onOpened: () => void;
   onLeave: () => void;
+  /** In the vim style, l leaves the list for the conversation, h's other half. */
+  vim?: boolean;
 }) {
   const app = useAtui();
   const t = useTheme();
@@ -126,6 +128,7 @@ export function Sidebar(p: {
     };
     if (key.name === "escape") { key.preventDefault(); p.onLeave(); }
     else if (key.name === "tab") { key.preventDefault(); p.onTab(p.tab === "sessions" ? "info" : "sessions"); }
+    else if (p.vim && key.name === "l") { key.preventDefault(); p.onLeave(); }
     else if (p.tab !== "sessions") return;
     else if (key.name === "down" || key.name === "j") move(index + 1);
     else if (key.name === "up" || key.name === "k") move(index - 1);

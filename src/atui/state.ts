@@ -51,8 +51,8 @@ export interface AtuiOptions {
   chatId?: string;
   /** Resume a session: its id, or true for the project's newest one in the harness. */
   resume?: string | true;
-  /** Vim navigation, when the command line says (else the remembered choice). */
-  vim?: boolean;
+  /** The keybind style for new runs: the Emacs chords (default), or vim's NORMAL-first keys. */
+  keybinds?: "emacs" | "vim";
   /** How prompt images are drawn (--images); else $ATUI_IMAGES, else asked of the terminal. */
   images?: ImageMode;
   /** No fills behind the transcript, composer, and status line (the remembered choice, else off). */

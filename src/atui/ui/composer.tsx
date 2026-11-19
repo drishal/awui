@@ -56,8 +56,8 @@ export function Composer(p: {
   onPick: (picker: "harness" | "models" | "thinking") => void;
   /** A click on the context figure (or the rate beside it) opens the active-work panel, as C-x p does. */
   onContext: () => void;
-  /** What the status bar used to say, now in the footer: vim's mode, a waiting C-x, a passing hint. */
-  status: { mode: "normal" | "insert" | null; leader: boolean; note: string | null };
+  /** What the status bar used to say, now in the footer: vim's mode, a waiting leader, a passing hint. */
+  status: { mode: "normal" | "insert" | null; leader: string | null; note: string | null };
   /** The conversation's column: the card draws at it, while the footer under it stays the pane's status line. */
   column: number;
   ref: (el: TextareaRenderable) => void;
@@ -482,7 +482,7 @@ export function Composer(p: {
           </Show>
           <Show when={p.status.leader}>
             <text flexShrink={0} wrapMode="none" fg={t().accent}>
-              <b>{"C-x … "}</b>
+              <b>{`${p.status.leader} … `}</b>
             </text>
           </Show>
           <Show when={app.conn() !== "connected" && app.conn() !== "idle"}>

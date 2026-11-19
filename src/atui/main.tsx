@@ -71,9 +71,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     if (progress && state.progress !== shown) process.stdout.write(progressSequence(state.progress));
     if (progress) shown = state.progress;
   };
-  // The command line, else $ATUI_VIM, else what C-x v last chose.
-  const vim = parsed.vim ?? (process.env.ATUI_VIM ? process.env.ATUI_VIM === "1" : (prefs.vim ?? false));
-  await render(() => <App app={app} onExit={exit} vim={vim} onVim={(on) => writePrefs({ vim: on })} showThoughts={app.showThoughts()} onShowThoughts={(on) => { app.setShowThoughts(on); writePrefs({ showThoughts: on }); }} onGlass={(on) => writePrefs({ glass: on })} onTerminal={onTerminal} />, renderer);
+  // The keybind style: the command line, else $ATUI_KEYBINDS/$ATUI_VIM, else what C-x v or SPC v last chose.
+  const style = parsed.keybinds ?? (process.env.ATUI_KEYBINDS === "vim" || process.env.ATUI_KEYBINDS === "emacs" ? process.env.ATUI_KEYBINDS : process.env.ATUI_VIM ? (process.env.ATUI_VIM === "1" ? "vim" : "emacs") : undefined) ?? prefs.keybinds ?? "emacs";
+  await render(() => <App app={app} onExit={exit} keybinds={style} onKeybinds={(s) => writePrefs({ keybinds: s })} showThoughts={app.showThoughts()} onShowThoughts={(on) => { app.setShowThoughts(on); writePrefs({ showThoughts: on }); }} onGlass={(on) => writePrefs({ glass: on })} onTerminal={onTerminal} />, renderer);
 }
 
 /** In a herdr pane, and unless the server's setting or --no-herdr says not: tell herdr what this atui's chats do. */

@@ -116,9 +116,11 @@ describe("atui theme", () => {
 describe("atui command line", () => {
   it("reads the server, harness, and what to open", () => {
     expect(parseArgs(["--harness", "omp", "--resume"], { AWUI_URL: "http://box:4783/" })).toMatchObject({ url: "http://box:4783", harness: "omp", resume: true });
-    expect(parseArgs(["--vim"], {})).toMatchObject({ vim: true });
-    expect(parseArgs(["--no-vim"], {})).toMatchObject({ vim: false });
-    expect(parseArgs([], {})).not.toHaveProperty("vim");
+    expect(parseArgs(["--vim"], {})).toMatchObject({ keybinds: "vim" });
+    expect(parseArgs(["--no-vim"], {})).toMatchObject({ keybinds: "emacs" });
+    expect(parseArgs(["--keybinds", "vim"], {})).toMatchObject({ keybinds: "vim" });
+    expect(parseArgs(["--keybinds", "plan"], {}).keybinds).toBeUndefined();
+    expect(parseArgs([], {})).not.toHaveProperty("keybinds");
     expect(parseArgs(["--resume", "pi:abc"], {})).toMatchObject({ url: "http://127.0.0.1:4783", resume: "pi:abc" });
     expect(parseArgs(["--chat", "c1", "--url", "http://x:1"], {})).toMatchObject({ chatId: "c1", url: "http://x:1" });
     expect(parseArgs(["-h"], {})).toEqual({ help: true });

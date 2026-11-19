@@ -1,16 +1,17 @@
 // atui's screen: a side panel on the left (Sessions and Info tabs, folding to
 // a rail), the conversation and composer beside it, and no status bar: the
-// composer's footer carries vim's mode, a waiting C-x, a lost connection, and
-// a passing hint; dialogs over it all. Keys are written the Emacs way (C- is Ctrl, M- is Alt). Global
-// keys: C-k commands, C-r history, M-h/M-m/M-t the harness, model, and
-// thinking pickers (the composer's footer opens them on a click too), C-x
-// then a letter for the rest (a which-key panel lists them until a key, Esc,
-// or C-g), PageUp/PageDown scroll, Esc Esc stops the agent, C-c clears,
-// stops, or (twice) quits. In vim mode (--vim, or C-x v) Esc leaves the
-// composer for NORMAL, where src/atui/vim.ts's keys move around; i goes back
-// to typing. Jumps of more than a line glide; C-x g is glass mode (no fills, the
-// terminal's background shows through); background sessions' news toasts in
-// the corner, and the terminal's title and tab progress follow the chat.
+// composer's footer carries the vim style's mode, a waiting leader, a lost
+// connection, and a passing hint; dialogs over it all. Two keybind styles,
+// switched with C-x v (or SPC v in vim's) and remembered: the Emacs chords
+// (C- is Ctrl, M- is Alt; C-k commands, C-r history, M-h/M-m/M-t the harness,
+// model, and thinking pickers, C-x then a letter for the rest, which a
+// which-key panel lists), or vim's NORMAL-first keys (j/k with counts, gg/G,
+// {/}, gt tabs, : commands, / history, Space for the same action panel, i to
+// type). Both styles: PageUp/PageDown scroll, Esc Esc stops the agent, C-c
+// clears, stops, or (twice) quits. Jumps of more than a line glide; C-x g is
+// glass mode (no fills, the terminal's background shows through); background
+// sessions' news toasts in the corner, and the terminal's title and tab
+// progress follow the chat.
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
@@ -23,7 +24,7 @@ import type { PaletteItem } from "../../web/palette.js";
 import { isBusy } from "../../web/session-groups.js";
 import { atuiColumn, chatWidthLabel, CHAT_WIDTHS, nextChatWidth } from "../../shared/chat-width.js";
 import { ago, STATUS_LABEL } from "../format.js";
-import { leader, LEADER_KEYS, VIM_HELP } from "../keys.js";
+import { leader, leaderPrefix, LEADER_KEYS, VIM_HELP, type KeybindStyle } from "../keys.js";
 import { harnessGlyph } from "../neat.js";
 import type { Atui } from "../state.js";
 import { terminalState, type TerminalState } from "../terminal.js";
@@ -48,7 +49,7 @@ import { collectChanges } from "../../web/review.js";
 import { Toasts } from "./toasts.js";
 import { Transcript } from "./transcript.js";
 import { WhichKey } from "./whichkey.js";
-import { turnOffset, vimKey } from "../vim.js";
+import { turnOffset, vimKey, pushJump, type Jump } from "../vim.js";
 import { buildTurns, turnOfTool } from "../../web/turns.js";
 
 type Dialog = "palette" | "models" | "harness" | "thinking" | "history" | "run" | null;
@@ -60,8 +61,8 @@ const GHOST_AFTER_MS = 50;
 export function App(p: {
   app: Atui;
   onExit: () => void;
-  vim?: boolean;
-  onVim?: (on: boolean) => void;
+  keybinds?: KeybindStyle;
+  onKeybinds?: (style: KeybindStyle) => void;
   onGlass?: (on: boolean) => void;
   showThoughts: boolean;
   onShowThoughts: (on: boolean) => void;
@@ -94,11 +95,14 @@ export function App(p: {
   const [hint, setHint] = createSignal<string | null>(null);
   /** C-x was pressed: the which-key panel is open and the next key is a command. */
   const [leaderOn, setLeaderOn] = createSignal(false);
-  const [vim, setVim] = createSignal(p.vim ?? false);
-  const [mode, setMode] = createSignal<"insert" | "normal">("insert");
-  const normal = () => vim() && mode() === "normal";
-  /** Keys typed toward a NORMAL command so far: a count, a `g` or `z`. */
+  const [keybinds, setKeybinds] = createSignal<KeybindStyle>(p.keybinds ?? "emacs");
+  const [mode, setMode] = createSignal<"insert" | "normal">(p.keybinds === "vim" ? "normal" : "insert");
+  const normal = () => keybinds() === "vim" && mode() === "normal";
+  /** Keys typed toward a NORMAL command so far: a count, a `g`, `z` or `Z`. */
   let vimPending = "";
+  /** The jumplist: reading positions left behind by jumps, and where in them we are. */
+  let jumps: Jump[] = [];
+  let jumpAt = -1;
   let lastCtrlC = 0;
   let lastEsc = 0;
   let hintTimer: ReturnType<typeof setTimeout> | undefined;
@@ -215,10 +219,14 @@ export function App(p: {
     if (y !== undefined) glideTo(scroller, y);
   };
 
-  const leave = () => {
-    setMode("insert");
+  // Where an action that finished elsewhere leaves the keys: typing, or (in the
+  // vim style) back in NORMAL, the mode the reader was in.
+  const leave = (into: "insert" | "keep" = "insert") => {
+    const to = into === "keep" && keybinds() === "vim" ? "normal" : "insert";
+    setMode(to);
     setFocus("composer");
-    composer?.focus();
+    if (to === "insert") composer?.focus();
+    else composer?.blur();
   };
 
   /** NORMAL mode: Esc's way out of the composer, keys for moving instead of typing. */
@@ -231,6 +239,10 @@ export function App(p: {
   };
 
   const half = () => Math.max(3, Math.floor(size().height / 2));
+  // A jump leaves where it came from on the jumplist, so Ctrl+O can come back (Ctrl+I forward again).
+  const mark = () => {
+    if (scroller) ({ list: jumps, at: jumpAt } = pushJump(jumps, jumpAt, scroller.scrollTop));
+  };
   const runVim = (action: NonNullable<ReturnType<typeof vimKey>["action"]>) => {
     switch (action.kind) {
       case "scroll":
@@ -240,24 +252,67 @@ export function App(p: {
       case "page":
         return glideBy(scroller, action.dir * Math.max(3, size().height - 6));
       case "top":
+        mark();
         return glideTo(scroller, 0);
       case "bottom":
+        mark();
         return glideTo(scroller, scroller?.scrollHeight ?? 0);
       case "turn": {
         if (!scroller) return;
         const tops = scroller.content.getChildren().map((c) => (c as { y: number }).y);
         const by = turnOffset(tops, scroller.viewport.y, action.count);
-        if (by !== null) glideBy(scroller, by);
+        if (by !== null) {
+          mark();
+          glideBy(scroller, by);
+        }
         return;
+      }
+      // zz: the turn being read moves to the middle of the view, vim's way of settling a long scroll.
+      case "view": {
+        const box = scroller;
+        if (!box) return;
+        const tops = box.content.getChildren().map((c) => (c as { y: number }).y);
+        const at = tops.find((y) => y >= box.viewport.y) ?? box.viewport.y;
+        return glideTo(box, at - box.viewport.height / 2);
       }
       case "folds":
         return setShowWork(action.open);
       case "insert":
+        // o is vim's "open below": a new chat of one's own, straight into INSERT.
+        if (action.open) app.newChat();
         return leave();
       case "sidebar":
         setSidebar(true);
         setFocus("sidebar");
         return;
+      // l from the session list is the other half of vim's h/l pair, handled in the sidebar itself.
+      case "leave":
+        return;
+      case "tab": {
+        const { tabs } = app.tabs();
+        if (action.to !== undefined) {
+          if (action.to < tabs.length) void app.switchTab(action.to);
+        } else app.stepTab(action.step === -1 ? -1 : 1);
+        return;
+      }
+      case "closeTab": {
+        const { tabs, active } = app.tabs();
+        if (active < 0 || tabs.length === 0) return flash("No tab to close");
+        app.closeTab(active);
+        return;
+      }
+      case "quit":
+        return p.onExit();
+      case "leader":
+        setHint(null);
+        return setLeaderOn(true);
+      case "jump": {
+        const dir: -1 | 1 = action.dir;
+        const at = jumpAt + dir;
+        if (at < 0 || at >= jumps.length) return flash(dir < 0 ? "Already where the jumps began" : "Already the newest jump");
+        jumpAt = at;
+        return glideTo(scroller, (jumps[at] as Jump).y);
+      }
       case "palette":
         return setDialog("palette");
       case "history":
@@ -329,7 +384,7 @@ export function App(p: {
         return setRail(true);
       case "o":
         p.onShowThoughts(!thoughts());
-        flash(thoughts() ? "Reasoning visible (C-t folds)" : "Reasoning folded (C-t shows)");
+        flash(thoughts() ? `Reasoning visible (${leader("o", keybinds())} folds)` : `Reasoning folded (${leader("o", keybinds())} shows)`);
         return;
       case "u":
         if (!app.chat()) return flash("No chat to read the git status of");
@@ -343,11 +398,13 @@ export function App(p: {
       case "e":
         return setShowWork(!showWork());
       case "v": {
-        const on = !vim();
-        setVim(on);
-        p.onVim?.(on);
-        leave();
-        return flash(on ? "Vim navigation on: Esc for NORMAL (j/k, gg/G, {/}, zR/zM, :), i to type" : "Vim navigation off");
+        const next: KeybindStyle = keybinds() === "vim" ? "emacs" : "vim";
+        setKeybinds(next);
+        p.onKeybinds?.(next);
+        setMode(next === "vim" ? "normal" : "insert");
+        if (next === "vim") composer?.blur();
+        else composer?.focus();
+        return flash(next === "vim" ? "Vim keybinds: NORMAL keys, SPC for actions, i to type (SPC v back)" : "Emacs keybinds: C-x for the rest (C-x v back to vim)");
       }
       case "g": {
         const on = !app.glass();
@@ -370,36 +427,71 @@ export function App(p: {
       key.preventDefault();
       return quoteSelection();
     }
-    // After C-x: the next key is a command; Esc or C-g (or C-x again) cancels, as in Emacs.
+    // After the leader (C-x in the Emacs style, Space in vim's): the next key is a command;
+    // Esc or C-g (or the leader again) cancels, as in Emacs.
     if (leaderOn()) {
       key.preventDefault();
       setLeaderOn(false);
       if (key.name === "escape" || (key.ctrl && (key.name === "g" || key.name === "x"))) return;
-      if (key.ctrl || key.meta) return flash(`${leader(`${key.ctrl ? "C-" : "M-"}${key.name}`)} is undefined`);
+      if (key.ctrl || key.meta) return flash(`${leader(`${key.ctrl ? "C-" : "M-"}${key.name}`, keybinds())} is undefined`);
       return runLeader(key.name);
+    }
+    // Vim's keys: Esc leaves INSERT for NORMAL; in NORMAL the keys move and act.
+    // The Emacs chords below are off in this style, but the universal keys (PageUp/Down,
+    // C-c, the double-Esc stop) still see everything that falls through.
+    if (keybinds() === "vim" && focus() === "composer" && !pending()) {
+      if (key.ctrl && key.name === "x") {
+        key.preventDefault();
+        if (normal()) flash("Vim keybinds: Space is the leader, : the commands");
+        return;
+      }
+      if (mode() === "insert") {
+        // A bare "/command" being typed has the command menu open: its Esc closes that first,
+        // and an edit of a past prompt keeps Esc for cancelling the edit.
+        const menuOpen = app.editing() !== null || /^\/\S*$/.test(composer?.plainText ?? "");
+        if (key.name === "escape" && !key.ctrl && !key.meta && !menuOpen) {
+          key.preventDefault();
+          toNormal();
+          if (app.busy()) {
+            lastEsc = Date.now();
+            flash("NORMAL · Esc again to stop the agent");
+          }
+        }
+        // Anything else types into the composer; the Emacs chords below are off in
+        // this style, so only the universal keys see it.
+      } else if (key.name !== "escape") {
+        const { action, pending: next } = vimKey(key, vimPending);
+        vimPending = next;
+        if (action) {
+          key.preventDefault();
+          return runVim(action);
+        }
+        // A count or a `g`/`z`/`Z` waiting for its second key; a stray letter moves nothing either.
+        if (next || (!key.ctrl && key.sequence.length <= 1)) return key.preventDefault();
+      }
     }
     if (key.ctrl && key.name === "x") {
       key.preventDefault();
       setHint(null);
       return setLeaderOn(true);
     }
-    if (key.ctrl && key.name === "t") {
+    if (keybinds() === "emacs" && key.ctrl && key.name === "t") {
       key.preventDefault();
       p.onShowThoughts(!thoughts());
       flash(thoughts() ? "Reasoning visible (C-t folds)" : "Reasoning folded (C-t shows)");
       return;
     }
-    if (key.ctrl && (key.name === "k" || key.name === "p")) {
+    if (keybinds() === "emacs" && key.ctrl && (key.name === "k" || key.name === "p")) {
       key.preventDefault();
       return setDialog("palette");
     }
     // The pickers directly, without the leader: C-r as a shell's history search, M-letter for the rest.
-    if (key.ctrl && key.name === "r") {
+    if (keybinds() === "emacs" && key.ctrl && key.name === "r") {
       key.preventDefault();
       return setDialog("history");
     }
     // M-1 to M-9: that tab.
-    if (key.meta && !key.ctrl && /^[1-9]$/.test(key.name)) {
+    if (keybinds() === "emacs" && key.meta && !key.ctrl && /^[1-9]$/.test(key.name)) {
       const index = Number(key.name) - 1;
       if (index < app.tabs().tabs.length) {
         key.preventDefault();
@@ -407,7 +499,7 @@ export function App(p: {
         return;
       }
     }
-    if (key.meta && !key.ctrl) {
+    if (keybinds() === "emacs" && key.meta && !key.ctrl) {
       const direct: Record<string, Dialog> = { h: "harness", m: "models", t: "thinking", r: "history" };
       const target = direct[key.name];
       if (target) {
@@ -421,34 +513,6 @@ export function App(p: {
       app.setEditing(null);
       composer?.clear();
       return flash("Edit cancelled");
-    }
-    // Vim: Esc leaves the composer for NORMAL (a second one still stops a run);
-    // in NORMAL the keys move around, and anything else falls through.
-    if (vim() && focus() === "composer" && !pending()) {
-      // A bare "/command" being typed has the command menu open: its Esc closes that first.
-      const menuOpen = /^\/\S*$/.test(composer?.plainText ?? "");
-      if (mode() === "insert" && key.name === "escape" && !key.ctrl && !key.meta && !menuOpen) {
-        key.preventDefault();
-        toNormal();
-        if (app.busy()) {
-          lastEsc = Date.now();
-          flash("NORMAL · Esc again to stop the agent");
-        }
-        return;
-      }
-      if (mode() === "normal" && key.name !== "escape") {
-        const { action, pending: next } = vimKey(key, vimPending);
-        vimPending = next;
-        if (action) {
-          key.preventDefault();
-          return runVim(action);
-        }
-        // A count or a `g`/`z` waiting for its second key; a stray letter types nothing either.
-        if (next || (!key.ctrl && key.sequence.length === 1)) {
-          key.preventDefault();
-          return;
-        }
-      }
     }
     if (key.name === "pageup" || key.name === "pagedown") {
       key.preventDefault();
@@ -482,14 +546,14 @@ export function App(p: {
     const name = (id: string) => boot?.harnesses.find((h) => h.id === id)?.displayName ?? id;
     const idle = c ? c.status === "idle" || c.status === "error" : true;
     const add = (item: Omit<PaletteItem, "section"> & { section?: string }) => items.push({ section: "Actions", ...item });
-    add({ id: "new", label: "New chat", hint: leader("n"), run: () => runLeader("n") });
-    add({ id: "new-tab", label: "New chat in a new tab", hint: leader("a"), run: () => runLeader("a") });
+    add({ id: "new", label: "New chat", hint: leader("n", keybinds()), run: () => runLeader("n") });
+    add({ id: "new-tab", label: "New chat in a new tab", hint: leader("a", keybinds()), run: () => runLeader("a") });
     const open = app.tabs();
     if (open.tabs.length >= 2) {
-      add({ id: "next-tab", label: "Next tab", hint: leader("]"), run: () => runLeader("]") });
-      add({ id: "prev-tab", label: "Previous tab", hint: leader("["), searchOnly: true, run: () => runLeader("[") });
+      add({ id: "next-tab", label: "Next tab", hint: leader("]", keybinds()), run: () => runLeader("]") });
+      add({ id: "prev-tab", label: "Previous tab", hint: leader("[", keybinds()), searchOnly: true, run: () => runLeader("[") });
     }
-    if (open.tabs.length > 0) add({ id: "close-tab", label: "Close this tab", hint: leader("w"), searchOnly: open.tabs.length < 2, run: () => runLeader("w") });
+    if (open.tabs.length > 0) add({ id: "close-tab", label: "Close this tab", hint: leader("w", keybinds()), searchOnly: open.tabs.length < 2, run: () => runLeader("w") });
     open.tabs.forEach((tab, i) => {
       items.push({ id: `tab:${tab.key}`, section: "Tabs", label: tab.title || "New chat", hint: i < 9 ? `M-${i + 1}` : "", current: i === open.active, searchOnly: open.tabs.length < 2, run: () => void app.switchTab(i) });
     });
@@ -517,35 +581,36 @@ export function App(p: {
         run: () => setReviewing(true),
       });
     }
-    add({ id: "board", label: "Agents: every session, by column", hint: leader("k"), keywords: "dashboard kanban needs working done", run: () => runLeader("k") });
+    add({ id: "board", label: "Agents: every session, by column", hint: leader("k", keybinds()), keywords: "dashboard kanban needs working done", run: () => runLeader("k") });
     if (c) {
       const workers = c.delegated ?? [];
       const git = app.git();
-      add({ id: "delegated", label: "Delegated work: review a worker…", hint: leader("j"), disabled: workers.length > 0 ? undefined : "This chat has delegated nothing", run: () => runLeader("j") });
-      add({ id: "active-work", label: "Active work: workers, jobs, questions, context", hint: leader("p"), run: () => runLeader("p") });
-      add({ id: "git", label: "Git: stage, commit, and the diffs", hint: leader("u"), ...(git ? { keywords: git.branch ?? "detached" } : {}), run: () => setGitting(true) });
+      add({ id: "delegated", label: "Delegated work: review a worker…", hint: leader("j", keybinds()), disabled: workers.length > 0 ? undefined : "This chat has delegated nothing", run: () => runLeader("j") });
+      add({ id: "active-work", label: "Active work: workers, jobs, questions, context", hint: leader("p", keybinds()), run: () => runLeader("p") });
+      add({ id: "git", label: "Git: stage, commit, and the diffs", hint: leader("u", keybinds()), ...(git ? { keywords: git.branch ?? "detached" } : {}), run: () => setGitting(true) });
     }
     // The PR screen reads the project alone, so it is offered with no chat too.
     add({ id: "github", label: "GitHub: the pull request, its checks, and the stack", run: () => setHubbing(true) });
-    if (c && runnables().length > 0) add({ id: "run", label: "Run a command from the answer…", hint: leader("x"), run: () => setDialog("run") });
+    if (c && runnables().length > 0) add({ id: "run", label: "Run a command from the answer…", hint: leader("x", keybinds()), run: () => setDialog("run") });
     add({ id: "quote", label: "Quote the selection into the message", hint: "M-q", searchOnly: true, run: quoteSelection });
-    if (app.putBackable()) add({ id: "put-back", label: "Put the undone files back", hint: leader("z"), run: () => void app.putBack() });
-    add({ id: "history", label: "History: every session, by project…", hint: "C-r", run: () => setDialog("history") });
-    add({ id: "sessions", label: "Browse sessions", hint: leader("s"), run: () => runLeader("s") });
-    add({ id: "sidebar", label: sidebar() ? "Fold the side panel" : "Unfold the side panel", hint: leader("b"), run: () => runLeader("b") });
-    add({ id: "panel", label: sidebar() && sideTab() === "info" ? "Show sessions" : "Show info: context, usage, git, limits", hint: leader("i"), run: () => runLeader("i") });
-    add({ id: "work", label: showWork() ? "Fold the work" : "Show the work of every turn", hint: leader("e"), run: () => runLeader("e") });
-    add({ id: "thoughts", label: thoughts() ? "Fold all reasoning" : "Show all reasoning", hint: "C-t", run: () => { p.onShowThoughts(!thoughts()); setDialog(null); } });
-    add({ id: "glass", label: app.glass() ? "Glass off: solid panels" : "Glass on: see the terminal through", hint: leader("g"), run: () => runLeader("g") });
+    if (app.putBackable()) add({ id: "put-back", label: "Put the undone files back", hint: leader("z", keybinds()), run: () => void app.putBack() });
+    add({ id: "history", label: "History: every session, by project…", hint: keybinds() === "vim" ? "/" : "C-r", run: () => setDialog("history") });
+    add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
+    add({ id: "sidebar", label: sidebar() ? "Fold the side panel" : "Unfold the side panel", hint: leader("b", keybinds()), run: () => runLeader("b") });
+    add({ id: "panel", label: sidebar() && sideTab() === "info" ? "Show sessions" : "Show info: context, usage, git, limits", hint: leader("i", keybinds()), run: () => runLeader("i") });
+    add({ id: "work", label: showWork() ? "Fold the work" : "Show the work of every turn", hint: leader("e", keybinds()), run: () => runLeader("e") });
+    add({ id: "thoughts", label: thoughts() ? "Fold all reasoning" : "Show all reasoning", hint: keybinds() === "vim" ? "SPC o" : "C-t", run: () => { p.onShowThoughts(!thoughts()); setDialog(null); } });
+    add({ id: "keybinds", label: keybinds() === "vim" ? "Emacs keybinds: the C-x chords" : "Vim keybinds: NORMAL keys, Space actions", keywords: "emacs vim keys mode style", hint: leader("v", keybinds()), run: () => runLeader("v") });
+    add({ id: "glass", label: app.glass() ? "Glass off: solid panels" : "Glass on: see the terminal through", hint: leader("g", keybinds()), run: () => runLeader("g") });
     // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it: every device draws it (C-x l cycles).
     CHAT_WIDTHS.forEach((w) => add({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, keywords: "column layout measure", current: (boot?.ui.chatWidth ?? null) === w, run: () => void pickWidth(w) }));
-    if (c?.capabilities.supportsCompact) add({ id: "compact", label: "Compact context", hint: leader("c"), disabled: idle ? undefined : "Wait until the agent is idle", run: () => runLeader("c") });
+    if (c?.capabilities.supportsCompact) add({ id: "compact", label: "Compact context", hint: leader("c", keybinds()), disabled: idle ? undefined : "Wait until the agent is idle", run: () => runLeader("c") });
     const caps = c?.capabilities ?? app.harness()?.capabilities;
-    add({ id: "model", label: "Choose model…", hint: "M-m", disabled: caps?.supportsModelSelection ? undefined : "This harness has no models to pick", run: () => setDialog("models") });
-    if (caps?.supportsThinkingLevel) add({ id: "thinking", label: "Choose thinking level…", hint: "M-t", run: () => setDialog("thinking") });
+    add({ id: "model", label: "Choose model…", hint: keybinds() === "vim" ? "SPC m" : "M-m", disabled: caps?.supportsModelSelection ? undefined : "This harness has no models to pick", run: () => setDialog("models") });
+    if (caps?.supportsThinkingLevel) add({ id: "thinking", label: "Choose thinking level…", hint: keybinds() === "vim" ? "SPC t" : "M-t", run: () => setDialog("thinking") });
     add({ id: "refresh-models", label: "Refresh models", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }), run: () => void app.refreshModels() });
-    add({ id: "harness", label: hasPrompt() ? "Choose harness, or hand this chat off…" : "Choose harness…", hint: "M-h", run: () => setDialog("harness") });
-    add({ id: "quit", label: "Quit atui", hint: leader("q"), searchOnly: true, run: p.onExit });
+    add({ id: "harness", label: hasPrompt() ? "Choose harness, or hand this chat off…" : "Choose harness…", hint: keybinds() === "vim" ? "SPC h" : "M-h", run: () => setDialog("harness") });
+    add({ id: "quit", label: "Quit atui", hint: leader("q", keybinds()), searchOnly: true, run: p.onExit });
     const sessions = app.overview().sessions;
     sessions.forEach((s, i) => {
       items.push({
@@ -701,8 +766,9 @@ export function App(p: {
                 setSidebar(false);
                 leave();
               }}
-              onOpened={leave}
-              onLeave={leave}
+              onOpened={() => leave("insert")}
+              onLeave={() => leave("keep")}
+              vim={keybinds() === "vim"}
             />
           </Show>
           <box flexDirection="column" flexGrow={1}>
@@ -763,7 +829,7 @@ export function App(p: {
                     keyed
                     fallback={
                       <Composer
-                        status={{ mode: vim() ? (normal() ? "normal" : "insert") : null, leader: leaderOn(), note: hint() }}
+                        status={{ mode: keybinds() === "vim" ? (normal() ? "normal" : "insert") : null, leader: leaderOn() ? leaderPrefix(keybinds()) : null, note: hint() }}
                         focused={focus() === "composer" && !dialog() && !normal() && app.undoTurn() === null && !reviewing() && !running()}
                         compactChoice={compactChoice()}
                         onCompactChoice={setCompactChoice}
@@ -893,7 +959,7 @@ export function App(p: {
         </box>
         <Show when={leaderOn() && !dialog()}>
           <WhichKey
-            state={{ o: thoughts() ? "shown" : "folded", b: sidebar() ? "on" : "off", i: sidebar() && sideTab() === "info" ? "on" : "off", e: showWork() ? "on" : "off", v: vim() ? "on" : "off", g: app.glass() ? "on" : "off" }}
+            state={{ o: thoughts() ? "shown" : "folded", b: sidebar() ? "on" : "off", i: sidebar() && sideTab() === "info" ? "on" : "off", e: showWork() ? "on" : "off", v: keybinds() === "vim" ? "emacs" : "vim", g: app.glass() ? "on" : "off" }}
             onPick={(k) => {
               setLeaderOn(false);
               runLeader(k);

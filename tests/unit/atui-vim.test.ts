@@ -42,13 +42,34 @@ describe("atui vim mode", () => {
       { kind: "folds", open: true },
       { kind: "folds", open: false },
     ]);
-    for (const k of ["i", "a", "o", "A"]) expect(run(key(k)).actions).toEqual([{ kind: "insert" }]);
-    expect(run(key("h"), key(":"), key("/")).actions.map((a) => a.kind)).toEqual(["sidebar", "palette", "history"]);
+    // o is vim's "open below": a new chat, straight into INSERT; the others just type.
+    for (const k of ["i", "a", "A"]) expect(run(key(k)).actions).toEqual([{ kind: "insert" }]);
+    expect(run(key("o")).actions).toEqual([{ kind: "insert", open: true }]);
+    expect(run(key("h"), key("l"), key(":"), key("/"), key("q")).actions.map((a) => a.kind)).toEqual(["sidebar", "leave", "palette", "history", "closeTab"]);
     // Alt and unknown Ctrl keys are not NORMAL's: they fall through to atui's own.
     expect(run(key("j", { meta: true })).actions).toEqual([]);
     expect(run(key("c", { ctrl: true })).actions).toEqual([]);
   });
 
+  it("tabs by vim's gt, quits by ZZ, centres by zz, and leads with Space or ?", () => {
+    expect(run(key("g"), key("t")).actions).toEqual([{ kind: "tab", step: 1 }]);
+    expect(run(key("g"), key("T")).actions).toEqual([{ kind: "tab", step: -1 }]);
+    expect(run(key("2"), key("g"), key("t")).actions).toEqual([{ kind: "tab", to: 1 }]);
+    expect(run(key("z"), key("z")).actions).toEqual([{ kind: "view", where: "middle" }]);
+    expect(run(key("Z"), key("Z")).actions).toEqual([{ kind: "quit" }]);
+    // A lone Z waits; anything but Z after it is nothing, as with g.
+    expect(run(key("Z")).pending).toBe("Z");
+    expect(run(key("Z"), key("j"))).toEqual({ actions: [], pending: "" });
+    for (const space of [key(" ", { name: "space" }), key("?", { name: "?" })]) expect(run(space).actions).toEqual([{ kind: "leader" }]);
+  });
+
+  it("walks the jumplist: Ctrl+O back, Ctrl+I (Tab) forward", () => {
+    expect(run(key("o", { ctrl: true }), key("i", { ctrl: true }), key("tab")).actions).toEqual([
+      { kind: "jump", dir: -1 },
+      { kind: "jump", dir: 1 },
+      { kind: "jump", dir: 1 },
+    ]);
+  });
   it("finds the scroll to the next or previous turn's top", () => {
     const tops = [10, 40, 90, 130];
     expect(turnOffset(tops, 50, 1)).toBe(40);
@@ -66,10 +87,13 @@ describe("atui prefs", () => {
     expect(prefsFile({ XDG_CONFIG_HOME: "/x", HOME: home })).toBe("/x/awui/atui.json");
     const file = prefsFile({ HOME: home });
     expect(readPrefs(file)).toEqual({});
+    // The style is remembered on its own, and an old vim choice migrates to it (a later keybinds wins).
+    writePrefs({ keybinds: "vim" }, file);
+    expect(readPrefs(file)).toEqual({ keybinds: "vim" });
     writePrefs({ vim: true }, file);
-    expect(readPrefs(file)).toEqual({ vim: true });
-    writePrefs({ vim: false }, file);
-    expect(readPrefs(file)).toEqual({ vim: false });
+    expect(readPrefs(file)).toMatchObject({ vim: true, keybinds: "vim" });
+    writePrefs({ vim: false, keybinds: "emacs" }, file);
+    expect(readPrefs(file)).toMatchObject({ vim: false, keybinds: "emacs" });
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, "{not json");
     expect(readPrefs(file)).toEqual({});
