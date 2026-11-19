@@ -1,13 +1,13 @@
-// The side panel, in two tabs. Sessions: grouped as the web sidebar does
-// (Needs you, Working, Pinned, then projects, this one first). Info: the
-// open chat's context, usage, todos, git, changes, and limits (panel.tsx).
-// C-x s opens Sessions and C-x i Info; with the panel focused ↑/↓ and Enter
-// pick a session, Tab switches tabs, Esc goes back to the composer. The « in
-// the corner folds the panel to a rail, whose » brings it back.
+// Projects are real navigation targets, not labels beside an arbitrarily long
+// flat list. The current project shows every session; other projects open into
+// it. Needs you, Working and Pinned retain their global views. All rows work by
+// keyboard and mouse; Info is the context/usage/git view, not a second browser.
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { useKeyboard } from "@opentui/solid";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import type { ProjectSession } from "../../shared/protocol.js";
-import { groupByProject, isBusy, sidebarSections } from "../../web/session-groups.js";
+import { isBusy } from "../../web/session-groups.js";
+import { projectOpen, sidebarFolded, sidebarKey, sidebarParentKey, sidebarRows, sidebarSelectedIndex, sidebarTabRow, type SidebarRow } from "../sidebar-nav.js";
 import { clip, clipPath } from "../format.js";
 import { breathe, mix, spinnerFor } from "../fx.js";
 import { accentOf } from "../theme.js";
@@ -15,16 +15,9 @@ import { useAtui, useTheme } from "./context.js";
 import { InfoBody } from "./panel.js";
 import { tick } from "./ticker.js";
 
-/** A session asking for you breathes over this many ticks of 100 ms. */
 const BREATH_TICKS = 24;
-const PER_PROJECT = 6;
-const PER_OTHER = 3;
-/** The folded panel: a rail just wide enough for its » button. */
 export const RAIL_WIDTH = 3;
-
 export type SidebarTab = "sessions" | "info";
-
-type Row = { kind: "head"; label: string; color?: string; count: number } | { kind: "session"; s: ProjectSession; project?: string };
 
 function age(iso: string | null): string {
   if (!iso) return "";
@@ -36,12 +29,15 @@ function age(iso: string | null): string {
   return `${Math.round(h / 24)}d`;
 }
 
-/** The folded panel: a » to unfold it. */
+function monogram(name: string): string {
+  return (name.trim().match(/[\p{L}\p{N}]/u)?.[0] ?? "·").toUpperCase();
+}
+
 export function SidebarRail(p: { onExpand: () => void }) {
   const t = useTheme();
   return (
     <box flexDirection="column" width={RAIL_WIDTH} flexShrink={0} border={["right"]} borderColor={t().border} alignItems="center" onMouseDown={p.onExpand}>
-      <text fg={t().accent}>»</text>
+      <text selectable={false} fg={t().accent}>»</text>
     </box>
   );
 }
@@ -57,74 +53,107 @@ export function Sidebar(p: {
 }) {
   const app = useAtui();
   const t = useTheme();
+  const [folded, setFolded] = createSignal(new Set<string>());
+  const [selection, setSelection] = createSignal<string | null>(null);
+  let scroller: ScrollBoxRenderable | undefined;
+  const keyOf = (row: SidebarRow | undefined): string | null => sidebarKey(row, row ? rows().indexOf(row) : -1, rows());
   const isActive = (s: ProjectSession) => {
     const c = app.chat();
     return Boolean(c && ((c.sessionId !== null && s.id === c.sessionId) || s.liveChatId === c.chatId));
   };
-  const rows = createMemo<Row[]>(() => {
-    const opts = { currentId: app.workspace()?.id ?? null, query: "", harnessId: app.harnessId(), isActive, now: Date.now() };
-    const overview = app.overview();
-    const sections = sidebarSections(overview, opts);
-    const name = (s: ProjectSession) => overview.workspaces.find((w) => w.id === s.workspaceId)?.name ?? "";
-    const out: Row[] = [];
-    const list = (label: string, sessions: ProjectSession[], color?: string) => {
-      if (sessions.length === 0) return;
-      out.push({ kind: "head", label, count: sessions.length, ...(color ? { color } : {}) });
-      for (const s of sessions) out.push({ kind: "session", s, project: name(s) });
-    };
-    list("Needs you", sections.needs, t().warn);
-    list("Working", sections.working, t().accent);
-    list("Pinned", sections.pinned);
-    for (const g of groupByProject(overview, opts)) {
-      out.push({ kind: "head", label: g.workspace.name, count: g.sessions.length });
-      for (const s of g.sessions.slice(0, g.current ? PER_PROJECT : PER_OTHER)) out.push({ kind: "session", s });
-    }
-    return out;
-  });
-  const sessionRows = createMemo(() => rows().flatMap((r, i) => (r.kind === "session" ? [i] : [])));
-
-  const [sel, setSel] = createSignal(0);
+  const rows = createMemo<SidebarRow[]>(() => sidebarRows(app.overview(), { currentId: app.workspace()?.id ?? null, query: "", harnessId: app.harnessId(), isActive, now: Date.now() }, folded()));
+  const navRows = rows;
+  const selectedRow = () => sidebarSelectedIndex(rows(), selection());
+  const selected = () => navRows()[Math.min(selectedRow(), navRows().length - 1)];
   createEffect(() => {
-    if (!p.active) return;
-    const at = rows().findIndex((r) => r.kind === "session" && isActive(r.s));
-    setSel(Math.max(0, sessionRows().indexOf(at)));
+    if (p.active && selection() === null) {
+      const at = rows().findIndex((r) => r.kind === "session" && isActive(r.s));
+      const current = rows().findIndex((r) => r.kind === "project" && r.current);
+      const row = rows()[at >= 0 ? at : current >= 0 ? current : 0];
+      if (row) setSelection(keyOf(row));
+    }
+  });
+  createEffect(() => {
+    if (!p.active || !scroller) return;
+    selectedRow();
+    scroller.afterLayout(() => {
+      if (!scroller) return;
+      const index = selectedRow();
+      // Every drawn row is one terminal line. Keep its two-cell context in view.
+      if (index < scroller.scrollTop) scroller.scrollTo(Math.max(0, index - 2));
+      else if (index > scroller.scrollTop + scroller.viewport.height - 2) scroller.scrollTo(Math.max(0, index - scroller.viewport.height + 2));
+    });
   });
 
+  const isFolded = (row: SidebarRow) => row.kind === "project" ? !projectOpen(folded(), row.workspace.id, row.current) : row.kind === "section" && folded().has(`shut:${row.id}`) && !folded().has(`open:${row.id}`);
+  const toggle = (row: SidebarRow) => {
+    setSelection(sidebarParentKey(rows(), row));
+    setFolded((current) => sidebarFolded(current, row, app.workspace()?.id ?? null));
+  };
+  const activate = (row: ReturnType<typeof selected>) => {
+    if (!row) return;
+    setSelection(keyOf(row));
+    if (row.kind === "project") setFolded((current) => {
+      const next = new Set(current);
+      next.add(`open:project:${row.workspace.id}`);
+      next.delete(`shut:project:${row.workspace.id}`);
+      return next;
+    });
+    if (row.kind === "section") return toggle(row);
+    if (row.kind === "project") {
+      if (row.current) return toggle(row);
+      if (row.newest) void app.openSession(row.newest).then(p.onOpened);
+      else {
+        app.newChat({ workspace: row.workspace });
+        p.onOpened();
+      }
+      return;
+    }
+    void app.openSession(row.s).then(p.onOpened);
+  };
   useKeyboard((key) => {
     if (!p.active || key.defaultPrevented) return;
-    const n = p.tab === "sessions" ? sessionRows().length : 0;
-    if (key.name === "escape") {
+    const index = selectedRow();
+    const move = (to: number) => {
+      const row = navRows()[Math.max(0, Math.min(navRows().length - 1, to))];
+      if (row) setSelection(keyOf(row));
       key.preventDefault();
-      p.onLeave();
-    } else if (key.name === "tab") {
+    };
+    if (key.name === "escape") { key.preventDefault(); p.onLeave(); }
+    else if (key.name === "tab") { key.preventDefault(); p.onTab(p.tab === "sessions" ? "info" : "sessions"); }
+    else if (p.tab !== "sessions") return;
+    else if (key.name === "down" || key.name === "j") move(index + 1);
+    else if (key.name === "up" || key.name === "k") move(index - 1);
+    else if (key.name === "home") move(0);
+    else if (key.name === "end") move(navRows().length - 1);
+    else if (key.name === "return") { key.preventDefault(); activate(selected()); }
+    else if (key.name === "right" || key.name === "left" || key.name === "space") {
+      const row = selected();
+      if (!row) return;
       key.preventDefault();
-      p.onTab(p.tab === "sessions" ? "info" : "sessions");
-    } else if ((key.name === "down" || key.name === "j") && n > 0) {
-      key.preventDefault();
-      setSel((i) => Math.min(n - 1, i + 1));
-    } else if ((key.name === "up" || key.name === "k") && n > 0) {
-      key.preventDefault();
-      setSel((i) => Math.max(0, i - 1));
-    } else if ((key.name === "return" || key.name === "t") && p.tab === "sessions") {
-      // Enter opens it in the shown tab; t, in a tab of its own.
-      key.preventDefault();
-      const row = rows()[sessionRows()[sel()] ?? -1];
-      if (row?.kind === "session") void app.openSession(row.s, { newTab: key.name === "t" }).then(p.onOpened);
+      if (key.name === "right" && row.kind !== "session") return;
+      setSelection(sidebarParentKey(rows(), row));
+      if (key.name !== "right") {
+        const target = rows().find((item, index) => sidebarKey(item, index, rows()) === sidebarParentKey(rows(), row));
+        if (target) setFolded((current) => sidebarFolded(current, target, app.workspace()?.id ?? null));
+      }
+    } else if (key.name === "n") {
+      const row = selected();
+      if (row?.kind === "project") { key.preventDefault(); app.newChat({ workspace: row.workspace }); p.onOpened(); }
+    } else if (key.name === "t") {
+      const index = selectedRow();
+      const row = sidebarTabRow(rows(), selectedRow());
+      if (row?.kind === "session") { key.preventDefault(); void app.openSession(row.s, { newTab: true }).then(p.onOpened); }
     }
   });
 
-  const selectedRow = () => sessionRows()[sel()] ?? -1;
-  /** Inside the borders and padding, after the two-column mark. */
   const width = () => p.width - 5;
-  // Every session asking for you breathes together, in the warn colour, from dim to full.
   const breath = () => breathe(tick(), BREATH_TICKS);
   const askingTone = () => mix(mix(t().bg, t().warn, 0.35), t().warn, breath());
-  const meta = (row: Extract<Row, { kind: "session" }>) => ` ${row.s.herdr ? "herdr " : ""}${row.s.handover ? "handed " : ""}${row.project ? `${clip(row.project, 10)} ` : ""}${age(row.s.updatedAt)}`;
-  /** A session a herdr pane runs, by what herdr says it does (awui's own run marks win). */
   const herdrTone = (s: ProjectSession) => (s.herdr?.status === "blocked" ? askingTone() : s.herdr?.status === "working" ? t().accent : t().muted);
-
+  const meta = (row: Extract<SidebarRow, { kind: "session" }>) => `${row.s.asking ? "!" : isBusy(row.s.status) ? "" : row.s.liveChatId ? "" : ""} ${row.project ? `${clip(row.project, 10)} ` : ""}${age(row.s.updatedAt)}`;
   const Tab = (q: { id: SidebarTab; label: string }) => (
-    <text flexShrink={0} fg={p.tab === q.id ? t().text : t().muted} onMouseDown={() => p.onTab(q.id)}>
+    <text selectable={false} flexShrink={0} fg={p.tab === q.id ? t().text : t().muted} onMouseDown={() => p.onTab(q.id)}>
       {p.tab === q.id ? <b>{q.label}</b> : q.label}
     </text>
   );
@@ -132,78 +161,60 @@ export function Sidebar(p: {
   return (
     <box flexDirection="column" width={p.width} flexShrink={0} border={["right"]} borderColor={t().border} paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" flexShrink={0}>
-        <Tab id="sessions" label="Sessions" />
-        <text flexShrink={0} fg={t().border}>
-          {" │ "}
-        </text>
-        <Tab id="info" label="Info" />
-        <box flexGrow={1} />
-        {/* Three cells to hit, not one. */}
-        <box width={3} flexShrink={0} flexDirection="row" justifyContent="flex-end" onMouseDown={p.onCollapse}>
-          <text fg={t().muted}>«</text>
-        </box>
+        <Tab id="sessions" label="Sessions" /><text selectable={false} fg={t().border}>{" │ "}</text><Tab id="info" label="Info" />
+        <box flexGrow={1} /><box width={3} flexShrink={0} justifyContent="flex-end" onMouseDown={p.onCollapse}><text selectable={false} fg={t().muted}>«</text></box>
       </box>
-      {/* The active tab's underline: an accent rule under its name, a quiet one under the rest. */}
-      <text flexShrink={0} wrapMode="none">
-        <span style={{ fg: p.tab === "sessions" ? t().accent : t().border }}>{"━".repeat(8)}</span>
+      <text selectable={false} flexShrink={0} wrapMode="none">
+        <span style={{ fg: p.tab === "sessions" ? t().accent : t().border }}>{"━".repeat("Sessions".length)}</span>
         <span style={{ fg: t().border }}>{"━━━"}</span>
-        <span style={{ fg: p.tab === "info" ? t().accent : t().border }}>{"━".repeat(4)}</span>
-        <span style={{ fg: t().border }}>{"━".repeat(Math.max(0, p.width - 17))}</span>
+        <span style={{ fg: p.tab === "info" ? t().accent : t().border }}>{"━".repeat("Info".length)}</span>
+        <span style={{ fg: t().border }}>{"━".repeat(Math.max(0, p.width - 19))}</span>
       </text>
-      <Show
-        when={p.tab === "sessions"}
-        fallback={
-          <>
-            <InfoBody width={p.width} />
-            <text fg={t().muted} flexShrink={0}>
-              {p.active ? "Tab sessions · Esc back" : "C-x i info"}
-            </text>
-          </>
-        }
-      >
-        <text fg={t().muted} wrapMode="none" truncate flexShrink={0}>
-          <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{`${app.harness()?.displayName ?? ""}  `}</span>
-          {clipPath(app.workspace()?.path ?? "no project", Math.max(6, width() - (app.harness()?.displayName?.length ?? 0) - 2))}
+      <Show when={p.tab === "sessions"} fallback={<><InfoBody width={p.width} /><text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "Tab sessions · Esc back" : "C-x i info"}</text></>}>
+        <box flexDirection="row" marginTop={1} paddingLeft={1} backgroundColor={t().surface2} onMouseDown={() => { app.newChat(); p.onOpened(); }}>
+          <text selectable={false} fg={t().accent}>+</text><text selectable={false} fg={t().text}>{" New chat"}</text><box flexGrow={1} /><text selectable={false} fg={t().muted}>{`${app.harness()?.displayName ?? ""} `}</text>
+        </box>
+        <text selectable={false} fg={t().muted} wrapMode="none" truncate flexShrink={0}>
+          <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{monogram(app.workspace()?.name ?? "")}</span>{`  ${clipPath(app.workspace()?.path ?? "no project", Math.max(6, width() - 4))}`}
         </text>
-        <text fg={t().border} wrapMode="none" flexShrink={0}>
-          {"─".repeat(Math.max(0, p.width - 4))}
-        </text>
-        <scrollbox flexGrow={1} marginTop={1} verticalScrollbarOptions={{ visible: false }}>
-          <For each={rows()}>
-            {(row, i) =>
-              row.kind === "head" ? (
-                <text fg={row.color ?? t().muted} marginTop={i() === 0 ? 0 : 1}>
-                  {row.label}
-                  <Show when={row.count > 0}>
-                    <span style={{ fg: t().muted }}>{` ${row.count}`}</span>
-                  </Show>
-                </text>
-              ) : (
-                <box
-                  flexDirection="row"
-                  backgroundColor={i() === selectedRow() && p.active ? t().selection : isActive(row.s) ? t().surface2 : undefined}
-                  onMouseDown={() => void app.openSession(row.s).then(p.onOpened)}
-                >
-                  <text flexShrink={0} fg={row.s.asking ? askingTone() : isBusy(row.s.status) ? t().accent : row.s.liveChatId ? t().ok : row.s.herdr ? herdrTone(row.s) : row.s.handover ? t().accent : t().muted}>
-                    {row.s.asking ? "▲ " : isBusy(row.s.status) ? `${spinnerFor(row.s.harnessId)[tick() % spinnerFor(row.s.harnessId).length]} ` : row.s.liveChatId ? "● " : row.s.herdr ? "◆ " : row.s.handover ? "◇ " : "· "}
-                  </text>
-                  <text flexGrow={1} fg={row.s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(row.s) ? t().text : t().text2} wrapMode="none">
-                    {clip(row.s.title || "New chat", width() - meta(row).length)}
-                  </text>
-                  <text flexShrink={0} fg={t().muted}>
-                    {meta(row)}
-                  </text>
+        <text selectable={false} fg={t().border} wrapMode="none" flexShrink={0}>{"─".repeat(Math.max(0, p.width - 4))}</text>
+        <scrollbox ref={(el: ScrollBoxRenderable) => (scroller = el)} flexGrow={1} marginTop={1} verticalScrollbarOptions={{ visible: false }}>
+          <For each={navRows()}>
+            {(row) => {
+              const chosen = () => row ? selection() === keyOf(row) && p.active : false;
+              if (row.kind === "section") return (
+                <box flexDirection="row" marginTop={1} onMouseDown={() => activate(row)}>
+                  <text selectable={false} fg={chosen() ? t().accent : t().muted}>{`${isFolded(row) ? "▸" : "▾"} ${row.label}`}</text><text selectable={false} fg={t().muted}>{`  ${row.count}`}</text><box flexGrow={1} />
                 </box>
-              )
-            }
+              );
+              if (row.kind === "project") {
+                const name = () => clip(row.workspace.name, Math.max(4, width() - 14));
+                const running = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && isBusy(s.status)).length;
+                const needs = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.asking).length;
+                return (
+                  <box flexDirection="row" marginTop={1} backgroundColor={chosen() ? t().selection : row.current ? t().surface : undefined} onMouseDown={() => activate(row)}>
+                    <text selectable={false} fg={row.current ? t().accent : t().muted}>{`${isFolded(row) ? "▸" : "▾"} `}</text>
+                    <text selectable={false} fg={t().accent} bg={t().surface2}>{` ${monogram(row.workspace.name)} `}</text>
+                    <text selectable={false} fg={t().text} wrapMode="none">{` ${name()}`}</text><box flexGrow={1} />
+                    {needs() > 0 ? <text selectable={false} fg={t().warn}>{`${needs()}! `}</text> : null}
+                    {running() > 0 ? <text selectable={false} fg={t().accent}>{`${running()}· `}</text> : null}
+                    <text selectable={false} fg={t().muted}>{`${row.count} `}</text>
+                  </box>
+                );
+              }
+              const { s } = row;
+              const rowMeta = () => meta(row);
+              return (
+                <box flexDirection="row" backgroundColor={chosen() ? t().selection : isActive(s) ? t().surface2 : undefined} onMouseDown={() => { setSelection(keyOf(row)); void app.openSession(s).then(p.onOpened); }}>
+                  <text selectable={false} flexShrink={0} fg={s.asking ? askingTone() : isBusy(s.status) ? t().accent : s.liveChatId ? t().ok : s.herdr ? herdrTone(s) : t().muted}>{s.asking ? "▲ " : isBusy(s.status) ? `${spinnerFor(s.harnessId)[tick() % spinnerFor(s.harnessId).length]} ` : s.liveChatId ? "● " : s.herdr ? "◆ " : "· "}</text>
+                  <text selectable={false} flexGrow={1} fg={s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(s) ? t().text : t().text2} wrapMode="none">{clip(s.title || "New chat", width() - rowMeta().length)}</text>
+                  <text selectable={false} flexShrink={0} fg={t().muted}>{rowMeta()}</text>
+                </box>
+              );
+            }}
           </For>
-          <Show when={rows().length === 0}>
-            <text fg={t().muted}>No sessions yet</text>
-          </Show>
         </scrollbox>
-        <text fg={t().muted} flexShrink={0}>
-          {p.active ? "↑↓ Enter · t tab · Esc back" : "C-x s to browse"}
-        </text>
+        <text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "↑↓ Enter · t tab · Esc back" : "C-x s to browse"}</text>
       </Show>
     </box>
   );
