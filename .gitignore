@@ -12,3 +12,4 @@ coverage/
 dist-bin/
 # e2e screenshots (AWUI_SCREENSHOTS): a scratch folder at the root, never committed
 /screenshots/
+.commandcode/
