@@ -371,12 +371,17 @@ describe("layout budgets", () => {
     expect(tabTitleChars(80, 9)).toBe(0);
     expect(tabTitleChars(140, 4)).toBe(24);
   });
-  it("clips at a word boundary, never a dangling space or a split word, and hard-cuts a single long word", () => {
+  it("clips at a word boundary only when that keeps three fifths of the budget, else hard-cuts", () => {
     expect(clip("another long chat title", 14)).toBe("another long…");
     expect(clip("a fairly long chat title", 14)).toBe("a fairly long…");
     expect(clip("the third long chat title", 14)).toBe("the third…");
     expect(clip("short", 20)).toBe("short");
     expect(clip("abcdef", 4)).toBe("abc…");
+    // The word backup fires when the cut sits late in the budget…
+    expect(clip("a few words then averylongword", 16)).toBe("a few words…");
+    // …and bites when backing up would waste it, so a path keeps its characters.
+    expect(clip("ab cdefghijklm", 7)).toBe("ab cde…");
+    expect(clip("fix src/verylongpath", 14)).toBe("fix src/veryl…");
   });
   it("wraps a paragraph to width as one line each, none longer", () => {
     expect(wrapLines("It runs with its normal tools, as you, in this folder.", 46)).toEqual(["It runs with its normal tools, as you, in this", "folder."]);
