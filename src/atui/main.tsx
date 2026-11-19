@@ -29,7 +29,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   const prefs = readPrefs();
   // A desktop notification through the terminal (OSC 9 / 777): it moves no cursor, so it can go between frames.
   const notify = (title: string, body: string) => void process.stdout.write(notifySequence(process.env, title, body));
-  const app = createRoot(() => createAtui(server, { ...parsed, glass: prefs.glass ?? false, notify }));
+  const app = createRoot(() => createAtui(server, { ...parsed, glass: prefs.glass ?? false, showThoughts: prefs.showThoughts, notify }));
   try {
     await app.init();
   } catch (error) {
@@ -73,7 +73,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   };
   // The command line, else $ATUI_VIM, else what C-x v last chose.
   const vim = parsed.vim ?? (process.env.ATUI_VIM ? process.env.ATUI_VIM === "1" : (prefs.vim ?? false));
-  await render(() => <App app={app} onExit={exit} vim={vim} onVim={(on) => writePrefs({ vim: on })} onGlass={(on) => writePrefs({ glass: on })} onTerminal={onTerminal} />, renderer);
+  await render(() => <App app={app} onExit={exit} vim={vim} onVim={(on) => writePrefs({ vim: on })} showThoughts={app.showThoughts()} onShowThoughts={(on) => { app.setShowThoughts(on); writePrefs({ showThoughts: on }); }} onGlass={(on) => writePrefs({ glass: on })} onTerminal={onTerminal} />, renderer);
 }
 
 /** In a herdr pane, and unless the server's setting or --no-herdr says not: tell herdr what this atui's chats do. */

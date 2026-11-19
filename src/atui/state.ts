@@ -57,6 +57,8 @@ export interface AtuiOptions {
   images?: ImageMode;
   /** No fills behind the transcript, composer, and status line (the remembered choice, else off). */
   glass?: boolean;
+  /** Reasoning is expanded by default, like pi's neat-render; false starts it folded. */
+  showThoughts?: boolean;
   /** Tell the desktop (a terminal notification) that a background session finished or asks; none in tests. */
   notify?: (title: string, body: string) => void;
   /** false (--no-herdr): in a herdr pane, report nothing to herdr (main.tsx does the reporting). */
@@ -87,12 +89,22 @@ export function message(error: unknown): string {
 }
 
 export function createAtui(server: Server, opts: AtuiOptions) {
+  const [showThoughts, setShowThoughts] = createSignal(opts.showThoughts ?? true);
+  // Local fold overrides belong to the open conversation, not a streaming item's identity.
+  const [thoughtOverrides, setThoughtOverrides] = createSignal<Record<string, boolean>>({});
+  const thoughtOpen = (id: string) => thoughtOverrides()[id] ?? showThoughts();
+  const toggleThought = (id: string) => setThoughtOverrides((current) => ({ ...current, [id]: !thoughtOpen(id) }));
   const [boot, setBoot] = createSignal<Bootstrap | null>(null);
   const [theme, setTheme] = createSignal<Theme>(themeFrom(null));
   const [harnessId, setHarnessId] = createSignal<string | null>(null);
   const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
   const [overview, setOverview] = createSignal<SessionsOverview>({ workspaces: [], sessions: [], errors: [] });
   const [chat, setChat] = createSignal<ChatState | null>(null);
+  // One reading position per assistant message, shared when a reply becomes the answer.
+  // A tab switch starts a new map: already-received history should not retype.
+  const pacedMemory = createMemo(() => { chat()?.chatId; return new Map<string, number>(); });
+  createEffect(on(chat, () => setThoughtOverrides({})));
+  createEffect(on(showThoughts, () => setThoughtOverrides({})));
   const [conn, setConn] = createSignal<Connection | "idle">("idle");
   const [limits, setLimits] = createSignal<UsageLimits | null>(null);
   const [git, setGit] = createSignal<GitStatus | null>(null);
@@ -622,7 +634,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     const placeholder: Omit<Tab, "key"> = { chatId: null, sessionId: null, harnessId: harnessId() ?? "", workspacePath: target?.path ?? "", title: "New chat" };
     setTabs((st) => (st.tabs.length === 0 ? st : placeTab(st, placeholder, { newTab })));
     blank();
-    if (into && into.id !== workspace()?.id) void enterWorkspace(into).catch(fail);
+    if (into && into.id !== workspace()?.id) setWorkspace(into);
   };
 
   const createChat = async (): Promise<ChatState> => {
@@ -983,6 +995,11 @@ export function createAtui(server: Server, opts: AtuiOptions) {
   };
 
   return {
+    pacedMemory,
+    showThoughts,
+    setShowThoughts,
+    thoughtOpen,
+    toggleThought,
     server,
     boot,
     theme,

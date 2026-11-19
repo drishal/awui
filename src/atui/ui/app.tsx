@@ -63,6 +63,8 @@ export function App(p: {
   vim?: boolean;
   onVim?: (on: boolean) => void;
   onGlass?: (on: boolean) => void;
+  showThoughts: boolean;
+  onShowThoughts: (on: boolean) => void;
   /** The terminal's title and progress indicator changed (none in tests). */
   onTerminal?: (state: TerminalState) => void;
 }) {
@@ -74,6 +76,7 @@ export function App(p: {
   const [focus, setFocus] = createSignal<"composer" | "sidebar">("composer");
   const [dialog, setDialog] = createSignal<Dialog>(null);
   // The work shows, as neat-render draws it (nothing folds); C-x e folds every turn to its line.
+  const thoughts = () => p.showThoughts;
   const [showWork, setShowWork] = createSignal(true);
   const [compactChoice, setCompactChoice] = createSignal<boolean | null>(null);
   const [reviewing, setReviewing] = createSignal(false);
@@ -324,6 +327,10 @@ export function App(p: {
       case "p":
         if (!app.chat()) return flash("No chat for active work yet");
         return setRail(true);
+      case "o":
+        p.onShowThoughts(!thoughts());
+        flash(thoughts() ? "Reasoning visible (C-t folds)" : "Reasoning folded (C-t shows)");
+        return;
       case "u":
         if (!app.chat()) return flash("No chat to read the git status of");
         return setGitting(true);
@@ -375,6 +382,12 @@ export function App(p: {
       key.preventDefault();
       setHint(null);
       return setLeaderOn(true);
+    }
+    if (key.ctrl && key.name === "t") {
+      key.preventDefault();
+      p.onShowThoughts(!thoughts());
+      flash(thoughts() ? "Reasoning visible (C-t folds)" : "Reasoning folded (C-t shows)");
+      return;
     }
     if (key.ctrl && (key.name === "k" || key.name === "p")) {
       key.preventDefault();
@@ -522,6 +535,7 @@ export function App(p: {
     add({ id: "sidebar", label: sidebar() ? "Fold the side panel" : "Unfold the side panel", hint: leader("b"), run: () => runLeader("b") });
     add({ id: "panel", label: sidebar() && sideTab() === "info" ? "Show sessions" : "Show info: context, usage, git, limits", hint: leader("i"), run: () => runLeader("i") });
     add({ id: "work", label: showWork() ? "Fold the work" : "Show the work of every turn", hint: leader("e"), run: () => runLeader("e") });
+    add({ id: "thoughts", label: thoughts() ? "Fold all reasoning" : "Show all reasoning", hint: "C-t", run: () => { p.onShowThoughts(!thoughts()); setDialog(null); } });
     add({ id: "glass", label: app.glass() ? "Glass off: solid panels" : "Glass on: see the terminal through", hint: leader("g"), run: () => runLeader("g") });
     // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it: every device draws it (C-x l cycles).
     CHAT_WIDTHS.forEach((w) => add({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, keywords: "column layout measure", current: (boot?.ui.chatWidth ?? null) === w, run: () => void pickWidth(w) }));
@@ -694,12 +708,12 @@ export function App(p: {
           <box flexDirection="column" flexGrow={1}>
             <TabBar />
             <box flexDirection="row" flexShrink={0} paddingLeft={2} paddingRight={2} border={["bottom"]} borderColor={t().border}>
-              <text flexGrow={1} fg={t().text} wrapMode="none" truncate>
+              <text selectable={false} flexGrow={1} fg={t().text} wrapMode="none" truncate>
                 <b>{title()}</b>
               </text>
               <Show when={!ghost() && app.chat()}>
                 {(c) => (
-                  <text flexShrink={0}>
+                  <text selectable={false} flexShrink={0}>
                     <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{`${harnessGlyph(c().harnessId)} ${app.harness()?.displayName ?? c().harnessId}`}</span>
                     {"  "}
                     <Show when={isBusy(c().status)} fallback={<span style={{ fg: c().status === "error" ? t().danger : t().muted }}>{STATUS_LABEL[c().status]}</span>}>
@@ -879,7 +893,7 @@ export function App(p: {
         </box>
         <Show when={leaderOn() && !dialog()}>
           <WhichKey
-            state={{ b: sidebar() ? "on" : "off", i: sidebar() && sideTab() === "info" ? "on" : "off", e: showWork() ? "on" : "off", v: vim() ? "on" : "off", g: app.glass() ? "on" : "off" }}
+            state={{ o: thoughts() ? "shown" : "folded", b: sidebar() ? "on" : "off", i: sidebar() && sideTab() === "info" ? "on" : "off", e: showWork() ? "on" : "off", v: vim() ? "on" : "off", g: app.glass() ? "on" : "off" }}
             onPick={(k) => {
               setLeaderOn(false);
               runLeader(k);

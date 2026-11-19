@@ -1,7 +1,7 @@
 // The moving parts every screen shares: the harness's own spinner, the
 // shimmering "Working" label, and text revealed at a steady pace while it
 // streams (src/atui/fx.ts works out the numbers).
-import { createEffect, createSignal, Index, on, onCleanup, type Accessor } from "solid-js";
+import { createEffect, createSignal, Index, on, onCleanup, untrack, type Accessor } from "solid-js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { revealCut, revealStep, scrollPath, shimmer, spinnerFor } from "../fx.js";
 import { useAtui, useTheme } from "./context.js";
@@ -31,8 +31,9 @@ const FRAME_MS = 33;
  * reveal when the stream ends; text that arrives whole, from history, shows
  * at once.
  */
-export function usePaced(text: Accessor<string>, streaming: Accessor<boolean>): Accessor<string> {
-  const [shown, setShown] = createSignal(streaming() ? 0 : text().length);
+export function usePaced(text: Accessor<string>, streaming: Accessor<boolean>, history?: Map<string, number>, id?: string): Accessor<string> {
+  const previous = history && id ? history.get(id) ?? 0 : 0;
+  const [shown, setShown] = createSignal(previous > 0 ? Math.min(untrack(text).length, previous) : untrack(text).length);
   let timer: ReturnType<typeof setInterval> | null = null;
   const stop = () => {
     if (timer) clearInterval(timer);
@@ -40,17 +41,24 @@ export function usePaced(text: Accessor<string>, streaming: Accessor<boolean>): 
   };
   createEffect(
     on([text, streaming], ([value, live]) => {
-      // Done while still revealing: finish the reveal rather than jump. Never paced: show it all.
-      if (!live && !timer) {
+      // History and resumed history are already received, not a stream to replay.
+      // A final item has no further deltas to pace: display all of it immediately.
+      if (!live) {
+        stop();
         setShown(value.length);
+        if (history && id) history.set(id, value.length);
         return;
       }
-      if (shown() > value.length) setShown(value.length);
+      // Only text/streaming chains react here. The timer's own write must never
+      // re-enter this effect and recreate its reveal loop every frame.
+      if (untrack(shown) > value.length) setShown(value.length);
+      else if (history && id && untrack(shown) < previous) setShown(previous);
       timer ??= setInterval(() => {
-        const target = text().length;
-        const next = revealStep(shown(), target, FRAME_MS);
-        setShown(next);
-        if (next >= target && !streaming()) stop();
+        const target = untrack(text).length;
+        const next = revealStep(untrack(shown), target, FRAME_MS);
+        if (next !== untrack(shown)) setShown(next);
+        if (history && id) history.set(id, next);
+        if (next >= target && !untrack(streaming)) stop();
       }, FRAME_MS);
     }),
   );

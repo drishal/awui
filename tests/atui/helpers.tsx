@@ -76,6 +76,7 @@ export async function startServer(opts: { port?: number; config?: string; env?: 
 export const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export interface Mounted {
+  renderer: Awaited<ReturnType<typeof testRender>>["renderer"];
   app: Atui;
   frame: () => Promise<string>;
   /** The frame's styled runs, row by row: colours and attributes, for what the characters alone cannot show. */
@@ -102,7 +103,7 @@ export async function mount(cwd: string, opts: { harness?: string; width?: numbe
   startTicker();
   let exited = false;
   // exitOnCtrlC: the app reads Ctrl+C itself (its second press quits), as main.tsx tells the real renderer.
-  const setup = await testRender(() => <App app={app} onExit={() => (exited = true)} vim={opts.vim ?? false} />, { width: opts.width ?? 140, height: opts.height ?? 36, exitOnCtrlC: false });
+  const setup = await testRender(() => <App app={app} onExit={() => (exited = true)} vim={opts.vim ?? false} showThoughts={app.showThoughts()} onShowThoughts={app.setShowThoughts} />, { width: opts.width ?? 140, height: opts.height ?? 36, exitOnCtrlC: false });
   const frame = async () => {
     await setup.renderOnce();
     return setup.captureCharFrame();
@@ -130,6 +131,7 @@ export async function mount(cwd: string, opts: { harness?: string; width?: numbe
   };
   return {
     app,
+    renderer: setup.renderer,
     frame,
     spans: async () => {
       await setup.renderOnce();

@@ -8,6 +8,8 @@ import path from "node:path";
 
 export interface AtuiPrefs {
   vim?: boolean;
+  /** Headers show reasoning next to the work by default; C-t folds all reasoning. */
+  showThoughts?: boolean;
   /** No fills behind the transcript, composer, and status line: the terminal's own background shows through. */
   glass?: boolean;
 }
@@ -24,6 +26,7 @@ export function readPrefs(file = prefsFile()): AtuiPrefs {
     const r = raw as Record<string, unknown>;
     return {
       ...(typeof r.vim === "boolean" ? { vim: r.vim } : {}),
+      ...(typeof r.showThoughts === "boolean" ? { showThoughts: r.showThoughts } : {}),
       ...(typeof r.glass === "boolean" ? { glass: r.glass } : {}),
     };
   } catch {

@@ -23,6 +23,7 @@ export const LEADER_KEYS: PrefixKey[] = [
   { key: "[", label: "previous tab" },
   { key: "w", label: "close tab" },
   { key: "m", label: "+model", menu: true },
+  { key: "o", label: "toggle reasoning visibility" },
   { key: "t", label: "+thinking", menu: true },
   { key: "h", label: "+harness", menu: true },
   { key: "c", label: "compact context" },

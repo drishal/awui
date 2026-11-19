@@ -2,8 +2,8 @@
 // draws Pi's: the prompt behind a `❯` on a fill strip, the work shown rather
 // than folded (a lone call a bulleted row with its outcome on a `└` line and
 // an edit's first changed lines under it, calls fired together hung off one
-// tree with each outcome at the end of its line, thinking as one `◇ Thinking`
-// line), the answer marked with an accent `●`, and a Σ line of what the turn
+// tree with each outcome at the end of its line, reasoning shown under `◇ Thinking`
+// by default, folding via C-t/C-x o or a click), the answer marked with an accent `●`, and a Σ line of what the turn
 // did. Replies the agent wrote between tool calls show in order. C-x e folds
 // every turn to a "Worked for …" line (the web UI's), and a running turn keeps
 // that line, with its spinner, over its work. A clicked call is framed
@@ -91,12 +91,15 @@ const CARET_ON = 6;
 const CARET_OFF = 4;
 
 /** Markdown as atui draws it: revealed at a steady pace while it streams (a blinking cursor where it writes), task lists as boxes, tables in rounded borders. */
-function Md(p: { text: string; streaming: boolean; fg: string }) {
+function Md(p: { text: string; streaming: boolean; fg: string; id?: string; quiet?: boolean }) {
   const t = useTheme();
+  const app = useAtui();
   const renderer = useRenderer();
   const paced = usePaced(
     () => p.text,
     () => p.streaming,
+    app.pacedMemory(),
+    p.id,
   );
   // The clock is read only while streaming: a finished answer is not drawn again every tick.
   const content = () => {
@@ -107,7 +110,7 @@ function Md(p: { text: string; streaming: boolean; fg: string }) {
   return (
     <markdown
       content={content()}
-      syntaxStyle={syntaxFor(t(), renderer.nativeScene)}
+      syntaxStyle={syntaxFor(t(), renderer.nativeScene, p.quiet)}
       fg={p.fg}
       conceal
       streaming={p.streaming || paced().length < p.text.length}
@@ -141,7 +144,7 @@ function Chip(p: { label: string; onPress: () => void; tone?: string }) {
   const t = useTheme();
   return (
     <box flexShrink={0} marginRight={1} paddingLeft={1} paddingRight={1} backgroundColor={mix(t().bg, t().surface2, 0.9)} onMouseDown={p.onPress}>
-      <text fg={p.tone ?? t().text2}>{p.label}</text>
+      <text selectable={false} fg={p.tone ?? t().text2}>{p.label}</text>
     </box>
   );
 }
@@ -180,7 +183,7 @@ function PromptActions(p: { item: UserItem; through: number; onDone: () => void 
       </Show>
       <Chip label="⧉ Copy" onPress={run(() => void renderer.copyToClipboardOSC52(p.item.text))} />
       <Show when={!idle()}>
-        <text fg={t().muted}>{" Retry and Edit wait until the agent is idle"}</text>
+        <text selectable={false} fg={t().muted}>{" Retry and Edit wait until the agent is idle"}</text>
       </Show>
     </box>
   );
@@ -204,13 +207,13 @@ function UserPrompt(p: { item: UserItem; glow: number; through: number }) {
         marginTop={1}
         flexDirection="row"
       >
-        <text flexShrink={0} fg={p.glow > 0 ? mix(t().muted, accentOf(t(), app.harness()?.accent), p.glow) : t().muted}>
+        <text selectable={false} flexShrink={0} fg={p.glow > 0 ? mix(t().muted, accentOf(t(), app.harness()?.accent), p.glow) : t().muted}>
           {"❯ "}
         </text>
         <box flexDirection="column" flexGrow={1} flexShrink={1}>
           <Md text={p.item.text} streaming={false} fg={t().text} />
           <Show when={p.item.imageCount && !p.item.images?.length}>
-            <text fg={t().muted}>{`[${p.item.imageCount} ${p.item.imageCount === 1 ? "image" : "images"}]`}</text>
+            <text selectable={false} fg={t().muted}>{`[${p.item.imageCount} ${p.item.imageCount === 1 ? "image" : "images"}]`}</text>
           </Show>
           <Show when={p.item.images?.length}>
             <box flexDirection="row" flexWrap="wrap" marginTop={1}>
@@ -227,36 +230,41 @@ function UserPrompt(p: { item: UserItem; glow: number; through: number }) {
 }
 
 /**
- * A thought as one line, neat-render's: `◇ Thinking 2.1s ~140 tokens`. While it
- * streams the marker fills to `◆` on every other beat and the line rolls with
- * the newest thought; a click opens the reasoning, hung under its label.
+ * Reasoning is fully visible by default, at the tool tree's hanging indent.
+ * C-t or C-x o folds all blocks; a clicked block takes the inverse of that
+ * choice until the next explicit global change. Folded live thoughts keep
+ * neat-render's quiet rolling preview. Visibility never changes model effort.
  */
-function Thought(p: { item: AssistantItem }) {
+
+function Thought(p: { item: AssistantItem; open: boolean; onToggle: () => void }) {
   const t = useTheme();
-  const [open, setOpen] = createSignal(false);
   const live = () => p.item.streaming && !p.item.text;
   // A live thought's time runs on the clock; a finished one is read once.
   const meta = () => {
     if (live()) void tick();
     return thinkingMeta(p.item);
   };
-  const latest = () => (live() && !open() ? latestThoughtLine(p.item.thinking) : "");
+  const latest = () => (live() && !p.open ? latestThoughtLine(p.item.thinking) : "");
   return (
-    <box flexDirection="column" onMouseDown={() => setOpen(!open())}>
-      <text wrapMode="none" truncate>
+    <box flexDirection="column">
+      <box onMouseDown={p.onToggle}>
+        <text selectable={false} wrapMode="none" truncate>
         <span style={{ fg: live() && pulseOn() ? t().warn : t().muted }}>{live() && pulseOn() ? "◆ " : "◇ "}</span>
+        <span style={{ fg: p.open ? t().thinking : t().muted }}>{p.open ? "▾ " : "▸ "}</span>
         <span style={{ fg: t().thinking }}>Thinking</span>
         <span style={{ fg: t().muted }}>{` ${meta()}`}</span>
+        <Show when={!p.open}>
+          <span style={{ fg: t().border }}>{" · C-t to show"}</span>
+        </Show>
         <Show when={latest()}>
           <span style={{ fg: t().border }}>{" │ "}</span>
           <span style={{ fg: t().muted }}>{latest()}</span>
         </Show>
       </text>
-      <Show when={open()}>
-        <box paddingLeft={2}>
-          <text fg={t().muted} wrapMode="word">
-            <i>{p.item.thinking.trim()}</i>
-          </text>
+      </box>
+      <Show when={p.open}>
+        <box paddingLeft={3}>
+          <Md text={p.item.thinking.trim()} streaming={p.item.streaming} fg={t().muted} quiet />
         </box>
       </Show>
     </box>
@@ -596,7 +604,7 @@ function Notice(p: { item: NoticeItem }) {
   const color = () => (p.item.level === "error" ? t().danger : p.item.level === "warning" ? t().warn : t().info);
   const text = () => (p.item.detail ? (p.item.title ?? p.item.text) : p.item.text);
   return (
-    <text fg={color()} wrapMode="word">
+    <text selectable={false} fg={color()} wrapMode="word">
       {p.item.level === "info" ? "ℹ " : "! "}
       <Show when={p.item.level === "error"} fallback={<span style={{ fg: p.item.level === "info" ? t().muted : color() }}>{text()}</span>}>
         <u style={{ fg: color() }}>{text()}</u>
@@ -609,7 +617,7 @@ function Request(p: { item: RequestItem }) {
   const t = useTheme();
   const denied = () => /Denied|Cancelled|Dismissed/.test(p.item.outcome ?? "");
   return (
-    <text fg={p.item.outcome ? (denied() ? t().warn : t().muted) : t().warn} wrapMode="word">
+    <text selectable={false} fg={p.item.outcome ? (denied() ? t().warn : t().muted) : t().warn} wrapMode="word">
       {p.item.outcome ? (denied() ? "✗ " : "✓ ") : "? "}
       <span style={{ fg: t().text2 }}>{clip(p.item.request.title, 80)}</span>
       <span style={{ fg: t().muted }}>{` → ${p.item.outcome ?? "waiting for you"}`}</span>
@@ -619,6 +627,7 @@ function Request(p: { item: RequestItem }) {
 
 /** One item of the work. `thoughtOnly`: an assistant item's text is a reply drawn after the fold, so only its thought is here. */
 function ProcessItem(p: { item: ChatItem; workspace: string; thoughtOnly?: boolean }) {
+  const app = useAtui();
   const t = useTheme();
   return (
     <Switch>
@@ -627,10 +636,10 @@ function ProcessItem(p: { item: ChatItem; workspace: string; thoughtOnly?: boole
         {(item) => (
           <box flexDirection="column">
             <Show when={item().thinking.trim()}>
-              <Thought item={item()} />
+              <Thought item={item()} open={app.thoughtOpen(item().id)} onToggle={() => app.toggleThought(item().id)} />
             </Show>
             <Show when={!p.thoughtOnly && saysSomething(item().text)}>
-              <Md text={item().text} streaming={item().streaming} fg={t().text2} />
+              <Md text={item().text} streaming={item().streaming} fg={t().text2} id={item().id} />
             </Show>
           </box>
         )}
@@ -655,7 +664,7 @@ function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { cou
   return (
     <box flexDirection="column" marginTop={1}>
       <box flexDirection="row" onMouseDown={p.onToggle}>
-        <text fg={p.fade === undefined ? t().muted : mix(t().bg, t().muted, p.fade)}>
+        <text selectable={false} fg={p.fade === undefined ? t().muted : mix(t().bg, t().muted, p.fade)}>
           <Show when={live()} fallback={`${p.open ? "▾ " : "▸ "}${label()}`}>
             <Spinner />
             {" "}
@@ -691,6 +700,7 @@ const UNROLL_MS = 35;
  * just appear.
  */
 function WorkItems(p: { items: ChatItem[]; answerAt: number; answer: AssistantItem | null; workspace: string; thoughtOnly?: boolean }) {
+  const app = useAtui();
   const rows = createMemo(() => {
     const cut = p.answerAt < 0 ? p.items.length : p.answerAt;
     const thought = p.answerAt >= 0 && p.answer?.thinking.trim() ? [{ thought: p.answer }] : [];
@@ -729,7 +739,7 @@ function WorkItems(p: { items: ChatItem[]; answerAt: number; answer: AssistantIt
                   <Match when={"thought" in row() && (row() as { thought: AssistantItem }).thought}>
                     {(answer) => (
                       <box marginTop={n > 0 ? 1 : 0}>
-                        <Thought item={answer()} />
+                        <Thought item={answer()} open={app.thoughtOpen(answer().id)} onToggle={() => app.toggleThought(answer().id)} />
                       </box>
                     )}
                   </Match>
@@ -786,7 +796,7 @@ function SegmentedWork(p: { turn: Turn; segments: WorkSegment[]; open: boolean; 
           <Show when={segment().reply}>
             {(reply) => (
               <box flexDirection="column" marginTop={1}>
-                <Md text={reply().text} streaming={reply().streaming} fg={t().text} />
+                <Md text={reply().text} streaming={reply().streaming} fg={t().text} id={reply().id} />
               </box>
             )}
           </Show>
@@ -807,7 +817,7 @@ function Answer(p: { item: AssistantItem }) {
             {p.item.streaming ? "  " : "● "}
           </text>
           <box flexDirection="column" flexGrow={1} flexShrink={1}>
-            <Md text={p.item.text} streaming={p.item.streaming} fg={t().text} />
+            <Md text={p.item.text} streaming={p.item.streaming} fg={t().text} id={p.item.id} />
           </box>
         </box>
       </Show>
@@ -866,7 +876,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       <Show when={p.switchedTo}>
         {(name) => (
           <box flexDirection="row" marginTop={1}>
-            <text fg={t().muted}>{`──── Switched to ${name()} ────`}</text>
+            <text selectable={false} fg={t().muted}>{`──── Switched to ${name()} ────`}</text>
           </box>
         )}
       </Show>
@@ -903,7 +913,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       <For each={p.turn().errors}>{(item) => <Notice item={item} />}</For>
       <Show when={sigmaShown()}>
         <box marginTop={1}>
-          <text fg={t().muted} wrapMode="word">
+          <text selectable={false} fg={t().muted} wrapMode="word">
             <span style={{ fg: t().muted }}>{"Σ "}</span>
             {sigma().facts.join(" · ")}
             <Show when={sigma().failed}>
@@ -919,7 +929,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       </Show>
       <Show when={files().length > 0 && !p.turn().live}>
         <box marginTop={sigmaShown() ? 0 : 1}>
-          <text fg={t().muted} wrapMode="word">
+          <text selectable={false} fg={t().muted} wrapMode="word">
             <span style={{ fg: t().ok }}>{"✎ "}</span>
             {`Changed ${files().length} ${files().length === 1 ? "file" : "files"} · `}
             {/* Each name is a link to its file, where the terminal has links. */}
@@ -1054,7 +1064,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
           {(prompt) => (
             <box position="absolute" top={0} left={0} width="100%" flexDirection="row" justifyContent="center" backgroundColor={app.glass() ? undefined : t().bg} zIndex={5}>
               <box width="100%" maxWidth={p.column()} paddingLeft={2} paddingRight={2} flexDirection="row">
-                <text fg={t().muted} wrapMode="none" truncate>
+                <text selectable={false} fg={t().muted} wrapMode="none" truncate>
                   <span style={{ fg: t().ok }}>{"↑ "}</span>
                   {clip(prompt().text, p.column())}
                 </text>

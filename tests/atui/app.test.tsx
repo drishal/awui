@@ -102,6 +102,41 @@ describe("atui", () => {
     expect(folded).toMatch(/▸ Worked for \d+s · 2 reads, 1 search, 2 edits/);
     expect(folded).not.toContain("┌─ ● Read");
   }, 30_000);
+  it("shows reasoning by default, folds one block or all, and finishes streaming", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 60 });
+    await ui.type("showcase");
+    ui.keys.pressEnter();
+    await idle(ui);
+    const shown = await ui.until("Considering: Echo: showcase");
+    expect(shown).not.toContain("░ nop placeholder");
+    expect(shown).not.toContain("Working ·");
+    expect(shown).not.toContain("Running");
+    // C-t: all reasoning folds; a local click reopens only that block.
+    ui.keys.pressKey("t", { ctrl: true });
+    const folded = await ui.until("Reasoning folded");
+    expect(ui.app.showThoughts()).toBe(false);
+    expect(folded).not.toContain("Considering: Echo: showcase");
+    expect(folded).toContain("C-t to show");
+    const assistantId = ui.app.chat()!.items.find((i) => i.kind === "assistant" && i.thinking.trim())!.id;
+    // A local click inverts this block without changing the global preference.
+    await ui.click("Thinking");
+    await ui.until(() => ui?.app.thoughtOpen(assistantId) === true);
+    expect(ui.app.showThoughts()).toBe(false);
+    expect(await ui.frame()).toContain("Considering: Echo: showcase");
+    // A fresh global choice clears local exceptions, then reverses normally.
+    ui.keys.pressKey("t", { ctrl: true });
+    await ui.until(() => ui?.app.showThoughts() === true);
+    expect(ui.app.thoughtOpen(assistantId)).toBe(true);
+    ui.keys.pressKey("x", { ctrl: true });
+    await ui.keys.pressKey("o");
+    await ui.until(() => ui?.app.showThoughts() === false);
+    expect((await ui.frame()).includes("Considering: Echo: showcase")).toBe(false);
+    ui.keys.pressKey("x", { ctrl: true });
+    await ui.keys.pressKey("o");
+    await ui.until(() => ui?.app.showThoughts() === true);
+    expect(ui.app.thoughtOpen(assistantId)).toBe(true);
+    expect(await ui.frame()).toContain("Considering: Echo: showcase");
+  }, 30_000);
 
   it("shows a reply written between tool calls as a reply, before the command that followed it", async () => {
     ui = await mount(path.join(server.root, "beta"), { height: 40 });
@@ -761,7 +796,7 @@ describe("atui", () => {
     expect(draft).toContain("(exit 0)");
     // A selection, dragged with the mouse over a line of the answer, goes in as a quote.
     const rows = (await ui.frame()).split("\n");
-    const y = rows.findIndex((r) => r.includes("Echo: please run this"));
+    const y = rows.findIndex((r) => r.includes("● Echo: please run this"));
     const x = (rows[y] as string).indexOf("Echo: please");
     await ui.mouse.drag(x, y, x + "Echo: please run this".length, y);
     await wait(80);
