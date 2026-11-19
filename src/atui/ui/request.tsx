@@ -46,6 +46,9 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
   const optionTone = (o: { label: string }): string | undefined =>
     approval() && o.label === "Approve" ? t().ok : approval() && o.label === "Deny" ? t().danger : undefined;
   useKeyboard((key) => {
+    // The card answers only while it owns the keys: a guard like every other global listener,
+    // so a chord that moved the focus elsewhere (C-x s) never answers an approval by accident.
+    if (!p.active || key.defaultPrevented) return;
     if (key.name === "escape") {
       key.preventDefault();
       return answer({ kind: "cancel" });

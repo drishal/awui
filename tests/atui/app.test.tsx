@@ -1078,4 +1078,26 @@ describe("atui's density at 80 columns", () => {
       expect(line.length - line.trimStart().length).toBeGreaterThanOrEqual(26);
     }
   }, 30_000);
+
+  it("never answers an approval while the focus is elsewhere", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 120, height: 30 });
+    await ui.type("please ask first");
+    ui.keys.pressEnter();
+    await ui.until("Waiting for approval");
+    // The chord that hands the keys to the sessions must disarm the card: Enter there opens the
+    // selected session, and the approval stays pending — answered only when the composer owns the keys.
+    ui.keys.pressKey("x", { ctrl: true });
+    await ui.type("s");
+    await ui.until("↑↓ Enter · t tab · Esc");
+    ui.keys.pressEnter();
+    await wait(200);
+    const pending = ui.app.chat()?.pending ?? [];
+    expect(pending.length).toBe(1);
+    expect(ui.app.chat()?.items.some((i) => i.kind === "request" && i.outcome !== undefined)).toBe(false);
+    // Back in the composer the card answers as before.
+    await ui.escape();
+    await ui.until("Waiting for approval");
+    ui.keys.pressKey("1");
+    await ui.until(() => (ui?.app.chat()?.pending.length ?? 1) === 0, 20_000);
+  }, 45_000);
 });
