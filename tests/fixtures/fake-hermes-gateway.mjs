@@ -449,7 +449,7 @@ function endpointFields() {
     instance_id: instanceId,
     capabilities: ["session-authority-v1", "event-replay-v1"],
     code_sha: "fakesha1234",
-    code_version: "1.2.3",
+    ...(process.env.FAKE_HERMES_NO_VERSION === "1" ? {} : { code_version: "1.2.3" }),
     api_origin: `http://127.0.0.1:${port}`,
     ws_url: `ws://127.0.0.1:${port}/api/ws`,
     ws_protocol: "hermes-gateway-v1",
@@ -487,7 +487,7 @@ function identify() {
     instance_id: instanceId,
     api_origin: `http://127.0.0.1:${server.address()?.port ?? 0}`,
     supervisor: "none",
-    code_version: "1.2.3",
+    ...(process.env.FAKE_HERMES_NO_VERSION === "1" ? {} : { code_version: "1.2.3" }),
     code_sha: "fakesha1234",
   };
 }

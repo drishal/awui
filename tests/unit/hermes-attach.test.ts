@@ -89,6 +89,20 @@ async function openChat() {
 }
 
 describe("a Hermes home whose gateway is running", () => {
+  it("takes the version from the CLI when the gateway does not name one", async () => {
+    gateway?.kill("SIGKILL");
+    gateway = spawn(process.execPath, [gatewayScript, home], { stdio: ["ignore", "pipe", "inherit"], env: { ...process.env, FAKE_HERMES_NO_VERSION: "1" } });
+    await new Promise<void>((resolve, reject) => {
+      gateway?.stdout?.once("data", () => resolve());
+      setTimeout(() => reject(new Error("the scripted gateway did not start")), 8_000);
+    });
+    const launcher = path.join(home, "hermes-with-version");
+    writeFileSync(launcher, `#!/bin/sh\ncase "$1" in\n  --version) echo "Hermes Agent v2.0.0 (2026.9.24) · upstream abc" ;;\n  *) exit 1 ;;\nesac\n`);
+    chmodSync(launcher, 0o755);
+    const found = await new HermesAdapter({ launcher }).discover();
+    expect(found).toMatchObject({ available: true, version: "2.0.0", versionDetail: expect.stringContaining("gateway fakesha1") });
+  });
+
   it("reads availability and the version from the gateway itself, with no CLI to fall back on", async () => {
     const found = await adapter.discover();
     expect(found).toMatchObject({ available: true, version: "1.2.3", versionDetail: "1.2.3 · gateway fakesha1" });

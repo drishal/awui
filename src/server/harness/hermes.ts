@@ -1585,8 +1585,18 @@ export class HermesAdapter implements HarnessAdapter {
       // Attached: its version is the one serving this home, and the CLI on PATH may be older,
       // newer, or absent. Session rows, models, and chats all come from the gateway —
       // the canonical wire is what upstream's own surfaces run on (see hermes-canonical.ts).
-      const label = versionLabel(endpoint.version ?? "unknown");
-      const detail = endpoint.version && endpoint.codeSha ? `${endpoint.version} · gateway ${endpoint.codeSha.slice(0, 8)}` : undefined;
+      // Not every gateway names its version (`code_version` is optional on the wire). Then the
+      // CLI's own line stands in, but only while the install on disk is still the commit the
+      // gateway booted from, so the label never describes code the gateway is not running.
+      let version = endpoint.version;
+      if (!version && !(verdict.installCodeSha && endpoint.codeSha && verdict.installCodeSha !== endpoint.codeSha)) {
+        version = await run(this.cliCommand, ["--version"], { timeout: 15_000 }).then(
+          ({ stdout }) => stdout.trim().split("\n")[0]?.replace(/^Hermes Agent\s*/i, "") || undefined,
+          () => undefined,
+        );
+      }
+      const label = versionLabel(version ?? "unknown");
+      const detail = version && endpoint.codeSha ? `${version} · gateway ${endpoint.codeSha.slice(0, 8)}` : undefined;
       // A gateway outlives `hermes update`: it keeps serving the code it booted while the
       // install on disk moves on. Chats still work; the fix is a restart, and only it says so.
       if (verdict.installCodeSha && endpoint.codeSha && verdict.installCodeSha !== endpoint.codeSha) {
