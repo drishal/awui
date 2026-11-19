@@ -77,7 +77,7 @@ describe("the chat width", () => {
 
     // C-x l cycles to wide, and the save goes through the settings route the web dialog uses.
     ui.keys.pressKey("x", { ctrl: true });
-    const panel = await ui.until("C-x-");
+    const panel = await ui.until("C-x …");
     expect(panel).toContain("l → chat width");
     ui.keys.pressKey("l");
     await ui.until("Chat width: Wide");

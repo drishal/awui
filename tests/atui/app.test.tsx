@@ -178,7 +178,8 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await ui.until("Waiting for approval");
     await ui.until(() => ui?.app.overview().sessions.some((s) => s.asking) ?? false);
-    const mark = async () => (await ui?.spans())?.flat().find((s) => s.text.startsWith("▲"))?.fg.toInts().join();
+    // The asking row's own prefix (the project card's ▲N count is a different span, warn and steady).
+    const mark = async () => (await ui?.spans())?.flat().find((s) => s.text === "▲ ")?.fg.toInts().join();
     // Three looks a little apart: a breath cannot show the same colour at all of them.
     const seen = [await ui.until("▲ please ask first").then(mark)];
     for (const _ of [1, 2]) {
@@ -394,7 +395,7 @@ describe("atui", () => {
 
     // C-x: the which-key panel lists every key until one is pressed.
     ui.keys.pressKey("x", { ctrl: true });
-    const panel = await ui.until("C-x-");
+    const panel = await ui.until("C-x …");
     expect(panel).toContain("n → new chat");
     expect(panel).toContain("m → +model");
     await ui.type("m");
@@ -981,11 +982,11 @@ describe("atui's density at 80 columns", () => {
     ui = await mount(path.join(server.root, "alpha"), { width: 80, height: 24 });
     await ui.until("What should Fake do in alpha?");
     ui.keys.pressKey("x", { ctrl: true });
-    const frame = await ui.until("C-x-");
+    const frame = await ui.until("C-x …");
     // Every entry whole, state words included, and the last key still on screen: three columns, nine rows.
     expect(frame).toContain("o → reasoning (shown)");
     expect(frame).toContain("q → quit atui");
-    expect(frame).toContain("f → compact before send");
+    expect(frame).toContain("f → compact or full");
     // The old panel truncated mid-label into the next column ("reas...sibility (shown)g → glass mode").
     expect(frame).not.toMatch(/\.\.\./);
     expect(frame).not.toContain("sibility");
@@ -1027,7 +1028,7 @@ describe("atui's density at 80 columns", () => {
     // Each title at its budget (14 columns for three tabs on 80), ending in an ellipsis, never a hard cut.
     expect(strip).toContain("1 F a fairly long…");
     expect(strip).toContain("2 F another long…");
-    expect(strip).toContain("3 F the third lon…");
+    expect(strip).toContain("3 F the third…");
     expect(strip).not.toMatch(/\.\.\./);
     expect(strip.length).toBeLessThanOrEqual(80);
   }, 60_000);
@@ -1040,6 +1041,10 @@ describe("atui's density at 80 columns", () => {
     // The card arrives on the chat's own stream; the asking flag rides the overview, a beat behind.
     await ui.until(() => (ui?.app.overview().sessions.filter((s) => s.asking).length ?? 0) > 0, 20_000);
     const card = await ui.frame();
+    // The card's own semantics: Approve in the ok tone, Deny in danger — as the web card's buttons.
+    const spans = (await ui.spans()).flatMap((line) => line);
+    expect(spans.find((s) => s.text.includes("Approve"))?.fg.toInts().slice(0, 3)).toEqual([78, 209, 126]);
+    expect(spans.find((s) => s.text.includes("Deny"))?.fg.toInts().slice(0, 3)).toEqual([248, 113, 113]);
     // The rail (the panel is folded at this width) carries the asking mark under its `»`.
     expect(card.split("\n").slice(0, 3).map((line) => line.slice(0, 3)).join("")).toContain("▲");
     // Open the panel (it opens unfocused): the asking row is there, its meta the age alone — the old
@@ -1056,4 +1061,21 @@ describe("atui's density at 80 columns", () => {
     expect(folded.split("\n").slice(0, 3).map((line) => line.slice(0, 3)).join("")).toContain("▲");
     expect(folded.split("\n")[0]).not.toContain("Sessions");
   }, 45_000);
+
+  it("draws the empty screen inside the chat column, never over the pane's edges", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 80, height: 24 });
+    await ui.until("What should Fake do in alpha?");
+    // Open the panel at this width: the column is half the pane, where the splash once wrapped
+    // its tip out to the very edges. Inside the column, every line keeps its left margin.
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("b");
+    const open = await ui.until("C-x s to browse");
+    expect(open.split("\n").every((line) => line === "" || line.startsWith(" "))).toBe(true);
+    // A line without the panel's border is conversation: it keeps the panel's width of margin —
+    // the old splash wrapped its tip to the pane's very left edge.
+    for (const line of open.split("\n")) {
+      if (line.includes("│") || line.trim() === "") continue;
+      expect(line.length - line.trimStart().length).toBeGreaterThanOrEqual(26);
+    }
+  }, 30_000);
 });

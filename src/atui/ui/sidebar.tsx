@@ -203,8 +203,9 @@ export function Sidebar(p: {
                     <text selectable={false} fg={row.current ? t().accent : t().muted}>{`${isFolded(row) ? "▸" : "▾"} `}</text>
                     <text selectable={false} fg={t().accent} bg={t().surface2}>{` ${monogram(row.workspace.name)} `}</text>
                     <text selectable={false} fg={t().text} wrapMode="none">{` ${name()}`}</text><box flexGrow={1} />
-                    {needs() > 0 ? <text selectable={false} fg={t().warn}>{`${needs()}! `}</text> : null}
-                    {running() > 0 ? <text selectable={false} fg={t().accent}>{`${running()}· `}</text> : null}
+                    {/* The same marks the session rows teach: ▲ a session asking, ● one working. */}
+                    {needs() > 0 ? <text selectable={false} fg={t().warn}>{`▲${needs()} `}</text> : null}
+                    {running() > 0 ? <text selectable={false} fg={t().accent}>{`●${running()} `}</text> : null}
                     <text selectable={false} fg={t().muted}>{`${row.count} `}</text>
                   </box>
                 );

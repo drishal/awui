@@ -706,7 +706,7 @@ export function App(p: {
             />
           </Show>
           <box flexDirection="column" flexGrow={1}>
-            <TabBar />
+            <TabBar width={size().width - room()} />
             <box flexDirection="row" flexShrink={0} paddingLeft={2} paddingRight={2} border={["bottom"]} borderColor={t().border}>
               <text selectable={false} flexGrow={1} fg={t().text} wrapMode="none" truncate>
                 <b>{title()}</b>
@@ -733,7 +733,7 @@ export function App(p: {
                     fallback={
                       <Show
                         when={hasPrompt()}
-                        fallback={<Splash question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
+                        fallback={<Splash column={column()} question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
                       >
                         <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} column={column} />
                       </Show>

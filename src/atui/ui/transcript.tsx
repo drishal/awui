@@ -983,7 +983,9 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
   );
   const toneColor = (tone: TurnTone) => ({ live: t().accent, failed: t().danger, edited: t().ok, rendered: t().thinking, plain: t().text2 })[tone];
   return (
-    <box flexDirection="column" width={1} flexShrink={0}>
+    // Overlaid at the transcript's right edge rather than taking a layout column: the rows
+    // budget on the chat column alone, so a scrolled chat's last facts column is never clipped.
+    <box flexDirection="column" width={1} position="absolute" top={0} bottom={0} right={0}>
       <Index each={cells()}>
         {(cell, row) => (
           <text

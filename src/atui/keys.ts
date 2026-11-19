@@ -18,7 +18,7 @@ export const LEADER_KEYS: PrefixKey[] = [
   { key: "r", label: "+history", menu: true },
   { key: "i", label: "info tab" },
   { key: "n", label: "new chat" },
-  { key: "a", label: "new chat, new tab" },
+  { key: "a", label: "new tab" },
   { key: "]", label: "next tab" },
   { key: "[", label: "previous tab" },
   { key: "w", label: "close tab" },
@@ -27,16 +27,16 @@ export const LEADER_KEYS: PrefixKey[] = [
   { key: "t", label: "+thinking", menu: true },
   { key: "h", label: "+harness", menu: true },
   { key: "c", label: "compact context" },
-  { key: "z", label: "put undone files back" },
+  { key: "z", label: "restore undone files" },
   { key: "d", label: "review changes" },
   { key: "j", label: "delegated work" },
   { key: "k", label: "agents dashboard" },
   { key: "p", label: "active work panel" },
   { key: "u", label: "git panel" },
   { key: "x", label: "run a command" },
-  { key: "f", label: "compact before send" },
+  { key: "f", label: "compact or full" },
   { key: "e", label: "show all work" },
-  { key: "v", label: "vim navigation" },
+  { key: "v", label: "vim mode" },
   { key: "g", label: "glass mode" },
   { key: "l", label: "chat width" },
   { key: "q", label: "quit atui" },
@@ -46,12 +46,15 @@ export const LEADER_KEYS: PrefixKey[] = [
 export const LEADER_HELP = LEADER_KEYS.map((k) => `${k.key} ${k.label.replace(/^\+/, "")}`).join(" · ");
 
 /**
- * The width of one which-key column. Every `k → label (state)` fits it (the
- * unit test pins this), so a column never truncates a line into its neighbour
- * with the renderer's mid-word cut — and three columns fit an 80-column pane,
- * keeping the panel to nine rows instead of fourteen.
+ * The width of one which-key column. Every `k → label (state)` fits it with
+ * two columns to spare (the unit test pins this), so a full cell keeps air
+ * beside its neighbour and the renderer's mid-word cut never fires — and
+ * three columns fit an 80-column pane, keeping the panel to nine rows
+ * instead of fourteen.
  */
 export const WHICH_KEY_CELL = 26;
+/** The air a which-key line keeps inside its cell, so one column never reads as part of the next. */
+export const WHICH_KEY_AIR = 2;
 /** NORMAL mode's reminder as it starts, short enough for the composer's footer (the README has them all). */
 export const VIM_HELP = "j/k scroll · gg/G top/bottom · {/} turns · i type";
 

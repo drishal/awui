@@ -136,20 +136,29 @@ export function clipPath(path: string, width: number): string {
 }
 
 /**
- * A tab title's budget so `tabs` of them fit `width` columns. Each tab spends
- * about `per` columns on its number, harness mark, padding and separator, and
- * the strip keeps `edge` columns for its own padding and the active tab's ×;
- * a fixed cap instead left three long titles hard-cut with no ellipsis on an
- * 80-column pane.
+ * A tab title's budget so `tabs` of them fit `width` columns — the width of
+ * the strip itself, not the terminal (a strip inside an open side panel is
+ * that much narrower). Each tab spends about `per` columns on its number,
+ * harness mark, padding, separator and the unread dot, and the strip keeps `edge` columns
+ * for its own padding and the active tab's ×. When the strip cannot afford
+ * characters at all the budget is 0 and the tab shows its number and mark
+ * alone — every tab stays visible rather than a hard cut hiding the rest.
  */
-export function tabTitleChars(width: number, tabs: number, per = 10, edge = 8): number {
-  return Math.max(6, Math.floor((width - edge) / Math.max(1, tabs)) - per);
+export function tabTitleChars(width: number, tabs: number, per = 9, edge = 8): number {
+  return Math.max(0, Math.floor((width - edge) / Math.max(1, tabs)) - per);
 }
 
-/** A short line of text, cut with an ellipsis (never after a dangling space). */
+/** A short line of text, cut with an ellipsis at a word boundary (a single long word hard-cuts). */
 export function clip(text: string, width: number): string {
   const line = text.replace(/\s+/g, " ").trim();
-  return line.length > width ? `${line.slice(0, Math.max(0, width - 1)).trimEnd()}…` : line;
+  if (line.length <= width) return line;
+  const hard = line.slice(0, Math.max(0, width - 1)).trimEnd();
+  // A cut inside a word backs up to the word's start ("Ship the…", not "Ship the d…"), unless the
+  // cut holds no whole word at all — one token longer than the budget keeps the hard cut.
+  const next = line[hard.length] ?? "";
+  const wordStart = hard.lastIndexOf(" ") + 1;
+  if (next !== "" && next !== " " && wordStart > 0) return `${hard.slice(0, wordStart).trimEnd()}…`;
+  return `${hard}…`;
 }
 
 /** "now", "12m", "3h", "5d", or the date: how long ago a session was active. */

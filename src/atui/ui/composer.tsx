@@ -482,7 +482,7 @@ export function Composer(p: {
           </Show>
           <Show when={p.status.leader}>
             <text flexShrink={0} wrapMode="none" fg={t().accent}>
-              <b>{"C-x- "}</b>
+              <b>{"C-x … "}</b>
             </text>
           </Show>
           <Show when={app.conn() !== "connected" && app.conn() !== "idle"}>

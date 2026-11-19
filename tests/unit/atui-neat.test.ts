@@ -132,8 +132,8 @@ describe("atui rows, neat-render's way", () => {
     expect(todo).toMatchObject({ label: "Todo write", facts: ["1 line"] });
     const clipped = rowHead(todo, 3 + 2 + 1 + "1 line".length + 2, 73);
     expect(clipped.verb).toBe("Todo write");
-    expect(clipped.detail).toHaveLength(73 - (3 + 2 + 1 + "1 line".length + 2) - todo.label.length - 1);
-    expect(clipped.detail?.endsWith("…")).toBe(true);
+    // The cut lands inside "diff", so it backs up to the word: the ellipsis never splits a word.
+    expect(clipped.detail?.endsWith("Ship the…")).toBe(true);
     // The whole head line fits the column it was budgeted for.
     expect(`├─ ● ${clipped.verb} ${clipped.detail}  `.length + todo.facts.join(" · ").length).toBeLessThanOrEqual(73);
     // A target that fits is left alone, and a row with no target gets none.

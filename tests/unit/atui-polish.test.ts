@@ -9,7 +9,7 @@ import { breathe, flashAt, meter, mix, ramp, revealCut, revealStep, scrollPath, 
 import { contextTone, DARK } from "../../src/atui/theme.js";
 import { CARET, filetypeOf, taskBoxes, withCaret } from "../../src/atui/markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll } from "../../src/atui/minimap.js";
-import { LEADER_HELP, LEADER_KEYS, WHICH_KEY_CELL, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
+import { LEADER_HELP, LEADER_KEYS, WHICH_KEY_AIR, WHICH_KEY_CELL, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
 import { clip, tabTitleChars } from "../../src/atui/format.js";
 import { highlightPreview, wordDiff } from "../../src/atui/words.js";
 import { attachmentFrom, byteSize, clipboardTool, imageModeFrom, imagePathsFromPaste, imageProtocol, pickImageType } from "../../src/atui/images.js";
@@ -292,12 +292,13 @@ describe("keys", () => {
     expect(whichKeyColumns([1, 2], 10, 34)).toEqual([[1, 2]]);
   });
 
-  it("fits every which-key entry, state word included, in its column's cell", () => {
+  it("fits every which-key entry, state word included, in its column's cell with air to spare", () => {
     // The longest words the panel ever shows beside a key (app.tsx passes these).
     const states: Partial<Record<string, string>> = { o: "folded", b: "off", i: "on", e: "off", v: "on", g: "off" };
     for (const k of LEADER_KEYS) {
       const line = `${k.key} → ${k.label}${states[k.key] ? ` (${states[k.key]})` : ""}`;
-      expect(line.length).toBeLessThanOrEqual(WHICH_KEY_CELL);
+      // A full cell would butt against its neighbour; the air is what keeps the grid scannable.
+      expect(line.length).toBeLessThanOrEqual(WHICH_KEY_CELL - WHICH_KEY_AIR);
     }
     // Three columns on an 80-column pane (its padding off), so the panel is nine rows, not fourteen.
     expect(whichKeyColumns(LEADER_KEYS, 78, WHICH_KEY_CELL)).toHaveLength(3);
@@ -362,17 +363,18 @@ describe("quote and run in atui", () => {
 });
 
 describe("layout budgets", () => {
-  it("gives each tab a title budget that shrinks as tabs grow, never below a readable few", () => {
-    expect(tabTitleChars(80, 2)).toBe(26);
-    expect(tabTitleChars(80, 3)).toBe(14);
-    expect(tabTitleChars(80, 5)).toBe(6);
-    // Never negative, however many tabs or narrow the pane.
-    expect(tabTitleChars(80, 9)).toBe(6);
-    expect(tabTitleChars(140, 4)).toBe(23);
+  it("gives each tab a title budget that shrinks as tabs grow, falling to number and mark alone rather than overflowing", () => {
+    expect(tabTitleChars(80, 2)).toBe(27);
+    expect(tabTitleChars(80, 3)).toBe(15);
+    expect(tabTitleChars(80, 5)).toBe(5);
+    // The strip cannot afford characters at nine tabs: every tab stays visible with its number and mark.
+    expect(tabTitleChars(80, 9)).toBe(0);
+    expect(tabTitleChars(140, 4)).toBe(24);
   });
-  it("clips at a character, never leaving a space hanging before the ellipsis", () => {
+  it("clips at a word boundary, never a dangling space or a split word, and hard-cuts a single long word", () => {
     expect(clip("another long chat title", 14)).toBe("another long…");
     expect(clip("a fairly long chat title", 14)).toBe("a fairly long…");
+    expect(clip("the third long chat title", 14)).toBe("the third…");
     expect(clip("short", 20)).toBe("short");
     expect(clip("abcdef", 4)).toBe("abc…");
   });

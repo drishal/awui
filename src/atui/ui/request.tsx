@@ -41,8 +41,11 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
     answer(o.answer);
   };
 
+  // Approve carries the ok tone and Deny danger, exactly where the request is a plain approval;
+  // a question's own choices keep one voice.
+  const optionTone = (o: { label: string }): string | undefined =>
+    approval() && o.label === "Approve" ? t().ok : approval() && o.label === "Deny" ? t().danger : undefined;
   useKeyboard((key) => {
-    if (!p.active || key.defaultPrevented) return;
     if (key.name === "escape") {
       key.preventDefault();
       return answer({ kind: "cancel" });
@@ -118,7 +121,10 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
                 <text fg={i() === index() ? t().text : t().text2}>
                   <span style={{ fg: i() === index() ? t().accent : t().muted }}>{i() === index() ? "› " : "  "}</span>
                   <span style={{ fg: o.recommended ? t().accent : t().muted }}>{i() < 9 ? `${i() + 1}. ` : "   "}</span>
-                  {o.label}
+                  {/* The card's own semantics, as the web card's buttons: Approve in the ok tone, Deny in danger — only a true approval's options, never a question's choices. */}
+                  <Show when={optionTone(o)} fallback={o.label}>
+                    {(tone) => <span style={{ fg: tone() }}>{o.label}</span>}
+                  </Show>
                   <Show when={o.recommended}>
                     <span style={{ fg: t().accent }}>{"  recommended"}</span>
                   </Show>
