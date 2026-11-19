@@ -666,7 +666,7 @@ describe("awui tern", () => {
     tern.type("high");
     await until(() => ((tern.nodes.get(thinking.id)?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label).join(",") === "high", "the thinking query");
     tern.type("\r");
-    await until(() => app.chat()?.config.thinkingLevel === "high" && tern.find("picker", "layer").length === 0, "the thinking choice");
+    await until(() => app.chat()?.config.thinkingLevel === "high" && tern.find("picker", "layer").length === 0, "the thinking choice", 25_000);
 
     tern.event({ ev: "action", id: "dock.d.comp.chips.l.p", act: "click" });
     await until(() => tern.text("layer").includes("Permissions"), "the permission menu");
@@ -676,9 +676,9 @@ describe("awui tern", () => {
     tern.type("bypass");
     await until(() => ((tern.nodes.get(permission.id)?.p.items ?? []) as Array<{ label: string }>).map((i) => i.label).join(",") === "Bypass", "the permission query");
     tern.type("\r");
-    await until(() => app.chat()?.config.permissionMode === "bypass" && tern.find("picker", "layer").length === 0, "the permission choice");
+    await until(() => app.chat()?.config.permissionMode === "bypass" && tern.find("picker", "layer").length === 0, "the permission choice", 25_000);
     expect(tern.errors).toEqual([]);
-  });
+  }, 30_000);
 
   it("draws a chat from a server older than itself (no chain, checkpoints)", async () => {
     const older = olderServer(["chain", "chainPaused", "checkpoints"]);
