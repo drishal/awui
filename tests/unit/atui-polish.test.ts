@@ -10,7 +10,7 @@ import { contextTone, DARK } from "../../src/atui/theme.js";
 import { CARET, filetypeOf, taskBoxes, withCaret } from "../../src/atui/markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll } from "../../src/atui/minimap.js";
 import { LEADER_HELP, LEADER_KEYS, WHICH_KEY_AIR, WHICH_KEY_CELL, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
-import { clip, tabTitleChars } from "../../src/atui/format.js";
+import { clip, tabTitleChars, wrapLines } from "../../src/atui/format.js";
 import { highlightPreview, wordDiff } from "../../src/atui/words.js";
 import { attachmentFrom, byteSize, clipboardTool, imageModeFrom, imagePathsFromPaste, imageProtocol, pickImageType } from "../../src/atui/images.js";
 import { progressSequence, speaksProgress, terminalState } from "../../src/atui/terminal.js";
@@ -377,5 +377,11 @@ describe("layout budgets", () => {
     expect(clip("the third long chat title", 14)).toBe("the third…");
     expect(clip("short", 20)).toBe("short");
     expect(clip("abcdef", 4)).toBe("abc…");
+  });
+  it("wraps a paragraph to width as one line each, none longer", () => {
+    expect(wrapLines("It runs with its normal tools, as you, in this folder.", 46)).toEqual(["It runs with its normal tools, as you, in this", "folder."]);
+    expect(wrapLines("short", 40)).toEqual(["short"]);
+    expect(wrapLines("", 40)).toEqual([]);
+    expect(wrapLines("fix src/verylongpath", 40)).toEqual(["fix src/verylongpath"]);
   });
 });

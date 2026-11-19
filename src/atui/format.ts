@@ -153,12 +153,34 @@ export function clip(text: string, width: number): string {
   const line = text.replace(/\s+/g, " ").trim();
   if (line.length <= width) return line;
   const hard = line.slice(0, Math.max(0, width - 1)).trimEnd();
-  // A cut inside a word backs up to the word's start ("Ship the…", not "Ship the d…"), unless the
-  // cut holds no whole word at all — one token longer than the budget keeps the hard cut.
   const next = line[hard.length] ?? "";
   const wordStart = hard.lastIndexOf(" ") + 1;
-  if (next !== "" && next !== " " && wordStart > 0) return `${hard.slice(0, wordStart).trimEnd()}…`;
+  // Back up to the word's start only when that keeps most of the budget: a long first word
+  // ("fix src/verylongpath…") is worth more cut than lost to a near-empty prefix ("fix…").
+  if (next !== "" && next !== " " && wordStart > 0 && wordStart * 5 >= hard.length * 3) return `${hard.slice(0, wordStart).trimEnd()}…`;
   return `${hard}…`;
+}
+
+/**
+ * A paragraph as centred lines: pre-wrapped to `width` so each drawn line can be
+ * its own centred text. A text element that wraps itself is as wide as its longest
+ * line and hangs its shorter lines off that edge, which reads lopsided on a
+ * narrow pane — the empty screen draws each line on the same axis instead.
+ */
+export function wrapLines(text: string, width: number): string[] {
+  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (words.length === 0) return [];
+  const out: string[] = [];
+  let line = words[0] ?? "";
+  for (const word of words.slice(1)) {
+    if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
+    else {
+      out.push(line);
+      line = word;
+    }
+  }
+  out.push(line);
+  return out;
 }
 
 /** "now", "12m", "3h", "5d", or the date: how long ago a session was active. */
