@@ -975,3 +975,85 @@ describe("atui", () => {
     await ui.until("❯ board please");
   }, 60_000);
 });
+
+describe("atui's density at 80 columns", () => {
+  it("draws the which-key panel in columns that never cut into one another", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 80, height: 24 });
+    await ui.until("What should Fake do in alpha?");
+    ui.keys.pressKey("x", { ctrl: true });
+    const frame = await ui.until("C-x-");
+    // Every entry whole, state words included, and the last key still on screen: three columns, nine rows.
+    expect(frame).toContain("o → reasoning (shown)");
+    expect(frame).toContain("q → quit atui");
+    expect(frame).toContain("f → compact before send");
+    // The old panel truncated mid-label into the next column ("reas...sibility (shown)g → glass mode").
+    expect(frame).not.toMatch(/\.\.\./);
+    expect(frame).not.toContain("sibility");
+    for (const line of frame.split("\n")) if (line.includes(" → ")) expect(line.length).toBeLessThanOrEqual(80);
+    await ui.escape();
+  }, 30_000);
+
+  it("ends a too-long tool target with an ellipsis, not a mid-word cut", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 80, height: 44 });
+    await ui.type("showcase tool edit please");
+    ui.keys.pressEnter();
+    await idle(ui);
+    const frame = await ui.until("Changed 3 files");
+    const row = frame.split("\n").find((line) => line.includes("Todo write"));
+    expect(row).toBeDefined();
+    expect(row).toMatch(/Todo write .*…/);
+    expect(row).not.toMatch(/\.\.\./);
+    expect((row ?? "").length).toBeLessThanOrEqual(80);
+    // A target that fits is left whole.
+    expect(frame).toContain("Read src/net.ts:1-20");
+  }, 45_000);
+
+  it("budgets tab titles so three long ones fit the strip", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 80, height: 30 });
+    await ui.type("a fairly long chat title to test the tab strip's budget");
+    ui.keys.pressEnter();
+    await idle(ui);
+    for (const text of ["another long chat title for the second tab", "the third long chat title in the strip"]) {
+      ui.keys.pressKey("x", { ctrl: true });
+      ui.keys.pressKey("a");
+      await ui.until("What should Fake do in alpha?");
+      await ui.type(text);
+      ui.keys.pressEnter();
+      await idle(ui);
+    }
+    await ui.until(() => (ui?.app.tabs().tabs.length ?? 0) === 3);
+    const bar = await ui.frame();
+    const strip = bar.split("\n")[0] ?? "";
+    // Each title at its budget (14 columns for three tabs on 80), ending in an ellipsis, never a hard cut.
+    expect(strip).toContain("1 F a fairly long…");
+    expect(strip).toContain("2 F another long…");
+    expect(strip).toContain("3 F the third lon…");
+    expect(strip).not.toMatch(/\.\.\./);
+    expect(strip.length).toBeLessThanOrEqual(80);
+  }, 60_000);
+
+  it("marks a session that needs you on the folded rail, and keeps one column of air beside its title", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 80, height: 30 });
+    await ui.type("please ask first");
+    ui.keys.pressEnter();
+    await ui.until("Waiting for approval");
+    // The card arrives on the chat's own stream; the asking flag rides the overview, a beat behind.
+    await ui.until(() => (ui?.app.overview().sessions.filter((s) => s.asking).length ?? 0) > 0, 20_000);
+    const card = await ui.frame();
+    // The rail (the panel is folded at this width) carries the asking mark under its `»`.
+    expect(card.split("\n").slice(0, 3).map((line) => line.slice(0, 3)).join("")).toContain("▲");
+    // Open the panel (it opens unfocused): the asking row is there, its meta the age alone — the old
+    // row put a second "!" beside the `▲` the prefix already shows.
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("b");
+    const open = await ui.until("C-x s to browse");
+    expect(open).toMatch(/▲ please ask first\s+now/);
+    expect(open).not.toContain("! now");
+    // Folded again, the mark is still the only thing that asks for you.
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("b");
+    const folded = await ui.until("Waiting for approval");
+    expect(folded.split("\n").slice(0, 3).map((line) => line.slice(0, 3)).join("")).toContain("▲");
+    expect(folded.split("\n")[0]).not.toContain("Sessions");
+  }, 45_000);
+});

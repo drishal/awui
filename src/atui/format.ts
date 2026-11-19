@@ -135,10 +135,21 @@ export function clipPath(path: string, width: number): string {
   return `…${path.slice(-Math.max(0, width - 1))}`;
 }
 
-/** A short line of text, cut with an ellipsis. */
+/**
+ * A tab title's budget so `tabs` of them fit `width` columns. Each tab spends
+ * about `per` columns on its number, harness mark, padding and separator, and
+ * the strip keeps `edge` columns for its own padding and the active tab's ×;
+ * a fixed cap instead left three long titles hard-cut with no ellipsis on an
+ * 80-column pane.
+ */
+export function tabTitleChars(width: number, tabs: number, per = 10, edge = 8): number {
+  return Math.max(6, Math.floor((width - edge) / Math.max(1, tabs)) - per);
+}
+
+/** A short line of text, cut with an ellipsis (never after a dangling space). */
 export function clip(text: string, width: number): string {
   const line = text.replace(/\s+/g, " ").trim();
-  return line.length > width ? `${line.slice(0, Math.max(0, width - 1))}…` : line;
+  return line.length > width ? `${line.slice(0, Math.max(0, width - 1)).trimEnd()}…` : line;
 }
 
 /** "now", "12m", "3h", "5d", or the date: how long ago a session was active. */

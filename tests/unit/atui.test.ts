@@ -94,7 +94,8 @@ describe("atui formatting", () => {
     const claude: LimitAccount = { id: "claude", source: "Claude Code", provider: "Anthropic", windows: [{ label: "5 hours", used: 0.15, resetsAt: null }, { label: "7 days", used: 0.55, resetsAt: null }], limited: false, at: 0 };
     expect(accountName(claude)).toBe("Claude");
     expect(claude.windows.map((w) => windowLabel(w.label))).toEqual(["5h", "7d"]);
-    expect(clip("a  long\n line", 8)).toBe("a long …");
+    // Whitespace collapses to single spaces and the cut never leaves one hanging before the ellipsis.
+    expect(clip("a  long\n line", 8)).toBe("a long…");
     // A path keeps its end, cut at a folder: the project's own name is the part that tells two apart.
     expect(clipPath("/tmp/atui-scratch/workspaces/alpha", 24)).toBe("…/workspaces/alpha");
     expect(clipPath("/tmp/atui-scratch/workspaces/alpha", 14)).toBe("…/alpha");

@@ -21,7 +21,7 @@ import { clip, fileUrl, foldLabel, outputTail, unifiedDiff } from "../format.js"
 import { easeOut, flashAt, mix, unrollCounts } from "../fx.js";
 import { filetypeOf, taskBoxes, withCaret } from "../markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll, turnTone, type TurnTone } from "../minimap.js";
-import { latestThoughtLine, neatRow, sigmaFacts, thinkingMeta, workRuns, type WorkRun } from "../neat.js";
+import { latestThoughtLine, neatRow, rowHead, sigmaFacts, thinkingMeta, workRuns, type WorkRun } from "../neat.js";
 import { accentOf, categoryTone, type Theme } from "../theme.js";
 import { highlightPreview } from "../words.js";
 import { useAtui, useTheme } from "./context.js";
@@ -386,12 +386,14 @@ function AgentTree(p: { runs: SubagentRun[] }) {
  * An edit shows its first changed lines under the outcome, a delegation its
  * agents as a tree, and a path links to its file. A click frames it.
  */
-function ToolRow(p: { item: ToolItem; workspace: string }) {
+function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
   const t = useTheme();
   const [open, setOpen] = createSignal(false);
   const row = createMemo(() => neatRow(p.item, p.workspace));
   const preview = createMemo(() => (row().diff ? highlightPreview(row().diff ?? []) : null));
   const running = () => p.item.status === "running";
+  // The line's own head, budgeted to the column: a long target ends in `…` rather than the renderer's mid-word cut.
+  const head = createMemo(() => rowHead(row(), 2 + row().glue.length + (running() ? " · running…".length : 0), p.column));
   const failed = () => p.item.status === "error";
   const bad = (f: string) => failed() || /^(?:[1-9]\d* failed|exit [1-9])/.test(f);
   const factColor = (f: string) => (bad(f) ? t().danger : t().muted);
@@ -406,16 +408,16 @@ function ToolRow(p: { item: ToolItem; workspace: string }) {
       <Show when={row().note}>
         {(note) => (
           <text fg={t().muted} wrapMode="none" truncate>
-            <i>{`# ${note()}`}</i>
+            <i>{`# ${clip(note(), p.column - 3)}`}</i>
           </text>
         )}
       </Show>
       <box flexDirection="column" onMouseDown={() => setOpen(!open())}>
         <text wrapMode="none" truncate>
           <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
-          <b style={{ fg: t().text }}>{row().label}</b>
+          <b style={{ fg: t().text }}>{head().verb}</b>
           <Show when={!wraps()}>
-            <Show when={row().detail}>
+            <Show when={head().detail}>
               {(d) => (
                 <Show when={href()} fallback={<span style={{ fg: t().text2 }}>{`${row().glue}${d()}`}</span>}>
                   {(url) => (
@@ -523,7 +525,7 @@ function ToolRow(p: { item: ToolItem; workspace: string }) {
  * shape, so there is no `└` line, and no diff under an edit). A running
  * command's last lines, or the call opened by a click, hang on the trunk.
  */
-function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: boolean }) {
+function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: boolean; column: number }) {
   const t = useTheme();
   const [open, setOpen] = createSignal(false);
   const row = createMemo(() => neatRow(p.item, p.workspace));
@@ -533,13 +535,16 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
   const href = () => (p.item.paths[0] ? fileUrl(p.item.paths[0], p.workspace) : null);
   // A remark above the call takes the top corner, so the call under it joins the trunk with a tee.
   const fork = () => (p.last ? "└─ " : p.first && !row().note ? "┌─ " : "├─ ");
+  // Budgeted like ToolRow's head, with the tree's own parts: connector, bullet, the
+  // running marker or the right-aligned facts block and the two-column gap before it.
+  const head = createMemo(() => rowHead(row(), fork().length + 3 + (running() ? " · running…".length : row().facts.length > 0 ? row().facts.join(" · ").length + 2 : 0), p.column));
   return (
     <box flexDirection="column">
       <Show when={row().note}>
         {(note) => (
           <text wrapMode="none" truncate>
             <span style={{ fg: t().border }}>{p.first ? "┌  " : "│  "}</span>
-            <i style={{ fg: t().muted }}>{`# ${note()}`}</i>
+            <i style={{ fg: t().muted }}>{`# ${clip(note(), p.column - 5)}`}</i>
           </text>
         )}
       </Show>
@@ -547,8 +552,8 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
         <text flexShrink={1} minWidth={0} wrapMode="none" truncate>
           <span style={{ fg: t().border }}>{fork()}</span>
           <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
-          <b style={{ fg: t().text }}>{row().label}</b>
-          <Show when={row().detail}>
+          <b style={{ fg: t().text }}>{head().verb}</b>
+          <Show when={head().detail}>
             {(d) => (
               <Show when={href()} fallback={<span style={{ fg: t().link }}>{` ${d()}`}</span>}>
                 {(url) => (
@@ -626,12 +631,12 @@ function Request(p: { item: RequestItem }) {
 }
 
 /** One item of the work. `thoughtOnly`: an assistant item's text is a reply drawn after the fold, so only its thought is here. */
-function ProcessItem(p: { item: ChatItem; workspace: string; thoughtOnly?: boolean }) {
+function ProcessItem(p: { item: ChatItem; workspace: string; column: number; thoughtOnly?: boolean }) {
   const app = useAtui();
   const t = useTheme();
   return (
     <Switch>
-      <Match when={p.item.kind === "tool" && (p.item as ToolItem)}>{(item) => <ToolRow item={item()} workspace={p.workspace} />}</Match>
+      <Match when={p.item.kind === "tool" && (p.item as ToolItem)}>{(item) => <ToolRow item={item()} workspace={p.workspace} column={p.column} />}</Match>
       <Match when={p.item.kind === "assistant" && (p.item as AssistantItem)}>
         {(item) => (
           <box flexDirection="column">
@@ -699,7 +704,7 @@ const UNROLL_MS = 35;
  * frames rather than appear at once; rows that arrive later, as a run goes on,
  * just appear.
  */
-function WorkItems(p: { items: ChatItem[]; answerAt: number; answer: AssistantItem | null; workspace: string; thoughtOnly?: boolean }) {
+function WorkItems(p: { items: ChatItem[]; answerAt: number; answer: AssistantItem | null; workspace: string; column: number; thoughtOnly?: boolean }) {
   const app = useAtui();
   const rows = createMemo(() => {
     const cut = p.answerAt < 0 ? p.items.length : p.answerAt;
@@ -728,7 +733,7 @@ function WorkItems(p: { items: ChatItem[]; answerAt: number; answer: AssistantIt
             <Match when={run().kind === "tree" && (run() as Extract<WorkRun<Row>, { kind: "tree" }>).calls}>
               {(calls) => (
                 <box flexDirection="column">
-                  <Index each={calls()}>{(call, i) => <TreeRow item={call()} workspace={p.workspace} first={i === 0} last={i === calls().length - 1} />}</Index>
+                  <Index each={calls()}>{(call, i) => <TreeRow item={call()} workspace={p.workspace} first={i === 0} last={i === calls().length - 1} column={p.column} />}</Index>
                 </box>
               )}
             </Match>
@@ -743,7 +748,7 @@ function WorkItems(p: { items: ChatItem[]; answerAt: number; answer: AssistantIt
                       </box>
                     )}
                   </Match>
-                  <Match when={"item" in row() && (row() as { item: ChatItem }).item}>{(item) => <ProcessItem item={item()} workspace={p.workspace} thoughtOnly={p.thoughtOnly} />}</Match>
+                  <Match when={"item" in row() && (row() as { item: ChatItem }).item}>{(item) => <ProcessItem item={item()} workspace={p.workspace} column={p.column} thoughtOnly={p.thoughtOnly} />}</Match>
                 </Switch>
               )}
             </Match>
@@ -760,7 +765,7 @@ function WorkItems(p: { items: ChatItem[]; answerAt: number; answer: AssistantIt
  * sits inline), each reply after it, as the web UI draws it. While the turn
  * runs on after a reply, a live fold follows for what comes next.
  */
-function SegmentedWork(p: { turn: Turn; segments: WorkSegment[]; open: boolean; onToggle: () => void; workspace: string; fade?: number }) {
+function SegmentedWork(p: { turn: Turn; segments: WorkSegment[]; open: boolean; onToggle: () => void; workspace: string; column: number; fade?: number }) {
   const t = useTheme();
   const all = createMemo(() => {
     // A live fold follows the last reply for what comes next — unless the work after the answer
@@ -782,14 +787,14 @@ function SegmentedWork(p: { turn: Turn; segments: WorkSegment[]; open: boolean; 
         <>
           <Switch>
             <Match when={shape(n) === "thought"}>
-              <WorkItems items={segment().items} answerAt={segment().answerAt} answer={p.turn.answer} workspace={p.workspace} thoughtOnly />
+              <WorkItems items={segment().items} answerAt={segment().answerAt} answer={p.turn.answer} workspace={p.workspace} column={p.column} thoughtOnly />
             </Match>
             <Match when={shape(n) === "fold"}>
               <Show when={!p.open || live(n)}>
                 <Fold turn={p.turn} open={p.open} onToggle={p.onToggle} part={{ counts: segment().counts, place: place(n) }} fade={p.fade} />
               </Show>
               <Show when={p.open && segment().items.length > 0}>
-                <WorkItems items={segment().items} answerAt={segment().answerAt} answer={p.turn.answer} workspace={p.workspace} thoughtOnly />
+                <WorkItems items={segment().items} answerAt={segment().answerAt} answer={p.turn.answer} workspace={p.workspace} column={p.column} thoughtOnly />
               </Show>
             </Match>
           </Switch>
@@ -890,12 +895,12 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
               <Fold turn={p.turn()} open={p.open} onToggle={p.onToggle} part={afterWork() ? { counts: workCounts(p.turn().process), place: "first" } : undefined} fade={fade()} />
             </Show>
             <Show when={p.open}>
-              <WorkItems items={p.turn().process} answerAt={p.turn().answerAt} answer={p.turn().answer} workspace={p.workspace} />
+              <WorkItems items={p.turn().process} answerAt={p.turn().answerAt} answer={p.turn().answer} workspace={p.workspace} column={p.column} />
             </Show>
           </Show>
         }
       >
-        <SegmentedWork turn={p.turn()} segments={segments()} open={p.open} onToggle={p.onToggle} workspace={p.workspace} fade={fade()} />
+        <SegmentedWork turn={p.turn()} segments={segments()} open={p.open} onToggle={p.onToggle} workspace={p.workspace} column={p.column} fade={fade()} />
       </Show>
       <Show when={p.turn().answer}>{(a) => <Answer item={a()} />}</Show>
       <Show when={afterWork()}>
@@ -905,7 +910,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
               <Fold turn={p.turn()} open={p.open} onToggle={p.onToggle} part={{ counts: segment().counts, place: "last" }} fade={fade()} />
             </Show>
             <Show when={p.open}>
-              <WorkItems items={segment().items} answerAt={-1} answer={null} workspace={p.workspace} />
+              <WorkItems items={segment().items} answerAt={-1} answer={null} workspace={p.workspace} column={p.column} />
             </Show>
           </>
         )}

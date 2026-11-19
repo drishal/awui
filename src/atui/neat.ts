@@ -14,6 +14,7 @@
 //
 // Worked out apart from the drawing so it can be tested.
 import type { AssistantItem, ChatItem, ToolItem } from "../shared/protocol.js";
+import { clip } from "./format.js";
 import { relativePath, type Turn } from "../web/turns.js";
 import { toolFacts } from "../web/tool-facts.js";
 
@@ -189,6 +190,20 @@ export function neatRow(item: ToolItem, workspace: string): NeatRow {
       return { label: humanise(item.name), glue: " ", detail: item.summary, facts: outcome(lines ? [plural(lines, "line")] : []) };
     }
   }
+}
+
+/**
+ * A call's head line within `budget` columns: the verb kept whole, its target
+ * cut with an ellipsis once it would not fit. `spent` is everything else the
+ * line carries as the caller draws it — bullet and connector, the separator,
+ * a running marker, the facts block with its gap, a column of air — so the
+ * target keeps exactly what is left. Rows clip their own target because the
+ * renderer's truncate cuts the middle out of a word ("Normaliz...ness's
+ * diff, Ship the diff view"), which reads as garbage on an 80-column pane.
+ */
+export function rowHead(row: NeatRow, spent: number, budget: number): { verb: string; detail: string | null } {
+  const room = Math.max(6, budget - spent - row.label.length - 1);
+  return { verb: row.label, detail: row.detail ? clip(row.detail, room) : null };
 }
 
 /** Short words a tool's name spells in capitals (`lsp_diagnostics` → `LSP diagnostics`). */

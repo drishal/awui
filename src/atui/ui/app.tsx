@@ -691,7 +691,7 @@ export function App(p: {
     <AtuiContext.Provider value={app}>
       <box flexDirection="column" width="100%" height="100%">
         <box flexDirection="row" flexGrow={1}>
-          <Show when={sidebar()} fallback={<SidebarRail onExpand={() => setSidebar(true)} />}>
+          <Show when={sidebar()} fallback={<SidebarRail asking={app.overview().sessions.filter((s) => s.asking).length} onExpand={() => setSidebar(true)} />}>
             <Sidebar
               active={focus() === "sidebar" && !dialog()}
               width={sideWidth()}

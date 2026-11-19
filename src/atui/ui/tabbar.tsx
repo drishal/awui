@@ -4,18 +4,18 @@
 // click brings one, × closes the shown one. C-x ] and C-x [ step through them,
 // C-x w closes, C-x a opens a new chat in a new tab.
 import { Index, Show } from "solid-js";
-import { clip } from "../format.js";
+import { clip, tabTitleChars } from "../format.js";
 import { mix } from "../fx.js";
 import { harnessGlyph } from "../neat.js";
 import { accentOf } from "../theme.js";
 import { useAtui, useTheme } from "./context.js";
-
-/** A tab's title gets this many characters at most. */
-const TITLE_CHARS = 24;
-
+import { useTerminalDimensions } from "@opentui/solid";
 export function TabBar() {
   const app = useAtui();
   const t = useTheme();
+  const size = useTerminalDimensions();
+  // Each tab's title takes what the strip can spare it, so long titles end in `…` instead of running off the pane.
+  const chars = () => tabTitleChars(size().width, app.tabs().tabs.length);
   const accent = (harnessId: string) => accentOf(t(), app.boot()?.harnesses.find((h) => h.id === harnessId)?.accent);
   return (
     <Show when={app.tabs().tabs.length >= 2}>
@@ -29,7 +29,7 @@ export function TabBar() {
                   <text wrapMode="none" fg={active() ? t().text : t().muted}>
                     <span style={{ fg: t().muted }}>{i < 9 ? `${i + 1} ` : ""}</span>
                     <span style={{ fg: accent(tab().harnessId) }}>{`${harnessGlyph(tab().harnessId)} `}</span>
-                    {active() ? <b>{clip(tab().title || "New chat", TITLE_CHARS)}</b> : clip(tab().title || "New chat", TITLE_CHARS)}
+                    {active() ? <b>{clip(tab().title || "New chat", chars())}</b> : clip(tab().title || "New chat", chars())}
                     <Show when={tab().unread}>
                       <span style={{ fg: t().accent }}>{" ●"}</span>
                     </Show>

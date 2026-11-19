@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantItem, ToolItem } from "../../src/shared/protocol.js";
-import { harnessGlyph, humanise, latestThoughtLine, neatRow, shortPath, sigmaFacts, splitComments, thinkingMeta, thoughtTitle, thoughtTokens, workRuns } from "../../src/atui/neat.js";
+import { harnessGlyph, humanise, latestThoughtLine, neatRow, rowHead, shortPath, sigmaFacts, splitComments, thinkingMeta, thoughtTitle, thoughtTokens, workRuns } from "../../src/atui/neat.js";
 
 const tool = (over: Partial<ToolItem>): ToolItem => ({
   kind: "tool",
@@ -124,5 +124,21 @@ describe("atui rows, neat-render's way", () => {
     expect(shortPath("/home/me/notes.md", "/w", "/home/me")).toBe("~/notes.md");
     expect(harnessGlyph("pi")).toBe("π");
     expect(harnessGlyph("fake")).toBe("F");
+  });
+
+  it("budgets a row's head line: a long target ends in an ellipsis, never a mid-word cut", () => {
+    // A todo call's summary runs long; on a 73-column pane with the facts block kept its room.
+    const todo = neatRow(tool({ name: "todo_write", category: "other", summary: "Done: Normalize each harness's diff, Ship the diff view", output: "Updated" }), "/w");
+    expect(todo).toMatchObject({ label: "Todo write", facts: ["1 line"] });
+    const clipped = rowHead(todo, 3 + 2 + 1 + "1 line".length + 2, 73);
+    expect(clipped.verb).toBe("Todo write");
+    expect(clipped.detail).toHaveLength(73 - (3 + 2 + 1 + "1 line".length + 2) - todo.label.length - 1);
+    expect(clipped.detail?.endsWith("…")).toBe(true);
+    // The whole head line fits the column it was budgeted for.
+    expect(`├─ ● ${clipped.verb} ${clipped.detail}  `.length + todo.facts.join(" · ").length).toBeLessThanOrEqual(73);
+    // A target that fits is left alone, and a row with no target gets none.
+    const read = rowHead(neatRow(tool({ name: "read", args: JSON.stringify({ path: "/w/src/a.ts", offset: 1, limit: 20 }), paths: ["/w/src/a.ts"], output: "a\nb\n" }), "/w"), 2 + 1, 73);
+    expect(read.detail).toBe("src/a.ts:1-20");
+    expect(rowHead({ label: "Bash", glue: " ", facts: [] }, 3, 73).detail).toBeNull();
   });
 });

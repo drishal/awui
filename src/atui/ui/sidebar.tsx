@@ -33,11 +33,16 @@ function monogram(name: string): string {
   return (name.trim().match(/[\p{L}\p{N}]/u)?.[0] ?? "·").toUpperCase();
 }
 
-export function SidebarRail(p: { onExpand: () => void }) {
+export function SidebarRail(p: { asking: number; onExpand: () => void }) {
   const t = useTheme();
+  // Folded, the rail is the only place a session that needs you can show, so it carries the panel's own asking mark.
+  const mark = () => (p.asking === 1 ? "▲" : p.asking > 9 ? "▲+" : `▲${p.asking}`);
   return (
     <box flexDirection="column" width={RAIL_WIDTH} flexShrink={0} border={["right"]} borderColor={t().border} alignItems="center" onMouseDown={p.onExpand}>
       <text selectable={false} fg={t().accent}>»</text>
+      <Show when={p.asking > 0}>
+        <text selectable={false} wrapMode="none" fg={mix(mix(t().bg, t().warn, 0.35), t().warn, breathe(tick(), BREATH_TICKS))}>{mark()}</text>
+      </Show>
     </box>
   );
 }
@@ -151,7 +156,9 @@ export function Sidebar(p: {
   const breath = () => breathe(tick(), BREATH_TICKS);
   const askingTone = () => mix(mix(t().bg, t().warn, 0.35), t().warn, breath());
   const herdrTone = (s: ProjectSession) => (s.herdr?.status === "blocked" ? askingTone() : s.herdr?.status === "working" ? t().accent : t().muted);
-  const meta = (row: Extract<SidebarRow, { kind: "session" }>) => `${row.s.asking ? "!" : isBusy(row.s.status) ? "" : row.s.liveChatId ? "" : ""} ${row.project ? `${clip(row.project, 10)} ` : ""}${age(row.s.updatedAt)}`;
+  // Right of the title: the other project's name when the row is not this one's, then the age. The asking
+  // mark is the row's own `▲`; a blank or a second "!" here only pushed the title off its budget.
+  const meta = (row: Extract<SidebarRow, { kind: "session" }>) => `${row.project ? `${clip(row.project, 10)} ` : ""}${age(row.s.updatedAt)}`;
   const Tab = (q: { id: SidebarTab; label: string }) => (
     <text selectable={false} flexShrink={0} fg={p.tab === q.id ? t().text : t().muted} onMouseDown={() => p.onTab(q.id)}>
       {p.tab === q.id ? <b>{q.label}</b> : q.label}
@@ -207,7 +214,7 @@ export function Sidebar(p: {
               return (
                 <box flexDirection="row" backgroundColor={chosen() ? t().selection : isActive(s) ? t().surface2 : undefined} onMouseDown={() => { setSelection(keyOf(row)); void app.openSession(s).then(p.onOpened); }}>
                   <text selectable={false} flexShrink={0} fg={s.asking ? askingTone() : isBusy(s.status) ? t().accent : s.liveChatId ? t().ok : s.herdr ? herdrTone(s) : t().muted}>{s.asking ? "▲ " : isBusy(s.status) ? `${spinnerFor(s.harnessId)[tick() % spinnerFor(s.harnessId).length]} ` : s.liveChatId ? "● " : s.herdr ? "◆ " : "· "}</text>
-                  <text selectable={false} flexGrow={1} fg={s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(s) ? t().text : t().text2} wrapMode="none">{clip(s.title || "New chat", width() - rowMeta().length)}</text>
+                  <text selectable={false} flexGrow={1} fg={s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(s) ? t().text : t().text2} wrapMode="none">{clip(s.title || "New chat", width() - rowMeta().length - 1)}</text>
                   <text selectable={false} flexShrink={0} fg={t().muted}>{rowMeta()}</text>
                 </box>
               );

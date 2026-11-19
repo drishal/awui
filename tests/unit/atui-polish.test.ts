@@ -9,7 +9,8 @@ import { breathe, flashAt, meter, mix, ramp, revealCut, revealStep, scrollPath, 
 import { contextTone, DARK } from "../../src/atui/theme.js";
 import { CARET, filetypeOf, taskBoxes, withCaret } from "../../src/atui/markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll } from "../../src/atui/minimap.js";
-import { LEADER_HELP, LEADER_KEYS, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
+import { LEADER_HELP, LEADER_KEYS, WHICH_KEY_CELL, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
+import { clip, tabTitleChars } from "../../src/atui/format.js";
 import { highlightPreview, wordDiff } from "../../src/atui/words.js";
 import { attachmentFrom, byteSize, clipboardTool, imageModeFrom, imagePathsFromPaste, imageProtocol, pickImageType } from "../../src/atui/images.js";
 import { progressSequence, speaksProgress, terminalState } from "../../src/atui/terminal.js";
@@ -290,6 +291,18 @@ describe("keys", () => {
     expect(whichKeyColumns([1, 2, 3, 4, 5], 100, 34)).toEqual([[1, 2, 3], [4, 5]]);
     expect(whichKeyColumns([1, 2], 10, 34)).toEqual([[1, 2]]);
   });
+
+  it("fits every which-key entry, state word included, in its column's cell", () => {
+    // The longest words the panel ever shows beside a key (app.tsx passes these).
+    const states: Partial<Record<string, string>> = { o: "folded", b: "off", i: "on", e: "off", v: "on", g: "off" };
+    for (const k of LEADER_KEYS) {
+      const line = `${k.key} → ${k.label}${states[k.key] ? ` (${states[k.key]})` : ""}`;
+      expect(line.length).toBeLessThanOrEqual(WHICH_KEY_CELL);
+    }
+    // Three columns on an 80-column pane (its padding off), so the panel is nine rows, not fourteen.
+    expect(whichKeyColumns(LEADER_KEYS, 78, WHICH_KEY_CELL)).toHaveLength(3);
+    expect(whichKeyGrid(LEADER_KEYS.length, 78, WHICH_KEY_CELL).rows).toBeLessThanOrEqual(9);
+  });
 });
 
 describe("the terminal's title and progress", () => {
@@ -345,5 +358,22 @@ describe("quote and run in atui", () => {
     expect(runStatus({ exitCode: null, timedOut: true })).toBe("timed out");
     expect(runStatus({ exitCode: null, timedOut: false })).toBe("stopped");
     expect(runForMessage("ls", "a\nb\n", "exit 0")).toBe("```\n$ ls\na\nb\n```\n(exit 0)");
+  });
+});
+
+describe("layout budgets", () => {
+  it("gives each tab a title budget that shrinks as tabs grow, never below a readable few", () => {
+    expect(tabTitleChars(80, 2)).toBe(26);
+    expect(tabTitleChars(80, 3)).toBe(14);
+    expect(tabTitleChars(80, 5)).toBe(6);
+    // Never negative, however many tabs or narrow the pane.
+    expect(tabTitleChars(80, 9)).toBe(6);
+    expect(tabTitleChars(140, 4)).toBe(23);
+  });
+  it("clips at a character, never leaving a space hanging before the ellipsis", () => {
+    expect(clip("another long chat title", 14)).toBe("another long…");
+    expect(clip("a fairly long chat title", 14)).toBe("a fairly long…");
+    expect(clip("short", 20)).toBe("short");
+    expect(clip("abcdef", 4)).toBe("abc…");
   });
 });
