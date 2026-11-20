@@ -6,7 +6,8 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { MarkdownRenderable, RGBA, TextAttributes } from "@opentui/core";
 import path from "node:path";
-import { CARET } from "../../src/atui/markdown.js";
+/** The blinking stream cursor atui used to draw; it is gone, like in opencode, pi and Claude Code. */
+const OLD_CARET = "▍";
 import { contextTone } from "../../src/atui/theme.js";
 import { mount, startServer, wait, type Mounted } from "./helpers.js";
 
@@ -40,6 +41,16 @@ const markdownContents = (root: { getChildren?: () => unknown[] }): string[] => 
   const out: string[] = [];
   const walk = (node: { getChildren?: () => unknown[] }) => {
     if (node instanceof MarkdownRenderable) out.push(node.content);
+    for (const child of node.getChildren?.() ?? []) walk(child as { getChildren?: () => unknown[] });
+  };
+  walk(root);
+  return out;
+};
+
+const markdownHeights = (root: { getChildren?: () => unknown[] }): number[] => {
+  const out: number[] = [];
+  const walk = (node: { getChildren?: () => unknown[] }) => {
+    if (node instanceof MarkdownRenderable) out.push(node.height);
     for (const child of node.getChildren?.() ?? []) walk(child as { getChildren?: () => unknown[] });
   };
   walk(root);
@@ -458,52 +469,55 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await ui.until(() => ui?.app.chat()?.status === "running");
     await ui.until("Steer the agent");
-    // Where the answer is being written, a cursor blinks.
-    await ui.until("▍");
+    // A live turn shows in the Working status, not a cursor in the text.
+    await ui.until("Working");
     await ui.escape();
     await ui.until("Esc again to stop");
     await ui.escape();
     await ui.until("■ Stopped", 15_000);
     await idle(ui);
-    expect(await ui.frame()).not.toContain("▍");
+    expect(await ui.frame()).not.toContain(OLD_CARET);
     ui.keys.pressKey("c", { ctrl: true });
     await ui.until("C-c again to quit");
     ui.keys.pressKey("c", { ctrl: true });
     await ui.until(() => ui?.exited() === true);
   }, 30_000);
 
-  it("keeps the streaming cursor on only the block still being written", async () => {
+  it("draws no cursor while streaming or after, and does not reflow between identical frames", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 60 });
     await ui.type("slow stream please");
     ui.keys.pressEnter();
     await ui.until(() => Boolean(assistant(ui!)?.thinking.trim()), 15_000);
-    let sawCaret = false;
-    let sawThoughtWithoutCaret = false;
+    let sawWorking = false;
+    let sawText = false;
+    let pairs = 0;
     const until = Date.now() + 8_000;
     while (Date.now() < until) {
-      await ui.frame();
-      const item = assistant(ui);
       const contents = markdownContents(ui.renderer.root);
-      const carets = contents.reduce((n, content) => n + (content.split(CARET).length - 1), 0);
-      expect(carets).toBeLessThanOrEqual(1);
-      if (carets === 1) sawCaret = true;
-      if (item?.text) {
-        const thought = contents.find((content) => content.includes(item.thinking.trim()));
-        if (thought !== undefined) {
-          expect(thought.includes(CARET)).toBe(false);
-          sawThoughtWithoutCaret = true;
-        }
+      const frame = await ui.frame();
+      expect(contents.join("\n")).not.toContain(OLD_CARET);
+      expect(frame).not.toContain(OLD_CARET);
+      if (frame.includes("Working")) sawWorking = true;
+      const item = assistant(ui);
+      if (item?.text) sawText = true;
+      // Two frames 250 ms apart (more than a blink's half-period) with the
+      // same text must lay out the same: nothing toggles on a timer.
+      const before = markdownContents(ui.renderer.root).join("\u0000");
+      const heights = markdownHeights(ui.renderer.root);
+      await wait(250);
+      await ui.frame();
+      if (markdownContents(ui.renderer.root).join("\u0000") === before) {
+        expect(markdownHeights(ui.renderer.root)).toEqual(heights);
+        pairs += 1;
       }
-      if (item && !item.streaming && item.text && sawThoughtWithoutCaret) break;
-      await wait(80);
+      if (item && !item.streaming && item.text) break;
     }
-    expect(sawThoughtWithoutCaret).toBe(true);
-    expect(sawCaret).toBe(true);
+    expect(sawWorking).toBe(true);
+    expect(sawText).toBe(true);
+    expect(pairs).toBeGreaterThan(0);
     await idle(ui);
-    await ui.frame();
-    const finished = markdownContents(ui.renderer.root).join("\n");
-    expect(finished).not.toContain(CARET);
-    expect(await ui.frame()).not.toContain(CARET);
+    expect(markdownContents(ui.renderer.root).join("\n")).not.toContain(OLD_CARET);
+    expect(await ui.frame()).not.toContain(OLD_CARET);
   }, 30_000);
 
   it("tips on the empty screen, ghosts a command, mentions a file, previews history, and toasts a background run", async () => {

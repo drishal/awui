@@ -19,7 +19,7 @@ import type { AssistantItem, ChatItem, ImageRef, NoticeItem, RequestItem, Subage
 import { buildTurns, formatDuration, latestThought, modelName, modelSwitches, relativePath, saysSomething, workAfterSegment, workCounts, workSegments, type Turn, type WorkSegment } from "../../web/turns.js";
 import { clip, fileUrl, foldLabel, outputTail, unifiedDiff } from "../format.js";
 import { easeOut, flashAt, mix, unrollCounts } from "../fx.js";
-import { filetypeOf, taskBoxes, withCaret } from "../markdown.js";
+import { filetypeOf, taskBoxes } from "../markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll, turnTone, type TurnTone } from "../minimap.js";
 import { latestThoughtLine, neatRow, rowHead, sigmaFacts, thinkingMeta, workRuns, type WorkRun } from "../neat.js";
 import { accentOf, categoryTone, type Theme } from "../theme.js";
@@ -112,12 +112,8 @@ export function renderDecoratedBlock(theme: Theme, cache: Map<string, BlockWrap>
   return wrapper;
 }
 
-/** How long the stream's cursor shows, then hides, in ticks of 100 ms. */
-const CARET_ON = 6;
-const CARET_OFF = 4;
-
-/** Markdown as atui draws it: revealed at a steady pace while it streams (a blinking cursor where it writes), task lists as boxes, tables in rounded borders. */
-function Md(p: { text: string; streaming: boolean; fg: string; id?: string; quiet?: boolean }) {
+/** Markdown as atui draws it: revealed at a steady pace while it streams, task lists as boxes, tables in rounded borders. Exported for tests. */
+export function Md(p: { text: string; streaming: boolean; fg: string; id?: string; quiet?: boolean }) {
   const t = useTheme();
   const app = useAtui();
   const renderer = useRenderer();
@@ -133,12 +129,9 @@ function Md(p: { text: string; streaming: boolean; fg: string; id?: string; quie
   const wraps = new Map<string, BlockWrap>();
   onCleanup(() => wraps.clear());
   const renderBlock = (block: MarkdownBlock, ctx: RenderNodeContext) => renderDecoratedBlock(t(), wraps, block, ctx);
-  // The clock is read only while streaming: a finished answer is not drawn again every tick.
-  const content = () => {
-    const text = taskBoxes(paced());
-    if (!p.streaming) return text;
-    return tick() % (CARET_ON + CARET_OFF) < CARET_ON ? withCaret(text) : text;
-  };
+  // No cursor and no clock: the content changes only when text arrives, so
+  // nothing reflows between deltas (the Working row shows a turn is live).
+  const content = () => taskBoxes(paced());
   return (
     <markdown
       content={content()}

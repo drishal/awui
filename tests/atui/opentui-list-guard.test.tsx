@@ -7,7 +7,6 @@ import { installOpenTuiListGuard } from "../../src/atui/opentui-list-guard.js";
 import { renderDecoratedBlock } from "../../src/atui/ui/transcript.js";
 import { syntaxFor } from "../../src/atui/ui/syntax.js";
 import { DARK } from "../../src/atui/theme.js";
-import { withCaret } from "../../src/atui/markdown.js";
 
 installOpenTuiListGuard();
 
@@ -105,7 +104,7 @@ describe("atui OpenTUI 0.9 markdown stream", () => {
     }
   });
 
-  it("streams a caret on a trailing list item without crashing", async () => {
+  it("streams a trailing list item without crashing", async () => {
     const [text, setText] = createSignal("");
     const [streaming, setStreaming] = createSignal(true);
     const cache = new Map();
@@ -114,7 +113,7 @@ describe("atui OpenTUI 0.9 markdown stream", () => {
       return (
         <box width="100%" height="100%">
           <markdown
-            content={streaming() ? withCaret(text()) : text()}
+            content={text()}
             syntaxStyle={syntaxFor(DARK, renderer.nativeScene)}
             fg={DARK.text}
             conceal
