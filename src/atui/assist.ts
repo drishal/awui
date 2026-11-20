@@ -5,6 +5,7 @@
 // as a quote, and an answer's code blocks to run. Pure, so they can be tested.
 import type { ProjectSession, SlashCommand } from "../shared/protocol.js";
 import { isBusy } from "../web/session-groups.js";
+import { actionKeys, type KeybindStyle } from "./keys.js";
 
 /** The `@query` being typed at the end of the text: what to search files for, and where it starts. */
 export function mentionAt(text: string): { query: string; start: number } | null {
@@ -72,21 +73,29 @@ export function newsBetween(before: ProjectSession[] | null, after: ProjectSessi
   return out;
 }
 
-export const TIPS = [
-  "M-m switches the model, M-t the thinking level, M-h the harness",
-  "C-r searches every session, by project",
-  "C-k opens the command palette",
-  "Type @ to mention a file, / for a command",
-  "C-v pastes an image from the clipboard; dropping image files attaches them",
-  "Esc Esc stops the agent; the chat keeps running when you quit",
-  "C-x v turns on vim navigation: j/k, gg/G, {/} between turns",
-  "Click a tool call to see its output, or the gutter to jump to a turn",
-  "C-x g turns glass mode on: your terminal's background shows through",
-];
+/** The empty screen's tips in `style`, with that style's keys named as they are bound. */
+export function tipsFor(style: KeybindStyle = "emacs"): string[] {
+  const k = actionKeys(style);
+  return [
+    `${k.model} switches the model, ${k.thinking} the thinking level, ${k.harness} the harness`,
+    `${k.history} searches every session, by project`,
+    `${k.commands} opens the command palette`,
+    "Type @ to mention a file, / for a command",
+    "C-v pastes an image from the clipboard; dropping image files attaches them",
+    "Esc Esc stops the agent; the chat keeps running when you quit",
+    style === "vim" ? `${k.keybinds} turns on emacs keybinds: the C-x chords` : `${k.keybinds} turns on vim navigation: j/k, gg/G, {/} between turns`,
+    "Click a tool call to see its output, or the gutter to jump to a turn",
+    `${k.glass} turns glass mode on: your terminal's background shows through`,
+  ];
+}
 
-/** The tip for this moment: a new one every `everyMs`. */
-export function tipAt(now: number, everyMs = 8000): string {
-  return TIPS[Math.floor(now / everyMs) % TIPS.length] as string;
+/** The Emacs-style tips: the default empty screen, and tests that pin the rotation. */
+export const TIPS = tipsFor("emacs");
+
+/** The tip for this moment: a new one every `everyMs`, in the active keybind style. */
+export function tipAt(now: number, everyMs = 8000, style: KeybindStyle = "emacs"): string {
+  const tips = tipsFor(style);
+  return tips[Math.floor(now / everyMs) % tips.length] as string;
 }
 
 /**
