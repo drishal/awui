@@ -4,8 +4,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { RGBA, TextAttributes } from "@opentui/core";
+import { MarkdownRenderable, RGBA, TextAttributes } from "@opentui/core";
 import path from "node:path";
+import { CARET } from "../../src/atui/markdown.js";
 import { contextTone } from "../../src/atui/theme.js";
 import { mount, startServer, wait, type Mounted } from "./helpers.js";
 
@@ -34,6 +35,18 @@ afterEach(async () => {
 });
 
 const idle = (m: Mounted) => m.until(() => m.app.chat()?.status === "idle", 15_000);
+
+const markdownContents = (root: { getChildren?: () => unknown[] }): string[] => {
+  const out: string[] = [];
+  const walk = (node: { getChildren?: () => unknown[] }) => {
+    if (node instanceof MarkdownRenderable) out.push(node.content);
+    for (const child of node.getChildren?.() ?? []) walk(child as { getChildren?: () => unknown[] });
+  };
+  walk(root);
+  return out;
+};
+
+const assistant = (m: Mounted) => m.app.chat()?.items.find((item) => item.kind === "assistant");
 
 /** Rounded borders survive in the conversation column, not under the sidebar. */
 const sheetFits = (frame: string) => {
@@ -457,6 +470,40 @@ describe("atui", () => {
     await ui.until("C-c again to quit");
     ui.keys.pressKey("c", { ctrl: true });
     await ui.until(() => ui?.exited() === true);
+  }, 30_000);
+
+  it("keeps the streaming cursor on only the block still being written", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 60 });
+    await ui.type("slow stream please");
+    ui.keys.pressEnter();
+    await ui.until(() => Boolean(assistant(ui!)?.thinking.trim()), 15_000);
+    let sawCaret = false;
+    let sawThoughtWithoutCaret = false;
+    const until = Date.now() + 8_000;
+    while (Date.now() < until) {
+      await ui.frame();
+      const item = assistant(ui);
+      const contents = markdownContents(ui.renderer.root);
+      const carets = contents.reduce((n, content) => n + (content.split(CARET).length - 1), 0);
+      expect(carets).toBeLessThanOrEqual(1);
+      if (carets === 1) sawCaret = true;
+      if (item?.text) {
+        const thought = contents.find((content) => content.includes(item.thinking.trim()));
+        if (thought !== undefined) {
+          expect(thought.includes(CARET)).toBe(false);
+          sawThoughtWithoutCaret = true;
+        }
+      }
+      if (item && !item.streaming && item.text && sawThoughtWithoutCaret) break;
+      await wait(80);
+    }
+    expect(sawThoughtWithoutCaret).toBe(true);
+    expect(sawCaret).toBe(true);
+    await idle(ui);
+    await ui.frame();
+    const finished = markdownContents(ui.renderer.root).join("\n");
+    expect(finished).not.toContain(CARET);
+    expect(await ui.frame()).not.toContain(CARET);
   }, 30_000);
 
   it("tips on the empty screen, ghosts a command, mentions a file, previews history, and toasts a background run", async () => {
