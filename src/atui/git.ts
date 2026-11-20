@@ -24,6 +24,21 @@ const stop = (row: GitRow | undefined): boolean => row?.kind === "file";
 /** The first row the cursor may stand on, or -1 (a clean tree has none). */
 export const firstStop = (rows: GitRow[]): number => rows.findIndex(stop);
 
+/**
+ * The cursor kept on a file when the rows change under it: where it stands if that is still a
+ * file, else the nearest file after it, else before it, else -1. The panel can open before the
+ * status holds the chat's edit (or with none read yet), so a cursor fixed at mount would sit on
+ * nothing once the files arrive, and Enter or d would do nothing.
+ */
+export function settleCursor(rows: GitRow[], at: number): number {
+  if (stop(rows[at])) return at;
+  if (rows.length === 0) return -1;
+  const from = Math.min(Math.max(at, 0), rows.length - 1);
+  for (let i = from; i < rows.length; i++) if (stop(rows[i])) return i;
+  for (let i = from; i >= 0; i--) if (stop(rows[i])) return i;
+  return -1;
+}
+
 /** The cursor `by` files along, skipping group headings, held at the ends. */
 export function moveCursor(rows: GitRow[], at: number, by: number): number {
   let i = at;

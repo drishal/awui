@@ -904,14 +904,25 @@ describe("atui", () => {
     ui = await mount(path.join(server.root, "beta"));
     await ui.type("first session here");
     ui.keys.pressEnter();
+    // A fresh chat reads idle before its run starts: wait for the answer itself.
+    await ui.until("Echo: first session here");
     await idle(ui);
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("n");
     await ui.until("What should Fake do in beta?");
     await ui.type("second session here");
     ui.keys.pressEnter();
+    await ui.until("Echo: second session here");
     await idle(ui);
     await ui.until(() => (ui?.app.overview().sessions.filter((s) => s.title.endsWith("session here")).length ?? 0) >= 2);
+    // The sidebar sorts newest first once the second run's time lands: ↓ from the second session
+    // must reach the first, not whatever sat under it before the list re-sorted.
+    for (const start = Date.now(); ; await wait(30)) {
+      const rows = (await ui.frame()).split("\n");
+      const second = rows.findIndex((r) => r.includes("● second session here"));
+      if (second >= 0 && rows[second + 1]?.includes("● first session here")) break;
+      if (Date.now() - start > 8000) throw new Error(`the sidebar never put the second session above the first:\n${rows.join("\n")}`);
+    }
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("s");
     await ui.until("↑↓ Enter · t tab · Esc back");

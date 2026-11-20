@@ -119,7 +119,8 @@ describe("atui command line", () => {
     expect(parseArgs(["--vim"], {})).toMatchObject({ keybinds: "vim" });
     expect(parseArgs(["--no-vim"], {})).toMatchObject({ keybinds: "emacs" });
     expect(parseArgs(["--keybinds", "vim"], {})).toMatchObject({ keybinds: "vim" });
-    expect(parseArgs(["--keybinds", "plan"], {}).keybinds).toBeUndefined();
+    // An unknown style is dropped, not an error: the saved or default style stands.
+    expect((parseArgs(["--keybinds", "plan"], {}) as { keybinds?: string }).keybinds).toBeUndefined();
     expect(parseArgs([], {})).not.toHaveProperty("keybinds");
     expect(parseArgs(["--resume", "pi:abc"], {})).toMatchObject({ url: "http://127.0.0.1:4783", resume: "pi:abc" });
     expect(parseArgs(["--chat", "c1", "--url", "http://x:1"], {})).toMatchObject({ chatId: "c1", url: "http://x:1" });

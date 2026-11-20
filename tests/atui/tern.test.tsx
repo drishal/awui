@@ -656,7 +656,9 @@ describe("awui tern", () => {
     const { tern, app, until } = client;
     // A chat first: the permission picker reads the chat's own modes (the thinking picker works before it too).
     tern.type("tool please\r");
-    await until(() => app.chat()?.status === "idle", "the first answer");
+    // A fresh chat's snapshot is idle before its run starts, and the server refuses a thinking change
+    // mid-run ("Settings can only change while the agent is idle"): wait for the answer itself.
+    await settled(client);
     tern.type("\x18");
     tern.type("t");
     await until(() => tern.text("layer").includes("Thinking"), "the thinking menu");

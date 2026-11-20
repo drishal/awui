@@ -7,13 +7,13 @@
 // against HEAD, r refreshes, Esc closes. Writes go through the same routes the
 // web panel uses, so a refusal (a remote device may not write this machine's
 // checkout) shows the server's own text.
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import type { GitFileDiff, GitDiffSide, GitStatus } from "../../shared/protocol.js";
 import { GROUP_LABEL, OPERATION_LABEL, branchWords, commitWords, countsLine, stateTone, syncWordsOf } from "../../shared/git-words.js";
 import { clip, clipPath } from "../format.js";
 import { mix } from "../fx.js";
-import { firstStop, gitRows, moveCursor, moveGroup, rowPaths, rowWords, stageAction, type GitRow } from "../git.js";
+import { firstStop, gitRows, moveCursor, moveGroup, rowPaths, rowWords, settleCursor, stageAction, type GitRow } from "../git.js";
 import { windowStart } from "../review.js";
 import { useAtui, useTheme } from "./context.js";
 
@@ -25,6 +25,8 @@ export function GitView(p: { onClose: () => void }) {
   const status = createMemo<GitStatus | null>(() => app.git());
   const rows = createMemo(() => (status() ? gitRows(status() as GitStatus) : []));
   const [at, setAt] = createSignal(firstStop(rows()));
+  // The status can arrive (or gain the chat's edit) after the panel opens: keep the cursor on a file.
+  createEffect(on(rows, (list) => setAt((i) => settleCursor(list, i)), { defer: true }));
   const [writing, setWriting] = createSignal(false);
   const [message, setMessage] = createSignal("");
   const [busy, setBusy] = createSignal<string | null>(null);
