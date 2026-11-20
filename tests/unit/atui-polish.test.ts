@@ -7,7 +7,7 @@ import { asHarnessId } from "../../src/shared/protocol.js";
 import { applyMention, codeBlocks, ghostCompletion, matchSpans, mentionAt, newsBetween, notifySequence, quoteText, runForMessage, runStatus, tipAt, tipsFor, TIPS } from "../../src/atui/assist.js";
 import { breathe, flashAt, meter, mix, ramp, revealCut, revealStep, scrollPath, shimmer, sparkline, spinnerFor, statBar, streamRate, unrollCounts } from "../../src/atui/fx.js";
 import { contextTone, DARK } from "../../src/atui/theme.js";
-import { CARET, filetypeOf, taskBoxes, withCaret } from "../../src/atui/markdown.js";
+import { filetypeOf, taskBoxes } from "../../src/atui/markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll } from "../../src/atui/minimap.js";
 import { actionKeys, LEADER_HELP, LEADER_KEYS, splashHintLine, WHICH_KEY_AIR, WHICH_KEY_CELL, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
 import { clip, tabTitleChars, wrapLines } from "../../src/atui/format.js";
@@ -339,17 +339,6 @@ describe("the terminal's title and progress", () => {
     expect(progressSequence("busy")).toBe("\x1b]9;4;3\x1b\\");
     expect(progressSequence("asking")).toBe("\x1b]9;4;4;100\x1b\\");
     expect(progressSequence(null)).toBe("\x1b]9;4;0\x1b\\");
-  });
-});
-
-describe("the stream's cursor", () => {
-  it("follows the text, except where a character would change what a line means", () => {
-    expect(withCaret("Hello wor")).toBe(`Hello wor${CARET}`);
-    expect(withCaret("a list:\n- one\n")).toBe(`a list:\n- one\n${CARET}`);
-    // A fence would take it as the language; a table row and a rule would stop being one.
-    expect(withCaret("see:\n```ts")).toBe("see:\n```ts");
-    expect(withCaret("| a | b |")).toBe("| a | b |");
-    expect(withCaret("above\n---")).toBe("above\n---");
   });
 });
 
