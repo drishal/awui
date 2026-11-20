@@ -264,7 +264,7 @@ function Thought(p: { item: AssistantItem; open: boolean; onToggle: () => void }
       </box>
       <Show when={p.open}>
         <box paddingLeft={3}>
-          <Md text={p.item.thinking.trim()} streaming={p.item.streaming} fg={t().muted} quiet />
+          <Md text={p.item.thinking.trim()} streaming={live()} fg={t().muted} quiet />
         </box>
       </Show>
     </box>
