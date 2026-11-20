@@ -78,6 +78,53 @@ export function leaderPrefix(style: KeybindStyle): string {
 export const leader = (key: string, style: KeybindStyle = "emacs"): string => `${leaderPrefix(style)} ${key}`;
 
 /**
+ * The keys the empty screen, its tips, and the palette name for the actions
+ * people reach for first: each style's own binding, so those surfaces cannot
+ * drift from what the keys actually do.
+ */
+export function actionKeys(style: KeybindStyle): {
+  commands: string;
+  history: string;
+  sessions: string;
+  files: string;
+  model: string;
+  thinking: string;
+  harness: string;
+  thoughts: string;
+  glass: string;
+  keybinds: string;
+} {
+  return {
+    commands: style === "vim" ? ":" : "C-k",
+    history: style === "vim" ? "/" : "C-r",
+    sessions: leader("s", style),
+    files: "@",
+    model: style === "vim" ? leader("m", style) : "M-m",
+    thinking: style === "vim" ? leader("t", style) : "M-t",
+    harness: style === "vim" ? leader("h", style) : "M-h",
+    thoughts: style === "vim" ? leader("o", style) : "C-t",
+    glass: leader("g", style),
+    keybinds: leader("v", style),
+  };
+}
+
+/** The empty screen's hint row: the four keys that get you somewhere. */
+export function splashHints(style: KeybindStyle): Array<{ key: string; label: string }> {
+  const keys = actionKeys(style);
+  return [
+    { key: keys.commands, label: "commands" },
+    { key: keys.history, label: "history" },
+    { key: keys.sessions, label: "sessions" },
+    { key: keys.files, label: "files" },
+  ];
+}
+
+/** The hint row as one line, for tests and a narrow look at the same keys. */
+export function splashHintLine(style: KeybindStyle): string {
+  return splashHints(style).map((h) => `${h.key} ${h.label}`).join(" · ");
+}
+
+/**
  * Which-key's grid for `count` entries in `width` columns: as many columns of
  * `cell` characters as fit, filled top to bottom, then left to right.
  */

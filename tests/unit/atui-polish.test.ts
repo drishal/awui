@@ -4,12 +4,12 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSession } from "../../src/shared/protocol.js";
 import { asHarnessId } from "../../src/shared/protocol.js";
-import { applyMention, codeBlocks, ghostCompletion, matchSpans, mentionAt, newsBetween, notifySequence, quoteText, runForMessage, runStatus, tipAt, TIPS } from "../../src/atui/assist.js";
+import { applyMention, codeBlocks, ghostCompletion, matchSpans, mentionAt, newsBetween, notifySequence, quoteText, runForMessage, runStatus, tipAt, tipsFor, TIPS } from "../../src/atui/assist.js";
 import { breathe, flashAt, meter, mix, ramp, revealCut, revealStep, scrollPath, shimmer, sparkline, spinnerFor, statBar, streamRate, unrollCounts } from "../../src/atui/fx.js";
 import { contextTone, DARK } from "../../src/atui/theme.js";
 import { CARET, filetypeOf, taskBoxes, withCaret } from "../../src/atui/markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll } from "../../src/atui/minimap.js";
-import { LEADER_HELP, LEADER_KEYS, WHICH_KEY_AIR, WHICH_KEY_CELL, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
+import { actionKeys, LEADER_HELP, LEADER_KEYS, splashHintLine, WHICH_KEY_AIR, WHICH_KEY_CELL, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
 import { clip, tabTitleChars, wrapLines } from "../../src/atui/format.js";
 import { highlightPreview, wordDiff } from "../../src/atui/words.js";
 import { attachmentFrom, byteSize, clipboardTool, imageModeFrom, imagePathsFromPaste, imageProtocol, pickImageType } from "../../src/atui/images.js";
@@ -240,6 +240,13 @@ describe("composer and picker helpers", () => {
   it("rotates the tips", () => {
     expect(tipAt(0)).toBe(TIPS[0]);
     expect(tipAt(8000)).toBe(TIPS[1]);
+    expect(TIPS).toEqual(tipsFor("emacs"));
+    expect(tipAt(0, 8000, "vim")).toBe(tipsFor("vim")[0]);
+    expect(tipsFor("vim")).toContain(": opens the command palette");
+    expect(tipsFor("vim")).toContain("/ searches every session, by project");
+    expect(tipsFor("vim")).toContain("SPC v turns on emacs keybinds: the C-x chords");
+    expect(tipsFor("emacs")).toContain("C-k opens the command palette");
+    expect(tipsFor("vim")).not.toContain("C-k opens the command palette");
   });
 });
 
@@ -290,6 +297,13 @@ describe("keys", () => {
     expect(whichKeyGrid(14, 100, 34)).toEqual({ columns: 2, rows: 7 });
     expect(whichKeyColumns([1, 2, 3, 4, 5], 100, 34)).toEqual([[1, 2, 3], [4, 5]]);
     expect(whichKeyColumns([1, 2], 10, 34)).toEqual([[1, 2]]);
+  });
+
+  it("names the empty screen's keys in the active style", () => {
+    expect(splashHintLine("emacs")).toBe("C-k commands · C-r history · C-x s sessions · @ files");
+    expect(splashHintLine("vim")).toBe(": commands · / history · SPC s sessions · @ files");
+    expect(actionKeys("vim")).toMatchObject({ commands: ":", history: "/", sessions: "SPC s", files: "@" });
+    expect(actionKeys("emacs")).toMatchObject({ commands: "C-k", history: "C-r", sessions: "C-x s", files: "@" });
   });
 
   it("fits every which-key entry, state word included, in its column's cell with air to spare", () => {

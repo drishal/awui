@@ -1173,6 +1173,43 @@ describe("atui's density at 80 columns", () => {
 });
 
 describe("atui's keybind styles", () => {
+  it("lists the empty screen's keys in the active style, and updates them when the style changes", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 150, height: 36 });
+    const emacs = await ui.until("C-k commands");
+    expect(emacs).toContain("C-r history");
+    expect(emacs).toContain("C-x s sessions");
+    expect(emacs).toContain("@ files");
+    expect(emacs).not.toContain(": commands");
+    expect(emacs).not.toContain("SPC s sessions");
+    expect(emacs).toContain("C-x s to browse");
+    // C-x v: the vim style, and the same row now names those keys.
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("v");
+    const vim = await ui.until(": commands");
+    expect(vim).toContain("/ history");
+    expect(vim).toContain("SPC s sessions");
+    expect(vim).toContain("@ files");
+    expect(vim).not.toContain("C-k commands");
+    expect(vim).not.toContain("C-x s sessions");
+    expect(vim).toContain("SPC s to browse");
+    // Space v back to Emacs restores the chords.
+    await ui.type(" ");
+    ui.keys.pressKey("v");
+    const back = await ui.until("C-k commands");
+    expect(back).toContain("C-x s sessions");
+    expect(back).toContain("C-r history");
+    expect(back).toContain("C-x s to browse");
+    expect(back).not.toContain(": commands");
+    await ui.unmount();
+    // Starting already in vim names the same keys, with no Emacs chords left on the row.
+    ui = await mount(path.join(server.root, "alpha"), { keybinds: "vim", width: 150, height: 36 });
+    const started = await ui.until(": commands");
+    expect(started).toContain("/ history");
+    expect(started).toContain("SPC s sessions");
+    expect(started).toContain("@ files");
+    expect(started).not.toContain("C-k commands");
+  }, 40_000);
+
   it("switches styles with the leader's v, and each style's keys are its own", async () => {
     // Emacs first: C-x opens the leader panel; the vim keys are not bound.
     ui = await mount(path.join(server.root, "beta"), { width: 150, height: 36 });

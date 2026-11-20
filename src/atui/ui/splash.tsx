@@ -10,13 +10,14 @@ import { useTerminalDimensions } from "@opentui/solid";
 import { tipAt } from "../assist.js";
 import { mix } from "../fx.js";
 import { wrapLines } from "../format.js";
+import { splashHints, type KeybindStyle } from "../keys.js";
 import { useAtui, useTheme } from "./context.js";
 import { tick } from "./ticker.js";
 
 /** The bubble with its `❯ _` prompt, tail down at the left, as the app icon draws it. */
 const BUBBLE = ["╭────────────╮", "│  ❯   ▁▁▁   │", "╰──╮─────────╯", "   ╰"];
 
-export function Splash(p: { /** The chat column: the width the transcript and composer draw at. */ column: number; question: string; subtitle: string }) {
+export function Splash(p: { /** The chat column: the width the transcript and composer draw at. */ column: number; question: string; subtitle: string; /** The keys the hint row and tips name: the Emacs chords, or vim's. */ keybinds: KeybindStyle }) {
   const t = useTheme();
   const app = useAtui();
   const size = useTerminalDimensions();
@@ -24,8 +25,9 @@ export function Splash(p: { /** The chat column: the width the transcript and co
   const shade = (row: number, rows: number) => mix(mix(t().accent, "#ffffff", 0.45), mix(t().accent, "#000000", 0.25), row / Math.max(1, rows - 1));
   const tip = () => {
     void tick();
-    return tipAt(Date.now());
+    return tipAt(Date.now(), 8000, p.keybinds);
   };
+  const hints = () => splashHints(p.keybinds);
   const big = () => p.column >= 90 && size().height >= 22;
   return (
     <box flexGrow={1} flexDirection="column" justifyContent="center" alignItems="center">
@@ -61,13 +63,19 @@ export function Splash(p: { /** The chat column: the width the transcript and co
             </text>
           ))}
         </box>
-        {/* What an empty screen is for: the three keys that get you somewhere, quiet under the tip. */}
+        {/* What an empty screen is for: the keys that get you somewhere in this style, quiet under the tip. */}
         <Show when={p.column >= 57}>
           <text fg={t().border} marginTop={1}>
-            <span style={{ fg: t().text2 }}>C-k</span> commands{" "}
-            <span style={{ fg: t().border }}>·</span> <span style={{ fg: t().text2 }}>C-r</span> history{" "}
-            <span style={{ fg: t().border }}>·</span> <span style={{ fg: t().text2 }}>C-x s</span> sessions{" "}
-            <span style={{ fg: t().border }}>·</span> <span style={{ fg: t().text2 }}>@</span> files
+            <For each={hints()}>
+              {(h, i) => (
+                <>
+                  <Show when={i() > 0}>
+                    <span style={{ fg: t().border }}> · </span>
+                  </Show>
+                  <span style={{ fg: t().text2 }}>{h.key}</span> {h.label}
+                </>
+              )}
+            </For>
           </text>
         </Show>
       </box>

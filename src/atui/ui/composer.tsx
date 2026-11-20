@@ -18,6 +18,7 @@ import { blanks, matchPrompts, nextBlank, promptGist } from "../../web/prompt-bl
 import { levelTitle } from "../../web/config-summary.js";
 import { applyMention, ghostCompletion, mentionAt } from "../assist.js";
 import { streamedChars, tokens } from "../format.js";
+import { leader, type KeybindStyle } from "../keys.js";
 import { mix, shimmer, sparkline, streamRate } from "../fx.js";
 import { attachmentFrom, attachmentFromFile, byteSize, clipboardImageByTool, imagePathsFromPaste, type PendingImage } from "../images.js";
 import { harnessGlyph } from "../neat.js";
@@ -60,6 +61,8 @@ export function Composer(p: {
   status: { mode: "normal" | "insert" | null; leader: string | null; note: string | null };
   /** The conversation's column: the card draws at it, while the footer under it stays the pane's status line. */
   column: number;
+  /** The keybind style, so the footer's compact-first cue names the right leader. */
+  keybinds: KeybindStyle;
   ref: (el: TextareaRenderable) => void;
 }) {
   const app = useAtui();
@@ -548,7 +551,7 @@ export function Composer(p: {
             </Show>
           </Show>
           <Show when={offer()}>
-            <span style={{ fg: compactFirst() ? t().warn : t().muted }}>{`${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (C-x f)  `}</span>
+            <span style={{ fg: compactFirst() ? t().warn : t().muted }}>{`${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  `}</span>
           </Show>
           <Show
             when={app.chat()?.status === "compacting"}

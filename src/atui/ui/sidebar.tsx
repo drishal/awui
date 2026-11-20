@@ -9,6 +9,7 @@ import type { ProjectSession } from "../../shared/protocol.js";
 import { isBusy } from "../../web/session-groups.js";
 import { projectOpen, sidebarFolded, sidebarKey, sidebarParentKey, sidebarRows, sidebarSelectedIndex, sidebarTabRow, type SidebarRow } from "../sidebar-nav.js";
 import { clip, clipPath } from "../format.js";
+import { leader } from "../keys.js";
 import { breathe, mix, spinnerFor } from "../fx.js";
 import { accentOf } from "../theme.js";
 import { useAtui, useTheme } from "./context.js";
@@ -180,7 +181,7 @@ export function Sidebar(p: {
         <span style={{ fg: p.tab === "info" ? t().accent : t().border }}>{"━".repeat("Info".length)}</span>
         <span style={{ fg: t().border }}>{"━".repeat(Math.max(0, p.width - 19))}</span>
       </text>
-      <Show when={p.tab === "sessions"} fallback={<><InfoBody width={p.width} /><text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "Tab sessions · Esc back" : "C-x i info"}</text></>}>
+      <Show when={p.tab === "sessions"} fallback={<><InfoBody width={p.width} /><text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "Tab sessions · Esc back" : `${leader("i", p.vim ? "vim" : "emacs")} info`}</text></>}>
         <box flexDirection="row" marginTop={1} paddingLeft={1} backgroundColor={t().surface2} onMouseDown={() => { app.newChat(); p.onOpened(); }}>
           <text selectable={false} fg={t().accent}>+</text><text selectable={false} fg={t().text}>{" New chat"}</text><box flexGrow={1} /><text selectable={false} fg={t().muted}>{`${app.harness()?.displayName ?? ""} `}</text>
         </box>
@@ -228,7 +229,7 @@ export function Sidebar(p: {
             }}
           </For>
         </scrollbox>
-        <text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "↑↓ Enter · t tab · Esc back" : "C-x s to browse"}</text>
+        <text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "↑↓ Enter · t tab · Esc back" : `${leader("s", p.vim ? "vim" : "emacs")} to browse`}</text>
       </Show>
     </box>
   );

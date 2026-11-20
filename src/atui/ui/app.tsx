@@ -24,7 +24,7 @@ import type { PaletteItem } from "../../web/palette.js";
 import { isBusy } from "../../web/session-groups.js";
 import { atuiColumn, chatWidthLabel, CHAT_WIDTHS, nextChatWidth } from "../../shared/chat-width.js";
 import { ago, STATUS_LABEL } from "../format.js";
-import { leader, leaderPrefix, LEADER_KEYS, VIM_HELP, type KeybindStyle } from "../keys.js";
+import { actionKeys, leader, leaderPrefix, LEADER_KEYS, VIM_HELP, type KeybindStyle } from "../keys.js";
 import { harnessGlyph } from "../neat.js";
 import type { Atui } from "../state.js";
 import { terminalState, type TerminalState } from "../terminal.js";
@@ -417,7 +417,7 @@ export function App(p: {
       case "q":
         return p.onExit();
       default:
-        flash(`${leader(name)} is undefined`);
+        flash(`${leader(name, keybinds())} is undefined`);
     }
   };
 
@@ -543,6 +543,7 @@ export function App(p: {
     const items: PaletteItem[] = [];
     const c = app.chat();
     const boot = app.boot();
+    const keys = actionKeys(keybinds());
     const name = (id: string) => boot?.harnesses.find((h) => h.id === id)?.displayName ?? id;
     const idle = c ? c.status === "idle" || c.status === "error" : true;
     const add = (item: Omit<PaletteItem, "section"> & { section?: string }) => items.push({ section: "Actions", ...item });
@@ -576,7 +577,7 @@ export function App(p: {
       add({
         id: "review",
         label: "Review changes",
-        hint: noted > 0 ? `${noted} ${noted === 1 ? "comment" : "comments"}` : leader("d"),
+        hint: noted > 0 ? `${noted} ${noted === 1 ? "comment" : "comments"}` : leader("d", keybinds()),
         disabled: changed > 0 ? undefined : "No files changed yet",
         run: () => setReviewing(true),
       });
@@ -594,22 +595,22 @@ export function App(p: {
     if (c && runnables().length > 0) add({ id: "run", label: "Run a command from the answer…", hint: leader("x", keybinds()), run: () => setDialog("run") });
     add({ id: "quote", label: "Quote the selection into the message", hint: "M-q", searchOnly: true, run: quoteSelection });
     if (app.putBackable()) add({ id: "put-back", label: "Put the undone files back", hint: leader("z", keybinds()), run: () => void app.putBack() });
-    add({ id: "history", label: "History: every session, by project…", hint: keybinds() === "vim" ? "/" : "C-r", run: () => setDialog("history") });
+    add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
     add({ id: "sidebar", label: sidebar() ? "Fold the side panel" : "Unfold the side panel", hint: leader("b", keybinds()), run: () => runLeader("b") });
     add({ id: "panel", label: sidebar() && sideTab() === "info" ? "Show sessions" : "Show info: context, usage, git, limits", hint: leader("i", keybinds()), run: () => runLeader("i") });
     add({ id: "work", label: showWork() ? "Fold the work" : "Show the work of every turn", hint: leader("e", keybinds()), run: () => runLeader("e") });
-    add({ id: "thoughts", label: thoughts() ? "Fold all reasoning" : "Show all reasoning", hint: keybinds() === "vim" ? "SPC o" : "C-t", run: () => { p.onShowThoughts(!thoughts()); setDialog(null); } });
+    add({ id: "thoughts", label: thoughts() ? "Fold all reasoning" : "Show all reasoning", hint: keys.thoughts, run: () => { p.onShowThoughts(!thoughts()); setDialog(null); } });
     add({ id: "keybinds", label: keybinds() === "vim" ? "Emacs keybinds: the C-x chords" : "Vim keybinds: NORMAL keys, Space actions", keywords: "emacs vim keys mode style", hint: leader("v", keybinds()), run: () => runLeader("v") });
     add({ id: "glass", label: app.glass() ? "Glass off: solid panels" : "Glass on: see the terminal through", hint: leader("g", keybinds()), run: () => runLeader("g") });
     // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it: every device draws it (C-x l cycles).
     CHAT_WIDTHS.forEach((w) => add({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, keywords: "column layout measure", current: (boot?.ui.chatWidth ?? null) === w, run: () => void pickWidth(w) }));
     if (c?.capabilities.supportsCompact) add({ id: "compact", label: "Compact context", hint: leader("c", keybinds()), disabled: idle ? undefined : "Wait until the agent is idle", run: () => runLeader("c") });
     const caps = c?.capabilities ?? app.harness()?.capabilities;
-    add({ id: "model", label: "Choose model…", hint: keybinds() === "vim" ? "SPC m" : "M-m", disabled: caps?.supportsModelSelection ? undefined : "This harness has no models to pick", run: () => setDialog("models") });
-    if (caps?.supportsThinkingLevel) add({ id: "thinking", label: "Choose thinking level…", hint: keybinds() === "vim" ? "SPC t" : "M-t", run: () => setDialog("thinking") });
+    add({ id: "model", label: "Choose model…", hint: keys.model, disabled: caps?.supportsModelSelection ? undefined : "This harness has no models to pick", run: () => setDialog("models") });
+    if (caps?.supportsThinkingLevel) add({ id: "thinking", label: "Choose thinking level…", hint: keys.thinking, run: () => setDialog("thinking") });
     add({ id: "refresh-models", label: "Refresh models", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }), run: () => void app.refreshModels() });
-    add({ id: "harness", label: hasPrompt() ? "Choose harness, or hand this chat off…" : "Choose harness…", hint: keybinds() === "vim" ? "SPC h" : "M-h", run: () => setDialog("harness") });
+    add({ id: "harness", label: hasPrompt() ? "Choose harness, or hand this chat off…" : "Choose harness…", hint: keys.harness, run: () => setDialog("harness") });
     add({ id: "quit", label: "Quit atui", hint: leader("q", keybinds()), searchOnly: true, run: p.onExit });
     const sessions = app.overview().sessions;
     sessions.forEach((s, i) => {
@@ -799,7 +800,7 @@ export function App(p: {
                     fallback={
                       <Show
                         when={hasPrompt()}
-                        fallback={<Splash column={column()} question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
+                        fallback={<Splash column={column()} keybinds={keybinds()} question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
                       >
                         <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} column={column} />
                       </Show>
@@ -819,7 +820,7 @@ export function App(p: {
                   <Show when={app.chat()?.gone}>
                     {(gone) => (
                       <box flexShrink={0} paddingLeft={2}>
-                        <text fg={t().warn}>{`${gone()} · ${leader("n")} for a new chat`}</text>
+                        <text fg={t().warn}>{`${gone()} · ${leader("n", keybinds())} for a new chat`}</text>
                       </box>
                     )}
                   </Show>
@@ -836,6 +837,7 @@ export function App(p: {
                         onPick={setDialog}
                         onContext={() => setRail(true)}
                         column={column()}
+                        keybinds={keybinds()}
                         ref={(el) => (composer = el)}
                       />
                     }
