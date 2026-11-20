@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GitFile, GitStatus } from "../../src/shared/protocol.js";
-import { countsWords, firstStop, gitRows, moveCursor, moveGroup, rowWords, stageAction } from "../../src/atui/git.js";
+import { countsWords, firstStop, gitRows, moveCursor, moveGroup, rowWords, settleCursor, stageAction } from "../../src/atui/git.js";
 import { branchWords, commitWords, countsLine, stateTone, syncWordsOf } from "../../src/shared/git-words.js";
 
 const file = (path: string, over: Partial<GitFile> = {}): GitFile => ({ path, staged: null, unstaged: null, added: null, removed: null, ...over });
@@ -127,5 +127,25 @@ describe("the shared git words", () => {
     expect(countsLine({ files: [{} as GitFile], counts: { staged: 0, changed: 1, untracked: 0, conflicts: 1 } })).toBe("1 conflict · 1 changed");
     const at = Date.now() - 4 * 60_000;
     expect(commitWords({ subject: "init", author: "t", at }, Date.now())).toBe("init · by t · 4m ago");
+  });
+});
+
+describe("the git panel's cursor when the rows change", () => {
+  it("lands on the first file when the files arrive after the panel opened on none", () => {
+    const empty = gitRows(status([]));
+    const at = firstStop(empty);
+    expect(at).toBe(-1);
+    const rows = gitRows(status([file("src/app.ts", { unstaged: "modified" })]));
+    expect(settleCursor(rows, at)).toBe(firstStop(rows));
+    expect(rows[settleCursor(rows, at)]?.kind).toBe("file");
+  });
+
+  it("stays on a file, and moves off a heading or past the end to the nearest file", () => {
+    const rows = gitRows(status([file("a.ts", { staged: "modified" }), file("b.ts", { unstaged: "modified" })]));
+    const stops = rows.flatMap((r, i) => (r.kind === "file" ? [i] : []));
+    expect(settleCursor(rows, stops[1] as number)).toBe(stops[1]);
+    expect(settleCursor(rows, 0)).toBe(stops[0]);
+    expect(settleCursor(rows, rows.length + 3)).toBe(stops.at(-1));
+    expect(settleCursor(gitRows(status([])), 2)).toBe(-1);
   });
 });
