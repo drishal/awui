@@ -13,7 +13,7 @@
 // every turn and scrolls on a click, and the prompt of the turn you are reading stays pinned
 // at the top.
 import { createEffect, createMemo, createResource, createSignal, For, Index, Match, on, onCleanup, Show, Switch, type Accessor } from "solid-js";
-import { BoxRenderable, type Renderable, type ScrollBoxRenderable } from "@opentui/core";
+import { BoxRenderable, type MarkdownBlock, type Renderable, type RenderNodeContext, type ScrollBoxRenderable } from "@opentui/core";
 import { useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { AssistantItem, ChatItem, ImageRef, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../../shared/protocol.js";
 import { buildTurns, formatDuration, latestThought, modelName, modelSwitches, relativePath, saysSomething, workAfterSegment, workCounts, workSegments, type Turn, type WorkSegment } from "../../web/turns.js";
@@ -27,7 +27,10 @@ import { highlightPreview } from "../words.js";
 import { useAtui, useTheme } from "./context.js";
 import { glideTo, Shimmer, Spinner, usePaced } from "./fx.js";
 import { syntaxFor } from "./syntax.js";
+import { installOpenTuiListGuard } from "../opentui-list-guard.js";
 import { tick } from "./ticker.js";
+
+installOpenTuiListGuard();
 
 const OUTPUT_LINES = 14;
 /** A running command's last lines, shown under its row while it works. */
@@ -50,41 +53,64 @@ function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolea
 }
 
 /**
+ * A decorated block's wrappers, reused for the same document slot so a
+ * committed heading, quote, or code panel is not remounted on every stream tick.
+ */
+type BlockWrap = { kind: MarkdownBlock["kind"]; wrapper: BoxRenderable; panel: BoxRenderable; inner: Renderable };
+
+/**
  * Markdown blocks atui draws its own way: a top heading over an accent rule,
  * a quote behind a bar, a code block on a tinted panel. Everything else is
- * OpenTUI's default.
+ * OpenTUI's default. Wrappers are keyed by block kind and index and reused;
+ * the inner default renderable is swapped in place when the engine rebuilds it.
+ *
+ * OpenTUI 0.9 already leaves one blank row between top-level blocks (the
+ * markdown container's row gap), so these wrappers do not add padding below
+ * the panel the way the 0.8 renderer did.
  */
-function nodeRenderer(theme: Theme) {
-  return (token: { type: string; depth?: number }, ctx: { defaultRender: () => Renderable | null }): Renderable | null | undefined => {
-    if (token.type !== "heading" && token.type !== "blockquote" && token.type !== "code") return undefined;
-    const inner = ctx.defaultRender();
-    if (!inner) return inner;
-    if (token.type === "heading" && (token.depth ?? 1) > 2) return inner;
-    const options =
-      token.type === "heading"
-        ? { width: "100%" as const, border: ["bottom" as const], borderColor: mix(theme.bg, theme.accent, 0.55) }
-        : token.type === "blockquote"
-          ? { border: ["left" as const], borderColor: mix(theme.bg, theme.thinking, 0.7), paddingLeft: 1 }
-          : { width: "100%" as const, backgroundColor: mix(theme.bg, theme.surface2, 0.6), paddingLeft: 1, paddingRight: 1 };
-    // OpenTUI zeroes a custom block's bottom margin, so the gap after it rides as the outer box's padding
-    // (a code block's is decided after this runs, so it always keeps one line).
-    const gap = Math.max(token.type === "code" ? 1 : 0, typeof inner.marginBottom === "number" ? inner.marginBottom : 0);
-    inner.marginBottom = 0;
-    const panel = new BoxRenderable(inner.ctx, { flexDirection: "column", ...options });
-    panel.add(inner);
-    const outer = new BoxRenderable(inner.ctx, { flexDirection: "column", width: "100%", paddingBottom: gap });
-    outer.add(panel);
-    return outer;
-  };
-}
+export function renderDecoratedBlock(theme: Theme, cache: Map<string, BlockWrap>, block: MarkdownBlock, ctx: RenderNodeContext): Renderable | null | undefined {
+  if (block.kind !== "heading" && block.kind !== "quote" && block.kind !== "code") return undefined;
+  if (block.kind === "heading" && (block.level ?? 1) > 2) return ctx.defaultRender();
 
-const renderers = new Map<string, ReturnType<typeof nodeRenderer>>();
-const rendererFor = (theme: Theme) => {
-  const key = `${theme.bg}${theme.accent}${theme.thinking}`;
-  let hit = renderers.get(key);
-  if (!hit) renderers.set(key, (hit = nodeRenderer(theme)));
-  return hit;
-};
+  const inner = ctx.defaultRender();
+  if (!inner || inner.isDestroyed) return inner;
+
+  // 0.9's default quote already has a left bar; the wrapper supplies atui's tinted one.
+  if (block.kind === "quote" && inner instanceof BoxRenderable) {
+    inner.border = false;
+    if ("paddingLeft" in inner) (inner as BoxRenderable & { paddingLeft: number }).paddingLeft = 0;
+  }
+  if (typeof inner.marginBottom === "number") inner.marginBottom = 0;
+
+  const key = `${block.kind}:${block.index}`;
+  const hit = cache.get(key);
+  // Reuse only when this wrapper still holds the engine's current default.
+  // Returning a wrapper that does not hold `inner` makes OpenTUI 0.9 destroy
+  // both the new default and the old one, which blanks the block for good.
+  if (hit && !hit.wrapper.isDestroyed && !hit.panel.isDestroyed && !inner.isDestroyed) {
+    if (inner.parent !== hit.panel) hit.panel.add(inner);
+    if (inner.parent === hit.panel) {
+      if (hit.inner !== inner && hit.inner.parent === hit.panel && !hit.inner.isDestroyed) hit.panel.remove(hit.inner);
+      hit.inner = inner;
+      return hit.wrapper;
+    }
+    cache.delete(key);
+  }
+
+  const options =
+    block.kind === "heading"
+      ? { width: "100%" as const, border: ["bottom" as const], borderColor: mix(theme.bg, theme.accent, 0.55), flexShrink: 0 }
+      : block.kind === "quote"
+        ? { border: ["left" as const], borderColor: mix(theme.bg, theme.thinking, 0.7), paddingLeft: 1, flexShrink: 0 }
+        : { width: "100%" as const, backgroundColor: mix(theme.bg, theme.surface2, 0.6), paddingLeft: 1, paddingRight: 1, flexShrink: 0 };
+  const panel = new BoxRenderable(inner.ctx, { flexDirection: "column", ...options });
+  panel.add(inner);
+  if (inner.parent !== panel) return inner;
+  const wrapper = new BoxRenderable(inner.ctx, { flexDirection: "column", width: "100%", flexShrink: 0 });
+  wrapper.add(panel);
+  cache.set(key, { kind: block.kind, wrapper, panel, inner });
+  return wrapper;
+}
 
 /** How long the stream's cursor shows, then hides, in ticks of 100 ms. */
 const CARET_ON = 6;
@@ -101,6 +127,12 @@ function Md(p: { text: string; streaming: boolean; fg: string; id?: string; quie
     app.pacedMemory(),
     p.id,
   );
+  // One cache per markdown instance: committed wrappers stay mounted as the
+  // trailing block grows. The hook itself is created once so OpenTUI does not
+  // rebuild the document when Solid re-renders this component.
+  const wraps = new Map<string, BlockWrap>();
+  onCleanup(() => wraps.clear());
+  const renderBlock = (block: MarkdownBlock, ctx: RenderNodeContext) => renderDecoratedBlock(t(), wraps, block, ctx);
   // The clock is read only while streaming: a finished answer is not drawn again every tick.
   const content = () => {
     const text = taskBoxes(paced());
@@ -115,7 +147,7 @@ function Md(p: { text: string; streaming: boolean; fg: string; id?: string; quie
       conceal
       streaming={p.streaming || paced().length < p.text.length}
       tableOptions={{ borders: true, borderStyle: "rounded", borderColor: t().border, cellPaddingX: 1 }}
-      renderNode={rendererFor(t()) as never}
+      renderBlock={renderBlock}
     />
   );
 }
@@ -877,7 +909,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
   const sigmaShown = () => p.open && !p.turn().live && Boolean(p.turn().prompt) && (sigma().facts.length > 0 || sigma().failed !== null);
   const FILES_SHOWN = 4;
   return (
-    <box flexDirection="column" width="100%" maxWidth={p.column}>
+    <box flexDirection="column" width="100%" maxWidth={p.column} flexShrink={0}>
       <Show when={p.switchedTo}>
         {(name) => (
           <box flexDirection="row" marginTop={1}>
@@ -1051,7 +1083,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
           paddingLeft={2}
           paddingRight={2}
           paddingBottom={1}
-          contentOptions={{ alignItems: "center" }}
+          contentOptions={{ alignItems: "center", layoutMode: "list" }}
           verticalScrollbarOptions={{ visible: false }}
         >
           <Index each={turns()}>

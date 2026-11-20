@@ -13,6 +13,9 @@ import { isBusy } from "../web/session-groups.js";
 import { progressSequence, speaksProgress, type Progress, type TerminalState } from "./terminal.js";
 import { App } from "./ui/app.js";
 import { startTicker, stopTicker } from "./ui/ticker.js";
+import { installOpenTuiListGuard } from "./opentui-list-guard.js";
+
+installOpenTuiListGuard();
 
 /** Run atui with `argv` (its options, without the command): from bin/atui, or `awui tui` inside the binary. */
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
