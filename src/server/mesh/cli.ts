@@ -8,7 +8,8 @@
 // person can copy it to the other side. `serve-stdio` is the worker end of a link
 // and delegates to serve.ts, which keeps protocol off stderr and logs off stdout.
 import net from "node:net";
-import { hostname } from "node:os";
+import { hostname, tmpdir } from "node:os";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { encodeQr, qrToTerminal } from "../../shared/qr.js";
 import { ConfigError, loadConfig } from "../config.js";
@@ -17,6 +18,7 @@ import { ATTACH_PREFIX, socketPath } from "./attach.js";
 import { AuditLog } from "./audit.js";
 import type { MeshApprovalDecision } from "./approvals.js";
 import { clientHandshake, SAS_CONTEXT } from "./handshake.js";
+import { exportFromPeer, fetchPeerWork, meshGit } from "./handoff.js";
 import { loadOrCreateIdentity, nodeIdOf, sasOf, type NodeIdentity } from "./identity.js";
 import { PeerManager } from "./manager.js";
 import { decodeInviteCode, inviteMac } from "./pairing.js";
@@ -54,6 +56,7 @@ Usage:
   awui peer approvals                       What this node's service is waiting for you to answer
   awui peer approve <id> [--for-link]      Answer one: allow once, or for this link's lifetime
   awui peer deny <id>                       Answer one: no
+  awui peer fetch <name> <remoteTaskId|worktree>   Bring a peer's handed-off work back as a local ref
   awui peer invite [--policy <p>] [--ttl 10m] [--address host:port]   A single-use pairing code
   awui peer join <code> [--name <n>]        Pin the key an invite code carries, redeem it over TLS, save the peer
   awui peer serve-stdio [--peer <name>] [--policy <p>] [--ephemeral] [--attach]   The worker end of a link (SSH/docker)
@@ -276,6 +279,20 @@ export async function runPeerCli(args: string[], io: PeerCliIo): Promise<number>
       if ("error" in read) return fail(read.error, EXIT_CONFIG);
       if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
       return tasksCommand(io, read, name);
+    }
+    case "fetch": {
+      // Peer name and one word: a remote task id or the worktree's path there.
+      const parsed = parseLine(rest, []);
+      if ("error" in parsed) return failUsage(parsed.error);
+      const name = peerName(parsed.words, command);
+      if (typeof name !== "string") return failUsage(name.error);
+      const what = parsed.words[1];
+      if (what === undefined) return failUsage("fetch needs a remote task id or a worktree path on that peer");
+      if (parsed.words.length > 2) return failUsage(`unexpected word ${parsed.words[2]}`);
+      const read = settings(io.env);
+      if ("error" in read) return fail(read.error, EXIT_CONFIG);
+      if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
+      return fetchCommand(io, read, name, what);
     }
     case "approvals": {
       const parsed = parseLine(rest, []);
@@ -510,6 +527,55 @@ async function tasksCommand(io: PeerCliIo, read: Settings, name: string): Promis
  * not pair anything: the redeem leaves a pending request on the target that
  * its owner still has to accept.
  */
+/**
+ * `awui peer fetch <name> <remoteTaskId|worktree>`: bring a peer's handed-off
+ * work home. The word may name the remote task (its cwd is the worktree a
+ * handoff created, from the peer's own task.list) or the worktree path
+ * itself; either way the peer bundles the worktree's HEAD, it pages back over
+ * the link with the digest checked, and it lands here as one ref under
+ * refs/awui/from-peer/<peer>/ — never a checkout, never a merge. Run this
+ * inside the repo that should hold the ref.
+ */
+async function fetchCommand(io: PeerCliIo, read: Settings, name: string, what: string): Promise<number> {
+  const manager = managerFor(read, PinStore(path.join(read.stateDir, "mesh", "pins.json")), io);
+  // A remote task id names the worktree through the peer's own live rows; a
+  // path is used as given. A word that is neither is the worker's to refuse.
+  let worktree = what;
+  try {
+    const rows = await manager.taskList(name);
+    const row = rows.find((candidate) => candidate.remoteTaskId === what);
+    if (row !== undefined) worktree = row.cwd;
+  } catch {
+    // task.list is a lookup aid only: the word may already be a path.
+  }
+  const repo = await meshGit(["rev-parse", "--show-toplevel"]).catch(() => "");
+  if (repo.trim() === "") {
+    io.err("awui peer fetch: run this inside the git repo that should hold the fetched ref (its worktree, not a subfolder)");
+    return EXIT_FAILED;
+  }
+  const scratch = await mkdtemp(path.join(tmpdir(), "awui-peer-fetch-"));
+  const file = path.join(scratch, "work.bundle");
+  try {
+    let exported: Awaited<ReturnType<typeof exportFromPeer>>;
+    try {
+      exported = await exportFromPeer(manager, name, worktree);
+    } catch (error) {
+      return peerFailure(io, "fetch", name, error);
+    }
+    await writeFile(file, exported.bytes, { mode: 0o600 });
+    let ref: string;
+    try {
+      ref = await fetchPeerWork(repo.trim(), name, file, exported.meta.head);
+    } catch (error) {
+      return peerFailure(io, "fetch", name, error);
+    }
+    io.out(`Fetched ${name}'s work into ${ref} of ${repo.trim()}: read it with "git log ${ref}" or diff it with "git diff ${ref}"; nothing was merged or checked out.`);
+    return EXIT_OK;
+  } finally {
+    await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 async function joinCommand(io: PeerCliIo, read: Settings, text: string, nameFlag: string | null): Promise<number> {
   const code = decodeInviteCode(text);
   if (code === null) {

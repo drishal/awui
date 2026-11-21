@@ -300,6 +300,48 @@ export class PeerManager {
       ASKABLE_RPC_TIMEOUT_MS,
     )) as PeerFileWriteResult;
   }
+  // ---- handoff over the link (P3 §2): one bundle each way, in bounded chunks ----
+
+  /** One handoff wire call's wait: a finish runs a fetch of up to the bundle cap on the far side. */
+  private static readonly HANDOFF_RPC_MS = 10 * 60_000;
+
+  /** handoff.begin: names the repo, size, and sha256 the worker must end up holding. */
+  async handoffBegin(peerName: string, params: { repoCwd: string; size: number; sha256: string }): Promise<{ uploadId: string }> {
+    const connection = await this.connect(peerName);
+    return (await connection.rpc.request("handoff.begin", params, PeerManager.HANDOFF_RPC_MS)) as { uploadId: string };
+  }
+
+  /** handoff.chunk: one ordered slice, raw bytes in, base64 on the wire. */
+  async handoffChunk(peerName: string, uploadId: string, index: number, data: Buffer): Promise<void> {
+    const connection = await this.connect(peerName);
+    await connection.rpc.request("handoff.chunk", { uploadId, index, data: data.toString("base64") }, PeerManager.HANDOFF_RPC_MS);
+  }
+
+  /** handoff.finish: verify, fetch, and the worktree the peer's copy of the work landed in. */
+  async handoffFinish(peerName: string, uploadId: string): Promise<{ worktree: string }> {
+    const connection = await this.connect(peerName);
+    return (await connection.rpc.request("handoff.finish", { uploadId }, PeerManager.HANDOFF_RPC_MS)) as { worktree: string };
+  }
+
+  /** handoff.abort: the leader's cleanup when its own upload failed mid-way. */
+  async handoffAbort(peerName: string, uploadId: string): Promise<void> {
+    const connection = await this.connect(peerName);
+    await connection.rpc.request("handoff.abort", { uploadId }, PeerManager.FILE_RPC_MS);
+  }
+
+  /** handoff.export: a bundle of a peer worktree's HEAD, ready to page back. */
+  async handoffExport(peerName: string, worktree: string): Promise<{ exportId: string; size: number; sha256: string; head: string }> {
+    const connection = await this.connect(peerName);
+    return (await connection.rpc.request("handoff.export", { worktree }, PeerManager.HANDOFF_RPC_MS)) as { exportId: string; size: number; sha256: string; head: string };
+  }
+
+  /** handoff.read: one ordered slice of an export, decoded from base64. */
+  async handoffRead(peerName: string, exportId: string, index: number): Promise<Buffer> {
+    const connection = await this.connect(peerName);
+    const page = (await connection.rpc.request("handoff.read", { exportId, index }, PeerManager.HANDOFF_RPC_MS)) as { data: unknown; eof?: unknown };
+    if (typeof page?.data !== "string") throw new Error(`the peer "${peerName}" answered handoff.read without data`);
+    return Buffer.from(page.data, "base64");
+  }
 
   /** `task.list` on the peer: its own live tasks for this caller, for `awui peer tasks`. */
   async taskList(peerName: string): Promise<PeerTaskRow[]> {

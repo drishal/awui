@@ -183,6 +183,7 @@ awui peer log [--peer <name>] [--tail N]   the audit log of decisions this node 
 awui peer ls <name> <path>             a folder on a peer: names, types, sizes
 awui peer cat <name> <path>            a peer file's bytes, raw to stdout (at most 4 MiB)
 awui peer tasks <name>                 the peer's live tasks (its awui service runs them)
+awui peer fetch <name> <remoteTaskId|worktree>   bring a peer's handed-off work home as one ref
 awui peer approvals                    what this node's service is waiting for you to answer
 awui peer approve <id> [--for-link]    answer one: allow once, or for this link's lifetime
 awui peer deny <id>                    answer one: no
@@ -292,6 +293,7 @@ to continue with an offset. The same lead-only rules a peer delegation passes
 apply (mesh on, `mesh.chats`, one hop, a configured peer) — the peer's own
 policy, its roots and caps, is what actually decides.
 
+
 ## Phase 2: direct TLS
 
 ### The listener
@@ -400,6 +402,34 @@ attempts burn the invite; a code lives 1..60 minutes.
 - **The audit log is bounded**: successful `peer.ping`s are not logged, the log
   rolls to `audit.jsonl.1` past 16 MiB, and `awui peer log` reads only its tail.
 
+## Phase 3: handoff
+
+`peer_handoff {peer, peerRepo, brief?}` is the tool a lead chat has for handing
+its own work — uncommitted edits and all — to a peer's copy of the project. It
+snapshots the working tree onto a temporary `refs/awui/handoff/<id>` through a
+throwaway index (the local index, worktree, and HEAD never move), bundles it
+(`git bundle`, capped at 256 MiB), uploads it in chunks over the link, and the
+peer fetches it into its own repo and checks out a detached worktree at
+`<repo>/.awui/handoff-<id>`. A delegated peer task opens there, carrying the
+brief plus a compact digest of the chat (its last 20 turns, tool outputs
+elided); the task's rows and `@peer` badge behave like any peer delegation's.
+The peer's own policy gates it on arrival — a handoff needs both `task.run`
+and `fs.write` (the built-in worker policy asks for `fs.write`, so the
+target's owner gets one approval card) — and at most two uploads per peer run
+at once, with unfinished ones reaped after 15 minutes. Every git call runs
+argv-only with hooks pinned off and every network protocol refused.
+
+Bringing the work home is one command, run inside the repo that should hold it:
+
+```
+awui peer fetch lab rt_abc123
+```
+
+It names the remote task (or the worktree's path), the peer bundles its
+worktree's HEAD, and it lands here as one ref — `refs/awui/from-peer/lab/<sha>`
+— never merged or checked out. Read it with `git log` or `git diff` and decide
+what to keep.
+
 ## State files
 
 Under the state folder, never in git, never in config:
@@ -462,7 +492,7 @@ Under the state folder, never in git, never in config:
 - **Phase 2** — in progress: direct TLS with pinned keys, ask approvals on
   the target, and invite pairing (shipped); a Peers UI and its routes to
   follow.
-- **Phase 3** — remote terminals, handoff, a NixOS module.
+- **Phase 3** — in progress: handoff (`peer_handoff`, `awui peer fetch`) is shipped; remote terminals and a NixOS module to follow.
 
 ## Phone follow is separate
 

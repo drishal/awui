@@ -10,6 +10,7 @@
 // closed link and a not_found, exactly as the docs say.
 import { ApprovalQueue } from "./approvals.js";
 import { socketPath, startAttachListener, type AttachForced, type AttachLink, type AttachListener } from "./attach.js";
+import { HandoffWorker } from "./handoff-worker.js";
 import type { AuditLog } from "./audit.js";
 import { ensureTlsCertificate } from "./cert.js";
 import type { TaskHost } from "./host.js";
@@ -64,13 +65,22 @@ let currentInvites: InviteStore | null = null;
 interface ServiceStores {
   approvals: ApprovalQueue;
   invites: InviteStore;
+  /** P3 §2: the service's handoff state, shared like the two above. */
+  handoffs: HandoffWorker;
   users: number;
 }
 
 let serviceStores: ServiceStores | null = null;
 
-function acquireStores(): ServiceStores {
-  if (serviceStores === null) serviceStores = { approvals: new ApprovalQueue(), invites: new InviteStore(), users: 0 };
+function acquireStores(deps: { stateDir: string; home: string }): ServiceStores {
+  if (serviceStores === null) {
+    serviceStores = {
+      approvals: new ApprovalQueue(),
+      invites: new InviteStore(),
+      handoffs: new HandoffWorker({ stateDir: deps.stateDir, home: deps.home, log: () => undefined }),
+      users: 0,
+    };
+  }
   serviceStores.users++;
   currentApprovals = serviceStores.approvals;
   currentInvites = serviceStores.invites;
@@ -108,7 +118,7 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
   // The two P2 stores are the service's, not a link's: every attached link and
   // the owner-facing CLI/REST surfaces see the same pending cards and invites —
   // and so does the TLS listener, which shares the same pair.
-  const stores = acquireStores();
+  const stores = acquireStores({ stateDir: deps.stateDir, home: deps.home });
   const approvals = stores.approvals;
   const invites = stores.invites;
   let identity: Promise<NodeIdentity> | null = null;
@@ -144,6 +154,7 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
         host: deps.host,
         approvals,
         invites,
+        handoffs: stores.handoffs,
         // The attach socket is this uid's and the prologue is trusted exactly as
         // the CLI is (P1.5), so its links may serve the owner's local.* methods.
         origin: "attach",
@@ -245,7 +256,7 @@ export function startMeshTls(deps: MeshTlsDeps): MeshAttachHandle {
   // The same pair of P2 stores the attach socket waits on: a card raised over
   // TLS is answered from the same CLI/REST surfaces, and one invite store
   // serves both, so a join over TLS and an invite minted from the CLI agree.
-  const stores = acquireStores();
+  const stores = acquireStores({ stateDir: deps.stateDir, home: deps.home });
   let identity: Promise<NodeIdentity> | null = null;
   let listener: TlsListener | null = null;
   /** The certificate the running listener serves; a different one is a restart. */
@@ -282,6 +293,7 @@ export function startMeshTls(deps: MeshTlsDeps): MeshAttachHandle {
         host: deps.host,
         approvals: stores.approvals,
         invites: stores.invites,
+        handoffs: stores.handoffs,
         // A TLS link is a peer's, never the owner's CLI: local.* stays attach-only.
         origin: "tls",
         log,

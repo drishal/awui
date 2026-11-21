@@ -25,6 +25,7 @@ import type { ApprovalQueue } from "./approvals.js";
 import { ATTACH_FALLBACK_NOTE, connectAndPipe, planServeStdio, socketPath } from "./attach.js";
 import { AuditLog } from "./audit.js";
 import { fsList, fsRead, fsStat, fsWrite } from "./files.js";
+import { HandoffWorker } from "./handoff-worker.js";
 import { ServerHandshake } from "./handshake.js";
 import type { HostLink, TaskHost } from "./host.js";
 import { loadOrCreateIdentity, nodeIdOf, type NodeIdentity } from "./identity.js";
@@ -190,6 +191,31 @@ const b64uBytes = (n: number) =>
 /** peer.redeem (P2 §3): the invite's id and the MAC binding it to this one link's handshake. */
 const redeemSchema = z.object({ inviteId: b64uBytes(8), mac: b64uBytes(32) }).strict();
 /** local.approvals.list: nothing to ask for. */
+// handoff.* params (P3 §2): the shapes the worker methods promise. Sizes are
+// judged in the worker, not here, because the bundle cap is the worker's own
+// bound to answer with; a bad sha256 shape is a bad shape, so it is a parse.
+const handoffBeginSchema = z
+  .object({
+    repoCwd: z.string().min(1).max(4096),
+    size: z.number().int().min(1),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .strict();
+const handoffChunkSchema = z
+  .object({
+    uploadId: z.string().min(1).max(64),
+    index: z.number().int().min(0),
+    data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, "not base64"),
+  })
+  .strict();
+const handoffIdSchema = z.object({ uploadId: z.string().min(1).max(64) }).strict();
+const handoffExportSchema = z.object({ worktree: z.string().min(1).max(4096) }).strict();
+const handoffReadSchema = z
+  .object({
+    exportId: z.string().min(1).max(64),
+    index: z.number().int().min(0),
+  })
+  .strict();
 const localListSchema = z.object({}).strict();
 /** local.approvals.decide: one card, one of its three answers. */
 const localDecideSchema = z.object({ id: z.string().min(1).max(64), decision: z.enum(["allow-once", "allow-for-link", "deny"]) }).strict();
@@ -240,9 +266,18 @@ export interface ServeDeps {
   approvals?: ApprovalQueue;
   /**
    * P2 §3: the service's live single-use invites. Present only in daemon
+  /**
+   * P2 §3: the service's live single-use invites. Present only in daemon
    * mode; without it peer.redeem answers method_not_found.
    */
   invites?: InviteStore;
+  /**
+   * P3 §2: the service's handoff state — uploads being received, exports
+   * being paged out — shared by every link so a dropped link does not strand
+   * a node's half-finished upload. Absent, every handoff.* method answers
+   * method_not_found (the same shape a worker before P3 gave).
+   */
+  handoffs?: HandoffWorker;
   /**
    * Where this link arrived from: "attach" (the running service's own Unix
    * socket, this uid's and trusted exactly as the CLI is) may serve the
@@ -282,6 +317,7 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
   const log = deps.log ?? (() => undefined);
   const peer = new RpcPeer(io.input, io.output, { role: "server", log });
   const host = deps.host;
+  const handoffs = deps.handoffs;
   const origin = deps.origin ?? "stdio";
   // This link's "allow for link" grants on the shared queue; they end with the link.
   const linkGrants = deps.approvals?.openLink() ?? null;
@@ -886,6 +922,63 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
         note({ outcome: `${wrote.size} bytes` });
         return wrote;
       }
+      // ---- handoff.* (P3 §2): one bundle in, one worktree out, one bundle back ----
+      case "handoff.begin": {
+        // The one place a handoff is fully cap-gated, on both caps the spec
+        // names: an inbound handoff runs work (task.run) and writes a bundle
+        // and a worktree (fs.write), so a policy that asks raises its card
+        // here, once, before a single chunk is accepted.
+        const p = parse(handoffBeginSchema, method, params);
+        note({ target: p.repoCwd });
+        if (handoffs === undefined) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        await requireCap(policy, "task.run", method, { target: p.repoCwd });
+        await requireCap(policy, "fs.write", method, { target: p.repoCwd });
+        const begun = await handoffs.begin(policy, nodeIdOf(client.publicKey), p);
+        note({ outcome: `${begun.uploadId}, ${p.size} bytes promised` });
+        return begun;
+      }
+      case "handoff.chunk": {
+        const p = parse(handoffChunkSchema, method, params);
+        note({ target: p.uploadId });
+        if (handoffs === undefined) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        const data = Buffer.from(p.data, "base64");
+        await handoffs.chunk(policy, nodeIdOf(client.publicKey), p);
+        note({ outcome: `${data.length} bytes` });
+        return {};
+      }
+      case "handoff.finish": {
+        const p = parse(handoffIdSchema, method, params);
+        note({ target: p.uploadId });
+        if (handoffs === undefined) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        const landed = await handoffs.finish(policy, nodeIdOf(client.publicKey), p.uploadId);
+        note({ outcome: landed.worktree });
+        return landed;
+      }
+      case "handoff.abort": {
+        const p = parse(handoffIdSchema, method, params);
+        note({ target: p.uploadId });
+        if (handoffs === undefined) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        await handoffs.abort(nodeIdOf(client.publicKey), p.uploadId);
+        note({ outcome: "aborted" });
+        return {};
+      }
+      case "handoff.export": {
+        const p = parse(handoffExportSchema, method, params);
+        note({ target: p.worktree });
+        if (handoffs === undefined) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        await requireCap(policy, "fs.read", method, { target: p.worktree });
+        const exported = await handoffs.export(policy, nodeIdOf(client.publicKey), p.worktree);
+        note({ outcome: `${exported.exportId}, ${exported.size} bytes` });
+        return exported;
+      }
+      case "handoff.read": {
+        const p = parse(handoffReadSchema, method, params);
+        note({ target: p.exportId });
+        if (handoffs === undefined) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        const page = await handoffs.read(policy, nodeIdOf(client.publicKey), p);
+        note({ outcome: `${Math.floor((page.data.length * 3) / 4)} bytes${page.eof ? ", eof" : ""}` });
+        return page;
+      }
       case "peer.redeem": {
         if (inbound.paired) {
           throw new MeshRpcError(MeshErrorCode.denied, "this node has already paired with the caller; peer.redeem is only for an unpaired first contact", { code: "denied" });
@@ -1170,6 +1263,9 @@ export async function runServeStdio(args: string[], env: NodeJS.ProcessEnv): Pro
       return cached.on;
     },
     home: config.home,
+    // Ephemeral workers serve handoffs too, but from their own state: this
+    // process's uploads die with the link, exactly as its tasks do.
+    handoffs: new HandoffWorker({ stateDir: config.stateDir, home: config.home, log }),
     ...(forced !== undefined ? { forced } : {}),
     log,
   });

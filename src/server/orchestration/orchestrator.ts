@@ -8,6 +8,10 @@
 // settle, so an idle child can be reaped like any other chat. A cancel bumps the task's
 // generation first, which drops late events from the run that was stopped.
 import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createHandoffBundle, snapshotWorkingTree, transcriptDigest, uploadHandoff, type HandoffSnapshot } from "../mesh/handoff.js";
 import { isApproval } from "../../shared/approval.js";
 import { MAX_DELEGATED_TASKS, type ChatItem, type ChatLineage, type ChatStatus, type DelegatedTaskView, type InteractionRequest, type InteractionAnswer, type SendMode, type WorkspaceInfo } from "../../shared/protocol.js";
 import type { BoardManager } from "../boards/types.js";
@@ -40,7 +44,9 @@ import {
   threadSendSchema,
   threadWaitSchema,
   peerFilesSchema,
+  peerHandoffSchema,
   requestDecisionSchema,
+  MAX_DELEGATE_BRIEF_CHARS,
   budgetLine,
   setStatus,
   setStatusSchema,
@@ -188,6 +194,8 @@ export class Orchestrator {
         return this.threadRead(caller, threadReadSchema.parse(args));
       case "peer_files":
         return this.peerFiles(caller, peerFilesSchema.parse(args));
+      case "peer_handoff":
+        return this.peerHandoff(caller, peerHandoffSchema.parse(args));
       case "request_decision":
         return this.requestDecision(caller, requestDecisionSchema.parse(args));
       case "set_status":
@@ -944,6 +952,65 @@ export class Orchestrator {
     } catch (error) {
       throw peerRefusal(args.peer, error);
     }
+  }
+
+  /**
+   * `peer_handoff {peer, peerRepo, brief?}`: move this chat's work to a peer.
+   * The same mesh gates a peer delegation passes answer first (peerGate), and
+   * the workspace must be a git repo with a commit to parent the snapshot
+   * on. Then, in order and each a clear refusal on its own: the snapshot
+   * (the user's index, worktree, and HEAD never move), the bundle under its
+   * cap, the chunked upload (the peer's policy gates it on arrival), and
+   * the delegated peer task opened in the worktree the peer answered with —
+   * the ordinary delegate() peer path, so its rows, approvals, and result
+   * behave exactly like any peer task's. The local chat's note is this
+   * tool's answer; nothing about the local tree changed.
+   */
+  private async peerHandoff(caller: Chat, args: { peer: string; peerRepo: string; brief?: string }): Promise<ToolOutput> {
+    const peers = this.peerGate(caller, args.peer);
+    const repo = caller.workspace.path;
+    let snap: HandoffSnapshot;
+    try {
+      snap = await snapshotWorkingTree(repo);
+    } catch (error) {
+      throw denial(422, "workspace_unsupported", `This chat's workspace cannot be handed off: ${errorMessage(error)}`);
+    }
+    // The bundle file is scratch, not state: a temp dir that leaves with the call.
+    const scratch = await mkdtemp(path.join(tmpdir(), "awui-handoff-"));
+    let bundle: Awaited<ReturnType<typeof createHandoffBundle>>;
+    try {
+      bundle = await createHandoffBundle(repo, snap, scratch);
+    } catch (error) {
+      await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+      throw denial(422, "workspace_unsupported", `The handoff bundle could not be made: ${errorMessage(error)}`);
+    }
+    let landed: { worktree: string };
+    try {
+      landed = await uploadHandoff(peers.manager, args.peer, args.peerRepo, bundle.file);
+    } catch (error) {
+      throw peerRefusal(args.peer, error);
+    } finally {
+      // The bundle file is this call's own scratch; the ref it came from is the record.
+      await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+    }
+    // The brief the far worker reads: the caller's words, then the bounded
+    // digest of the chat whose work is moving, trimmed to one delegate brief.
+    const intro = args.brief !== undefined && args.brief.trim() !== "" ? args.brief.trim() : "Continue the work handed off below.";
+    const budget = Math.max(1_000, MAX_DELEGATE_BRIEF_CHARS - Buffer.byteLength(intro, "utf8") - 200);
+    const digest = transcriptDigest(caller.snapshot().items, { maxBytes: budget });
+    const brief = `${intro}\n\n${digest}`;
+    const out = await this.delegate(caller, {
+      brief,
+      peer: args.peer,
+      peerCwd: landed.worktree,
+      title: `Handoff to ${args.peer}`,
+      notify: "wake",
+    });
+    const taskId = (out.data as { taskId: string }).taskId;
+    return {
+      text: `Handed this chat's work off to ${args.peer} (snapshot ${snap.ref}, task ${taskId}): the peer's copy runs in ${landed.worktree}, and this machine's index, worktree, and HEAD are untouched. Watch it with thread_wait / task_status; bring its committed work home with: awui peer fetch ${args.peer} ${landed.worktree}`,
+      data: { ...(out.data as Record<string, unknown>), handoffRef: snap.ref, worktree: landed.worktree, peer: args.peer },
+    };
   }
 
   private planView(plan: PlanRecord): Plan & { note: string | null; taskIds: Record<string, string> } {
