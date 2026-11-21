@@ -63,20 +63,19 @@ async function until(predicate: () => boolean, ms = 8000) {
 describe("omp adapter (scripted omp)", () => {
   it("discovers the version and refuses the home directory", async () => {
     const d = await adapter.discover();
-    expect(d).toMatchObject({ available: true, version: "18.4.10", warnings: [] });
+    expect(d).toMatchObject({ available: true, version: "19.0.1", warnings: [] });
     expect(adapter.workspaceProblem(home)).toMatch(/home directory/);
     expect(adapter.workspaceProblem(project)).toBeNull();
   });
 
   it("softens the version warning to older builds and new major lines", () => {
-    expect(ompVersionWarning("18.4.10")).toBeNull();
-    expect(ompVersionWarning("18.4.11")).toBeNull();
-    expect(ompVersionWarning("18.6.1")).toBeNull();
-    expect(ompVersionWarning("18.12.0")).toBeNull();
-    expect(ompVersionWarning("18.4.9")).toMatch(/older than/);
-    expect(ompVersionWarning("18.3.0")).toMatch(/older than/);
-    expect(ompVersionWarning("17.9.9")).toMatch(/different major/);
-    expect(ompVersionWarning("19.0.0")).toMatch(/different major/);
+    expect(ompVersionWarning("19.0.1")).toBeNull();
+    expect(ompVersionWarning("19.0.2")).toBeNull();
+    expect(ompVersionWarning("19.4.0")).toBeNull();
+    expect(ompVersionWarning("19.0.0")).toMatch(/older than/);
+    expect(ompVersionWarning("18.18.6")).toMatch(/different major/);
+    expect(ompVersionWarning("18.4.10")).toMatch(/different major/);
+    expect(ompVersionWarning("20.0.0")).toMatch(/different major/);
     expect(ompVersionWarning("nightly")).toMatch(/written for/);
   });
 

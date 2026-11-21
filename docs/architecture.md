@@ -153,7 +153,7 @@ omp's npm package requires Bun and ships raw `.ts`, so it cannot be imported int
 - **Fallback:** when omp moves a request to its next candidate model (a rate limit, an outage, a rejected tier) it says so, and the chat shows *Switched openai/gpt-5 to anthropic/opus: Rate limited* as a notice while the run goes on.
 - **Tools:** omp starts with its normal tool set. The app never passes `--tools`.
 - **Home directory:** omp refuses to work in your home directory itself (it would switch to a temp dir), so the UI disables omp for a workspace that is exactly `~`. It never passes `--allow-home`.
-- **Lifecycle:** children are killed on dispose and on `SIGINT`/`SIGTERM`. A crash surfaces as a chat error. Protocol types are hand-written from omp 18.4.5 and checked against **18.4.10**: newer minors are assumed additive and stay quiet, while an older build or a different major line shows a warning.
+- **Lifecycle:** children are killed on dispose and on `SIGINT`/`SIGTERM`. A crash surfaces as a chat error. Protocol types are hand-written from omp 18.4.5 and checked against **19.0.1** (and 18.4.10 before it): newer minors are assumed additive and stay quiet, while an older build or a different major line shows a warning.
 
 ## Hermes
 

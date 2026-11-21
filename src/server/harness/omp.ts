@@ -9,8 +9,15 @@
 // again against 18.18.6: the ready frame, get_state, and the session lease
 // (`omp session lease --json`, which a resume asks so it never makes a second
 // writer) answer as written here; its HTML-form `ask` tool is not offered in RPC
-// mode, so no chat here sees one. Newer minors are assumed additive and stay
-// quiet; an older build or a new major line is reported by ompVersionWarning().
+// mode, so no chat here sees one. Checked against 19.0.1 (the next major line)
+// before moving the baseline: the ready frame advertises protocol v2 and
+// negotiate_protocol answers it; get_state, get_messages, get_available_models,
+// get_available_thinking_levels, get_available_commands (/context is still a
+// builtin) and get_session_stats keep their shapes; a prompt streams through
+// message_update to session_settled; and `omp acp` session/list plus
+// `omp session lease --json` answer as written. Newer minors are assumed
+// additive and stay quiet; an older build or a new major line is reported by
+// ompVersionWarning().
 import { type ChildProcessWithoutNullStreams } from "node:child_process";
 import { execHarness, spawnHarness } from "../platform-win.js";
 import { promises as fs } from "node:fs";
@@ -63,7 +70,7 @@ import type {
  * line — omp adds, it has not changed what this adapter calls. An older build,
  * a different major line, or an unreadable version carries a warning.
  */
-export function ompVersionWarning(version: string, writtenFor = "18.4.10"): string | null {
+export function ompVersionWarning(version: string, writtenFor = "19.0.1"): string | null {
   const seen = /^(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
   const known = /^(\d+)\.(\d+)\.(\d+)/.exec(writtenFor);
   if (!seen || !known) return `omp ${version} is installed; this adapter's protocol types were written for ${writtenFor}`;
