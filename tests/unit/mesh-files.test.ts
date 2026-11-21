@@ -6,7 +6,7 @@
 // fs.read / fs.write caps, the per-link write pace, and audit lines that carry
 // the path and byte counts, never the bytes themselves.
 import { generateKeyPairSync, randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -226,6 +226,15 @@ describe("fs.write", () => {
     expect(onDir.message).toContain("regular files");
     const missing = await refuse(() => fsWrite(policy(), { path: path.join(root, "gone"), data: b64("x"), mode: "overwrite" }, HOME));
     expect(missing.code).toBe(MeshErrorCode.not_found);
+  });
+
+  it("never carries setuid/setgid bits onto content a peer wrote", async () => {
+    const { root, policy } = await makeRoot();
+    const file = path.join(root, "tool");
+    await writeFile(file, "orig");
+    await chmod(file, 0o4755);
+    await fsWrite(policy(), { path: file, data: b64("new"), mode: "overwrite" }, HOME);
+    expect((await stat(file)).mode & 0o7777).toBe(0o755);
   });
 
   it("turns a stale expectMtimeMs into a conflict, never a clobber", async () => {

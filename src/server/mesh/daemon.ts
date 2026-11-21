@@ -120,6 +120,8 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
     } else if (!on && wanted) {
       wanted = false;
       stopListener();
+      // Off is off for the whole node: the host's tasks end too, running or detached.
+      void Promise.resolve(deps.host.disposeAll("the mesh was turned off")).catch(() => undefined);
     }
   };
   poll();

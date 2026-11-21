@@ -136,6 +136,8 @@ export class TaskHost {
   private readonly tasks = new Map<string, HostTask>();
   /** (nodeId, clientRequestId) -> remoteTaskId, host-wide: a retried open lands on the same task from any link. */
   private readonly idempotent = new Map<string, string>();
+  /** Opens in flight per node id: part of the per-peer cap until they land or fail. */
+  private readonly opening = new Map<string, number>();
   private readonly ringMaxEvents: number;
   private readonly ringMaxBytes: number;
   private readonly log: (message: string) => void;
@@ -174,13 +176,30 @@ export class TaskHost {
     const remembered = this.idempotent.get(key);
     if (remembered !== undefined) {
       const task = this.tasks.get(remembered);
-      if (task !== undefined) return task.openResult;
+      if (task !== undefined) {
+        // A retry on a new link must also stream: subscribe it, as the first open did.
+        task.subscribers.add(link);
+        link.subscribed.add(remembered);
+        return task.openResult;
+      }
     }
-    let live = 0;
+    let live = this.opening.get(nodeId) ?? 0;
     for (const task of this.tasks.values()) if (task.nodeId === nodeId) live++;
     if (live >= req.maxTasks) {
       throw new MeshRpcError(MeshErrorCode.limit, `this peer already holds ${live} live tasks and the policy allows ${req.maxTasks}`, { code: "limit" });
     }
+    // Counted before the first await, so concurrent opens cannot all see room for one.
+    this.opening.set(nodeId, (this.opening.get(nodeId) ?? 0) + 1);
+    try {
+      return await this.openCounted(link, nodeId, peerName, req, key);
+    } finally {
+      const left = (this.opening.get(nodeId) ?? 1) - 1;
+      if (left <= 0) this.opening.delete(nodeId);
+      else this.opening.set(nodeId, left);
+    }
+  }
+
+  private async openCounted(link: HostLink, nodeId: string, peerName: string, req: HostOpenRequest, key: string): Promise<HostOpenResult> {
     const adapter = this.deps.registry.get(req.harness);
     if (adapter === undefined) throw new MeshRpcError(MeshErrorCode.denied, `harness "${req.harness}" is not registered on this node`, { code: "denied" });
     if (!(await this.deps.registry.available(req.harness))) {
@@ -241,7 +260,13 @@ export class TaskHost {
     link.subscribed.add(remoteTaskId);
     this.tasks.set(remoteTaskId, task);
     this.idempotent.set(key, remoteTaskId);
-    while (this.idempotent.size > MAX_IDEMPOTENT) this.idempotent.delete(this.idempotent.keys().next().value as string);
+    // Evict only keys whose task is gone; a live task's key is dropped when the task closes.
+    if (this.idempotent.size > MAX_IDEMPOTENT) {
+      for (const [k, id] of this.idempotent) {
+        if (this.idempotent.size <= MAX_IDEMPOTENT) break;
+        if (!this.tasks.has(id)) this.idempotent.delete(k);
+      }
+    }
     return task.openResult;
   }
 

@@ -25,7 +25,7 @@ const CONFIG: ChatConfig = { model: null, thinkingLevel: null, models: [], think
  * and each new link reattaches to the same task. `attach` scripts what task.attach
  * answers; `emit` plays one event into the buffer and onto the link that is live now.
  */
-function daemonWorker(identity: NodeIdentity, attach: "ok" | "gap" | "ephemeral" | "not_found" | "denied" = "ok") {
+function daemonWorker(identity: NodeIdentity, attach: "ok" | "gap" | "ephemeral" | "not_found" | "denied" | "busy" = "ok") {
   const buffer: Array<{ seq: number; event: HarnessEvent }> = [];
   const attaches: Array<unknown> = [];
   let nextSeq = 0;
@@ -48,6 +48,7 @@ function daemonWorker(identity: NodeIdentity, attach: "ok" | "gap" | "ephemeral"
         if (attach === "ephemeral") throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "task.attach" is served`, { code: "method_not_found" });
         if (attach === "not_found") throw new MeshRpcError(MeshErrorCode.not_found, `no task "${REMOTE_TASK}" is open here`, { code: "not_found" });
         if (attach === "denied") throw new MeshRpcError(MeshErrorCode.denied, "the policy refuses task.attach", { code: "denied" });
+        if (attach === "busy") throw new MeshRpcError(MeshErrorCode.limit, "the worker is busy", { code: "limit" });
         const afterSeq = typeof p.afterSeq === "number" ? p.afterSeq : 0;
         const missed = buffer.filter((entry) => entry.seq > afterSeq);
         for (const entry of missed) rpc.notify("task.event", { remoteTaskId: REMOTE_TASK, seq: entry.seq, event: entry.event });
@@ -207,7 +208,7 @@ describe("a dropped link under an unsettled peer task", () => {
 
   it("gives up after the reconnect window and ends the run, on a fake clock", async () => {
     const identity = await loadOrCreateIdentity(tempDir("awui-mesh-rc-w-"));
-    const worker = daemonWorker(identity, "denied");
+    const worker = daemonWorker(identity, "busy");
     const m = await manager(worker);
     // A window of 100 fake ms over a 10/20 ms schedule: six attempts, then the fatal.
     let clock = 0;
@@ -228,7 +229,22 @@ describe("a dropped link under an unsettled peer task", () => {
     expect(seen.map((event) => event.type)).toEqual(["fatal", "settled"]);
     const fatal = seen[0] as { message: string };
     expect(fatal.message).toMatch(/no reconnection within/);
-    expect(worker.spawns).toBe(8); // the helper's tofu link, the open, and six attempts on the schedule
+    // A task-level refusal keeps the shared link: one fresh link after the drop, six attach attempts over it.
+    expect(worker.spawns).toBe(3);
+    expect(worker.attaches.length).toBe(6);
+    await live.dispose();
+  });
+
+  it("ends the run at once when the peer now denies the task (a revoked policy is not retried)", async () => {
+    const identity = await loadOrCreateIdentity(tempDir("awui-mesh-rc-w-"));
+    const worker = daemonWorker(identity, "denied");
+    const m = await manager(worker);
+    const { live } = await openLive(m, { schedule: [10], giveUpMs: 100_000, now: () => 0, sleep: async () => undefined });
+    const seen: HarnessEvent[] = [];
+    live.subscribe((event) => seen.push(event));
+    worker.drop();
+    await waitFor(() => seen.some((event) => event.type === "settled"), "the denied end", 5_000);
+    expect(seen.map((event) => event.type)).toEqual(["fatal", "settled"]);
     await live.dispose();
   });
 

@@ -354,6 +354,19 @@ describe("the host's bounds", () => {
     await teardown(f, a, b);
   });
 
+  it("holds the per-peer cap against concurrent opens", async () => {
+    const f = await makeFixture();
+    f.mesh = { enabled: true, policies: { worker: { roots: [f.root], harnesses: ["fake"], max_tasks: 1 } } };
+    const who = await paired(f);
+    const a = await connectAs(f, who);
+    const results = await Promise.allSettled(
+      ["c1", "c2", "c3"].map((id) => a.client.request("task.open", { clientRequestId: id, harness: "fake", cwd: f.root, hops: 0 })),
+    );
+    expect(results.filter((r) => r.status === "fulfilled").length).toBe(1);
+    expect((await f.host.list(who.nodeId)).length).toBe(1);
+    await teardown(f, a);
+  });
+
   it("answers a retried clientRequestId with the same task, from a new link", async () => {
     const f = await makeFixture();
     const who = await paired(f);
@@ -365,6 +378,10 @@ describe("the host's bounds", () => {
     const second = await openTask(b.client, f, { clientRequestId: "crq-same" });
     expect(second.remoteTaskId).toBe(first.remoteTaskId);
     expect(f.adapter.openRequests.length).toBe(1);
+    // ...and the new link streams that task's events.
+    const events = collectEvents(b.client);
+    await b.client.request("task.prompt", { remoteTaskId: second.remoteTaskId, text: "hi", mode: "prompt" });
+    await waitFor(() => (events.some((e) => e.remoteTaskId === second.remoteTaskId) ? true : undefined), "events on the retry link");
     await teardown(f, b);
   });
 });

@@ -185,6 +185,10 @@ export class RpcPeer {
   private started = false;
   private draining = false;
   private closeReason: string | null = null;
+  /** Whether this link has closed (either side). */
+  get isClosed(): boolean {
+    return this.closeReason !== null;
+  }
   private resolveClosed!: (reason: string) => void;
 
   constructor(

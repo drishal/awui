@@ -248,6 +248,8 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
   const tasks = new Map<string, LinkTask>();
   /** clientRequestId -> the answer already given, so a retry returns the same task, not a second chat. */
   const opens = new Map<string, { remoteTaskId: string; result: unknown }>();
+  /** task.open calls in flight on this link: part of the cap until they land or fail. */
+  let openingTasks = 0;
   /** fs.write times this link has landed, a sliding one-minute window; the cap itself bounds the array. */
   const writeTimes: number[] = [];
   /** Takes one of this link's 32-per-minute write slots, or throws limit; a refused or failed write still spends it. */
@@ -403,13 +405,34 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
     // A retry of an open that already happened answers the same task, even at the cap.
     const existing = opens.get(params.clientRequestId);
     if (existing !== undefined && tasks.has(existing.remoteTaskId)) return existing.result;
-    if (tasks.size >= policy.maxTasks) {
+    if (tasks.size + openingTasks >= policy.maxTasks) {
       throw new MeshRpcError(MeshErrorCode.limit, `this peer already holds ${tasks.size} live tasks and the policy allows ${policy.maxTasks}`, { code: "limit" });
     }
+    // Counted before the first await, so concurrent opens cannot all see room for one.
+    openingTasks++;
+    try {
+      return await openCounted(params, policy, adapter, resolved.real, note);
+    } finally {
+      openingTasks--;
+    }
+  };
+
+  const openCounted = async (
+    params: z.infer<typeof openSchema>,
+    policy: PeerPolicy,
+    adapter: NonNullable<ReturnType<ServeDeps["registry"]["get"]>>,
+    cwd: string,
+    note: (entry: CallNote) => void,
+  ): Promise<unknown> => {
     const ceiling = clampCeiling(policy, params.ceiling);
     // A real harness session, delegated, and with no toolEnv at all: the remote child gets no
     // orchestration tools, so it cannot delegate, and max_hops 1 holds structurally.
-    const live = await adapter.openChat({ cwd: resolved.real, delegated: true });
+    const live = await adapter.openChat({ cwd, delegated: true });
+    if (peer.isClosed) {
+      // The link went away while the harness started: nobody could ever reach this chat.
+      await live.dispose().catch(() => undefined);
+      throw new MeshRpcError(MeshErrorCode.link_closed, "the link closed while the task was opening", { code: "link_closed" });
+    }
     const config = await live.getConfig();
     const mode = permissionModeFor(params.harness, ceiling, config.permissionModes?.map((m) => m.id));
     if (!mode.ok) {
@@ -798,6 +821,8 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
     };
     try {
       const result = await dispatch(method, params, note);
+      // A successful ping is liveness, not a decision: never logged, so nobody can flood the log with it.
+      if (method === "peer.ping") return result;
       // Bookkeeping never delays the answer; a failed append is the audit log's to report.
       void deps.audit.append({
         peer: peerName,

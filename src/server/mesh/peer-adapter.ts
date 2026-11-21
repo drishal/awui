@@ -278,11 +278,14 @@ export class PeerLiveChat implements LiveChat {
       await this.plan.sleep(this.plan.schedule[Math.min(attempt, this.plan.schedule.length - 1)] ?? 30_000);
       if (this.disposed) return;
       let fresh: PeerConnection | null = null;
+      let dropTask: (() => void) | null = null;
       try {
+        dropTask = null;
         fresh = await this.reconnect!();
         // Subscribed before the attach, so the replayed events (which may arrive before or
         // after the answer) are routed, not dropped; the seq filter absorbs the overlap.
         const offTask = fresh.onTaskEvent(this.remoteTaskId, this.onTask);
+        dropTask = offTask;
         const attached = await fresh.rpc.request<unknown>("task.attach", { remoteTaskId: this.remoteTaskId, afterSeq: this.lastSeq });
         if (fresh.closed) throw new MeshRpcError(MeshErrorCode.link_closed, "the fresh link closed before the attach finished", { code: "link_closed" });
         if ((attached as { gap?: unknown } | null)?.gap === true) {
@@ -303,8 +306,19 @@ export class PeerLiveChat implements LiveChat {
         this.emit({ type: "notice", level: "info", text: `reconnected to ${this.peerName}` });
         return;
       } catch (error) {
-        fresh?.close();
-        if (error instanceof MeshRpcError && (error.code === MeshErrorCode.not_found || error.code === MeshErrorCode.method_not_found)) {
+        dropTask?.();
+        dropTask = null;
+        // The connection is the manager's one shared link to this peer: only a link-level
+        // failure closes it, never one task's refusal (other tasks stream over it too).
+        const linkLevel = !(error instanceof MeshRpcError) || error.code === MeshErrorCode.link_closed || error.code === MeshErrorCode.timeout;
+        if (linkLevel) fresh?.close();
+        if (
+          error instanceof MeshRpcError &&
+          (error.code === MeshErrorCode.not_found ||
+            error.code === MeshErrorCode.method_not_found ||
+            error.code === MeshErrorCode.denied ||
+            error.code === MeshErrorCode.not_paired)
+        ) {
           // The task is gone on the peer, or the peer predates attach (P1, ephemeral): end the
           // run instead of retrying, exactly as a lost link ended it in P1.
           this.reconnecting = false;

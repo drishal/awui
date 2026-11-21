@@ -303,8 +303,15 @@ policy, its roots and caps, is what actually decides.
   roots and then handed to the harness; someone who can already write inside a
   root could race a symlink swap in between. Harnesses with no permission modes
   (pi) can run commands anyway, so this matters only for read-only peers that
-  share a root with a hostile writer. The file methods above do not have this
-  gap: each one resolves, checks, and opens under the check.
+  share a root with a hostile writer. `fs.read` closes the gap (no-follow
+  open, then the opened file's device/inode is checked against the resolved
+  path). `fs.write` narrows it: the parent directory's device/inode is checked
+  again right before the atomic rename, and a change refuses the write; a
+  writer racing inside that last instant is the remaining window.
+- **Overwrites drop setuid/setgid/sticky bits**: a file a peer wrote keeps only
+  its permission bits.
+- **The audit log is bounded**: successful `peer.ping`s are not logged, the log
+  rolls to `audit.jsonl.1` past 16 MiB, and `awui peer log` reads only its tail.
 
 ## State files
 

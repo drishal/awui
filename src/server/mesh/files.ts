@@ -29,6 +29,8 @@ export const MAX_RW_BYTES = 512 * 1024;
 const DEFAULT_READ_BYTES = MAX_RW_BYTES;
 /** fs.list's biggest answer, and its default: the spec's figures. */
 const MAX_LIST_ENTRIES = 1000;
+/** The most entries one fs.list scans before sorting; past it the listing says truncated. */
+const MAX_SCAN_ENTRIES = 10_000;
 const DEFAULT_LIST_ENTRIES = 500;
 
 /** Test seam only; production callers pass nothing. */
@@ -181,9 +183,19 @@ export async function fsList(policy: PeerPolicy, params: FsListParams, home: str
     throw denied(`fs.list lists directories; this path is a ${entryType(st)}, and no fs method follows the final component`);
   }
   const limit = params.limit ?? DEFAULT_LIST_ENTRIES;
-  const dirents = await fs.readdir(entry, { withFileTypes: true });
+  // Read through an iterator with a hard ceiling, so a huge directory is never one allocation.
+  const dirents: import("node:fs").Dirent[] = [];
+  const handle = await fs.opendir(entry);
+  try {
+    for await (const dirent of handle) {
+      dirents.push(dirent);
+      if (dirents.length >= MAX_SCAN_ENTRIES) break;
+    }
+  } finally {
+    await handle.close().catch(() => undefined);
+  }
   dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  const truncated = dirents.length > limit;
+  const truncated = dirents.length > limit || dirents.length >= MAX_SCAN_ENTRIES;
   const entries: FsListEntry[] = [];
   for (const dirent of dirents.slice(0, limit)) {
     // A racing delete leaves a name readdir saw but lstat cannot reach; the
@@ -275,7 +287,8 @@ export async function fsWrite(policy: PeerPolicy, params: FsWriteParams, home: s
     if (st.isSymbolicLink()) throw denied("fs.write never follows or replaces the final symlink");
     if (!st.isFile()) throw denied(`fs.write overwrites regular files; this path is a ${entryType(st)}`);
     if (params.expectMtimeMs !== undefined && params.expectMtimeMs !== st.mtimeMs) throw invalidParams("changed since read");
-    mode = st.mode & 0o7777;
+    // Permission bits only: a peer that controls the content never inherits setuid/setgid/sticky.
+    mode = st.mode & 0o777;
   }
   const temp = path.join(dir, `.${path.basename(entry)}.awui-${randomBytes(6).toString("hex")}.tmp`);
   let handle: fs.FileHandle;
@@ -292,6 +305,12 @@ export async function fsWrite(policy: PeerPolicy, params: FsWriteParams, home: s
     // next expectMtimeMs will be checked against.
     const written = await handle.stat();
     opts.failBeforeRename?.(temp, entry);
+    // The parent is re-checked right before the rename: a directory swapped for a
+    // symlink since it was resolved would carry the write outside the roots.
+    const again = await fs.stat(dir);
+    if (!again.isDirectory() || again.dev !== dirStat.dev || again.ino !== dirStat.ino) {
+      throw denied("the parent directory changed while the file was being written");
+    }
     await fs.rename(temp, entry);
     return { size: written.size, mtimeMs: written.mtimeMs };
   } catch (error) {
