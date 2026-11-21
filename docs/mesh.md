@@ -1,15 +1,18 @@
 # Mesh
 
-Running one awui's agent on another machine's, over SSH or Docker, without opening
-any port. **Phase 1** is live: a chat can hand a delegated task to a paired peer,
-the peer's own awui opens the harness session on its own machine, and the run
-streams back as an ordinary delegated task in your chat. **Phase 1.5** is live on
-top of it: when the peer runs awui as a service, its tasks survive the SSH
-session that started them (a dropped link reconnects and replays what it missed),
-its approvals can be answered in its own UI, and the leader can read and write
-files there. **Direct TLS** is the newest way in: a peer running awui as a
-service can answer on a port of its own — same signed handshake, same
-policy, pinned keys instead of a certificate authority.
+Running one awui's agent on another machine's, over SSH, Docker, or a direct TLS
+link, without an HTTP port. **Phase 1** is live: a chat can hand a delegated task
+to a paired peer, the peer's own awui opens the harness session on its own
+machine, and the run streams back as an ordinary delegated task in your chat.
+**Phase 1.5** is live on top of it: when the peer runs awui as a service, its
+tasks survive the SSH session that started them (a dropped link reconnects and
+replays what it missed), its approvals can be answered in its own UI, and the
+leader can read and write files there. **Phase 2** adds a direct TLS transport
+with pinned keys (no SSH hop, no Tailscale), ask-approvals answered on the
+target, and pairing by invite code or QR through a Peers UI. **Phase 3** adds
+remote terminals on a peer, handoff (move a chat's work to a peer and fetch the
+result back), and a NixOS module with `awui peer bootstrap` for machines it does
+not manage.
 
 ## What it is
 
@@ -124,6 +127,50 @@ peers:
 worker`, exactly as over SSH. The container's awui needs its own config.yml with
 `mesh.enabled: true` and the policy's `roots` set to paths inside the container.
 
+## Quick start (direct TLS)
+
+Two machines that can already reach each other over the network, and one port
+you choose to open. No SSH account, no shared shell: the link is TLS 1.3
+carrying the same `awui-mesh/1` stream, and identity is a pinned Ed25519 key.
+Nothing listens until `mesh.listen` is set, and the TLS port speaks only
+awui-mesh/1 — a peer never reaches `/api/*` and never sees your web UI.
+
+1. **Worker** (the machine that will run the agent), `~/.config/awui/config.yml`:
+
+   ```yaml
+   mesh:
+     enabled: true
+     listen:
+       host: 192.168.1.20   # the address inbound links bind; required, no default
+       port: 4784           # default; 0.0.0.0/:: work but the doctor warns
+   policies:
+     worker:
+       roots: [~/code]
+   ```
+
+2. **Leader** (where you chat):
+
+   ```yaml
+   mesh:
+     enabled: true
+   peers:
+     - name: lab-vm-3
+       tls: 192.168.1.20:4784
+   ```
+
+3. **Pair.** Either way works:
+   - `awui peer add lab-vm-3` on the leader, then `awui peer accept leader-box
+     --policy worker` on the worker — the same TOFU-first-contact dance as SSH
+     (compare node id and SAS, answer `y`), or
+   - `awui peer invite` on the worker (the listener must be on), paste the
+     printed `awui-invite:1:…` code — or scan its QR — into `awui peer join
+     <code> --name lab-vm-3` on the leader. The key travels in the code, so
+     there is no first-contact to trust; the worker still Accepts the joiner
+     under a policy before anything runs.
+
+The certificate the TLS listener presents is self-signed and not trusted by
+anyone: the handshake against the pinned key is what a link stands or falls on.
+
 ## How it works
 
 - **Transport.** The link is one `ssh -T`, one `docker exec -i`, or a direct
@@ -189,6 +236,9 @@ awui peer deny <id>                    answer one: no
 awui peer invite [--policy <p>] [--ttl 10m] [--address host:port ...]   a single-use pairing code, with a terminal QR
 awui peer join <code> [--name <n>]     pin the key the code carries, redeem it over TLS, save the peer
 awui peer serve-stdio [--peer <name>] [--policy <p>] [--ephemeral] [--attach]   the worker end of a link
+awui peer bootstrap <ssh-dest> [--policy <p>] [--root <path>] [--pubkey <path>] [--run]
+                                      the setup commands for a worker machine (with --run: over ssh, asked)
+awui peer fetch <peer> <remoteTaskId>   bring a handed-off task's result back, as a ref (never merged)
 ```
 
 Exit codes: 0 ok, 1 failed, 2 usage, 78 mesh off or config.yml broken. `add` and
@@ -292,110 +342,140 @@ to continue with an offset. The same lead-only rules a peer delegation passes
 apply (mesh on, `mesh.chats`, one hop, a configured peer) — the peer's own
 policy, its roots and caps, is what actually decides.
 
-## Phase 2: direct TLS
+## Phase 2: direct TLS, ask approvals, invites, the Peers UI
 
-### The listener
+### The direct TLS transport
 
-A worker that runs awui as a service can also answer peers on a port, with no
-SSH hop and no container: set `mesh.listen` and the same service that owns the
-attach socket opens a TLS 1.3 listener (default port 4784):
-
-```yaml
-mesh:
-  enabled: true
-  listen:
-    host: 10.0.0.5        # required; 0.0.0.0/:: work but `awui doctor` warns
-    port: 4784
-peers:
-  - name: lab-vm-3
-    tls: lab-vm-3.internal:4784
-```
-
-Exactly one of `ssh`, `docker`, or `tls` names how a peer is reached. Turning
-the mesh off (or removing `mesh.listen`) closes the listener and every link
-with it, on the same 2 s config re-read the attach socket follows.
-
-**The certificate is not the trust.** TLS needs a certificate, so awui mints
-one: a minimal self-signed X.509 v3, hand-encoded, signed by a dedicated
-Ed25519 key at `$STATE/mesh/tls-key.pem` (0600), renewed when less than 30
-days of its 825 remain. The client does not verify it at all — no CA, no
-hostname check. What carries the trust is the same signed handshake as stdio,
-made MITM-proof by the **channel binding**: both sides fold this one TLS
-session's exporter value (`EXPORTER-awui-mesh/1`) into the transcript their
-signatures cover. A proxy that terminates TLS on both sides relays every
-message faithfully and still fails — its two sessions export two different
-bindings, so the signature it passes on cannot verify. Stdio links bind
-nothing, and their transcript stays byte-for-byte the phase 1 one.
-
-The listener is bounded like every open port: TLS 1.3 only; a mesh handshake
-that has not finished in 10 s is closed; at most 16 unauthenticated sockets
-at once, 4 per remote IP; at most 30 new connections per IP per minute; and an
-authenticated link with no traffic for 10 minutes is closed (a peer's ping
-keeps it alive). The port speaks only `awui-mesh/1` — never `/api/*`.
-
-### Peers added without editing YAML
-
-Peers can also live in `$STATE/mesh/peers.json` (mode 0600, written
-atomically, at most 64 entries, one entry shape: exactly what config.yml's
-`mesh.peers[]` takes), for peers added from the UI or a join. Both sources are
-used, and wherever both name the same peer **config.yml wins**: a checked-in
-file outranks local state. A malformed file is a hard error, never a reset.
+- **What it is.** TLS 1.3 only, then the exact same newline-delimited
+  `awui-mesh/1` stream the SSH link carries. The certificate is a minimal
+  self-signed one (Ed25519, its own key at `mesh/tls-key.pem`, mode 0600,
+  regenerated when less than 30 days of validity remain), built for the
+  transport and not for trust: the client does not verify it and does not check
+  the server name.
+- **Why trust does not come from the certificate.** The mesh handshake already
+  signs the transcript under a pinned key. Over TLS, that transcript gains a
+  channel binding: both sides derive `exportKeyingMaterial` from the TLS
+  session itself and fold it into what is signed. A machine in the middle can
+  terminate TLS on both sides and relay the JSON, and every message passes —
+  but the binding differs per TLS session, so the signatures do not verify, and
+  the link dies at the handshake. The pin is the identity; the certificate only
+  carries the channel.
+- **Why no WebSocket framing.** Node-to-node needs a byte stream, and raw TLS
+  already is one; a WS parser would add a layer, upgrade machinery, and an
+  origin model this protocol has no use for. The listener speaks only
+  awui-mesh/1 — a browser pointed at the port gets a TLS-then-JSON stream it
+  cannot make sense of, and the mesh port never serves `/api/*`.
+- **Bounds.** The handshake must finish within 10 s; at most 16 concurrent
+  unauthenticated sockets (at most 4 per remote IP); at most 30 new connections
+  a minute per IP (excess is closed); an authenticated link idle 10 minutes is
+  closed (a ping keeps it alive).
+- **Firewall.** `mesh.listen` binds an address; the port stays closed until the
+  firewall opens it. The NixOS module's `mesh.openFirewall` is that switch, and
+  it defaults to false.
 
 ### Ask approvals on the target
 
-A policy cap set to `ask:` no longer fails mid-run when the worker is a
-service: the call waits on the target's approval queue instead (the queue
-holds 32 cards, 4 per node, and answers `-33004` over either), a card surfaces
-through the target's own CLI — `awui peer approvals`, `awui peer approve <id>`
-(once, or `--for-link` for the link's remaining work in the same root),
-`awui peer deny <id>` — and nobody answering for five minutes is a denial in
-the leader's words, "no one answered on the target". The leader's ask-able
-calls (`fs.*`, `task.open`, `task.prompt`, `term.open`) wait six minutes, so
-the expiry always reaches them first. An ephemeral (stdio) worker keeps the
-phase 1 refusal: there is no one there to ask. Every decision is one audit
-line.
+A cap whose decision is `ask` (a built-in `worker` policy's `fs.write` and
+`term.open`) no longer fails in daemon mode. The target raises a mesh approval —
+id, peer name and node id, method, cap, a summary of the call (path or cwd and
+harness, at most 300 characters, never file content or prompt text) — and the
+call waits, up to 6 minutes. The target's own UI shows the card next to its
+other approvals, and the CLI answers them: `awui peer approvals` lists them,
+`awui peer approve <id> [--for-link]` allows once or for this link's lifetime
+(same node, same cap, same root), `awui peer deny <id>` refuses. No answer in 5
+minutes expires the request and the call is denied ("no one answered on the
+target"). The queue holds at most 32 pending (at most 4 per node); overflow is a
+refusal, not a silent wait. Ephemeral workers (plain `serve-stdio`, no daemon)
+keep the P1 refusal — there is no one on the target to ask. Every decision, and
+every expiry, lands in the audit log.
 
-### Invite pairing
+### Invites, QR, and the Peers UI
 
-Side-by-side pairing (`add`/`accept`) needs both machines at once; an invite
-does not. On the target, `awui peer invite [--policy p] [--ttl 10m]
-[--address host:port ...]` (listener on) mints a single-use code — printed
-with its terminal QR — carrying this node's name, its key, its addresses, and
-a one-invite secret. On the joiner, `awui peer join <code> [--name]` pins the
-key outright (the code is the trust, no TOFU), dials the first address that
-answers over TLS, and redeems the invite by binding the secret to this one
-link's handshake transcript. The redeem leaves a pending request on the
-target, marked with the invite's policy, and saves the peer to the joiner's
-`mesh/peers.json` under the address that worked; the target's owner still
-accepts it (`awui peer accept`, the policy pre-filled). Five bad redeem
-attempts burn the invite; a code lives 1..60 minutes.
+`awui peer invite [--policy worker] [--ttl 10m] [--address host:port …]` on the
+target (the listener must be on) prints a code — `awui-invite:1:` followed by a
+base64url blob holding the target's name, addresses, public key, and a
+single-use secret — and draws it as a terminal QR. On the joiner,
+`awui peer join <code> [--name lab-vm-3]` decodes it, pins the key it carries
+(no first-contact guessing: the key came in the code), tries the addresses over
+TLS in order, and redeems the secret. The redeem is the one method an
+unpaired-but-authenticated link may call besides `ping`; a bad secret is a
+constant-time compare that increments an attempt counter, five bad attempts burn
+the invite, expiry burns it, and success burns it. A redeemed joiner is a
+pending inbound request the target still Accepts (`awui peer accept`, which
+pre-fills the invite's policy), so a person on the target has the last word.
 
-### The Peers settings and its routes
+The same work is in the web UI: **Settings → Peers** shows this node (name,
+node id, listen), the peers with their status dot, transport and address
+(Test, Remove), pending inbound requests with their SAS and a policy select,
+the invite maker (policy, TTL, code + QR SVG + copy), a join box for a pasted
+code, and the pending ask approvals with their three answers (Allow once /
+Allow for link / Deny). Peers added here live in `$STATE/mesh/peers.json`
+(mode 0600, atomic writes, at most 64 entries, the same entry schema as
+config.yml); a config.yml peer wins on a name clash, and both sources are
+listed. Nothing in that UI is reachable from the TLS port — it is the local
+owner's authenticated `/api`, exactly like the rest of the Settings.
 
-The settings side of phase 2 is live in the server's own web UI: **Settings →
-Peers**, over the same owner auth as every other settings route (nothing here
-is reachable from the mesh's own ports, which speak only `awui-mesh/1`).
-It shows this node (name, node id, TLS listener), every peer from config.yml
-and peers.json — config wins on a name clash — with a Test (one handshake and
-`peer.info`, nothing opened) and a Remove (the saved entry plus its pins), the
-pairing requests waiting on an Accept with their SAS and policy, invite
-minting (policy, 1..60 minutes, a QR of the single-use code) and joining from
-a pasted code, the ask approvals pending here (Allow once / Allow for link /
-Deny), and the mesh tasks running on this machine: each with its peer,
-harness, folder, state, and its approval requests answerable in place, or an
-Abort for the whole run. With the mesh off the page reads one honest `off`
-line and every action answers `mesh_off`.
+## Phase 3: remote terminals, handoff, the NixOS module
 
-A peer-owned task's approvals also reach this machine's owner the way any
-chat's do — one notification, its buttons answering through the chat's own
-request route — under `approvals_at: target` or `both`; `origin` approvals
-stay on the leader, as before.
+### Remote terminals
 
-### Still missing
-- **Terminals** (`term.open` is named in policies but carries nothing).
-- **Host tasks across a target restart**: they are in memory, not persisted.
+A peer that may open a terminal here (`term.open`, `ask` in the built-in
+`worker` policy) answers `term.open {cwd, cols, rows}` with a terminal id: the
+cwd resolved through the policy's roots, the shell taken from the worker user's
+own login shell on the worker's machine (never from the caller), the
+environment built by the target (never the caller's). `term.input` (base64, at
+most 64 KiB), `term.resize`, `term.close`, `term.attach` (replay from the
+scrollback ring, 1 MiB, daemon mode) and `term.list` follow, and the PTY's
+output comes back coalesced (at most one frame per 16 ms, 64 KiB a frame). At
+most 4 open terminals per peer node, and never more than the policy's task
+ceiling. In daemon mode terminals are owned by the node, so they outlive a
+dropped link (reaped after an hour detached); an ephemeral worker's terminals
+close with the link. What the target controls, plainly: the shell, the
+environment, the cwd, and the per-call cap decision — the leader only names a
+size and a folder. The target's own UI lists a peer's terminals read-only with
+a kill action. Input content is never audited (byte counts per minute only).
+
+On the leader, the terminal panel gains a **"New terminal on…"** menu listing
+the configured peers that advertise `term.open`, a tab strip whose peer tabs
+read `@<peer>` (the same mark a delegated task carries), and a disconnected
+state with a Retry that reopens the terminal through the same create route. The
+create request carries `peer` and an optional `peerCwd`; everything else — the
+frame, the stream, resize, close — is the ordinary terminal panel.
+
+### Handoff: move a chat's work to a peer
+
+A lead chat whose workspace is a git repo can hand itself to a peer — the
+`peer_handoff {peer, peerRepo, brief?}` tool, or the chat menu's **"Hand off to
+peer…"** — and nothing on the leader's tree changes:
+
+1. The working tree (tracked and untracked, `.gitignore` respected) is committed
+   onto a temporary ref `refs/awui/handoff/<id>` through a temporary index, so
+   the user's index and worktree are untouched; the commit's parent is HEAD.
+2. `git bundle create` packs it, at most 256 MiB (larger is a refusal with a
+   clear message).
+3. The bundle travels in at most 1 MiB chunks through `handoff.begin` /
+   `handoff.chunk` / `handoff.finish` — the worker checks size and sha256, runs
+   `git bundle verify`, fetches into `refs/awui/handoff/<id>` of the repo at
+   `peerRepo` (inside its policy's roots and a git repo), and adds a detached
+   worktree `<repo>/.awui/handoff-<id>`. Every git call is argv-only (no shell)
+   with hooks disabled (`core.hooksPath=/dev/null`), protocol writes refused,
+   and `GIT_CONFIG_NOSYSTEM=1`; incomplete uploads are reaped after 15 minutes,
+   and a peer runs at most 2 concurrent uploads.
+4. The leader opens a remote task in that worktree with a brief made of the
+   user's words plus a compact digest of the chat (the last at most 20 turns, at
+   most 32 KiB, tool outputs elided), linked as a delegated task with the
+   `@host` badge. The local chat gets a note saying where the work went.
+
+Bringing work back: `awui peer fetch <peer> <remoteTaskId>` (or the task's
+**Fetch result** action) reads the worktree's HEAD back through
+`handoff.export` and the same chunked download, and the leader fetches it into
+`refs/awui/from-peer/<peer>/<id>` — a ref to inspect, diff, or cherry-pick. It
+never merges, never checks out, and never touches the user's tree on either
+side.
 
 ### Limits that remain
+
+- **Host tasks across a target restart**: they are in memory, not persisted.
 
 - **Ephemeral workers still count `max_tasks` per link** — one `serve-stdio`
   process per SSH/docker session. Only a daemon counts per peer. With a
@@ -419,6 +499,87 @@ stay on the leader, as before.
 - **The audit log is bounded**: successful `peer.ping`s are not logged, the log
   rolls to `audit.jsonl.1` past 16 MiB, and `awui peer log` reads only its tail.
 
+## NixOS, home-manager, and bootstrap
+
+### The NixOS module
+
+`contrib/nixos/awui.nix` is a system-level `services.awui` (enable, package,
+user, stateDir, port, host, readWritePaths, extraConfig) whose `mesh`
+submodule renders the mesh block into config.yml with `pkgs.formats.yaml` —
+`enable`, `name`, `listen` (host required, port default 4784) with an
+`openFirewall` that defaults to false, `policies`, and `peers`. The unit is
+hardened to what the mesh needs: `ProtectSystem=strict` with
+`ReadWritePaths` for the state folder and every configured root (mesh policy
+roots are picked up automatically; workspace roots go in `readWritePaths`),
+`PrivateTmp`, `RestrictAddressFamilies AF_UNIX AF_INET AF_INET6`,
+`NoNewPrivileges`, and an `XDG_RUNTIME_DIR` (`/run/awui`, 0700) for the attach
+socket. Because config.yml is rendered, the Settings dialog cannot write it:
+user settings belong in `extraConfig` and a rebuild.
+
+### home-manager
+
+`contrib/home-manager/awui-service.nix` declares the same user unit it always
+did (the app stays a checkout under `appDir`) and gains the same mesh options
+plus `extraConfig`; declaring either renders `~/.config/awui/config.yml` as a
+home-manager symlink, which the Settings dialog reads but never edits. Leave
+both empty to keep managing that file by hand. The NixOS firewall is NixOS's:
+the module's `openFirewall` warns under home-manager instead of pretending.
+
+### bootstrap, for machines neither module manages
+
+`awui peer bootstrap <ssh-dest> [--policy worker] [--root <path>]` prints —
+exactly, argv-safe, nothing run — the commands that turn an ssh destination
+into a mesh worker: awui cloned and built, the mesh block appended to its
+config.yml (the step appends nothing when a mesh block is already there), and
+an authorized_keys forced-command line binding one ssh key to
+`peer serve-stdio --policy worker --peer <leader>`, idempotent by its
+`awui-mesh <leader>` marker. With `--run`, the commands are shown first, a
+`y/N` asks, and then each step runs over ssh as one argv word — the local side
+never builds a shell line, and `BatchMode` means the key must already be
+accepted on the target. Then add the peer to the leader's config.yml and run
+`awui peer add <name>`; with the forced command the worker pins the leader's
+key on first contact, so no `accept` is needed over there.
+
+### A two-machine example, nixos-work ⇄ nixos-desktop, over direct TLS
+
+**nixos-desktop** (the worker; agents run here):
+
+```nix
+services.awui = {
+  enable = true;
+  readWritePaths = [ "/srv/code" ];
+  mesh = {
+    enable = true;
+    listen = { host = "192.168.1.20"; };   # inbound links; the port stays firewalled until…
+    openFirewall = true;                    # …this, off by default, set on purpose
+    policies.worker.roots = [ "/srv/code" ];
+  };
+};
+```
+
+**nixos-work** (the leader; you chat here):
+
+```nix
+services.awui = {
+  enable = true;
+  mesh = {
+    enable = true;
+    # No listen block: this node only calls out, nothing accepts inbound links.
+    peers = [ { name = "nixos-desktop"; tls = "192.168.1.20:4784"; } ];
+  };
+};
+```
+
+Pair them once: `awui peer invite` on nixos-desktop (in a terminal there), and
+`awui peer join <code> --name nixos-desktop` on nixos-work, then `awui peer
+accept nixos-work --policy worker` on nixos-desktop (the invite pre-fills the
+policy). Or pin the long way with `awui peer add` / `awui peer accept`,
+comparing the node id and SAS. The keys, pins, and audit log live in each
+machine's state folder (`/var/lib/awui/mesh` under the NixOS module); the
+rendered config.yml never carries them. A machine that is not running NixOS —
+a lab VM, a laptop — gets the same end state through `awui peer bootstrap` from
+nixos-work.
+
 ## State files
 
 Under the state folder, never in git, never in config:
@@ -436,8 +597,8 @@ Under the state folder, never in git, never in config:
   Ed25519 key and its self-signed certificate, mode 0600. The key is never the
   node identity; it is only the TLS envelope. A malformed key file is a hard
   error, never regenerated.
-- `mesh/peers.json` — peers added from the UI or a join (phase 2), mode 0600,
-  merged with config.yml's peers (config wins on a name clash).
+- `mesh/peers.json` — the peers added from the Peers UI or `awui peer join`,
+  mode 0600, atomic writes; config.yml's own peers win on a name clash.
 
 ## Security notes
 
@@ -447,6 +608,11 @@ Under the state folder, never in git, never in config:
 - **No shell on the local side.** The leader spawns `ssh`/`docker exec` from argv;
   destinations are validated host/container shapes, `ssh_opts` entries are
   checked for newlines and NULs, and nothing is re-parsed by a shell here.
+- **TLS carries the channel, not the trust.** The direct-TLS listener presents a
+  self-signed certificate nobody verifies; a client that does not hold the
+  pinned key cannot finish the handshake, because both sides fold the TLS
+  session's own keying material into what is signed. A TLS-terminating relay
+  re-derives a different binding and fails.
 - **Keys are the identity.** A peer whose key changes is closed with a pin
   mismatch until a person runs `awui peer remove` and re-pins; names never stand
   in for keys.
@@ -478,12 +644,18 @@ Under the state folder, never in git, never in config:
 - **Phase 1.5** — shipped: the attach socket and daemon-mode tasks (a dropped link
   reconnects and replays), approvals on the target, files over the link (`fs.*`,
   `peer_files`, the `peer ls/cat/tasks` commands).
-- **Phase 2** — shipped: direct TLS with pinned keys, ask approvals on
-  the target, invite pairing, and the Peers settings with its routes.
-- **Phase 3** — remote terminals, handoff, a NixOS module.
+- **Phase 2** — shipped: direct TLS with pinned keys and channel binding; ask
+  approvals answered on the target; invites, QR, and the Peers UI with peers.json.
+- **Phase 3** — shipped: remote terminals (`term.*`, with caps, ask approvals,
+  and the target's own shell and environment); handoff and fetch (a bundle over
+  the link into a peer worktree, back as a ref); the NixOS module and
+  home-manager mesh options, and `awui peer bootstrap`.
 
 ## Phone follow is separate
 
 The phone's push approvals come through [Tailscale Serve](security.md#tailscale)
-against this server's own UI. The mesh never serves `/api/*`: a peer gets a
-policy-bound channel, not an HTTP client of this awui.
+against this server's own UI — an optional convenience for following a run from
+a phone, never a mesh transport: no mesh peer connects through Tailscale, no
+mesh code reads a Tailscale identity, and the TLS peer transport's trust is its
+own pinned keys. The mesh never serves `/api/*`: a peer gets a policy-bound
+channel, not an HTTP client of this awui.

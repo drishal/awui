@@ -90,14 +90,28 @@ export function argvFor(link: PeerLink, localName: string): string[] {
     if (!CONTAINER_RE.test(link.container)) throw new Error(`container ${JSON.stringify(link.container)} must match ${CONTAINER_RE}`);
     return [link.engine ?? "docker", "exec", "-i", link.container, awuiPath, "peer", "serve-stdio", "--peer", localName];
   }
-  if (!SSH_HOST_RE.test(link.host)) throw new Error(`ssh host ${JSON.stringify(link.host)} must match ${SSH_HOST_RE}`);
-  const sshOpts = link.sshOpts ?? [];
-  for (const opt of sshOpts) {
+  const remoteCmd = `${shellQuote(awuiPath)} peer serve-stdio --peer ${shellQuote(localName)}`;
+  return sshRemoteArgv(link, remoteCmd);
+}
+
+/** Throws unless the destination is a plain [user@]host and every option is a clean argv word. */
+export function checkSshDest(host: string, sshOpts?: string[]): void {
+  if (!SSH_HOST_RE.test(host)) throw new Error(`ssh host ${JSON.stringify(host)} must match ${SSH_HOST_RE}`);
+  for (const opt of sshOpts ?? []) {
     if (BREAKING.test(opt)) throw new Error(`ssh option ${JSON.stringify(opt)} must not hold a newline or a NUL`);
   }
-  // ssh runs this through the remote shell, so every word of it is quoted.
-  const remoteCmd = `${shellQuote(awuiPath)} peer serve-stdio --peer ${shellQuote(localName)}`;
-  return ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", ...sshOpts, "--", link.host, remoteCmd];
+}
+
+/**
+ * The exact argv that runs one pre-built remote command on an ssh link — the
+ * worker's stdio protocol, and (P3) one `peer bootstrap --run` step. The
+ * command is already shell-quoted by the caller; this side still never goes
+ * near a local shell, and the destination is held to its plain host shape.
+ */
+export function sshRemoteArgv(link: Extract<PeerLink, { kind: "ssh" }>, remoteCommand: string): string[] {
+  checkSshDest(link.host, link.sshOpts);
+  const sshOpts = link.sshOpts ?? [];
+  return ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", ...sshOpts, "--", link.host, remoteCommand];
 }
 
 /**
