@@ -185,6 +185,9 @@ export type RootResolution = { ok: true; real: string; root: string } | { ok: fa
 export async function resolveInRoots(policy: PeerPolicy, requestedPath: string, home: string): Promise<RootResolution> {
   if (policy.roots.length === 0) return { ok: false, reason: "The policy grants no roots, so no filesystem access" };
   if (requestedPath.includes("\0")) return { ok: false, reason: "The requested path contains a NUL byte" };
+  // A `..` segment is refused before anything is resolved: path.resolve would fold it
+  // lexically, ahead of the symlinks the kernel would follow, and no peer needs one.
+  if (requestedPath.split(/[\\/]/).includes("..")) return { ok: false, reason: "The requested path climbs out with '..'" };
   const expanded = expandRequested(requestedPath, home);
   if (!path.isAbsolute(expanded)) return { ok: false, reason: "A requested path must be absolute or start with ~" };
   const absolute = path.resolve(expanded);

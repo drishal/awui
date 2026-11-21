@@ -221,6 +221,8 @@ describe("resolveInRoots", () => {
     // Lexical and appended ".." both land outside the root.
     expect((await resolveInRoots(withRoots([root]), path.join(root, "..", "secret", "s.txt"), dir)).ok).toBe(false);
     expect((await resolveInRoots(withRoots([root]), path.join(root, "new", "..", "..", "secret"), dir)).ok).toBe(false);
+    // A literal ".." is refused even when it would fold back inside the root.
+    expect((await resolveInRoots(withRoots([root]), `${root}/sub/../file.txt`, dir)).ok).toBe(false);
     // A symlink inside the root pointing outside it: realpath resolves away, containment fails.
     symlinkSync(outside, path.join(root, "leak"));
     expect((await resolveInRoots(withRoots([root]), path.join(root, "leak", "s.txt"), dir)).ok).toBe(false);

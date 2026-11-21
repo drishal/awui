@@ -144,4 +144,11 @@ describe("mesh config", () => {
     expect(() => readUserConfig(folder(`mesh:\n  peers:\n    - name: has space\n      ssh: a@b\n`))).toThrow(/name/);
     expect(() => readUserConfig(folder("mesh:\n  policies:\n    None:\n      caps: []\n"))).toThrow(/policies/);
   });
+
+  it("rejects an ssh destination or container that would read as an option", () => {
+    expect(() => readUserConfig(folder(`mesh:\n  peers:\n    - name: a\n      ssh: -oProxyCommand=evil\n`))).toThrow(/ssh/);
+    expect(() => readUserConfig(folder(`mesh:\n  peers:\n    - name: a\n      ssh: "a b"\n`))).toThrow(/ssh/);
+    expect(() => readUserConfig(folder(`mesh:\n  peers:\n    - name: a\n      docker: --privileged\n`))).toThrow(/docker/);
+    expect(readUserConfig(folder(`mesh:\n  peers:\n    - name: a\n      ssh: drishal@[fd7a::1]\n    - name: b\n      docker: awui-worker_1\n`))?.config.mesh?.peers?.length).toBe(2);
+  });
 });

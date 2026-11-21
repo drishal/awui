@@ -66,7 +66,7 @@ function minBuffer(a: Buffer, b: Buffer): Buffer {
 export function sasOf(a: Buffer, b: Buffer, context: string): string {
   const lo = minBuffer(a, b);
   const hi = lo === a ? b : a;
-  const digest = createHash("sha256").update(Buffer.concat([Buffer.from(`awui-mesh-sas/1${context}`, "utf8"), lo, hi])).digest();
+  const digest = createHash("sha256").update(Buffer.concat([Buffer.from(`awui-mesh-sas/1\n${context}\n`, "utf8"), lo, hi])).digest();
   const six = digest.readUInt32BE(0) % 1_000_000;
   const digits = String(six).padStart(6, "0");
   return `${digits.slice(0, 3)} ${digits.slice(3)}`;
@@ -172,10 +172,21 @@ export async function loadOrCreateIdentity(stateDir: string): Promise<NodeIdenti
     privateKey: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
   };
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-  // `wx` fails if the temp name is taken, so a concurrent creator never writes
-  // over another's temp; the rename is the one instant the identity appears.
+  if (process.platform !== "win32") await fs.chmod(dir, 0o700);
+  // `wx` fails if the temp name is taken, so a concurrent creator never writes over
+  // another's temp. The temp is then hard-linked into place, which (unlike rename)
+  // fails when the identity already exists: two processes starting at once can never
+  // each return a different key while only one of them is on disk.
   const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
   await fs.writeFile(tmp, `${JSON.stringify(record)}\n`, { flag: "wx", mode: 0o600 });
-  await fs.rename(tmp, file);
+  try {
+    await fs.link(tmp, file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    // Another process created it first: theirs is the identity.
+    await fs.unlink(tmp).catch(() => undefined);
+    return loadOrCreateIdentity(stateDir);
+  }
+  await fs.unlink(tmp).catch(() => undefined);
   return { publicKey, privateKey, nodeId: nodeIdOf(publicKey) };
 }

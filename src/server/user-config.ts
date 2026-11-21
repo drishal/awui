@@ -138,8 +138,10 @@ const meshPolicySchema = z
 const meshPeerSchema = z
   .object({
     name: meshNameSchema,
-    ssh: z.string().trim().min(1).max(512).optional(),
-    docker: z.string().trim().min(1).max(256).optional(),
+    // Destinations go to ssh/docker as argv (never a shell), but one starting with '-'
+    // would still be read as an option, so each is held to a plain host/container shape.
+    ssh: z.string().trim().max(512).regex(/^[A-Za-z0-9_.@:%\[\]][A-Za-z0-9_.@:%\[\]-]*$/, "must be a plain [user@]host (no spaces, not starting with '-')").optional(),
+    docker: z.string().trim().max(256).regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/, "must be a container name or id").optional(),
     ssh_opts: z
       .array(z.string().min(1).max(256).refine((v) => !/[\n\r\u0000]/.test(v), "must not hold a newline or a NUL"))
       .max(16)

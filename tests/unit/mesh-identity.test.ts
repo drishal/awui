@@ -57,7 +57,7 @@ describe("the SAS", () => {
   it("is the fixed domain, the context, and both keys in byte order", () => {
     const [lo, hi] = Buffer.compare(a, b) <= 0 ? [a, b] : [b, a];
     const digest = createHash("sha256")
-      .update(Buffer.concat([Buffer.from("awui-mesh-sas/1handshake-1", "utf8"), lo, hi]))
+      .update(Buffer.concat([Buffer.from("awui-mesh-sas/1\nhandshake-1\n", "utf8"), lo, hi]))
       .digest();
     const digits = (digest.readUInt32BE(0) % 1_000_000).toString().padStart(6, "0");
     expect(sasOf(a, b, "handshake-1")).toBe(`${digits.slice(0, 3)} ${digits.slice(3)}`);
@@ -139,5 +139,12 @@ describe("the identity file", () => {
     const after = await loadOrCreateIdentity(dir);
     expect(after.publicKey).toEqual(before.publicKey);
     expect(after.nodeId).toBe(before.nodeId);
+  });
+
+  it("hands two concurrent first runs the same identity", async () => {
+    const dir = stateDir();
+    const all = await Promise.all(Array.from({ length: 8 }, () => loadOrCreateIdentity(dir)));
+    const onDisk = await loadOrCreateIdentity(dir);
+    for (const one of all) expect(one.publicKey).toEqual(onDisk.publicKey);
   });
 });
