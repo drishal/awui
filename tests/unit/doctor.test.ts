@@ -17,6 +17,7 @@ const healthy: DoctorInput = {
   portProbe: { kind: "free" },
   remote: { exposed: false, credentials: false },
   herdr: { enabled: false, socket: "/h.sock", exists: false },
+  mesh: { enabled: false, peers: 0, policies: [], identity: false },
   orchestration: { enabled: true, maxChildrenPerChat: 4, maxDepth: 2, maxLiveTasks: 12, missingBridges: [] },
   mcp: [{ harnessId: "pi", displayName: "Pi", installed: true, kind: "automatic", detail: "an `-e` extension loaded on the chat's command line", argv: [], existing: null }],
   windows: false,
@@ -88,6 +89,16 @@ describe("doctor", () => {
     expect(by(evaluate({ ...healthy, mcp: [...healthy.mcp, { ...hermes, installed: false }] }), "MCP tools").ok).toBe(true);
     expect(render(evaluate({ ...healthy, mcp: [...healthy.mcp, hermes] }))).toContain("! MCP tools");
   });
+  it("reports the mesh as off by default, and its identity only when the mesh is on", () => {
+    expect(by(evaluate(healthy), "Mesh")).toMatchObject({ ok: true, detail: "off (default)" });
+    const on = { ...healthy, mesh: { enabled: true, peers: 2, policies: ["worker"], identity: true } };
+    expect(by(evaluate(on), "Mesh")).toMatchObject({ ok: true, detail: "on: 2 peer(s), no listener" });
+    // The identity is created on first use, so an on-mesh without one is a note, not a problem.
+    const noId = by(evaluate({ ...healthy, mesh: { enabled: true, peers: 1, policies: [], identity: false } }), "Mesh");
+    expect(noId).toMatchObject({ ok: "warn", detail: "on, but no identity yet: it is created on first use" });
+    expect(render(evaluate({ ...healthy, mesh: { enabled: true, peers: 0, policies: [], identity: false } }))).toContain("! Mesh");
+  });
+
   it("reports a config error and never a secret", () => {
     const checks = evaluate({ ...healthy, configError: "config.yml: port must be a number" });
     expect(by(checks, "Config")).toMatchObject({ ok: false });
