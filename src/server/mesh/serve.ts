@@ -20,6 +20,7 @@ import { z } from "zod";
 import { interactionAnswerSchema } from "../../shared/protocol.js";
 import { loadConfig, type ServerConfig } from "../config.js";
 import { HarnessRegistry } from "../harness/registry.js";
+import { TerminalManager } from "../terminal.js";
 import type { LiveChat } from "../harness/types.js";
 import type { ApprovalQueue } from "./approvals.js";
 import { ATTACH_FALLBACK_NOTE, connectAndPipe, planServeStdio, socketPath } from "./attach.js";
@@ -28,6 +29,7 @@ import { fsList, fsRead, fsStat, fsWrite } from "./files.js";
 import { ServerHandshake } from "./handshake.js";
 import type { HostLink, TaskHost } from "./host.js";
 import { loadOrCreateIdentity, nodeIdOf, type NodeIdentity } from "./identity.js";
+import { TermHost } from "./terms.js";
 import { encodeInviteCode, inviteCreateSchema, redeemInvite, type InviteStore } from "./pairing.js";
 import {
   BUILTIN_POLICIES,
@@ -154,6 +156,41 @@ const attachSchema = z
   .strict();
 /** task.list (daemon only): this peer's live tasks. */
 const listSchema = z.object({}).strict();
+// term.* params (P3 §1): strict, and deliberately without a shell or env field
+// at all — the caller chooses a cwd and a size, and the target's own
+// TerminalManager decides everything else. The dims bound is the spec's; a
+// target whose own terminal bound is narrower refuses the rest itself.
+const termOpenSchema = z
+  .object({
+    cwd: z.string().min(1).max(4096),
+    cols: z.number().int().min(10).max(500),
+    rows: z.number().int().min(5).max(200),
+  })
+  .strict();
+/** term.input: 64 KiB of bytes is 87384 base64 characters at the very most. */
+const termInputSchema = z
+  .object({
+    termId: z.string().min(1).max(64),
+    data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, "not base64").max(87_384),
+  })
+  .strict();
+const termResizeSchema = z
+  .object({
+    termId: z.string().min(1).max(64),
+    cols: z.number().int().min(10).max(500),
+    rows: z.number().int().min(5).max(200),
+  })
+  .strict();
+const termIdSchema = z.object({ termId: z.string().min(1).max(64) }).strict();
+/** term.attach (daemon only): replay the terminal's ring past this seq, then stream live. */
+const termAttachSchema = z
+  .object({
+    termId: z.string().min(1).max(64),
+    afterSeq: z.number().int().min(0),
+  })
+  .strict();
+/** term.list (daemon and ephemeral): this peer's terminals. */
+const termListSchema = z.object({}).strict();
 // fs.* params (P1.5): strict like every other shape, paths bounded to the
 // same 4096 a cwd gets. Sizes are deliberately not schema-bounds here: an
 // oversized read or write is the wire's limit answer, not a bad shape, and
@@ -201,6 +238,12 @@ function parse<T>(schema: z.ZodType<T>, method: string, params: unknown): T {
   return parsed.data;
 }
 
+/** Standard base64's decoded length, without materializing the bytes: audit counts, never contents. */
+function decodedBase64Bytes(data: string): number {
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+}
+
 export interface ServeDeps {
   identity: NodeIdentity;
   /** This node's mesh name, what the client pins beside the key. */
@@ -232,6 +275,14 @@ export interface ServeDeps {
    * chat dies with its link.
    */
   host?: TaskHost;
+  /**
+   * P3 §1: the terminal host behind term.*. In daemon mode this is the
+   * service's shared host, so a peer's terminals outlive any one link (a
+   * detached one is reaped after an hour); an ephemeral worker builds its own
+   * in runServeStdio, and serve() disposes that one with the link. Absent
+   * means term.* answers method_not_found.
+   */
+  terms?: TermHost;
   /**
    * Daemon mode's ask-cap answer (P2 §2): a cap decision of "ask" waits on
    * this shared queue instead of failing with -33003. Absent — every ephemeral
@@ -287,6 +338,9 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
   const linkGrants = deps.approvals?.openLink() ?? null;
   // One link's presence on the host: what its subscriptions hang from, detached (never disposed) at link end.
   const hostLink = host !== undefined ? host.openLink((method, params) => peer.notify(method, params)) : null;
+  // The same presence for the terminal host: subscriptions hang from the link, terminals from the host.
+  const terms = deps.terms ?? null;
+  const termLink = terms !== null ? terms.openLink((method, params) => peer.notify(method, params)) : null;
   const tasks = new Map<string, LinkTask>();
   /** clientRequestId -> the answer already given, so a retry returns the same task, not a second chat. */
   const opens = new Map<string, { remoteTaskId: string; result: unknown }>();
@@ -778,7 +832,11 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
     if (!deps.enabled()) {
       closeSoon("mesh off");
       // Off is off for the whole node, not just this link: every host task is disposed with it.
-      if (host !== undefined) void host.disposeAll("the mesh was turned off").catch(() => undefined);
+      if (host !== undefined) {
+        // Off is off for the whole node, not just this link: every host task and terminal is disposed with it.
+        void host.disposeAll("the mesh was turned off").catch(() => undefined);
+        if (terms !== null) void terms.disposeAll().catch(() => undefined);
+      }
       throw new MeshRpcError(MeshErrorCode.mesh_off, "The mesh is off on this node", { code: "mesh_off" });
     }
     const handshakeAnswer = handshake.handle(method, params);
@@ -854,6 +912,55 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
       case "task.list":
         if (host === undefined) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
         return listHosted(host, client, policy, params);
+      // ---- term.* (P3 §1): remote PTYs; every method rides the one term.open cap ----
+      case "term.open": {
+        const p = parse(termOpenSchema, method, params);
+        note({ target: p.cwd });
+        await requireCap(policy, "term.open", method, { target: p.cwd });
+        if (terms === null || termLink === null) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        const opened = await terms.open(termLink, nodeIdOf(client.publicKey), client.name, policy, deps.home, p);
+        note({ outcome: opened.termId });
+        return opened;
+      }
+      case "term.input": {
+        const p = parse(termInputSchema, method, params);
+        // Byte counts only: what a peer typed into its terminal is its own, never audit evidence.
+        note({ target: p.termId, outcome: `${decodedBase64Bytes(p.data)} bytes` });
+        await requireCap(policy, "term.open", method, { target: p.termId });
+        if (terms === null) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        await terms.input(nodeIdOf(client.publicKey), p.termId, p.data);
+        return {};
+      }
+      case "term.resize": {
+        const p = parse(termResizeSchema, method, params);
+        note({ target: p.termId });
+        await requireCap(policy, "term.open", method, { target: p.termId });
+        if (terms === null) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        await terms.resize(nodeIdOf(client.publicKey), p.termId, p.cols, p.rows);
+        return {};
+      }
+      case "term.close": {
+        const p = parse(termIdSchema, method, params);
+        note({ target: p.termId });
+        await requireCap(policy, "term.open", method, { target: p.termId });
+        if (terms === null) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        await terms.close(nodeIdOf(client.publicKey), p.termId);
+        return {};
+      }
+      case "term.attach": {
+        const p = parse(termAttachSchema, method, params);
+        note({ target: p.termId });
+        await requireCap(policy, "term.open", method, { target: p.termId });
+        // A terminal's scrollback only exists where the host does: an ephemeral worker has no cross-link state to replay.
+        if (host === undefined || terms === null || termLink === null) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        return terms.attach(termLink, nodeIdOf(client.publicKey), p.termId, p.afterSeq);
+      }
+      case "term.list": {
+        parse(termListSchema, method, params);
+        await requireCap(policy, "term.open", method);
+        if (terms === null) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        return terms.list(nodeIdOf(client.publicKey));
+      }
       case "fs.stat": {
         const p = parse(fsStatSchema, method, params);
         note({ target: p.path });
@@ -1007,13 +1114,16 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
       deps.approvals?.dropLink(linkGrants);
     }
     if (host !== undefined && hostLink !== null) {
-      // Daemon mode: the host owns the chats, so the link's end only drops this link's subscriptions.
+      // Daemon mode: the host owns the chats and the terminals, so the link's end only drops this link's subscriptions.
       host.closeLink(hostLink);
+      if (terms !== null && termLink !== null) terms.closeLink(termLink);
     } else {
       // A P1 link is ephemeral: every chat it opened dies with it, and a failed disposal never keeps the link alive.
       const live = [...tasks.values()];
       tasks.clear();
       await Promise.allSettled(live.map((task) => task.live.dispose()));
+      // Its terminals go the same way: an ephemeral worker's term host is this link's own.
+      if (terms !== null) await terms.disposeAll();
     }
     void deps.audit.append({ peer: peerName, method: "link closed", decision: reason === "eof" || reason === "closed" ? "allow" : "error", outcome: reason });
     return reason;
@@ -1156,6 +1266,11 @@ export async function runServeStdio(args: string[], env: NodeJS.ProcessEnv): Pro
   // The mesh name, sanitized the way a peer name may be written (P0's default).
   const fallback = hostname().replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64);
   const name = cached.mesh?.name ?? (fallback.length > 0 ? fallback : "awui");
+  // P3 §1: the ephemeral worker's own terminal host, over the target's own
+  // TerminalManager (its shell, its env, its kill path). It is this link's
+  // alone — serve() disposes it when the link ends — and term.open only works
+  // under a plain-allow cap, since there is no one here to answer an ask.
+  const termTerms = new TermHost({ manager: new TerminalManager(), clock: Date.now, log });
   const link = serve({ input: process.stdin, output: process.stdout }, {
     identity,
     name,
@@ -1172,9 +1287,11 @@ export async function runServeStdio(args: string[], env: NodeJS.ProcessEnv): Pro
     },
     home: config.home,
     ...(forced !== undefined ? { forced } : {}),
+    terms: termTerms,
     log,
   });
   const reason = await link.closed;
+  await termTerms.shutdown().catch(() => undefined);
   await registry.shutdown().catch(() => undefined);
   return reason === "eof" || reason === "closed" ? 0 : 1;
 }

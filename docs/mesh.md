@@ -438,9 +438,11 @@ a kill action. Input content is never audited (byte counts per minute only).
 On the leader, the terminal panel gains a **"New terminal on…"** menu listing
 the configured peers that advertise `term.open`, a tab strip whose peer tabs
 read `@<peer>` (the same mark a delegated task carries), and a disconnected
-state with a Retry that reopens the terminal through the same create route. The
-create request carries `peer` and an optional `peerCwd`; everything else — the
-frame, the stream, resize, close — is the ordinary terminal panel.
+state with a Retry that reopens the terminal through the same create route.
+Picking a peer asks for the folder it should run in, and the create request
+carries `peer` and `peerCwd` together (the worker resolves that folder through
+its own policy roots); everything else — the frame, the stream, resize, close —
+is the ordinary terminal panel.
 
 ### Handoff: move a chat's work to a peer
 

@@ -23,6 +23,8 @@ interface TerminalTab {
   label: string;
   /** The configured peer this terminal runs on; absent for this machine's own. */
   peer?: string;
+  /** The folder on that peer the terminal runs in (`peerCwd` of the create: the peer's own policy decides it). */
+  peerCwd?: string;
 }
 
 const initial = { phase: "starting", terminalId: null, exit: null, error: null } satisfies TerminalState;
@@ -38,8 +40,12 @@ export function TerminalPanel({ workspace, onClose }: { workspace: WorkspaceInfo
   const [attempt, setAttempt] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [peers, setPeers] = useState<MeshPeerTarget[]>([]);
+  // The peer a "New terminal on…" pick is waiting on a folder for: the peer's
+  // terminal opens at a cwd the caller names (the worker resolves it through its
+  // own policy roots), so the menu asks before the tab exists. Null while the
+  // menu lists peers instead of the folder form.
+  const [peerForm, setPeerForm] = useState<{ peer: string; cwd: string } | null>(null);
   const menu = useRef<HTMLSpanElement>(null);
-
   const active = tabs.find((tab) => tab.key === activeKey) ?? (tabs[0] as TerminalTab);
   const setPhase = (phase: TerminalState["phase"]) => setState((current) => phase === "failed" ? reduceTerminal(current, { type: "fail", error: "The terminal could not connect" }) : phase === "closing" ? reduceTerminal(current, { type: "closing" }) : phase === "exited" ? reduceTerminal(current, { type: "exit", code: 0 }) : { ...current, phase });
 
@@ -112,16 +118,17 @@ export function TerminalPanel({ workspace, onClose }: { workspace: WorkspaceInfo
     };
   }, [menuOpen]);
 
-  const openPeer = (peer: string) => {
+  const openPeer = (peer: string, cwd: string) => {
     setMenuOpen(false);
+    setPeerForm(null);
     setTabs((current) => {
-      const key = `peer:${peer}`;
+      const key = `peer:${peer}:${cwd}`;
       if (current.some((tab) => tab.key === key)) {
         setActiveKey(key);
         return current;
       }
       setActiveKey(key);
-      return [...current, { key, label: `@${peer}`, peer }];
+      return [...current, { key, label: `@${peer}`, peer, peerCwd: cwd }];
     });
     setState(initial);
     setAttempt((at) => at + 1);
@@ -146,11 +153,34 @@ export function TerminalPanel({ workspace, onClose }: { workspace: WorkspaceInfo
             <span className="terminal-new" ref={menu}>
               <button type="button" className="icon-btn" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="New terminal on…" onClick={() => setMenuOpen((open) => !open)}>＋</button>
               {menuOpen ? (
-                <span className="terminal-new-menu" role="menu" aria-label="New terminal on…">
-                  {peers.map((peer) => (
-                    <button type="button" role="menuitem" key={peer.name} onClick={() => openPeer(peer.name)}>@{peer.name}</button>
-                  ))}
-                </span>
+                peerForm === null ? (
+                  <span className="terminal-new-menu" role="menu" aria-label="New terminal on…">
+                    {peers.map((peer) => (
+                      <button type="button" role="menuitem" key={peer.name} onClick={() => setPeerForm({ peer: peer.name, cwd: "" })}>@{peer.name}</button>
+                    ))}
+                  </span>
+                ) : (
+                  <form
+                    className="terminal-new-menu"
+                    aria-label={`New terminal on ${peerForm.peer}`}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const cwd = peerForm.cwd.trim();
+                      if (cwd !== "") openPeer(peerForm.peer, cwd);
+                    }}
+                  >
+                    <label className="terminal-new-cwd-label" htmlFor="terminal-peer-cwd">folder on @{peerForm.peer}</label>
+                    <input
+                      id="terminal-peer-cwd"
+                      className="terminal-new-cwd"
+                      autoFocus
+                      value={peerForm.cwd}
+                      placeholder="/home/you/project"
+                      onChange={(event) => setPeerForm({ ...peerForm, cwd: event.target.value })}
+                    />
+                    <button type="submit" className="terminal-new-open" disabled={peerForm.cwd.trim() === ""}>Open</button>
+                  </form>
+                )
               ) : null}
             </span>
           ) : null}
@@ -178,9 +208,10 @@ export function TerminalPanel({ workspace, onClose }: { workspace: WorkspaceInfo
           sandbox="allow-scripts allow-same-origin"
           onLoad={(event) => {
             const target = event.currentTarget;
-            // A peer terminal is created through the same route with `peer` in
-            // the body; the shell relays it, and the target's own policy decides.
-            target.contentWindow?.postMessage({ method: "start", workspace: { id: workspace.id, name: workspace.name, path: workspace.path }, ...(active?.peer ? { peer: active.peer } : {}), theme: theme() }, window.location.origin);
+            // A peer terminal is created through the same route with `peer` and
+            // `peerCwd` in the body; the shell relays both, and the peer's own
+            // policy decides the folder and the open.
+            target.contentWindow?.postMessage({ method: "start", workspace: { id: workspace.id, name: workspace.name, path: workspace.path }, ...(active?.peer !== undefined && active?.peerCwd !== undefined ? { peer: active.peer, peerCwd: active.peerCwd } : {}), theme: theme() }, window.location.origin);
           }}
         />
       </div>

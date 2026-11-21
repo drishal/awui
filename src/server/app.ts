@@ -51,6 +51,7 @@ import {
   type ThemeList,
   terminalCreateSchema,
   terminalWriteSchema,
+  terminalResizeSchema,
   htmlRenderPreviewSchema,
   renderActionSchema,
   worktreeCreateSchema,
@@ -1512,7 +1513,10 @@ export async function createApp(deps: AppDeps) {
     if (!deps.terminals) throw new ChatError(404, "terminal_off", "The interactive terminal is not wired on this server");
     const ws = await workspaces.get(req.params.id);
     const input = body(terminalCreateSchema, req);
-    const session = await deps.terminals.create(ws, input.cols, input.rows);
+    // A create that names a peer opens the terminal on that peer (P3): the same
+    // route, the same owner auth, the terminal just lives on another machine.
+    const peerInput = input.peer !== undefined && input.peerCwd !== undefined ? { peer: input.peer, peerCwd: input.peerCwd } : undefined;
+    const session = await deps.terminals.create(ws, input.cols, input.rows, peerInput);
     res.status(201).json(session);
   });
   for (const action of ["write", "resize"] as const) {
@@ -1523,7 +1527,7 @@ export async function createApp(deps: AppDeps) {
         const input = body(terminalWriteSchema, req);
         deps.terminals.write(ws, req.params.termId, input.data);
       } else {
-        const input = body(terminalCreateSchema, req);
+        const input = body(terminalResizeSchema, req);
         deps.terminals.resize(ws, req.params.termId, input.cols, input.rows);
       }
       res.json({ ok: true });

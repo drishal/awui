@@ -180,6 +180,36 @@
   background: var(--hover);
 }
 
+/* The folder form a "New terminal on…" pick shows: the peer's terminal opens at
+   a cwd the caller names, so the menu asks for it before the tab exists. */
+.terminal-new-cwd-label {
+  padding: 4px 10px 2px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.terminal-new-cwd {
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+}
+
+.terminal-new-open {
+  display: block;
+  width: 100%;
+}
+
+.terminal-new-open:disabled {
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+
 .terminal-tabs {
   display: flex;
   flex: none;
