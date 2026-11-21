@@ -101,6 +101,12 @@ export interface HandshakeOutcome {
   paired: boolean;
   policy: string;
   sas: string;
+  /**
+   * The transcript body this side's auth signature covered — exactly the bytes
+   * the server's `ServerHandshake.transcript` reports, binding included, so a
+   * caller can bind a secret to this one link (peer.redeem's MAC).
+   */
+  transcript: Buffer;
 }
 
 /**
@@ -149,7 +155,7 @@ export async function clientHandshake(rpc: RpcPeer, opts: ClientHandshakeOpts): 
     rpc.close("handshake: the server reported a different SAS");
     throw new MeshRpcError(MeshErrorCode.invalid_request, "The server reported a SAS this side does not derive from the two keys", { code: "invalid_request" });
   }
-  return { serverKey: server.data.publicKey, serverName: server.data.name, paired: authed.data.paired, policy: authed.data.policy, sas };
+  return { serverKey: server.data.publicKey, serverName: server.data.name, paired: authed.data.paired, policy: authed.data.policy, sas, transcript: t };
 }
 
 export type HandshakeState = "init" | "hello" | "done";

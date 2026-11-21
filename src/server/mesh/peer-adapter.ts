@@ -78,9 +78,16 @@ export interface PeerLiveChatOptions {
   plan?: PeerReconnectPlan;
 }
 
+/**
+ * How long a leader waits on a request that may be sitting in the target's
+ * ask-approval queue (P2 §2): an approval waits five minutes there before it
+ * expires, so six minutes on this side hears the real answer — expiry, deny,
+ * or allow — instead of a timeout that would orphan the call. task.open,
+ * task.prompt, the fs.* methods, and (when it exists) term.open use it.
+ */
+export const ASKABLE_RPC_TIMEOUT_MS = 6 * 60_000;
+
 /** Every optional feature is off: the relay offers nothing the worker's harness does not. */
-/** A cold worker may take a while to start claude or codex; a short timeout would orphan a live remote task. */
-const TASK_OPEN_TIMEOUT_MS = 120_000;
 
 const NO_FEATURES: HarnessCapabilities = {
   // Relayed verbatim as task.prompt {mode}; the worker's harness answers for itself.
@@ -184,7 +191,7 @@ export class PeerHarnessAdapter implements HarnessAdapter {
       ...(this.opts.thinkingLevel !== undefined ? { thinkingLevel: this.opts.thinkingLevel } : {}),
       ...(this.opts.ceiling !== undefined ? { ceiling: this.opts.ceiling } : {}),
       hops: 0,
-    }, TASK_OPEN_TIMEOUT_MS);
+    }, ASKABLE_RPC_TIMEOUT_MS);
     const record = typeof opened === "object" && opened !== null ? (opened as { remoteTaskId?: unknown; config?: unknown; nativeId?: unknown }) : null;
     if (record === null || typeof record.remoteTaskId !== "string" || record.remoteTaskId === "") {
       throw new ChatError(502, "harness_init_failed", `The peer "${this.peerName}" opened a task without an id`);
@@ -401,7 +408,7 @@ export class PeerLiveChat implements LiveChat {
   /** One message to the task; the wire has no image channel, so attachments are refused rather than dropped. */
   private async send(text: string, mode: "prompt" | "steer" | "followUp", images?: ImageAttachment[]): Promise<void> {
     if (images !== undefined && images.length > 0) throw new Error("A remote peer task cannot take image attachments");
-    await this.connection.rpc.request("task.prompt", { remoteTaskId: this.remoteTaskId, text, mode });
+    await this.connection.rpc.request("task.prompt", { remoteTaskId: this.remoteTaskId, text, mode }, ASKABLE_RPC_TIMEOUT_MS);
   }
 
   async prompt(text: string, images?: ImageAttachment[]): Promise<void> {

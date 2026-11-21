@@ -183,6 +183,11 @@ awui peer log [--peer <name>] [--tail N]   the audit log of decisions this node 
 awui peer ls <name> <path>             a folder on a peer: names, types, sizes
 awui peer cat <name> <path>            a peer file's bytes, raw to stdout (at most 4 MiB)
 awui peer tasks <name>                 the peer's live tasks (its awui service runs them)
+awui peer approvals                    what this node's service is waiting for you to answer
+awui peer approve <id> [--for-link]    answer one: allow once, or for this link's lifetime
+awui peer deny <id>                    answer one: no
+awui peer invite [--policy <p>] [--ttl 10m] [--address host:port ...]   a single-use pairing code, with a terminal QR
+awui peer join <code> [--name <n>]     pin the key the code carries, redeem it over TLS, save the peer
 awui peer serve-stdio [--peer <name>] [--policy <p>] [--ephemeral] [--attach]   the worker end of a link
 ```
 
@@ -255,8 +260,9 @@ keep the P1 refusals for `target` and `both`.
 
 `fs.stat`, `fs.list`, `fs.read`, and `fs.write` carry the policy's `fs.read`
 and `fs.write` capabilities, decided per call like every other cap (a cap set
-to `ask` is refused with `needs_approval`). Both ephemeral and daemon workers
-answer them. Every path is resolved inside the policy's roots on every call
+to `ask` waits for the target's owner when the worker is a service, and is
+refused with `needs_approval` on an ephemeral one). Both ephemeral and daemon
+workers answer them. Every path is resolved inside the policy's roots on every call
 (`..` refused, and the result's realpath must stay in a root after resolution):
 
 | Method | Shape | Bound |
@@ -335,13 +341,40 @@ atomically, at most 64 entries, one entry shape: exactly what config.yml's
 used, and wherever both name the same peer **config.yml wins**: a checked-in
 file outranks local state. A malformed file is a hard error, never a reset.
 
+### Ask approvals on the target
+
+A policy cap set to `ask:` no longer fails mid-run when the worker is a
+service: the call waits on the target's approval queue instead (the queue
+holds 32 cards, 4 per node, and answers `-33004` over either), a card surfaces
+through the target's own CLI — `awui peer approvals`, `awui peer approve <id>`
+(once, or `--for-link` for the link's remaining work in the same root),
+`awui peer deny <id>` — and nobody answering for five minutes is a denial in
+the leader's words, "no one answered on the target". The leader's ask-able
+calls (`fs.*`, `task.open`, `task.prompt`, `term.open`) wait six minutes, so
+the expiry always reaches them first. An ephemeral (stdio) worker keeps the
+phase 1 refusal: there is no one there to ask. Every decision is one audit
+line.
+
+### Invite pairing
+
+Side-by-side pairing (`add`/`accept`) needs both machines at once; an invite
+does not. On the target, `awui peer invite [--policy p] [--ttl 10m]
+[--address host:port ...]` (listener on) mints a single-use code — printed
+with its terminal QR — carrying this node's name, its key, its addresses, and
+a one-invite secret. On the joiner, `awui peer join <code> [--name]` pins the
+key outright (the code is the trust, no TOFU), dials the first address that
+answers over TLS, and redeems the invite by binding the secret to this one
+link's handshake transcript. The redeem leaves a pending request on the
+target, marked with the invite's policy, and saves the peer to the joiner's
+`mesh/peers.json` under the address that worked; the target's owner still
+accepts it (`awui peer accept`, the policy pre-filled). Five bad redeem
+attempts burn the invite; a code lives 1..60 minutes.
+
 ### Still missing
 
-- **Ask-capabilities** (`ask:` caps): a cap that needs an approval mid-run is
-  refused with a clear error (`-33003 needs_approval`), not raised as a card.
 - **Terminals** (`term.open` is named in policies but carries nothing).
 - **Host tasks across a target restart**: they are in memory, not persisted.
-- **A Peers UI and invite pairing** (the rest of phase 2).
+- **The Peers UI and its REST routes** (the settings side of phase 2).
 
 ### Limits that remain
 
@@ -426,8 +459,9 @@ Under the state folder, never in git, never in config:
 - **Phase 1.5** — shipped: the attach socket and daemon-mode tasks (a dropped link
   reconnects and replays), approvals on the target, files over the link (`fs.*`,
   `peer_files`, the `peer ls/cat/tasks` commands).
-- **Phase 2** — in progress: direct TLS with pinned keys (shipped); a Peers UI
-  and invite pairing to follow.
+- **Phase 2** — in progress: direct TLS with pinned keys, ask approvals on
+  the target, and invite pairing (shipped); a Peers UI and its routes to
+  follow.
 - **Phase 3** — remote terminals, handoff, a NixOS module.
 
 ## Phone follow is separate

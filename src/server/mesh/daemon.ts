@@ -8,11 +8,13 @@
 // the listener and every attached link. Host tasks are never persisted: they
 // die with the service, and a leader reconnecting after a restart gets a
 // closed link and a not_found, exactly as the docs say.
+import { ApprovalQueue } from "./approvals.js";
 import { socketPath, startAttachListener, type AttachForced, type AttachLink, type AttachListener } from "./attach.js";
 import type { AuditLog } from "./audit.js";
 import { ensureTlsCertificate } from "./cert.js";
 import type { TaskHost } from "./host.js";
 import type { NodeIdentity } from "./identity.js";
+import { InviteStore } from "./pairing.js";
 import type { PinStore } from "./pins.js";
 import { serve, type ServeDeps } from "./serve.js";
 import { startTlsListener, type TlsListener, type TlsMeshLink } from "./tls.js";
@@ -41,6 +43,57 @@ export interface MeshAttachDeps {
 export interface MeshAttachHandle {
   /** Stops the poll, closes the listener, and with it every attached link. */
   stop(): void;
+  /** The service's shared ask-approval queue (P2 §2): every attached link waits on this one. */
+  readonly approvals: ApprovalQueue;
+  /** The service's live invites (P2 §3): `local.invite.create` mints from this one store. */
+  readonly invites: InviteStore;
+}
+
+/** The running service's approval queue, for the owner-facing routes and UI (P2 §4); null when no daemon is attached. */
+let currentApprovals: ApprovalQueue | null = null;
+/** The running service's invite store, same reach as the approval queue above. */
+let currentInvites: InviteStore | null = null;
+
+/**
+ * The one service-level pair of P2 stores, shared by every daemon this process
+ * runs (the attach socket and the TLS listener both serve links, and a card or
+ * an invite must not depend on which of the two the peer arrived through).
+ * Acquired by each daemon at start and released at its stop; the globals above
+ * clear only when the last holder is gone.
+ */
+interface ServiceStores {
+  approvals: ApprovalQueue;
+  invites: InviteStore;
+  users: number;
+}
+
+let serviceStores: ServiceStores | null = null;
+
+function acquireStores(): ServiceStores {
+  if (serviceStores === null) serviceStores = { approvals: new ApprovalQueue(), invites: new InviteStore(), users: 0 };
+  serviceStores.users++;
+  currentApprovals = serviceStores.approvals;
+  currentInvites = serviceStores.invites;
+  return serviceStores;
+}
+
+function releaseStores(stores: ServiceStores): void {
+  stores.users--;
+  if (stores.users <= 0 && serviceStores === stores) {
+    serviceStores = null;
+    currentApprovals = null;
+    currentInvites = null;
+  }
+}
+
+/** The mesh attach daemon's shared ask-approval queue, or null when no service has attached the mesh. */
+export function meshApprovalQueue(): ApprovalQueue | null {
+  return currentApprovals;
+}
+
+/** The mesh attach daemon's invite store, or null when no service has attached the mesh. */
+export function meshInviteStore(): InviteStore | null {
+  return currentInvites;
 }
 
 /**
@@ -52,6 +105,12 @@ export interface MeshAttachHandle {
  */
 export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
   const log = deps.log ?? (() => undefined);
+  // The two P2 stores are the service's, not a link's: every attached link and
+  // the owner-facing CLI/REST surfaces see the same pending cards and invites —
+  // and so does the TLS listener, which shares the same pair.
+  const stores = acquireStores();
+  const approvals = stores.approvals;
+  const invites = stores.invites;
   let identity: Promise<NodeIdentity> | null = null;
   let listener: AttachListener | null = null;
   /** The mesh was on at the last poll: a failed start only retries after a full off/on cycle. */
@@ -83,6 +142,11 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
         enabled: deps.enabled,
         home: deps.home,
         host: deps.host,
+        approvals,
+        invites,
+        // The attach socket is this uid's and the prologue is trusted exactly as
+        // the CLI is (P1.5), so its links may serve the owner's local.* methods.
+        origin: "attach",
         ...(forced !== null ? { forced } : {}),
         log,
       } satisfies ServeDeps);
@@ -131,10 +195,13 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
   timer.unref?.();
 
   return {
+    approvals,
+    invites,
     stop(): void {
       stopped = true;
       clearInterval(timer);
       stopListener();
+      releaseStores(stores);
     },
   };
 }
@@ -175,6 +242,10 @@ export interface MeshTlsDeps {
  */
 export function startMeshTls(deps: MeshTlsDeps): MeshAttachHandle {
   const log = deps.log ?? (() => undefined);
+  // The same pair of P2 stores the attach socket waits on: a card raised over
+  // TLS is answered from the same CLI/REST surfaces, and one invite store
+  // serves both, so a join over TLS and an invite minted from the CLI agree.
+  const stores = acquireStores();
   let identity: Promise<NodeIdentity> | null = null;
   let listener: TlsListener | null = null;
   /** The certificate the running listener serves; a different one is a restart. */
@@ -209,6 +280,10 @@ export function startMeshTls(deps: MeshTlsDeps): MeshAttachHandle {
         home: deps.home,
         binding,
         host: deps.host,
+        approvals: stores.approvals,
+        invites: stores.invites,
+        // A TLS link is a peer's, never the owner's CLI: local.* stays attach-only.
+        origin: "tls",
         log,
       } satisfies ServeDeps);
       // The listener lifts its 10 s deadline and the unauthenticated caps on
@@ -280,10 +355,13 @@ export function startMeshTls(deps: MeshTlsDeps): MeshAttachHandle {
   timer.unref?.();
 
   return {
+    approvals: stores.approvals,
+    invites: stores.invites,
     stop(): void {
       stopped = true;
       clearInterval(timer);
       stopListener();
+      releaseStores(stores);
     },
   };
 }

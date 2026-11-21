@@ -15,7 +15,7 @@ import type { NodeIdentity } from "./identity.js";
 import type { PinStore } from "./pins.js";
 import { mergePeers, type MeshPeerEntry } from "./peer-store.js";
 import { MeshErrorCode, MeshRpcError, RpcPeer } from "./rpc.js";
-import { DEFAULT_RECONNECT_PLAN, type PeerReconnectPlan } from "./peer-adapter.js";
+import { ASKABLE_RPC_TIMEOUT_MS, DEFAULT_RECONNECT_PLAN, type PeerReconnectPlan } from "./peer-adapter.js";
 import { connectTls } from "./tls.js";
 import { linkOf, spawnLink } from "./transport.js";
 import type { PeerLink } from "./transport.js";
@@ -251,7 +251,7 @@ export class PeerManager {
     return opened;
   }
 
-  /** How long one files/task.list call may wait: the worker answers from its own disk, so this is a hang guard, not a budget. */
+  /** How long one task.list call may wait: the worker answers from memory, so this is a hang guard, not a budget. */
   private static readonly FILE_RPC_MS = 30_000;
   /** The wire's own bounds (spec P1.5 §3), held here too so a caller's bug cannot become a peer's problem. */
   private static readonly MAX_READ_BYTES = 512 * 1024;
@@ -263,14 +263,14 @@ export class PeerManager {
    */
   async stat(peerName: string, target: string): Promise<PeerFileStat> {
     const connection = await this.connect(peerName);
-    return (await connection.rpc.request("fs.stat", { path: target }, PeerManager.FILE_RPC_MS)) as PeerFileStat;
+    return (await connection.rpc.request("fs.stat", { path: target }, ASKABLE_RPC_TIMEOUT_MS)) as PeerFileStat;
   }
 
   /** `fs.list` on the peer: one folder's names, dotfiles included, never recursive. */
   async list(peerName: string, target: string, limit?: number): Promise<PeerFileListing> {
     const connection = await this.connect(peerName);
     const bounded = limit === undefined ? undefined : Math.max(1, Math.min(limit, PeerManager.MAX_LIST_ENTRIES));
-    return (await connection.rpc.request("fs.list", { path: target, ...(bounded !== undefined ? { limit: bounded } : {}) }, PeerManager.FILE_RPC_MS)) as PeerFileListing;
+    return (await connection.rpc.request("fs.list", { path: target, ...(bounded !== undefined ? { limit: bounded } : {}) }, ASKABLE_RPC_TIMEOUT_MS)) as PeerFileListing;
   }
 
   /** `fs.read` on the peer: one bounded chunk, decoded from base64. */
@@ -280,7 +280,7 @@ export class PeerManager {
     const answer = (await connection.rpc.request(
       "fs.read",
       { path: target, offset: Math.max(0, opts.offset ?? 0), length },
-      PeerManager.FILE_RPC_MS,
+      ASKABLE_RPC_TIMEOUT_MS,
     )) as { data: unknown; size?: unknown; eof?: unknown };
     if (typeof answer?.data !== "string") throw new Error(`the peer "${peerName}" answered fs.read without data`);
     return { data: Buffer.from(answer.data, "base64"), size: typeof answer.size === "number" ? answer.size : 0, eof: answer.eof === true };
@@ -297,7 +297,7 @@ export class PeerManager {
         mode: opts.mode,
         ...(opts.expectMtimeMs !== undefined ? { expectMtimeMs: opts.expectMtimeMs } : {}),
       },
-      PeerManager.FILE_RPC_MS,
+      ASKABLE_RPC_TIMEOUT_MS,
     )) as PeerFileWriteResult;
   }
 

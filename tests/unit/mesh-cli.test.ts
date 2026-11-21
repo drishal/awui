@@ -43,7 +43,10 @@ function meshOnDir(): string {
 
 describe("the peer CLI's command line", () => {
   it("refuses an unknown command, a missing name, and an unknown flag with usage on stderr, exit 2", async () => {
-    for (const args of [[], ["bogus"], ["add"], ["add", "lab", "--nope"], ["test", "lab", "extra"], ["accept", "lab"], ["remove", "a/b"], ["log", "--tail", "soon"], ["status", "stray"]]) {
+    // "accept lab" without --policy is no longer a usage error: an invited request
+    // (P2 §3) pre-fills its own policy, so the command itself judges after reading
+    // the pending entry -- it fails with that entry's own words instead.
+    for (const args of [[], ["bogus"], ["add"], ["add", "lab", "--nope"], ["test", "lab", "extra"], ["remove", "a/b"], ["log", "--tail", "soon"], ["status", "stray"]]) {
       const c = collector({});
       expect(await runPeerCli(args, c.io), JSON.stringify(args)).toBe(EXIT_USAGE);
       expect(c.err.join("\n")).toContain("Usage");

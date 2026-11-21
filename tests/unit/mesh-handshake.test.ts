@@ -340,5 +340,36 @@ describe("ordering and replay", () => {
     expect(plain.hs.transcript).toEqual(t);
     expect(plain.hs.transcript).toEqual(Buffer.concat([clientIdentity.publicKey, plainNonce, serverIdentity.publicKey, Buffer.from(plainHello.nonce, "base64url")]));
   });
+
+  it("a finished handshake leaves both sides holding the same transcript, bound or plain", async () => {
+    // With a binding: the client's outcome carries exactly the bytes the server's
+    // transcript() reports — what peer.redeem's MAC must cover on both ends.
+    const clientIdentity = identity();
+    const serverIdentity = identity();
+    const binding = Buffer.alloc(32, 7);
+    const bound = link(serverIdentity, async () => ({ paired: true, policy: "worker" }), binding);
+    const boundOutcome = await clientHandshake(bound.client, {
+      identity: clientIdentity,
+      name: "leader-box",
+      hops: 0,
+      expectedServerKey: serverIdentity.publicKey,
+      tofu: false,
+      binding,
+    });
+    expect(boundOutcome.transcript).toEqual(bound.hs.transcript);
+    expect(boundOutcome.transcript.subarray(-binding.length)).toEqual(binding);
+
+    // Without one: the exact P1 bytes, four 32-byte values and nothing after.
+    const plain = link(serverIdentity, async () => ({ paired: true, policy: "worker" }));
+    const plainOutcome = await clientHandshake(plain.client, {
+      identity: clientIdentity,
+      name: "leader-box",
+      hops: 0,
+      expectedServerKey: serverIdentity.publicKey,
+      tofu: false,
+    });
+    expect(plainOutcome.transcript).toEqual(plain.hs.transcript);
+    expect(plainOutcome.transcript).toHaveLength(128);
+  });
 });
 
