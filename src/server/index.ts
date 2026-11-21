@@ -60,7 +60,10 @@ import { configDir, configEnv, herdrEnabled, meshEnabled, migrateConfigDir, read
 import { PeerManager } from "./mesh/manager.js";
 import { PinStore } from "./mesh/pins.js";
 import { loadOrCreateIdentity } from "./mesh/identity.js";
+import { AuditLog } from "./mesh/audit.js";
 import { runPeerCli } from "./mesh/cli.js";
+import { startMeshAttach } from "./mesh/daemon.js";
+import { TaskHost } from "./mesh/host.js";
 import { Workspaces } from "./workspaces.js";
 import { cleanupPastes } from "./paste-store.js";
 
@@ -260,14 +263,46 @@ async function main(): Promise<void> {
   // delegate_task names a peer. With the mesh off the manager sits inert and every
   // peer task is refused, exactly as if it were not wired.
   const userNow = meshSetting(config.configDir, settings?.config);
+  // The mesh name the way the worker CLI spells it: config.yml's, else the hostname sanitized.
+  const meshLocalName = () => userNow()?.mesh?.name ?? (hostname().replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64) || "awui");
   const meshPeers = new PeerManager({
     identity: () => loadOrCreateIdentity(config.stateDir),
     pins: PinStore(path.join(config.stateDir, "mesh", "pins.json")),
     config: () => userNow()?.mesh,
     enabled: () => meshEnabled(userNow(), process.env),
-    // The mesh name the way the worker CLI spells it: config.yml's, else the hostname sanitized.
-    localName: () => userNow()?.mesh?.name ?? (hostname().replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64) || "awui"),
+    localName: meshLocalName,
     log: (m) => console.error(`awui: mesh: ${m}`),
+  });
+  // The mesh's target side (P1.5): while the mesh is on, this service also listens on a
+  // local Unix socket that a peer's `serve-stdio` can attach to, so its tasks outlive the
+  // SSH session that carried them. The same 2 s config re-read turns the socket on and off
+  // without a restart; with the mesh off nothing listens, exactly as before.
+  const meshLog = (m: string) => console.error(`awui: mesh: ${m}`);
+  const meshAttach = startMeshAttach({
+    env: process.env,
+    stateDir: config.stateDir,
+    identity: () => loadOrCreateIdentity(config.stateDir),
+    name: meshLocalName,
+    pins: PinStore(path.join(config.stateDir, "mesh", "pins.json")),
+    audit: new AuditLog(path.join(config.stateDir, "mesh", "audit.jsonl"), meshLog),
+    registry,
+    config: () => userNow()?.mesh,
+    enabled: () => meshEnabled(userNow(), process.env),
+    home: config.home,
+    // Host tasks are real chats opened through the manager, owned by the peer that asked
+    // (the TaskHost being written in parallel owns everything past this constructor).
+    host: new TaskHost({
+      chats: manager,
+      registry,
+      // Through the server's own Workspaces: a mesh root must also sit inside this
+      // server's workspace roots, so the target's UI never shows a chat in a folder
+      // it would itself refuse to open.
+      workspace: (real) => workspaces.open(real),
+      clock: Date.now,
+      log: meshLog,
+      detachedTtlHours: () => userNow()?.mesh?.detached_ttl_hours ?? 24,
+    }),
+    log: meshLog,
   });
   const marks = await SessionMarks.open(config.stateDir);
   const agentStatuses = await AgentStatuses.open(path.join(config.stateDir, "agent-status.json"));
@@ -506,6 +541,8 @@ async function main(): Promise<void> {
     clearInterval(pasteCleanupTimer);
     if (settleTimer) clearInterval(settleTimer);
     server.close();
+    // The attach socket goes down with the listener: no peer link outlives the service's own shutdown.
+    meshAttach.stop();
     if (app.locals.prWatchStore) await app.locals.prWatchStore.stop();
     terminals.shutdown();
     for (const socket of sockets) socket.destroy();
