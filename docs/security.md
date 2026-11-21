@@ -70,7 +70,6 @@ What the server does to keep a local app local, and how to expose it to other de
 
 The mesh ([docs/mesh.md](mesh.md)) is a separate channel again: peer-to-peer task driving with pinned Ed25519 keys, never `/api/*` and never loopback trust.
 
-The mesh ([docs/mesh.md](mesh.md)) is a separate, larger idea: driving tasks on your other machines. Its peer channel is never `/api/*` and never relies on loopback trust; in phase 0 it is configuration, identity, and policy only.
 
 ## Tailscale
 

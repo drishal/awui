@@ -6,11 +6,12 @@ listens, and no tool reaches a chat yet.
 
 ## What it is
 
-A `mesh:` block in `config.yml` names peer machines and, for each, what it may do
-*here*. When a peer is given work, this awui drives the peer's own awui (or, in
-phase 1, any harness's stdio) through that connection; the peer's policy decides
-what the request may touch on this machine. Until `mesh.enabled: true` is set the
-whole feature is inert — the file is still validated, so a typo is caught at
+A `mesh:` block in `config.yml` names peer machines (how to reach them) and named
+policies (what a peer may do *here*). Once phase 1 lands, a chat can hand a delegated
+task to a paired peer: the peer's own awui opens the harness session on its own
+machine, with its own credentials, inside the roots its policy allows, and streams
+the run back as an ordinary delegated task. Until `mesh.enabled: true` is set the
+whole feature is inert — the block is still validated, so a typo is caught at
 startup.
 
 ## Principles
