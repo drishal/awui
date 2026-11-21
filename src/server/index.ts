@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { hostname } from "node:os";
 import { existsSync, promises as fs } from "node:fs";
 import http from "node:http";
 import type { Socket } from "node:net";
@@ -55,7 +56,11 @@ import { PresenceTable } from "./presence.js";
 import { ThemeStore } from "./theme.js";
 import { ThemeLibrary } from "./theme-library.js";
 import { Herdr, herdrSocketPath } from "./herdr.js";
-import { configDir, configEnv, herdrEnabled, migrateConfigDir, readUserConfig, THEMES_DIR, uiSettings, UserConfigError, type UserConfig } from "./user-config.js";
+import { configDir, configEnv, herdrEnabled, meshEnabled, migrateConfigDir, readUserConfig, THEMES_DIR, uiSettings, UserConfigError, type UserConfig } from "./user-config.js";
+import { PeerManager } from "./mesh/manager.js";
+import { PinStore } from "./mesh/pins.js";
+import { loadOrCreateIdentity } from "./mesh/identity.js";
+import { runPeerCli } from "./mesh/cli.js";
 import { Workspaces } from "./workspaces.js";
 import { cleanupPastes } from "./paste-store.js";
 
@@ -92,6 +97,27 @@ function herdrSetting(dir: string | null, initial: Parameters<typeof herdrEnable
       // A config.yml broken since startup keeps the last good answer; startup logged the file's problems.
     }
     return on;
+  };
+}
+
+/**
+ * The whole user config, read again at most every two seconds, the way the
+ * orchestration limits are: config.yml's `mesh:` block (the manager's peers and
+ * policies) and its on/off switch apply without a restart, and a file broken
+ * since startup keeps the last good answer.
+ */
+function meshSetting(dir: string | null, initial: UserConfig | undefined): () => UserConfig | undefined {
+  let user = initial;
+  let at = Date.now();
+  return () => {
+    if (Date.now() - at < 2000) return user;
+    at = Date.now();
+    try {
+      user = readUserConfig(dir)?.config;
+    } catch {
+      // Startup logged the file's problems, and the last good answer is better than none.
+    }
+    return user;
   };
 }
 
@@ -227,6 +253,22 @@ async function main(): Promise<void> {
   // next child spawned with no tools at all and every call answering orch_off.
   const orchLimits = orchestrationSetting(config.configDir, settings?.config);
   manager.orchestration = { baseUrl: `http://127.0.0.1:${config.port}`, enabled: () => orchLimits().enabled };
+  // The mesh's leader side: one manager for every configured peer, wired the way the
+  // orchestration limits are (config.yml's `mesh:` re-read as it changes). Nothing here
+  // touches the disk or spawns a link on its own: the identity loads on the first
+  // connect, the pins file is read on its first use, and a link exists only while a
+  // delegate_task names a peer. With the mesh off the manager sits inert and every
+  // peer task is refused, exactly as if it were not wired.
+  const userNow = meshSetting(config.configDir, settings?.config);
+  const meshPeers = new PeerManager({
+    identity: () => loadOrCreateIdentity(config.stateDir),
+    pins: PinStore(path.join(config.stateDir, "mesh", "pins.json")),
+    config: () => userNow()?.mesh,
+    enabled: () => meshEnabled(userNow(), process.env),
+    // The mesh name the way the worker CLI spells it: config.yml's, else the hostname sanitized.
+    localName: () => userNow()?.mesh?.name ?? (hostname().replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64) || "awui"),
+    log: (m) => console.error(`awui: mesh: ${m}`),
+  });
   const marks = await SessionMarks.open(config.stateDir);
   const agentStatuses = await AgentStatuses.open(path.join(config.stateDir, "agent-status.json"));
   const projectConfigTrust = await ProjectConfigTrust.open(path.join(config.stateDir, "project-config-trust.json"));
@@ -368,6 +410,12 @@ async function main(): Promise<void> {
     stateDir: config.stateDir,
     invites: new InviteStore(invitesFileOf(config.stateDir)),
     orchestrationLimits: orchLimits,
+    orchestrationPeers: {
+      manager: meshPeers,
+      enabled: () => meshEnabled(userNow(), process.env),
+      chats: () => userNow()?.mesh?.chats ?? "lead-only",
+      maxRemoteTasks: () => userNow()?.mesh?.max_remote_tasks ?? 8,
+    },
     // Finished chats nobody has looked at for this long get their harness child parked; opening
     // the chat again resumes the same native session. 0 (config.yml unset) is off.
     ...(config.hibernateAfterMinutes > 0 ? { hibernateAfterMs: config.hibernateAfterMinutes * 60_000 } : {}),
@@ -620,6 +668,10 @@ Usage:
   awui install service   Install the binary for autostart: ~/.local/bin (with atui) + systemd on Linux/macOS,
                          a logon Scheduled Task on Windows
                          [--link symlinks it instead of copying (POSIX only), for a dev checkout]
+  awui peer status       The mesh's state here: on/off, this node's id and key, pins (awui peer --help)
+  awui peer add <name>   First contact: pin a configured peer's key (TOFU, asked; --yes for scripts)
+  awui peer accept <name> --policy <p>   On the target: pin a pending caller under a policy
+  awui peer serve-stdio [--peer <name>] [--policy <p>]   The worker end of a mesh link (SSH/docker)
   awui setup mcp         What each harness needs before awui's own tools reach its chats; --apply runs a one-time step
   awui mcp               awui's orchestration MCP server on stdio, for a harness config that names a program (Hermes)
 
@@ -682,6 +734,31 @@ if (client) {
     (code) => process.exit(code),
     (error: unknown) => {
       console.error(`awui: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    },
+  );
+} else if (args[0] === "peer") {
+  // The mesh peer commands (mesh/cli.ts): pairing, tests, revocation, and the
+  // worker's stdio end. Pinning asks on a terminal; a pipe or a script must say --yes.
+  const ask = process.stdin.isTTY
+    ? (question: string) =>
+        new Promise<string>((resolve) => {
+          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+          rl.question(question, (answer) => {
+            rl.close();
+            resolve(answer);
+          });
+        })
+    : undefined;
+  runPeerCli(args.slice(1), {
+    env: process.env,
+    out: (line) => process.stdout.write(`${line}\n`),
+    err: (line) => process.stderr.write(`${line}\n`),
+    ...(ask ? { ask } : {}),
+  }).then(
+    (code) => process.exit(code),
+    (error: unknown) => {
+      console.error(`awui peer: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     },
   );

@@ -144,5 +144,14 @@ export function boardProjects(overview: SessionsOverview): Array<WorkspaceInfo &
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
+/**
+ * The mesh peer a delegated child runs on, as its parent's card shows it:
+ * "@lab-vm-3". Null for a child that runs on this machine.
+ */
+export function childHost(child: ProjectSession): string | null {
+  const host = child.lineage?.host;
+  return host ? `@${host}` : null;
+}
+
 /** How a card's own status line reads, if its agent set one (none when it did not). */
 export const cardStatusLine = (s: ProjectSession): string | null => (s.agentStatus ? s.agentStatus.comment || s.agentStatus.state : null);

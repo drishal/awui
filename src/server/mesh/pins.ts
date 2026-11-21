@@ -62,6 +62,15 @@ export interface PinStore {
   pending(name: string): Promise<PendingPin | null>;
   /** Drops the outbound pin, every inbound pin, and every pending record under a peer name. */
   removeByName(name: string): Promise<void>;
+  /** The whole store, read-only, as a listing shows it (node ids recomputed from the keys). */
+  snapshot(): Promise<PinSnapshot>;
+}
+
+/** What a listing reads back: every pin's name and node id, never the raw file. */
+export interface PinSnapshot {
+  outbound: Array<{ name: string; nodeId: string; pinnedAt: number }>;
+  inbound: Array<{ name: string; policy: string; nodeId: string; pinnedAt: number; via: "accept" | "forced" }>;
+  pending: Array<{ name: string; nodeId: string; seenAt: number }>;
 }
 
 /** The in-memory state between one read and one write; keys for inbound/pending are recomputed node ids. */
@@ -243,6 +252,16 @@ class Pins implements PinStore {
       if (entry.name === name && (found === null || entry.seenAt > found.seenAt)) found = { publicKey: entry.publicKey, name: entry.name, seenAt: entry.seenAt };
     }
     return found;
+  }
+
+  async snapshot(): Promise<PinSnapshot> {
+    const state = await readState(this.file);
+    const byName = (a: { name: string }, b: { name: string }): number => a.name.localeCompare(b.name);
+    return {
+      outbound: [...state.outbound].map(([name, pin]) => ({ name, nodeId: nodeIdOf(pin.publicKey), pinnedAt: pin.pinnedAt })).sort(byName),
+      inbound: [...state.inbound.values()].map((pin) => ({ name: pin.name, policy: pin.policy, nodeId: nodeIdOf(pin.publicKey), pinnedAt: pin.pinnedAt, via: pin.via })).sort(byName),
+      pending: [...state.pending.values()].map((entry) => ({ name: entry.name, nodeId: nodeIdOf(entry.publicKey), seenAt: entry.seenAt })).sort(byName),
+    };
   }
 
   removeByName(name: string): Promise<void> {

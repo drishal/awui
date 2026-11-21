@@ -2,7 +2,7 @@
 // pull-request filters, and the one-line preview a card shows.
 import { describe, expect, it } from "vitest";
 import { asHarnessId, type ProjectSession, type SessionsOverview } from "../../src/shared/protocol.js";
-import { boardCards, boardCounts, boardProjects, cardStatusLine, columnOf, prBadge, prStateOf } from "../../src/web/dashboard.js";
+import { boardCards, boardCounts, boardProjects, cardStatusLine, childHost, columnOf, prBadge, prStateOf } from "../../src/web/dashboard.js";
 import { previewLine } from "../../src/web/session-preview.js";
 
 const now = Date.parse("2026-10-27T12:00:00.000Z");
@@ -57,6 +57,14 @@ describe("the board's columns", () => {
     // Its parent is not on the board, so it stands alone (and says so).
     expect(cards.done.find((c) => c.session.id === "orphan")?.children).toEqual([]);
     expect(overview.sessions.find((x) => x.id === "orphan")?.origin).toBeUndefined();
+  });
+
+  it("badges a delegated child that runs on a mesh peer with @host", () => {
+    const remote = s("remote", { lineage: { kind: "delegate", taskId: "t3", parentChatId: "c-busy", parentTitle: null, depth: 1, host: "lab-vm-3" } });
+    expect(childHost(remote)).toBe("@lab-vm-3");
+    // A local child carries no host, and one that predates the field reads as local.
+    expect(childHost(s("local", { lineage: { kind: "delegate", taskId: "t4", parentChatId: "c-busy", parentTitle: null, depth: 1 } }))).toBeNull();
+    expect(childHost(s("nohost"))).toBeNull();
   });
 
   it("narrows to one project", () => {

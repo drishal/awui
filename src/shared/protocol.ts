@@ -1121,6 +1121,11 @@ export interface ChatLineage {
   parentChatId: string;
   parentTitle: string | null;
   depth: number;
+  /**
+   * The mesh peer the child runs on, when the delegation was remote; null or
+   * absent for a task that runs on this machine.
+   */
+  host?: string | null;
 }
 export interface ChatSnapshot {
   chatId: string;

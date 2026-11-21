@@ -6,9 +6,17 @@ import { formatSpan } from "./turn-time.js";
 /** How much of "harness · model · role" a row carries: it is a line of small print, not the title. */
 const META_CHARS = 42;
 
-/** The agent behind a task: the harness's name, then its model, role, and profile when they say something. */
+/** The mesh peer a remote task runs on, as a row shows it: "@lab-vm-3". */
+export function hostBadge(task: DelegatedTaskView): string | null {
+  return task.host ? `@${task.host}` : null;
+}
+
+/**
+ * The agent behind a task: the harness's name, then where it runs (the mesh peer),
+ * then its model, role, and profile when they say something.
+ */
 export function metaText(task: DelegatedTaskView, harnessName: (id: string) => string): string {
-  const parts = [harnessName(task.harnessId), task.model, task.role, task.profile].filter((p): p is string => typeof p === "string" && p !== "");
+  const parts = [harnessName(task.harnessId), hostBadge(task), task.model, task.role, task.profile].filter((p): p is string => typeof p === "string" && p !== "");
   return bound(parts.join(" · "), META_CHARS);
 }
 

@@ -13,6 +13,7 @@ import {
   boardCards,
   boardCounts,
   boardProjects,
+  childHost,
   PR_FILTERS,
   PR_FILTER_LABELS,
   prBadge,
@@ -208,6 +209,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                                 <span style={{ fg: t().border }}>{"   └ "}</span>
                                 <span style={{ fg: harnessAccent(child.harnessId) }}>{"● "}</span>
                                 <span style={{ fg: t().text2 }}>{plainTitle(child.title) || "Untitled"}</span>
+                                <Show when={childHost(child)}>{(host) => <span style={{ fg: t().muted }}>{` ${host()}`}</span>}</Show>
                                 <span style={{ fg: child.asking ? t().warn : isBusy(child.status) ? t().accent : t().muted }}>{child.asking || isBusy(child.status) ? ` ${child.asking ? "needs you" : "working"}` : " "}<Show when={!child.asking && !isBusy(child.status)} fallback={null}><span style={{ fg: t().ok }}>✓</span></Show></span>
                               </text>
                             )}
