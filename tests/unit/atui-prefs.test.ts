@@ -9,8 +9,8 @@ describe("atui preferences", () => {
     writePrefs({ vim: true, glass: true }, file);
     expect(readPrefs(file).showThoughts).toBeUndefined();
     writePrefs({ showThoughts: false }, file);
-    expect(readPrefs(file)).toEqual({ vim: true, glass: true, showThoughts: false });
+    expect(readPrefs(file)).toEqual({ vim: true, keybinds: "vim", glass: true, showThoughts: false });
     writePrefs({ showThoughts: true }, file);
-    expect(readPrefs(file)).toEqual({ vim: true, glass: true, showThoughts: true });
+    expect(readPrefs(file)).toEqual({ vim: true, keybinds: "vim", glass: true, showThoughts: true });
   });
 });
