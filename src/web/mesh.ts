@@ -2,7 +2,7 @@
 // person compares on two screens, transport names, and an invite's time
 // left. Nothing here talks to the server or holds state — the panel draws,
 // this file decides the wording, and tests/unit/web-mesh.test.ts pins it.
-import type { MeshApprovalRow, MeshPeerRow, MeshTaskRow } from "../shared/protocol.js";
+import type { MeshApprovalRow, MeshHostTermRow, MeshPeerRow, MeshTaskRow } from "../shared/protocol.js";
 
 /** The six-digit SAS as a person reads it: "123-456". The wire spells it "123 456"; a malformed value is shown untouched, never guessed at. */
 export function sasLabel(sas: string): string {
@@ -54,4 +54,9 @@ export function taskStateLabel(state: MeshTaskRow["state"]): string {
 /** One ask approval's one-line reading: who asks, for what, and how long the person has left to answer. */
 export function approvalLine(approval: MeshApprovalRow, now: number): string {
   return `${approval.peerName}: ${approval.summary} · ${timeLeft(approval.expiresAt, now)}`;
+}
+
+/** One peer terminal's one-line reading for the owner's list (finding #2): whose it is, where it runs, and its size. */
+export function hostTermLine(term: MeshHostTermRow): string {
+  return `${term.peerName}: ${term.cwd} · ${term.cols}×${term.rows}${term.exited ? " · exited" : ""}`;
 }

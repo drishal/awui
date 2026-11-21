@@ -471,6 +471,105 @@ describe("handoff over a served link (worker)", () => {
     expect(skipped.code).toBe(MeshErrorCode.invalid_params);
     expect(skipped.message).toMatch(/in order/);
   });
+
+  it("refuses two concurrent chunks of the same index: only one lands, and the upload still finishes (finding #11)", async () => {
+    const f = await makeWorkerFixture();
+    const target = await makeRepo(await remember(await mkdtemp(path.join(f.root, "target-"))));
+    const client = await openClient(f);
+    const bytes = Buffer.from("hello handoff");
+    const begun = await client.request<{ uploadId: string }>("handoff.begin", { repoCwd: target, size: bytes.length, sha256: sha256Bytes(bytes) });
+    const data = bytes.toString("base64");
+    const both = await Promise.allSettled([
+      client.request("handoff.chunk", { uploadId: begun.uploadId, index: 0, data }),
+      client.request("handoff.chunk", { uploadId: begun.uploadId, index: 0, data }),
+    ]);
+    const rejected = both.filter((outcome) => outcome.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    const error = (rejected[0] as PromiseRejectedResult).reason as MeshRpcError;
+    expect(error.code).toBe(MeshErrorCode.invalid_params);
+    expect(error.message).toMatch(/expects index 1, not 0/);
+    // The upload survived in order: the next index is exactly what it now expects.
+    await client.request("handoff.chunk", { uploadId: begun.uploadId, index: 1, data: "" });
+    await client.request("handoff.abort", { uploadId: begun.uploadId });
+    client.close();
+  });
+
+  it("runs git bundle verify before the fetch: bytes with a matching size and sha but no bundle inside never touch the repo (finding #8)", async () => {
+    const f = await makeWorkerFixture();
+    const target = await makeRepo(await remember(await mkdtemp(path.join(f.root, "target-"))));
+    const client = await openClient(f);
+    const garbage = Buffer.from("definitely not a git bundle, just chosen bytes");
+    const begun = await client.request<{ uploadId: string }>("handoff.begin", { repoCwd: target, size: garbage.length, sha256: sha256Bytes(garbage) });
+    await client.request("handoff.chunk", { uploadId: begun.uploadId, index: 0, data: garbage.toString("base64") });
+    const refused = await refuseOnLink(client, "handoff.finish", { uploadId: begun.uploadId });
+    expect(refused.code).toBe(MeshErrorCode.denied);
+    expect(refused.message).toMatch(/could not land/);
+    // No ref landed, no worktree dir, and the part file is gone.
+    expect((await readdir(target)).includes(".awui")).toBe(false);
+    expect(await readdir(path.join(f.stateDir, "mesh", "handoff"))).toEqual([]);
+    client.close();
+  });
+
+  it("reaps an abandoned upload on its own sweep timer, with no later handoff to run it (finding #7)", async () => {
+    const f = await makeWorkerFixture({ reapMs: 100, sweepMs: 100, clock: () => Date.now() });
+    const target = await makeRepo(await remember(await mkdtemp(path.join(f.root, "target-"))));
+    const client = await openClient(f);
+    const sha = sha256Bytes(Buffer.from("x"));
+    const stale = await client.request<{ uploadId: string }>("handoff.begin", { repoCwd: target, size: 1, sha256: sha });
+    // Nothing else touches handoff state on this node; only the sweep can drop it.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const gone = await refuseOnLink(client, "handoff.finish", { uploadId: stale.uploadId });
+    expect(gone.code).toBe(MeshErrorCode.not_found);
+    expect(await readdir(path.join(f.stateDir, "mesh", "handoff"))).toEqual([]);
+    client.close();
+  });
+
+  it("refuses a lying export size before the first read, and a stream that passes the cap (finding #4)", async () => {
+    // A canned manager that answers export and read with whatever the test
+    // wants: the leader-side bounds must not need an honest peer to hold.
+    const honest = {
+      handoffExport: async () => ({ exportId: "x1", size: 2 ** 40, sha256: "0".repeat(64), head: "0123456789ab" }),
+      handoffRead: async () => Buffer.alloc(0),
+    } as unknown as PeerManager;
+    const liar = await exportFromPeer(honest, "lab", "/wt").then(
+      () => {
+        throw new Error("expected the lying size to be refused");
+      },
+      (error: unknown) => error as Error,
+    );
+    expect(liar.message).toMatch(/claims .* bytes, over the .* bundle cap/);
+
+    const oversize = {
+      handoffExport: async () => ({ exportId: "x2", size: 100, sha256: "0".repeat(64), head: "0123456789ab" }),
+      handoffRead: async () => Buffer.alloc(65 * 1024, 0x61),
+    } as unknown as PeerManager;
+    const flooded = await exportFromPeer(oversize, "lab", "/wt", { maxBundleBytes: 64 * 1024 }).then(
+      () => {
+        throw new Error("expected the over-cap stream to be refused");
+      },
+      (error: unknown) => error as Error,
+    );
+    expect(flooded.message).toMatch(/passed the .* bundle cap/);
+  });
+
+  it("refuses a real export over the cap before any read, leaving the export unpaged (finding #4)", async () => {
+    const f = await makeWorkerFixture();
+    const target = await makeRepo(await remember(await mkdtemp(path.join(f.root, "target-"))));
+    const manager = await managerFor(f);
+    const bundle = await makeBundle(f);
+    const landed = await uploadHandoff(manager, "lab", target, bundle.file);
+    const meta = await manager.handoffExport("lab", landed.worktree);
+    const refused = await exportFromPeer(manager, "lab", landed.worktree, { maxBundleBytes: Math.max(1, meta.size - 1) }).then(
+      () => {
+        throw new Error("expected the over-cap export to be refused");
+      },
+      (error: unknown) => error as Error,
+    );
+    expect(refused.message).toMatch(/over the .* bundle cap/);
+    // Refused before the first handoff.read: the export's file is still there,
+    // dropped only by the worker's own reap, never by an eof read.
+    expect((await readdir(path.join(f.stateDir, "mesh", "handoff"))).some((name) => name.endsWith(".export"))).toBe(true);
+  });
 });
 
 // ---- peer_handoff, the orchestration surface ----

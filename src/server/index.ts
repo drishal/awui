@@ -318,6 +318,7 @@ async function main(): Promise<void> {
     config: () => userNow()?.mesh,
     enabled: () => meshEnabled(userNow(), process.env),
     home: config.home,
+    saved: () => meshSavedPeers.snapshot(),
     host: meshHost,
     terms: meshTerms,
     log: meshLog,
@@ -336,6 +337,7 @@ async function main(): Promise<void> {
     config: () => userNow()?.mesh,
     enabled: () => meshEnabled(userNow(), process.env),
     home: config.home,
+    saved: () => meshSavedPeers.snapshot(),
     host: meshHost,
     terms: meshTerms,
     listen: () => meshListen(userNow()),
@@ -500,6 +502,9 @@ async function main(): Promise<void> {
       config: () => userNow()?.mesh,
       listen: () => meshListen(userNow()),
       host: meshHost,
+      // Finding #2: the service's shared terminal host, so the owner's own
+      // Peers view lists and kills the PTYs peers opened here.
+      terms: meshTerms,
       approvals: () => meshApprovalQueue(),
       invites: () => meshInviteStore(),
       peers: meshPeers,

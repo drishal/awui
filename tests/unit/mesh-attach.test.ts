@@ -252,6 +252,30 @@ describe("startAttachListener", () => {
     listener.close();
     await waitFor(() => (sock.destroyed ? true : undefined), "the attached link to be closed with the listener");
   });
+
+  it.skipIf(!posix)("reports a service-side close as its own reason, not a finished session (finding #16)", async () => {
+    const dir = await sockDir();
+    const at = path.join(dir, "attach.sock");
+    // A daemon that refuses the link — a pin mismatch, a prologue it will not
+    // take — closes the socket while the caller's stdin is still open.
+    const listener = startAttachListener({
+      path: at,
+      onLink: (link) => {
+        link.input.resume();
+        link.output.destroy();
+      },
+      log: () => undefined,
+    });
+    await waitFor(async () => ((await canConnect(at)) ? true : undefined), "the attach socket to answer");
+    const toServer = new PassThrough();
+    const fromServer = new PassThrough();
+    const piped = await connectAndPipe(at, null, toServer, fromServer, { timeoutMs: 1000 });
+    if (!piped.ok) throw new Error(`connectAndPipe failed: ${piped.reason}`);
+    // The peer never ended its side: the daemon hung up first, and the reason
+    // says so — what serve-stdio turns into exit 1 instead of exit 0.
+    expect(await piped.closed).toBe("closed by the service");
+    listener.close();
+  });
 });
 
 describe("connectAndPipe through a real serve()", () => {

@@ -18,6 +18,8 @@ import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { z } from "zod";
 import { interactionAnswerSchema } from "../../shared/protocol.js";
+import type { MeshPeerEntry } from "./peer-store.js";
+import { PeerPeersStore } from "./peer-store.js";
 import { loadConfig, type ServerConfig } from "../config.js";
 import { HarnessRegistry } from "../harness/registry.js";
 import { TerminalManager } from "../terminal.js";
@@ -112,6 +114,12 @@ export function permissionModeFor(
 interface CallNote {
   target?: string;
   outcome?: string;
+  /**
+   * A term.input's decoded byte count (finding #12): keystrokes are traffic,
+   * not decisions, so allowed inputs are aggregated to one audit line per
+   * minute instead of one per call.
+   */
+  inputBytes?: number;
 }
 
 const pingSchema = z.object({}).strict();
@@ -335,6 +343,19 @@ export interface ServeDeps {
    * local.* methods; "tls" and the default "stdio" never do.
    */
   origin?: "attach" | "tls" | "stdio";
+  /**
+   * Peers added from the UI or a join (mesh/peers.json), read per call: a
+   * saved entry's inbound_policy resolves an inbound caller exactly as a
+   * config.yml entry does, with config still winning on a name clash —
+   * before this, a field the store accepted and persisted did nothing.
+   */
+  saved?: () => MeshPeerEntry[];
+  /**
+   * TLS links only: called once the handshake resolved the caller as paired,
+   * so the listener can lift its unpaired-authenticated bounds (the 60 s
+   * grace and the per-IP caps). Stdio and attach links leave it unset.
+   */
+  linkPaired?: () => void;
   log?: (m: string) => void;
 }
 
@@ -400,6 +421,28 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
   let peerName: string | null = null;
   let pendingRecorded = false;
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Finding #12: allowed term.input calls are traffic, not decisions — an
+   * interactive remote terminal writes per keystroke batch, and one audit
+   * line per call buried real decisions under hundreds of allows. The counts
+   * aggregate here and flush as one line per minute (and once more at the
+   * link's close); a refused input is a decision and is audited per call.
+   */
+  let termInputBytes = 0;
+  let termInputCalls = 0;
+  let termInputTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushTermInput = (): void => {
+    if (termInputTimer !== null) {
+      clearTimeout(termInputTimer);
+      termInputTimer = null;
+    }
+    if (termInputCalls === 0) return;
+    const bytes = termInputBytes;
+    const calls = termInputCalls;
+    termInputBytes = 0;
+    termInputCalls = 0;
+    void deps.audit.append({ peer: peerName, method: "term.input", decision: "allow", outcome: `${bytes} bytes in ${calls} call(s)` });
+  };
 
   /** Closes the link one moment after the current reply is written: a refused peer gets its error, never a silent drop. */
   const closeSoon = (reason: string): void => {
@@ -412,8 +455,9 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
    * The inbound policy for this link's client key, exactly per the spec's
    * resolution rules: forced mode pins the key under the forced name (a
    * different key already holding that name is a mismatch), otherwise the pin
-   * by node id decides pairing, and a config peer entry of the same name can
-   * re-point the policy. Unknown names fall back to `none`, the floor.
+   * by node id decides pairing, and a peer entry of the same name — config's,
+   * or one saved in peers.json with config winning on a clash — can re-point
+   * the policy. Unknown names fall back to `none`, the floor.
    */
   const resolveInbound = async (clientKey: Buffer): Promise<Inbound> => {
     const mesh = deps.config();
@@ -432,7 +476,12 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
     const pinned = await deps.pins.inbound(nodeIdOf(clientKey));
     if (pinned === null) return { paired: false, policyName: "none", policy: none, mismatch: false };
     const configured = mesh?.peers?.find((entry) => entry.name === pinned.name);
-    const policyName = configured?.inbound_policy ?? pinned.policy;
+    // A peers.json entry's inbound_policy resolves exactly as a config.yml one
+    // does (finding #13): until now this lookup read config only, so a field
+    // the store's own schema accepted and persisted silently did nothing.
+    // Config still wins wherever both name the same peer.
+    const savedEntry = deps.saved?.().find((entry) => entry.name === pinned.name);
+    const policyName = configured?.inbound_policy ?? savedEntry?.inbound_policy ?? pinned.policy;
     return { paired: true, policyName, policy: policies.get(policyName) ?? none, mismatch: false };
   };
 
@@ -451,6 +500,9 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
           { code: "pin_mismatch" },
         );
       }
+      // The listener's unpaired bounds (finding #14) lift the moment pairing
+      // is a fact; a TLS link that is merely authenticated stays on its grace.
+      if (inbound.paired) deps.linkPaired?.();
       if (!inbound.paired && !pendingRecorded && origin !== "attach") {
         // Once per link: one pending entry is what a person compares before saying yes.
         pendingRecorded = true;
@@ -522,6 +574,10 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
       ceiling: policy.permissionCeiling,
       approvalsAt: policy.approvalsAt,
       maxTasks: policy.maxTasks,
+      // Finding #1: what this caller's resolved policy opens and what it asks
+      // for, so the leader can advertise a peer's abilities (the "New terminal
+      // on…" menu) without trying a call to learn them.
+      caps: { allow: [...policy.caps], ask: [...policy.ask] },
     };
   };
 
@@ -961,7 +1017,7 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
       case "term.input": {
         const p = parse(termInputSchema, method, params);
         // Byte counts only: what a peer typed into its terminal is its own, never audit evidence.
-        note({ target: p.termId, outcome: `${decodedBase64Bytes(p.data)} bytes` });
+        note({ target: p.termId, inputBytes: decodedBase64Bytes(p.data) });
         await requireCap(policy, "term.open", method, { target: p.termId });
         if (terms === null) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
         await terms.input(nodeIdOf(client.publicKey), p.termId, p.data);
@@ -1160,11 +1216,24 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
     const note = (entry: CallNote): void => {
       if (entry.target !== undefined) noted.target = entry.target;
       if (entry.outcome !== undefined) noted.outcome = entry.outcome;
+      if (entry.inputBytes !== undefined) noted.inputBytes = entry.inputBytes;
     };
     try {
       const result = await dispatch(method, params, note);
       // A successful ping is liveness, not a decision: never logged, so nobody can flood the log with it.
       if (method === "peer.ping") return result;
+      // A successful term.input is traffic (finding #12): the byte counts
+      // aggregate into one line per minute; a refusal took the error path
+      // below and is audited as the decision it is.
+      if (noted.inputBytes !== undefined) {
+        termInputBytes += noted.inputBytes;
+        termInputCalls++;
+        if (termInputTimer === null) {
+          termInputTimer = setTimeout(flushTermInput, 60_000);
+          termInputTimer.unref?.();
+        }
+        return result;
+      }
       // Bookkeeping never delays the answer; a failed append is the audit log's to report.
       void deps.audit.append({
         peer: peerName,
@@ -1201,6 +1270,9 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
   peer.start();
   const closed = peer.closed.then(async (reason) => {
     if (closeTimer !== null) clearTimeout(closeTimer);
+    // The last of the minute's input counts leave with the link (finding #12),
+    // before the closing line, so nothing a peer typed is left unaccounted.
+    flushTermInput();
     if (linkGrants !== null) {
       // Grants last exactly as long as the link that earned them, and a card nobody is
       // waiting on any more is gone rather than parked for five minutes.
@@ -1315,6 +1387,9 @@ export async function runServeStdio(args: string[], env: NodeJS.ProcessEnv): Pro
       const piped = await connectAndPipe(attachPath, forced ?? null, process.stdin, process.stdout, { timeoutMs: 1000 });
       if (piped.ok) {
         const reason = await piped.closed;
+        // A daemon-side refusal (finding #16, P15R #9) now arrives as its own
+        // reason — "closed by the service" — so a rejected attach is exit 1,
+        // distinguishable from a session that simply finished.
         return reason === "closed" ? 0 : 1;
       }
       if (plan.onAttachFailure === "tempfail") {
@@ -1343,6 +1418,9 @@ export async function runServeStdio(args: string[], env: NodeJS.ProcessEnv): Pro
   }
   const pins = PinStore(path.join(config.stateDir, "mesh", "pins.json"));
   const audit = new AuditLog(path.join(config.stateDir, "mesh", "audit.jsonl"), log);
+  // Peers saved from the other side's UI or a join (finding #13): an inbound
+  // policy on one of them resolves this node's callers exactly as config.yml's does.
+  const savedPeers = PeerPeersStore(path.join(config.stateDir, "mesh", "peers.json"));
   // Config is re-read at most every 2 s: the caller checks on every request, but the file is not parsed that often.
   let cachedAt = Date.now();
   let cached: { mesh: MeshConfig | undefined; on: boolean } = { mesh: meshConfig(settings?.config), on: meshEnabled(settings?.config, env) };
@@ -1379,6 +1457,7 @@ export async function runServeStdio(args: string[], env: NodeJS.ProcessEnv): Pro
       return cached.on;
     },
     home: config.home,
+    saved: () => savedPeers.snapshot(),
     // Ephemeral workers serve handoffs too, but from their own state: this
     // process's uploads die with the link, exactly as its tasks do.
     handoffs: new HandoffWorker({ stateDir: config.stateDir, home: config.home, log }),

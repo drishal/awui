@@ -30,4 +30,18 @@ describe("peerTerminals", () => {
     expect(advertisesTermOpen({ other: ["term.open"] })).toBe(false);
     expect(advertisesTermOpen({ ask: ["term.open"] })).toBe(true);
   });
+  it("reads the exact caps shape MeshPeerRow now carries, and never offers a peer with nothing granted", () => {
+    // The spelling src/shared/protocol.ts promises and routes.ts sends:
+    // absent before the first probe, {allow, ask} once one answered.
+    const payload = {
+      enabled: true,
+      peers: [
+        { name: "lab", transport: "tls", address: "lab:4784", source: "ui", pinned: true, caps: { allow: ["discover", "term.open"], ask: [] } },
+        { name: "asked", transport: "ssh", address: "ci@box", source: "config", pinned: true, caps: { allow: ["discover"], ask: ["term.open"] } },
+        { name: "none", transport: "docker", address: "c1", source: "ui", pinned: false, caps: { allow: [], ask: [] } },
+        { name: "unprobed", transport: "tls", address: "far:4784", source: "config", pinned: false },
+      ],
+    };
+    expect(peerTerminals(payload)).toEqual([{ name: "lab" }, { name: "asked" }]);
+  });
 });

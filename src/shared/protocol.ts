@@ -947,6 +947,13 @@ export interface MeshPeerRow {
   source: "config" | "ui";
   /** Whether this node holds an outbound pin for the peer. */
   pinned: boolean;
+  /**
+   * The caps this peer's resolved inbound policy advertised over its last
+   * completed `peer.info` (finding #1): `{allow, ask}` over the closed cap
+   * vocabulary. Absent until the first probe answered, or on a peer whose
+   * awui predates the advertisement — absent never means "everything".
+   */
+  caps?: { allow: string[]; ask: string[] };
 }
 
 /** A peer that said hello (or redeemed an invite) and waits for this owner's Accept. */
@@ -1000,6 +1007,26 @@ export interface MeshTaskRow {
   state: string;
   pendingRequests: MeshTaskRequestRow[];
   createdAt: number;
+}
+
+/**
+ * One terminal a peer opened on this node (finding #2, SPEC-P3 §1): the
+ * target's own read-only listing with its kill action. Labels and figures
+ * only — a PTY's content is never carried to the owner's UI through here.
+ */
+export interface MeshHostTermRow {
+  termId: string;
+  /** The peer's handshake name, as its link authenticated. */
+  peerName: string;
+  nodeId: string;
+  cwd: string;
+  cols: number;
+  rows: number;
+  createdAt: number;
+  /** True once the PTY ended but before the last holder dropped it. */
+  exited: boolean;
+  /** The seq of the last frame sent; 0 when it never printed. */
+  lastSeq: number;
 }
 
 export interface TodoItem {

@@ -27,6 +27,8 @@ export const HANDOFF_CHUNK_BYTES = 512 * 1024;
 export const HANDOFF_REAP_MS = 15 * 60_000;
 /** How many uploads one node id may hold open at once (spec: 2). */
 export const HANDOFF_UPLOADS_PER_NODE = 2;
+/** Finding #7: how often the periodic reap sweep runs (a test seam; the default is a minute). */
+export const HANDOFF_SWEEP_MS = 60_000;
 
 const denied = (message: string): MeshRpcError => new MeshRpcError(MeshErrorCode.denied, message, { code: "denied" });
 const invalidParams = (message: string): MeshRpcError => new MeshRpcError(MeshErrorCode.invalid_params, message, { code: "invalid_params" });
@@ -45,6 +47,8 @@ export interface HandoffWorkerOpts {
   maxUploadsPerNode?: number;
   /** Test seam: how long an unfinished upload waits before the reap. */
   reapMs?: number;
+  /** Finding #7's test seam: how often the periodic sweep runs. */
+  sweepMs?: number;
   log?: (message: string) => void;
 }
 
@@ -104,10 +108,21 @@ export class HandoffWorker {
   private readonly exports = new Map<string, Exported>();
   private readonly now: () => number;
   private readonly dir: string;
+  /** Finding #7: the periodic reap sweep, so an abandoned upload cannot hold its slot and disk until some later handoff happens to run. */
+  private readonly sweep: NodeJS.Timeout;
 
   constructor(private readonly opts: HandoffWorkerOpts) {
     this.now = opts.clock ?? (() => Date.now());
     this.dir = path.join(opts.stateDir, "mesh", "handoff");
+    this.sweep = setInterval(() => this.reap(), this.opts.sweepMs ?? HANDOFF_SWEEP_MS);
+    // Unref'd: the sweep is never the reason this process stays up, and an
+    // ephemeral worker's store dies with its process either way.
+    this.sweep.unref?.();
+  }
+
+  /** Stops the reap sweep (finding #7): what the daemon calls when the service's mesh stores are released. */
+  dispose(): void {
+    clearInterval(this.sweep);
   }
 
   private get maxBundleBytes(): number {
@@ -207,6 +222,7 @@ export class HandoffWorker {
 
   /** handoff.chunk {uploadId, index, data}: one strictly ordered slice of the bundle. */
   async chunk(policy: PeerPolicy, nodeId: string, params: HandoffChunkParams): Promise<{}> {
+    this.reap();
     const upload = this.uploads.get(params.uploadId);
     if (upload === undefined || upload.nodeId !== nodeId) throw notFound("no such upload is open on this link");
     this.stillAllowed(policy, "fs.write", "handoff.chunk");
@@ -223,17 +239,28 @@ export class HandoffWorker {
       await this.drop(upload);
       throw invalidParams(`the upload claims ${upload.size} bytes but chunk ${params.index} would pass it`);
     }
-    const handle = await fs.open(upload.file, "r+");
-    try {
-      // The position is spelled out, never the handle's own: chunks land in
-      // order at the offset the upload has already reached.
-      await handle.write(data, 0, data.length, upload.written);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    upload.written += data.length;
+    // Finding #11: the counters advance synchronously before the first await,
+    // so two concurrent chunks with the same index cannot both pass the
+    // ordering check and land on the same offset. A write that then fails
+    // drops the whole upload rather than corrupting the rest of it.
     upload.nextIndex += 1;
+    upload.written += data.length;
+    try {
+      const handle = await fs.open(upload.file, "r+");
+      try {
+        // The position is spelled out, never the handle's own: chunks land in
+        // order at the offset the upload had already reached.
+        await handle.write(data, 0, data.length, upload.written - data.length);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+    } catch (error) {
+      await this.drop(upload);
+      throw error instanceof MeshRpcError
+        ? error
+        : new MeshRpcError(MeshErrorCode.internal_error, "the handoff chunk could not be written", { code: "internal_error" });
+    }
     return {};
   }
 
@@ -257,6 +284,10 @@ export class HandoffWorker {
       throw denied("sha256 mismatch: the received bundle does not match the digest the upload began with");
     }
     try {
+      // Finding #8: the spec's own step, restored — `git bundle verify` checks
+      // the pack itself, where list-heads only parses the header, and a fetch
+      // failure would say "corrupt" only after the fact.
+      await meshGit(["bundle", "verify", upload.file], { cwd: upload.repo });
       const heads = await meshGit(["bundle", "list-heads", upload.file], { cwd: upload.repo });
       // Exactly one handoff ref besides HEAD, spelled the way this flow spells
       // refs: a bundle that carries anything else is not a handoff.
@@ -335,6 +366,7 @@ export class HandoffWorker {
     const record = this.exports.get(params.exportId);
     if (record === undefined || record.nodeId !== nodeId) throw notFound("no such export is open on this link");
     this.stillAllowed(policy, "fs.read", "handoff.read");
+    this.reap();
     if (params.index !== record.nextIndex) {
       throw invalidParams(`export chunks must arrive in order: ${record.id} expects index ${record.nextIndex}, not ${params.index}`);
     }

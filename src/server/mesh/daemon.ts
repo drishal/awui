@@ -9,6 +9,7 @@
 // die with the service, and a leader reconnecting after a restart gets a
 // closed link and a not_found, exactly as the docs say.
 import { ApprovalQueue } from "./approvals.js";
+import type { MeshPeerEntry } from "./peer-store.js";
 import { socketPath, startAttachListener, type AttachForced, type AttachLink, type AttachListener } from "./attach.js";
 import { HandoffWorker } from "./handoff-worker.js";
 import type { AuditLog } from "./audit.js";
@@ -37,6 +38,11 @@ export interface MeshAttachDeps {
   config: () => MeshConfig | undefined;
   enabled: () => boolean;
   home: string;
+  /**
+   * Peers added from the UI or a join (finding #13), read per call: a saved
+   * entry's inbound_policy resolves an inbound caller as config.yml's does.
+   */
+  saved?: () => MeshPeerEntry[];
   /** What makes this daemon mode: tasks the host owns survive a link's close. */
   host: TaskHost;
   /** What makes peer terminals survive their link too (P3 §1): the service's shared TermHost. */
@@ -96,6 +102,8 @@ function releaseStores(stores: ServiceStores): void {
     serviceStores = null;
     currentApprovals = null;
     currentInvites = null;
+    // Finding #7: the handoff worker's reap sweep stops with the last holder.
+    stores.handoffs.dispose();
   }
 }
 
@@ -154,6 +162,7 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
         config: deps.config,
         enabled: deps.enabled,
         home: deps.home,
+        saved: deps.saved,
         host: deps.host,
         terms: deps.terms,
         approvals,
@@ -235,6 +244,8 @@ export interface MeshTlsDeps {
   config: () => MeshConfig | undefined;
   enabled: () => boolean;
   home: string;
+  /** Peers added from the UI or a join (finding #13), read per call for inbound policy resolution. */
+  saved?: () => MeshPeerEntry[];
   /** What makes this daemon mode: tasks the host owns survive a link's close. */
   host: TaskHost;
   /** The same shared TermHost the attach socket serves term.* through. */
@@ -298,6 +309,10 @@ export function startMeshTls(deps: MeshTlsDeps): MeshAttachHandle {
         enabled: deps.enabled,
         home: deps.home,
         binding,
+        saved: deps.saved,
+        // The listener's unpaired bounds (finding #14) lift when the serve loop
+        // resolves the caller as paired; this is the hook it calls.
+        linkPaired: link.paired,
         host: deps.host,
         terms: deps.terms,
         approvals: stores.approvals,

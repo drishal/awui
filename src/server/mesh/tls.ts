@@ -10,8 +10,10 @@
 // relays, signs over a different binding and fails the pin. Every socket that
 // has not finished the mesh handshake counts against the unauthenticated
 // bounds and dies at the deadline; an authenticated link may idle no longer
-// than the spec's patience (a peer's ping keeps it alive).
-import { PassThrough, type Readable, type Writable } from "node:stream";
+// than the spec's patience — with traffic counted in both directions, since a
+// streaming link's own frames are the only traffic it gets — and one that
+// never pairs is closed after a one-shot grace that pinging cannot lift.
+import { PassThrough, Writable, type Readable } from "node:stream";
 import tls, { type TLSSocket } from "node:tls";
 import { parseMeshTlsAddress } from "../user-config.js";
 
@@ -32,6 +34,17 @@ const DEFAULT_LIMITS = {
   connectsPerIpMinute: 30,
   /** An authenticated link with no traffic for this long is closed; ping keeps one alive. */
   idleMs: 10 * 60_000,
+  /** Finding #14: concurrent authenticated-but-unpaired links, across every peer. */
+  unpairedTotal: 16,
+  /** The same, per remote IP. */
+  unpairedPerIp: 4,
+  /**
+   * Finding #14: an authenticated link that never pairs is closed after this
+   * one-shot grace, ping or no ping — a botnet may not park "authenticated,
+   * policy none" links that only ping. The serve loop lifts it by calling
+   * the link's paired() once the handshake resolves the caller as paired.
+   */
+  unpairedGraceMs: 60_000,
 };
 
 /** Which bound a test wants to shrink; anything absent keeps its default. */
@@ -52,6 +65,13 @@ export interface TlsMeshLink {
    * calls this is still bounded correctly.
    */
   authenticated(): void;
+  /**
+   * Finding #14: the serve loop calls this once its handshake resolved the
+   * caller as paired. Until then an authenticated link is bounded by the
+   * unpaired caps and its one-shot grace — a link that never pairs is closed
+   * after the grace, ping or no ping.
+   */
+  paired(): void;
 }
 
 export interface TlsListenerOpts {
@@ -94,6 +114,8 @@ export function startTlsListener(opts: TlsListenerOpts): TlsListener {
   const sockets = new Set<TLSSocket>();
   /** Sockets whose mesh handshake has not completed: what the caps and the deadline bound. */
   const unauth = new Set<TLSSocket>();
+  /** Authenticated-but-unpaired sockets (finding #14): what the unpaired caps and grace bound. */
+  const unpairedAuthed = new Set<TLSSocket>();
   /** Connect times per remote IP in the last minute, for the rate bound. */
   const rates = new Map<string, number[]>();
 
@@ -153,6 +175,8 @@ export function startTlsListener(opts: TlsListenerOpts): TlsListener {
       let authed = false;
       let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
       let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      /** Finding #14: the one-shot grace an unpaired authenticated link lives under. */
+      let graceTimer: ReturnType<typeof setTimeout> | null = null;
       /** What the link reads: the decrypted stream, replayed to the serve loop without loss. */
       const pending = new PassThrough();
       let scanBuf = Buffer.alloc(0);
@@ -169,17 +193,44 @@ export function startTlsListener(opts: TlsListenerOpts): TlsListener {
         idleTimer.unref?.();
       };
 
-      /** The handshake completed (either the serve loop said so, or the client's auth line arrived):
-       *  the deadline lifts, the cap slot frees, and only the idle bound remains. */
+      /**
+       * The handshake's auth line arrived (either the serve loop said so, or
+       * the scan saw the client's peer.auth): the deadline lifts, the unauth
+       * slot frees, and the unpaired caps plus the one-shot grace take over
+       * until the serve loop confirms pairing (finding #14).
+       */
       const markAuthed = (): void => {
         if (authed) return;
         authed = true;
         unauth.delete(socket);
         clearDeadline();
         scanBuf = Buffer.alloc(0);
-        touchIdle();
+        // Finding #14: a completed handshake with no pairing is still bounded —
+        // the auth line lifted the unauth caps, and these take over until the
+        // serve loop says the caller is actually paired.
+        let unpairedHere = 0;
+        for (const sock of unpairedAuthed) if ((sock.remoteAddress ?? "unknown") === ip) unpairedHere++;
+        if (unpairedAuthed.size >= L.unpairedTotal || unpairedHere >= L.unpairedPerIp) {
+          socket.destroy();
+          return;
+        }
+        unpairedAuthed.add(socket);
+        // The one-shot grace replaces the idle bound until pairing is a fact:
+        // traffic never lifts it, so a link that only pings cannot outlive it.
+        graceTimer = setTimeout(() => socket.destroy(), L.unpairedGraceMs);
+        graceTimer.unref?.();
       };
 
+      /** The serve loop's word that this link's caller is paired (finding #14): the grace lifts, the normal idle bound takes over. */
+      const markPaired = (): void => {
+        if (authed && unpairedAuthed.delete(socket)) {
+          if (graceTimer !== null) {
+            clearTimeout(graceTimer);
+            graceTimer = null;
+          }
+          touchIdle();
+        }
+      };
       /** Pre-auth only: watch complete decrypted lines for the client's peer.auth request. The
        *  serve loop either completes that auth or closes the link within one reply, so seeing the
        *  line is enough to lift the deadline — and a stall mid-line never counts, so an unauthenticated
@@ -226,10 +277,14 @@ export function startTlsListener(opts: TlsListenerOpts): TlsListener {
       socket.on("close", () => {
         sockets.delete(socket);
         unauth.delete(socket);
+        unpairedAuthed.delete(socket);
         clearDeadline();
         if (idleTimer !== null) clearTimeout(idleTimer);
         idleTimer = null;
+        if (graceTimer !== null) clearTimeout(graceTimer);
+        graceTimer = null;
         pending.end();
+        output.end();
       });
       // A TLS error on one link ends that link, never the process.
       socket.on("error", () => socket.destroy());
@@ -241,8 +296,23 @@ export function startTlsListener(opts: TlsListenerOpts): TlsListener {
       }, L.handshakeDeadlineMs);
       deadlineTimer.unref?.();
 
+      // Finding #3: the idle bound must see this side's own writes too —
+      // task.event and term.output frames are the only traffic a streaming
+      // link ever gets, and a bound that counted only the client's bytes cut
+      // a one-way link mid-run. The wrapper forwards straight to the socket
+      // and keeps its backpressure: a write completes when the socket takes
+      // the bytes, so the serve loop above never out-runs the peer.
+      const output = new Writable({
+        write: (chunk, _encoding, callback) => {
+          touchIdle();
+          socket.write(chunk, (error) => callback(error ?? undefined));
+        },
+        final: (callback) => {
+          socket.end(callback);
+        },
+      });
       try {
-        opts.onLink({ input: pending, output: socket, authenticated: markAuthed }, binding, ip);
+        opts.onLink({ input: pending, output, authenticated: markAuthed, paired: markPaired }, binding, ip);
       } catch (error) {
         log(`a TLS link was refused by its handler: ${error instanceof Error ? error.message : String(error)}`);
         socket.destroy();

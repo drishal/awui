@@ -71,7 +71,8 @@ async function startWorker(opts: { limits?: Parameters<typeof startTlsListener>[
     limits: opts.limits,
     log: () => undefined,
     onLink: (link, binding) => {
-      serve({ input: link.input, output: link.output }, { ...deps, binding });
+      // Wired the way the daemon wires a real TLS link: the listener's unpaired bounds lift when the serve loop resolves the caller as paired.
+      serve({ input: link.input, output: link.output }, { ...deps, binding, linkPaired: link.paired });
     },
   });
   const port = await new Promise<number>((resolve, reject) => {
@@ -350,6 +351,119 @@ describe("the listener's bounds", () => {
     }
     // Silence does.
     await closedWithin(end.link, 4000);
+    worker.close();
+  });
+
+  it("counts the target's own writes as traffic: a link that only streams is never idle (finding #3)", async () => {
+    const material = await ensureTlsCertificate(tempDir("awui-mesh-tls-out-"));
+    let writes: ReturnType<typeof setInterval> | null = null;
+    const listener = startTlsListener({
+      host: "127.0.0.1",
+      port: 0,
+      key: material.keyPem,
+      cert: material.cert,
+      // The grace and the deadline stay out of the way: this is about the idle bound.
+      limits: { idleMs: 250, unpairedGraceMs: 60_000, handshakeDeadlineMs: 60_000 },
+      log: () => undefined,
+      onLink: (link) => {
+        // This "worker" only writes: after the client's auth line, one frame
+        // every 100 ms and never a byte of its own read.
+        link.input.resume();
+        link.input.on("data", (chunk: Buffer) => {
+          if (!chunk.toString().includes("peer.auth")) return;
+          writes = setInterval(() => link.output.write('{"jsonrpc":"2.0","id":1,"result":{}}\n'), 100);
+          writes.unref();
+        });
+      },
+    });
+    const port = await new Promise<number>((resolve, reject) => {
+      const started = Date.now();
+      const tick = (): void => {
+        const at = listener.port();
+        if (at !== null) resolve(at);
+        else if (Date.now() - started > 3000) reject(new Error("the TLS listener never came up"));
+        else setTimeout(tick, 10);
+      };
+      tick();
+    });
+    const { link } = await connectTls(`127.0.0.1:${port}`);
+    link.write('{"jsonrpc":"2.0","id":1,"method":"peer.auth","params":{}}\n');
+    link.resume();
+    // The target writes every 100 ms for 1.5 s: the 250 ms idle bound — which
+    // before the fix counted only this side's bytes — never fires.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(link.destroyed).toBe(false);
+    // The writes stop, and the silence does what streaming could not.
+    clearInterval(writes!);
+    await closedWithin(link, 4000);
+    listener.close();
+  });
+
+  it("closes an authenticated link that never pairs after its grace, ping or no ping (finding #14)", async () => {
+    const worker = await startWorker({ limits: { idleMs: 60_000, unpairedGraceMs: 400, handshakeDeadlineMs: 60_000 } });
+    const end = await dial(worker.port, identity(), worker.identity.publicKey);
+    // The handshake completed but this caller was never accepted: pings would
+    // keep the idle bound fed forever, and the one-shot grace is what ends it.
+    const pinger = setInterval(() => {
+      void end.rpc.request("peer.ping", {}).catch(() => undefined);
+    }, 100);
+    pinger.unref();
+    await closedWithin(end.link, 5000);
+    clearInterval(pinger);
+    // A paired link carries no grace: the same window passes and it stays up.
+    const who = identity();
+    await worker.pins.setInbound(who.publicKey, "leader-box", "worker", "accept");
+    const paired = await dial(worker.port, who, worker.identity.publicKey);
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(await paired.rpc.request("peer.ping", {})).toEqual({});
+    paired.rpc.close();
+    worker.close();
+  });
+
+  it("bounds concurrent unpaired authenticated links per remote IP (finding #14)", async () => {
+    const worker = await startWorker({ limits: { unpairedPerIp: 2, unpairedTotal: 16, unpairedGraceMs: 60_000, connectsPerIpMinute: 1000, handshakeDeadlineMs: 60_000 } });
+    // Two unpaired-but-authenticated links from this IP are fine …
+    const held: TLSSocket[] = [];
+    for (let i = 0; i < 2; i++) held.push((await dial(worker.port, identity(), worker.identity.publicKey)).link);
+    // … the third cannot even finish its handshake: the auth line is what
+    // would take the third unpaired slot, and the listener closes it there.
+    const third = await dial(worker.port, identity(), worker.identity.publicKey).then(
+      () => {
+        throw new Error("expected the third unpaired link to be refused");
+      },
+      () => "refused" as const,
+    );
+    expect(third).toBe("refused");
+    for (const link of held) link.destroy();
+    worker.close();
+  });
+
+  it("the leader pings a busy shared link, keeping it past the target's idle bound (finding #3)", async () => {
+    const worker = await startWorker({ limits: { idleMs: 300, handshakeDeadlineMs: 60_000 } });
+    const leader = identity();
+    await worker.pins.setInbound(leader.publicKey, "leader-box", "worker", "accept");
+    const leaderPins = PinStore(path.join(tempDir("awui-mesh-tls-ka-"), "pins.json"));
+    await leaderPins.setOutbound("lab", worker.identity.publicKey);
+    const manager = new PeerManager({
+      identity: async () => leader,
+      pins: leaderPins,
+      config: () => ({ enabled: true, peers: [{ name: "lab", tls: `127.0.0.1:${worker.port}` }] }),
+      enabled: () => true,
+      localName: () => "leader-box",
+      keepaliveMs: 150,
+      log: () => undefined,
+    });
+    const connection = await manager.connect("lab");
+    // A task listening on the link is what makes it busy: nothing else is sent
+    // for well past the 300 ms idle bound — only the keepalive pings.
+    const off = connection.onTaskEvent("rt_probe", () => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(connection.closed).toBe(false);
+    // The listener gone, the link is no longer busy: the pings stop, and the
+    // target's idle bound takes the link back.
+    off();
+    await connection.rpc.closed;
+    expect(connection.closed).toBe(true);
     worker.close();
   });
 });

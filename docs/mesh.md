@@ -191,10 +191,16 @@ anyone: the handshake against the pinned key is what a link stands or falls on.
   requests (seen but not yet accepted) are capped at 16 and expire after an hour.
 - **Policy, per call.** The worker resolves the caller's inbound policy on every
   request — pins re-read from disk, config re-read at most every 2 s — so
-  revocation is immediate. The policy fixes the harness allowlist, the permission
-  ceiling, the roots, and the task count.
-- **Approvals at origin.** An approval card the worker's harness raises is relayed
-  to the leader and answered there; the worker never decides for you.
+  revocation is immediate. A peer entry of the caller's name re-points the
+  policy, from config.yml or from `peers.json` (config wins on a clash). The
+  policy fixes the harness allowlist, the permission ceiling, the roots, and
+  the task count.
+- **Approvals at origin by default.** With the built-in `worker` policy an
+  approval card the worker's harness raises is relayed to the leader and
+  answered there. A policy may move approvals to the target (`approvals_at:
+  target` or `both`) or put a cap behind a target-side ask, in which case the
+  target's own owner answers; see the pairing and approvals sections below,
+  which supersede this default.
 - **One hop, structurally.** The remote child's harness session is opened without
   orchestration tools, so there is no `delegate_task` on the far side at all, and
   the wire's `hops` check refuses a second hop besides.
@@ -368,7 +374,12 @@ policy, its roots and caps, is what actually decides.
 - **Bounds.** The handshake must finish within 10 s; at most 16 concurrent
   unauthenticated sockets (at most 4 per remote IP); at most 30 new connections
   a minute per IP (excess is closed); an authenticated link idle 10 minutes is
-  closed (a ping keeps it alive).
+  closed (a ping keeps it alive — and the bound counts traffic in both
+  directions, so a link that only streams the target's own frames is never
+  idle, with the leader sending a quiet keepalive ping every few minutes on
+  links with live tasks or terminals). An authenticated link whose caller
+  never pairs is bounded too: at most 16 concurrent unpaired links (4 per IP),
+  and a one-shot 60 s grace that no amount of pinging lifts.
 - **Firewall.** `mesh.listen` binds an address; the port stays closed until the
   firewall opens it. The NixOS module's `mesh.openFirewall` is that switch, and
   it defaults to false.
@@ -427,8 +438,10 @@ environment built by the target (never the caller's). `term.input` (base64, at
 most 64 KiB), `term.resize`, `term.close`, `term.attach` (replay from the
 scrollback ring, 1 MiB, daemon mode) and `term.list` follow, and the PTY's
 output comes back coalesced (at most one frame per 16 ms, 64 KiB a frame). At
-most 4 open terminals per peer node, and never more than the policy's task
-ceiling. In daemon mode terminals are owned by the node, so they outlive a
+most 4 open terminals per peer node, counting the ones still opening so
+concurrent opens cannot all slip past the cap, and never more than the
+policy's task ceiling; one node id may open at most 30 a minute. In daemon
+mode terminals are owned by the node, so they outlive a
 dropped link (reaped after an hour detached); an ephemeral worker's terminals
 close with the link. What the target controls, plainly: the shell, the
 environment, the cwd, and the per-call cap decision — the leader only names a
@@ -436,13 +449,19 @@ size and a folder. The worker answers a listing with `term.list` and closes one
 on `term.close`. Input content is never audited (byte counts per minute only).
 
 On the leader, the terminal panel gains a **"New terminal on…"** menu listing
-the configured peers that advertise `term.open`, a tab strip whose peer tabs
-read `@<peer>` (the same mark a delegated task carries), and a disconnected
-state with a Retry that reopens the terminal through the same create route.
-Picking a peer asks for the folder it should run in, and the create request
-carries `peer` and `peerCwd` together (the worker resolves that folder through
-its own policy roots); everything else — the frame, the stream, resize, close —
-is the ordinary terminal panel.
+the configured peers whose resolved policy advertised `term.open` — `peer.info`
+answers with the caller's `caps: {allow, ask}`, the leader caches the last
+answer per peer (its Test button and a quiet background probe both refresh it),
+and a peer with no cached answer or nothing granted never appears. A tab strip
+whose peer tabs read `@<peer>` (the same mark a delegated task carries), and a
+disconnected state with a Retry that reopens the terminal through the same
+create route. Picking a peer asks for the folder it should run in, and the
+create request carries `peer` and `peerCwd` together (the worker resolves that
+folder through its own policy roots); everything else — the frame, the stream,
+resize, close — is the ordinary terminal panel.
+
+On the target, the Peers view lists every terminal a peer opened here, read
+only, with a kill action that runs the peer's own close.
 
 ### Handoff: move a chat's work to a peer
 
@@ -454,15 +473,19 @@ tree changes:
    onto a temporary ref `refs/awui/handoff/<id>` through a temporary index, so
    the user's index and worktree are untouched; the commit's parent is HEAD.
 2. `git bundle create` packs it, at most 256 MiB (larger is a refusal with a
-   clear message).
-3. The bundle travels in at most 1 MiB chunks through `handoff.begin` /
+   clear message). The size is checked once git has written the bundle — git
+   has no "stop at N bytes" switch, so a repo with a giant history first
+   writes the full bundle into the leader's own scratch dir; a bounded
+   local-disk cost of the leader's own tool call, never a peer's lever.
+3. The bundle travels in at most 512 KiB chunks through `handoff.begin` /
    `handoff.chunk` / `handoff.finish` — the worker checks size and sha256, runs
    `git bundle verify`, fetches into `refs/awui/handoff/<id>` of the repo at
    `peerRepo` (inside its policy's roots and a git repo), and adds a detached
    worktree `<repo>/.awui/handoff-<id>`. Every git call is argv-only (no shell)
    with hooks disabled (`core.hooksPath=/dev/null`), protocol writes refused,
-   and `GIT_CONFIG_NOSYSTEM=1`; incomplete uploads are reaped after 15 minutes,
-   and a peer runs at most 2 concurrent uploads.
+   and `GIT_CONFIG_NOSYSTEM=1`; incomplete uploads are reaped after 15
+   minutes (on the worker's own periodic sweep, not only when a later handoff
+   happens to run), and a peer runs at most 2 concurrent uploads.
 4. The leader opens a remote task in that worktree with a brief made of the
    user's words plus a compact digest of the chat (the last at most 20 turns, at
    most 32 KiB, tool outputs elided), linked as a delegated task with the
@@ -478,6 +501,10 @@ worktree's HEAD back through
 `refs/awui/from-peer/<peer>/<id>` — a ref to inspect, diff, or cherry-pick. It
 never merges, never checks out, and never touches the user's tree on either
 side.
+
+The way back is bounded like the way in: the leader refuses an export that
+claims more than the 256 MiB cap before reading a chunk, and stops the moment
+the delivered bytes pass it — the peer's claimed size is never trusted.
 
 ### Limits that remain
 

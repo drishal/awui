@@ -28,7 +28,7 @@ const WS: WorkspaceInfo = { id: "ws-1", path: "/workspace/project", name: "proje
  * term.attach records the seq the leader had reached. `emit` and `exit` are
  * how the test plays the worker's output stream.
  */
-function cannedWorker(over: { attach?: "ok" | "not-found"; termId?: string } = {}) {
+function cannedWorker(over: { attach?: "ok" | "not-found" | "gap"; termId?: string } = {}) {
   const termId = over.termId ?? "t_1";
   const pair = memoryLink();
   const rpc = new RpcPeer(pair.server.input, pair.server.output, { role: "server" });
@@ -58,6 +58,7 @@ function cannedWorker(over: { attach?: "ok" | "not-found"; termId?: string } = {
     if (method === "term.attach") {
       if (over.attach === "not-found") throw new MeshRpcError(MeshErrorCode.not_found, `no terminal "${termId}" is open for this peer`, { code: "not_found" });
       attachAfterSeq = p.afterSeq as number;
+      if (over.attach === "gap") return { replayed: 0, gap: true };
       return { replayed: 0, gap: false };
     }
     throw new MeshRpcError(MeshErrorCode.method_not_found, `no handler answers "${method}"`, { code: "method_not_found" });
@@ -255,6 +256,30 @@ describe("PeerTerminal (the proxy)", () => {
     expect(gone).toEqual(["gone"]);
   });
 
+  it("says so in the stream when the reattach lost scrollback: one visible notice for a gap (finding #10)", async () => {
+    const worker = cannedWorker();
+    const conn = connection(worker);
+    const seen = subscriber();
+    const terminal = new PeerTerminal(conn, "lab-vm", "t_1", {
+      reconnect: async () => connection(cannedWorker({ attach: "gap" })),
+      plan: FAST_PLAN,
+    });
+    terminal.subscribe(seen);
+    worker.emit("before the drop");
+    await sleep(10);
+    worker.rpc.close("the ssh session ended");
+    await sleep(30);
+    // The attach answered gap: true — the ring no longer reached back — and
+    // the proxy writes one warning line into the stream instead of silence.
+    expect(seen.output).toHaveLength(2);
+    expect(seen.output[0]).toBe("before the drop");
+    expect(seen.output[1]).toContain("earlier output was lost");
+    // The notice is part of the replay too: a subscriber that arrives late reads it.
+    const late = subscriber();
+    terminal.subscribe(late);
+    expect(late.output.join("")).toContain("earlier output was lost");
+    terminal.close();
+  });
   it("ends the stream as an exit when no reconnect was wired", async () => {
     const worker = cannedWorker();
     const terminal = new PeerTerminal(connection(worker), "lab-vm", "t_1");

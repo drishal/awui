@@ -153,6 +153,18 @@ export class PeerTerminal implements PeerTerminalHandle {
     this.setGone();
   }
 
+  /**
+   * One visible line into the stream (finding #10): it joins the replay buffer
+   * and reaches every live subscriber, exactly as a frame from the peer would,
+   * so a warning the terminal itself prints can never be lost to a late join.
+   */
+  private emitNotice(text: string): void {
+    this.replay = (this.replay + text).slice(-REPLAY_CAP);
+    for (const subscriber of [...this.subscribers]) {
+      try { subscriber.onOutput(text); } catch { /* one client does not stall the link */ }
+    }
+  }
+
   /** The one-way door every proxy owns: gone is once, and after it nothing else happens. */
   private setGone(): void {
     if (this.gone) return;
@@ -195,7 +207,12 @@ export class PeerTerminal implements PeerTerminalHandle {
         const offTerm = fresh.onTermEvent(this.termId, (event) => this.onTermEvent(event));
         dropTerm = offTerm;
         if (fresh.closed) throw new MeshRpcError(MeshErrorCode.link_closed, "the fresh link closed before the attach finished", { code: "link_closed" });
-        await fresh.rpc.request("term.attach", { termId: this.termId, afterSeq: this.lastSeq });
+        const attached = (await fresh.rpc.request("term.attach", { termId: this.termId, afterSeq: this.lastSeq })) as { gap?: unknown } | null;
+        // Finding #10: a gap means the ring no longer reaches back to where
+        // this side last read — scrollback was lost while the link was down,
+        // and silence would read as intact history. One visible line, the same
+        // warning a reattached task carries.
+        if (attached?.gap === true) this.emitNotice(`\r\n[awui: reconnected, but earlier output was lost while the link was down]\r\n`);
         if (fresh.closed) throw new MeshRpcError(MeshErrorCode.link_closed, "the fresh link closed under the reattached terminal", { code: "link_closed" });
         if (this.gone || this.exited) {
           // The terminal was closed or ended while the attach was in flight: the fresh link

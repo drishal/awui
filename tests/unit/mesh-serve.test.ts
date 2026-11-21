@@ -22,6 +22,7 @@ import { PinStore } from "../../src/server/mesh/pins.js";
 import { MeshErrorCode, MeshRpcError, RpcPeer } from "../../src/server/mesh/rpc.js";
 import { permissionModeFor, serve, type ServeDeps } from "../../src/server/mesh/serve.js";
 import { memoryLink } from "../../src/server/mesh/transport.js";
+import type { MeshPeerEntry } from "../../src/server/mesh/peer-store.js";
 import type { MeshConfig } from "../../src/server/user-config.js";
 
 /** A fresh in-memory identity, the shape loadOrCreateIdentity returns. */
@@ -56,6 +57,8 @@ interface Fixture {
   mesh: MeshConfig;
   enabled: boolean;
   forced?: { policy: string; peer: string };
+  /** Finding #13: peers.json entries served to resolveInbound; absent means none. */
+  saved?: MeshPeerEntry[];
 }
 
 const fixtures: string[] = [];
@@ -97,6 +100,7 @@ function serveLink(f: Fixture): { client: RpcPeer; closed: Promise<string> } {
     config: () => f.mesh,
     enabled: () => f.enabled,
     home: tmpdir(),
+    ...(f.saved !== undefined ? { saved: () => f.saved ?? [] } : {}),
     ...(f.forced !== undefined ? { forced: f.forced } : {}),
   };
   const { closed } = serve({ input: link.server.input, output: link.server.output }, deps);
@@ -233,7 +237,7 @@ describe("a paired worker link", () => {
   it("answers peer.info with the policy's shape and runs a task end to end", async () => {
     const f = await makeFixture();
     const { client, closed } = await connectPaired(f);
-    const info = await client.request<{ name: string; nodeId: string; harnesses: string[]; roots: string[]; ceiling: string; approvalsAt: string; maxTasks: number }>("peer.info", {});
+    const info = await client.request<{ name: string; nodeId: string; harnesses: string[]; roots: string[]; ceiling: string; approvalsAt: string; maxTasks: number; caps: { allow: string[]; ask: string[] } }>("peer.info", {});
     expect(info).toEqual({
       name: "target-box",
       nodeId: f.serverIdentity.nodeId,
@@ -242,6 +246,9 @@ describe("a paired worker link", () => {
       ceiling: "auto-edit",
       approvalsAt: "origin",
       maxTasks: 4,
+      // Finding #1: the caller's resolved policy advertised as caps, so a
+      // leader can offer the peer's abilities without trying a call.
+      caps: { allow: ["discover", "task.run", "task.approve", "fs.read"], ask: ["fs.write", "term.open"] },
     });
     const events = collectEvents(client);
     const opened = await openTask(client, f);
@@ -515,5 +522,37 @@ describe("permissionModeFor", () => {
     if (!refused.ok) expect(refused.reason).toContain("read-only");
     expect(permissionModeFor("pi", "auto-edit", undefined)).toEqual({ ok: true, mode: null });
     expect(permissionModeFor("omp", "auto-edit", [])).toEqual({ ok: true, mode: null });
+  });
+});
+
+describe("saved peers in inbound resolution (finding #13)", () => {
+  it("re-points a pinned caller's policy from a peers.json entry, and config.yml still wins on a clash", async () => {
+    const f = await makeFixture();
+    const who = identity();
+    await f.pins.setInbound(who.publicKey, "leader-box", "peer", "accept");
+
+    // A saved entry's inbound_policy resolves the caller exactly as a config
+    // one does — until this fix the field was accepted and then ignored. The
+    // pin alone would say "peer"; the saved entry re-points it to worker.
+    f.saved = [{ name: "leader-box", tls: "10.0.0.5:4784", inbound_policy: "worker" }];
+    {
+      const { client, closed } = serveLink(f);
+      const outcome = await clientHandshake(client, { identity: who, name: "leader-box", hops: 0, expectedServerKey: f.serverIdentity.publicKey, tofu: false });
+      expect(outcome.paired).toBe(true);
+      expect(outcome.policy).toBe("worker");
+      client.close("done");
+      await closed;
+    }
+
+    // A config.yml entry of the same name wins over the saved one: the config
+    // says peer, the saved entry still says worker, and the answer is peer.
+    f.mesh.peers = [{ name: "leader-box", ssh: "ci@lab", inbound_policy: "peer" }];
+    {
+      const { client, closed } = serveLink(f);
+      const outcome = await clientHandshake(client, { identity: who, name: "leader-box", hops: 0, expectedServerKey: f.serverIdentity.publicKey, tofu: false });
+      expect(outcome.policy).toBe("peer");
+      client.close("done");
+      await closed;
+    }
   });
 });

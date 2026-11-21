@@ -53,6 +53,12 @@ export interface PeerManagerDeps {
   /** How a dropped link under an unsettled task is retried; tests inject a faster plan. */
   reconnect?: { schedule?: number[]; giveUpMs?: number; now?: () => number; sleep?: (ms: number) => Promise<void> };
   log?: (message: string) => void;
+  /**
+   * Finding #3: how often a shared link with live tasks or terminals sends a
+   * `peer.ping` keepalive (default 4 minutes, comfortably under the target's
+   * 10-minute idle bound). A test injects milliseconds.
+   */
+  keepaliveMs?: number;
 }
 
 /** One file's shape on a peer, as `fs.stat` reports it: lstat, so a final symlink is never followed. */
@@ -107,6 +113,24 @@ export interface PeerEntry {
   pinned: boolean;
 }
 
+
+/**
+ * The caps field of a `peer.info` answer, exactly as serve()'s info() promises
+ * it: `{allow: Cap[], ask: Cap[]}`, nothing else. A malformed answer is not
+ * cached — an absent caps field means the peer predates the advertisement, and
+ * the leader says nothing rather than something wrong.
+ */
+export function infoCaps(info: unknown): { allow: string[]; ask: string[] } | null {
+  if (typeof info !== "object" || info === null || Array.isArray(info)) return null;
+  const caps = (info as { caps?: unknown }).caps;
+  if (typeof caps !== "object" || caps === null || Array.isArray(caps)) return null;
+  const record = caps as Record<string, unknown>;
+  const strings = (value: unknown): string[] | null =>
+    Array.isArray(value) ? value.filter((cap): cap is string => typeof cap === "string") : null;
+  const allow = strings(record.allow);
+  const ask = strings(record.ask);
+  return allow === null || ask === null ? null : { allow, ask };
+}
 /** The link error codes whose message a worker's stderr tail can explain (a command that never ran). */
 const TAIL_CODES = new Set<number>([MeshErrorCode.timeout, MeshErrorCode.link_closed]);
 
@@ -117,11 +141,32 @@ const TAIL_CODES = new Set<number>([MeshErrorCode.timeout, MeshErrorCode.link_cl
  * know is told once, and the manager forgets the connection so the next use
  * reconnects.
  */
+/**
+ * One live connection to a peer. `task.event` and the term.* notifications are
+ * routed per remote id (what nobody listens for is dropped), and when the link
+ * goes — EOF, a protocol violation, our own close — every holder that asked to
+ * know is told once, and the manager forgets the connection so the next use
+ * reconnects.
+ */
+export interface PeerConnectionOpts {
+  /** Told with the peer's `peer.info` answer whenever one completes, so the manager can cache its caps. */
+  onInfo?: (peerName: string, info: unknown) => void;
+  /**
+   * Finding #3: while this link has tasks or terminals streaming, a quiet ping
+   * every few minutes keeps the target's idle bound honest — a link that only
+   * relays the target's own frames never writes from this side, and without a
+   * ping the target would cut it mid-run. Unref'd, so it never holds the process.
+   */
+  keepaliveMs?: number;
+}
+
 export class PeerConnection {
   readonly rpc: RpcPeer;
   private readonly taskListeners = new Map<string, Set<PeerTaskListener>>();
   private readonly termListeners = new Map<string, Set<(event: PeerTermEvent) => void>>();
   private readonly closeListeners = new Set<() => void>();
+  private readonly onInfo: (peerName: string, info: unknown) => void;
+  private readonly keepalive: ReturnType<typeof setInterval>;
   private gone = false;
 
   constructor(
@@ -134,8 +179,10 @@ export class PeerConnection {
     readonly policy: string,
     rpc: RpcPeer,
     private readonly kill: () => void,
+    opts: PeerConnectionOpts = {},
   ) {
     this.rpc = rpc;
+    this.onInfo = opts.onInfo ?? (() => undefined);
     rpc.onNotification((method, params) => this.deliver(method, params));
     // The one place a link's death is noticed: the cache is cleared before the holders are
     // told, so a listener reconnecting right away cannot get the dead connection back.
@@ -143,6 +190,12 @@ export class PeerConnection {
       this.forget(this);
       this.markGone();
     });
+    this.keepalive = setInterval(() => {
+      if (this.gone || (this.taskListeners.size === 0 && this.termListeners.size === 0)) return;
+      // Pings are liveness, not a decision: the target never audits them.
+      void this.rpc.request("peer.ping", {}, 30_000).catch(() => undefined);
+    }, opts.keepaliveMs ?? 4 * 60_000);
+    this.keepalive.unref?.();
   }
 
   /** Whether the link is already gone; a gone link accepts nothing and answers nothing. */
@@ -150,9 +203,17 @@ export class PeerConnection {
     return this.gone;
   }
 
-  /** The worker's `peer.info` answer, unchecked: what the caller asked the far side about itself. */
+  /** The worker's `peer.info` answer, unchecked: what the caller asked the far side about itself. The answer's caps reach the manager's cache (finding #1). */
   info(): Promise<unknown> {
-    return this.rpc.request("peer.info", {});
+    return this.rpc.request("peer.info", {}).then(
+      (answer: unknown) => {
+        this.onInfo(this.name, answer);
+        return answer;
+      },
+      (error: unknown) => {
+        throw error;
+      },
+    );
   }
 
   /** Events for one remote task, as the relay of that task's chat asked to see them. */
@@ -228,6 +289,7 @@ export class PeerConnection {
   private markGone(): void {
     if (this.gone) return;
     this.gone = true;
+    clearInterval(this.keepalive);
     for (const listener of [...this.closeListeners]) listener();
     this.closeListeners.clear();
     this.taskListeners.clear();
@@ -242,6 +304,13 @@ export class PeerManager {
   /** Peer names known to hold an outbound pin, as of the last connect or pin: a listing's flag, never a promise. */
   private readonly pinnedNames = new Set<string>();
 
+  /** The last `peer.info` caps answer per peer name (finding #1): what /api/mesh advertises without dialing anyone. */
+  private readonly caps = new Map<string, { allow: string[]; ask: string[] }>();
+  /** probeCaps calls in flight, and when each peer was last probed: a probe per peer at most once a minute. */
+  private readonly probing = new Set<string>();
+  private readonly probedAt = new Map<string, number>();
+  /** How long a failed or fresh probe waits before another (the Peers panel polls every 3 s). */
+  private static readonly PROBE_COOLDOWN_MS = 60_000;
   /** How a dropped link under an unsettled task is retried (peer-adapter.ts consumes it). */
   get reconnectPlan(): PeerReconnectPlan {
     const over = this.deps.reconnect ?? {};
@@ -276,6 +345,40 @@ export class PeerManager {
   }
 
   /** One live connection per peer, shared by every caller: the first connect spawns, the rest reuse it. */
+  /** Caches one peer's advertised caps from its `peer.info` answer, whatever link completed it. */
+  noteInfo(peerName: string, info: unknown): void {
+    const caps = infoCaps(info);
+    if (caps !== null) this.caps.set(peerName, caps);
+  }
+
+  /** The last caps this peer advertised, or null before any probe answered (finding #1). */
+  capsOf(peerName: string): { allow: string[]; ask: string[] } | null {
+    return this.caps.get(peerName) ?? null;
+  }
+
+  /**
+   * One background caps probe (finding #1): connect over the shared link and
+   * ask `peer.info`, caching what it advertises. Never throws — an offline or
+   * unpaired peer simply keeps whatever it last said — and never piles up: one
+   * probe per peer at a time, and a cooldown before the next, so a panel
+   * polling /api/mesh every few seconds cannot spawn a probe storm.
+   */
+  async probeCaps(peerName: string): Promise<void> {
+    if (this.probing.has(peerName)) return;
+    const last = this.probedAt.get(peerName);
+    if (last !== undefined && Date.now() - last < PeerManager.PROBE_COOLDOWN_MS) return;
+    this.probing.add(peerName);
+    this.probedAt.set(peerName, Date.now());
+    try {
+      const connection = await this.connect(peerName);
+      await connection.info();
+    } catch {
+      // Unreachable, off, or not accepted yet: the cache keeps the last good answer.
+    } finally {
+      this.probing.delete(peerName);
+    }
+  }
+
   connect(peerName: string, opts: { tofu?: boolean } = {}): Promise<PeerConnection> {
     const existing = this.live.get(peerName);
     if (existing) return Promise.resolve(existing);
@@ -455,6 +558,12 @@ export class PeerManager {
         outcome.policy,
         rpc,
         kill,
+        {
+          // Finding #1: every completed peer.info feeds the caps cache /api/mesh
+          // advertises; finding #3: the link's quiet periods get a keepalive ping.
+          onInfo: (name, info) => this.noteInfo(name, info),
+          keepaliveMs: this.deps.keepaliveMs,
+        },
       );
     } catch (error) {
       // The handshake closes the rpc on its own failures; the child is this spawn's to stop.

@@ -32,6 +32,7 @@ import { InviteStore } from "../../src/server/mesh/pairing.js";
 import { PeerPeersStore } from "../../src/server/mesh/peer-store.js";
 import { PinStore } from "../../src/server/mesh/pins.js";
 import { TaskHost } from "../../src/server/mesh/host.js";
+import type { TermHost } from "../../src/server/mesh/terms.js";
 import type { PeerManager } from "../../src/server/mesh/manager.js";
 import type { MeshConfig } from "../../src/server/user-config.js";
 import { Notifier } from "../../src/server/notify.js";
@@ -126,6 +127,8 @@ export async function makeTestApp(options: {
     config?: () => MeshConfig | undefined;
     /** The host whose tasks the routes read; a fresh one over this app's chats when absent. */
     host?: TaskHost;
+    /** The terminal host whose peer terminals the terms routes list and kill (finding #2); none when absent. */
+    terms?: TermHost;
     /** The ask-approval queue; a fresh one when absent. */
     approvals?: ApprovalQueue;
     /** The invite store; a fresh one when absent. */
@@ -210,6 +213,7 @@ export async function makeTestApp(options: {
       config: options.mesh.config ?? (() => undefined),
       listen: () => null,
       host,
+      ...(options.mesh.terms !== undefined ? { terms: options.mesh.terms } : {}),
       approvals: () => approvals,
       invites: () => invites,
       peers: options.mesh.peers ?? null,

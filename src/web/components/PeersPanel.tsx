@@ -8,9 +8,9 @@
 // rest of Settings — and the QR arrives as an <img> data URL from our own
 // qr.ts, never as injected markup.
 import { useEffect, useState } from "react";
-import type { InteractionAnswer, MeshApprovalRow, MeshOverview, MeshPendingRow, MeshPeerRow, MeshTaskRow } from "../../shared/protocol.js";
+import type { InteractionAnswer, MeshApprovalRow, MeshHostTermRow, MeshOverview, MeshPendingRow, MeshPeerRow, MeshTaskRow } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
-import { approvalLine, sasLabel, sourceLabel, taskStateLabel, timeLeft, transportLabel } from "../mesh.js";
+import { approvalLine, hostTermLine, sasLabel, sourceLabel, taskStateLabel, timeLeft, transportLabel } from "../mesh.js";
 import { FormRow } from "./FormRow.js";
 import { IconPlus, IconX } from "../icons.js";
 import { Select } from "./Select.js";
@@ -41,6 +41,8 @@ interface TaskAnswerResult {
 export function PeersPanel({ current }: { current: SectionIdOf }) {
   const [view, setView] = useState<MeshOverview | null>(null);
   const [tasks, setTasks] = useState<MeshTaskRow[]>([]);
+  /** The terminals peers opened on this node (finding #2), read with the tasks. */
+  const [hostTerms, setHostTerms] = useState<MeshHostTermRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   /** Each peer's last Test: its own line when it drew one, else its error. */
   const [tests, setTests] = useState<Record<string, { busy: boolean; line?: string; error?: string }>>({});
@@ -65,6 +67,9 @@ export function PeersPanel({ current }: { current: SectionIdOf }) {
       .catch((e: unknown) => setError(errorText(e)));
     void api<{ tasks: MeshTaskRow[] }>("/api/mesh/tasks")
       .then((t) => setTasks(t.tasks))
+      .catch(() => undefined);
+    void api<{ terms: MeshHostTermRow[] }>("/api/mesh/terms")
+      .then((t) => setHostTerms(t.terms))
       .catch(() => undefined);
   };
 
@@ -180,6 +185,12 @@ export function PeersPanel({ current }: { current: SectionIdOf }) {
       await api(`/api/mesh/tasks/${encodeURIComponent(task.remoteTaskId)}/abort`, { method: "POST", body: {} });
       refresh();
     });
+  const killTerm = (term: MeshHostTermRow) =>
+    void run(async () => {
+      await api(`/api/mesh/terms/${encodeURIComponent(term.termId)}/close`, { method: "POST", body: {} });
+      refresh();
+    });
+
 
   return (
     <section className="form-section" id="settings-panel-peers" role="tabpanel" aria-labelledby="settings-peers" hidden={current !== "peers"}>
@@ -390,6 +401,27 @@ export function PeersPanel({ current }: { current: SectionIdOf }) {
             </div>
           ) : (
             <p className="form-empty">No peer task is running on this node.</p>
+          )}
+        </FormRow>
+      </div>
+      <div className="form-card">
+        <FormRow row="terms" label="Peer terminals on this node" desc="Terminals peers opened here, read-only with a kill action — a live shell as this machine's user, closed exactly as the peer's own close would." stack>
+          {hostTerms.length > 0 ? (
+            <div className="mesh-tasks">
+              {hostTerms.map((term) => (
+                <div className="mesh-task" key={term.termId}>
+                  <div className="mesh-task-head">
+                    <span className="mesh-peer-name">{term.peerName}</span>
+                    <span className="mesh-peer-address">{hostTermLine(term)}</span>
+                    <button type="button" className="btn btn-small btn-ghost" aria-label={`Kill ${term.peerName}'s terminal`} disabled={!enabled} onClick={() => void killTerm(term)}>
+                      Kill
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="form-empty">No peer terminal is open on this node.</p>
           )}
         </FormRow>
       </div>

@@ -32,6 +32,8 @@ const COALESCE_MS = 16;
 const DEFAULT_DETACHED_TTL_MS = 3_600_000;
 /** The detached-TTL sweep: often enough to be prompt, rarely enough to matter. */
 const REAP_INTERVAL_MS = 60_000;
+/** Finding #5: at most 30 terminal openings per node id in any sliding minute, the local terminal's own pace. */
+const MAX_CREATES_PER_MINUTE = 30;
 
 export interface TermHostDeps {
   /** The target's own PTY spawner: the shell, the env, and the kill path are this machine's, never the caller's. */
@@ -64,6 +66,16 @@ export interface HostTermEntry {
   lastSeq: number;
 }
 
+/**
+ * One row of the owner's own listing (finding #2): a term.list entry plus the
+ * peer it belongs to, keyed for the read-only view with its kill action.
+ */
+export interface HostTermOwnerRow extends HostTermEntry {
+  /** The peer's handshake name, as its link authenticated. */
+  peerName: string;
+  nodeId: string;
+}
+
 /** `term.attach`'s answer: what the replay cost and whether the ring reached back that far. */
 export interface HostTermAttachResult {
   replayed: number;
@@ -79,6 +91,8 @@ interface HostTerm {
   termId: string;
   nodeId: string;
   cwd: string;
+  /** The peer's handshake name, so the owner's own listing can say whose terminal this is. */
+  peerName: string;
   cols: number;
   rows: number;
   createdAt: number;
@@ -123,6 +137,11 @@ export class TermHost {
   private readonly ringMax: number;
   private readonly log: (message: string) => void;
   private readonly reaper: NodeJS.Timeout;
+  /** term.open calls in flight per node id (finding #5): part of the per-node cap until the PTY lands or fails. */
+  private readonly openingByNode = new Map<string, number>();
+  /** Create times per node id in the last minute, for the 30/min open pace. */
+  private readonly createTimes = new Map<string, number[]>();
+
 
   constructor(private readonly deps: TermHostDeps) {
     this.clock = deps.clock;
@@ -145,7 +164,10 @@ export class TermHost {
    * TerminalManager — so the shell and environment are the worker user's, and
    * the dims bound is the machine's own. The opening link is subscribed at
    * once; per node id at most 4 terminals (and never more than the policy's
-   * max_tasks) are live.
+   * max_tasks) are live. Finding #5: the bound counts opens in flight too —
+   * the check and its counter are synchronous, so concurrent opens cannot all
+   * see room for one — and one node id may open at most 30 a minute, the local
+   * terminal's own pace.
    */
   async open(link: HostLink, nodeId: string, peerName: string, policy: PeerPolicy, home: string, params: TermOpenParams): Promise<{ termId: string; createdAt: number }> {
     const resolved = await resolveInRoots(policy, params.cwd, home);
@@ -160,21 +182,31 @@ export class TermHost {
     const cap = Math.min(MAX_TERMS_PER_NODE, Math.max(1, policy.maxTasks));
     let live = 0;
     for (const term of this.terms.values()) if (term.nodeId === nodeId && !term.exited) live++;
-    if (live >= cap) {
-      throw new MeshRpcError(MeshErrorCode.limit, `this peer already holds ${live} live terminals and the policy allows ${cap}`, { code: "limit" });
+    const opening = this.openingByNode.get(nodeId) ?? 0;
+    if (live + opening >= cap) {
+      throw new MeshRpcError(MeshErrorCode.limit, `this peer already holds ${live + opening} live or opening terminals and the policy allows ${cap}`, { code: "limit" });
     }
+    this.takeCreateSlot(nodeId);
     // The synthetic workspace keys the manager's own per-workspace caps to this node id; the
     // path is already realpathed by resolveInRoots, so the manager's own check passes.
     const ws: WorkspaceInfo = { id: `mesh-term:${nodeId}`, path: resolved.real, name: peerName };
+    // Counted before the first await of the spawn, so concurrent opens cannot
+    // all pass the cap: the slot is held until the PTY lands or fails.
+    this.openingByNode.set(nodeId, opening + 1);
     let made: { id: string; createdAt: number };
     try {
       made = await this.deps.manager.create(ws, params.cols, params.rows);
     } catch (error) {
       throw ptyError(error);
+    } finally {
+      const left = (this.openingByNode.get(nodeId) ?? 1) - 1;
+      if (left <= 0) this.openingByNode.delete(nodeId);
+      else this.openingByNode.set(nodeId, left);
     }
     const term: HostTerm = {
       termId: made.id,
       nodeId,
+      peerName,
       cwd: resolved.real,
       cols: params.cols,
       rows: params.rows,
@@ -200,6 +232,23 @@ export class TermHost {
     term.subscribers.add(link);
     link.subscribed.add(term.termId);
     return { termId: term.termId, createdAt: term.createdAt };
+  }
+
+  /**
+   * One of this node's 30-per-minute create slots; a refused or failed open
+   * still spends it, exactly as a refused fs.write spends its write slot. The
+   * window reads the injected clock, so a test can move it.
+   */
+  private takeCreateSlot(nodeId: string): void {
+    const now = this.clock();
+    const times: number[] = [];
+    for (const at of this.createTimes.get(nodeId) ?? []) if (now - at < 60_000) times.push(at);
+    if (times.length >= MAX_CREATES_PER_MINUTE) {
+      this.createTimes.set(nodeId, times);
+      throw new MeshRpcError(MeshErrorCode.limit, `this peer already opened ${MAX_CREATES_PER_MINUTE} terminals in the last minute`, { code: "limit" });
+    }
+    times.push(now);
+    this.createTimes.set(nodeId, times);
   }
 
   /** term.input: bytes to the terminal's PTY, at most MAX_INPUT_BYTES; an exited terminal eats them silently. */
@@ -266,6 +315,27 @@ export class TermHost {
       entries.push({ termId: term.termId, cwd: term.cwd, cols: term.cols, rows: term.rows, createdAt: term.createdAt, exited: term.exited, lastSeq: term.seq });
     }
     return entries;
+  }
+
+  /** Every terminal every peer holds, the owner's read-only listing (finding #2, SPEC-P3 §1). */
+  listAll(): HostTermOwnerRow[] {
+    const entries: HostTermOwnerRow[] = [];
+    for (const term of this.terms.values()) {
+      entries.push({ termId: term.termId, peerName: term.peerName, nodeId: term.nodeId, cwd: term.cwd, cols: term.cols, rows: term.rows, createdAt: term.createdAt, exited: term.exited, lastSeq: term.seq });
+    }
+    return entries;
+  }
+
+  /**
+   * The owner's kill (finding #2): close one terminal by id alone — the
+   * owner-facing route has no node id — exactly as the peer's own term.close
+   * would. False when no such terminal is open.
+   */
+  closeById(termId: string): boolean {
+    const term = this.terms.get(termId);
+    if (term === undefined) return false;
+    this.disposeTerm(term);
+    return true;
   }
 
   /**

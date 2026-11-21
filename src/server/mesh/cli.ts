@@ -589,6 +589,10 @@ async function fetchCommand(io: PeerCliIo, read: Settings, name: string, what: s
   try {
     let exported: Awaited<ReturnType<typeof exportFromPeer>>;
     try {
+      // The bundle cap (finding #4) is enforced inside exportFromPeer — both
+      // the claimed size before the first read and the accumulated bytes while
+      // they stream — which is exactly the fetch path: nothing over the cap is
+      // ever written to this scratch dir.
       exported = await exportFromPeer(manager, name, worktree);
     } catch (error) {
       return peerFailure(io, "fetch", name, error);

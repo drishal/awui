@@ -2,8 +2,8 @@
 // surface shows is pinned here — the SAS a person compares on two screens, the
 // transports, an invite's countdown, and a task's state words.
 import { describe, expect, it } from "vitest";
-import { approvalLine, sasLabel, sourceLabel, taskStateLabel, timeLeft, transportLabel } from "../../src/web/mesh.js";
-import type { MeshApprovalRow } from "../../src/shared/protocol.js";
+import { approvalLine, hostTermLine, sasLabel, sourceLabel, taskStateLabel, timeLeft, transportLabel } from "../../src/web/mesh.js";
+import type { MeshApprovalRow, MeshHostTermRow } from "../../src/shared/protocol.js";
 
 describe("sasLabel", () => {
   it("splits a six-digit SAS the way a person reads it, from either spelling", () => {
@@ -81,5 +81,24 @@ describe("approvalLine", () => {
     };
     expect(approvalLine(approval, 0)).toBe("lab-vm-3: fs.write into ~/code/app.ts · 5m left");
     expect(approvalLine(approval, 300_000)).toBe("lab-vm-3: fs.write into ~/code/app.ts · expired");
+  });
+});
+
+describe("hostTermLine", () => {
+  const term: MeshHostTermRow = {
+    termId: "tt_1",
+    peerName: "lab-vm-3",
+    nodeId: "node-1",
+    cwd: "/srv/proj",
+    cols: 90,
+    rows: 30,
+    createdAt: 0,
+    exited: false,
+    lastSeq: 4,
+  };
+
+  it("reads as whose terminal, where it runs, and its size", () => {
+    expect(hostTermLine(term)).toBe("lab-vm-3: /srv/proj · 90×30");
+    expect(hostTermLine({ ...term, exited: true })).toBe("lab-vm-3: /srv/proj · 90×30 · exited");
   });
 });

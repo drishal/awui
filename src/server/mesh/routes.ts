@@ -23,6 +23,7 @@ import type { ApprovalQueue, MeshApprovalDecision } from "./approvals.js";
 import { clientHandshake, SAS_CONTEXT } from "./handshake.js";
 import type { TaskHost } from "./host.js";
 import { nodeIdOf, sasOf, type NodeIdentity } from "./identity.js";
+import type { TermHost } from "./terms.js";
 import type { PeerManager } from "./manager.js";
 import { encodeInviteCode, decodeInviteCode, INVITE_CODE_PREFIX, inviteMac, type InviteStore } from "./pairing.js";
 import type { PinStore } from "./pins.js";
@@ -62,6 +63,12 @@ export interface MeshRoutesDeps {
   listen: () => { host: string; port: number } | null;
   /** The service's own task host: what the tasks routes read and answer. */
   host: TaskHost;
+  /**
+   * The service's shared terminal host (P3 §1, finding #2): what the terms
+   * routes read and close. Absent (tests) answers an honestly empty list and
+   * a close that finds nothing.
+   */
+  terms?: TermHost;
   /** The service's ask-approval queue, or null while no daemon holds one. */
   approvals: () => ApprovalQueue | null;
   /** The service's live invites, or null while no daemon holds one. */
@@ -87,6 +94,7 @@ function requireMesh(deps: MeshRoutesDeps): void {
 }
 
 /** Every peer both sources know, each labelled with where it came from (config wins on a name clash). */
+/** Every peer both sources know, each labelled with where it came from (config wins on a name clash). */
 function peerRows(deps: MeshRoutesDeps, pinned: Set<string>) {
   const config = deps.config()?.peers ?? [];
   const fromConfig = new Set(config.map((peer) => peer.name.toLowerCase()));
@@ -96,6 +104,11 @@ function peerRows(deps: MeshRoutesDeps, pinned: Set<string>) {
     address: peer.ssh ?? peer.docker ?? peer.tls ?? "",
     source: fromConfig.has(peer.name.toLowerCase()) ? ("config" as const) : ("ui" as const),
     pinned: pinned.has(peer.name),
+    // Finding #1: the last caps this peer advertised over a completed peer.info,
+    // so the terminal panel's "New terminal on…" menu can offer it without a
+    // dial. Absent until the first probe answers (or on a peer that predates
+    // the advertisement); the GET below warms the cache in the background.
+    ...(deps.peers?.capsOf(peer.name) !== null && deps.peers !== null ? { caps: deps.peers.capsOf(peer.name)! } : {}),
   }));
 }
 
@@ -141,13 +154,23 @@ export function meshRoutes(deps: MeshRoutesDeps): Router {
     const pinned = new Set(pins.outbound.map((pin) => pin.name));
     const approvals = deps.approvals()?.list() ?? [];
     const pending = identity === null ? [] : await deps.pins.pendingAll();
+    const peers = peerRows(deps, pinned);
+    if (deps.enabled() && deps.peers !== null) {
+      // Finding #1: a peer whose caps were never probed gets one background
+      // probe now, so opening the "New terminal on…" menu does not hang on an
+      // offline peer and works after a Test or a connect. Never awaited here;
+      // the manager's cooldown keeps this poll from spawning a probe storm.
+      for (const peer of peers) {
+        if (peer.caps === undefined) void deps.peers.probeCaps(peer.name);
+      }
+    }
     res.json({
       enabled: deps.enabled(),
       name: deps.name(),
       nodeId: identity === null ? null : nodeIdOf(identity.publicKey),
       listen: deps.enabled() ? deps.listen() : null,
       policies,
-      peers: peerRows(deps, pinned),
+      peers,
       pending: pending.map((entry) => ({
         nodeId: nodeIdOf(entry.publicKey),
         name: entry.name,
@@ -408,6 +431,37 @@ export function meshRoutes(deps: MeshRoutesDeps): Router {
     }
     void deps.audit.append({ peer: task.peerName, method: "ui.task.abort", decision: "deny", target: task.remoteTaskId });
     res.json({ aborted: true });
+    return;
+  });
+
+  // This host's peer terminals (finding #2, SPEC-P3 §1 "the target's own UI
+  // lists them read-only with a kill action"): every PTY a peer opened on this
+  // machine, the read the Peers panel draws. Honest and empty with the mesh
+  // off — turning it off disposed them all.
+  router.get("/terms", (_req, res) => {
+    const terms = (deps.terms?.listAll() ?? []).map((term) => ({
+      termId: term.termId,
+      peerName: term.peerName,
+      nodeId: term.nodeId,
+      cwd: term.cwd,
+      cols: term.cols,
+      rows: term.rows,
+      createdAt: term.createdAt,
+      exited: term.exited,
+      lastSeq: term.lastSeq,
+    }));
+    res.json({ terms });
+    return;
+  });
+
+  // The kill action: the owner closes one peer's terminal by id, the same
+  // close a peer's own term.close would run. Audited like the task routes.
+  router.post("/terms/:id/close", (req, res) => {
+    requireMesh(deps);
+    const id = String(req.params.id);
+    if (!deps.terms?.closeById(id)) throw new ChatError(404, "unknown_term", `No peer terminal "${id}" is open on this node`);
+    void deps.audit.append({ peer: null, method: "ui.term.close", decision: "deny", target: id });
+    res.json({ closed: true });
     return;
   });
 

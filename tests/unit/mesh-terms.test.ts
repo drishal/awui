@@ -335,23 +335,61 @@ describe("term.open (worker)", () => {
     expect(error.code).toBe(MeshErrorCode.invalid_params);
     expect(error.message).toContain("cols");
   });
+
+  it("bounds concurrent opens: eight term.opens at once still leave only four live (finding #5)", async () => {
+    const f = await makeFixture({ ...ALLOW, max_tasks: 4 });
+    const { client } = await connectPaired(f);
+    // Fired all at once over the one link: every open is in flight before any
+    // PTY lands, and the check-then-count must still hold the line of four.
+    const attempts = Array.from({ length: 8 }, () => client.request<{ termId: string }>("term.open", { cwd: f.root, cols: 80, rows: 24 }));
+    const settled = await Promise.allSettled(attempts);
+    expect(settled.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(4);
+    for (const outcome of settled.filter((it) => it.status === "rejected")) {
+      const error = (outcome as PromiseRejectedResult).reason as MeshRpcError;
+      expect(error.code).toBe(MeshErrorCode.limit);
+      expect(error.message).toMatch(/live or opening terminals/);
+    }
+    expect(f.ptys).toHaveLength(4);
+  });
+
+  it("bounds a node's terminal openings to 30 a minute (finding #5)", async () => {
+    const f = await makeFixture({ ...ALLOW, max_tasks: 4 });
+    const { client } = await connectPaired(f);
+    // The fixture's clock is frozen, so the sliding window never moves: open
+    // and close until the 30 create slots are spent, then the next is refused.
+    for (let n = 0; n < 30; n++) {
+      const { termId } = await openTerm(client, f);
+      await client.request("term.close", { termId });
+    }
+    const refused = await refuse(client, "term.open", { cwd: f.root, cols: 80, rows: 24 });
+    expect(refused.code).toBe(MeshErrorCode.limit);
+    expect(refused.message).toContain("in the last minute");
+  });
 });
 
 describe("term.input / term.resize (worker)", () => {
-  it("carries bytes to the pty and sizes it, and audits counts, never the text", async () => {
+  it("carries bytes to the pty and sizes it, and audits one aggregated count per minute, never the text", async () => {
     const f = await makeFixture(ALLOW);
-    const { client } = await connectPaired(f);
+    const { client, closed } = await connectPaired(f);
     const { termId } = await openTerm(client, f);
     await client.request("term.input", { termId, data: Buffer.from("typed text").toString("base64") });
+    await client.request("term.input", { termId, data: Buffer.from(" more").toString("base64") });
     await client.request("term.resize", { termId, cols: 120, rows: 40 });
     await sleep(10);
-    expect(f.ptys[0]!.written).toEqual(["typed text"]);
+    expect(f.ptys[0]!.written).toEqual(["typed text", " more"]);
     expect(f.ptys[0]!.resized).toEqual([{ cols: 120, rows: 40 }]);
-    const audit = await readFile(f.auditFile, "utf8");
-    const inputLine = audit.trim().split("\n").find((line) => line.includes('"term.input"'));
-    expect(inputLine).toBeDefined();
-    expect(inputLine).toContain("10 bytes");
-    expect(inputLine).not.toContain("typed text");
+    // Finding #12: allowed inputs are traffic, not decisions — nothing is
+    // written until the link closes (or a minute passes), and then one line.
+    let audit = await readFile(f.auditFile, "utf8");
+    expect(audit.includes('"term.input"')).toBe(false);
+    client.close("done");
+    await closed;
+    await sleep(50);
+    audit = await readFile(f.auditFile, "utf8");
+    const inputLines = audit.trim().split("\n").filter((line) => line.includes('"term.input"'));
+    expect(inputLines).toHaveLength(1);
+    expect(inputLines[0]).toContain("15 bytes in 2 call(s)");
+    expect(inputLines[0]).not.toContain("typed text");
   });
 
   it("bounds one input to 64 KiB and refuses what is not base64", async () => {

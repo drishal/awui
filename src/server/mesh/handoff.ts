@@ -122,6 +122,13 @@ export async function snapshotWorkingTree(cwd: string, opts: { log?: (m: string)
  * message when the bundle would cross the cap: a peer cannot be handed a
  * history it will never finish uploading. The file lands under `outDir`
  * (0700) with a 0600 mode, named `<id>.bundle`.
+ *
+ * The cap is enforced after `git bundle create` completes (finding #9, a
+ * known residual): git itself has no "stop at N bytes" switch, so a repo
+ * with a giant history writes the full bundle into the scratch dir before
+ * the size check refuses it. That is a bounded local-disk cost of the
+ * leader's own tool call (the same scratch the snapshot uses), never a peer's
+ * lever: the bundle never leaves this machine unless it is under the cap.
  */
 export async function createHandoffBundle(cwd: string, snap: HandoffSnapshot, outDir: string, opts: { maxBundleBytes?: number } = {}): Promise<{ file: string; size: number; sha256: string }> {
   await fs.mkdir(outDir, { recursive: true, mode: 0o700 });
@@ -180,13 +187,25 @@ export interface PeerExport {
  * The digest is checked here too — the link is the same trust boundary it
  * was on the way out.
  */
-export async function exportFromPeer(manager: PeerManager, peerName: string, worktree: string): Promise<{ bytes: Buffer; meta: PeerExport }> {
+export async function exportFromPeer(manager: PeerManager, peerName: string, worktree: string, opts: { maxBundleBytes?: number } = {}): Promise<{ bytes: Buffer; meta: PeerExport }> {
   const meta = await manager.handoffExport(peerName, worktree);
+  const cap = opts.maxBundleBytes ?? HANDOFF_BUNDLE_CAP;
+  // Finding #4: the peer's claimed size is never trusted — a paired peer that
+  // lies ("size: 2^40") and then streams forever must not be able to make this
+  // side buffer without bound. Refused before the first read, and the loop
+  // below stops the moment the accumulated bytes pass the cap anyway.
+  if (meta.size > cap) {
+    throw new Error(`the peer's export claims ${meta.size} bytes, over the ${cap} byte handoff bundle cap`);
+  }
   const parts: Buffer[] = [];
+  let got = 0;
   for (let index = 0, at = 0; at < meta.size; index++, at += HANDOFF_CHUNK_BYTES) {
     const part = await manager.handoffRead(peerName, meta.exportId, index);
+    if (part.length === 0) throw new Error(`the peer's export ended after ${got} of ${meta.size} bytes`);
     parts.push(part);
-    if (part.length === 0) throw new Error(`the peer's export ended after ${at} of ${meta.size} bytes`);
+    got += part.length;
+    if (got > cap) throw new Error(`the peer's export passed the ${cap} byte handoff bundle cap`);
+    if (got > meta.size) throw new Error(`the peer's export delivered ${got} of ${meta.size} bytes`);
   }
   const bytes = Buffer.concat(parts);
   if (bytes.length !== meta.size) throw new Error(`the peer's export delivered ${bytes.length} of ${meta.size} bytes`);

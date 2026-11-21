@@ -289,7 +289,9 @@ export type AttachConnect = { ok: true; closed: Promise<string> } | { ok: false;
  * The client half of attach: connect, write the one prologue line, then pipe
  * `stdin` into the socket and the socket into `stdout`, byte-for-byte, until
  * either side ends. `closed` resolves once with the link's end reason —
- * "closed" for a clean end, anything else a socket error the caller reports.
+ * "closed" for a clean end after the peer's own input ended, "closed by the
+ * service" when the daemon hung up first (a refused prologue or handshake),
+ * anything else a socket error the caller reports.
  */
 export function connectAndPipe(
   at: string,
@@ -302,6 +304,7 @@ export function connectAndPipe(
   return new Promise((resolve) => {
     const sock = net.createConnection(at);
     let piped = false;
+    let inputEnded = false;
     let finish: ((reason: string) => void) | null = null;
     const timer = setTimeout(() => {
       if (piped) return;
@@ -320,7 +323,14 @@ export function connectAndPipe(
       if (!piped) {
         clearTimeout(timer);
         resolve({ ok: false, reason: "the socket closed before the link came up" });
-      } else if (finish !== null) finish("closed");
+      } else if (finish !== null) {
+        // Finding #16 (P15R #9): a link the *service* closed — a refused
+        // prologue, a pin mismatch at the handshake — is not a finished
+        // session, and the caller could not tell the two apart. The peer's
+        // own stdin ending first is what a clean close looks like; anything
+        // else resolves with its own reason, so serve-stdio exits 1.
+        finish(inputEnded ? "closed" : "closed by the service");
+      }
     });
     sock.once("connect", () => {
       piped = true;
@@ -329,6 +339,12 @@ export function connectAndPipe(
       sock.write(`${ATTACH_PREFIX}${JSON.stringify({ forced })}\n`);
       stdin.pipe(sock);
       sock.pipe(stdout);
+      stdin.once("end", () => {
+        inputEnded = true;
+      });
+      stdin.once("close", () => {
+        inputEnded = true;
+      });
       const closed = new Promise<string>((resolveClosed) => {
         let ended = false;
         finish = (reason: string): void => {
