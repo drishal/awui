@@ -156,6 +156,22 @@ export const peerFilesSchema = z
   })
   .strict();
 
+/**
+ * `peer_handoff`: move this chat's work to a peer's copy of the project. The
+ * leader snapshots its own working tree (uncommitted work included) onto a
+ * temporary ref without touching index, worktree, or HEAD, uploads it as a
+ * git bundle, and opens a delegated peer task in an isolated worktree there;
+ * the brief carries the caller's words plus a compact transcript digest.
+ */
+export const peerHandoffSchema = z
+  .object({
+    peer: z.string().min(1).max(64),
+    /** The project's repo path on that peer: where the bundle is fetched into and the worktree is created. */
+    peerRepo: z.string().min(1).max(4096),
+    brief: z.string().min(1).max(MAX_DELEGATE_BRIEF_CHARS).optional(),
+  })
+  .strict();
+
 /** One tool as the bridges register it: the name, the words the model reads, and JSON Schema for its arguments. */
 export interface OrchTool {
   name: string;
@@ -350,6 +366,22 @@ const DEFINED_TOOLS: OrchTool[] = [
     ),
   },
   {
+    name: "peer_handoff",
+    description:
+      "Move this chat's work to a paired mesh peer (see list_profiles): snapshot this project's working tree — uncommitted edits and new files included — into a temporary ref, upload it as a git bundle, and open a delegated task there in an isolated worktree of that machine's copy. " +
+      "The child gets your brief plus a compact digest of this chat (tool outputs elided); your own index, worktree, and HEAD never move. " +
+      "The task rows show the @peer badge like any peer delegation; its result comes back as usual, and `awui peer fetch` brings the peer's committed work home as a ref. " +
+      "Lead chats only, and the peer's own policy decides what it accepts.",
+    parameters: object(
+      {
+        peer: stringProperty("The paired peer's name (see list_profiles).", 64),
+        peerRepo: stringProperty("Absolute or ~ path of this project's git repo on that peer; the bundle is fetched there and the worktree lands in its .awui dir.", 4096),
+        brief: stringProperty("What to do next, written for an agent that sees only this work: what was in progress, what to finish, how to verify.", MAX_DELEGATE_BRIEF_CHARS),
+      },
+      ["peer", "peerRepo"],
+    ),
+  },
+  {
     name: "list_profiles",
     description:
       "List the workers you can delegate to: this project's saved bot profiles and one entry per installed harness at its default model. " +
@@ -401,6 +433,7 @@ Delegating
 - After delegating, thread_wait blocks until the child finishes or asks a question. Never poll in a loop. task_status shows where your tasks stand, thread_read what a child said, thread_send continues it, task_cancel stops a run you no longer need.
 - plan_workers drafts a lead/worker plan for a person to confirm before any worker starts. resident_agent keeps one named chat to come back to.
 - delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers. peer_files reads or writes one utf8 file there (lead chats only).
+- delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers. peer_files reads or writes one utf8 file there (lead chats only). peer_handoff instead moves this chat's own work there: it snapshots the tree, uploads a bundle, and opens the task in an isolated worktree (lead chats only).
 - As a delegated child, do the work yourself; start no further delegates unless your task says to.
 
 Talking to the person

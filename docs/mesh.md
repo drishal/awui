@@ -230,6 +230,7 @@ awui peer log [--peer <name>] [--tail N]   the audit log of decisions this node 
 awui peer ls <name> <path>             a folder on a peer: names, types, sizes
 awui peer cat <name> <path>            a peer file's bytes, raw to stdout (at most 4 MiB)
 awui peer tasks <name>                 the peer's live tasks (its awui service runs them)
+awui peer fetch <name> <remoteTaskId|worktree>   bring a peer's handed-off work home as one ref
 awui peer approvals                    what this node's service is waiting for you to answer
 awui peer approve <id> [--for-link]    answer one: allow once, or for this link's lifetime
 awui peer deny <id>                    answer one: no
@@ -238,7 +239,6 @@ awui peer join <code> [--name <n>]     pin the key the code carries, redeem it o
 awui peer serve-stdio [--peer <name>] [--policy <p>] [--ephemeral] [--attach]   the worker end of a link
 awui peer bootstrap <ssh-dest> [--policy <p>] [--root <path>] [--pubkey <path>] [--run]
                                       the setup commands for a worker machine (with --run: over ssh, asked)
-awui peer fetch <peer> <remoteTaskId>   bring a handed-off task's result back, as a ref (never merged)
 ```
 
 Exit codes: 0 ok, 1 failed, 2 usage, 78 mesh off or config.yml broken. `add` and
@@ -432,8 +432,8 @@ ceiling. In daemon mode terminals are owned by the node, so they outlive a
 dropped link (reaped after an hour detached); an ephemeral worker's terminals
 close with the link. What the target controls, plainly: the shell, the
 environment, the cwd, and the per-call cap decision — the leader only names a
-size and a folder. The target's own UI lists a peer's terminals read-only with
-a kill action. Input content is never audited (byte counts per minute only).
+size and a folder. The worker answers a listing with `term.list` and closes one
+on `term.close`. Input content is never audited (byte counts per minute only).
 
 On the leader, the terminal panel gains a **"New terminal on…"** menu listing
 the configured peers that advertise `term.open`, a tab strip whose peer tabs
@@ -447,8 +447,8 @@ is the ordinary terminal panel.
 ### Handoff: move a chat's work to a peer
 
 A lead chat whose workspace is a git repo can hand itself to a peer — the
-`peer_handoff {peer, peerRepo, brief?}` tool, or the chat menu's **"Hand off to
-peer…"** — and nothing on the leader's tree changes:
+`peer_handoff {peer, peerRepo, brief?}` tool — and nothing on the leader's
+tree changes:
 
 1. The working tree (tracked and untracked, `.gitignore` respected) is committed
    onto a temporary ref `refs/awui/handoff/<id>` through a temporary index, so
@@ -468,8 +468,12 @@ peer…"** — and nothing on the leader's tree changes:
    most 32 KiB, tool outputs elided), linked as a delegated task with the
    `@host` badge. The local chat gets a note saying where the work went.
 
-Bringing work back: `awui peer fetch <peer> <remoteTaskId>` (or the task's
-**Fetch result** action) reads the worktree's HEAD back through
+The peer's own policy gates a handoff on arrival: it needs both `task.run` and
+`fs.write` (the built-in `worker` policy asks for `fs.write`, so the target's
+owner sees one approval card before anything lands).
+
+Bringing work back: `awui peer fetch <peer> <remoteTaskId>` reads the
+worktree's HEAD back through
 `handoff.export` and the same chunked download, and the leader fetches it into
 `refs/awui/from-peer/<peer>/<id>` — a ref to inspect, diff, or cherry-pick. It
 never merges, never checks out, and never touches the user's tree on either
