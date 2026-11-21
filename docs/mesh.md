@@ -199,6 +199,11 @@ listening behind it; a non-socket file there is a refusal (logged, attach off).
 Turning the mesh off at runtime closes the listener and every attached link.
 Windows has no attach socket: workers there are ephemeral.
 
+In daemon mode a task's chat is a real chat in the target's own awui, so its
+folder must also be inside that server's workspace roots (`WORKSPACE_ROOTS`);
+a mesh root outside them is refused at `task.open`. One file call carries at
+most 512 KiB: base64 inside one JSON-RPC line must fit the 1 MiB wire bound.
+
 `awui peer serve-stdio` — the worker end — tries that socket first (1 s
 connect timeout). On success the link lives inside the running service, which
 already has the config, the harnesses, and the chat manager open. On failure
@@ -253,8 +258,8 @@ answer them. Every path is resolved inside the policy's roots on every call
 |---|---|---|
 | `fs.stat` | `{type: file\|dir\|symlink\|other, size, mtimeMs, mode}` | lstat: the final symlink is never followed |
 | `fs.list` | `{entries: [{name, type, size}], truncated}` | at most 1000 names (default 500), one folder, dotfiles in, sorted |
-| `fs.read` | `{data: base64, size, eof}` | regular files only, at most 4 MiB per call (default 1 MiB) |
-| `fs.write` | `{size, mtimeMs}` | at most 4 MiB decoded; `create` refuses an existing file; `overwrite` replaces only a regular file |
+| `fs.read` | `{data: base64, size, eof}` | regular files only, at most 512 KiB per call (the default); page larger files with `offset` |
+| `fs.write` | `{size, mtimeMs}` | at most 512 KiB decoded and at most the policy's `max_file_bytes`; `create` refuses an existing file; `overwrite` replaces only a regular file |
 
 A write is atomic: a temp file in the destination's own directory
 (`.<name>.awui-<rand>.tmp`, 0600 then the file's mode), fsync, rename. With
@@ -271,7 +276,7 @@ In a lead chat on a mesh-enabled server with a peer configured, the agent has
 `peer_files`: one file operation per call — `stat`, `list`, `read`, or
 `write` — against the same link a delegated task uses. It is text in and out:
 a read that is not utf8 is refused rather than handed to the model, a write is
-at most 1 MiB of text, and a file longer than one read says so, for the agent
+at most 512 KiB of text, and a file longer than one read says so, for the agent
 to continue with an offset. The same lead-only rules a peer delegation passes
 apply (mesh on, `mesh.chats`, one hop, a configured peer) — the peer's own
 policy, its roots and caps, is what actually decides.

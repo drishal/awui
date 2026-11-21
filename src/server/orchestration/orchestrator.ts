@@ -1963,7 +1963,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** The most text one peer_files call carries, in bytes: the tool speaks utf8 (tools.ts). */
-const MAX_PEER_FILE_TEXT_BYTES = 1024 * 1024;
+const MAX_PEER_FILE_TEXT_BYTES = 512 * 1024;
 
 /** The buffer as utf8 text, or null when it is not text (a NUL byte, or a sequence utf8 never forms). */
 function utf8Text(data: Buffer): string | null {

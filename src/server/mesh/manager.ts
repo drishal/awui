@@ -239,7 +239,7 @@ export class PeerManager {
   /** How long one files/task.list call may wait: the worker answers from its own disk, so this is a hang guard, not a budget. */
   private static readonly FILE_RPC_MS = 30_000;
   /** The wire's own bounds (spec P1.5 §3), held here too so a caller's bug cannot become a peer's problem. */
-  private static readonly MAX_READ_BYTES = 4 * 1024 * 1024;
+  private static readonly MAX_READ_BYTES = 512 * 1024;
   private static readonly MAX_LIST_ENTRIES = 1_000;
 
   /**
@@ -261,7 +261,7 @@ export class PeerManager {
   /** `fs.read` on the peer: one bounded chunk, decoded from base64. */
   async read(peerName: string, target: string, opts: { offset?: number; length?: number } = {}): Promise<PeerFileContents> {
     const connection = await this.connect(peerName);
-    const length = opts.length === undefined ? 1024 * 1024 : Math.max(1, Math.min(opts.length, PeerManager.MAX_READ_BYTES));
+    const length = opts.length === undefined ? PeerManager.MAX_READ_BYTES : Math.max(1, Math.min(opts.length, PeerManager.MAX_READ_BYTES));
     const answer = (await connection.rpc.request(
       "fs.read",
       { path: target, offset: Math.max(0, opts.offset ?? 0), length },

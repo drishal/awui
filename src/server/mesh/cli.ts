@@ -44,7 +44,7 @@ Usage:
   awui peer ls <name> <path>                A folder on a peer: names, types, sizes
   awui peer cat <name> <path>               A file on a peer, raw to stdout (at most 4 MiB)
   awui peer tasks <name>                    The peer's live tasks (its awui service runs them)
-  awui peer serve-stdio [--peer <name>] [--policy <p>]   The worker end of a link (SSH/docker)
+  awui peer serve-stdio [--peer <name>] [--policy <p>] [--ephemeral] [--attach]   The worker end of a link (SSH/docker)
 
 add and accept are the two halves of one pairing: add pins the other machine's
 key here (TOFU, confirmed by comparing node ids and the six-digit SAS), accept
@@ -374,7 +374,7 @@ async function lsCommand(io: PeerCliIo, read: Settings, name: string, target: st
 }
 
 /** How much `cat` will carry: the wire's own bound for one read, and the file cap (P1.5 §4). */
-const CAT_CHUNK_BYTES = 1024 * 1024;
+const CAT_CHUNK_BYTES = 512 * 1024;
 const CAT_MAX_BYTES = 4 * 1024 * 1024;
 
 /**

@@ -23,6 +23,7 @@ import { HarnessRegistry } from "../harness/registry.js";
 import type { LiveChat } from "../harness/types.js";
 import { ATTACH_FALLBACK_NOTE, connectAndPipe, planServeStdio, socketPath } from "./attach.js";
 import { AuditLog } from "./audit.js";
+import { fsList, fsRead, fsStat, fsWrite } from "./files.js";
 import { ServerHandshake } from "./handshake.js";
 import type { HostLink, TaskHost } from "./host.js";
 import { loadOrCreateIdentity, nodeIdOf, type NodeIdentity } from "./identity.js";
@@ -66,6 +67,8 @@ const CEILING_MODES: Record<string, Record<Ceiling, string>> = {
 /** Modes no remote caller may ever be handed, whatever a table or harness offers. */
 /** How many task.open idempotency keys one link remembers. */
 const MAX_OPEN_KEYS = 128;
+/** The spec's per-link write pace: at most 32 fs.write calls in any sliding minute. */
+const WRITES_PER_MINUTE = 32;
 const FORBIDDEN_MODES = ["bypassPermissions", "full-access"];
 
 /**
@@ -149,6 +152,32 @@ const attachSchema = z
   .strict();
 /** task.list (daemon only): this peer's live tasks. */
 const listSchema = z.object({}).strict();
+// fs.* params (P1.5): strict like every other shape, paths bounded to the
+// same 4096 a cwd gets. Sizes are deliberately not schema-bounds here: an
+// oversized read or write is the wire's limit answer, not a bad shape, and
+// base64 shape is checked the same way shared/protocol.ts checks image data.
+const fsStatSchema = z.object({ path: z.string().min(1).max(4096) }).strict();
+const fsListSchema = z
+  .object({
+    path: z.string().min(1).max(4096),
+    limit: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict();
+const fsReadSchema = z
+  .object({
+    path: z.string().min(1).max(4096),
+    offset: z.number().int().min(0).optional(),
+    length: z.number().int().min(1).optional(),
+  })
+  .strict();
+const fsWriteSchema = z
+  .object({
+    path: z.string().min(1).max(4096),
+    data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, "not base64"),
+    mode: z.enum(["create", "overwrite"]),
+    expectMtimeMs: z.number().optional(),
+  })
+  .strict();
 
 /** One strict params parse: a shape the protocol did not promise is an invalid request, never a best-effort read. */
 function parse<T>(schema: z.ZodType<T>, method: string, params: unknown): T {
@@ -219,6 +248,21 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
   const tasks = new Map<string, LinkTask>();
   /** clientRequestId -> the answer already given, so a retry returns the same task, not a second chat. */
   const opens = new Map<string, { remoteTaskId: string; result: unknown }>();
+  /** fs.write times this link has landed, a sliding one-minute window; the cap itself bounds the array. */
+  const writeTimes: number[] = [];
+  /** Takes one of this link's 32-per-minute write slots, or throws limit; a refused or failed write still spends it. */
+  const takeWriteSlot = (): void => {
+    const now = Date.now();
+    for (;;) {
+      const oldest = writeTimes[0];
+      if (oldest === undefined || now - oldest < 60_000) break;
+      writeTimes.shift();
+    }
+    if (writeTimes.length >= WRITES_PER_MINUTE) {
+      throw new MeshRpcError(MeshErrorCode.limit, `this link already wrote ${WRITES_PER_MINUTE} files in the last minute`, { code: "limit" });
+    }
+    writeTimes.push(now);
+  };
   let peerName: string | null = null;
   let pendingRecorded = false;
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -708,6 +752,39 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
       case "task.list":
         if (host === undefined) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
         return listHosted(host, client, policy, params);
+      case "fs.stat": {
+        const p = parse(fsStatSchema, method, params);
+        note({ target: p.path });
+        requireCap(policy, "fs.read", method);
+        const stat = await fsStat(policy, p, deps.home);
+        note({ outcome: `${stat.size} bytes` });
+        return stat;
+      }
+      case "fs.list": {
+        const p = parse(fsListSchema, method, params);
+        note({ target: p.path });
+        requireCap(policy, "fs.read", method);
+        const listed = await fsList(policy, p, deps.home);
+        note({ outcome: `${listed.entries.length} entries${listed.truncated ? ", truncated" : ""}` });
+        return listed;
+      }
+      case "fs.read": {
+        const p = parse(fsReadSchema, method, params);
+        note({ target: p.path });
+        requireCap(policy, "fs.read", method);
+        const read = await fsRead(policy, p, deps.home);
+        note({ outcome: `${Buffer.byteLength(read.data, "base64")} bytes` });
+        return read;
+      }
+      case "fs.write": {
+        const p = parse(fsWriteSchema, method, params);
+        note({ target: p.path });
+        requireCap(policy, "fs.write", method);
+        takeWriteSlot();
+        const wrote = await fsWrite(policy, p, deps.home);
+        note({ outcome: `${wrote.size} bytes` });
+        return wrote;
+      }
       default:
         throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
     }

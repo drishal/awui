@@ -32,8 +32,8 @@ export const DEFAULT_WAIT_MS = 55_000;
 /** Profiles one call may list, and the note a bot contributes. */
 export const MAX_PROFILES = 64;
 export const MAX_PROFILE_NOTE_CHARS = 120;
-/** The most text one peer_files call reads or writes: the tool speaks utf8, the wire allows 4 MiB of file. */
-export const MAX_PEER_FILE_TEXT_BYTES = 1024 * 1024;
+/** The most text one peer_files call reads or writes: one wire call carries at most 512 KiB of file. */
+export const MAX_PEER_FILE_TEXT_BYTES = 512 * 1024;
 /** The write scope's bounds (scope.ts judges with them): globs one delegation may carry. */
 import { MAX_WRITE_SCOPE_GLOBS, MAX_GLOB_CHARS } from "./scope.js";
 import { residentName } from "./residents.js";
@@ -141,7 +141,7 @@ export const scheduleHeartbeatSchema = z
 /**
  * `peer_files`: one file operation on a paired mesh peer. Text in and out — the peer's
  * files are read as utf8 and written from utf8 — and every bound the wire carries
- * (1 MiB of text, 4 MiB of file) is named here so a refusal comes from the schema, not
+ * (512 KiB per call) is named here so a refusal comes from the schema, not
  * from a half-read file.
  */
 export const peerFilesSchema = z
@@ -334,7 +334,7 @@ const DEFINED_TOOLS: OrchTool[] = [
     name: "peer_files",
     description:
       "Work with one file on a paired mesh peer (see list_profiles): stat, list a folder, or read and write utf8 text. " +
-      "The peer's own policy decides what its paths allow; a read that is not text is refused, and a write is at most 1 MiB. " +
+      "The peer's own policy decides what its paths allow; a read that is not text is refused, and a write is at most 512 KiB. " +
       "Lead chats only: a chat that arrived over a peer cannot use another peer.",
     parameters: object(
       {
@@ -342,8 +342,8 @@ const DEFINED_TOOLS: OrchTool[] = [
         op: { type: "string", enum: ["stat", "list", "read", "write"], description: "stat: one path's shape; list: a folder's names; read: utf8 text; write: utf8 text." },
         path: stringProperty("The path on the peer, inside the roots its policy allows.", 4096),
         offset: { type: "integer", minimum: 0, description: "read: byte offset to start from (for a file that did not fit)." },
-        length: { type: "integer", minimum: 1, maximum: MAX_PEER_FILE_TEXT_BYTES, description: "read: how many bytes to read (default and cap 1 MiB of text)." },
-        data: stringProperty("write: the utf8 text to write (at most 1 MiB).", MAX_PEER_FILE_TEXT_BYTES),
+        length: { type: "integer", minimum: 1, maximum: MAX_PEER_FILE_TEXT_BYTES, description: "read: how many bytes to read (default and cap 512 KiB)." },
+        data: stringProperty("write: the utf8 text to write (at most 512 KiB).", MAX_PEER_FILE_TEXT_BYTES),
         mode: { type: "string", enum: ["create", "overwrite"], description: "write: create fails when the file exists; overwrite replaces a regular file, and takes expectMtime-style conflicts from the peer as errors." },
       },
       ["peer", "op", "path"],
