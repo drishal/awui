@@ -47,9 +47,13 @@ export interface PeerChatOptions {
 }
 
 /** Every optional feature is off: the relay offers nothing the worker's harness does not. */
+/** A cold worker may take a while to start claude or codex; a short timeout would orphan a live remote task. */
+const TASK_OPEN_TIMEOUT_MS = 120_000;
+
 const NO_FEATURES: HarnessCapabilities = {
-  supportsSteer: false,
-  supportsFollowUp: false,
+  // Relayed verbatim as task.prompt {mode}; the worker's harness answers for itself.
+  supportsSteer: true,
+  supportsFollowUp: true,
   supportsThinkingLevel: false,
   supportsCompact: false,
   supportsExtensions: false,
@@ -148,7 +152,7 @@ export class PeerHarnessAdapter implements HarnessAdapter {
       ...(this.opts.thinkingLevel !== undefined ? { thinkingLevel: this.opts.thinkingLevel } : {}),
       ...(this.opts.ceiling !== undefined ? { ceiling: this.opts.ceiling } : {}),
       hops: 0,
-    });
+    }, TASK_OPEN_TIMEOUT_MS);
     const record = typeof opened === "object" && opened !== null ? (opened as { remoteTaskId?: unknown; config?: unknown; nativeId?: unknown }) : null;
     if (record === null || typeof record.remoteTaskId !== "string" || record.remoteTaskId === "") {
       throw new ChatError(502, "harness_init_failed", `The peer "${this.peerName}" opened a task without an id`);

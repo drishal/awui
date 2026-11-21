@@ -60,6 +60,8 @@ const CEILING_MODES: Record<string, Record<Ceiling, string>> = {
 };
 
 /** Modes no remote caller may ever be handed, whatever a table or harness offers. */
+/** How many task.open idempotency keys one link remembers. */
+const MAX_OPEN_KEYS = 128;
 const FORBIDDEN_MODES = ["bypassPermissions", "full-access"];
 
 /**
@@ -331,11 +333,12 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
     if (stat === null || !stat.isDirectory()) {
       throw new MeshRpcError(MeshErrorCode.denied, "the requested cwd is not an existing directory", { code: "denied" });
     }
+    // A retry of an open that already happened answers the same task, even at the cap.
+    const existing = opens.get(params.clientRequestId);
+    if (existing !== undefined && tasks.has(existing.remoteTaskId)) return existing.result;
     if (tasks.size >= policy.maxTasks) {
       throw new MeshRpcError(MeshErrorCode.limit, `this peer already holds ${tasks.size} live tasks and the policy allows ${policy.maxTasks}`, { code: "limit" });
     }
-    const existing = opens.get(params.clientRequestId);
-    if (existing !== undefined) return existing.result;
     const ceiling = clampCeiling(policy, params.ceiling);
     // A real harness session, delegated, and with no toolEnv at all: the remote child gets no
     // orchestration tools, so it cannot delegate, and max_hops 1 holds structurally.
@@ -373,6 +376,8 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
     // nativeId rides along: some harnesses know their session at open and never emit a "session" event.
     const result = { remoteTaskId, config: await live.getConfig(), nativeId: live.nativeId };
     opens.set(params.clientRequestId, { remoteTaskId, result });
+    // Bounded: a link cycling open/close never grows this without limit.
+    while (opens.size > MAX_OPEN_KEYS) opens.delete(opens.keys().next().value as string);
     note({ outcome: remoteTaskId });
     return result;
   };
@@ -421,6 +426,7 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
     requireCap(policy, "task.run", "task.close");
     const task = taskOf(params.remoteTaskId);
     tasks.delete(params.remoteTaskId);
+    for (const [key, open] of opens) if (open.remoteTaskId === params.remoteTaskId) opens.delete(key);
     task.unsubscribe();
     await task.live.dispose().catch((error: unknown) => log(`mesh serve: disposing a task failed: ${error instanceof Error ? error.message : String(error)}`));
     return {};
@@ -468,9 +474,17 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
       throw new MeshRpcError(MeshErrorCode.mesh_off, "The mesh is off on this node", { code: "mesh_off" });
     }
     const handshakeAnswer = handshake.handle(method, params);
-    if (handshakeAnswer !== null) return handshakeAnswer;
+    if (handshakeAnswer !== null) {
+      // A failed or out-of-order handshake gets its answer and then the link closes: no
+      // retrying peer.auth on one link, no half-open links parked in "hello".
+      return handshakeAnswer.catch((error: unknown) => {
+        if (handshake.state !== "done") closeSoon("handshake failed");
+        throw error;
+      });
+    }
     const client = handshake.client;
     if (client === null) {
+      closeSoon("a method before the handshake");
       throw new MeshRpcError(MeshErrorCode.not_paired, "The handshake must complete before any other method", { code: "not_paired" });
     }
     peerName = client.name;

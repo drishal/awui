@@ -192,6 +192,23 @@ restart needed on either side.
   for it is disposed; P1.5 adds attach-to-daemon so a run survives the SSH session.
 - **Direct TLS** with pinned keys (P2).
 
+Known limits of the stdio transport, accepted for P1 and closed by P1.5's daemon:
+
+- **`max_tasks` counts per link.** Each SSH/docker session is its own
+  `serve-stdio` process, so a key holder who opens several sessions gets
+  `max_tasks` per session. With a forced-command key, also set `MaxSessions`
+  and keep the policy's ceiling low; P1.5 counts tasks per peer in the daemon.
+- **Pin writes are last-writer-wins across processes.** The server, the CLI
+  and each `serve-stdio` process write `pins.json` atomically (temp + rename),
+  so the file never corrupts, but two writes at the same instant can drop one.
+  A lost write always fails closed (a peer reads as not paired); re-run the
+  command.
+- **cwd is checked, then used.** The path is realpath-checked against the
+  roots and then handed to the harness; someone who can already write inside a
+  root could race a symlink swap in between. Harnesses with no permission modes
+  (pi) can run commands anyway, so this matters only for read-only peers that
+  share a root with a hostile writer.
+
 ## State files
 
 Under the state folder, never in git, never in config:

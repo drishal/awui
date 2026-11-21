@@ -875,13 +875,15 @@ export class Orchestrator {
    * runs them. Nothing here starts a link — the name is checked against the configured
    * inventory, and the child chat's open is what connects. Returns the peers dep it cleared.
    */
-  private checkPeerTask(caller: Chat, peerName: string, args: { peerCwd?: string; isolation?: "worktree"; writeScope?: string[] }): NonNullable<OrchestratorDeps["peers"]> {
+  private checkPeerTask(caller: Chat, peerName: string, args: { peerCwd?: string; isolation?: "worktree"; writeScope?: string[]; permissionMode?: string }, recheck = false): NonNullable<OrchestratorDeps["peers"]> {
     if (args.peerCwd === undefined || args.peerCwd.trim() === "") throw denial(400, "invalid_request", "A peer task needs peerCwd too: the project's path on that peer");
     const peers = this.deps.peers;
     if (!peers || !peers.enabled()) throw denial(403, "mesh_off", "The mesh is turned off, so no task can run on a peer (mesh.enabled in config.yml)");
     if (peers.chats() === "lead-only" && (caller.lineage?.depth ?? 0) > 0) throw denial(403, "mesh_lead_only", "Only a top-level chat may start tasks on mesh peers (mesh.chats is lead-only)");
-    if (caller.owner?.kind === "peer") throw denial(403, "hop_limit", "A task that arrived over the mesh cannot start another remote task (max_hops is 1)");
+    // A chat that arrived over the mesh, or a leader-side relay to a peer, never starts another remote task.
+    if (caller.owner?.kind === "peer" || caller.adapter instanceof PeerHarnessAdapter) throw denial(403, "hop_limit", "A task that arrived over the mesh cannot start another remote task (max_hops is 1)");
     if (args.isolation !== undefined || (args.writeScope !== undefined && args.writeScope.length > 0)) throw denial(400, "unsupported_with_peer", "Worktree isolation and write scopes do not cross the mesh; the peer's policy is what bounds the worker");
+    if (args.permissionMode !== undefined) throw denial(400, "unsupported_with_peer", "A permission mode does not cross the mesh; the peer's policy ceiling sets it on that machine");
     const live = this.tasks.filter((task) => task.peer != null && task.state !== "result_available").length;
     if (live >= peers.maxRemoteTasks()) throw denial(429, "remote_limit", `This server already runs its ${peers.maxRemoteTasks()} allowed remote task(s) at once (mesh.max_remote_tasks)`);
     if (!peers.manager.peers().some((peer) => peer.name.toLowerCase() === peerName.toLowerCase())) throw denial(422, "unknown_peer", `No mesh peer called "${peerName}" is configured`);
@@ -1069,6 +1071,7 @@ export class Orchestrator {
     const again = this.repeatOf(caller, args.clientRequestId);
     if (again) return this.delegateOutput(again);
     this.checkRoom(caller, depth);
+    if (peerName !== undefined) this.checkPeerTask(caller, peerName, args);
     // The record lands before anything is spawned, so a crash mid-spawn leaves a row the
     // next load marks interrupted instead of work nobody knows about.
     this.tasks.unshift(task);

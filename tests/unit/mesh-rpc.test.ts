@@ -4,7 +4,7 @@
 // PassThrough pairs, the shape SSH stdio has on the other side of a spawn.
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { MAX_NOISE_BYTES, MeshErrorCode, MeshRpcError, PREAMBLE, RpcPeer } from "../../src/server/mesh/rpc.js";
+import { MAX_LINE_BYTES, MAX_NOISE_BYTES, MeshErrorCode, MeshRpcError, PREAMBLE, RpcPeer } from "../../src/server/mesh/rpc.js";
 
 /** Lets already-written bytes reach the other end's listeners before an assertion looks at them. */
 const tick = (ms = 0): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -211,6 +211,26 @@ describe("closing and timeouts", () => {
     client.start();
     return { client, server };
   };
+
+  it("answers an oversized result with a limit error instead of sending a line the far side would drop the link for", async () => {
+    const { client } = makePair();
+    const error = await client.request("echo", { blob: "x".repeat(MAX_LINE_BYTES) }, 5_000).then(
+      () => null,
+      (e) => e as MeshRpcError,
+    );
+    // The request itself is over the bound, so this side refuses to send it and closes.
+    expect(error).not.toBeNull();
+    const pair = makePair();
+    pair.server.onRequest(async () => ({ blob: "y".repeat(MAX_LINE_BYTES) }));
+    const big = await pair.client.request("anything", {}).then(
+      () => null,
+      (e) => e as MeshRpcError,
+    );
+    expect(big?.code).toBe(MeshErrorCode.limit);
+    // The link survives: the next call still answers.
+    pair.server.onRequest(async (_m, params) => params);
+    expect(await pair.client.request("echo", { ok: 1 })).toEqual({ ok: 1 });
+  });
 
   it("rejects pending requests with link_closed when this side closes", async () => {
     const { client } = hangPair();

@@ -212,6 +212,8 @@ describe("mesh orchestration", () => {
     expect(isolated).toMatchObject({ code: "unsupported_with_peer" });
     const scoped = await refuse(agent, token, { brief: "x", peer: "lab", peerCwd: "/srv/proj", writeScope: ["src/**"] });
     expect(scoped).toMatchObject({ code: "unsupported_with_peer" });
+    const moded = await refuse(agent, token, { brief: "x", peer: "lab", peerCwd: "/srv/proj", permissionMode: "acceptEdits" });
+    expect(moded).toMatchObject({ code: "unsupported_with_peer" });
   });
 
   it("refuses a peer the config does not name", async () => {

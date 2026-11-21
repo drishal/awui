@@ -196,6 +196,21 @@ describe("the mesh switch and pairing", () => {
     await closed;
   });
 
+  it("closes the link after a bad auth signature, and after a method sent before the handshake", async () => {
+    const f = await makeFixture();
+    const a = serveLink(f);
+    const who = identity();
+    await a.client.request("peer.hello", { v: 1, name: "leader-box", publicKey: who.publicKey.toString("base64url"), nonce: Buffer.alloc(32, 7).toString("base64url"), hops: 0 });
+    const bad = await refuse(a.client, "peer.auth", { sig: Buffer.alloc(64, 1).toString("base64url") });
+    expect(bad.code).toBe(MeshErrorCode.invalid_request);
+    expect(await a.closed).toContain("handshake failed");
+
+    const b = serveLink(f);
+    const early = await refuse(b.client, "peer.info", {});
+    expect(early.code).toBe(MeshErrorCode.not_paired);
+    expect(await b.closed).toContain("before the handshake");
+  });
+
   it("serves an unpaired client only ping, records it once as pending, and refuses everything else with not_paired", async () => {
     const f = await makeFixture();
     const who = identity();

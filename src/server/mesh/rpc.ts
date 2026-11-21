@@ -14,6 +14,8 @@ export const PREAMBLE = "AWUI-MESH/1 READY\n";
 
 /** One wire line's biggest size, bytes: bounded like every payload the server carries. */
 export const MAX_LINE_BYTES = 1024 * 1024;
+/** Unwritten output one link may hold before it is closed (a peer that stopped reading). */
+export const MAX_QUEUED_BYTES = 16 * 1024 * 1024;
 
 /** How many bytes of shell MOTD / .bashrc noise a client skips while hunting the preamble. */
 export const MAX_NOISE_BYTES = 64 * 1024;
@@ -176,6 +178,7 @@ export class RpcPeer {
   private readonly pending = new Map<RpcId, Pending>();
   /** Lines written but not yet past backpressure, in order. */
   private readonly queue: string[] = [];
+  private queuedBytes = 0;
   private requestHandler: ((method: string, params: unknown) => Promise<unknown>) | null = null;
   private notificationHandler: ((method: string, params: unknown) => void) | null = null;
   private nextId = 0;
@@ -258,6 +261,7 @@ export class RpcPeer {
       // The link is down; finishing a dead stream is best-effort.
     }
     this.queue.length = 0;
+    this.queuedBytes = 0;
     this.resolveClosed(this.closeReason);
   }
 
@@ -276,12 +280,31 @@ export class RpcPeer {
   /** One already-complete wire write (the preamble carries its own newline). */
   private enqueueRaw(text: string): void {
     if (this.closeReason !== null) return;
+    this.queuedBytes += text.length;
+    if (this.queuedBytes > MAX_QUEUED_BYTES) {
+      // The other side stopped reading: drop the link instead of buffering forever.
+      this.close(`backpressure: more than ${MAX_QUEUED_BYTES} bytes waiting to be written`);
+      return;
+    }
     this.queue.push(text);
     this.pump();
   }
 
   private send(message: unknown): void {
-    this.enqueueRaw(`${JSON.stringify(message)}\n`);
+    const line = `${JSON.stringify(message)}\n`;
+    if (Buffer.byteLength(line, "utf8") > MAX_LINE_BYTES) {
+      // The far side would refuse the line and drop the whole link; answer this one call
+      // with an error instead (a request or notification that big is simply not sent).
+      const id = (message as { id?: unknown; result?: unknown; error?: unknown }).id;
+      const isResponse = message !== null && typeof message === "object" && ("result" in message || "error" in message);
+      if (isResponse && (typeof id === "number" || typeof id === "string")) {
+        this.enqueueRaw(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code: MeshErrorCode.limit, message: `the answer is larger than ${MAX_LINE_BYTES} bytes`, data: { code: "limit" } } })}\n`);
+      } else {
+        this.close(`protocol: an outgoing line longer than ${MAX_LINE_BYTES} bytes`);
+      }
+      return;
+    }
+    this.enqueueRaw(line);
   }
 
   /** Writes queued lines in order, pausing for backpressure and resuming on drain. */
@@ -296,6 +319,7 @@ export class RpcPeer {
         return;
       }
       this.queue.shift();
+      this.queuedBytes -= text.length;
       if (!ok) {
         this.draining = true;
         this.output.once("drain", () => {
