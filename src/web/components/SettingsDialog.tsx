@@ -23,6 +23,7 @@ import { Switch } from "./Switch.js";
 import { TEXT_SCALES } from "./Sidebar.js";
 import { IconPlus, IconRefresh, IconX } from "../icons.js";
 import { InvitationsPanel } from "./InvitationsPanel.js";
+import { PeersPanel } from "./PeersPanel.js";
 import type { NotifyState } from "../notify.js";
 import { chime, chimeOn, setChime } from "../attention.js";
 import { matchSettings, type SettingsSectionText } from "../settings-search.js";
@@ -63,6 +64,7 @@ const SECTIONS = [
   { id: "access", label: "Folders and access" },
   { id: "invites", label: "Invitations" },
   { id: "awui", label: "Awui harness" },
+  { id: "peers", label: "Peers" },
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -565,7 +567,7 @@ export function SettingsDialog({
 
   // A section exists once it has something to show: the server's form once it loaded, the awui
   // harness's own when the harness is registered. Invitations need only their own list.
-  const sections = SECTIONS.filter((s) => (s.id === "device" ? true : s.id === "invites" ? true : s.id === "awui" ? awui !== null : draft !== null));
+  const sections = SECTIONS.filter((s) => (s.id === "device" ? true : s.id === "invites" || s.id === "peers" ? true : s.id === "awui" ? awui !== null : draft !== null));
   const current = sections.find((s) => s.id === active)?.id ?? "device";
   const currentLabel = SECTIONS.find((s) => s.id === current)?.label ?? "";
   const matches = useMemo(() => matchSettings(index, query), [index, query]);
@@ -718,8 +720,8 @@ export function SettingsDialog({
         </section>
 
         {!draft ? (
-          current === "device" || current === "awui" || current === "invites" ? (
-            current === "invites" ? <InvitationsPanel current={current} /> : null
+          current === "device" || current === "awui" || current === "invites" || current === "peers" ? (
+            current === "invites" ? <InvitationsPanel current={current} /> : current === "peers" ? <PeersPanel current={current} /> : null
           ) : (
             <section className="form-section" id={`settings-panel-${current}`} role="tabpanel" aria-labelledby="settings-loading">
               <h3 id="settings-loading">{currentLabel}</h3>
@@ -1079,6 +1081,7 @@ export function SettingsDialog({
             </section>
 
             <InvitationsPanel current={current} />
+            <PeersPanel current={current} />
           </form>
         )}
 
@@ -1154,7 +1157,7 @@ export function SettingsDialog({
         ) : null}
         <div className="settings-bar-row">
           <span className="settings-version">awui v{version}</span>
-          {current === "invites" ? null : current === "awui" && awui ? (
+          {current === "invites" || current === "peers" ? null : current === "awui" && awui ? (
             <>
               <span className="settings-foot-state" role="status">
                 {awui.busy ? "Saving…" : awui.saved ? "Saved." : ""}

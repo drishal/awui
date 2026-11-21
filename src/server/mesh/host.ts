@@ -15,7 +15,7 @@ import { ChatError, type Chat, type ChatOwner } from "../chats/chat.js";
 import type { ChatManager } from "../chats/manager.js";
 import type { HarnessEvent } from "../harness/types.js";
 import type { HarnessRegistry } from "../harness/registry.js";
-import { type Ceiling } from "./policy.js";
+import { type Ceiling, type ApprovalsAt } from "./policy.js";
 import { MeshErrorCode, MeshRpcError } from "./rpc.js";
 import { permissionModeFor } from "./serve.js";
 
@@ -67,6 +67,8 @@ export interface HostOpenRequest {
   ceiling: Ceiling;
   /** The policy's live-task bound for this peer. */
   maxTasks: number;
+  /** Where this policy's approvals are answered — what the target's own news gate reads. */
+  approvalsAt: ApprovalsAt;
   model?: string;
   thinkingLevel?: string;
 }
@@ -85,6 +87,26 @@ export interface HostTaskEntry {
   state: ChatStatus;
   lastSeq: number;
   createdAt: number;
+}
+
+
+/**
+ * One host task as this node's owner sees it (P2 §4): the REST surface under
+ * /api/mesh reads every peer's tasks, and the news gate looks one up by chat.
+ * The chat rides along server-side only; it never crosses the wire.
+ */
+export interface HostOwnerTask {
+  remoteTaskId: string;
+  /** The task's own chat id, so the owner's answer goes through Chat.answer like any approval. */
+  chatId: string;
+  nodeId: string;
+  peerName: string;
+  approvalsAt: ApprovalsAt;
+  harness: string;
+  cwd: string;
+  state: ChatStatus;
+  createdAt: number;
+  chat: Chat;
 }
 
 /** `task.attach`'s answer: what replay cost, whether the buffer had a hole, and where the task stands. */
@@ -115,6 +137,10 @@ interface RingEntry {
 interface HostTask {
   remoteTaskId: string;
   nodeId: string;
+  /** The peer's configured name, as its leader spells it: what the owner's surfaces label the task with. */
+  peerName: string;
+  /** Where this task's approvals are answered; "origin" ones are the leader's, not this node's news. */
+  approvalsAt: ApprovalsAt;
   harness: string;
   cwd: string;
   chat: Chat;
@@ -241,6 +267,8 @@ export class TaskHost {
     const task: HostTask = {
       remoteTaskId,
       nodeId,
+      peerName,
+      approvalsAt: req.approvalsAt,
       harness: req.harness,
       cwd: req.cwd,
       chat,
@@ -368,6 +396,38 @@ export class TaskHost {
     return entries;
   }
 
+  /** One host task as this node's owner-facing surfaces read it (the REST routes, the news gate). */
+  ownerView(task: HostTask): HostOwnerTask {
+    return {
+      remoteTaskId: task.remoteTaskId,
+      chatId: task.chat.chatId,
+      nodeId: task.nodeId,
+      peerName: task.peerName,
+      approvalsAt: task.approvalsAt,
+      harness: task.harness,
+      cwd: task.cwd,
+      state: task.chat.status,
+      createdAt: task.createdAt,
+      chat: task.chat,
+    };
+  }
+
+  /** Every peer's live tasks, in the order they were opened: what the owner's Peers surface lists. */
+  listAll(): HostOwnerTask[] {
+    return [...this.tasks.values()].map((task) => this.ownerView(task));
+  }
+
+  /** The task behind a chat id, as this node's own news gate looks a peer-owned chat up; undefined when the chat is no host task's. */
+  peekByChat(chatId: string): HostOwnerTask | undefined {
+    for (const task of this.tasks.values()) if (task.chat.chatId === chatId) return this.ownerView(task);
+    return undefined;
+  }
+
+  /** The task a remote id names, whoever opened it: the owner's answer and abort routes reach any peer's task. */
+  peek(remoteTaskId: string): HostOwnerTask | undefined {
+    const task = this.tasks.get(remoteTaskId);
+    return task === undefined ? undefined : this.ownerView(task);
+  }
   /**
    * The detached-TTL sweep: a task with no attached link that has been settled
    * longer than mesh.detached_ttl_hours is disposed. A task still running, or

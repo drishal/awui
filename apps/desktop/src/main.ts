@@ -460,7 +460,7 @@ async function main(): Promise<void> {
   // them to the app here (src/web/notify.ts), so one note is never shown twice.
   const shown = new Set<Notification>();
   const notify = (note: DesktopNote): void => {
-    const n = new Notification({ title: note.title || "awui", body: note.body, icon: path.join(appRoot(), "assets", "icon.png"), urgency: note.kind === "ask" ? "critical" : "normal" });
+    const n = new Notification({ title: note.title || "awui", body: note.body, icon: path.join(appRoot(), "assets", "icon.png"), urgency: note.kind === "ask" || note.kind === "mesh" ? "critical" : "normal" });
     // Held until it closes: a collected Notification loses its click handler.
     shown.add(n);
     n.on("click", () => {

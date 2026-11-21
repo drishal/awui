@@ -51,7 +51,7 @@ async function showNotes() {
       body: note.body,
       tag: note.id,
       data: { chatId: note.chatId, sessionId: note.sessionId, roomId: note.roomId ?? null, approval: note.approval ?? null },
-      requireInteraction: note.kind === "ask",
+      requireInteraction: note.kind === "ask" || note.kind === "mesh",
       ...(note.approval
         ? {
             actions: [

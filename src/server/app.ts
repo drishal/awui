@@ -209,6 +209,7 @@ import { orchestrationSkills } from "./orchestration/skills.js";
 import { answerMcp, isToolCall } from "./orchestration/mcp.js";
 import { denial, type OrchDenialCode } from "./orchestration/types.js";
 
+import { meshRoutes, type MeshRoutesDeps } from "./mesh/routes.js";
 
 /** How many of each harness's newest sessions the sidebar sees across projects. */
 export const RECENT_SESSIONS_PER_HARNESS = 200;
@@ -289,6 +290,12 @@ export interface AppDeps {
    * peer task refused with mesh_off; production wires it from config.yml's `mesh:` block.
    */
   orchestrationPeers?: OrchestratorDeps["peers"];
+  /**
+   * The mesh's owner-facing REST surface (mesh/routes.ts): the Settings dialog's
+   * Peers section, ask approvals, invites, and answering a peer-owned task's
+   * requests. Absent leaves /api/mesh answering 404, exactly as before P2.
+   */
+  mesh?: MeshRoutesDeps;
   /**
    * Hibernation for idle finished chats, as config.yml's `hibernate_after_minutes` states it
    * (epoch ms; none or 0: off). The manager parks a chat that has stayed hidden — unviewed and
@@ -419,6 +426,27 @@ export async function createApp(deps: AppDeps) {
   manager.onNews = (chat, kind, text, request) => {
     // A board-owned chat's runs are the room's business: the room sends its own notes. A side
     // thread's too: it is a question asked beside its parent, not a run that needs a phone.
+    // A peer-owned chat (a mesh task running here for another machine) never
+    // shows in a list, so its asks had no surface on this node — the review
+    // finding P2's routes fix. The ask surfaces as one mesh note with fixed
+    // wording: a request's title can quote a prompt or a file, and a lock
+    // screen is not the place for it. The note's buttons answer through the
+    // chat's own request route, which a peer-owned chat answers like any chat;
+    // "origin" approvals are the leader's to answer, so those stay quiet.
+    if (chat.owner?.kind === "peer" && kind === "ask" && request) {
+      const task = deps.mesh?.host.peekByChat(chat.chatId);
+      if (task === undefined || task.approvalsAt === "origin") return;
+      const answers = approvalAnswers(request);
+      notifier.notify({
+        kind: "mesh",
+        chatId: chat.chatId,
+        sessionId: chat.sessionId,
+        title: `Mesh task from ${chat.owner.peerName}`,
+        body: request.kind === "confirm" ? "asks for an approval" : "asks for an answer",
+        ...(answers ? { approval: { requestId: request.id, ...answers } } : {}),
+      });
+      return;
+    }
     if (chat.owner || chat.side) return;
     // A delegated child's finished or failed run is the parent agent's news, not the phone's: the
     // orchestrator wakes the parent with it. An ask (a question or an approval) still reaches the
@@ -1116,6 +1144,15 @@ export async function createApp(deps: AppDeps) {
     harnessMarks.remove(id);
     res.json({ icon: null });
   });
+
+  // The mesh's owner-facing surface (P2 §4): the Settings dialog's Peers section
+  // and the target's answer/abort routes for peer-owned tasks. Owner-only like
+  // every settings route — the same auth, CSRF and origin guards, plus the
+  // settings.manage grant — and unreachable from the mesh's own ports, which
+  // speak only awui-mesh/1, never /api/*. Absent (most tests) the routes 404.
+  if (deps.mesh) {
+    app.use("/api/mesh", requireGrant("settings.manage"), meshRoutes(deps.mesh));
+  }
   // The stored bytes: an authenticated read (chat.read, the same grant the session lists
   // take), served as image/png with nosniff. The id is slug-checked, so a path in the URL
   // cannot climb out of the store's folder; a 1-hour private cache bounds it.
