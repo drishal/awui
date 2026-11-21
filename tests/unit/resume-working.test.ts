@@ -49,6 +49,44 @@ describe("a session that was running at shutdown", () => {
     await until(() => app.manager.get(again.chatId).status === "idle");
     expect(texts(app.manager.get(again.chatId).snapshot()).filter((text) => text === RESUME_TEXT)).toHaveLength(1);
   });
+  it("preserves a manual continuation that overlaps the automatic resume", async () => {
+    const resumeIntents = ResumeIntents.inMemory();
+    t = await makeTestApp({ resumeIntents, fakeResumeDelayMs: 200, chunkDelayMs: 50 });
+    const agent = await signedIn(t);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "persist me" });
+    await until(() => t?.manager.get(chat.chatId).status === "idle");
+    const sessionId = t.manager.get(chat.chatId).sessionId as string;
+    await agent.post(`/api/chats/${chat.chatId}/dispose`);
+    const opening = t.fake.openChat.bind(t.fake);
+    let resumeSent = false;
+    t.fake.openChat = async (req) => {
+      const live = await opening(req);
+      const prompt = live.prompt.bind(live);
+      live.prompt = async (text, images) => {
+        if (!resumeSent) {
+          resumeSent = true;
+          return prompt(text, images);
+        }
+        throw new Error("Agent is already processing");
+      };
+      return live;
+    };
+    await resumeIntents.markMany([sessionId]);
+    const reopened = (await agent.post("/api/chats/resume").send({ harnessId: "fake", workspaceId: ws.id, sessionId })).body as ChatSnapshot;
+    // The response returns with the automatic run already going (its busy published during the
+    // send), so an overlapping normal send is refused with the explicit steer/follow-up choice.
+    const overlapped = await agent.post(`/api/chats/${reopened.chatId}/messages`).send({ text: "continue manually" });
+    expect(overlapped.status).toBe(409);
+    expect(overlapped.body).toMatchObject({ code: "busy" });
+    // The queued continuation still lands, in order, once the automatic run settles.
+    const queued = await agent.post(`/api/chats/${reopened.chatId}/messages`).send({ text: "continue manually", mode: "followUp" });
+    expect(queued.status).toBe(202);
+    const app = t;
+    await until(() => app.manager.get(reopened.chatId).status === "idle");
+    expect(texts(app.manager.get(reopened.chatId).snapshot())).toEqual(["persist me", RESUME_TEXT, "continue manually"]);
+  });
 
   it("sends nothing for a session nobody reopened", async () => {
     const resumeIntents = ResumeIntents.inMemory();

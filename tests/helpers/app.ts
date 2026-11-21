@@ -62,6 +62,8 @@ export async function makeTestApp(options: {
   lanHosts?: string[];
   themeFile?: string | null;
   chunkDelayMs?: number;
+  /** How long the fake harness takes to resume a stored session (the restart-resume tests). */
+  fakeResumeDelayMs?: number;
   heartbeatMs?: number;
   /** Watch the room-level notes the manager sends (in place of ordinary per-chat news). */
   onBoardNote?: (note: { kind: PushNote["kind"]; roomId: string; title: string; body: string; request?: InteractionRequest }) => void;
@@ -95,7 +97,7 @@ export async function makeTestApp(options: {
   mkdirSync(project);
   const registry = new HarnessRegistry();
   for (const adapter of options.extraHarnesses ?? []) registry.register(adapter);
-  const fake = new FakeAdapter({ chunkDelayMs: options.chunkDelayMs ?? 2, ...(options.fakeStopDelayMs ? { stopDelayMs: options.fakeStopDelayMs } : {}) });
+  const fake = new FakeAdapter({ chunkDelayMs: options.chunkDelayMs ?? 2, ...(options.fakeResumeDelayMs ? { resumeDelayMs: options.fakeResumeDelayMs } : {}), ...(options.fakeStopDelayMs ? { stopDelayMs: options.fakeStopDelayMs } : {}) });
   registry.register(fake);
   registry.register(
     new FakeAdapter({ id: "fake-b", displayName: "Fake B", capabilities: { supportsSteer: false, supportsRewind: false, supportsPermissionMode: false, supportsResumeCommand: false, ...(options.fakeBBriefOnly ? { supportsHandoff: false } : {}) } }),

@@ -31,6 +31,8 @@ export class DeferredLiveChat implements LiveChat {
   private hub = new EventHub();
   private real: LiveChat | null = null;
   private disposed = false;
+  /** True once getConfig completes and the startup's synthetic settle can leave Starting. */
+  private readyForPrompt = false;
   /** A run (prompt, steer, follow-up) was sent from here: its own events settle the chat, and its busy is no surprise. */
   private asked = false;
   /**
@@ -70,6 +72,9 @@ export class DeferredLiveChat implements LiveChat {
         });
         const config = await live.getConfig().catch(() => null);
         if (config) this.hub.emit({ type: "config", config });
+        this.readyForPrompt = true;
+        // Preserve Starting until this synthetic settle, except when the harness's own busy
+        // has taken over: its real settle, not this handshake, must finish that run.
         if (!this.asked && !this.running) this.hub.emit({ type: "settled" });
         return live;
       },
@@ -135,7 +140,21 @@ export class DeferredLiveChat implements LiveChat {
   }
 
   async prompt(text: string, images?: ImageAttachment[]): Promise<void> {
-    return (await this.harness(true)).prompt(text, images);
+    // Ownership ends any unprompted warning, whether the actual call happens now or after ready.
+    this.asked = true;
+    const starting = !this.readyForPrompt;
+    const live = await this.ready;
+    if (!starting) return live.prompt(text, images);
+    const runningBefore = this.running;
+    try {
+      return await live.prompt(text, images);
+    } catch (error) {
+      // A Resume working run can win only while an early prompt waits for this handshake. Queue
+      // that message, but never reinterpret a run already busy before this prompt reached us.
+      if (!this.running || runningBefore || !live.followUp) throw error;
+      this.hub.emit({ type: "busy" });
+      return live.followUp(text, images);
+    }
   }
 
   async steer(text: string, images?: ImageAttachment[]): Promise<void> {

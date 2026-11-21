@@ -160,6 +160,33 @@ describe("resume from the session file", () => {
     await chat.dispose("closed while starting");
     await until(() => started !== null && disposed);
   });
+  it("queues a startup prompt only when the handshake hands over to a competing run", async () => {
+    let busy: () => void = () => {};
+    let competing = false;
+    const followed: string[] = [];
+    const real = {
+      nativeId: "n1",
+      subscribe: (listener: HarnessEventListener) => {
+        busy = () => listener({ type: "busy" });
+        return () => {
+          busy = () => undefined;
+        };
+      },
+      getConfig: async () => ({ model: "fake/echo", thinkingLevel: null, models: [], thinkingLevels: [] }),
+      prompt: async () => {
+        if (competing) busy();
+        competing = true;
+        throw new Error("Agent is already processing");
+      },
+      followUp: async (text: string) => void followed.push(text),
+    } as unknown as LiveChat;
+    const chat = new DeferredLiveChat("n1", { items: [], title: null }, async () => real, String);
+    await expect(chat.prompt("reject this one")).rejects.toThrow("Agent is already processing");
+    expect(followed).toEqual([]);
+    const race = new DeferredLiveChat("n1", { items: [], title: null }, async () => real, String);
+    await race.prompt("continue manually");
+    expect(followed).toEqual(["continue manually"]);
+  });
 });
 
 describe("a prompt sent after the harness is up", () => {
