@@ -41,6 +41,9 @@ Usage:
   awui peer test <name>                     Handshake and peer.info, without opening a task
   awui peer remove <name>                   Forget a peer: drop its outbound, inbound and pending pins
   awui peer log [--peer <name>] [--tail N]  The audit log of decisions this node made
+  awui peer ls <name> <path>                A folder on a peer: names, types, sizes
+  awui peer cat <name> <path>               A file on a peer, raw to stdout (at most 4 MiB)
+  awui peer tasks <name>                    The peer's live tasks (its awui service runs them)
   awui peer serve-stdio [--peer <name>] [--policy <p>]   The worker end of a link (SSH/docker)
 
 add and accept are the two halves of one pairing: add pins the other machine's
@@ -55,6 +58,8 @@ export interface PeerCliIo {
   env: NodeJS.ProcessEnv;
   /** One line to stdout. */
   out: (line: string) => void;
+  /** Raw bytes to stdout (`cat` writes the file exactly; absent, out is used as text). */
+  write?: (chunk: string | Buffer) => void;
   /** One line to stderr. */
   err: (line: string) => void;
   /** One question, answered with the typed line; absent when there is no terminal to ask on. */
@@ -216,6 +221,28 @@ export async function runPeerCli(args: string[], io: PeerCliIo): Promise<number>
       io.out(`Forgot ${name}: its outbound, inbound and pending pins are dropped here. It takes effect on the peer's next call.`);
       return EXIT_OK;
     }
+    case "ls":
+    case "cat": {
+      // Peer name and path, exactly two words: the path is the peer's own to interpret.
+      const parsed = parseLine(rest, []);
+      if ("error" in parsed) return failUsage(parsed.error);
+      if (parsed.words.length < 2) return failUsage(`${command} needs a peer name and a path on that peer`);
+      if (parsed.words.length > 2) return failUsage(`unexpected word ${parsed.words[2]}`);
+      const read = settings(io.env);
+      if ("error" in read) return fail(read.error, EXIT_CONFIG);
+      if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
+      return command === "ls" ? lsCommand(io, read, parsed.words[0]!, parsed.words[1]!) : catCommand(io, read, parsed.words[0]!, parsed.words[1]!);
+    }
+    case "tasks": {
+      const parsed = parseLine(rest, []);
+      if ("error" in parsed) return failUsage(parsed.error);
+      const name = peerName(parsed.words, command);
+      if (typeof name !== "string") return failUsage(name.error);
+      const read = settings(io.env);
+      if ("error" in read) return fail(read.error, EXIT_CONFIG);
+      if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
+      return tasksCommand(io, read, name);
+    }
     case "serve-stdio":
       // The worker end: protocol on stdout, logs on stderr, its own mesh-off refusal (78).
       return runServeStdio(rest, io.env);
@@ -320,6 +347,78 @@ async function logCommand(io: PeerCliIo, read: Settings, parsed: { words: string
 function failParse(io: PeerCliIo, message: string): number {
   io.err(`awui: ${message}\n\n${PEER_USAGE}`);
   return EXIT_USAGE;
+}
+
+/** One failed call to a peer: its own words for why, at the CLI's failure code. */
+function peerFailure(io: PeerCliIo, command: string, name: string, error: unknown): number {
+  const message = error instanceof Error ? error.message : String(error);
+  io.err(`awui peer ${command}: ${name}: ${message}`);
+  return EXIT_FAILED;
+}
+
+/** `awui peer ls <name> <path>`: one folder on the peer, as its worker lists it. */
+async function lsCommand(io: PeerCliIo, read: Settings, name: string, target: string): Promise<number> {
+  const manager = managerFor(read, PinStore(path.join(read.stateDir, "mesh", "pins.json")), io);
+  let listing;
+  try {
+    listing = await manager.list(name, target);
+  } catch (error) {
+    return peerFailure(io, "ls", name, error);
+  }
+  io.out(`${name}:${target}${listing.truncated ? " (truncated)" : ""}`);
+  if (listing.entries.length === 0) io.out("  (empty)");
+  for (const entry of listing.entries) {
+    io.out(`  ${entry.name}  ${entry.type}${entry.type === "file" ? `  ${entry.size} B` : ""}`);
+  }
+  return EXIT_OK;
+}
+
+/** How much `cat` will carry: the wire's own bound for one read, and the file cap (P1.5 §4). */
+const CAT_CHUNK_BYTES = 1024 * 1024;
+const CAT_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * `awui peer cat <name> <path>`: the file's bytes, exactly, to stdout — read in 1 MiB
+ * chunks up to the 4 MiB cap, so a peer file larger than that is a refusal, not a truncation.
+ */
+async function catCommand(io: PeerCliIo, read: Settings, name: string, target: string): Promise<number> {
+  const manager = managerFor(read, PinStore(path.join(read.stateDir, "mesh", "pins.json")), io);
+  const parts: Buffer[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const chunk = await manager.read(name, target, { offset: total, length: CAT_CHUNK_BYTES });
+      parts.push(chunk.data);
+      total += chunk.data.length;
+      if (chunk.eof) break;
+      if (total >= CAT_MAX_BYTES) throw new Error(`the file is larger than ${CAT_MAX_BYTES} bytes`);
+    }
+  } catch (error) {
+    return peerFailure(io, "cat", name, error);
+  }
+  const file = Buffer.concat(parts);
+  const sink = io.write ?? ((chunk: string | Buffer) => io.out(typeof chunk === "string" ? chunk : chunk.toString("utf8")));
+  sink(file);
+  return EXIT_OK;
+}
+
+/** `awui peer tasks <name>`: what that peer's awui service is running for this machine. */
+async function tasksCommand(io: PeerCliIo, read: Settings, name: string): Promise<number> {
+  const manager = managerFor(read, PinStore(path.join(read.stateDir, "mesh", "pins.json")), io);
+  let rows;
+  try {
+    rows = await manager.taskList(name);
+  } catch (error) {
+    return peerFailure(io, "tasks", name, error);
+  }
+  if (rows.length === 0) {
+    io.out(`No tasks are live on ${name}.`);
+    return EXIT_OK;
+  }
+  for (const row of rows) {
+    io.out(`${row.remoteTaskId}  ${row.harness}  ${row.state}  ${row.cwd}  (event ${row.lastSeq})`);
+  }
+  return EXIT_OK;
 }
 
 /**

@@ -14,6 +14,7 @@ import { clientHandshake } from "./handshake.js";
 import type { NodeIdentity } from "./identity.js";
 import type { PinStore } from "./pins.js";
 import { MeshErrorCode, MeshRpcError, RpcPeer } from "./rpc.js";
+import { DEFAULT_RECONNECT_PLAN, type PeerReconnectPlan } from "./peer-adapter.js";
 import { linkOf, spawnLink } from "./transport.js";
 import type { PeerLink } from "./transport.js";
 
@@ -41,7 +42,51 @@ export interface PeerManagerDeps {
   localName: () => string;
   /** How a link is started; the real transports by default, an in-process pair in tests. */
   spawn?: (peerName: string, link: PeerLink) => PeerSpawn;
+  /** How a dropped link under an unsettled task is retried; tests inject a faster plan. */
+  reconnect?: { schedule?: number[]; giveUpMs?: number; now?: () => number; sleep?: (ms: number) => Promise<void> };
   log?: (message: string) => void;
+}
+
+/** One file's shape on a peer, as `fs.stat` reports it: lstat, so a final symlink is never followed. */
+export interface PeerFileStat {
+  type: "file" | "dir" | "symlink" | "other";
+  size: number;
+  mtimeMs: number;
+  mode: number;
+}
+
+/** One row of a peer folder listing. */
+export interface PeerFileEntry {
+  name: string;
+  type: PeerFileStat["type"];
+  size: number;
+}
+
+export interface PeerFileListing {
+  entries: PeerFileEntry[];
+  truncated: boolean;
+}
+
+/** One chunk of a peer file, decoded from the wire's base64. */
+export interface PeerFileContents {
+  data: Buffer;
+  size: number;
+  eof: boolean;
+}
+
+export interface PeerFileWriteResult {
+  size: number;
+  mtimeMs: number;
+}
+
+/** One live task on a peer, as `task.list` reports it (its own words for state). */
+export interface PeerTaskRow {
+  remoteTaskId: string;
+  harness: string;
+  cwd: string;
+  state: string;
+  lastSeq: number;
+  createdAt: number;
 }
 
 /** One task event from a worker, with the per-task sequence number it arrived under. */
@@ -155,6 +200,17 @@ export class PeerManager {
   /** Peer names known to hold an outbound pin, as of the last connect or pin: a listing's flag, never a promise. */
   private readonly pinnedNames = new Set<string>();
 
+  /** How a dropped link under an unsettled task is retried (peer-adapter.ts consumes it). */
+  get reconnectPlan(): PeerReconnectPlan {
+    const over = this.deps.reconnect ?? {};
+    return {
+      schedule: over.schedule ?? DEFAULT_RECONNECT_PLAN.schedule,
+      giveUpMs: over.giveUpMs ?? DEFAULT_RECONNECT_PLAN.giveUpMs,
+      now: over.now ?? DEFAULT_RECONNECT_PLAN.now,
+      sleep: over.sleep ?? DEFAULT_RECONNECT_PLAN.sleep,
+    };
+  }
+
   constructor(private readonly deps: PeerManagerDeps) {}
 
   /** The configured outbound inventory, with no network and no link started: what a listing names and a delegation accepts. */
@@ -178,6 +234,72 @@ export class PeerManager {
     const opened = this.open(peerName, opts).finally(() => this.connecting.delete(peerName));
     this.connecting.set(peerName, opened);
     return opened;
+  }
+
+  /** How long one files/task.list call may wait: the worker answers from its own disk, so this is a hang guard, not a budget. */
+  private static readonly FILE_RPC_MS = 30_000;
+  /** The wire's own bounds (spec P1.5 §3), held here too so a caller's bug cannot become a peer's problem. */
+  private static readonly MAX_READ_BYTES = 4 * 1024 * 1024;
+  private static readonly MAX_LIST_ENTRIES = 1_000;
+
+  /**
+   * `fs.stat` on the peer: what the file is, without following its final symlink. The
+   * worker's policy (`fs.read`) decides; this side only shapes the request.
+   */
+  async stat(peerName: string, target: string): Promise<PeerFileStat> {
+    const connection = await this.connect(peerName);
+    return (await connection.rpc.request("fs.stat", { path: target }, PeerManager.FILE_RPC_MS)) as PeerFileStat;
+  }
+
+  /** `fs.list` on the peer: one folder's names, dotfiles included, never recursive. */
+  async list(peerName: string, target: string, limit?: number): Promise<PeerFileListing> {
+    const connection = await this.connect(peerName);
+    const bounded = limit === undefined ? undefined : Math.max(1, Math.min(limit, PeerManager.MAX_LIST_ENTRIES));
+    return (await connection.rpc.request("fs.list", { path: target, ...(bounded !== undefined ? { limit: bounded } : {}) }, PeerManager.FILE_RPC_MS)) as PeerFileListing;
+  }
+
+  /** `fs.read` on the peer: one bounded chunk, decoded from base64. */
+  async read(peerName: string, target: string, opts: { offset?: number; length?: number } = {}): Promise<PeerFileContents> {
+    const connection = await this.connect(peerName);
+    const length = opts.length === undefined ? 1024 * 1024 : Math.max(1, Math.min(opts.length, PeerManager.MAX_READ_BYTES));
+    const answer = (await connection.rpc.request(
+      "fs.read",
+      { path: target, offset: Math.max(0, opts.offset ?? 0), length },
+      PeerManager.FILE_RPC_MS,
+    )) as { data: unknown; size?: unknown; eof?: unknown };
+    if (typeof answer?.data !== "string") throw new Error(`the peer "${peerName}" answered fs.read without data`);
+    return { data: Buffer.from(answer.data, "base64"), size: typeof answer.size === "number" ? answer.size : 0, eof: answer.eof === true };
+  }
+
+  /** `fs.write` on the peer: atomic on the far side (temp file, fsync, rename); mode and the mtime guard travel along. */
+  async write(peerName: string, target: string, data: Buffer, opts: { mode: "create" | "overwrite"; expectMtimeMs?: number }): Promise<PeerFileWriteResult> {
+    const connection = await this.connect(peerName);
+    return (await connection.rpc.request(
+      "fs.write",
+      {
+        path: target,
+        data: data.toString("base64"),
+        mode: opts.mode,
+        ...(opts.expectMtimeMs !== undefined ? { expectMtimeMs: opts.expectMtimeMs } : {}),
+      },
+      PeerManager.FILE_RPC_MS,
+    )) as PeerFileWriteResult;
+  }
+
+  /** `task.list` on the peer: its own live tasks for this caller, for `awui peer tasks`. */
+  async taskList(peerName: string): Promise<PeerTaskRow[]> {
+    const connection = await this.connect(peerName);
+    const rows = await connection.rpc.request("task.list", {}, PeerManager.FILE_RPC_MS);
+    if (!Array.isArray(rows)) return [];
+    // The worker's own words for state and cwd; a row without the fields a listing shows is dropped, not guessed at.
+    return rows.filter((row): row is PeerTaskRow =>
+      typeof row === "object" && row !== null &&
+      typeof (row as PeerTaskRow).remoteTaskId === "string" && (row as PeerTaskRow).remoteTaskId !== "" &&
+      typeof (row as PeerTaskRow).harness === "string" &&
+      typeof (row as PeerTaskRow).cwd === "string" &&
+      typeof (row as PeerTaskRow).state === "string" &&
+      typeof (row as PeerTaskRow).lastSeq === "number" &&
+      typeof (row as PeerTaskRow).createdAt === "number");
   }
 
   /** The config entry for a peer name, case-insensitively (the schema keeps names unique that way). */

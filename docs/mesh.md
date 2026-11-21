@@ -3,7 +3,11 @@
 Running one awui's agent on another machine's, over SSH or Docker, without opening
 any port. **Phase 1** is live: a chat can hand a delegated task to a paired peer,
 the peer's own awui opens the harness session on its own machine, and the run
-streams back as an ordinary delegated task in your chat.
+streams back as an ordinary delegated task in your chat. **Phase 1.5** is live on
+top of it: when the peer runs awui as a service, its tasks survive the SSH
+session that started them (a dropped link reconnects and replays what it missed),
+its approvals can be answered in its own UI, and the leader can read and write
+files there.
 
 ## What it is
 
@@ -171,7 +175,10 @@ awui peer list                         the configured peers and their pin state
 awui peer test <name>                  handshake + peer.info, without opening a task
 awui peer remove <name>                forget a peer: drop its outbound, inbound and pending pins
 awui peer log [--peer <name>] [--tail N]   the audit log of decisions this node made
-awui peer serve-stdio [--peer <name>] [--policy <p>]   the worker end of a link
+awui peer ls <name> <path>             a folder on a peer: names, types, sizes
+awui peer cat <name> <path>            a peer file's bytes, raw to stdout (at most 4 MiB)
+awui peer tasks <name>                 the peer's live tasks (its awui service runs them)
+awui peer serve-stdio [--peer <name>] [--policy <p>] [--ephemeral] [--attach]   the worker end of a link
 ```
 
 Exit codes: 0 ok, 1 failed, 2 usage, 78 mesh off or config.yml broken. `add` and
@@ -179,25 +186,109 @@ Exit codes: 0 ok, 1 failed, 2 usage, 78 mesh off or config.yml broken. `add` and
 given. `remove` is revocation: it takes effect on the peer's next call, no
 restart needed on either side.
 
-## What P1 does not do yet
+## Phase 1.5: the daemon, and files
 
-- **Approvals on the target** (`approvals_at: target` policies): answering an
-  approval needs the target's own awui service, which arrives in P1.5; such a
-  policy refuses task opens for now.
+### The attach socket
+
+When the awui *service* starts with the mesh on, it also listens on a Unix
+socket: `$XDG_RUNTIME_DIR/awui-mesh.sock` when that directory exists and is
+owned by this user (mode 0700), else `<state dir>/mesh/attach.sock` (the
+directory created 0700, the socket chmod 0600 after listen). `AWUI_MESH_SOCKET`
+overrides the path (tests). A stale socket file is unlinked when nothing is
+listening behind it; a non-socket file there is a refusal (logged, attach off).
+Turning the mesh off at runtime closes the listener and every attached link.
+Windows has no attach socket: workers there are ephemeral.
+
+`awui peer serve-stdio` — the worker end — tries that socket first (1 s
+connect timeout). On success the link lives inside the running service, which
+already has the config, the harnesses, and the chat manager open. On failure
+the command falls back to the P1 in-process serve and logs one line on stderr:
+
+```
+awui: mesh: no running awui service, serving this link in-process (tasks end with the link)
+```
+
+`--ephemeral` skips the socket and always serves in-process; `--attach` makes
+the fallback an error (exit 75, `EX_TEMPFAIL`) instead of a silent downgrade.
+Run the worker as a service (`awui install service`) and every link attaches
+automatically.
+
+### Tasks that outlive a link
+
+In daemon mode a task is owned by the service, keyed by its remote id and the
+peer's node id, and closing a link only drops that link's subscription — the
+run keeps going. Any later link that authenticates as the same node id may
+reattach: `task.attach {remoteTaskId, afterSeq}` replays the task's last 2000
+buffered events from after that sequence number and then goes live, so the
+leader's side of a dropped SSH session reconnects on a backoff schedule
+(1, 2, 4, 8, 16, 30 s; give up after 2 minutes), reattaches with the last event
+it saw, and folds the replay in order — no duplicates, no silent gaps. When the
+buffer does not reach back (a long outage), the leader says so in one notice.
+A task that no longer exists (`not_found`), or a worker that predates attach
+(an ephemeral P1 peer, `-32601`), still ends the run as P1 did. A leader
+restart still marks its peer tasks interrupted; in daemon mode the remote run
+continues without it, and `awui peer tasks <name>` shows it.
+
+The service counts a peer's live tasks per node id (not per link), so one key
+holder across several SSH sessions no longer multiplies `max_tasks`. Tasks are
+in memory: a service restart ends them, and the leader sees a link close or a
+`not_found` on its next attach.
+
+**Approvals on the target** now work in daemon mode. `approvals_at: target`
+policies can open tasks: the approval cards show in the target's own awui UI,
+on the chat the task opened, and the peer may not answer them (`task.answer`
+is refused). `both` lets either side answer; first answer wins and the other
+side is told the request is gone. `origin` is unchanged. Ephemeral workers
+keep the P1 refusals for `target` and `both`.
+
+### Files over the link
+
+`fs.stat`, `fs.list`, `fs.read`, and `fs.write` carry the policy's `fs.read`
+and `fs.write` capabilities, decided per call like every other cap (a cap set
+to `ask` is refused with `needs_approval`). Both ephemeral and daemon workers
+answer them. Every path is resolved inside the policy's roots on every call
+(`..` refused, and the result's realpath must stay in a root after resolution):
+
+| Method | Shape | Bound |
+|---|---|---|
+| `fs.stat` | `{type: file\|dir\|symlink\|other, size, mtimeMs, mode}` | lstat: the final symlink is never followed |
+| `fs.list` | `{entries: [{name, type, size}], truncated}` | at most 1000 names (default 500), one folder, dotfiles in, sorted |
+| `fs.read` | `{data: base64, size, eof}` | regular files only, at most 4 MiB per call (default 1 MiB) |
+| `fs.write` | `{size, mtimeMs}` | at most 4 MiB decoded; `create` refuses an existing file; `overwrite` replaces only a regular file |
+
+A write is atomic: a temp file in the destination's own directory
+(`.<name>.awui-<rand>.tmp`, 0600 then the file's mode), fsync, rename. With
+`expectMtimeMs`, a file that changed since it was read is refused with
+"changed since read" instead of overwritten. A link may write at most 32
+times a minute. A read or write never follows the final component through a
+symlink (`O_NOFOLLOW` where the OS offers it, else an lstat/open/fstat
+dev-and-inode check). The audit log records the method, the path, and byte
+counts — never content.
+
+### peer_files
+
+In a lead chat on a mesh-enabled server with a peer configured, the agent has
+`peer_files`: one file operation per call — `stat`, `list`, `read`, or
+`write` — against the same link a delegated task uses. It is text in and out:
+a read that is not utf8 is refused rather than handed to the model, a write is
+at most 1 MiB of text, and a file longer than one read says so, for the agent
+to continue with an offset. The same lead-only rules a peer delegation passes
+apply (mesh on, `mesh.chats`, one hop, a configured peer) — the peer's own
+policy, its roots and caps, is what actually decides.
+
+### Still missing
+
 - **Ask-capabilities** (`ask:` caps): a cap that needs an approval mid-run is
-  refused with a clear error, not raised as a card.
-- **Files and terminals** (`fs.read`/`fs.write`/`term.open` are named in policies
-  but carry nothing over the link yet).
-- **Persistent attach**: when the stdio link closes, every chat the worker opened
-  for it is disposed; P1.5 adds attach-to-daemon so a run survives the SSH session.
+  refused with a clear error (`-33003 needs_approval`), not raised as a card.
+- **Terminals** (`term.open` is named in policies but carries nothing).
+- **Host tasks across a target restart**: they are in memory, not persisted.
 - **Direct TLS** with pinned keys (P2).
 
-Known limits of the stdio transport, accepted for P1 and closed by P1.5's daemon:
+### Limits that remain
 
-- **`max_tasks` counts per link.** Each SSH/docker session is its own
-  `serve-stdio` process, so a key holder who opens several sessions gets
-  `max_tasks` per session. With a forced-command key, also set `MaxSessions`
-  and keep the policy's ceiling low; P1.5 counts tasks per peer in the daemon.
+- **Ephemeral workers still count `max_tasks` per link** — one `serve-stdio`
+  process per SSH/docker session. Only a daemon counts per peer. With a
+  forced-command key, also set `MaxSessions` and keep the policy's ceiling low.
 - **Pin writes are last-writer-wins across processes.** The server, the CLI
   and each `serve-stdio` process write `pins.json` atomically (temp + rename),
   so the file never corrupts, but two writes at the same instant can drop one.
@@ -207,7 +298,8 @@ Known limits of the stdio transport, accepted for P1 and closed by P1.5's daemon
   roots and then handed to the harness; someone who can already write inside a
   root could race a symlink swap in between. Harnesses with no permission modes
   (pi) can run commands anyway, so this matters only for read-only peers that
-  share a root with a hostile writer.
+  share a root with a hostile writer. The file methods above do not have this
+  gap: each one resolves, checks, and opens under the check.
 
 ## State files
 
@@ -219,7 +311,9 @@ Under the state folder, never in git, never in config:
 - `mesh/pins.json` — the peers this machine pins, inbound and outbound, mode 0600.
 - `mesh/audit.jsonl` — append-only, one JSON object per line, mode 0600: who
   asked for what and what this node answered. Prompt text is never logged, only
-  lengths.
+  lengths; the file methods record paths and byte counts, never content.
+- `mesh/attach.sock` — the attach socket, when `$XDG_RUNTIME_DIR` is not usable
+  (the usual place is there; see the attach socket above), mode 0600.
 
 ## Security notes
 
@@ -232,8 +326,19 @@ Under the state folder, never in git, never in config:
 - **Keys are the identity.** A peer whose key changes is closed with a pin
   mismatch until a person runs `awui peer remove` and re-pins; names never stand
   in for keys.
+- **The attach socket's trust is this uid.** Only the same user can open the
+  socket (0600, in a 0700 directory), and that user could already edit
+  `pins.json` and run the CLI — so the one-line prologue a worker sends it is
+  trusted exactly as much as the CLI is, and no more.
+- **Files never follow a final symlink.** `fs.read` and `fs.write` hold the
+  last component to a regular file (lstat, then `O_NOFOLLOW`, then an fstat
+  dev-and-inode check), so a link inside a root cannot name a file outside it.
+- **Writes are atomic and rate-limited.** Temp file in the destination's own
+  directory, fsync, rename — a reader never sees a half-written file — and at
+  most 32 writes a minute per link.
 - **The audit log is evidence.** Every decision (allow, deny, ask, error) is one
-  bounded line in `mesh/audit.jsonl`.
+  bounded line in `mesh/audit.jsonl`; the file methods record paths and byte
+  counts, never content.
 - **Revocation is one command.** `awui peer remove <name>` drops every pin under
   that name; because the policy is resolved per call, the next request from that
   peer is refused — no restart on either side.
@@ -241,7 +346,9 @@ Under the state folder, never in git, never in config:
 ## Roadmap
 
 - **Phase 1** — shipped: SSH and Docker stdio transports; `delegate_task(peer)`.
-- **Phase 1.5** — persistent attach, approvals on the target, file transfer.
+- **Phase 1.5** — shipped: the attach socket and daemon-mode tasks (a dropped link
+  reconnects and replays), approvals on the target, files over the link (`fs.*`,
+  `peer_files`, the `peer ls/cat/tasks` commands).
 - **Phase 2** — direct TLS with pinned keys; a Peers UI; pairing.
 - **Phase 3** — remote terminals, handoff, a NixOS module.
 

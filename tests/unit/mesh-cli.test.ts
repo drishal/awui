@@ -56,6 +56,24 @@ describe("the peer CLI's command line", () => {
     expect(await runPeerCli(["--help"], c.io)).toBe(EXIT_OK);
     expect(c.out[0]).toContain("awui peer");
   });
+
+  it("names the file and task commands in the usage", async () => {
+    const c = collector({});
+    expect(await runPeerCli(["--help"], c.io)).toBe(EXIT_OK);
+    const usage = c.out.join("\n");
+    expect(usage).toContain("peer ls <name> <path>");
+    expect(usage).toContain("peer cat <name> <path>");
+    expect(usage).toContain("peer tasks <name>");
+  });
+
+  it("refuses ls, cat, and tasks lines that are not exactly peer name and path", async () => {
+    for (const args of [["ls", "lab"], ["cat", "lab"], ["ls", "lab", "/x", "extra"], ["cat", "lab", "/x", "--nope"], ["tasks"], ["tasks", "lab", "extra"]]) {
+      const c = collector({});
+      expect(await runPeerCli(args, c.io), JSON.stringify(args)).toBe(EXIT_USAGE);
+      expect(c.err.join("\n")).toContain("Usage");
+      expect(c.out).toEqual([]);
+    }
+  });
 });
 
 describe("the peer CLI with the mesh off", () => {
@@ -70,6 +88,14 @@ describe("the peer CLI with the mesh off", () => {
 
   it("add, accept, and test refuse with 78 and the one-line hint", async () => {
     for (const args of [["add", "lab"], ["test", "lab"], ["accept", "lab", "--policy", "worker"]]) {
+      const c = collector({});
+      expect(await runPeerCli(args, c.io), JSON.stringify(args)).toBe(EXIT_CONFIG);
+      expect(c.err.join("\n")).toContain("mesh.enabled: true");
+    }
+  });
+
+  it("ls, cat, and tasks need the mesh on too: they open a link", async () => {
+    for (const args of [["ls", "lab", "/srv/proj"], ["cat", "lab", "/srv/proj/notes.md"], ["tasks", "lab"]]) {
       const c = collector({});
       expect(await runPeerCli(args, c.io), JSON.stringify(args)).toBe(EXIT_CONFIG);
       expect(c.err.join("\n")).toContain("mesh.enabled: true");

@@ -672,6 +672,7 @@ Usage:
   awui peer add <name>   First contact: pin a configured peer's key (TOFU, asked; --yes for scripts)
   awui peer accept <name> --policy <p>   On the target: pin a pending caller under a policy
   awui peer serve-stdio [--peer <name>] [--policy <p>]   The worker end of a mesh link (SSH/docker)
+  awui peer ls/cat <name> <path>   A folder or file on a paired peer (tasks <name>: its live tasks)
   awui setup mcp         What each harness needs before awui's own tools reach its chats; --apply runs a one-time step
   awui mcp               awui's orchestration MCP server on stdio, for a harness config that names a program (Hermes)
 
@@ -753,6 +754,8 @@ if (client) {
   runPeerCli(args.slice(1), {
     env: process.env,
     out: (line) => process.stdout.write(`${line}\n`),
+    // `awui peer cat` writes a peer file's bytes exactly, with no newline added.
+    write: (chunk) => process.stdout.write(chunk),
     err: (line) => process.stderr.write(`${line}\n`),
     ...(ask ? { ask } : {}),
   }).then(

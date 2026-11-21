@@ -32,6 +32,8 @@ export const DEFAULT_WAIT_MS = 55_000;
 /** Profiles one call may list, and the note a bot contributes. */
 export const MAX_PROFILES = 64;
 export const MAX_PROFILE_NOTE_CHARS = 120;
+/** The most text one peer_files call reads or writes: the tool speaks utf8, the wire allows 4 MiB of file. */
+export const MAX_PEER_FILE_TEXT_BYTES = 1024 * 1024;
 /** The write scope's bounds (scope.ts judges with them): globs one delegation may carry. */
 import { MAX_WRITE_SCOPE_GLOBS, MAX_GLOB_CHARS } from "./scope.js";
 import { residentName } from "./residents.js";
@@ -133,6 +135,24 @@ export const scheduleHeartbeatSchema = z
     intervalMs: z.number().int().min(MIN_HEARTBEAT_INTERVAL_MS).max(MAX_HEARTBEAT_INTERVAL_MS),
     maxRuns: z.number().int().min(1).max(MAX_HEARTBEAT_RUNS).optional(),
     cancelId: z.string().min(1).max(64).optional(),
+  })
+  .strict();
+
+/**
+ * `peer_files`: one file operation on a paired mesh peer. Text in and out — the peer's
+ * files are read as utf8 and written from utf8 — and every bound the wire carries
+ * (1 MiB of text, 4 MiB of file) is named here so a refusal comes from the schema, not
+ * from a half-read file.
+ */
+export const peerFilesSchema = z
+  .object({
+    peer: z.string().min(1).max(64),
+    op: z.enum(["stat", "list", "read", "write"]),
+    path: z.string().min(1).max(4096),
+    offset: z.number().int().min(0).optional(),
+    length: z.number().int().min(1).max(MAX_PEER_FILE_TEXT_BYTES).optional(),
+    data: z.string().max(MAX_PEER_FILE_TEXT_BYTES).optional(),
+    mode: z.enum(["create", "overwrite"]).optional(),
   })
   .strict();
 
@@ -311,6 +331,25 @@ const DEFINED_TOOLS: OrchTool[] = [
     ),
   },
   {
+    name: "peer_files",
+    description:
+      "Work with one file on a paired mesh peer (see list_profiles): stat, list a folder, or read and write utf8 text. " +
+      "The peer's own policy decides what its paths allow; a read that is not text is refused, and a write is at most 1 MiB. " +
+      "Lead chats only: a chat that arrived over a peer cannot use another peer.",
+    parameters: object(
+      {
+        peer: stringProperty("The paired peer's name (see list_profiles).", 64),
+        op: { type: "string", enum: ["stat", "list", "read", "write"], description: "stat: one path's shape; list: a folder's names; read: utf8 text; write: utf8 text." },
+        path: stringProperty("The path on the peer, inside the roots its policy allows.", 4096),
+        offset: { type: "integer", minimum: 0, description: "read: byte offset to start from (for a file that did not fit)." },
+        length: { type: "integer", minimum: 1, maximum: MAX_PEER_FILE_TEXT_BYTES, description: "read: how many bytes to read (default and cap 1 MiB of text)." },
+        data: stringProperty("write: the utf8 text to write (at most 1 MiB).", MAX_PEER_FILE_TEXT_BYTES),
+        mode: { type: "string", enum: ["create", "overwrite"], description: "write: create fails when the file exists; overwrite replaces a regular file, and takes expectMtime-style conflicts from the peer as errors." },
+      },
+      ["peer", "op", "path"],
+    ),
+  },
+  {
     name: "list_profiles",
     description:
       "List the workers you can delegate to: this project's saved bot profiles and one entry per installed harness at its default model. " +
@@ -361,7 +400,7 @@ Delegating
 - Call list_profiles before naming a harness or model. It also states your budget: delegation levels left, and how many more tasks may run at once (a finished task frees its slot). Read it there; don't work it out yourself.
 - After delegating, thread_wait blocks until the child finishes or asks a question. Never poll in a loop. task_status shows where your tasks stand, thread_read what a child said, thread_send continues it, task_cancel stops a run you no longer need.
 - plan_workers drafts a lead/worker plan for a person to confirm before any worker starts. resident_agent keeps one named chat to come back to.
-- delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers.
+- delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers. peer_files reads or writes one utf8 file there (lead chats only).
 - As a delegated child, do the work yourself; start no further delegates unless your task says to.
 
 Talking to the person
