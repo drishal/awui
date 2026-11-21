@@ -1110,6 +1110,8 @@ export interface DelegatedTaskView {
   scope?: { globs: string[]; scratchDir: string | null; attempted: number; blocked: number; landed: number; recent: string[] } | null;
   /** Whether this task ran in a managed isolated checkout, so its recorded heads can be reviewed. */
   reviewable: boolean;
+  /** The mesh peer the child runs on, when it runs on another machine; null for a local task. */
+  host?: string | null;
 }
 
 /** A chat another agent delegated: which task, and where in the tree. */

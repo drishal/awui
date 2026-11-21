@@ -85,6 +85,8 @@ export async function makeTestApp(options: {
   deviceHosts?: DeviceHost[];
   /** The orchestration surface's limits, over the built-in defaults (config.yml's `orchestration:`). */
   orchestrationLimits?: Partial<OrchestrationLimits>;
+  /** The mesh peers a delegation may name (manager.ts); absent leaves peer tasks refused. */
+  orchestrationPeers?: NonNullable<Parameters<typeof createApp>[0]["orchestrationPeers"]>;
   /** The routines' run history, when a test drives a routine itself (in memory otherwise). */
   routineRuns?: RoutineRuns;
   /** A temporary settings folder whose config.yml this server alone reads; absent stays isolated. */
@@ -159,6 +161,7 @@ export async function makeTestApp(options: {
     stateDir,
     secondOpinions: await SecondOpinions.open(stateDir),
     orchestrationLimits,
+    ...(options.orchestrationPeers ? { orchestrationPeers: options.orchestrationPeers } : {}),
     ...(options.routineRuns ? { routineRuns: options.routineRuns } : {}),
     ...(options.resumeIntents ? { resumeIntents: options.resumeIntents } : {}),
     ...(terminals ? { terminals } : {}),

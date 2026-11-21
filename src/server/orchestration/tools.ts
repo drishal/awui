@@ -66,6 +66,8 @@ export const delegateTaskSchema = z
     clientRequestId: z.string().min(1).max(128).optional(),
     completionGroup: z.string().min(1).max(128).optional(),
     writeScope: z.array(z.string().min(1).max(MAX_GLOB_CHARS)).max(MAX_WRITE_SCOPE_GLOBS).optional(),
+    peer: z.string().min(1).max(64).optional(),
+    peerCwd: z.string().min(1).max(4096).optional(),
   })
   .strict();
 
@@ -184,6 +186,8 @@ const DEFINED_TOOLS: OrchTool[] = [
           description:
             "Globs (project-relative) the child's file writes must match, so its edits stay inside its assignment; its private scratch dir is always allowed. Omit it for work that may touch the whole project.",
         },
+        peer: stringProperty("A paired mesh peer's name (see list_profiles) to run this task on that machine"),
+        peerCwd: stringProperty("Absolute or ~ path of the project on that peer; required with peer"),
       },
       ["brief"],
     ),
@@ -357,6 +361,7 @@ Delegating
 - Call list_profiles before naming a harness or model. It also states your budget: delegation levels left, and how many more tasks may run at once (a finished task frees its slot). Read it there; don't work it out yourself.
 - After delegating, thread_wait blocks until the child finishes or asks a question. Never poll in a loop. task_status shows where your tasks stand, thread_read what a child said, thread_send continues it, task_cancel stops a run you no longer need.
 - plan_workers drafts a lead/worker plan for a person to confirm before any worker starts. resident_agent keeps one named chat to come back to.
+- delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers.
 - As a delegated child, do the work yourself; start no further delegates unless your task says to.
 
 Talking to the person
@@ -488,7 +493,7 @@ export function budgetLine(remainingDepth: number, remainingTasks: number): stri
 export async function listProfiles(
   ctx: ToolContext,
   args: { workspaceId?: string },
-  limits: { remainingDepth: number; remainingTasks: number },
+  limits: { remainingDepth: number; remainingTasks: number; peerLine?: string | null },
 ): Promise<ToolOutput> {
   const workspace = args.workspaceId ? await ctx.workspaces.get(args.workspaceId) : ctx.chat.workspace;
   const bots = ctx.boards ? await ctx.boards.listBots() : [];
@@ -526,6 +531,7 @@ export async function listProfiles(
   const text = [
     `${profiles.length} profiles in project "${workspace.name}".`,
     ...lines,
+    ...(limits.peerLine ? [limits.peerLine] : []),
     budgetLine(remainingDepth, remainingTasks),
   ].join("\n");
   return { text, data: { profiles, workspace, remainingDepth, remainingTasks } };

@@ -47,6 +47,8 @@ import {
   type ToolOutput,
 } from "./tools.js";
 import type { OrchestrationLimits } from "./limits.js";
+import type { PeerManager } from "../mesh/manager.js";
+import { PeerHarnessAdapter } from "../mesh/peer-adapter.js";
 import type { AgentProfileConfig } from "../config.js";
 import { denial, formatElapsed, firstLine, isReviewed, MAX_ERROR_CHARS, MAX_RESULT_CHARS, MAX_TITLE_CHARS, viewOf, type StoredTask, type TaskScope } from "./types.js";
 import { GATE_REQUEST_PREFIX, DecisionStore, decisionViewOf, gateRequestOf, type StoredDecision } from "./decisions.js";
@@ -99,6 +101,17 @@ export interface OrchestratorDeps {
   limits: () => OrchestrationLimits;
   /** The heartbeat store (heartbeats.ts); absent leaves the tool saying it is not wired. */
   heartbeats?: Heartbeats;
+  /**
+   * The mesh peers a delegation may name (manager.ts). Absent, or with enabled() false,
+   * leaves every peer task refused with mesh_off; the rest of the shape is config.yml's
+   * `mesh:` block, read at each use so a file change applies without a restart.
+   */
+  peers?: {
+    manager: PeerManager;
+    enabled: () => boolean;
+    chats: () => "lead-only" | "all";
+    maxRemoteTasks: () => number;
+  };
 }
 
 export class Orchestrator {
@@ -407,7 +420,19 @@ export class Orchestrator {
   // ---- the tools ----------------------------------------------------------
 
   private async listProfiles(caller: Chat, args: { workspaceId?: string }): Promise<ToolOutput> {
-    return listProfiles(this.context(caller), args, { remainingDepth: this.remainingDepth(caller), remainingTasks: this.remainingTasks(caller) });
+    return listProfiles(this.context(caller), args, { remainingDepth: this.remainingDepth(caller), remainingTasks: this.remainingTasks(caller), peerLine: this.peerLine() });
+  }
+
+  /**
+   * The one line a listing adds about mesh peers, from the configured inventory alone: no
+   * link is ever started to name a peer, and nothing is listed while the mesh is off.
+   */
+  private peerLine(): string | null {
+    const peers = this.deps.peers;
+    if (!peers || !peers.enabled()) return null;
+    const listed = peers.manager.peers();
+    if (listed.length === 0) return null;
+    return `Peers (mesh): ${listed.map((peer) => `${peer.name} (${peer.kind})`).join(", ")} — delegate_task with peer + peerCwd runs on that machine.`;
   }
 
   private async status(caller: Chat, args: { taskId?: string }): Promise<ToolOutput> {
@@ -843,6 +868,25 @@ export class Orchestrator {
     if (mine.length >= limits.maxTasksPerChat) throw denial(429, "too_many_tasks", `A chat may start ${limits.maxTasksPerChat} delegated tasks`);
   }
 
+  /**
+   * The mesh's own refusals for a peer task, in the spec's order and before any local harness
+   * check: the worker judges the harness, the workspace, and the policy on the machine that
+   * runs them. Nothing here starts a link — the name is checked against the configured
+   * inventory, and the child chat's open is what connects. Returns the peers dep it cleared.
+   */
+  private checkPeerTask(caller: Chat, peerName: string, args: { peerCwd?: string; isolation?: "worktree"; writeScope?: string[] }): NonNullable<OrchestratorDeps["peers"]> {
+    if (args.peerCwd === undefined || args.peerCwd.trim() === "") throw denial(400, "invalid_request", "A peer task needs peerCwd too: the project's path on that peer");
+    const peers = this.deps.peers;
+    if (!peers || !peers.enabled()) throw denial(403, "mesh_off", "The mesh is turned off, so no task can run on a peer (mesh.enabled in config.yml)");
+    if (peers.chats() === "lead-only" && (caller.lineage?.depth ?? 0) > 0) throw denial(403, "mesh_lead_only", "Only a top-level chat may start tasks on mesh peers (mesh.chats is lead-only)");
+    if (caller.owner?.kind === "peer") throw denial(403, "hop_limit", "A task that arrived over the mesh cannot start another remote task (max_hops is 1)");
+    if (args.isolation !== undefined || (args.writeScope !== undefined && args.writeScope.length > 0)) throw denial(400, "unsupported_with_peer", "Worktree isolation and write scopes do not cross the mesh; the peer's policy is what bounds the worker");
+    const live = this.tasks.filter((task) => task.peer != null && task.state !== "result_available").length;
+    if (live >= peers.maxRemoteTasks()) throw denial(429, "remote_limit", `This server already runs its ${peers.maxRemoteTasks()} allowed remote task(s) at once (mesh.max_remote_tasks)`);
+    if (!peers.manager.peers().some((peer) => peer.name.toLowerCase() === peerName.toLowerCase())) throw denial(422, "unknown_peer", `No mesh peer called "${peerName}" is configured`);
+    return peers;
+  }
+
   private planView(plan: PlanRecord): Plan & { note: string | null; taskIds: Record<string, string> } {
     const { parentChatId: _owner, parentSessionId: _session, ...view } = plan;
     return view;
@@ -912,6 +956,8 @@ export class Orchestrator {
       clientRequestId?: string;
       completionGroup?: string;
       writeScope?: string[];
+      peer?: string;
+      peerCwd?: string;
     },
   ): Promise<ToolOutput> {
     if (caller.adapter.capabilities.readOnlyHarness) {
@@ -920,26 +966,44 @@ export class Orchestrator {
     // A repeated request is the same task, never a second child.
     const repeat = this.repeatOf(caller, args.clientRequestId);
     if (repeat) return this.delegateOutput(repeat);
+    // The mesh's own rules answer first for a peer task; they are checked before any local
+    // harness question, because the worker makes those checks on the machine that runs them.
+    const peerName = args.peer;
+    const peers = peerName === undefined ? null : this.checkPeerTask(caller, peerName, args);
     const depth = (caller.lineage?.depth ?? 0) + 1;
     this.checkRoom(caller, depth);
 
     const bot = args.profile === undefined ? undefined : await this.findProfile(args.profile);
     const harnessId = args.harness ?? bot?.harnessId ?? caller.adapter.id;
-    const adapter = this.deps.registry.get(harnessId);
-    if (!adapter) throw denial(422, "unknown_harness", `No harness called ${harnessId}`);
-    if (adapter.capabilities.readOnlyHarness) throw denial(422, "harness_unavailable", `${adapter.displayName} is a read-only surface and cannot host a delegated task`);
-    if (!(await this.deps.registry.available(adapter.id))) throw denial(422, "harness_unavailable", `${adapter.displayName} is not available right now`);
+    const model = args.model ?? bot?.model ?? undefined;
+    const thinkingLevel = args.thinkingLevel ?? bot?.thinkingLevel ?? undefined;
+    // A peer task's child chat is a relay to another machine, so installed, available, and
+    // workspace are the worker's to judge; here the task is only a record plus that relay.
+    const peer = peerName === undefined ? null : { name: peerName, harness: harnessId, cwd: args.peerCwd ?? "" };
+    let adapter: HarnessAdapter;
+    if (peer !== null && peers !== null) {
+      // The open carries the model and thinking level; the relay declares no config surface of
+      // its own below, so nothing else needs to be set on the child after it exists.
+      adapter = new PeerHarnessAdapter(peers.manager, peer.name, harnessId, peer.cwd, { model, thinkingLevel, clientRequestId: args.clientRequestId });
+    } else {
+      const local = this.deps.registry.get(harnessId);
+      if (!local) throw denial(422, "unknown_harness", `No harness called ${harnessId}`);
+      if (local.capabilities.readOnlyHarness) throw denial(422, "harness_unavailable", `${local.displayName} is a read-only surface and cannot host a delegated task`);
+      if (!(await this.deps.registry.available(local.id))) throw denial(422, "harness_unavailable", `${local.displayName} is not available right now`);
+      adapter = local;
+    }
     // An open project by id, never a path: the caller's own unless it names another.
     const workspace = args.workspaceId === undefined ? caller.workspace : await this.deps.workspaces.get(args.workspaceId);
-    const problem = adapter.workspaceProblem(workspace.path);
-    if (problem) throw denial(422, "workspace_unsupported", problem);
-    const permissionMode = this.permissionModeFor(caller, adapter, args.permissionMode ?? bot?.permissionMode ?? undefined);
+    let permissionMode: string | undefined;
+    if (peer === null) {
+      const problem = adapter.workspaceProblem(workspace.path);
+      if (problem) throw denial(422, "workspace_unsupported", problem);
+      permissionMode = this.permissionModeFor(caller, adapter, args.permissionMode ?? bot?.permissionMode ?? undefined);
+    }
     // The write scope a delegated child is held to (A5): normalized here, before any work starts,
     // so a bad pattern answers the 400 that names it instead of a child that trusts dead weight.
     const scope = normalizeScope(args.writeScope);
     if (!scope.ok) throw denial(400, "bad_scope", scope.why);
-    const model = args.model ?? bot?.model ?? undefined;
-    const thinkingLevel = args.thinkingLevel ?? bot?.thinkingLevel ?? undefined;
     const title = (args.title ?? firstLine(args.brief, MAX_TITLE_CHARS) ?? `Task in ${workspace.name}`).slice(0, MAX_TITLE_CHARS);
     // Worktree isolation: the child works in its own managed checkout of the project, so its
     // edits cannot collide with the caller's. The review gates on the fork point, so it is
@@ -997,6 +1061,7 @@ export class Orchestrator {
       isolation: iso === null ? null : { worktreeId: iso.worktreeId, branch: iso.branch, fork: iso.fork },
       reviewable: iso !== null,
       ...(scope.globs.length > 0 ? { scope: taskScope } : {}),
+      ...(peer !== null ? { peer } : {}),
     };
     // The checks above ran before several awaits, so two calls in flight could both pass them:
     // ask again here, where nothing can interleave before the record is added.
@@ -1035,7 +1100,7 @@ export class Orchestrator {
     const guard = task.scope ? makeGuard(task.scope, (iso?.ws ?? workspace).path, this.guardFields(child)) : null;
     if (guard) this.guards.set(task.id, guard);
     try {
-      if (model !== undefined || thinkingLevel !== undefined || permissionMode !== undefined) {
+      if (peer === null && (model !== undefined || thinkingLevel !== undefined || permissionMode !== undefined)) {
         await child.setConfig({
           ...(model !== undefined ? { model } : {}),
           ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),

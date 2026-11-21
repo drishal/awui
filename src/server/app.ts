@@ -201,7 +201,7 @@ import { readTour } from "./pr-tour.js";
 import { previewHtmlRender, PreviewError } from "./render-preview.js";
 import { performRenderAction } from "./render-browser.js";
 import { GuestStore } from "./guests.js";
-import { Orchestrator } from "./orchestration/orchestrator.js";
+import { Orchestrator, type OrchestratorDeps } from "./orchestration/orchestrator.js";
 import { IntegrationReview, type IntegrationRecord, type ReviewProject } from "./orchestration/review.js";
 import { ORCH_INSTRUCTIONS, ORCH_TOOLS } from "./orchestration/tools.js";
 import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "./orchestration/limits.js";
@@ -284,6 +284,11 @@ export interface AppDeps {
   projectConfigTrust?: ProjectConfigTrust;
   /** The orchestration surface's bounds, read at each use; config.yml's `orchestration:` (none: the defaults). */
   orchestrationLimits?: () => OrchestrationLimits;
+  /**
+   * The mesh peers a delegation may name (manager.ts), read at each use. Absent leaves every
+   * peer task refused with mesh_off; production wires it from config.yml's `mesh:` block.
+   */
+  orchestrationPeers?: OrchestratorDeps["peers"];
   /**
    * Hibernation for idle finished chats, as config.yml's `hibernate_after_minutes` states it
    * (epoch ms; none or 0: off). The manager parks a chat that has stayed hidden — unviewed and
@@ -525,6 +530,7 @@ export async function createApp(deps: AppDeps) {
     // change lists them (and applies to a delegation) without a restart.
     profiles: deps.configDir === undefined ? undefined : () => agentProfiles(userConfig()),
     limits: orchestrationLimits,
+    ...(deps.orchestrationPeers ? { peers: deps.orchestrationPeers } : {}),
     heartbeats,
     log,
   });
