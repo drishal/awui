@@ -7,7 +7,12 @@
 // never prints private key material; the only key on stdout is the public one, so a
 // person can copy it to the other side. `serve-stdio` is the worker end of a link
 // and delegates to serve.ts, which keeps protocol off stderr and logs off stdout.
-import { hostname } from "node:os";
+// `bootstrap` (P3) is the worker setup the other way round: it prints the exact
+// commands a target needs — install, config.yml, an authorized_keys forced command —
+// and with --run runs them over ssh, argv only, after showing them and asking.
+import { spawn as nodeSpawn } from "node:child_process";
+import { promises as fs } from "node:fs";
+import { hostname, homedir } from "node:os";
 import path from "node:path";
 import { ConfigError, loadConfig } from "../config.js";
 import { UserConfigError, configDir, configEnv, meshConfig, meshEnabled, readUserConfig, type MeshConfig } from "../user-config.js";
@@ -15,10 +20,11 @@ import { AuditLog } from "./audit.js";
 import { SAS_CONTEXT } from "./handshake.js";
 import { loadOrCreateIdentity, nodeIdOf, sasOf } from "./identity.js";
 import { PeerManager } from "./manager.js";
-import { resolvePolicies } from "./policy.js";
+import { expandRoot, resolvePolicies } from "./policy.js";
 import { PinStore } from "./pins.js";
 import { MeshErrorCode, MeshRpcError } from "./rpc.js";
 import { runServeStdio } from "./serve.js";
+import { checkSshDest, shellQuote, sshRemoteArgv } from "./transport.js";
 
 /** OK; the command did what was asked. */
 export const EXIT_OK = 0;
@@ -45,6 +51,9 @@ Usage:
   awui peer cat <name> <path>               A file on a peer, raw to stdout (at most 4 MiB)
   awui peer tasks <name>                    The peer's live tasks (its awui service runs them)
   awui peer serve-stdio [--peer <name>] [--policy <p>] [--ephemeral] [--attach]   The worker end of a link (SSH/docker)
+  awui peer bootstrap <ssh-dest> [--policy <p>] [--root <path>] [--repo <url>] [--pubkey <path>] [--run]
+                                            Print the setup commands a worker needs (with --run: run them
+                                            over ssh after showing and asking)
 
 add and accept are the two halves of one pairing: add pins the other machine's
 key here (TOFU, confirmed by comparing node ids and the six-digit SAS), accept
@@ -64,6 +73,12 @@ export interface PeerCliIo {
   err: (line: string) => void;
   /** One question, answered with the typed line; absent when there is no terminal to ask on. */
   ask?: (question: string) => Promise<string>;
+  /**
+   * How one `bootstrap --run` step is executed (an ssh argv, spawned without a
+   * shell, inheriting this process's stdio); the real ssh by default. A test
+   * hands in a recorder instead of a network.
+   */
+  runStep?: (argv: string[]) => Promise<number>;
 }
 
 /** What one run reads once: config.yml's mesh block, where state lives, whether the mesh is on. */
@@ -88,23 +103,30 @@ interface Flags {
   policy: string | null;
   peer: string | null;
   tail: number | null;
+  root: string | null;
+  repo: string | null;
+  pubkey: string | null;
+  run: boolean;
 }
 
-const emptyFlags = (): Flags => ({ yes: false, policy: null, peer: null, tail: null });
+const emptyFlags = (): Flags => ({ yes: false, policy: null, peer: null, tail: null, root: null, repo: null, pubkey: null, run: false });
 
 /**
  * One command line, parsed strictly: its positional words and its flags, in any
- * order, with nothing else. The value-taking flags are named per command;
- * `--yes`/`-y` is the one bare flag. Returns the error to print instead when the
- * line is wrong — an unknown flag is a usage error, never a best-effort read.
+ * order, with nothing else. The value-taking flags are named per command, and
+ * so are the bare ones (`--yes`/`-y` everywhere; `--run` only for bootstrap) —
+ * a flag a command does not take is a usage error, never an ignored word.
+ * Returns the error to print instead when the line is wrong — an unknown flag
+ * is a usage error, never a best-effort read.
  */
-function parseLine(args: string[], valueFlags: string[]): { words: string[]; flags: Flags } | { error: string } {
+function parseLine(args: string[], valueFlags: string[], bareFlags: string[] = ["--yes", "-y"]): { words: string[]; flags: Flags } | { error: string } {
   const words: string[] = [];
   const flags = emptyFlags();
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
-    if (arg === "--yes" || arg === "-y") {
-      flags.yes = true;
+    if (bareFlags.includes(arg)) {
+      if (arg === "--run") flags.run = true;
+      else flags.yes = true;
       continue;
     }
     if (!valueFlags.includes(arg)) {
@@ -116,6 +138,9 @@ function parseLine(args: string[], valueFlags: string[]): { words: string[]; fla
     if (value === undefined) return { error: `${arg} needs a value` };
     if (arg === "--policy") flags.policy = value;
     else if (arg === "--peer") flags.peer = value;
+    else if (arg === "--root") flags.root = value;
+    else if (arg === "--repo") flags.repo = value;
+    else if (arg === "--pubkey") flags.pubkey = value;
     else {
       const n = Number(value);
       if (!value || !Number.isInteger(n) || n <= 0) return { error: `${arg} takes a positive number` };
@@ -262,6 +287,8 @@ export async function runPeerCli(args: string[], io: PeerCliIo): Promise<number>
       if (command === "accept") return acceptCommand(io, read, pins, parsed);
       return command === "add" ? addCommand(io, read, pins, name, parsed.flags) : testCommand(io, read, pins, name);
     }
+    case "bootstrap":
+      return bootstrapCommand(io, failUsage, rest);
     default:
       io.err(`awui peer: unknown command ${command}\n\n${PEER_USAGE}`);
       return EXIT_USAGE;
@@ -549,4 +576,213 @@ async function testCommand(io: PeerCliIo, read: Settings, pins: ReturnType<typeo
   } finally {
     connection.close();
   }
+}
+
+/** ----- bootstrap (P3) ------------------------------------------------------ */
+
+/** The built-in policies a bootstrap may write on the target: a custom policy name would arrive there with no caps at all, a silent floor. */
+const BOOTSTRAP_POLICIES = ["none", "worker", "peer"] as const;
+
+/** The one repository `git clone` installs from, when --repo does not name another. */
+const BOOTSTRAP_REPO = "https://github.com/drishal/awui.git";
+
+/** Where a bootstrap puts the checkout on the target, and what it links onto the PATH. */
+const BOOTSTRAP_DIR = "~/.local/share/awui";
+const BOOTSTRAP_BIN = "~/.local/bin/awui";
+
+/** The public keys the bootstrap looks for on this machine (the leader), in order. */
+const BOOTSTRAP_KEY_FILES = ["id_ed25519.pub", "id_ecdsa.pub", "id_rsa.pub"];
+
+/** One setup step: a name to print, an optional note about what it skips, and the remote script itself. */
+interface BootstrapStep {
+  name: string;
+  note?: string;
+  script: string;
+}
+
+/** One string as YAML needs it: double-quoted with the two escapes YAML's double-quoted style allows. */
+function yamlScalar(value: string): string {
+  if (/[\u0000-\u001f\u007f]/.test(value)) throw new Error(`a bootstrap value must be printable text: ${JSON.stringify(value.slice(0, 32))}`);
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** An ssh public key line (`type key comment…`) held to the two argv-safe fields the authorized_keys line needs. */
+function parsePublicKey(raw: string): { key: string; comment: string } | null {
+  const parts = raw.trim().split(/\s+/);
+  if (parts.length < 2) return null;
+  const [type, key, ...rest] = parts as [string, string, ...string[]];
+  if (!/^[a-z0-9-]{1,64}$/.test(type) || !/^[A-Za-z0-9+/=]{1,4096}$/.test(key)) return null;
+  return { key: `${type} ${key}`, comment: rest.join(" ") };
+}
+
+/** The leader's default public key, the first one found under ~/.ssh, or null. */
+async function findPublicKey(env: NodeJS.ProcessEnv): Promise<{ key: string; comment: string } | null> {
+  const sshDir = path.join(homedir(), ".ssh");
+  for (const name of BOOTSTRAP_KEY_FILES) {
+    try {
+      const parsed = parsePublicKey(await fs.readFile(path.join(sshDir, name), "utf8"));
+      if (parsed !== null) return parsed;
+    } catch {
+      continue; // A key file that is not there is not an error; the next one may be.
+    }
+  }
+  void env;
+  return null;
+}
+
+/**
+ * `awui peer bootstrap <ssh-dest>` (P3 §3): the commands that turn a plain ssh
+ * destination into a mesh worker — awui installed, the mesh on in its
+ * config.yml under the given policy and root, and an authorized_keys forced
+ * command binding one ssh key to `peer serve-stdio`. Printed first, always; run
+ * only with --run, after showing them and asking, one ssh invocation per step
+ * with the script as one argv word (the local side never builds a shell line).
+ * Only built-in policies may be written: a custom policy name would arrive on
+ * the target with no capabilities at all, a floor that looks configured.
+ */
+async function bootstrapCommand(io: PeerCliIo, failUsage: (message: string) => number, rest: string[]): Promise<number> {
+  const parsed = parseLine(rest, ["--policy", "--root", "--repo", "--pubkey"], ["--yes", "-y", "--run"]);
+  if ("error" in parsed) return failUsage(parsed.error);
+  const dest = parsed.words[0];
+  if (dest === undefined) return failUsage("bootstrap needs an ssh destination ([user@]host) to set up");
+  if (parsed.words.length > 1) return failUsage(`unexpected word ${parsed.words[1]}`);
+  const flags = parsed.flags;
+  const policy = flags.policy ?? "worker";
+  if (!(BOOTSTRAP_POLICIES as readonly string[]).includes(policy)) {
+    return failUsage(`--policy must be a built-in mesh policy (${BOOTSTRAP_POLICIES.join(", ")}); a policy of another name needs the full caps spelled out in the target's config.yml by hand`);
+  }
+  const root = flags.root ?? "~/code";
+  const repo = flags.repo ?? BOOTSTRAP_REPO;
+  try {
+    checkSshDest(dest);
+  } catch (error) {
+    return failUsage(error instanceof Error ? error.message : String(error));
+  }
+  try {
+    expandRoot(root, homedir());
+  } catch (error) {
+    return failUsage(`--root: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  for (const [name, value] of [["--root", root], ["--repo", repo]] as const) {
+    try {
+      shellQuote(value);
+    } catch {
+      return failUsage(`${name} must be one printable line (no newline or NUL)`);
+    }
+    if (value.length > 4096) return failUsage(`${name} is longer than 4096 characters`);
+  }
+  const read = settings(io.env);
+  if ("error" in read) {
+    io.err(`awui peer bootstrap: ${read.error}`);
+    return EXIT_CONFIG;
+  }
+  // The name the forced command pins the caller under is this machine's own mesh name, exactly as a link would present it.
+  const leaderName = localMeshName(read.mesh);
+  const q = shellQuote;
+
+  // Step 1 — the checkout and the build, skipped by the step itself when the binary is already there.
+  const install = [
+    "mkdir -p ~/.local/bin ~/.local/share",
+    `if [ ! -x ${BOOTSTRAP_BIN} ]; then`,
+    `  git clone ${q(repo)} ${BOOTSTRAP_DIR}`,
+    `  (cd ${BOOTSTRAP_DIR} && npm ci && npm run build)`,
+    `  ln -sf ${BOOTSTRAP_DIR}/bin/awui ${BOOTSTRAP_BIN}`,
+    "fi",
+  ].join("\n");
+
+  // Step 2 — the mesh block, appended only when config.yml has no mesh block yet.
+  const config = [
+    "mkdir -p ~/.config/awui",
+    `grep -qs '^mesh:' ~/.config/awui/config.yml || cat >> ~/.config/awui/config.yml <<'AWUI-MESH'`,
+    "mesh:",
+    "  enabled: true",
+    "  policies:",
+    `    ${policy}:`,
+    `      roots: [${yamlScalar(root)}]`,
+    "AWUI-MESH",
+  ].join("\n");
+
+  // Step 3 — the forced command. The line ends in a marker this step's grep
+  // finds, so re-running never appends a second copy; the command runs under
+  // the user's own shell on the target, so $HOME expands there.
+  let publicKey: { key: string; comment: string } | null = null;
+  if (flags.pubkey !== null) {
+    // An explicit key is read from one file, bounded: a value the parser
+    // refuses is a usage error, never a guess at what the person meant.
+    try {
+      if (flags.pubkey.includes("\u0000")) throw new Error("the path holds a NUL byte");
+      publicKey = parsePublicKey(await fs.readFile(flags.pubkey, "utf8"));
+    } catch (error) {
+      return failUsage(`--pubkey: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (publicKey === null) return failUsage(`--pubkey: ${flags.pubkey} does not hold one ssh public key line ("type key comment")`);
+  } else {
+    publicKey = await findPublicKey(io.env);
+  }
+  const forcedCommand = `$HOME/.local/bin/awui peer serve-stdio --policy ${q(policy)} --peer ${q(leaderName)}`;
+  const authorizedKeys = publicKey === null
+    ? null
+    : [
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh",
+        "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys",
+        `grep -qF ${q(`awui-mesh ${leaderName}`)} ~/.ssh/authorized_keys || printf '%s\\n' ${q(`restrict,command="${forcedCommand}" ${publicKey.key}${publicKey.comment ? ` ${publicKey.comment}` : ""} awui-mesh ${leaderName}`)} >> ~/.ssh/authorized_keys`,
+      ].join("\n");
+
+  const steps: BootstrapStep[] = [
+    { name: "1 — install awui", script: install },
+    { name: "2 — turn the mesh on in config.yml", note: "the step appends nothing when a mesh block is already there; check it by hand (it may be off, or lack the policy's roots)", script: config },
+    ...(authorizedKeys === null
+      ? [{ name: "3 — bind an ssh key to the worker", note: "no public key was found under ~/.ssh here; add the forced-command line to the target's authorized_keys by hand", script: "" }]
+      : [{ name: "3 — bind an ssh key to the worker", script: authorizedKeys }]),
+  ];
+
+  io.out(`awui peer bootstrap: set up ${dest} as a mesh worker for ${leaderName} (policy ${policy}, root ${root})`);
+  io.out("");
+  io.out("Run these on " + dest + " as the user the leader will ssh in as:");
+  io.out("");
+  for (const step of steps) {
+    io.out(`# step ${step.name}`);
+    io.out(step.script);
+    io.out("");
+  }
+  io.out("Then, on this machine, add the peer to config.yml (mesh.peers: name, ssh " + dest + ") and run `awui peer add <name>`; with the forced-command key the worker pins this machine's key on first contact, so no `accept` is needed over there.");
+  io.out("ssh runs the steps with BatchMode, so the key must already be accepted on the target.");
+
+  if (!flags.run) return EXIT_OK;
+
+  if (!(await confirmed(io, flags, `Run these steps on ${dest} over ssh now? [y/N] `))) {
+    io.err("awui peer bootstrap: not run; the commands are printed above");
+    return EXIT_FAILED;
+  }
+  const runStep = io.runStep ?? defaultRunStep;
+  for (const step of steps) {
+    if (step.script === "") {
+      io.err(`awui peer bootstrap: skipped "step ${step.name}" (${step.note})`);
+      continue;
+    }
+    let argv: string[];
+    try {
+      argv = sshRemoteArgv({ kind: "ssh", host: dest }, step.script);
+    } catch (error) {
+      io.err(`awui peer bootstrap: ${error instanceof Error ? error.message : String(error)}`);
+      return EXIT_FAILED;
+    }
+    io.err(`awui peer bootstrap: running "step ${step.name}" on ${dest}…`);
+    const code = await runStep(argv);
+    if (code !== 0) {
+      io.err(`awui peer bootstrap: "step ${step.name}" exited ${code}; stopped before the next step`);
+      return EXIT_FAILED;
+    }
+  }
+  io.out("Done. The worker's mesh turns on the next time its awui service (or a serve-stdio link) starts.");
+  return EXIT_OK;
+}
+
+/** One ssh step, real: spawned argv-only, this process's stdio passed through. */
+function defaultRunStep(argv: string[]): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    const child = nodeSpawn(argv[0]!, argv.slice(1), { stdio: "inherit", shell: false });
+    child.on("error", reject);
+    child.on("close", (code) => resolve(code ?? 1));
+  });
 }

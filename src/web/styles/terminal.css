@@ -127,3 +127,100 @@
     animation: none;
   }
 }
+
+/* ---- what is open in the panel: the tab strip, the peer menu, Retry ----------
+   The strip only appears once a peer terminal is open, so the one-terminal
+   panel keeps its old shape. A peer tab reads "@<peer>", the same mark a
+   delegated task carries. The menu is a small popover under the head's ＋. */
+.terminal-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.terminal-new {
+  position: relative;
+  display: inline-flex;
+}
+
+.terminal-new-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  max-width: 240px;
+  padding: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  box-shadow: 0 6px 18px rgb(0 0 0 / var(--shadow-strength));
+}
+
+.terminal-new-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-new-menu button:hover,
+.terminal-new-menu button:focus-visible {
+  background: var(--hover);
+}
+
+.terminal-tabs {
+  display: flex;
+  flex: none;
+  gap: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface);
+  scrollbar-width: none;
+}
+
+.terminal-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.terminal-tab {
+  flex: 0 0 auto;
+  max-width: 180px;
+  padding: 5px 12px;
+  border: 0;
+  border-right: 1px solid var(--hairline);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--muted-text);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.terminal-tab:hover:not(.is-active) {
+  background: var(--hover);
+  color: var(--text-2);
+}
+
+.terminal-tab.is-active {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.terminal-tab:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}

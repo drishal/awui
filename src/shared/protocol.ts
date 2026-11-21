@@ -1328,7 +1328,15 @@ export const worktreeCreateSchema = z.object({
 });
 /** Trust one version of a project's `awui.yml`, named by the hash the picker was shown. */
 export const projectConfigTrustSchema = z.object({ hash: z.string().regex(/^[0-9a-f]{16}$/) });
-export const terminalCreateSchema = z.object({ cols: z.number().int().min(10).max(400).default(100), rows: z.number().int().min(4).max(120).default(30) });
+/** A terminal create: this machine's PTY, or (P3) a peer's, named by `peer` with an optional `peerCwd` there; the peer's own policy decides on the open. */
+export const terminalCreateSchema = z.object({
+  cols: z.number().int().min(10).max(400).default(100),
+  rows: z.number().int().min(4).max(120).default(30),
+  /** The configured mesh peer to open the terminal on; absent means this machine. */
+  peer: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/).optional(),
+  /** The cwd on that peer, resolved through the policy's roots; absent means the peer's own default. */
+  peerCwd: z.string().min(1).max(4096).refine((value) => !/[\u0000\n\r]/.test(value)).optional(),
+});
 export const terminalWriteSchema = z.object({ data: z.string().max(16_384) });
 export const htmlRenderPreviewSchema = z.object({ theme: z.record(z.string().regex(/^--[a-z0-9-]+$/), z.string().max(1000).refine((value) => !/[;{}]/.test(value))).refine((value) => Object.keys(value).length <= 32), appearance: z.enum(["light", "dark"]) });
 export const gitHubPrSchema = z.object({ base: z.string().trim().min(1).max(120), title: z.string().trim().min(1).max(200), body: z.string().max(20_000).default("") });

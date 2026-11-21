@@ -710,6 +710,7 @@ Usage:
   awui peer accept <name> --policy <p>   On the target: pin a pending caller under a policy
   awui peer serve-stdio [--peer <name>] [--policy <p>]   The worker end of a mesh link (SSH/docker)
   awui peer ls/cat <name> <path>   A folder or file on a paired peer (tasks <name>: its live tasks)
+  awui peer bootstrap <ssh-dest> [--run]   The setup commands a worker machine needs (with --run: over ssh, asked)
   awui setup mcp         What each harness needs before awui's own tools reach its chats; --apply runs a one-time step
   awui mcp               awui's orchestration MCP server on stdio, for a harness config that names a program (Hermes)
 

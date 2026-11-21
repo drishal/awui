@@ -94,7 +94,7 @@ macOS and Windows desktop packages exist (`npm --prefix apps/desktop run dist:ma
 | [Agents delegating to agents](docs/orchestration.md) | the orchestration tools, their limits, and the council/advisor/handoff skills |
 | [Architecture](docs/architecture.md) | how each agent is driven, adapters, approvals |
 | [Security](docs/security.md) | LAN, Tailscale, the threat model |
-| [Mesh](docs/mesh.md) | peers on your own machines (phase 0: config, identity, policy) |
+| [Mesh](docs/mesh.md) | delegated work on your own machines — SSH, Docker, or direct TLS: tasks, files, terminals, handoff, pairing, a NixOS module |
 | [Theme](docs/theme.md) | colours, base16, stylix |
 | [Testing](docs/testing.md) | unit, e2e, smoke |
 | [Credits](docs/credits.md) | design credits, what is not included |

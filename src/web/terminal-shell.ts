@@ -10,11 +10,20 @@ import "./styles/terminal-shell.css";
 interface TerminalStart {
   method: "start";
   workspace: { id: string; path: string; name: string };
+  /**
+   * A peer terminal (P3): the panel relays the configured peer it chose, and
+   * the create POST carries it; the peer's own policy decides. Absent for this
+   * machine's own terminal.
+   */
+  peer?: string;
+  peerCwd?: string;
   theme: Pick<ITheme, "background" | "foreground" | "cursor" | "cursorAccent" | "selectionBackground">;
 }
 interface TerminalMessage {
   method: string;
   workspace?: TerminalStart["workspace"];
+  peer?: TerminalStart["peer"];
+  peerCwd?: TerminalStart["peerCwd"];
   theme?: TerminalStart["theme"];
   message?: unknown;
 }
@@ -73,7 +82,10 @@ window.addEventListener("message", async (event) => {
     workspaceId = value.workspace.id;
     parent.postMessage({ method: "connecting" }, window.location.origin);
     try {
-      const response = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/terminal`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cols: term.cols, rows: term.rows }) });
+      // The create body names the peer only when the start message did: the
+      // local terminal and a peer terminal share the one route, and the fields
+      // are the only thing that tells them apart.
+      const response = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/terminal`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cols: term.cols, rows: term.rows, ...(value.peer ? { peer: value.peer, ...(value.peerCwd ? { peerCwd: value.peerCwd } : {}) } : {}) }) });
       if (!response.ok) throw new Error((await response.json()) as string);
       const created = (await response.json()) as Created;
       identifier = created.id;

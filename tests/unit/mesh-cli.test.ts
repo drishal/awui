@@ -204,3 +204,90 @@ describe("awui peer log", () => {
     expect(one.out[0]).toContain("peer.info");
   });
 });
+
+describe("awui peer bootstrap", () => {
+  it("prints the exact commands with the hostile parts quoted, and runs nothing", async () => {
+    const c = collector({ AWUI_CONFIG_DIR: meshOnDir(), AWUI_STATE_DIR: tempDir("awui-mesh-cli-state-") });
+    const key = tempDir("awui-mesh-cli-key-") + "/id_ed25519.pub";
+    writeFileSync(key, "ssh-ed25519 AAAA test-key comment\n");
+    const root = "/srv/wo" + String.fromCharCode(39) + "rked; rm -rf ~";
+    expect(await runPeerCli(["bootstrap", "drishal@lab-box", "--root", root, "--pubkey", key], c.io)).toBe(EXIT_OK);
+    const printed = c.out.join("\n");
+    // The repo, the root and the forced command are quoted as whole words: the
+    // shell the commands land in can read them back as one word each.
+    expect(printed).toContain("git clone 'https://github.com/drishal/awui.git'");
+    expect(printed).toContain('roots: ["/srv/wo\'rked; rm -rf ~"]');
+    // The forced command is inside the line's one single-quoted token (the
+    // inner quotes are escaped the shell way, `'\''`), and it carries the
+    // marker the step's own grep looks for, so a re-run appends nothing twice.
+    expect(printed).toContain('restrict,command="$HOME/.local/bin/awui peer serve-stdio');
+    expect(printed).toContain("--peer '");
+    expect(printed).toContain("awui-mesh leader-box");
+    // Nothing executes when --run is absent.
+    expect(c.err.join("\n")).not.toContain("running");
+  });
+
+  it("refuses an option-shaped destination, a relative root, a custom policy name, and a stray word with usage, exit 2", async () => {
+    for (const args of [
+      ["bootstrap", "--evil", "x"],
+      ["bootstrap", "-lab"],
+      ["bootstrap", "drishal@lab", "--root", "relative/path"],
+      ["bootstrap", "drishal@lab", "--policy", "custom"],
+      ["bootstrap", "drishal@lab", "stray"],
+      ["bootstrap"],
+      ["bootstrap", "drishal@lab", "--repo", "line1\nline2"],
+    ]) {
+      const c = collector({});
+      expect(await runPeerCli(args, c.io), JSON.stringify(args)).toBe(EXIT_USAGE);
+      expect(c.err.join("\n")).toContain("Usage");
+      expect(c.out).toEqual([]);
+    }
+  });
+
+  it("with --run asks, then runs the steps over ssh as argv only (no shell)", async () => {
+    const steps: string[][] = [];
+    const printed: string[] = [];
+    const c = collector({ AWUI_CONFIG_DIR: meshOnDir(), AWUI_STATE_DIR: tempDir("awui-mesh-cli-state-") }, async () => "y");
+    c.io.runStep = async (argv) => {
+      steps.push(argv);
+      printed.push(argv[argv.length - 1] ?? "");
+      return 0;
+    };
+    expect(await runPeerCli(["bootstrap", "drishal@lab-box", "--run"], c.io)).toBe(EXIT_OK);
+    expect(steps.length).toBeGreaterThanOrEqual(2);
+    for (const argv of steps) {
+      // argv words only: ssh, its fixed options, the destination, the script.
+      expect(argv[0]).toBe("ssh");
+      expect(argv).toContain("--");
+      expect(argv[argv.length - 2]).toBe("drishal@lab-box");
+    }
+    // The remote command carries a root value that would be a command elsewhere,
+    // held to one word by the quoting.
+    const asked = c.questions.join("\n");
+    expect(asked).toContain("over ssh now?");
+  });
+
+  it("without a terminal or --yes, --run asks and stops before any step", async () => {
+    const steps: string[][] = [];
+    const c = collector({ AWUI_CONFIG_DIR: meshOnDir(), AWUI_STATE_DIR: tempDir("awui-mesh-cli-state-") });
+    c.io.runStep = async (argv) => {
+      steps.push(argv);
+      return 0;
+    };
+    expect(await runPeerCli(["bootstrap", "drishal@lab-box", "--run"], c.io)).toBe(EXIT_FAILED);
+    expect(steps).toEqual([]);
+    expect(c.err.join("\n")).toContain("not run");
+  });
+
+  it("stops at the first failing step", async () => {
+    const steps: string[][] = [];
+    const c = collector({ AWUI_CONFIG_DIR: meshOnDir(), AWUI_STATE_DIR: tempDir("awui-mesh-cli-state-") }, async () => "y");
+    c.io.runStep = async (argv) => {
+      steps.push(argv);
+      return steps.length === 1 ? 3 : 0;
+    };
+    expect(await runPeerCli(["bootstrap", "drishal@lab-box", "--run"], c.io)).toBe(EXIT_FAILED);
+    expect(steps).toHaveLength(1);
+    expect(c.err.join("\n")).toContain("exited 3");
+  });
+});
