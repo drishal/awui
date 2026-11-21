@@ -21,8 +21,10 @@ import { interactionAnswerSchema } from "../../shared/protocol.js";
 import { loadConfig, type ServerConfig } from "../config.js";
 import { HarnessRegistry } from "../harness/registry.js";
 import type { LiveChat } from "../harness/types.js";
+import { ATTACH_FALLBACK_NOTE, connectAndPipe, planServeStdio, socketPath } from "./attach.js";
 import { AuditLog } from "./audit.js";
 import { ServerHandshake } from "./handshake.js";
+import type { TaskHost } from "./host.js";
 import { loadOrCreateIdentity, nodeIdOf, type NodeIdentity } from "./identity.js";
 import {
   BUILTIN_POLICIES,
@@ -43,6 +45,8 @@ import { configDir, configEnv, meshConfig, meshEnabled, readUserConfig, type Mes
 
 /** EX_CONFIG: bad settings; retrying cannot help, so a supervisor should not restart into the same refusal. */
 const EXIT_CONFIG = 78;
+/** EX_TEMPFAIL: no awui service to attach to right now; a caller may retry later (sendmail's code). */
+const EXIT_TEMPFAIL = 75;
 /** A peer or policy name as config.yml spells it (P0). */
 const NAME_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
@@ -161,6 +165,12 @@ export interface ServeDeps {
    * key (TOFU on first contact), and the named policy is always the ceiling.
    */
   forced?: { policy: string; peer: string };
+  /**
+   * P1.5 daemon mode: a link served by the running service hands its tasks to
+   * this host, and they survive the link's close. Absent (every ephemeral
+   * `serve-stdio`) the P1 behavior stands: a link's chats die with it.
+   */
+  host?: TaskHost;
   log?: (m: string) => void;
 }
 
@@ -586,16 +596,22 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
 }
 
 /**
- * `awui peer serve-stdio [--peer <name>] [--policy <policy>]`: the worker end
- * of an SSH or docker exec link, run as the remote command. Protocol only on
- * stdout, every log line on stderr, and a refusal (78) when the mesh is off.
- * The forced form takes --policy and --peer together, as authorized_keys
- * spells it; without a forced command a caller who can SSH in already has a
- * shell, so --policy grants nothing extra.
+ * `awui peer serve-stdio [--peer <name>] [--policy <policy>] [--ephemeral]
+ * [--attach]`: the worker end of an SSH or docker exec link, run as the remote
+ * command. Protocol only on stdout, every log line on stderr, and a refusal
+ * (78) when the mesh is off. The forced form takes --policy and --peer
+ * together, as authorized_keys spells it; without a forced command a caller
+ * who can SSH in already has a shell, so --policy grants nothing extra.
+ * Unless --ephemeral is given, the link first tries the attach socket of an
+ * already-running awui service, so tasks outlive this SSH session; when there
+ * is none it serves in-process (P1: tasks end with the link), and --attach
+ * turns that fallback into exit 75 instead.
  */
 export async function runServeStdio(args: string[], env: NodeJS.ProcessEnv): Promise<number> {
   let forcedPeer: string | undefined;
   let forcedPolicy: string | undefined;
+  let ephemeral = false;
+  let attach = false;
   for (let at = 0; at < args.length; at++) {
     const arg = args[at]!;
     if (arg === "--peer" || arg === "--policy") {
@@ -606,10 +622,18 @@ export async function runServeStdio(args: string[], env: NodeJS.ProcessEnv): Pro
       }
       if (arg === "--peer") forcedPeer = value;
       else forcedPolicy = value;
+    } else if (arg === "--ephemeral") {
+      ephemeral = true;
+    } else if (arg === "--attach") {
+      attach = true;
     } else {
       console.error(`awui peer serve-stdio: unknown option: ${arg}`);
       return 2;
     }
+  }
+  if (ephemeral && attach) {
+    console.error("awui peer serve-stdio: --ephemeral and --attach disagree: one skips the running service, the other requires it");
+    return 2;
   }
   if ((forcedPeer === undefined) !== (forcedPolicy === undefined)) {
     console.error("awui peer serve-stdio: --policy and --peer are the one forced-command form; give both or neither");
@@ -646,6 +670,33 @@ export async function runServeStdio(args: string[], env: NodeJS.ProcessEnv): Pro
       console.error(`awui peer serve-stdio: no mesh policy named "${forced.policy}"`);
       return 2;
     }
+  }
+  // P1.5: unless --ephemeral, the link prefers a running awui service over a
+  // fresh in-process serve, so its tasks outlive this SSH session. The forced
+  // pair rides the one prologue line; the daemon enforces it as its own ceiling.
+  const plan = planServeStdio({ ephemeral, attach, canAttach: process.platform !== "win32" });
+  if (plan.tryAttach) {
+    let attachPath: string | null = null;
+    try {
+      attachPath = await socketPath(env, config.stateDir);
+    } catch (error) {
+      log(`the attach socket could not be prepared: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (attachPath !== null) {
+      const piped = await connectAndPipe(attachPath, forced ?? null, process.stdin, process.stdout, { timeoutMs: 1000 });
+      if (piped.ok) {
+        const reason = await piped.closed;
+        return reason === "closed" ? 0 : 1;
+      }
+      if (plan.onAttachFailure === "tempfail") {
+        console.error(`awui peer serve-stdio: no running awui service to attach to (${piped.reason})`);
+        return EXIT_TEMPFAIL;
+      }
+    } else if (plan.onAttachFailure === "tempfail") {
+      console.error("awui peer serve-stdio: no running awui service to attach to");
+      return EXIT_TEMPFAIL;
+    }
+    console.error(ATTACH_FALLBACK_NOTE);
   }
   let identity: NodeIdentity;
   try {
