@@ -51,9 +51,12 @@ describe("linkOf", () => {
     expect(linkOf({ docker: "awui-worker", engine: "podman" })).toEqual({ kind: "docker", container: "awui-worker", engine: "podman" });
   });
 
-  it("throws when the peer names neither or both", () => {
-    expect(() => linkOf({})).toThrow(/neither ssh nor docker/);
+  it("throws when the peer does not name exactly one of ssh, docker, or tls", () => {
+    expect(() => linkOf({})).toThrow(/neither ssh, docker, nor tls/);
     expect(() => linkOf({ ssh: "a", docker: "b" })).toThrow(/both ssh and docker/);
+    expect(() => linkOf({ ssh: "a", tls: "b:1" })).toThrow(/both ssh and tls/);
+    expect(() => linkOf({ docker: "b", tls: "c:1" })).toThrow(/both docker and tls/);
+    expect(linkOf({ tls: "10.0.0.9:4784" })).toEqual({ kind: "tls", address: "10.0.0.9:4784" });
   });
 });
 

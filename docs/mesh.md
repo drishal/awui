@@ -7,7 +7,9 @@ streams back as an ordinary delegated task in your chat. **Phase 1.5** is live o
 top of it: when the peer runs awui as a service, its tasks survive the SSH
 session that started them (a dropped link reconnects and replays what it missed),
 its approvals can be answered in its own UI, and the leader can read and write
-files there.
+files there. **Direct TLS** is the newest way in: a peer running awui as a
+service can answer on a port of its own — same signed handshake, same
+policy, pinned keys instead of a certificate authority.
 
 ## What it is
 
@@ -124,12 +126,15 @@ worker`, exactly as over SSH. The container's awui needs its own config.yml with
 
 ## How it works
 
-- **Transport.** The link is one `ssh -T` or `docker exec -i` carrying
-  newline-delimited JSON-RPC 2.0 over stdio (`awui-mesh/1`). The local side never
-  builds a shell command: the argv is assembled word by word, and the one string
-  ssh hands to the remote shell is single-quoted token by token. The worker
-  writes a `AWUI-MESH/1 READY` preamble first, so login MOTD noise is skipped,
-  and everything it logs goes to stderr.
+- **Transport.** The link is one `ssh -T`, one `docker exec -i`, or a direct
+  TLS connection, carrying newline-delimited JSON-RPC 2.0 (`awui-mesh/1`) over
+  stdio or the TLS stream. The local side never builds a shell command: the argv
+  is assembled word by word, and the one string ssh hands to the remote shell is
+  single-quoted token by token. The worker writes a `AWUI-MESH/1 READY`
+  preamble first, so login MOTD noise is skipped, and everything it logs goes to
+  stderr. The TLS link is raw TLS 1.3 — deliberately not WebSocket framing:
+  node-to-node needs a byte stream, and raw TLS keeps the one NDJSON parser
+  instead of adding a second one.
 - **Handshake.** Mutual and signed before anything else: each side signs the
   other's fresh nonce under a distinct domain string, and each holds the other to
   its pin (a changed key is a close, never a warning). Both sides derive the same
@@ -281,13 +286,62 @@ to continue with an offset. The same lead-only rules a peer delegation passes
 apply (mesh on, `mesh.chats`, one hop, a configured peer) — the peer's own
 policy, its roots and caps, is what actually decides.
 
+## Phase 2: direct TLS
+
+### The listener
+
+A worker that runs awui as a service can also answer peers on a port, with no
+SSH hop and no container: set `mesh.listen` and the same service that owns the
+attach socket opens a TLS 1.3 listener (default port 4784):
+
+```yaml
+mesh:
+  enabled: true
+  listen:
+    host: 10.0.0.5        # required; 0.0.0.0/:: work but `awui doctor` warns
+    port: 4784
+peers:
+  - name: lab-vm-3
+    tls: lab-vm-3.internal:4784
+```
+
+Exactly one of `ssh`, `docker`, or `tls` names how a peer is reached. Turning
+the mesh off (or removing `mesh.listen`) closes the listener and every link
+with it, on the same 2 s config re-read the attach socket follows.
+
+**The certificate is not the trust.** TLS needs a certificate, so awui mints
+one: a minimal self-signed X.509 v3, hand-encoded, signed by a dedicated
+Ed25519 key at `$STATE/mesh/tls-key.pem` (0600), renewed when less than 30
+days of its 825 remain. The client does not verify it at all — no CA, no
+hostname check. What carries the trust is the same signed handshake as stdio,
+made MITM-proof by the **channel binding**: both sides fold this one TLS
+session's exporter value (`EXPORTER-awui-mesh/1`) into the transcript their
+signatures cover. A proxy that terminates TLS on both sides relays every
+message faithfully and still fails — its two sessions export two different
+bindings, so the signature it passes on cannot verify. Stdio links bind
+nothing, and their transcript stays byte-for-byte the phase 1 one.
+
+The listener is bounded like every open port: TLS 1.3 only; a mesh handshake
+that has not finished in 10 s is closed; at most 16 unauthenticated sockets
+at once, 4 per remote IP; at most 30 new connections per IP per minute; and an
+authenticated link with no traffic for 10 minutes is closed (a peer's ping
+keeps it alive). The port speaks only `awui-mesh/1` — never `/api/*`.
+
+### Peers added without editing YAML
+
+Peers can also live in `$STATE/mesh/peers.json` (mode 0600, written
+atomically, at most 64 entries, one entry shape: exactly what config.yml's
+`mesh.peers[]` takes), for peers added from the UI or a join. Both sources are
+used, and wherever both name the same peer **config.yml wins**: a checked-in
+file outranks local state. A malformed file is a hard error, never a reset.
+
 ### Still missing
 
 - **Ask-capabilities** (`ask:` caps): a cap that needs an approval mid-run is
   refused with a clear error (`-33003 needs_approval`), not raised as a card.
 - **Terminals** (`term.open` is named in policies but carries nothing).
 - **Host tasks across a target restart**: they are in memory, not persisted.
-- **Direct TLS** with pinned keys (P2).
+- **A Peers UI and invite pairing** (the rest of phase 2).
 
 ### Limits that remain
 
@@ -319,6 +373,12 @@ Under the state folder, never in git, never in config:
   lengths; the file methods record paths and byte counts, never content.
 - `mesh/attach.sock` — the attach socket, when `$XDG_RUNTIME_DIR` is not usable
   (the usual place is there; see the attach socket above), mode 0600.
+- `mesh/tls-key.pem`, `mesh/tls-cert.pem` — the direct TLS listener's dedicated
+  Ed25519 key and its self-signed certificate, mode 0600. The key is never the
+  node identity; it is only the TLS envelope. A malformed key file is a hard
+  error, never regenerated.
+- `mesh/peers.json` — peers added from the UI or a join (phase 2), mode 0600,
+  merged with config.yml's peers (config wins on a name clash).
 
 ## Security notes
 
@@ -331,6 +391,11 @@ Under the state folder, never in git, never in config:
 - **Keys are the identity.** A peer whose key changes is closed with a pin
   mismatch until a person runs `awui peer remove` and re-pins; names never stand
   in for keys.
+- **The TLS certificate is never the trust.** awui's direct TLS link pins the
+  node key and binds the handshake to the one TLS session it rode in on, so a
+  proxy terminating TLS on both sides fails the pin even with a perfectly
+  relayed handshake. The listener is bounded (handshake deadline, per-IP caps
+  and rate, idle timeout) and speaks only `awui-mesh/1` — never `/api/*`.
 - **The attach socket's trust is this uid.** Only the same user can open the
   socket (0600, in a 0700 directory), and that user could already edit
   `pins.json` and run the CLI — so the one-line prologue a worker sends it is
@@ -354,7 +419,8 @@ Under the state folder, never in git, never in config:
 - **Phase 1.5** — shipped: the attach socket and daemon-mode tasks (a dropped link
   reconnects and replays), approvals on the target, files over the link (`fs.*`,
   `peer_files`, the `peer ls/cat/tasks` commands).
-- **Phase 2** — direct TLS with pinned keys; a Peers UI; pairing.
+- **Phase 2** — in progress: direct TLS with pinned keys (shipped); a Peers UI
+  and invite pairing to follow.
 - **Phase 3** — remote terminals, handoff, a NixOS module.
 
 ## Phone follow is separate

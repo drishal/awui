@@ -13,8 +13,10 @@ import type { HarnessEvent } from "../harness/types.js";
 import { clientHandshake } from "./handshake.js";
 import type { NodeIdentity } from "./identity.js";
 import type { PinStore } from "./pins.js";
+import { mergePeers, type MeshPeerEntry } from "./peer-store.js";
 import { MeshErrorCode, MeshRpcError, RpcPeer } from "./rpc.js";
 import { DEFAULT_RECONNECT_PLAN, type PeerReconnectPlan } from "./peer-adapter.js";
+import { connectTls } from "./tls.js";
 import { linkOf, spawnLink } from "./transport.js";
 import type { PeerLink } from "./transport.js";
 
@@ -42,6 +44,11 @@ export interface PeerManagerDeps {
   localName: () => string;
   /** How a link is started; the real transports by default, an in-process pair in tests. */
   spawn?: (peerName: string, link: PeerLink) => PeerSpawn;
+  /**
+   * Peers saved from the UI or CLI (mesh/peers.json), read per call and merged
+   * with config's (config wins on a name clash); absent means config only.
+   */
+  savedPeers?: () => MeshPeerEntry[];
   /** How a dropped link under an unsettled task is retried; tests inject a faster plan. */
   reconnect?: { schedule?: number[]; giveUpMs?: number; now?: () => number; sleep?: (ms: number) => Promise<void> };
   log?: (message: string) => void;
@@ -95,7 +102,7 @@ export type PeerTaskListener = (event: HarnessEvent, seq: number) => void;
 /** One entry of the configured outbound inventory, as a listing shows it. */
 export interface PeerEntry {
   name: string;
-  kind: "ssh" | "docker";
+  kind: "ssh" | "docker" | "tls";
   pinned: boolean;
 }
 
@@ -213,10 +220,18 @@ export class PeerManager {
 
   constructor(private readonly deps: PeerManagerDeps) {}
 
-  /** The configured outbound inventory, with no network and no link started: what a listing names and a delegation accepts. */
+  /** The outbound inventory — config's peers plus the saved ones — with no network and no link started: what a listing names and a delegation accepts. */
   peers(): PeerEntry[] {
-    const peers = this.deps.config()?.peers ?? [];
-    return peers.map((peer) => ({ name: peer.name, kind: peer.ssh !== undefined ? "ssh" : "docker", pinned: this.pinnedNames.has(peer.name) }));
+    return this.entries().map((peer) => ({
+      name: peer.name,
+      kind: peer.ssh !== undefined ? "ssh" : peer.docker !== undefined ? "docker" : "tls",
+      pinned: this.pinnedNames.has(peer.name),
+    }));
+  }
+
+  /** Every peer this node knows how to reach, merged: config wins wherever both name the same machine. */
+  private entries(): MeshPeerEntry[] {
+    return mergePeers(this.deps.config()?.peers ?? [], this.deps.savedPeers?.() ?? []);
   }
 
   /** Writes (or rewrites) the outbound pin for a peer: what a TOFU first contact is confirmed into. */
@@ -302,9 +317,9 @@ export class PeerManager {
       typeof (row as PeerTaskRow).createdAt === "number");
   }
 
-  /** The config entry for a peer name, case-insensitively (the schema keeps names unique that way). */
+  /** The entry for a peer name, case-insensitively (the schema keeps names unique that way), from the merged list. */
   private findEntry(peerName: string): ConfigPeer | null {
-    return (this.deps.config()?.peers ?? []).find((peer) => peer.name.toLowerCase() === peerName.toLowerCase()) ?? null;
+    return this.entries().find((peer) => peer.name.toLowerCase() === peerName.toLowerCase()) ?? null;
   }
 
   private async open(peerName: string, opts: { tofu?: boolean }): Promise<PeerConnection> {
@@ -315,9 +330,25 @@ export class PeerManager {
     const identity = await this.deps.identity();
     const pin = await this.deps.pins.outbound(entry.name);
     if (pin !== null) this.pinnedNames.add(entry.name);
-    const spawn = this.deps.spawn ?? ((_name: string, l: PeerLink) => spawnLink(l, this.deps.localName()));
-    const child = spawn(entry.name, link);
-    const rpc = new RpcPeer(child.input, child.output, { role: "client", log: (message) => this.log(message) });
+    let rpc: RpcPeer;
+    let kill: () => void;
+    let stderrTail: (() => string) | undefined;
+    /** A TLS link folds its session's exporter value into the handshake; stdio links sign the P1 transcript. */
+    let binding: Buffer | undefined;
+    if (link.kind === "tls") {
+      // Direct TLS (P2): dial the peer's own listener; the certificate is never
+      // the trust — the pin and the binding are (see tls.ts).
+      const dialed = await connectTls(link.address, { timeoutMs: 10_000 });
+      binding = dialed.binding;
+      rpc = new RpcPeer(dialed.link, dialed.link, { role: "client", log: (message) => this.log(message) });
+      kill = () => dialed.link.destroy();
+    } else {
+      const spawn = this.deps.spawn ?? ((_name: string, l: PeerLink) => spawnLink(l, this.deps.localName()));
+      const child = spawn(entry.name, link);
+      rpc = new RpcPeer(child.input, child.output, { role: "client", log: (message) => this.log(message) });
+      kill = child.kill;
+      stderrTail = () => child.stderrTail?.() ?? "";
+    }
     rpc.start();
     let connection: PeerConnection;
     try {
@@ -327,6 +358,7 @@ export class PeerManager {
         hops: 0,
         expectedServerKey: pin?.publicKey ?? null,
         tofu: opts.tofu === true,
+        binding,
       });
       if (!outcome.paired && opts.tofu !== true) {
         // Not paired is the normal first-contact state. The fix is a command on the target, and
@@ -345,15 +377,15 @@ export class PeerManager {
         outcome.paired,
         outcome.policy,
         rpc,
-        child.kill,
+        kill,
       );
     } catch (error) {
       // The handshake closes the rpc on its own failures; the child is this spawn's to stop.
       rpc.close("connect failed");
-      child.kill();
+      kill();
       // A worker that never came up (no awui on the far side, a bad path) says why on stderr;
       // that tail is the only diagnostic the caller of a dead link ever gets.
-      const tail = child.stderrTail?.() ?? "";
+      const tail = stderrTail?.() ?? "";
       if (tail !== "" && error instanceof MeshRpcError && TAIL_CODES.has(error.code)) {
         throw new Error(`${error.message}\n${entry.name}'s stderr: ${tail}`);
       }

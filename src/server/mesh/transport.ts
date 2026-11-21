@@ -1,15 +1,19 @@
-// Mesh transports (P1): how the leader reaches a worker's `awui peer serve-stdio`.
-// Only three ways in — ssh, a container runtime's exec, and an in-process pair for
-// tests — and the local side never goes through a shell. Every destination is held
-// to a plain host/container shape so it cannot be read as an option, and the one
-// string ssh itself has to hand to the remote shell is single-quoted token by token.
+// Mesh transports (P1/P2): how the leader reaches a worker. Three ways in —
+// ssh, a container runtime's exec, and a direct TLS listener — plus an
+// in-process pair for tests. The spawn-based ones run the remote `awui peer
+// serve-stdio`; TLS dials the worker's own listener (tls.ts) instead, with the
+// channel binding that its handshake folds in. The local side never goes
+// through a shell: every destination is held to a plain host/container/address
+// shape so it cannot be read as an option, and the one string ssh itself has to
+// hand to the remote shell is single-quoted token by token.
 import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { PassThrough, type Readable, type Writable } from "node:stream";
 
-/** A worker endpoint: one of the two real transports, as validated argv inputs. */
+/** A worker endpoint: one of the three real transports, as validated inputs. */
 export type PeerLink =
   | { kind: "ssh"; host: string; sshOpts?: string[]; awuiPath?: string }
-  | { kind: "docker"; container: string; engine?: "docker" | "podman"; awuiPath?: string };
+  | { kind: "docker"; container: string; engine?: "docker" | "podman"; awuiPath?: string }
+  | { kind: "tls"; address: string };
 
 /** A live link to a worker's stdio protocol. */
 export interface SpawnedLink {
@@ -47,14 +51,18 @@ export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-/** A config.yml `mesh.peers[]` entry as the link it describes. Throws when it names neither or both. */
-export function linkOf(peer: { ssh?: string; docker?: string; ssh_opts?: string[]; awui_path?: string; engine?: "docker" | "podman" }): PeerLink {
+/** A config.yml `mesh.peers[]` entry as the link it describes. Throws when it does not name exactly one transport. */
+export function linkOf(peer: { ssh?: string; docker?: string; tls?: string; ssh_opts?: string[]; awui_path?: string; engine?: "docker" | "podman" }): PeerLink {
   const ssh = peer.ssh?.trim();
   const docker = peer.docker?.trim();
+  const tlsAddress = peer.tls?.trim();
   if (ssh && docker) throw new Error("a mesh peer names both ssh and docker; pick one");
+  if (ssh && tlsAddress) throw new Error("a mesh peer names both ssh and tls; pick one");
+  if (docker && tlsAddress) throw new Error("a mesh peer names both docker and tls; pick one");
   if (ssh) return { kind: "ssh", host: ssh, sshOpts: peer.ssh_opts, awuiPath: peer.awui_path };
   if (docker) return { kind: "docker", container: docker, engine: peer.engine, awuiPath: peer.awui_path };
-  throw new Error("a mesh peer names neither ssh nor docker");
+  if (tlsAddress) return { kind: "tls", address: tlsAddress };
+  throw new Error("a mesh peer names neither ssh, docker, nor tls");
 }
 
 /** Throws unless the value is safe to hand to a process as one argv word. */
@@ -72,6 +80,10 @@ function checkLocalName(localName: string): void {
 /** The exact argv that starts the worker's stdio protocol, without a local shell. */
 export function argvFor(link: PeerLink, localName: string): string[] {
   checkLocalName(localName);
+  if (link.kind === "tls") {
+    // A TLS peer is dialed through tls.ts, never spawned; an argv for one is a programming error, so it is named, not guessed at.
+    throw new Error("a TLS mesh peer is dialed, not spawned");
+  }
   checkAwuiPath(link.awuiPath, link.kind);
   const awuiPath = link.awuiPath ?? "awui";
   if (link.kind === "docker") {

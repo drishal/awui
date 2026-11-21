@@ -56,13 +56,14 @@ import { PresenceTable } from "./presence.js";
 import { ThemeStore } from "./theme.js";
 import { ThemeLibrary } from "./theme-library.js";
 import { Herdr, herdrSocketPath } from "./herdr.js";
-import { configDir, configEnv, herdrEnabled, meshEnabled, migrateConfigDir, readUserConfig, THEMES_DIR, uiSettings, UserConfigError, type UserConfig } from "./user-config.js";
+import { configDir, configEnv, herdrEnabled, meshEnabled, meshListen, migrateConfigDir, readUserConfig, THEMES_DIR, uiSettings, UserConfigError, type UserConfig } from "./user-config.js";
 import { PeerManager } from "./mesh/manager.js";
 import { PinStore } from "./mesh/pins.js";
+import { PeerPeersStore } from "./mesh/peer-store.js";
 import { loadOrCreateIdentity } from "./mesh/identity.js";
 import { AuditLog } from "./mesh/audit.js";
 import { runPeerCli } from "./mesh/cli.js";
-import { startMeshAttach } from "./mesh/daemon.js";
+import { startMeshAttach, startMeshTls } from "./mesh/daemon.js";
 import { TaskHost } from "./mesh/host.js";
 import { Workspaces } from "./workspaces.js";
 import { cleanupPastes } from "./paste-store.js";
@@ -265,12 +266,17 @@ async function main(): Promise<void> {
   const userNow = meshSetting(config.configDir, settings?.config);
   // The mesh name the way the worker CLI spells it: config.yml's, else the hostname sanitized.
   const meshLocalName = () => userNow()?.mesh?.name ?? (hostname().replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64) || "awui");
+  // Peers the UI or CLI added (P2) live in the state folder and merge with
+  // config's, config winning on a name clash; read per call, so a `peer` CLI
+  // write in another process lands on the next lookup without a restart.
+  const meshSavedPeers = PeerPeersStore(path.join(config.stateDir, "mesh", "peers.json"));
   const meshPeers = new PeerManager({
     identity: () => loadOrCreateIdentity(config.stateDir),
     pins: PinStore(path.join(config.stateDir, "mesh", "pins.json")),
     config: () => userNow()?.mesh,
     enabled: () => meshEnabled(userNow(), process.env),
     localName: meshLocalName,
+    savedPeers: () => meshSavedPeers.snapshot(),
     log: (m) => console.error(`awui: mesh: ${m}`),
   });
   // The mesh's target side (P1.5): while the mesh is on, this service also listens on a
@@ -278,30 +284,50 @@ async function main(): Promise<void> {
   // SSH session that carried them. The same 2 s config re-read turns the socket on and off
   // without a restart; with the mesh off nothing listens, exactly as before.
   const meshLog = (m: string) => console.error(`awui: mesh: ${m}`);
+  // One audit log and one TaskHost for both ways a peer reaches this service:
+  // the same decisions, the same task ownership, whichever door they used.
+  const meshAudit = new AuditLog(path.join(config.stateDir, "mesh", "audit.jsonl"), meshLog);
+  const meshHost = new TaskHost({
+    chats: manager,
+    registry,
+    // Through the server's own Workspaces: a mesh root must also sit inside this
+    // server's workspace roots, so the target's UI never shows a chat in a folder
+    // it would itself refuse to open.
+    workspace: (real) => workspaces.open(real),
+    clock: Date.now,
+    log: meshLog,
+    detachedTtlHours: () => userNow()?.mesh?.detached_ttl_hours ?? 24,
+  });
   const meshAttach = startMeshAttach({
     env: process.env,
     stateDir: config.stateDir,
     identity: () => loadOrCreateIdentity(config.stateDir),
     name: meshLocalName,
     pins: PinStore(path.join(config.stateDir, "mesh", "pins.json")),
-    audit: new AuditLog(path.join(config.stateDir, "mesh", "audit.jsonl"), meshLog),
+    audit: meshAudit,
     registry,
     config: () => userNow()?.mesh,
     enabled: () => meshEnabled(userNow(), process.env),
     home: config.home,
-    // Host tasks are real chats opened through the manager, owned by the peer that asked
-    // (the TaskHost being written in parallel owns everything past this constructor).
-    host: new TaskHost({
-      chats: manager,
-      registry,
-      // Through the server's own Workspaces: a mesh root must also sit inside this
-      // server's workspace roots, so the target's UI never shows a chat in a folder
-      // it would itself refuse to open.
-      workspace: (real) => workspaces.open(real),
-      clock: Date.now,
-      log: meshLog,
-      detachedTtlHours: () => userNow()?.mesh?.detached_ttl_hours ?? 24,
-    }),
+    host: meshHost,
+    log: meshLog,
+  });
+  // The mesh's direct TLS listener (P2): while `mesh.listen` names an address,
+  // the same service also answers peers over TLS 1.3 — the same serve loop, the
+  // same per-call policy, no forced ceiling (a TLS link's trust is its pin).
+  // Off unless mesh.listen is set; the same 2 s poll turns it on and off.
+  const meshTls = startMeshTls({
+    stateDir: config.stateDir,
+    identity: () => loadOrCreateIdentity(config.stateDir),
+    name: meshLocalName,
+    pins: PinStore(path.join(config.stateDir, "mesh", "pins.json")),
+    audit: meshAudit,
+    registry,
+    config: () => userNow()?.mesh,
+    enabled: () => meshEnabled(userNow(), process.env),
+    home: config.home,
+    host: meshHost,
+    listen: () => meshListen(userNow()),
     log: meshLog,
   });
   const marks = await SessionMarks.open(config.stateDir);
@@ -541,8 +567,9 @@ async function main(): Promise<void> {
     clearInterval(pasteCleanupTimer);
     if (settleTimer) clearInterval(settleTimer);
     server.close();
-    // The attach socket goes down with the listener: no peer link outlives the service's own shutdown.
+    // The attach socket and the TLS listener go down with the service: no peer link outlives its own shutdown.
     meshAttach.stop();
+    meshTls.stop();
     if (app.locals.prWatchStore) await app.locals.prWatchStore.stop();
     terminals.shutdown();
     for (const socket of sockets) socket.destroy();

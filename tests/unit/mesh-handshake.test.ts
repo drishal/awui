@@ -27,11 +27,11 @@ interface HelloReply {
 }
 
 /** A client and a server peer wired through a ServerHandshake that answers nothing else. */
-function link(serverIdentity: NodeIdentity, resolve: (clientKey: Buffer, clientName: string) => Promise<{ paired: boolean; policy: string }>): { client: RpcPeer; server: RpcPeer; hs: ServerHandshake } {
+function link(serverIdentity: NodeIdentity, resolve: (clientKey: Buffer, clientName: string) => Promise<{ paired: boolean; policy: string }>, binding?: Buffer): { client: RpcPeer; server: RpcPeer; hs: ServerHandshake } {
   const c2s = new PassThrough();
   const s2c = new PassThrough();
   const server = new RpcPeer(c2s, s2c, { role: "server" });
-  const hs = new ServerHandshake({ identity: serverIdentity, name: "target-box", resolve });
+  const hs = new ServerHandshake({ identity: serverIdentity, name: "target-box", resolve, ...(binding !== undefined ? { binding } : {}) });
   server.onRequest((method, params) => {
     const answer = hs.handle(method, params);
     if (answer !== null) return answer;
@@ -316,4 +316,29 @@ describe("ordering and replay", () => {
     expect(error.code).toBe(MeshErrorCode.invalid_request);
     expect(end2.hs.state).toBe("hello");
   });
+
+  it("exposes the transcript only after auth, binding included (P2: peer.redeem needs it)", async () => {
+    const clientIdentity = identity();
+    const serverIdentity = identity();
+    const binding = Buffer.alloc(32, 9);
+    const end = link(serverIdentity, async () => ({ paired: true, policy: "worker" }), binding);
+    expect(end.hs.transcript).toBeNull();
+    const nonce = randomBytes(32);
+    const hello = await end.client.request<HelloReply>("peer.hello", helloParams(clientIdentity, "leader-box", nonce));
+    // The transcript body is still private in "hello": only a verified auth opens it.
+    expect(end.hs.transcript).toBeNull();
+    const bound = transcript(clientIdentity.publicKey, nonce, serverIdentity.publicKey, Buffer.from(hello.nonce, "base64url"), binding);
+    await end.client.request("peer.auth", { sig: sign(clientIdentity, authSigInput(bound)).toString("base64url") });
+    expect(end.hs.transcript).toEqual(bound);
+
+    // And a link with no binding keeps the exact P1 transcript, bytes for bytes.
+    const plain = link(serverIdentity, async () => ({ paired: true, policy: "worker" }));
+    const plainNonce = randomBytes(32);
+    const plainHello = await plain.client.request<HelloReply>("peer.hello", helloParams(clientIdentity, "leader-box", plainNonce));
+    const t = transcript(clientIdentity.publicKey, plainNonce, serverIdentity.publicKey, Buffer.from(plainHello.nonce, "base64url"));
+    await plain.client.request("peer.auth", { sig: sign(clientIdentity, authSigInput(t)).toString("base64url") });
+    expect(plain.hs.transcript).toEqual(t);
+    expect(plain.hs.transcript).toEqual(Buffer.concat([clientIdentity.publicKey, plainNonce, serverIdentity.publicKey, Buffer.from(plainHello.nonce, "base64url")]));
+  });
 });
+
