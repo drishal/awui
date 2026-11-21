@@ -168,6 +168,8 @@ const meshSchema = z
     max_hops: z.literal(1).optional(),
     max_remote_tasks: z.number().int().min(1).max(64).optional(),
     chats: z.enum(["lead-only", "all"]).optional(),
+    // How long a daemon-mode task with no attached link stays once settled (hours).
+    detached_ttl_hours: z.number().int().min(1).max(720).optional(),
     policies: z.record(meshPolicyNameSchema, meshPolicySchema).optional(),
     peers: z
       .array(meshPeerSchema)
@@ -485,6 +487,14 @@ export function breakdownRules(c: UserConfig | undefined): BreakdownRules {
 /** config.yml's `mesh:` block as parsed, or undefined when the file has none. */
 export function meshConfig(c: UserConfig | undefined): MeshConfig | undefined {
   return c?.mesh;
+}
+
+/**
+ * How long a daemon-mode task with no attached link stays once it is settled
+ * (config `mesh.detached_ttl_hours`, hours; a task still running keeps running).
+ */
+export function meshDetachedTtlHours(c: UserConfig | undefined): number {
+  return c?.mesh?.detached_ttl_hours ?? 24;
 }
 
 /**

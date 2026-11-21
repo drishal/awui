@@ -23,6 +23,7 @@ import { HarnessRegistry } from "../harness/registry.js";
 import type { LiveChat } from "../harness/types.js";
 import { AuditLog } from "./audit.js";
 import { ServerHandshake } from "./handshake.js";
+import type { HostLink, TaskHost } from "./host.js";
 import { loadOrCreateIdentity, nodeIdOf, type NodeIdentity } from "./identity.js";
 import {
   BUILTIN_POLICIES,
@@ -136,6 +137,15 @@ const configSchema = z
     patch: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
+/** task.attach (daemon only): replay the task's ring past this seq, then stream live. */
+const attachSchema = z
+  .object({
+    remoteTaskId: z.string().min(1).max(64),
+    afterSeq: z.number().int().min(0),
+  })
+  .strict();
+/** task.list (daemon only): this peer's live tasks. */
+const listSchema = z.object({}).strict();
 
 /** One strict params parse: a shape the protocol did not promise is an invalid request, never a best-effort read. */
 function parse<T>(schema: z.ZodType<T>, method: string, params: unknown): T {
@@ -161,6 +171,13 @@ export interface ServeDeps {
    * key (TOFU on first contact), and the named policy is always the ceiling.
    */
   forced?: { policy: string; peer: string };
+  /**
+   * Daemon mode (P1.5): when set, tasks are owned by the host and outlive this
+   * link — closing the link only drops its subscriptions — and task.attach /
+   * task.list are served. Without it, P1's ephemeral behavior holds: every
+   * chat dies with its link.
+   */
+  host?: TaskHost;
   log?: (m: string) => void;
 }
 
@@ -193,6 +210,9 @@ interface Inbound {
 export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps): { closed: Promise<string> } {
   const log = deps.log ?? (() => undefined);
   const peer = new RpcPeer(io.input, io.output, { role: "server", log });
+  const host = deps.host;
+  // One link's presence on the host: what its subscriptions hang from, detached (never disposed) at link end.
+  const hostLink = host !== undefined ? host.openLink((method, params) => peer.notify(method, params)) : null;
   const tasks = new Map<string, LinkTask>();
   /** clientRequestId -> the answer already given, so a retry returns the same task, not a second chat. */
   const opens = new Map<string, { remoteTaskId: string; result: unknown }>();
@@ -468,9 +488,155 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
     return task.live.getConfig();
   };
 
+  // ---- daemon mode (P1.5): the host owns every task; a link is one way to reach it ----
+
+  /** What a hosted handler needs to name one peer: the key its node id is derived from, and its handshake name. */
+  type HostClient = { publicKey: Buffer; name: string };
+
+  /**
+   * task.open against the host: the ephemeral path's checks in its order,
+   * minus the P1 refusal of target/both approvals — that refusal is exactly
+   * what daemon mode lifts, because the chat is a real chat on this node and
+   * its requests are answerable in this node's own UI.
+   */
+  const openHosted = async (host: TaskHost, hostLink: HostLink, client: HostClient, policy: PeerPolicy, raw: unknown, note: (entry: CallNote) => void): Promise<unknown> => {
+    const params = parse(openSchema, "task.open", raw);
+    note({ target: params.cwd });
+    requireCap(policy, "task.run", "task.open");
+    if (!checkHops(params.hops)) {
+      throw new MeshRpcError(MeshErrorCode.hop_limit, "hops reached max_hops; a remote task can never start another remote task", { code: "hop_limit" });
+    }
+    if (!harnessAllowed(policy, params.harness)) {
+      throw new MeshRpcError(
+        MeshErrorCode.denied,
+        `harness "${params.harness}" is not in the policy's allowlist (${policy.harnesses.join(", ")})`,
+        { code: "denied" },
+      );
+    }
+    const adapter = deps.registry.get(params.harness);
+    if (adapter === undefined) throw new MeshRpcError(MeshErrorCode.denied, `harness "${params.harness}" is not registered on this node`, { code: "denied" });
+    if (!(await deps.registry.available(params.harness))) {
+      throw new MeshRpcError(MeshErrorCode.denied, `harness "${params.harness}" is not available on this node`, { code: "denied" });
+    }
+    const resolved = await resolveInRoots(policy, params.cwd, deps.home);
+    if (!resolved.ok) throw new MeshRpcError(MeshErrorCode.denied, `the requested cwd is refused: ${resolved.reason}`, { code: "denied" });
+    let stat: Awaited<ReturnType<typeof fs.stat>> | null = null;
+    try {
+      stat = await fs.stat(resolved.real);
+    } catch {
+      // A cwd that does not exist is refused just below.
+    }
+    if (stat === null || !stat.isDirectory()) {
+      throw new MeshRpcError(MeshErrorCode.denied, "the requested cwd is not an existing directory", { code: "denied" });
+    }
+    const result = await host.open(hostLink, nodeIdOf(client.publicKey), client.name, {
+      clientRequestId: params.clientRequestId,
+      harness: params.harness,
+      cwd: resolved.real,
+      ceiling: clampCeiling(policy, params.ceiling),
+      maxTasks: policy.maxTasks,
+      ...(params.model !== undefined ? { model: params.model } : {}),
+      ...(params.thinkingLevel !== undefined ? { thinkingLevel: params.thinkingLevel } : {}),
+    });
+    note({ outcome: result.remoteTaskId });
+    return result;
+  };
+
+  const promptHosted = async (host: TaskHost, client: { publicKey: Buffer }, policy: PeerPolicy, raw: unknown, note: (entry: CallNote) => void): Promise<unknown> => {
+    const params = parse(promptSchema, "task.prompt", raw);
+    // Lengths only, never the text: the audit log is evidence about who asked, not a transcript.
+    note({ target: params.remoteTaskId, outcome: `${params.mode} ${params.text.length} chars` });
+    requireCap(policy, "task.run", "task.prompt");
+    await host.prompt(nodeIdOf(client.publicKey), params.remoteTaskId, params.mode, params.text);
+    return {};
+  };
+
+  const answerHosted = async (host: TaskHost, client: { publicKey: Buffer }, policy: PeerPolicy, raw: unknown, note: (entry: CallNote) => void): Promise<unknown> => {
+    const params = parse(answerSchema, "task.answer", raw);
+    note({ target: params.remoteTaskId });
+    requireCap(policy, "task.approve", "task.answer");
+    if (policy.approvalsAt === "target") {
+      throw new MeshRpcError(MeshErrorCode.denied, "this policy's approvals sit on the target, so the caller may not answer them", { code: "denied" });
+    }
+    // "origin" answers over the wire as P1; "both" answers over the wire or in this node's own UI, and the first answer wins.
+    return host.answer(nodeIdOf(client.publicKey), params.remoteTaskId, params.requestId, params.answer);
+  };
+
+  const abortHosted = async (host: TaskHost, client: { publicKey: Buffer }, policy: PeerPolicy, raw: unknown, note: (entry: CallNote) => void): Promise<unknown> => {
+    const params = parse(idSchema, "task.abort", raw);
+    note({ target: params.remoteTaskId });
+    requireCap(policy, "task.run", "task.abort");
+    await host.abort(nodeIdOf(client.publicKey), params.remoteTaskId);
+    return {};
+  };
+
+  const closeHosted = async (host: TaskHost, client: { publicKey: Buffer }, policy: PeerPolicy, raw: unknown, note: (entry: CallNote) => void): Promise<unknown> => {
+    const params = parse(idSchema, "task.close", raw);
+    note({ target: params.remoteTaskId });
+    requireCap(policy, "task.run", "task.close");
+    await host.close(nodeIdOf(client.publicKey), params.remoteTaskId);
+    return {};
+  };
+
+  const historyHosted = async (host: TaskHost, client: { publicKey: Buffer }, policy: PeerPolicy, raw: unknown, note: (entry: CallNote) => void): Promise<unknown> => {
+    const params = parse(idSchema, "task.history", raw);
+    note({ target: params.remoteTaskId });
+    requireCap(policy, "task.run", "task.history");
+    return host.history(nodeIdOf(client.publicKey), params.remoteTaskId);
+  };
+
+  const configHosted = async (host: TaskHost, client: { publicKey: Buffer }, policy: PeerPolicy, raw: unknown, note: (entry: CallNote) => void): Promise<unknown> => {
+    const params = parse(configSchema, "task.config", raw);
+    note({ target: params.remoteTaskId });
+    requireCap(policy, "task.run", "task.config");
+    // Model and thinking level only; permissionMode is the target's own decision (the ceiling), never the caller's.
+    const patch = params.patch;
+    if (patch !== undefined) {
+      const refused = Object.keys(patch).filter((key) => key !== "model" && key !== "thinkingLevel");
+      if (refused.length > 0) {
+        throw new MeshRpcError(
+          MeshErrorCode.invalid_params,
+          `task.config accepts only "model" and "thinkingLevel", never ${refused.map((key) => `"${key}"`).join(", ")}`,
+          { code: "invalid_params" },
+        );
+      }
+      if (patch.model !== undefined && typeof patch.model !== "string") {
+        throw new MeshRpcError(MeshErrorCode.invalid_params, '"model" must be a string', { code: "invalid_params" });
+      }
+      if (patch.thinkingLevel !== undefined && typeof patch.thinkingLevel !== "string") {
+        throw new MeshRpcError(MeshErrorCode.invalid_params, '"thinkingLevel" must be a string', { code: "invalid_params" });
+      }
+    }
+    return host.config(
+      nodeIdOf(client.publicKey),
+      params.remoteTaskId,
+      patch !== undefined
+        ? {
+            ...(patch.model !== undefined ? { model: patch.model as string } : {}),
+            ...(patch.thinkingLevel !== undefined ? { thinkingLevel: patch.thinkingLevel as string } : {}),
+          }
+        : undefined,
+    );
+  };
+
+  const attachHosted = (host: TaskHost, hostLink: HostLink, client: { publicKey: Buffer }, policy: PeerPolicy, raw: unknown, note: (entry: CallNote) => void): unknown => {
+    const params = parse(attachSchema, "task.attach", raw);
+    note({ target: params.remoteTaskId });
+    requireCap(policy, "task.run", "task.attach");
+    return host.attach(hostLink, nodeIdOf(client.publicKey), params.remoteTaskId, params.afterSeq);
+  };
+
+  const listHosted = (host: TaskHost, client: { publicKey: Buffer }, policy: PeerPolicy, raw: unknown): unknown => {
+    parse(listSchema, "task.list", raw);
+    requireCap(policy, "task.run", "task.list");
+    return host.list(nodeIdOf(client.publicKey));
+  };
+
   const dispatch = async (method: string, params: unknown, note: (entry: CallNote) => void): Promise<unknown> => {
     if (!deps.enabled()) {
       closeSoon("mesh off");
+      // Off is off for the whole node, not just this link: every host task is disposed with it.
+      if (host !== undefined) void host.disposeAll("the mesh was turned off").catch(() => undefined);
       throw new MeshRpcError(MeshErrorCode.mesh_off, "The mesh is off on this node", { code: "mesh_off" });
     }
     const handshakeAnswer = handshake.handle(method, params);
@@ -513,19 +679,32 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
       case "peer.info":
         return info(policy);
       case "task.open":
-        return openTask(policy, params, note);
+        if (host === undefined || hostLink === null) return openTask(policy, params, note);
+        return openHosted(host, hostLink, client, policy, params, note);
       case "task.prompt":
-        return promptTask(policy, params, note);
+        if (host === undefined) return promptTask(policy, params, note);
+        return promptHosted(host, client, policy, params, note);
       case "task.answer":
-        return answerTask(policy, params, note);
+        if (host === undefined) return answerTask(policy, params, note);
+        return answerHosted(host, client, policy, params, note);
       case "task.abort":
-        return abortTask(policy, params, note);
+        if (host === undefined) return abortTask(policy, params, note);
+        return abortHosted(host, client, policy, params, note);
       case "task.close":
-        return closeTask(policy, params, note);
+        if (host === undefined) return closeTask(policy, params, note);
+        return closeHosted(host, client, policy, params, note);
       case "task.history":
-        return historyTask(policy, params, note);
+        if (host === undefined) return historyTask(policy, params, note);
+        return historyHosted(host, client, policy, params, note);
       case "task.config":
-        return configTask(policy, params, note);
+        if (host === undefined) return configTask(policy, params, note);
+        return configHosted(host, client, policy, params, note);
+      case "task.attach":
+        if (host === undefined || hostLink === null) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        return attachHosted(host, hostLink, client, policy, params, note);
+      case "task.list":
+        if (host === undefined) throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
+        return listHosted(host, client, policy, params);
       default:
         throw new MeshRpcError(MeshErrorCode.method_not_found, `no method "${method}" is served`, { code: "method_not_found" });
     }
@@ -575,10 +754,15 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
   peer.start();
   const closed = peer.closed.then(async (reason) => {
     if (closeTimer !== null) clearTimeout(closeTimer);
-    // A P1 link is ephemeral: every chat it opened dies with it, and a failed disposal never keeps the link alive.
-    const live = [...tasks.values()];
-    tasks.clear();
-    await Promise.allSettled(live.map((task) => task.live.dispose()));
+    if (host !== undefined && hostLink !== null) {
+      // Daemon mode: the host owns the chats, so the link's end only drops this link's subscriptions.
+      host.closeLink(hostLink);
+    } else {
+      // A P1 link is ephemeral: every chat it opened dies with it, and a failed disposal never keeps the link alive.
+      const live = [...tasks.values()];
+      tasks.clear();
+      await Promise.allSettled(live.map((task) => task.live.dispose()));
+    }
     void deps.audit.append({ peer: peerName, method: "link closed", decision: reason === "eof" || reason === "closed" ? "allow" : "error", outcome: reason });
     return reason;
   });

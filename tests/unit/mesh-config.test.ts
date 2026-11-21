@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { meshConfig, meshEnabled, readUserConfig } from "../../src/server/user-config.js";
+import { meshConfig, meshDetachedTtlHours, meshEnabled, readUserConfig } from "../../src/server/user-config.js";
 import { tempDir } from "../helpers/app.js";
 
 function folder(yaml?: string): string {
@@ -137,6 +137,15 @@ describe("mesh config", () => {
     none:
       caps: [fs.read]
 `))).toThrow(/none/);
+  });
+
+  it("accepts a detached TTL in hours, and defaults it to a day", () => {
+    expect(meshDetachedTtlHours(undefined)).toBe(24);
+    expect(meshDetachedTtlHours(readUserConfig(folder("mesh: {}\n"))?.config)).toBe(24);
+    expect(meshDetachedTtlHours(readUserConfig(folder("mesh:\n  detached_ttl_hours: 720\n"))?.config)).toBe(720);
+    expect(() => readUserConfig(folder("mesh:\n  detached_ttl_hours: 0\n"))).toThrow(/detached_ttl_hours/);
+    expect(() => readUserConfig(folder("mesh:\n  detached_ttl_hours: 721\n"))).toThrow(/detached_ttl_hours/);
+    expect(() => readUserConfig(folder("mesh:\n  detached_ttl_hours: 1.5\n"))).toThrow(/detached_ttl_hours/);
   });
 
   it("rejects ssh_opts with a newline or a NUL, and a bad name shape", () => {
