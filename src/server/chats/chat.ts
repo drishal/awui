@@ -86,15 +86,15 @@ export interface ChatSubscriber {
 
 /**
  * Who owns a chat besides the user: Board's rooms drive harness sessions
- * through the manager like any chat, marked so ordinary surfaces (session
- * lists, search, usage, notifications, resume) can keep them out. Server-only;
- * it never reaches the browser.
+ * through the manager like any chat, and a mesh peer's inbound task gets a chat
+ * the same way — each marked so ordinary surfaces (session lists, search,
+ * usage, notifications, resume) can keep them out. Server-only; it never
+ * reaches the browser. Only the room kind names its owner's own records; peer
+ * owners carry just the labels a peer-owned chat needs to be identified.
  */
-export interface ChatOwner {
-  kind: "room";
-  roomId: string;
-  membershipId: string;
-}
+export type ChatOwner =
+  | { kind: "room"; roomId: string; membershipId: string }
+  | { kind: "peer"; peerId: string; peerName: string; remoteTaskId: string };
 
 /** Past this, a subagent transcript is read as its first and last halves. */
 const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
