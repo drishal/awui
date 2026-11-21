@@ -897,10 +897,10 @@ export interface UsageLimits {
   errors: string[];
 }
 
-/** Something a device is told about: a run finished or failed, or the agent asks for an answer. */
+/** Something a device is told about: a run finished or failed, the agent asks for an answer, or the mesh asks this machine's owner. */
 export interface PushNote {
   id: string;
-  kind: "done" | "error" | "ask";
+  kind: "done" | "error" | "ask" | "mesh";
   /** The chat it is about; "" for a Board room's note, which names its room instead. */
   chatId: string;
   sessionId: string | null;
@@ -914,6 +914,92 @@ export interface PushNote {
   at: number;
   /** An approval the notification can answer itself (its Approve and Deny buttons): the request and the two answers. */
   approval?: { requestId: string; approve: InteractionAnswer; deny: InteractionAnswer };
+}
+
+/**
+ * The Settings dialog's Peers view (mesh P2 §4), one GET's answer: this node,
+ * every peer from either source, the pairing requests waiting on a person, and
+ * the mesh ask approvals pending here. Everything a peer-controlled surface
+ * shows is a label the owner picked or the wire bounded — never a prompt's
+ * text, never file contents.
+ */
+export interface MeshOverview {
+  enabled: boolean;
+  /** This node's mesh name, as a handshake presents it. */
+  name: string;
+  /** This node's id (its pinned key's hash), or null when its identity could not be read. */
+  nodeId: string | null;
+  /** config.yml's `mesh.listen`, or null when this node answers no TLS port. */
+  listen: { host: string; port: number } | null;
+  /** The policy names an Accept or an invite may choose: the built-ins plus mesh.policies. */
+  policies: string[];
+  peers: MeshPeerRow[];
+  pending: MeshPendingRow[];
+  approvals: MeshApprovalRow[];
+}
+
+/** One peer this node can reach, from config.yml or from peers.json (config wins on a name clash). */
+export interface MeshPeerRow {
+  name: string;
+  transport: "ssh" | "docker" | "tls";
+  /** The ssh destination, container name, or host:port — exactly what the transport dials. */
+  address: string;
+  source: "config" | "ui";
+  /** Whether this node holds an outbound pin for the peer. */
+  pinned: boolean;
+}
+
+/** A peer that said hello (or redeemed an invite) and waits for this owner's Accept. */
+export interface MeshPendingRow {
+  nodeId: string;
+  name: string;
+  /** The six-digit number to compare with the other machine's screen. */
+  sas: string;
+  /** An invite's redeem pre-fills the policy its target chose. */
+  invitedPolicy?: string;
+  seenAt: number;
+}
+
+/** One ask approval waiting on this machine's owner (a policy cap set to `ask`). */
+export interface MeshApprovalRow {
+  id: string;
+  peerName: string;
+  nodeId: string;
+  method: string;
+  cap: string;
+  /** Method + path/cwd/harness, bounded; never file content or prompt text. */
+  summary: string;
+  root: string | null;
+  createdAt: number;
+  expiresAt: number;
+}
+
+/** One request a peer-owned task's harness raised, answerable here as any chat approval is. */
+export interface MeshTaskRequestRow {
+  id: string;
+  kind: string;
+  /** The request's own title, as the chat's approval card shows it. */
+  /** The request's own title, as the chat's approval card shows it. */
+  summary: string;
+  /**
+   * The request's Approve and Deny answers (shared/approval.ts), when it is a
+   * plain approval; the buttons send one back, exactly as a push note's do.
+   * Absent for a request that is not a yes/no (a free-text question).
+   */
+  approval?: { approve: InteractionAnswer; deny: InteractionAnswer };
+}
+
+/** One of this host's tasks — a chat some peer's run drives on this machine. */
+export interface MeshTaskRow {
+  remoteTaskId: string;
+  chatId: string;
+  peerName: string;
+  nodeId: string;
+  harness: string;
+  cwd: string;
+  state: string;
+  pendingRequests: MeshTaskRequestRow[];
+  createdAt: number;
 }
 
 export interface TodoItem {

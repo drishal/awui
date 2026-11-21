@@ -66,6 +66,12 @@ export interface PinStore {
   addPending(publicKey: Buffer, name: string, invited?: { inviteId: string; policy: string }): Promise<void>;
   /** The newest pending request under a peer name, or null. */
   pending(name: string): Promise<PendingPin | null>;
+  /** The pending request a node id left, or null: what an Accept by node id (the UI's route) resolves. */
+  pendingByNode(nodeId: string): Promise<PendingPin | null>;
+  /** Every pending request with its key, for the surface that shows SAS numbers. */
+  pendingAll(): Promise<PendingPin[]>;
+  /** Drops the pending entry a node id left (a Reject); false when that node left none. */
+  removePending(nodeId: string): Promise<boolean>;
   /** Drops the outbound pin, every inbound pin, and every pending record under a peer name. */
   removeByName(name: string): Promise<void>;
   /** The whole store, read-only, as a listing shows it (node ids recomputed from the keys). */
@@ -272,6 +278,29 @@ class Pins implements PinStore {
       }
     }
     return found;
+  }
+
+  async pendingByNode(nodeId: string): Promise<PendingPin | null> {
+    const entry = (await readState(this.file)).pending.get(nodeId);
+    if (entry === undefined) return null;
+    return { publicKey: entry.publicKey, name: entry.name, seenAt: entry.seenAt, ...(entry.invited !== undefined ? { invited: entry.invited } : {}) };
+  }
+
+  async pendingAll(): Promise<PendingPin[]> {
+    return [...(await readState(this.file)).pending.values()].map((entry) => ({
+      publicKey: entry.publicKey,
+      name: entry.name,
+      seenAt: entry.seenAt,
+      ...(entry.invited !== undefined ? { invited: entry.invited } : {}),
+    }));
+  }
+
+  async removePending(nodeId: string): Promise<boolean> {
+    if ((await readState(this.file)).pending.get(nodeId) === undefined) return false;
+    await this.mutate((state) => {
+      state.pending.delete(nodeId);
+    });
+    return true;
   }
 
   async snapshot(): Promise<PinSnapshot> {

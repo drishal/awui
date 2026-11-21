@@ -540,3 +540,160 @@
   color: var(--muted-text);
   font-size: 12px;
 }
+
+/* The Peers section: one row per peer, request, approval, or task, the same
+   tight grid the invitations use. A dot says pinned, a monospace id says who,
+   and the QR sits under the code it was drawn from. */
+.mesh-peers,
+.mesh-pending,
+.mesh-approvals,
+.mesh-tasks {
+  display: flex;
+  flex-direction: column;
+}
+
+.mesh-peer,
+.mesh-pending-row,
+.mesh-approval-row,
+.mesh-task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+}
+
+.mesh-peer + .mesh-peer,
+.mesh-pending-row + .mesh-pending-row,
+.mesh-task + .mesh-task {
+  border-top: 1px solid var(--hairline);
+}
+
+.mesh-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted-text);
+  opacity: 0.4;
+}
+
+.mesh-dot.is-on {
+  background: var(--ok);
+  opacity: 1;
+}
+
+.mesh-peer-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.mesh-peer-address {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.mesh-peer-source {
+  flex: none;
+  color: var(--muted-text);
+  font-size: 11px;
+}
+
+.mesh-test-line {
+  flex: 100%;
+  margin: 0;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.mesh-node-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-text);
+  overflow-wrap: anywhere;
+}
+
+.mesh-sas {
+  flex: none;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.mesh-pending-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* The add and join forms: one row of inputs that wraps on a narrow pane. */
+.mesh-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mesh-add > .input {
+  min-width: 12ch;
+  flex: 1;
+}
+
+/* The minted invite: the code beside its QR, which arrives as an <img> data
+   URL drawn by our own qr.ts — never injected markup. */
+.mesh-invite {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.mesh-invite > .dialog-actions > .input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.mesh-qr {
+  align-self: flex-start;
+  width: 176px;
+  height: 176px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: #fff;
+}
+
+/* A mesh task: its head row, then one row per pending request. */
+.mesh-task {
+  flex-wrap: wrap;
+}
+
+.mesh-task-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 100%;
+}
+
+.mesh-task-state {
+  flex: none;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.mesh-task-request {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 100%;
+  padding-left: 18px;
+}
+
+.mesh-approval-line {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

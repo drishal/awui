@@ -370,11 +370,30 @@ target, marked with the invite's policy, and saves the peer to the joiner's
 accepts it (`awui peer accept`, the policy pre-filled). Five bad redeem
 attempts burn the invite; a code lives 1..60 minutes.
 
-### Still missing
+### The Peers settings and its routes
 
+The settings side of phase 2 is live in the server's own web UI: **Settings →
+Peers**, over the same owner auth as every other settings route (nothing here
+is reachable from the mesh's own ports, which speak only `awui-mesh/1`).
+It shows this node (name, node id, TLS listener), every peer from config.yml
+and peers.json — config wins on a name clash — with a Test (one handshake and
+`peer.info`, nothing opened) and a Remove (the saved entry plus its pins), the
+pairing requests waiting on an Accept with their SAS and policy, invite
+minting (policy, 1..60 minutes, a QR of the single-use code) and joining from
+a pasted code, the ask approvals pending here (Allow once / Allow for link /
+Deny), and the mesh tasks running on this machine: each with its peer,
+harness, folder, state, and its approval requests answerable in place, or an
+Abort for the whole run. With the mesh off the page reads one honest `off`
+line and every action answers `mesh_off`.
+
+A peer-owned task's approvals also reach this machine's owner the way any
+chat's do — one notification, its buttons answering through the chat's own
+request route — under `approvals_at: target` or `both`; `origin` approvals
+stay on the leader, as before.
+
+### Still missing
 - **Terminals** (`term.open` is named in policies but carries nothing).
 - **Host tasks across a target restart**: they are in memory, not persisted.
-- **The Peers UI and its REST routes** (the settings side of phase 2).
 
 ### Limits that remain
 
@@ -459,9 +478,8 @@ Under the state folder, never in git, never in config:
 - **Phase 1.5** — shipped: the attach socket and daemon-mode tasks (a dropped link
   reconnects and replays), approvals on the target, files over the link (`fs.*`,
   `peer_files`, the `peer ls/cat/tasks` commands).
-- **Phase 2** — in progress: direct TLS with pinned keys, ask approvals on
-  the target, and invite pairing (shipped); a Peers UI and its routes to
-  follow.
+- **Phase 2** — shipped: direct TLS with pinned keys, ask approvals on
+  the target, invite pairing, and the Peers settings with its routes.
 - **Phase 3** — remote terminals, handoff, a NixOS module.
 
 ## Phone follow is separate

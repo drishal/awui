@@ -63,7 +63,7 @@ import { PeerPeersStore } from "./mesh/peer-store.js";
 import { loadOrCreateIdentity } from "./mesh/identity.js";
 import { AuditLog } from "./mesh/audit.js";
 import { runPeerCli } from "./mesh/cli.js";
-import { startMeshAttach, startMeshTls } from "./mesh/daemon.js";
+import { startMeshAttach, startMeshTls, meshApprovalQueue, meshInviteStore } from "./mesh/daemon.js";
 import { TaskHost } from "./mesh/host.js";
 import { Workspaces } from "./workspaces.js";
 import { cleanupPastes } from "./paste-store.js";
@@ -476,6 +476,28 @@ async function main(): Promise<void> {
       enabled: () => meshEnabled(userNow(), process.env),
       chats: () => userNow()?.mesh?.chats ?? "lead-only",
       maxRemoteTasks: () => userNow()?.mesh?.max_remote_tasks ?? 8,
+    },
+    // The owner-facing half of the same mesh (P2 §4): the Settings dialog's
+    // Peers routes, over the same pins, peers, policies, and host tasks the
+    // daemons serve — one store pair either way, so a card raised over TLS and
+    // a button in the dialog answer the same queue.
+    mesh: {
+      enabled: () => meshEnabled(userNow(), process.env),
+      name: meshLocalName,
+      identity: () => loadOrCreateIdentity(config.stateDir),
+      pins: PinStore(path.join(config.stateDir, "mesh", "pins.json")),
+      saved: meshSavedPeers,
+      config: () => userNow()?.mesh,
+      listen: () => meshListen(userNow()),
+      host: meshHost,
+      approvals: () => meshApprovalQueue(),
+      invites: () => meshInviteStore(),
+      peers: meshPeers,
+      audit: meshAudit,
+      notify: (note) => {
+        void notifier.notify(note);
+      },
+      log: meshLog,
     },
     // Finished chats nobody has looked at for this long get their harness child parked; opening
     // the chat again resumes the same native session. 0 (config.yml unset) is off.

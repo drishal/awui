@@ -676,6 +676,7 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
       cwd: resolved.real,
       ceiling: clampCeiling(policy, params.ceiling),
       maxTasks: policy.maxTasks,
+      approvalsAt: policy.approvalsAt,
       ...(params.model !== undefined ? { model: params.model } : {}),
       ...(params.thinkingLevel !== undefined ? { thinkingLevel: params.thinkingLevel } : {}),
     });
