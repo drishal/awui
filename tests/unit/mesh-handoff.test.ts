@@ -22,6 +22,7 @@ import {
   createHandoffBundle,
   exportFromPeer,
   fetchPeerWork,
+  meshGit,
   sha256Bytes,
   snapshotWorkingTree,
   transcriptDigest,
@@ -112,6 +113,17 @@ describe("handoff snapshot (leader)", () => {
     const empty = await remember(await mkdtemp(path.join(HOME, "handoff-empty-")));
     await git(["init", "-q", empty]);
     await expect(snapshotWorkingTree(empty)).rejects.toThrow(/no commits/);
+  });
+
+  it("rejects cleanly when git exits before draining stdin: no unhandled EPIPE, repeated (finding #15)", async () => {
+    const empty = await remember(await mkdtemp(path.join(HOME, "handoff-epipe-")));
+    await git(["init", "-q", empty]);
+    // 2 MiB can never fit the pipe before `rev-parse --verify HEAD` fails in the
+    // empty repo and exits, so the write side hits EPIPE; without the stdin error
+    // listener Node raises it as an uncaught exception and the run dies.
+    for (let i = 0; i < 5; i++) {
+      await expect(meshGit(["rev-parse", "--verify", "HEAD"], { cwd: empty, input: "x".repeat(2 * 1024 * 1024) })).rejects.toThrow(/fatal/i);
+    }
   });
 });
 

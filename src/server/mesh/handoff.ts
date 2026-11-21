@@ -58,7 +58,14 @@ export function meshGit(args: string[], opts: { cwd?: string; env?: Record<strin
         else reject(new Error((stderr || "").trim() || error?.message || "git failed"));
       },
     );
-    if (opts.input !== undefined) child.stdin?.end(opts.input);
+    if (opts.input !== undefined) {
+      // git may exit before draining stdin (an early exit, a failed update-index or
+      // hash-object); an unread pipe then raises EPIPE on this end, and without a
+      // listener Node turns it into an uncaught exception instead of the callback's
+      // own error path.
+      child.stdin?.on("error", () => {});
+      child.stdin?.end(opts.input);
+    }
   });
 }
 
