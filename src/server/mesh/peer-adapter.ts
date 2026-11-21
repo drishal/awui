@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // The leader's harness adapter for a remote mesh task (P1): a delegated task whose
 // child chat actually runs on a paired peer. The adapter and its live chat are thin
 // relays — everything arrives as ordinary HarnessEvents over the peer link, so the
@@ -139,7 +140,8 @@ export class PeerHarnessAdapter implements HarnessAdapter {
     // The local cwd is ignored by design: the chat runs where the peer's project is.
     const connection = await this.manager.connect(this.peerName);
     const opened = await connection.rpc.request<unknown>("task.open", {
-      clientRequestId: this.opts.clientRequestId ?? null,
+      // The worker requires an id (its idempotency key); a fresh one per open when the caller gave none.
+      clientRequestId: this.opts.clientRequestId ?? randomUUID(),
       harness: this.harness,
       cwd: this.remoteCwd,
       ...(this.opts.model !== undefined ? { model: this.opts.model } : {}),
@@ -147,11 +149,13 @@ export class PeerHarnessAdapter implements HarnessAdapter {
       ...(this.opts.ceiling !== undefined ? { ceiling: this.opts.ceiling } : {}),
       hops: 0,
     });
-    const record = typeof opened === "object" && opened !== null ? (opened as { remoteTaskId?: unknown; config?: unknown }) : null;
+    const record = typeof opened === "object" && opened !== null ? (opened as { remoteTaskId?: unknown; config?: unknown; nativeId?: unknown }) : null;
     if (record === null || typeof record.remoteTaskId !== "string" || record.remoteTaskId === "") {
       throw new ChatError(502, "harness_init_failed", `The peer "${this.peerName}" opened a task without an id`);
     }
-    return new PeerLiveChat(connection, this.peerName, record.remoteTaskId, isChatConfig(record.config) ? record.config : null);
+    const chat = new PeerLiveChat(connection, this.peerName, record.remoteTaskId, isChatConfig(record.config) ? record.config : null);
+    if (typeof record.nativeId === "string" && record.nativeId !== "" && record.nativeId.length <= 256) chat.seedNativeId(record.nativeId);
+    return chat;
   }
 
   async shutdown(): Promise<void> {}
@@ -196,6 +200,11 @@ export class PeerLiveChat implements LiveChat {
       this.emit({ type: "fatal", message: `link to ${this.peerName} lost` });
       this.emit({ type: "settled" });
     });
+  }
+
+  /** The worker's session id as task.open reported it; a later "session" event still wins. */
+  seedNativeId(id: string): void {
+    if (this.nativeIdValue === null) this.nativeIdValue = id;
   }
 
   get nativeId(): string | null {

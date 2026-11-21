@@ -370,7 +370,8 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
       peer.notify("task.event", { remoteTaskId, seq: ++task.seq, event });
     });
     tasks.set(remoteTaskId, task);
-    const result = { remoteTaskId, config: await live.getConfig() };
+    // nativeId rides along: some harnesses know their session at open and never emit a "session" event.
+    const result = { remoteTaskId, config: await live.getConfig(), nativeId: live.nativeId };
     opens.set(params.clientRequestId, { remoteTaskId, result });
     note({ outcome: remoteTaskId });
     return result;
