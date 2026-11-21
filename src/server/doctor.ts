@@ -6,11 +6,12 @@
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
+import path from "node:path";
 import { loadConfig, type ServerConfig } from "./config.js";
 import { isEmbedded } from "./embedded.js";
 import { herdrSocketPath } from "./herdr.js";
 import { HarnessRegistry } from "./harness/registry.js";
-import { configDir, configEnv, herdrEnabled, readUserConfig, type UserConfig } from "./user-config.js";
+import { configDir, configEnv, herdrEnabled, meshConfig, meshEnabled, meshListen, readUserConfig, type UserConfig } from "./user-config.js";
 import { IS_WINDOWS } from "./platform-win.js";
 import { extractEmbeddedExtensions } from "./embedded.js";
 import { orchestrateExtension } from "./harness/render-extension.js";
@@ -47,6 +48,8 @@ export interface DoctorInput {
   herdr: { enabled: boolean; socket: string; exists: boolean };
   /** The delegation surface: its switch and caps, and the bridge files a chat's child would be given. */
   orchestration: { enabled: boolean; maxChildrenPerChat: number; maxDepth: number; maxLiveTasks: number; missingBridges: string[] };
+  /** The mesh (docs/mesh.md): its switch, the configured peers and policy names, whether the state folder holds an identity, and the TLS listen address when one is set. */
+  mesh: { enabled: boolean; peers: number; policies: string[]; identity: boolean; listen?: { host: string; port: number } | null };
   /** How awui's own tools reach each harness's chats (`awui setup mcp` says the rest). */
   mcp: McpSetupEntry[];
   /** Native Windows host: mode bits are not enforceable, so the state-folder mode is not a failure. */
@@ -145,6 +148,20 @@ export function evaluate(i: DoctorInput): Check[] {
   const manual = i.mcp.filter((entry) => entry.installed && entry.kind === "one-time" && entry.existing?.verdict !== "ours");
   if (manual.length > 0) out.push({ name: "MCP tools", ok: "warn", detail: `${manual.map((entry) => entry.displayName).join(", ")} needs a one-time entry in its own config (\`awui setup mcp\` prints the command)` });
   else out.push({ name: "MCP tools", ok: true, detail: "every installed harness gets awui's tools per chat" });
+  // The mesh: configuration, identity, and (P2) the direct TLS listener's
+  // address. Only a missing identity and a wildcard listen address can warn —
+  // both are decisions a person can act on, not failures.
+  const m = i.mesh;
+  if (!m.enabled) out.push({ name: "Mesh", ok: true, detail: "off (default)" });
+  else if (!m.identity) out.push({ name: "Mesh", ok: "warn", detail: "on, but no identity yet: it is created on first use" });
+  else if (m.listen === null || m.listen === undefined) out.push({ name: "Mesh", ok: true, detail: `on: ${m.peers} peer(s), no listener` });
+  else if (m.listen.host === "0.0.0.0" || m.listen.host === "::") {
+    out.push({
+      name: "Mesh",
+      ok: "warn",
+      detail: `on: ${m.peers} peer(s), TLS listening on ${m.listen.host}:${m.listen.port} — every interface, so keep it behind a firewall or bind a specific address`,
+    });
+  } else out.push({ name: "Mesh", ok: true, detail: `on: ${m.peers} peer(s), TLS listening on ${m.listen.host}:${m.listen.port}` });
   return out;
 }
 
@@ -236,6 +253,7 @@ export async function gather(env: NodeJS.ProcessEnv = process.env): Promise<Doct
   }
   const exposed = config.host === "0.0.0.0" || config.allowedHosts.length > 0;
   const socket = herdrSocketPath(env, config.home ?? homedir(), userConfig?.herdr_socket);
+  const mesh = meshConfig(userConfig);
   return {
     configError,
     configFile: settings?.file ?? null,
@@ -251,6 +269,13 @@ export async function gather(env: NodeJS.ProcessEnv = process.env): Promise<Doct
     portProbe: await probePort(config.host, config.port),
     remote: { exposed, credentials: config.login !== null || existsSync(config.credentialsFile) },
     herdr: { enabled: herdrEnabled(userConfig, env), socket, exists: existsSync(socket) },
+    mesh: {
+      enabled: meshEnabled(userConfig, env),
+      peers: mesh?.peers?.length ?? 0,
+      policies: Object.keys(mesh?.policies ?? {}),
+      identity: existsSync(path.join(config.stateDir, "mesh", "identity.json")),
+      listen: meshListen(userConfig),
+    },
     orchestration: { ...config.orchestration, missingBridges: missingOrchestrationBridges() },
     mcp: (await gatherMcpSetup({ harnesses: harnesses.map((h) => ({ id: h.id, displayName: h.displayName, available: h.available })), hermesBin, env })).entries,
     windows: IS_WINDOWS,

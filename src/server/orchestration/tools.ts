@@ -32,6 +32,8 @@ export const DEFAULT_WAIT_MS = 55_000;
 /** Profiles one call may list, and the note a bot contributes. */
 export const MAX_PROFILES = 64;
 export const MAX_PROFILE_NOTE_CHARS = 120;
+/** The most text one peer_files call reads or writes: one wire call carries at most 512 KiB of file. */
+export const MAX_PEER_FILE_TEXT_BYTES = 512 * 1024;
 /** The write scope's bounds (scope.ts judges with them): globs one delegation may carry. */
 import { MAX_WRITE_SCOPE_GLOBS, MAX_GLOB_CHARS } from "./scope.js";
 import { residentName } from "./residents.js";
@@ -66,6 +68,8 @@ export const delegateTaskSchema = z
     clientRequestId: z.string().min(1).max(128).optional(),
     completionGroup: z.string().min(1).max(128).optional(),
     writeScope: z.array(z.string().min(1).max(MAX_GLOB_CHARS)).max(MAX_WRITE_SCOPE_GLOBS).optional(),
+    peer: z.string().min(1).max(64).optional(),
+    peerCwd: z.string().min(1).max(4096).optional(),
   })
   .strict();
 
@@ -134,6 +138,40 @@ export const scheduleHeartbeatSchema = z
   })
   .strict();
 
+/**
+ * `peer_files`: one file operation on a paired mesh peer. Text in and out — the peer's
+ * files are read as utf8 and written from utf8 — and every bound the wire carries
+ * (512 KiB per call) is named here so a refusal comes from the schema, not
+ * from a half-read file.
+ */
+export const peerFilesSchema = z
+  .object({
+    peer: z.string().min(1).max(64),
+    op: z.enum(["stat", "list", "read", "write"]),
+    path: z.string().min(1).max(4096),
+    offset: z.number().int().min(0).optional(),
+    length: z.number().int().min(1).max(MAX_PEER_FILE_TEXT_BYTES).optional(),
+    data: z.string().max(MAX_PEER_FILE_TEXT_BYTES).optional(),
+    mode: z.enum(["create", "overwrite"]).optional(),
+  })
+  .strict();
+
+/**
+ * `peer_handoff`: move this chat's work to a peer's copy of the project. The
+ * leader snapshots its own working tree (uncommitted work included) onto a
+ * temporary ref without touching index, worktree, or HEAD, uploads it as a
+ * git bundle, and opens a delegated peer task in an isolated worktree there;
+ * the brief carries the caller's words plus a compact transcript digest.
+ */
+export const peerHandoffSchema = z
+  .object({
+    peer: z.string().min(1).max(64),
+    /** The project's repo path on that peer: where the bundle is fetched into and the worktree is created. */
+    peerRepo: z.string().min(1).max(4096),
+    brief: z.string().min(1).max(MAX_DELEGATE_BRIEF_CHARS).optional(),
+  })
+  .strict();
+
 /** One tool as the bridges register it: the name, the words the model reads, and JSON Schema for its arguments. */
 export interface OrchTool {
   name: string;
@@ -184,6 +222,8 @@ const DEFINED_TOOLS: OrchTool[] = [
           description:
             "Globs (project-relative) the child's file writes must match, so its edits stay inside its assignment; its private scratch dir is always allowed. Omit it for work that may touch the whole project.",
         },
+        peer: stringProperty("A paired mesh peer's name (see list_profiles) to run this task on that machine"),
+        peerCwd: stringProperty("Absolute or ~ path of the project on that peer; required with peer"),
       },
       ["brief"],
     ),
@@ -307,6 +347,41 @@ const DEFINED_TOOLS: OrchTool[] = [
     ),
   },
   {
+    name: "peer_files",
+    description:
+      "Work with one file on a paired mesh peer (see list_profiles): stat, list a folder, or read and write utf8 text. " +
+      "The peer's own policy decides what its paths allow; a read that is not text is refused, and a write is at most 512 KiB. " +
+      "Lead chats only: a chat that arrived over a peer cannot use another peer.",
+    parameters: object(
+      {
+        peer: stringProperty("The paired peer's name (see list_profiles).", 64),
+        op: { type: "string", enum: ["stat", "list", "read", "write"], description: "stat: one path's shape; list: a folder's names; read: utf8 text; write: utf8 text." },
+        path: stringProperty("The path on the peer, inside the roots its policy allows.", 4096),
+        offset: { type: "integer", minimum: 0, description: "read: byte offset to start from (for a file that did not fit)." },
+        length: { type: "integer", minimum: 1, maximum: MAX_PEER_FILE_TEXT_BYTES, description: "read: how many bytes to read (default and cap 512 KiB)." },
+        data: stringProperty("write: the utf8 text to write (at most 512 KiB).", MAX_PEER_FILE_TEXT_BYTES),
+        mode: { type: "string", enum: ["create", "overwrite"], description: "write: create fails when the file exists; overwrite replaces a regular file, and takes expectMtime-style conflicts from the peer as errors." },
+      },
+      ["peer", "op", "path"],
+    ),
+  },
+  {
+    name: "peer_handoff",
+    description:
+      "Move this chat's work to a paired mesh peer (see list_profiles): snapshot this project's working tree — uncommitted edits and new files included — into a temporary ref, upload it as a git bundle, and open a delegated task there in an isolated worktree of that machine's copy. " +
+      "The child gets your brief plus a compact digest of this chat (tool outputs elided); your own index, worktree, and HEAD never move. " +
+      "The task rows show the @peer badge like any peer delegation; its result comes back as usual, and `awui peer fetch` brings the peer's committed work home as a ref. " +
+      "Lead chats only, and the peer's own policy decides what it accepts.",
+    parameters: object(
+      {
+        peer: stringProperty("The paired peer's name (see list_profiles).", 64),
+        peerRepo: stringProperty("Absolute or ~ path of this project's git repo on that peer; the bundle is fetched there and the worktree lands in its .awui dir.", 4096),
+        brief: stringProperty("What to do next, written for an agent that sees only this work: what was in progress, what to finish, how to verify.", MAX_DELEGATE_BRIEF_CHARS),
+      },
+      ["peer", "peerRepo"],
+    ),
+  },
+  {
     name: "list_profiles",
     description:
       "List the workers you can delegate to: this project's saved bot profiles and one entry per installed harness at its default model. " +
@@ -357,6 +432,8 @@ Delegating
 - Call list_profiles before naming a harness or model. It also states your budget: delegation levels left, and how many more tasks may run at once (a finished task frees its slot). Read it there; don't work it out yourself.
 - After delegating, thread_wait blocks until the child finishes or asks a question. Never poll in a loop. task_status shows where your tasks stand, thread_read what a child said, thread_send continues it, task_cancel stops a run you no longer need.
 - plan_workers drafts a lead/worker plan for a person to confirm before any worker starts. resident_agent keeps one named chat to come back to.
+- delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers. peer_files reads or writes one utf8 file there (lead chats only).
+- delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers. peer_files reads or writes one utf8 file there (lead chats only). peer_handoff instead moves this chat's own work there: it snapshots the tree, uploads a bundle, and opens the task in an isolated worktree (lead chats only).
 - As a delegated child, do the work yourself; start no further delegates unless your task says to.
 
 Talking to the person
@@ -488,7 +565,7 @@ export function budgetLine(remainingDepth: number, remainingTasks: number): stri
 export async function listProfiles(
   ctx: ToolContext,
   args: { workspaceId?: string },
-  limits: { remainingDepth: number; remainingTasks: number },
+  limits: { remainingDepth: number; remainingTasks: number; peerLine?: string | null },
 ): Promise<ToolOutput> {
   const workspace = args.workspaceId ? await ctx.workspaces.get(args.workspaceId) : ctx.chat.workspace;
   const bots = ctx.boards ? await ctx.boards.listBots() : [];
@@ -526,6 +603,7 @@ export async function listProfiles(
   const text = [
     `${profiles.length} profiles in project "${workspace.name}".`,
     ...lines,
+    ...(limits.peerLine ? [limits.peerLine] : []),
     budgetLine(remainingDepth, remainingTasks),
   ].join("\n");
   return { text, data: { profiles, workspace, remainingDepth, remainingTasks } };

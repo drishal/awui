@@ -8,10 +8,14 @@
 // settle, so an idle child can be reaped like any other chat. A cancel bumps the task's
 // generation first, which drops late events from the run that was stopped.
 import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createHandoffBundle, snapshotWorkingTree, transcriptDigest, uploadHandoff, type HandoffSnapshot } from "../mesh/handoff.js";
 import { isApproval } from "../../shared/approval.js";
 import { MAX_DELEGATED_TASKS, type ChatItem, type ChatLineage, type ChatStatus, type DelegatedTaskView, type InteractionRequest, type InteractionAnswer, type SendMode, type WorkspaceInfo } from "../../shared/protocol.js";
 import type { BoardManager } from "../boards/types.js";
-import { errorMessage, namespacedSessionId, type Chat } from "../chats/chat.js";
+import { ChatError, errorMessage, namespacedSessionId, type Chat } from "../chats/chat.js";
 import { git } from "../git.js";
 import { worktreeProblem } from "../worktrees.js";
 import type { ChatManager } from "../chats/manager.js";
@@ -39,7 +43,10 @@ import {
   threadReadSchema,
   threadSendSchema,
   threadWaitSchema,
+  peerFilesSchema,
+  peerHandoffSchema,
   requestDecisionSchema,
+  MAX_DELEGATE_BRIEF_CHARS,
   budgetLine,
   setStatus,
   setStatusSchema,
@@ -47,6 +54,8 @@ import {
   type ToolOutput,
 } from "./tools.js";
 import type { OrchestrationLimits } from "./limits.js";
+import type { PeerManager } from "../mesh/manager.js";
+import { PeerHarnessAdapter } from "../mesh/peer-adapter.js";
 import type { AgentProfileConfig } from "../config.js";
 import { denial, formatElapsed, firstLine, isReviewed, MAX_ERROR_CHARS, MAX_RESULT_CHARS, MAX_TITLE_CHARS, viewOf, type StoredTask, type TaskScope } from "./types.js";
 import { GATE_REQUEST_PREFIX, DecisionStore, decisionViewOf, gateRequestOf, type StoredDecision } from "./decisions.js";
@@ -99,6 +108,17 @@ export interface OrchestratorDeps {
   limits: () => OrchestrationLimits;
   /** The heartbeat store (heartbeats.ts); absent leaves the tool saying it is not wired. */
   heartbeats?: Heartbeats;
+  /**
+   * The mesh peers a delegation may name (manager.ts). Absent, or with enabled() false,
+   * leaves every peer task refused with mesh_off; the rest of the shape is config.yml's
+   * `mesh:` block, read at each use so a file change applies without a restart.
+   */
+  peers?: {
+    manager: PeerManager;
+    enabled: () => boolean;
+    chats: () => "lead-only" | "all";
+    maxRemoteTasks: () => number;
+  };
 }
 
 export class Orchestrator {
@@ -172,6 +192,10 @@ export class Orchestrator {
         return this.threadSend(caller, threadSendSchema.parse(args));
       case "thread_read":
         return this.threadRead(caller, threadReadSchema.parse(args));
+      case "peer_files":
+        return this.peerFiles(caller, peerFilesSchema.parse(args));
+      case "peer_handoff":
+        return this.peerHandoff(caller, peerHandoffSchema.parse(args));
       case "request_decision":
         return this.requestDecision(caller, requestDecisionSchema.parse(args));
       case "set_status":
@@ -346,7 +370,8 @@ export class Orchestrator {
   lineageOf(chat: Chat): ChatLineage | undefined {
     const task = this.tasks.find((t) => this.startedFrom(t, chat));
     if (!task) return undefined;
-    return { kind: "delegate", taskId: task.id, parentChatId: task.parentChatId, parentTitle: task.parentTitle, depth: task.depth };
+    // host rides along so a board card can say the child runs on a peer.
+    return { kind: "delegate", taskId: task.id, parentChatId: task.parentChatId, parentTitle: task.parentTitle, depth: task.depth, host: task.peer?.name ?? null };
   }
 
   /**
@@ -407,7 +432,19 @@ export class Orchestrator {
   // ---- the tools ----------------------------------------------------------
 
   private async listProfiles(caller: Chat, args: { workspaceId?: string }): Promise<ToolOutput> {
-    return listProfiles(this.context(caller), args, { remainingDepth: this.remainingDepth(caller), remainingTasks: this.remainingTasks(caller) });
+    return listProfiles(this.context(caller), args, { remainingDepth: this.remainingDepth(caller), remainingTasks: this.remainingTasks(caller), peerLine: this.peerLine() });
+  }
+
+  /**
+   * The one line a listing adds about mesh peers, from the configured inventory alone: no
+   * link is ever started to name a peer, and nothing is listed while the mesh is off.
+   */
+  private peerLine(): string | null {
+    const peers = this.deps.peers;
+    if (!peers || !peers.enabled()) return null;
+    const listed = peers.manager.peers();
+    if (listed.length === 0) return null;
+    return `Peers (mesh): ${listed.map((peer) => `${peer.name} (${peer.kind})`).join(", ")} — delegate_task with peer + peerCwd runs on that machine.`;
   }
 
   private async status(caller: Chat, args: { taskId?: string }): Promise<ToolOutput> {
@@ -843,6 +880,139 @@ export class Orchestrator {
     if (mine.length >= limits.maxTasksPerChat) throw denial(429, "too_many_tasks", `A chat may start ${limits.maxTasksPerChat} delegated tasks`);
   }
 
+  /**
+   * The mesh gates every peer-naming call shares: the mesh on, a lead chat, one hop, and a
+   * peer the config names. A delegation adds its own checks on top (checkPeerTask); so does
+   * peer_files. Nothing here starts a link — the name is checked against the configured
+   * inventory, and the child chat's open (or the files call) is what connects.
+   */
+  private peerGate(caller: Chat, peerName: string): NonNullable<OrchestratorDeps["peers"]> {
+    const peers = this.deps.peers;
+    if (!peers || !peers.enabled()) throw denial(403, "mesh_off", "The mesh is turned off, so nothing can reach a peer (mesh.enabled in config.yml)");
+    if (peers.chats() === "lead-only" && (caller.lineage?.depth ?? 0) > 0) throw denial(403, "mesh_lead_only", "Only a top-level chat may use mesh peers (mesh.chats is lead-only)");
+    // A chat that arrived over the mesh, or a leader-side relay to a peer, never reaches another one.
+    if (caller.owner?.kind === "peer" || caller.adapter instanceof PeerHarnessAdapter) throw denial(403, "hop_limit", "A task that arrived over the mesh cannot reach another peer (max_hops is 1)");
+    if (!peers.manager.peers().some((peer) => peer.name.toLowerCase() === peerName.toLowerCase())) throw denial(422, "unknown_peer", `No mesh peer called "${peerName}" is configured`);
+    return peers;
+  }
+
+  /**
+   * The mesh's own refusals for a peer task, before any local harness check: the worker
+   * judges the harness, the workspace, and the policy on the machine that runs them.
+   * Returns the peers dep it cleared.
+   */
+  private checkPeerTask(caller: Chat, peerName: string, args: { peerCwd?: string; isolation?: "worktree"; writeScope?: string[]; permissionMode?: string }, recheck = false): NonNullable<OrchestratorDeps["peers"]> {
+    if (args.peerCwd === undefined || args.peerCwd.trim() === "") throw denial(400, "invalid_request", "A peer task needs peerCwd too: the project's path on that peer");
+    const peers = this.peerGate(caller, peerName);
+    if (args.isolation !== undefined || (args.writeScope !== undefined && args.writeScope.length > 0)) throw denial(400, "unsupported_with_peer", "Worktree isolation and write scopes do not cross the mesh; the peer's policy is what bounds the worker");
+    if (args.permissionMode !== undefined) throw denial(400, "unsupported_with_peer", "A permission mode does not cross the mesh; the peer's policy ceiling sets it on that machine");
+    const live = this.tasks.filter((task) => task.peer != null && task.state !== "result_available").length;
+    if (live >= peers.maxRemoteTasks()) throw denial(429, "remote_limit", `This server already runs its ${peers.maxRemoteTasks()} allowed remote task(s) at once (mesh.max_remote_tasks)`);
+    return peers;
+  }
+
+  /**
+   * `peer_files`: one file operation on a paired peer, over the same link a delegated task
+   * uses. The shared mesh gates answer first; the peer's own policy — its roots and the
+   * fs.read/fs.write caps — is what actually decides, on the machine that owns the files.
+   * This side only shapes the request and passes the answer through as utf8 text, bounded:
+   * a binary read is refused rather than handed to a model, and a write is at most 1 MiB.
+   */
+  private async peerFiles(caller: Chat, args: { peer: string; op: "stat" | "list" | "read" | "write"; path: string; offset?: number; length?: number; data?: string; mode?: "create" | "overwrite" }): Promise<ToolOutput> {
+    if (args.op === "write" && caller.adapter.capabilities.readOnlyHarness) throw denial(403, "caller_read_only", `${caller.adapter.displayName} cannot write files, here or on a peer`);
+    const peers = this.peerGate(caller, args.peer);
+    const where = `${args.peer}:${args.path}`;
+    try {
+      switch (args.op) {
+        case "stat": {
+          const st = await peers.manager.stat(args.peer, args.path);
+          return { text: `${where} — ${st.type}, ${st.size} bytes, mode ${st.mode.toString(8)}`, data: st };
+        }
+        case "list": {
+          const listing = await peers.manager.list(args.peer, args.path);
+          const lines = listing.entries.map((entry) => `${entry.name} (${entry.type}${entry.type === "file" ? `, ${entry.size} bytes` : ""})`);
+          const head = listing.truncated ? `${where} (listing truncated at the peer's cap)\n` : "";
+          return { text: head + (lines.length === 0 ? `${where} is empty` : lines.join("\n")), data: listing };
+        }
+        case "read": {
+          const file = await peers.manager.read(args.peer, args.path, { ...(args.offset !== undefined ? { offset: args.offset } : {}), ...(args.length !== undefined ? { length: args.length } : {}) });
+          const text = utf8Text(file.data);
+          if (text === null) throw new ChatError(422, "peer_file_binary", `${where} is not utf8 text; peer_files reads text only`);
+          return { text: file.eof ? text : `${text}\n(the file continues; read the rest with an offset)`, data: { peer: args.peer, path: args.path, size: file.size, eof: file.eof } };
+        }
+        case "write": {
+          if (args.data === undefined) throw denial(400, "invalid_request", "peer_files write needs data: the utf8 text to put in the file");
+          if (args.mode === undefined) throw denial(400, "invalid_request", 'peer_files write needs mode: "create" (fails when the file exists) or "overwrite"');
+          const bytes = Buffer.from(args.data, "utf8");
+          if (bytes.length > MAX_PEER_FILE_TEXT_BYTES) throw denial(400, "invalid_request", `peer_files write takes at most ${MAX_PEER_FILE_TEXT_BYTES} bytes of text`);
+          const written = await peers.manager.write(args.peer, args.path, bytes, { mode: args.mode });
+          return { text: `Wrote ${written.size} bytes to ${where}.`, data: written };
+        }
+      }
+    } catch (error) {
+      throw peerRefusal(args.peer, error);
+    }
+  }
+
+  /**
+   * `peer_handoff {peer, peerRepo, brief?}`: move this chat's work to a peer.
+   * The same mesh gates a peer delegation passes answer first (peerGate), and
+   * the workspace must be a git repo with a commit to parent the snapshot
+   * on. Then, in order and each a clear refusal on its own: the snapshot
+   * (the user's index, worktree, and HEAD never move), the bundle under its
+   * cap, the chunked upload (the peer's policy gates it on arrival), and
+   * the delegated peer task opened in the worktree the peer answered with —
+   * the ordinary delegate() peer path, so its rows, approvals, and result
+   * behave exactly like any peer task's. The local chat's note is this
+   * tool's answer; nothing about the local tree changed.
+   */
+  private async peerHandoff(caller: Chat, args: { peer: string; peerRepo: string; brief?: string }): Promise<ToolOutput> {
+    const peers = this.peerGate(caller, args.peer);
+    const repo = caller.workspace.path;
+    let snap: HandoffSnapshot;
+    try {
+      snap = await snapshotWorkingTree(repo);
+    } catch (error) {
+      throw denial(422, "workspace_unsupported", `This chat's workspace cannot be handed off: ${errorMessage(error)}`);
+    }
+    // The bundle file is scratch, not state: a temp dir that leaves with the call.
+    const scratch = await mkdtemp(path.join(tmpdir(), "awui-handoff-"));
+    let bundle: Awaited<ReturnType<typeof createHandoffBundle>>;
+    try {
+      bundle = await createHandoffBundle(repo, snap, scratch);
+    } catch (error) {
+      await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+      throw denial(422, "workspace_unsupported", `The handoff bundle could not be made: ${errorMessage(error)}`);
+    }
+    let landed: { worktree: string };
+    try {
+      landed = await uploadHandoff(peers.manager, args.peer, args.peerRepo, bundle.file);
+    } catch (error) {
+      throw peerRefusal(args.peer, error);
+    } finally {
+      // The bundle file is this call's own scratch; the ref it came from is the record.
+      await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+    }
+    // The brief the far worker reads: the caller's words, then the bounded
+    // digest of the chat whose work is moving, trimmed to one delegate brief.
+    const intro = args.brief !== undefined && args.brief.trim() !== "" ? args.brief.trim() : "Continue the work handed off below.";
+    const budget = Math.max(1_000, MAX_DELEGATE_BRIEF_CHARS - Buffer.byteLength(intro, "utf8") - 200);
+    const digest = transcriptDigest(caller.snapshot().items, { maxBytes: budget });
+    const brief = `${intro}\n\n${digest}`;
+    const out = await this.delegate(caller, {
+      brief,
+      peer: args.peer,
+      peerCwd: landed.worktree,
+      title: `Handoff to ${args.peer}`,
+      notify: "wake",
+    });
+    const taskId = (out.data as { taskId: string }).taskId;
+    return {
+      text: `Handed this chat's work off to ${args.peer} (snapshot ${snap.ref}, task ${taskId}): the peer's copy runs in ${landed.worktree}, and this machine's index, worktree, and HEAD are untouched. Watch it with thread_wait / task_status; bring its committed work home with: awui peer fetch ${args.peer} ${landed.worktree}`,
+      data: { ...(out.data as Record<string, unknown>), handoffRef: snap.ref, worktree: landed.worktree, peer: args.peer },
+    };
+  }
+
   private planView(plan: PlanRecord): Plan & { note: string | null; taskIds: Record<string, string> } {
     const { parentChatId: _owner, parentSessionId: _session, ...view } = plan;
     return view;
@@ -912,6 +1082,8 @@ export class Orchestrator {
       clientRequestId?: string;
       completionGroup?: string;
       writeScope?: string[];
+      peer?: string;
+      peerCwd?: string;
     },
   ): Promise<ToolOutput> {
     if (caller.adapter.capabilities.readOnlyHarness) {
@@ -920,26 +1092,44 @@ export class Orchestrator {
     // A repeated request is the same task, never a second child.
     const repeat = this.repeatOf(caller, args.clientRequestId);
     if (repeat) return this.delegateOutput(repeat);
+    // The mesh's own rules answer first for a peer task; they are checked before any local
+    // harness question, because the worker makes those checks on the machine that runs them.
+    const peerName = args.peer;
+    const peers = peerName === undefined ? null : this.checkPeerTask(caller, peerName, args);
     const depth = (caller.lineage?.depth ?? 0) + 1;
     this.checkRoom(caller, depth);
 
     const bot = args.profile === undefined ? undefined : await this.findProfile(args.profile);
     const harnessId = args.harness ?? bot?.harnessId ?? caller.adapter.id;
-    const adapter = this.deps.registry.get(harnessId);
-    if (!adapter) throw denial(422, "unknown_harness", `No harness called ${harnessId}`);
-    if (adapter.capabilities.readOnlyHarness) throw denial(422, "harness_unavailable", `${adapter.displayName} is a read-only surface and cannot host a delegated task`);
-    if (!(await this.deps.registry.available(adapter.id))) throw denial(422, "harness_unavailable", `${adapter.displayName} is not available right now`);
+    const model = args.model ?? bot?.model ?? undefined;
+    const thinkingLevel = args.thinkingLevel ?? bot?.thinkingLevel ?? undefined;
+    // A peer task's child chat is a relay to another machine, so installed, available, and
+    // workspace are the worker's to judge; here the task is only a record plus that relay.
+    const peer = peerName === undefined ? null : { name: peerName, harness: harnessId, cwd: args.peerCwd ?? "" };
+    let adapter: HarnessAdapter;
+    if (peer !== null && peers !== null) {
+      // The open carries the model and thinking level; the relay declares no config surface of
+      // its own below, so nothing else needs to be set on the child after it exists.
+      adapter = new PeerHarnessAdapter(peers.manager, peer.name, harnessId, peer.cwd, { model, thinkingLevel, clientRequestId: args.clientRequestId });
+    } else {
+      const local = this.deps.registry.get(harnessId);
+      if (!local) throw denial(422, "unknown_harness", `No harness called ${harnessId}`);
+      if (local.capabilities.readOnlyHarness) throw denial(422, "harness_unavailable", `${local.displayName} is a read-only surface and cannot host a delegated task`);
+      if (!(await this.deps.registry.available(local.id))) throw denial(422, "harness_unavailable", `${local.displayName} is not available right now`);
+      adapter = local;
+    }
     // An open project by id, never a path: the caller's own unless it names another.
     const workspace = args.workspaceId === undefined ? caller.workspace : await this.deps.workspaces.get(args.workspaceId);
-    const problem = adapter.workspaceProblem(workspace.path);
-    if (problem) throw denial(422, "workspace_unsupported", problem);
-    const permissionMode = this.permissionModeFor(caller, adapter, args.permissionMode ?? bot?.permissionMode ?? undefined);
+    let permissionMode: string | undefined;
+    if (peer === null) {
+      const problem = adapter.workspaceProblem(workspace.path);
+      if (problem) throw denial(422, "workspace_unsupported", problem);
+      permissionMode = this.permissionModeFor(caller, adapter, args.permissionMode ?? bot?.permissionMode ?? undefined);
+    }
     // The write scope a delegated child is held to (A5): normalized here, before any work starts,
     // so a bad pattern answers the 400 that names it instead of a child that trusts dead weight.
     const scope = normalizeScope(args.writeScope);
     if (!scope.ok) throw denial(400, "bad_scope", scope.why);
-    const model = args.model ?? bot?.model ?? undefined;
-    const thinkingLevel = args.thinkingLevel ?? bot?.thinkingLevel ?? undefined;
     const title = (args.title ?? firstLine(args.brief, MAX_TITLE_CHARS) ?? `Task in ${workspace.name}`).slice(0, MAX_TITLE_CHARS);
     // Worktree isolation: the child works in its own managed checkout of the project, so its
     // edits cannot collide with the caller's. The review gates on the fork point, so it is
@@ -997,12 +1187,14 @@ export class Orchestrator {
       isolation: iso === null ? null : { worktreeId: iso.worktreeId, branch: iso.branch, fork: iso.fork },
       reviewable: iso !== null,
       ...(scope.globs.length > 0 ? { scope: taskScope } : {}),
+      ...(peer !== null ? { peer } : {}),
     };
     // The checks above ran before several awaits, so two calls in flight could both pass them:
     // ask again here, where nothing can interleave before the record is added.
     const again = this.repeatOf(caller, args.clientRequestId);
     if (again) return this.delegateOutput(again);
     this.checkRoom(caller, depth);
+    if (peerName !== undefined) this.checkPeerTask(caller, peerName, args);
     // The record lands before anything is spawned, so a crash mid-spawn leaves a row the
     // next load marks interrupted instead of work nobody knows about.
     this.tasks.unshift(task);
@@ -1030,12 +1222,13 @@ export class Orchestrator {
     }
     task.childChatId = child.chatId;
     task.childSessionId = child.sessionId;
-    child.lineage = { kind: "delegate", taskId: task.id, parentChatId: caller.chatId, parentTitle: caller.title || null, depth };
+    // host rides along here too: a peer child shows its @host badge from the moment it exists, not only after a reopen.
+    child.lineage = { kind: "delegate", taskId: task.id, parentChatId: caller.chatId, parentTitle: caller.title || null, depth, ...(task.peer ? { host: task.peer.name } : {}) };
     // The boundary judges writes with the task's guard; a task with no scope gets none (the common case).
     const guard = task.scope ? makeGuard(task.scope, (iso?.ws ?? workspace).path, this.guardFields(child)) : null;
     if (guard) this.guards.set(task.id, guard);
     try {
-      if (model !== undefined || thinkingLevel !== undefined || permissionMode !== undefined) {
+      if (peer === null && (model !== undefined || thinkingLevel !== undefined || permissionMode !== undefined)) {
         await child.setConfig({
           ...(model !== undefined ? { model } : {}),
           ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
@@ -1834,6 +2027,26 @@ function sleep(ms: number): Promise<void> {
     const timer = setTimeout(resolve, ms);
     timer.unref?.();
   });
+}
+
+/** The most text one peer_files call carries, in bytes: the tool speaks utf8 (tools.ts). */
+const MAX_PEER_FILE_TEXT_BYTES = 512 * 1024;
+
+/** The buffer as utf8 text, or null when it is not text (a NUL byte, or a sequence utf8 never forms). */
+function utf8Text(data: Buffer): string | null {
+  if (data.includes(0)) return null;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(data);
+  } catch {
+    return null;
+  }
+}
+
+/** A peer's own refusal, as the caller's model reads it: the worker's words, never a local stack. */
+function peerRefusal(peerName: string, error: unknown): ChatError {
+  if (error instanceof ChatError) return error;
+  const message = error instanceof Error ? error.message : String(error);
+  return new ChatError(502, "peer_failed", `${peerName} refused the request: ${message}`);
 }
 
 /** The words a stale review record names: what moved, by the reason the heads check kept. */

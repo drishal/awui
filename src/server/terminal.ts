@@ -14,6 +14,37 @@ import type { IDisposable } from "@lydell/node-pty";
 
 export type TerminalSubscriber = { onOutput: (data: string) => void; onExit: (code: number, signal?: number) => void };
 
+/**
+ * One terminal on a mesh peer, as the rest of the server sees it (the proxy in
+ * mesh/peer-terms.ts): the same surface a local record exposes to the routes.
+ * Input and output are strings over the same REST/SSE contract — no command
+ * forwarding, the same as a local PTY.
+ */
+export interface PeerTerminalHandle {
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  close(): void;
+  subscribe(subscriber: TerminalSubscriber): () => void;
+  /**
+   * Fired once when the proxy is done with itself — the terminal exited, was
+   * closed, or lost its last subscriber — so the manager can drop its record
+   * exactly when the peer's terminal is no longer reachable.
+   */
+  onGone(listener: () => void): void;
+}
+
+/** What TerminalManager needs to open a peer terminal; implemented by mesh/peer-terms.ts. */
+export interface PeerTermsHook {
+  open(peer: string, peerCwd: string, cols: number, rows: number): Promise<{ id: string; createdAt: number; handle: PeerTerminalHandle }>;
+}
+
+export interface TerminalManagerOpts {
+  /** P3 remote terminals: a create request naming a peer opens one through here instead of locally. */
+  peerTerms?: PeerTermsHook;
+  /** Test seam: the pty spawner, so a fake pty can stand in where node-pty cannot run. */
+  spawn?: typeof spawnPty;
+}
+
 const MAX_PER_WORKSPACE = 5;
 const MAX_CREATES_PER_MINUTE = 30;
 const REPLAY_CAP = 1024 * 1024;
@@ -39,6 +70,14 @@ interface TerminalRecord {
   killTimer: ReturnType<typeof setTimeout> | null;
 }
 
+/** One terminal on a mesh peer, as this manager holds it: which workspace opened it, and the proxy that answers. */
+interface PeerTerminalRecord {
+  id: string;
+  workspaceId: string;
+  createdAt: number;
+  handle: PeerTerminalHandle;
+}
+
 // Required to terminate Windows ConPTY/Unix setsid hierarchy safely; never
 // falls back to a harness permission system or another user's session owner.
 function assertDims(cols: number, rows: number): void {
@@ -48,10 +87,36 @@ function assertDims(cols: number, rows: number): void {
 
 export class TerminalManager {
   private readonly terminals = new Map<string, TerminalRecord>();
+  /** Terminals on mesh peers (P3): the proxies the routes reach by id, exactly like local ones. */
+  private readonly peerTerminals = new Map<string, PeerTerminalRecord>();
   private readonly openings = new Map<string, number[]>();
 
-  async create(ws: WorkspaceInfo, cols: number, rows: number): Promise<{ id: string; createdAt: number }> {
+  constructor(private readonly opts: TerminalManagerOpts = {}) {}
+
+  /**
+   * One interactive terminal in the user's validated project — or, when the
+   * request names a mesh peer (P3), on that peer at `peerCwd`, through the
+   * hook. Everything about the spawn stays the target's own either way: this
+   * route never takes a command, a shell, or an env.
+   */
+  async create(ws: WorkspaceInfo, cols: number, rows: number, peer?: { peer: string; peerCwd: string }): Promise<{ id: string; createdAt: number }> {
     assertDims(cols, rows);
+    if (peer !== undefined) {
+      const hook = this.opts.peerTerms;
+      if (hook === undefined) throw new ChatError(501, "peer_terms_off", "Remote terminals are not wired on this server");
+      let opened: Awaited<ReturnType<PeerTermsHook["open"]>>;
+      try {
+        opened = await hook.open(peer.peer, peer.peerCwd, cols, rows);
+      } catch (error) {
+        // The peer's own words for why it refused (unknown peer, mesh off, a denial) are the user's to read.
+        throw error instanceof ChatError ? error : new ChatError(502, "peer_terminal", error instanceof Error ? error.message : String(error));
+      }
+      const record: PeerTerminalRecord = { id: opened.id, workspaceId: ws.id, createdAt: opened.createdAt, handle: opened.handle };
+      // When the proxy ends itself (exit, close, last subscriber gone), its id must stop resolving here.
+      opened.handle.onGone(() => this.peerTerminals.delete(opened.id));
+      this.peerTerminals.set(record.id, record);
+      return { id: record.id, createdAt: record.createdAt };
+    }
     const real = await fs.realpath(ws.path).catch(() => null);
     if (real !== ws.path) throw new ChatError(403, "workspace_path", "The workspace folder is no longer at its opened path");
     const live = [...this.terminals.values()].filter((t) => t.workspaceId === ws.id && !t.exited);
@@ -65,7 +130,7 @@ export class TerminalManager {
     for (const [k, v] of Object.entries(env)) if (v === undefined || k.startsWith("GIT_") || k.startsWith("AWUI_")) delete env[k];
     let pty: ProjectPty;
     try {
-      pty = spawnPty(shell, { name: "xterm-256color", cols, rows, cwd: real, env });
+      pty = (this.opts.spawn ?? spawnPty)(shell, { name: "xterm-256color", cols, rows, cwd: real, env });
     } catch {
       throw new ChatError(500, "terminal_spawn", process.platform === "win32" && process.versions.bun ? "Terminal is unsupported in this Windows build: Bun.Terminal has no ConPTY provider here" : `Could not start ${shell}`);
     }
@@ -86,6 +151,12 @@ export class TerminalManager {
 
   write(ws: WorkspaceInfo, id: string, data: string): void {
     const record = this.owned(ws, id);
+    if ("handle" in record) {
+      // The same bound a local write answers; the bytes cross the link as one term.input.
+      if (typeof data !== "string" || data.length > MAX_WRITE) throw new ChatError(400, "terminal_write", `A write is at most ${MAX_WRITE} characters`);
+      record.handle.write(data);
+      return;
+    }
     if (record.exited) return;
     if (typeof data !== "string" || data.length > MAX_WRITE) throw new ChatError(400, "terminal_write", `A write is at most ${MAX_WRITE} characters`);
     for (let at = 0; at < data.length; at += WRITE_CHUNK) record.pty.write(data.slice(at, at + WRITE_CHUNK));
@@ -94,6 +165,10 @@ export class TerminalManager {
   resize(ws: WorkspaceInfo, id: string, cols: number, rows: number): void {
     const record = this.owned(ws, id);
     assertDims(cols, rows);
+    if ("handle" in record) {
+      record.handle.resize(cols, rows);
+      return;
+    }
     if (record.exited) return;
     try { record.pty.resize(cols, rows); } catch { return; }
     record.cols = cols;
@@ -102,12 +177,19 @@ export class TerminalManager {
 
   close(ws: WorkspaceInfo, id: string): void {
     const record = this.owned(ws, id);
+    if ("handle" in record) {
+      this.peerTerminals.delete(id);
+      record.handle.close();
+      return;
+    }
     this.kill(record);
     this.remove(record);
   }
 
   subscribe(ws: WorkspaceInfo, id: string, subscriber: TerminalSubscriber): () => void {
     const record = this.owned(ws, id);
+    // A peer terminal replays and exits through its proxy, on the same contract a local one does.
+    if ("handle" in record) return record.handle.subscribe(subscriber);
     record.subscribers.add(subscriber);
     if (record.replay) subscriber.onOutput(record.replay);
     if (record.exited && record.exit) subscriber.onExit(record.exit.code, record.exit.signal);
@@ -119,10 +201,17 @@ export class TerminalManager {
 
   shutdown(): void {
     for (const record of [...this.terminals.values()]) { this.kill(record); this.remove(record); }
+    for (const record of [...this.peerTerminals.values()]) { this.peerTerminals.delete(record.id); record.handle.close(); }
     this.openings.clear();
   }
 
-  private owned(ws: WorkspaceInfo, id: string): TerminalRecord {
+  /** One terminal by id, whichever side of a link it runs on; a workspace's terminals stay its own. */
+  private owned(ws: WorkspaceInfo, id: string): TerminalRecord | PeerTerminalRecord {
+    const peer = this.peerTerminals.get(id);
+    if (peer !== undefined) {
+      if (peer.workspaceId !== ws.id) throw new ChatError(404, "no_terminal", "No such terminal");
+      return peer;
+    }
     const record = this.terminals.get(id);
     if (!record || record.workspaceId !== ws.id) throw new ChatError(404, "no_terminal", "No such terminal");
     return record;

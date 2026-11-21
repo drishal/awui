@@ -71,6 +71,11 @@ export interface StoredTask extends DelegatedTaskView {
   isolation: { worktreeId: string; branch: string; fork: string } | null;
   /** The write scope the child was held to; null (or absent on a row that predates it) for a task that carries none — the scope's counts say what the guard saw. */
   scope?: TaskScope | null;
+  /**
+   * The paired peer a remote task runs on, with the harness and the cwd it was opened with;
+   * null (or absent on a row that predates the mesh) for a task that runs on this machine.
+   */
+  peer?: { name: string; harness: string; cwd: string } | null;
 }
 
 const usageSchema = z.custom<SessionUsage | null>((value) => value === null || (typeof value === "object" && !Array.isArray(value)));
@@ -128,6 +133,10 @@ export const storedTaskSchema = z.object({
     })
     .nullable()
     .optional(),
+  peer: z
+    .object({ name: z.string().min(1).max(64), harness: z.string().min(1).max(64), cwd: z.string().min(1).max(4096) })
+    .nullable()
+    .optional(),
 });
 
 /** One row from the file, or null when it is malformed: the child's session is the truth, so a bad row is dropped. */
@@ -135,7 +144,9 @@ export function parseStoredTask(value: unknown): StoredTask | null {
   const parsed = storedTaskSchema.safeParse(value);
   // Records written before worktree isolation carry no `isolation` field: normalized to
   // null, so an old shared-tree task is never read as an isolated one.
-  return parsed.success ? { ...parsed.data, isolation: parsed.data.isolation ?? null, reviewable: (parsed.data.isolation ?? null) !== null } : null;
+  // Records written before the mesh carry no `peer`: normalized to null, so an old local task
+  // is never read as one that runs somewhere else, exactly as `isolation` is normalized.
+  return parsed.success ? { ...parsed.data, isolation: parsed.data.isolation ?? null, reviewable: (parsed.data.isolation ?? null) !== null, peer: parsed.data.peer ?? null } : null;
 }
 
 /** What the browser and a tool call see: the stored record without its server-only fields. */
@@ -159,6 +170,7 @@ export function viewOf(task: StoredTask): DelegatedTaskView {
     asking: task.asking,
     scope: task.scope,
     reviewable: task.isolation !== null,
+    host: task.peer?.name ?? null,
   };
 }
 
@@ -247,6 +259,12 @@ export const ORCH_DENIAL_CODES = [
   "bad_scope",
   "no_session",
   "unsupported",
+  "mesh_off",
+  "mesh_lead_only",
+  "hop_limit",
+  "unsupported_with_peer",
+  "remote_limit",
+  "unknown_peer",
 ] as const;
 export type OrchDenialCode = (typeof ORCH_DENIAL_CODES)[number];
 

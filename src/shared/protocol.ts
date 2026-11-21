@@ -897,10 +897,10 @@ export interface UsageLimits {
   errors: string[];
 }
 
-/** Something a device is told about: a run finished or failed, or the agent asks for an answer. */
+/** Something a device is told about: a run finished or failed, the agent asks for an answer, or the mesh asks this machine's owner. */
 export interface PushNote {
   id: string;
-  kind: "done" | "error" | "ask";
+  kind: "done" | "error" | "ask" | "mesh";
   /** The chat it is about; "" for a Board room's note, which names its room instead. */
   chatId: string;
   sessionId: string | null;
@@ -914,6 +914,119 @@ export interface PushNote {
   at: number;
   /** An approval the notification can answer itself (its Approve and Deny buttons): the request and the two answers. */
   approval?: { requestId: string; approve: InteractionAnswer; deny: InteractionAnswer };
+}
+
+/**
+ * The Settings dialog's Peers view (mesh P2 §4), one GET's answer: this node,
+ * every peer from either source, the pairing requests waiting on a person, and
+ * the mesh ask approvals pending here. Everything a peer-controlled surface
+ * shows is a label the owner picked or the wire bounded — never a prompt's
+ * text, never file contents.
+ */
+export interface MeshOverview {
+  enabled: boolean;
+  /** This node's mesh name, as a handshake presents it. */
+  name: string;
+  /** This node's id (its pinned key's hash), or null when its identity could not be read. */
+  nodeId: string | null;
+  /** config.yml's `mesh.listen`, or null when this node answers no TLS port. */
+  listen: { host: string; port: number } | null;
+  /** The policy names an Accept or an invite may choose: the built-ins plus mesh.policies. */
+  policies: string[];
+  peers: MeshPeerRow[];
+  pending: MeshPendingRow[];
+  approvals: MeshApprovalRow[];
+}
+
+/** One peer this node can reach, from config.yml or from peers.json (config wins on a name clash). */
+export interface MeshPeerRow {
+  name: string;
+  transport: "ssh" | "docker" | "tls";
+  /** The ssh destination, container name, or host:port — exactly what the transport dials. */
+  address: string;
+  source: "config" | "ui";
+  /** Whether this node holds an outbound pin for the peer. */
+  pinned: boolean;
+  /**
+   * The caps this peer's resolved inbound policy advertised over its last
+   * completed `peer.info` (finding #1): `{allow, ask}` over the closed cap
+   * vocabulary. Absent until the first probe answered, or on a peer whose
+   * awui predates the advertisement — absent never means "everything".
+   */
+  caps?: { allow: string[]; ask: string[] };
+}
+
+/** A peer that said hello (or redeemed an invite) and waits for this owner's Accept. */
+export interface MeshPendingRow {
+  nodeId: string;
+  name: string;
+  /** The six-digit number to compare with the other machine's screen. */
+  sas: string;
+  /** An invite's redeem pre-fills the policy its target chose. */
+  invitedPolicy?: string;
+  seenAt: number;
+}
+
+/** One ask approval waiting on this machine's owner (a policy cap set to `ask`). */
+export interface MeshApprovalRow {
+  id: string;
+  peerName: string;
+  nodeId: string;
+  method: string;
+  cap: string;
+  /** Method + path/cwd/harness, bounded; never file content or prompt text. */
+  summary: string;
+  root: string | null;
+  createdAt: number;
+  expiresAt: number;
+}
+
+/** One request a peer-owned task's harness raised, answerable here as any chat approval is. */
+export interface MeshTaskRequestRow {
+  id: string;
+  kind: string;
+  /** The request's own title, as the chat's approval card shows it. */
+  /** The request's own title, as the chat's approval card shows it. */
+  summary: string;
+  /**
+   * The request's Approve and Deny answers (shared/approval.ts), when it is a
+   * plain approval; the buttons send one back, exactly as a push note's do.
+   * Absent for a request that is not a yes/no (a free-text question).
+   */
+  approval?: { approve: InteractionAnswer; deny: InteractionAnswer };
+}
+
+/** One of this host's tasks — a chat some peer's run drives on this machine. */
+export interface MeshTaskRow {
+  remoteTaskId: string;
+  chatId: string;
+  peerName: string;
+  nodeId: string;
+  harness: string;
+  cwd: string;
+  state: string;
+  pendingRequests: MeshTaskRequestRow[];
+  createdAt: number;
+}
+
+/**
+ * One terminal a peer opened on this node (finding #2, SPEC-P3 §1): the
+ * target's own read-only listing with its kill action. Labels and figures
+ * only — a PTY's content is never carried to the owner's UI through here.
+ */
+export interface MeshHostTermRow {
+  termId: string;
+  /** The peer's handshake name, as its link authenticated. */
+  peerName: string;
+  nodeId: string;
+  cwd: string;
+  cols: number;
+  rows: number;
+  createdAt: number;
+  /** True once the PTY ended but before the last holder dropped it. */
+  exited: boolean;
+  /** The seq of the last frame sent; 0 when it never printed. */
+  lastSeq: number;
 }
 
 export interface TodoItem {
@@ -1110,6 +1223,8 @@ export interface DelegatedTaskView {
   scope?: { globs: string[]; scratchDir: string | null; attempted: number; blocked: number; landed: number; recent: string[] } | null;
   /** Whether this task ran in a managed isolated checkout, so its recorded heads can be reviewed. */
   reviewable: boolean;
+  /** The mesh peer the child runs on, when it runs on another machine; null for a local task. */
+  host?: string | null;
 }
 
 /** A chat another agent delegated: which task, and where in the tree. */
@@ -1119,6 +1234,11 @@ export interface ChatLineage {
   parentChatId: string;
   parentTitle: string | null;
   depth: number;
+  /**
+   * The mesh peer the child runs on, when the delegation was remote; null or
+   * absent for a task that runs on this machine.
+   */
+  host?: string | null;
 }
 export interface ChatSnapshot {
   chatId: string;
@@ -1321,7 +1441,25 @@ export const worktreeCreateSchema = z.object({
 });
 /** Trust one version of a project's `awui.yml`, named by the hash the picker was shown. */
 export const projectConfigTrustSchema = z.object({ hash: z.string().regex(/^[0-9a-f]{16}$/) });
-export const terminalCreateSchema = z.object({ cols: z.number().int().min(10).max(400).default(100), rows: z.number().int().min(4).max(120).default(30) });
+/**
+ * Opening one terminal (P3): locally unless `peer` names a mesh peer, in which
+ * case `peerCwd` is where it runs on that peer, resolved through the peer's own
+ * policy roots. The two go together, and every spawn detail beyond them stays
+ * the machine's own — no command, shell, or env field exists at all.
+ */
+export const terminalCreateSchema = z
+  .object({
+    cols: z.number().int().min(10).max(400).default(100),
+    rows: z.number().int().min(4).max(120).default(30),
+    /** The configured mesh peer to open the terminal on; absent means this machine. */
+    peer: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/).optional(),
+    /** The cwd on that peer, an existing folder inside its policy's roots. */
+    peerCwd: z.string().trim().min(1).max(4096).refine((value) => !/[\u0000\n\r]/.test(value)).optional(),
+  })
+  .strict()
+  .refine((value) => (value.peer === undefined) === (value.peerCwd === undefined), { message: "peer and peerCwd go together" });
+/** Resizing one terminal: no peer fields, the terminal's id already says which machine it is on. */
+export const terminalResizeSchema = z.object({ cols: z.number().int().min(10).max(400), rows: z.number().int().min(4).max(120) }).strict();
 export const terminalWriteSchema = z.object({ data: z.string().max(16_384) });
 export const htmlRenderPreviewSchema = z.object({ theme: z.record(z.string().regex(/^--[a-z0-9-]+$/), z.string().max(1000).refine((value) => !/[;{}]/.test(value))).refine((value) => Object.keys(value).length <= 32), appearance: z.enum(["light", "dark"]) });
 export const gitHubPrSchema = z.object({ base: z.string().trim().min(1).max(120), title: z.string().trim().min(1).max(200), body: z.string().max(20_000).default("") });

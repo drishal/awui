@@ -105,6 +105,139 @@ const launchSchema = z
   .strict();
 
 /**
+ * The mesh (docs/mesh.md): named peer machines this one can drive tasks on, with the
+ * policies that bound what each may do here. Phase 0 is configuration only — nothing
+ * listens — so this is file-only, checked like every other setting, and the mesh is
+ * off unless the file says `enabled: true` (see meshEnabled).
+ */
+/** A machine or policy name: a slug of letters, digits, '.', '_' or '-'. */
+const meshNameSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9._-]{1,64}$/, "must be a name of letters, digits, '.', '_' or '-', 1..64 characters");
+const meshPolicyNameSchema = z
+  .string()
+  .regex(/^[a-z0-9_-]{1,32}$/, "must be a lowercase name of letters, digits, '_' or '-', 1..32 characters");
+/** The capability vocabulary is fixed and closed; there is no exec cap. */
+export const MESH_CAPS = ["discover", "task.run", "task.approve", "fs.read", "fs.write", "term.open"] as const;
+export type MeshCap = (typeof MESH_CAPS)[number];
+
+/**
+ * One `host:port` a mesh peer can be dialed on over TLS (P2): a hostname, an
+ * IPv4 address, or a bracketed IPv6 literal, and a port 1..65535 — never an
+ * options shape, so a peer address cannot be read as anything but an address.
+ * Config's schema and the transports share this one parser, so the wire and
+ * the file agree on what a TLS peer is.
+ */
+export function parseMeshTlsAddress(value: string): { host: string; port: number } | null {
+  const match = /^(\[[0-9A-Fa-f:.]{2,45}\]|[A-Za-z0-9][A-Za-z0-9.-]{0,252}):(\d{1,5})$/.exec(value.trim());
+  if (match === null) return null;
+  const port = Number(match[2]);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
+  const host = match[1]!;
+  if (host.startsWith("[")) return { host: host.slice(1, -1), port };
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && host.split(".").some((octet) => Number(octet) > 255)) return null;
+  return { host, port };
+}
+
+const meshTlsAddressSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(512)
+  .refine((v) => parseMeshTlsAddress(v) !== null, "must be host:port — a hostname or IPv4, or [IPv6] with the port after it, the port 1..65535");
+
+const meshPolicySchema = z
+  .object({
+    caps: z.array(z.enum(MESH_CAPS)).max(MESH_CAPS.length).optional(),
+    ask: z.array(z.enum(MESH_CAPS)).max(MESH_CAPS.length).optional(),
+    roots: z.array(z.string().trim().min(1).max(4096)).max(64).optional(),
+    harnesses: z.array(z.string().trim().min(1).max(32)).max(16).optional(),
+    permission_ceiling: z.enum(["read-only", "default", "auto-edit"]).optional(),
+    max_tasks: z.number().int().min(1).max(32).optional(),
+    max_file_bytes: z.number().int().min(1).max(1024 * 1024 * 1024).optional(),
+    approvals_at: z.enum(["origin", "target", "both"]).optional(),
+  })
+  .strict();
+
+export const meshPeerSchema = z
+  .object({
+    name: meshNameSchema,
+    // Destinations go to ssh/docker as argv (never a shell), but one starting with '-'
+    // would still be read as an option, so each is held to a plain host/container shape.
+    ssh: z.string().trim().max(512).regex(/^[A-Za-z0-9_.@:%\[\]][A-Za-z0-9_.@:%\[\]-]*$/, "must be a plain [user@]host (no spaces, not starting with '-')").optional(),
+    // A direct TLS address (P2): the same host:port the wire dials, no options.
+    tls: meshTlsAddressSchema.optional(),
+    docker: z.string().trim().max(256).regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/, "must be a container name or id").optional(),
+    ssh_opts: z
+      .array(z.string().min(1).max(256).refine((v) => !/[\n\r\u0000]/.test(v), "must not hold a newline or a NUL"))
+      .max(16)
+      .optional(),
+    awui_path: z.string().trim().min(1).max(4096).optional(),
+    engine: z.enum(["docker", "podman"]).optional(),
+    inbound_policy: meshPolicyNameSchema.optional(),
+  })
+  .strict()
+  .superRefine((peer, ctx) => {
+    // `ssh`, `docker`, and `tls` are three ways to reach the same peer; exactly one may be set.
+    const ways = [peer.ssh, peer.docker, peer.tls].filter((v) => v !== undefined).length;
+    if (ways !== 1) {
+      ctx.addIssue({ code: "custom", path: ["ssh"], message: "a peer takes exactly one of `ssh`, `docker`, or `tls`" });
+    }
+  });
+
+/** At most this many peers: each is a machine awui may run tasks on. */
+export const MAX_MESH_PEERS = 64;
+
+const meshSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    name: meshNameSchema.optional(),
+    max_hops: z.literal(1).optional(),
+    max_remote_tasks: z.number().int().min(1).max(64).optional(),
+    chats: z.enum(["lead-only", "all"]).optional(),
+    // How long a daemon-mode task with no attached link stays once settled (hours).
+    detached_ttl_hours: z.number().int().min(1).max(720).optional(),
+    // The direct TLS listener (P2): off unless an address is named. "0.0.0.0"
+    // and "::" are accepted (a person may mean them) and doctor warns on them.
+    listen: z
+      .object({
+        host: z.string().trim().min(1).max(255).regex(/^[A-Za-z0-9._:\[\]-]+$/, "must be a hostname or IP address, no spaces").refine((v) => !v.startsWith("-"), "must not start with '-'"),
+        port: z.number().int().min(1).max(65535).optional(),
+      })
+      .strict()
+      .optional(),
+    policies: z.record(meshPolicyNameSchema, meshPolicySchema).optional(),
+    peers: z
+      .array(meshPeerSchema)
+      .max(MAX_MESH_PEERS)
+      .superRefine((peers, ctx) => {
+        const seen = new Set<string>();
+        for (const [index, peer] of peers.entries()) {
+          const key = peer.name.toLowerCase();
+          if (seen.has(key)) ctx.addIssue({ code: "custom", path: [index, "name"], message: `"${peer.name}" is already defined` });
+          seen.add(key);
+        }
+      })
+      .optional(),
+  })
+  .strict()
+  .superRefine((mesh, ctx) => {
+    // `none` is the built-in do-nothing policy; every other name starts from it.
+    if (mesh.policies && "none" in mesh.policies) {
+      ctx.addIssue({ code: "custom", path: ["policies", "none"], message: "`none` is the built-in do-nothing policy and cannot be overridden" });
+    }
+    for (const [index, peer] of (mesh.peers ?? []).entries()) {
+      const named = peer.inbound_policy ?? "none";
+      if (named !== "none" && named !== "worker" && named !== "peer" && !(mesh.policies && named in mesh.policies)) {
+        ctx.addIssue({ code: "custom", path: ["peers", index, "inbound_policy"], message: `"${named}" is not a built-in policy (none, worker, peer) and names no policy under mesh.policies` });
+      }
+    }
+  });
+
+export type MeshConfig = z.infer<typeof meshSchema>;
+
+/**
  * The labels Claude Code itself uses for `CLAUDE_CODE_ENTRYPOINT`. Claiming one would pass awui off as that
  * client, so config.yml may not; an honest name of its own (`awui`) is the only thing it accepts.
  */
@@ -255,6 +388,7 @@ const schema = z
       })
       .strict()
       .optional(),
+    mesh: meshSchema.optional(),
   })
   .strict();
 
@@ -385,4 +519,36 @@ export function breakdownRules(c: UserConfig | undefined): BreakdownRules {
     tests: block?.tests ?? DEFAULT_BREAKDOWN_RULES.tests,
     generated: block?.generated ?? DEFAULT_BREAKDOWN_RULES.generated,
   };
+}
+
+/** config.yml's `mesh:` block as parsed, or undefined when the file has none. */
+export function meshConfig(c: UserConfig | undefined): MeshConfig | undefined {
+  return c?.mesh;
+}
+
+/**
+ * How long a daemon-mode task with no attached link stays once it is settled
+ * (config `mesh.detached_ttl_hours`, hours; a task still running keeps running).
+ */
+export function meshDetachedTtlHours(c: UserConfig | undefined): number {
+  return c?.mesh?.detached_ttl_hours ?? 24;
+}
+
+/**
+ * config.yml's `mesh.listen` with the default port applied, or null when this
+ * node opens no TLS listener. Pure, so doctor reports and the daemon's switch
+ * read the same one address.
+ */
+export function meshListen(c: UserConfig | undefined): { host: string; port: number } | null {
+  const listen = c?.mesh?.listen;
+  return listen === undefined ? null : { host: listen.host, port: listen.port ?? 4784 };
+}
+
+/**
+ * Whether the mesh is on. AWUI_MESH=0 forces it off; no variable forces it on, so
+ * `enabled: true` in config.yml is the only switch that does.
+ */
+export function meshEnabled(c: UserConfig | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.AWUI_MESH === "0") return false;
+  return c?.mesh?.enabled === true;
 }

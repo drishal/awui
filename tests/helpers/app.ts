@@ -25,7 +25,17 @@ import { DEFAULT_ORCHESTRATION_LIMITS, type OrchestrationLimits } from "../../sr
 import { SecondOpinions } from "../../src/server/second-opinions.js";
 import type { RoutineRuns } from "../../src/server/routine-runs.js";
 import type { ResumeIntents } from "../../src/server/resume-intent.js";
-
+import { ApprovalQueue } from "../../src/server/mesh/approvals.js";
+import { AuditLog } from "../../src/server/mesh/audit.js";
+import { loadOrCreateIdentity } from "../../src/server/mesh/identity.js";
+import { InviteStore } from "../../src/server/mesh/pairing.js";
+import { PeerPeersStore } from "../../src/server/mesh/peer-store.js";
+import { PinStore } from "../../src/server/mesh/pins.js";
+import { TaskHost } from "../../src/server/mesh/host.js";
+import type { TermHost } from "../../src/server/mesh/terms.js";
+import type { PeerManager } from "../../src/server/mesh/manager.js";
+import type { MeshConfig } from "../../src/server/user-config.js";
+import { Notifier } from "../../src/server/notify.js";
 export const USER = "alice";
 export const PASS = "correct horse battery";
 
@@ -49,6 +59,17 @@ export interface TestApp {
   stateDir: string;
   workspaces: Workspaces;
   boardNotes: Array<{ kind: PushNote["kind"]; roomId: string; title: string; body: string; request?: InteractionRequest }>;
+  /** The mesh handles a `mesh:` option built: its stores and host, the app's own notifier (a peer chat's ask note), and every note its routes raised. */
+  mesh?: {
+    pins: ReturnType<typeof PinStore>;
+    approvals: ApprovalQueue;
+    invites: InviteStore;
+    host: TaskHost;
+    /** The app's notifier, so a test can read a peer-owned chat's ask note (notifier.since(0)). */
+    notifier: Notifier;
+    /** The notes the mesh routes raised themselves (ask approvals). */
+    notes: Array<Omit<PushNote, "id" | "at">>;
+  };
 }
 
 export async function makeTestApp(options: {
@@ -85,12 +106,38 @@ export async function makeTestApp(options: {
   deviceHosts?: DeviceHost[];
   /** The orchestration surface's limits, over the built-in defaults (config.yml's `orchestration:`). */
   orchestrationLimits?: Partial<OrchestrationLimits>;
+  /** The mesh peers a delegation may name (manager.ts); absent leaves peer tasks refused. */
+  orchestrationPeers?: NonNullable<Parameters<typeof createApp>[0]["orchestrationPeers"]>;
   /** The routines' run history, when a test drives a routine itself (in memory otherwise). */
   routineRuns?: RoutineRuns;
   /** A temporary settings folder whose config.yml this server alone reads; absent stays isolated. */
   configDir?: string;
   /** The sessions a previous process left running, when a test drives the resume itself. */
+  /** The sessions a previous process left running, when a test drives the resume itself. */
   resumeIntents?: ResumeIntents;
+  /**
+   * The mesh's owner-facing routes (mesh/routes.ts): absent leaves /api/mesh
+   * answering 404, as in most tests. The stores live in this app's state
+   * folder; pass your own host or queue to drive one a link opened.
+   */
+  mesh?: {
+    /** mesh.enabled as the server reads it; default off, so the routes answer mesh_off. */
+    enabled?: () => boolean;
+    /** config.yml's `mesh:` block, read at each use; the policies an Accept may name come from it. */
+    config?: () => MeshConfig | undefined;
+    /** The host whose tasks the routes read; a fresh one over this app's chats when absent. */
+    host?: TaskHost;
+    /** The terminal host whose peer terminals the terms routes list and kill (finding #2); none when absent. */
+    terms?: TermHost;
+    /** The ask-approval queue; a fresh one when absent. */
+    approvals?: ApprovalQueue;
+    /** The invite store; a fresh one when absent. */
+    invites?: InviteStore;
+    /** The leader side the Test button dials; null (the default) leaves that route 501. */
+    peers?: PeerManager | null;
+    /** Where the routes' notes go; captured on TestApp.mesh.notes when absent. */
+    onNote?: (note: Omit<PushNote, "id" | "at">) => void;
+  };
 } = {}): Promise<TestApp> {
   const root = tempDir();
   const project = path.join(root, "proj");
@@ -132,6 +179,49 @@ export async function makeTestApp(options: {
     },
   });
   await boards.start();
+  // The mesh's owner-facing half (P2 §4): only when a test asks for it, with the
+  // same real stores the routes would use in a service — pins, peers.json, the
+  // audit log, and (unless the test passes its own) a host over this app's
+  // chats, so a task a link opened is answerable through /api/mesh.
+  let mesh: TestApp["mesh"];
+  let meshDeps: Parameters<typeof createApp>[0]["mesh"];
+  if (options.mesh) {
+    const pins = PinStore(path.join(stateDir, "mesh", "pins.json"));
+    const approvals = options.mesh.approvals ?? new ApprovalQueue();
+    const invites = options.mesh.invites ?? new InviteStore();
+    const host =
+      options.mesh.host ??
+      new TaskHost({
+        chats: manager,
+        registry,
+        workspace: async (real) => workspaces.open(real),
+        clock: Date.now,
+        log: () => undefined,
+        detachedTtlHours: () => 24,
+      });
+    // The app's own notifier, handed in so a test can read the note a
+    // peer-owned chat's ask raises through the manager's news gate.
+    const notifier = Notifier.inMemory();
+    const notes: Array<Omit<PushNote, "id" | "at">> = [];
+    mesh = { pins, approvals, invites, host, notifier, notes };
+    meshDeps = {
+      enabled: options.mesh.enabled ?? (() => false),
+      name: () => "test-box",
+      identity: () => loadOrCreateIdentity(stateDir),
+      pins,
+      saved: PeerPeersStore(path.join(stateDir, "mesh", "peers.json")),
+      config: options.mesh.config ?? (() => undefined),
+      listen: () => null,
+      host,
+      ...(options.mesh.terms !== undefined ? { terms: options.mesh.terms } : {}),
+      approvals: () => approvals,
+      invites: () => invites,
+      peers: options.mesh.peers ?? null,
+      audit: new AuditLog(path.join(stateDir, "mesh", "audit.jsonl"), () => undefined),
+      notify: options.mesh.onNote ?? ((note) => { notes.push(note); }),
+      log: () => undefined,
+    };
+  }
   const app = await createApp({
     version: "test",
     home: root,
@@ -159,6 +249,9 @@ export async function makeTestApp(options: {
     stateDir,
     secondOpinions: await SecondOpinions.open(stateDir),
     orchestrationLimits,
+    ...(options.orchestrationPeers ? { orchestrationPeers: options.orchestrationPeers } : {}),
+    ...(meshDeps ? { mesh: meshDeps } : {}),
+    ...(meshDeps ? { notifier: mesh!.notifier } : {}),
     ...(options.routineRuns ? { routineRuns: options.routineRuns } : {}),
     ...(options.resumeIntents ? { resumeIntents: options.resumeIntents } : {}),
     ...(terminals ? { terminals } : {}),
@@ -192,7 +285,7 @@ export async function makeTestApp(options: {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   };
-  return { app, server, port, close, manager, registry, root, project, security, fake, boards, stateDir, workspaces, boardNotes };
+  return { app, server, port, close, manager, registry, root, project, security, fake, boards, stateDir, workspaces, boardNotes, ...(mesh ? { mesh } : {}) };
 }
 
 /** A supertest agent on this machine: local requests need no sign-in. */

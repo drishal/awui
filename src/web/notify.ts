@@ -104,7 +104,7 @@ export async function turnOff(state: NotifyState): Promise<NotifyState> {
 /** Show a note from the page (the in-page fallback), through the worker when there is one: Android has no `new Notification`. */
 async function show(note: PushNote, onOpen: (note: PushNote) => void): Promise<void> {
   const reg = await navigator.serviceWorker?.getRegistration().catch(() => undefined);
-  const options = { body: note.body, tag: note.id, data: { chatId: note.chatId, sessionId: note.sessionId, roomId: note.roomId ?? null }, requireInteraction: note.kind === "ask" };
+  const options = { body: note.body, tag: note.id, data: { chatId: note.chatId, sessionId: note.sessionId, roomId: note.roomId ?? null }, requireInteraction: note.kind === "ask" || note.kind === "mesh" };
   if (reg) {
     await reg.showNotification(note.title, options);
     return;

@@ -86,15 +86,15 @@ export interface ChatSubscriber {
 
 /**
  * Who owns a chat besides the user: Board's rooms drive harness sessions
- * through the manager like any chat, marked so ordinary surfaces (session
- * lists, search, usage, notifications, resume) can keep them out. Server-only;
- * it never reaches the browser.
+ * through the manager like any chat, and a mesh peer's inbound task gets a chat
+ * the same way — each marked so ordinary surfaces (session lists, search,
+ * usage, notifications, resume) can keep them out. Server-only; it never
+ * reaches the browser. Only the room kind names its owner's own records; peer
+ * owners carry just the labels a peer-owned chat needs to be identified.
  */
-export interface ChatOwner {
-  kind: "room";
-  roomId: string;
-  membershipId: string;
-}
+export type ChatOwner =
+  | { kind: "room"; roomId: string; membershipId: string }
+  | { kind: "peer"; peerId: string; peerName: string; remoteTaskId: string };
 
 /** Past this, a subagent transcript is read as its first and last halves. */
 const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
@@ -813,6 +813,13 @@ export class Chat implements CheckpointHost {
   onRunStart?: (chat: Chat) => void;
   /** A chain's handoff step: the app moves this chat to another harness, `rest` of the chain with it. */
   onChainHandoff?: (chat: Chat, step: Extract<ChainStep, { kind: "handoff" }>, rest: ChainStep[]) => Promise<void>;
+  /**
+   * A raw harness-event sink: the mesh daemon's task host sets it once the chat
+   * exists, and every event the live chat emits reaches it before this chat
+   * folds it — in harness order, exactly what the peer wire replays. The chat
+   * itself never reads it; unset, it costs nothing.
+   */
+  onHarnessEvent?: (event: HarnessEvent) => void;
   /** Set while a status change is not news (a prompt the harness refused). */
   private quiet = false;
   /** File checkpoints before each prompt, where the project is in a git repository. */
@@ -986,6 +993,7 @@ export class Chat implements CheckpointHost {
     const generation = ++this.generation;
     this.unsubscribe = this.live.subscribe((event) => {
       if (generation !== this.generation) return;
+      this.onHarnessEvent?.(event);
       this.apply(event);
     });
   }

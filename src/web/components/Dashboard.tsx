@@ -16,6 +16,7 @@ import {
   boardCards,
   boardCounts,
   boardProjects,
+  childHost,
   PR_FILTERS,
   PR_FILTER_LABELS,
   prBadge,
@@ -195,6 +196,7 @@ function Card({ card, eager, names, harnessName, projectName, pr, onOpen, onOpen
                 <span className="dashboard-child-title">
                   <span className="harness-dot" style={harnessColor(child.harnessId)} role="img" aria-label={names.get(child.harnessId) ?? child.harnessId} />
                   {plainTitle(child.title)}
+                  {childHost(child) ? <span className="dashboard-child-host">{` ${childHost(child)}`}</span> : null}
                 </span>
                 <span className={`dashboard-child-state is-${child.asking ? "needs" : isWorking(child.status) ? "working" : "done"}`}>
                   {child.asking ? "needs you" : isWorking(child.status) ? "working" : "done"}

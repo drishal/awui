@@ -28,6 +28,7 @@
 .dashboard-child { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 10px 5px 18px; border: 0; background: none; color: var(--text-2); text-align: left; font-size: 12px; cursor: pointer; }
 .dashboard-child:hover { background: var(--hover); color: var(--text); }
 .dashboard-child-title { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-child-host { color: var(--muted-text); flex: none; }
 .dashboard-child-state { flex: none; color: var(--muted-text); font-size: 11px; }
 .dashboard-child-state.is-needs { color: var(--warn); }
 .dashboard-child-state.is-working { color: var(--accent); }

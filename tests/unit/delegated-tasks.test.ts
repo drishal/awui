@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { asHarnessId, type DelegatedTaskView } from "../../src/shared/protocol.js";
-import { guardWords, metaText, reviewActions, reviewWords, scopeWords, stateClass, stateWords, taskElapsed, taskLine, tasksMeta } from "../../src/web/delegated-tasks.js";
+import { guardWords, hostBadge, metaText, reviewActions, reviewWords, scopeWords, stateClass, stateWords, taskElapsed, taskLine, tasksMeta } from "../../src/web/delegated-tasks.js";
 
 const task = (over: Partial<DelegatedTaskView> = {}): DelegatedTaskView => ({
   id: "ab12",
@@ -54,6 +54,12 @@ describe("who runs a task", () => {
     expect(metaText(task({ profile: "reviewer" }), name)).toBe("Pi · reviewer");
     // A harness the client does not know keeps its id rather than vanishing.
     expect(metaText(task({ harnessId: asHarnessId("dsh") }), name)).toBe("dsh");
+  });
+
+  it("says where a remote task runs: @peer right after the harness, so it survives the cut", () => {
+    expect(hostBadge(task({ host: "lab-vm-3" }))).toBe("@lab-vm-3");
+    expect(hostBadge(task({ host: null }))).toBeNull();
+    expect(metaText(task({ host: "lab-vm-3", model: "claude-sonnet-4-5" }), name)).toBe("Pi · @lab-vm-3 · claude-sonnet-4-5");
   });
   it("cuts a long line and says it did", () => {
     const long = metaText(task({ model: "a-very-long-model-name-that-runs-on", role: "review" }), name);
