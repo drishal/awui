@@ -14,6 +14,7 @@ import { clientHandshake } from "./handshake.js";
 import type { NodeIdentity } from "./identity.js";
 import type { PinStore } from "./pins.js";
 import { mergePeers, type MeshPeerEntry } from "./peer-store.js";
+import type { PeerTermEvent } from "./peer-terms.js";
 import { MeshErrorCode, MeshRpcError, RpcPeer } from "./rpc.js";
 import { ASKABLE_RPC_TIMEOUT_MS, DEFAULT_RECONNECT_PLAN, type PeerReconnectPlan } from "./peer-adapter.js";
 import { connectTls } from "./tls.js";
@@ -110,14 +111,16 @@ export interface PeerEntry {
 const TAIL_CODES = new Set<number>([MeshErrorCode.timeout, MeshErrorCode.link_closed]);
 
 /**
- * One live connection to a peer. `task.event` notifications are routed per remote task
- * (what nobody listens for is dropped), and when the link goes — EOF, a protocol
- * violation, our own close — every holder that asked to know is told once, and the
- * manager forgets the connection so the next use reconnects.
+ * One live connection to a peer. `task.event` and the term.* notifications are
+ * routed per remote id (what nobody listens for is dropped), and when the link
+ * goes — EOF, a protocol violation, our own close — every holder that asked to
+ * know is told once, and the manager forgets the connection so the next use
+ * reconnects.
  */
 export class PeerConnection {
   readonly rpc: RpcPeer;
   private readonly taskListeners = new Map<string, Set<PeerTaskListener>>();
+  private readonly termListeners = new Map<string, Set<(event: PeerTermEvent) => void>>();
   private readonly closeListeners = new Set<() => void>();
   private gone = false;
 
@@ -163,6 +166,17 @@ export class PeerConnection {
     };
   }
 
+  /** Output and exit frames for one remote terminal, as its proxy asked to see them (P3). */
+  onTermEvent(termId: string, listener: (event: PeerTermEvent) => void): () => void {
+    const set = this.termListeners.get(termId) ?? new Set();
+    set.add(listener);
+    this.termListeners.set(termId, set);
+    return () => {
+      set.delete(listener);
+      if (set.size === 0) this.termListeners.delete(termId);
+    };
+  }
+
   onClose(listener: () => void): () => void {
     this.closeListeners.add(listener);
     return () => this.closeListeners.delete(listener);
@@ -176,11 +190,31 @@ export class PeerConnection {
     this.kill();
   }
 
-  /** One worker notification routed to the task it names; a malformed one is dropped, never fatal to the link. */
+  /** One worker notification routed to the task or terminal it names; a malformed one is dropped, never fatal to the link. */
   private deliver(method: string, params: unknown): void {
-    if (method !== "task.event") return;
     const record = typeof params === "object" && params !== null && !Array.isArray(params) ? (params as Record<string, unknown>) : null;
     if (record === null) return;
+    if (method === "term.output") {
+      const termId = record.termId;
+      const seq = record.seq;
+      const data = record.data;
+      if (typeof termId !== "string" || typeof seq !== "number" || typeof data !== "string") return;
+      const listeners = this.termListeners.get(termId);
+      if (listeners === undefined) return;
+      for (const listener of [...listeners]) listener({ type: "output", seq, data });
+      return;
+    }
+    if (method === "term.exit") {
+      const termId = record.termId;
+      const code = record.code;
+      if (typeof termId !== "string" || typeof code !== "number") return;
+      const listeners = this.termListeners.get(termId);
+      if (listeners === undefined) return;
+      const signal = typeof record.signal === "number" ? record.signal : undefined;
+      for (const listener of [...listeners]) listener({ type: "exit", code, ...(signal !== undefined ? { signal } : {}) });
+      return;
+    }
+    if (method !== "task.event") return;
     const remoteTaskId = record.remoteTaskId;
     const seq = record.seq;
     const event = record.event;
@@ -197,6 +231,7 @@ export class PeerConnection {
     for (const listener of [...this.closeListeners]) listener();
     this.closeListeners.clear();
     this.taskListeners.clear();
+    this.termListeners.clear();
   }
 }
 

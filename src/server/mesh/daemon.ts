@@ -13,6 +13,7 @@ import { socketPath, startAttachListener, type AttachForced, type AttachLink, ty
 import type { AuditLog } from "./audit.js";
 import { ensureTlsCertificate } from "./cert.js";
 import type { TaskHost } from "./host.js";
+import type { TermHost } from "./terms.js";
 import type { NodeIdentity } from "./identity.js";
 import { InviteStore } from "./pairing.js";
 import type { PinStore } from "./pins.js";
@@ -37,6 +38,8 @@ export interface MeshAttachDeps {
   home: string;
   /** What makes this daemon mode: tasks the host owns survive a link's close. */
   host: TaskHost;
+  /** What makes peer terminals survive their link too (P3 §1): the service's shared TermHost. */
+  terms?: TermHost;
   log?: (message: string) => void;
 }
 
@@ -142,6 +145,7 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
         enabled: deps.enabled,
         home: deps.home,
         host: deps.host,
+        terms: deps.terms,
         approvals,
         invites,
         // The attach socket is this uid's and the prologue is trusted exactly as
@@ -188,6 +192,8 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
       stopListener();
       // Off is off for the whole node: the host's tasks end too, running or detached.
       void Promise.resolve(deps.host.disposeAll("the mesh was turned off")).catch(() => undefined);
+      // The peer's terminals end with the tasks: off is off for the whole node.
+      void deps.terms?.disposeAll().catch(() => undefined);
     }
   };
   poll();
@@ -220,6 +226,8 @@ export interface MeshTlsDeps {
   home: string;
   /** What makes this daemon mode: tasks the host owns survive a link's close. */
   host: TaskHost;
+  /** The same shared TermHost the attach socket serves term.* through. */
+  terms?: TermHost;
   /**
    * config.yml's `mesh.listen` (default port applied): while it names an
    * address and the mesh is on, the TLS listener answers peers on it. Null —
@@ -280,6 +288,7 @@ export function startMeshTls(deps: MeshTlsDeps): MeshAttachHandle {
         home: deps.home,
         binding,
         host: deps.host,
+        terms: deps.terms,
         approvals: stores.approvals,
         invites: stores.invites,
         // A TLS link is a peer's, never the owner's CLI: local.* stays attach-only.

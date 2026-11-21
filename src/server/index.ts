@@ -65,6 +65,8 @@ import { AuditLog } from "./mesh/audit.js";
 import { runPeerCli } from "./mesh/cli.js";
 import { startMeshAttach, startMeshTls } from "./mesh/daemon.js";
 import { TaskHost } from "./mesh/host.js";
+import { TermHost } from "./mesh/terms.js";
+import { PeerTerminals } from "./mesh/peer-terms.js";
 import { Workspaces } from "./workspaces.js";
 import { cleanupPastes } from "./paste-store.js";
 
@@ -298,6 +300,13 @@ async function main(): Promise<void> {
     log: meshLog,
     detachedTtlHours: () => userNow()?.mesh?.detached_ttl_hours ?? 24,
   });
+  // The service's own interactive terminals: one manager for local PTYs and, through
+  // the mesh hook, terminals a create request opens on a peer (P3). It sits before the
+  // daemons only because the terminal host below is served over their links.
+  const terminals = new TerminalManager({ peerTerms: new PeerTerminals({ manager: meshPeers }) });
+  // P3 §1: the daemon's shared terminal host. A peer's terminal outlives the link that
+  // opened it, replays to a reattaching one, and is closed after an hour detached.
+  const meshTerms = new TermHost({ manager: terminals, clock: Date.now, log: meshLog });
   const meshAttach = startMeshAttach({
     env: process.env,
     stateDir: config.stateDir,
@@ -310,6 +319,7 @@ async function main(): Promise<void> {
     enabled: () => meshEnabled(userNow(), process.env),
     home: config.home,
     host: meshHost,
+    terms: meshTerms,
     log: meshLog,
   });
   // The mesh's direct TLS listener (P2): while `mesh.listen` names an address,
@@ -327,6 +337,7 @@ async function main(): Promise<void> {
     enabled: () => meshEnabled(userNow(), process.env),
     home: config.home,
     host: meshHost,
+    terms: meshTerms,
     listen: () => meshListen(userNow()),
     log: meshLog,
   });
@@ -435,7 +446,6 @@ async function main(): Promise<void> {
   const lanUrls = config.host === "0.0.0.0" ? sampleLanHosts().ipv4.map((ip) => `http://${ip}:${config.port}/`) : [];
   const pairingUrls = [...lanUrls, ...config.allowedHosts.map((h) => `https://${h}/`)];
   const webDir = process.env.AWUI_WEB_DIR ?? (root === null ? null : path.join(root, "dist", "web"));
-  const terminals = new TerminalManager();
   const app = await createApp({
     version: pkg.version,
     home: config.home,
@@ -570,6 +580,8 @@ async function main(): Promise<void> {
     // The attach socket and the TLS listener go down with the service: no peer link outlives its own shutdown.
     meshAttach.stop();
     meshTls.stop();
+    // Peer terminals die with the service exactly as host tasks do.
+    await meshTerms.shutdown().catch(() => undefined);
     if (app.locals.prWatchStore) await app.locals.prWatchStore.stop();
     terminals.shutdown();
     for (const socket of sockets) socket.destroy();

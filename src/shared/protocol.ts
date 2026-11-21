@@ -1328,7 +1328,23 @@ export const worktreeCreateSchema = z.object({
 });
 /** Trust one version of a project's `awui.yml`, named by the hash the picker was shown. */
 export const projectConfigTrustSchema = z.object({ hash: z.string().regex(/^[0-9a-f]{16}$/) });
-export const terminalCreateSchema = z.object({ cols: z.number().int().min(10).max(400).default(100), rows: z.number().int().min(4).max(120).default(30) });
+/**
+ * Opening one terminal (P3): locally unless `peer` names a mesh peer, in which
+ * case `peerCwd` is where it runs on that peer. The two go together, and every
+ * spawn detail beyond them stays the machine's own — no command, shell, or env
+ * field exists at all.
+ */
+export const terminalCreateSchema = z
+  .object({
+    cols: z.number().int().min(10).max(400).default(100),
+    rows: z.number().int().min(4).max(120).default(30),
+    peer: z.string().trim().min(1).max(64).optional(),
+    peerCwd: z.string().trim().min(1).max(4096).optional(),
+  })
+  .strict()
+  .refine((value) => (value.peer === undefined) === (value.peerCwd === undefined), { message: "peer and peerCwd go together" });
+/** Resizing one terminal: no peer fields, the terminal's id already says which machine it is on. */
+export const terminalResizeSchema = z.object({ cols: z.number().int().min(10).max(400), rows: z.number().int().min(4).max(120) }).strict();
 export const terminalWriteSchema = z.object({ data: z.string().max(16_384) });
 export const htmlRenderPreviewSchema = z.object({ theme: z.record(z.string().regex(/^--[a-z0-9-]+$/), z.string().max(1000).refine((value) => !/[;{}]/.test(value))).refine((value) => Object.keys(value).length <= 32), appearance: z.enum(["light", "dark"]) });
 export const gitHubPrSchema = z.object({ base: z.string().trim().min(1).max(120), title: z.string().trim().min(1).max(200), body: z.string().max(20_000).default("") });
