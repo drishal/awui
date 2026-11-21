@@ -7,17 +7,21 @@
 // never prints private key material; the only key on stdout is the public one, so a
 // person can copy it to the other side. `serve-stdio` is the worker end of a link
 // and delegates to serve.ts, which keeps protocol off stderr and logs off stdout.
+import net from "node:net";
 import { hostname } from "node:os";
 import path from "node:path";
 import { ConfigError, loadConfig } from "../config.js";
 import { UserConfigError, configDir, configEnv, meshConfig, meshEnabled, readUserConfig, type MeshConfig } from "../user-config.js";
+import { ATTACH_PREFIX, socketPath } from "./attach.js";
 import { AuditLog } from "./audit.js";
-import { SAS_CONTEXT } from "./handshake.js";
-import { loadOrCreateIdentity, nodeIdOf, sasOf } from "./identity.js";
+import type { MeshApprovalDecision } from "./approvals.js";
+import { clientHandshake, SAS_CONTEXT } from "./handshake.js";
+import { loadOrCreateIdentity, nodeIdOf, sasOf, type NodeIdentity } from "./identity.js";
 import { PeerManager } from "./manager.js";
+import { decodeInviteCode } from "./pairing.js";
 import { resolvePolicies } from "./policy.js";
 import { PinStore } from "./pins.js";
-import { MeshErrorCode, MeshRpcError } from "./rpc.js";
+import { MeshErrorCode, MeshRpcError, RpcPeer } from "./rpc.js";
 import { runServeStdio } from "./serve.js";
 
 /** OK; the command did what was asked. */
@@ -44,12 +48,20 @@ Usage:
   awui peer ls <name> <path>                A folder on a peer: names, types, sizes
   awui peer cat <name> <path>               A file on a peer, raw to stdout (at most 4 MiB)
   awui peer tasks <name>                    The peer's live tasks (its awui service runs them)
+  awui peer approvals                       What this node's service is waiting for you to answer
+  awui peer approve <id> [--for-link]      Answer one: allow once, or for this link's lifetime
+  awui peer deny <id>                       Answer one: no
+  awui peer invite [--policy <p>] [--ttl 10m] [--address host:port]   A single-use pairing code
+  awui peer join <code> [--name <n>]        Pin the key an invite code carries, and name the peer
   awui peer serve-stdio [--peer <name>] [--policy <p>] [--ephemeral] [--attach]   The worker end of a link (SSH/docker)
 
 add and accept are the two halves of one pairing: add pins the other machine's
 key here (TOFU, confirmed by comparing node ids and the six-digit SAS), accept
-pins this machine's key there. Policy names come from mesh.policies or the
-built-ins (none, worker, peer).
+pins this machine's key there. invite and join are the same pairing when the
+two machines cannot be side by side: invite prints a single-use code carrying
+this node's key, join pins the key the code carries. approvals, approve, deny,
+and invite talk to this node's own running awui service (its attach socket).
+Policy names come from mesh.policies or the built-ins (none, worker, peer).
 
 Exit codes: 0 ok, 1 failed, 2 usage, 78 the mesh is off or config.yml is broken.`;
 
@@ -88,9 +100,17 @@ interface Flags {
   policy: string | null;
   peer: string | null;
   tail: number | null;
+  /** `join`'s local name for the peer it pins. */
+  name: string | null;
+  /** `invite`'s lifetime, unparsed text (`10m`); the command judges it. */
+  ttl: string | null;
+  /** `approve`'s wider answer: allow for the link's lifetime, not once. */
+  forLink: boolean;
+  /** `invite`'s addresses, every --address in order. */
+  addresses: string[];
 }
 
-const emptyFlags = (): Flags => ({ yes: false, policy: null, peer: null, tail: null });
+const emptyFlags = (): Flags => ({ yes: false, policy: null, peer: null, tail: null, name: null, ttl: null, forLink: false, addresses: [] });
 
 /**
  * One command line, parsed strictly: its positional words and its flags, in any
@@ -107,6 +127,10 @@ function parseLine(args: string[], valueFlags: string[]): { words: string[]; fla
       flags.yes = true;
       continue;
     }
+    if (arg === "--for-link") {
+      flags.forLink = true;
+      continue;
+    }
     if (!valueFlags.includes(arg)) {
       if (arg.startsWith("--")) return { error: `unknown option: ${arg}` };
       words.push(arg);
@@ -116,6 +140,9 @@ function parseLine(args: string[], valueFlags: string[]): { words: string[]; fla
     if (value === undefined) return { error: `${arg} needs a value` };
     if (arg === "--policy") flags.policy = value;
     else if (arg === "--peer") flags.peer = value;
+    else if (arg === "--name") flags.name = value;
+    else if (arg === "--ttl") flags.ttl = value;
+    else if (arg === "--address") flags.addresses.push(value);
     else {
       const n = Number(value);
       if (!value || !Number.isInteger(n) || n <= 0) return { error: `${arg} takes a positive number` };
@@ -243,6 +270,50 @@ export async function runPeerCli(args: string[], io: PeerCliIo): Promise<number>
       if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
       return tasksCommand(io, read, name);
     }
+    case "approvals": {
+      const parsed = parseLine(rest, []);
+      if ("error" in parsed) return failUsage(parsed.error);
+      if (parsed.words.length > 0) return failUsage(`unexpected word ${parsed.words[0]}`);
+      const read = settings(io.env);
+      if ("error" in read) return fail(read.error, EXIT_CONFIG);
+      if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
+      return approvalsCommand(io, read);
+    }
+    case "approve":
+    case "deny": {
+      const parsed = parseLine(rest, []);
+      if ("error" in parsed) return failUsage(parsed.error);
+      const id = parsed.words[0];
+      if (id === undefined) return failUsage(`${command} needs an approval id (see "awui peer approvals")`);
+      if (parsed.words.length > 1) return failUsage(`unexpected word ${parsed.words[1]}`);
+      if (command === "deny" && parsed.flags.forLink) return failUsage("--for-link answers an approval for its whole link; it is an approve flag");
+      const read = settings(io.env);
+      if ("error" in read) return fail(read.error, EXIT_CONFIG);
+      if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
+      return decideCommand(io, read, command, id, parsed.flags.forLink);
+    }
+    case "invite": {
+      const parsed = parseLine(rest, ["--policy", "--ttl", "--address"]);
+      if ("error" in parsed) return failUsage(parsed.error);
+      if (parsed.words.length > 0) return failUsage(`unexpected word ${parsed.words[0]}`);
+      const ttl = inviteTtlMinutes(parsed.flags.ttl);
+      if (ttl !== null && typeof ttl === "object") return failUsage(ttl.error);
+      const read = settings(io.env);
+      if ("error" in read) return fail(read.error, EXIT_CONFIG);
+      if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
+      return inviteCommand(io, read, parsed.flags.policy, ttl, parsed.flags.addresses);
+    }
+    case "join": {
+      const parsed = parseLine(rest, ["--name"]);
+      if ("error" in parsed) return failUsage(parsed.error);
+      const word = parsed.words[0];
+      if (word === undefined) return failUsage("join needs an invite code");
+      if (parsed.words.length > 1) return failUsage(`unexpected word ${parsed.words[1]}`);
+      const read = settings(io.env);
+      if ("error" in read) return fail(read.error, EXIT_CONFIG);
+      if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
+      return joinCommand(io, read, word, parsed.flags.name);
+    }
     case "serve-stdio":
       // The worker end: protocol on stdout, logs on stderr, its own mesh-off refusal (78).
       return runServeStdio(rest, io.env);
@@ -254,7 +325,8 @@ export async function runPeerCli(args: string[], io: PeerCliIo): Promise<number>
       if ("error" in parsed) return failUsage(parsed.error);
       const name = peerName(parsed.words, command);
       if (typeof name !== "string") return failUsage(name.error);
-      if (command === "accept" && parsed.flags.policy === null) return failUsage("--policy is needed (built-ins: none, worker, peer; or a mesh.policies name)");
+      // accept's --policy is judged inside the command: an invited request (P2 §3) carries
+      // its own policy, and only the pending entry can say whether this is one.
       const read = settings(io.env);
       if ("error" in read) return fail(read.error, EXIT_CONFIG);
       if (!read.on) return fail(MESH_OFF_HINT, EXIT_CONFIG);
@@ -422,6 +494,181 @@ async function tasksCommand(io: PeerCliIo, read: Settings, name: string): Promis
 }
 
 /**
+ * `awui peer join <code> [--name <n>]`: the invite's other half. The code
+ * carries the target's key, so it is pinned outright — no TOFU, no comparison
+ * to make — and the local name is the joiner's own choice. Joining does not
+ * pair anything on the target: the redeem that would has to cross a live link,
+ * and until this node speaks TLS (P2 §1) the honest answer is the config
+ * snippet plus a stop.
+ */
+async function joinCommand(io: PeerCliIo, read: Settings, text: string, nameFlag: string | null): Promise<number> {
+  const code = decodeInviteCode(text);
+  if (code === null) {
+    io.err('awui peer join: that is not an awui invite code; it must start with "awui-invite:1:" and come from `awui peer invite` on the target');
+    return EXIT_FAILED;
+  }
+  const name = nameFlag ?? code.name;
+  if (!NAME_RE.test(name)) {
+    io.err(`awui peer join: peer name ${JSON.stringify(name)} must match ${NAME_RE}`);
+    return EXIT_USAGE;
+  }
+  const pins = PinStore(path.join(read.stateDir, "mesh", "pins.json"));
+  const existing = await pins.outbound(name);
+  if (existing !== null && !existing.publicKey.equals(code.targetKey)) {
+    io.err(`awui peer join: "${name}" is already pinned to a different key; run \`awui peer remove ${name}\` first if you mean to re-pin it`);
+    return EXIT_FAILED;
+  }
+  await pins.setOutbound(name, code.targetKey);
+  io.out(`Pinned ${name} (${nodeIdOf(code.targetKey)}) from the invite code; no first-contact comparison is needed.`);
+  if (code.addresses.length > 0) {
+    io.out("Add the peer to config.yml so this node can reach it:");
+    io.out("");
+    io.out("mesh:");
+    io.out("  peers:");
+    io.out(`    - name: ${name}`);
+    io.out(`      tls: ${code.addresses[0]}${code.addresses.length > 1 ? `   # or: ${code.addresses.slice(1).join(", ")}` : ""}`);
+  } else {
+    io.out("The code carries no address; add the peer to config.yml with its tls: address when you have one.");
+  }
+  // TODO(P2 §1): once the TLS transport lands, connect the addresses in order, finish the
+  // handshake against the pinned key, and call peer.redeem with the invite's MAC.
+  io.out("This build does not yet carry the direct TLS transport, so join stops after pinning; the target still needs the redeem once it does.");
+  return EXIT_OK;
+}
+
+/** `--ttl 10m`: the one form an invite's lifetime takes. Returns null for the default, or the usage error. */
+function inviteTtlMinutes(flag: string | null): number | null | { error: string } {
+  if (flag === null) return null;
+  const match = /^(\d{1,2})m$/.exec(flag);
+  if (match === null) return { error: `--ttl takes a form like 10m (1..60 minutes), not ${JSON.stringify(flag)}` };
+  const minutes = Number(match[1]);
+  if (minutes < 1 || minutes > 60) return { error: "--ttl is 1..60 minutes" };
+  return minutes;
+}
+
+/** How long the owner's CLI gives its own service to answer: local and in memory, so this is a hang guard. */
+const SERVICE_RPC_MS = 10_000;
+
+/**
+ * One call to this node's own running service over its attach socket: the
+ * owner's CLI reaches the daemon's local.* methods (approvals, invites),
+ * which no peer link may ever serve. The mesh handshake still runs — the
+ * service answers only a caller holding this state folder's identity, which
+ * is exactly the CLI — and the socket is this uid's, so the prologue is
+ * trusted exactly as the command line is (P1.5's rule).
+ */
+async function serviceCall<T>(io: PeerCliIo, read: Settings, method: string, params: unknown): Promise<{ ok: true; value: T } | { ok: false; message: string }> {
+  let at: string;
+  try {
+    at = await socketPath(io.env, read.stateDir);
+  } catch (error) {
+    return { ok: false, message: `the attach socket path could not be prepared: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  let who: NodeIdentity;
+  try {
+    who = await loadOrCreateIdentity(read.stateDir);
+  } catch (error) {
+    return { ok: false, message: `the mesh identity could not be loaded: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  return await new Promise((resolve) => {
+    const sock = net.createConnection(at);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let rpc: RpcPeer | null = null;
+    let done = false;
+    const finish = (answer: { ok: true; value: T } | { ok: false; message: string }): void => {
+      if (done) return;
+      done = true;
+      if (timer !== null) clearTimeout(timer);
+      // The link's own close, not a bare destroy: a pending request is answered link_closed, never left open.
+      rpc?.close("the CLI is done");
+      resolve(answer);
+    };
+    timer = setTimeout(() => finish({ ok: false, message: `no running awui service answered at ${at}; is the awui server running with the mesh on?` }), 1000);
+    timer.unref?.();
+    sock.once("error", (error) => finish({ ok: false, message: `no running awui service at ${at}: ${error.message}` }));
+    sock.once("connect", () => {
+      if (timer !== null) clearTimeout(timer);
+      // The one prologue line, exactly as serve-stdio writes it; then nothing but protocol.
+      sock.write(`${ATTACH_PREFIX}${JSON.stringify({ forced: null })}\n`);
+      rpc = new RpcPeer(sock, sock, { role: "client", log: () => undefined });
+      rpc.start();
+      void (async () => {
+        try {
+          // Our own service holds the same identity key this CLI just loaded, so the
+          // pin is exact, never TOFU: a different awui at that path is a mismatch.
+          await clientHandshake(rpc, { identity: who, name: localMeshName(read.mesh), hops: 0, expectedServerKey: who.publicKey, tofu: false });
+          finish({ ok: true, value: await rpc.request<T>(method, params, SERVICE_RPC_MS) });
+        } catch (error) {
+          finish({ ok: false, message: error instanceof Error ? error.message : String(error) });
+        }
+      })();
+    });
+  });
+}
+
+/** `awui peer approvals`: what the service is holding for a person to answer, each with its wait left. */
+async function approvalsCommand(io: PeerCliIo, read: Settings): Promise<number> {
+  const answer = await serviceCall<unknown>(io, read, "local.approvals.list", {});
+  if (!answer.ok) {
+    io.err(`awui peer approvals: ${answer.message}`);
+    return EXIT_FAILED;
+  }
+  const rows = Array.isArray(answer.value)
+    ? answer.value.filter((row): row is Record<string, unknown> => typeof row === "object" && row !== null)
+    : [];
+  if (rows.length === 0) {
+    io.out("No approvals are pending on this node's service.");
+    return EXIT_OK;
+  }
+  for (const row of rows) {
+    const id = typeof row.id === "string" ? row.id : "?";
+    const peer = typeof row.peerName === "string" ? row.peerName : "?";
+    const method = typeof row.method === "string" ? row.method : "?";
+    const summary = typeof row.summary === "string" ? row.summary : "";
+    const expiresAt = typeof row.expiresAt === "number" ? row.expiresAt : Date.now();
+    const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+    io.out(`${id}  ${peer}  ${method}  ${summary}  (waits ${left} s more)`);
+  }
+  return EXIT_OK;
+}
+
+/** `awui peer approve <id> [--for-link]` and `awui peer deny <id>`: one answer, one card, over the attach socket. */
+async function decideCommand(io: PeerCliIo, read: Settings, command: string, id: string, forLink: boolean): Promise<number> {
+  const decision: MeshApprovalDecision = command === "deny" ? "deny" : forLink ? "allow-for-link" : "allow-once";
+  const answer = await serviceCall<unknown>(io, read, "local.approvals.decide", { id, decision });
+  if (!answer.ok) {
+    io.err(`awui peer ${command}: ${answer.message}`);
+    return EXIT_FAILED;
+  }
+  io.out(decision === "deny" ? `Denied ${id}.` : decision === "allow-for-link" ? `Allowed ${id} for that link's lifetime.` : `Allowed ${id} once.`);
+  return EXIT_OK;
+}
+
+/** `awui peer invite`: the service mints the single-use code; this side only prints it. */
+async function inviteCommand(io: PeerCliIo, read: Settings, policy: string | null, ttlMinutes: number | null, addresses: string[]): Promise<number> {
+  const answer = await serviceCall<{ code?: unknown; policy?: unknown; expiresAt?: unknown }>(io, read, "local.invite.create", {
+    ...(policy !== null ? { policy } : {}),
+    ...(ttlMinutes !== null ? { ttlMinutes } : {}),
+    ...(addresses.length > 0 ? { addresses } : {}),
+  });
+  if (!answer.ok) {
+    io.err(`awui peer invite: ${answer.message}`);
+    return EXIT_FAILED;
+  }
+  const value = answer.value;
+  if (typeof value.code !== "string" || value.code === "") {
+    io.err("awui peer invite: the service answered without a code");
+    return EXIT_FAILED;
+  }
+  const when = typeof value.expiresAt === "number" ? new Date(value.expiresAt).toISOString() : "unknown time";
+  const under = typeof value.policy === "string" ? value.policy : "worker";
+  io.out(`invite (policy ${under}, single use, expires ${when}):`);
+  io.out(value.code);
+  // TODO(P2 §3 QR): print a terminal QR of the code once src/shared/qr.ts lands (a parallel job).
+  return EXIT_OK;
+}
+
+/**
  * `awui peer add <name>`: the leader's first contact. The peer must already be in
  * config.yml (this command never edits it); the link comes up in TOFU mode, and
  * the key it presents is pinned only after the person has compared the node id
@@ -479,7 +726,6 @@ async function acceptCommand(io: PeerCliIo, read: Settings, pins: ReturnType<typ
   const name = peerName(parsed.words, "accept");
   if (typeof name !== "string") return failParse(io, name.error);
   const flags = parsed.flags;
-  if (flags.policy === null) return failParse(io, "--policy is needed (built-ins: none, worker, peer; or a mesh.policies name)");
   let policies: Map<string, unknown>;
   try {
     policies = resolvePolicies(read.mesh?.policies);
@@ -487,7 +733,9 @@ async function acceptCommand(io: PeerCliIo, read: Settings, pins: ReturnType<typ
     io.err(`awui peer accept: ${error instanceof Error ? error.message : String(error)}`);
     return EXIT_CONFIG;
   }
-  if (!policies.has(flags.policy)) {
+  // An explicitly named policy is judged before anything is read: a typo is a typo
+  // whether or not the caller has a pending entry yet.
+  if (flags.policy !== null && !policies.has(flags.policy)) {
     io.err(`awui peer accept: no mesh policy named "${flags.policy}" (have: ${[...policies.keys()].join(", ")})`);
     return EXIT_CONFIG;
   }
@@ -500,8 +748,18 @@ async function acceptCommand(io: PeerCliIo, read: Settings, pins: ReturnType<typ
   }
   const pending = await pins.pending(name);
   if (pending === null) {
-    io.err(`awui peer accept: no pending request from "${name}". It appears after that node first contacts this one (its leader runs \`awui peer add ${name}\`).`);
+    io.err(`awui peer accept: no pending request from "${name}". It appears after that node first contacts this one (its leader runs \`awui peer add ${name}\`), or after it redeems an invite.`);
     return EXIT_FAILED;
+  }
+  // An invited request (P2 §3) carries the policy its invite named, so --policy is
+  // optional there and pre-filled; a plain first contact still needs it spelled out.
+  const policy = flags.policy ?? pending.invited?.policy ?? null;
+  if (policy === null) return failParse(io, "--policy is needed (built-ins: none, worker, peer; or a mesh.policies name; an invited request pre-fills its own)");
+  if (!policies.has(policy)) {
+    // Only the invited policy reaches this unchecked: it must still exist here, since
+    // pinning a name that resolves to "none" would silently hold a caller to the floor.
+    io.err(`awui peer accept: the invite's policy "${policy}" is not configured here (have: ${[...policies.keys()].join(", ")})`);
+    return EXIT_CONFIG;
   }
   let identity;
   try {
@@ -513,13 +771,13 @@ async function acceptCommand(io: PeerCliIo, read: Settings, pins: ReturnType<typ
   io.out(`name: ${pending.name}`);
   io.out(`node id: ${nodeIdOf(pending.publicKey)}`);
   io.out(`SAS: ${sasOf(pending.publicKey, identity.publicKey, SAS_CONTEXT)}`);
-  io.out(`policy: ${flags.policy}`);
-  if (!(await confirmed(io, flags, `Accept and pin this key under policy "${flags.policy}"? [y/N] `))) {
+  io.out(`policy: ${policy}${flags.policy === null ? " (pre-filled from the invite)" : ""}`);
+  if (!(await confirmed(io, flags, `Accept and pin this key under policy "${policy}"? [y/N] `))) {
     io.err("awui peer accept: not accepted; the request stays pending");
     return EXIT_FAILED;
   }
-  await pins.setInbound(pending.publicKey, name, flags.policy, "accept");
-  io.out(`Accepted ${name} (policy ${flags.policy}). It takes effect on the peer's next call.`);
+  await pins.setInbound(pending.publicKey, name, policy, "accept");
+  io.out(`Accepted ${name} (policy ${policy}). It takes effect on the peer's next call.`);
   return EXIT_OK;
 }
 

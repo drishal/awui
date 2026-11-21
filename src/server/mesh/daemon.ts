@@ -8,10 +8,12 @@
 // the listener and every attached link. Host tasks are never persisted: they
 // die with the service, and a leader reconnecting after a restart gets a
 // closed link and a not_found, exactly as the docs say.
+import { ApprovalQueue } from "./approvals.js";
 import { socketPath, startAttachListener, type AttachForced, type AttachLink, type AttachListener } from "./attach.js";
 import type { AuditLog } from "./audit.js";
 import type { TaskHost } from "./host.js";
 import type { NodeIdentity } from "./identity.js";
+import { InviteStore } from "./pairing.js";
 import type { PinStore } from "./pins.js";
 import { serve, type ServeDeps } from "./serve.js";
 import type { HarnessRegistry } from "../harness/registry.js";
@@ -39,6 +41,25 @@ export interface MeshAttachDeps {
 export interface MeshAttachHandle {
   /** Stops the poll, closes the listener, and with it every attached link. */
   stop(): void;
+  /** The service's shared ask-approval queue (P2 §2): every attached link waits on this one. */
+  readonly approvals: ApprovalQueue;
+  /** The service's live invites (P2 §3): `local.invite.create` mints from this one store. */
+  readonly invites: InviteStore;
+}
+
+/** The running service's approval queue, for the owner-facing routes and UI (P2 §4); null when no daemon is attached. */
+let currentApprovals: ApprovalQueue | null = null;
+/** The running service's invite store, same reach as the approval queue above. */
+let currentInvites: InviteStore | null = null;
+
+/** The mesh attach daemon's shared ask-approval queue, or null when no service has attached the mesh. */
+export function meshApprovalQueue(): ApprovalQueue | null {
+  return currentApprovals;
+}
+
+/** The mesh attach daemon's invite store, or null when no service has attached the mesh. */
+export function meshInviteStore(): InviteStore | null {
+  return currentInvites;
 }
 
 /**
@@ -50,6 +71,12 @@ export interface MeshAttachHandle {
  */
 export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
   const log = deps.log ?? (() => undefined);
+  // The two P2 stores are the service's, not a link's: every attached link and
+  // the owner-facing CLI/REST surfaces see the same pending cards and invites.
+  const approvals = new ApprovalQueue();
+  const invites = new InviteStore();
+  currentApprovals = approvals;
+  currentInvites = invites;
   let identity: Promise<NodeIdentity> | null = null;
   let listener: AttachListener | null = null;
   /** The mesh was on at the last poll: a failed start only retries after a full off/on cycle. */
@@ -81,6 +108,11 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
         enabled: deps.enabled,
         home: deps.home,
         host: deps.host,
+        approvals,
+        invites,
+        // The attach socket is this uid's and the prologue is trusted exactly as
+        // the CLI is (P1.5), so its links may serve the owner's local.* methods.
+        origin: "attach",
         ...(forced !== null ? { forced } : {}),
         log,
       } satisfies ServeDeps);
@@ -127,10 +159,14 @@ export function startMeshAttach(deps: MeshAttachDeps): MeshAttachHandle {
   timer.unref?.();
 
   return {
+    approvals,
+    invites,
     stop(): void {
       stopped = true;
       clearInterval(timer);
       stopListener();
+      currentApprovals = null;
+      currentInvites = null;
     },
   };
 }

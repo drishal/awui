@@ -43,6 +43,12 @@ export interface PendingPin {
   publicKey: Buffer;
   name: string;
   seenAt: number;
+  /**
+   * Set when this pending request arrived through an invite's redeem (P2 §3):
+   * the invite's id and the policy its Accept pre-fills. Absent on every
+   * older entry and every plain hello, so the field is strictly optional.
+   */
+  invited?: { inviteId: string; policy: string };
 }
 
 export interface PinStore {
@@ -56,8 +62,8 @@ export interface PinStore {
   inboundByName(name: string): Promise<InboundPin | null>;
   /** Accepts (or re-accepts) a peer's key with a name and the policy it is held to. */
   setInbound(publicKey: Buffer, name: string, policy: string, via: "accept" | "forced"): Promise<void>;
-  /** Records that an unpinned peer said hello; capped and pruned by age on write. */
-  addPending(publicKey: Buffer, name: string): Promise<void>;
+  /** Records that an unpinned peer said hello; capped and pruned by age on write. `invited` marks an invite's redeem. */
+  addPending(publicKey: Buffer, name: string, invited?: { inviteId: string; policy: string }): Promise<void>;
   /** The newest pending request under a peer name, or null. */
   pending(name: string): Promise<PendingPin | null>;
   /** Drops the outbound pin, every inbound pin, and every pending record under a peer name. */
@@ -70,14 +76,14 @@ export interface PinStore {
 export interface PinSnapshot {
   outbound: Array<{ name: string; nodeId: string; pinnedAt: number }>;
   inbound: Array<{ name: string; policy: string; nodeId: string; pinnedAt: number; via: "accept" | "forced" }>;
-  pending: Array<{ name: string; nodeId: string; seenAt: number }>;
+  pending: Array<{ name: string; nodeId: string; seenAt: number; invited?: { inviteId: string; policy: string } }>;
 }
 
 /** The in-memory state between one read and one write; keys for inbound/pending are recomputed node ids. */
 interface PinState {
   outbound: Map<string, { publicKey: Buffer; pinnedAt: number }>;
   inbound: Map<string, InboundPin>;
-  pending: Map<string, { publicKey: Buffer; name: string; seenAt: number }>;
+  pending: Map<string, { publicKey: Buffer; name: string; seenAt: number; invited?: { inviteId: string; policy: string } }>;
 }
 
 const emptyState = (): PinState => ({ outbound: new Map(), inbound: new Map(), pending: new Map() });
@@ -138,7 +144,16 @@ function parseState(file: string, text: string): PinState {
     const where = `the pending entry for "${typeof entry.name === "string" ? entry.name : "?"}"`;
     if (typeof entry.name !== "string" || !NAME_RE.test(entry.name)) throw fail(file, `${where} has no valid name`);
     const publicKey = decodeKey(file, where, entry.publicKey);
-    state.pending.set(nodeIdOf(publicKey), { publicKey, name: entry.name, seenAt: numberField(file, where, entry.seenAt) });
+    // The invite mark (P2) is optional and strict: an 8-byte id in base64url and a policy name, or nothing at all.
+    let invited: { inviteId: string; policy: string } | undefined;
+    if (entry.invited !== undefined) {
+      if (typeof entry.invited !== "object" || entry.invited === null || Array.isArray(entry.invited)) throw fail(file, `${where} has an invited mark that is not an object`);
+      const mark = entry.invited as Record<string, unknown>;
+      if (typeof mark.inviteId !== "string" || !/^[A-Za-z0-9_-]{11}$/.test(mark.inviteId)) throw fail(file, `${where} has an invited mark without a valid invite id`);
+      if (typeof mark.policy !== "string" || !POLICY_RE.test(mark.policy)) throw fail(file, `${where} has an invited mark without a valid policy name`);
+      invited = { inviteId: mark.inviteId, policy: mark.policy };
+    }
+    state.pending.set(nodeIdOf(publicKey), { publicKey, name: entry.name, seenAt: numberField(file, where, entry.seenAt), ...(invited !== undefined ? { invited } : {}) });
   }
   return state;
 }
@@ -165,7 +180,7 @@ function toRecord(state: PinState): Record<string, unknown> {
     inbound: Object.fromEntries(
       [...state.inbound].map(([id, pin]) => [id, { publicKey: pin.publicKey.toString("base64url"), name: pin.name, policy: pin.policy, pinnedAt: pin.pinnedAt, via: pin.via }]),
     ),
-    pending: Object.fromEntries([...state.pending].map(([id, pin]) => [id, { publicKey: pin.publicKey.toString("base64url"), name: pin.name, seenAt: pin.seenAt }])),
+    pending: Object.fromEntries([...state.pending].map(([id, pin]) => [id, { publicKey: pin.publicKey.toString("base64url"), name: pin.name, seenAt: pin.seenAt, ...(pin.invited !== undefined ? { invited: pin.invited } : {}) }])),
   };
 }
 
@@ -238,18 +253,23 @@ class Pins implements PinStore {
     });
   }
 
-  addPending(publicKey: Buffer, name: string): Promise<void> {
+  addPending(publicKey: Buffer, name: string, invited?: { inviteId: string; policy: string }): Promise<void> {
     if (publicKey.length !== 32) return Promise.reject(new Error("a pending public key must be 32 bytes"));
     if (!NAME_RE.test(name)) return Promise.reject(new Error(`a peer name must match ${NAME_RE}`));
+    if (invited !== undefined && (!/^[A-Za-z0-9_-]{11}$/.test(invited.inviteId) || !POLICY_RE.test(invited.policy))) {
+      return Promise.reject(new Error("an invited mark needs an 8-byte invite id and a valid policy name"));
+    }
     return this.mutate((state) => {
-      state.pending.set(nodeIdOf(publicKey), { publicKey, name, seenAt: Date.now() });
+      state.pending.set(nodeIdOf(publicKey), { publicKey, name, seenAt: Date.now(), ...(invited !== undefined ? { invited } : {}) });
     });
   }
 
   async pending(name: string): Promise<PendingPin | null> {
     let found: PendingPin | null = null;
     for (const entry of (await readState(this.file)).pending.values()) {
-      if (entry.name === name && (found === null || entry.seenAt > found.seenAt)) found = { publicKey: entry.publicKey, name: entry.name, seenAt: entry.seenAt };
+      if (entry.name === name && (found === null || entry.seenAt > found.seenAt)) {
+        found = { publicKey: entry.publicKey, name: entry.name, seenAt: entry.seenAt, ...(entry.invited !== undefined ? { invited: entry.invited } : {}) };
+      }
     }
     return found;
   }
@@ -260,7 +280,7 @@ class Pins implements PinStore {
     return {
       outbound: [...state.outbound].map(([name, pin]) => ({ name, nodeId: nodeIdOf(pin.publicKey), pinnedAt: pin.pinnedAt })).sort(byName),
       inbound: [...state.inbound.values()].map((pin) => ({ name: pin.name, policy: pin.policy, nodeId: nodeIdOf(pin.publicKey), pinnedAt: pin.pinnedAt, via: pin.via })).sort(byName),
-      pending: [...state.pending.values()].map((entry) => ({ name: entry.name, nodeId: nodeIdOf(entry.publicKey), seenAt: entry.seenAt })).sort(byName),
+      pending: [...state.pending.values()].map((entry) => ({ name: entry.name, nodeId: nodeIdOf(entry.publicKey), seenAt: entry.seenAt, ...(entry.invited !== undefined ? { invited: entry.invited } : {}) })).sort(byName),
     };
   }
 

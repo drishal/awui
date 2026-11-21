@@ -164,11 +164,22 @@ export class ServerHandshake {
   private clientInfo: { publicKey: Buffer; name: string; hops: number } | null = null;
   private clientNonce: Buffer | null = null;
   private serverNonce: Buffer | null = null;
+  /** The transcript the client's auth signature verified over, stored at auth (P2: peer.redeem's MAC covers it). */
+  private transcriptAtAuth: Buffer | null = null;
 
   constructor(private readonly opts: ServerHandshakeOpts) {}
 
   get state(): HandshakeState {
     return this.phase;
+  }
+
+  /**
+   * The transcript this link's auth verified, or null before auth: exactly the
+   * bytes both signatures covered, so anything bound to "this one session"
+   * (peer.redeem's MAC) binds to the handshake and not to a replayable prefix.
+   */
+  get transcript(): Buffer | null {
+    return this.transcriptAtAuth;
   }
 
   /**
@@ -216,10 +227,12 @@ export class ServerHandshake {
     // Unreachable in practice (state is "hello" here, which hello always sets with all three),
     // but the transcript is only ever signed over values this side actually holds.
     if (client === null || clientNonce === null || serverNonce === null) throw new MeshRpcError(MeshErrorCode.invalid_request, "peer.auth arrived before peer.hello", { code: "invalid_request" });
+    const t = transcript(client.publicKey, clientNonce, this.opts.identity.publicKey, serverNonce);
     // A failed signature is a failed identity: this side answers, and the caller closes the link.
-    if (!verify(client.publicKey, authSigInput(transcript(client.publicKey, clientNonce, this.opts.identity.publicKey, serverNonce)), parsed.data.sig)) {
+    if (!verify(client.publicKey, authSigInput(t), parsed.data.sig)) {
       throw new MeshRpcError(MeshErrorCode.invalid_request, "The client's auth signature did not verify under the key it presented", { code: "invalid_request" });
     }
+    this.transcriptAtAuth = t;
     const { paired, policy } = await this.opts.resolve(client.publicKey, client.name);
     this.phase = "done";
     return { paired, policy, sas: sasOf(client.publicKey, this.opts.identity.publicKey, SAS_CONTEXT) };
