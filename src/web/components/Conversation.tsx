@@ -337,6 +337,9 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
 });
 
 function NoticeRow({ item }: { item: NoticeItem }) {
+  const [dismissed, setDismissed] = useState(false);
+  // Hide this row only for the current view; never mutate the harness transcript.
+  if (dismissed) return null;
   const arrival = useArrival(item.id);
   const icon = item.level === "error" ? <IconWarning size={14} /> : item.level === "warning" ? <IconWarning size={14} /> : <IconInfo size={14} />;
   // An extension's message (a memory recall, say): just its label, opening to the full text.
@@ -359,6 +362,11 @@ function NoticeRow({ item }: { item: NoticeItem }) {
     <div className={`notice-row notice-${item.level}${arrival}`} role={item.level === "error" ? "alert" : undefined}>
       <span className="notice-icon">{icon}</span>
       <span className="notice-text">{item.text}</span>
+      {!dismissed ? (
+        <button type="button" className="icon-btn notice-dismiss" aria-label="Dismiss notice" title="Dismiss notice" onClick={() => setDismissed(true)}>
+          <IconX size={12} />
+        </button>
+      ) : null}
     </div>
   );
 }

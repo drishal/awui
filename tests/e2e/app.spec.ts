@@ -732,6 +732,20 @@ test("work the agent runs after its answer keeps its place below the reply", asy
   expect(await top(after)).toBeGreaterThan(await top(answer));
 });
 
+test("a prompt rejection can be dismissed without changing the transcript", async ({ page }) => {
+  await signInAndOpen(page);
+  await openChat(page);
+  await send(page, "contended, are you busy?");
+  const notice = page.getByRole("alert").filter({ hasText: "Prompt rejected: Agent is already processing" });
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveClass(/notice-row/);
+  await notice.getByRole("button", { name: "Dismiss notice", exact: true }).click();
+  await expect(notice).toHaveCount(0);
+  // Dismissal is a view action: the server's transcript and its original turn are unchanged.
+  const snapshot = await (await page.request.get(`/api/chats/${page.url().split("#chat=")[1]}`)).json() as { items: Array<{ kind: string; text?: string }> };
+  expect(snapshot.items.filter((item) => item.kind === "user").map((item) => item.text)).toEqual(["hello"]);
+});
+
 test("a notice between replies draws as its own row, not an empty fold card", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
