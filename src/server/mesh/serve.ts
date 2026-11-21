@@ -204,6 +204,13 @@ export interface ServeDeps {
    */
   forced?: { policy: string; peer: string };
   /**
+   * TLS links only (P2): this session's exporter value, appended to the
+   * handshake transcript both signatures cover, so a MITM terminating TLS on
+   * both sides cannot satisfy a pin however faithfully it relays. Stdio and
+   * attach links leave it unset and sign exactly the P1 transcript.
+   */
+  binding?: Buffer;
+  /**
    * Daemon mode (P1.5): when set, tasks are owned by the host and outlive this
    * link — closing the link only drops its subscriptions — and task.attach /
    * task.list are served. Without it, P1's ephemeral behavior holds: every
@@ -307,6 +314,7 @@ export function serve(io: { input: Readable; output: Writable }, deps: ServeDeps
   const handshake = new ServerHandshake({
     identity: deps.identity,
     name: deps.name,
+    binding: deps.binding,
     resolve: async (clientKey, clientName) => {
       peerName = clientName;
       const inbound = await resolveInbound(clientKey);

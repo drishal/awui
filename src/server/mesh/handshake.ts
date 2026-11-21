@@ -60,9 +60,17 @@ const authResultSchema = z.object({
   sas: z.string().regex(/^\d{3} \d{3}$/),
 }).strict();
 
-/** The transcript body both signatures cover, without either prefix. */
-export function transcript(clientPub: Buffer, clientNonce: Buffer, serverPub: Buffer, serverNonce: Buffer): Buffer {
-  return Buffer.concat([clientPub, clientNonce, serverPub, serverNonce]);
+/**
+ * The transcript body both signatures cover, without either prefix. A TLS
+ * link appends its channel binding (P2) — the exporter value no other TLS
+ * session can produce — so a MITM terminating TLS on both sides cannot
+ * satisfy a pin even with perfectly relayed messages; a stdio link has none,
+ * and the bytes stay exactly the P1 transcript.
+ */
+export function transcript(clientPub: Buffer, clientNonce: Buffer, serverPub: Buffer, serverNonce: Buffer, binding?: Buffer): Buffer {
+  const base = Buffer.concat([clientPub, clientNonce, serverPub, serverNonce]);
+  if (binding === undefined || binding.length === 0) return base;
+  return Buffer.concat([base, binding]);
 }
 
 /** What the server signs in its peer.hello reply. */
@@ -82,6 +90,8 @@ export interface ClientHandshakeOpts {
   /** The pin for this peer name, or null on a first contact that TOFU allows. */
   expectedServerKey: Buffer | null;
   tofu: boolean;
+  /** TLS links only: this session's exporter value, folded into the signed transcript. */
+  binding?: Buffer;
 }
 
 /** What a finished handshake left the client holding. */
@@ -117,7 +127,7 @@ export async function clientHandshake(rpc: RpcPeer, opts: ClientHandshakeOpts): 
     rpc.close("handshake: the server's hello reply was malformed");
     throw new MeshRpcError(MeshErrorCode.invalid_request, "The server's hello reply was not the shape the protocol promises", { code: "invalid_request" });
   }
-  const t = transcript(opts.identity.publicKey, clientNonce, server.data.publicKey, server.data.nonce);
+  const t = transcript(opts.identity.publicKey, clientNonce, server.data.publicKey, server.data.nonce, opts.binding);
   if (!verify(server.data.publicKey, helloSigInput(t), server.data.sig)) {
     rpc.close("handshake: the server's hello signature failed");
     throw new MeshRpcError(MeshErrorCode.invalid_request, "The server's hello signature did not verify under the key it presented", { code: "invalid_request" });
@@ -150,6 +160,8 @@ export interface ServerHandshakeOpts {
   name: string;
   /** Decides pairing once the client's auth signature has verified. */
   resolve: (clientKey: Buffer, clientName: string) => Promise<{ paired: boolean; policy: string }>;
+  /** TLS links only: this session's exporter value, folded into the signed transcript. */
+  binding?: Buffer;
 }
 
 /**
@@ -164,6 +176,8 @@ export class ServerHandshake {
   private clientInfo: { publicKey: Buffer; name: string; hops: number } | null = null;
   private clientNonce: Buffer | null = null;
   private serverNonce: Buffer | null = null;
+  /** The transcript body this link's two signatures covered, kept for callers that need to prove it (peer.redeem). */
+  private body: Buffer | null = null;
 
   constructor(private readonly opts: ServerHandshakeOpts) {}
 
@@ -177,6 +191,16 @@ export class ServerHandshake {
    */
   get client(): { publicKey: Buffer; name: string; hops: number } | null {
     return this.phase !== "done" || this.clientInfo === null ? null : { ...this.clientInfo };
+  }
+
+  /**
+   * The transcript body both signatures covered, only once the client's auth has
+   * verified; null before that, so nothing can act on bytes an unauthenticated
+   * peer merely caused to be signed. The TLS binding is included when the link
+   * had one.
+   */
+  get transcript(): Buffer | null {
+    return this.phase === "done" && this.body !== null ? this.body : null;
   }
 
   /** Routes one incoming request; null means "not a handshake method", and the caller answers it. */
@@ -195,7 +219,8 @@ export class ServerHandshake {
     // A fresh nonce per link: what makes a signature recorded from an earlier session worthless here.
     this.serverNonce = randomBytes(32);
     this.phase = "hello";
-    const t = transcript(client.publicKey, client.nonce, this.opts.identity.publicKey, this.serverNonce);
+    const t = transcript(client.publicKey, client.nonce, this.opts.identity.publicKey, this.serverNonce, this.opts.binding);
+    this.body = t;
     return {
       v: 1,
       name: this.opts.name,
@@ -211,13 +236,12 @@ export class ServerHandshake {
     const parsed = authSchema.safeParse(params);
     if (!parsed.success) throw new MeshRpcError(MeshErrorCode.invalid_params, "peer.auth params were not the promised shape", { code: "invalid_params" });
     const client = this.clientInfo;
-    const clientNonce = this.clientNonce;
-    const serverNonce = this.serverNonce;
-    // Unreachable in practice (state is "hello" here, which hello always sets with all three),
+    // Unreachable in practice (state is "hello" here, which hello always sets),
     // but the transcript is only ever signed over values this side actually holds.
-    if (client === null || clientNonce === null || serverNonce === null) throw new MeshRpcError(MeshErrorCode.invalid_request, "peer.auth arrived before peer.hello", { code: "invalid_request" });
+    if (client === null || this.body === null) throw new MeshRpcError(MeshErrorCode.invalid_request, "peer.auth arrived before peer.hello", { code: "invalid_request" });
     // A failed signature is a failed identity: this side answers, and the caller closes the link.
-    if (!verify(client.publicKey, authSigInput(transcript(client.publicKey, clientNonce, this.opts.identity.publicKey, serverNonce)), parsed.data.sig)) {
+    // The body is the transcript hello recorded — binding included.
+    if (!verify(client.publicKey, authSigInput(this.body), parsed.data.sig)) {
       throw new MeshRpcError(MeshErrorCode.invalid_request, "The client's auth signature did not verify under the key it presented", { code: "invalid_request" });
     }
     const { paired, policy } = await this.opts.resolve(client.publicKey, client.name);

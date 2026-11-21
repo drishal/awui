@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { meshConfig, meshDetachedTtlHours, meshEnabled, readUserConfig } from "../../src/server/user-config.js";
+import { meshConfig, meshDetachedTtlHours, meshEnabled, meshListen, parseMeshTlsAddress, readUserConfig } from "../../src/server/user-config.js";
 import { tempDir } from "../helpers/app.js";
 
 function folder(yaml?: string): string {
@@ -160,4 +160,55 @@ describe("mesh config", () => {
     expect(() => readUserConfig(folder(`mesh:\n  peers:\n    - name: a\n      docker: --privileged\n`))).toThrow(/docker/);
     expect(readUserConfig(folder(`mesh:\n  peers:\n    - name: a\n      ssh: drishal@[fd7a::1]\n    - name: b\n      docker: awui-worker_1\n`))?.config.mesh?.peers?.length).toBe(2);
   });
+
+  it("accepts a tls peer and no other transport beside it", () => {
+    const read = readUserConfig(folder(`mesh:
+  enabled: true
+  peers:
+    - name: lab-vm-3
+      tls: lab-vm-3.internal:4784
+    - name: v6-box
+      tls: "[fd7a::1]:4784"
+    - name: ip-box
+      tls: 10.0.0.9:4784
+`))?.config;
+    expect(read?.mesh?.peers?.[0]).toMatchObject({ name: "lab-vm-3", tls: "lab-vm-3.internal:4784" });
+    expect(read?.mesh?.peers?.[1]).toMatchObject({ name: "v6-box", tls: "[fd7a::1]:4784" });
+    expect(read?.mesh?.peers?.[2]).toMatchObject({ name: "ip-box", tls: "10.0.0.9:4784" });
+    // Exactly one of ssh/docker/tls, the same rule either way round.
+    expect(() => readUserConfig(folder(`mesh:\n  peers:\n    - name: a\n      ssh: a@b\n      tls: b:1\n`))).toThrow(/exactly one/);
+    expect(() => readUserConfig(folder(`mesh:\n  peers:\n    - name: a\n      docker: box\n      tls: b:1\n`))).toThrow(/exactly one/);
+    expect(() => readUserConfig(folder("mesh:\n  peers:\n    - name: a\n"))).toThrow(/exactly one/);
+  });
+
+  it("rejects a tls address that is not a host:port the wire can dial", () => {
+    for (const bad of ["lab-vm-3", "lab-vm-3:", "lab-vm-3:0", "lab-vm-3:65536", "999.1.1.1:80", '"a b:80"', "[fd7a::1:4784", "fd7a::1:4784", ":4784", "lab-vm-3:4784 extra"]) {
+      expect(() => readUserConfig(folder(`mesh:\n  peers:\n    - name: a\n      tls: ${JSON.stringify(bad)}\n`))).toThrow(/host:port/);
+    }
+    // The parser half of the same rule, on its own.
+    expect(parseMeshTlsAddress("lab-vm-3.internal:4784")).toEqual({ host: "lab-vm-3.internal", port: 4784 });
+    expect(parseMeshTlsAddress("[fd7a::1]:1")).toEqual({ host: "fd7a::1", port: 1 });
+    expect(parseMeshTlsAddress("10.0.0.9:65535")).toEqual({ host: "10.0.0.9", port: 65535 });
+    expect(parseMeshTlsAddress("10.0.0.256:80")).toBeNull();
+    expect(parseMeshTlsAddress("")).toBeNull();
+  });
+
+  it("accepts mesh.listen, defaults its port, and rejects bad shapes", () => {
+    const read = readUserConfig(folder("mesh:\n  listen:\n    host: 10.0.0.5\n"))?.config;
+    expect(meshListen(read)).toEqual({ host: "10.0.0.5", port: 4784 });
+    const withPort = readUserConfig(folder("mesh:\n  listen:\n    host: lab-vm-3.internal\n    port: 5000\n"))?.config;
+    expect(meshListen(withPort)).toEqual({ host: "lab-vm-3.internal", port: 5000 });
+    // The wildcard forms are accepted (a person may mean them); doctor warns.
+    expect(meshListen(readUserConfig(folder("mesh:\n  listen:\n    host: 0.0.0.0\n"))?.config)).toEqual({ host: "0.0.0.0", port: 4784 });
+    expect(meshListen(readUserConfig(folder('mesh:\n  listen:\n    host: "::"\n'))?.config)).toEqual({ host: "::", port: 4784 });
+    expect(meshListen(undefined)).toBeNull();
+    expect(meshListen(readUserConfig(folder("mesh: {}\n"))?.config)).toBeNull();
+    expect(() => readUserConfig(folder("mesh:\n  listen:\n    port: 5000\n"))).toThrow(/host/);
+    expect(() => readUserConfig(folder("mesh:\n  listen:\n    host: a b\n"))).toThrow(/host/);
+    expect(() => readUserConfig(folder("mesh:\n  listen:\n    host: -h\n"))).toThrow(/host/);
+    expect(() => readUserConfig(folder("mesh:\n  listen:\n    host: a\n    port: 0\n"))).toThrow(/port/);
+    expect(() => readUserConfig(folder("mesh:\n  listen:\n    host: a\n    port: 65536\n"))).toThrow(/port/);
+    expect(() => readUserConfig(folder("mesh:\n  listen:\n    host: a\n    extra: true\n"))).toThrow(/listen/);
+  });
 });
+

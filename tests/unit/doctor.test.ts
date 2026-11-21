@@ -93,6 +93,17 @@ describe("doctor", () => {
     expect(by(evaluate(healthy), "Mesh")).toMatchObject({ ok: true, detail: "off (default)" });
     const on = { ...healthy, mesh: { enabled: true, peers: 2, policies: ["worker"], identity: true } };
     expect(by(evaluate(on), "Mesh")).toMatchObject({ ok: true, detail: "on: 2 peer(s), no listener" });
+    // P2: a mesh.listen address is reported, and a wildcard one is a warning.
+    const listening = by(evaluate({ ...healthy, mesh: { enabled: true, peers: 2, policies: [], identity: true, listen: { host: "10.0.0.5", port: 4784 } } }), "Mesh");
+    expect(listening).toMatchObject({ ok: true, detail: "on: 2 peer(s), TLS listening on 10.0.0.5:4784" });
+    const wildcard = evaluate({ ...healthy, mesh: { enabled: true, peers: 1, policies: [], identity: true, listen: { host: "0.0.0.0", port: 4784 } } });
+    expect(by(wildcard, "Mesh").ok).toBe("warn");
+    expect(by(wildcard, "Mesh").detail).toContain("0.0.0.0:4784");
+    expect(by(wildcard, "Mesh").detail).toContain("firewall");
+    expect(render(evaluate({ ...healthy, mesh: { enabled: true, peers: 0, policies: [], identity: true, listen: { host: "::", port: 5000 } } }))).toContain("! Mesh");
+    // An on-mesh without an identity warns before any listen detail matters.
+    const noIdListen = by(evaluate({ ...healthy, mesh: { enabled: true, peers: 1, policies: [], identity: false, listen: { host: "0.0.0.0", port: 4784 } } }), "Mesh");
+    expect(noIdListen).toMatchObject({ ok: "warn", detail: "on, but no identity yet: it is created on first use" });
     // The identity is created on first use, so an on-mesh without one is a note, not a problem.
     const noId = by(evaluate({ ...healthy, mesh: { enabled: true, peers: 1, policies: [], identity: false } }), "Mesh");
     expect(noId).toMatchObject({ ok: "warn", detail: "on, but no identity yet: it is created on first use" });
