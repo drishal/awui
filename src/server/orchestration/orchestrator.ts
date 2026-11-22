@@ -57,7 +57,8 @@ import {
   type ToolOutput,
 } from "./tools.js";
 import type { OrchestrationLimits } from "./limits.js";
-import type { PeerManager } from "../mesh/manager.js";
+import type { AuditEntry } from "../mesh/audit.js";
+import type { PeerConnection, PeerManager } from "../mesh/manager.js";
 import { PeerHarnessAdapter } from "../mesh/peer-adapter.js";
 import { nodeIdOf } from "../mesh/identity.js";
 import type { MeshPeerEntry } from "../mesh/peer-store.js";
@@ -76,6 +77,25 @@ import { scheduleHeartbeatSchema, residentAgentSchema } from "./tools.js";
 
 /** How long a cancel waits for the child to settle before it says so. */
 const CANCEL_SETTLE_MS = 5_000;
+/**
+ * The request id of a pairing card. `dc-` makes it a gate id the ordinary answer route takes,
+ * and the rest can never collide with a StoredDecision's hex id — the decisions' own gate
+ * falls through untouched.
+ */
+const MESH_PAIR_REQUEST_PREFIX = "dc-mesh-pair-";
+
+/** One pairing card in flight: the link it was raised over, the key and SAS it showed, and the person's verdict once given. */
+interface MeshPairPending {
+  chatId: string;
+  peer: string;
+  connection: PeerConnection;
+  serverKey: Buffer;
+  /** The SAS the card showed; a later handshake must derive the same one or nothing is pinned. */
+  sas: string;
+  answer: "approve" | "deny" | null;
+  wake: (() => void) | null;
+}
+
 /** A task's last answer line is announced only when the line itself changes. */
 const ACTIVITY_LINE = 300;
 
@@ -139,6 +159,13 @@ export interface OrchestratorDeps {
       localName: () => string;
       syncConfig: (names?: string[]) => Promise<{ moved: string[]; kept: { name: string; reason: string }[]; unknown: string[] }>;
     };
+    /**
+     * The mesh audit log (mesh/audit.ts): one line per add and per pairing attempt, so a pin
+     * made while the owner was not at the keyboard is still readable in `awui peer log`.
+     * Absent skips the entries. Never carries a SAS — the digits are for the confirmation
+     * card alone, and the log is not a channel to leak them into.
+     */
+    audit?: { append(entry: Omit<AuditEntry, "ts">): Promise<void> };
   };
 }
 
@@ -665,6 +692,13 @@ export class Orchestrator {
   private readonly decisionWaiters = new Map<string, Set<() => void>>();
 
   /**
+   * Pairing cards in flight, by request id — in memory only, never a stored record: a restart
+   * ends the wait (the route call died with it) and pins nothing, so no stale key ever waits to
+   * be pinned by an answer nobody gave.
+   */
+  private readonly meshPairs = new Map<string, MeshPairPending>();
+
+  /**
    * `request_decision`: a delegated worker parks until the person answers an explicit decision.
    * The question goes on the worker's own chat as a regular request item — the same approval card
    * and answer route as any harness question — and the recorded answer is what the parked call
@@ -860,7 +894,47 @@ export class Orchestrator {
 
   /** Install the decision gate on a chat the manager registered (a resumed worker answers through it too). */
   private installGate(chat: Chat): void {
-    chat.decisionGate = (requestId, outcome, answer, reason) => this.answerGate(chat, requestId, outcome, answer, reason);
+    // A pairing card is answered first — its pin is this orchestrator's own business, not a
+    // StoredDecision's — and everything else falls through to the decisions' gate unchanged.
+    chat.decisionGate = (requestId, outcome, answer, reason) =>
+      this.answerMeshPair(chat, requestId, answer) || this.answerGate(chat, requestId, outcome, answer, reason);
+  }
+
+  /**
+   * The gate half a pairing card answers: the person's Approve or Deny through the ordinary
+   * request route wakes the parked `mesh_peer_pair` call. Only the chat that raised the card
+   * may answer it, and only the first answer counts; anything else falls through so the
+   * decisions' own gate (or the route's 409) says what happened.
+   */
+  private answerMeshPair(chat: Chat, requestId: string, answer: InteractionAnswer): boolean {
+    if (!requestId.startsWith(MESH_PAIR_REQUEST_PREFIX)) return false;
+    const pending = this.meshPairs.get(requestId);
+    if (!pending || pending.answer !== null) return false;
+    // Matched by chat id only: a pairing card is raised on the caller's own live chat, which has no session to resume by.
+    if (pending.chatId !== chat.chatId) return false;
+    // Deny and cancel are the same refusal here: neither pins anything.
+    pending.answer = answer.kind === "confirm" && answer.confirmed === true ? "approve" : "deny";
+    pending.wake?.();
+    return true;
+  }
+
+  /** Park until the person answers the pairing card, or the cap passes. No timer survives the answer. */
+  private waitForMeshPair(pending: MeshPairPending, waitMs: number): Promise<void> {
+    if (pending.answer !== null) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        pending.wake = null;
+        resolve();
+      };
+      pending.wake = () => {
+        if (pending.answer !== null) done();
+      };
+      const timer = setTimeout(done, Math.max(0, waitMs));
+      timer.unref?.();
+      // The card can have been answered between the first check and this registration.
+      pending.wake();
+    });
   }
 
   /** A decision id no live record carries. */
@@ -943,9 +1017,10 @@ export class Orchestrator {
 
   /**
    * `mesh_peer_add`: save one machine and make first contact to read its node
-   * id and SAS — never to pin. The key is pinned only by mesh_peer_pair after a
-   * person confirms those digits, so this tool cannot silently trust a host
-   * the user merely named.
+   * id and SAS — never to pin. The key is pinned only by the person's Approve
+   * on the confirmation card mesh_peer_pair raises, so this tool cannot
+   * silently trust a host the user merely named, and the digits it reports
+   * are for the person to compare, never an argument to pass back.
    */
   private async meshPeerAdd(
     caller: Chat,
@@ -978,6 +1053,14 @@ export class Orchestrator {
         throw denial(409, "peer_not_saved", `The peer was not saved: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+    // One line per add, whatever happens next: a machine that entered the inventory through a
+    // chat is visible in `awui peer log` even when no pin ever followed. The SAS never appears.
+    void peers.audit?.append({
+      peer: entry.name,
+      method: "mesh_peer_add",
+      decision: "allow",
+      outcome: retry ? "retried the saved entry's first contact" : "saved to peers.json",
+    });
     const transport = entry.tls !== undefined ? `tls ${entry.tls}` : entry.ssh !== undefined ? `ssh ${entry.ssh}` : `docker ${entry.docker ?? ""}`;
     let contact: { nodeId: string; sas: string; paired: boolean; policy: string } | null = null;
     let contactError: string | null = null;
@@ -987,13 +1070,14 @@ export class Orchestrator {
       connection.close();
     } catch (error) {
       contactError = error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
+      void peers.audit?.append({ peer: entry.name, method: "mesh_peer_add", decision: "error", outcome: `first contact failed: ${contactError}` });
     }
     const accept = `awui peer accept ${admin.localName()} --policy worker`;
     const lines = [`Added "${entry.name}" to this node's saved peers (peers.json), reached over ${transport}.`];
     if (contact !== null) {
       lines.push(
         `First contact: node ${contact.nodeId}, SAS ${contact.sas}${contact.paired ? ` (already accepted under policy ${contact.policy})` : ""}.`,
-        `Compare that SAS with \`awui peer status\` on ${entry.name}. If they match, call mesh_peer_pair with sas "${contact.sas}" to pin its key.`,
+        `To pin its key, call mesh_peer_pair with the name "${entry.name}" — the confirmation card that call raises shows the SAS for the person to compare with \`awui peer status\` on that machine and approve. The digits this conversation carries never authorize the pin.`,
       );
       if (!contact.paired) lines.push(`On ${entry.name}, its owner still runs (choosing the policy there): ${accept}`);
     } else {
@@ -1006,37 +1090,110 @@ export class Orchestrator {
   }
 
   /**
-   * `mesh_peer_pair`: pin a key after the person compared the SAS on both
-   * machines. The SAS this node derives is recomputed over a fresh handshake
-   * and must equal the one passed; a mismatch closes the link and pins nothing.
+   * `mesh_peer_pair`: pin a key only after the person approves a confirmation card carrying
+   * the SAS this node derives. The digits never travel through the model: the card is raised
+   * on the caller's own chat through the same approval machinery a harness question uses, and
+   * only its Approve pins — a `sas` argument in the call is ignored. The link stays open while
+   * the card waits, so the pin lands on exactly the key the person saw; if it dropped, a fresh
+   * handshake must present that same key or nothing is pinned. No error this path can produce
+   * carries the SAS: an unreachable or changed machine is refused in words alone.
    */
-  private async meshPeerPair(caller: Chat, args: { name: string; sas: string }): Promise<ToolOutput> {
+  private async meshPeerPair(caller: Chat, args: { name: string }): Promise<ToolOutput> {
     const { peers, admin } = this.meshAdminGate(caller);
-    const digits = args.sas.replace(/\s/g, "");
-    const expected = `${digits.slice(0, 3)} ${digits.slice(3)}`;
+    const audit = peers.audit;
     let connection;
     try {
       connection = await peers.manager.connect(args.name, { tofu: true });
     } catch (error) {
+      // No SAS here or in any other refusal: the derived digits are for the person's card, and
+      // an error body the model reads is not a place to echo them.
+      void audit?.append({ peer: args.name, method: "mesh_peer_pair", decision: "error", outcome: `connect failed: ${error instanceof Error ? error.message : String(error)}` });
       throw denial(502, "peer_unreachable", `No link to "${args.name}" could be made: ${error instanceof Error ? error.message : String(error)}`);
     }
-    if (connection.sas !== expected) {
-      const actual = connection.sas;
-      connection.close();
-      throw denial(409, "sas_mismatch", `The SAS this node derives for "${args.name}" is ${actual}, not ${expected}. Nothing was pinned. Compare both machines again before retrying.`);
+    const requestId = `${MESH_PAIR_REQUEST_PREFIX}${randomBytes(8).toString("hex")}`;
+    const pending: MeshPairPending = {
+      chatId: caller.chatId,
+      peer: args.name,
+      connection,
+      serverKey: connection.serverKey,
+      sas: connection.sas,
+      answer: null,
+      wake: null,
+    };
+    this.meshPairs.set(requestId, pending);
+    try {
+      // Registered chats carry the gate already; a direct run needs it installed before the
+      // card exists, or the person's answer would have no route into this wait.
+      this.installGate(caller);
+      try {
+        caller.addPendingDecision({
+          id: requestId,
+          kind: "confirm",
+          title: `Pin the key of mesh peer "${args.name}"?`,
+          message:
+            `This node derives SAS ${connection.sas} for "${args.name}" (node ${nodeIdOf(connection.serverKey)}). ` +
+            "Compare it with `awui peer status` on that machine and approve only if the digits match. Approving pins that machine's key here; denying pins nothing.",
+          createdAt: Date.now(),
+        });
+      } catch (error) {
+        connection.close();
+        throw error;
+      }
+      await this.waitForMeshPair(pending, DEFAULT_WAIT_MS);
+    } finally {
+      this.meshPairs.delete(requestId);
     }
-    const nodeId = nodeIdOf(connection.serverKey);
-    const paired = connection.paired;
-    const policy = connection.policy;
-    await peers.manager.pin(args.name, connection.serverKey);
-    connection.close();
+    const answer = pending.answer;
+    if (answer !== "approve") {
+      connection.close();
+      // A card nobody answered must not linger as answerable for a pin that will never come.
+      if (answer === null) caller.cancelPendingDecision(requestId);
+      void audit?.append({
+        peer: args.name,
+        method: "mesh_peer_pair",
+        decision: "deny",
+        outcome: answer === null ? "not confirmed in time; nothing pinned" : "denied by the person; nothing pinned",
+      });
+      return {
+        text:
+          answer === null
+            ? `The SAS for "${args.name}" has not been confirmed by the person yet; nothing was pinned. Call mesh_peer_pair again when they can compare the digits with \`awui peer status\` on that machine.`
+            : `The person denied pinning "${args.name}"; nothing was pinned. Call mesh_peer_pair again any time they want to compare the digits.`,
+        data: { peer: args.name, pinned: false },
+      };
+    }
+    // Approved: pin the key the person saw. If the link dropped while the card waited, a fresh
+    // handshake must present that same key — a machine that changed under the confirmation is
+    // refused outright, never silently pinned as if the person had vouched for it.
+    let live = connection;
+    let key = pending.serverKey;
+    if (connection.closed) {
+      let fresh;
+      try {
+        fresh = await peers.manager.connect(args.name, { tofu: true });
+      } catch (error) {
+        void audit?.append({ peer: args.name, method: "mesh_peer_pair", decision: "error", outcome: `reconnect failed: ${error instanceof Error ? error.message : String(error)}` });
+        throw denial(502, "peer_unreachable", `The link to "${args.name}" dropped before the confirmation, and no new one could be made: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      if (!fresh.serverKey.equals(pending.serverKey) || fresh.sas !== pending.sas) {
+        fresh.close();
+        void audit?.append({ peer: args.name, method: "mesh_peer_pair", decision: "deny", outcome: "the link changed while the card waited; nothing pinned" });
+        throw denial(409, "peer_changed", `The link to "${args.name}" is not the one the confirmation card showed; nothing was pinned. Call mesh_peer_pair again to compare the machine as it is now.`);
+      }
+      live = fresh;
+      key = fresh.serverKey;
+    }
+    await peers.manager.pin(args.name, key);
+    live.close();
+    const nodeId = nodeIdOf(key);
+    void audit?.append({ peer: args.name, method: "mesh_peer_pair", decision: "allow", outcome: `pinned node ${nodeId}` });
     const accept = `awui peer accept ${admin.localName()} --policy worker`;
     const lines = [
-      `Pinned ${args.name} (${nodeId}) after the SAS matched.`,
-      paired ? `The target already accepts this node under policy ${policy}.` : `On ${args.name}, its owner still runs (choosing the policy there): ${accept}`,
+      `Pinned ${args.name} (${nodeId}) after the person approved the SAS on the confirmation card.`,
+      live.paired ? `The target already accepts this node under policy ${live.policy}.` : `On ${args.name}, its owner still runs (choosing the policy there): ${accept}`,
       `From now on a changed key closes the link until someone runs \`awui peer remove ${args.name}\` and pairs again.`,
     ];
-    return { text: lines.join("\n"), data: { peer: args.name, nodeId, sas: expected, paired, policy } };
+    return { text: lines.join("\n"), data: { peer: args.name, nodeId, paired: live.paired, policy: live.policy } };
   }
 
   /** `mesh_peer_sync_config`: move saved peers into config.yml where that file is this server's to write. */

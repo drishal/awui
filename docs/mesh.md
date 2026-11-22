@@ -263,10 +263,14 @@ mesh-enabled node:
 2. Ask: *"Add the VM at 192.168.1.20:4784 as lab-vm."* The agent calls
    `mesh_peer_add {name, tls}`; the peer is saved in peers.json and first
    contact returns its node id and six-digit SAS.
-3. Compare the SAS with `awui peer status` on that machine. If they match, say
-   so; the agent calls `mesh_peer_pair {name, sas}` and the key is pinned. A
-   mismatch is refused and the link closed, and a key that changes later is a
-   pin mismatch until someone runs `awui peer remove` and pairs again.
+3. Ask them to pair it: the agent calls `mesh_peer_pair {name}`, which raises a
+   **confirmation card** on the chat showing the SAS this node derives. Compare
+   it with `awui peer status` on that machine and approve only if the digits
+   match — the pin happens on that Approve alone, and SAS digits typed into
+   the conversation never authorize anything. A denial, or nobody answering
+   while the call waits, pins nothing. And a link that changed while the card
+   waited is refused rather than trusted; a key that changes later is a pin
+   mismatch until someone runs `awui peer remove` and pairs again.
 4. On the target its owner runs `awui peer accept <this node> --policy worker`
    (the tool prints the exact line).
 5. If you version config.yml, ask *"put lab-vm in config.yml"*:
@@ -275,8 +279,11 @@ mesh-enabled node:
    writable config.yml whose mesh is already enabled; a symlinked or rendered
    config is refused and peers.json stays the source.
 
-`mesh_peer_add` never pins on its own: the key is pinned only after a person
-confirms the digits. All three tools are lead-chat only.
+`mesh_peer_add` never pins on its own: the key is pinned only by the person's
+Approve on the confirmation card `mesh_peer_pair` raises, never by digits the
+model passes along. Every add and pairing attempt also leaves a line in the
+mesh audit log (`awui peer log`) — without the SAS itself. All three tools are
+lead-chat only.
 A first contact that fails still leaves the machine saved: asking to add the same
 name over the same transport again retries that contact instead of being refused.
 Only a pinned peer, or the same name over a different transport, is a duplicate.

@@ -497,6 +497,8 @@ async function main(): Promise<void> {
         localName: meshLocalName,
         syncConfig: (names?: string[]) => syncPeersToConfig(config.configDir, meshSavedPeers, names),
       },
+      // Every add and pairing attempt leaves a line the owner can read in `awui peer log`.
+      audit: meshAudit,
     },
     // The owner-facing half of the same mesh (P2 §4): the Settings dialog's
     // Peers routes, over the same pins, peers, policies, and host tasks the

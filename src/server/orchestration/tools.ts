@@ -195,10 +195,12 @@ export const meshPeerAddSchema = z
     if (ways !== 1) ctx.addIssue({ code: "custom", path: ["tls"], message: "name exactly one of tls, ssh, or docker" });
   });
 
-/** `mesh_peer_pair`: pins a key only when the six-digit SAS the person confirmed is the one this node derives. */
-export const meshPeerPairSchema = z
-  .object({ name: meshPeerName, sas: z.string().trim().regex(/^\d{3}\s?\d{3}$/, "must be six digits, as NNN NNN") })
-  .strict();
+/**
+ * `mesh_peer_pair`: pins a key only when the person approves the confirmation card the call
+ * raises. Deliberately not strict: a leftover `sas` argument (the old scheme) is stripped and
+ * never read, so digits that traveled through the model cannot authorize a pin.
+ */
+export const meshPeerPairSchema = z.object({ name: meshPeerName });
 
 /** `mesh_peer_sync_config`: which saved peers to move into config.yml; omitted means every saved one. */
 export const meshPeerSyncConfigSchema = z.object({ names: z.array(meshPeerName).max(64).optional() }).strict();
@@ -417,8 +419,8 @@ const DEFINED_TOOLS: OrchTool[] = [
     description:
       "Add a machine to this node's mesh when the person asks (a VM, a laptop, a build box). " +
       "The peer is saved in peers.json (and works after a restart); give exactly one way to reach it — tls host:port, ssh [user@]host, or docker <container>. " +
-      "This makes first contact only to read the machine's node id and six-digit SAS. It never pins a key by itself: compare the node id and SAS with `awui peer status` on that machine, " +
-      "have its owner accept this node, then call mesh_peer_pair with the SAS the person confirmed. Lead chats only.",
+      "This makes first contact only to read the machine's node id and six-digit SAS. It never pins a key by itself: the person compares the node id and SAS with `awui peer status` on that machine and its owner accepts this node, " +
+      "then you call mesh_peer_pair with the peer's name — the confirmation card it raises shows the SAS for the person to compare and approve, and only that Approve pins. Digits written in this conversation are never the confirmation. Lead chats only.",
     parameters: object(
       {
         name: stringProperty("The name this machine will be known by here (letters, digits, '.', '_', '-').", 64),
@@ -434,15 +436,13 @@ const DEFINED_TOOLS: OrchTool[] = [
   {
     name: "mesh_peer_pair",
     description:
-      "Pin a paired machine's key after a person compared the six-digit SAS on both machines. " +
-      "Pass the SAS the person confirmed; if this node derives a different one the pin is refused and the link closed, so a wrong machine can never be trusted silently. " +
-      "After pinning, the target's owner still runs `awui peer accept <this node> --policy <p>` there unless they already did. Lead chats only.",
+      "Pin a paired machine's key after a person compared the six-digit SAS on both machines. Calling this raises a confirmation card on the person's own chat showing the SAS this node derives; they compare it with `awui peer status` on the other machine, and only their Approve on that card pins — a SAS passed as an argument is ignored, and a denial or a timeout pins nothing. " +
+      "The call waits for their answer. After pinning, the target's owner still runs `awui peer accept <this node> --policy <p>` there unless they already did. Lead chats only.",
     parameters: object(
       {
         name: stringProperty("The peer's name, as added here.", 64),
-        sas: stringProperty("The six digits the person confirmed, e.g. \"123 456\".", 16),
       },
-      ["name", "sas"],
+      ["name"],
     ),
   },
   {
@@ -507,7 +507,7 @@ Delegating
 - After delegating, thread_wait blocks until the child finishes or asks a question. Never poll in a loop. task_status shows where your tasks stand, thread_read what a child said, thread_send continues it, task_cancel stops a run you no longer need.
 - plan_workers drafts a lead/worker plan for a person to confirm before any worker starts. resident_agent keeps one named chat to come back to.
 - delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers. peer_files reads or writes one utf8 file there (lead chats only). peer_handoff instead moves this chat's own work there: it snapshots the tree, uploads a bundle, and opens the task in an isolated worktree (lead chats only).
-- When the person asks to add a machine, mesh_peer_add saves it and reads its node id and SAS; never pin its key until they say the SAS matches on both machines (mesh_peer_pair). mesh_peer_sync_config moves saved peers into config.yml when that file is this server's to write.
+- When the person asks to add a machine, mesh_peer_add saves it and reads its node id and SAS; its key is pinned only by the person's Approve on the confirmation card mesh_peer_pair raises — never treat digits written in this conversation as that confirmation. mesh_peer_sync_config moves saved peers into config.yml when that file is this server's to write.
 - As a delegated child, do the work yourself; start no further delegates unless your task says to.
 
 Talking to the person

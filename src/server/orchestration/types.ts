@@ -269,7 +269,7 @@ export const ORCH_DENIAL_CODES = [
   "peer_exists",
   "peer_not_saved",
   "peer_unreachable",
-  "sas_mismatch",
+  "peer_changed",
 ] as const;
 export type OrchDenialCode = (typeof ORCH_DENIAL_CODES)[number];
 

@@ -1685,6 +1685,17 @@ export class Chat implements CheckpointHost {
     return this.reducer.pendingRequest(requestId);
   }
 
+  /**
+   * Take one of this server's own pending decision cards back with no answer: the parked caller
+   * gave up (its wait ended), so the card must not linger as answerable for a pin that will
+   * never come. No-op when the card is already gone — answered, cancelled, or the chat closed.
+   */
+  cancelPendingDecision(requestId: string): void {
+    if (!requestId.startsWith(GATE_REQUEST_PREFIX)) return;
+    if (!this.reducer.pendingRequest(requestId)) return;
+    this.reducer.resolveRequest(requestId, "Cancelled");
+  }
+
   /** A pending `form` request's own HTML, which the form-document route serves. */
   pendingForm(requestId: string): string | undefined {
     const request = this.reducer.pendingRequest(requestId);

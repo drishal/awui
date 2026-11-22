@@ -15,6 +15,7 @@ import { ServerHandshake } from "../../src/server/mesh/handshake.js";
 import { loadOrCreateIdentity, type NodeIdentity } from "../../src/server/mesh/identity.js";
 import { PeerManager } from "../../src/server/mesh/manager.js";
 import { PeerPeersStore } from "../../src/server/mesh/peer-store.js";
+import type { AuditEntry } from "../../src/server/mesh/audit.js";
 import { syncPeersToConfig } from "../../src/server/mesh/config-edit.js";
 import { PinStore } from "../../src/server/mesh/pins.js";
 import { MeshErrorCode, MeshRpcError, RpcPeer } from "../../src/server/mesh/rpc.js";
@@ -87,6 +88,35 @@ function cannedWorker(identity: NodeIdentity) {
   return { prompts, spawn };
 }
 
+/**
+ * A canned worker whose far side can change under a pairing: `flip()` makes every later
+ * handshake present a different node key, and `killAll()` drops every live link, so a
+ * confirmation card is left over a connection that is already gone.
+ */
+async function flipWorker() {
+  const first = await loadOrCreateIdentity(tempDir("awui-mesh-w-"));
+  const second = await loadOrCreateIdentity(tempDir("awui-mesh-w-"));
+  let useSecond = false;
+  const kills: (() => void)[] = [];
+  const spawn = (_peerName: string, _link: PeerLink) => {
+    const pair = memoryLink();
+    const rpc = new RpcPeer(pair.server.input, pair.server.output, { role: "server" });
+    const handshake = new ServerHandshake({ identity: useSecond ? second : first, name: "worker-box", resolve: async () => ({ paired: true, policy: "worker" }) });
+    rpc.onRequest(async (method, params) => {
+      const handled = handshake.handle(method, params);
+      if (handled !== null) return handled;
+      if (method === "task.history") return [];
+      if (method === "task.open" || method === "task.prompt" || method === "task.config" || method === "task.answer" || method === "task.abort" || method === "task.close") return {};
+      throw new MeshRpcError(MeshErrorCode.method_not_found, `no handler answers "${method}"`, { code: "method_not_found" });
+    });
+    rpc.start();
+    const kill = () => rpc.close("killed by the test");
+    kills.push(kill);
+    return { input: pair.client.input, output: pair.client.output, kill };
+  };
+  return { spawn, flip: () => { useSecond = true; }, killAll: () => { for (const kill of kills) kill(); } };
+}
+
 /** A real PeerManager over the canned worker, with the worker's key pinned (what `awui peer add` leaves behind). */
 async function meshManager(worker?: ReturnType<typeof cannedWorker>) {
   const w = worker ?? cannedWorker(await loadOrCreateIdentity(tempDir("awui-mesh-w-")));
@@ -106,12 +136,17 @@ async function meshManager(worker?: ReturnType<typeof cannedWorker>) {
 }
 
 /** The orchestrator's peers dep, as app.ts would wire it from config.yml. */
-function peersOf(manager: PeerManager, over: { enabled?: () => boolean; chats?: () => "lead-only" | "all"; maxRemoteTasks?: () => number } = {}): NonNullable<OrchestratorDeps["peers"]> {
+function peersOf(
+  manager: PeerManager,
+  over: { enabled?: () => boolean; chats?: () => "lead-only" | "all"; maxRemoteTasks?: () => number; audit?: { append(entry: Omit<AuditEntry, "ts">): Promise<void> } } = {},
+): NonNullable<OrchestratorDeps["peers"]> {
   return {
     manager,
     enabled: over.enabled ?? (() => true),
     chats: over.chats ?? (() => "lead-only"),
     maxRemoteTasks: over.maxRemoteTasks ?? (() => 8),
+    // The mesh audit log the add/pair tools write to; tests record in memory.
+    ...(over.audit ? { audit: over.audit } : {}),
   };
 }
 
@@ -279,7 +314,7 @@ describe("mesh orchestration", () => {
     expect(bare.body.text).not.toContain("Peers (mesh)");
   });
 
-  it("adds a machine from a chat, pairs only on the confirmed SAS, and moves it into config.yml", async () => {
+  it("adds a machine from a chat and pins its key only after the person approves the pairing card", async () => {
     const worker = cannedWorker(await loadOrCreateIdentity(tempDir("awui-mesh-w-")));
     const client = await loadOrCreateIdentity(tempDir("awui-mesh-c-"));
     const pins = PinStore(path.join(tempDir("awui-mesh-pins-"), "pins.json"));
@@ -296,8 +331,9 @@ describe("mesh orchestration", () => {
     const configDir = tempDir("awui-mesh-cfg-");
     const configFile = path.join(configDir, "config.yml");
     writeFileSync(configFile, "mesh:\n  enabled: true\n  name: leader-box\n");
+    const auditEntries: Omit<AuditEntry, "ts">[] = [];
     const { app, agent, token } = await setup({
-      ...peersOf(manager),
+      ...peersOf(manager, { audit: { append: async (entry) => { auditEntries.push(entry); } } }),
       admin: {
         saved,
         localName: () => "leader-box",
@@ -308,17 +344,38 @@ describe("mesh orchestration", () => {
     const added = await call(agent, token, "mesh_peer_add", { name: "newbox", ssh: "user@lab" });
     expect(added.status).toBe(200);
     expect((await saved.list()).map((peer) => peer.name)).toEqual(["newbox"]);
-    expect(added.body.text).toContain("Compare that SAS");
-    const sas = String(added.body.data.contact.sas);
-    // A wrong SAS pins nothing and closes the link.
-    const wrong = sas === "000 000" ? "000 001" : "000 000";
-    const mismatched = await call(agent, token, "mesh_peer_pair", { name: "newbox", sas: wrong });
-    expect(mismatched.status).toBe(409);
-    expect(mismatched.body.code).toBe("sas_mismatch");
+    // The digits reach the person reading the chat, but the instruction never tells the model what to pass on.
+    expect(added.body.text).toContain("SAS");
+    expect(added.body.text).toContain("mesh_peer_pair with the name");
+    expect(added.body.text).not.toContain("mesh_peer_pair with sas");
+    const caller = app.manager.list().find((chat) => chat.orchestration?.token === token);
+    if (!caller) throw new Error("no caller chat");
+
+    // A model-supplied sas argument pins nothing by itself: the call parks on a confirmation card.
+    const withSas = call(agent, token, "mesh_peer_pair", { name: "newbox", sas: "000 000" });
+    void withSas.then(() => undefined, () => undefined);
+    await waitUntil(() => caller.snapshot().pending.some((r) => r.id.startsWith("dc-mesh-pair-")), 4_000, "the pairing card");
     expect(await pins.outbound("newbox")).toBeNull();
-    // The confirmed one pins the key.
-    const paired = await call(agent, token, "mesh_peer_pair", { name: "newbox", sas });
+    // The person's Deny pins nothing, and the call says so. The answer lands before the parked call resolves.
+    let card = caller.snapshot().pending.find((r) => r.id.startsWith("dc-mesh-pair-"))!;
+    const denyAnswer = await agent.post(`/api/chats/${caller.chatId}/requests/${card.id}`).send({ answer: { kind: "confirm", confirmed: false } });
+    expect(denyAnswer.status).toBe(200);
+    const denied = await withSas;
+    expect(denied.status).toBe(200);
+    expect(denied.body.text).toContain("nothing was pinned");
+    expect(await pins.outbound("newbox")).toBeNull();
+
+    // The Approve on the card is what pins: the card carries the SAS the person compares.
+    const pairing = call(agent, token, "mesh_peer_pair", { name: "newbox" });
+    void pairing.then(() => undefined, () => undefined);
+    await waitUntil(() => caller.snapshot().pending.some((r) => r.id.startsWith("dc-mesh-pair-")), 4_000, "the pairing card");
+    card = caller.snapshot().pending.find((r) => r.id.startsWith("dc-mesh-pair-"))!;
+    expect(card.message ?? "").toContain("awui peer status");
+    const approveAnswer = await agent.post(`/api/chats/${caller.chatId}/requests/${card.id}`).send({ answer: { kind: "confirm", confirmed: true } });
+    expect(approveAnswer.status).toBe(200);
+    const paired = await pairing;
     expect(paired.status).toBe(200);
+    expect(paired.body.text).toContain("Pinned newbox");
     expect(await pins.outbound("newbox")).not.toBeNull();
     // Sync moves it to config.yml and out of peers.json.
     const synced = await call(agent, token, "mesh_peer_sync_config", { names: ["newbox"] });
@@ -328,14 +385,99 @@ describe("mesh orchestration", () => {
     expect(readFileSync(configFile, "utf8")).toContain("newbox");
 
     // A delegated child may never add a machine, whatever mesh.chats says.
-    const caller = app.manager.list().find((chat) => chat.orchestration?.token === token);
-    if (!caller) throw new Error("no caller chat");
     caller.lineage = { kind: "delegate", taskId: "t1", parentChatId: "p1", parentTitle: null, depth: 1 };
     const child = await call(agent, token, "mesh_peer_add", { name: "otherbox", tls: "127.0.0.1:4785" });
     expect(child.status).toBe(403);
     expect(child.body.code).toBe("mesh_lead_only");
+
+    // The audit log saw the add, the denial, and the pin — and never the digits.
+    expect(auditEntries.filter((entry) => entry.method === "mesh_peer_add").length).toBeGreaterThan(0);
+    const pairEntries = auditEntries.filter((entry) => entry.method === "mesh_peer_pair");
+    expect(pairEntries.some((entry) => entry.decision === "deny")).toBe(true);
+    expect(pairEntries.some((entry) => entry.decision === "allow")).toBe(true);
+    const digits = String(added.body.data.contact.sas).replace(/\s/g, "");
+    for (const entry of auditEntries) expect(JSON.stringify(entry)).not.toContain(digits);
   });
 
+  it("refuses a pair whose target is unreachable, echoing no SAS", async () => {
+    const base = cannedWorker(await loadOrCreateIdentity(tempDir("awui-mesh-w-")));
+    const client = await loadOrCreateIdentity(tempDir("awui-mesh-c-"));
+    const pins = PinStore(path.join(tempDir("awui-mesh-pins-"), "pins.json"));
+    const saved = PeerPeersStore(path.join(tempDir("awui-mesh-saved-"), "mesh", "peers.json"));
+    let broken = false;
+    const manager = new PeerManager({
+      identity: async () => client,
+      pins,
+      config: () => ({ enabled: true, peers: [] }),
+      enabled: () => true,
+      localName: () => "leader-box",
+      savedPeers: () => saved.snapshot(),
+      // Nothing listens once broken: the add reached the machine, the pairing cannot.
+      spawn: (name: string, link: PeerLink) => {
+        if (broken) throw new Error("connect ECONNREFUSED 127.0.0.1:4785");
+        return base.spawn(name, link);
+      },
+    });
+    const { agent, token } = await setup({
+      ...peersOf(manager),
+      admin: { saved, localName: () => "leader-box", syncConfig: async () => ({ moved: [], kept: [], unknown: [] }) },
+    });
+    const added = await call(agent, token, "mesh_peer_add", { name: "newbox", ssh: "user@lab" });
+    expect(added.status).toBe(200);
+    const sas = String(added.body.data.contact.sas);
+    broken = true;
+    // A leftover sas argument changes nothing about the refusal either.
+    const refused = await call(agent, token, "mesh_peer_pair", { name: "newbox", sas });
+    expect(refused.status).toBe(502);
+    expect(refused.body.code).toBe("peer_unreachable");
+    // The refusal says the machine is unreachable and nothing else: the SAS never appears in an error body.
+    expect(JSON.stringify(refused.body)).not.toContain(sas.replace(/\s/g, ""));
+    expect(JSON.stringify(refused.body)).not.toMatch(/\d{3}\s?\d{3}/);
+    expect(await pins.outbound("newbox")).toBeNull();
+  });
+
+  it("pins only the key the card showed: a link that changed while the card waited is refused, without the new SAS", async () => {
+    const worker = await flipWorker();
+    const client = await loadOrCreateIdentity(tempDir("awui-mesh-c-"));
+    const pins = PinStore(path.join(tempDir("awui-mesh-pins-"), "pins.json"));
+    const saved = PeerPeersStore(path.join(tempDir("awui-mesh-saved-"), "mesh", "peers.json"));
+    const manager = new PeerManager({
+      identity: async () => client,
+      pins,
+      config: () => ({ enabled: true, peers: [] }),
+      enabled: () => true,
+      localName: () => "leader-box",
+      savedPeers: () => saved.snapshot(),
+      spawn: worker.spawn,
+    });
+    const { app, agent, token } = await setup({
+      ...peersOf(manager),
+      admin: { saved, localName: () => "leader-box", syncConfig: async () => ({ moved: [], kept: [], unknown: [] }) },
+    });
+    const added = await call(agent, token, "mesh_peer_add", { name: "newbox", ssh: "user@lab" });
+    expect(added.status).toBe(200);
+    const sas = String(added.body.data.contact.sas);
+    const caller = app.manager.list().find((chat) => chat.orchestration?.token === token);
+    if (!caller) throw new Error("no caller chat");
+
+    const pairing = call(agent, token, "mesh_peer_pair", { name: "newbox" });
+    void pairing.then(() => undefined, () => undefined);
+    await waitUntil(() => caller.snapshot().pending.some((r) => r.id.startsWith("dc-mesh-pair-")), 4_000, "the pairing card");
+    // The far side swaps its key and the link dies: the card the person approved is now about a machine that is not there.
+    worker.flip();
+    worker.killAll();
+    const card = caller.snapshot().pending.find((r) => r.id.startsWith("dc-mesh-pair-"))!;
+    const approveAnswer = await agent.post(`/api/chats/${caller.chatId}/requests/${card.id}`).send({ answer: { kind: "confirm", confirmed: true } });
+    expect(approveAnswer.status).toBe(200);
+    const refused = await pairing;
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("peer_changed");
+    expect(String(refused.body.message ?? "")).toContain("nothing was pinned");
+    // Neither SAS — the one the card showed nor the new one — is echoed back, and no key is pinned.
+    expect(JSON.stringify(refused.body)).not.toContain(sas.replace(/\s/g, ""));
+    expect(JSON.stringify(refused.body)).not.toMatch(/\d{3}\s?\d{3}/);
+    expect(await pins.outbound("newbox")).toBeNull();
+  });
   it("retries contact for a saved unpinned peer over the same transport, and still refuses a changed one", async () => {
     const client = await loadOrCreateIdentity(tempDir("awui-mesh-c-"));
     const pins = PinStore(path.join(tempDir("awui-mesh-pins-"), "pins.json"));
