@@ -978,6 +978,12 @@ class FakeLiveChat implements LiveChat {
       await this.say(approved ? "Approved path." : "Denied path.", signal);
       return;
     }
+    if (/\bformquestion\b/i.test(task)) {
+      // omp 19.1's whole-form ask, raised by a bot: only the user fills it in.
+      const data = await this.formQuestion(signal);
+      await this.say(`Submitted: ${JSON.stringify(data)}`, signal);
+      return;
+    }
     if (!/\bconsult/.test(task)) {
       // usagevary and every plain Board request: a short, distinguishable answer.
       await this.say(`Echo from ${name}: ${task.slice(0, 200)}`, signal);
