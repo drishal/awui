@@ -329,8 +329,12 @@ function sendInteractionFormDocument(res: Response, html: string): void {
   const nonce = randomBytes(16).toString("hex");
   res.setHeader(
     "Content-Security-Policy",
-    `default-src 'none'; img-src 'self' data: https: http:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-forms`,
+    `default-src 'none'; img-src 'self' data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-forms`,
   );
+  // Helmet is skipped for this path (the page must be framed by the app), so the
+  // headers it would otherwise set are set here: no remote images, which is the
+  // one outbound channel a script-less page still has, and no referrer.
+  res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Cache-Control", "no-store");
   res.type("html").send(interactionFormDocument(html, nonce));
