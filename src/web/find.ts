@@ -3,7 +3,7 @@
 // folded "Worked for …" process opens that fold first, which the browser's own
 // find cannot do. Matching is pure here; the component walks the DOM's text
 // and paints with the CSS Custom Highlight API, so the page is never rewritten.
-import { toolSentence } from "./tool-sentence.js";
+import { toolSentence } from "../shared/tool-row.js";
 import type { Turn } from "./turns.js";
 
 /** Where `needle` starts in `haystack`, case-insensitively, without overlaps. */

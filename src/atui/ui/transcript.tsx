@@ -23,6 +23,7 @@ import { easeOut, flashAt, mix, unrollCounts } from "../fx.js";
 import { filetypeOf, taskBoxes } from "../markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll, turnTone, type TurnTone } from "../minimap.js";
 import { latestThoughtLine, neatRow, rowHead, sigmaFacts, thinkingMeta, workRuns, type WorkRun } from "../neat.js";
+import { callDuration } from "../../shared/tool-row.js";
 import { accentOf, categoryTone, type Theme } from "../theme.js";
 import { highlightPreview } from "../words.js";
 import { useAtui, useTheme } from "./context.js";
@@ -468,8 +469,14 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
   const row = createMemo(() => neatRow(p.item, p.workspace));
   const preview = createMemo(() => (row().diff ? highlightPreview(row().diff ?? []) : null));
   const running = () => p.item.status === "running";
+  // The ticker wakes the clock under a running call, which then settles into the row's time.
+  const now = () => {
+    tick();
+    return Date.now();
+  };
+  const took = createMemo(() => callDuration(p.item, now()));
   // The line's own head, budgeted to the column: a long target ends in `…` rather than the renderer's mid-word cut.
-  const head = createMemo(() => rowHead(row(), 2 + row().glue.length + (running() ? " · running…".length : 0), p.column));
+  const head = createMemo(() => rowHead(row(), 2 + row().glue.length + (running() ? ` · ${took() ?? "running…"}`.length : 0), p.column));
   const failed = () => p.item.status === "error";
   const bad = (f: string) => failed() || /^(?:[1-9]\d* failed|exit [1-9])/.test(f);
   const factColor = (f: string) => (bad(f) ? t().danger : t().muted);
@@ -506,7 +513,7 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
             </Show>
           </Show>
           <Show when={running()}>
-            <span style={{ fg: t().muted }}> · running…</span>
+            <span style={{ fg: t().muted }}>{` · ${took() ?? "running…"}`}</span>
           </Show>
         </text>
         <Show when={wraps() && row().detail}>
@@ -534,7 +541,7 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
             </box>
           </box>
         </Show>
-        <Show when={!running() && row().facts.length > 0}>
+        <Show when={!running() && (row().facts.length > 0 || took())}>
           <box paddingLeft={2}>
             <text wrapMode="none" truncate>
               <span style={{ fg: t().muted }}>└ </span>
@@ -551,6 +558,11 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
                   </>
                 )}
               </Index>
+              <Show when={took()}>
+                {(time) => (
+                  <span style={{ fg: t().muted }}>{`${row().facts.length > 0 ? " · " : ""}${time()}`}</span>
+                )}
+              </Show>
             </text>
           </box>
         </Show>
@@ -612,6 +624,11 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
   const [open, setOpen] = createSignal(false);
   const row = createMemo(() => neatRow(p.item, p.workspace));
   const running = () => p.item.status === "running";
+  const now = () => {
+    tick();
+    return Date.now();
+  };
+  const took = createMemo(() => callDuration(p.item, now()));
   const bad = (f: string) => p.item.status === "error" || /^(?:[1-9]\d* failed|exit [1-9])/.test(f);
   const tail = createMemo(() => (running() && p.item.category === "command" ? outputTail(p.item.output, LIVE_LINES) : []));
   const href = () => (p.item.paths[0] ? fileUrl(p.item.paths[0], p.workspace) : null);
@@ -619,7 +636,8 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
   const fork = () => (p.last ? "└─ " : p.first && !row().note ? "┌─ " : "├─ ");
   // Budgeted like ToolRow's head, with the tree's own parts: connector, bullet, the
   // running marker or the right-aligned facts block and the two-column gap before it.
-  const head = createMemo(() => rowHead(row(), fork().length + 3 + (running() ? " · running…".length : row().facts.length > 0 ? row().facts.join(" · ").length + 2 : 0), p.column));
+  const spent = () => fork().length + 3 + (running() ? ` · ${took() ?? "running…"}`.length : row().facts.length > 0 || took() ? `${row().facts.join(" · ")}${row().facts.length > 0 && took() ? " · " : ""}${took() ?? ""}`.length + 2 : 0);
+  const head = createMemo(() => rowHead(row(), spent(), p.column));
   return (
     <box flexDirection="column">
       <Show when={row().note}>
@@ -647,10 +665,10 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
             )}
           </Show>
           <Show when={running()}>
-            <span style={{ fg: t().muted }}> · running…</span>
+            <span style={{ fg: t().muted }}>{` · ${took() ?? "running…"}`}</span>
           </Show>
         </text>
-        <Show when={!running() && row().facts.length > 0}>
+        <Show when={!running() && (row().facts.length > 0 || took())}>
           <box flexGrow={1} minWidth={2} />
           <text flexShrink={0} wrapMode="none">
             <Index each={row().facts}>
@@ -665,6 +683,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
                 </>
               )}
             </Index>
+            <Show when={took()}>{(time) => <span style={{ fg: t().muted }}>{`${row().facts.length > 0 ? " · " : ""}${time()}`}</span>}</Show>
           </text>
         </Show>
       </box>

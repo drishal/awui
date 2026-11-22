@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ToolItem } from "../../src/shared/protocol.js";
 import { toolFacts } from "../../src/web/tool-facts.js";
-import { toolSentence } from "../../src/web/tool-sentence.js";
+import { toolSentence } from "../../src/shared/tool-row.js";
 
 // Outputs below were captured from the real tools in this repo (vitest, tsc, rg, git), except
 // pytest, cargo, go, eslint, npm and pip, which are written to those tools' documented formats.

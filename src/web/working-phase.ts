@@ -2,7 +2,7 @@
 // "Thinking", then the running call's own sentence ("Running npm test"), then
 // "Writing" once the answer streams. Real states only, never a timer. Pure.
 import { saysSomething, type Turn } from "./turns.js";
-import { toolSentence } from "./tool-sentence.js";
+import { toolSentence } from "../shared/tool-row.js";
 
 /** A phase change is held back until the last one has been up this long, so a burst of fast calls does not flicker. */
 export const PHASE_HOLD_MS = 600;

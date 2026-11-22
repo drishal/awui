@@ -18,7 +18,7 @@ import { chatJobs, jobElapsed, jobStart, type ChatJob } from "../web/jobs.js";
 import { OPEN_DEPTH, parseJsonContainer } from "../web/json-tree.js";
 import type { ChatState } from "../web/chat-state.js";
 import { fileUrl, STATUS_LABEL, unifiedDiff } from "../atui/format.js";
-import { commandLine, toolSentence } from "../web/tool-sentence.js";
+import { commandLine, toolSentence } from "../shared/tool-row.js";
 import { testProgress, type TestProgress } from "../web/tool-facts.js";
 import { neatRow, shortPath, thoughtTitle } from "../atui/neat.js";
 

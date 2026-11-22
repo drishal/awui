@@ -109,15 +109,15 @@ describe("atui", () => {
     // outcome at the end of its line, the answer marked, and a Σ line of what the turn did.
     expect(f).toContain("❯ showcase tool edit please");
     expect(f).toContain("┌─ ● Read README.md");
-    expect(f).toMatch(/├─ ● Edit src\/app\.ts +Added 1 line, removed 1 line/);
+    expect(f).toMatch(/├─ ● Edited src\/app\.ts +\+1 −1/);
     expect(f).toMatch(/└─ ● /);
     expect(f).toContain("● Echo: showcase tool edit please");
     expect(f).toMatch(/Σ \d+ calls · /);
     expect(f).not.toContain("Worked for");
     expect(f).toContain("Fake Echo ▾  Low ▾");
     // Clicked, a call is framed on the tree's trunk, its outcome in the bottom edge.
-    await ui.click("Edit src/app.ts");
-    const framed = await ui.until("╰─ Added 1 line, removed 1 line");
+    await ui.click("Edited src/app.ts");
+    const framed = await ui.until("╰─ +1 −1");
     expect(framed).toContain("╭");
     // C-x e folds every turn to its line, and brings the work back.
     ui.keys.pressKey("x", { ctrl: true });
@@ -169,7 +169,7 @@ describe("atui", () => {
     await idle(ui);
     const f = await ui.until("Echo: interleaved please");
     const reply = f.indexOf("this is reply block 1");
-    const command = f.indexOf("● Bash");
+    const command = f.indexOf("● Ran");
     expect(reply).toBeGreaterThan(0);
     expect(command).toBeGreaterThan(reply);
     expect(f.indexOf("Echo: interleaved please")).toBeGreaterThan(command);
@@ -225,7 +225,8 @@ describe("atui", () => {
     expect(live).toContain("│  ✓ tests/unit/step-2.test.ts");
     expect(live).not.toContain("step-1.test.ts");
     // The bullet blinks between filled and hollow while the call runs.
-    expect(live).toMatch(/[●○] Bash · running…/);
+    // The marker ticks: "running…" until the call has gone on long enough to show its time.
+    expect(live).toMatch(/[●○] Running · (?:running…|\d)/);
     await idle(ui);
     expect(await ui.frame()).not.toContain("step-6.test.ts");
   }, 30_000);
@@ -1089,16 +1090,17 @@ describe("atui's density at 80 columns", () => {
     await ui.escape();
   }, 30_000);
 
-  it("ends a too-long tool target with an ellipsis, not a mid-word cut", async () => {
+  it("words a plan row the browser's way, and leaves a target that fits whole", async () => {
     ui = await mount(path.join(server.root, "alpha"), { width: 80, height: 44 });
     await ui.type("showcase tool edit please");
     ui.keys.pressEnter();
     await idle(ui);
     const frame = await ui.until("Changed 3 files");
-    const row = frame.split("\n").find((line) => line.includes("Todo write"));
+    // A todo call is a plan row, worded as the web row words it (shared/tool-row.ts).
+    // Adjacent plans fold onto one row (turns.ts), worded as the web row words it (shared/tool-row.ts).
+    const row = frame.split("\n").find((line) => line.includes("Updated the plan"));
     expect(row).toBeDefined();
-    expect(row).toMatch(/Todo write .*…/);
-    expect(row).not.toMatch(/\.\.\./);
+    expect(row).not.toContain("TodoWrite");
     expect((row ?? "").length).toBeLessThanOrEqual(80);
     // A target that fits is left whole.
     expect(frame).toContain("Read src/net.ts:1-20");

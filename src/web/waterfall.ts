@@ -7,7 +7,7 @@
 // whose harness reported them (no harness reports them per model step or tool call).
 import type { AssistantItem, ChatItem } from "../shared/protocol.js";
 import { dollars, shortTokens } from "./usage.js";
-import { toolSentence } from "./tool-sentence.js";
+import { toolSentence } from "../shared/tool-row.js";
 import { formatDuration, type Turn } from "./turns.js";
 
 export type WaterfallKind = "thinking" | "reply" | "tool" | "agent" | "subagent";

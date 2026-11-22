@@ -4,7 +4,7 @@
 import { awuiOpenCodeFamily } from "../shared/awui-mcp.js";
 import type { ChatItem, ToolCategory, ToolKind } from "../shared/protocol.js";
 import { toolFacts } from "./tool-facts.js";
-import { isPlanCall, orchestrationTool } from "./tool-sentence.js";
+import { isPlanCall, orchestrationTool } from "../shared/tool-row.js";
 
 /** A kind as the icon stack draws it: the category's glyph, a server's monogram, or the checklist. */
 export interface ToolKindChip {

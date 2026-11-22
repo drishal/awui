@@ -11,7 +11,7 @@ import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
 import { useToolStyle } from "../tool-style.js";
 import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, isEmojiOnly, latestThought, modelName, modelSwitches, relativePath, sameChangeStat, saysSomething, segmentStartsOpen, toolLabel, type ChangeStat, type Turn, workAfterSegment, workSegments, type WorkSegment } from "../turns.js";
 import { useNow } from "../hooks.js";
-import { callTime, toolSentence } from "../tool-sentence.js";
+import { callDuration, toolSentence } from "../../shared/tool-row.js";
 import { testProgress } from "../tool-facts.js";
 import { TestMeter } from "./TestMeter.js";
 import { JobCard } from "./JobCard.js";
@@ -164,9 +164,7 @@ const ThoughtRow = memo(function ThoughtRow({ id, thinking, streaming }: { id: s
   );
 });
 
-/** A call shows its time only once it has run this long — a flash of "1s" on a
- *  200ms call is noise, not feedback (neat-render does the same). */
-const TIMER_AFTER_MS = 1500;
+
 /** A call's kind as a 20px chip: the category's glyph, or an MCP server's monogram in a hue drawn from the theme. */
 function KindChip({ kind, running = false }: { kind: ToolKindChip; running?: boolean }) {
   return (
@@ -186,12 +184,9 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   const failed = item.status === "error";
   const running = item.status === "running";
   // Stopwatch: ticks while the call runs and stays as the call's duration once
-  // it settles, either only past TIMER_AFTER_MS.
+  // it settles, either only past the shared threshold (tool-row.ts's callDuration).
   const now = useNow(running && item.at !== undefined);
-  const elapsedMs = running && item.at !== undefined ? Math.max(0, now - item.at) : undefined;
-  const tookMs = !running && item.at !== undefined && item.endedAt !== undefined ? item.endedAt - item.at : undefined;
-  const ms = elapsedMs ?? tookMs;
-  const time = ms !== undefined && ms >= TIMER_AFTER_MS ? (running ? formatDuration(ms) : callTime(ms)) : null;
+  const time = callDuration(item, now) ?? null;
   const sentence = toolSentence(item, workspace);
   const kind = toolKind(item);
   const arrival = useArrival(item.id);

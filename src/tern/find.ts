@@ -6,7 +6,7 @@ import type { ChatItem, UserItem } from "../shared/protocol.js";
 import type { Turn } from "../web/turns.js";
 import { workAfterSegment, workSegments } from "../web/turns.js";
 import { findOffsets } from "../web/find.js";
-import { toolSentence } from "../web/tool-sentence.js";
+import { toolSentence } from "../shared/tool-row.js";
 
 /** The most places one query lists: a common word in a long chat would otherwise fill the sheet. */
 export const FIND_LIMIT = 50;

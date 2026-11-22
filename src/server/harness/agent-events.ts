@@ -7,7 +7,7 @@ import { awuiOpenCodeFamily } from "../../shared/awui-mcp.js";
 // share; the row family is read from the same places so no client re-derives them.
 // Phase 2 moves them into src/shared.
 import { toolArgs, toolFacts } from "../../web/tool-facts.js";
-import { isPlanCall, orchestrationTool } from "../../web/tool-sentence.js";
+import { isPlanCall, orchestrationTool } from "../../shared/tool-row.js";
 import { argsDiff, resultDiff } from "./tool-diff.js";
 import { imageRefs } from "../image-store.js";
 import { applyReports, asyncReports, detailReports, hasAgentCells, isAgentTool, notifyReports, runsFromArgs, runsFromDetails, settleRuns, type AgentReport } from "./subagents.js";

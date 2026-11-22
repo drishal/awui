@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolItem } from "../../src/shared/protocol.js";
-import { callTime, errorLine, orchestrationTool, toolSentence, toolWords } from "../../src/web/tool-sentence.js";
+import { callDuration, callTime, errorLine, orchestrationTool, TOOK_AFTER_MS, toolSentence, toolWords } from "../../src/shared/tool-row.js";
 
 const WS = "/home/me/proj";
 function tool(over: Partial<ToolItem> & Pick<ToolItem, "name" | "category">): ToolItem {
@@ -263,5 +263,32 @@ describe("the orchestration surface", () => {
     expect(toolSentence(mcp("thread_wait", { taskIds: ["ab12", "cd34"] }), WS).text).toBe("Waited on 2 tasks");
     expect(toolSentence({ ...mcp("thread_wait", { taskIds: ["ab12"] }), status: "running" }, WS).text).toBe("Waiting on task ab12");
     expect(toolSentence(call("list_profiles"), WS).text).toBe("Listed the agents");
+  });
+});
+
+describe("a call with no command of its own", () => {
+  it("says what it was rather than standing targetless", () => {
+    // Claude's `BashOutput {shell_id}` names no command, and its summary is empty.
+    const out = toolSentence(tool({ name: "BashOutput", category: "command", args: args({ shell_id: "abc" }), output: "one line\n" }), WS);
+    expect(out.text).toBe("Ran bash output");
+    expect(out.target).toBe("bash output");
+  });
+});
+
+describe("a call's time on its row", () => {
+  it("says nothing under the threshold, and the settled time after", () => {
+    const call = tool({ name: "bash", category: "command" });
+    const done = { ...call, at: 1_000, endedAt: 1_000 + TOOK_AFTER_MS + 200 };
+    // A quick read's "0.2s" is noise, so a call under the threshold shows nothing at all.
+    expect(callDuration({ ...done, endedAt: 1_200 }, 5_000)).toBeUndefined();
+    expect(callDuration(done, 5_000)).toBe(callTime(TOOK_AFTER_MS + 200));
+    // A call with no times of its own says nothing either.
+    expect(callDuration(call, 5_000)).toBeUndefined();
+  });
+  it("ticks while the call runs, and only once it has gone on that long", () => {
+    const running = { ...tool({ name: "bash", category: "command" }), status: "running" as const, at: 1_000 };
+    expect(callDuration(running, 1_000 + TOOK_AFTER_MS - 1)).toBeUndefined();
+    expect(callDuration(running, 1_000 + 4_000)).toBe("4s");
+    expect(callDuration(running, 1_000 + 64_000)).toBe("1m 4s");
   });
 });

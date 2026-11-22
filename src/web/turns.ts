@@ -2,7 +2,7 @@
 // did (folded into one "Worked for …" line), and the final answer. Pattern
 // from DeepSeek Harness (process fold) with OpenCode-style tool counts.
 import type { AssistantItem, ChatItem, ChatStatus, HtmlRenderRef, NoticeItem, ToolCategory, UserItem } from "../shared/protocol.js";
-import { isPlanCall } from "./tool-sentence.js";
+import { isPlanCall } from "../shared/tool-row.js";
 
 /** The lines a turn's edits and writes added and removed, over the files they changed. */
 export interface ChangeStat {

@@ -129,11 +129,14 @@ const ORIGIN_TITLE: Record<LineOrigin, string> = {
 export function DiffView({
   diff,
   expanded = false,
+  workspace,
   onLine,
   notes,
   origins,
 }: {
   diff: ToolDiff;
+  /** The project a hunk's own path is under, so a multi-file diff names its files the way the rest of the row does. */
+  workspace?: string;
   /** Every line at once, without the "Show all" fold. */
   expanded?: boolean;
   /** Lines are buttons: the review panel's "comment on this line". */
@@ -164,7 +167,7 @@ export function DiffView({
           </div>
         ) : l.kind === "hunk" ? (
           <div className="diff-hunk" role="row" key={i}>
-            {l.text}
+            {workspace ? relativePath(l.text, workspace) : l.text}
           </div>
         ) : (
           <Fragment key={i}>
@@ -341,7 +344,7 @@ function CallBody({ item, workspace }: { item: ToolItem; workspace: string }) {
         {path ? <FileLink path={path} /> : item.name}
       </CardHead>,
       <>
-        <DiffView diff={item.diff} />
+        <DiffView diff={item.diff} workspace={workspace} />
         {settledNote ? <div className={`tool-card-note${failed ? " is-error" : ""}`}>{item.output}</div> : null}
         {item.output && !settledNote && item.status !== "running" ? (
           <details className="tool-card-raw">

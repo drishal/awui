@@ -2,7 +2,7 @@
 // itself (the harness owns tools, approvals, and trust), so "retry" is a message:
 // it names the call and says how it failed, and the agent decides. Pure.
 import type { ChatStatus, ToolItem } from "../shared/protocol.js";
-import { toolSentence } from "./tool-sentence.js";
+import { toolSentence } from "../shared/tool-row.js";
 
 /** The call as the agent would have been running it: "running npm run e2e". */
 function whatItWasDoing(item: ToolItem, workspace: string): string {

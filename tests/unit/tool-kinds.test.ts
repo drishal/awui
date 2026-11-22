@@ -153,8 +153,8 @@ describe("the server decides the kind", () => {
   });
 
   it("is what the clients' chips are read from", () => {
-    expect(toolKind({ ...tool("read", "read"), toolKind: "test" })).toEqual({ key: "test", category: "command", test: true });
-    expect(toolKind({ ...tool("TodoWrite", "other"), toolKind: "todo" })).toEqual({ key: "plan", category: "other", plan: true });
-    expect(toolKind({ ...tool("mcp__linear__list_issues", "search"), toolKind: "mcp:linear" })).toEqual({ key: "mcp:linear", category: "search", server: "linear" });
+    expect(toolKind(call({ name: "read", category: "read", toolKind: "test" }))).toEqual({ key: "test", category: "command", test: true });
+    expect(toolKind(call({ name: "TodoWrite", toolKind: "todo" }))).toEqual({ key: "plan", category: "other", plan: true });
+    expect(toolKind(call({ name: "mcp__linear__list_issues", category: "search", toolKind: "mcp:linear" }))).toEqual({ key: "mcp:linear", category: "search", server: "linear" });
   });
 });

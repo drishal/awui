@@ -20,21 +20,22 @@ describe("atui rows, neat-render's way", () => {
   it("words reads, commands, searches, and fetches with their outcome", () => {
     expect(neatRow(tool({ args: JSON.stringify({ path: "/w/src/a.ts", offset: 1, limit: 20 }), paths: ["/w/src/a.ts"], output: "a\nb\n" }), "/w")).toEqual({ label: "Read", glue: " ", detail: "src/a.ts:1-20", facts: ["2 lines"] });
     const bash = neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "# check the tests\nnpm test" }), status: "error", output: "1 failed\nCommand exited with code 2" }), "/w");
-    expect(bash).toEqual({ label: "Bash", glue: " ", detail: "$ npm test", note: "check the tests", facts: ["exit 2", "2 lines"] });
-    expect(neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "ls" }), status: "error", output: "boom", exitCode: 1 }), "/w").facts).toEqual(["exit 1", "1 line"]);
+    expect(bash).toEqual({ label: "Couldn't run", glue: " ", detail: "$ npm test", note: "check the tests", facts: ["failed"] });
+    // A reported code is the exit code; the output's own words are never scraped for one.
+    expect(neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "ls" }), status: "error", output: "boom", exitCode: 1 }), "/w").facts).toEqual(["exit 1"]);
     // A reported code beats guessing one from the output text.
-    expect(neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "ls" }), status: "error", output: "all good", exitCode: 2 }), "/w").facts).toEqual(["exit 2", "1 line"]);
+    expect(neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "ls" }), status: "error", output: "all good", exitCode: 2 }), "/w").facts).toEqual(["exit 2"]);
     expect(neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "ls" }), output: "x" }), "/w").facts).toEqual(["1 line"]);
-    expect(neatRow(tool({ name: "grep", category: "search", args: JSON.stringify({ pattern: "listen", path: "/w/src" }), paths: ["/w/src"], output: "a\nb" }), "/w")).toMatchObject({ label: "Search", detail: "listen in src", facts: ["2 results"] });
-    expect(neatRow(tool({ name: "web_fetch", category: "web", args: JSON.stringify({ urls: ["https://example.com/a/", "https://b.dev"] }) }), "/w")).toMatchObject({ label: "Fetch", detail: "example.com/a +1 more" });
-    expect(neatRow(tool({ name: "web_search", category: "web", args: JSON.stringify({ query: "pi tui" }) }), "/w")).toMatchObject({ label: "Search", detail: "pi tui" });
+    expect(neatRow(tool({ name: "grep", category: "search", args: JSON.stringify({ pattern: "listen", path: "/w/src" }), paths: ["/w/src"], output: "a\nb" }), "/w")).toMatchObject({ label: "Searched for", detail: "listen in src", facts: ["2 results"] });
+    expect(neatRow(tool({ name: "web_fetch", category: "web", args: JSON.stringify({ urls: ["https://example.com/a/", "https://b.dev"] }) }), "/w")).toMatchObject({ label: "Fetched", detail: "example.com/a +1 more" });
+    expect(neatRow(tool({ name: "web_search", category: "web", args: JSON.stringify({ query: "pi tui" }) }), "/w")).toMatchObject({ label: "Searched the web for", detail: "pi tui" });
   });
 
   it("names a tool it does not know by its words, and an MCP tool by its server", () => {
     expect(humanise("lsp_diagnostics")).toBe("LSP diagnostics");
-    expect(neatRow(tool({ name: "lsp_diagnostics", category: "other", summary: "src/a.ts" }), "/w")).toMatchObject({ label: "LSP diagnostics", detail: "src/a.ts" });
-    expect(neatRow(tool({ name: "mcp__context7__resolve-library-id", category: "other", summary: "react" }), "/w")).toMatchObject({ label: "Context7", detail: "resolve-library-id react" });
-    expect(neatRow(tool({ name: "codemode", category: "other", args: JSON.stringify({ code: "const a = await read()\nreturn a" }) }), "/w")).toMatchObject({ label: "Codemode", detail: "const a = await read() …" });
+    expect(neatRow(tool({ name: "lsp_diagnostics", category: "other", summary: "src/a.ts" }), "/w")).toMatchObject({ label: "Used", detail: "src/a.ts" });
+    expect(neatRow(tool({ name: "mcp__context7__resolve-library-id", category: "other", summary: "react" }), "/w")).toMatchObject({ label: "Asked", detail: "context7: resolve library id react" });
+    expect(neatRow(tool({ name: "codemode", category: "other", args: JSON.stringify({ code: "const a = await read()\nreturn a" }) }), "/w")).toMatchObject({ label: "Used", detail: "const a = await read() …" });
   });
 
   it("names an edit Edit and its path, says its scale, and previews its changed lines", () => {
@@ -50,7 +51,7 @@ describe("atui rows, neat-render's way", () => {
       { kind: "ctx" as const, text: "past the gap" },
     ];
     const row = neatRow(tool({ name: "edit", category: "edit", paths: ["/w/src/app.ts"], diffStat: { added: 2, removed: 1 }, diff: { lines, added: 2, removed: 1 } }), "/w");
-    expect(row).toMatchObject({ label: "Edit", glue: " ", detail: "src/app.ts", facts: ["Added 2 lines, removed 1 line"] });
+    expect(row).toMatchObject({ label: "Edited", glue: " ", detail: "src/app.ts", facts: ["+2 −1"] });
     expect(row.diff).toEqual([
       { marker: " ", text: "near" },
       { marker: "-", text: "a" },
@@ -59,7 +60,7 @@ describe("atui rows, neat-render's way", () => {
       { marker: " ", text: "far again" },
       { marker: "+", text: "c" },
     ]);
-    expect(neatRow(tool({ name: "write", category: "write", paths: ["/w/n.md"], diffStat: { added: 4, removed: 0 }, diff: { lines: [], added: 4, removed: 0 } }), "/w")).toMatchObject({ label: "Write", facts: ["Added 4 lines"] });
+    expect(neatRow(tool({ name: "write", category: "write", paths: ["/w/n.md"], diffStat: { added: 4, removed: 0 }, diff: { lines: [], added: 4, removed: 0 } }), "/w")).toMatchObject({ label: "Wrote", facts: ["+4"] });
     expect(neatRow(tool({ name: "edit", category: "edit", paths: ["/w/a.ts"], status: "error" }), "/w").facts).toEqual(["failed"]);
   });
 
@@ -127,16 +128,15 @@ describe("atui rows, neat-render's way", () => {
   });
 
   it("budgets a row's head line: a long target ends in an ellipsis, never a mid-word cut", () => {
-    // A todo call's summary runs long; on a 73-column pane with the facts block kept its room.
-    const todo = neatRow(tool({ name: "todo_write", category: "other", summary: "Done: Normalize each harness's diff, Ship the diff view, and put the row's own words in the tools it draws", output: "Updated" }), "/w");
-    expect(todo).toMatchObject({ label: "Todos", facts: [] });
-    const clipped = rowHead(todo, 3 + 2 + 1 + 2, 73);
-    expect(clipped.verb).toBe("Todos");
-    // The cut lands inside a word past the budget, so it backs up to that word's start: an ellipsis never splits one.
-    expect(clipped.detail?.endsWith("…")).toBe(true);
-    expect(clipped.detail).toBe("Done: Normalize each harness's diff, Ship the diff view,…");
+    // A command's own words run long; on a 73-column pane with the facts block kept its room.
+    const bash = neatRow(tool({ name: "bash", category: "command", args: JSON.stringify({ command: "rg -n 'Normalize each harness diff|Ship the diff view' src tests docs" }), output: "a\nb" }), "/w");
+    expect(bash).toMatchObject({ label: "Ran", detail: "$ rg -n 'Normalize each harness diff|Ship the diff view' src tests docs", facts: ["2 lines"] });
+    const clipped = rowHead(bash, 3 + 2 + 1 + "2 lines".length + 2, 73);
+    expect(clipped.verb).toBe("Ran");
+    // The cut lands inside "view", so it backs up to the word: the ellipsis never splits one.
+    expect(clipped.detail).toBe("$ rg -n 'Normalize each harness diff|Ship the diff…");
     // The whole head line fits the column it was budgeted for.
-    expect(`├─ ● ${clipped.verb} ${clipped.detail}  `.length + todo.facts.join(" · ").length).toBeLessThanOrEqual(73);
+    expect(`├─ ● ${clipped.verb} ${clipped.detail}  `.length + bash.facts.join(" · ").length).toBeLessThanOrEqual(73);
     // A target that fits is left alone, and a row with no target gets none.
     const read = rowHead(neatRow(tool({ name: "read", args: JSON.stringify({ path: "/w/src/a.ts", offset: 1, limit: 20 }), paths: ["/w/src/a.ts"], output: "a\nb\n" }), "/w"), 2 + 1, 73);
     expect(read.detail).toBe("src/a.ts:1-20");
@@ -148,24 +148,24 @@ describe("the row family comes before the category", () => {
   it("draws a server's call as that server's, whatever its name reads like", () => {
     // ACP and Claude name a server's tool `mcp__<server>__<tool>`; `list_issues` would otherwise be a search.
     const row = neatRow(tool({ name: "mcp__github__list_issues", category: "search", toolKind: "mcp:github", summary: "", output: "a\nb" }), "/w");
-    expect(row).toMatchObject({ label: "Github", detail: "list_issues", facts: ["2 lines"] });
+    expect(row).toMatchObject({ label: "Asked", detail: "github: list issues" });
     // Items stored before the server decided kinds still find their server.
-    expect(neatRow(tool({ name: "mcp__context7__resolve-library-id", category: "other", summary: "react" }), "/w")).toMatchObject({ label: "Context7", detail: "resolve-library-id react" });
+    expect(neatRow(tool({ name: "mcp__context7__resolve-library-id", category: "other", summary: "react" }), "/w")).toMatchObject({ label: "Asked", detail: "context7: resolve library id react" });
   });
 
-  it("draws a plan as a plan, with its first line as the target", () => {
+  it("draws a plan as a plan, and hands its text to the block under the row", () => {
     const row = neatRow(tool({ name: "ExitPlanMode", category: "other", toolKind: "plan", plan: "# Ship the diff view\n\n- normalize paths" }), "/w");
-    expect(row.label).toBe("Plan");
-    expect(row.detail).toBe("Ship the diff view");
+    expect(row.label).toBe("Updated");
+    expect(row.detail).toBe("the plan");
     expect(row.plan).toBe("# Ship the diff view\n\n- normalize paths");
   });
 
   it("draws a todo call as the list it holds, and hands the entries to the row", () => {
     const item = tool({ name: "TodoWrite", category: "other", toolKind: "todo", args: JSON.stringify({ todos: [{ content: "Read the spec", status: "completed" }, { content: "Write the code", status: "in_progress" }] }) });
     const row = neatRow(item, "/w");
-    expect(row.label).toBe("Todos");
-    expect(row.detail).toBe("Write the code");
-    expect(row.facts).toEqual(["1/2 done"]);
+    expect(row.label).toBe("Updated");
+    expect(row.detail).toBe("the plan (2 steps)");
+    expect(row.facts).toEqual(["1 of 2 done"]);
     expect(row.todos?.map((t) => t.status)).toEqual(["done", "active"]);
   });
 });

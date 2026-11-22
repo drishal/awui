@@ -3,13 +3,13 @@
 // Running uses the present participle, done the past tense, a failure "Couldn't …".
 // The facts beside it ("412 lines", "+12 −3") are only what the item itself holds;
 // nothing is guessed, so a call this module cannot read shows just its time.
-// Pure, so the web tool card and its unit tests share it. atui keeps its own verb
-// table (neat.ts) because the terminal prints it differently.
-import { awuiOpenCodeTool } from "../shared/awui-mcp.js";
-import type { ToolItem } from "../shared/protocol.js";
-import { toolArgs, toolFacts } from "./tool-facts.js";
-import { formatSpan } from "./turn-time.js";
-import { relativePath } from "./turns.js";
+// Pure and shared (src/shared), so the web tool row, the terminal client's rows, and
+// the Tern client word a call the same way; each keeps its own layout around it.
+import { awuiOpenCodeTool } from "./awui-mcp.js";
+import type { ToolItem } from "./protocol.js";
+import { toolArgs, toolFacts } from "../web/tool-facts.js";
+import { formatSpan } from "../web/turn-time.js";
+import { formatDuration, relativePath } from "../web/turns.js";
 
 export interface ToolSentence {
   /** "Read", "Searching for", "Couldn't read". */
@@ -280,7 +280,9 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
       return make(item.category, path ? rel(path) : item.summary, true, undefined, settled ? facts : []);
     }
     case "command": {
-      const cmd = str(args.command) ?? str(args.cmd) ?? str(args.script) ?? str(args.code) ?? str(args.input) ?? item.summary;
+      // A call that names no command of its own (Claude's `BashOutput {shell_id}`, a tool that fills its
+      // command in later) says what it is rather than standing targetless with an empty summary.
+      const cmd = str(args.command) ?? str(args.cmd) ?? str(args.script) ?? str(args.code) ?? str(args.input) ?? (item.summary || toolWords(item.name));
       const n = lineCount(item.output);
       // A reported exit code says more than a line count (OpenCode reports one; a parsed test
       // run still wins, since its summary says the most). Success is the expected case, so a
@@ -316,4 +318,19 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
 /** A call's time as a row shows it: milliseconds under a second, tenths under ten seconds, then the fold's "2m 5s". */
 export function callTime(ms: number): string {
   return ms < 1000 ? `${Math.round(Math.max(0, ms))}ms` : formatSpan(ms);
+}
+
+/** Under this a duration says nothing ("0.2s" on every quick read is noise): the web row's threshold, shared. */
+export const TOOK_AFTER_MS = 1500;
+
+/**
+ * A call's duration as a row shows it, or nothing under the threshold: while it runs, how long it has been
+ * going by `now`; once it settles, how long it took. `now` is only read for a running call.
+ */
+export function callDuration(item: ToolItem, now: number): string | undefined {
+  if (item.at === undefined) return undefined;
+  const running = item.status === "running";
+  const ms = running ? Math.max(0, now - item.at) : item.endedAt !== undefined ? item.endedAt - item.at : undefined;
+  if (ms === undefined || ms < TOOK_AFTER_MS) return undefined;
+  return running ? formatDuration(ms) : callTime(ms);
 }

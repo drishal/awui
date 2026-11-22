@@ -16,9 +16,8 @@
 import type { AssistantItem, ChatItem, ToolItem } from "../shared/protocol.js";
 import { clip } from "./format.js";
 import { relativePath, type Turn } from "../web/turns.js";
-import { toolFacts } from "../web/tool-facts.js";
 import { todoEntries, type TodoEntry } from "../shared/todo-entries.js";
-import { isPlanCall, toolWords } from "../web/tool-sentence.js";
+import { isPlanCall, toolSentence, toolWords } from "../shared/tool-row.js";
 
 export interface NeatRow {
   label: string;
@@ -56,10 +55,6 @@ function args(item: ToolItem): Record<string, unknown> {
   }
 }
 
-function lineCount(text: string): number {
-  const trimmed = text.replace(/\n+$/, "");
-  return trimmed ? trimmed.split("\n").length : 0;
-}
 
 /** A path relative to the project, `~` for home, and only its last three parts when it is deep. */
 export function shortPath(p: string, workspace: string, home = process.env.HOME ?? ""): string {
@@ -90,72 +85,40 @@ export function splitComments(cmd: string, marker = "#"): { note?: string; comma
   return { note: notes.join(" "), command };
 }
 
-/** "Added 35 lines, removed 2 lines": Claude Code's phrasing. */
-function diffStat(added: number, removed: number): string | undefined {
-  const parts: string[] = [];
-  if (added) parts.push(`Added ${plural(added, "line")}`);
-  if (removed) parts.push(`removed ${plural(removed, "line")}`);
-  return parts.length > 0 ? parts.join(", ") : undefined;
-}
-
-const shortUrl = (u: string) => u.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-
-/** A server's call: the server as the row's verb (its monogram in the fold head), then its tool and what it was given. */
-function mcpRow(item: ToolItem, server: string, lines: number, outcome: (facts: string[]) => string[]): NeatRow {
-  const mcp = mcpLabel(item.name);
-  // awui's own servers on OpenCode name their tool after the chat's id, so those rows say what the call did.
-  const what = mcp ? [mcp.tool, item.summary].filter(Boolean).join(" ") : item.summary || toolWords(item.name);
-  return { label: humanise(server), glue: " ", detail: what, facts: outcome(lines ? [plural(lines, "line")] : []) };
-}
-
 export function neatRow(item: ToolItem, workspace: string): NeatRow {
   const a = args(item);
-  const failed = item.status === "error";
   const running = item.status === "running";
-  const lines = running ? 0 : lineCount(item.output);
   const path = item.paths[0] ?? str(a.path) ?? str(a.file_path);
-  // A failure says so, unless an exit code already does.
-  const outcome = (facts: string[]) => (failed && !facts.some((f) => /^(failed|exit \d)/.test(f)) ? ["failed", ...facts] : facts);
+  // The words are the web tool row's (shared/tool-row.ts), so one call reads the same in every
+  // client; a terminal keeps its own target compact and its own mark on a failure.
+  const sentence = toolSentence(item, workspace);
+  const failed = item.status === "error";
+  // A terminal row has no error line beside it: a failure no fact names says "failed".
+  const facts: string[] = failed && !sentence.facts.some((f: string) => /^(failed|exit \d)/.test(f)) ? ["failed", ...sentence.facts] : sentence.facts;
+  const row = (detail: string | undefined, extra: Partial<NeatRow> = {}): NeatRow => ({
+    label: sentence.verb,
+    glue: " ",
+    ...(detail ? { detail } : {}),
+    facts,
+    ...(sentence.failed ? { failed: true } : {}),
+    ...extra,
+  });
+  // The sentence's target with what follows it: "the plan (2 steps)", "github: list issues".
+  const subject = sentence.rest?.startsWith(":") ? `${sentence.target}${sentence.rest}` : [sentence.target, sentence.rest].filter(Boolean).join(" ");
 
-  if (item.subagents) {
-    const runs = item.subagents.runs;
-    const done = runs.filter((r) => r.status === "done").length;
-    return { label: item.name, glue: " ", detail: plural(runs.length, "agent"), facts: outcome(running ? [] : [`${done}/${runs.length} done`]) };
-  }
-
-  // A render_html call published an HTML page; a terminal cannot show the page itself, so the row names it.
-  if (item.htmlRender) {
-    const page = item.htmlRender;
-    return { label: "Render", glue: " ", detail: page.title, facts: outcome([`${page.height}px, page in web UI`]) };
-  }
-
+  const kind = item.toolKind;
   // The row family is resolved before the category: a server's `list_issues` is that server's
   // call rather than a search, and a plan or a todo list is neither "other" nor a write.
-  const kind = item.toolKind;
-  if (kind?.startsWith("mcp:")) return mcpRow(item, kind.slice(4), lines, outcome);
-  // A snapshot stored before the server decided kinds, and a replayed call, still read their server.
-  if (kind === undefined) {
-    const mcp = mcpLabel(item.name);
-    if (mcp) return mcpRow(item, mcp.server, lines, outcome);
-  }
+  if (kind?.startsWith("mcp:") || (kind === undefined && mcpLabel(item.name))) return row(mcpDetail(item, subject));
+  if (kind === "render") return row(item.htmlRender?.title ?? subject);
   if (kind === "todo" || (kind === undefined && /todo/i.test(item.name))) {
-    const entries = todoEntries(a);
-    const done = entries?.filter((t) => t.status === "done").length ?? 0;
-    const active = entries?.find((t) => t.status === "active");
-    const total = entries?.length ?? 0;
-    const facts = total > 0 ? [`${done}/${total} done`] : [];
-    return {
-      label: "Todos",
-      glue: " ",
-      detail: active?.text ? clip(active.text, 70) : item.summary || "the list",
-      facts: outcome(facts),
-      ...(entries ? { todos: entries } : {}),
-    };
+    // The list itself hangs under the row (transcript.tsx draws it), so the row says where it stands.
+    return row(subject, { ...(todoEntries(a) ? { todos: todoEntries(a) as TodoEntry[] } : {}) });
   }
   if (kind === "plan" || (kind === undefined && isPlanCall(item.name, item.plan !== undefined) && !/todo/i.test(item.name))) {
-    const first = item.plan?.split("\n").map((l) => l.replace(/^[#>*\-\s]+/, "").trim()).find(Boolean);
-    return { label: "Plan", glue: " ", detail: first ? clip(first, 70) : item.summary || "the plan", facts: outcome([]), ...(item.plan ? { plan: item.plan } : {}) };
+    return row(subject, { ...(item.plan ? { plan: item.plan } : {}) });
   }
+  if (kind === "job" || kind === "ask" || kind === "agent") return row(subject);
 
   switch (item.category) {
     case "read": {
@@ -164,45 +127,30 @@ export function neatRow(item: ToolItem, workspace: string): NeatRow {
       const limit = num(a.limit);
       const to = num(a.end_line) ?? num(a.endLine) ?? (from !== undefined && limit !== undefined ? from + limit - 1 : undefined);
       if (from !== undefined) where += to !== undefined ? `:${from}-${to}` : `:${from}`;
-      return { label: "Read", glue: " ", detail: where, facts: outcome(lines ? [plural(lines, "line")] : []) };
+      return row(where);
     }
     case "command": {
-      const cmd = str(a.command) ?? str(a.cmd) ?? str(a.script) ?? str(a.code) ?? item.summary;
+      // The call's own command, whole as the terminal has room for it, with the model's leading note above.
+      const cmd = str(a.command) ?? str(a.cmd) ?? str(a.script) ?? str(a.code) ?? str(a.input) ?? (item.summary || toolWords(item.name));
       const lang = str(a.language);
       const { note, command } = splitComments(cmd, lang === "js" ? "//" : "#");
-      const label = /bash|shell|terminal|exec/i.test(item.name) ? "Bash" : lang === "js" ? "JavaScript" : lang === "py" ? "Python" : item.name;
-      // Success is the expected case and the bullet already says it: only a failure's code is worth a word.
-      // A reported code beats guessing one from the output's last lines.
-      const reported = typeof item.exitCode === "number" ? String(item.exitCode) : null;
-      const guessed = failed && reported === null ? /exit(?:ed)?(?: with)?(?: code|status)?:? (\d+)/i.exec(item.output.slice(-300)) : null;
-      const code = reported ?? (guessed ? guessed[1] : null);
-      const facts = code && code !== "0" ? [`exit ${code}`] : [];
-      const parsed = toolFacts(item);
-      if (parsed.facts.length > 0) facts.push(...parsed.facts);
-      else if (lines) facts.push(plural(lines, "line"));
-      return { label, glue: " ", detail: label === "Bash" ? `$ ${command}` : (command.split("\n").find((l) => l.trim()) ?? command), facts: outcome(facts), ...(parsed.failed ? { failed: true } : {}), ...(note ? { note } : {}) };
+      const bashish = /bash|shell|terminal|exec/i.test(item.name);
+      const detail = bashish ? `$ ${command}` : (command.split("\n").find((l) => l.trim()) ?? command);
+      return row(detail, { ...(note ? { note } : {}) });
     }
-    case "search": {
-      const q = str(a.pattern) ?? str(a.query) ?? str(a.regex) ?? str(a.name) ?? str(a.glob) ?? item.summary;
-      const scope = path && path !== "." ? ` in ${shortPath(path, workspace)}` : "";
-      return { label: "Search", glue: " ", detail: `${q}${scope}`, facts: outcome(lines ? [plural(lines, "result")] : []) };
-    }
+    case "search":
+      // The pattern and its scope are one phrase here ("listen in src"), as the shared sentence words it.
+      return row(subject);
     case "web": {
       // A page read is a Fetch, a query a Search; a fan-out names its first and how many more.
-      const url = str(a.url) ?? (Array.isArray(a.urls) ? str(a.urls[0]) : undefined);
-      const query = str(a.query) ?? str(a.q) ?? (Array.isArray(a.queries) ? str(a.queries[0]) : undefined);
       const many = Array.isArray(a.urls) ? a.urls.length : Array.isArray(a.queries) ? a.queries.length : 1;
-      const subject = url ? shortUrl(url) : (query ?? item.summary);
-      return { label: url ? "Fetch" : "Search", glue: " ", detail: many > 1 ? `${subject} +${many - 1} more` : subject, facts: outcome(lines ? [plural(lines, "line")] : []) };
+      return row(many > 1 ? `${subject} +${many - 1} more` : subject);
     }
     case "edit":
     case "write": {
-      const facts: string[] = [];
       let diff: NeatRow["diff"];
       let more = 0;
       if (!failed && !running) {
-        const stat = item.diffStat ? diffStat(item.diffStat.added, item.diffStat.removed) : undefined;
-        facts.push(stat ?? (item.diff || item.diffStat ? "no change" : "done"));
         // The changed lines and a line of context either side: what the edit is about.
         // A folded gap is a boundary, so a line past it is not "next to" the change.
         const all = item.diff?.lines ?? [];
@@ -211,24 +159,25 @@ export function neatRow(item: ToolItem, workspace: string): NeatRow {
         diff = near.slice(0, DIFF_PREVIEW_LINES).map((l) => ({ marker: l.kind === "add" ? "+" : l.kind === "del" ? "-" : " ", text: l.text }));
         more = Math.max(0, near.length - DIFF_PREVIEW_LINES);
       }
-      return {
-        label: item.category === "write" && !item.diff?.removed ? "Write" : "Edit",
-        glue: " ",
-        ...(path ? { detail: shortPath(path, workspace) } : {}),
-        facts: outcome(facts),
+      return row(path ? shortPath(path, workspace) : subject, {
         ...(diff && diff.length > 0 ? { diff } : {}),
         ...(more > 0 ? { more } : {}),
-      };
+      });
     }
     default: {
       // A script that calls other tools: its first line of code, as a command's.
       if (item.name === "codemode") {
         const code = (str(a.code) ?? item.summary).split("\n").filter((l) => l.trim());
-        return { label: "Codemode", glue: " ", detail: code.length > 1 ? `${code[0]} …` : (code[0] ?? ""), facts: outcome(lines ? [plural(lines, "line")] : []) };
+        return row(code.length > 1 ? `${code[0]} …` : (code[0] ?? ""));
       }
-      return { label: humanise(item.name), glue: " ", detail: item.summary, facts: outcome(lines ? [plural(lines, "line")] : []) };
+      return row(item.summary || undefined);
     }
   }
+}
+
+/** A server's call: the server and its tool as the sentence names them, with the summary it was given. */
+function mcpDetail(item: ToolItem, subject: string): string {
+  return item.summary && !subject.includes(item.summary) ? `${subject} ${item.summary}` : subject;
 }
 
 /**
