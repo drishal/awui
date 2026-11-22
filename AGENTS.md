@@ -79,6 +79,12 @@ src/shared/theme-scheme.ts   A base16/base24 scheme as data, its contrast-checke
                               theme editor previews with the same roles the server serves.
 src/shared/breakdown.ts      A changed file's pile (source, tests, generated) by glob, and the lines each pile holds: the
                               worktree/race card's chip, with the globs config.yml's `breakdown:` can replace.
+src/shared/output-facts.ts   Facts read from a call's output (test runs, tsc/eslint, rg, git, installs, a PR URL, JSON
+                              arrays); claims an output only when sure, and proposes every value it read as a
+                              `ToolCandidate` (with the line it came from) for a later decision. The fold runs it once
+                              per settled call; clients keep it as the fallback for old snapshots.
+src/shared/time-words.ts, relative-path.ts   A duration or an age ("2m 5s", "3m ago") and a project-relative path, so the
+                              server and every client word them alike (web/turns.ts re-exports both).
 src/server/
   index.ts                    Startup: config, state-folder migration, registry, routes, listen, shutdown. A running server
                               writes server.json (port, pid) into the state folder for clients that have no port. Subcommands: `desktop`, `tui`, `tern`, `doctor`, `setup mcp`, `mcp`, `install tui|desktop|service`.
@@ -195,8 +201,6 @@ src/web/                      React 19 + Vite client. App.tsx is the shell; comp
   attribution.ts              The review panel's attribution hook: the server's present-line read over shared/review.ts's rule,
                               grouped per edit and counted per file. Only the review panel asks (the transcript's diffs would
                               re-index the chat on every streaming event).
-  tool-sentence.ts            A tool call worded as a sentence ("Read src/app.ts", "Couldn't run npm test") with the facts it holds (pure).
-  tool-facts.ts               Facts read from a call's output (test runs, tsc/eslint, rg, git, installs, JSON arrays); claims an output only when sure (pure).
   tool-kinds.ts               The kinds of tool a run used (the card header's icon stack, an MCP server's monogram) (pure).
   gestures.ts, launch.ts      Phones: edge swipe, sheet drag, long press (pure deciders + hooks); the installed
                               app's shortcuts, shares, and prompt links (?new, ?sessions, ?share, ?prompt).

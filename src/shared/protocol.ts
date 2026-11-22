@@ -687,6 +687,22 @@ export interface HtmlRenderRef {
   heights?: Array<readonly [width: number, height: number]>;
 }
 
+/**
+ * One value a sniffer read out of a tool's output, kept as a proposal rather
+ * than as a decision: "12" for `passed`, "1.2m" for `duration_ms`, the first
+ * failing test's name. A card is drawn from these only when a parser is sure
+ * (a `kind`); the rest wait for a later judgement, which must choose among them
+ * rather than invent a value.
+ */
+export interface ToolCandidate {
+  /** What the value is for: "runner", "passed", "failed", "skipped", "duration_ms", "failing_test", "error_line", "pr_url". */
+  key: string;
+  value: string | number;
+  source: "sniffer";
+  /** The substring the value was read from, bounded to 120 characters: the audit trail for a wrong candidate. */
+  evidence?: string;
+}
+
 export interface ToolItem {
   kind: "tool";
   id: string;
@@ -727,6 +743,11 @@ export interface ToolItem {
    * report updates every call that holds it.
    */
   jobs?: BackgroundJob[];
+  /**
+   * What the sniffers (shared/output-facts.ts) read out of the output, as proposals: the counts and
+   * names a row may show, and the evidence for each. Set once, when the call settles.
+   */
+  candidates?: ToolCandidate[];
   at?: number;
   endedAt?: number;
 }

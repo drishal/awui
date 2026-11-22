@@ -1,6 +1,6 @@
 // A running test command's progress, read from what it has printed so far.
 import { describe, expect, it } from "vitest";
-import { testProgress } from "../../src/web/tool-facts.js";
+import { testProgress } from "../../src/shared/output-facts.js";
 
 describe("test progress", () => {
   it("reads Playwright's line reporter: the test starting and the failures so far", () => {

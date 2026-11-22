@@ -4,7 +4,7 @@
 // locale and a fixed `now`. Nothing is invented: a part whose inputs the harness
 // did not report is left out, and a turn with none of them shows nothing.
 import type { Turn } from "./turns.js";
-import { formatDuration } from "./turns.js";
+import { formatDuration } from "../shared/time-words.js";
 
 const DAY_MS = 86_400_000;
 

@@ -7,9 +7,9 @@
 // the Tern client word a call the same way; each keeps its own layout around it.
 import { awuiOpenCodeTool } from "./awui-mcp.js";
 import type { ToolItem } from "./protocol.js";
-import { toolArgs, toolFacts } from "../web/tool-facts.js";
-import { formatSpan } from "../web/turn-time.js";
-import { formatDuration, relativePath } from "../web/turns.js";
+import { toolArgs, toolFacts } from "./output-facts.js";
+import { relativePath } from "./relative-path.js";
+import { formatDuration, formatSpan } from "./time-words.js";
 
 export interface ToolSentence {
   /** "Read", "Searching for", "Couldn't read". */
@@ -165,7 +165,7 @@ function todoCount(args: Args): { done: number; total: number } | undefined {
 
 /**
  * A call as a sentence. `workspace` makes paths project-relative. What
- * tool-facts.ts read from the output wins; when it read none, the basic counts
+ * output-facts.ts read from the output wins; when it read none, the basic counts
  * (lines, results, +a −r) stand in, except on a failure, whose output is the error.
  */
 export function toolSentence(item: ToolItem, workspace: string): ToolSentence {

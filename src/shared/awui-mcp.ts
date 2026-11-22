@@ -5,7 +5,7 @@
 // namespace, joined to the tool's own name by "_" (McpTool in OpenCode 2.2, which also
 // refuses a name over 64 characters) — and checks permissions against that same name. This
 // file is the one definition of that naming: the adapter registers under it, and the code
-// that recognizes awui's calls (render-token.ts on the server, tool-sentence.ts and
+// that recognizes awui's calls (render-token.ts on the server, tool-row.ts and
 // tool-kinds.ts in the web UI, atui, and the Tern client) matches the same shape.
 
 /** Every server awui registers on OpenCode's shared server starts with this, so one deny rule covers them all. */

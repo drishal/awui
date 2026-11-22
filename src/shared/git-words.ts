@@ -4,7 +4,7 @@
 // and the name of an operation under way. Pure, so every client words and
 // sorts a status alike; the web's status polling stays in web/git.ts.
 import type { GitDiffSide, GitFile, GitFileState, GitStatus } from "./protocol.js";
-import { ago } from "../web/turns.js";
+import { ago } from "./time-words.js";
 
 const LETTER: Record<GitFileState, string> = {
   modified: "M",

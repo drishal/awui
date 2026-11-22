@@ -127,7 +127,7 @@ const QUALIFIED_MCP_TOOL = /^([A-Za-z_][A-Za-z0-9_-]*)__([A-Za-z0-9][A-Za-z0-9_-
  * How an MCP call reaches Grok: the qualified `server__tool` name, or the `use_tool`
  * dispatcher with `{ tool_name, tool_input }`. awui's own servers' calls are renamed to
  * the `mcp__server__tool` spelling the rest of awui reads (render-token.ts finds the
- * render tool by it, tool-sentence.ts the orchestration tools), so a rendered page and a
+ * render tool by it, tool-row.ts the orchestration tools), so a rendered page and a
  * delegation keep their cards whichever spelling the build used; a user's own server
  * keeps Grok's name. Every other call is returned as it came.
  */

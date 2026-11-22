@@ -2,11 +2,11 @@
 // line a job above the composer (its id, what it is, where it is, its clock), and a
 // job's own widget as rows under the call that holds it (a meter's bar, a stat's
 // figures, a spark's shape, a grid's pairs). The data is the browser's — web/jobs.ts
-// folds every call's jobs into one list, and web/tool-facts.ts reads a test run's
+// folds every call's jobs into one list, and shared/output-facts.ts reads a test run's
 // progress from a job whose harness hands over no widget. Pure.
 import type { JobBlock } from "../shared/protocol.js";
 import { jobElapsed, type ChatJob } from "../web/jobs.js";
-import { testProgress } from "../web/tool-facts.js";
+import { testProgress } from "../shared/output-facts.js";
 import { clip } from "./format.js";
 import { durationLabel } from "./neat.js";
 

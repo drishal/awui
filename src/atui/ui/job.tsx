@@ -2,13 +2,13 @@
 // run left going is seen while it goes and its outcome for a moment after, and the
 // same job's own blocks under the call that holds it. The data is the browser's —
 // web/jobs.ts folds every call's jobs into one list (a wait or a list that saw the job
-// later updates the call that started it), and web/tool-facts.ts reads a test run's
+// later updates the call that started it), and shared/output-facts.ts reads a test run's
 // progress from a job whose harness hands over no widget of its own. Only the draw is
 // the terminal's: a bar or a spark where the browser has a chart.
 import { createMemo, Index, Show } from "solid-js";
 import type { ChatItem } from "../../shared/protocol.js";
 import { chatJobs, jobElapsed, shownJobs, type ChatJob } from "../../web/jobs.js";
-import { testProgress } from "../../web/tool-facts.js";
+import { testProgress } from "../../shared/output-facts.js";
 import { clip } from "../format.js";
 import { durationLabel } from "../neat.js";
 import { LABEL_CHARS, jobBlockLines, jobLine, meter } from "../jobs.js";

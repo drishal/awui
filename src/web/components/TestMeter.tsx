@@ -1,9 +1,9 @@
 // A test run's progress as a bar: how many of how many, the failures as their
 // own red stretch at the end of the fill, and the test running now. Drawn under
 // a running command's row and in a background job's card, from testProgress
-// (tool-facts.ts), which only answers for runners that announce a total.
+// (shared/output-facts.ts), which only answers for runners that announce a total.
 import type { CSSProperties } from "react";
-import type { TestProgress } from "../tool-facts.js";
+import type { TestProgress } from "../../shared/output-facts.js";
 
 export function TestMeter({ progress, live = true }: { progress: TestProgress; live?: boolean }) {
   const { done, total, failed, current } = progress;

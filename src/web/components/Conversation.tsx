@@ -12,7 +12,7 @@ import { useToolStyle } from "../tool-style.js";
 import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, isEmojiOnly, latestThought, modelName, modelSwitches, relativePath, sameChangeStat, saysSomething, segmentStartsOpen, toolLabel, type ChangeStat, type Turn, workAfterSegment, workSegments, type WorkSegment } from "../turns.js";
 import { useNow } from "../hooks.js";
 import { callDuration, toolSentence } from "../../shared/tool-row.js";
-import { testProgress } from "../tool-facts.js";
+import { testProgress } from "../../shared/output-facts.js";
 import { TestMeter } from "./TestMeter.js";
 import { JobCard } from "./JobCard.js";
 import { chatJobs } from "../jobs.js";

@@ -4,8 +4,15 @@
 // it is sure of the shape (a log that merely mentions "passed" is nobody's);
 // anything else returns nothing, and the row shows just its time. Parsers read
 // the output as the item holds it (already cut to head and tail, 16 KB) and stop
-// after MAX_LINES lines. Pure: atui and the Tern client may import it like turns.ts.
-import type { ToolItem } from "../shared/protocol.js";
+// after MAX_LINES lines.
+//
+// Each parser also proposes what it read as `ToolCandidate`s — a value, the key
+// it is for, and the line it came from — so a later decision (a model, in Phase
+// 3) can weigh them without re-reading the text, and an audit can see which line
+// a wrong one came from. A candidate is only a value the output contains:
+// nothing is counted that the parser did not read. Pure and shared (src/shared),
+// so the server's fold reads each output once and every client shares the answer.
+import type { ToolCandidate, ToolItem } from "./protocol.js";
 
 /** One structured line of a richer body: a search hit, a compiler error, a changed file. */
 export interface FactRow {
@@ -23,6 +30,8 @@ export interface ToolFacts {
   /** A test/build/typecheck summary reports failures, even if the harness's call itself succeeded. */
   failed?: boolean;
   rows?: FactRow[];
+  /** The values the parser read, with the line each came from: for a decision made later, never for a row. */
+  candidates?: ToolCandidate[];
 }
 
 const MAX_LINES = 600;
@@ -65,6 +74,15 @@ function tally(passed: number, failed: number, skipped: number): string[] {
   return out;
 }
 
+/** The longest evidence a candidate carries: the line's own words, cut so a list of them stays readable. */
+const EVIDENCE_MAX = 120;
+
+/** One value a parser read, with the line it read it from. */
+const candidate = (key: string, value: string | number, evidence?: string): ToolCandidate => ({ key, value, source: "sniffer", ...(evidence ? { evidence: cut(evidence, EVIDENCE_MAX) } : {}) });
+
+/** A fact list's candidates, or nothing when the parser proposed none. */
+const withCandidates = (candidates: ToolCandidate[]): { candidates?: ToolCandidate[] } => (candidates.length > 0 ? { candidates } : {});
+
 /** Vitest's `Tests  1 failed | 25 passed (26)` and Jest's `Tests:  1 failed, 25 passed, 26 total`. */
 function jsTests(lines: string[]): ToolFacts | undefined {
   const summary = lines.find((l) => /^\s*Tests:?\s+.*(?:\(\d+\)|\d+ total)\s*$/.test(l));
@@ -73,6 +91,14 @@ function jsTests(lines: string[]): ToolFacts | undefined {
   const failed = count(summary, "failed");
   const skipped = count(summary, "skipped") + count(summary, "todo");
   if (passed + failed + skipped === 0) return undefined;
+  const found: ToolCandidate[] = [];
+  if (passed > 0) found.push(candidate("passed", passed, summary));
+  if (failed > 0) found.push(candidate("failed", failed, summary));
+  if (skipped > 0) found.push(candidate("skipped", skipped, summary));
+  // Jest prints the run's wall time on a line of its own ("Time:  2.5 s"); Vitest's summary parentheses are a count.
+  const time = lines.find((l) => /^\s*Time:\s+\d/.test(l));
+  const ms = time === undefined ? undefined : summaryMs(time.trim().slice("Time:".length));
+  if (time !== undefined && ms !== undefined) found.push(candidate("duration_ms", ms, time));
   // The first failing test: Vitest's `FAIL  file > name` or Jest's `● suite › name`.
   let error: string | undefined;
   for (const l of lines) {
@@ -81,18 +107,23 @@ function jsTests(lines: string[]): ToolFacts | undefined {
     const name = vitest ? (vitest[1] as string).split(" > ").pop() : jest ? (jest[1] as string).split(" › ").pop() : undefined;
     if (name && !/^Console\b/.test(name)) {
       error = cut(name);
+      found.push(candidate("failing_test", error, l));
       break;
     }
   }
-  return { kind: "test", facts: tally(passed, failed, skipped), ...(error ? { error } : {}), ...(failed > 0 ? { failed: true } : {}) };
+  return { kind: "test", facts: tally(passed, failed, skipped), ...(error ? { error } : {}), ...(failed > 0 ? { failed: true } : {}), ...withCandidates(found) };
 }
 
 /** The duration a runner puts at the end of its summary: Playwright's `(1.2m)`, jest's `(2.5 s)`. */
 function summaryMs(line: string): number | undefined {
-  const m = /\((\d+(?:\.\d+)?)\s*(ms|s|m)\)\s*$/.exec(line);
+  const m = /\(?(\d+(?:\.\d+)?)\s*(ms|s|m)\)?\s*$/.exec(line);
   const n = m ? Number(m[1]) : NaN;
-  if (!Number.isFinite(n)) return undefined;
-  return m?.[2] === "m" ? n * 60_000 : m?.[2] === "s" ? n * 1000 : n;
+  return Number.isFinite(n) ? unitMs(n, m?.[2]) : undefined;
+}
+
+/** A runner's own unit as milliseconds: its "1.2m", "2s", or "800ms". */
+function unitMs(n: number, unit: string | undefined): number {
+  return unit === "m" ? n * 60_000 : unit === "s" ? n * 1000 : n;
 }
 
 /**
@@ -108,6 +139,9 @@ function playwright(lines: string[]): ToolFacts | undefined {
   let flaky = 0;
   let claimed = 0;
   let duration: number | undefined;
+  let durationLine: string | undefined;
+  const found: ToolCandidate[] = [];
+  const running = lines.find((l) => /^\s*Running \d+ tests? using/.test(l));
   for (const line of lines.slice(-40)) {
     const m = /^\s*(\d+) (passed|failed|flaky|skipped)\s*(?:\([^)]*\))?\s*$/.exec(line);
     if (!m) continue;
@@ -117,26 +151,34 @@ function playwright(lines: string[]): ToolFacts | undefined {
     else if (m[2] === "failed") failed += n;
     else if (m[2] === "skipped") skipped += n;
     else flaky += n;
-    duration ??= summaryMs(line);
+    if (n > 0) found.push(candidate(m[2] as string, n, line));
+    if (duration === undefined) {
+      duration = summaryMs(line);
+      if (duration !== undefined) durationLine = line;
+    }
   }
   if (claimed === 0 || duration === undefined) return undefined;
+  found.push(candidate("runner", "playwright", running));
+  if (durationLine !== undefined) found.push(candidate("duration_ms", duration, durationLine));
   // Its failures are numbered and name the project, the file, then the test.
   let error: string | undefined;
   for (const line of lines) {
     const m = /^\s*\d+\)\s+.*›\s+(.+?)(?:\s+─{2,})?\s*$/.exec(line);
     if (m?.[1]) {
-      error = cut(m[1]);
-      break;
+      error ??= cut(m[1]);
+      if (found.filter((c) => c.key === "failing_test").length < 20) found.push(candidate("failing_test", cut(m[1]), line));
     }
+    // Under a failure Playwright prints the error's own first line ("Error: Timed out 5000ms waiting for …").
+    if (/^\s+Error: \S/.test(line) && found.filter((c) => c.key === "error_line").length < 20) found.push(candidate("error_line", cut(line.trim()), line));
   }
-  return { kind: "test", facts: [...tally(passed, failed, skipped), ...(flaky > 0 ? [`${flaky} flaky`] : [])], ...(error ? { error } : {}), ...(failed > 0 ? { failed: true } : {}) };
+  return { kind: "test", facts: [...tally(passed, failed, skipped), ...(flaky > 0 ? [`${flaky} flaky`] : [])], ...(error ? { error } : {}), ...(failed > 0 ? { failed: true } : {}), ...withCandidates(found) };
 }
 
 /** npm's own failure line: the last `npm ERR!` says why the script or the install stopped. */
 function npmError(lines: string[]): ToolFacts | undefined {
   const line = [...lines].reverse().find((l) => /^npm ERR!/.test(l.trim()));
   const text = line?.trim().replace(/^npm ERR!\s*/, "").replace(/\s+/g, " ").trim() ?? "";
-  return text ? { facts: [], error: cut(text) } : undefined;
+  return text ? { facts: [], error: cut(text), ...withCandidates([candidate("error_line", cut(text), line)]) } : undefined;
 }
 
 /** `gh pr create`'s answer: the pull request it opened (`https://github.com/owner/repo/pull/42`). */
@@ -144,7 +186,7 @@ function ghPr(lines: string[], command: string): ToolFacts | undefined {
   if (!/\bgh\s+pr\s+create\b/.test(command)) return undefined;
   const url = lines.map((l) => l.trim()).find((l) => /^https?:\/\/\S+\/pull\/\d+$/.test(l));
   const number = url === undefined ? undefined : /\/pull\/(\d+)$/.exec(url)?.[1];
-  return number ? { kind: "git", facts: [`opened #${number}`] } : undefined;
+  return number ? { kind: "git", facts: [`opened #${number}`], ...withCandidates([candidate("pr_url", url as string, url), candidate("pr_number", Number(number), url)]) } : undefined;
 }
 
 /** pytest's `===== 1 failed, 2 passed in 0.12s =====`. */
@@ -155,8 +197,13 @@ function pytest(lines: string[]): ToolFacts | undefined {
   const failed = count(summary, "failed") + count(summary, "errors?");
   const skipped = count(summary, "skipped");
   if (passed + failed + skipped === 0) return undefined;
+  const found: ToolCandidate[] = [candidate("runner", "pytest", summary)];
+  if (passed > 0) found.push(candidate("passed", passed, summary));
+  if (failed > 0) found.push(candidate("failed", failed, summary));
+  if (skipped > 0) found.push(candidate("skipped", skipped, summary));
   const failure = lines.find((l) => /^(?:FAILED|ERROR) \S+/.test(l));
-  return { kind: "test", facts: tally(passed, failed, skipped), ...(failure ? { error: cut(failure.replace(/^(?:FAILED|ERROR) /, "")) } : {}), ...(failed > 0 ? { failed: true } : {}) };
+  if (failure) found.push(candidate("failing_test", cut(failure.replace(/^(?:FAILED|ERROR) /, "")), failure));
+  return { kind: "test", facts: tally(passed, failed, skipped), ...(failure ? { error: cut(failure.replace(/^(?:FAILED|ERROR) /, "")) } : {}), ...(failed > 0 ? { failed: true } : {}), ...withCandidates(found) };
 }
 
 /** cargo test's `test result: FAILED. 3 passed; 1 failed; ...` (one per test binary) and go test's `--- FAIL:` and `ok  pkg` lines. */
@@ -173,7 +220,14 @@ function cargoOrGo(lines: string[]): ToolFacts | undefined {
     }
     const fail = lines.find((l) => /^test .+ \.\.\. FAILED$/.test(l));
     const name = fail ? /^test (.+) \.\.\. FAILED$/.exec(fail)?.[1] : undefined;
-    return { kind: "test", facts: tally(passed, failed, ignored), ...(name ? { error: cut(name) } : {}), ...(failed > 0 ? { failed: true } : {}) };
+    // One `test result:` line per test binary, each with its own tally.
+    const last = results[results.length - 1] as string;
+    const found: ToolCandidate[] = [candidate("runner", "cargo", last), candidate("binaries", results.length, last)];
+    if (passed > 0) found.push(candidate("passed", passed, last));
+    if (failed > 0) found.push(candidate("failed", failed, last));
+    if (ignored > 0) found.push(candidate("ignored", ignored, last));
+    if (fail && name) found.push(candidate("failing_test", cut(name), fail));
+    return { kind: "test", facts: tally(passed, failed, ignored), ...(name ? { error: cut(name) } : {}), ...(failed > 0 ? { failed: true } : {}), ...withCandidates(found) };
   }
   const verbose = lines.filter((l) => /^\s*--- (?:PASS|FAIL):/.test(l));
   const packages = lines.filter((l) => /^(?:ok|FAIL)\s+\S+\s+(?:[\d.]+s|\(cached\))/.test(l));
@@ -183,11 +237,14 @@ function cargoOrGo(lines: string[]): ToolFacts | undefined {
     const error = name ? { error: cut(name) } : {};
     if (verbose.length > 0) {
       const failed = verbose.filter((l) => /--- FAIL:/.test(l)).length;
-      return { kind: "test", facts: tally(verbose.length - failed, failed, 0), ...error, ...(failed > 0 ? { failed: true } : {}) };
+      const found: ToolCandidate[] = [candidate("runner", "go", verbose[0]), candidate("passed", verbose.length - failed, verbose[0]), candidate("failed", failed, verbose[0])];
+      if (fail && name) found.push(candidate("failing_test", cut(name), fail));
+      return { kind: "test", facts: tally(verbose.length - failed, failed, 0), ...error, ...(failed > 0 ? { failed: true } : {}), ...withCandidates(found) };
     }
     const failed = packages.filter((l) => l.startsWith("FAIL")).length;
     const ok = packages.length - failed;
-    return { kind: "test", facts: [...(ok > 0 ? [`${plural(ok, "package")} ok`] : []), ...(failed > 0 ? [`${failed} failed`] : [])], ...error, ...(failed > 0 ? { failed: true } : {}) };
+    const found: ToolCandidate[] = [candidate("runner", "go", packages[0]), candidate("passed", ok, packages[0] as string), candidate("failed", failed, packages[0] as string)];
+    return { kind: "test", facts: [...(ok > 0 ? [`${plural(ok, "package")} ok`] : []), ...(failed > 0 ? [`${failed} failed`] : [])], ...error, ...(failed > 0 ? { failed: true } : {}), ...withCandidates(found) };
   }
   return undefined;
 }
@@ -206,12 +263,15 @@ function compiler(lines: string[]): ToolFacts | undefined {
   }
   if (errors > 0) {
     const first = rows[0];
+    const found: ToolCandidate[] = [candidate("errors", errors, lines.find((l) => /error TS\d+/.test(l)) ?? ""), candidate("files", files.size, lines.find((l) => /error TS\d+/.test(l)) ?? "")];
+    if (first?.file) found.push(candidate("error_line", cut(`${first.file}:${first.line}: ${first.text}`), lines.find((l) => /error TS\d+/.test(l))));
     return {
       kind: "typecheck",
       facts: [`${plural(errors, "error")} in ${plural(files.size, "file")}`],
       ...(first?.file ? { error: cut(`${first.file}:${first.line}: ${first.text}`) } : {}),
       failed: true,
       rows,
+      ...withCandidates(found),
     };
   }
   // eslint: a path line, then `  12:5  error  message  rule`, and `✖ 3 problems (2 errors, 1 warning)`.
@@ -227,7 +287,11 @@ function compiler(lines: string[]): ToolFacts | undefined {
       if (m && !first) first = cut(`${file}:${m[1]}: ${m[2]}`);
     }
     const facts = [e > 0 ? plural(e, "error") : "", w > 0 ? plural(w, "warning") : ""].filter(Boolean);
-    return { kind: "build", facts, ...(first ? { error: first } : {}), ...(e > 0 ? { failed: true } : {}) };
+    const found: ToolCandidate[] = [];
+    if (e > 0) found.push(candidate("errors", e, problems));
+    if (w > 0) found.push(candidate("warnings", w, problems));
+    if (first) found.push(candidate("error_line", first, problems));
+    return { kind: "build", facts, ...(first ? { error: first } : {}), ...(e > 0 ? { failed: true } : {}), ...withCandidates(found) };
   }
   return undefined;
 }
@@ -247,7 +311,12 @@ function grepHits(lines: string[]): ToolFacts | undefined {
   let matched = 0;
   for (const l of shaped) if (/^\S[^:\n]*?:\d+(?::\d+)?:/.test(l)) matched++;
   if (matched === 0 || matched < shaped.length * 0.8) return undefined;
-  return { kind: "search", facts: [`${plural(matched, "result")} in ${plural(files.size, "file")}`], rows: hits };
+  return {
+    kind: "search",
+    facts: [`${plural(matched, "result")} in ${plural(files.size, "file")}`],
+    rows: hits,
+    ...withCandidates([candidate("results", matched, shaped[0]), candidate("files", files.size, shaped[0])]),
+  };
 }
 
 /** `git status --short` / the long form (given the command, which tells porcelain from a listing) and `git diff --stat`'s last line. */
@@ -262,7 +331,8 @@ function git(lines: string[], command: string): ToolFacts | undefined {
       const m = /^\s*(\S.*?)\s+\|\s+\d+/.exec(l);
       return m ? [{ file: m[1] as string, text: l.trim() }] : [];
     });
-    return { kind: "git", facts: [plural(files, "file"), ...(change ? [change] : [])], rows: rows.slice(0, MAX_ROWS) };
+    const found: ToolCandidate[] = [candidate("files", files, stat), candidate("insertions", added, stat), candidate("deletions", removed, stat)];
+    return { kind: "git", facts: [plural(files, "file"), ...(change ? [change] : [])], rows: rows.slice(0, MAX_ROWS), ...withCandidates(found) };
   }
   if (!/\bgit\s+(?:-\S+\s+)*status\b/.test(command)) return undefined;
   let changed = 0;
@@ -295,24 +365,44 @@ function git(lines: string[], command: string): ToolFacts | undefined {
     if (changed + added === 0) return { kind: "git", facts: ["clean"] };
   } else return undefined;
   if (changed + added === 0) return undefined;
-  return { kind: "git", facts: [changed > 0 ? `${changed} changed` : "", added > 0 ? `${added} new` : ""].filter(Boolean), rows };
+  const found: ToolCandidate[] = [];
+  if (changed > 0) found.push(candidate("changed", changed, short[0] ?? ""));
+  if (added > 0) found.push(candidate("new", added, short[0] ?? ""));
+  return { kind: "git", facts: [changed > 0 ? `${changed} changed` : "", added > 0 ? `${added} new` : ""].filter(Boolean), rows, ...withCandidates(found) };
 }
 
 /** npm's "added 12 packages, and audited 13 packages in 2s", pnpm's "Packages: +12", pip's "Successfully installed a-1 b-2". */
 function install(lines: string[]): ToolFacts | undefined {
   for (const l of lines) {
     const pip = /^Successfully installed (.+)$/.exec(l);
-    if (pip) return { kind: "install", facts: [`installed ${plural((pip[1] as string).split(/\s+/).length, "package")}`] };
+    if (pip) {
+      const count = (pip[1] as string).split(/\s+/).length;
+      return { kind: "install", facts: [`installed ${plural(count, "package")}`], ...withCandidates([candidate("packages_added", count, l)]) };
+    }
     if (/^(?:added|removed|changed) \d+ packages?\b/.test(l)) {
       const added = /added (\d+) packages?/.exec(l);
       const removed = /removed (\d+) packages?/.exec(l);
       const changed = /changed (\d+) packages?/.exec(l);
       const facts = [added ? `added ${plural(Number(added[1]), "package")}` : "", removed ? `removed ${plural(Number(removed[1]), "package")}` : "", changed ? `changed ${plural(Number(changed[1]), "package")}` : ""].filter(Boolean);
-      return { kind: "install", facts };
+      const found: ToolCandidate[] = [];
+      if (added) found.push(candidate("packages_added", Number(added[1]), l));
+      if (removed) found.push(candidate("packages_removed", Number(removed[1]), l));
+      if (changed) found.push(candidate("packages_changed", Number(changed[1]), l));
+      const audited = /audited (\d+) packages?/.exec(l);
+      if (audited) found.push(candidate("audited", Number(audited[1]), l));
+      const span = /in (\d+(?:\.\d+)?)\s*(ms|s|m)\s*$/.exec(l);
+      if (span) found.push(candidate("duration_ms", unitMs(Number(span[1]), span[2]), l));
+      // npm follows its tally with what its audit found ("found 0 vulnerabilities").
+      const vulnerabilities = lines.map((line) => /^found (\d+) vulnerabilities?/.exec(line)).find((m) => m !== null);
+      if (vulnerabilities) found.push(candidate("vulnerabilities", Number(vulnerabilities[1]), vulnerabilities[0]));
+      return { kind: "install", facts, ...withCandidates(found) };
     }
-    if (/^up to date, audited \d+ packages?/.test(l)) return { kind: "install", facts: ["up to date"] };
+    if (/^up to date, audited \d+ packages?/.test(l)) {
+      const audited = /audited (\d+) packages?/.exec(l);
+      return { kind: "install", facts: ["up to date"], ...withCandidates([...(audited ? [candidate("audited", Number(audited[1]), l)] : [])]) };
+    }
     const pnpm = /^Packages: \+(\d+)/.exec(l);
-    if (pnpm) return { kind: "install", facts: [`added ${plural(Number(pnpm[1]), "package")}`] };
+    if (pnpm) return { kind: "install", facts: [`added ${plural(Number(pnpm[1]), "package")}`], ...withCandidates([candidate("packages_added", Number(pnpm[1]), l)]) };
   }
   return undefined;
 }
@@ -323,7 +413,7 @@ function json(output: string): ToolFacts | undefined {
   if (!t.startsWith("[") || !t.endsWith("]")) return undefined;
   try {
     const parsed: unknown = JSON.parse(t);
-    return Array.isArray(parsed) ? { kind: "json", facts: [parsed.length === 0 ? "no items" : plural(parsed.length, "item")] } : undefined;
+    return Array.isArray(parsed) ? { kind: "json", facts: [parsed.length === 0 ? "no items" : plural(parsed.length, "item")], ...withCandidates([candidate("items", parsed.length, t.slice(0, 200))]) } : undefined;
   } catch {
     return undefined;
   }

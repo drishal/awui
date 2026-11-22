@@ -19,7 +19,7 @@ import { OPEN_DEPTH, parseJsonContainer } from "../web/json-tree.js";
 import type { ChatState } from "../web/chat-state.js";
 import { fileUrl, STATUS_LABEL, unifiedDiff } from "../atui/format.js";
 import { commandLine, toolSentence } from "../shared/tool-row.js";
-import { testProgress, type TestProgress } from "../web/tool-facts.js";
+import { testProgress, type TestProgress } from "../shared/output-facts.js";
 import { neatRow, shortPath, thoughtTitle } from "../atui/neat.js";
 
 /** The conversation's column in the surface (main > page): a node's id is this, then its keys down the tree, which is how a row is revealed. */

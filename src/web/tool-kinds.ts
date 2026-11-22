@@ -3,7 +3,7 @@
 // the rest. Also the monogram and hue an MCP server's chip wears. Pure.
 import { awuiOpenCodeFamily } from "../shared/awui-mcp.js";
 import type { ChatItem, ToolCategory, ToolKind } from "../shared/protocol.js";
-import { toolFacts } from "./tool-facts.js";
+import { toolFacts } from "../shared/output-facts.js";
 import { isPlanCall, orchestrationTool } from "../shared/tool-row.js";
 
 /** A kind as the icon stack draws it: the category's glyph, a server's monogram, or the checklist. */

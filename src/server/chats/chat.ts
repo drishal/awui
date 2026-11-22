@@ -40,6 +40,7 @@ import { applyReports, detailReports, hasAgentCells, runsFromArgs, runsFromDetai
 import { applyJobReports, jobsFromCall, mergeJob } from "../harness/jobs.js";
 import { htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "../harness/render-token.js";
 import { planFromArgs, planFromDetails } from "../harness/plans.js";
+import { toolFacts } from "../../shared/output-facts.js";
 import { branchMessages } from "../harness/session-files.js";
 import { rememberImage } from "../image-store.js";
 import type { HarnessAdapter, HarnessEvent, HarnessUsage, LiveChat } from "../harness/types.js";
@@ -527,8 +528,11 @@ class EventReducer {
           ...(jobs ? { jobs } : {}),
           ...(event.images && event.images.length > 0 ? { images: event.images } : {}),
         };
-        // The result may settle the family the call started as: a command that ran a test suite.
-        done.toolKind = toolKindOf(done);
+        // The output sniffers run once, here: their candidates are the call's proposals, and a
+        // complete tally settles the family the call started as (a command that ran a test suite).
+        const parsed = toolFacts(done);
+        if (parsed.candidates) done.candidates = parsed.candidates;
+        done.toolKind = toolKindOf(done, parsed);
         this.put(done);
         // A wait that saw a job end tells the call that started it too.
         if (jobs) this.applyJobReports(jobs.filter((j) => j.status !== "running"));

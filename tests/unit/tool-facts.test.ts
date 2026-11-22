@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolItem } from "../../src/shared/protocol.js";
-import { toolFacts } from "../../src/web/tool-facts.js";
+import { toolFacts } from "../../src/shared/output-facts.js";
 import { toolSentence } from "../../src/shared/tool-row.js";
 
 // Outputs below were captured from the real tools in this repo (vitest, tsc, rg, git), except
@@ -218,5 +218,76 @@ describe("npm's own error line and a pull request it opened", () => {
     expect(toolFacts(bash("Warning: 3 uncommitted changes\nhttps://github.com/drishal/awui/pull/42", "gh pr create --fill")).facts).toEqual(["opened #42"]);
     // A URL in some other command's output is not a pull request this call opened.
     expect(toolFacts(bash("https://github.com/drishal/awui/pull/42", "curl -s https://api.github.com")).facts).toEqual([]);
+  });
+});
+
+// A parser's candidates are what it read, with the line it read it from. Nothing is proposed
+// that the output does not contain, and the evidence stays inside a row's worth of text.
+function candidateOf(f: ReturnType<typeof toolFacts>, key: string): Array<string | number> {
+  return (f.candidates ?? []).filter((c) => c.key === key).map((c) => c.value);
+}
+
+describe("candidates a parser proposes", () => {
+  it("proposes Vitest's counts and its failing test, each with the line it read", () => {
+    const f = toolFacts(bash(VITEST_FAIL));
+    expect(candidateOf(f, "passed")).toEqual([25]);
+    expect(candidateOf(f, "failed")).toEqual([1]);
+    expect(candidateOf(f, "failing_test")).toEqual(["keeps the order of two lists"]);
+    const failing = (f.candidates ?? []).find((c) => c.key === "failing_test");
+    expect(failing?.source).toBe("sniffer");
+    expect(failing?.evidence).toContain("FAIL  tests/unit/zz-sample.test.ts > keeps the order of two lists");
+  });
+  it("proposes Playwright's runner, counts, duration and every numbered failure", () => {
+    const out = [
+      "Running 27 tests using 4 workers",
+      "  1) [chromium] › e2e/checkout.spec.ts:42:5 › checkout › pays with saved card ───────",
+      "     Error: Timed out 5000ms waiting for getByRole('button', { name: 'Pay' })",
+      "  2) [chromium] › e2e/checkout.spec.ts:57:5 › checkout › retries a declined card ─────",
+      "  1 failed",
+      "  26 passed (1.3m)",
+      "  2 flaky",
+    ].join("\n");
+    const f = toolFacts(bash(out, "npx playwright test"));
+    expect(candidateOf(f, "runner")).toEqual(["playwright"]);
+    expect(candidateOf(f, "passed")).toEqual([26]);
+    expect(candidateOf(f, "failed")).toEqual([1]);
+    expect(candidateOf(f, "flaky")).toEqual([2]);
+    expect(candidateOf(f, "duration_ms")).toEqual([78_000]);
+    expect(candidateOf(f, "failing_test")).toEqual(["pays with saved card", "retries a declined card"]);
+    expect(candidateOf(f, "error_line")[0]).toContain("Timed out 5000ms");
+  });
+  it("proposes no tally from a Playwright run that printed no duration", () => {
+    const f = toolFacts(bash("  1 failed\n  26 passed", "npx playwright test"));
+    expect(f.candidates).toBeUndefined();
+  });
+  it("proposes cargo's summed counts and the binary count", () => {
+    const out = ["test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s", "test result: FAILED. 4 passed; 1 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.02s", "test keeps_order ... FAILED"].join("\n");
+    const f = toolFacts(bash(out, "cargo test"));
+    expect(candidateOf(f, "runner")).toEqual(["cargo"]);
+    expect(candidateOf(f, "passed")).toEqual([7]);
+    expect(candidateOf(f, "failed")).toEqual([1]);
+    expect(candidateOf(f, "ignored")).toEqual([2]);
+    expect(candidateOf(f, "binaries")).toEqual([2]);
+    expect(candidateOf(f, "failing_test")).toEqual(["keeps_order"]);
+  });
+  it("proposes npm's own tally, audit and duration", () => {
+    const f = toolFacts(bash("added 12 packages, and audited 13 packages in 2s\n\n3 packages are looking for funding\n\nfound 0 vulnerabilities", "npm install"));
+    expect(f.facts).toEqual(["added 12 packages"]);
+    expect(candidateOf(f, "packages_added")).toEqual([12]);
+    expect(candidateOf(f, "audited")).toEqual([13]);
+    expect(candidateOf(f, "vulnerabilities")).toEqual([0]);
+    expect(candidateOf(f, "duration_ms")).toEqual([2000]);
+  });
+  it("proposes the pull request's URL and number", () => {
+    const url = "https://github.com/drishal/awui/pull/42";
+    const f = toolFacts(bash(url, "gh pr create --fill"));
+    expect(candidateOf(f, "pr_url")).toEqual([url]);
+    expect(candidateOf(f, "pr_number")).toEqual([42]);
+  });
+  it("keeps a candidate's evidence inside the line's own words", () => {
+    const name = "a suite whose name is long ".repeat(20).trim();
+    const f = toolFacts(bash(` FAIL  tests/a.test.ts > ${name}\n Test Files  1 failed (1)\n      Tests  1 failed | 0 passed (1)`));
+    const evidence = (f.candidates ?? []).find((c) => c.key === "failing_test")?.evidence ?? "";
+    expect(evidence.length).toBeLessThanOrEqual(120);
   });
 });

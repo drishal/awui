@@ -337,18 +337,11 @@ export function countSummary(counts: Turn["counts"]): string {
   return parts.length > 3 ? `${parts.slice(0, 3).join(", ")}, …` : parts.join(", ");
 }
 
-export function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
-  // A sub-second run reads as "<1s": "0s" reads as the letter O, and a tally
-  // that rounds to zero is not a time.
-  if (s === 0) return "<1s";
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const rest = s % 60;
-  if (m < 60) return rest ? `${m}m ${rest}s` : `${m}m`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
-}
+// The quiet words a row shows — "2m 5s", "3m ago", a project-relative path —
+// live in src/shared now, so the server and atui word them the same way; these
+// re-exports keep the web's own imports as they are.
+export { ago, formatDuration } from "../shared/time-words.js";
+export { relativePath } from "../shared/relative-path.js";
 
 /** A tool's name as a row shows it: an MCP tool's `mcp__server__tool` as "tool · server", any other as it is. */
 export function toolLabel(name: string): string {
@@ -356,23 +349,7 @@ export function toolLabel(name: string): string {
   return mcp ? `${mcp[2]} · ${mcp[1]}` : name;
 }
 
-/** Show workspace-relative paths when the file is inside the project. */
-export function relativePath(path: string, workspace: string): string {
-  const base = workspace.endsWith("/") ? workspace : `${workspace}/`;
-  return path.startsWith(base) ? path.slice(base.length) : path;
-}
 
-/** "3m ago", "2h ago", "4d ago", else the date. */
-export function ago(at: number, now = Date.now()): string {
-  const min = Math.max(0, Math.round((now - at) / 60_000));
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const h = Math.round(min / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.round(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(at).toLocaleDateString();
-}
 
 /** The same age as a list's narrow column says it: "now", "3m", "2h", "4d", else the date (the web sidebar's). */
 export function shortAgo(at: number, now = Date.now()): string {

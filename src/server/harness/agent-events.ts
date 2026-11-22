@@ -3,10 +3,9 @@
 // Inputs are untyped on purpose: SDK and wire types never leave the adapters.
 import { MAX_IMAGES, type BackgroundJob, type ChatItem, type TodoItem, type ToolCategory, type ToolDiff, type ToolItem, type ToolKind } from "../../shared/protocol.js";
 import { awuiOpenCodeFamily } from "../../shared/awui-mcp.js";
-// The output sniffers and the row words are pure modules the terminal clients already
-// share; the row family is read from the same places so no client re-derives them.
-// Phase 2 moves them into src/shared.
-import { toolArgs, toolFacts } from "../../web/tool-facts.js";
+// The output sniffers and the row words are pure modules every client shares; the row
+// family is read from the same places so no client re-derives them.
+import { toolArgs, toolFacts, type ToolFacts } from "../../shared/output-facts.js";
 import { isPlanCall, orchestrationTool } from "../../shared/tool-row.js";
 import { argsDiff, resultDiff } from "./tool-diff.js";
 import { imageRefs } from "../image-store.js";
@@ -209,7 +208,7 @@ export type ToolKindSource = Pick<ToolItem, "name" | "category" | "args" | "stat
  * plan, a todo list, a question, a background job, a test run — else its
  * category. Order matters: the more specific family wins.
  */
-export function toolKindOf(item: ToolKindSource): ToolKind {
+export function toolKindOf(item: ToolKindSource, parsed?: ToolFacts): ToolKind {
   const args = toolArgs(item.args);
   // A delegation through awui's own surface stays an agent call, not its server's chip.
   if (orchestrationTool(item.name)) return "agent";
@@ -223,7 +222,7 @@ export function toolKindOf(item: ToolKindSource): ToolKind {
   if (item.name === "ask" && item.category === "other") return "ask";
   if (item.category !== "command" && ((item.jobs?.length ?? 0) > 0 || jobSurfaceOf(item.name, args) !== null)) return "job";
   // A command whose output is a runner's summary is a test run, and says so only when it settled.
-  if (item.category === "command" && toolFacts(item).kind === "test") return "test";
+  if (item.category === "command" && (parsed ?? toolFacts(item)).kind === "test") return "test";
   return item.category;
 }
 

@@ -12,7 +12,7 @@ import type { JobBlock, JobTone } from "../../shared/protocol.js";
 import { useNow } from "../hooks.js";
 import { IconCheck, IconStop, IconX, Spinner } from "../icons.js";
 import { jobElapsed, type ChatJob } from "../jobs.js";
-import { testProgress } from "../tool-facts.js";
+import { testProgress } from "../../shared/output-facts.js";
 import { formatDuration } from "../turns.js";
 import { TestMeter } from "./TestMeter.js";
 

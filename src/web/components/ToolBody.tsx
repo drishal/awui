@@ -10,7 +10,7 @@ import { todoEntries, type TodoEntry } from "../../shared/todo-entries.js";
 import { IconCheck, IconCircle, IconDot, IconFile, IconGlobe, IconSearch, IconTerminal, IconX } from "../icons.js";
 import { parseJsonContainer } from "../json-tree.js";
 import { relativePath } from "../turns.js";
-import { toolFacts } from "../tool-facts.js";
+import { toolFacts } from "../../shared/output-facts.js";
 import { FileLink } from "./FileLink.js";
 import { JsonTree } from "./JsonTree.js";
 
