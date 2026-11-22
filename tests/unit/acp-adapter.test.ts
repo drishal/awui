@@ -135,6 +135,18 @@ describe("the ACP adapter (scripted agent)", () => {
     expect(tool?.kind === "tool" ? tool.diff?.lines.some((line) => line.kind === "add" && line.text === "after") : false).toBe(true);
   });
 
+  it("turns the agent's plan update into the chat's todo list", async () => {
+    const { chat } = await openChat();
+    await chat.send("plan the work", "normal");
+    await until(() => chat.status === "idle" && chat.snapshot().todos.length > 0);
+    // The entries' statuses are the list's progress: the status stack draws them instead of a notice's words.
+    expect(chat.snapshot().todos).toEqual([
+      { text: "Read the project", status: "completed" },
+      { text: "Change one file", status: "pending" },
+    ]);
+    expect(chat.snapshot().items.some((i) => i.kind === "notice" && i.text.includes("Read the project"))).toBe(false);
+  });
+
   it("turns a permission request into a card in the agent's own words, and answers with its option id", async () => {
     const { chat } = await openChat();
     await chat.send("ask to run it", "normal");

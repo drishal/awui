@@ -240,6 +240,8 @@ class GrokLiveChat implements LiveChat {
   /** Which spawn_subagent call each child belongs to, including ones loaded from the file. */
   private readonly subagents = new GrokSubagentBook();
   private readonly permissionOptions = new Map<string, string[]>();
+  /** The list the agent's `plan` update last stated, so a reopened chat shows it. */
+  private planTodos: TodoItem[] = [];
 
   /** awui's own MCP servers for this chat, sent with both session handshakes and with neither token empty. */
   private readonly mcpServers: unknown[];
@@ -420,6 +422,10 @@ class GrokLiveChat implements LiveChat {
       case "notice":
         this.emit({ type: "notice", level: "info", text: fold.text });
         return;
+      case "todos":
+        this.planTodos = fold.todos;
+        this.emit({ type: "todos", todos: fold.todos });
+        return;
       default:
         return;
     }
@@ -504,7 +510,8 @@ class GrokLiveChat implements LiveChat {
   }
 
   async getTodos(): Promise<TodoItem[]> {
-    return [];
+    // Grok states its plan as a session update, not through a tool call.
+    return [...this.planTodos];
   }
 
   async listCommands(): Promise<SlashCommand[]> {

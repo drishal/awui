@@ -16,7 +16,7 @@
 // Pure, against recorded shapes. Everything is bounded: a job holds a short
 // label, a tail of output, and a widget cut to a few blocks of a few items.
 import type { BackgroundJob, JobBlock, JobTone, JobWidget } from "../../shared/protocol.js";
-import { isObj, type Obj } from "./agent-events.js";
+import { isObj, jobSurfaceOf, type Obj } from "./agent-events.js";
 
 const LABEL_CHARS = 300;
 const TITLE_CHARS = 200;
@@ -159,7 +159,8 @@ export function jobsFromCall(name: string, args: unknown, details: unknown, outp
       },
     ];
   }
-  if (Array.isArray(d.jobs) && /^(wait|await|job|jobs)$/i.test(name)) {
+  const surface = jobSurfaceOf(name, a);
+  if (Array.isArray(d.jobs) && (surface === "wait" || surface === "list")) {
     const jobs = d.jobs.filter(isObj).map(ompJob).filter((j): j is BackgroundJob => j !== null);
     return jobs.length > 0 ? jobs.slice(0, MAX_JOBS) : null;
   }
@@ -168,18 +169,18 @@ export function jobsFromCall(name: string, args: unknown, details: unknown, outp
   const gone = /^read$/i.test(name) ? /^proc:\/\/([\w.-]+)/.exec(str(a.path))?.[1] : undefined;
   if (gone && /^Background job or service not found/i.test(output.trim())) return [{ id: gone, kind: "shell", status: "stopped", label: gone }];
   // The bg_task extension: one task, or the list.
-  if (/^bg_(task|status)$/.test(name)) {
+  if (surface === "start" || (surface === "list" && /^bg_/i.test(name))) {
     const raw = isObj(d.task) ? [d.task] : Array.isArray(d.tasks) ? d.tasks : [];
     const jobs = raw.filter(isObj).map(bgTask).filter((j): j is BackgroundJob => j !== null);
     return jobs.length > 0 ? jobs.slice(0, MAX_JOBS) : null;
   }
   // Claude Code: a backgrounded Bash, and TaskStop.
-  if (name === "Bash" && a.run_in_background === true) {
+  if (surface === "background") {
     const id = str(d.backgroundTaskId) || CLAUDE_BACKGROUND.exec(output)?.[1] || "";
     if (!id) return null;
     return [{ id, kind: "shell", status: "running", label: oneLine(str(a.command) || id, LABEL_CHARS), ...(str(a.description) ? { title: oneLine(str(a.description), TITLE_CHARS) } : {}) }];
   }
-  if (name === "TaskStop" && str(a.task_id) && /^Successfully stopped/i.test(str(d.message) || output)) {
+  if (surface === "stop" && str(a.task_id) && /^Successfully stopped/i.test(str(d.message) || output)) {
     return [{ id: str(a.task_id), kind: "shell", status: "stopped", label: oneLine(str(d.command) || str(a.task_id), LABEL_CHARS) }];
   }
   return null;

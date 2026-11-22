@@ -383,21 +383,26 @@ export function itemsToChatItems(items: Obj[]): ChatItem[] {
           ...stamp,
         });
         break;
-      case "plan":
+      case "plan": {
+        // A plan item is the plan card, as the live fold shows it (its text arrives on the item, not as an argument).
+        const text = str(item.text);
         out.push({
           kind: "tool",
           id: `t:${str(item.id) || `p${n++}`}`,
           name: "update_plan",
           args: "{}",
           status: "done",
-          output: boundText(str(item.text)).text,
-          truncated: boundText(str(item.text)).truncated,
+          output: boundText(text).text,
+          truncated: boundText(text).truncated,
           category: "other",
+          toolKind: "plan",
           summary: "Plan",
           paths: [],
+          ...(text.trim() ? { plan: text } : {}),
           ...stamp,
         });
         break;
+      }
       case "contextCompaction":
         out.push({ kind: "notice", id: `hn${n++}`, level: "info", text: "Earlier conversation was compacted", ...stamp });
         break;

@@ -18,6 +18,7 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { AssistantItem, ChatItem, ImageRef, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../../shared/protocol.js";
 import { buildTurns, formatDuration, latestThought, modelName, modelSwitches, relativePath, saysSomething, workAfterSegment, workCounts, workSegments, type Turn, type WorkSegment } from "../../web/turns.js";
 import { clip, fileUrl, foldLabel, outputTail, unifiedDiff } from "../format.js";
+import type { TodoEntry } from "../../shared/todo-entries.js";
 import { easeOut, flashAt, mix, unrollCounts } from "../fx.js";
 import { filetypeOf, taskBoxes } from "../markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll, turnTone, type TurnTone } from "../minimap.js";
@@ -401,6 +402,56 @@ function AgentTree(p: { runs: SubagentRun[] }) {
   );
 }
 
+/** Lines of a proposed plan or a todo list drawn under its row before the rest is elided. */
+const CHECKLIST_LINES = 8;
+
+/** A proposed plan (Claude's ExitPlanMode, Codex's plan item) as a quiet block under its row. */
+function PlanBlock(p: { text: string }) {
+  const t = useTheme();
+  const lines = createMemo(() => p.text.split("\n").filter((l) => l.trim()).slice(0, CHECKLIST_LINES));
+  const more = createMemo(() => Math.max(0, p.text.split("\n").filter((l) => l.trim()).length - CHECKLIST_LINES));
+  return (
+    <box flexDirection="column" paddingLeft={4}>
+      <box flexDirection="column" border={["left"]} borderColor={t().accent} paddingLeft={1}>
+        <Index each={lines()}>
+          {(line) => (
+            <text fg={t().text2} wrapMode="word">
+              {line()}
+            </text>
+          )}
+        </Index>
+        <Show when={more() > 0}>
+          <text fg={t().muted}>{`… ${more()} more lines`}</text>
+        </Show>
+      </box>
+    </box>
+  );
+}
+
+const TODO_MARK: Record<TodoEntry["status"], string> = { done: "✓", active: "●", pending: "○", cancelled: "✗" };
+
+/** A todo call's checklist: what it planned and ticked off, in the order it listed them. */
+function TodoRows(p: { entries: TodoEntry[] }) {
+  const t = useTheme();
+  const shown = createMemo(() => p.entries.slice(0, CHECKLIST_LINES));
+  const color = (status: TodoEntry["status"]) => (status === "done" ? t().ok : status === "active" ? t().accent : status === "cancelled" ? t().danger : t().muted);
+  return (
+    <box flexDirection="column" paddingLeft={4}>
+      <Index each={shown()}>
+        {(entry) => (
+          <text wrapMode="none" truncate>
+            <span style={{ fg: color(entry().status) }}>{`${TODO_MARK[entry().status]} `}</span>
+            <span style={{ fg: entry().status === "done" ? t().muted : t().text2 }}>{entry().text}</span>
+          </text>
+        )}
+      </Index>
+      <Show when={p.entries.length > CHECKLIST_LINES}>
+        <text fg={t().muted}>{`… ${p.entries.length - CHECKLIST_LINES} more`}</text>
+      </Show>
+    </box>
+  );
+}
+
 /**
  * One call as neat-render draws it:
  *
@@ -502,6 +553,12 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
               </Index>
             </text>
           </box>
+        </Show>
+        <Show when={row().plan}>
+          {(text) => <PlanBlock text={text()} />}
+        </Show>
+        <Show when={row().todos}>
+          {(entries) => <TodoRows entries={entries()} />}
         </Show>
         <Show when={p.item.subagents?.runs.length}>
           <AgentTree runs={p.item.subagents?.runs ?? []} />

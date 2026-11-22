@@ -2,11 +2,12 @@
 // kind in first-use order, an MCP server counting as a kind of its own, "+N" for
 // the rest. Also the monogram and hue an MCP server's chip wears. Pure.
 import { awuiOpenCodeFamily } from "../shared/awui-mcp.js";
-import type { ChatItem, ToolCategory } from "../shared/protocol.js";
+import type { ChatItem, ToolCategory, ToolKind } from "../shared/protocol.js";
 import { toolFacts } from "./tool-facts.js";
 import { isPlanCall, orchestrationTool } from "./tool-sentence.js";
 
-export interface ToolKind {
+/** A kind as the icon stack draws it: the category's glyph, a server's monogram, or the checklist. */
+export interface ToolKindChip {
   /** Distinct per kind: the category, or `mcp:<server>`. */
   key: string;
   category: ToolCategory;
@@ -18,8 +19,18 @@ export interface ToolKind {
   plan?: boolean;
 }
 
+/** The chip a server-side kind wears: a monogram for an MCP server, the checklist for a plan or a todo, the run glyph for a test. */
+function chipOf(kind: ToolKind, category: ToolCategory): ToolKindChip {
+  if (kind.startsWith("mcp:")) return { key: kind, category, server: kind.slice(4) };
+  if (kind === "test") return { key: "test", category: "command", test: true };
+  if (kind === "plan" || kind === "todo") return { key: "plan", category, plan: true };
+  return { key: kind, category: kind as ToolCategory };
+}
+
 /** The kind of one call: its MCP server, a test run (a command whose output tool-facts reads as one), else its category. */
-export function toolKind(item: Extract<ChatItem, { kind: "tool" }>): ToolKind {
+export function toolKind(item: Extract<ChatItem, { kind: "tool" }>): ToolKindChip {
+  // The server decided the family (agent-events.ts `toolKindOf`); a snapshot stored before it existed has none.
+  if (item.toolKind) return chipOf(item.toolKind, item.category);
   // A delegation through awui's own surface is an agent call, whichever bridge carried it (the
   // extension's plain names, or the MCP server's `mcp__awui-orchestrate__…`): it wears the agents
   // mark rather than its server's monogram.
@@ -36,8 +47,8 @@ export function toolKind(item: Extract<ChatItem, { kind: "tool" }>): ToolKind {
 }
 
 /** The distinct kinds of tool the items called, in the order each was first used. */
-export function toolKinds(items: readonly ChatItem[]): ToolKind[] {
-  const seen = new Map<string, ToolKind>();
+export function toolKinds(items: readonly ChatItem[]): ToolKindChip[] {
+  const seen = new Map<string, ToolKindChip>();
   for (const item of items) {
     if (item.kind !== "tool") continue;
     const kind = toolKind(item);
@@ -47,7 +58,7 @@ export function toolKinds(items: readonly ChatItem[]): ToolKind[] {
 }
 
 /** The chips to draw (at most `max`) and how many kinds are left out. */
-export function iconStack(kinds: readonly ToolKind[], max = 3): { shown: ToolKind[]; more: number } {
+export function iconStack(kinds: readonly ToolKindChip[], max = 3): { shown: ToolKindChip[]; more: number } {
   return { shown: kinds.slice(0, max), more: Math.max(0, kinds.length - max) };
 }
 

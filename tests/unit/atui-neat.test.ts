@@ -128,17 +128,44 @@ describe("atui rows, neat-render's way", () => {
 
   it("budgets a row's head line: a long target ends in an ellipsis, never a mid-word cut", () => {
     // A todo call's summary runs long; on a 73-column pane with the facts block kept its room.
-    const todo = neatRow(tool({ name: "todo_write", category: "other", summary: "Done: Normalize each harness's diff, Ship the diff view", output: "Updated" }), "/w");
-    expect(todo).toMatchObject({ label: "Todo write", facts: ["1 line"] });
-    const clipped = rowHead(todo, 3 + 2 + 1 + "1 line".length + 2, 73);
-    expect(clipped.verb).toBe("Todo write");
-    // The cut lands inside "diff", so it backs up to the word: the ellipsis never splits a word.
-    expect(clipped.detail?.endsWith("Ship the…")).toBe(true);
+    const todo = neatRow(tool({ name: "todo_write", category: "other", summary: "Done: Normalize each harness's diff, Ship the diff view, and put the row's own words in the tools it draws", output: "Updated" }), "/w");
+    expect(todo).toMatchObject({ label: "Todos", facts: [] });
+    const clipped = rowHead(todo, 3 + 2 + 1 + 2, 73);
+    expect(clipped.verb).toBe("Todos");
+    // The cut lands inside a word past the budget, so it backs up to that word's start: an ellipsis never splits one.
+    expect(clipped.detail?.endsWith("…")).toBe(true);
+    expect(clipped.detail).toBe("Done: Normalize each harness's diff, Ship the diff view,…");
     // The whole head line fits the column it was budgeted for.
     expect(`├─ ● ${clipped.verb} ${clipped.detail}  `.length + todo.facts.join(" · ").length).toBeLessThanOrEqual(73);
     // A target that fits is left alone, and a row with no target gets none.
     const read = rowHead(neatRow(tool({ name: "read", args: JSON.stringify({ path: "/w/src/a.ts", offset: 1, limit: 20 }), paths: ["/w/src/a.ts"], output: "a\nb\n" }), "/w"), 2 + 1, 73);
     expect(read.detail).toBe("src/a.ts:1-20");
     expect(rowHead({ label: "Bash", glue: " ", facts: [] }, 3, 73).detail).toBeNull();
+  });
+});
+
+describe("the row family comes before the category", () => {
+  it("draws a server's call as that server's, whatever its name reads like", () => {
+    // ACP and Claude name a server's tool `mcp__<server>__<tool>`; `list_issues` would otherwise be a search.
+    const row = neatRow(tool({ name: "mcp__github__list_issues", category: "search", toolKind: "mcp:github", summary: "", output: "a\nb" }), "/w");
+    expect(row).toMatchObject({ label: "Github", detail: "list_issues", facts: ["2 lines"] });
+    // Items stored before the server decided kinds still find their server.
+    expect(neatRow(tool({ name: "mcp__context7__resolve-library-id", category: "other", summary: "react" }), "/w")).toMatchObject({ label: "Context7", detail: "resolve-library-id react" });
+  });
+
+  it("draws a plan as a plan, with its first line as the target", () => {
+    const row = neatRow(tool({ name: "ExitPlanMode", category: "other", toolKind: "plan", plan: "# Ship the diff view\n\n- normalize paths" }), "/w");
+    expect(row.label).toBe("Plan");
+    expect(row.detail).toBe("Ship the diff view");
+    expect(row.plan).toBe("# Ship the diff view\n\n- normalize paths");
+  });
+
+  it("draws a todo call as the list it holds, and hands the entries to the row", () => {
+    const item = tool({ name: "TodoWrite", category: "other", toolKind: "todo", args: JSON.stringify({ todos: [{ content: "Read the spec", status: "completed" }, { content: "Write the code", status: "in_progress" }] }) });
+    const row = neatRow(item, "/w");
+    expect(row.label).toBe("Todos");
+    expect(row.detail).toBe("Write the code");
+    expect(row.facts).toEqual(["1/2 done"]);
+    expect(row.todos?.map((t) => t.status)).toEqual(["done", "active"]);
   });
 });

@@ -497,6 +497,15 @@ export interface AssistantItem {
 
 export type ToolCategory = "read" | "edit" | "write" | "command" | "search" | "web" | "agent" | "other";
 
+/**
+ * What a call is, decided once on the server (`toolKindOf` in agent-events.ts) and
+ * drawn by every client: its category, one of the card families that are not a
+ * category (a test run, a plan, a todo list, a background job, a published page,
+ * a question), or the MCP server whose tool it is (`mcp:<server>`), which wears a
+ * monogram instead of a category's glyph.
+ */
+export type ToolKind = ToolCategory | "test" | "plan" | "todo" | "job" | "render" | "ask" | `mcp:${string}`;
+
 /** One subagent a delegation call started (omp's task, pi-subagents' subagent, Claude Code's Task). */
 export interface SubagentRun {
   /** Stable within the call: the harness's agent id (omp's CrookedThrush), else its launch index. */
@@ -687,6 +696,13 @@ export interface ToolItem {
   output: string;
   truncated: boolean;
   category: ToolCategory;
+  /**
+   * The row family, decided once on the server (agent-events.ts `toolKindOf`) so the
+   * clients stop re-deriving it from the tool's name. Named `toolKind` because `kind`
+   * is this union's own discriminant. Absent on a snapshot stored before it existed,
+   * and on replayed calls (a builder Phase 2 gives it to); clients then fall back.
+   */
+  toolKind?: ToolKind;
   /** One-line description: a path, command, or query. */
   summary: string;
   /** Files named in the arguments (absolute or as given). */

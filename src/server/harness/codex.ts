@@ -721,9 +721,13 @@ class CodexLiveChat implements LiveChat {
       case "imageView":
         this.emit({ type: "tool_end", toolCallId: id, output: "", isError: false });
         return;
-      case "plan":
-        this.emit({ type: "tool_end", toolCallId: id, output: str(item.text), isError: false });
+      case "plan": {
+        // Codex sends its plan as an item of its own, not as an argument: the fold reads it from the
+        // result so the row becomes the plan card instead of an empty `update_plan`.
+        const text = str(item.text);
+        this.emit({ type: "tool_end", toolCallId: id, output: text, isError: false, ...(text.trim() ? { details: { plan: text } } : {}) });
         return;
+      }
       case "contextCompaction":
         this.emit({ type: "compacting", active: false });
         this.emit({ type: "notice", level: "info", text: "Compacted conversation" });

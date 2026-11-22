@@ -196,7 +196,9 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
 
   // A call about background jobs says which: the wait on them, the list looked at, the one stopped or started.
   const jobs = item.jobs ?? [];
-  if (jobs.length > 0 && item.category !== "command") {
+  // The server decided the family (agent-events.ts `toolKindOf`); a replayed call falls back to its jobs.
+  const jobRow = item.toolKind !== undefined ? item.toolKind === "job" : jobs.length > 0 && item.category !== "command";
+  if (jobRow) {
     const one = jobs.length === 1 ? jobs[0] : undefined;
     // One job is named by its id, then what it is for ("Waiting on bg_1: Running the e2e suite").
     const named = one ? one.id : plural(jobs.length, "job");
@@ -243,7 +245,7 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
 
   // rpiv-todo's `todo` acts on one numbered task, so the row says which action, not "the plan".
   // Other tools take an `action` too (bg_task, memory, subagent), so only a todo tool's is a todo's.
-  const todoAction = /todo/i.test(item.name) ? str(args.action) : undefined;
+  const todoAction = (item.toolKind !== undefined ? item.toolKind === "todo" : /todo/i.test(item.name)) ? str(args.action) : undefined;
   if (todoAction && TODO_ACTIONS.has(todoAction)) {
     if (todoAction === "list" || todoAction === "clear") return make(`todo_${todoAction}`, "the todos", false, undefined, []);
     if (todoAction === "create") {
@@ -257,13 +259,15 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
     return make(`todo_${todoAction}`, id || "a todo", false, status ? `to ${status.replace(/_/g, " ")}` : undefined, []);
   }
 
-  if (isPlanCall(item.name, item.plan !== undefined)) {
+  // The server's family draws a plan and a todo list the same way; a replayed call falls back to its name.
+  const planRow = item.toolKind !== undefined ? item.toolKind === "plan" || item.toolKind === "todo" : isPlanCall(item.name, item.plan !== undefined);
+  if (planRow) {
     const todos = todoCount(args);
     return make("plan", "the plan", false, todos ? `(${plural(todos.total, "step")})` : undefined, todos && todos.total > 0 ? [`${todos.done} of ${todos.total} done`] : []);
   }
 
 
-  if (item.name === "ask" && item.category === "other") return make("ask", "a question", false, undefined, []);
+  if (item.toolKind !== undefined ? item.toolKind === "ask" : item.name === "ask" && item.category === "other") return make("ask", "a question", false, undefined, []);
 
   switch (item.category) {
     case "read":

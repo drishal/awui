@@ -18,7 +18,7 @@ import { JobCard } from "./JobCard.js";
 import { chatJobs } from "../jobs.js";
 import { phaseDelay, workingPhase } from "../working-phase.js";
 import { retryLabel, retryPrompt, type RetryMode } from "../tool-retry.js";
-import { iconStack, monogram, serverHue, toolKind, toolKinds, usedLabel, type ToolKind } from "../tool-kinds.js";
+import { iconStack, monogram, serverHue, toolKind, toolKinds, usedLabel, type ToolKindChip } from "../tool-kinds.js";
 import { Dot } from "./Dot.js";
 import { SecondOpinionCard } from "./SecondOpinionCard.js";
 import { Rolling } from "./Rolling.js";
@@ -168,7 +168,7 @@ const ThoughtRow = memo(function ThoughtRow({ id, thinking, streaming }: { id: s
  *  200ms call is noise, not feedback (neat-render does the same). */
 const TIMER_AFTER_MS = 1500;
 /** A call's kind as a 20px chip: the category's glyph, or an MCP server's monogram in a hue drawn from the theme. */
-function KindChip({ kind, running = false }: { kind: ToolKind; running?: boolean }) {
+function KindChip({ kind, running = false }: { kind: ToolKindChip; running?: boolean }) {
   return (
     <span className={`kind-chip${kind.server ? ` is-server hue-${serverHue(kind.server)}` : ""}${kind.test ? " is-test" : ""}`} aria-hidden="true">
       {running ? <Spinner size={12} /> : kind.server ? <span className="kind-mono">{monogram(kind.server)}</span> : <ToolIcon category={kind.category} size={12} test={kind.test === true} plan={kind.plan === true} />}

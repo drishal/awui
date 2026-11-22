@@ -6,6 +6,7 @@
 import { createContext, Fragment, useContext, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { DiffLine, ToolDiff, ToolItem } from "../../shared/protocol.js";
 import type { LineOrigin } from "../../shared/review.js";
+import { todoEntries, type TodoEntry } from "../../shared/todo-entries.js";
 import { IconCheck, IconCircle, IconDot, IconFile, IconGlobe, IconSearch, IconTerminal, IconX } from "../icons.js";
 import { parseJsonContainer } from "../json-tree.js";
 import { relativePath } from "../turns.js";
@@ -290,52 +291,6 @@ function lineRange(args: Args | null): string | null {
   return null;
 }
 
-interface TodoEntry {
-  text: string;
-  status: "done" | "active" | "pending" | "cancelled";
-  phase?: string;
-}
-
-const todoStatus = (raw: unknown): TodoEntry["status"] => {
-  const s = String(raw ?? "");
-  return /done|complete/.test(s) ? "done" : /progress|active|doing/.test(s) ? "active" : /cancel|abandon|skip/.test(s) ? "cancelled" : "pending";
-};
-
-/**
- * A todo call as a checklist: Claude Code's and Hermes's whole list, or what
- * omp's and Pi's operations planned and ticked off. Null when the arguments
- * are not a todo call.
- */
-function todoEntries(args: Args | null): TodoEntry[] | null {
-  if (!args) return null;
-  const obj = (v: unknown): v is Args => typeof v === "object" && v !== null && !Array.isArray(v);
-  if (Array.isArray(args.todos)) {
-    return args.todos.filter(obj).map((t) => ({ text: String(t.content ?? t.text ?? t.title ?? ""), status: todoStatus(t.status) }));
-  }
-  // Pi lets a model leave `op` out of a `list` or `items` call.
-  const single = typeof args.op === "string" || Array.isArray(args.list) || Array.isArray(args.items);
-  const ops = Array.isArray(args.ops) ? args.ops.filter(obj) : single ? [args] : null;
-  if (!ops) return null;
-  const out: TodoEntry[] = [];
-  const planned = (items: unknown, phase: unknown) => {
-    for (const task of Array.isArray(items) ? items : []) {
-      out.push({ text: String(task), status: "pending", ...(typeof phase === "string" ? { phase } : {}) });
-    }
-  };
-  for (const op of ops) {
-    const kind = String(op.op ?? "");
-    if (Array.isArray(op.list)) {
-      for (const phase of op.list.filter(obj)) planned(phase.items, phase.phase);
-    } else if (Array.isArray(op.items)) {
-      planned(op.items, op.phase);
-    } else if (typeof op.task === "string" || typeof op.text === "string") {
-      const status: TodoEntry["status"] = /done|complete/.test(kind) ? "done" : /start|progress/.test(kind) ? "active" : /drop|remove|cancel/.test(kind) ? "cancelled" : "pending";
-      out.push({ text: String(op.task ?? op.text), status });
-    }
-  }
-  return out.length > 0 ? out : null;
-}
-
 const TODO_ICON: Record<TodoEntry["status"], ReactNode> = {
   done: <IconCheck size={13} />,
   active: <IconDot size={13} />,
@@ -483,7 +438,8 @@ function CallBody({ item, workspace }: { item: ToolItem; workspace: string }) {
     );
   }
 
-  const todos = /todo/i.test(item.name) ? todoEntries(args) : null;
+  // The server decided the family (agent-events.ts `toolKindOf`); a stored snapshot from before it, and a replayed call, fall back to the name.
+  const todos = item.toolKind ? (item.toolKind === "todo" ? todoEntries(args) : null) : /todo/i.test(item.name) ? todoEntries(args) : null;
   if (todos) {
     return card(
       null,

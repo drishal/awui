@@ -17,6 +17,8 @@ import type { AssistantItem, ChatItem, ToolItem } from "../shared/protocol.js";
 import { clip } from "./format.js";
 import { relativePath, type Turn } from "../web/turns.js";
 import { toolFacts } from "../web/tool-facts.js";
+import { todoEntries, type TodoEntry } from "../shared/todo-entries.js";
+import { isPlanCall, toolWords } from "../web/tool-sentence.js";
 
 export interface NeatRow {
   label: string;
@@ -32,6 +34,10 @@ export interface NeatRow {
   diff?: Array<{ marker: "+" | "-" | " "; text: string }>;
   /** Diff lines past the preview. */
   more?: number;
+  /** A plan the call proposes (Claude's ExitPlanMode, Codex's plan item), shown under the row. */
+  plan?: string;
+  /** A todo call's checklist, shown under the row. */
+  todos?: TodoEntry[];
 }
 
 /** Diff lines shown under an edit before the rest is elided. */
@@ -94,6 +100,14 @@ function diffStat(added: number, removed: number): string | undefined {
 
 const shortUrl = (u: string) => u.replace(/^https?:\/\//, "").replace(/\/+$/, "");
 
+/** A server's call: the server as the row's verb (its monogram in the fold head), then its tool and what it was given. */
+function mcpRow(item: ToolItem, server: string, lines: number, outcome: (facts: string[]) => string[]): NeatRow {
+  const mcp = mcpLabel(item.name);
+  // awui's own servers on OpenCode name their tool after the chat's id, so those rows say what the call did.
+  const what = mcp ? [mcp.tool, item.summary].filter(Boolean).join(" ") : item.summary || toolWords(item.name);
+  return { label: humanise(server), glue: " ", detail: what, facts: outcome(lines ? [plural(lines, "line")] : []) };
+}
+
 export function neatRow(item: ToolItem, workspace: string): NeatRow {
   const a = args(item);
   const failed = item.status === "error";
@@ -113,6 +127,34 @@ export function neatRow(item: ToolItem, workspace: string): NeatRow {
   if (item.htmlRender) {
     const page = item.htmlRender;
     return { label: "Render", glue: " ", detail: page.title, facts: outcome([`${page.height}px, page in web UI`]) };
+  }
+
+  // The row family is resolved before the category: a server's `list_issues` is that server's
+  // call rather than a search, and a plan or a todo list is neither "other" nor a write.
+  const kind = item.toolKind;
+  if (kind?.startsWith("mcp:")) return mcpRow(item, kind.slice(4), lines, outcome);
+  // A snapshot stored before the server decided kinds, and a replayed call, still read their server.
+  if (kind === undefined) {
+    const mcp = mcpLabel(item.name);
+    if (mcp) return mcpRow(item, mcp.server, lines, outcome);
+  }
+  if (kind === "todo" || (kind === undefined && /todo/i.test(item.name))) {
+    const entries = todoEntries(a);
+    const done = entries?.filter((t) => t.status === "done").length ?? 0;
+    const active = entries?.find((t) => t.status === "active");
+    const total = entries?.length ?? 0;
+    const facts = total > 0 ? [`${done}/${total} done`] : [];
+    return {
+      label: "Todos",
+      glue: " ",
+      detail: active?.text ? clip(active.text, 70) : item.summary || "the list",
+      facts: outcome(facts),
+      ...(entries ? { todos: entries } : {}),
+    };
+  }
+  if (kind === "plan" || (kind === undefined && isPlanCall(item.name, item.plan !== undefined) && !/todo/i.test(item.name))) {
+    const first = item.plan?.split("\n").map((l) => l.replace(/^[#>*\-\s]+/, "").trim()).find(Boolean);
+    return { label: "Plan", glue: " ", detail: first ? clip(first, 70) : item.summary || "the plan", facts: outcome([]), ...(item.plan ? { plan: item.plan } : {}) };
   }
 
   switch (item.category) {
@@ -184,9 +226,6 @@ export function neatRow(item: ToolItem, workspace: string): NeatRow {
         const code = (str(a.code) ?? item.summary).split("\n").filter((l) => l.trim());
         return { label: "Codemode", glue: " ", detail: code.length > 1 ? `${code[0]} …` : (code[0] ?? ""), facts: outcome(lines ? [plural(lines, "line")] : []) };
       }
-      // `mcp__context7__resolve-library-id` reads as its server, then the tool and what it was given.
-      const mcp = mcpLabel(item.name);
-      if (mcp) return { label: humanise(mcp.server), glue: " ", detail: item.summary ? `${mcp.tool} ${item.summary}` : mcp.tool, facts: outcome(lines ? [plural(lines, "line")] : []) };
       return { label: humanise(item.name), glue: " ", detail: item.summary, facts: outcome(lines ? [plural(lines, "line")] : []) };
     }
   }

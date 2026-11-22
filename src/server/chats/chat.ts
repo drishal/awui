@@ -34,12 +34,12 @@ import type {
 } from "../../shared/protocol.js";
 import { MAX_CONTEXT_HISTORY } from "../../shared/protocol.js";
 import { promises as fs } from "node:fs";
-import { boundText, editShape, exitCodeOf, historyToItems, NO_RESULT_TEXT, stringifyArgs, toolCategory, toolPaths, toolSummary } from "../harness/agent-events.js";
+import { boundText, editShape, exitCodeOf, historyToItems, NO_RESULT_TEXT, stringifyArgs, toolCategory, toolKindOf, toolPaths, toolSummary } from "../harness/agent-events.js";
 import { argsDiff, resultDiff } from "../harness/tool-diff.js";
 import { applyReports, detailReports, hasAgentCells, runsFromArgs, runsFromDetails, settleRuns, transcriptFile, transcriptRecords, type AgentReport } from "../harness/subagents.js";
 import { applyJobReports, jobsFromCall, mergeJob } from "../harness/jobs.js";
 import { htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "../harness/render-token.js";
-import { planFromArgs } from "../harness/plans.js";
+import { planFromArgs, planFromDetails } from "../harness/plans.js";
 import { branchMessages } from "../harness/session-files.js";
 import { rememberImage } from "../image-store.js";
 import type { HarnessAdapter, HarnessEvent, HarnessUsage, LiveChat } from "../harness/types.js";
@@ -262,6 +262,8 @@ interface ReducerEffects {
   refreshContext(): void;
   refreshUsage(): void;
   refreshTodos(): void;
+  /** A whole list the harness stated itself (an ACP agent's plan): show it now, not at the next refresh. */
+  applyTodos(todos: TodoItem[]): void;
   /** A session id arrived from the harness: tell the manager. */
   sessionAssigned(): void;
 }
@@ -444,6 +446,9 @@ class EventReducer {
           ...(plan ? { plan } : {}),
           at: Date.now(),
         };
+        // The row family from what the call already says; a result that settles it (a test run's
+        // summary, a job) is read again at the end.
+        tool.toolKind = toolKindOf(tool);
         if (isHtmlRenderCall(event.name, event.args)) this.renderCalls.add(event.toolCallId);
         this.toolArgs.set(event.toolCallId, event.args);
         this.put(tool);
@@ -459,7 +464,9 @@ class EventReducer {
         const runs = event.details !== undefined && (item.category === "agent" || hasAgentCells(event.details)) ? runsFromDetails(event.toolCallId, event.details, item.subagents ?? null) : null;
         // A wait streams the jobs it waits on: their status, and omp's widget of their progress.
         const jobs = event.details !== undefined ? this.callJobs(item, event.details, event.keepOutput ? item.output : event.output) : null;
-        this.upsert({ ...item, ...(bounded ? { output: bounded.text, truncated: bounded.truncated } : {}), ...(runs ? { subagents: runs } : {}), ...(jobs ? { jobs } : {}) });
+        const next: ToolItem = { ...item, ...(bounded ? { output: bounded.text, truncated: bounded.truncated } : {}), ...(runs ? { subagents: runs } : {}), ...(jobs ? { jobs } : {}) };
+        next.toolKind = toolKindOf(next);
+        this.upsert(next);
         this.dirtyTools.add(item.id);
         this.scheduleFlush();
         break;
@@ -505,21 +512,27 @@ class EventReducer {
         // A shell call's exit rides on the item when the harness reported one (OpenCode does).
         const exitCode = settled.category === "command" ? exitCodeOf(event.details) : null;
         const jobs = this.callJobs(base, event.details, event.output);
+        // A harness that sends a plan as its own item (Codex's `plan`) hands it over in the result.
+        const plan = settled.plan === undefined ? planFromDetails(event.details) : null;
         this.toolArgs.delete(event.toolCallId);
-        this.put({
+        const done: ToolItem = {
           ...(event.isError ? uncounted : settled),
           output: bounded.text,
           truncated: bounded.truncated,
           status: event.isError ? "error" : "done",
           endedAt: Date.now(),
           ...(page ? { htmlRender: page } : {}),
+          ...(plan ? { plan } : {}),
           ...(exitCode !== null ? { exitCode } : {}),
           ...(jobs ? { jobs } : {}),
           ...(event.images && event.images.length > 0 ? { images: event.images } : {}),
-        });
+        };
+        // The result may settle the family the call started as: a command that ran a test suite.
+        done.toolKind = toolKindOf(done);
+        this.put(done);
         // A wait that saw a job end tells the call that started it too.
         if (jobs) this.applyJobReports(jobs.filter((j) => j.status !== "running"));
-        if (base.name.toLowerCase().includes("todo")) this.fx.refreshTodos();
+        if (done.toolKind === "todo") this.fx.refreshTodos();
         // A wait or a proc read reports on background runs another call started.
         const reports = detailReports(event.details);
         if (reports.length > 0) this.applyReports(reports);
@@ -530,6 +543,9 @@ class EventReducer {
         break;
       case "job_reports":
         this.applyJobReports(event.jobs);
+        break;
+      case "todos":
+        this.fx.applyTodos(event.todos);
         break;
       case "busy":
         this.busySignals++;
@@ -912,6 +928,7 @@ export class Chat implements CheckpointHost {
       refreshContext: () => void this.refreshContext(),
       refreshUsage: () => void this.refreshUsage(),
       refreshTodos: () => void this.refreshTodos(),
+      applyTodos: (todos) => this.applyTodos(todos),
       sessionAssigned: () => {
         this.onSession?.(this);
         this.checkpoints?.sessionAssigned();
@@ -1257,6 +1274,13 @@ export class Chat implements CheckpointHost {
     } catch {
       // usage is best-effort
     }
+  }
+
+  /** A whole list the harness stated: the status stack and a snapshot both read it from here. */
+  private applyTodos(todos: TodoItem[]): void {
+    if (JSON.stringify(todos) === JSON.stringify(this.todos)) return;
+    this.todos = todos;
+    this.reducer.emit({ type: "todos", todos });
   }
 
   private async refreshTodos(): Promise<void> {

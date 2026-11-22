@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { ChatItem, ToolCategory } from "../../src/shared/protocol.js";
-import { iconStack, monogram, serverHue, toolKinds, usedLabel } from "../../src/web/tool-kinds.js";
+import type { ChatItem, ToolCategory, ToolItem } from "../../src/shared/protocol.js";
+import { toolCategory, toolKindOf } from "../../src/server/harness/agent-events.js";
+import { iconStack, monogram, serverHue, toolKind, toolKinds, usedLabel } from "../../src/web/tool-kinds.js";
 
 const tool = (name: string, category: ToolCategory): ChatItem => ({ kind: "tool", id: name, name, args: "{}", status: "done", output: "", truncated: false, category, summary: "", paths: [] });
 
@@ -83,5 +84,77 @@ describe("the orchestration surface", () => {
     // Another server's tool is still that server's, and a plain call is still its category.
     expect(toolKinds([tool("mcp__github__list_issues", "other")])[0]?.key).toBe("mcp:github");
     expect(toolKinds([tool("task_status_report", "other")])[0]?.key).toBe("other");
+  });
+});
+
+describe("the server decides the kind", () => {
+  const call = (over: Partial<ToolItem> & Pick<ToolItem, "name">): ToolItem => ({
+    kind: "tool",
+    id: "t:1",
+    args: "{}",
+    status: "done",
+    output: "",
+    truncated: false,
+    category: "other",
+    summary: "",
+    paths: [],
+    ...over,
+  });
+
+  it("fixes the names the category map used to miss", () => {
+    expect(toolCategory("NotebookEdit")).toBe("edit");
+    expect(toolCategory("apply_diff")).toBe("edit");
+    expect(toolCategory("delete_file")).toBe("edit");
+    expect(toolCategory("move_file")).toBe("edit");
+    // A notebook read is still a read, and a plain tool is still other.
+    expect(toolCategory("NotebookRead")).toBe("read");
+    expect(toolCategory("explain")).toBe("other");
+    expect(toolKindOf(call({ name: "NotebookEdit", category: "edit" }))).toBe("edit");
+  });
+
+  it("names an MCP server, and a delegation stays an agent", () => {
+    expect(toolKindOf(call({ name: "mcp__github__list_issues", category: "search" }))).toBe("mcp:github");
+    // awui's own per-chat servers on OpenCode are one kind, whichever bridge carried the call.
+    expect(toolKindOf(call({ name: "awui-r-0123456789abcdef_render_html" }))).toBe("mcp:awui");
+    expect(toolKindOf(call({ name: "delegate_task" }))).toBe("agent");
+    expect(toolKindOf(call({ name: "mcp__awui-orchestrate__thread_wait" }))).toBe("agent");
+  });
+
+  it("tells a plan from a todo list, whatever the harness calls the tool", () => {
+    expect(toolKindOf(call({ name: "todo" }))).toBe("todo");
+    expect(toolKindOf(call({ name: "TodoWrite" }))).toBe("todo");
+    expect(toolKindOf(call({ name: "ExitPlanMode", plan: "# Plan" }))).toBe("plan");
+    expect(toolKindOf(call({ name: "plan_mode_complete", plan: "# Plan" }))).toBe("plan");
+    // Codex's plan item carries no argument; its text arrives on the result and sets `plan`.
+    expect(toolKindOf(call({ name: "update_plan", plan: "1. read\n2. edit" }))).toBe("plan");
+    expect(toolKindOf(call({ name: "explain" }))).toBe("other");
+  });
+
+  it("calls a background-job surface a job, and leaves a command's own row alone", () => {
+    expect(toolKindOf(call({ name: "wait" }))).toBe("job");
+    expect(toolKindOf(call({ name: "bg_task", args: JSON.stringify({ action: "spawn" }) }))).toBe("job");
+    expect(toolKindOf(call({ name: "TaskStop" }))).toBe("job");
+    expect(toolKindOf(call({ name: "bash", category: "command", args: JSON.stringify({ run_in_background: true }) }))).toBe("command");
+  });
+
+  it("reads a finished command's output for a test run, and nothing else", () => {
+    const run = call({ name: "bash", category: "command", args: JSON.stringify({ command: "npm test" }), output: " Test Files  1 passed (1)\n      Tests  3 passed (3)" });
+    expect(toolKindOf(run)).toBe("test");
+    expect(toolKindOf({ ...run, output: "" })).toBe("command");
+    // A running call's output is partial, so it claims nothing yet.
+    expect(toolKindOf({ ...run, status: "running" })).toBe("command");
+  });
+
+  it("names a published page and a question", () => {
+    expect(toolKindOf(call({ name: "render_html" }))).toBe("render");
+    expect(toolKindOf(call({ name: "ask" }))).toBe("ask");
+    // Another harness's own `ask` is not omp's form.
+    expect(toolKindOf(call({ name: "ask", category: "read" }))).toBe("read");
+  });
+
+  it("is what the clients' chips are read from", () => {
+    expect(toolKind({ ...tool("read", "read"), toolKind: "test" })).toEqual({ key: "test", category: "command", test: true });
+    expect(toolKind({ ...tool("TodoWrite", "other"), toolKind: "todo" })).toEqual({ key: "plan", category: "other", plan: true });
+    expect(toolKind({ ...tool("mcp__linear__list_issues", "search"), toolKind: "mcp:linear" })).toEqual({ key: "mcp:linear", category: "search", server: "linear" });
   });
 });

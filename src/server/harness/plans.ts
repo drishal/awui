@@ -16,3 +16,15 @@ export function planFromArgs(name: string, args: unknown): string | null {
   const text = plan.trim();
   return text.length > MAX_PLAN_CHARS ? `${text.slice(0, MAX_PLAN_CHARS)}\n\n…` : text;
 }
+
+/**
+ * The plan a call's result hands over, when the harness sends the plan as its own
+ * item rather than as an argument (Codex's `plan` entry, whose text arrives on the
+ * item's completion): `details.plan`. Bounded like an argument's.
+ */
+export function planFromDetails(details: unknown): string | null {
+  const plan = details && typeof details === "object" && !Array.isArray(details) ? (details as { plan?: unknown }).plan : undefined;
+  if (typeof plan !== "string" || !plan.trim()) return null;
+  const text = plan.trim();
+  return text.length > MAX_PLAN_CHARS ? `${text.slice(0, MAX_PLAN_CHARS)}\n\n…` : text;
+}

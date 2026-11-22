@@ -57,7 +57,18 @@ describe("foldAcpUpdate", () => {
     expect(fold({ sessionUpdate: "usage_update", used: 10, size: 100, cost: { amount: 3, currency: "credits" } })).toEqual({ type: "context", used: 10, size: 100, costUsd: null });
   });
 
-  it("reads a plan as a notice, and a session's own title", () => {
+  it("reads a plan as a todo list, and its words as a notice when no entry has a status", () => {
+    // The statuses are the list's progress: the status stack draws them, so no notice repeats the words.
+    expect(fold({ sessionUpdate: "plan", entries: [{ content: "Read the project", status: "completed" }, { content: "Change one file", status: "pending" }] })).toEqual({
+      type: "todos",
+      todos: [
+        { text: "Read the project", status: "completed" },
+        { text: "Change one file", status: "pending" },
+      ],
+      at: 1_700_000_000_000,
+    });
+    // One entry without a status leaves the list unknown: the plan is a line of words.
+    expect(fold({ sessionUpdate: "plan", entries: [{ content: "Read", status: "pending" }, { content: "Write" }] })).toEqual({ type: "notice", text: "Read; Write", at: 1_700_000_000_000 });
     expect(fold({ sessionUpdate: "plan", entries: [{ content: "Read" }, { content: "Write" }] })).toEqual({ type: "notice", text: "Read; Write", at: 1_700_000_000_000 });
     expect(fold({ sessionUpdate: "session_info_update", title: "  Named  session " })).toEqual({ type: "title", title: "Named session" });
   });

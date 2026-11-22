@@ -170,6 +170,8 @@ class AcpLiveChat implements LiveChat {
   /** What each open call was, for its approval card. */
   private readonly toolInfo = new Map<string, { name: string; args: unknown }>();
   private readonly permissionOptions = new Map<string, string[]>();
+  /** The list an agent's `plan` update last stated, so a reopened chat shows it. */
+  private planTodos: TodoItem[] = [];
   private readonly unknownKinds = new Set<string>();
 
   constructor(
@@ -361,6 +363,10 @@ class AcpLiveChat implements LiveChat {
       case "notice":
         this.emit({ type: "notice", level: "info", text: fold.text });
         return;
+      case "todos":
+        this.planTodos = fold.todos;
+        this.emit({ type: "todos", todos: fold.todos });
+        return;
       case "unknown": {
         if (this.unknownKinds.size >= MAX_UNKNOWN_NOTES || this.unknownKinds.has(fold.kind)) return;
         this.unknownKinds.add(fold.kind);
@@ -443,7 +449,8 @@ class AcpLiveChat implements LiveChat {
   }
 
   async getTodos(): Promise<TodoItem[]> {
-    return [];
+    // An ACP agent states its plan as a session update, not through a tool call.
+    return [...this.planTodos];
   }
 
   async listCommands(): Promise<SlashCommand[]> {

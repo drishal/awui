@@ -1,7 +1,13 @@
 // Normalization for Pi-family agent events and transcript messages. omp is a
 // Pi fork and emits the same shapes over RPC, so both adapters share this.
 // Inputs are untyped on purpose: SDK and wire types never leave the adapters.
-import { MAX_IMAGES, type BackgroundJob, type ChatItem, type TodoItem, type ToolCategory, type ToolDiff, type ToolItem } from "../../shared/protocol.js";
+import { MAX_IMAGES, type BackgroundJob, type ChatItem, type TodoItem, type ToolCategory, type ToolDiff, type ToolItem, type ToolKind } from "../../shared/protocol.js";
+import { awuiOpenCodeFamily } from "../../shared/awui-mcp.js";
+// The output sniffers and the row words are pure modules the terminal clients already
+// share; the row family is read from the same places so no client re-derives them.
+// Phase 2 moves them into src/shared.
+import { toolArgs, toolFacts } from "../../web/tool-facts.js";
+import { isPlanCall, orchestrationTool } from "../../web/tool-sentence.js";
 import { argsDiff, resultDiff } from "./tool-diff.js";
 import { imageRefs } from "../image-store.js";
 import { applyReports, asyncReports, detailReports, hasAgentCells, isAgentTool, notifyReports, runsFromArgs, runsFromDetails, settleRuns, type AgentReport } from "./subagents.js";
@@ -157,12 +163,68 @@ export function toolCategory(name: string): ToolCategory {
   if (n === "write_stdin") return "command";
   if (isAgentTool(name)) return "agent";
   if (/web|fetch|browse|url|http/.test(n)) return "web";
-  if (/(^|_)(edit|ast_edit|apply_patch|patch|multi_?edit|str_replace|replace)($|_)/.test(n)) return "edit";
+  // Claude Code spells a notebook's verb inside one word ("NotebookEdit"); a patch tool may
+  // name its payload ("apply_diff"); and a delete or a move edits the file it names.
+  if (/notebook_?edit/i.test(n)) return "edit";
+  if (/notebook_?read/i.test(n)) return "read";
+  if (/(^|_)(edit|ast_edit|apply_patch|patch|diff|multi_?edit|str_replace|replace|delete|move|rename)($|_)/.test(n)) return "edit";
   if (/(^|_)(write|create|new_file|save)($|_)/.test(n)) return "write";
   if (/grep|glob|find|search|(^|_)ls($|_)|list|lsp/.test(n)) return "search";
   if (/(^|_)(read|view|cat|open)($|_)/.test(n)) return "read";
   if (/bash|shell|exec|run|eval|terminal|command|python|ssh/.test(n)) return "command";
   return "other";
+}
+
+const MCP_NAME = /^mcp__(.+?)__/;
+
+/** The MCP server whose tool a name is: Claude Code's and Codex's `mcp__<server>__<tool>`, or awui's own per-chat servers on OpenCode. */
+export function mcpServerOf(name: string): string | undefined {
+  return MCP_NAME.exec(name)?.[1] ?? (awuiOpenCodeFamily(name) ? "awui" : undefined);
+}
+
+/** A background-job call as it was made: the wait on jobs, the list of them, one started, one stopped. */
+export type JobSurface = "wait" | "list" | "start" | "background" | "stop";
+
+/**
+ * Which background-job surface a call is, from its name and arguments: the one
+ * list jobs.ts reads a result through and the row words a call by, so a new
+ * spelling is taught here once. `background` is a command left running (Claude
+ * Code's `Bash run_in_background`), which the row already words as its command.
+ */
+export function jobSurfaceOf(name: string, args?: unknown): JobSurface | null {
+  if (/^(wait|await)$/i.test(name)) return "wait";
+  if (/^(job|jobs|bg_status)$/i.test(name)) return "list";
+  if (/^bg_task$/i.test(name)) return isObj(args) && args.action === "status" ? "list" : "start";
+  if (name === "Bash" && isObj(args) && args.run_in_background === true) return "background";
+  if (name === "TaskStop") return "stop";
+  return null;
+}
+
+/** Everything a call's row family is decided from: its name and arguments, and what its result holds so far. */
+export type ToolKindSource = Pick<ToolItem, "name" | "category" | "args" | "status" | "output" | "truncated"> & Partial<Pick<ToolItem, "plan" | "subagents" | "jobs" | "htmlRender">>;
+
+/**
+ * The row family of a call, decided once here so no client sniffs a name: a
+ * delegation, an MCP server's tool, the agents it spawned, a published page, a
+ * plan, a todo list, a question, a background job, a test run — else its
+ * category. Order matters: the more specific family wins.
+ */
+export function toolKindOf(item: ToolKindSource): ToolKind {
+  const args = toolArgs(item.args);
+  // A delegation through awui's own surface stays an agent call, not its server's chip.
+  if (orchestrationTool(item.name)) return "agent";
+  const server = mcpServerOf(item.name);
+  if (server) return `mcp:${server}`;
+  // omp's eval spawns agents from inside code, so the result's own shape says it.
+  if (item.subagents) return "agent";
+  if (item.htmlRender || isHtmlRenderCall(item.name, args)) return "render";
+  // A plan handed over for review, and the harnesses that write their list through a tool.
+  if (isPlanCall(item.name, item.plan !== undefined)) return /todo/i.test(item.name) ? "todo" : "plan";
+  if (item.name === "ask" && item.category === "other") return "ask";
+  if (item.category !== "command" && ((item.jobs?.length ?? 0) > 0 || jobSurfaceOf(item.name, args) !== null)) return "job";
+  // A command whose output is a runner's summary is a test run, and says so only when it settled.
+  if (item.category === "command" && toolFacts(item).kind === "test") return "test";
+  return item.category;
 }
 
 const PATH_KEYS = ["path", "file_path", "filePath", "file", "filename", "target", "target_file", "target_directory", "notebook_path"];

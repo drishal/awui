@@ -2,7 +2,7 @@
 // updates.jsonl. The two paths share this so a resumed chat and a running one
 // cannot drift. Nothing here spawns a process or touches credentials.
 import path from "node:path";
-import type { ChatItem, ToolItem } from "../../shared/protocol.js";
+import type { ChatItem, TodoItem, ToolItem } from "../../shared/protocol.js";
 import { boundText, editShape, isObj, stringifyArgs, toolCategory, toolPaths, toolSummary, type Obj } from "./agent-events.js";
 import { ORCH_MCP_SERVER } from "./render-extension.js";
 import { HTML_RENDER_MCP_SERVER, htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "./render-token.js";
@@ -167,6 +167,8 @@ export type GrokFold =
   /** ACP `usage_update`: the harness's own context occupancy, when it sends one. */
   | { type: "context"; used: number; size: number }
   | { type: "notice"; text: string; at: number }
+  /** A plan update whose entries carry statuses: the whole list, as the status stack draws it. */
+  | { type: "todos"; todos: TodoItem[]; at: number }
   /**
    * One child of a `spawn_subagent` call. The events name the child, not the
    * tool call; `GrokSubagentBook` joins them. A finish omits the type and the
@@ -188,6 +190,17 @@ export type GrokFold =
       output?: string;
     }
   | { type: "ignore" };
+
+/** A plan update's entries and the statuses the agent gave them (`pending`, `in_progress`, `completed`). */
+export function planTodos(update: Obj): TodoItem[] {
+  const out: TodoItem[] = [];
+  for (const entry of Array.isArray(update.entries) ? update.entries.slice(0, 100) : []) {
+    if (!isObj(entry)) continue;
+    const text = String(entry.content ?? entry.text ?? entry.title ?? "").trim().slice(0, 500);
+    if (text) out.push({ text, status: typeof entry.status === "string" ? entry.status : "" });
+  }
+  return out;
+}
 
 function planText(update: Obj): string {
   const entries = update.entries;
@@ -269,7 +282,11 @@ export function foldSessionUpdate(update: unknown, at: number): GrokFold {
     return size > 0 ? { type: "context", used, size } : { type: "ignore" };
   }
   if (kind === "subagent_spawned" || kind === "subagent_finished") return subagentFold(update, kind);
-  if (kind === "plan") return { type: "notice", text: planText(update), at };
+  if (kind === "plan") {
+    // An entry with a status makes the whole list a todo card; without them the plan is a line of words.
+    const todos = planTodos(update);
+    return todos.length > 0 && todos.every((t) => t.status) ? { type: "todos", todos, at } : { type: "notice", text: planText(update), at };
+  }
   // hook_execution, background shell tasks, recaps, setup: noise, not conversation.
   return { type: "ignore" };
 }

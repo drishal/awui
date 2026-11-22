@@ -273,7 +273,10 @@ function json(output: string): ToolFacts | undefined {
  * What a finished call's output says, when a parser is sure of it; otherwise no
  * facts. A running call's output is partial, so it claims nothing.
  */
-export function toolFacts(item: ToolItem): ToolFacts {
+/** What the sniffers read: a settled call's output and the arguments that say what ran. */
+export type FactSource = Pick<ToolItem, "status" | "output" | "truncated" | "args" | "category">;
+
+export function toolFacts(item: FactSource): ToolFacts {
   if (item.status === "running" || !item.output.trim()) return NONE;
   const text = item.output.replace(ANSI, "");
   const lines = text.split("\n").slice(0, MAX_LINES);

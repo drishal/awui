@@ -6,7 +6,7 @@
 // ACP is a shared vocabulary, not one app's: an agent may send a variant this
 // client does not know, so an unknown kind is a fold ("unknown") the chat notes
 // once, never a crash.
-import type { ChatItem, SlashCommand, ToolCategory, ToolItem } from "../../shared/protocol.js";
+import type { ChatItem, SlashCommand, TodoItem, ToolCategory, ToolItem } from "../../shared/protocol.js";
 import { boundText, editShape, isObj, stringifyArgs, toolCategory, toolPaths, toolSummary, type Obj } from "./agent-events.js";
 import { resultDiff, unifiedDiff } from "./tool-diff.js";
 
@@ -108,8 +108,21 @@ export type AcpFold =
   | { type: "commands"; commands: SlashCommand[] }
   | { type: "title"; title: string }
   | { type: "notice"; text: string; at: number }
+  /** A plan update whose entries carry statuses: the whole list, as the status stack draws it. */
+  | { type: "todos"; todos: TodoItem[]; at: number }
   | { type: "unknown"; kind: string }
   | { type: "ignore" };
+
+/** A plan update's entries and the statuses the agent gave them (`pending`, `in_progress`, `completed`). */
+export function planTodos(update: Obj): TodoItem[] {
+  const out: TodoItem[] = [];
+  for (const entry of Array.isArray(update.entries) ? update.entries.slice(0, 100) : []) {
+    if (!isObj(entry)) continue;
+    const text = String(entry.content ?? entry.text ?? entry.title ?? "").trim().slice(0, 500);
+    if (text) out.push({ text, status: typeof entry.status === "string" ? entry.status : "" });
+  }
+  return out;
+}
 
 function planText(update: Obj): string {
   let text = "";
@@ -188,7 +201,11 @@ export function foldAcpUpdate(update: unknown, at: number): AcpFold {
     const title = str(update.title);
     return title ? { type: "title", title: oneLine(title, 200) } : { type: "ignore" };
   }
-  if (kind === "plan") return { type: "notice", text: planText(update), at };
+  if (kind === "plan") {
+    // An entry with a status makes the whole list a todo card; without them the plan is a line of words.
+    const todos = planTodos(update);
+    return todos.length > 0 && todos.every((t) => t.status) ? { type: "todos", todos, at } : { type: "notice", text: planText(update), at };
+  }
   if (kind === "notice") {
     const title = str(update.title);
     const description = str(update.description);

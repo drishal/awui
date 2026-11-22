@@ -9,7 +9,7 @@
 // the live phase's wording come in through ConversationCx, never read here.
 import { span, ui, html, type IconName, type Json, type Node, type PropsOf, type Span } from "@stencil-hq/tern";
 import { formatFullWhen, formatWhen } from "../web/turn-time.js";
-import { iconStack, toolKind, toolKinds, type ToolKind } from "../web/tool-kinds.js";
+import { iconStack, toolKind, toolKinds, type ToolKindChip } from "../web/tool-kinds.js";
 import type { AssistantItem, ChatItem, HarnessStatus, JobBlock, JobTone, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../shared/protocol.js";
 import { buildTurns, countParts, formatDuration, latestThought, segmentStartsOpen, workAfterSegment, workSegments, type Turn, type WorkSegment } from "../web/turns.js";
 import { isBusy } from "../web/session-groups.js";
@@ -126,7 +126,7 @@ function rowName(item: ToolItem): string {
 }
 
 /** A kind's glyph in the fold head's icon stack, Tern's nearest to the web UI's (tool-kinds.ts). */
-function kindIcon(kind: ToolKind): IconName {
+function kindIcon(kind: ToolKindChip): IconName {
   if (kind.server) return "plug";
   if (kind.test) return "run";
   if (kind.plan) return "list-checks";

@@ -59,6 +59,11 @@ describe("codex rollout files", () => {
     expect(lines.some((l) => l.kind === "add" && l.text === "new")).toBe(true);
   });
 
+  it("draws Codex's plan item as the plan card, not an empty update_plan", () => {
+    const items = itemsToChatItems([{ type: "plan", id: "plan-1", text: "1. Read the file\n2. Change one line" }]);
+    expect(items[0]).toMatchObject({ kind: "tool", name: "update_plan", toolKind: "plan", plan: "1. Read the file\n2. Change one line" });
+  });
+
   it("draws the app-server's fileChange items with one hunk per file", () => {
     const items = itemsToChatItems([
       {

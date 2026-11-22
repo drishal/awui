@@ -133,3 +133,21 @@ describe("a run that does more than write", () => {
     expect(plain.status).toBe(409);
   });
 });
+
+describe("a call's own times on the row", () => {
+  it("keeps when it started and when it settled, so every client can show its duration", async () => {
+    t = await makeTestApp();
+    const agent = await signedIn(t);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    const live = () => (t as TestApp).manager.get(chat.chatId);
+
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "tool please" });
+    await until(() => live().status === "idle" && tools(live().snapshot()).every((item) => item.status !== "running"));
+
+    const [tool] = tools(live().snapshot());
+    expect(tool?.at).toBeTypeOf("number");
+    expect(tool?.endedAt).toBeTypeOf("number");
+    expect((tool?.endedAt ?? 0) >= (tool?.at ?? 0)).toBe(true);
+  });
+});
