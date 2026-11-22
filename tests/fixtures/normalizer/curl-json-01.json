@@ -1,0 +1,52 @@
+{
+  "id": "curl-json-01",
+  "harness": "claude",
+  "toolName": "Bash",
+  "category": "command",
+  "toolKind": "command",
+  "command": "curl -s https://api.github.com/repos/drishal/awui/pulls/1291",
+  "ended": "done",
+  "output": "HTTP/2 200\ncontent-type: application/json\n\n{\"id\":\"pr_1291\",\"state\":\"open\",\"title\":\"Add the tool-card normalizer\",\"merged\":false}\n",
+  "candidates": [
+    {
+      "key": "pr_number",
+      "value": 1291,
+      "source": "sniffer",
+      "evidence": "{\"id\":\"pr_1291\""
+    }
+  ],
+  "labels": {
+    "show_card": false,
+    "kind": "command"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 500,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.02
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "command",
+            "probabilities": {
+              "test": 0.02,
+              "command": 0.95,
+              "other": 0.03
+            },
+            "confidence": 0.925
+          }
+        },
+        "usage": {
+          "input_tokens": 170,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

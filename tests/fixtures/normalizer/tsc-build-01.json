@@ -1,0 +1,52 @@
+{
+  "id": "tsc-build-01",
+  "harness": "omp",
+  "toolName": "bash",
+  "category": "command",
+  "toolKind": "command",
+  "command": "npx tsc -p tsconfig.server.json --noEmit",
+  "ended": "error",
+  "output": "src/server/settings.ts(291,7): error TS2322: Type 'string' is not assignable to type 'number'.\nsrc/server/settings.ts(304,18): error TS2339: Property 'normalizer' does not exist on type 'UserConfig'.\n\nFound 2 errors in the same file, starting at: src/server/settings.ts:291\n",
+  "candidates": [
+    {
+      "key": "errors",
+      "value": 2,
+      "source": "sniffer",
+      "evidence": "src/server/settings.ts(291,7): error TS2322: Type 'string' is not assignable to type 'number'."
+    }
+  ],
+  "labels": {
+    "show_card": false,
+    "kind": "command"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 660,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.04
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "command",
+            "probabilities": {
+              "test": 0.05,
+              "command": 0.92,
+              "other": 0.03
+            },
+            "confidence": 0.88
+          }
+        },
+        "usage": {
+          "input_tokens": 260,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

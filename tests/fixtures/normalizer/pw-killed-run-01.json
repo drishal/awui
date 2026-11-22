@@ -1,0 +1,74 @@
+{
+  "id": "pw-killed-run-01",
+  "harness": "claude",
+  "toolName": "Bash",
+  "category": "command",
+  "toolKind": "command",
+  "command": "npx playwright test e2e/checkout.spec.ts --reporter=line --project=chromium",
+  "ended": "error",
+  "output": "Running 24 tests using 4 workers\n  1) [chromium] › e2e/checkout.spec.ts:42:5 › checkout › pays with saved card ─────────\n     TimeoutError: locator.click: Timeout 5000ms exceeded.\n     Call log:\n       - waiting for getByRole('button', { name: 'Pay' })\n  2) [chromium] › e2e/checkout.spec.ts:57:5 › checkout › retries a declined card ──────\n     Error: expect(received).toBe(expected) // Object.is equality\n\n     Expected: \"declined\"\n     Received: \"retry\"\n",
+  "candidates": [
+    {
+      "key": "runner",
+      "value": "playwright",
+      "source": "sniffer",
+      "evidence": "Running 24 tests using 4 workers"
+    },
+    {
+      "key": "failing_test",
+      "value": "checkout › pays with saved card",
+      "source": "sniffer",
+      "evidence": "1) [chromium] › e2e/checkout.spec.ts:42:5 › checkout › pays with saved card"
+    },
+    {
+      "key": "failing_test",
+      "value": "checkout › retries a declined card",
+      "source": "sniffer",
+      "evidence": "2) [chromium] › e2e/checkout.spec.ts:57:5 › checkout › retries a declined card"
+    }
+  ],
+  "labels": {
+    "show_card": true,
+    "kind": "test",
+    "failing_test": "checkout › pays with saved card"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 1749,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.88
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "test",
+            "probabilities": {
+              "test": 0.93,
+              "command": 0.05,
+              "other": 0.02
+            },
+            "confidence": 0.895
+          },
+          "failing_test": {
+            "type": "choice",
+            "choice": "checkout › pays with saved card",
+            "probabilities": {
+              "checkout › pays with saved card": 0.52,
+              "checkout › retries a declined card": 0.48
+            },
+            "confidence": 0.04
+          }
+        },
+        "usage": {
+          "input_tokens": 1204,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

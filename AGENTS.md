@@ -50,6 +50,7 @@ Match the task to a guide before opening code:
 | `npm run test:e2e` | Build, then Playwright (`tests/e2e`) against the built server with fake harnesses on port 4791. ~12 min. |
 | `npm run test:e2e:fast` | The same suite as four shards at once (`scripts/e2e-parallel.mjs`): one server per shard, on ports 4801, 4811, 4821 and 4831 (`AWUI_E2E_PORT_A`…`D`), output in `test-results/shard-N`. ~5 min on an 8-core box. A spec that starts its own server (remote-login) takes the suite's port plus one and two. |
 | `npm run test:atui` | Build, then `bun test tests/atui` (atui in OpenTUI's test renderer, and the Tern client against a stand-in Tern, both against a real server). |
+| `npm run eval:normalizer [-- --sweep\|--live]` | The tool-card normalizer's eval (`tests/evals/normalizer-eval.ts`): recorded replay by default, no network; `--live` is opt-in, needs `CMD_API_KEY`, and spends money. |
 | `npm run desktop` | The optional desktop app from a checkout (`apps/desktop`, after `npm ci` there). It attaches to a running server or starts one; `npm run smoke` in that folder drives it under Playwright (needs a display or Xvfb). |
 | `awui doctor [--json]` | Checks config.yml, Node/Bun, each harness, workspace roots, the state folder's mode, the port, remote sign-in, herdr; prints ✓/!/✗ lines, exit 1 on a ✗ (`src/server/doctor.ts`). |
 | `awui setup mcp [--json] [--apply [harness]] [--yes]` | How awui's own tools reach each harness's chats (`src/server/mcp-setup.ts`); read-only unless `--apply`, which runs the harness's own command (Hermes's `mcp add`) after asking. |
@@ -128,6 +129,13 @@ src/server/
   harness/session-files.ts    Pi/omp session JSONL: active branch by parentId, fork and seed writers.
   harness/claude-sessions.ts  Claude Code's session files.
   harness/jsonl.ts            Streaming JSONL reads (never a whole session as one string) and `foldJsonlFile`: a listing's metadata folded once, then resumed from the saved byte offset as the append-only file grows; `FoldStore` keeps that progress in the state folder (`fold-<name>.json`) so a restart only stats each file.
+  normalizer/                  The optional tool-card decision model, off by default (Phase 3 of the tool-call
+                              UX spec): systemone.ts (the one System One request builder and reply reader every
+                              backend shares), redact.ts (the clip and secret scrub, `buildEgressState` the only
+                              state a backend ever receives), cache.ts (a decision per digest, 2 000 / 7 days,
+                              never the output), config.ts (config.yml's `normalizer:` block resolved, keys
+                              included, server-side only), service.ts (the backends, eligibility, questions,
+                              the probability gate, the per-chat budget, and the feature's only `fetch`).
   harness/tool-diff.ts        Every harness's edit result → one DiffLine[] shape.
   harness/subagents.ts        Delegation calls (omp task, pi-subagents, Claude Task) → SubagentRun[].
   harness/render-extension.ts The render_html and orchestration extensions' files, the -e args that load them (Pi/omp), and the orchestration MCP server's file.
@@ -281,7 +289,8 @@ apps/desktop/                 The optional desktop app: an Electron shell that a
                               resources/node_modules/playwright-core staged by scripts/stage-binary.mjs, included
                               explicitly in electron-builder.yml's extraResources. check-packaged.mjs starts it standalone.
 tests/unit                    Vitest. tests/helpers/app.ts builds a real app with fake adapters (makeTestApp).
-tests/evals                   Deterministic real-tool orchestration failure/repair replays: same-request dedup, scope guard, cancellation interrupt, blocked group wake, recovered interrupted once-only report.
+tests/evals                   Deterministic real-tool orchestration failure/repair replays: same-request dedup, scope guard, cancellation interrupt, blocked group wake, recovered interrupted once-only report. normalizer-eval.ts / normalizer-replay.test.ts: the normalizer's labelled corpus replayed with fetch stubbed (no network), the scoring module `scripts/normalizer-eval.mjs` runs.
+tests/fixtures/normalizer     The normalizer's labelled traces and recorded replies (bodies marked "source": "synthetic" until a live run replaces them).
 tests/fixtures                Scripted stand-ins: fake-omp.mjs, fake-hermes.mjs, fake-claude.mjs, fake-codex.mjs, fake-grok.mjs, fake-dsh.mjs, fake-acp.mjs, themes/.
 tests/e2e                     Playwright. global-setup.ts starts the built server with AWUI_HARNESSES=fake,fake-b.
 tests/atui                    bun:test against a real server; helpers.tsx mounts atui in the test renderer;

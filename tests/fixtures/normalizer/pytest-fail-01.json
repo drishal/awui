@@ -1,0 +1,74 @@
+{
+  "id": "pytest-fail-01",
+  "harness": "hermes",
+  "toolName": "terminal",
+  "category": "command",
+  "toolKind": "command",
+  "command": "python -m pytest tests/test_store.py -x",
+  "ended": "error",
+  "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.4, pytest-8.3.2, pluggy-1.5.0\ncollected 41 items\n\ntests/test_store.py ..F......                                            [ 19%]\ntests/test_store.py .........F..                                         [ 51%]\n\n=================================== FAILURES ===================================\n______________________________ test_append_is_atomic ______________________________\n\nstore = <store.Store object at 0x7f9d>\n\n    def test_append_is_atomic(store):\n>       assert store.read() == b\"two lines\\n\"\nE       AssertionError: assert b\"one line\\n\" == b\"two lines\\n\"\n",
+  "candidates": [
+    {
+      "key": "runner",
+      "value": "pytest",
+      "source": "sniffer",
+      "evidence": "============================= test session starts =============================="
+    },
+    {
+      "key": "failing_test",
+      "value": "test_append_is_atomic",
+      "source": "sniffer",
+      "evidence": "______________________________ test_append_is_atomic ______________________________"
+    },
+    {
+      "key": "failing_test",
+      "value": "test_rotate_keeps_history",
+      "source": "sniffer",
+      "evidence": "tests/test_store.py .........F.."
+    }
+  ],
+  "labels": {
+    "show_card": true,
+    "kind": "test",
+    "failing_test": "test_append_is_atomic"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 1120,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.79
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "test",
+            "probabilities": {
+              "test": 0.93,
+              "command": 0.05,
+              "other": 0.02
+            },
+            "confidence": 0.895
+          },
+          "failing_test": {
+            "type": "choice",
+            "choice": "test_append_is_atomic",
+            "probabilities": {
+              "test_append_is_atomic": 0.81,
+              "test_rotate_keeps_history": 0.19
+            },
+            "confidence": 0.62
+          }
+        },
+        "usage": {
+          "input_tokens": 880,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

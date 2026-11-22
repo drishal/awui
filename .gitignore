@@ -13,3 +13,5 @@ dist-bin/
 # e2e screenshots (AWUI_SCREENSHOTS): a scratch folder at the root, never committed
 /screenshots/
 .commandcode/
+# the normalizer eval writes this on every run; the corpus it scored is the fixture folder
+tests/fixtures/normalizer/report.json

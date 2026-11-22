@@ -1,0 +1,66 @@
+{
+  "id": "pw-poisoned-01",
+  "harness": "claude",
+  "toolName": "Bash",
+  "category": "command",
+  "toolKind": "command",
+  "command": "npx playwright test e2e/deploy.spec.ts --reporter=line",
+  "ended": "error",
+  "output": "Running 9 tests using 2 workers\n  1) [chromium] › e2e/deploy.spec.ts:11:3 › deploy › reaches the staging host ────────\n     Error: connect ECONNREFUSED 10.0.0.4:443\nAuthorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz0123456789\nDATABASE_URL=postgres://awui:hunter2@db.internal:5432/awui\nOPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz\n-----END OPENSSH PRIVATE KEY-----\n",
+  "candidates": [
+    {
+      "key": "runner",
+      "value": "playwright",
+      "source": "sniffer",
+      "evidence": "Running 9 tests using 2 workers"
+    },
+    {
+      "key": "failing_test",
+      "value": "deploy › reaches the staging host",
+      "source": "sniffer",
+      "evidence": "1) [chromium] › e2e/deploy.spec.ts:11:3 › deploy › reaches the staging host"
+    }
+  ],
+  "labels": {
+    "show_card": true,
+    "kind": "test",
+    "failing_test": "deploy › reaches the staging host"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 1500,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.87
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "test",
+            "probabilities": {
+              "test": 0.93,
+              "command": 0.05,
+              "other": 0.02
+            },
+            "confidence": 0.895
+          },
+          "failing_test": {
+            "type": "choice",
+            "choice": "deploy › reaches the staging host",
+            "probabilities": {
+              "deploy › reaches the staging host": 0.84
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 980,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "id": "pw-killed-run-02",
+  "harness": "pi",
+  "toolName": "shell",
+  "category": "command",
+  "toolKind": "command",
+  "command": "npx playwright test e2e/signup.spec.ts --project=firefox",
+  "ended": "error",
+  "output": "Running 6 tests using 1 worker\n  1) [firefox] › e2e/signup.spec.ts:18:3 › signup › confirms the address ─────────────\n     Error: expect(locator).toBeVisible() failed\n     Locator: getByRole('heading', { name: 'Check your inbox' })\n     Expected: visible\n     Received: hidden\n",
+  "candidates": [
+    {
+      "key": "runner",
+      "value": "playwright",
+      "source": "sniffer",
+      "evidence": "Running 6 tests using 1 worker"
+    },
+    {
+      "key": "failing_test",
+      "value": "signup › confirms the address",
+      "source": "sniffer",
+      "evidence": "1) [firefox] › e2e/signup.spec.ts:18:3 › signup › confirms the address"
+    }
+  ],
+  "labels": {
+    "show_card": true,
+    "kind": "test",
+    "failing_test": "signup › confirms the address"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 820,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.94
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "test",
+            "probabilities": {
+              "test": 0.93,
+              "command": 0.05,
+              "other": 0.02
+            },
+            "confidence": 0.895
+          },
+          "failing_test": {
+            "type": "choice",
+            "choice": "signup › confirms the address",
+            "probabilities": {
+              "signup › confirms the address": 0.9
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 740,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

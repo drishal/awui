@@ -1,0 +1,52 @@
+{
+  "id": "npm-install-01",
+  "harness": "claude",
+  "toolName": "Bash",
+  "category": "command",
+  "toolKind": "command",
+  "command": "npm install",
+  "ended": "done",
+  "output": "npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory.\nadded 214 packages, and audited 215 packages in 4s\n\n38 packages are looking for funding\n  run `npm fund` for details\n\nfound 0 vulnerabilities\n",
+  "candidates": [
+    {
+      "key": "audited",
+      "value": 215,
+      "source": "sniffer",
+      "evidence": "added 214 packages, and audited 215 packages in 4s"
+    }
+  ],
+  "labels": {
+    "show_card": false,
+    "kind": "command"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 540,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.06
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "command",
+            "probabilities": {
+              "test": 0.05,
+              "command": 0.92,
+              "other": 0.03
+            },
+            "confidence": 0.88
+          }
+        },
+        "usage": {
+          "input_tokens": 310,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

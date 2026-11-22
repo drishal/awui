@@ -1,0 +1,52 @@
+{
+  "id": "jest-fail-01",
+  "harness": "claude",
+  "toolName": "Bash",
+  "category": "command",
+  "toolKind": "command",
+  "command": "npx jest src/components/Cart.test.tsx",
+  "ended": "error",
+  "output": " FAIL  src/components/Cart.test.tsx\n  ● Cart › removes a line\n\n    expect(jest.fn()).toHaveBeenCalledWith(...expected)\n\n    Expected: \"remove-line-3\"\n    Received: \"remove-line\"\n\n      at Object.<anonymous> (src/components/Cart.test.tsx:41:31)\n",
+  "candidates": [
+    {
+      "key": "runner",
+      "value": "jest",
+      "source": "sniffer",
+      "evidence": "FAIL  src/components/Cart.test.tsx"
+    }
+  ],
+  "labels": {
+    "show_card": true,
+    "kind": "test"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 700,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.86
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "test",
+            "probabilities": {
+              "test": 0.88,
+              "command": 0.09,
+              "other": 0.03
+            },
+            "confidence": 0.82
+          }
+        },
+        "usage": {
+          "input_tokens": 520,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

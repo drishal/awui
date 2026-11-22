@@ -1,0 +1,66 @@
+{
+  "id": "cargo-test-01",
+  "harness": "omp",
+  "toolName": "bash",
+  "category": "command",
+  "toolKind": "command",
+  "command": "cargo test --lib",
+  "ended": "error",
+  "output": "   Compiling store v0.4.1 (/home/dev/proj/store)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.11s\n     Running unittests src/lib.rs (target/debug/deps/store-3f1c0d2a1b2c3d4e)\n\nrunning 12 tests\ntest append::keeps_order ... ok\ntest append::rejects_short_write ... FAILED\ntest rotate::keeps_history ... ok\n\nfailures:\n\n---- append::rejects_short_write stdout ----\nthread 'append::rejects_short_write' panicked at src/append.rs:64:9:\nassertion `left == right` failed\n  left: Some(7)\n right: None\n",
+  "candidates": [
+    {
+      "key": "runner",
+      "value": "cargo",
+      "source": "sniffer",
+      "evidence": "     Running unittests src/lib.rs (target/debug/deps/store-3f1c0d2a1b2c3d4e)"
+    },
+    {
+      "key": "failing_test",
+      "value": "append::rejects_short_write",
+      "source": "sniffer",
+      "evidence": "test append::rejects_short_write ... FAILED"
+    }
+  ],
+  "labels": {
+    "show_card": true,
+    "kind": "test",
+    "failing_test": "append::rejects_short_write"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 940,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.9
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "test",
+            "probabilities": {
+              "test": 0.93,
+              "command": 0.05,
+              "other": 0.02
+            },
+            "confidence": 0.895
+          },
+          "failing_test": {
+            "type": "choice",
+            "choice": "append::rejects_short_write",
+            "probabilities": {
+              "append::rejects_short_write": 0.95
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 640,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

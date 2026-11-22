@@ -1,0 +1,45 @@
+{
+  "id": "edit-settled-01",
+  "harness": "claude",
+  "toolName": "Edit",
+  "category": "edit",
+  "toolKind": "edit",
+  "command": "src/web/components/SettingsDialog.tsx",
+  "ended": "done",
+  "output": "The file src/web/components/SettingsDialog.tsx has been updated. Here's the result of running `cat -n` on a snippet:\n  1195\t  );\n",
+  "candidates": [],
+  "labels": {
+    "show_card": false,
+    "kind": "command"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 700,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.12
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "command",
+            "probabilities": {
+              "test": 0.05,
+              "command": 0.92,
+              "other": 0.03
+            },
+            "confidence": 0.88
+          }
+        },
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

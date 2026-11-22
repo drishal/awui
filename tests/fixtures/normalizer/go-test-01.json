@@ -1,0 +1,74 @@
+{
+  "id": "go-test-01",
+  "harness": "codex",
+  "toolName": "shell",
+  "category": "command",
+  "toolKind": "command",
+  "command": "go test ./internal/diff/...",
+  "ended": "error",
+  "output": "=== RUN   TestParseDiff\n--- FAIL: TestParseDiff (0.02s)\n    diff_test.go:88: expected 3 hunks, got 2\n--- FAIL: TestParseDiffRenamed (0.00s)\n    diff_test.go:141: expected the new path\nFAIL\nexit status 1\nFAIL\tgithub.com/drishal/awui/internal/diff\t0.043s\n",
+  "candidates": [
+    {
+      "key": "runner",
+      "value": "go",
+      "source": "sniffer",
+      "evidence": "=== RUN   TestParseDiff"
+    },
+    {
+      "key": "failing_test",
+      "value": "TestParseDiff",
+      "source": "sniffer",
+      "evidence": "--- FAIL: TestParseDiff (0.02s)"
+    },
+    {
+      "key": "failing_test",
+      "value": "TestParseDiffRenamed",
+      "source": "sniffer",
+      "evidence": "--- FAIL: TestParseDiffRenamed (0.00s)"
+    }
+  ],
+  "labels": {
+    "show_card": true,
+    "kind": "test",
+    "failing_test": "TestParseDiff"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 780,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.82
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "test",
+            "probabilities": {
+              "test": 0.9,
+              "command": 0.07,
+              "other": 0.03
+            },
+            "confidence": 0.85
+          },
+          "failing_test": {
+            "type": "choice",
+            "choice": "TestParseDiff",
+            "probabilities": {
+              "TestParseDiff": 0.55,
+              "TestParseDiffRenamed": 0.45
+            },
+            "confidence": 0.1
+          }
+        },
+        "usage": {
+          "input_tokens": 430,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

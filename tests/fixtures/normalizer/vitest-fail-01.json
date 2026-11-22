@@ -1,0 +1,58 @@
+{
+  "id": "vitest-fail-01",
+  "harness": "omp",
+  "toolName": "bash",
+  "category": "command",
+  "toolKind": "command",
+  "command": "npx vitest run src/review.test.ts",
+  "ended": "error",
+  "output": " ❯ src/review.test.ts (14 tests | 1 failed) 34ms\n   × review threads > names every open thread 21ms\n     → expected 3 to be 2\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  src/review.test.ts > review threads > names every open thread\nAssertionError: expected 3 to be 2\n\n- Expected\n+ Received\n\n- 2\n+ 3\n\n ❯ src/review.test.ts:88:24\n",
+  "candidates": [
+    {
+      "key": "runner",
+      "value": "vitest",
+      "source": "sniffer",
+      "evidence": " ❯ src/review.test.ts (14 tests | 1 failed) 34ms"
+    },
+    {
+      "key": "failing_test",
+      "value": "review threads > names every open thread",
+      "source": "sniffer",
+      "evidence": "FAIL  src/review.test.ts > review threads > names every open thread"
+    }
+  ],
+  "labels": {
+    "show_card": true,
+    "kind": "test"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 610,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.91
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "test",
+            "probabilities": {
+              "test": 0.93,
+              "command": 0.05,
+              "other": 0.02
+            },
+            "confidence": 0.895
+          }
+        },
+        "usage": {
+          "input_tokens": 690,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

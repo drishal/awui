@@ -1,0 +1,45 @@
+{
+  "id": "make-fail-01",
+  "harness": "grok",
+  "toolName": "shell",
+  "category": "command",
+  "toolKind": "command",
+  "command": "make -j4",
+  "ended": "error",
+  "output": "cc -O2 -Wall -c src/ring.c -o build/ring.o\nsrc/ring.c: In function 'ring_push':\nsrc/ring.c:41:12: warning: comparison of integer expressions of different signedness\nmake: *** [Makefile:18: build/ring.o] Error 1\n",
+  "candidates": [],
+  "labels": {
+    "show_card": false,
+    "kind": "other"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 610,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.31
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "other",
+            "probabilities": {
+              "test": 0.27,
+              "command": 0.41,
+              "other": 0.32
+            },
+            "confidence": 0.115
+          }
+        },
+        "usage": {
+          "input_tokens": 190,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}

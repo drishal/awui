@@ -1,0 +1,64 @@
+{
+  "id": "vitest-settled-01",
+  "harness": "omp",
+  "toolName": "bash",
+  "category": "command",
+  "toolKind": "test",
+  "command": "npx vitest run src/turns.test.ts src/rotate.test.ts",
+  "ended": "done",
+  "output": " ✓ src/turns.test.ts (9 tests) 18ms\n ✓ src/rotate.test.ts (4 tests) 7ms\n\n Test Files  2 passed (2)\n      Tests  13 passed (13)\n   Duration  612ms\n",
+  "candidates": [
+    {
+      "key": "runner",
+      "value": "vitest",
+      "source": "sniffer",
+      "evidence": " Test Files  2 passed (2)"
+    },
+    {
+      "key": "passed",
+      "value": 13,
+      "source": "sniffer",
+      "evidence": "      Tests  13 passed (13)"
+    },
+    {
+      "key": "duration_ms",
+      "value": 612,
+      "source": "sniffer",
+      "evidence": "   Duration  612ms"
+    }
+  ],
+  "labels": {
+    "show_card": true,
+    "kind": "test"
+  },
+  "recorded": {
+    "command-code-jev": {
+      "source": "synthetic",
+      "status": 200,
+      "latencyMs": 480,
+      "body": {
+        "model": "typesafe/jev-1.14.0",
+        "answers": {
+          "show_test_card": {
+            "type": "noul",
+            "noul": 0.97
+          },
+          "kind": {
+            "type": "choice",
+            "choice": "test",
+            "probabilities": {
+              "test": 0.93,
+              "command": 0.05,
+              "other": 0.02
+            },
+            "confidence": 0.895
+          }
+        },
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 12
+        }
+      }
+    }
+  }
+}
