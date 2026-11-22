@@ -786,7 +786,11 @@ export interface RequestItem {
 
 export type ChatItem = UserItem | AssistantItem | ToolItem | NoticeItem | RequestItem;
 
-export type InteractionKind = "select" | "confirm" | "input" | "editor";
+export type InteractionKind = "select" | "confirm" | "input" | "editor" | "form";
+
+/** One form control's submitted value: text, a number for numeric inputs, or a checked group's values. */
+export type InteractionFormValue = string | number | string[];
+export type InteractionFormData = Record<string, InteractionFormValue>;
 
 export interface InteractionRequest {
   id: string;
@@ -809,11 +813,23 @@ export interface InteractionRequest {
   createdAt: number;
 }
 
+const interactionFormValueSchema = z.union([
+  z.string().max(100_000),
+  z.number().finite(),
+  z.array(z.string().max(10_000)).max(1_000),
+]);
+
 export const interactionAnswerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("select"), value: z.string().max(10_000) }),
   z.object({ kind: z.literal("confirm"), confirmed: z.boolean() }),
   z.object({ kind: z.literal("input"), value: z.string().max(100_000) }),
   z.object({ kind: z.literal("editor"), value: z.string().max(1_000_000) }),
+  // A form's controls by name, as an HTML form submits them; the harness
+  // validates the shape against the form it sent, so this side only bounds it.
+  z.object({
+    kind: z.literal("form"),
+    data: z.record(z.string().max(200), interactionFormValueSchema).refine((data) => Object.keys(data).length <= 500, "at most 500 form controls"),
+  }),
   z.object({ kind: z.literal("cancel") }),
 ]);
 export type InteractionAnswer = z.infer<typeof interactionAnswerSchema>;

@@ -471,6 +471,18 @@ function CallBody({ item, workspace }: { item: ToolItem; workspace: string }) {
     );
   }
 
+  // omp's ask tool hands over a whole HTML form; the request card drew it, and
+  // its raw markup is not a reading of the call. The result is the answer.
+  if (item.name === "ask" && item.category === "other") {
+    return card(
+      null,
+      <>
+        <div className="tool-card-note">The question was shown as a form; its answer came back below.</div>
+        <Output item={item} />
+      </>,
+    );
+  }
+
   const todos = /todo/i.test(item.name) ? todoEntries(args) : null;
   if (todos) {
     return card(

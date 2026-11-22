@@ -99,23 +99,28 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
         when={options().length > 0}
         fallback={
           <box border={["left"]} borderColor={t().accent} paddingLeft={1} marginTop={1}>
-            <textarea
-              ref={(el: TextareaRenderable) => (input = el)}
-              focused={p.active}
-              initialValue={p.request.prefill ?? ""}
-              placeholder={p.request.placeholder ?? "Type the answer…"}
-              textColor={t().text}
-              minHeight={1}
-              maxHeight={p.request.kind === "editor" ? 12 : 4}
-              keyBindings={[
-                { name: "return", action: "submit" },
-                { name: "return", shift: true, action: "newline" },
-                { name: "linefeed", action: "newline" },
-              ]}
-              onSubmit={() => answer(p.request.kind === "editor" ? { kind: "editor", value: input?.plainText ?? "" } : { kind: "input", value: input?.plainText ?? "" })}
-            />
-            <Show when={p.request.secret}>
-              <text fg={t().muted}>Visible in this terminal. Sent once and not stored.</text>
+            <Show
+              when={p.request.kind !== "form"}
+              fallback={<text fg={t().muted} wrapMode="word">This form can only be filled in the web UI. Press Esc to dismiss.</text>}
+            >
+              <textarea
+                ref={(el: TextareaRenderable) => (input = el)}
+                focused={p.active}
+                initialValue={p.request.prefill ?? ""}
+                placeholder={p.request.placeholder ?? "Type the answer…"}
+                textColor={t().text}
+                minHeight={1}
+                maxHeight={p.request.kind === "editor" ? 12 : 4}
+                keyBindings={[
+                  { name: "return", action: "submit" },
+                  { name: "return", shift: true, action: "newline" },
+                  { name: "linefeed", action: "newline" },
+                ]}
+                onSubmit={() => answer(p.request.kind === "editor" ? { kind: "editor", value: input?.plainText ?? "" } : { kind: "input", value: input?.plainText ?? "" })}
+              />
+              <Show when={p.request.secret}>
+                <text fg={t().muted}>Visible in this terminal. Sent once and not stored.</text>
+              </Show>
             </Show>
           </box>
         }

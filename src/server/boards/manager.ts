@@ -1010,6 +1010,13 @@ export class RoomManager implements BoardManager {
     this.pool.answer(roomId, requestId, answer, denialReason);
   }
 
+  /** A pending `form` request's own HTML, which the form-document route serves. */
+  pendingForm(roomId: string, requestId: string): string | undefined {
+    this.requireRoom(roomId);
+    const request = this.pending.get(roomId)?.get(requestId)?.request;
+    return request?.kind === "form" ? this.pool.formHtml(roomId, requestId) : undefined;
+  }
+
   // ---- reading --------------------------------------------------------------
 
   async roomHistory(roomId: string, query: { before?: number; limit?: number }): Promise<RoomRecord[]> {

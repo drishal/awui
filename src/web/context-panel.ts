@@ -156,7 +156,7 @@ export const CONTEXT_LABELS: Record<ContextSectionId, string> = {
 };
 
 /** How a pending request reads under its title: an approval asks for a yes, the rest ask for words. */
-const REQUEST_NOUN: Record<InteractionKind, string> = { confirm: "Approval", select: "Choice", input: "Question", editor: "Editor" };
+const REQUEST_NOUN: Record<InteractionKind, string> = { confirm: "Approval", select: "Choice", input: "Question", editor: "Editor", form: "Form" };
 
 /**
  * Where a rail row goes when it is opened. The clients draw their own screens, so the row

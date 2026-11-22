@@ -196,6 +196,11 @@ export class DeferredLiveChat implements LiveChat {
     return this.real ? this.real.answer(requestId, answer) : false;
   }
 
+  /** The wrapper stays for the chat's life, so a resumed chat's form document must come through it too. */
+  formHtml(requestId: string): string | undefined {
+    return this.real?.formHtml?.(requestId);
+  }
+
   async dispose(): Promise<void> {
     this.disposed = true;
     this.hub.clear();

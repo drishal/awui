@@ -33,6 +33,9 @@ export function foldRequest(request: InteractionRequest, answer: InteractionAnsw
         ok = false;
       } else verb = /^approve$/i.test(answer.value) ? "Approved" : `Chose “${answer.value.slice(0, 40)}”`;
       break;
+    case "form":
+      verb = "Submitted";
+      break;
     default:
       verb = request.kind === "editor" ? "Edited" : "Answered";
   }

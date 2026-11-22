@@ -133,6 +133,8 @@ function describeAnswer(request: InteractionRequest, answer: InteractionAnswer):
       return answer.confirmed ? "Approved" : "Denied";
     case "select":
       return `Chose “${answer.value}”`;
+    case "form":
+      return "Submitted";
     default:
       return request.kind === "editor" ? "Edited" : "Answered";
   }
@@ -1672,6 +1674,12 @@ export class Chat implements CheckpointHost {
   pendingDecision(requestId: string): InteractionRequest | undefined {
     if (!requestId.startsWith(GATE_REQUEST_PREFIX)) return undefined;
     return this.reducer.pendingRequest(requestId);
+  }
+
+  /** A pending `form` request's own HTML, which the form-document route serves. */
+  pendingForm(requestId: string): string | undefined {
+    const request = this.reducer.pendingRequest(requestId);
+    return request?.kind === "form" ? this.live.formHtml?.(requestId) : undefined;
   }
 
   async dispose(reason: string): Promise<void> {

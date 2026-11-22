@@ -730,7 +730,9 @@ export class Orchestrator {
             : "denied"
           : answer.kind === "cancel"
             ? "dismissed"
-            : `answered "${answer.value}"`;
+            : answer.kind === "form"
+              ? "submitted a form"
+              : `answered "${answer.value}"`;
     const lines = [`The person ${said} decision "${decision.question}" (decisionId "${decision.decisionId}").`];
     if (decision.denialReason) lines.push(`Their correction: ${decision.denialReason}`);
     lines.push(`Recorded outcome: ${decision.outcome ?? said}.`);

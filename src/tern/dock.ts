@@ -207,6 +207,7 @@ function requestNode(r: InteractionRequest, cx: DockCx): Node {
     { key: "req", role: "awui.request" },
     ui.row({ key: "h", gap: "sm", align: "center" }, ui.icon({ key: "i", name: options.length === 2 ? "shield" : "question", tone: "warning" }), ui.text({ key: "t", role: "awui.request-title", text: r.title, grow: 1 })),
     r.message ? ui.md({ key: "m" }, r.message) : null,
+    r.kind === "form" ? ui.text({ key: "f", role: "awui.request-form-note", text: "This form can only be filled in the web UI. Press Esc to dismiss." }) : null,
     details
       ? ui.col(
           { key: "d", gap: "xs" },

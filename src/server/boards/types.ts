@@ -316,6 +316,8 @@ export interface BoardManager {
   cancelQueued(roomId: string, turnId: string): Promise<RoomTurnView[]>;
   /** `requestId` is the namespaced `<invocationId>:<requestId>` the room pending list carries. */
   answerRequest(roomId: string, requestId: string, answer: InteractionAnswer, denialReason?: string): Promise<void>;
+  /** A waiting `form` request's own HTML, addressed like `answerRequest`. */
+  pendingForm(roomId: string, requestId: string): string | undefined;
   roomHistory(roomId: string, query: { before?: number; limit?: number }): Promise<RoomRecord[]>;
   roomUsage(roomId: string): Promise<BoardUsage & { byMember: Array<{ memberId: string; totals: BoardUsage }> }>;
   /** The whole room as Markdown, nested consultations included, from records only. */

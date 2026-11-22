@@ -379,7 +379,7 @@ function RequestRow({ item }: { item: RequestItem }) {
     <div className={`request-row${arrival}`} id={`request-${item.request.id}`} data-request-id={item.request.id} data-testid="request-row">
       <DisclosureRow
         icon={item.outcome ? (tone ? <IconX size={14} /> : <IconCheck size={14} />) : <Spinner size={13} />}
-        title={item.request.kind === "confirm" || item.request.options?.includes("Approve") ? "Approval" : "Question"}
+        title={item.request.kind === "form" ? "Form" : item.request.kind === "confirm" || item.request.options?.includes("Approve") ? "Approval" : "Question"}
         summary={
           <>
             {firstLine(item.request.title)} <span className="request-outcome">→ {outcome}</span>

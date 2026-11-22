@@ -7,6 +7,7 @@
 //   "ask twice"  two approval requests at once (stacked approvals)
 //   "fail"  end the turn with an error "slow"  stream many chunks
 //   "big"   oversized tool output         "edit"  edit a file (src/app.ts)
+//   "form"  raise omp 19.1's whole-HTML-form request, then report its data
 // State lives in $FAKE_OMP_STATE (JSON) so separate processes share sessions.
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -133,6 +134,21 @@ if (args[0] === "acp") {
     out({ type: "agent_start" });
     persist({ role: "user", content: message });
     out({ type: "message_start", messageId: "u", message: { role: "user", content: message } });
+    if (/\bform\b/.test(message)) {
+      // The whole form omp 19.1's ask tool sends; the host answers with data.
+      const uiId = randomUUID();
+      const { promise, resolve } = Promise.withResolvers();
+      pendingUi.set(uiId, resolve);
+      out({
+        type: "extension_ui_request",
+        id: uiId,
+        method: "form",
+        timeout: 30_000,
+        html: '<form><p>Which files are safe to delete?</p><fieldset><legend>Tier 1</legend><label><input type="checkbox" name="t1" value="a" checked> A</label><label><input type="checkbox" name="t1" value="b"> B</label></fieldset><label>Notes <input type="text" name="notes" placeholder="Optional"></label><label>Count <input type="number" name="count" min="1" max="10" value="2"></label></form>',
+      });
+      const response = await promise;
+      out({ type: "extension_ui_request", id: randomUUID(), method: "notify", message: response.data ? JSON.stringify(response.data) : "form cancelled", notifyType: "info" });
+    }
     if (/\bask\b/.test(message)) {
       // "ask twice" raises both requests before awaiting (stacked approvals).
       const count = /\btwice\b/.test(message) ? 2 : 1;

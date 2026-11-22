@@ -179,6 +179,13 @@ describe("toolSentence: MCP, agents, plan, unknown", () => {
     expect(toolSentence({ ...odd, status: "error" }, WS).text).toBe("Couldn't use lsp diagnostics");
     expect(toolSentence(odd, WS).facts).toEqual([]);
   });
+  it("words omp's ask as a question, not a tool named ask", () => {
+    const ask = tool({ name: "ask", category: "other", args: args({ html: "<form></form>" }), output: "User answers: {}" });
+    expect(toolSentence({ ...ask, status: "running" }, WS).text).toBe("Asking a question");
+    expect(toolSentence(ask, WS).text).toBe("Asked a question");
+    expect(toolSentence({ ...ask, status: "error" }, WS).text).toBe("Couldn't ask a question");
+  });
+
   it("reads a plain output as lines and claims no more", () => {
     const bash = tool({ name: "bash", category: "command", args: args({ command: "npm test" }), output: "a\nb" });
     expect(toolSentence(bash, WS).facts).toEqual(["2 lines"]);

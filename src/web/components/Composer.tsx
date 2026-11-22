@@ -823,6 +823,7 @@ export function Composer({
           busy={answering}
           stopping={stopping}
           onStop={onStop}
+          formSrc={(request) => `/api/chats/${chat.chatId}/requests/${encodeURIComponent(request.id)}/form`}
           onAnswer={async (request, answer, denialReason) => {
             setAnswering(true);
             await onAnswer(request.id, answer, denialReason);

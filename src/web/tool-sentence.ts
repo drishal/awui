@@ -107,6 +107,8 @@ const VERBS: Record<string, Record<Tense, string>> = {
   fetch: { running: "Fetching", done: "Fetched", error: "Couldn't fetch" },
   websearch: { running: "Searching the web for", done: "Searched the web for", error: "Couldn't search the web for" },
   mcp: { running: "Asking", done: "Asked", error: "Couldn't ask" },
+  // omp's ask tool: one HTML form for the person, not a tool named "ask".
+  ask: { running: "Asking", done: "Asked", error: "Couldn't ask" },
   agents: { running: "Running", done: "Ran", error: "Couldn't run" },
   // Background jobs: a wait on them, a look at their list, one stopped.
   jobwait: { running: "Waiting on", done: "Waited on", error: "Couldn't wait on" },
@@ -260,6 +262,8 @@ export function toolSentence(item: ToolItem, workspace: string): ToolSentence {
     return make("plan", "the plan", false, todos ? `(${plural(todos.total, "step")})` : undefined, todos && todos.total > 0 ? [`${todos.done} of ${todos.total} done`] : []);
   }
 
+
+  if (item.name === "ask" && item.category === "other") return make("ask", "a question", false, undefined, []);
 
   switch (item.category) {
     case "read":

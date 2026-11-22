@@ -182,6 +182,10 @@ export function RoomView({
             pending={pendingRequests.map((p) => p.request)}
             busy={false}
             stopping={stopping}
+            formSrc={(request) => {
+              const entry = pendingRequests.find((p) => p.request.id === request.id) ?? pendingRequests.find((p) => p.id === request.id);
+              return entry ? `/api/rooms/${room.id}/requests/${encodeURIComponent(entry.id)}/form` : null;
+            }}
             onAnswer={answer}
             onStop={onStop}
           />

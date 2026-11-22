@@ -337,6 +337,14 @@ export class BotSessionPoolImpl implements BotSessionPool {
     return live.chat.answer(raw, answer, denialReason);
   }
 
+  /** The form a room's waiting request carries, by its namespaced room request id. */
+  formHtml(roomId: string, requestId: string): string | undefined {
+    const sep = requestId.indexOf(":");
+    if (sep <= 0) return undefined;
+    const live = this.live.get(requestId.slice(0, sep));
+    return live && live.roomId === roomId ? live.chat.pendingForm(requestId.slice(sep + 1)) : undefined;
+  }
+
   /** Whether a membership has a run in flight right now (CRUD refuses changes then). */
   isInvoking(roomId: string, memberId: string): boolean {
     for (const live of this.live.values()) if (live.roomId === roomId && live.memberId === memberId) return true;

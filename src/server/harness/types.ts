@@ -193,6 +193,11 @@ export interface LiveChat {
   compact(instructions?: string): Promise<void>;
   /** Returns false when the request is unknown or already resolved. */
   answer(requestId: string, answer: InteractionAnswer): boolean;
+  /**
+   * A waiting `form` request's own HTML, for the opaque-origin page the person
+   * fills in. Only harnesses that ask by form (omp's `ask`) implement it.
+   */
+  formHtml?(requestId: string): string | undefined;
   dispose(): Promise<void>;
 }
 

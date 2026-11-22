@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, promises as fsp, readFileSync } from "node:fs";
 import path from "node:path";
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
@@ -126,6 +126,7 @@ import { ChatError, errorMessage, type Chat } from "./chats/chat.js";
 import type { BoardManager } from "./boards/types.js";
 import { storedImage, rememberImage } from "./image-store.js";
 import { isHtmlRenderId, readHtmlRender, saveHtmlRender } from "./html-render.js";
+import { interactionFormDocument } from "../shared/interaction-form.js";
 import { HarnessMarkStore, markRevision, markUrl } from "./harness-marks.js";
 import { ACP_AGENT_ID } from "../shared/protocol.js";
 import type { Scheme } from "../shared/theme-scheme.js";
@@ -316,6 +317,23 @@ const RENDER_GONE_PAGE =
 
 function body<T>(schema: ZodType<T>, req: Request): T {
   return schema.parse(req.body ?? {});
+}
+
+/**
+ * One `form` request's document: the harness's own HTML form in an
+ * opaque-origin frame. The per-response nonce is the only script/style permit,
+ * so nothing inside the harness's HTML runs; the frame can only post its
+ * submitted data back to the app.
+ */
+function sendInteractionFormDocument(res: Response, html: string): void {
+  const nonce = randomBytes(16).toString("hex");
+  res.setHeader(
+    "Content-Security-Policy",
+    `default-src 'none'; img-src 'self' data: https: http:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-forms`,
+  );
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Cache-Control", "no-store");
+  res.type("html").send(interactionFormDocument(html, nonce));
 }
 
 function parseLastEventId(value: unknown): number | undefined {
@@ -592,7 +610,7 @@ export async function createApp(deps: AppDeps) {
   // helmet CSP would add a *second* one and the browser enforces the stricter, which
   // would forbid that page's own framing from the same origin. So helmet skips it.
   app.use((req, res, next) => {
-    if ((req.path.startsWith("/api/render/") && req.path.endsWith("/doc")) || req.path === "/terminal-shell.html") return next();
+    if ((req.path.startsWith("/api/render/") && req.path.endsWith("/doc")) || req.path === "/terminal-shell.html" || /^\/api\/(?:chats|rooms)\/[^/]+\/requests\/[^/]+\/form$/.test(req.path)) return next();
     helmet({
       contentSecurityPolicy: {
         useDefaults: false,
@@ -2281,6 +2299,12 @@ export async function createApp(deps: AppDeps) {
   app.delete("/api/rooms/:id/queue/:turnId", requireGrant("boards.manage"), async (req, res) => {
     res.json({ queued: await board().cancelQueued(req.params.id, req.params.turnId) });
   });
+  app.get("/api/rooms/:id/requests/:requestId/form", requireGrant("chat.read"), async (req, res) => {
+    const html = board().pendingForm(req.params.id, req.params.requestId);
+    if (!html) throw new ChatError(404, "form_gone", "That form is no longer waiting for an answer");
+    sendInteractionFormDocument(res, html);
+  });
+
   app.post("/api/rooms/:id/requests/:requestId/answer", requireGrant("chat.approve"), async (req, res) => {
     const { answer, denialReason } = body(roomAnswerSchema, req);
     await board().answerRequest(req.params.id, req.params.requestId, answer, denialReason);
@@ -3111,6 +3135,15 @@ export async function createApp(deps: AppDeps) {
     );
     const snap = chat.snapshot();
     res.json({ chain: snap.chain, paused: snap.chainPaused });
+  });
+
+  // A `form` request's own HTML, framed with an opaque origin: the person
+  // fills it in, and the answer route below carries the controls' data back.
+  app.get("/api/chats/:id/requests/:requestId/form", requireGrant("chat.read"), async (req, res) => {
+    const chat = manager.get(req.params.id);
+    const html = chat.pendingForm(req.params.requestId);
+    if (!html) throw new ChatError(404, "form_gone", "That form is no longer waiting for an answer");
+    sendInteractionFormDocument(res, html);
   });
 
   app.post("/api/chats/:id/requests/:requestId", requireGrant("chat.approve"), async (req, res) => {

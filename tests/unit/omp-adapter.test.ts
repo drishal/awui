@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { DeferredLiveChat } from "../../src/server/harness/deferred.js";
 import { ORCH_INSTRUCTIONS } from "../../src/server/orchestration/tools.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
@@ -174,6 +175,38 @@ describe("omp adapter (scripted omp)", () => {
     expect(chat.answer(request?.id as string, { kind: "select", value: "Approve" })).toBe("Chose “Approve”");
     await until(() => chat.status === "idle");
     expect(chat.snapshot().items.some((i) => i.kind === "tool")).toBe(true);
+  });
+
+  it("serves omp 19.1's whole-form ask request and answers it with the form data", async () => {
+    const { chat } = await openChat();
+    await chat.send("form please", "normal");
+    await until(() => chat.snapshot().pending.length === 1);
+    const request = chat.snapshot().pending[0];
+    expect(request).toMatchObject({ kind: "form", title: "Answer the form" });
+    // The HTML stays server-side; the request the client draws carries only its id.
+    expect(request && "html" in request).toBe(false);
+    expect(chat.pendingForm(request?.id as string)).toContain('<input type="checkbox" name="t1"');
+    expect(chat.answer(request?.id as string, { kind: "form", data: { t1: ["a", "b"], notes: "keep this", count: 3 } })).toBe("Submitted");
+    await until(() => chat.status === "idle");
+    expect(chat.snapshot().items.some((item) => item.kind === "notice" && item.text === '{"t1":["a","b"],"notes":"keep this","count":3}')).toBe(true);
+  });
+
+  it("serves the form through a resumed chat's deferred wrapper too", async () => {
+    const { live } = await openChat();
+    // ChatManager wraps a resumed chat with a transcript in DeferredLiveChat, which stays
+    // the chat's live object for its whole life: the form document must pass through it.
+    const deferred = new DeferredLiveChat(live.nativeId ?? "n1", { items: [], title: null }, async () => live, (e) => `omp failed to resume: ${String(e)}`);
+    const ws: WorkspaceInfo = { id: "w", path: project, name: "proj" };
+    const chat = await Chat.open("c1", adapter, ws, deferred);
+    open.push(deferred);
+    await chat.send("form please", "normal");
+    await until(() => chat.snapshot().pending.length === 1);
+    const request = chat.snapshot().pending[0];
+    expect(chat.pendingForm(request?.id as string)).toContain('<input type="checkbox" name="t1"');
+    expect(chat.answer(request?.id as string, { kind: "form", data: { t1: ["a"], count: 1 } })).toBe("Submitted");
+    await until(() => chat.status === "idle");
+    expect(chat.pendingForm(request?.id as string)).toBeUndefined();
+    await chat.dispose("Test done");
   });
 
   it("abort cancels pending dialogs and settles", async () => {

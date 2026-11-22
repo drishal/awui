@@ -8,8 +8,9 @@
 // commands and an opt-in `ask` dialog, so nothing used here changed. Checked
 // again against 18.18.6: the ready frame, get_state, and the session lease
 // (`omp session lease --json`, which a resume asks so it never makes a second
-// writer) answer as written here; its HTML-form `ask` tool is not offered in RPC
-// mode, so no chat here sees one. Checked against 19.0.1 (the next major line)
+// writer) answer as written here. From 19.1.0 its `ask` tool sends one whole
+// HTML `form` request in rpc-ui (the host must render it and reply with the
+// controls' data, or cancel). Checked against 19.0.1 (the next major line)
 // before moving the baseline: the ready frame advertises protocol v2 and
 // negotiate_protocol answers it; get_state, get_messages, get_available_models,
 // get_available_thinking_levels, get_available_commands (/context is still a
@@ -106,6 +107,8 @@ const FIRST_PROMPT_BYTES = 64 * 1024;
 const LAST_MESSAGE_BYTES = 64 * 1024;
 /** omp's ACP `session/list` page size. */
 const ACP_SESSION_PAGE = 50;
+/** A form question the browser may hold: one page's worth, not the transport's 64 MiB ceiling. */
+const MAX_FORM_HTML = 1_000_000;
 
 /** The session a session file was copied from (its header's `parentSession`: an id, or a path), or null. */
 async function parentSessionOf(file: string): Promise<string | null> {
@@ -924,6 +927,8 @@ class OmpLiveChat implements LiveChat {
   private rpc: OmpRpc | null = null;
   private generation = 0;
   private dialogs = new Map<string, OpenDialog>();
+  /** Each waiting form's own HTML, by request id; served only while the request is pending. */
+  private forms = new Map<string, string>();
   private queue: QueueState = { steering: [], followUp: [] };
   /** Whether /context is an omp builtin (checked once), the pending probe, and their queue. */
   private contextBuiltin: Promise<boolean> | null = null;
@@ -1035,6 +1040,33 @@ class OmpLiveChat implements LiveChat {
     const id = typeof frame.id === "string" ? frame.id : null;
     if (!id) return;
     const method = frame.method;
+    // omp's ask tool sends the whole HTML form at once. The host answers with
+    // the controls' values by name, so the form is rendered as one opaque-origin
+    // page rather than walked field by field.
+    if (method === "form") {
+      const html = typeof frame.html === "string" ? frame.html : "";
+      if (html.trim() === "" || html.length > MAX_FORM_HTML) {
+        this.respond(id, { cancelled: true });
+        this.hub.emit({ type: "notice", level: "error", text: html === "" ? "omp asked an empty form question." : "omp's form question is too large to show here." });
+        return;
+      }
+      const timeout = typeof frame.timeout === "number" ? frame.timeout : undefined;
+      this.dialogs.set(id, { kind: "form" });
+      // The HTML stays server-side: the transcript only carries the request's
+      // title and kind, and the frame fetches its document by request id.
+      this.forms.set(id, html);
+      this.hub.emit({
+        type: "request",
+        request: {
+          id,
+          kind: "form",
+          title: "Answer the form",
+          createdAt: Date.now(),
+          ...(timeout ? { expiresAt: Date.now() + timeout } : {}),
+        },
+      });
+      return;
+    }
     if (method === "select" || method === "confirm" || method === "input" || method === "editor") {
       const timeout = typeof frame.timeout === "number" ? frame.timeout : undefined;
       this.dialogs.set(id, { kind: method });
@@ -1057,7 +1089,10 @@ class OmpLiveChat implements LiveChat {
     switch (method) {
       case "cancel": {
         const target = String(frame.targetId ?? "");
-        if (this.dialogs.delete(target)) this.hub.emit({ type: "request_cancelled", requestId: target, outcome: "cancelled" });
+        if (this.dialogs.delete(target)) {
+          this.forms.delete(target);
+          this.hub.emit({ type: "request_cancelled", requestId: target, outcome: "cancelled" });
+        }
         return;
       }
       case "notify": {
@@ -1102,6 +1137,7 @@ class OmpLiveChat implements LiveChat {
   private cancelDialogs(): void {
     for (const id of [...this.dialogs.keys()]) {
       this.dialogs.delete(id);
+      this.forms.delete(id);
       this.respond(id, { cancelled: true });
       this.hub.emit({ type: "request_cancelled", requestId: id, outcome: "cancelled" });
     }
@@ -1305,16 +1341,25 @@ class OmpLiveChat implements LiveChat {
     await this.live.command("compact", instructions ? { customInstructions: instructions } : {}, null);
   }
 
+  /** A waiting form's own HTML; undefined once answered, cancelled, or never a form. */
+  formHtml(requestId: string): string | undefined {
+    return this.forms.get(requestId);
+  }
+
   answer(requestId: string, answer: InteractionAnswer): boolean {
     const dialog = this.dialogs.get(requestId);
     if (!dialog || !this.rpc || this.rpc.exited) return false;
     this.dialogs.delete(requestId);
+    this.forms.delete(requestId);
     switch (answer.kind) {
       case "cancel":
         this.respond(requestId, { cancelled: true });
         break;
       case "confirm":
         this.respond(requestId, { confirmed: answer.confirmed });
+        break;
+      case "form":
+        this.respond(requestId, { data: answer.data });
         break;
       default:
         this.respond(requestId, { value: answer.value });

@@ -2,8 +2,10 @@
 // with OpenCode's button order (Deny ghost, Approve primary on the right) and
 // Hermes Desktop's stacked silhouettes when more requests are queued.
 import { useEffect, useRef, useState } from "react";
-import type { InteractionAnswer, InteractionRequest } from "../../shared/protocol.js";
+import type { InteractionAnswer, InteractionFormData, InteractionRequest } from "../../shared/protocol.js";
 import { MAX_DENIAL_REASON_CHARS } from "../../shared/protocol.js";
+import { clampInteractionFormHeight, INTERACTION_FORM_MIN_HEIGHT, readInteractionFormCancel, readInteractionFormHeight, readInteractionFormSubmit } from "../../shared/interaction-form.js";
+import { HTML_RENDER_THEME_MESSAGE, htmlRenderThemeFragment, htmlRenderThemeFromStyles, type HtmlRenderTheme } from "../../shared/html-render.js";
 import { useNow } from "../hooks.js";
 import { IconCheck, IconStop, IconX } from "../icons.js";
 import type { FoldedRequest } from "../approval-fold.js";
@@ -82,18 +84,103 @@ function ChoiceList({ request, busy, onAnswer }: { request: InteractionRequest; 
   );
 }
 
+/**
+ * A `form` request (omp's ask tool): the harness's whole HTML form in an
+ * opaque-origin frame. The frame posts the controls' values by name or a
+ * cancel; nothing inside it can reach the app's session.
+ */
+function FormQuestion({
+  request,
+  stopping,
+  src,
+  onAnswer,
+  onStop,
+}: {
+  request: InteractionRequest;
+  stopping: boolean;
+  src: string | null;
+  onAnswer: (answer: InteractionAnswer) => void;
+  onStop: () => void;
+}) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(INTERACTION_FORM_MIN_HEIGHT * 2);
+  const [theme, setTheme] = useState<HtmlRenderTheme>(() => htmlRenderThemeFromStyles(getComputedStyle(document.documentElement)));
+  // The URL's theme is the first paint's; later theme changes are posted, so a
+  // reload never throws away answers already typed into the form.
+  const [firstUrl] = useState(() => (src ? src + htmlRenderThemeFragment(htmlRenderThemeFromStyles(getComputedStyle(document.documentElement))) : null));
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => setTheme(htmlRenderThemeFromStyles(getComputedStyle(root)));
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    frame.current?.contentWindow?.postMessage({ method: HTML_RENDER_THEME_MESSAGE, theme }, "*");
+  }, [theme]);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      // Only the frame this card owns, and only from its opaque origin.
+      if (event.source !== frame.current?.contentWindow || event.origin !== "null") return;
+      if (readInteractionFormCancel(event.data)) {
+        onAnswer({ kind: "cancel" });
+        return;
+      }
+      const data: InteractionFormData | null = readInteractionFormSubmit(event.data);
+      if (data) {
+        onAnswer({ kind: "form", data });
+        return;
+      }
+      const reported = readInteractionFormHeight(event.data);
+      if (reported !== undefined) setHeight(clampInteractionFormHeight(reported));
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [onAnswer]);
+
+  if (!firstUrl) {
+    return (
+      <div className="approval-actions">
+        <p className="approval-message">This form cannot be shown here; answer it from the chat that asked.</p>
+        <span className="approval-spacer" />
+        <button type="button" className="btn" onClick={() => onAnswer({ kind: "cancel" })}>
+          Dismiss
+        </button>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="approval-form-frame" style={{ height }}>
+        <iframe ref={frame} src={firstUrl} title={request.title || "Form question"} sandbox="allow-scripts allow-forms" />
+      </div>
+      <div className="approval-actions">
+        <button type="button" className="btn btn-ghost btn-danger-text" onClick={onStop} disabled={stopping}>
+          <IconStop size={12} /> {stopping ? "Stopping…" : "Stop"}
+        </button>
+        <span className="approval-spacer" />
+        <span className="approval-hint">Fill in the form, then Submit</span>
+      </div>
+    </>
+  );
+}
+
 export function ApprovalStack({
   pending,
   busy,
   stopping,
   onAnswer,
   onStop,
+  formSrc,
 }: {
   pending: InteractionRequest[];
   busy: boolean;
   stopping: boolean;
   onAnswer: (request: InteractionRequest, answer: InteractionAnswer, denialReason?: string) => void;
   onStop: () => void;
+  /** The document URL for a `form` request; absent when this surface cannot frame one. */
+  formSrc?: (request: InteractionRequest) => string | null;
 }) {
   const request = pending[0] as InteractionRequest;
   const [value, setValue] = useState(request.secret ? "" : (request.prefill ?? ""));
@@ -139,7 +226,9 @@ export function ApprovalStack({
         <div className="approval-headline">{headline}</div>
         {detail ? question ? <p className="approval-message">{detail}</p> : <pre className="approval-detail">{detail}</pre> : null}
 
-        {request.kind === "input" || request.kind === "editor" ? (
+        {request.kind === "form" ? (
+          <FormQuestion key={request.id} request={request} stopping={stopping} src={formSrc?.(request) ?? null} onAnswer={(answer) => onAnswer(request, answer)} onStop={onStop} />
+        ) : request.kind === "input" || request.kind === "editor" ? (
           <form
             className="approval-form"
             onSubmit={(e) => {

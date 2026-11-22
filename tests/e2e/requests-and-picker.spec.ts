@@ -33,6 +33,25 @@ test("a denied request folds into a line that says so", async ({ page }) => {
   await expect(page.getByTestId("request-row")).toContainText("Denial reason: Read instead of changing the file.");
 });
 
+test("a whole-form question is filled in its own sandboxed frame", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "formquestion");
+  const card = page.getByTestId("approval-card");
+  await expect(card).toContainText("Answer the form");
+  const form = card.frameLocator("iframe");
+  await expect(form.getByText(/Which models are safe to delete/)).toBeVisible();
+  await form.getByRole("textbox", { name: "Notes" }).fill("keep mirai");
+  // The free-text Other row a group of two or more gets, appended to its array.
+  await form.getByRole("textbox", { name: "Other answer for t1" }).fill("bonsai");
+  await form.getByRole("button", { name: "Submit" }).click();
+  await expect(page.getByTestId("approval-folded")).toHaveText("Submitted: Answer the form");
+  await expect(page.getByText(/"t1":\["mirai","lfm","bonsai"\]/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/"notes":"keep mirai"/)).toBeVisible();
+  await expect(page.getByText(/"count":2/)).toBeVisible();
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 15_000 });
+});
+
 test("a queued follow-up leaves the queue and becomes the next prompt", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);

@@ -7,6 +7,7 @@
 //   "big"   produce oversized tool output    "edit"  edit a file (src/app.ts)
 //   "bloat" pad the session to about two thirds of the context window
 //   "quiz"  ask a multiple-choice question (omp's style; "quiz described": Claude Code's)
+//   "formquestion"  ask one whole HTML form, as omp 19.1's ask tool does, and reply with its data
 //   "sudo"  ask for a masked one-string password, as Hermes's sudo prompt does
 //   "wait"  report a provider wait on the harness's status line for 1.5 s
 //   "planned" hand a ten-step plan over for review (an ExitPlanMode call)
@@ -62,6 +63,7 @@ import {
   type HarnessCapabilities,
   type ImageAttachment,
   type InteractionAnswer,
+  type InteractionFormData,
   type ModelInfo,
   type PermissionModeInfo,
   type SlashCommand,
@@ -110,6 +112,19 @@ const FAKE_PICTURE =
   "pN8r6SgIovAfwasv82UiaSSNpJE0JU1JI+kES5reiZ1IGkkjaSRNSVPSSDrBkqZ3YieSRtJIGklT0pQ0kk6wpOmd2ImkkTSS" +
   "RtKUNCWNpBMsaXondiJpJI2kkTQlTUkjad5J806anwVJI2kkTUlT0kiad9K8k2YiaSSNpClpShpJJ2I+A0OQky/bHAHCAAAA" +
   "AElFTkSuQmCC";
+
+/** The form a `formquestion` prompt asks: a checkbox group, text, and a bounded number. */
+export const FAKE_FORM_HTML = `<form>
+<p><b>Which models are safe to delete?</b> Ticked files are the evidence-backed tier.</p>
+<fieldset>
+<legend>Tier 1 — evidence says dead</legend>
+<label><input type="checkbox" name="t1" value="mirai" checked> <code>qwen3.8-s/</code> 11.3 GiB</label>
+<label><input type="checkbox" name="t1" value="lfm" checked> <code>LFM2.5-24B</code> 13.5 GiB</label>
+<label><input type="checkbox" name="t1" value="bonsai"> <code>bonsai/</code> 39.0 GiB</label>
+</fieldset>
+<label>Notes <input type="text" name="notes" placeholder="Optional"></label>
+<label>Count <input type="number" name="count" min="1" max="10" value="2"></label>
+</form>`;
 
 const FAKE_MODELS: ModelInfo[] = [
   { key: "fake/echo", provider: "fake", id: "echo", name: "Fake Echo", reasoning: true, vision: true, levels: ["low", "high"] },
@@ -354,6 +369,8 @@ class FakeLiveChat implements LiveChat {
   private steering: string[] = [];
   private followUps: string[] = [];
   private pending = new Map<string, (answer: InteractionAnswer | null) => void>();
+  /** Whole-form requests' HTML, as omp's ask tool sends it. */
+  private forms = new Map<string, string>();
   private model = "fake/echo";
   private thinkingLevel = "low";
   private permissionMode = "default";
@@ -581,8 +598,13 @@ class FakeLiveChat implements LiveChat {
     const resolve = this.pending.get(requestId);
     if (!resolve) return false;
     this.pending.delete(requestId);
+    this.forms.delete(requestId);
     resolve(answer);
     return true;
+  }
+
+  formHtml(requestId: string): string | undefined {
+    return this.forms.get(requestId);
   }
 
   async dispose(): Promise<void> {
@@ -655,6 +677,11 @@ class FakeLiveChat implements LiveChat {
       if (/\bquiz\b/i.test(text)) {
         const chose = await this.question(signal, /\bdescribed\b/i.test(text));
         await this.reply(`Chose: ${chose}`, signal);
+        return;
+      }
+      if (/\bformquestion\b/i.test(text)) {
+        const data = await this.formQuestion(signal);
+        await this.reply(`Submitted: ${JSON.stringify(data)}`, signal);
         return;
       }
       if (/\brecall\b/i.test(text)) {
@@ -1416,6 +1443,36 @@ class FakeLiveChat implements LiveChat {
             },
       });
     });
+  }
+
+  /** The whole-form request omp's ask tool sends from 19.1.0: an HTML form, answered with its data. */
+  private formQuestion(signal: AbortSignal): Promise<InteractionFormData> {
+    const id = randomUUID();
+    const { promise, resolve, reject } = Promise.withResolvers<InteractionFormData>();
+    const onAbort = () => {
+      this.forms.delete(id);
+      if (this.pending.delete(id)) this.emit({ type: "request_cancelled", requestId: id, outcome: "cancelled" });
+      reject(new Aborted());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    this.pending.set(id, (answer) => {
+      signal.removeEventListener("abort", onAbort);
+      this.forms.delete(id);
+      if (answer === null || answer.kind === "cancel") return reject(new Aborted());
+      if (answer.kind !== "form") return reject(new Error("The fake form was answered with something else"));
+      resolve(answer.data);
+    });
+    this.forms.set(id, FAKE_FORM_HTML);
+    this.emit({
+      type: "request",
+      request: {
+        id,
+        kind: "form",
+        title: "Answer the form",
+        createdAt: Date.now(),
+      },
+    });
+    return promise;
   }
 
   /** A one-string prompt (Hermes's sudo request): a masked input, answered with its value. */

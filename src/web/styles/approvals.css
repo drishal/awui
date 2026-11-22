@@ -257,6 +257,24 @@
   font-family: var(--font-mono);
 }
 
+/* A form request's document (omp's ask tool): its own themed, sandboxed page;
+   the card keeps a stable height and the page scrolls inside it. */
+.approval-form-frame {
+  margin: 4px 0 8px;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--hairline);
+}
+
+.approval-form-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
 /* The answered card's last moment (ApprovalFolded): it starts at a card's height, blurred and faint, and
    glides down to one quiet line whose mark draws itself; it then leaves on its own. The conversation
    keeps the real record. */

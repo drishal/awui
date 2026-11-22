@@ -170,7 +170,7 @@ http://127.0.0.1:5173 with hot reload instead.
 
 The fake harness answers scripts chosen by words in the prompt, so any state
 can be produced on demand: `tool`, `edit`, `showcase` (one call of every tool
-kind), `todo`, `ask` (an approval), `quiz` (a question), `subagents`, `planned`,
+kind), `todo`, `ask` (an approval), `quiz` (a question), `formquestion` (one whole HTML form), `subagents`, `planned`,
 `ratelimit`, `slow` (to act mid-run), `fail`, and the rest listed in
 `src/server/harness/fake.ts` and AGENTS.md (Testing). `fake-b` declares fewer
 capabilities, for checking what hides.

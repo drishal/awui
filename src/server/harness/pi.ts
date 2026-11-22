@@ -1026,6 +1026,9 @@ class PiLiveChat implements LiveChat {
       case "confirm":
         rpc.send({ type: "extension_ui_response", id: requestId, confirmed: answer.confirmed });
         break;
+      case "form":
+        // Pi's dialogs are select/confirm/input/editor; a form never reaches here.
+        break;
       default:
         rpc.send({ type: "extension_ui_response", id: requestId, value: answer.value });
         break;
