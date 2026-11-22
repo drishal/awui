@@ -87,6 +87,66 @@ function jsTests(lines: string[]): ToolFacts | undefined {
   return { kind: "test", facts: tally(passed, failed, skipped), ...(error ? { error } : {}), ...(failed > 0 ? { failed: true } : {}) };
 }
 
+/** The duration a runner puts at the end of its summary: Playwright's `(1.2m)`, jest's `(2.5 s)`. */
+function summaryMs(line: string): number | undefined {
+  const m = /\((\d+(?:\.\d+)?)\s*(ms|s|m)\)\s*$/.exec(line);
+  const n = m ? Number(m[1]) : NaN;
+  if (!Number.isFinite(n)) return undefined;
+  return m?.[2] === "m" ? n * 60_000 : m?.[2] === "s" ? n * 1000 : n;
+}
+
+/**
+ * Playwright's own summary: `27 passed (1.2m)` under its failures, or a line a count
+ * (`1 failed`, `3 flaky`, `2 skipped`) beside a passed line that carries the run's
+ * duration. Claimed only with that duration: a run killed before its summary prints
+ * a count and nothing else, and a count alone is not a finished run.
+ */
+function playwright(lines: string[]): ToolFacts | undefined {
+  let passed = 0;
+  let failed = 0;
+  let skipped = 0;
+  let flaky = 0;
+  let claimed = 0;
+  let duration: number | undefined;
+  for (const line of lines.slice(-40)) {
+    const m = /^\s*(\d+) (passed|failed|flaky|skipped)\s*(?:\([^)]*\))?\s*$/.exec(line);
+    if (!m) continue;
+    claimed += 1;
+    const n = Number(m[1]);
+    if (m[2] === "passed") passed += n;
+    else if (m[2] === "failed") failed += n;
+    else if (m[2] === "skipped") skipped += n;
+    else flaky += n;
+    duration ??= summaryMs(line);
+  }
+  if (claimed === 0 || duration === undefined) return undefined;
+  // Its failures are numbered and name the project, the file, then the test.
+  let error: string | undefined;
+  for (const line of lines) {
+    const m = /^\s*\d+\)\s+.*›\s+(.+?)(?:\s+─{2,})?\s*$/.exec(line);
+    if (m?.[1]) {
+      error = cut(m[1]);
+      break;
+    }
+  }
+  return { kind: "test", facts: [...tally(passed, failed, skipped), ...(flaky > 0 ? [`${flaky} flaky`] : [])], ...(error ? { error } : {}), ...(failed > 0 ? { failed: true } : {}) };
+}
+
+/** npm's own failure line: the last `npm ERR!` says why the script or the install stopped. */
+function npmError(lines: string[]): ToolFacts | undefined {
+  const line = [...lines].reverse().find((l) => /^npm ERR!/.test(l.trim()));
+  const text = line?.trim().replace(/^npm ERR!\s*/, "").replace(/\s+/g, " ").trim() ?? "";
+  return text ? { facts: [], error: cut(text) } : undefined;
+}
+
+/** `gh pr create`'s answer: the pull request it opened (`https://github.com/owner/repo/pull/42`). */
+function ghPr(lines: string[], command: string): ToolFacts | undefined {
+  if (!/\bgh\s+pr\s+create\b/.test(command)) return undefined;
+  const url = lines.map((l) => l.trim()).find((l) => /^https?:\/\/\S+\/pull\/\d+$/.test(l));
+  const number = url === undefined ? undefined : /\/pull\/(\d+)$/.exec(url)?.[1];
+  return number ? { kind: "git", facts: [`opened #${number}`] } : undefined;
+}
+
 /** pytest's `===== 1 failed, 2 passed in 0.12s =====`. */
 function pytest(lines: string[]): ToolFacts | undefined {
   const summary = [...lines].reverse().find((l) => /^=+ .+ in [\d.]+s(?: \(.*\))? =+$/.test(l));
@@ -287,8 +347,13 @@ export function toolFacts(item: FactSource): ToolFacts {
   const category = item.category;
   if (category === "command" || category === "other" || category === "search") {
     if (category !== "search") {
-      const found = jsTests(seen) ?? pytest(seen) ?? cargoOrGo(seen) ?? compiler(seen) ?? git(seen, command) ?? install(seen);
+      const found = jsTests(seen) ?? playwright(seen) ?? pytest(seen) ?? cargoOrGo(seen) ?? compiler(seen) ?? git(seen, command) ?? ghPr(seen, command) ?? install(seen);
       if (found) return found;
+      // A failed script or install that printed no tally at all still says why, in npm's own words.
+      if (item.status === "error") {
+        const npm = npmError(seen);
+        if (npm) return npm;
+      }
     }
     // A truncated search lists only part of its hits: no count rather than a wrong one.
     if (!item.truncated) {

@@ -25,6 +25,7 @@ import { harnessGlyph } from "../neat.js";
 import { accentOf, contextTone } from "../theme.js";
 import { useAtui, useTheme } from "./context.js";
 import { Shimmer } from "./fx.js";
+import { JobsStrip } from "./job.js";
 import { tick } from "./ticker.js";
 
 /** From this share of the context the composer offers to compact first, and from this one it starts on. */
@@ -428,6 +429,11 @@ export function Composer(p: {
             }}
           </For>
           <text fg={t().muted}>↑↓ move · Tab or Enter inserts · Esc closes</text>
+        </box>
+      </Show>
+      <Show when={(app.chat()?.items.length ?? 0) > 0}>
+        <box width={p.column} alignSelf="center">
+          <JobsStrip items={app.chat()?.items ?? []} />
         </box>
       </Show>
       <box

@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 import { asHarnessId, type DelegatedTaskView } from "../../src/shared/protocol.js";
 import { clockNote, moveRow, rowWindow, taskRows, workerCount } from "../../src/atui/delegated.js";
 import { railEntries, railSummary, toneDot, toneOf } from "../../src/atui/rail.js";
+import { jobBlockLines, jobLine, meter } from "../../src/atui/jobs.js";
 import { DARK } from "../../src/atui/theme.js";
+import type { ChatJob } from "../../src/web/jobs.js";
 import type { ContextCard } from "../../src/web/context-panel.js";
 
 const task = (over: Partial<DelegatedTaskView> = {}): DelegatedTaskView => ({
@@ -102,5 +104,44 @@ describe("the rail's flat list and its summary", () => {
     expect(["working", "waiting", "failed"].map((tone) => toneDot(tone as "working"))).toEqual(["●", "●", "●"]);
     expect(toneDot("done")).toBe("✓");
     expect(toneDot("quiet")).toBe("○");
+  });
+});
+
+describe("the chat's background jobs in a terminal", () => {
+  const job = (over: Partial<ChatJob> = {}): ChatJob => ({
+    id: "bg_1",
+    kind: "shell",
+    status: "running",
+    label: "npx playwright test e2e",
+    toolId: "t:1",
+    seenAt: 1_000,
+    ...over,
+  });
+
+  it("words a job on one line: its id, what it is, where it is, and its clock", () => {
+    expect(jobLine(job({ title: "Running the e2e suite" }), 13_000)).toBe("bg_1 · Running the e2e suite · 12.0s");
+    // A finished job keeps the time it took, and a failed one says how it ended.
+    expect(jobLine(job({ status: "failed", title: "Running the e2e suite", endedAt: 4_000, exitCode: 1 }), 90_000)).toBe("bg_1 · Running the e2e suite · failed · 3.0s · exit 1");
+    // A harness that sends no widget: the test run's own output says where it is.
+    expect(jobLine(job({ output: "Running 27 tests using 4 workers\n  ✘  3 [chromium] › e2e/a.spec.ts:1:1 › checkout › pays\n  ✓  12 [chromium] › e2e/b.spec.ts:2:1 › checkout › retries" }), 13_000)).toBe("bg_1 · npx playwright test e2e · 12/27 tests · 1 failed · 12.0s");
+  });
+
+  it("draws a widget's blocks as rows a terminal can hold", () => {
+    expect(
+      jobBlockLines([
+        { kind: "meter", label: "Tests", value: 0.5, text: "14/27" },
+        { kind: "stat", items: [{ label: "passed", text: "12" }, { label: "failed", text: "1" }] },
+        { kind: "text", text: "chromium · checkout" },
+        { kind: "spark", values: [0, 1, 2], last: "3", label: "passed" },
+        { kind: "grid", label: "Projects", items: [{ label: "chromium", text: "ok" }] },
+      ]),
+    ).toEqual(["Tests ━━━━━░░░░░ 14/27", "12 passed · 1 failed", "chromium · checkout", "▁▅█ 3 passed", "Projects: chromium ok"]);
+  });
+
+  it("measures a share in whole cells, and never past the bar", () => {
+    expect(meter(0)).toBe("░░░░░░░░░░");
+    expect(meter(1)).toBe("━━━━━━━━━━");
+    expect(meter(2)).toBe("━━━━━━━━━━");
+    expect(meter(0.5, 4)).toBe("━━░░");
   });
 });

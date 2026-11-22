@@ -231,6 +231,22 @@ describe("atui", () => {
     expect(await ui.frame()).not.toContain("step-6.test.ts");
   }, 30_000);
 
+  it("draws a call's background job under it, and the live ones above the composer", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 44 });
+    await ui.type("bgjob please");
+    ui.keys.pressEnter();
+    // While the wait streams its widget, the job's own row carries the meter and its progress.
+    const live = await ui.until("tests done");
+    expect(live).toContain("bg_1");
+    expect(live).toMatch(/tests done ━+/);
+    await idle(ui);
+    // Settled: the counts it left, the projects' grid, and where the run ended.
+    const done = await ui.until("11 passed · 1 failed");
+    expect(done).toContain("tests done");
+    expect(done).toContain("11 passed, 1 failed");
+    expect(done).toContain("bg_1");
+  }, 45_000);
+
   it("colours the context from green toward red as it fills", async () => {
     ui = await mount(path.join(server.root, "beta"));
     // The sparkline before the figure shares its colour, so the two can come as one run: "▁▂ ctx 8%".

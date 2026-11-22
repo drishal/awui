@@ -178,3 +178,45 @@ describe("limits", () => {
     expect(failed.facts).toEqual(["25 passed", "1 failed"]);
   });
 });
+
+describe("Playwright's own summary", () => {
+  it("reads the count lines a passed run prints, with its duration", () => {
+    expect(toolFacts(bash("  27 passed (1.2m)", "npx playwright test")).facts).toEqual(["27 passed"]);
+    expect(toolFacts(bash("  26 passed (1.3m)", "npx playwright test")).facts).toEqual(["26 passed"]);
+  });
+  it("reads a failing run's counts and names the failing test", () => {
+    const out = [
+      "  1) [chromium] › e2e/checkout.spec.ts:42:5 › checkout › pays with saved card ───────",
+      "     Error: Timed out 5000ms waiting for getByRole('button', { name: 'Pay' })",
+      "",
+      "  1 failed",
+      "    [chromium] › e2e/checkout.spec.ts:42:5 › checkout › pays with saved card ──────",
+      "  26 passed (1.3m)",
+      "  2 flaky",
+      "  1 skipped",
+    ].join("\n");
+    const f = toolFacts(bash(out, "npx playwright test"));
+    expect(f.facts).toEqual(["26 passed", "1 failed", "1 skipped", "2 flaky"]);
+    expect(f.error).toBe("pays with saved card");
+    expect(f.failed).toBe(true);
+  });
+  it("claims nothing from a run that died before its summary", () => {
+    // A count alone is not a finished run: no duration, no card.
+    expect(toolFacts(bash("  1 failed\n    [chromium] › e2e/a.spec.ts:1:1 › suite › test", "npx playwright test")).facts).toEqual([]);
+    // And a vitest summary is still read by its own parser.
+    expect(toolFacts(bash(" Test Files  1 passed (1)\n      Tests  3 passed (3)", "npx vitest run")).facts).toEqual(["3 passed"]);
+  });
+});
+
+describe("npm's own error line and a pull request it opened", () => {
+  it("says why a failed script stopped, in npm's words", () => {
+    const f = toolFacts(bash("> app@1.0.0 test\n> vitest run\n\nnpm ERR! Test failed.  See above for more details.", "npm test", { status: "error" }));
+    expect(f.facts).toEqual([]);
+    expect(f.error).toBe("Test failed. See above for more details.");
+  });
+  it("reads gh pr create's answer as the pull request it opened", () => {
+    expect(toolFacts(bash("Warning: 3 uncommitted changes\nhttps://github.com/drishal/awui/pull/42", "gh pr create --fill")).facts).toEqual(["opened #42"]);
+    // A URL in some other command's output is not a pull request this call opened.
+    expect(toolFacts(bash("https://github.com/drishal/awui/pull/42", "curl -s https://api.github.com")).facts).toEqual([]);
+  });
+});

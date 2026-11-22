@@ -22,8 +22,10 @@ import type { TodoEntry } from "../../shared/todo-entries.js";
 import { easeOut, flashAt, mix, unrollCounts } from "../fx.js";
 import { filetypeOf, taskBoxes } from "../markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll, turnTone, type TurnTone } from "../minimap.js";
-import { latestThoughtLine, neatRow, rowHead, sigmaFacts, thinkingMeta, workRuns, type WorkRun } from "../neat.js";
+import { latestThoughtLine, neatRow, rowHead, sigmaFacts, thinkingMeta, workRuns, type NeatRow, type WorkRun } from "../neat.js";
 import { callDuration } from "../../shared/tool-row.js";
+import { JobBlocks } from "./job.js";
+import { chatJobs, type ChatJob } from "../../web/jobs.js";
 import { accentOf, categoryTone, type Theme } from "../theme.js";
 import { highlightPreview } from "../words.js";
 import { useAtui, useTheme } from "./context.js";
@@ -454,6 +456,30 @@ function TodoRows(p: { entries: TodoEntry[] }) {
 }
 
 /**
+ * What hangs under a call besides its line: the jobs it holds, the plan it proposes,
+ * a todo list's checklist, and a delegation's agents. The same set under a lone row and
+ * under a tree's row, so a call reads the same whichever way its turn laid it out.
+ */
+function CallExtras(p: { item: ToolItem; summary: NeatRow; jobs: readonly ChatJob[] }) {
+  return (
+    <>
+      <Show when={p.jobs.length > 0}>
+        <JobBlocks jobs={p.jobs} />
+      </Show>
+      <Show when={p.summary.plan}>
+        {(text) => <PlanBlock text={text()} />}
+      </Show>
+      <Show when={p.summary.todos}>
+        {(entries) => <TodoRows entries={entries()} />}
+      </Show>
+      <Show when={p.item.subagents?.runs.length}>
+        <AgentTree runs={p.item.subagents?.runs ?? []} />
+      </Show>
+    </>
+  );
+}
+
+/**
  * One call as neat-render draws it:
  *
  *   # the model's remark, when the command opened with one
@@ -468,6 +494,9 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
   const [open, setOpen] = createSignal(false);
   const row = createMemo(() => neatRow(p.item, p.workspace));
   const preview = createMemo(() => (row().diff ? highlightPreview(row().diff ?? []) : null));
+  // The jobs this call holds (a wait, a list, a spawn): the browser draws them flat under it too,
+  // while a command left running keeps its own `in background` fact instead of repeating the bar.
+  const jobs = createMemo(() => (p.item.jobs && p.item.jobs.length > 0 && p.item.category !== "command" ? chatJobs([p.item]) : []));
   const running = () => p.item.status === "running";
   // The ticker wakes the clock under a running call, which then settles into the row's time.
   const now = () => {
@@ -566,15 +595,7 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
             </text>
           </box>
         </Show>
-        <Show when={row().plan}>
-          {(text) => <PlanBlock text={text()} />}
-        </Show>
-        <Show when={row().todos}>
-          {(entries) => <TodoRows entries={entries()} />}
-        </Show>
-        <Show when={p.item.subagents?.runs.length}>
-          <AgentTree runs={p.item.subagents?.runs ?? []} />
-        </Show>
+        <CallExtras item={p.item} summary={row()} jobs={jobs()} />
         <Show when={!open() && preview()}>
           {(lines) => (
             <box flexDirection="column" paddingLeft={4}>
@@ -632,6 +653,8 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
   const bad = (f: string) => p.item.status === "error" || /^(?:[1-9]\d* failed|exit [1-9])/.test(f);
   const tail = createMemo(() => (running() && p.item.category === "command" ? outputTail(p.item.output, LIVE_LINES) : []));
   const href = () => (p.item.paths[0] ? fileUrl(p.item.paths[0], p.workspace) : null);
+  // A plan, a todo checklist, or the jobs a call holds, on the trunk under its line.
+  const jobs = createMemo(() => (p.item.jobs && p.item.jobs.length > 0 && p.item.category !== "command" ? chatJobs([p.item]) : []));
   // A remark above the call takes the top corner, so the call under it joins the trunk with a tee.
   const fork = () => (p.last ? "└─ " : p.first && !row().note ? "┌─ " : "├─ ");
   // Budgeted like ToolRow's head, with the tree's own parts: connector, bullet, the
@@ -687,6 +710,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
           </text>
         </Show>
       </box>
+      <CallExtras item={p.item} summary={row()} jobs={jobs()} />
       <Show when={tail().length > 0 || open()}>
         <box flexDirection="column" border={p.last ? [] : ["left"]} borderColor={t().border} paddingLeft={p.last ? 3 : 2}>
           <Index each={tail()}>
