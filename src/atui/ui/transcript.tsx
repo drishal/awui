@@ -498,9 +498,10 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
   // while a command left running keeps its own `in background` fact instead of repeating the bar.
   const jobs = createMemo(() => (p.item.jobs && p.item.jobs.length > 0 && p.item.category !== "command" ? chatJobs([p.item]) : []));
   const running = () => p.item.status === "running";
-  // The ticker wakes the clock under a running call, which then settles into the row's time.
+  // The ticker wakes the clock under a running call, which then settles into the row's time. A settled
+  // row reads the clock without subscribing to it: nothing about its time changes, so it must not redraw.
   const now = () => {
-    tick();
+    if (running()) tick();
     return Date.now();
   };
   const took = createMemo(() => callDuration(p.item, now()));
@@ -646,7 +647,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
   const row = createMemo(() => neatRow(p.item, p.workspace));
   const running = () => p.item.status === "running";
   const now = () => {
-    tick();
+    if (running()) tick();
     return Date.now();
   };
   const took = createMemo(() => callDuration(p.item, now()));

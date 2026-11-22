@@ -16,9 +16,9 @@ import { useTheme } from "./context.js";
 import { Spinner } from "./fx.js";
 import { tick } from "./ticker.js";
 
-/** The clock a running job reads by: the one ticker, and the wall clock it wakes. */
-const clock = (): number => {
-  tick();
+/** The clock a running job reads by: the one ticker, and the wall clock it wakes (a settled job's time does not change). */
+const clock = (running: boolean): number => {
+  if (running) tick();
   return Date.now();
 };
 
@@ -39,7 +39,7 @@ function JobMark(p: { job: ChatJob }) {
  */
 export function JobsStrip(p: { items: readonly ChatItem[] }) {
   const t = useTheme();
-  const jobs = createMemo(() => shownJobs(chatJobs(p.items), clock()));
+  const jobs = createMemo(() => shownJobs(chatJobs(p.items), clock(true)));
   return (
     <Show when={jobs().length > 0}>
       <box flexDirection="column" paddingLeft={1}>
@@ -47,7 +47,7 @@ export function JobsStrip(p: { items: readonly ChatItem[] }) {
           {(job) => (
             <text wrapMode="none" truncate>
               <JobMark job={job()} />
-              <span style={{ fg: job().status === "failed" ? t().danger : t().text2 }}>{jobLine(job(), clock())}</span>
+              <span style={{ fg: job().status === "failed" ? t().danger : t().text2 }}>{jobLine(job(), clock(job().status === "running"))}</span>
             </text>
           )}
         </Index>
@@ -72,7 +72,7 @@ export function JobBlocks(p: { jobs: readonly ChatJob[] }) {
             return !job().widget?.blocks.length && output ? testProgress(output) : null;
           });
           const blocks = createMemo(() => blocksOf(job()));
-          const elapsed = createMemo(() => jobElapsed(job(), clock()));
+          const elapsed = createMemo(() => jobElapsed(job(), clock(job().status === "running")));
           // The command a job runs, when the title above it is a different thing (a description).
           const line = (): string | undefined => (job().title !== undefined && job().label !== job().id ? clip(job().label, 100) : undefined);
           return (
