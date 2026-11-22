@@ -5,7 +5,7 @@
 // files; this module translates its stream and control requests and reads its
 // session files (never writing one, except a fork's new copy).
 import { type ChildProcessWithoutNullStreams } from "node:child_process";
-import { execHarness, spawnHarness } from "../platform-win.js";
+import { applyPerChatToolEnv, execHarness, spawnHarness } from "../platform-win.js";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -428,7 +428,7 @@ class ClaudeLiveChat implements LiveChat {
    * chat, so nothing inherited from the server's own environment can displace them.
    */
   private childEnv(): NodeJS.ProcessEnv {
-    const env = { ...this.adapter.childEnv(), ...this.toolEnv };
+    const env = applyPerChatToolEnv({ ...this.adapter.childEnv() }, this.toolEnv);
     const ttl = this.adapter.subagentPromptCacheTtl;
     if (!this.delegated || !ttl || env.CLAUDE_CODE_PROMPT_CACHE_TTL !== undefined) return env;
     return { ...env, CLAUDE_CODE_PROMPT_CACHE_TTL: ttl };

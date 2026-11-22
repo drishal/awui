@@ -14,6 +14,7 @@ import type { ChatConfig, ChatItem, ConfigPatch, ContextUsage, HarnessCapabiliti
 import { asHarnessId, type HarnessId } from "../../shared/protocol.js";
 import type { AcpAgentConfig } from "../config.js";
 import { embeddedVersion } from "../embedded.js";
+import { applyPerChatToolEnv } from "../platform-win.js";
 import { boundText, isObj, type Obj } from "./agent-events.js";
 import { AcpClient, killAcpChildren, liveAcpChildren } from "./acp-client.js";
 import { foldAcpUpdate, itemsFromAcpFolds, type AcpFold } from "./acp-updates.js";
@@ -665,7 +666,8 @@ export class AcpAdapter implements HarnessAdapter {
 
   /** The child's environment: the user's own (so the agent's login applies), plus this entry's variables. */
   childEnv(): NodeJS.ProcessEnv {
-    return { ...(this.options.env ?? process.env), ...this.agent.env };
+    // This chat's tools ride its ACP `mcpServers` entry, so the server's own AWUI_* never belong here.
+    return applyPerChatToolEnv({ ...(this.options.env ?? process.env), ...this.agent.env });
   }
 
 

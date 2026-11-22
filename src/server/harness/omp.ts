@@ -20,7 +20,7 @@
 // additive and stay quiet; an older build or a new major line is reported by
 // ompVersionWarning().
 import { type ChildProcessWithoutNullStreams } from "node:child_process";
-import { execHarness, spawnHarness } from "../platform-win.js";
+import { applyPerChatToolEnv, execHarness, spawnHarness } from "../platform-win.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -643,7 +643,7 @@ export class OmpAdapter implements HarnessAdapter {
   }
 
   env(toolEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-    return { ...buildOmpEnv(this.options.env ?? process.env, this.options.agentDir, this.options.sessionDir), ...toolEnv };
+    return applyPerChatToolEnv(buildOmpEnv(this.options.env ?? process.env, this.options.agentDir, this.options.sessionDir), toolEnv);
   }
 
   /**

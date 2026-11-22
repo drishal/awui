@@ -14,7 +14,7 @@
 // answered with ordinary JSON-RPC responses.
 import { DatabaseSync } from "node:sqlite";
 import { type ChildProcessWithoutNullStreams } from "node:child_process";
-import { execHarness, spawnHarness } from "../platform-win.js";
+import { applyPerChatToolEnv, execHarness, spawnHarness } from "../platform-win.js";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -1636,15 +1636,17 @@ export class HermesAdapter implements HarnessAdapter {
   }
 
   async spawnSpec(): Promise<{ command: string; args: string[]; env: NodeJS.ProcessEnv }> {
-    if (this.options.command) return { command: this.options.command, args: this.options.args ?? [], env: { ...process.env } };
+    // Hermes mounts awui's tools from its own config, not this chat's variables, so none of
+    // the four per-chat names belongs in a gateway child (the server's own are never inherited).
+    if (this.options.command) return { command: this.options.command, args: this.options.args ?? [], env: applyPerChatToolEnv({ ...process.env }) };
     const runtime = await gatewayRuntime(this.cliCommand);
     // A launcher that answered for itself hands over the whole argv: the installer's Python
     // needs its `-I -c` bootstrap to put the checkout on sys.path and find tui_gateway.
     if (runtime.argv) {
       const [command = runtime.python, ...args] = runtime.argv;
-      return { command, args, env: runtime.env };
+      return { command, args, env: applyPerChatToolEnv({ ...runtime.env }) };
     }
-    return { command: runtime.python, args: ["-m", "tui_gateway.entry"], env: runtime.env };
+    return { command: runtime.python, args: ["-m", "tui_gateway.entry"], env: applyPerChatToolEnv({ ...runtime.env }) };
   }
 
   async discover(): Promise<HarnessDiscovery> {

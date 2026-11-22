@@ -11,7 +11,7 @@
 // awui's own checkpoints undo those); fork copies the session before a prompt.
 // A new chat's session is made on its first message, so an untouched chat
 // leaves nothing in OpenCode's list.
-import { execHarness } from "../platform-win.js";
+import { applyPerChatToolEnv, execHarness } from "../platform-win.js";
 import { homedir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -866,7 +866,9 @@ export class OpenCodeAdapter implements HarnessAdapter {
 
   constructor(private readonly options: OpenCodeOptions = {}) {
     this.cliCommand = options.command ?? (process.env.OPENCODE_BIN?.trim() || "opencode");
-    this.server = new OpenCodeServer(this.cliCommand, () => ({ ...(this.options.env ?? process.env) }));
+    // One server serves every chat, so no per-chat AWUI_* may come from here; each chat registers its own
+    // MCP servers over HTTP with its own token. The server's inherited names are never passed on.
+    this.server = new OpenCodeServer(this.cliCommand, () => applyPerChatToolEnv({ ...(this.options.env ?? process.env) }));
   }
 
   async discover(): Promise<HarnessDiscovery> {

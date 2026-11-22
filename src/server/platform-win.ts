@@ -125,13 +125,35 @@ export function resolveWin(command: string, args: string[]): [string, string[]] 
   return [command, []];
 }
 
+/** The four names awui mints per chat for its own tool extensions (render_html and orchestration). */
+export const PER_CHAT_ENV_KEYS = ["AWUI_RENDER_TOKEN", "AWUI_RENDER_URL", "AWUI_ORCH_TOKEN", "AWUI_ORCH_URL"] as const;
+
+/**
+ * Applies one chat's own tool credentials to a child environment. `toolEnv` is the
+ * per-chat values alone (`OpenChatRequest.toolEnv`), never `{ ...process.env, ...toolEnv }`:
+ * a merged object cannot tell this chat's token from one the server inherited, and
+ * that inherited one is exactly how another chat's endpoint reached every child.
+ * An absent value is deleted rather than inherited. Mutates and returns `env`.
+ */
+export function applyPerChatToolEnv(env: NodeJS.ProcessEnv, toolEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  for (const key of PER_CHAT_ENV_KEYS) {
+    const value = toolEnv?.[key];
+    if (value === undefined) delete env[key];
+    else env[key] = value;
+  }
+  return env;
+}
+
 /**
  * The spawn site for every harness child. On POSIX this is spawn() with the
  * project's direnv diff applied: a .envrc the user allowed (in the child's cwd
  * or a parent) gives the harness the same environment a terminal there would.
  * The diff wins over adapters' copied process.env, which may describe another
  * project's shell. Intentional per-chat additions (the render credentials) are
- * applied after it, never as a source of stale project variables.
+ * applied after it, never as a source of stale project variables. Every adapter must
+ * first run applyPerChatToolEnv over its raw toolEnv, since by the time an env reaches
+ * here it is already merged with the server's own; this site repeats the four-key rule
+ * on both platforms so a `.envrc` or the server's shell can never add one.
  * On Windows a bare npm CLI (pi, claude) resolves to its `.cmd` shim and runs
  * through the command interpreter, since CreateProcess cannot execute a batch
  * file directly; a native `.exe` (omp) or an explicit path spawns as-is.
@@ -141,25 +163,26 @@ export function spawnHarness(command: string, args: string[], opts: SpawnOptions
     // direnv is POSIX-first; on Windows there is nothing to merge.
     const dir = typeof opts.cwd === "string" ? opts.cwd : process.cwd();
     const spawnEnv = { ...process.env, ...(opts.env ?? {}) };
-    const projectEnv = envForSpawn(dir).env;
+    // A project's .envrc is not a per-chat credential channel: its own AWUI_* never reach
+    // the child, whatever the server's shell inherited.
+    const projectEnv = applyPerChatToolEnv({ ...envForSpawn(dir).env });
     const env = { ...spawnEnv, ...projectEnv };
     // PATH is special: it both locates the harness binary (which the project's direnv
     // env doesn't know about — pi lives in ~/.pi/agent/bin, only on the server's PATH)
     // and selects the project's tools. Prepend the project's PATH entries so its tools
     // (nightly cargo, MinGW) win and the binary still resolves from the inherited tail.
     if (projectEnv.PATH && spawnEnv.PATH) env.PATH = `${projectEnv.PATH}:${spawnEnv.PATH}`;
-    // awui's own per-chat names are not project variables: a value the caller
-    // handed this child wins, and an absent one is removed. The fallback to
-    // process.env here once let a server started with another chat's token
-    // hand that token (and endpoint) to every child it spawned.
-    for (const key of ["AWUI_RENDER_TOKEN", "AWUI_RENDER_URL", "AWUI_ORCH_TOKEN", "AWUI_ORCH_URL"]) {
-      const value = opts.env?.[key];
-      if (value === undefined) delete env[key];
-      else env[key] = value;
-    }
+    // The caller's per-chat values win, and an absent one is removed rather than inherited
+    // from the server's own shell. `opts.env` must already be an adapter's per-chat env
+    // (applyPerChatToolEnv over the raw OpenChatRequest.toolEnv): a merged object cannot
+    // tell the chat's own token from the server's, and that inherited one is the leak.
+    applyPerChatToolEnv(env, opts.env);
     opts = { ...opts, env };
   }
   if (IS_WINDOWS) {
+    // No direnv on Windows, so the caller's env is the only source; the same four names
+    // are taken from it and never inherited from the server's shell.
+    opts = { ...opts, env: applyPerChatToolEnv({ ...process.env, ...(opts.env ?? {}) }, opts.env) };
     const [argv0, prefix] = resolveWin(command, args);
     // resolveWin already folded the real args into the cmd line when it wrapped. That line is escaped for cmd
     // already, so Node must pass it verbatim: its own quoting would wrap it again and /s would strip the wrong quotes.

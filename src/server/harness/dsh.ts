@@ -19,7 +19,7 @@ import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { execHarness, spawnHarness } from "../platform-win.js";
+import { applyPerChatToolEnv, execHarness, spawnHarness } from "../platform-win.js";
 import { embeddedVersion, extractedExtensionPath } from "../embedded.js";
 import { writeJson } from "../state-file.js";
 import {
@@ -1059,7 +1059,8 @@ export class DshAdapter implements HarnessAdapter {
 
   /** The child's environment: the user's own, so their DSH_HOME and login apply. */
   childEnv(): NodeJS.ProcessEnv {
-    return { ...(this.options.env ?? process.env) };
+    // This chat's tools ride its session's `mcpServers` entry, so the server's own AWUI_* never belong here.
+    return applyPerChatToolEnv({ ...(this.options.env ?? process.env) });
   }
 
   private dshHome(): string {

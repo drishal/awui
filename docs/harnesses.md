@@ -193,6 +193,11 @@ every tool in a session with no rule, and a child copies its parent's rules when
 are OpenCode's experimental routes, checked against OpenCode 2.2.7; an OpenCode without them costs
 only the tools — the chat runs on, and the server says why once, without a token.
 
+Those four names are the only per-chat values a child gets: every adapter strips them from an
+env it inherits and applies its own raw `toolEnv` (`applyPerChatToolEnv` in `platform-win.ts`),
+and `spawnHarness` repeats the rule on both platforms, so a server started from a shell that
+carries another chat's token never hands it to a child and a `.envrc` cannot add one.
+
 ### What the user has to do, per harness
 
 `awui setup mcp` prints this (read-only; `--json` for scripts), and `awui doctor` carries a

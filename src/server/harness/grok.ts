@@ -5,7 +5,7 @@
 // is a child of its own, never a second writer on the leader's session).
 // Grok's `session/update` payloads are folded in grok-transcript.ts, shared with
 // the file reader, so a resumed chat and a running one cannot drift.
-import { execHarness } from "../platform-win.js";
+import { applyPerChatToolEnv, execHarness } from "../platform-win.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -707,7 +707,8 @@ export class GrokAdapter implements HarnessAdapter {
 
   /** The child's environment: the user's own, so their `~/.grok` login applies, minus the self-updater. */
   childEnv(): NodeJS.ProcessEnv {
-    return { ...(this.options.env ?? process.env), GROK_DISABLE_AUTOUPDATER: "1" };
+    // This chat's tools ride its ACP `mcpServers` entry, so the server's own AWUI_* never belong here.
+    return applyPerChatToolEnv({ ...(this.options.env ?? process.env), GROK_DISABLE_AUTOUPDATER: "1" });
   }
 
   private agentDir(): string {

@@ -186,9 +186,14 @@ describe.skipIf(!HAS_DIRENV)("direnv spawn env", () => {
     }));
   });
 
-  it.skipIf(IS_WINDOWS)("a tool token the caller passed wins over one the server inherited, and an absent one is removed", async () => {
-    const root = mkdtempSync(path.join(tmpdir(), "awui-direnv-tools-"));
-    roots.push(root);
+});
+
+// The regression 057380c fixed needs no direnv: with no .envrc, envForSpawn returns
+// the server's own environment, which is exactly the ambient-env case. So this runs
+// wherever a POSIX shell does, not only where direnv is installed.
+describe.skipIf(IS_WINDOWS)("spawn harness credentials", () => {
+  it("a tool token the caller passed wins over one the server inherited, and an absent one is removed", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "awui-spawn-tools-"));
     const proj = path.join(root, "proj");
     mkdirSync(proj);
     const keys = ["AWUI_ORCH_TOKEN", "AWUI_ORCH_URL", "AWUI_RENDER_TOKEN", "AWUI_RENDER_URL"] as const;

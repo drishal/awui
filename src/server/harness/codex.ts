@@ -8,7 +8,7 @@
 // through the CLI's own API; transcripts and usage come from its rollout files,
 // which awui never writes.
 import { type ChildProcessWithoutNullStreams } from "node:child_process";
-import { execHarness, spawnHarness } from "../platform-win.js";
+import { applyPerChatToolEnv, execHarness, spawnHarness } from "../platform-win.js";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import readline from "node:readline";
@@ -398,7 +398,7 @@ class CodexLiveChat implements LiveChat {
     const args = ["app-server", ...toolsMcpConfig(this.toolEnv), ...this.adapter.extraArgs];
     // The chat's tool variables ride in the child's environment: `bearer_token_env_var` names
     // AWUI_ORCH_TOKEN, so Codex reads the token from here and it never reaches the command line.
-    const rpc = new CodexRpc(this.adapter.cliCommand, args, { ...this.adapter.childEnv(), ...this.toolEnv }, this.cwd, (frame) => this.onFrame(frame));
+    const rpc = new CodexRpc(this.adapter.cliCommand, args, applyPerChatToolEnv({ ...this.adapter.childEnv() }, this.toolEnv), this.cwd, (frame) => this.onFrame(frame));
     this.rpc = rpc;
     rpc.onExit((message) => {
       if (this.disposed) return;

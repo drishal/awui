@@ -4,7 +4,7 @@
 // CLI instead of the pinned SDK means the user's `pi update` flows through and
 // no lockfile pin can skew the session format.
 import { type ChildProcessWithoutNullStreams } from "node:child_process";
-import { execHarness, spawnHarness } from "../platform-win.js";
+import { applyPerChatToolEnv, execHarness, spawnHarness } from "../platform-win.js";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -615,7 +615,7 @@ export class PiAdapter implements HarnessAdapter {
   }
 
   protected spawnEnv(cwd: string, toolEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...process.env, ...toolEnv };
+    const env: NodeJS.ProcessEnv = applyPerChatToolEnv({ ...process.env }, toolEnv);
     env[SESSION_DIR_ENV] ??= defaultSessionDir(cwd, process.env[AGENT_DIR_ENV] ?? defaultAgentDir());
     return env;
   }
