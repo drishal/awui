@@ -173,7 +173,8 @@ async function main(): Promise<void> {
   // Listing metadata folded last run is picked up where it ended, instead of parsing every session again.
   await bindFoldStores(config.stateDir);
   // Which settings the environment overrides (they beat config.yml), noted before the password leaves it.
-  const envSet = new Set(["PORT", "HOST", "AUTH_USERNAME", "AUTH_PASSWORD", "WORKSPACE_ROOTS", "ALLOWED_HOSTS", "ALLOWED_TAILSCALE_USERS", "AWUI_HERDR"].filter((n) => process.env[n] !== undefined));
+  // The two provider keys are the tool-card normalizer's: the dialog says they are set, never what they are.
+  const envSet = new Set(["PORT", "HOST", "AUTH_USERNAME", "AUTH_PASSWORD", "WORKSPACE_ROOTS", "ALLOWED_HOSTS", "ALLOWED_TAILSCALE_USERS", "AWUI_HERDR", "CMD_API_KEY", "TYPESAFE_API_KEY"].filter((n) => process.env[n] !== undefined));
   // The agents' shells inherit process.env; the password must not reach them.
   delete process.env.AUTH_PASSWORD;
   const herdr = new Herdr(herdrSocketPath(process.env, config.home, settings?.config.herdr_socket), herdrSetting(config.configDir, settings?.config));

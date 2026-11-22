@@ -108,6 +108,31 @@ herdr: true
 #   maxWakesPerHour: 20      # wake prompts one parent may receive in an hour
 #   callsPerMinute: 60       # tool calls one chat may make in a minute
 
+# Tool cards from a small decision model (the optional normalizer): off by default,
+# managed in Settings → Tool cards, which is also where its keys go. When on, a
+# settled command row the built-in parsers could not place is described to a
+# decision model, and the model's answer may redraw it as a test-run card. The
+# output is clipped to 4 KB and stripped of secrets first, and the call's arguments
+# are never sent. The default backend is a local one you run, so nothing leaves
+# this machine; the other three send the output to a provider (Command Code's Jev,
+# TypeSafe's Jev, Cloudflare Workers AI), which the picker says next to each.
+# Read at each decision, so a change needs no restart.
+# normalizer:
+#   enabled: false                 # nothing is ever sent while this is false
+#   backend: local-clef-flash      # local-clef-flash | command-code-jev | jev | workers-ai-clef-flash
+#   endpoint: ""                   # the local backend needs this: http://127.0.0.1:8000/v1/systemone
+#   jev_base_url: https://api.typesafe.ai/v1/systemone
+#   jev_model: jev-latest          # pin jev-1.14.0 to hold the version
+#   # jev_api_key: ...             # or TYPESAFE_API_KEY in the server's environment
+#   # command_code_api_key: ...    # or CMD_API_KEY; Command Code has no zero-data-retention option for Jev
+#   # cloudflare_account_id: ...
+#   # cloudflare_api_token: ...    # Workers AI
+#   min_choice_probability: 0.7    # a card needs the model's own probability for it
+#   min_noul: 0.7                  # below this the call keeps its ordinary row
+#   cache: true                    # an identical output is not asked twice for a week
+#   # timeout_ms: 2500             # 100-5000; unset is each backend's own default
+#   allow_free_text: false         # reserved for a later extractor; it gates nothing today
+
 # Claude Code's own settings awui passes on (read at startup; no Settings dialog
 # field). subagent_prompt_cache_ttl gives a chat another agent delegated the
 # prompt cache lifetime Claude Code gives its own subagents: 5m or 1h. Unset, a

@@ -114,7 +114,7 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
     agentProfiles: agentProfiles(c),
     // The tool-card normalizer: every default is the dialog's too, and a key is only ever a flag here.
     ...(() => {
-      const n = normalizerConfigOf(c.normalizer, process.env);
+      const n = normalizerConfigOf(c.normalizer, environmentOf(ctx));
       return {
         normalizerEnabled: n.enabled,
         normalizerBackend: n.backend,
@@ -136,6 +136,17 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
 }
 
 /**
+ * The variables this server saw at startup that a setting may be overridable by (`ctx.envSet`, which
+ * startup fills: the eight awui ones plus the normalizer's two provider keys). Resolving a key here
+ * rather than from `process.env` keeps a test's own settings context authoritative.
+ */
+function environmentOf(ctx: SettingsContext): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const name of ctx.envSet) if (process.env[name] !== undefined) env[name] = process.env[name];
+  return env;
+}
+
+/**
  * The selected backend's own rejection, when a save would leave the feature on and unusable: the
  * local Clef-flash backend has nowhere to go until its endpoint is set. A remote backend without a
  * key is allowed — the key may come from the environment — and the service simply stays inert.
@@ -152,7 +163,7 @@ function normalizerRefusal(c: UserConfig): string | null {
 export function normalizerSettings(ctx: SettingsContext): NormalizerConfig {
   const file = fileOf(ctx);
   const config = file ? parseConfig(readFile(file), file) : {};
-  return normalizerConfigOf(config.normalizer, process.env);
+  return normalizerConfigOf(config.normalizer, environmentOf(ctx));
 }
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);

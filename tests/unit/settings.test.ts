@@ -57,6 +57,21 @@ describe("settings", () => {
       orchestrationEnabled: true,
       agentProfiles: [],
       acpAgents: [],
+      // The tool-card normalizer's defaults: off, the local backend, nothing to send to yet.
+      normalizerEnabled: false,
+      normalizerBackend: "local-clef-flash",
+      normalizerEndpoint: "",
+      normalizerJevBaseUrl: "https://api.typesafe.ai/v1/systemone",
+      normalizerJevModel: "jev-latest",
+      normalizerCloudflareAccountId: "",
+      normalizerMinChoiceProbability: 0.7,
+      normalizerMinNoul: 0.7,
+      normalizerCache: true,
+      normalizerTimeoutMs: null,
+      normalizerAllowFreeText: false,
+      hasJevKey: false,
+      hasCommandCodeKey: false,
+      hasCloudflareToken: false,
     });
   });
 

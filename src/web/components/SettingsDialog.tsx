@@ -12,7 +12,7 @@
 // phone the same two panes become a list and a detail: the rail, then the
 // section with a way back.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, AgentProfilePatch, AgentProfileSettings, Bootstrap, ChatWidth, Density, HarnessStatus, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ThemeList, ToolStyle, UiFont } from "../../shared/protocol.js";
+import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, AgentProfilePatch, AgentProfileSettings, Bootstrap, ChatWidth, Density, HarnessStatus, NormalizerBackend, NormalizerProbe, NormalizerStatus, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ThemeList, ToolStyle, UiFont } from "../../shared/protocol.js";
 import { asHarnessId } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
@@ -57,6 +57,7 @@ const SECTIONS = [
   { id: "device", label: "This device" },
   { id: "look", label: "Appearance" },
   { id: "layout", label: "Layout" },
+  { id: "normalizer", label: "Tool cards" },
   { id: "agents", label: "Agents" },
   { id: "acp", label: "ACP agents" },
   { id: "desktop", label: "Desktop app" },
@@ -235,6 +236,21 @@ interface Draft {
   acpAgents: AcpAgentRow[];
   /** config.yml's `agent_profiles` entries as the form edits them. */
   agentProfiles: AgentProfileRow[];
+  /** The tool-card normalizer (config.yml's `normalizer:`): numbers as typed, keys write-only. */
+  normalizerEnabled: boolean;
+  normalizerBackend: NormalizerBackend;
+  normalizerEndpoint: string;
+  normalizerJevBaseUrl: string;
+  normalizerJevModel: string;
+  normalizerCloudflareAccountId: string;
+  normalizerMinChoiceProbability: string;
+  normalizerMinNoul: string;
+  normalizerTimeoutMs: string;
+  normalizerCache: boolean;
+  normalizerAllowFreeText: boolean;
+  normalizerJevApiKey: string;
+  normalizerCommandCodeApiKey: string;
+  normalizerCloudflareApiToken: string;
 }
 
 /** The font tokens.css ships as the default (public/fonts), named where the Font setting offers it. */
@@ -264,6 +280,20 @@ function draftOf(v: ServerSettingsValues): Draft {
     desktopBackground: v.desktopBackground,
     acpAgents: acpRowsOf(v.acpAgents),
     agentProfiles: agentProfileRowsOf(v.agentProfiles),
+    normalizerEnabled: v.normalizerEnabled,
+    normalizerBackend: v.normalizerBackend,
+    normalizerEndpoint: v.normalizerEndpoint,
+    normalizerJevBaseUrl: v.normalizerJevBaseUrl,
+    normalizerJevModel: v.normalizerJevModel,
+    normalizerCloudflareAccountId: v.normalizerCloudflareAccountId,
+    normalizerMinChoiceProbability: String(v.normalizerMinChoiceProbability),
+    normalizerMinNoul: String(v.normalizerMinNoul),
+    normalizerTimeoutMs: v.normalizerTimeoutMs === null ? "" : String(v.normalizerTimeoutMs),
+    normalizerCache: v.normalizerCache,
+    normalizerAllowFreeText: v.normalizerAllowFreeText,
+    normalizerJevApiKey: "",
+    normalizerCommandCodeApiKey: "",
+    normalizerCloudflareApiToken: "",
   };
 }
 
@@ -303,7 +333,57 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   if (JSON.stringify(d.acpAgents) !== JSON.stringify(acpRowsOf(v.acpAgents))) p.acpAgents = acpPatchOf(d.acpAgents);
   // Shared agent profiles compare the same way: the form's empty fields are its own spelling.
   if (JSON.stringify(d.agentProfiles) !== JSON.stringify(agentProfileRowsOf(v.agentProfiles))) p.agentProfiles = agentProfilePatchOf(d.agentProfiles);
+  if (d.normalizerEnabled !== v.normalizerEnabled) p.normalizerEnabled = d.normalizerEnabled;
+  if (d.normalizerBackend !== v.normalizerBackend) p.normalizerBackend = d.normalizerBackend;
+  if (d.normalizerEndpoint.trim() !== v.normalizerEndpoint) p.normalizerEndpoint = d.normalizerEndpoint.trim();
+  if (d.normalizerJevBaseUrl.trim() !== v.normalizerJevBaseUrl) p.normalizerJevBaseUrl = d.normalizerJevBaseUrl.trim();
+  if (d.normalizerJevModel.trim() !== v.normalizerJevModel) p.normalizerJevModel = d.normalizerJevModel.trim();
+  if (d.normalizerCloudflareAccountId.trim() !== v.normalizerCloudflareAccountId) p.normalizerCloudflareAccountId = d.normalizerCloudflareAccountId.trim();
+  const minChoice = Number(d.normalizerMinChoiceProbability);
+  if (minChoice !== v.normalizerMinChoiceProbability) p.normalizerMinChoiceProbability = minChoice;
+  const minNoul = Number(d.normalizerMinNoul);
+  if (minNoul !== v.normalizerMinNoul) p.normalizerMinNoul = minNoul;
+  // An empty timeout is each backend's own default, saved as no key at all.
+  const timeout = d.normalizerTimeoutMs.trim() === "" ? null : Number(d.normalizerTimeoutMs);
+  if (timeout !== v.normalizerTimeoutMs) p.normalizerTimeoutMs = timeout;
+  if (d.normalizerCache !== v.normalizerCache) p.normalizerCache = d.normalizerCache;
+  if (d.normalizerAllowFreeText !== v.normalizerAllowFreeText) p.normalizerAllowFreeText = d.normalizerAllowFreeText;
+  // Write-only keys: blank keeps the stored one, and "-" is how the dialog asks for it to be cleared.
+  if (d.normalizerJevApiKey) p.normalizerJevApiKey = d.normalizerJevApiKey;
+  if (d.normalizerCommandCodeApiKey) p.normalizerCommandCodeApiKey = d.normalizerCommandCodeApiKey;
+  if (d.normalizerCloudflareApiToken) p.normalizerCloudflareApiToken = d.normalizerCloudflareApiToken;
   return p;
+}
+
+/** Each backend as the picker lists it, with where its requests go. */
+const NORMALIZER_BACKENDS: Array<{ value: NormalizerBackend; label: string; hint: string }> = [
+  { value: "local-clef-flash", label: "Local Clef-flash", hint: "stays on this machine" },
+  { value: "command-code-jev", label: "Command Code (Jev)", hint: "remote: Command Code" },
+  { value: "jev", label: "Jev (TypeSafe)", hint: "remote: TypeSafe, or your proxy" },
+  { value: "workers-ai-clef-flash", label: "Workers AI Clef-flash", hint: "remote: Cloudflare" },
+];
+
+/** What one backend does with a tool output, in one sentence, next to the picker. */
+const NORMALIZER_EGRESS: Record<NormalizerBackend, string> = {
+  "local-clef-flash": "Stays on this machine: nothing is sent anywhere. It needs the endpoint below before it can be turned on.",
+  "command-code-jev": "Sends the tool output to Command Code's Provider API and its TypeSafe upstream; Command Code has no zero-data-retention option for Jev. Remote.",
+  jev: "Sends the tool output to TypeSafe, or to the proxy URL you set. Remote.",
+  "workers-ai-clef-flash": "Sends the tool output to Cloudflare Workers AI. Remote.",
+};
+
+/** The Test's one line: what came back, in the fewest words that say whether it worked. */
+function probeLine(probe: NormalizerProbe): string {
+  if (!probe.ok) return `✗ ${probe.error ?? "no answer"}`;
+  const took = probe.latencyMs >= 1000 ? `${(probe.latencyMs / 1000).toFixed(1)} s` : `${probe.latencyMs} ms`;
+  return `✓ ${probe.backend} · ${probe.model || "?"} · ${took} · ${probe.inputTokens} input tokens · answers: ${probe.answersSeen.join(", ") || "none"}`;
+}
+
+/** The counters under the Test button, empty until it has run once. */
+function statusLine(status: NormalizerStatus | null): string {
+  if (!status) return "";
+  const bits = [`backend ${status.backend}`, `decisions ${status.decisions}`, `cache: ${status.cacheHits} hits, ${status.cacheMisses} asked`, `${status.spentInputTokens} input tokens`];
+  if (status.lastError) bits.push(`last error: ${status.lastError}`);
+  return bits.join(" · ");
 }
 
 export function SettingsDialog({
@@ -356,6 +436,8 @@ export function SettingsDialog({
   const [iconStates, setIconStates] = useState<Record<string, { busy: boolean; notice?: string; error?: string }>>({});
   // The awui harness's own providers; null until loaded, false when the harness is off.
   const [awui, setAwui] = useState<AwuiSettingsState | null>(null);
+  /** The tool-card normalizer's last Test: the saved settings' answer, and the counters it moved. */
+  const [normalizerTest, setNormalizerTest] = useState<{ busy: boolean; probe?: NormalizerProbe; error?: string } | null>(null);
   const [active, setActive] = useState<SectionId>(() => openingSection(section));
   const [query, setQuery] = useState("");
   /** A phone shows the rail, then the section it was sent to; a wide screen shows both at once. */
@@ -546,6 +628,16 @@ export function SettingsDialog({
     setIconStates((states) => ({ ...states, [id]: { busy: false, notice: file ? "Saved." : "Removed. The neutral fallback is shown instead." } }));
   };
 
+  /** One canned probe request through the saved settings' backend: never this machine's tool output. */
+  const testNormalizer = async () => {
+    setNormalizerTest({ busy: true });
+    try {
+      setNormalizerTest({ busy: false, probe: await api<NormalizerProbe>("/api/settings/normalizer/test", { method: "POST" }) });
+    } catch (e) {
+      setNormalizerTest({ busy: false, error: errorText(e) });
+    }
+  };
+
   /** The ids config.yml has now: a row must be saved before the server can handshake with it. */
   const savedAcpIds = server?.values.acpAgents.map((agent) => agent.id) ?? [];
   /** One handshake, no model call: what the saved agent calls itself and what it advertises. */
@@ -594,6 +686,18 @@ export function SettingsDialog({
     const names = draft.agentProfiles.map((row) => row.name.trim().toLowerCase()).filter(Boolean);
     if (new Set(names).size !== names.length) issues.agents = "Two shared profiles share a name.";
   }
+  if (draft && editable) {
+    const thresholds = [draft.normalizerMinChoiceProbability, draft.normalizerMinNoul];
+    if (thresholds.some((value) => Number.isNaN(Number(value)) || Number(value) <= 0 || Number(value) > 1)) issues.normalizer = "Both tool-card thresholds are numbers between 0.05 and 1.";
+    else if (draft.normalizerTimeoutMs.trim() !== "" && (!Number.isInteger(Number(draft.normalizerTimeoutMs)) || Number(draft.normalizerTimeoutMs) < 100 || Number(draft.normalizerTimeoutMs) > 5000)) {
+      issues.normalizer = "The tool-card timeout is 100–5000 ms, or empty for the backend's own default.";
+    }
+  }
+
+  // The selected backend decides which rows are worth showing; a search shows them all, so a match is never hidden.
+  const normalizerBackend = draft?.normalizerBackend ?? "local-clef-flash";
+  const needsNormalizerEndpoint = normalizerBackend === "local-clef-flash" && !(draft?.normalizerEndpoint.trim() ?? "");
+  const backendIs = (backend: NormalizerBackend) => matches !== null || normalizerBackend === backend;
 
   // Typing a search that no section's open rows match opens the first section that does: the
   // pane never sits on an empty section while another holds what was asked for.
@@ -867,6 +971,163 @@ export function SettingsDialog({
                 <FormRow row="herdr" hidden={!shows("layout", "herdr")} label="Work with herdr" desc="Mark the sessions open in its panes, and let atui in a pane report its chats." toggle>
                   <Switch label="Work with herdr" checked={draft.herdr} disabled={field("herdr")} onChange={(herdr) => update({ herdr })} />
                 </FormRow>
+              </div>
+            </section>
+
+            <section className="form-section" id="settings-panel-normalizer" role="tabpanel" aria-labelledby="settings-normalizer" hidden={current !== "normalizer"}>
+              <h3 id="settings-normalizer">Tool cards</h3>
+              <p className="form-note">
+                Off by default. When on, a small decision model reads the output of a settled call the built-in parsers could not classify — a command row that may have been a test run — and may redraw it as a
+                test-run card. It runs after the row is drawn, never instead of it: a call it declines keeps its ordinary look, and nothing is asked about a call the parsers already settled.
+              </p>
+              <div className="form-card">
+                <FormRow
+                  row="normalizer-enabled"
+                  label="Decide test cards with a model"
+                  desc={
+                    draft.normalizerEnabled
+                      ? `${NORMALIZER_EGRESS[draft.normalizerBackend]} Saving this on sends the output of eligible calls there.`
+                      : "Off: nothing is sent anywhere. Turning it on is the only thing that may send tool output off this machine."
+                  }
+                  toggle
+                >
+                  <Switch
+                    label="Decide test cards with a model"
+                    checked={draft.normalizerEnabled}
+                    // The local backend has nowhere to send to until an endpoint is set; a remote one is a deliberate pick.
+                    disabled={!editable || (needsNormalizerEndpoint && !draft.normalizerEnabled)}
+                    onChange={(normalizerEnabled) => update({ normalizerEnabled })}
+                  />
+                </FormRow>
+                <FormRow row="normalizer-backend" label="Backend" desc={NORMALIZER_EGRESS[draft.normalizerBackend]}>
+                  <Select
+                    label="Tool-card backend"
+                    value={draft.normalizerBackend}
+                    options={NORMALIZER_BACKENDS.map((option) => ({ value: option.value, label: option.label, hint: option.hint }))}
+                    disabled={!editable}
+                    onChange={(value) => update({ normalizerBackend: value as NormalizerBackend })}
+                  />
+                </FormRow>
+                {backendIs("local-clef-flash") ? (
+                  <FormRow
+                    row="normalizer-endpoint"
+                    label="Local endpoint"
+                    desc="Where your own Clef-flash answers, e.g. http://127.0.0.1:8000/v1/systemone. Nothing leaves this machine with this backend; the switch above cannot turn on without it."
+                  >
+                    <input className="input" aria-label="Local endpoint" placeholder="http://127.0.0.1:8000/v1/systemone" value={draft.normalizerEndpoint} disabled={!editable} onChange={(e) => update({ normalizerEndpoint: e.target.value })} />
+                  </FormRow>
+                ) : null}
+                {backendIs("command-code-jev") || backendIs("jev") ? (
+                  <>
+                    <FormRow
+                      row="normalizer-jev-url"
+                      label="Jev endpoint and model"
+                      desc={
+                        backendIs("command-code-jev")
+                          ? "Command Code's Provider API is fixed: https://api.commandcode.ai/provider/v1/systemone with model typesafe/jev-1.14.0. These fields apply to the Jev backend."
+                          : "Any System One-compatible proxy. The default is https://api.typesafe.ai/v1/systemone with jev-latest; pin jev-1.14.0 to hold the version."
+                      }
+                    >
+                      <input className="input" aria-label="Jev endpoint" placeholder="https://api.typesafe.ai/v1/systemone" value={draft.normalizerJevBaseUrl} disabled={!editable} onChange={(e) => update({ normalizerJevBaseUrl: e.target.value })} />
+                      <input className="input" aria-label="Jev model" placeholder="jev-latest" value={draft.normalizerJevModel} disabled={!editable} onChange={(e) => update({ normalizerJevModel: e.target.value })} />
+                    </FormRow>
+                    <FormRow
+                      row="normalizer-jev-key"
+                      label="Jev API key"
+                      desc={`${server?.values.hasJevKey ? "A key is set. Type a new one to replace it, or - to clear it. " : "No key set. "}TYPESAFE_API_KEY in the server's environment wins over this one. The key is stored in config.yml (mode 0600) and never shown again.`}
+                    >
+                      <input
+                        className="input"
+                        type="password"
+                        aria-label="Jev API key"
+                        autoComplete="new-password"
+                        placeholder={server?.values.hasJevKey ? "Set (type to change)" : "No key"}
+                        value={draft.normalizerJevApiKey}
+                        disabled={!editable}
+                        onChange={(e) => update({ normalizerJevApiKey: e.target.value })}
+                      />
+                    </FormRow>
+                  </>
+                ) : null}
+                {backendIs("command-code-jev") ? (
+                  <FormRow
+                    row="normalizer-command-code-key"
+                    label="Command Code API key"
+                    desc={`${server?.values.hasCommandCodeKey ? "A key is set. Type a new one to replace it, or - to clear it. " : "No key set. "}CMD_API_KEY in the server's environment wins over this one. The key is stored in config.yml (mode 0600) and never shown again.`}
+                  >
+                    <input
+                      className="input"
+                      type="password"
+                      aria-label="Command Code API key"
+                      autoComplete="new-password"
+                      placeholder={server?.values.hasCommandCodeKey ? "Set (type to change)" : "No key"}
+                      value={draft.normalizerCommandCodeApiKey}
+                      disabled={!editable}
+                      onChange={(e) => update({ normalizerCommandCodeApiKey: e.target.value })}
+                    />
+                  </FormRow>
+                ) : null}
+                {backendIs("workers-ai-clef-flash") ? (
+                  <>
+                    <FormRow row="normalizer-cloudflare-account" label="Workers AI account" desc="The account id Cloudflare's dashboard shows; the request goes to its ai/run path for @cf/cloudflare/clef-flash. Remote: the tool output leaves this machine.">
+                      <input className="input" aria-label="Cloudflare account id" placeholder="account id" value={draft.normalizerCloudflareAccountId} disabled={!editable} onChange={(e) => update({ normalizerCloudflareAccountId: e.target.value })} />
+                    </FormRow>
+                    <FormRow
+                      row="normalizer-cloudflare-token"
+                      label="Workers AI API token"
+                      desc={`${server?.values.hasCloudflareToken ? "A token is set. Type a new one to replace it, or - to clear it. " : "No token set. "}Stored in config.yml (mode 0600) and never shown again.`}
+                    >
+                      <input
+                        className="input"
+                        type="password"
+                        aria-label="Cloudflare API token"
+                        autoComplete="new-password"
+                        placeholder={server?.values.hasCloudflareToken ? "Set (type to change)" : "No token"}
+                        value={draft.normalizerCloudflareApiToken}
+                        disabled={!editable}
+                        onChange={(e) => update({ normalizerCloudflareApiToken: e.target.value })}
+                      />
+                    </FormRow>
+                  </>
+                ) : null}
+                <FormRow
+                  row="normalizer-thresholds"
+                  label="How sure it must be"
+                  desc="A card is drawn only when the model's own probability for it is at least this high, on both questions. Below it the call keeps its ordinary row. Between the two the answer is left alone rather than guessed."
+                >
+                  <input className="input settings-number" type="number" min={0.05} max={1} step={0.05} aria-label="Minimum probability for a card" value={draft.normalizerMinChoiceProbability} disabled={!editable} onChange={(e) => update({ normalizerMinChoiceProbability: e.target.value })} />
+                  <input className="input settings-number" type="number" min={0.05} max={1} step={0.05} aria-label="Minimum probability for the test question" value={draft.normalizerMinNoul} disabled={!editable} onChange={(e) => update({ normalizerMinNoul: e.target.value })} />
+                </FormRow>
+                <FormRow row="normalizer-cache" label="Remember answers" desc="Identical outputs are not asked twice: a digest of the backend, the thresholds, the tool and the output's tail, kept in memory for 7 days. What is stored is the answer, never the output." toggle>
+                  <Switch label="Remember answers" checked={draft.normalizerCache} disabled={!editable} onChange={(normalizerCache) => update({ normalizerCache })} />
+                </FormRow>
+                <FormRow row="normalizer-timeout" label="Give up after" desc="Milliseconds (100–5000). Empty uses the backend's own default: 400 for a local server, 2500 for either Jev, 1000 for Workers AI. Past it the row keeps its ordinary look.">
+                  <input className="input settings-number" type="number" min={100} max={5000} step={100} aria-label="Timeout in milliseconds" placeholder="backend default" value={draft.normalizerTimeoutMs} disabled={!editable} onChange={(e) => update({ normalizerTimeoutMs: e.target.value })} />
+                </FormRow>
+                <div className="form-row is-stack" data-settings-row="normalizer-test" hidden={!shows("normalizer", "normalizer-test")}>
+                  <span className="form-row-text">
+                    <span className="form-label">Test the saved settings</span>
+                    <span className="form-desc">
+                      Runs one tiny canned request through the selected backend — a fixed two-line example, never your tool output — and reports latency, tokens and what it answered. On Command Code a probe costs about $0.00001 (278
+                      input tokens at $0.04 per million). Save first: it reads what config.yml holds now.
+                    </span>
+                  </span>
+                  <div className="normalizer-test">
+                    <button type="button" className="btn btn-small" disabled={!editable || normalizerTest?.busy === true} onClick={() => void testNormalizer()}>
+                      Test
+                    </button>
+                    {normalizerTest?.busy ? <span className="form-desc">Testing…</span> : null}
+                    {normalizerTest?.error ? (
+                      <span className="notice notice-error" role="alert">
+                        {normalizerTest.error}
+                      </span>
+                    ) : null}
+                    {normalizerTest?.probe ? <span className="form-desc">{probeLine(normalizerTest.probe)}</span> : null}
+                  </div>
+                  <span className="form-desc" role="status">
+                    {statusLine(normalizerTest?.probe?.status ?? null)}
+                  </span>
+                </div>
               </div>
             </section>
 
