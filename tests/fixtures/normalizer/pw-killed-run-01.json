@@ -34,39 +34,39 @@
   },
   "recorded": {
     "command-code-jev": {
-      "source": "synthetic",
+      "source": "live",
       "status": 200,
-      "latencyMs": 1749,
+      "latencyMs": 1524,
       "body": {
         "model": "typesafe/jev-1.14.0",
         "answers": {
           "show_test_card": {
             "type": "noul",
-            "noul": 0.88
+            "noul": 0.96
           },
           "kind": {
             "type": "choice",
             "choice": "test",
+            "confidence": 0.98,
             "probabilities": {
-              "test": 0.93,
-              "command": 0.05,
-              "other": 0.02
-            },
-            "confidence": 0.895
+              "test": 0.99,
+              "command": 0.01,
+              "other": 0
+            }
           },
           "failing_test": {
             "type": "choice",
             "choice": "checkout › pays with saved card",
+            "confidence": 0.64,
             "probabilities": {
-              "checkout › pays with saved card": 0.52,
-              "checkout › retries a declined card": 0.48
-            },
-            "confidence": 0.04
+              "checkout › pays with saved card": 0.82,
+              "checkout › retries a declined card": 0.18
+            }
           }
         },
         "usage": {
-          "input_tokens": 1204,
-          "output_tokens": 12
+          "input_tokens": 853,
+          "output_tokens": 102
         }
       }
     }

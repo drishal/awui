@@ -34,39 +34,39 @@
   },
   "recorded": {
     "command-code-jev": {
-      "source": "synthetic",
+      "source": "live",
       "status": 200,
-      "latencyMs": 1120,
+      "latencyMs": 1036,
       "body": {
         "model": "typesafe/jev-1.14.0",
         "answers": {
           "show_test_card": {
             "type": "noul",
-            "noul": 0.79
+            "noul": 0.97
           },
           "kind": {
             "type": "choice",
             "choice": "test",
+            "confidence": 0.97,
             "probabilities": {
-              "test": 0.93,
-              "command": 0.05,
-              "other": 0.02
-            },
-            "confidence": 0.895
+              "test": 0.98,
+              "command": 0.02,
+              "other": 0
+            }
           },
           "failing_test": {
             "type": "choice",
             "choice": "test_append_is_atomic",
+            "confidence": 1,
             "probabilities": {
-              "test_append_is_atomic": 0.81,
-              "test_rotate_keeps_history": 0.19
-            },
-            "confidence": 0.62
+              "test_append_is_atomic": 1,
+              "test_rotate_keeps_history": 0
+            }
           }
         },
         "usage": {
-          "input_tokens": 880,
-          "output_tokens": 12
+          "input_tokens": 804,
+          "output_tokens": 97
         }
       }
     }

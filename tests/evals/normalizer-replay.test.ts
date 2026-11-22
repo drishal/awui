@@ -31,8 +31,9 @@ describe("the normalizer's recorded corpus", () => {
     expect(report.kindCorrect).toBe(report.kindTotal);
     expect(report.falseCards).toBe(0);
     expect(report.cards).toBe(8);
-    // Two named failures were too close to call: the card shows the sniffer's counts and no name.
-    expect(report.picksNamed).toBe(4);
+    // Live Command Code Jev (2026-11-23) named 3 failing tests. cargo-test-01,
+    // pw-killed-run-02 and pw-poisoned-01 had a labelled name but no pick.
+    expect(report.picksNamed).toBe(3);
     expect(report.cost.inputTokens).toBeGreaterThan(0);
     expect(report.kindTotal).toBe(report.cards);
     expect(formatReport(report)).toContain("false cards  0/5");

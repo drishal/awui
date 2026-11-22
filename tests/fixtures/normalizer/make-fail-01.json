@@ -14,30 +14,30 @@
   },
   "recorded": {
     "command-code-jev": {
-      "source": "synthetic",
+      "source": "live",
       "status": 200,
-      "latencyMs": 610,
+      "latencyMs": 939,
       "body": {
         "model": "typesafe/jev-1.14.0",
         "answers": {
           "show_test_card": {
             "type": "noul",
-            "noul": 0.31
+            "noul": 0.04
           },
           "kind": {
             "type": "choice",
-            "choice": "other",
+            "choice": "command",
+            "confidence": 1,
             "probabilities": {
-              "test": 0.27,
-              "command": 0.41,
-              "other": 0.32
-            },
-            "confidence": 0.115
+              "test": 0,
+              "command": 1,
+              "other": 0
+            }
           }
         },
         "usage": {
-          "input_tokens": 190,
-          "output_tokens": 12
+          "input_tokens": 552,
+          "output_tokens": 56
         }
       }
     }
