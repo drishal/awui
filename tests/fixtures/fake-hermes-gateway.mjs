@@ -238,6 +238,13 @@ server.on("upgrade", (req, socket) => {
 
   const handle = (msg) => {
     const { id, method, params = {} } = msg;
+    // A viewer answering one of the owner's server→client requests (a sudo password): the real
+    // owner settles it and sends no reply, and the stdio child stands in for the asker here.
+    if (method === undefined && id !== undefined && (msg.result !== undefined || msg.error !== undefined)) {
+      record("response", { id, hasValue: typeof msg.result?.value === "string" });
+      child.stdin.write(`${JSON.stringify(msg)}\n`);
+      return;
+    }
     record(method, params);
     switch (method) {
       case "runtime.describe":

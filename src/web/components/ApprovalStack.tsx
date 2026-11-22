@@ -96,12 +96,12 @@ export function ApprovalStack({
   onStop: () => void;
 }) {
   const request = pending[0] as InteractionRequest;
-  const [value, setValue] = useState(request.prefill ?? "");
+  const [value, setValue] = useState(request.secret ? "" : (request.prefill ?? ""));
   const [denialReason, setDenialReason] = useState("");
   useEffect(() => {
-    setValue(request.prefill ?? "");
+    setValue(request.secret ? "" : (request.prefill ?? ""));
     setDenialReason("");
-  }, [request.id, request.prefill]);
+  }, [request.id, request.prefill, request.secret]);
   const approval = isApproval(request);
   const [titleLine = "", ...restLines] = request.title.split("\n");
   const message = request.message?.trim() ?? "";
@@ -150,10 +150,15 @@ export function ApprovalStack({
             {request.kind === "input" ? (
               <input
                 className="input"
+                type={request.secret ? "password" : "text"}
                 value={value}
                 placeholder={request.placeholder ?? ""}
                 onChange={(e) => setValue(e.target.value)}
                 aria-label={headline ?? "Answer"}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 autoFocus
               />
             ) : (

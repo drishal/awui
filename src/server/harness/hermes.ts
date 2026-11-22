@@ -537,7 +537,12 @@ interface PendingClarify {
   answers: Map<string, string | null>;
   open: Set<string>;
 }
-type PendingRequest = PendingApproval | PendingClarify;
+/** A one-string prompt (sudo, a skill secret, a vault unlock or code), answered `{ value }`. */
+interface PendingValue {
+  kind: "value";
+  requestId: string | number;
+}
+type PendingRequest = PendingApproval | PendingClarify | PendingValue;
 
 class HermesLiveChat implements LiveChat {
   /** Buffered until the first subscriber, so events raised while starting survive. */
@@ -956,7 +961,44 @@ class HermesLiveChat implements LiveChat {
         break;
       }
       default: {
-        // sudo, secret, vault prompts, previews, … — this client declines.
+        // A one-string prompt the card can serve: a sudo password, a skill's secret, or a
+        // vault unlock/code. It is answered `{ value }`, and an empty value means skipped.
+        if (frame.method === "sudo" || frame.method === "secret" || frame.method === "vault.unlock_prompt" || frame.method === "vault.code") {
+          const sessionId = str(params.session_id);
+          if (sessionId && this.runtimeId && sessionId !== this.runtimeId) {
+            // A request about another session is never this chat's to answer with a password.
+            this.live.respond(id, { value: "" });
+            this.emit({ type: "notice", level: "warning", text: `Hermes asked for ${frame.method} on another session; the web UI declined` });
+            break;
+          }
+          const requestId = String(id);
+          this.pending.set(requestId, { kind: "value", requestId: id });
+          const command = str(params.command);
+          const envVar = str(params.env_var);
+          const site = str(params.site);
+          const title =
+            frame.method === "sudo"
+              ? "Sudo password"
+              : frame.method === "secret"
+                ? `Secret for ${envVar || "a skill"}`
+                : frame.method === "vault.unlock_prompt"
+                  ? `Unlock ${str(params.display_name) || "the vault"}`
+                  : `One-time code${site ? ` for ${site}` : ""}`;
+          const message =
+            frame.method === "sudo"
+              ? [command ? `Hermes wants to run:\n\n${command}` : "", "The password is sent once to Hermes and is not stored by awui."].filter(Boolean).join("\n\n")
+              : frame.method === "secret"
+                ? [str(params.prompt), `Hermes stores it as ${envVar || "a skill secret"}; awui does not keep it.`].filter(Boolean).join("\n\n")
+                : frame.method === "vault.unlock_prompt"
+                  ? "The password unlocks your password manager for this session only."
+                  : str(params.hint) || "Read the code from your device. It is sent once to Hermes and is not stored by awui.";
+          this.emit({
+            type: "request",
+            request: { id: requestId, kind: "input", title, message, secret: true, createdAt: Date.now() },
+          });
+          break;
+        }
+        // Previews, desktop bridges, … — this client declines.
         this.live.respond(id, { value: "" });
         this.emit({ type: "notice", level: "warning", text: `Hermes asked for ${frame.method}; the web UI declined` });
         break;
@@ -969,6 +1011,13 @@ class HermesLiveChat implements LiveChat {
     if (direct?.kind === "approval") {
       this.pending.delete(requestId);
       this.live.respond(direct.requestId, { choice: approvalChoice(answer, direct.choices) });
+      return true;
+    }
+    if (direct?.kind === "value") {
+      this.pending.delete(requestId);
+      // Cancel (or any non-text answer) is the wire's own "skipped": an empty value.
+      const value = answer.kind === "input" || answer.kind === "editor" ? answer.value : "";
+      this.live.respond(direct.requestId, { value });
       return true;
     }
     const [frameId, qid] = requestId.split(":");

@@ -296,6 +296,25 @@ test("an approval takes over the composer and is recorded in the turn", async ({
   await expect(page.locator('[data-testid="tool-row"][data-status="done"]')).toHaveCount(1);
 });
 
+test("a sudo prompt is a password field and the value is not kept", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "sudo please");
+  const card = page.getByTestId("approval-card");
+  await expect(card).toContainText("Waiting for your answer");
+  await expect(card).toContainText("Sudo password");
+  const field = card.getByLabel("Sudo password");
+  await expect(field).toHaveAttribute("type", "password");
+  await field.fill("hunter2");
+  await card.getByRole("button", { name: "Submit" }).click();
+  await expect(card).toHaveCount(0);
+  await expect(status(page)).toHaveText("Idle", { timeout: 15_000 });
+  await openFold(page);
+  await expect(page.getByTestId("request-row")).toContainText("Answered");
+  await expect(page.getByTestId("answer").last()).toContainText("Password accepted");
+  await expect(page.locator("body")).not.toContainText("hunter2");
+});
+
 test("a question lists its options as numbered rows, and a number picks one", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);

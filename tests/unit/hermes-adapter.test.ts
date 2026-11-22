@@ -134,6 +134,21 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(chat.snapshot().pending).toEqual([]);
   });
 
+  it("asks for a sudo password in a masked card and sends only the value back", async () => {
+    const { chat } = await openChat();
+    await chat.send("sudo please", "normal");
+    await until(() => chat.snapshot().pending.length === 1);
+    const request = chat.snapshot().pending[0];
+    expect(request).toMatchObject({ kind: "input", secret: true, title: "Sudo password" });
+    expect(request?.message).toContain("du -xh --max-depth=1 /");
+    expect(chat.answer(request?.id as string, { kind: "input", value: "hunter2" })).toBe("Answered");
+    await until(() => chat.status === "idle");
+    expect(recorded().sudoAnswers).toEqual(["hunter2"]);
+    expect(chat.snapshot().pending).toEqual([]);
+    // The transcript records that it was answered, never what was typed.
+    expect(JSON.stringify(chat.snapshot().items)).not.toContain("hunter2");
+  });
+
   it("interrupts a running turn", async () => {
     const { chat } = await openChat();
     await chat.send("slow please", "normal");
@@ -144,8 +159,8 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(assistant && assistant.kind === "assistant" && assistant.text.length).toBeLessThan("hermes says slow please".length);
   });
 
-  // What the scripted gateway recorded: the steers it was sent, and the prompts submitted while a turn ran.
-  const recorded = (): { steers: { text: string; status: string }[]; busySubmits: { text: string; queued: boolean }[] } => JSON.parse(readFileSync(state, "utf8"));
+  // What the scripted gateway recorded: the steers it was sent, the prompts submitted while a turn ran, and the values it was given.
+  const recorded = (): { steers: { text: string; status: string }[]; busySubmits: { text: string; queued: boolean }[]; sudoAnswers: string[] } => JSON.parse(readFileSync(state, "utf8"));
   const userTexts = (chat: Chat) => chat.snapshot().items.flatMap((i) => (i.kind === "user" ? [i.text] : []));
 
   it("steers into the running turn with session.steer, and sends no prompt for it", async () => {

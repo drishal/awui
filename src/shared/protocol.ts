@@ -798,6 +798,12 @@ export interface InteractionRequest {
   optionDetails?: string[];
   placeholder?: string;
   prefill?: string;
+  /**
+   * A value the person must not be shown back: a sudo password, a skill secret, a vault unlock.
+   * The card masks what is typed and never fills it from `prefill`; the answer still travels as
+   * an ordinary `input` and neither the server nor the clients keep it after delivery.
+   */
+  secret?: boolean;
   /** Absolute epoch ms when the harness gives up on its own. */
   expiresAt?: number;
   createdAt: number;

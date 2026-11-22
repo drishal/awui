@@ -7,6 +7,7 @@
 //   "big"   produce oversized tool output    "edit"  edit a file (src/app.ts)
 //   "bloat" pad the session to about two thirds of the context window
 //   "quiz"  ask a multiple-choice question (omp's style; "quiz described": Claude Code's)
+//   "sudo"  ask for a masked one-string password, as Hermes's sudo prompt does
 //   "wait"  report a provider wait on the harness's status line for 1.5 s
 //   "planned" hand a ten-step plan over for review (an ExitPlanMode call)
 //   "ratelimit" stop on a usage limit that resets in an hour
@@ -636,6 +637,12 @@ class FakeLiveChat implements LiveChat {
           await this.reply(`Denied: ${text}`, signal);
           return;
         }
+      }
+      if (/\bsudo\b/i.test(text)) {
+        // Hermes's one-string prompt: a masked answer, sent once and not recorded.
+        const value = await this.secret(signal, "Sudo password", "The fake agent wants to run:\n\nsudo du -xh --max-depth=1 /");
+        await this.reply(value ? "Password accepted" : "Password skipped", signal);
+        return;
       }
       if (/\bwait\b/i.test(text)) {
         // A provider wait, as Hermes reports one: the harness's own status line, then cleared.
@@ -1408,6 +1415,24 @@ class FakeLiveChat implements LiveChat {
               createdAt: Date.now(),
             },
       });
+    });
+  }
+
+  /** A one-string prompt (Hermes's sudo request): a masked input, answered with its value. */
+  private secret(signal: AbortSignal, title: string, message: string): Promise<string> {
+    const id = randomUUID();
+    return new Promise<string>((resolve, reject) => {
+      const onAbort = () => {
+        if (this.pending.delete(id)) this.emit({ type: "request_cancelled", requestId: id, outcome: "cancelled" });
+        reject(new Aborted());
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      this.pending.set(id, (answer) => {
+        signal.removeEventListener("abort", onAbort);
+        if (answer === null || answer.kind === "cancel") return reject(new Aborted());
+        resolve(answer.kind === "input" || answer.kind === "editor" ? answer.value : "");
+      });
+      this.emit({ type: "request", request: { id, kind: "input", title, message, secret: true, createdAt: Date.now() } });
     });
   }
 

@@ -4,6 +4,7 @@
 // the same scenario set as the pi fake (src/server/harness/fake.ts):
 //   "tool"  run a fake tool            "ask"    raise an approval request first
 //   "ask twice"  two approval requests at once (stacked approvals)
+//   "sudo"  raise a sudo server request first, then report the password it was given
 //   "fail"  end the turn with an error "slow"   stream many chunks
 //   "big"   oversized tool output          "edit"  edit a file (src/app.ts)
 //   "vanish"  the turn stops on a fallback model with no message.complete
@@ -54,6 +55,7 @@ const state = () => {
       moa: raw?.moa === true,
       steers: Array.isArray(raw?.steers) ? raw.steers : [],
       busySubmits: Array.isArray(raw?.busySubmits) ? raw.busySubmits : [],
+      sudoAnswers: Array.isArray(raw?.sudoAnswers) ? raw.sudoAnswers : [],
     };
   } catch {
     return { rows: [], spawns: [], cwd: "" };
@@ -139,6 +141,18 @@ async function runTurn(text) {
     event("tool.start", { tool_id: "t-approval", name: "terminal", args: { command: "rm -rf /tmp/x" } });
     event("tool.complete", { tool_id: "t-approval", name: "terminal", result: "removed", summary: "rm -rf /tmp/x" });
   }
+  if (/\bsudo\b/.test(text)) {
+    // The gateway's one-string prompt (gateway/session_sudo_prompt.py): the viewer answers the
+    // raw `srq-…` request frame with `{ value }`, and "" is a skip.
+    const requestId = "srq-sudo-1";
+    const { promise, resolve } = Promise.withResolvers();
+    pendingApprovals.set(requestId, resolve);
+    out({ jsonrpc: "2.0", id: requestId, method: "sudo", params: { session_id: sessionId, command: "du -xh --max-depth=1 /" } });
+    const value = String(await promise);
+    persist({ sudoAnswers: [...state().sudoAnswers, value] });
+    event("tool.start", { tool_id: "t-sudo", name: "terminal", args: { command: "sudo du -xh --max-depth=1 /" } });
+    event("tool.complete", { tool_id: "t-sudo", name: "terminal", result: value ? "password accepted" : "skipped", summary: "sudo du -xh --max-depth=1 /" });
+  }
   if (/\bretitled\b/.test(text)) {
     // As the canonical gateway does mid-turn: the auto-title lands as a session.info that names no
     // `running` (gateway/session_local.py::local_session_info), then the model writes a call's
@@ -216,7 +230,7 @@ rl.on("line", (line) => {
   } catch {
     return;
   }
-  // A response to one of our server→client requests (approval).
+  // A response to one of our server→client requests (an approval choice, or a one-string value).
   if (frame.method === undefined && frame.id !== undefined && pendingApprovals.size > 0) {
     const resolve = pendingApprovals.get(String(frame.id)) ?? pendingApprovals.values().next().value;
     if (resolve) {
@@ -226,8 +240,11 @@ rl.on("line", (line) => {
           break;
         }
       }
-      approvals.push(`answered:${frame.result?.choice ?? "?"}`);
-      resolve();
+      if (frame.result?.value !== undefined) resolve(String(frame.result.value));
+      else {
+        approvals.push(`answered:${frame.result?.choice ?? "?"}`);
+        resolve();
+      }
     }
     return;
   }

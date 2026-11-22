@@ -114,6 +114,9 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
               ]}
               onSubmit={() => answer(p.request.kind === "editor" ? { kind: "editor", value: input?.plainText ?? "" } : { kind: "input", value: input?.plainText ?? "" })}
             />
+            <Show when={p.request.secret}>
+              <text fg={t().muted}>Visible in this terminal. Sent once and not stored.</text>
+            </Show>
           </box>
         }
       >

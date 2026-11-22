@@ -213,6 +213,21 @@ describe("a Hermes home whose gateway is running", () => {
     expect(assistant).toMatchObject({ text: "hermes says ask please" });
   });
 
+  it("answers a sudo request with the viewer's response frame, never a canonical verb", async () => {
+    const { chat } = await openChat();
+    await chat.send("sudo please", "normal");
+    await until(() => chat.snapshot().pending.length === 1);
+    const request = chat.snapshot().pending[0];
+    expect(request).toMatchObject({ kind: "input", secret: true, title: "Sudo password" });
+    expect(chat.answer(request?.id as string, { kind: "input", value: "hunter2" })).toBe("Answered");
+    await until(() => chat.status === "idle");
+    // The owner settles a raw `srq-…` response frame and sends no reply; the password itself stays off the recording.
+    expect(canonical().find((call) => call.name === "response")?.params).toMatchObject({ id: "srq-sudo-1", hasValue: true });
+    expect(JSON.stringify(canonical())).not.toContain("hunter2");
+    expect(JSON.parse(readFileSync(state, "utf8")).sudoAnswers).toEqual(["hunter2"]);
+    expect(canonical().some((call) => call.name === "sudo.respond")).toBe(false);
+  });
+
   it("sends model and reasoning changes as fenced session mutations", async () => {
     const { chat, live } = await openChat();
     await chat.setConfig({ model: "fake/fake-mini" });
