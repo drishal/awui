@@ -481,4 +481,38 @@ describe("board runs", () => {
       await t.close();
     }
   });
+
+  it("serves a bot's form document by its room request id, then answers it and stops serving it", async () => {
+    const t = await makeTestApp();
+    try {
+      const a = await agent(t);
+      const ws = await openProject(t, a);
+      const lead = await makeBot(a, { name: "Atlas", harnessId: "fake" });
+      const room = await makeRoom(a, ws.id, [{ botId: lead.id, handle: "atlas" }]);
+      await send(a, room.room.id, "formquestion");
+      const asking = await waitRecords(a, room.room.id, (s) => s.pending.length > 0);
+      const request = asking.pending[0];
+      // The room namespaces the harness's request as `<invocationId>:<requestId>`; the route needs it whole.
+      expect(request?.request.kind).toBe("form");
+      expect(request?.id).toContain(":");
+      const doc = await a.get(`/api/rooms/${room.room.id}/requests/${request?.id}/form`);
+      expect(doc.status).toBe(200);
+      // The form's own CSP is a per-response nonce, and no remote image channel is left open.
+      expect(doc.headers["content-security-policy"]).toContain("img-src 'self' data:;");
+      expect(doc.headers["content-security-policy"]).not.toContain("https:");
+      expect(doc.headers["referrer-policy"]).toBe("no-referrer");
+      expect(doc.text).toContain('<input type="checkbox" name="t1"');
+      const answered = await a.post(`/api/rooms/${room.room.id}/requests/${request?.id}/answer`).send({ answer: { kind: "form", data: { t1: ["a", "b"], notes: "keep this", count: 3 } } });
+      expect(answered.status).toBe(200);
+      const done = await waitRecords(a, room.room.id, (s) => s.activeTurn === null);
+      expect(done.pending).toHaveLength(0);
+      expect(botRuns(done)[0]?.items.some((item) => item.kind === "assistant" && item.text.includes('"t1":["a","b"]'))).toBe(true);
+      // Answered forms are gone: the HTML is released with the request.
+      const gone = await a.get(`/api/rooms/${room.room.id}/requests/${request?.id}/form`);
+      expect(gone.status).toBe(404);
+      expect(gone.body.code).toBe("form_gone");
+    } finally {
+      await t.close();
+    }
+  });
 });
