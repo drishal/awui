@@ -9,6 +9,7 @@ import type { RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatc
 import { ChatError } from "./chats/chat.js";
 import { acpAgents, agentProfiles, ConfigError, DEFAULT_PORT, expandHome, loadConfig, normalizeAuthority, USERNAME_PATTERN, type AcpAgentConfig } from "./config.js";
 import { checkUserConfig, CONFIG_FILE, configEnv, UserConfigError, type UserConfig } from "./user-config.js";
+import { normalizerConfigOf, type NormalizerConfig } from "./normalizer/config.js";
 
 /** The settings the running server started with, as config.yml would state them. */
 export interface RunningSettings {
@@ -45,6 +46,9 @@ const ENV_OF: Partial<Record<keyof ServerSettingsValues, string>> = {
   allowedHosts: "ALLOWED_HOSTS",
   allowedTailscaleUsers: "ALLOWED_TAILSCALE_USERS",
   herdr: "AWUI_HERDR",
+  // The normalizer's two provider keys: a variable wins over config.yml, so the dialog says so.
+  hasJevKey: "TYPESAFE_API_KEY",
+  hasCommandCodeKey: "CMD_API_KEY",
 };
 
 function fileOf(ctx: SettingsContext): string | null {
@@ -108,7 +112,47 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
       authMethod: entry.auth_method ?? null,
     })),
     agentProfiles: agentProfiles(c),
+    // The tool-card normalizer: every default is the dialog's too, and a key is only ever a flag here.
+    ...(() => {
+      const n = normalizerConfigOf(c.normalizer, process.env);
+      return {
+        normalizerEnabled: n.enabled,
+        normalizerBackend: n.backend,
+        normalizerEndpoint: n.endpoint,
+        normalizerJevBaseUrl: n.jevBaseUrl,
+        normalizerJevModel: n.jevModel,
+        normalizerCloudflareAccountId: n.cloudflareAccountId,
+        normalizerMinChoiceProbability: n.minChoice,
+        normalizerMinNoul: n.minNoul,
+        normalizerCache: n.cache,
+        normalizerTimeoutMs: n.timeoutMs,
+        normalizerAllowFreeText: n.allowFreeText,
+        hasJevKey: n.keys.jev !== null,
+        hasCommandCodeKey: n.keys.commandCode !== null,
+        hasCloudflareToken: n.keys.cloudflare !== null,
+      };
+    })(),
   };
+}
+
+/**
+ * The selected backend's own rejection, when a save would leave the feature on and unusable: the
+ * local Clef-flash backend has nowhere to go until its endpoint is set. A remote backend without a
+ * key is allowed — the key may come from the environment — and the service simply stays inert.
+ */
+function normalizerRefusal(c: UserConfig): string | null {
+  const n = c.normalizer;
+  if (n?.enabled !== true) return null;
+  if ((n.backend ?? "local-clef-flash") !== "local-clef-flash") return null;
+  if (n.endpoint?.trim()) return null;
+  return "The local Clef-flash backend needs an endpoint before the tool-card normalizer can be turned on: set where your own server answers, or pick a remote backend (which sends tool output off this machine).";
+}
+
+/** config.yml's `normalizer:` block with its keys resolved: server-side only, never sent to a browser. */
+export function normalizerSettings(ctx: SettingsContext): NormalizerConfig {
+  const file = fileOf(ctx);
+  const config = file ? parseConfig(readFile(file), file) : {};
+  return normalizerConfigOf(config.normalizer, process.env);
 }
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -261,6 +305,40 @@ export function writeSettings(ctx: SettingsContext, patch: SettingsPatch, who: R
   }
   const orch = doc.getIn(["orchestration"]) as { items?: unknown[] } | undefined;
   if (orch && Array.isArray(orch.items) && orch.items.length === 0) doc.deleteIn(["orchestration"]);
+  // The tool-card normalizer. The three keys follow the ACP env rule: a blank value keeps the stored
+  // one (the dialog never sees a value, so a save cannot erase a secret it did not show), and "-"
+  // clears it. Everything else is written as stated, and the block goes when nothing is left in it.
+  const keys: Array<[keyof SettingsPatch, string]> = [
+    ["normalizerJevApiKey", "jev_api_key"],
+    ["normalizerCommandCodeApiKey", "command_code_api_key"],
+    ["normalizerCloudflareApiToken", "cloudflare_api_token"],
+  ];
+  const written: Array<[keyof SettingsPatch, string]> = [
+    ["normalizerEnabled", "enabled"],
+    ["normalizerBackend", "backend"],
+    ["normalizerEndpoint", "endpoint"],
+    ["normalizerJevBaseUrl", "jev_base_url"],
+    ["normalizerJevModel", "jev_model"],
+    ["normalizerCloudflareAccountId", "cloudflare_account_id"],
+    ["normalizerMinChoiceProbability", "min_choice_probability"],
+    ["normalizerMinNoul", "min_noul"],
+    ["normalizerCache", "cache"],
+    ["normalizerTimeoutMs", "timeout_ms"],
+    ["normalizerAllowFreeText", "allow_free_text"],
+  ];
+  for (const [field, key] of written) {
+    const value = patch[field];
+    if (value !== undefined) set(["normalizer", key], value);
+  }
+  for (const [field, key] of keys) {
+    const value = patch[field];
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed === "-") set(["normalizer", key], null);
+    else if (trimmed) set(["normalizer", key], trimmed);
+  }
+  const normalizerBlock = doc.getIn(["normalizer"]) as { items?: unknown[] } | undefined;
+  if (normalizerBlock && Array.isArray(normalizerBlock.items) && normalizerBlock.items.length === 0) doc.deleteIn(["normalizer"]);
 
   let next: UserConfig;
   try {
@@ -269,6 +347,8 @@ export function writeSettings(ctx: SettingsContext, patch: SettingsPatch, who: R
     throw invalid(error instanceof Error ? error.message : String(error));
   }
   if (next.auth?.username && !USERNAME_PATTERN.test(next.auth.username)) throw invalid("The username takes 1-64 letters, digits, or . _ @ -");
+  const normalizerProblem = normalizerRefusal(next);
+  if (normalizerProblem) throw invalid(normalizerProblem);
   // As startup sees it: the file's values under whatever the environment overrides.
   const env: NodeJS.ProcessEnv = { ...configEnv(next) };
   for (const name of ctx.envSet) if (process.env[name] !== undefined) env[name] = process.env[name];

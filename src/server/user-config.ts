@@ -8,7 +8,7 @@ import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 import { DEFAULT_BREAKDOWN_RULES, type BreakdownRules } from "../shared/breakdown.js";
-import { chatWidthSchema, densitySchema, themeChoiceSchema, themeIdSchema, toolStyleSchema, uiFontSchema, type ChatWidth, type Density, type ThemeChoice, type ToolStyle, type UiFont } from "../shared/protocol.js";
+import { chatWidthSchema, densitySchema, NORMALIZER_BACKENDS, themeChoiceSchema, themeIdSchema, toolStyleSchema, uiFontSchema, type ChatWidth, type Density, type ThemeChoice, type ToolStyle, type UiFont } from "../shared/protocol.js";
 import { IS_WINDOWS, defaultConfigDir } from "./platform-win.js";
 
 export const CONFIG_FILE = "config.yml";
@@ -237,6 +237,38 @@ const meshSchema = z
 
 export type MeshConfig = z.infer<typeof meshSchema>;
 
+
+/**
+ * The tool-card normalizer's block (see schema.normalizer). Every number here is re-read at each
+ * decision, so a change needs no restart; the keys are what a save writes, and the Settings dialog
+ * is the surface that fills them in (it never reads one back).
+ */
+const normalizerSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    backend: z.enum(NORMALIZER_BACKENDS).optional(),
+    /** The local backend's URL, e.g. http://127.0.0.1:8000/v1/systemone. */
+    endpoint: z.string().trim().max(2048).optional(),
+    /** The Jev backend's URL and model: any System One-compatible proxy, and the model it serves. */
+    jev_base_url: z.string().trim().max(2048).optional(),
+    jev_model: z.string().trim().max(128).optional(),
+    jev_api_key: z.string().max(512).optional(),
+    /** Command Code's Provider API: its key (CMD_API_KEY wins over this). */
+    command_code_api_key: z.string().max(512).optional(),
+    cloudflare_account_id: z.string().trim().max(128).optional(),
+    cloudflare_api_token: z.string().max(512).optional(),
+    min_choice_probability: z.number().min(0.05).max(1).optional(),
+    min_noul: z.number().min(0.05).max(1).optional(),
+    cache: z.boolean().optional(),
+    /** 100–5000 ms; unset is each backend's own default. */
+    timeout_ms: z.number().int().min(100).max(5000).optional(),
+    /** Reserved for a schema-constrained extractor; it gates nothing today. */
+    allow_free_text: z.boolean().optional(),
+  })
+  .strict();
+
+export type NormalizerFileConfig = z.infer<typeof normalizerSchema>;
+
 /**
  * The labels Claude Code itself uses for `CLAUDE_CODE_ENTRYPOINT`. Claiming one would pass awui off as that
  * client, so config.yml may not; an honest name of its own (`awui`) is the only thing it accepts.
@@ -389,6 +421,14 @@ const schema = z
       .strict()
       .optional(),
     mesh: meshSchema.optional(),
+    /**
+     * The optional tool-card normalizer (server/normalizer/): a small decision model that reads the
+     * output of a settled call the built-in parsers could not place, and may redraw its row. Off
+     * unless `enabled: true`; the default backend is a local one that needs `endpoint` set, so
+     * turning it on never sends anything off this machine by itself. The Settings dialog manages
+     * this block; the three keys are write-only there (a blank save keeps the stored one).
+     */
+    normalizer: normalizerSchema.optional(),
   })
   .strict();
 
@@ -434,7 +474,10 @@ export function readUserConfig(dir: string | null): { file: string; config: User
   }
   const config = checkUserConfig(raw, file);
   let tightened = false;
-  if (config.auth?.password && (statSync(file).mode & 0o077) !== 0) {
+  // A sign-in password is not the only secret this file may hold: the normalizer keeps a provider
+  // key here too, so a file that carries one is made 0600 the same way.
+  const holdsSecret = Boolean(config.auth?.password) || Boolean(config.normalizer && (config.normalizer.jev_api_key || config.normalizer.command_code_api_key || config.normalizer.cloudflare_api_token));
+  if (holdsSecret && (statSync(file).mode & 0o077) !== 0) {
     chmodSync(file, 0o600);
     tightened = true;
   }

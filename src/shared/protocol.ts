@@ -703,6 +703,30 @@ export interface ToolCandidate {
   evidence?: string;
 }
 
+/** The decision model's backends (normalizer/service.ts holds what each one talks to). */
+export const NORMALIZER_BACKENDS = ["local-clef-flash", "command-code-jev", "jev", "workers-ai-clef-flash"] as const;
+/** A backend id, not a model name: the settings picker, and the `by` of a decision. */
+export type NormalizerBackend = (typeof NORMALIZER_BACKENDS)[number];
+
+/**
+ * What the decision model said about one call, recorded beside the row it upgraded. The row itself
+ * carries the outcome (`toolKind`, a chosen test's name); this is why it changed, for the eval and
+ * for a person reading a card that appeared without the built-in parsers having drawn it.
+ */
+export interface ToolDecision {
+  /** Which backend answered. */
+  by: NormalizerBackend;
+  /** The probability of the option chosen (for a Noul, its own probability). The gate reads this. */
+  probability: number;
+  /** The Choice's derived confidence: recorded, never the gate (it can be low on a correct pick). */
+  confidence?: number;
+  /** Where the gated value came from: "kind", or a candidate question id ("failing_test"). */
+  field?: string;
+  /** Values settled from the call's candidates in the same request ("failing_test": "checkout › pays with a card"). */
+  picks?: Record<string, string>;
+  at: number;
+}
+
 export interface ToolItem {
   kind: "tool";
   id: string;
@@ -748,6 +772,12 @@ export interface ToolItem {
    * names a row may show, and the evidence for each. Set once, when the call settles.
    */
   candidates?: ToolCandidate[];
+  /**
+   * What the optional decision model (normalizer/) settled about this call, and how sure it was: set
+   * after the row was already drawn, by one item update, and only when the selected option's own
+   * probability cleared the configured gate. Absent on every call the built-in parsers settled.
+   */
+  decided?: ToolDecision;
   at?: number;
   endedAt?: number;
 }
@@ -2289,6 +2319,30 @@ export interface ServerSettingsValues {
   acpAgents: AcpAgentSettings[];
   /** config.yml's shared agent profiles: named harness/model/thinking/mode bundles every room and delegation can use. */
   agentProfiles: AgentProfileSettings[];
+  /**
+   * The optional tool-card normalizer (config.yml's `normalizer:` block): off by default, and off
+   * means no request is ever built. Flat keys because a settings patch names each one on its own.
+   */
+  normalizerEnabled: boolean;
+  normalizerBackend: NormalizerBackend;
+  /** The local backend's URL ("" when unset): the feature cannot be turned on without one. */
+  normalizerEndpoint: string;
+  /** The Jev backend's URL and model, so it can point at any System One-compatible proxy. */
+  normalizerJevBaseUrl: string;
+  normalizerJevModel: string;
+  normalizerCloudflareAccountId: string;
+  /** The gate on the selected option's own probability, and on a Noul's own probability (0–1). */
+  normalizerMinChoiceProbability: number;
+  normalizerMinNoul: number;
+  normalizerCache: boolean;
+  /** null: each backend's own default (400 ms local, 1000 ms Workers AI, 2500 ms Jev). */
+  normalizerTimeoutMs: number | null;
+  /** Reserved for a schema-constrained extractor; it gates nothing today. */
+  normalizerAllowFreeText: boolean;
+  /** A key is set in config.yml (or by its environment variable). The value never leaves the server. */
+  hasJevKey: boolean;
+  hasCommandCodeKey: boolean;
+  hasCloudflareToken: boolean;
 }
 
 /**
@@ -2370,6 +2424,43 @@ export interface AcpAgentProbe {
   warnings: string[];
 }
 
+/**
+ * How the tool-card normalizer stands, as its settings section shows it: the resolved backend and
+ * the counters a person needs to see that turning it on is doing something (and what it costs).
+ */
+export interface NormalizerStatus {
+  /** The resolved backend id, "disabled" when the feature is off, "unusable" when it is on without its key or endpoint. */
+  backend: string;
+  /** An HTTP status and one class of failure: never a provider's body, which could quote the request back. */
+  lastError: string | null;
+  cacheHits: number;
+  cacheMisses: number;
+  /** Patches actually applied to a row. */
+  decisions: number;
+  /** Summed `usage.input_tokens` of every request, for the cost line next to it. */
+  spentInputTokens: number;
+}
+
+/**
+ * POST /api/settings/normalizer/test's reply: one canned probe request (a fixed two-line example,
+ * never tool output) through the same builder, reader and gate a real decision uses.
+ */
+export interface NormalizerProbe {
+  ok: boolean;
+  backend: string;
+  /** The model id the reply named. */
+  model: string;
+  latencyMs: number;
+  /** `usage.input_tokens` of the probe; the price per million is the backend's own. */
+  inputTokens: number;
+  /** The answer ids the reply carried, so a person can see the shape it speaks. */
+  answersSeen: string[];
+  /** Why it failed, in one line; never the provider's body and never a key. */
+  error: string | null;
+  /** The counters after the probe. */
+  status: NormalizerStatus;
+}
+
 /** Settings that take effect only when the server restarts. */
 export type RestartSetting = "port" | "host" | "username" | "password" | "workspaceRoots" | "allowedHosts" | "allowedTailscaleUsers" | "acpAgents";
 
@@ -2430,6 +2521,26 @@ export const settingsPatchSchema = z
     acpAgents: z.array(acpAgentPatchSchema).max(16).optional(),
     /** The whole list, in order: what is missing is removed. */
     agentProfiles: z.array(agentProfilePatchSchema).max(64).optional(),
+    // The tool-card normalizer (config.yml's `normalizer:` block). A remote backend needs its key
+    // before the feature can be turned on; the local one needs its endpoint.
+    normalizerEnabled: z.boolean().optional(),
+    normalizerBackend: z.enum(NORMALIZER_BACKENDS).optional(),
+    normalizerEndpoint: z.string().trim().max(2048).optional(),
+    normalizerJevBaseUrl: z.string().trim().max(2048).optional(),
+    normalizerJevModel: z.string().trim().max(128).optional(),
+    normalizerCloudflareAccountId: z.string().trim().max(128).optional(),
+    normalizerMinChoiceProbability: z.number().min(0.05).max(1).optional(),
+    normalizerMinNoul: z.number().min(0.05).max(1).optional(),
+    normalizerCache: z.boolean().optional(),
+    normalizerTimeoutMs: z.number().int().min(100).max(5000).nullable().optional(),
+    normalizerAllowFreeText: z.boolean().optional(),
+    /**
+     * Write-only, like the sign-in password: "" keeps the stored key and "-" clears it, so a save from
+     * a browser that was never shown the key cannot erase one.
+     */
+    normalizerJevApiKey: z.string().max(512).optional(),
+    normalizerCommandCodeApiKey: z.string().max(512).optional(),
+    normalizerCloudflareApiToken: z.string().max(512).optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>;
