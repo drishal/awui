@@ -1030,7 +1030,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
   const t = useTheme();
   const turns = createMemo(() => {
     const c = app.chat();
-    return c ? buildTurns(c.items, c.status) : [];
+    return c ? buildTurns(c.items, c.status, c.runStartedAt) : [];
   });
   const switches = createMemo(() => modelSwitches(turns()));
   const [overrides, setOverrides] = createSignal<Record<string, boolean>>({});

@@ -1270,6 +1270,13 @@ export interface ChatSnapshot {
   workspace: WorkspaceInfo;
   title: string;
   status: ChatStatus;
+  /**
+   * When the current run was accepted, on the server's clock; null when nothing runs or the start is
+   * unknown (a run another process began). A run's events come after its prompt, so a client marks the
+   * turn whose prompt is not older than this as the live one — never the turn before it, which is what
+   * the last turn is while a send waits on its checkpoint.
+   */
+  runStartedAt: number | null;
   items: ChatItem[];
   queue: QueueState;
   pending: InteractionRequest[];
@@ -1321,7 +1328,8 @@ export type ChatEvent =
   | { type: "snapshot"; snapshot: ChatSnapshot }
   | { type: "item"; item: ChatItem }
   | { type: "delta"; itemId: string; field: "text" | "thinking" | "output"; append: string }
-  | { type: "status"; status: ChatStatus }
+  /** A run's start rides with its status: clients draw the turn it belongs to as the live one (see ChatSnapshot.runStartedAt). */
+  | { type: "status"; status: ChatStatus; runStartedAt: number | null }
   | { type: "limits"; accounts: string[] }
   | { type: "queue"; queue: QueueState }
   | { type: "config"; config: ChatConfig }

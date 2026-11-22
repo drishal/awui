@@ -60,7 +60,7 @@ function apply(state: ChatState | null, event: ChatEvent, index: Map<string, num
       return { ...state, items };
     }
     case "status":
-      return { ...state, status: event.status };
+      return { ...state, status: event.status, runStartedAt: event.runStartedAt };
     case "queue":
       return { ...state, queue: event.queue };
     case "config":

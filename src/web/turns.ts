@@ -63,7 +63,23 @@ export function isEmojiOnly(text: string): boolean {
   if (trimmed.length === 0 || trimmed.length > REACTION_MAX_CHARS || /\p{L}|\p{Nd}/u.test(trimmed)) return false;
   return /^(?:[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u{FE0F}\u{200D}\u{20E3}\s])+$/u.test(trimmed);
 }
-export function buildTurns(items: ChatItem[], status: ChatStatus): Turn[] {
+/**
+ * Whether a group is the one the running turn writes into. A prompt the harness has not echoed yet
+ * leaves the group before it as the last one; its prompt is older than the run, so it is not live.
+ * A prompt with no clock (a session read from a file) is trusted to be the run's.
+ */
+function ownsRun(prompt: UserItem | null, runStartedAt: number | null): boolean {
+  if (runStartedAt === null) return true;
+  return prompt !== null && (prompt.at === undefined || prompt.at >= runStartedAt);
+}
+
+/**
+ * The turns a chat's items make. `runStartedAt` is the server's clock reading for when the run the
+ * chat is busy with was accepted: a run's events come after its prompt, so only a group whose prompt
+ * is not older than the run is the live one. Without it (a resumed session, a room's run) the last
+ * group is the run's, as before.
+ */
+export function buildTurns(items: ChatItem[], status: ChatStatus, runStartedAt: number | null = null): Turn[] {
   const groups: ChatItem[][] = [];
   let current: ChatItem[] = [];
   for (const item of items) {
@@ -89,7 +105,10 @@ export function buildTurns(items: ChatItem[], status: ChatStatus): Turn[] {
     const prompt = group[0]?.kind === "user" ? group[0] : null;
     const through = prompt && !prompt.command ? ++userTurns : 0;
     const rest = prompt ? group.slice(1) : group;
-    const live = busy && index === groups.length - 1;
+    // A send turns the chat running before its prompt is echoed: for that gap the group before it
+    // is the last one, and it must not wear the run's clock or open its fold (it did, for as long
+    // as the checkpoint took, and the fold shut again when the prompt arrived).
+    const live = busy && index === groups.length - 1 && ownsRun(prompt, runStartedAt);
 
     // The answer is the last assistant message with text. When work follows it,
     // it stays the answer only if it reads as a reply: models write their reply

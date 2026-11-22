@@ -55,3 +55,15 @@ describe("the delegated tasks fold", () => {
     expect(state?.delegated?.[0]?.id).toBe(`t${MAX_DELEGATED_TASKS + 4}`);
   });
 });
+
+describe("the status fold", () => {
+  it("keeps the run's start with its status, so the live turn is the run's own", () => {
+    const started = applyEvents(snapshot(), [{ type: "status", status: "running", runStartedAt: 1_000 }]);
+    expect(started?.status).toBe("running");
+    expect(started?.runStartedAt).toBe(1_000);
+    // Settled, nothing runs: the stamp goes with it.
+    const settled = applyEvents(started, [{ type: "status", status: "idle", runStartedAt: null }]);
+    expect(settled?.status).toBe("idle");
+    expect(settled?.runStartedAt).toBeNull();
+  });
+});

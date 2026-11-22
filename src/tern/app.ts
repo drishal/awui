@@ -247,7 +247,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     // not in the view, which is handed the phase shown.
     const wantedPhase = createMemo(() => {
       const c = app.chat();
-      const turn = c && isBusy(c.status) ? buildTurns(c.items, c.status).at(-1) : undefined;
+      const turn = c && isBusy(c.status) ? buildTurns(c.items, c.status, c.runStartedAt).at(-1) : undefined;
       return c && turn?.live ? workingPhase(turn, c.workspace.path) : "";
     });
     const [phase, setPhase] = createSignal("");
@@ -443,7 +443,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const findItems = (query: string): MenuItem[] => {
       const c = app.chat();
       if (!c) return [];
-      return findHits(buildTurns(c.items, c.status), PAGE_ID, query).map((hit, i) => ({ id: String(i), label: hit.label, detail: hit.detail, value: `turn ${hit.turn + 1}`, icon: "search" }));
+      return findHits(buildTurns(c.items, c.status, c.runStartedAt), PAGE_ID, query).map((hit, i) => ({ id: String(i), label: hit.label, detail: hit.detail, value: `turn ${hit.turn + 1}`, icon: "search" }));
     };
 
     const paletteItems = (): MenuItem[] => {
@@ -470,7 +470,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       if (c) items.push({ id: "x:g", label: "Find in chat…", value: "C-x g", icon: "search", keywords: "search transcript" });
       // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it (C-x l cycles).
       CHAT_WIDTHS.forEach((w) => items.push({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, icon: "columns", keywords: "column layout measure", current: (app.boot()?.ui.chatWidth ?? null) === w }));
-      if (c && buildTurns(c.items, c.status).length > 0) items.push({ id: "timing", label: "Timing of the latest turn", icon: "clock", keywords: "waterfall speed slow" });
+      if (c && buildTurns(c.items, c.status, c.runStartedAt).length > 0) items.push({ id: "timing", label: "Timing of the latest turn", icon: "clock", keywords: "waterfall speed slow" });
       items.push({ id: "x:i", label: "Usage", value: "C-x i", icon: "chart", keywords: "tokens cost limits spend" });
       items.push({ id: "x:k", label: "Agents: every session, by column", value: "C-x k", icon: "kanban", keywords: "dashboard board needs working done" });
       if (c) items.push({ id: "x:p", label: "Active work: workers, jobs, questions, context", value: "C-x p", icon: "layers", keywords: "context panel rail" });
@@ -517,7 +517,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     const lastAnswer = (): string | null => {
       const c = app.chat();
       if (!c) return null;
-      const turns = buildTurns(c.items, c.status);
+      const turns = buildTurns(c.items, c.status, c.runStartedAt);
       for (let i = turns.length - 1; i >= 0; i--) {
         const text = turns[i]?.answer?.text;
         if (text?.trim()) return text;
@@ -963,7 +963,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const c = app.chat();
       if (!c) return;
       const map = new Map<string, boolean>();
-      for (const turn of buildTurns(c.items, c.status)) {
+      for (const turn of buildTurns(c.items, c.status, c.runStartedAt)) {
         for (let i = 0; i < 16; i++) map.set(`${turn.id}#${i}`, next);
         map.set(`${turn.id}#after`, next);
       }
@@ -973,7 +973,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
     /** Opens the fold holding the first failed call of the latest turn that has one, and brings its row into view. */
     const showFailed = () => {
       const c = app.chat();
-      const turns = c ? buildTurns(c.items, c.status) : [];
+      const turns = c ? buildTurns(c.items, c.status, c.runStartedAt) : [];
       const hit = firstFailedCall(turns, PAGE_ID);
       if (!hit) return say("No call has failed in this chat");
       // The fold and the turn's place in the window are drawn first: the op follows the frame that holds them, in order.
@@ -1090,7 +1090,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           if (item.id === "models-refresh") return void app.refreshModels();
           if (item.id === "timing") {
             const c = app.chat();
-            if (c) openTiming(buildTurns(c.items, c.status).length - 1);
+            if (c) openTiming(buildTurns(c.items, c.status, c.runStartedAt).length - 1);
             return;
           }
           if (item.id === "context") return openContext();
@@ -1123,7 +1123,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         case "find": {
           const c = app.chat();
           if (!c) return;
-          const turns = buildTurns(c.items, c.status);
+          const turns = buildTurns(c.items, c.status, c.runStartedAt);
           const hit = findHits(turns, PAGE_ID, m.query)[Number(item.id)];
           if (!hit) return say("That match is gone");
           // The turn's place in the window and its fold are drawn first: the reveal follows the frame that holds them.
@@ -1361,7 +1361,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
           return void app.openChat(row.target.chatId);
         case "tool": {
           const c = shownChat();
-          const place = c ? toolPlace(buildTurns(c.items, c.status), row.target.toolId, PAGE_ID) : null;
+          const place = c ? toolPlace(buildTurns(c.items, c.status, c.runStartedAt), row.target.toolId, PAGE_ID) : null;
           if (!place) return say("That call is no longer in this chat's transcript");
           // The fold and the turn's place in the window are drawn first: the reveal follows that frame.
           setShown((n) => Math.max(n, buildTurns(c?.items ?? [], c?.status ?? "idle").length - place.turn));
@@ -1669,7 +1669,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
         main.push(headNode(null, app.boot()?.harnesses.find((x) => x.id === opening.harnessId) ?? null, opening.title, false));
         main.push(ui.row({ key: "opening", gap: "sm", align: "center" }, ui.spinner({ key: "s" }), ui.shimmer({ key: "t", text: `Opening ${opening.title}…` })));
       } else if (c) {
-        loadedTurns ??= new Set(buildTurns(c.items, c.status).map((t) => t.id));
+        loadedTurns ??= new Set(buildTurns(c.items, c.status, c.runStartedAt).map((t) => t.id));
         main.push(headNode(c, h, c.workspace.name, c.pending.length > 0));
         main.push(
           ...conversation({
@@ -1726,7 +1726,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
               },
               copy,
               copyTurn: (turn) => copy(turnMarkdown(turn, c.workspace.path)),
-              timing: (turn) => openTiming(buildTurns(c.items, c.status).findIndex((t) => t.id === turn.id)),
+              timing: (turn) => openTiming(buildTurns(c.items, c.status, c.runStartedAt).findIndex((t) => t.id === turn.id)),
             },
           }),
         );
@@ -1805,7 +1805,7 @@ export function createTernApp(session: Session, app: Atui, opts: TernOptions) {
       const m = menu();
       const screen = usage();
       // The Timing overlay's turn, read again each frame so a run still going ends at this frame's now.
-      const timed = timing() !== null && c ? buildTurns(c.items, c.status)[timing() as number] : undefined;
+      const timed = timing() !== null && c ? buildTurns(c.items, c.status, c.runStartedAt)[timing() as number] : undefined;
       // The context panel: over the chip, with the chat's figures and the draft as it is now.
       const details = contextOpen() && c?.context ? contextNode({ chat: c, draft: draft().draft, compacted: compacted(), supports: (k) => session.caps.kinds.includes(k), on: { close: () => setContextOpen(false) } }) : undefined;
       // The Usage, Timing, context, and work surfaces hold the keys: the composer's menu, whatever its

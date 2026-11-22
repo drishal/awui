@@ -132,6 +132,22 @@ describe("buildTurns", () => {
     expect(turn?.live).toBe(true);
   });
 
+  it("never marks the turn before a run's prompt live while a send waits for its echo", () => {
+    const items: ChatItem[] = [
+      { kind: "user", id: "u1", text: "go", at: 1_000 },
+      { kind: "assistant", id: "a1", text: "Done.\n\nAll set.", thinking: "", streaming: false, at: 2_000 },
+    ];
+    // A send is accepted at 5_000 and its prompt has not arrived: the turn above it is settled.
+    expect(buildTurns(items, "running", 5_000)[0]?.live).toBe(false);
+    // The same turn, when the run began with its own prompt (a steer included).
+    expect(buildTurns(items, "running", 500)[0]?.live).toBe(true);
+    // No run clock (a resumed session, a run another process began): the last turn is the run's, as before.
+    expect(buildTurns(items, "running")[0]?.live).toBe(true);
+    // The prompt's own turn, once it is echoed: its clock is after the run's.
+    const echoed: ChatItem[] = [...items, { kind: "user", id: "u2", text: "again", at: 6_000 }];
+    expect(buildTurns(echoed, "running", 5_000).map((t) => t.live)).toEqual([false, true]);
+  });
+
   it("keeps a reply as the answer when the model calls a tool after writing it", () => {
     const reply = "Here is what I found.\n\nThe config loads twice because both extensions register it.";
     const items: ChatItem[] = [

@@ -860,7 +860,7 @@ export function headNode(chat: ChatState | null, harness: HarnessStatus | null, 
 
 /** The conversation: the last `shown` turns, a way to the earlier ones, and the chat's own banners. */
 export function conversation(cx: ConversationCx): Node[] {
-  const turns = buildTurns(cx.chat.items, cx.chat.status);
+  const turns = buildTurns(cx.chat.items, cx.chat.status, cx.chat.runStartedAt);
   const from = Math.max(0, turns.length - cx.shown);
   const out: Node[] = [];
   if (from > 0) {

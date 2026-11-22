@@ -792,6 +792,8 @@ class EventReducer {
 export class Chat implements CheckpointHost {
   readonly createdAt = Date.now();
   status: ChatStatus = "idle";
+  /** When the current run was accepted: the client marks the turn whose prompt is not older than this live. */
+  runStartedAt: number | null = null;
   generation = 0;
   /** Last real conversation (a prompt sent, a turn finished): sidebar order. */
   lastActivity = Date.now();
@@ -1014,6 +1016,7 @@ export class Chat implements CheckpointHost {
       workspace: this.workspace,
       title: this.title,
       status: this.status,
+      runStartedAt: this.runStartedAt,
       items: this.reducer.items.map((i) => ({ ...i })),
       queue: { steering: [...this.reducer.queue.steering], followUp: [...this.reducer.queue.followUp] },
       pending: this.reducer.pendingRequests(),
@@ -1145,7 +1148,9 @@ export class Chat implements CheckpointHost {
     if (this.status === status || this.status === "disposed") return;
     const before = this.status;
     this.status = status;
-    this.reducer.emit({ type: "status", status });
+    // Nothing runs once it settles; an unknown start (a harness's own busy report) stays unknown.
+    if (status === "idle" || status === "error" || status === "disposed") this.runStartedAt = null;
+    this.reducer.emit({ type: "status", status, runStartedAt: this.runStartedAt });
     noteChat(this);
     // A fresh run's first echo is its prompt, not an interjection; anything the user sent while
     // this run was already going (a steer, a follow-up that drains) echoes after it.
@@ -1331,6 +1336,9 @@ export class Chat implements CheckpointHost {
         break;
     }
     if (this.status === "error") this.status = "idle";
+    // The run starts now, before its prompt is echoed: clients use this clock to tell the live turn
+    // (whose prompt is newer) from the one before it (which must not open its fold for this gap).
+    this.runStartedAt = Date.now();
     this.setStatus("running");
     // The files as they are before this prompt; the status already says busy, so nothing else starts meanwhile.
     await this.checkpoints?.beforePrompt(text);
@@ -1478,6 +1486,7 @@ export class Chat implements CheckpointHost {
     this.lastActivity = Date.now();
     this.lastSeen = this.lastActivity;
     if (this.status === "error") this.status = "idle";
+    this.runStartedAt = Date.now();
     this.setStatus("running");
     await this.checkpoints?.beforePrompt(text);
     if ((this.status as ChatStatus) !== "running") return;
@@ -1690,7 +1699,8 @@ export class Chat implements CheckpointHost {
     for (const id of this.reducer.pendingIds()) this.reducer.resolveRequest(id, "Cancelled");
     this.reducer.flushNow();
     this.status = "disposed";
-    this.log.record({ type: "status", status: "disposed" });
+    this.runStartedAt = null;
+    this.log.record({ type: "status", status: "disposed", runStartedAt: null });
     this.log.record({ type: "disposed", reason });
     this.unsubscribe?.();
     this.unsubscribe = null;

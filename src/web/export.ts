@@ -29,7 +29,7 @@ export function chatMarkdown(chat: ChatSnapshot, harnessName: string, now = new 
   out.push(`- Project: \`${chat.workspace.path}\``);
   if (chat.sessionId) out.push(`- Session: \`${chat.sessionId}\``);
   out.push(`- Exported: ${now.toLocaleString()}`, "");
-  for (const turn of buildTurns(chat.items, chat.status)) {
+  for (const turn of buildTurns(chat.items, chat.status, chat.runStartedAt)) {
     if (!turn.prompt) continue;
     out.push("---", "", "## You", "");
     out.push(turn.prompt.text);

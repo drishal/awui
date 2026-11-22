@@ -210,7 +210,7 @@ export function App(p: {
   const revealTool = (toolId: string) => {
     const c = app.chat();
     if (!c || !scroller) return flash("No transcript to show that call in");
-    const index = turnOfTool(buildTurns(c.items, c.status), toolId);
+    const index = turnOfTool(buildTurns(c.items, c.status, c.runStartedAt), toolId);
     if (index === null) return flash("That call is no longer in this chat's transcript");
     // A call the reader cannot see is one inside folded work: show the work, then go to its turn.
     setShowWork(true);

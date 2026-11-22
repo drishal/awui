@@ -70,6 +70,7 @@ function DisclosureRow({
   defaultOpen = false,
   autoOpen,
   hideSummaryWhenOpen = false,
+  rowId = "",
   testId,
 }: {
   icon: React.ReactNode;
@@ -86,11 +87,12 @@ function DisclosureRow({
   autoOpen?: boolean;
   /** The summary previews the body (thought's first line): hide it once open. */
   hideSummaryWhenOpen?: boolean;
+  /** The row's id, so the choice it carries survives the remount a streaming turn's moves make (RowOpenContext). */
+  rowId?: string;
   testId?: string;
 }) {
-  // Its own state only once someone touched it: until then it follows `autoOpen` (a thought that is streaming).
-  const [chosen, setChosen] = useState<boolean | null>(null);
-  const open = chosen ?? autoOpen ?? defaultOpen;
+  // Nobody has touched it: follows `autoOpen` (a thought that is streaming), unless a click said otherwise.
+  const [open, setOpen] = useRowOpen(rowId, autoOpen ?? defaultOpen);
   const expandable = children !== undefined && children !== null && children !== false;
   return (
     <div className={`drow${open ? " is-open" : ""}${tone ? ` tone-${tone}` : ""}`} data-testid={testId}>
@@ -99,7 +101,7 @@ function DisclosureRow({
         className="drow-head"
         aria-expanded={expandable ? open : undefined}
         disabled={!expandable}
-        onClick={() => setChosen(!open)}
+        onClick={() => setOpen(!open)}
       >
         <span className="drow-lead">
           <span className="drow-icon">{icon}</span>
@@ -136,7 +138,7 @@ function firstLine(text: string): string {
 const FULL_OUTPUT_LINES = 16;
 
 /** A thought reads itself out while it streams, then folds to its first line once the agent moves on. */
-const ThoughtRow = memo(function ThoughtRow({ thinking, streaming }: { thinking: string; streaming: boolean }) {
+const ThoughtRow = memo(function ThoughtRow({ id, thinking, streaming }: { id: string; thinking: string; streaming: boolean }) {
   const body = useRef<HTMLDivElement>(null);
   // Its body is capped, so a long thought scrolls itself: the newest words stay in view as they arrive.
   useEffect(() => {
@@ -150,6 +152,7 @@ const ThoughtRow = memo(function ThoughtRow({ thinking, streaming }: { thinking:
       summary={<span className="drow-prose">{firstLine(thinking)}</span>}
       autoOpen={streaming}
       hideSummaryWhenOpen
+      rowId={id}
       testId="thought-row"
     >
       <div className="thought-body" ref={body}>
@@ -198,12 +201,13 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   const watchedJobs = useMemo(() => (item.jobs && item.category !== "command" ? chatJobs([item]) : null), [item]);
   // Agents seen working start open, so their progress shows as it happens; so does a wait on jobs.
   // (A wait learns its jobs from its first update, after it is drawn: its name is what says so at the start.)
-  const [open, setOpen] = useState((Boolean(item.subagents) || watchedJobs !== null || /^(wait|await)$/i.test(item.name)) && live);
-  const [toggled, setToggled] = useState(false);
+  const [auto, setAuto] = useState((Boolean(item.subagents) || watchedJobs !== null || /^(wait|await)$/i.test(item.name)) && live);
+  // The user's own choice outlives a remount of the row (a fold that turns from an inline thought into a card).
+  const [open, setOpen, toggled] = useRowOpen(item.id, auto);
   // A call that spawns agents from inside itself (omp's eval) only says so once they start: open it then,
   // unless the user has already chosen for this row.
   useEffect(() => {
-    if (!toggled && running && item.subagents) setOpen(true);
+    if (!toggled && running && item.subagents) setAuto(true);
   }, [toggled, running, item.subagents]);
   // The full-output sheet, which follows the item as its output streams in.
   const [full, setFull] = useState(false);
@@ -229,10 +233,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
             className="drow-head tool-head"
             aria-expanded={open}
             aria-label={label}
-            onClick={() => {
-              setToggled(true);
-              setOpen((v) => !v);
-            }}
+            onClick={() => setOpen(!open)}
           >
             {lines ? (
               // The line skin: the icon alone, no chip around it, as the flat list drew it.
@@ -346,7 +347,7 @@ function NoticeRow({ item }: { item: NoticeItem }) {
   if (item.detail) {
     return (
       <div className={`notice-row notice-detail${arrival}`} data-testid="extension-message">
-        <DisclosureRow icon={icon} title={item.title ?? "Extension"}>
+        <DisclosureRow icon={icon} title={item.title ?? "Extension"} rowId={item.id}>
           {item.detailFormat === "markdown" ? (
             <div className="notice-markdown">
               <Markdown text={item.detail} />
@@ -386,6 +387,7 @@ function RequestRow({ item }: { item: RequestItem }) {
           </>
         }
         {...(tone ? { tone } : {})}
+        rowId={item.id}
       >
         <pre className="thought-body">
           {[item.request.title, item.request.message, item.denialReason ? `Denial reason: ${item.denialReason}` : undefined].filter(Boolean).join("\n\n")}
@@ -404,7 +406,7 @@ function ProcessAssistant({ item, thoughtOnly = false }: { item: AssistantItem; 
   if (!text && !thinking) return null;
   return (
     <div className={`process-step${arrival}`}>
-      {thinking ? <ThoughtRow thinking={thinking} streaming={item.streaming && !text} /> : null}
+      {thinking ? <ThoughtRow id={item.id} thinking={thinking} streaming={item.streaming && !text} /> : null}
       {text ? (
         <div className="process-text">
           <Markdown text={item.text} />
@@ -875,7 +877,7 @@ function ChangeCounts({ stat, withFiles = false }: { stat: ChangeStat; withFiles
   );
 }
 
-function ChangedFiles({ files, workspace, stat }: { files: string[]; workspace: string; stat: ChangeStat | null }) {
+function ChangedFiles({ id, files, workspace, stat }: { id: string; files: string[]; workspace: string; stat: ChangeStat | null }) {
   const rel = files.map((f) => relativePath(f, workspace));
   return (
     <div className="changed-files" data-testid="changed-files">
@@ -884,6 +886,7 @@ function ChangedFiles({ files, workspace, stat }: { files: string[]; workspace: 
         title={`Changed ${files.length} file${files.length === 1 ? "" : "s"}`}
         summary={rel.slice(0, 3).join(", ") + (rel.length > 3 ? ` +${rel.length - 3}` : "")}
         aside={stat ? <ChangeCounts stat={stat} withFiles /> : null}
+        rowId={id}
       >
         <ul className="changed-list">
           {rel.map((f) => (
@@ -910,6 +913,25 @@ function ChangedFiles({ files, workspace, stat }: { files: string[]; workspace: 
  * one fold per stretch of work, and each opens on its own. A fold nobody touched follows its turn.
  */
 const FoldContext = createContext<Record<string, boolean>>({});
+/**
+ * Rows a user opened or closed, by row id. A row is remounted as a turn's parts move between its folds
+ * while it streams (the answer's thought from its own step to the fold's end, a stretch from an inline
+ * thought to a card), and a state kept inside the row would forget the choice and fold the row back up.
+ */
+const RowOpenContext = createContext<{ values: Record<string, boolean>; set: (id: string, open: boolean) => void } | null>(null);
+
+/** No choices yet: one object, so a chat that has none keeps the context value it had (and its rows unmoved). */
+const NO_ROWS: Record<string, boolean> = {};
+
+/** A row's open state: the user's choice if they made one (in RowOpenContext, so a remount keeps it), else `auto`. */
+function useRowOpen(id: string, auto: boolean): [open: boolean, set: (open: boolean) => void, touched: boolean] {
+  const store = useContext(RowOpenContext);
+  const [own, setOwn] = useState<boolean | undefined>(undefined);
+  // Without a store (or an id to keep it under), the row keeps its choice itself, as it always did.
+  const chosen = store !== null && id !== "" ? store.values[id] : own;
+  const set = useCallback((open: boolean) => (store !== null && id !== "" ? store.set(id, open) : setOwn(open)), [store, id]);
+  return [chosen ?? auto, set, chosen !== undefined];
+}
 
 /** The phase to show: a new one waits out the hold since the last change (the first shows at once), so fast calls do not flicker. */
 function useSteadyPhase(wanted: string): string {
@@ -1024,7 +1046,7 @@ function ProcessFold({
   // draws its rows inline: an empty pill with the rows folded inside it says nothing. A leading
   // fold keeps its card — its header says "Worked", and Find opens it by that id.
   if (!live && toolCount === 0 && !label) {
-    const inlineThought = answerThinking ? <ThoughtRow thinking={answerThinking.thinking} streaming={answerThinking.streaming && !answerThinking.text} /> : null;
+    const inlineThought = answerThinking ? <ThoughtRow id={answerThinking.id} thinking={answerThinking.thinking} streaming={answerThinking.streaming && !answerThinking.text} /> : null;
     return (
       <div className="process-inline">
         {items.map((item, i) => (
@@ -1112,7 +1134,7 @@ function ProcessFold({
         <div className="process-body" id={bodyId}>
           {(() => {
             // The answer's own thought sits where the answer came, before any work that followed it.
-            const answerThought = answerThinking ? <ThoughtRow thinking={answerThinking.thinking} streaming={answerThinking.streaming && !answerThinking.text} /> : null;
+            const answerThought = answerThinking ? <ThoughtRow id={answerThinking.id} thinking={answerThinking.thinking} streaming={answerThinking.streaming && !answerThinking.text} /> : null;
             return (
               <>
                 {items.map((item, i) => (
@@ -1169,7 +1191,7 @@ function SegmentedWork({ turn, segments, open, onToggle, workspace }: { turn: Tu
               {segment.items.map((item) => (
                 <ProcessItem key={item.id} item={item} workspace={workspace} thoughtOnly />
               ))}
-              {segment.answerAt >= 0 && turn.answer?.thinking ? <ThoughtRow thinking={turn.answer.thinking} streaming={turn.answer.streaming && !turn.answer.text} /> : null}
+              {segment.answerAt >= 0 && turn.answer?.thinking ? <ThoughtRow id={turn.answer.id} thinking={turn.answer.thinking} streaming={turn.answer.streaming && !turn.answer.text} /> : null}
             </div>
           ) : (
             <ProcessFold turn={turn} open={open} onToggle={onToggle} workspace={workspace} segment={segment} place={place} />
@@ -1311,7 +1333,7 @@ function TurnBody({
       {turn.errors.map((item) => (
         <NoticeRow key={item.id} item={item} />
       ))}
-      {turn.changedFiles.length > 0 && !turn.live ? <ChangedFiles files={turn.changedFiles} workspace={workspace} stat={turn.changeStat} /> : null}
+      {turn.changedFiles.length > 0 && !turn.live ? <ChangedFiles id={`changed-${turn.id}`} files={turn.changedFiles} workspace={workspace} stat={turn.changeStat} /> : null}
       {turn.after.length > 0 ? (
         <div className="turn-after">
           {turn.after.map((item) => (
@@ -1406,24 +1428,31 @@ export function RunTranscript({ items, live, workspace, meta }: { items: ChatIte
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   // As in a chat: `open` is what the fold shows now, so a fold that was following its run flips from what it showed.
   const onToggle = useCallback((id: string, open: boolean) => setOverrides((prev) => ({ ...prev, [id]: !open })), []);
+  const [rowOpen, setRowOpen] = useState<Record<string, boolean>>({});
+  const rows = useMemo(
+    () => ({ values: rowOpen, set: (id: string, open: boolean) => setRowOpen((prev) => ({ ...prev, [id]: open })) }),
+    [rowOpen],
+  );
   return (
-    <FoldContext.Provider value={overrides}>
-      {turns.map((turn, i) => (
-        <TurnBody
-          key={turn.id}
-          turn={turn}
-          open={overrides[turn.id] ?? turn.live}
-          onToggle={onToggle}
-          workspace={workspace}
-          canFork={false}
-          onFork={ignoreThrough}
-          canRestore={false}
-          onRestore={ignoreThrough}
-          onImplement={null}
-          {...(meta !== undefined && i === turns.length - 1 ? { timing: meta } : {})}
-        />
-      ))}
-    </FoldContext.Provider>
+    <RowOpenContext.Provider value={rows}>
+      <FoldContext.Provider value={overrides}>
+        {turns.map((turn, i) => (
+          <TurnBody
+            key={turn.id}
+            turn={turn}
+            open={overrides[turn.id] ?? turn.live}
+            onToggle={onToggle}
+            workspace={workspace}
+            canFork={false}
+            onFork={ignoreThrough}
+            canRestore={false}
+            onRestore={ignoreThrough}
+            onImplement={null}
+            {...(meta !== undefined && i === turns.length - 1 ? { timing: meta } : {})}
+          />
+        ))}
+      </FoldContext.Provider>
+    </RowOpenContext.Provider>
   );
 }
 
@@ -1433,6 +1462,7 @@ export function Conversation({
   chatId,
   items,
   status,
+  runStartedAt = null,
   workspace,
   canFork,
   onFork,
@@ -1455,6 +1485,8 @@ export function Conversation({
   chatId: string;
   items: ChatItem[];
   status: ChatStatus;
+  /** When the run the chat is busy with was accepted (the server's clock), so only its own turn draws live. */
+  runStartedAt?: number | null;
   workspace: string;
   canFork: boolean;
   onFork: (through: number) => void;
@@ -1494,7 +1526,7 @@ export function Conversation({
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const cache = useRef(new Map<string, Turn>());
   const turns = useMemo(() => {
-    const fresh = buildTurns(items, status);
+    const fresh = buildTurns(items, status, runStartedAt);
     const previous = cache.current;
     const next = new Map<string, Turn>();
     const stable = fresh.map((turn) => {
@@ -1505,10 +1537,19 @@ export function Conversation({
     });
     cache.current = next;
     return stable;
-  }, [items, status]);
+  }, [items, status, runStartedAt]);
   const switches = useMemo(() => modelSwitches(turns), [turns]);
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
+
+  // Rows a user opened or closed, by row id: ids are only unique inside one chat, so a chat switch starts afresh.
+  const [rowOwner, setRowOwner] = useState<{ chatId: string; values: Record<string, boolean> }>({ chatId, values: {} });
+  const rowValues = rowOwner.chatId === chatId ? rowOwner.values : NO_ROWS;
+  const setRowOpen = useCallback(
+    (id: string, open: boolean) => setRowOwner((prev) => ({ chatId, values: { ...(prev.chatId === chatId ? prev.values : {}), [id]: open } })),
+    [chatId],
+  );
+  const rows = useMemo(() => ({ values: rowValues, set: setRowOpen }), [rowValues, setRowOpen]);
 
   // Turns before `from` are not drawn yet; a new chat starts near its end.
   const [drawn, setDrawn] = useState({ chatId: "", from: 0 });
@@ -1875,6 +1916,7 @@ export function Conversation({
       <div className="conversation" ref={scroller} onScroll={onScroll} role="log" aria-live="polite" aria-relevant="additions">
         <ChatIdContext.Provider value={chatId}>
           <ArrivalsContext.Provider value={arrivals}>
+            <RowOpenContext.Provider value={rows}>
             <FoldContext.Provider value={overrides}>
             <div className="thread" ref={watchThread}>
               {(from > 0 ? turns.slice(from) : turns).map((turn) => (
@@ -1908,6 +1950,7 @@ export function Conversation({
               ))}
             </div>
             </FoldContext.Provider>
+            </RowOpenContext.Provider>
           </ArrivalsContext.Provider>
         </ChatIdContext.Provider>
       </div>

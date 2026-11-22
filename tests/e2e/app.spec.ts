@@ -1738,3 +1738,23 @@ test("work above a reply folds away as the reply lands, while the work after it 
   await expect(cards.first().getByTestId("process-toggle")).toHaveAttribute("aria-expanded", "false");
   await expect(cards.last().getByTestId("process-toggle")).toHaveAttribute("aria-expanded", "false");
 });
+
+test("a thought opened by hand stays open when its card is shut and opened again", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "showcase");
+  const card = page.locator(".process-card").last();
+  await openFold(page);
+  const thought = card.getByTestId("thought-row").filter({ hasText: "Considering" });
+  await thought.getByRole("button").first().click();
+  await expect(thought.locator(".thought-body")).toBeVisible();
+  // Shutting the card takes its rows out of the page; opening it draws them again. The row the user
+  // opened is drawn open, not back at its first line.
+  const toggle = card.getByTestId("process-toggle");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  // Shut long enough for the rows to leave the page, not just to be clipped.
+  await expect(card.getByTestId("thought-row")).toHaveCount(0);
+  await toggle.click();
+  await expect(card.getByTestId("thought-row").filter({ hasText: "Considering" }).locator(".thought-body")).toBeVisible();
+});

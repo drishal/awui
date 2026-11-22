@@ -107,6 +107,21 @@ describe("a run that does more than write", () => {
     expect(live().snapshot().items.flatMap((i) => (i.kind === "user" ? [i.text] : []))).toEqual(["midcompact please", "and now this"]);
   });
 
+  it("records when the run started, so a client can tell its turn from the one before it", async () => {
+    const { agent, chat, live } = await setUp();
+    expect(live().runStartedAt).toBeNull();
+    const before = Date.now();
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "hello" });
+    const startedAt = live().runStartedAt;
+    expect(startedAt).toBeGreaterThanOrEqual(before);
+    // The prompt is echoed after the run was accepted: its own clock is what marks its turn live.
+    await until(() => live().snapshot().items.some((i) => i.kind === "user"));
+    const prompt = live().snapshot().items.find((i) => i.kind === "user");
+    expect(prompt?.kind === "user" ? prompt.at ?? 0 : 0).toBeGreaterThanOrEqual(startedAt as number);
+    await until(() => live().status === "idle");
+    expect(live().runStartedAt).toBeNull();
+  });
+
   it("does not call itself idle when the harness refuses a prompt because it is still going", async () => {
     const { agent, chat, live } = await setUp();
     const refused = await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "contended, are you busy?" });

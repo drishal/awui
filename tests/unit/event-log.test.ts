@@ -5,7 +5,7 @@ import type { ChatEvent, ChatSnapshot } from "../../src/shared/protocol.js";
 import { EventLog } from "../../src/server/chats/chat.js";
 
 const snap = { items: [] } as unknown as ChatSnapshot;
-const status = (s: "idle" | "running"): ChatEvent => ({ type: "status", status: s });
+const status = (s: "idle" | "running"): ChatEvent => ({ type: "status", status: s, runStartedAt: null });
 
 function stream(log: EventLog, lastEventId: number | undefined) {
   const got: Array<[number, string]> = [];
@@ -41,8 +41,8 @@ describe("the event log", () => {
     const log = new EventLog();
     const frames: string[] = [];
     let stringified = 0;
-    const event: ChatEvent = { type: "status", status: "running" };
-    const spy = { ...event, toJSON() { stringified += 1; return { type: "status", status: "running" }; } } as unknown as ChatEvent;
+    const event: ChatEvent = { type: "status", status: "running", runStartedAt: null };
+    const spy = { ...event, toJSON() { stringified += 1; return { type: "status", status: "running", runStartedAt: null }; } } as unknown as ChatEvent;
     for (let i = 0; i < 4; i += 1) log.subscribe({ send: (_id, _e, json) => frames.push(json()), close: () => undefined }, undefined, () => snap);
     frames.length = 0;
     log.record(spy);

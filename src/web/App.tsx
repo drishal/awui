@@ -2660,6 +2660,7 @@ export function App() {
                   chatId={chat.chatId}
                   items={chat.items}
                   status={chat.status}
+                  runStartedAt={chat.runStartedAt}
                   workspace={chat.workspace.path}
                   canFork={chat.capabilities.supportsFork}
                   onFork={forkChat}
