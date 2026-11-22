@@ -148,9 +148,15 @@ export function spawnHarness(command: string, args: string[], opts: SpawnOptions
     // and selects the project's tools. Prepend the project's PATH entries so its tools
     // (nightly cargo, MinGW) win and the binary still resolves from the inherited tail.
     if (projectEnv.PATH && spawnEnv.PATH) env.PATH = `${projectEnv.PATH}:${spawnEnv.PATH}`;
-    // Intentional per-chat additions follow the project's env.
-    env.AWUI_RENDER_TOKEN = opts.env?.AWUI_RENDER_TOKEN ?? process.env.AWUI_RENDER_TOKEN;
-    env.AWUI_RENDER_URL = opts.env?.AWUI_RENDER_URL ?? process.env.AWUI_RENDER_URL;
+    // awui's own per-chat names are not project variables: a value the caller
+    // handed this child wins, and an absent one is removed. The fallback to
+    // process.env here once let a server started with another chat's token
+    // hand that token (and endpoint) to every child it spawned.
+    for (const key of ["AWUI_RENDER_TOKEN", "AWUI_RENDER_URL", "AWUI_ORCH_TOKEN", "AWUI_ORCH_URL"]) {
+      const value = opts.env?.[key];
+      if (value === undefined) delete env[key];
+      else env[key] = value;
+    }
     opts = { ...opts, env };
   }
   if (IS_WINDOWS) {

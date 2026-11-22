@@ -185,4 +185,39 @@ describe.skipIf(!HAS_DIRENV)("direnv spawn env", () => {
       }
     }));
   });
+
+  it.skipIf(IS_WINDOWS)("a tool token the caller passed wins over one the server inherited, and an absent one is removed", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "awui-direnv-tools-"));
+    roots.push(root);
+    const proj = path.join(root, "proj");
+    mkdirSync(proj);
+    const keys = ["AWUI_ORCH_TOKEN", "AWUI_ORCH_URL", "AWUI_RENDER_TOKEN", "AWUI_RENDER_URL"] as const;
+    const saved = new Map(keys.map((key) => [key, process.env[key]]));
+    try {
+      // What a server started from another awui chat's shell carries.
+      process.env.AWUI_ORCH_TOKEN = "ambient-orch";
+      process.env.AWUI_ORCH_URL = "http://127.0.0.1:4783/api/orchestration";
+      process.env.AWUI_RENDER_TOKEN = "ambient-render";
+      process.env.AWUI_RENDER_URL = "http://127.0.0.1:4783/api/render";
+      const script = "printf '%s|%s|%s|%s' \"$AWUI_ORCH_TOKEN\" \"$AWUI_ORCH_URL\" \"$AWUI_RENDER_TOKEN\" \"$AWUI_RENDER_URL\"";
+      const run = (env?: NodeJS.ProcessEnv): Promise<string> => {
+        const { promise, resolve, reject } = Promise.withResolvers<string>();
+        const child = spawnHarness("sh", ["-c", script], { cwd: proj, ...(env ? { env } : {}) });
+        let stdout = "";
+        child.stdout.on("data", (chunk) => (stdout += chunk));
+        child.once("error", reject);
+        child.once("close", () => resolve(stdout));
+        return promise;
+      };
+      // The chat's own token wins; the render pair it did not pass is gone, not inherited.
+      expect(await run({ AWUI_ORCH_TOKEN: "chat-orch", AWUI_ORCH_URL: "http://127.0.0.1:4796/api/orchestration" })).toBe("chat-orch|http://127.0.0.1:4796/api/orchestration||");
+      // No tool env at all: none of the server's tokens reaches the child.
+      expect(await run()).toBe("|||");
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
 });
