@@ -3,7 +3,7 @@
 // (adapter.readUsage, never starting a harness), added up by day, harness,
 // model, and session. A session's calls are read once per version of it; a
 // time budget bounds a long history, and the report says what it could not
-// read (Hermes keeps its sessions in its own database).
+// read (a harness with no reader of its own).
 import type { ProjectSession, UsageReport, UsageTotals, WorkspaceInfo } from "../shared/protocol.js";
 import type { UsageEntry } from "./harness/types.js";
 

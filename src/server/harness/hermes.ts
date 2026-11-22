@@ -62,6 +62,7 @@ import type {
   OpenChatRequest,
   RecentNativeSession,
   StepUsage,
+  UsageEntry,
 } from "./types.js";
 
 const run = execHarness;
@@ -426,17 +427,35 @@ function usageOf(raw: unknown): StepUsage | null {
   };
 }
 
+/**
+ * Hermes wraps web, browser, and MCP tool results in an `<untrusted_tool_result>` block for the
+ * model: a note saying the content is data, not instructions. A chat's output panel shows a tool
+ * result as data already, so the note is noise there; only a complete block (the note and its
+ * matching close) is removed, and Hermes's neutralized `untrusted-tool-result` tokens stay as they
+ * are. A replay can wrap an already wrapped row, so the pair is removed until none is left.
+ */
+export function unwrapUntrustedToolResult(text: string): string {
+  const block = /<untrusted_tool_result(?:\s+source="[^"]*")?>\n[^\n]*\n\n([\s\S]*?)\n<\/untrusted_tool_result>/g;
+  let out = text;
+  for (let i = 0; i < 4; i++) {
+    const next = out.replace(block, "$1");
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
 /** Tool output as hermes stores it: a string, a `{content: […]}` block list, or JSON. */
 function toolOutput(result: unknown): string {
-  if (typeof result === "string") return result;
-  if (Array.isArray(result)) return result.map((part) => (isObj(part) ? str(part.text) : String(part))).join("\n");
+  if (typeof result === "string") return unwrapUntrustedToolResult(result);
+  if (Array.isArray(result)) return unwrapUntrustedToolResult(result.map((part) => (isObj(part) ? str(part.text) : String(part))).join("\n"));
   if (isObj(result)) {
     const content = result.content;
-    if (Array.isArray(content)) return content.map((part) => (isObj(part) ? str(part.text) : String(part))).join("\n");
-    if (typeof content === "string") return content;
-    return JSON.stringify(result, null, 2);
+    if (Array.isArray(content)) return unwrapUntrustedToolResult(content.map((part) => (isObj(part) ? str(part.text) : String(part))).join("\n"));
+    if (typeof content === "string") return unwrapUntrustedToolResult(content);
+    return unwrapUntrustedToolResult(JSON.stringify(result, null, 2));
   }
-  if (result !== undefined && result !== null) return String(result);
+  if (result !== undefined && result !== null) return unwrapUntrustedToolResult(String(result));
   return "";
 }
 
@@ -1881,6 +1900,75 @@ export class HermesAdapter implements HarnessAdapter {
       return this.storedTranscript(req);
     } finally {
       await link.kill().catch(() => undefined);
+    }
+  }
+
+  /**
+   * A session's calls, from the home's own state.db. Hermes keeps one aggregate row per session and
+   * model (`session_model_usage`): tokens, the cost it priced, the call count and first/last seen,
+   * never one row per call. Each row is divided across the calls Hermes reports (tokens exactly, the
+   * last call taking the remainder) and dated across that real span, so the report's totals and call
+   * count stay true while the day heatmap is the best read the store allows. Auxiliary calls Hermes
+   * records for the chat (title generation, compression, approvals) are that chat's spend and stay in.
+   */
+  async readUsage(req: { cwd: string; nativeId: string }): Promise<UsageEntry[] | null> {
+    const file = path.join(await this.resolveAgentDir(), "state.db");
+    let db: DatabaseSync;
+    try {
+      db = new DatabaseSync(file, { readOnly: true });
+    } catch {
+      return null;
+    }
+    try {
+      const session = db.prepare("SELECT cwd, model, started_at, last_activity_at FROM sessions WHERE id = ?").get(req.nativeId) as Record<string, unknown> | undefined;
+      if (!session) return null;
+      const folder = str(session.cwd);
+      if (folder && path.resolve(folder) !== path.resolve(req.cwd)) return null;
+      const fallback = (num(session.last_activity_at) ?? num(session.started_at) ?? 0) * 1000;
+      const rows = db
+        .prepare(
+          `SELECT model, api_call_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+                  estimated_cost_usd, actual_cost_usd, cost_status, first_seen, last_seen
+             FROM session_model_usage WHERE session_id = ?`,
+        )
+        .all(req.nativeId) as Array<Record<string, unknown>>;
+      const entries: UsageEntry[] = [];
+      for (const row of rows) {
+        const calls = Math.max(1, Math.round(num(row.api_call_count) ?? 0));
+        const first = (num(row.first_seen) ?? 0) * 1000 || fallback;
+        const last = Math.max(first, (num(row.last_seen) ?? 0) * 1000 || fallback);
+        const input = num(row.input_tokens) ?? 0;
+        const output = num(row.output_tokens) ?? 0;
+        const cachedInput = num(row.cache_read_tokens) ?? 0;
+        const cacheWrite = num(row.cache_write_tokens) ?? 0;
+        const status = str(row.cost_status);
+        const cost =
+          status === "estimated"
+            ? num(row.estimated_cost_usd)
+            : status === "actual"
+              ? (num(row.actual_cost_usd) ?? num(row.estimated_cost_usd))
+              : status === "included"
+                ? 0
+                : null;
+        const model = str(row.model) || str(session.model) || null;
+        const split = (total: number, i: number) => (i === calls - 1 ? total - Math.floor(total / calls) * (calls - 1) : Math.floor(total / calls));
+        for (let i = 0; i < calls; i++) {
+          entries.push({
+            at: calls === 1 ? first : first + ((last - first) * i) / (calls - 1),
+            model,
+            input: split(input, i),
+            cachedInput: split(cachedInput, i),
+            cacheWrite: split(cacheWrite, i),
+            output: split(output, i),
+            cost: cost === null ? null : cost / calls,
+          });
+        }
+      }
+      return entries;
+    } catch {
+      return null;
+    } finally {
+      db.close();
     }
   }
 
