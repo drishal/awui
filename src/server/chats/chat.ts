@@ -52,6 +52,7 @@ import { CONTINUE_TEXT } from "../../shared/limit-stop.js";
 import { isDenial } from "../../shared/approval.js";
 import { GATE_REQUEST_PREFIX } from "../orchestration/decisions.js";
 import { noteChat, noteSessionOfChat } from "../overview-events.js";
+import type { DecisionContext, NormalizerService, ToolDecisionPatch } from "../normalizer/service.js";
 
 export class ChatError extends Error {
   constructor(
@@ -268,6 +269,8 @@ interface ReducerEffects {
   applyTodos(todos: TodoItem[]): void;
   /** A session id arrived from the harness: tell the manager. */
   sessionAssigned(): void;
+  /** A call just settled and its row was streamed: the optional normalizer may add a decision to it later. */
+  toolSettled(item: ToolItem): void;
 }
 
 /**
@@ -552,6 +555,8 @@ class EventReducer {
         // A wait or a proc read reports on background runs another call started.
         const reports = detailReports(event.details);
         if (reports.length > 0) this.applyReports(reports);
+        // Last, once the row is folded and out: a decision patch re-puts it, so it must not overwrite a field.
+        this.fx.toolSettled(done);
         break;
       }
       case "subagent_reports":
@@ -766,6 +771,18 @@ class EventReducer {
     this.emit({ type: "item", item: { ...item } });
   }
 
+  /**
+   * Re-put a call through a change that reads it as it is now: a decision that lands after another
+   * update (a job report, a subagent report) merged into the same row, so it adds its own fields
+   * instead of clobbering the newer ones.
+   */
+  patchTool(id: string, apply: (item: ToolItem) => ToolItem | null): void {
+    const item = this.get(id);
+    if (!item || item.kind !== "tool") return;
+    const next = apply(item);
+    if (next) this.put(next);
+  }
+
   private nextId(prefix: string): string {
     return `${prefix}${++this.counter}`;
   }
@@ -821,6 +838,18 @@ class EventReducer {
   }
 }
 
+/**
+ * The row with a decision added to it, or null when the decision may no longer touch it: only the
+ * fallback family is replaced (a family an adapter or a sniffer settled is the truth), the call must
+ * still be settled, and a decision that already landed wins.
+ */
+function decidedRow(item: ToolItem, patch: ToolDecisionPatch): ToolItem | null {
+  if (item.status === "running" || item.decided) return null;
+  const family = item.toolKind ?? item.category;
+  if (family !== "command" && family !== "other") return null;
+  return { ...item, toolKind: patch.toolKind, decided: patch.decided };
+}
+
 export class Chat implements CheckpointHost {
   readonly createdAt = Date.now();
   status: ChatStatus = "idle";
@@ -860,6 +889,12 @@ export class Chat implements CheckpointHost {
   private quiet = false;
   /** File checkpoints before each prompt, where the project is in a git repository. */
   checkpoints?: ChatCheckpoints;
+  /**
+   * The optional tool-card normalizer (normalizer/service.ts), stamped by the manager. It is asked
+   * about the settled calls the built-in parsers could not place, and answers later with a patch;
+   * absent, a chat simply never asks.
+   */
+  normalizer?: NormalizerService;
   private checkpointTurns: number[] = [];
   /** What runs after this run settles on its own, step by step; kept here, so it goes on with no browser open (not across a restart). */
   private chain: ChainStep[] = [];
@@ -949,7 +984,33 @@ export class Chat implements CheckpointHost {
         this.onSession?.(this);
         this.checkpoints?.sessionAssigned();
       },
+      toolSettled: (item) => this.toolSettled(item),
     });
+  }
+
+  /**
+   * One call just settled and its row is out. The optional normalizer is asked about it and answers
+   * later, so nothing here waits: the request is bounded by its backend's timeout, every failure
+   * keeps the row as it is, and a decision arrives as one ordinary item update.
+   */
+  private toolSettled(item: ToolItem): void {
+    const normalizer = this.normalizer;
+    if (!normalizer) return;
+    const where: DecisionContext = { chatId: this.chatId, harness: this.adapter.id, workspace: this.workspace.path, runStartedAt: this.runStartedAt };
+    void normalizer
+      .decide(item, where)
+      .then((patch) => {
+        if (patch) this.patchTool(item.id, (current) => decidedRow(current, patch));
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * Re-put a row with a change read against the item as it is now: the reducer reads it fresh, so a
+   * decision that lands after another report merged into the row adds its own fields, never a stale copy.
+   */
+  patchTool(id: string, apply: (item: ToolItem) => ToolItem | null): void {
+    this.reducer.patchTool(id, apply);
   }
 
   static async open(chatId: string, adapter: HarnessAdapter, workspace: WorkspaceInfo, live: LiveChat, owner?: ChatOwner): Promise<Chat> {

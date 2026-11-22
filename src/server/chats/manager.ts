@@ -10,6 +10,7 @@ import { ChatCheckpoints, type Checkpoints } from "../checkpoints.js";
 import { prepareSpawnEnv } from "../direnv.js";
 import { noteChatDisposed, noteSessionOfChat } from "../overview-events.js";
 import { closeRenderPages } from "../render-browser.js";
+import type { NormalizerService } from "../normalizer/service.js";
 
 const IDLE_DISPOSE_MS = 30 * 60_000;
 const REAP_INTERVAL_MS = 60_000;
@@ -47,6 +48,12 @@ export class ChatManager {
   /** Return limits for this harness's own registry source, not a global wildcard. */
   limitedSources?: (source: string) => Promise<string[]>;
   checkpoints?: { service: Checkpoints; sessionsDir: string };
+  /**
+   * The optional tool-card normalizer (normalizer/service.ts). Stamped on every chat, which asks it
+   * about each settled call the built-in parsers could not place; the service itself is the one place
+   * that knows whether it is turned on and usable, so enabling it needs no chat reopened.
+   */
+  normalizer?: NormalizerService;
   /** A run started in any chat. */
   onRunStart?: (chat: Chat) => void;
   /**
@@ -218,6 +225,7 @@ export class ChatManager {
     if (this.planFor && !chat.plan) chat.plan = () => this.planFor?.(chat) ?? null;
     // Board-owned chats take no ordinary per-prompt checkpoints (a room-level design comes later),
     // and neither does a side thread: it is a look at one block, not a run whose files go back.
+    if (this.normalizer) chat.normalizer = this.normalizer;
     if (this.checkpoints && !chat.owner && !chat.side) {
       chat.checkpoints = new ChatCheckpoints(this.checkpoints.service, chat, this.checkpoints.sessionsDir);
       void chat.checkpoints.start();

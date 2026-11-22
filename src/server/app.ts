@@ -144,7 +144,8 @@ import { searchProject } from "./project-search.js";
 import type { Security } from "./security.js";
 import { makeRequireGrant, InviteStore, invitesFileOf, isGrant, GRANTS, type Grant, type GrantsOf as GrantsOfFn } from "./grants.js";
 import type { ThemeStore } from "./theme.js";
-import { readSettings, savedAcpAgent, writeSettings, type Requester, type SettingsContext } from "./settings.js";
+import { normalizerSettings, readSettings, savedAcpAgent, writeSettings, type Requester, type SettingsContext } from "./settings.js";
+import { NormalizerService } from "./normalizer/service.js";
 import { AcpAdapter } from "./harness/acp.js";
 import { readAwuiConfig, writeAwuiConfig } from "./awui-settings.js";
 import { breakdownRules, readUserConfig, uiSettings } from "./user-config.js";
@@ -275,6 +276,8 @@ export interface AppDeps {
   checkpointsDir?: string | null;
   /** The start screen's model answers per harness and project; saved in the state folder when absent and one is set. */
   modelCatalog?: ModelCatalog;
+  /** The optional tool-card normalizer; built over this server's settings and state folder when absent. */
+  normalizer?: NormalizerService;
   /** Herdr's panes, to mark the sessions they run; none when absent (tests that do not ask for it). */
   herdr?: Herdr;
   /** Device hosts (emulators/simulators, device-host.ts); none when absent — the route answers 404. */
@@ -438,6 +441,16 @@ export async function createApp(deps: AppDeps) {
       }, 15_000);
   pressureTimer?.unref();
   const modelCatalog = deps.modelCatalog ?? new ModelCatalog(deps.stateDir ? path.join(deps.stateDir, "model-catalog.json") : null);
+  // The tool-card normalizer: off unless config.yml turns it on, and inert without a settings folder
+  // (a test's app). Its config is read at each decision, so a saved change needs no restart.
+  const normalizer =
+    deps.normalizer ??
+    new NormalizerService({
+      config: () => (deps.settings ? normalizerSettings(deps.settings) : null),
+      home: () => deps.home,
+      cacheFile: deps.stateDir ? path.join(deps.stateDir, "normalizer-cache.json") : null,
+    });
+  manager.normalizer = normalizer;
   manager.placeholderConfig = async (adapterId, cwd) => {
     const saved = await modelCatalog.peek(adapterId, cwd);
     return saved && saved.models.length > 0 ? { model: null, thinkingLevel: null, models: saved.models, thinkingLevels: saved.thinkingLevels } : null;
@@ -1127,6 +1140,15 @@ export async function createApp(deps: AppDeps) {
       // tail, and shutdown is not called here — that would stop the live chats of the agent it tested.
       throw new ChatError(502, "acp_handshake_failed", error instanceof Error ? error.message : String(error));
     }
+  });
+
+  // The tool-card normalizer's Test: one canned request (a fixed two-line example, never stored tool
+  // output) through the saved settings' backend — so the key, the User-Agent and the reply shape are
+  // checked with one cheap call. It answers 200 with `ok: false` when the feature is off.
+  app.post("/api/settings/normalizer/test", requireGrant("settings.manage"), async (_req, res) => {
+    // A server with no settings folder has no normalizer to test (404, as /api/settings answers).
+    if (!deps.settings) throw new ChatError(404, "no_settings", "Settings are not available on this server");
+    res.json(await normalizer.probe());
   });
 
   app.post("/api/settings/restart", requireGrant("settings.manage"), (_req, res) => {
