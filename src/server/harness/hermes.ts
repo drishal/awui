@@ -563,6 +563,16 @@ interface PendingValue {
 }
 type PendingRequest = PendingApproval | PendingClarify | PendingValue;
 
+/**
+ * Whether a one-string prompt names this chat's session: its own runtime id, or
+ * no session at all (some frames omit it). A foreign id is never this chat's to
+ * answer with a password, and while this chat has no id yet every named session
+ * is foreign.
+ */
+export function promptNamesThisChat(runtimeId: string | null, sessionId: string): boolean {
+  return !sessionId || (runtimeId !== null && sessionId === runtimeId);
+}
+
 class HermesLiveChat implements LiveChat {
   /** Buffered until the first subscriber, so events raised while starting survive. */
   private hub = new EventHub();
@@ -984,7 +994,7 @@ class HermesLiveChat implements LiveChat {
         // vault unlock/code. It is answered `{ value }`, and an empty value means skipped.
         if (frame.method === "sudo" || frame.method === "secret" || frame.method === "vault.unlock_prompt" || frame.method === "vault.code") {
           const sessionId = str(params.session_id);
-          if (sessionId && this.runtimeId && sessionId !== this.runtimeId) {
+          if (!promptNamesThisChat(this.runtimeId, sessionId)) {
             // A request about another session is never this chat's to answer with a password.
             this.live.respond(id, { value: "" });
             this.emit({ type: "notice", level: "warning", text: `Hermes asked for ${frame.method} on another session; the web UI declined` });

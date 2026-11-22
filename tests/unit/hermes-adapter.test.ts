@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
-import { HermesAdapter, hermesModelKey, liveHermesLinks, splitReasoningBlock, unwrapUntrustedToolResult } from "../../src/server/harness/hermes.js";
+import { HermesAdapter, hermesModelKey, liveHermesLinks, promptNamesThisChat, splitReasoningBlock, unwrapUntrustedToolResult } from "../../src/server/harness/hermes.js";
 import type { HarnessEvent, LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
@@ -148,6 +148,16 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(chat.snapshot().pending).toEqual([]);
     // The transcript records that it was answered, never what was typed.
     expect(JSON.stringify(chat.snapshot().items)).not.toContain("hunter2");
+  });
+
+  it("treats a named session as foreign until this chat knows its own", () => {
+    // A prompt that arrives before session.create/resume answered: nothing is ours yet.
+    expect(promptNamesThisChat(null, "4242")).toBe(false);
+    // A prompt about another session is never answered with a password, id known or not.
+    expect(promptNamesThisChat("4242", "someone-elses")).toBe(false);
+    // A frame that omits the id stays this chat's, and its own id is its own.
+    expect(promptNamesThisChat(null, "")).toBe(true);
+    expect(promptNamesThisChat("4242", "4242")).toBe(true);
   });
 
   it("drops Hermes's untrusted-data note but keeps the tool's own text", () => {
