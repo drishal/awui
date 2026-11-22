@@ -79,6 +79,11 @@ const CANCEL_SETTLE_MS = 5_000;
 /** A task's last answer line is announced only when the line itself changes. */
 const ACTIVITY_LINE = 300;
 
+/** Whether two peer entries name the same way to reach one machine (the fields add saves). */
+function sameTransport(a: MeshPeerEntry, b: MeshPeerEntry): boolean {
+  return a.tls === b.tls && a.ssh === b.ssh && a.docker === b.docker && a.awui_path === b.awui_path;
+}
+
 export interface OrchestratorDeps {
   chats: ChatManager;
   registry: HarnessRegistry;
@@ -958,13 +963,20 @@ export class Orchestrator {
     if (!parsed.success) throw denial(422, "invalid_request", `That is not a peer this node can take: ${parsed.error.issues[0]?.message ?? "invalid entry"}`);
     const entry = parsed.data;
     const existing = peers.manager.peers().find((peer) => peer.name.toLowerCase() === entry.name.toLowerCase());
-    if (existing) {
+    // A retry after a failed first contact: the same machine, already saved and still unpinned,
+    // over the same transport is not a duplicate. The store would refuse a second save, so only
+    // the contact is retried. A pinned peer, a config.yml peer, or another transport still collides.
+    const savedSame = existing !== undefined && !existing.pinned ? (await admin.saved.list()).find((saved) => saved.name.toLowerCase() === entry.name.toLowerCase()) : undefined;
+    const retry = savedSame !== undefined && sameTransport(savedSame, entry);
+    if (existing && !retry) {
       throw denial(409, "peer_exists", `A mesh peer called "${entry.name}" is already configured here${existing.pinned ? " and pinned" : ""}; choose another name, or remove it first`);
     }
-    try {
-      await admin.saved.add(entry);
-    } catch (error) {
-      throw denial(409, "peer_not_saved", `The peer was not saved: ${error instanceof Error ? error.message : String(error)}`);
+    if (!retry) {
+      try {
+        await admin.saved.add(entry);
+      } catch (error) {
+        throw denial(409, "peer_not_saved", `The peer was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
     const transport = entry.tls !== undefined ? `tls ${entry.tls}` : entry.ssh !== undefined ? `ssh ${entry.ssh}` : `docker ${entry.docker ?? ""}`;
     let contact: { nodeId: string; sas: string; paired: boolean; policy: string } | null = null;

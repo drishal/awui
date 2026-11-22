@@ -277,6 +277,9 @@ mesh-enabled node:
 
 `mesh_peer_add` never pins on its own: the key is pinned only after a person
 confirms the digits. All three tools are lead-chat only.
+A first contact that fails still leaves the machine saved: asking to add the same
+name over the same transport again retries that contact instead of being refused.
+Only a pinned peer, or the same name over a different transport, is a duplicate.
 
 ## Phase 1.5: the daemon, and files
 

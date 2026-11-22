@@ -336,6 +336,46 @@ describe("mesh orchestration", () => {
     expect(child.body.code).toBe("mesh_lead_only");
   });
 
+  it("retries contact for a saved unpinned peer over the same transport, and still refuses a changed one", async () => {
+    const client = await loadOrCreateIdentity(tempDir("awui-mesh-c-"));
+    const pins = PinStore(path.join(tempDir("awui-mesh-pins-"), "pins.json"));
+    const saved = PeerPeersStore(path.join(tempDir("awui-mesh-saved-"), "mesh", "peers.json"));
+    const manager = new PeerManager({
+      identity: async () => client,
+      pins,
+      config: () => ({ enabled: true, peers: [] }),
+      enabled: () => true,
+      localName: () => "leader-box",
+      savedPeers: () => saved.snapshot(),
+      // Nothing listens: the first contact fails, and the peer has already been saved.
+      spawn: () => {
+        throw new Error("connect ECONNREFUSED 127.0.0.1:4785");
+      },
+    });
+    const { agent, token } = await setup({
+      ...peersOf(manager),
+      admin: { saved, localName: () => "leader-box", syncConfig: async () => ({ moved: [], kept: [], unknown: [] }) },
+    });
+    const first = await call(agent, token, "mesh_peer_add", { name: "newbox", tls: "127.0.0.1:4785" });
+    expect(first.status).toBe(200);
+    expect(first.body.text).toContain("call this again with the same name");
+    expect((await saved.list()).map((peer) => peer.name)).toEqual(["newbox"]);
+    // The retry its own text names is not a duplicate: contact again, one saved row.
+    const retried = await call(agent, token, "mesh_peer_add", { name: "newbox", tls: "127.0.0.1:4785" });
+    expect(retried.status).toBe(200);
+    expect(retried.body.text).toContain("First contact failed");
+    expect((await saved.list()).map((peer) => peer.name)).toEqual(["newbox"]);
+    // Another transport for that name is a real collision, not a retry.
+    const changed = await call(agent, token, "mesh_peer_add", { name: "newbox", ssh: "user@lab" });
+    expect(changed.status).toBe(409);
+    expect(changed.body.code).toBe("peer_exists");
+    // A pinned peer never takes another add, even over the transport already saved.
+    await manager.pin("newbox", Buffer.alloc(32));
+    const pinned = await call(agent, token, "mesh_peer_add", { name: "newbox", tls: "127.0.0.1:4785" });
+    expect(pinned.status).toBe(409);
+    expect(pinned.body.code).toBe("peer_exists");
+  });
+
   it("keeps ORCH_INSTRUCTIONS within the byte budget the harnesses impose", () => {
     expect(Buffer.byteLength(ORCH_INSTRUCTIONS)).toBeLessThan(4000);
     // The one bullet the mesh adds says what a peer task needs.
