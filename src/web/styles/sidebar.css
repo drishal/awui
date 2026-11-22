@@ -401,6 +401,27 @@
   padding: 0 4px;
 }
 
+/* The one scroller that used to fall back to the platform's own bar (light thumb, arrow buttons) inside
+   the dark panel; it takes the conversation's thin themed bar instead. No stable gutter: the list hugs
+   the panel edge, and reserving 8px would leave a stripe when a project has no overflow. */
+.session-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline-strong) transparent;
+}
+.session-list::-webkit-scrollbar {
+  width: 8px;
+}
+.session-list::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+  border-radius: 4px;
+}
+.session-list::-webkit-scrollbar-thumb:hover {
+  background: var(--control-border);
+}
+.session-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* Sidebar skeleton: three pulsing rows while the first session list loads, so
    the panel does not snap from empty to populated. Reduced-motion safe (the
    global rule kills the pulse). */
