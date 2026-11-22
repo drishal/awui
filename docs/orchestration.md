@@ -173,6 +173,18 @@ record instead of a `cancel_timeout` when the child is slow to settle. Both stay
 | `set_status` | `status` (`working`/`blocked`/`review`/`done`), `comment` (≤200 chars, optional) | yes |
 | `request_decision` | `question` (1–200 chars), `decisionId` (≤128 chars), `message` (≤2 000 chars, optional), `kind` (`confirm`/`select`), `options` (≤6, for select), `waitMs` (≤110 000, optional) | yes |
 | `schedule_heartbeat` | `name` (≤80 chars), `prompt` (1–32 000 chars), `intervalMs` (5 minutes to a day), `maxRuns` (≤10 000, optional), `cancelId` (optional) | yes |
+| `mesh_peer_add` | `name`, one of `tls` / `ssh` / `docker`, `awui_path` (optional), `inbound_policy` (optional) | yes |
+| `mesh_peer_pair` | `name`, `sas` (six digits, as `NNN NNN`) | yes |
+| `mesh_peer_sync_config` | `names` (saved peers; omitted moves all) | yes |
+
+`mesh_peer_add` is how a person adds a machine by asking: it saves the peer (peers.json) and
+makes first contact only to report the target's node id and six-digit SAS. It never pins the
+key. `mesh_peer_pair` pins only when the SAS passed matches the one this node derives, so a
+wrong or changed machine is refused rather than trusted. `mesh_peer_sync_config` moves saved
+peers into config.yml's `mesh.peers` when that file is a plain, writable file whose mesh is
+already enabled (comments and order kept); a symlinked or module-rendered config is refused
+and the peers stay in peers.json. All three are lead-chat only: a delegated child, a
+peer-owned chat, and a lead/worker relay are refused.
 
 `set_status` writes this chat's status line: one word for where the work stands and one
 sentence a person reads in the sidebar's row, the chat's header, and its hover card

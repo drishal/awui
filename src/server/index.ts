@@ -58,6 +58,7 @@ import { ThemeLibrary } from "./theme-library.js";
 import { Herdr, herdrSocketPath } from "./herdr.js";
 import { configDir, configEnv, herdrEnabled, meshEnabled, meshListen, migrateConfigDir, readUserConfig, THEMES_DIR, uiSettings, UserConfigError, type UserConfig } from "./user-config.js";
 import { PeerManager } from "./mesh/manager.js";
+import { syncPeersToConfig } from "./mesh/config-edit.js";
 import { PinStore } from "./mesh/pins.js";
 import { PeerPeersStore } from "./mesh/peer-store.js";
 import { loadOrCreateIdentity } from "./mesh/identity.js";
@@ -488,6 +489,14 @@ async function main(): Promise<void> {
       enabled: () => meshEnabled(userNow(), process.env),
       chats: () => userNow()?.mesh?.chats ?? "lead-only",
       maxRemoteTasks: () => userNow()?.mesh?.max_remote_tasks ?? 8,
+      // The owner's half of the same mesh: peers added from a chat go to the
+      // same peers.json the Settings dialog writes, and can be moved into
+      // config.yml when that file is a plain one this process may rewrite.
+      admin: {
+        saved: meshSavedPeers,
+        localName: meshLocalName,
+        syncConfig: (names?: string[]) => syncPeersToConfig(config.configDir, meshSavedPeers, names),
+      },
     },
     // The owner-facing half of the same mesh (P2 §4): the Settings dialog's
     // Peers routes, over the same pins, peers, policies, and host tasks the

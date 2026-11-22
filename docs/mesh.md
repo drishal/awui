@@ -54,9 +54,9 @@ where the agent runs). Both need awui installed.
    ```yaml
    mesh:
      enabled: true
-   policies:
-     worker:
-       roots: [~/code]      # the only folders a peer task may touch
+     policies:
+       worker:
+         roots: [~/code]      # the only folders a peer task may touch
    ```
 
    The built-in `worker` policy already allows task runs and approvals at origin,
@@ -68,10 +68,10 @@ where the agent runs). Both need awui installed.
    ```yaml
    mesh:
      enabled: true
-   peers:
-     - name: lab-vm-3
-       ssh: drishal@lab-vm-3
-       # awui_path: /home/drishal/.local/bin/awui   # if `awui` is not on the remote PATH
+     peers:
+       - name: lab-vm-3
+         ssh: drishal@lab-vm-3
+         # awui_path: /home/drishal/.local/bin/awui   # if `awui` is not on the remote PATH
    ```
 
 3. **Pair the two.** On the leader:
@@ -117,10 +117,10 @@ copied in) replaces the SSH hop:
 ```yaml
 mesh:
   enabled: true
-peers:
-  - name: ci-box
-    docker: awui-worker-1
-    # engine: podman        # default docker
+  peers:
+    - name: ci-box
+      docker: awui-worker-1
+      # engine: podman        # default docker
 ```
 
 `awui peer add ci-box`, then inside the container `awui peer accept … --policy
@@ -143,9 +143,9 @@ awui-mesh/1 — a peer never reaches `/api/*` and never sees your web UI.
      listen:
        host: 192.168.1.20   # the address inbound links bind; required, no default
        port: 4784           # default; 0.0.0.0/:: work but the doctor warns
-   policies:
-     worker:
-       roots: [~/code]
+     policies:
+       worker:
+         roots: [~/code]
    ```
 
 2. **Leader** (where you chat):
@@ -153,9 +153,9 @@ awui-mesh/1 — a peer never reaches `/api/*` and never sees your web UI.
    ```yaml
    mesh:
      enabled: true
-   peers:
-     - name: lab-vm-3
-       tls: 192.168.1.20:4784
+     peers:
+       - name: lab-vm-3
+         tls: 192.168.1.20:4784
    ```
 
 3. **Pair.** Either way works:
@@ -229,9 +229,9 @@ pi-backed worker accordingly.
 awui peer status                       mesh on/off, this node's name, node id, public key, peers, pins
 awui peer add <name> [--yes]           first contact: pin the peer's key (asks; --yes for scripts)
 awui peer accept <name> --policy <p> [--yes]   on the target: pin a pending caller under a policy
-awui peer list                         the configured peers and their pin state
+awui peer list                         config.yml's and saved peers, with their pin state
 awui peer test <name>                  handshake + peer.info, without opening a task
-awui peer remove <name>                forget a peer: drop its outbound, inbound and pending pins
+awui peer remove <name>                forget a peer: drop its pins and saved entry (config.yml stays yours)
 awui peer log [--peer <name>] [--tail N]   the audit log of decisions this node made
 awui peer ls <name> <path>             a folder on a peer: names, types, sizes
 awui peer cat <name> <path>            a peer file's bytes, raw to stdout (at most 4 MiB)
@@ -249,8 +249,34 @@ awui peer bootstrap <ssh-dest> [--policy <p>] [--root <path>] [--pubkey <path>] 
 
 Exit codes: 0 ok, 1 failed, 2 usage, 78 mesh off or config.yml broken. `add` and
 `accept` ask before they pin, and refuse without a terminal unless `--yes` is
-given. `remove` is revocation: it takes effect on the peer's next call, no
-restart needed on either side.
+given. `remove` is revocation: it drops the pins and a saved peer's peers.json
+entry (a `mesh.peers` entry in config.yml is yours to edit), and it takes effect
+on the peer's next call, no restart needed on either side.
+
+### Adding a machine from a chat
+
+The same add/accept dance is available conversationally, for a lead chat on a
+mesh-enabled node:
+
+1. The machine is already running awui with `mesh.enabled: true` and a policy
+   root (Quick start above), and its address is reachable.
+2. Ask: *"Add the VM at 192.168.1.20:4784 as lab-vm."* The agent calls
+   `mesh_peer_add {name, tls}`; the peer is saved in peers.json and first
+   contact returns its node id and six-digit SAS.
+3. Compare the SAS with `awui peer status` on that machine. If they match, say
+   so; the agent calls `mesh_peer_pair {name, sas}` and the key is pinned. A
+   mismatch is refused and the link closed, and a key that changes later is a
+   pin mismatch until someone runs `awui peer remove` and pairs again.
+4. On the target its owner runs `awui peer accept <this node> --policy worker`
+   (the tool prints the exact line).
+5. If you version config.yml, ask *"put lab-vm in config.yml"*:
+   `mesh_peer_sync_config` appends it under `mesh.peers`, keeping comments and
+   key order, and removes the peers.json copy. It writes only a plain,
+   writable config.yml whose mesh is already enabled; a symlinked or rendered
+   config is refused and peers.json stays the source.
+
+`mesh_peer_add` never pins on its own: the key is pinned only after a person
+confirms the digits. All three tools are lead-chat only.
 
 ## Phase 1.5: the daemon, and files
 
@@ -630,8 +656,10 @@ Under the state folder, never in git, never in config:
   Ed25519 key and its self-signed certificate, mode 0600. The key is never the
   node identity; it is only the TLS envelope. A malformed key file is a hard
   error, never regenerated.
-- `mesh/peers.json` — the peers added from the Peers UI or `awui peer join`,
-  mode 0600, atomic writes; config.yml's own peers win on a name clash.
+- `mesh/peers.json` — the peers added from the Peers UI, a chat (`mesh_peer_add`), or `awui peer join`,
+  mode 0600, atomic writes; config.yml's own peers win on a name clash. `mesh_peer_sync_config`
+  (or a later `awui peer` ask) moves them into config.yml when that file is a plain writable
+  file, and then removes their peers.json copy.
 
 ## Security notes
 

@@ -45,6 +45,9 @@ import {
   threadWaitSchema,
   peerFilesSchema,
   peerHandoffSchema,
+  meshPeerAddSchema,
+  meshPeerPairSchema,
+  meshPeerSyncConfigSchema,
   requestDecisionSchema,
   MAX_DELEGATE_BRIEF_CHARS,
   budgetLine,
@@ -56,6 +59,9 @@ import {
 import type { OrchestrationLimits } from "./limits.js";
 import type { PeerManager } from "../mesh/manager.js";
 import { PeerHarnessAdapter } from "../mesh/peer-adapter.js";
+import { nodeIdOf } from "../mesh/identity.js";
+import type { MeshPeerEntry } from "../mesh/peer-store.js";
+import { meshPeerSchema } from "../user-config.js";
 import type { AgentProfileConfig } from "../config.js";
 import { denial, formatElapsed, firstLine, isReviewed, MAX_ERROR_CHARS, MAX_RESULT_CHARS, MAX_TITLE_CHARS, viewOf, type StoredTask, type TaskScope } from "./types.js";
 import { GATE_REQUEST_PREFIX, DecisionStore, decisionViewOf, gateRequestOf, type StoredDecision } from "./decisions.js";
@@ -118,6 +124,16 @@ export interface OrchestratorDeps {
     enabled: () => boolean;
     chats: () => "lead-only" | "all";
     maxRemoteTasks: () => number;
+    /**
+     * The owner's half of the mesh, for the add/pair/sync tools: the same
+     * peers.json store the Settings dialog writes, and the config.yml writer.
+     * Absent leaves those tools answering that administration is not wired.
+     */
+    admin?: {
+      saved: { list(): Promise<MeshPeerEntry[]>; add(entry: unknown): Promise<void> };
+      localName: () => string;
+      syncConfig: (names?: string[]) => Promise<{ moved: string[]; kept: { name: string; reason: string }[]; unknown: string[] }>;
+    };
   };
 }
 
@@ -196,6 +212,12 @@ export class Orchestrator {
         return this.peerFiles(caller, peerFilesSchema.parse(args));
       case "peer_handoff":
         return this.peerHandoff(caller, peerHandoffSchema.parse(args));
+      case "mesh_peer_add":
+        return this.meshPeerAdd(caller, meshPeerAddSchema.parse(args));
+      case "mesh_peer_pair":
+        return this.meshPeerPair(caller, meshPeerPairSchema.parse(args));
+      case "mesh_peer_sync_config":
+        return this.meshPeerSyncConfig(caller, meshPeerSyncConfigSchema.parse(args));
       case "request_decision":
         return this.requestDecision(caller, requestDecisionSchema.parse(args));
       case "set_status":
@@ -444,7 +466,7 @@ export class Orchestrator {
     if (!peers || !peers.enabled()) return null;
     const listed = peers.manager.peers();
     if (listed.length === 0) return null;
-    return `Peers (mesh): ${listed.map((peer) => `${peer.name} (${peer.kind})`).join(", ")} — delegate_task with peer + peerCwd runs on that machine.`;
+    return `Peers (mesh): ${listed.map((peer) => `${peer.name} (${peer.kind}${peer.pinned ? "" : ", not pinned"})`).join(", ")} — delegate_task with peer + peerCwd runs on that machine.`;
   }
 
   private async status(caller: Chat, args: { taskId?: string }): Promise<ToolOutput> {
@@ -896,6 +918,126 @@ export class Orchestrator {
     if (caller.owner?.kind === "peer" || caller.adapter instanceof PeerHarnessAdapter) throw denial(403, "hop_limit", "A task that arrived over the mesh cannot reach another peer (max_hops is 1)");
     if (!peers.manager.peers().some((peer) => peer.name.toLowerCase() === peerName.toLowerCase())) throw denial(422, "unknown_peer", `No mesh peer called "${peerName}" is configured`);
     return peers;
+  }
+
+  /**
+   * The gate the owner-only mesh administration tools share: the mesh on, a
+   * top-level chat, and this node's own admin wiring. Stricter than peerGate on
+   * purpose — adding or pinning a machine is never a delegated child's call,
+   * whatever `mesh.chats` says, and a peer-owned chat can never do it.
+   */
+  private meshAdminGate(caller: Chat): { peers: NonNullable<OrchestratorDeps["peers"]>; admin: NonNullable<NonNullable<OrchestratorDeps["peers"]>["admin"]> } {
+    const peers = this.deps.peers;
+    if (!peers || !peers.enabled()) throw denial(403, "mesh_off", "The mesh is turned off, so no peer can be added or paired (mesh.enabled in config.yml)");
+    if ((caller.lineage?.depth ?? 0) > 0) throw denial(403, "mesh_lead_only", "Only a top-level chat may add or pair mesh peers");
+    if (caller.owner?.kind === "peer" || caller.adapter instanceof PeerHarnessAdapter) throw denial(403, "hop_limit", "A chat that arrived over the mesh cannot add or pair peers");
+    const admin = peers.admin;
+    if (!admin) throw denial(501, "mesh_admin_off", "Adding and pairing mesh peers is not wired on this server");
+    return { peers, admin };
+  }
+
+  /**
+   * `mesh_peer_add`: save one machine and make first contact to read its node
+   * id and SAS — never to pin. The key is pinned only by mesh_peer_pair after a
+   * person confirms those digits, so this tool cannot silently trust a host
+   * the user merely named.
+   */
+  private async meshPeerAdd(
+    caller: Chat,
+    args: { name: string; tls?: string; ssh?: string; docker?: string; awui_path?: string; inbound_policy?: string },
+  ): Promise<ToolOutput> {
+    const { peers, admin } = this.meshAdminGate(caller);
+    const parsed = meshPeerSchema.safeParse({
+      name: args.name,
+      ...(args.tls !== undefined ? { tls: args.tls } : {}),
+      ...(args.ssh !== undefined ? { ssh: args.ssh } : {}),
+      ...(args.docker !== undefined ? { docker: args.docker } : {}),
+      ...(args.awui_path !== undefined ? { awui_path: args.awui_path } : {}),
+      ...(args.inbound_policy !== undefined ? { inbound_policy: args.inbound_policy } : {}),
+    });
+    if (!parsed.success) throw denial(422, "invalid_request", `That is not a peer this node can take: ${parsed.error.issues[0]?.message ?? "invalid entry"}`);
+    const entry = parsed.data;
+    const existing = peers.manager.peers().find((peer) => peer.name.toLowerCase() === entry.name.toLowerCase());
+    if (existing) {
+      throw denial(409, "peer_exists", `A mesh peer called "${entry.name}" is already configured here${existing.pinned ? " and pinned" : ""}; choose another name, or remove it first`);
+    }
+    try {
+      await admin.saved.add(entry);
+    } catch (error) {
+      throw denial(409, "peer_not_saved", `The peer was not saved: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const transport = entry.tls !== undefined ? `tls ${entry.tls}` : entry.ssh !== undefined ? `ssh ${entry.ssh}` : `docker ${entry.docker ?? ""}`;
+    let contact: { nodeId: string; sas: string; paired: boolean; policy: string } | null = null;
+    let contactError: string | null = null;
+    try {
+      const connection = await peers.manager.connect(entry.name, { tofu: true });
+      contact = { nodeId: nodeIdOf(connection.serverKey), sas: connection.sas, paired: connection.paired, policy: connection.policy };
+      connection.close();
+    } catch (error) {
+      contactError = error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
+    }
+    const accept = `awui peer accept ${admin.localName()} --policy worker`;
+    const lines = [`Added "${entry.name}" to this node's saved peers (peers.json), reached over ${transport}.`];
+    if (contact !== null) {
+      lines.push(
+        `First contact: node ${contact.nodeId}, SAS ${contact.sas}${contact.paired ? ` (already accepted under policy ${contact.policy})` : ""}.`,
+        `Compare that SAS with \`awui peer status\` on ${entry.name}. If they match, call mesh_peer_pair with sas "${contact.sas}" to pin its key.`,
+      );
+      if (!contact.paired) lines.push(`On ${entry.name}, its owner still runs (choosing the policy there): ${accept}`);
+    } else {
+      lines.push(
+        `First contact failed: ${contactError ?? "no answer"}. The peer is saved; check awui is running there with mesh.enabled true and its listener or SSH path reachable, then call this again with the same name to retry the contact.`,
+      );
+    }
+    lines.push(`To keep it in the file you version, call mesh_peer_sync_config (config.yml is written only when it is a plain, writable file).`);
+    return { text: lines.join("\n"), data: { peer: entry.name, transport, contact, ...(contactError !== null ? { contactError } : {}), accept } };
+  }
+
+  /**
+   * `mesh_peer_pair`: pin a key after the person compared the SAS on both
+   * machines. The SAS this node derives is recomputed over a fresh handshake
+   * and must equal the one passed; a mismatch closes the link and pins nothing.
+   */
+  private async meshPeerPair(caller: Chat, args: { name: string; sas: string }): Promise<ToolOutput> {
+    const { peers, admin } = this.meshAdminGate(caller);
+    const digits = args.sas.replace(/\s/g, "");
+    const expected = `${digits.slice(0, 3)} ${digits.slice(3)}`;
+    let connection;
+    try {
+      connection = await peers.manager.connect(args.name, { tofu: true });
+    } catch (error) {
+      throw denial(502, "peer_unreachable", `No link to "${args.name}" could be made: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (connection.sas !== expected) {
+      const actual = connection.sas;
+      connection.close();
+      throw denial(409, "sas_mismatch", `The SAS this node derives for "${args.name}" is ${actual}, not ${expected}. Nothing was pinned. Compare both machines again before retrying.`);
+    }
+    const nodeId = nodeIdOf(connection.serverKey);
+    const paired = connection.paired;
+    const policy = connection.policy;
+    await peers.manager.pin(args.name, connection.serverKey);
+    connection.close();
+    const accept = `awui peer accept ${admin.localName()} --policy worker`;
+    const lines = [
+      `Pinned ${args.name} (${nodeId}) after the SAS matched.`,
+      paired ? `The target already accepts this node under policy ${policy}.` : `On ${args.name}, its owner still runs (choosing the policy there): ${accept}`,
+      `From now on a changed key closes the link until someone runs \`awui peer remove ${args.name}\` and pairs again.`,
+    ];
+    return { text: lines.join("\n"), data: { peer: args.name, nodeId, sas: expected, paired, policy } };
+  }
+
+  /** `mesh_peer_sync_config`: move saved peers into config.yml where that file is this server's to write. */
+  private async meshPeerSyncConfig(caller: Chat, args: { names?: string[] }): Promise<ToolOutput> {
+    const { admin } = this.meshAdminGate(caller);
+    const result = await admin.syncConfig(args.names);
+    const lines: string[] = [];
+    if (result.moved.length > 0) lines.push(`Moved to config.yml (mesh.peers): ${result.moved.join(", ")}.`);
+    else if (result.kept.length === 0 && result.unknown.length === 0) lines.push("No saved peer was there to move.");
+    for (const kept of result.kept) lines.push(`Kept "${kept.name}" in peers.json: ${kept.reason}`);
+    if (result.unknown.length > 0) lines.push(`No saved peer is named: ${result.unknown.join(", ")}.`);
+    if (result.moved.length > 0) lines.push("The moved peers are now read from config.yml; edit that file to change them.");
+    return { text: lines.join("\n"), data: result };
   }
 
   /**

@@ -7,6 +7,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXIT_CONFIG, EXIT_FAILED, EXIT_OK, EXIT_USAGE, runPeerCli, type PeerCliIo } from "../../src/server/mesh/cli.js";
 import { loadOrCreateIdentity } from "../../src/server/mesh/identity.js";
+import { PeerPeersStore } from "../../src/server/mesh/peer-store.js";
 import { PinStore } from "../../src/server/mesh/pins.js";
 import { tempDir } from "../helpers/app.js";
 
@@ -37,6 +38,16 @@ function meshOnDir(): string {
   writeFileSync(
     path.join(dir, "config.yml"),
     ["mesh:", "  enabled: true", "  name: leader-box", "  peers:", "    - name: lab", "      ssh: user@lab-box", ""].join("\n"),
+  );
+  return dir;
+}
+
+/** The same, with a direct-TLS peer: the transport P2 added after `status` was written. */
+function meshTlsDir(): string {
+  const dir = tempDir("awui-mesh-cli-cfg-");
+  writeFileSync(
+    path.join(dir, "config.yml"),
+    ["mesh:", "  enabled: true", "  name: leader-box", "  peers:", "    - name: tls-lab", "      tls: 127.0.0.1:4784", ""].join("\n"),
   );
   return dir;
 }
@@ -130,6 +141,23 @@ describe("awui peer status", () => {
     const { existsSync } = await import("node:fs");
     expect(existsSync(path.join(stateDir, "mesh"))).toBe(false);
   });
+
+  it("names a TLS peer as tls, and lists the peers saved in peers.json too", async () => {
+    const configDir = meshTlsDir();
+    const stateDir = tempDir("awui-mesh-cli-state-");
+    await PeerPeersStore(path.join(stateDir, "mesh", "peers.json")).add({ name: "joined-box", tls: "10.0.0.9:4784" });
+    const c = collector({ AWUI_CONFIG_DIR: configDir, AWUI_STATE_DIR: stateDir });
+    expect(await runPeerCli(["status"], c.io)).toBe(EXIT_OK);
+    const status = c.out.join("\n");
+    expect(status).toContain("tls-lab (tls)");
+    expect(status).toContain("joined-box (tls)");
+    expect(status).not.toContain("tls-lab (docker)");
+
+    const listed = collector({ AWUI_CONFIG_DIR: configDir, AWUI_STATE_DIR: stateDir });
+    expect(await runPeerCli(["list"], listed.io)).toBe(EXIT_OK);
+    expect(listed.out).toContain("tls-lab  tls 127.0.0.1:4784  not pinned");
+    expect(listed.out).toContain("joined-box  tls 10.0.0.9:4784  not pinned");
+  });
 });
 
 describe("awui peer accept", () => {
@@ -184,6 +212,19 @@ describe("awui peer remove", () => {
     expect(after.inbound).toEqual([]);
     expect(after.pending).toEqual([]);
     expect(after.outbound[0]?.name).toBe("ci");
+  });
+
+  it("also forgets a peer saved by an invite, so `list` cannot keep calling it configured", async () => {
+    const stateDir = tempDir("awui-mesh-cli-state-");
+    const saved = PeerPeersStore(path.join(stateDir, "mesh", "peers.json"));
+    await saved.add({ name: "joined", tls: "10.0.0.9:4784" });
+    const leader = await loadOrCreateIdentity(tempDir("awui-mesh-cli-k1-"));
+    await PinStore(path.join(stateDir, "mesh", "pins.json")).setOutbound("joined", leader.publicKey);
+
+    const c = collector({ AWUI_STATE_DIR: stateDir });
+    expect(await runPeerCli(["remove", "joined"], c.io)).toBe(EXIT_OK);
+    expect(await saved.list()).toEqual([]);
+    expect(c.out.join("\n")).toContain("saved peer entry is gone");
   });
 });
 

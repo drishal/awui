@@ -27,7 +27,7 @@ import { exportFromPeer, fetchPeerWork, meshGit } from "./handoff.js";
 import { loadOrCreateIdentity, nodeIdOf, sasOf, type NodeIdentity } from "./identity.js";
 import { PeerManager } from "./manager.js";
 import { decodeInviteCode, inviteMac } from "./pairing.js";
-import { PeerPeersStore } from "./peer-store.js";
+import { PeerPeersStore, mergePeers, type MeshPeerEntry } from "./peer-store.js";
 import { expandRoot, resolvePolicies } from "./policy.js";
 import { PinStore } from "./pins.js";
 import { connectTls } from "./tls.js";
@@ -281,10 +281,30 @@ export async function runPeerCli(args: string[], io: PeerCliIo): Promise<number>
       if (typeof name !== "string") return failUsage(name.error);
       const read = settings(io.env);
       if ("error" in read) return fail(read.error, EXIT_CONFIG);
-      // Revocation is local state, so it works with the mesh off too.
+      // Revocation is local state, so it works with the mesh off too. The saved
+      // entry goes with the pins: a peer joined from an invite lives in
+      // peers.json, and dropping only the pins would leave it "configured" here.
       const pins = PinStore(path.join(read.stateDir, "mesh", "pins.json"));
+      const savedStore = PeerPeersStore(path.join(read.stateDir, "mesh", "peers.json"));
+      let savedRemoved = false;
+      let savedError: string | null = null;
+      try {
+        savedRemoved = savedStore.snapshot().some((p) => p.name.toLowerCase() === name.toLowerCase());
+        if (savedRemoved) await savedStore.remove(name);
+      } catch (error) {
+        savedError = error instanceof Error ? error.message : String(error);
+      }
       await pins.removeByName(name);
-      io.out(`Forgot ${name}: its outbound, inbound and pending pins are dropped here. It takes effect on the peer's next call.`);
+      if (savedError !== null) {
+        io.err(`awui peer remove: ${savedError}; its pins are dropped, but the saved entry could not be read or written. Fix ${path.join(read.stateDir, "mesh", "peers.json")} and rerun.`);
+        return EXIT_FAILED;
+      }
+      io.out(
+        `Forgot ${name}: its outbound, inbound and pending pins are dropped here${savedRemoved ? ", and its saved peer entry is gone" : ""}. It takes effect on the peer's next call.`,
+      );
+      if ((read.mesh?.peers ?? []).some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+        io.out(`  ${name} is still listed under mesh.peers in config.yml: that file is yours, so edit it to stop reaching that machine.`);
+      }
       return EXIT_OK;
     }
     case "ls":
@@ -417,14 +437,44 @@ async function statusCommand(io: PeerCliIo, read: Settings): Promise<number> {
   // The one key on stdout, on purpose: it is the value a person pastes into the
   // other side's accept. The private key never leaves the state folder.
   io.out(`public key: ${identity.publicKey.toString("base64url")}`);
-  const peers = read.mesh?.peers ?? [];
-  io.out(`configured peers: ${peers.length === 0 ? "none" : peers.map((p) => `${p.name} (${p.ssh !== undefined ? "ssh" : "docker"})`).join(", ")}`);
+  const peers = configuredPeers(read);
+  io.out(`configured peers: ${peers.length === 0 ? "none" : peers.map((p) => `${p.name} (${kindOf(p)})`).join(", ")}`);
   if (snapshot !== null) {
     io.out(`outbound pins: ${snapshot.outbound.length === 0 ? "none" : snapshot.outbound.map((p) => p.name).join(", ")}`);
     io.out(`inbound pins: ${snapshot.inbound.length === 0 ? "none" : snapshot.inbound.map((p) => `${p.name} (policy ${p.policy})`).join(", ")}`);
     io.out(`pending requests: ${snapshot.pending.length === 0 ? "none" : snapshot.pending.map((p) => p.name).join(", ")}`);
   }
   return EXIT_OK;
+}
+
+/** How one configured peer is reached, for a listing line. */
+function transportOf(peer: MeshPeerEntry): string {
+  if (peer.ssh !== undefined) return `ssh ${peer.ssh}`;
+  if (peer.docker !== undefined) return `docker ${peer.docker}`;
+  return `tls ${peer.tls ?? ""}`;
+}
+
+/** The peer's transport name alone, for the compact status line. */
+function kindOf(peer: MeshPeerEntry): "ssh" | "docker" | "tls" {
+  if (peer.ssh !== undefined) return "ssh";
+  if (peer.docker !== undefined) return "docker";
+  return "tls";
+}
+
+/**
+ * config.yml's peers plus the ones the UI or `peer join` saved, config winning
+ * on a name clash — the same merged list the manager dials. A broken
+ * peers.json is left to the manager's own error; a status still names the
+ * config's peers rather than failing whole.
+ */
+function configuredPeers(read: Settings): MeshPeerEntry[] {
+  let saved: MeshPeerEntry[] = [];
+  try {
+    saved = PeerPeersStore(path.join(read.stateDir, "mesh", "peers.json")).snapshot();
+  } catch {
+    // The manager reports a malformed file when a link is attempted.
+  }
+  return mergePeers(read.mesh?.peers ?? [], saved);
 }
 
 /** The configured inventory with what is pinned about each, without opening a link. */
@@ -437,10 +487,10 @@ async function listCommand(io: PeerCliIo, read: Settings): Promise<number> {
   const pins = PinStore(path.join(read.stateDir, "mesh", "pins.json"));
   const snapshot = await pins.snapshot();
   const pinned = new Set(snapshot.outbound.map((p) => p.name));
-  const peers = read.mesh?.peers ?? [];
-  if (peers.length === 0) io.out("No peers are configured under mesh.peers in config.yml.");
+  const peers = configuredPeers(read);
+  if (peers.length === 0) io.out("No mesh peers are configured (mesh.peers in config.yml, or the Settings dialog).");
   for (const peer of peers) {
-    io.out(`${peer.name}  ${peer.ssh !== undefined ? `ssh ${peer.ssh}` : `docker ${peer.docker ?? ""}`}  ${pinned.has(peer.name) ? "pinned" : "not pinned"}`);
+    io.out(`${peer.name}  ${transportOf(peer)}  ${pinned.has(peer.name) ? "pinned" : "not pinned"}`);
   }
   if (snapshot.pending.length > 0) {
     io.out(`pending requests: ${snapshot.pending.map((p) => `${p.name} (accept with --policy <p>)`).join(", ")}`);

@@ -265,6 +265,11 @@ export const ORCH_DENIAL_CODES = [
   "unsupported_with_peer",
   "remote_limit",
   "unknown_peer",
+  "mesh_admin_off",
+  "peer_exists",
+  "peer_not_saved",
+  "peer_unreachable",
+  "sas_mismatch",
 ] as const;
 export type OrchDenialCode = (typeof ORCH_DENIAL_CODES)[number];
 

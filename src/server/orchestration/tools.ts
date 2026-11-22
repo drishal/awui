@@ -172,6 +172,37 @@ export const peerHandoffSchema = z
   })
   .strict();
 
+/** A peer name, the same shape config.yml and the wire use. */
+const meshPeerName = z.string().regex(/^[A-Za-z0-9._-]{1,64}$/);
+
+/**
+ * `mesh_peer_add`: one machine added from a chat. It becomes a saved peer
+ * (peers.json) after the full config.yml entry schema accepts it; first contact
+ * is made only to read the node id and SAS, never to pin a key.
+ */
+export const meshPeerAddSchema = z
+  .object({
+    name: meshPeerName,
+    tls: z.string().min(3).max(512).optional(),
+    ssh: z.string().min(1).max(512).optional(),
+    docker: z.string().min(1).max(256).optional(),
+    awui_path: z.string().min(1).max(4096).optional(),
+    inbound_policy: z.string().min(1).max(32).optional(),
+  })
+  .strict()
+  .superRefine((peer, ctx) => {
+    const ways = [peer.tls, peer.ssh, peer.docker].filter((value) => value !== undefined).length;
+    if (ways !== 1) ctx.addIssue({ code: "custom", path: ["tls"], message: "name exactly one of tls, ssh, or docker" });
+  });
+
+/** `mesh_peer_pair`: pins a key only when the six-digit SAS the person confirmed is the one this node derives. */
+export const meshPeerPairSchema = z
+  .object({ name: meshPeerName, sas: z.string().trim().regex(/^\d{3}\s?\d{3}$/, "must be six digits, as NNN NNN") })
+  .strict();
+
+/** `mesh_peer_sync_config`: which saved peers to move into config.yml; omitted means every saved one. */
+export const meshPeerSyncConfigSchema = z.object({ names: z.array(meshPeerName).max(64).optional() }).strict();
+
 /** One tool as the bridges register it: the name, the words the model reads, and JSON Schema for its arguments. */
 export interface OrchTool {
   name: string;
@@ -382,10 +413,53 @@ const DEFINED_TOOLS: OrchTool[] = [
     ),
   },
   {
+    name: "mesh_peer_add",
+    description:
+      "Add a machine to this node's mesh when the person asks (a VM, a laptop, a build box). " +
+      "The peer is saved in peers.json (and works after a restart); give exactly one way to reach it — tls host:port, ssh [user@]host, or docker <container>. " +
+      "This makes first contact only to read the machine's node id and six-digit SAS. It never pins a key by itself: compare the node id and SAS with `awui peer status` on that machine, " +
+      "have its owner accept this node, then call mesh_peer_pair with the SAS the person confirmed. Lead chats only.",
+    parameters: object(
+      {
+        name: stringProperty("The name this machine will be known by here (letters, digits, '.', '_', '-').", 64),
+        tls: stringProperty("A direct TLS listener, as host:port (the awui there must have mesh.listen set).", 512),
+        ssh: stringProperty("An SSH destination, as [user@]host; awui must be on that machine's PATH or awui_path set.", 512),
+        docker: stringProperty("A container name or id with awui inside it.", 256),
+        awui_path: stringProperty("Where awui lives on an ssh/docker peer, when it is not on PATH.", 4096),
+        inbound_policy: stringProperty("The policy that peer's own owner should accept this node under, if it should be suggested ad hoc.", 32),
+      },
+      ["name"],
+    ),
+  },
+  {
+    name: "mesh_peer_pair",
+    description:
+      "Pin a paired machine's key after a person compared the six-digit SAS on both machines. " +
+      "Pass the SAS the person confirmed; if this node derives a different one the pin is refused and the link closed, so a wrong machine can never be trusted silently. " +
+      "After pinning, the target's owner still runs `awui peer accept <this node> --policy <p>` there unless they already did. Lead chats only.",
+    parameters: object(
+      {
+        name: stringProperty("The peer's name, as added here.", 64),
+        sas: stringProperty("The six digits the person confirmed, e.g. \"123 456\".", 16),
+      },
+      ["name", "sas"],
+    ),
+  },
+  {
+    name: "mesh_peer_sync_config",
+    description:
+      "Move saved mesh peers into config.yml's mesh.peers when the person wants them in the file they version. " +
+      "Only a plain, writable config.yml whose mesh is already enabled is written (comments and key order are kept); a symlinked or module-rendered config.yml is refused and the peers stay in peers.json. " +
+      "A moved peer is removed from peers.json, so one machine has one entry. Lead chats only.",
+    parameters: object({
+      names: { type: "array", items: { type: "string", maxLength: 64 }, maxItems: 64, description: "The saved peers to move; omitted moves every saved peer." },
+    }),
+  },
+  {
     name: "list_profiles",
     description:
       "List the workers you can delegate to: this project's saved bot profiles and one entry per installed harness at its default model. " +
-      "Use it to pick a harness, model, and provider — a council picks distinct providers from this list.",
+      "Use it to pick a harness, model, and provider — a council picks distinct providers from this list. Mesh peers are named too; add one with mesh_peer_add.",
     parameters: object({ workspaceId: stringProperty("Project id to list for; defaults to this chat's project.") }),
   },
   {
@@ -432,8 +506,8 @@ Delegating
 - Call list_profiles before naming a harness or model. It also states your budget: delegation levels left, and how many more tasks may run at once (a finished task frees its slot). Read it there; don't work it out yourself.
 - After delegating, thread_wait blocks until the child finishes or asks a question. Never poll in a loop. task_status shows where your tasks stand, thread_read what a child said, thread_send continues it, task_cancel stops a run you no longer need.
 - plan_workers drafts a lead/worker plan for a person to confirm before any worker starts. resident_agent keeps one named chat to come back to.
-- delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers. peer_files reads or writes one utf8 file there (lead chats only).
 - delegate_task with peer + peerCwd runs the task on that paired machine's copy of the project (the peer's policy bounds it); list_profiles names the peers. peer_files reads or writes one utf8 file there (lead chats only). peer_handoff instead moves this chat's own work there: it snapshots the tree, uploads a bundle, and opens the task in an isolated worktree (lead chats only).
+- When the person asks to add a machine, mesh_peer_add saves it and reads its node id and SAS; never pin its key until they say the SAS matches on both machines (mesh_peer_pair). mesh_peer_sync_config moves saved peers into config.yml when that file is this server's to write.
 - As a delegated child, do the work yourself; start no further delegates unless your task says to.
 
 Talking to the person

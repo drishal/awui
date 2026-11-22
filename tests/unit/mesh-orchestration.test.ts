@@ -9,11 +9,13 @@
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
 import type { Agent } from "supertest";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { DelegatedTaskView, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { ServerHandshake } from "../../src/server/mesh/handshake.js";
 import { loadOrCreateIdentity, type NodeIdentity } from "../../src/server/mesh/identity.js";
 import { PeerManager } from "../../src/server/mesh/manager.js";
+import { PeerPeersStore } from "../../src/server/mesh/peer-store.js";
+import { syncPeersToConfig } from "../../src/server/mesh/config-edit.js";
 import { PinStore } from "../../src/server/mesh/pins.js";
 import { MeshErrorCode, MeshRpcError, RpcPeer } from "../../src/server/mesh/rpc.js";
 import { memoryLink, type PeerLink } from "../../src/server/mesh/transport.js";
@@ -275,6 +277,63 @@ describe("mesh orchestration", () => {
     const off = await setup(peersOf(manager, { enabled: () => false }));
     const bare = await call(off.agent, off.token, "list_profiles", {});
     expect(bare.body.text).not.toContain("Peers (mesh)");
+  });
+
+  it("adds a machine from a chat, pairs only on the confirmed SAS, and moves it into config.yml", async () => {
+    const worker = cannedWorker(await loadOrCreateIdentity(tempDir("awui-mesh-w-")));
+    const client = await loadOrCreateIdentity(tempDir("awui-mesh-c-"));
+    const pins = PinStore(path.join(tempDir("awui-mesh-pins-"), "pins.json"));
+    const saved = PeerPeersStore(path.join(tempDir("awui-mesh-saved-"), "mesh", "peers.json"));
+    const manager = new PeerManager({
+      identity: async () => client,
+      pins,
+      config: () => ({ enabled: true, peers: [] }),
+      enabled: () => true,
+      localName: () => "leader-box",
+      savedPeers: () => saved.snapshot(),
+      spawn: worker.spawn,
+    });
+    const configDir = tempDir("awui-mesh-cfg-");
+    const configFile = path.join(configDir, "config.yml");
+    writeFileSync(configFile, "mesh:\n  enabled: true\n  name: leader-box\n");
+    const { app, agent, token } = await setup({
+      ...peersOf(manager),
+      admin: {
+        saved,
+        localName: () => "leader-box",
+        syncConfig: (names?: string[]) => syncPeersToConfig(configDir, saved, names),
+      },
+    });
+
+    const added = await call(agent, token, "mesh_peer_add", { name: "newbox", ssh: "user@lab" });
+    expect(added.status).toBe(200);
+    expect((await saved.list()).map((peer) => peer.name)).toEqual(["newbox"]);
+    expect(added.body.text).toContain("Compare that SAS");
+    const sas = String(added.body.data.contact.sas);
+    // A wrong SAS pins nothing and closes the link.
+    const wrong = sas === "000 000" ? "000 001" : "000 000";
+    const mismatched = await call(agent, token, "mesh_peer_pair", { name: "newbox", sas: wrong });
+    expect(mismatched.status).toBe(409);
+    expect(mismatched.body.code).toBe("sas_mismatch");
+    expect(await pins.outbound("newbox")).toBeNull();
+    // The confirmed one pins the key.
+    const paired = await call(agent, token, "mesh_peer_pair", { name: "newbox", sas });
+    expect(paired.status).toBe(200);
+    expect(await pins.outbound("newbox")).not.toBeNull();
+    // Sync moves it to config.yml and out of peers.json.
+    const synced = await call(agent, token, "mesh_peer_sync_config", { names: ["newbox"] });
+    expect(synced.status).toBe(200);
+    expect(synced.body.data.moved).toEqual(["newbox"]);
+    expect(await saved.list()).toEqual([]);
+    expect(readFileSync(configFile, "utf8")).toContain("newbox");
+
+    // A delegated child may never add a machine, whatever mesh.chats says.
+    const caller = app.manager.list().find((chat) => chat.orchestration?.token === token);
+    if (!caller) throw new Error("no caller chat");
+    caller.lineage = { kind: "delegate", taskId: "t1", parentChatId: "p1", parentTitle: null, depth: 1 };
+    const child = await call(agent, token, "mesh_peer_add", { name: "otherbox", tls: "127.0.0.1:4785" });
+    expect(child.status).toBe(403);
+    expect(child.body.code).toBe("mesh_lead_only");
   });
 
   it("keeps ORCH_INSTRUCTIONS within the byte budget the harnesses impose", () => {
