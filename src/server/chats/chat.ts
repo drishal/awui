@@ -30,14 +30,15 @@ import type {
   SubagentRun,
   TodoItem,
   ToolItem,
+  ToolKind,
   WorkspaceInfo,
 } from "../../shared/protocol.js";
 import { MAX_CONTEXT_HISTORY } from "../../shared/protocol.js";
 import { promises as fs } from "node:fs";
-import { boundText, editShape, exitCodeOf, historyToItems, NO_RESULT_TEXT, stringifyArgs, toolCategory, toolKindOf, toolPaths, toolSummary } from "../harness/agent-events.js";
+import { boundText, categoryOf, editShape, exitCodeOf, historyToItems, NO_RESULT_TEXT, stringifyArgs, toolCategory, toolKindOf, toolPaths, toolSummary } from "../harness/agent-events.js";
 import { argsDiff, resultDiff } from "../harness/tool-diff.js";
 import { applyReports, detailReports, hasAgentCells, runsFromArgs, runsFromDetails, settleRuns, transcriptFile, transcriptRecords, type AgentReport } from "../harness/subagents.js";
-import { applyJobReports, jobsFromCall, mergeJob } from "../harness/jobs.js";
+import { applyJobReports, jobsFromCall, mergeCallJobs, mergeJob } from "../harness/jobs.js";
 import { htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "../harness/render-token.js";
 import { planFromArgs, planFromDetails } from "../harness/plans.js";
 import { toolFacts } from "../../shared/output-facts.js";
@@ -290,6 +291,8 @@ class EventReducer {
   private renderCalls = new Set<string>();
   /** Each running call's raw arguments: a background job's start is read from them with its result. */
   private toolArgs = new Map<string, unknown>();
+  /** The family an adapter declared for a running call, which its later frames must not overwrite. */
+  private toolKinds = new Map<string, ToolKind>();
   private counter = 0;
   /** This run's own prompt has echoed; a later user_message while the run goes is an interjection.
    *  The Chat resets it when a run starts (its setStatus). */
@@ -425,7 +428,8 @@ class EventReducer {
       }
       case "tool_start": {
         this.finishStreaming();
-        const category = toolCategory(event.name);
+        // A harness that says what the call is (ACP's kind, Codex's plan item) wins over its name.
+        const category = categoryOf(event.toolKind, event.name);
         // A write to a tool device (`write xd://render_html`) changes no file: no diff, no change count.
         const paths = toolPaths(event.args);
         const edits = (category === "edit" || category === "write") && paths.length > 0;
@@ -449,9 +453,10 @@ class EventReducer {
         };
         // The row family from what the call already says; a result that settles it (a test run's
         // summary, a job) is read again at the end.
-        tool.toolKind = toolKindOf(tool);
+        tool.toolKind = event.toolKind ?? toolKindOf(tool);
         if (isHtmlRenderCall(event.name, event.args)) this.renderCalls.add(event.toolCallId);
         this.toolArgs.set(event.toolCallId, event.args);
+        if (event.toolKind) this.toolKinds.set(event.toolCallId, event.toolKind);
         this.put(tool);
         break;
       }
@@ -466,7 +471,7 @@ class EventReducer {
         // A wait streams the jobs it waits on: their status, and omp's widget of their progress.
         const jobs = event.details !== undefined ? this.callJobs(item, event.details, event.keepOutput ? item.output : event.output) : null;
         const next: ToolItem = { ...item, ...(bounded ? { output: bounded.text, truncated: bounded.truncated } : {}), ...(runs ? { subagents: runs } : {}), ...(jobs ? { jobs } : {}) };
-        next.toolKind = toolKindOf(next);
+        next.toolKind = this.toolKinds.get(event.toolCallId) ?? toolKindOf(next);
         this.upsert(next);
         this.dirtyTools.add(item.id);
         this.scheduleFlush();
@@ -499,8 +504,10 @@ class EventReducer {
                 paths: [],
               };
         const edits = (base.category === "edit" || base.category === "write") && base.paths.length > 0;
-        // The harness's own diff beats the arguments' one; with neither, its output's own count.
-        const reported = edits ? resultDiff(event.details, event.output) : null;
+        // The harness's own diff beats the arguments' one; with neither, its output's own count. What an
+        // adapter states as `facts` is read first, and the `details` shape-sniffing stays the fallback.
+        const facts = event.facts;
+        const reported = edits ? (facts?.diff ?? resultDiff(event.details, event.output)) : null;
         const settled: ToolItem = { ...base, ...(!edits ? {} : reported ? editShape(reported, null) : base.diff ? {} : editShape(null, bounded.text)) };
         if (settled.category === "agent" || (event.details !== undefined && hasAgentCells(event.details))) {
           const runs = runsFromDetails(event.toolCallId, event.details, settled.subagents ?? null);
@@ -510,12 +517,16 @@ class EventReducer {
         const page = marked ? htmlRenderRef(event.details) ?? htmlRenderRef(marked.details) : undefined;
         // A failed edit keeps the diff it tried, but changed nothing to count.
         const { diffStat: _attempted, ...uncounted } = settled;
-        // A shell call's exit rides on the item when the harness reported one (OpenCode does).
-        const exitCode = settled.category === "command" ? exitCodeOf(event.details) : null;
-        const jobs = this.callJobs(base, event.details, event.output);
+        // A shell call's exit rides on the item when the harness reported one (OpenCode and Codex do).
+        const exitCode = settled.category === "command" ? (facts?.exitCode ?? exitCodeOf(event.details)) : null;
+        const jobs = facts?.jobs !== undefined ? mergeCallJobs(base.jobs, facts.jobs) : this.callJobs(base, event.details, event.output);
         // A harness that sends a plan as its own item (Codex's `plan`) hands it over in the result.
-        const plan = settled.plan === undefined ? planFromDetails(event.details) : null;
+        const plan = settled.plan === undefined ? (facts?.plan ?? planFromDetails(event.details)) : null;
+        // A list the result itself holds (Pi's todo details, ACP's plan entries) is the list, without a second ask.
+        const todos = facts?.todos;
+        const adapterKind = event.toolKind ?? this.toolKinds.get(event.toolCallId);
         this.toolArgs.delete(event.toolCallId);
+        this.toolKinds.delete(event.toolCallId);
         const done: ToolItem = {
           ...(event.isError ? uncounted : settled),
           output: bounded.text,
@@ -532,11 +543,12 @@ class EventReducer {
         // complete tally settles the family the call started as (a command that ran a test suite).
         const parsed = toolFacts(done);
         if (parsed.candidates) done.candidates = parsed.candidates;
-        done.toolKind = toolKindOf(done, parsed);
+        done.toolKind = adapterKind ?? toolKindOf(done, parsed);
         this.put(done);
         // A wait that saw a job end tells the call that started it too.
         if (jobs) this.applyJobReports(jobs.filter((j) => j.status !== "running"));
-        if (done.toolKind === "todo") this.fx.refreshTodos();
+        if (todos && todos.length > 0) this.fx.applyTodos(todos);
+        else if (done.toolKind === "todo") this.fx.refreshTodos();
         // A wait or a proc read reports on background runs another call started.
         const reports = detailReports(event.details);
         if (reports.length > 0) this.applyReports(reports);

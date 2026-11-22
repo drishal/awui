@@ -333,7 +333,7 @@ class AcpLiveChat implements LiveChat {
         this.assistantOpen = false;
         this.openTools.add(fold.toolCallId);
         this.toolInfo.set(fold.toolCallId, { name: fold.name, args: fold.args });
-        this.emit({ type: "tool_start", toolCallId: fold.toolCallId, name: fold.name, args: fold.args });
+        this.emit({ type: "tool_start", toolCallId: fold.toolCallId, name: fold.name, args: fold.args, ...(fold.toolKind ? { toolKind: fold.toolKind } : {}) });
         return;
       }
       case "tool_update":
@@ -342,7 +342,7 @@ class AcpLiveChat implements LiveChat {
       case "tool_end": {
         this.openTools.delete(fold.toolCallId);
         this.toolInfo.delete(fold.toolCallId);
-        this.emit({ type: "tool_end", toolCallId: fold.toolCallId, output: boundText(fold.output).text, isError: fold.isError, ...(fold.details ? { details: fold.details } : {}) });
+        this.emit({ type: "tool_end", toolCallId: fold.toolCallId, output: boundText(fold.output).text, isError: fold.isError, ...(fold.details ? { details: fold.details } : {}), ...(fold.facts ? { facts: fold.facts } : {}) });
         return;
       }
       case "context":

@@ -43,6 +43,8 @@ import {
 } from "./codex-transcript.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import { HTML_RENDER_MCP_SERVER, splitRenderMarker } from "./render-token.js";
+import { resultDiff } from "./tool-diff.js";
+import { planFromDetails } from "./plans.js";
 import { ORCH_MCP_SERVER, orchestrationInstructionsFor, renderHtmlMcpServer } from "./render-extension.js";
 import { codexLimits } from "./limits.js";
 import { versionLabel } from "./version.js";
@@ -636,7 +638,8 @@ class CodexLiveChat implements LiveChat {
       }
       case "plan": {
         if (!id) return;
-        this.emit({ type: "tool_start", toolCallId: id, name: "update_plan", args: {} });
+        // Codex says what the item is on the wire, so the adapter states it rather than the name map.
+        this.emit({ type: "tool_start", toolCallId: id, name: "update_plan", args: {}, toolKind: "plan" });
         return;
       }
       case "contextCompaction":
@@ -679,18 +682,24 @@ class CodexLiveChat implements LiveChat {
           output: str(item.aggregatedOutput),
           isError: status === "failed" || status === "declined" || (exitCode !== null && exitCode !== 0),
           details: { exit: exitCode },
+          ...(exitCode !== null ? { facts: { exitCode } } : {}),
         });
         return;
       }
       case "fileChange": {
         const status = str(item.status);
         const changes = Array.isArray(item.changes) ? item.changes : [];
+        const output = status === "completed" ? "Applied" : status === "declined" ? "Declined" : status === "failed" ? "The patch did not apply" : "";
+        // Each change carries its own patch text (`changes[].diff`): the adapter reads it here so the
+        // fold needs no shape-sniffing, and keeps `details` for anything not yet normalized.
+        const diff = resultDiff({ changes }, output);
         this.emit({
           type: "tool_end",
           toolCallId: id,
-          output: status === "completed" ? "Applied" : status === "declined" ? "Declined" : status === "failed" ? "The patch did not apply" : "",
+          output,
           isError: status === "failed" || status === "declined",
           details: { changes },
+          ...(diff ? { facts: { diff } } : {}),
         });
         return;
       }
@@ -722,10 +731,11 @@ class CodexLiveChat implements LiveChat {
         this.emit({ type: "tool_end", toolCallId: id, output: "", isError: false });
         return;
       case "plan": {
-        // Codex sends its plan as an item of its own, not as an argument: the fold reads it from the
-        // result so the row becomes the plan card instead of an empty `update_plan`.
+        // Codex sends its plan as an item of its own, not as an argument: the adapter hands its text
+        // over as facts, so the row is the plan card instead of an empty `update_plan`.
         const text = str(item.text);
-        this.emit({ type: "tool_end", toolCallId: id, output: text, isError: false, ...(text.trim() ? { details: { plan: text } } : {}) });
+        const plan = planFromDetails({ plan: text });
+        this.emit({ type: "tool_end", toolCallId: id, output: text, isError: false, toolKind: "plan", ...(text.trim() ? { details: { plan: text } } : {}), ...(plan ? { facts: { plan } } : {}) });
         return;
       }
       case "contextCompaction":

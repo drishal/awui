@@ -68,6 +68,8 @@ import {
   type PermissionModeInfo,
   type SlashCommand,
   type TodoItem,
+  type ToolKind,
+  type ToolResultFacts,
 } from "../../shared/protocol.js";
 import { commandOutputEvents, extensionMessage, forkCutIndex, historyToItems, isObj, piTodos, usageEntries } from "./agent-events.js";
 import { rememberImage } from "../image-store.js";
@@ -99,6 +101,10 @@ interface FakeCall {
   updateDetails?: Array<Record<string, unknown>>;
   /** The call failed: its result is an error. */
   isError?: boolean;
+  /** What the adapter states about the result, which the fold must prefer over `details`. */
+  facts?: ToolResultFacts;
+  /** What the adapter says the call is. */
+  toolKind?: ToolKind;
   /** Pictures in the result (a read of a screenshot), as Pi-family content blocks send them. */
   images?: Array<{ mimeType: string; data: string }>;
 }
@@ -779,6 +785,21 @@ class FakeLiveChat implements LiveChat {
       if (/\bmanycalls\b/i.test(text)) {
         for (let n = 1; n <= 12; n++) await this.call({ name: "read", args: { path: `src/part-${n}.ts` }, output: `// part ${n}` }, signal);
       }
+      if (/\bfacts\b/i.test(text)) {
+        // An adapter that states a result's facts, beside a `details` blob that disagrees with them:
+        // the fold reads the facts, and the blob only for what they do not cover.
+        await this.call(
+          {
+            name: "edit",
+            args: { path: "src/app.ts", old_string: "one", new_string: "two" },
+            output: "Edited src/app.ts (+1 -1)",
+            details: { changes: [{ path: "src/other.ts", kind: { type: "update" }, diff: "@@ -1 +1 @@\n-from details\n+the other file" }] },
+            facts: { diff: { lines: [{ kind: "del", text: "from details", line: 1 }, { kind: "add", text: "from facts", line: 1 }], added: 1, removed: 1 } },
+          },
+          signal,
+        );
+        await this.call({ name: "shell", args: { command: "npm test" }, output: "boom", details: { exit: 0 }, facts: { exitCode: 2 }, toolKind: "command" }, signal);
+      }
       if (/\bimagecall\b/i.test(text)) {
         // A read of a picture: Pi's read answers with a text line and an image block.
         await this.call(
@@ -1276,7 +1297,7 @@ class FakeLiveChat implements LiveChat {
       stopReason: "toolUse",
     });
     this.emit({ type: "assistant_end", text: "", thinking: "" });
-    this.emit({ type: "tool_start", toolCallId, name: call.name, args: call.args });
+    this.emit({ type: "tool_start", toolCallId, name: call.name, args: call.args, ...(call.toolKind ? { toolKind: call.toolKind } : {}) });
     await this.pause(signal, 2);
     for (const [i, output] of (call.updates ?? ["partial output…"]).entries()) {
       const details = call.updateDetails?.[i];
@@ -1295,7 +1316,7 @@ class FakeLiveChat implements LiveChat {
     });
     // A picture goes into the image store like any adapter's would; the event carries the reference, never the bytes.
     const refs = images.map((image) => rememberImage(image.mimeType, image.data)).filter((ref) => ref !== null);
-    this.emit({ type: "tool_end", toolCallId, output: call.output, isError: call.isError ?? false, ...(refs.length > 0 ? { images: refs } : {}), ...details });
+    this.emit({ type: "tool_end", toolCallId, output: call.output, isError: call.isError ?? false, ...(refs.length > 0 ? { images: refs } : {}), ...(call.facts ? { facts: call.facts } : {}), ...(call.toolKind ? { toolKind: call.toolKind } : {}), ...details });
   }
 
   /**

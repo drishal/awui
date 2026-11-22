@@ -2,7 +2,7 @@
 // updates.jsonl. The two paths share this so a resumed chat and a running one
 // cannot drift. Nothing here spawns a process or touches credentials.
 import path from "node:path";
-import type { ChatItem, TodoItem, ToolItem } from "../../shared/protocol.js";
+import type { ChatItem, TodoItem, ToolItem, ToolResultFacts } from "../../shared/protocol.js";
 import { boundText, editShape, isObj, stringifyArgs, toolCategory, toolPaths, toolSummary, type Obj } from "./agent-events.js";
 import { ORCH_MCP_SERVER } from "./render-extension.js";
 import { HTML_RENDER_MCP_SERVER, htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "./render-token.js";
@@ -161,7 +161,7 @@ export type GrokFold =
   | { type: "delta"; field: "text" | "thinking"; delta: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown; at: number }
   | { type: "tool_update"; toolCallId: string; output: string }
-  | { type: "tool_end"; toolCallId: string; output: string; isError: boolean; details?: unknown; at: number }
+  | { type: "tool_end"; toolCallId: string; output: string; isError: boolean; details?: unknown; facts?: ToolResultFacts; at: number }
   /** `turnEnded`: this usage came with `turn_completed`, the harness's end of a turn. */
   | { type: "usage"; usage: UsageFold; turnEnded?: boolean }
   /** ACP `usage_update`: the harness's own context occupancy, when it sends one. */
@@ -244,7 +244,10 @@ export function foldSessionUpdate(update: unknown, at: number): GrokFold {
         ...(pieces.diff ? { diff: unifiedDiff(pieces.diff.path, pieces.diff.oldText, pieces.diff.newText) } : {}),
         ...marked.details,
       };
-      return { type: "tool_end", toolCallId, output: marked.text, isError: status === "failed", ...(Object.keys(details).length > 0 ? { details } : {}), at };
+      // The diff a content block carried, as the facts the fold reads; `details` stays for the rest.
+      const diff = Object.keys(details).length > 0 ? resultDiff(details, marked.text) : null;
+      const facts: ToolResultFacts = diff ? { diff } : {};
+      return { type: "tool_end", toolCallId, output: marked.text, isError: status === "failed", ...(Object.keys(details).length > 0 ? { details } : {}), ...(Object.keys(facts).length > 0 ? { facts } : {}), at };
     }
     // Progress frames add locations and args and often no text; skip the empty ones.
     return output ? { type: "tool_update", toolCallId, output } : { type: "ignore" };

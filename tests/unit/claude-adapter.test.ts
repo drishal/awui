@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { ChatManager } from "../../src/server/chats/manager.js";
 import { ClaudeAdapter, liveClaudeChildren } from "../../src/server/harness/claude.js";
-import type { LiveChat } from "../../src/server/harness/types.js";
+import type { HarnessEvent, LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
 
@@ -240,12 +240,18 @@ describe("claude adapter (scripted CLI)", () => {
 
   it("keeps Claude Code's TodoWrite list as the chat's todos", async () => {
     const { chat, live } = await openChat();
+    const ends: Array<Extract<HarnessEvent, { type: "tool_end" }>> = [];
+    live.subscribe((event) => {
+      if (event.type === "tool_end") ends.push(event);
+    });
     await chat.send("todo list", "normal");
     await until(() => chat.status === "idle" && answered(chat, "claude says"));
     expect(await live.getTodos()).toEqual([
       { text: "Write tests", status: "in_progress" },
       { text: "Ship", status: "pending" },
     ]);
+    // The adapter states the list and the kind itself; the fold need not ask the CLI again.
+    expect(ends.at(-1)).toMatchObject({ toolKind: "todo", facts: { todos: [{ text: "Write tests", status: "in_progress" }, { text: "Ship", status: "pending" }] } });
   });
 
   it("changes model and effort for this session only", async () => {

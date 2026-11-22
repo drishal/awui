@@ -151,3 +151,25 @@ describe("a call's own times on the row", () => {
     expect((tool?.endedAt ?? 0) >= (tool?.at ?? 0)).toBe(true);
   });
 });
+
+describe("a result the adapter states as facts", () => {
+  it("is read instead of a details blob that disagrees with it", async () => {
+    t = await makeTestApp();
+    const agent = await signedIn(t);
+    const ws = (await agent.post("/api/workspaces/open").send({ path: t.project })).body as { id: string };
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    const live = () => (t as TestApp).manager.get(chat.chatId);
+
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "state the facts" });
+    await until(() => tools(live().snapshot()).length === 2);
+    await until(() => live().status === "idle");
+
+    const [edit, shell] = tools(live().snapshot());
+    // The facts' diff, not the one the conflicting `details.changes` would have given.
+    expect(edit?.diff?.lines.map((l) => l.text)).toEqual(["from details", "from facts"]);
+    expect(edit?.diffStat).toEqual({ added: 1, removed: 1 });
+    // The facts' exit code, not `details.exit`.
+    expect(shell?.exitCode).toBe(2);
+    expect(shell?.toolKind).toBe("command");
+  });
+});

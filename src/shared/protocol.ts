@@ -752,6 +752,20 @@ export interface ToolItem {
   endedAt?: number;
 }
 
+/**
+ * What a harness's result says, in the harness's own terms, normalized by its adapter: a shell
+ * call's exit, an edit's diff, a plan, a todo list, the jobs the call touched. The fold applies
+ * these in preference to shape-sniffing the raw `details` blob, which stays the fallback for a
+ * harness that has not been taught to state them yet.
+ */
+export interface ToolResultFacts {
+  exitCode?: number;
+  diff?: ToolDiff;
+  plan?: string;
+  todos?: TodoItem[];
+  jobs?: BackgroundJob[];
+}
+
 /** How a job's widget colours a part: the harness's words, mapped to theme tokens by the client. */
 export type JobTone = "success" | "error" | "warning" | "info" | "muted" | "accent";
 

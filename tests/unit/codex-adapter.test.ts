@@ -4,7 +4,7 @@ import { ORCH_INSTRUCTIONS } from "../../src/server/orchestration/tools.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { CodexAdapter, liveCodexChildren } from "../../src/server/harness/codex.js";
-import type { LiveChat } from "../../src/server/harness/types.js";
+import type { HarnessEvent, LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
 
@@ -166,6 +166,21 @@ describe("the codex adapter (scripted app-server)", () => {
     await chat.send("use the tool", "normal");
     await until(() => chat.status === "idle" && answered(chat, "Listed the folder."));
     expect(toolItem(chat)).toMatchObject({ name: "shell", category: "command", summary: "ls", output: "fake output\n", status: "done", exitCode: 0 });
+  });
+
+  it("states a result's facts beside its details: a command's exit, a change's diff", async () => {
+    const { live, chat } = await openChat();
+    const ends: Array<Extract<HarnessEvent, { type: "tool_end" }>> = [];
+    live.subscribe((event) => {
+      if (event.type === "tool_end") ends.push(event);
+    });
+    await chat.send("use the tool", "normal");
+    await until(() => chat.status === "idle" && answered(chat, "Listed the folder."));
+    expect(ends.at(-1)?.facts).toEqual({ exitCode: 0 });
+    await chat.send("diff the file", "normal");
+    const lastTool = () => chat.snapshot().items.filter((i) => i.kind === "tool").at(-1);
+    await until(() => chat.status === "idle" && lastTool()?.name === "apply_patch" && lastTool()?.status === "done");
+    expect(ends.at(-1)?.facts?.diff?.added).toBe(2);
   });
 
   it("turns Codex's command approval into a card and sends the decision back", async () => {

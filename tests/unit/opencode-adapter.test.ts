@@ -6,7 +6,7 @@ import { OpenCodeAdapter } from "../../src/server/harness/opencode.js";
 import { liveOpenCodeServers } from "../../src/server/harness/opencode-server.js";
 import { formQuestions, formValue, permissionCard, permissionReply, toModelInfo, transcriptOf, usageOf } from "../../src/server/harness/opencode-messages.js";
 import { historyToItems } from "../../src/server/harness/agent-events.js";
-import type { LiveChat } from "../../src/server/harness/types.js";
+import type { HarnessEvent, LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
 
@@ -197,9 +197,18 @@ describe("opencode adapter (scripted server)", () => {
 
   it("keeps OpenCode's todo list as the chat's todos", async () => {
     const { chat, live } = await openChat();
+    const ends: Array<Extract<HarnessEvent, { type: "tool_end" }>> = [];
+    live.subscribe((event) => {
+      if (event.type === "tool_end") ends.push(event);
+    });
     await chat.send("todo list", "normal");
     await until(() => chat.status === "idle" && answered(chat, "Echo: todo list"));
     expect(await live.getTodos()).toEqual([
+      { text: "write tests", status: "in_progress" },
+      { text: "ship", status: "pending" },
+    ]);
+    // The list the call wrote is stated on its result, so the chat's list needs no second read.
+    expect(ends.at(-1)?.facts?.todos).toEqual([
       { text: "write tests", status: "in_progress" },
       { text: "ship", status: "pending" },
     ]);

@@ -28,8 +28,12 @@ import {
   type QueueState,
   type SlashCommand,
   type TodoItem,
+  type ToolResultFacts,
 } from "../../shared/protocol.js";
 import { historyToItems, isObj, textOf, type Obj } from "./agent-events.js";
+import { resultDiff } from "./tool-diff.js";
+import { jobsFromCall } from "./jobs.js";
+import { planFromArgs } from "./plans.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
 import { foldJsonlFile, FoldStore, parseJsonlLine, readJsonlEntries, scanJsonlLines } from "./jsonl.js";
 import {
@@ -388,6 +392,8 @@ class ClaudeLiveChat implements LiveChat {
   private cache: { ttlMs: number; expiresAt: number; requestedAt: number } | null = null;
   /** can_use_tool requests the CLI withdrew; their late answers go nowhere. */
   private withdrawn = new Set<string>();
+  /** Each tool call as it was asked for: the result frame names only its id, and its facts need the call. */
+  private calls = new Map<string, { name: string; args: unknown }>();
   private compactWaiter: (() => void) | null = null;
 
   constructor(
@@ -576,7 +582,10 @@ class ClaudeLiveChat implements LiveChat {
     this.noteCache(step.start, step.startedAt);
     this.noteCache(step.end, step.startedAt);
     this.emit({ type: "assistant_end", text: step.text, thinking: step.thinking, usage });
-    for (const tool of step.tools) this.emit({ type: "tool_start", toolCallId: tool.id, name: tool.name, args: tool.input });
+    for (const tool of step.tools) {
+      this.calls.set(tool.id, { name: tool.name, args: tool.input });
+      this.emit({ type: "tool_start", toolCallId: tool.id, name: tool.name, args: tool.input });
+    }
   }
 
   /**
@@ -598,6 +607,7 @@ class ClaudeLiveChat implements LiveChat {
       if (tool.name === "TodoWrite" && isObj(tool.input)) this.todos = toTodos(tool.input.todos);
       if (this.step) this.step.tools.push(tool);
       else this.emit({ type: "tool_start", toolCallId: tool.id, name: tool.name, args: tool.input });
+      this.calls.set(tool.id, { name: tool.name, args: tool.input });
     }
   }
 
@@ -625,9 +635,39 @@ class ClaudeLiveChat implements LiveChat {
       const marked = splitRenderMarker(typeof content === "string" ? content : textOf(content));
       const output = marked.text;
       // The CLI's structured result (an edit's structuredPatch) belongs to the frame; it carries one result per frame.
-      const details = marked.details ? { details: marked.details } : results.length === 1 && frame.tool_use_result !== undefined ? { details: frame.tool_use_result } : {};
-      this.emit({ type: "tool_end", toolCallId: str(block.tool_use_id), output, isError: block.is_error === true, ...details });
+      const structured = marked.details ? marked.details : results.length === 1 ? frame.tool_use_result : undefined;
+      const details = structured !== undefined ? { details: structured } : {};
+      const id = str(block.tool_use_id);
+      const call = this.calls.get(id);
+      this.calls.delete(id);
+      const facts = this.callFacts(call, structured, output);
+      const toolKind = call?.name === "ExitPlanMode" || call?.name === "exit_plan_mode" ? "plan" : call?.name === "TodoWrite" ? "todo" : undefined;
+      this.emit({ type: "tool_end", toolCallId: id, output, isError: block.is_error === true, ...details, ...(facts ? { facts } : {}), ...(toolKind ? { toolKind } : {}) });
     }
+  }
+
+  /**
+   * What a result says, as facts the fold reads directly: its structuredPatch (or a Write's own
+   * content) as a diff, a backgrounded Bash as a job, an ExitPlanMode's plan, a TodoWrite's list.
+   * The raw `details` still goes along for the shapes only the fold reads.
+   */
+  private callFacts(call: { name: string; args: unknown } | undefined, structured: unknown, output: string): ToolResultFacts | undefined {
+    const facts: ToolResultFacts = {};
+    const diff = structured === undefined ? null : resultDiff(structured, output);
+    if (diff) facts.diff = diff;
+    if (call) {
+      const jobs = jobsFromCall(call.name, call.args, structured, output);
+      if (jobs) facts.jobs = jobs;
+      if (call.name === "ExitPlanMode" || call.name === "exit_plan_mode") {
+        const plan = planFromArgs(call.name, call.args);
+        if (plan) facts.plan = plan;
+      }
+      if (call.name === "TodoWrite" && isObj(call.args)) {
+        const todos = toTodos(call.args.todos);
+        if (todos.length > 0) facts.todos = todos;
+      }
+    }
+    return Object.keys(facts).length > 0 ? facts : undefined;
   }
 
   private onResult(frame: Obj): void {

@@ -18,6 +18,8 @@ import type {
   SlashCommand,
   SubagentRun,
   TodoItem,
+  ToolKind,
+  ToolResultFacts,
   OauthAccountChoice,
 } from "../../shared/protocol.js";
 
@@ -122,7 +124,7 @@ export type HarnessEvent =
   | { type: "assistant_start"; model?: string }
   | { type: "assistant_delta"; field: "text" | "thinking"; delta: string }
   | { type: "assistant_end"; text: string; thinking: string; error?: string; usage?: StepUsage }
-  | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
+  | { type: "tool_start"; toolCallId: string; name: string; args: unknown; /** What the harness itself says the call is (ACP's kind, Codex's plan item), when it says so at the start. */ toolKind?: ToolKind }
   | { type: "tool_update"; toolCallId: string; output: string; details?: unknown; /** Leave the call's own output alone. A subagent's report can arrive after that result is already on the row. */ keepOutput?: boolean }
   /** Background subagents reporting back (omp's async-result): which runs finished, and how. */
   | { type: "subagent_reports"; reports: AgentReport[] }
@@ -130,7 +132,20 @@ export type HarnessEvent =
   | { type: "job_reports"; jobs: BackgroundJob[] }
   /** A whole todo list the harness stated outside a tool call (an ACP agent's `plan` update, with its entries' statuses). */
   | { type: "todos"; todos: TodoItem[] }
-  | { type: "tool_end"; toolCallId: string; output: string; isError: boolean; /** The result's structured side (Pi/omp `details`, Claude Code's tool_use_result). */ details?: unknown; /** Pictures the result carried (a read of a screenshot), already in the image store. */ images?: ImageRef[] }
+  | {
+      type: "tool_end";
+      toolCallId: string;
+      output: string;
+      isError: boolean;
+      /** The result's structured side (Pi/omp `details`, Claude Code's tool_use_result): kept as the fallback for anything not yet normalized. */
+      details?: unknown;
+      /** What the result says, normalized by the adapter. The fold prefers it over `details`. */
+      facts?: ToolResultFacts;
+      /** What the harness says the call is, which wins over the name map. */
+      toolKind?: ToolKind;
+      /** Pictures the result carried (a read of a screenshot), already in the image store. */
+      images?: ImageRef[];
+    }
   | { type: "busy" }
   | { type: "settled" }
   | { type: "compacting"; active: boolean }

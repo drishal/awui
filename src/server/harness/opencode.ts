@@ -28,6 +28,7 @@ import {
   type SlashCommand,
   type SubagentRun,
   type TodoItem,
+  type ToolResultFacts,
 } from "../../shared/protocol.js";
 import { historyToItems, isObj, toolSummary, type Obj } from "./agent-events.js";
 import { isAgentTool } from "./subagents.js";
@@ -52,6 +53,7 @@ import {
   usageOf,
 } from "./opencode-messages.js";
 import { locationQuery, OpenCodeServer, type OpenCodeEvent } from "./opencode-server.js";
+import { resultDiff } from "./tool-diff.js";
 import { AWUI_DENY_RULE, deniesAwui, isAwuiRule, openCodeTools, sameRules, type OpenCodeRule, type OpenCodeTools } from "./opencode-tools.js";
 import { nodeForMcpServers, renderHtmlMcpServer } from "./render-extension.js";
 import { versionLabel } from "./version.js";
@@ -371,7 +373,8 @@ class OpenCodeChat implements LiveChat {
       case "session.tool.success":
       case "session.tool.failed": {
         const failed = event.type === "session.tool.failed";
-        const result = toolResult(d, failed, this.tools.get(str(d.id)) ?? "tool");
+        const name = this.tools.get(str(d.id)) ?? "tool";
+        const result = toolResult(d, failed, name);
         const delegation = this.delegations.get(str(d.id));
         let details = result.details;
         if (delegation) {
@@ -388,7 +391,22 @@ class OpenCodeChat implements LiveChat {
             if (child && known?.status !== "running") this.children.delete(child);
           }
         }
-        this.emit({ type: "tool_end", toolCallId: str(d.id), output: result.output, isError: result.isError, ...(details ? { details } : {}) });
+        // What the result says, as facts: OpenCode's `metadata.exit`, the files' patches as one diff,
+        // and the list a todo call just wrote (read from its input when it was called).
+        const facts: ToolResultFacts = {};
+        const exit = isObj(d.metadata) ? d.metadata.exit : undefined;
+        if (typeof exit === "number" && Number.isFinite(exit)) facts.exitCode = exit;
+        const diff = details === undefined ? null : resultDiff(details, result.output);
+        if (diff) facts.diff = diff;
+        if (/todo/i.test(name) && this.todos.length > 0) facts.todos = this.todos;
+        this.emit({
+          type: "tool_end",
+          toolCallId: str(d.id),
+          output: result.output,
+          isError: result.isError,
+          ...(details ? { details } : {}),
+          ...(Object.keys(facts).length > 0 ? { facts } : {}),
+        });
         return;
       }
       case "session.step.ended": {

@@ -398,7 +398,7 @@ class GrokLiveChat implements LiveChat {
       case "tool_end": {
         this.openTools.delete(fold.toolCallId);
         this.subagents.ingest(fold);
-        this.emit({ type: "tool_end", toolCallId: fold.toolCallId, output: boundText(fold.output).text, isError: fold.isError, ...(fold.details ? { details: fold.details } : {}) });
+        this.emit({ type: "tool_end", toolCallId: fold.toolCallId, output: boundText(fold.output).text, isError: fold.isError, ...(fold.details ? { details: fold.details } : {}), ...(fold.facts ? { facts: fold.facts } : {}) });
         return;
       }
       case "subagent": {

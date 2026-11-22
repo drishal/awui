@@ -49,6 +49,7 @@ import {
   type GatewayVerdict,
 } from "./hermes-gateway.js";
 import { CanonicalChatLink } from "./hermes-canonical.js";
+import { resultDiff } from "./tool-diff.js";
 import { versionLabel } from "./version.js";
 import { EventHub } from "./event-hub.js";
 import type {
@@ -868,16 +869,22 @@ class HermesLiveChat implements LiveChat {
         break;
       }
       case "tool.complete": {
+        const output = toolOutput(p.result_text ?? p.result ?? p.summary);
+        // Hermes' gateway answers with text only; a JSON result may still carry a unified diff.
+        const diff = resultDiff(undefined, output);
         this.emit({
           type: "tool_end",
           toolCallId: str(p.tool_id) || randomUUID(),
-          output: toolOutput(p.result_text ?? p.result ?? p.summary),
+          output,
           isError: p.is_error === true || (isObj(p.result) && p.result.is_error === true),
+          ...(diff ? { facts: { diff } } : {}),
         });
         break;
       }
       case "todo.updated":
         this.todos = toTodos(p.todos);
+        // The list the agent just wrote is the chat's list: the status stack need not ask again.
+        if (this.todos.length > 0) this.emit({ type: "todos", todos: this.todos });
         break;
       case "session.info":
         this.applyInfo(p);

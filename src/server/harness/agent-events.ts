@@ -1,7 +1,7 @@
 // Normalization for Pi-family agent events and transcript messages. omp is a
 // Pi fork and emits the same shapes over RPC, so both adapters share this.
 // Inputs are untyped on purpose: SDK and wire types never leave the adapters.
-import { MAX_IMAGES, type BackgroundJob, type ChatItem, type TodoItem, type ToolCategory, type ToolDiff, type ToolItem, type ToolKind } from "../../shared/protocol.js";
+import { MAX_IMAGES, type BackgroundJob, type ChatItem, type TodoItem, type ToolCategory, type ToolDiff, type ToolItem, type ToolKind, type ToolResultFacts } from "../../shared/protocol.js";
 import { awuiOpenCodeFamily } from "../../shared/awui-mcp.js";
 // The output sniffers and the row words are pure modules every client shares; the row
 // family is read from the same places so no client re-derives them.
@@ -174,6 +174,17 @@ export function toolCategory(name: string): ToolCategory {
   return "other";
 }
 
+const CATEGORY_KINDS: readonly string[] = ["read", "edit", "write", "command", "search", "web", "agent", "other"];
+
+/**
+ * A call's category: what the adapter said the call is, when it said a plain category (ACP's
+ * `execute`, `edit`, `search`…), else what its name says. A family kind (a plan, a test run,
+ * an MCP server) says nothing about the category, so the name still answers.
+ */
+export function categoryOf(kind: ToolKind | undefined, name: string): ToolCategory {
+  return kind !== undefined && CATEGORY_KINDS.includes(kind) ? (kind as ToolCategory) : toolCategory(name);
+}
+
 const MCP_NAME = /^mcp__(.+?)__/;
 
 /** The MCP server whose tool a name is: Claude Code's and Codex's `mcp__<server>__<tool>`, or awui's own per-chat servers on OpenCode. */
@@ -197,6 +208,18 @@ export function jobSurfaceOf(name: string, args?: unknown): JobSurface | null {
   if (name === "Bash" && isObj(args) && args.run_in_background === true) return "background";
   if (name === "TaskStop") return "stop";
   return null;
+}
+
+/**
+ * What a Pi-family call is where the harness's own name says so, so the adapter states it instead of
+ * leaving it to the fold's name map: a page it published, a question, a todo list, a job surface.
+ */
+export function piToolKind(name: string, args: unknown): ToolKind | undefined {
+  if (isHtmlRenderCall(name, args)) return "render";
+  if (name === "ask") return "ask";
+  if (/^todo$/i.test(name)) return "todo";
+  if (jobSurfaceOf(name, args) !== null) return "job";
+  return undefined;
 }
 
 /** Everything a call's row family is decided from: its name and arguments, and what its result holds so far. */
@@ -321,6 +344,27 @@ export function todoPhaseItems(phases: unknown): TodoItem[] {
   return out.slice(0, 100);
 }
 
+/** The todo list a Pi-family `todo` result's details hold, in any of the three shapes it comes in. */
+export function todoItemsFromDetails(details: unknown): TodoItem[] {
+  if (!isObj(details)) return [];
+  if (Array.isArray(details.phases)) return todoPhaseItems(details.phases);
+  // Pi's example todo extension: `{todos: [{text, done}]}`.
+  if (Array.isArray(details.todos)) {
+    return details.todos
+      .filter(isObj)
+      .map((t) => ({ text: String(t.text ?? "").slice(0, 500), status: t.done === true ? "completed" : "pending" }))
+      .slice(0, 100);
+  }
+  // rpiv-todo (`todo` with an `action`): the whole numbered list, tombstones included.
+  if (Array.isArray(details.tasks)) {
+    return (details.tasks as unknown[])
+      .filter(isObj)
+      .flatMap((t): TodoItem[] => (t.status === "deleted" || typeof t.subject !== "string" ? [] : [{ text: t.subject.slice(0, 500), status: String(t.status ?? "pending") }]))
+      .slice(0, 100);
+  }
+  return [];
+}
+
 /**
  * The list a Pi todo extension holds: its newest successful `todo` result's
  * details, which carry the whole list after every op (the extension rebuilds
@@ -330,21 +374,8 @@ export function piTodos(messages: unknown[]): TodoItem[] {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (!isObj(m) || m.role !== "toolResult" || m.toolName !== "todo" || m.isError === true || !isObj(m.details)) continue;
-    if (Array.isArray(m.details.phases)) return todoPhaseItems(m.details.phases);
-    // Pi's example todo extension: `{todos: [{text, done}]}`.
-    if (Array.isArray(m.details.todos)) {
-      return m.details.todos
-        .filter(isObj)
-        .map((t) => ({ text: String(t.text ?? "").slice(0, 500), status: t.done === true ? "completed" : "pending" }))
-        .slice(0, 100);
-    }
-    // rpiv-todo (`todo` with an `action`): the whole numbered list, tombstones included.
-    if (Array.isArray(m.details.tasks)) {
-      return (m.details.tasks as unknown[])
-        .filter(isObj)
-        .flatMap((t): TodoItem[] => (t.status === "deleted" || typeof t.subject !== "string" ? [] : [{ text: t.subject.slice(0, 500), status: String(t.status ?? "pending") }]))
-        .slice(0, 100);
-    }
+    const todos = todoItemsFromDetails(m.details);
+    if (todos.length > 0) return todos;
   }
   return [];
 }
@@ -553,15 +584,19 @@ export function normalizeAgentEvent(event: unknown, settledType: string): Harnes
       const usage = stepUsage(message.usage);
       return [{ type: "assistant_end", text, thinking, ...(error ? { error } : {}), ...(usage ? { usage } : {}) }];
     }
-    case "tool_execution_start":
+    case "tool_execution_start": {
+      const name = String(event.toolName ?? "tool");
+      const toolKind = piToolKind(name, event.args);
       return [
         {
           type: "tool_start",
           toolCallId: String(event.toolCallId),
-          name: String(event.toolName ?? "tool"),
+          name,
           args: event.args,
+          ...(toolKind ? { toolKind } : {}),
         },
       ];
+    }
     case "tool_execution_update":
       return [
         {
@@ -575,13 +610,28 @@ export function normalizeAgentEvent(event: unknown, settledType: string): Harnes
       // A read of a picture answers with an image block; the picture is kept here so the row can show it,
       // and the browser still only ever sees an id (/api/images/<id>).
       const images = isObj(event.result) ? imageRefs(event.result.content).slice(0, MAX_IMAGES) : [];
+      const name = String(event.toolName ?? "tool");
+      const output = toolResultText(event.result);
+      const details = isObj(event.result) ? event.result.details : undefined;
+      // Pi hands the structured side over as `details`; the adapter says what it holds as facts, and
+      // keeps the blob too for the shapes only the fold reads (subagent cells, a page's reference).
+      const facts: ToolResultFacts = {};
+      const diff = details === undefined ? null : resultDiff(details, output);
+      if (diff) facts.diff = diff;
+      const todos = todoItemsFromDetails(details);
+      if (todos.length > 0) facts.todos = todos;
+      const jobs = jobsFromCall(name, event.args, details, output);
+      if (jobs) facts.jobs = jobs;
+      const toolKind = piToolKind(name, event.args);
       return [
         {
           type: "tool_end",
           toolCallId: String(event.toolCallId),
-          output: toolResultText(event.result),
+          output,
           isError: event.isError === true,
-          ...(isObj(event.result) && event.result.details !== undefined ? { details: event.result.details } : {}),
+          ...(details !== undefined ? { details } : {}),
+          ...(Object.keys(facts).length > 0 ? { facts } : {}),
+          ...(toolKind ? { toolKind } : {}),
           ...(images.length > 0 ? { images } : {}),
         },
       ];

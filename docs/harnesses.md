@@ -147,7 +147,10 @@ nothing else. The order the reducer (`chats/chat.ts`) expects:
 session(nativeId)                     as soon as the harness names its session
 busy                                  a run started
 assistant_start → assistant_delta* → assistant_end   per model message (text and thinking)
-tool_start → tool_update* → tool_end  per tool call; details carry structured results (diffs)
+tool_start → tool_update* → tool_end  per tool call; facts carry the result's own say
+                                      (exitCode, diff, plan, todos, jobs) and toolKind what the
+                                      harness calls it; details remain the fallback for anything
+                                      not yet normalized
 request / request_cancelled           approvals and questions (answered through LiveChat.answer)
 config, title, queue, notice, extension_status, limits, compacting   whenever they change
 settled                               only when the agent says the run is over

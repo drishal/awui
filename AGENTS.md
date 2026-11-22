@@ -123,7 +123,8 @@ src/server/
   harness/opencode-tools.ts   awui's render and orchestration MCP servers registered per chat on the shared server, and the session rules that scope them.
   harness/awui.ts              The Awui chat harness: a read-only `pi` child (subclass), own agent dir, write/exec tools denied; loads render_html + eval_python, not rewind. Web-only; its Settings can link the user's pi login into that dir (awui-settings.ts).
   awui-settings.ts             The Awui harness's provider settings: edit its isolated agent dir's models.json (keys never echoed; pi-shaped fields survive saves), plus the opt-in that links the user's pi auth.json in and seeds Pi's providers once.
-  harness/agent-events.ts     Pi-family event and transcript normalization (Pi and omp share it); historyToItems.
+  harness/agent-events.ts     Pi-family event and transcript normalization (Pi and omp share it), what a Pi
+                              result says as facts, and the one row-family classifier (`toolKindOf`); historyToItems.
   harness/session-files.ts    Pi/omp session JSONL: active branch by parentId, fork and seed writers.
   harness/claude-sessions.ts  Claude Code's session files.
   harness/jsonl.ts            Streaming JSONL reads (never a whole session as one string) and `foldJsonlFile`: a listing's metadata folded once, then resumed from the saved byte offset as the append-only file grows; `FoldStore` keeps that progress in the state folder (`fold-<name>.json`) so a restart only stats each file.
@@ -489,11 +490,16 @@ harness: they draw what the adapter declares (atui's optional mark and spinner
 aside).
 
 **A new tool rendering.** Tool calls arrive as `ToolItem` (category from
-`toolCategory()` in agent-events.ts). Structured extras (a diff, subagent runs)
-are worked out server-side from `tool_start` args and `tool_end` details and put
-on the item; the web (`ToolBody.tsx`, `Conversation.tsx`) and atui
-(`neat.ts`, `transcript.tsx`) only draw them. Handle the live path (chat.ts)
-and history (`historyToItems`) both.
+`toolCategory()`, or from the adapter's own `toolKind` when it states one).
+Structured extras (a diff, subagent runs) are put on the item server-side: an
+adapter states what its result says as `facts` (exitCode, diff, plan, todos,
+jobs) on `tool_end`, and the fold reads those first, falling back to
+shape-sniffing `details` for what no adapter states yet. The web (`ToolBody.tsx`,
+`Conversation.tsx`) and atui (`neat.ts`, `transcript.tsx`) only draw them. A
+result's output facts (a test tally, a compiler error) come from
+`shared/output-facts.ts`, once per settled call, and their `candidates` are the
+proposals a later decision may choose among. Handle the live path (chat.ts) and
+history (`historyToItems`) both.
 
 **A new setting.** Add it to `user-config.ts` (schema), `config.ts` (effective
 value), `settings.ts` (read/write, and whether it needs a restart),

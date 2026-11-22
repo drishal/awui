@@ -6,7 +6,7 @@
 // ACP is a shared vocabulary, not one app's: an agent may send a variant this
 // client does not know, so an unknown kind is a fold ("unknown") the chat notes
 // once, never a crash.
-import type { ChatItem, SlashCommand, TodoItem, ToolCategory, ToolItem } from "../../shared/protocol.js";
+import type { ChatItem, SlashCommand, TodoItem, ToolCategory, ToolItem, ToolResultFacts } from "../../shared/protocol.js";
 import { boundText, editShape, isObj, stringifyArgs, toolCategory, toolPaths, toolSummary, type Obj } from "./agent-events.js";
 import { resultDiff, unifiedDiff } from "./tool-diff.js";
 
@@ -59,6 +59,14 @@ export function categoryOfKind(kind: unknown, name: string): ToolCategory {
   }
 }
 
+/** ACP's kinds that are a category a row draws; `think`, `switch_mode` and `other` say nothing. */
+const CATEGORY_KINDS = new Set(["read", "edit", "delete", "move", "search", "execute", "fetch"]);
+
+/** What ACP says the call is, when it says a category: passed to the fold so the name is not sniffed. */
+export function toolKindOfAcp(kind: unknown, name: string): ToolCategory | undefined {
+  return typeof kind === "string" && CATEGORY_KINDS.has(kind) ? categoryOfKind(kind, name) : undefined;
+}
+
 interface DiffPiece {
   path: string;
   oldText: string;
@@ -99,9 +107,9 @@ function toolName(update: Obj): string {
 export type AcpFold =
   | { type: "user"; text: string; at: number }
   | { type: "delta"; field: "text" | "thinking"; delta: string }
-  | { type: "tool_start"; toolCallId: string; name: string; args: unknown; category: ToolCategory; paths: string[]; at: number }
+  | { type: "tool_start"; toolCallId: string; name: string; args: unknown; category: ToolCategory; paths: string[]; toolKind?: ToolCategory; at: number }
   | { type: "tool_update"; toolCallId: string; output: string }
-  | { type: "tool_end"; toolCallId: string; output: string; isError: boolean; details?: unknown; at: number }
+  | { type: "tool_end"; toolCallId: string; output: string; isError: boolean; details?: unknown; facts?: ToolResultFacts; at: number }
   /** `usage_update`: the occupancy and cumulative cost the agent reports, when it reports one. */
   | { type: "context"; used: number; size: number; costUsd: number | null }
   | { type: "config"; options: unknown }
@@ -176,7 +184,10 @@ export function foldAcpUpdate(update: unknown, at: number): AcpFold {
     const name = toolName(update);
     const args = update.rawInput ?? {};
     const paths = locationPaths(update);
-    return { type: "tool_start", toolCallId, name, args, category: categoryOfKind(update.kind, name), paths, at };
+    const category = categoryOfKind(update.kind, name);
+    // ACP says what the call is (`read`, `execute`, …), so the chat need not read the name for it.
+    const toolKind = toolKindOfAcp(update.kind, name);
+    return { type: "tool_start", toolCallId, name, args, category, paths, ...(toolKind ? { toolKind } : {}), at };
   }
   if (kind === "tool_call_update") {
     const toolCallId = str(update.toolCallId) || "tool";
@@ -185,7 +196,9 @@ export function foldAcpUpdate(update: unknown, at: number): AcpFold {
     const output = pieces.text || str(update.rawOutput);
     if (status === "completed" || status === "failed") {
       const details = pieces.diff ? { diff: unifiedDiff(pieces.diff.path, pieces.diff.oldText, pieces.diff.newText) } : undefined;
-      return { type: "tool_end", toolCallId, output, isError: status === "failed", ...(details ? { details } : {}), at };
+      const diff = details ? resultDiff(details, output) : null;
+      const facts: ToolResultFacts = diff ? { diff } : {};
+      return { type: "tool_end", toolCallId, output, isError: status === "failed", ...(details ? { details } : {}), ...(Object.keys(facts).length > 0 ? { facts } : {}), at };
     }
     // Progress frames add locations and args and often no text; skip the empty ones.
     return output ? { type: "tool_update", toolCallId, output } : { type: "ignore" };
@@ -229,6 +242,7 @@ function toolItem(fold: Extract<AcpFold, { type: "tool_start" }>): ToolItem {
     output: "",
     truncated: false,
     category: fold.category,
+    ...(fold.toolKind ? { toolKind: fold.toolKind } : {}),
     summary: toolSummary(fold.args, fold.name),
     paths,
     ...(edits ? editShape(null, null) : {}),

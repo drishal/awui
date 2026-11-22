@@ -233,6 +233,17 @@ export function mergeJob(prior: BackgroundJob, report: BackgroundJob): Backgroun
   return { ...prior, ...report, label };
 }
 
+/**
+ * A call's jobs from the adapter's own facts: the reported fields win, but a label or a title
+ * the call already knew stays (an adapter reading its result alone may not repeat them).
+ */
+export function mergeCallJobs(prior: BackgroundJob[] | undefined, reported: BackgroundJob[]): BackgroundJob[] {
+  return reported.map((job) => {
+    const known = prior?.find((p) => p.id === job.id);
+    return known ? mergeJob(known, job) : job;
+  });
+}
+
 /** Apply reports to a call's jobs; null when none of them is this call's. */
 export function applyJobReports(jobs: BackgroundJob[], reports: BackgroundJob[], at: number | undefined): BackgroundJob[] | null {
   let changed = false;

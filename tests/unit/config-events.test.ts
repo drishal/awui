@@ -106,6 +106,31 @@ describe("agent event normalization", () => {
     ]);
   });
 
+  it("states what a Pi-family result holds as facts, and what its own name says as the kind", () => {
+    // An edit's unified diff, a todo call's phases, and a backgrounded bash's job: each is a fact the
+    // adapter hands over, so the fold need not shape-sniff the details blob.
+    const [edit] = normalizeAgentEvent(
+      { type: "tool_execution_end", toolCallId: "a", toolName: "edit", result: { content: [{ type: "text", text: "Edited src/a.ts" }], details: { diff: "--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-one\n+two" } }, isError: false },
+      "x",
+    );
+    expect(edit).toMatchObject({ type: "tool_end", facts: { diff: { added: 1, removed: 1 } } });
+    const [todo] = normalizeAgentEvent(
+      { type: "tool_execution_end", toolCallId: "b", toolName: "todo", result: { content: [{ type: "text", text: "2 todos" }], details: { phases: [{ name: "P", tasks: [{ content: "read", status: "completed" }, { content: "write", status: "pending" }] }] } }, isError: false },
+      "x",
+    );
+    expect(todo).toMatchObject({ type: "tool_end", toolKind: "todo", facts: { todos: [{ text: "read", status: "completed", phase: "P" }, { text: "write", status: "pending", phase: "P" }] } });
+    const [job] = normalizeAgentEvent(
+      { type: "tool_execution_end", toolCallId: "c", toolName: "bash", args: { command: "npm run e2e", i: "Running the suite" }, result: { content: [{ type: "text", text: "Backgrounded as job bg_1" }], details: { async: { state: "running", jobId: "bg_1", type: "bash" } } }, isError: false },
+      "x",
+    );
+    expect(job).toMatchObject({ type: "tool_end", facts: { jobs: [{ id: "bg_1", kind: "shell", status: "running", title: "Running the suite" }] } });
+    // The start says what the harness already knows: a todo call, a question.
+    expect(normalizeAgentEvent({ type: "tool_execution_start", toolCallId: "d", toolName: "todo", args: {} }, "x")).toEqual([{ type: "tool_start", toolCallId: "d", name: "todo", args: {}, toolKind: "todo" }]);
+    expect(normalizeAgentEvent({ type: "tool_execution_start", toolCallId: "f", toolName: "ask", args: {} }, "x")).toEqual([{ type: "tool_start", toolCallId: "f", name: "ask", args: {}, toolKind: "ask" }]);
+    // A plain read is not a family: the name map still decides, and nothing is claimed here.
+    expect(normalizeAgentEvent({ type: "tool_execution_start", toolCallId: "g", toolName: "read", args: { path: "a.ts" } }, "x")).toEqual([{ type: "tool_start", toolCallId: "g", name: "read", args: { path: "a.ts" } }]);
+  });
+
   it("rebuilds the active branch with tool results attached", () => {
     const items = historyToItems([
       { role: "user", content: "hi" },

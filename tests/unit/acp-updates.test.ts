@@ -27,7 +27,10 @@ describe("foldAcpUpdate", () => {
         rawInput: { path: "/tmp/a.txt" },
         locations: [{ path: "/tmp/a.txt", line: 3 }],
       }),
-    ).toEqual({ type: "tool_start", toolCallId: "call-1", name: "read_file", args: { path: "/tmp/a.txt" }, category: "read", paths: ["/tmp/a.txt"], at: 1_700_000_000_000 });
+    ).toEqual({ type: "tool_start", toolCallId: "call-1", name: "read_file", args: { path: "/tmp/a.txt" }, category: "read", paths: ["/tmp/a.txt"], toolKind: "read", at: 1_700_000_000_000 });
+    // A kind that is not a category (`think`) says nothing, so the name still answers.
+    expect(fold({ sessionUpdate: "tool_call", toolCallId: "c2", name: "grep", kind: "think" })).toMatchObject({ category: "search" });
+    expect((fold({ sessionUpdate: "tool_call", toolCallId: "c3", name: "grep", kind: "think" }) as { toolKind?: string }).toolKind).toBeUndefined();
     expect(categoryOfKind("execute", "anything")).toBe("command");
     expect(categoryOfKind("fetch", "anything")).toBe("web");
     expect(categoryOfKind(undefined, "grep")).toBe("search");
@@ -46,6 +49,10 @@ describe("foldAcpUpdate", () => {
     const details = (ended as Extract<AcpFold, { type: "tool_end" }>).details as { diff: string };
     expect(details.diff).toContain("-one");
     expect(details.diff).toContain("+two");
+    // The same diff is stated as facts, which the fold reads instead of the blob.
+    const facts = (ended as Extract<AcpFold, { type: "tool_end" }>).facts;
+    expect(facts?.diff?.lines.map((l) => `${l.kind} ${l.text}`)).toContain("add two");
+    expect(facts?.diff?.added).toBe(1);
     // An update with no text and no status is progress noise, not an event.
     expect(fold({ sessionUpdate: "tool_call_update", toolCallId: "call-2", locations: [{ path: "/a" }] })).toEqual({ type: "ignore" });
     expect(fold({ sessionUpdate: "tool_call_update", toolCallId: "call-2", status: "failed", content: [{ type: "content", content: { type: "text", text: "boom" } }] })).toMatchObject({ type: "tool_end", output: "boom", isError: true });
