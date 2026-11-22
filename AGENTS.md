@@ -48,7 +48,7 @@ Match the task to a guide before opening code:
 | `npm run typecheck` | Four projects: server, web, tests, atui. **Run it before every commit.** |
 | `npm test` | Vitest: `tests/unit/**` (and `tests/smoke/**`, which skips itself unless `SMOKE=1`). |
 | `npm run test:e2e` | Build, then Playwright (`tests/e2e`) against the built server with fake harnesses on port 4791. ~12 min. |
-| `npm run test:e2e:fast` | The same suite as two shards at once (`scripts/e2e-parallel.mjs`): one server per shard, on ports 4801 and 4811, output in `test-results/shard-N`. ~6 min. A spec that starts its own server (remote-login) takes the suite's port plus one and two. |
+| `npm run test:e2e:fast` | The same suite as four shards at once (`scripts/e2e-parallel.mjs`): one server per shard, on ports 4801, 4811, 4821 and 4831 (`AWUI_E2E_PORT_A`…`D`), output in `test-results/shard-N`. ~5 min on an 8-core box. A spec that starts its own server (remote-login) takes the suite's port plus one and two. |
 | `npm run test:atui` | Build, then `bun test tests/atui` (atui in OpenTUI's test renderer, and the Tern client against a stand-in Tern, both against a real server). |
 | `npm run desktop` | The optional desktop app from a checkout (`apps/desktop`, after `npm ci` there). It attaches to a running server or starts one; `npm run smoke` in that folder drives it under Playwright (needs a display or Xvfb). |
 | `awui doctor [--json]` | Checks config.yml, Node/Bun, each harness, workspace roots, the state folder's mode, the port, remote sign-in, herdr; prints ✓/!/✗ lines, exit 1 on a ✗ (`src/server/doctor.ts`). |

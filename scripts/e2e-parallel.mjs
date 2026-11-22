@@ -1,15 +1,17 @@
-// The e2e suite in two halves at once, for the loops that wait on it: one Playwright
+// The e2e suite in four parts at once, for the loops that wait on it: one Playwright
 // run per shard, each with its own port (globalSetup starts a server per run), its own
 // temp state root, and its own output dir, since a run clears its output dir at start
-// and two sharing one would erase each other's traces. Both streams are prefixed, and
-// the exit is non-zero if either shard fails. Build first (`npm run test:e2e:fast`
-// does): both shards serve the same dist.
+// and two sharing one would erase each other's traces. Every stream is prefixed, and
+// the exit is non-zero if any shard fails. Build first (`npm run test:e2e:fast`
+// does): all four shards serve the same dist.
 import { spawn } from "node:child_process";
 
 // Ten apart: a shard's own spec may start a server on the next ports (remote-login does), so leave room.
 const shards = [
   { n: 1, port: process.env.AWUI_E2E_PORT_A || "4801" },
   { n: 2, port: process.env.AWUI_E2E_PORT_B || "4811" },
+  { n: 3, port: process.env.AWUI_E2E_PORT_C || "4821" },
+  { n: 4, port: process.env.AWUI_E2E_PORT_D || "4831" },
 ];
 
 const children = shards.map(({ n, port }) => {
@@ -17,7 +19,7 @@ const children = shards.map(({ n, port }) => {
     env: { ...process.env, AWUI_E2E_PORT: port },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  // A line at a time, tagged, so the two shards read as one stream.
+  // A line at a time, tagged, so the four shards read as one stream.
   const tag = `[${n}] `;
   for (const stream of [child.stdout, child.stderr]) {
     let rest = "";
@@ -41,7 +43,7 @@ await Promise.all(children.map(({ child }) => new Promise((done) => child.on("cl
 const failed = children.filter((s) => s.code !== 0);
 console.log(
   failed.length === 0
-    ? `\ne2e: both shards passed (ports ${children.map((s) => s.port).join(", ")})`
+    ? `\ne2e: all ${children.length} shards passed (ports ${children.map((s) => s.port).join(", ")})`
     : `\ne2e: shard${failed.length > 1 ? "s" : ""} ${failed.map((s) => `${s.n} (port ${s.port})`).join(", ")} failed`,
 );
 process.exit(failed.length === 0 ? 0 : 1);

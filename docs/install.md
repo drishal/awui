@@ -71,7 +71,7 @@ then restart. Other devices get a sign-in form; this machine still opens directl
 | `npm run typecheck` | Strict TypeScript for server, web, tests, and atui (four projects) |
 | `npm test` | Vitest integration plus scripts; `tests/smoke` opts itself out unless `SMOKE=1`. No model tokens by default. |
 | `npm run test:e2e` | Builds, then runs Playwright (Chromium) against the fake harnesses (roughly 12 min, depends on host load) |
-| `npm run test:e2e:fast` | The same suite in two shards with distinct ports and state folders (roughly 6 min under similar load) |
+| `npm run test:e2e:fast` | The same suite in four shards with distinct ports, state folders and output dirs (about 5 min on an 8-core box) |
 | `npm run smoke` | Opt-in checks against the real installed Pi, omp, Hermes, Claude Code, Grok Build, and DeepSeek Harness (see [Testing](testing.md)) |
 | `npm run build` / `npm start` | Production build, then a single process serving UI and API |
 | `npm run build:binary` / `npm run build:desktop` | Compile into `dist/bin/<platform>`. `build:desktop` carries the packaged AppImage. It refreshes a stale or missing shell from source automatically, reuses a source-matched AppImage otherwise, and pins the build toolchain if needed. `--electron` forces repackaging before append. Run inside devenv shell. |
