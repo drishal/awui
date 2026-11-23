@@ -27,6 +27,8 @@ export function sidebarRows(overview: SessionsOverview, opts: GroupOptions, fold
   const rows: SidebarRow[] = [];
   for (const [id, label] of [["needs", "Needs you"], ["working", "Working"], ["pinned", "Pinned"]] as const) {
     const sessions = sections[id];
+    // An empty group is not drawn: the web's sidebar shows Needs you, Working and Pinned only when they hold rows.
+    if (sessions.length === 0) continue;
     rows.push({ kind: "section", id, label, count: sessions.length });
     if (folded.has(`shut:${id}`) && !folded.has(`open:${id}`)) continue;
     for (const s of sessions) {

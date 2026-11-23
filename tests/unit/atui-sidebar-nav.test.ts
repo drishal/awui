@@ -17,8 +17,9 @@ const overview: SessionsOverview = {
 };
 const opts = { currentId: "alpha", query: "", harnessId: "fake", isActive: () => false, now: 0 };
 const occurrences = (rs: ReturnType<typeof sidebarRows>, id: string, where: "needs" | "project") => {
-  const firstWorking = rs.findIndex((row) => row.kind === "section" && row.id === "working");
-  return rs.filter((row) => row.kind === "session" && row.s.id === id && (where === "needs" ? rs.indexOf(row) < firstWorking : rs.indexOf(row) > firstWorking)).length;
+  // An empty group is not drawn, so the project rows' start is the boundary: what is before the first project row is a global group.
+  const firstProject = rs.findIndex((row) => row.kind === "project");
+  return rs.filter((row) => row.kind === "session" && row.s.id === id && (where === "needs" ? rs.indexOf(row) < firstProject : rs.indexOf(row) > firstProject)).length;
 };
 
 describe("atui sidebar navigation", () => {

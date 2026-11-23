@@ -166,8 +166,10 @@ export function Sidebar(p: {
   // Right of the title: the other project's name when the row is not this one's, then the age. The asking
   // mark is the row's own `▲`; a blank or a second "!" here only pushed the title off its budget.
   const meta = (row: Extract<SidebarRow, { kind: "session" }>) => `${row.project ? `${clip(row.project, 10)} ` : ""}${age(row.s.updatedAt)}`;
+  // Tabs are plain padded labels: a one-row box with side borders drew bare pipes between them, and the
+  // underline under the strip says which one is open.
   const Tab = (q: { id: SidebarTab; label: string }) => (
-    <box flexShrink={0} border={["left", "right"]} borderColor={p.tab === q.id ? t().accent : t().border} onMouseDown={() => q.id === "sessions" ? (p.tab === "sessions" ? p.onCollapse() : p.onTab("sessions")) : p.onTab(q.id)}>
+    <box flexShrink={0} onMouseDown={() => q.id === "sessions" ? (p.tab === "sessions" ? p.onCollapse() : p.onTab("sessions")) : p.onTab(q.id)}>
       <text selectable={false} fg={p.tab === q.id ? t().accent : t().muted}>
         {p.tab === q.id ? <b>{` ${q.label} `}</b> : ` ${q.label} `}
       </text>
@@ -178,23 +180,23 @@ export function Sidebar(p: {
     <box flexDirection="column" width={p.width} flexShrink={0} border={["right"]} borderColor={t().border} paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" flexShrink={0}>
         <Tab id="sessions" label="Sessions" />
-        <text selectable={false} fg={t().border}>{" │ "}</text><Tab id="info" label="Info" />
+        <text selectable={false}>{"  "}</text><Tab id="info" label="Info" />
         <box flexGrow={1} />
-        <box border={["left", "right"]} borderColor={t().border} onMouseDown={p.onTerminal}>
+        <box onMouseDown={p.onTerminal}>
           <text selectable={false} fg={t().accent}>{" >_ "}</text>
         </box>
       </box>
       <text selectable={false} flexShrink={0} wrapMode="none">
-        <span style={{ fg: p.tab === "sessions" ? t().accent : t().border }}>{"━".repeat("Sessions".length)}</span>
-        <span style={{ fg: t().border }}>{"━━━"}</span>
-        <span style={{ fg: p.tab === "info" ? t().accent : t().border }}>{"━".repeat("Info".length)}</span>
-        <span style={{ fg: t().border }}>{"━".repeat(Math.max(0, p.width - 19))}</span>
+        <span style={{ fg: p.tab === "sessions" ? t().accent : t().border }}>{"━".repeat("Sessions".length + 2)}</span>
+        <span style={{ fg: t().border }}>{"━━"}</span>
+        <span style={{ fg: p.tab === "info" ? t().accent : t().border }}>{"━".repeat("Info".length + 2)}</span>
+        <span style={{ fg: t().border }}>{"━".repeat(Math.max(0, p.width - 22))}</span>
       </text>
       <Show when={p.tab === "sessions"} fallback={<><InfoBody width={p.width} /><text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "Tab sessions · Esc back" : `${leader("i", p.vim ? "vim" : "emacs")} info`}</text></>}>
         <box flexDirection="row" marginTop={1} paddingLeft={1} backgroundColor={t().surface2} onMouseDown={() => { app.newChat(); p.onOpened(); }}>
           <text selectable={false} fg={t().accent}>+</text><text selectable={false} fg={t().text}>{" New chat"}</text><box flexGrow={1} /><text selectable={false} fg={t().muted}>{`${app.harness()?.displayName ?? ""} `}</text>
         </box>
-        <box border={["left", "right"]} borderColor={t().border} marginTop={1} onMouseDown={p.onProject}>
+        <box backgroundColor={t().surface} marginTop={1} onMouseDown={p.onProject}>
           <text selectable={false} wrapMode="none">
             <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{` ${monogram(app.workspace()?.name ?? "")} `}</span>
             <span style={{ fg: t().muted }}>{` ${clipPath(app.workspace()?.path ?? "no project", Math.max(6, width() - 8))} `}</span>

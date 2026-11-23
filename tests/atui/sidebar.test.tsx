@@ -23,8 +23,10 @@ describe("atui projects", () => {
       ui = await mount(path.join(server.root, "alpha"), { width: 160, height: 38, base: server.base });
       await ui.until("alpha session 8");
       expect(await ui.frame()).toContain("alpha session 1");
-      expect(await ui.frame()).not.toContain("beta session 1");
-      expect(await ui.frame()).toContain("beta");
+      // Beta is a folded project: its one session shows only where it is working (the global Working group), never listed under the project.
+      const first = await ui.frame();
+      expect(first.split("beta session 1").length - 1).toBeLessThanOrEqual(1);
+      expect(first).toContain("beta");
       // C-x s focuses projects, not just a flat session list.
       ui.keys.pressKey("x", { ctrl: true });
       ui.keys.pressKey("s");
