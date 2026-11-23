@@ -165,6 +165,13 @@ async function runTurn(text) {
     await new Promise((r) => setTimeout(r, 150));
     event("tool.complete", { tool_id: "t-retitled", name: "terminal", result: "a\nb" }, sessionId);
   }
+  if (/\bvitest\b/.test(text)) {
+    // The gateway's bounded_result: a terminal's structured result travels as a JSON string, so
+    // the vitest summary sits inside `output`, behind an envelope no line splitter can see.
+    const output = "\n RUN  v5.0.3 /tmp/awui-rich-projects/hermes\n\n\n Test Files  1 passed (1)\n      Tests  8 passed (8)\n   Start at  02:30:56\n   Duration  262ms (transform 77%, tests 12%, import 9%, worker 4%)\n";
+    event("tool.start", { tool_id: "t-vitest", name: "terminal", args: { command: "npx vitest run tests/unit/normalizer-redact.test.ts" } });
+    event("tool.complete", { tool_id: "t-vitest", name: "terminal", result: JSON.stringify({ output, exit_code: 0, error: null }) });
+  }
   if (/\btool\b|\bbig\b/.test(text)) {
     const big = /\bbig\b/.test(text);
     event("tool.start", { tool_id: "t1", name: "read", args: { path: "README.md" } });

@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { HermesAdapter, hermesModelKey, liveHermesLinks, promptNamesThisChat, splitReasoningBlock, unwrapUntrustedToolResult } from "../../src/server/harness/hermes.js";
 import type { HarnessEvent, LiveChat } from "../../src/server/harness/types.js";
-import type { WorkspaceInfo } from "../../src/shared/protocol.js";
+import type { ToolItem, WorkspaceInfo } from "../../src/shared/protocol.js";
+import { toolSentence } from "../../src/shared/tool-row.js";
 import { tempDir } from "../helpers/app.js";
 
 const script = path.join(import.meta.dirname, "..", "fixtures", "fake-hermes.mjs");
@@ -114,6 +115,18 @@ describe("hermes adapter (scripted gateway)", () => {
     expect(tool).toMatchObject({ name: "read", status: "done", category: "read", summary: "README.md" });
     expect(tool && tool.kind === "tool" && tool.output).toContain("file.txt");
   });
+  it("reads a test run's summary through the terminal's JSON result", async () => {
+    // The gateway sends a structured terminal result as a JSON string: its vitest summary is
+    // inside `output`, so reading the envelope as text would count one line and miss the tally.
+    const { chat } = await openChat();
+    await chat.send("run vitest please", "normal");
+    await until(() => chat.status === "idle");
+    const tool = chat.snapshot().items.find((i): i is ToolItem => i.kind === "tool");
+    expect(tool).toMatchObject({ name: "terminal", category: "command", toolKind: "test", status: "done" });
+    expect(tool?.output).toContain("Tests  8 passed (8)");
+    expect(toolSentence(tool as ToolItem, project).facts).toEqual(["8 passed"]);
+  });
+
 
   it("reads stored tool rows back as tool output, not the row's JSON", async () => {
     const { chat, live } = await openChat();

@@ -446,14 +446,43 @@ export function unwrapUntrustedToolResult(text: string): string {
   return out;
 }
 
+/**
+ * A structured result the gateway serialized as a JSON string (its `bounded_result`):
+ * a terminal's `{output, exit_code}` or a read's `{content}`. Only an object that
+ * names one of those fields is read as one, so a tool that answers with arbitrary
+ * JSON keeps its own text.
+ */
+function resultEnvelope(text: string): Obj | undefined {
+  const t = text.trimStart();
+  if (!t.startsWith("{")) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(t);
+  } catch {
+    return undefined;
+  }
+  if (!isObj(parsed)) return undefined;
+  return typeof parsed.output === "string" || parsed.content !== undefined || parsed._multimodal === true || typeof parsed.text_summary === "string" ? parsed : undefined;
+}
+
 /** Tool output as hermes stores it: a string, a `{content: […]}` block list, or JSON. */
 function toolOutput(result: unknown): string {
-  if (typeof result === "string") return unwrapUntrustedToolResult(result);
+  if (typeof result === "string") {
+    // A JSON envelope is the result's wrapper, not its output: a terminal's yield rides in
+    // `output` and a read's file in `content`, so read the field instead of the one-line JSON.
+    const envelope = resultEnvelope(result);
+    if (envelope !== undefined) return toolOutput(envelope);
+    return unwrapUntrustedToolResult(result);
+  }
   if (Array.isArray(result)) return unwrapUntrustedToolResult(result.map((part) => (isObj(part) ? str(part.text) : String(part))).join("\n"));
   if (isObj(result)) {
     const content = result.content;
     if (Array.isArray(content)) return unwrapUntrustedToolResult(content.map((part) => (isObj(part) ? str(part.text) : String(part))).join("\n"));
     if (typeof content === "string") return unwrapUntrustedToolResult(content);
+    // `terminal` and `process_manage` put the command's output beside its exit code, and an
+    // empty output with an error says why in the error.
+    const output = result.output ?? result.text_summary;
+    if (typeof output === "string") return unwrapUntrustedToolResult(output || str(result.error));
     return unwrapUntrustedToolResult(JSON.stringify(result, null, 2));
   }
   if (result !== undefined && result !== null) return unwrapUntrustedToolResult(String(result));
