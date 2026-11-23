@@ -1,6 +1,5 @@
 /* The active work context rail, outside the file/split/work panels it describes.
-   Collapsed it is a 40px rail of icon controls and the chat's name running down
-   it. Expanded it is a column of soft cards: one summary of the project and the
+   Collapsed it is a 40px rail of icon controls and a live-state indicator. Expanded it is a column of soft cards: one summary of the project and the
    chat, then one card per group of rows. The cards are --surface on the panel's
    --card so they read as fore-ground, and every row uses the same three columns
    (icon, text, status/action) so a run, a job and a comment look alike. */
@@ -59,7 +58,7 @@
   white-space: nowrap;
 }
 
-/* ---- the collapsed rail: fold control, two jumps, then the chat's name ---- */
+/* ---- the collapsed rail: fold control, two jumps, then live state ---- */
 .context-rails { display: grid; gap: 4px; }
 .context-rail-button {
   position: relative;
@@ -93,7 +92,6 @@
   text-align: center;
 }
 .context-rail-foot { display: flex; flex: 1; min-height: 0; align-items: center; justify-content: center; gap: 8px; padding-bottom: 6px; }
-.context-vertical-title { max-height: 36vh; overflow: hidden; color: var(--muted-text); font-size: 11px; letter-spacing: 0.02em; text-overflow: ellipsis; writing-mode: vertical-rl; }
 .context-live-grow { width: 3px; height: 20px; background: var(--hairline-strong); border-radius: 4px; }
 .context-live-grow.is-on { background: var(--warn); }
 

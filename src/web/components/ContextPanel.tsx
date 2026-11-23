@@ -219,6 +219,6 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
         <button type="button" className="context-rail-button" title="Project comparisons and races" aria-label="Inspect project races" onClick={() => { if (inWorkspace.length === 0) { onRace(null); return; } onOpen(); if (!open.races) toggle("races"); }}><IconSplit size={16} />{numberOfRaces > 0 ? <span className="context-rail-badge">{numberOfRaces > 9 ? "9+" : numberOfRaces}</span> : null}</button>
       </div> : null}
     </div>
-    {expanded ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot"><span className="context-vertical-title">{plainTitle(chat.title || chat.harnessId)}</span><span className={`context-live-grow${running || hasQuestions ? " is-on" : ""}`} /></div>}
+    {expanded ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot"><span className={`context-live-grow${running || hasQuestions ? " is-on" : ""}`} /></div>}
   </aside>;
 }
