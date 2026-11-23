@@ -95,10 +95,10 @@ describe("atui rows, neat-render's way", () => {
 
   it("words a thought as its time and size, and rolls a live one with its newest line", () => {
     const thought = (over: Partial<AssistantItem>): AssistantItem => ({ kind: "assistant", id: "a", text: "", thinking: "x".repeat(560), streaming: false, ...over });
-    expect(thinkingMeta(thought({ at: 1000, endedAt: 3100 }))).toBe("2.1s ~140 tokens");
+    expect(thinkingMeta(thought({ at: 1000, endedAt: 3100 }))).toBe("2.1s · ~140 tokens");
     // Under a quarter second the time says nothing.
     expect(thinkingMeta(thought({ at: 1000, endedAt: 1100 }))).toBe("~140 tokens");
-    expect(thinkingMeta(thought({ at: 1000, streaming: true }), 4000)).toBe("3.0s ~140 tokens");
+    expect(thinkingMeta(thought({ at: 1000, streaming: true }), 4000)).toBe("3.0s · ~140 tokens");
     expect(latestThoughtLine("First idea.\n\n> - then the second\n")).toBe("then the second");
   });
 

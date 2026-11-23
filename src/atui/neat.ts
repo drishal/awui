@@ -248,10 +248,10 @@ export function workRuns<T>(rows: T[], callOf: (row: T) => ToolItem | null): Wor
   return out;
 }
 
-/** "2.1s ~140 tokens": how long a thought took (once it was long enough to say) and how big it is. */
+/** "2.1s · ~140 tokens": how long a thought took (once it was long enough to say) and how big it is. */
 export function thinkingMeta(item: AssistantItem, now = Date.now()): string {
   const ms = item.at !== undefined ? (item.endedAt ?? (item.streaming ? now : undefined) ?? item.at) - item.at : 0;
-  return [ms >= 250 ? durationLabel(ms) : "", `~${thoughtTokens(item.thinking)} tokens`].filter(Boolean).join(" ");
+  return [ms >= 250 ? durationLabel(ms) : "", `~${thoughtTokens(item.thinking)} tokens`].filter(Boolean).join(" · ");
 }
 
 /**
