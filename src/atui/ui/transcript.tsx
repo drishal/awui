@@ -290,7 +290,7 @@ function Thought(p: { item: AssistantItem; open: boolean; onToggle: () => void }
     <box flexDirection="column">
       <box onMouseDown={p.onToggle}>
         <text selectable={false} wrapMode="none" truncate>
-        <span style={{ fg: live() && pulseOn() ? t().warn : t().muted }}>{live() && pulseOn() ? "◆ " : "◇ "}</span>
+        <Show when={live()}><span style={{ fg: t().warn }}>{pulseOn() ? "◆ " : "  "}</span></Show>
         <span style={{ fg: p.open ? t().thinking : t().muted }}>{p.open ? "▾ " : "▸ "}</span>
         <span style={{ fg: t().thinking }}>Thinking</span>
         <span style={{ fg: t().muted }}>{` ${meta()}`}</span>
