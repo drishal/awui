@@ -760,12 +760,14 @@ function Request(p: { item: RequestItem }) {
   const t = useTheme();
   const denied = () => /Denied|Cancelled|Dismissed/.test(p.item.outcome ?? "");
   return (
-    // A question still open is drawn by the card under the transcript, which is what asks for you: the row is its quiet record, not a second alarm.
+    // A question still open is drawn by the card under the transcript (and the header says "Waiting for you"): the row appears once it is answered, as its record.
+    <Show when={p.item.outcome}>
     <text selectable={false} fg={denied() ? t().warn : t().muted} wrapMode="word">
       {p.item.outcome ? (denied() ? "✗ " : "✓ ") : "? "}
       <span style={{ fg: t().text2 }}>{clip(p.item.request.title, 80)}</span>
       <span style={{ fg: t().muted }}>{` → ${p.item.outcome ?? "waiting for you"}`}</span>
     </text>
+    </Show>
   );
 }
 
