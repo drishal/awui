@@ -55,6 +55,21 @@ import { buildTurns, turnOfTool } from "../../web/turns.js";
 
 type Dialog = "palette" | "models" | "harness" | "thinking" | "history" | "run" | null;
 
+/**
+ * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
+ * forty actions under one "Actions" word gave no way to scan it. An id not named here is "More".
+ */
+const PALETTE_GROUPS: Record<string, string> = {
+  new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", sessions: "Chats",
+  retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", "put-back": "Chats", quote: "Chats",
+  stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
+  model: "Agent", thinking: "Agent", "refresh-models": "Agent", harness: "Agent",
+  sidebar: "View", panel: "View", work: "View", thoughts: "View", keybinds: "View", glass: "View",
+  git: "Project", github: "Project",
+};
+/** The headings' order; Tabs, Sessions and the thinking levels keep their own and follow. */
+const PALETTE_ORDER = ["Chats", "Tabs", "Agent", "View", "Project", "More"];
+
 const TWICE_MS = 1200;
 /** A session that opens within this shows at once; one that takes longer gets the ghost thread meanwhile. */
 const GHOST_AFTER_MS = 50;
@@ -550,7 +565,7 @@ export function App(p: {
     const keys = actionKeys(keybinds());
     const name = (id: string) => boot?.harnesses.find((h) => h.id === id)?.displayName ?? id;
     const idle = c ? c.status === "idle" || c.status === "error" : true;
-    const add = (item: Omit<PaletteItem, "section"> & { section?: string }) => items.push({ section: "Actions", ...item });
+    const add = (item: Omit<PaletteItem, "section"> & { section?: string }) => items.push({ section: PALETTE_GROUPS[item.id] ?? (item.id.startsWith("width:") ? "View" : "More"), ...item });
     add({ id: "new", label: "New chat", hint: leader("n", keybinds()), run: () => runLeader("n") });
     add({ id: "new-tab", label: "New chat in a new tab", hint: leader("a", keybinds()), run: () => runLeader("a") });
     const open = app.tabs();
@@ -634,7 +649,9 @@ export function App(p: {
         items.push({ id: `t:${level}`, section: "Thinking", label: `Thinking: ${level}`, searchOnly: true, current: level === c.config.thinkingLevel, disabled: idle ? undefined : "Wait until the agent is idle", run: () => void app.configure({ thinkingLevel: level }) });
       }
     }
-    return items;
+    // Stable by heading, so each group is one run and the heading prints once.
+    const place = (section: string) => { const at = PALETTE_ORDER.indexOf(section); return at < 0 ? PALETTE_ORDER.length : at; };
+    return items.map((item, at) => ({ item, at })).sort((a, b) => place(a.item.section) - place(b.item.section) || a.at - b.at).map((x) => x.item);
   };
 
   /** The models to offer: the chat's own list, else the start screen's catalog (which the first message's chat starts on). */
@@ -856,7 +873,7 @@ export function App(p: {
             >
               <box flexDirection="column" flexGrow={1}>
                 <Show when={dialog() === "palette"}>
-                  <Picker title="Commands" placeholder="Search commands, sessions, thinking…" items={paletteItems()} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Commands" placeholder="Search commands, sessions, thinking…" items={paletteItems()} onClose={() => setDialog(null)} firstHeading side={room()} />
                 </Show>
                 <Show when={dialog() === "models"}>
                   <Picker title="Model" placeholder="Search models…" items={modelItems()} onClose={() => setDialog(null)} side={room()} />

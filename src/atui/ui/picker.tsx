@@ -51,8 +51,14 @@ export function Picker(p: {
     () => (previewing() ? shown()[active()] : undefined),
     (item) => p.preview?.(item) ?? null,
   );
-  const height = () => Math.min(22, size().height - 4);
-  const visible = () => height() - 4;
+  // The box fits its list: a handful of rows, or "Nothing matches", is not a frame of eighteen empty ones. A preview keeps the tall box.
+  const rowsNeeded = () => {
+    const list = shown();
+    const headings = query().trim() ? 0 : list.filter((item, at) => (at === 0 ? Boolean(p.firstHeading) : list[at - 1]?.section !== item.section)).length;
+    return Math.max(1, list.length) + headings;
+  };
+  const height = () => Math.min(previewing() ? 22 : Math.max(8, rowsNeeded() + 5), 22, size().height - 4);
+  const visible = () => height() - 5;
   const offset = () => Math.max(0, Math.min(active() - Math.floor(visible() / 2), shown().length - visible()));
 
   const move = (step: number) => {
@@ -109,7 +115,13 @@ export function Picker(p: {
         <b>{p.title}</b>
         <span style={{ fg: t().muted }}>{"   ↑↓ Enter · Esc"}</span>
       </text>
-      <input focused placeholder={p.placeholder} textColor={t().text} backgroundColor={t().surface} focusedBackgroundColor={t().surface} onInput={(value: string) => setQuery(value)} />
+      <box flexDirection="row" flexShrink={0}>
+        <text fg={t().accent} flexShrink={0}>{"› "}</text>
+        <input focused flexGrow={1} placeholder={p.placeholder} textColor={t().text} backgroundColor={t().surface} focusedBackgroundColor={t().surface} onInput={(value: string) => setQuery(value)} />
+        <Show when={query().trim()}>
+          <text fg={t().muted} flexShrink={0}>{shown().length === 1 ? "1 match" : `${shown().length} matches`}</text>
+        </Show>
+      </box>
       <box flexDirection="row" flexGrow={1} marginTop={1}>
         <box flexDirection="column" width={listWidth()} flexShrink={0}>
           <For each={shown().slice(offset(), offset() + visible())}>
@@ -118,8 +130,8 @@ export function Picker(p: {
               const head = () => at() === 0 || shown()[at() - 1]?.section !== item.section;
               return (
                 <box flexDirection="column">
-                  <Show when={head() && (i() > 0 || p.firstHeading)}>
-                    <text fg={t().muted}>{item.section}</text>
+                  <Show when={!query().trim() && head() && (i() > 0 || p.firstHeading)}>
+                    <text fg={t().muted}><b>{item.section}</b></text>
                   </Show>
                   <box flexDirection="row" backgroundColor={at() === active() ? t().selection : undefined} onMouseDown={() => run(item)}>
                     <text flexGrow={1} fg={item.disabled ? t().muted : at() === active() ? t().text : t().text2} wrapMode="none" truncate>
@@ -129,7 +141,7 @@ export function Picker(p: {
                       </Index>
                     </text>
                     <Show when={item.hint}>
-                      <text flexShrink={0} fg={t().muted}>{` ${clip(item.hint ?? "", 18)}`}</text>
+                      <text flexShrink={0} fg={t().muted}>{` ${clip(item.hint ?? "", listWidth() >= 60 ? 28 : 18)}`}</text>
                     </Show>
                   </box>
                 </box>
