@@ -789,7 +789,7 @@ export function App(p: {
       id: `timing:${row.id}`,
       section,
       label: `${"  ".repeat(row.depth)}${row.label}${row.slowest ? "  ⚑ slowest" : ""}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
-      hint: `${atLabel(row.start)} +${atLabel(row.end - row.start)}`,
+      hint: `at ${atLabel(row.start)} · took ${atLabel(row.end - row.start)}`,
       run: () => {},
     }));
   };
@@ -812,7 +812,7 @@ export function App(p: {
       row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
       ...(share === null ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
       ...days,
-      ...r.byHarness.map((h) => row("By harness", h.harnessId, `${words(h.totals)} · ${h.sessions} chats`)),
+      ...r.byHarness.map((h) => row("By harness", `${h.harnessId} · ${h.sessions} ${h.sessions === 1 ? "chat" : "chats"}`, words(h.totals))),
       ...r.byModel.slice(0, 8).map((m) => row("By model", m.model, words(m.totals))),
       ...r.top.slice(0, 8).map((x) => row("Most used chats", x.session.title || x.session.id, words(x.totals))),
     ];
@@ -899,7 +899,7 @@ export function App(p: {
 
   // A dialog takes the conversation's place rather than drawing over it: OpenTUI paints a bordered box's own body
   // after a sibling overlay, so a floating picker lets the cards behind it through.
-  const sheet = () => dialog() !== null || reviewing() || app.undoTurn() !== null || running() !== null || delegated() !== null || rail() || board() || gitting() || hubbing() || shell();
+  const sheet = () => reviewing() || app.undoTurn() !== null || running() !== null || delegated() !== null || rail() || board() || gitting() || hubbing() || shell();
   /** What the side panel leaves of the screen for a sheet. */
   const room = () => (sidebar() ? sideWidth() : RAIL_WIDTH);
 
@@ -935,7 +935,10 @@ export function App(p: {
                   <text selectable={false} flexShrink={0}>
                     <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{`${harnessGlyph(c().harnessId)} ${app.harness()?.displayName ?? c().harnessId}`}</span>
                     {"  "}
-                    <Show when={isBusy(c().status)} fallback={<span style={{ fg: c().status === "error" ? t().danger : t().muted }}>{STATUS_LABEL[c().status]}</span>}>
+                    <Show when={c().pending.length > 0}>
+                      <span style={{ fg: t().warn }}>Waiting for you</span>
+                    </Show>
+                    <Show when={c().pending.length === 0 && isBusy(c().status)} fallback={c().pending.length > 0 ? null : <span style={{ fg: c().status === "error" ? t().danger : t().muted }}>{STATUS_LABEL[c().status]}</span>}>
                       <Shimmer text={STATUS_LABEL[c().status]} base={t().accent} glow={t().text} />
                     </Show>
                     <span style={{ fg: t().muted }}>{`  ${c().workspace.name}`}</span>
@@ -977,30 +980,9 @@ export function App(p: {
                     )}
                   </Show>
                   <Toasts />
-                  <Show
-                    when={pending()}
-                    keyed
-                    fallback={
-                      <Composer
-                        status={{ mode: keybinds() === "vim" ? (normal() ? "normal" : "insert") : null, leader: leaderOn() ? leaderPrefix(keybinds()) : null, note: hint() }}
-                        focused={focus() === "composer" && !dialog() && !normal() && app.undoTurn() === null && !reviewing() && !running()}
-                        compactChoice={compactChoice()}
-                        onCompactChoice={setCompactChoice}
-                        onPick={setDialog}
-                        onGit={() => { setGitting(true); void app.openGit(); }}
-                        onContext={() => setRail(true)}
-                        column={column()}
-                        keybinds={keybinds()}
-                        ref={(el) => (composer = el)}
-                      />
-                    }
-                  >
-                    {(request) => <RequestCard request={request} more={(app.chat()?.pending.length ?? 1) - 1} active={focus() === "composer" && !dialog()} column={column()} />}
-                  </Show>
-                </box>
-              }
-            >
-              <box flexDirection="column" flexGrow={1}>
+                  {/* A picker floats over the chat (the transcript stays drawn behind it) rather than taking its place. */}
+                  <Show when={dialog() !== null}>
+                    <box position="absolute" top={0} left={0} right={0} flexDirection="column">
                 <Show when={dialog() === "palette"}>
                   <Picker title="Commands" placeholder="Search commands, sessions, thinking…" items={paletteItems()} onClose={() => setDialog(null)} firstHeading side={room()} />
                 </Show>
@@ -1011,7 +993,7 @@ export function App(p: {
                   <Picker title="Harness" placeholder="Search harnesses…" items={harnessItems()} onClose={() => setDialog(null)} firstHeading={hasPrompt()} side={room()} />
                 </Show>
                 <Show when={dialog() === "find"}>
-                  <Picker title="Find in chat" placeholder="Type to find text in this chat…" items={[]} search={findItems} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Find in chat" placeholder="Type to find text in this chat…" items={[]} search={findItems} noun={["turn", "turns"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "permission"}>
                   <Picker title="Permission mode" placeholder="Search modes…" items={permissionItems()} onClose={() => setDialog(null)} side={room()} />
@@ -1043,6 +1025,35 @@ export function App(p: {
                     side={room()}
                   />
                 </Show>
+                <Show when={dialog() === "history"}>
+                  <Picker title="History" placeholder="Search sessions, projects, harnesses…" items={historyItems()} onClose={() => setDialog(null)} firstHeading preview={historyPreview} side={room()} />
+                </Show>
+                    </box>
+                  </Show>
+                  <Show
+                    when={pending()}
+                    keyed
+                    fallback={
+                      <Composer
+                        status={{ mode: keybinds() === "vim" ? (normal() ? "normal" : "insert") : null, leader: leaderOn() ? leaderPrefix(keybinds()) : null, note: hint() }}
+                        focused={focus() === "composer" && !dialog() && !normal() && app.undoTurn() === null && !reviewing() && !running()}
+                        compactChoice={compactChoice()}
+                        onCompactChoice={setCompactChoice}
+                        onPick={setDialog}
+                        onGit={() => { setGitting(true); void app.openGit(); }}
+                        onContext={() => setRail(true)}
+                        column={column()}
+                        keybinds={keybinds()}
+                        ref={(el) => (composer = el)}
+                      />
+                    }
+                  >
+                    {(request) => <RequestCard request={request} more={(app.chat()?.pending.length ?? 1) - 1} active={focus() === "composer" && !dialog()} column={column()} />}
+                  </Show>
+                </box>
+              }
+            >
+              <box flexDirection="column" flexGrow={1}>
                 <Show when={running()}>
                   {(r) => (
                     <RunOutput
@@ -1058,9 +1069,6 @@ export function App(p: {
                       side={room()}
                     />
                   )}
-                </Show>
-                <Show when={dialog() === "history"}>
-                  <Picker title="History" placeholder="Search sessions, projects, harnesses…" items={historyItems()} onClose={() => setDialog(null)} firstHeading preview={historyPreview} side={room()} />
                 </Show>
                 <Show when={reviewing()}>
                   <ReviewView onClose={() => setReviewing(false)} />
