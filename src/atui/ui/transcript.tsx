@@ -812,8 +812,8 @@ function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { cou
   const label = () => {
     void tick();
     const text = foldLabel(p.turn, Date.now(), p.part);
-    // The request's own card, just below, names what it waits on; the line says only that the turn waits.
-    return waiting() ? text.replace(/^Working/, "Waiting for you") : text;
+    // The header and the request's own card already say the turn waits for you; the line only notes it is paused, muted, with its counts.
+    return waiting() ? text.replace(/^Working/, "Paused") : text;
   };
   const thought = () => (live() && !p.open ? latestThought(p.turn) : null);
   return (
@@ -821,7 +821,7 @@ function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { cou
       <box flexDirection="row" onMouseDown={p.onToggle}>
         <text selectable={false} fg={p.fade === undefined ? t().muted : mix(t().bg, t().muted, p.fade)}>
           <Show when={live()} fallback={`${p.open ? "▾ " : "▸ "}${label()}`}>
-            <Show when={!waiting()} fallback={<span style={{ fg: t().warn }}>{`▲ ${label()}`}</span>}>
+            <Show when={!waiting()} fallback={`▸ ${label()}`}>
               <Spinner />
               {" "}
               <Shimmer text={label()} />
