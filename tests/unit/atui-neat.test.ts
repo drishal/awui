@@ -114,7 +114,7 @@ describe("atui rows, neat-render's way", () => {
       startedAt: 0,
       endedAt: 20_000,
     };
-    expect(sigmaFacts(turn)).toEqual({ facts: ["2 calls", "7.5s", "~640 thought"], failed: "1 failed" });
+    expect(sigmaFacts(turn)).toEqual({ facts: ["2 calls", "7.5s", "~640 thought tokens"], failed: "1 failed" });
     // Without the calls' times it falls back to the turn's; a turn with nothing to say says nothing.
     expect(sigmaFacts({ ...turn, process: [tool({ id: "1" })] }).facts).toEqual(["1 call", "20.0s"]);
     expect(sigmaFacts({ process: [], workAfter: [], answer: null, startedAt: 0, endedAt: 200 })).toEqual({ facts: [], failed: null });
