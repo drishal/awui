@@ -225,9 +225,10 @@ export function Sidebar(p: {
                     <text selectable={false} fg={t().accent} bg={t().surface2}>{` ${monogram(row.workspace.name)} `}</text>
                     <text selectable={false} fg={t().text} wrapMode="none">{` ${name()}`}</text><box flexGrow={1} />
                     {/* The same marks the session rows teach: ▲ a session asking, ● one live on the server. */}
-                    {needs() > 0 ? <text selectable={false} fg={t().warn}>{`▲${needs()} `}</text> : null}
-                    {row.count > 0 && needs() === 0 ? <text selectable={false} fg={t().muted}>{`${row.count} `}</text> : null}
+                    {needs() > 0 ? <text selectable={false} fg={t().warn}>{`▲ ${needs()} `}</text> : null}
+                    {/* The mark leads the count in both states, as the session rows' marks lead their titles. */}
                     {live() > 0 && needs() === 0 ? <text selectable={false} fg={t().ok}>{"● "}</text> : null}
+                    {row.count > 0 && needs() === 0 ? <text selectable={false} fg={t().muted}>{`${row.count} `}</text> : null}
                   </box>
                 );
               }
