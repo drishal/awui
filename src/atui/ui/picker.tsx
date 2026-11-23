@@ -18,10 +18,10 @@ const TRACK = 12;
 /** The track as the filled run and the empty rest around it. */
 function trackParts(bar: [number, number], TRACK: number): [string, string, string] {
   // An empty span (a day with nothing) draws no fill, only the track.
-  if (bar[1] - bar[0] <= 0) return ["░".repeat(TRACK), "", ""];
+  if (bar[1] - bar[0] <= 0) return ["─".repeat(TRACK), "", ""];
   const start = Math.min(TRACK - 1, Math.max(0, Math.round(bar[0] * TRACK)));
   const end = Math.min(TRACK, Math.max(start + 1, Math.round(bar[1] * TRACK)));
-  return ["░".repeat(start), "█".repeat(end - start), "░".repeat(TRACK - end)];
+  return ["─".repeat(start), "█".repeat(end - start), "─".repeat(TRACK - end)];
 }
 
 /** What a preview pane shows: a heading and the text under it. */
