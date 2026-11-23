@@ -131,12 +131,17 @@ export function turnWaterfall(turn: Turn, workspace: string, now: number): Water
   let slowestId: string | undefined;
   if (calls.length >= 2) {
     let best = 0;
+    let second = 0;
     for (const r of calls) {
-      if (r.endAt - r.at > best) {
-        best = r.endAt - r.at;
+      const took = r.endAt - r.at;
+      if (took > best) {
+        second = best;
+        best = took;
         slowestId = r.id;
-      }
+      } else if (took > second) second = took;
     }
+    // Calls that took about as long as one another have no slowest: a lead of a millisecond is not a finding.
+    if (best < second * 1.2) slowestId = undefined;
   }
   const rows = raw.map(({ at, endAt, ...r }) => ({ ...r, start: at - origin, end: endAt - origin, slowest: r.id === slowestId }));
   return { rows, ...axis };
