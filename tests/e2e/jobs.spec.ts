@@ -43,6 +43,12 @@ test("a background job shows its progress above the composer and in the wait tha
   await expect(page.locator('[data-tool="wait"] .tool-sentence')).toHaveText("Waited on bg_1: Running the e2e suite");
   await expect(page.locator('[data-tool="bash"] .tool-fact')).toHaveText("in background · bg_1");
   await expect(card.getByRole("img", { name: "Done" })).toBeVisible();
+  // The command that started the job draws its card too, not only the wait that watched it.
+  const started = page.locator('[data-tool="bash"]');
+  await started.locator(".tool-head").click();
+  await expect(started.getByTestId("job-card")).toHaveAttribute("data-job", "bg_1");
+  await expect(started.getByTestId("job-card").getByRole("img", { name: "Done" })).toBeVisible();
+  await started.locator(".tool-head").click();
   // A reload reads the job back from the transcript: the wait still holds it, done.
   await page.reload();
   await openFold(page);
@@ -50,4 +56,8 @@ test("a background job shows its progress above the composer and in the wait tha
   await expect(row.locator(".tool-sentence")).toHaveText("Waited on bg_1: Running the e2e suite", { timeout: 10_000 });
   await row.locator(".tool-head").click();
   await expect(row.getByTestId("job-card").getByRole("img", { name: "Done" })).toBeVisible();
+  // And the command that started it holds its card in the reloaded transcript too.
+  const origin = page.locator('[data-tool="bash"]');
+  await origin.locator(".tool-head").click();
+  await expect(origin.getByTestId("job-card")).toHaveAttribute("data-job", "bg_1", { timeout: 10_000 });
 });

@@ -192,8 +192,9 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   const arrival = useArrival(item.id);
   // Seen running: its status mark draws in when the spinner gives way.
   const [live] = useState(item.status === "running");
-  // A call about background jobs (a wait, a list) draws them as cards, not its raw output.
-  const watchedJobs = useMemo(() => (item.jobs && item.category !== "command" ? chatJobs([item]) : null), [item]);
+  // A call that holds background jobs (a wait, a list, the command that started one) draws them as
+  // cards, not its raw output: the command that left a job running is where the job began.
+  const watchedJobs = useMemo(() => (item.jobs ? chatJobs([item]) : null), [item]);
   // Agents seen working start open, so their progress shows as it happens; so does a wait on jobs.
   // (A wait learns its jobs from its first update, after it is drawn: its name is what says so at the start.)
   const [auto, setAuto] = useState((Boolean(item.subagents) || watchedJobs !== null || /^(wait|await)$/i.test(item.name)) && live);
