@@ -165,7 +165,7 @@ export function ReviewView(p: { onClose: () => void }) {
               const threads = () => placed().placed.get(row.key) ?? [];
               return (
                 <box flexDirection="column">
-                  <box flexDirection="row" backgroundColor={here() ? mix(t().bg, t().selection, 0.85) : undefined} onMouseDown={() => setAt(index())}>
+                  <box flexDirection="row" backgroundColor={here() ? mix(t().bg, t().selection, 0.85) : row.line.kind === "add" ? mix(t().bg, t().ok, 0.12) : row.line.kind === "del" ? mix(t().bg, t().danger, 0.12) : undefined} onMouseDown={() => setAt(index())}>
                     <text flexShrink={0} fg={here() ? t().accent : t().border}>
                       {here() ? "▌" : " "}
                     </text>
