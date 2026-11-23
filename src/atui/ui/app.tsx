@@ -809,7 +809,7 @@ export function App(p: {
     const row = (section: string, label: string, hint: string): PaletteItem => ({ id: `usage:${section}:${label}`, section, label, hint, run: () => {} });
     const days = ([7, 30, 90] as const).map((d) => ({ id: `usage-days:${d}`, section: head, label: `${d === r.days ? "● " : "○ "}Show the last ${d} days`, hint: "", run: () => { setUsageDays(d); setDialog("usage"); } }));
     return [
-      row(head, `${r.totals.sessions} chats · ${r.totals.calls} calls`, words(r.totals)),
+      row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
       ...(share === null ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
       ...days,
       ...r.byHarness.map((h) => row("By harness", h.harnessId, `${words(h.totals)} · ${h.sessions} chats`)),
