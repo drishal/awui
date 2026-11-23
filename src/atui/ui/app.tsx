@@ -1031,7 +1031,7 @@ export function App(p: {
                   <Picker title={`Usage across chats · ${usageDays()} days · Tab: ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
-                  <Picker title="Queued messages" placeholder="Search queued messages…" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); setDialog(null); return true; }} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Queued messages" placeholder="Search queued messages…" empty="No queued messages: a steering or follow-up message parks here" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); setDialog(null); return true; }} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "thinking"}>
                   <Picker title="Thinking" placeholder="Search levels…" items={thinkingItems()} onClose={() => setDialog(null)} side={room()} />

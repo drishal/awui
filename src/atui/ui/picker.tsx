@@ -47,6 +47,8 @@ export function Picker(p: {
   info?: boolean;
   /** A key pressed over the highlighted row, when the query is empty (the queue picker's `x` removes): true when it took the key. */
   onRowKey?: (key: string, item: PickerItem | undefined) => boolean;
+  /** What the list says when it has no rows at all and nothing is typed ("No queued messages"), instead of "Nothing matches". */
+  empty?: string;
   /** Tab does this (the usage picker's 7, 30, 90 days). */
   onTab?: () => void;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
@@ -147,6 +149,7 @@ export function Picker(p: {
     <box
       alignSelf="center"
       marginTop={1}
+      marginBottom={1}
       width={width()}
       height={height()}
       flexShrink={0}
@@ -209,7 +212,7 @@ export function Picker(p: {
             <text fg={t().muted}>{`  ↓ ${windowed().more} more`}</text>
           </Show>
           <Show when={shown().length === 0}>
-            <text fg={t().muted}>{p.search && !query().trim() ? p.placeholder : `Nothing matches “${query().trim()}”`}</text>
+            <text fg={t().muted}>{p.search && !query().trim() ? p.placeholder : p.empty && !query().trim() ? p.empty : `Nothing matches “${query().trim()}”`}</text>
           </Show>
         </box>
         <Show when={previewing()}>
