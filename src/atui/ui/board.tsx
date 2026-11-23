@@ -196,7 +196,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                         <box flexDirection="column" flexShrink={0} marginTop={i() === 0 ? 0 : 1} backgroundColor={i() === at() ? t().selection : undefined} onMouseDown={() => { setColumn(id); setCursor(i()); }}>
                           <text wrapMode="none" truncate>
                             <span style={{ fg: i() === at() ? t().accent : t().border }}>{i() === at() ? "▌" : " "}</span>
-                            <span style={{ fg: harnessAccent(card.session.harnessId) }}>{"● "}</span>
+                            <span style={{ fg: card.session.asking ? t().warn : isBusy(card.session.status) ? t().accent : card.session.liveChatId ? t().ok : t().muted }}>{card.session.asking ? "▲ " : "● "}</span>
                             <b>{plainTitle(card.session.title) || "Untitled"}</b>
                           </text>
                           <text fg={t().muted} wrapMode="none" truncate>
