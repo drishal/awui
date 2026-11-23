@@ -1189,6 +1189,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
           stickyStart="bottom"
           paddingLeft={2}
           paddingRight={2}
+          paddingTop={1}
           paddingBottom={1}
           contentOptions={{ alignItems: "center", layoutMode: "list" }}
           verticalScrollbarOptions={{ visible: false }}
