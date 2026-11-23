@@ -30,6 +30,8 @@ export function Picker(p: {
   preview?: (item: PaletteItem) => Promise<PreviewText | null> | null;
   /** Items made from the query itself (find in chat): instead of ranking `items`, which stay empty. Nothing is listed until something is typed. */
   search?: (query: string) => PaletteItem[];
+  /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
+  noun?: [string, string];
   /** Columns the side panel takes: the picker fits what is left of the screen, never under the panel. */
   side?: number;
 }) {
@@ -121,7 +123,7 @@ export function Picker(p: {
         <text fg={t().accent} flexShrink={0}>{"› "}</text>
         <input focused flexGrow={1} placeholder={p.placeholder} textColor={t().text} backgroundColor={t().surface} focusedBackgroundColor={t().surface} onInput={(value: string) => setQuery(value)} />
         <Show when={query().trim()}>
-          <text fg={t().muted} flexShrink={0}>{shown().length === 1 ? "1 match" : `${shown().length} matches`}</text>
+          <text fg={t().muted} flexShrink={0}>{`${shown().length} ${shown().length === 1 ? (p.noun?.[0] ?? "match") : (p.noun?.[1] ?? "matches")}`}</text>
         </Show>
       </box>
       <box flexDirection="row" flexGrow={1} marginTop={1}>

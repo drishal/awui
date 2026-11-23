@@ -50,7 +50,8 @@ export function findSnippet(text: string, needle: string, radius = 36): string {
   if (at === undefined) return "";
   const from = Math.max(0, at - radius);
   const to = Math.min(text.length, at + needle.length + radius);
-  const flat = text.slice(from, to).replace(/\s+/g, " ").trim();
+  // Markdown marks (bold, code spans) are noise in a one-line snippet.
+  const flat = text.slice(from, to).replace(/\s+/g, " ").replace(/\*\*|__|`/g, "").trim();
   return `${from > 0 ? "…" : ""}${flat}${to < text.length ? "…" : ""}`;
 }
 
