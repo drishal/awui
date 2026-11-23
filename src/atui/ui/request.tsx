@@ -74,7 +74,7 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
   return (
     <box flexDirection="column" flexShrink={0} marginLeft={2} marginRight={2} width={p.column} alignSelf="center" border borderStyle="rounded" borderColor={t().warn} paddingLeft={1} paddingRight={1}>
       <text fg={t().warn}>
-        {approval() ? "● Waiting for approval" : "● Waiting for your answer"}
+        {approval() ? "▲ Waiting for approval" : "▲ Waiting for your answer"}
         <Show when={labelled()}>
           <span style={{ fg: t().muted }}>{`  ${titleLine}`}</span>
         </Show>

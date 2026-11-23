@@ -805,15 +805,20 @@ export function App(p: {
     const rows = fall.rows.map((row) => ({
       id: `timing:${row.id}`,
       section,
-      label: `${"  ".repeat(row.depth)}${row.label}${row.slowest ? "  ⚑ slowest" : ""}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
-      hint: `at ${unit(row.start)} · took ${unit(row.end - row.start)}`,
+      label: `${"  ".repeat(row.depth)}${row.label}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
+      hint: `at ${unit(row.start).padStart(6)} · took ${unit(row.end - row.start).padStart(6)}${row.slowest ? " · slowest" : ""}`,
       bar: fall.total > 0 ? ([row.start / fall.total, row.end / fall.total] as [number, number]) : undefined,
       run: () => {},
     }));
     // Time before the first step (a request waiting for an answer, a slow start) has no step of its own: name it, so the rows add up to the turn.
     const first = fall.rows.reduce((least, row) => Math.min(least, row.start), Number.POSITIVE_INFINITY);
     if (fall.total > 0 && Number.isFinite(first) && first >= 400) {
-      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at 0ms · took ${unit(first)}`, bar: [0, first / fall.total], run: () => {} });
+      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at ${"0ms".padStart(6)} · took ${unit(first).padStart(6)}`, bar: [0, first / fall.total], run: () => {} });
+    }
+    // And the time after the last step (the closing reply, the settle), so the rows add up to the turn's total.
+    const last = fall.rows.reduce((most, row) => Math.max(most, row.end), 0);
+    if (fall.total > 0 && fall.total - last >= 400) {
+      rows.push({ id: "timing:after", section, label: "After the last step", hint: `at ${unit(last).padStart(6)} · took ${unit(fall.total - last).padStart(6)}`, bar: [last / fall.total, 1], run: () => {} });
     }
     return rows;
   };
@@ -976,7 +981,7 @@ export function App(p: {
                   <text selectable={false} flexShrink={0}>
                     <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{`${harnessGlyph(c().harnessId)} ${app.harness()?.displayName ?? c().harnessId}`}</span>
                     {"  "}
-                    <span style={{ fg: c().pending.length > 0 ? t().warn : c().status === "error" ? t().danger : isBusy(c().status) ? t().accent : t().ok }}>{"● "}</span>
+                    <span style={{ fg: c().pending.length > 0 ? t().warn : c().status === "error" ? t().danger : isBusy(c().status) ? t().accent : t().ok }}>{c().pending.length > 0 ? "▲ " : "● "}</span>
                     <Show when={c().pending.length > 0}>
                       <span style={{ fg: t().warn }}>Waiting for you</span>
                     </Show>
@@ -1047,7 +1052,7 @@ export function App(p: {
                   <Picker title={`Usage across chats · ${usageDays()} days · Tab: ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
-                  <Picker title="Queued messages · Enter edits · x removes" placeholder="Search queued messages…" empty="No queued messages: a steering or follow-up message parks here" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); return true; }} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Queued messages · x removes" placeholder="Search queued messages…" empty="No queued messages: a steering or follow-up message parks here" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); return true; }} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "thinking"}>
                   <Picker title="Thinking" placeholder="Search levels…" items={thinkingItems()} onClose={() => setDialog(null)} side={room()} />

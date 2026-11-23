@@ -165,7 +165,7 @@ describe("atui", () => {
     expect(f).toContain("❯ showcase tool edit please");
     expect(f).toContain("┌─ ▤ Read README.md");
     expect(f).toMatch(/├─ ± Edited src\/app\.ts +\+1 −1/);
-    expect(f).toMatch(/└─ [▤±▸◎⊕◈●✗] /);
+    expect(f).toMatch(/└─ [▤±›◎⊕◈◇≡●✗] /);
     expect(f).toContain("● Echo: showcase tool edit please");
     expect(f).toMatch(/Σ \d+ calls · /);
     expect(f).not.toContain("Worked for");
@@ -225,7 +225,7 @@ describe("atui", () => {
     await idle(ui);
     const f = await ui.until("Echo: interleaved please");
     const reply = f.indexOf("this is reply block 1");
-    const command = f.indexOf("▸ Ran");
+    const command = f.indexOf("› Ran");
     expect(reply).toBeGreaterThan(0);
     expect(command).toBeGreaterThan(reply);
     expect(f.indexOf("Echo: interleaved please")).toBeGreaterThan(command);
@@ -447,7 +447,7 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await ui.until(() => (ui?.app.chat()?.queue.steering.length ?? 0) + (ui?.app.chat()?.queue.followUp.length ?? 0) === 1);
     await ui.click("+1 queued");
-    await ui.until("x removes");
+    await ui.until("Queued messages");
     ui.keys.pressKey("x");
     await ui.until(() => (ui?.app.chat()?.queue.steering.length ?? 0) + (ui?.app.chat()?.queue.followUp.length ?? 0) === 0);
     expect(await ui.until("Message the agent")).not.toContain("remove this follow-up");
@@ -894,7 +894,7 @@ describe("atui", () => {
     await idle(ui);
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("d");
-    const view = await ui.until("Review changes  1 file · 0 open");
+    const view = await ui.until("Review changes  1 file");
     expect(view).toContain("src/app.ts");
     // The attribution marks: the file head says which lines this chat wrote (the fake edit's own).
     await ui.until("from this chat");

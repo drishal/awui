@@ -24,6 +24,7 @@ import { filetypeOf, taskBoxes } from "../markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll, turnTone, type TurnTone } from "../minimap.js";
 import { latestThoughtLine, neatRow, rowHead, sigmaFacts, thinkingMeta, workRuns, type NeatRow, type WorkRun } from "../neat.js";
 import { callDuration } from "../../shared/tool-row.js";
+import { toolKind, type ToolKindChip } from "../../web/tool-kinds.js";
 import { JobBlocks } from "./job.js";
 import { chatJobs, type ChatJob } from "../../web/jobs.js";
 import { formatWhen } from "../../web/turn-time.js";
@@ -51,14 +52,14 @@ const PULSE_TICKS = 4.5;
 const pulseOn = () => Math.floor(tick() / PULSE_TICKS) % 2 === 0;
 
 /** The glyph a settled row wears, one per kind of call as the web's chips are, so a column of rows reads by shape as well as by colour. */
-const KIND_MARK: Record<ToolItem["category"], string> = { read: "▤", edit: "±", write: "±", command: "▸", search: "◎", web: "⊕", agent: "◈", other: "●" };
+const KIND_MARK: Record<ToolItem["category"], string> = { read: "▤", edit: "±", write: "±", command: "›", search: "◎", web: "⊕", agent: "◈", other: "●" };
 
 /** The row's bullet, neat-render's: the category's colour when it settles, red on failure, filled and hollow in turn while it runs; a settled call wears its kind's glyph. */
-function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean; category: ToolItem["category"] }) {
+function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean; category: ToolItem["category"]; chip?: ToolKindChip }) {
   const t = useTheme();
   const on = () => p.status !== "running" || pulseOn();
   const color = () => (p.status === "error" || p.failedOutput ? t().danger : p.status === "running" ? (on() ? t().warn : t().muted) : categoryTone(t(), p.category));
-  return <span style={{ fg: color() }}>{p.status === "running" ? (on() ? "● " : "○ ") : `${p.status === "error" || p.failedOutput ? "✗" : KIND_MARK[p.category]} `}</span>;
+  return <span style={{ fg: color() }}>{p.status === "running" ? (on() ? "● " : "○ ") : `${p.status === "error" || p.failedOutput ? "✗" : p.chip?.plan ? "≡" : p.chip?.server ? "◇" : KIND_MARK[p.category]} `}</span>;
 }
 
 /**
@@ -542,7 +543,7 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
       </Show>
       <box flexDirection="column" onMouseDown={() => setOpen(!open())}>
         <text wrapMode="none" truncate>
-          <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
+          <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} chip={toolKind(p.item)} />
           <span style={{ fg: t().text2 }}>{head().verb}</span>
           <Show when={!wraps()}>
             <Show when={head().detail}>
@@ -690,7 +691,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
       <box flexDirection="row" onMouseDown={() => setOpen(!open())}>
         <text flexShrink={1} minWidth={0} wrapMode="none" truncate>
           <span style={{ fg: t().border }}>{fork()}</span>
-          <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
+          <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} chip={toolKind(p.item)} />
           <span style={{ fg: t().text2 }}>{head().verb}</span>
           <Show when={head().detail}>
             {(d) => (
@@ -820,7 +821,7 @@ function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { cou
       <box flexDirection="row" onMouseDown={p.onToggle}>
         <text selectable={false} fg={p.fade === undefined ? t().muted : mix(t().bg, t().muted, p.fade)}>
           <Show when={live()} fallback={`${p.open ? "▾ " : "▸ "}${label()}`}>
-            <Show when={!waiting()} fallback={<span style={{ fg: t().warn }}>{`● ${label()}`}</span>}>
+            <Show when={!waiting()} fallback={<span style={{ fg: t().warn }}>{`▲ ${label()}`}</span>}>
               <Spinner />
               {" "}
               <Shimmer text={label()} />
@@ -1086,7 +1087,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       <Show when={files().length > 0 && !p.turn().live}>
         <box marginTop={sigmaShown() ? 0 : 1}>
           <text selectable={false} fg={t().muted} wrapMode="word">
-            <span style={{ fg: t().ok }}>{"± "}</span>
+            <span style={{ fg: categoryTone(t(), "edit") }}>{"± "}</span>
             {`Changed ${files().length} ${files().length === 1 ? "file" : "files"} · `}
             {/* Each name is a link to its file, where the terminal has links. */}
             <Index each={files().slice(0, FILES_SHOWN)}>
