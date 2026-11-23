@@ -801,10 +801,14 @@ type Place = "first" | "middle" | "last";
 /** The fold's line. `fade` (0 to 1), just after the turn ends: its words come up from the background. */
 function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { counts: Turn["counts"]; place: Place }; fade?: number }) {
   const t = useTheme();
+  const app = useAtui();
   const live = () => p.turn.live && (!p.part || p.part.place === "last");
+  // A turn parked on a question is not working: the line says so, in the warn colour, with no spinner.
+  const waiting = () => live() && (app.chat()?.pending.length ?? 0) > 0;
   const label = () => {
     void tick();
-    return foldLabel(p.turn, Date.now(), p.part);
+    const text = foldLabel(p.turn, Date.now(), p.part);
+    return waiting() ? text.replace(/^Working/, "Waiting for you") : text;
   };
   const thought = () => (live() && !p.open ? latestThought(p.turn) : null);
   return (
@@ -812,9 +816,11 @@ function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { cou
       <box flexDirection="row" onMouseDown={p.onToggle}>
         <text selectable={false} fg={p.fade === undefined ? t().muted : mix(t().bg, t().muted, p.fade)}>
           <Show when={live()} fallback={`${p.open ? "▾ " : "▸ "}${label()}`}>
-            <Spinner />
-            {" "}
-            <Shimmer text={label()} />
+            <Show when={!waiting()} fallback={<span style={{ fg: t().warn }}>{`● ${label()}`}</span>}>
+              <Spinner />
+              {" "}
+              <Shimmer text={label()} />
+            </Show>
           </Show>
         </text>
       </box>
@@ -1214,7 +1220,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
             <box position="absolute" top={0} left={0} width="100%" flexDirection="row" justifyContent="center" backgroundColor={app.glass() ? undefined : t().bg} zIndex={5}>
               <box width="100%" maxWidth={p.column()} paddingLeft={2} paddingRight={2} flexDirection="row">
                 <text selectable={false} fg={t().muted} wrapMode="none" truncate>
-                  <span style={{ fg: t().ok }}>{"↑ "}</span>
+                  <span style={{ fg: t().muted }}>{"↑ "}</span>
                   {clip(prompt().text, p.column())}
                 </text>
               </box>
