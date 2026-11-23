@@ -7,6 +7,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import { rankItems, type PaletteItem } from "../../web/palette.js";
 import { matchSpans } from "../assist.js";
 import { clip } from "../format.js";
+import { mix } from "../fx.js";
 import { useTheme } from "./context.js";
 
 /** A row that also draws a span of a track (a step's place on a turn's time, a day's share of the busiest): `[from, to]`, each 0 to 1. */
@@ -15,14 +16,28 @@ export type PickerItem = PaletteItem & { bar?: [number, number] };
 /** The track as a run of rule, a solid run, the eighth-block edge that finishes it, and the rule after. The start rounds to a cell, the end to an eighth, so equal times draw equal bars and a few hundred milliseconds show. */
 const EDGES = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
 function trackParts(bar: [number, number], cells: number): { before: string; solid: number; edge: string; after: string } {
-  // An empty span (a day with nothing) draws no fill, only the rule.
-  if (bar[1] - bar[0] <= 0) return { before: "─".repeat(cells), solid: 0, edge: "", after: "" };
+  // A span of exactly nothing from nothing (a day with no use) draws no track at all: a full rule would read as the longest bar. An instant step still gets its sliver.
+  if (bar[0] === 0 && bar[1] === 0) return { before: " ".repeat(cells), solid: 0, edge: "", after: "" };
   const start = Math.min(cells - 1, Math.max(0, Math.round(bar[0] * cells)));
   const width8 = Math.max(2, Math.round((bar[1] - bar[0]) * cells * 8));
   const end8 = Math.min((cells - start) * 8, width8);
   const solid = Math.floor(end8 / 8);
   const edge = EDGES[end8 % 8] ?? "";
   return { before: "─".repeat(start), solid, edge, after: "─".repeat(Math.max(0, cells - start - solid - (edge ? 1 : 0))) };
+}
+
+/** A scale's labels set along `cells` columns at their fractions; the last is right-aligned to the track's end so it never runs past it. */
+function axisLine(ticks: Array<{ at: number; label: string }>, cells: number): string {
+  const line: string[] = Array(cells).fill(" ");
+  ticks.forEach((tick, n) => {
+    const last = n === ticks.length - 1;
+    const from = last ? cells - tick.label.length : Math.min(Math.round(tick.at * (cells - 1)), cells - tick.label.length);
+    if (from < 0) return;
+    // A label never lands on the one before it (one blank cell between).
+    const taken = line.slice(Math.max(0, from - 1), from + tick.label.length + 1).some((c) => c !== " ");
+    if (!taken) [...tick.label].forEach((c, k) => (line[from + k] = c));
+  });
+  return line.join("");
 }
 
 /** What a preview pane shows: a heading and the text under it. */
@@ -54,6 +69,8 @@ export function Picker(p: {
   empty?: string;
   /** Tab does this (the usage picker's 7, 30, 90 days). */
   onTab?: () => void;
+  /** A scale for the bar rows under the first heading: labels at fractions (0 to 1) of the track, from the same ticks the web draws. */
+  axis?: Array<{ at: number; label: string }>;
   /** What Tab does, in words ("Tab: 30 days"): it leads the key hints, so the title stays a name. */
   tabHint?: string;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
@@ -85,13 +102,13 @@ export function Picker(p: {
   const rowsNeeded = () => {
     const list = shown();
     const headings = query().trim() ? 0 : list.filter((item, at) => (at === 0 ? Boolean(p.firstHeading) : list[at - 1]?.section !== item.section)).length;
-    return Math.max(1, list.length) + headings * 2;
+    return Math.max(1, list.length) + headings * 2 + (p.axis ? 1 : 0);
   };
   const height = () => Math.min(previewing() ? 22 : Math.max(8, rowsNeeded() + 5), 22, size().height - 4);
   /** Is a heading drawn above row `at`? Not while a query is typed; the first one only when the picker names it. */
   const headed = (list: PickerItem[], at: number) => !query().trim() && (list[at - 1]?.section !== list[at]?.section) && (at > 0 || Boolean(p.firstHeading));
   /** Lines a row takes: itself, a heading over it, and a blank line above a heading that is not the first. */
-  const cost = (list: PickerItem[], at: number) => 1 + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
+  const cost = (list: PickerItem[], at: number) => 1 + (at === 0 && p.axis ? 1 : 0) + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
   /** A bar row's label column: the track starts here, a little over a third of the list. */
   const barLabel = () => Math.max(18, Math.floor(listWidth() * (listWidth() > 70 ? 0.4 : 0.37)));
   /** The track takes what the label and the widest figure leave, so a wide sheet has a long bar and no dead gap: 12 cells at least, 44 at most. */
@@ -161,7 +178,6 @@ export function Picker(p: {
     <box
       alignSelf="center"
       marginTop={1}
-      marginBottom={1}
       width={width()}
       height={height()}
       flexShrink={0}
@@ -195,6 +211,9 @@ export function Picker(p: {
                   <Show when={headed(shown(), at())}>
                     <text fg={t().muted} marginTop={at() > 0 ? 1 : 0}><b>{item.section}</b></text>
                   </Show>
+                  <Show when={at() === 0 && p.axis && item.bar}>
+                    <text fg={t().muted} wrapMode="none">{`${" ".repeat(barLabel())}${axisLine(p.axis ?? [], track())}`}</text>
+                  </Show>
                   <box flexDirection="row" backgroundColor={lit() ? t().selection : undefined} onMouseDown={() => run(item)}>
                     <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel() : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
                       {item.current ? "✓ " : "  "}
@@ -208,7 +227,7 @@ export function Picker(p: {
                         <text flexShrink={0} fg={t().muted}>
                           {trackParts(bar(), track()).before}
                           <span style={{ bg: t().accent }}>{" ".repeat(trackParts(bar(), track()).solid)}</span>
-                          <span style={{ fg: t().accent }}>{trackParts(bar(), track()).edge}</span>
+                          <span style={{ fg: t().accent, bg: mix(t().surface, t().accent, 0.3) }}>{trackParts(bar(), track()).edge}</span>
                           {trackParts(bar(), track()).after}
                         </text>
                       )}

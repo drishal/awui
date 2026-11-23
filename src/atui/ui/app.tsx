@@ -796,6 +796,17 @@ export function App(p: {
     }));
   };
 
+  /** The Timing picker's scale: the waterfall's own ticks as fractions of its axis, so the bars read against a time. */
+  const timingAxis = (): Array<{ at: number; label: string }> | undefined => {
+    const c = app.chat();
+    const id = app.timingFor();
+    if (!c || id === null) return undefined;
+    const turn = buildTurns(c.items, c.status, c.runStartedAt).find((x) => x.prompt?.id === id);
+    if (!turn) return undefined;
+    const fall = turnWaterfall(turn, c.workspace.path, Date.now());
+    return fall.total > 0 ? fall.ticks.map((tick) => ({ at: tick.ms / fall.total, label: tick.label.replace(" ", "") })) : undefined;
+  };
+
   /** The Timing picker's rows: each model step, call and subagent run of one turn, where it started and how long it took (the web's waterfall, as a list). */
   const timingItems = (): PickerItem[] => {
     const c = app.chat();
@@ -805,24 +816,29 @@ export function App(p: {
     if (!turn) return [];
     const fall = turnWaterfall(turn, c.workspace.path, Date.now());
     const unit = (ms: number) => atLabel(ms).replace(" ", "");
+    /** A time as a figure in one column: the number right-aligned, its unit in a fixed two-cell tail, so 1ms, 164ms and 1.1s line up on the digits. */
+    const fig = (ms: number) => {
+      const m = /^([\d.]+)(\D+)$/.exec(unit(ms));
+      return m ? `${(m[1] ?? "").padStart(4)}${(m[2] ?? "").padEnd(2)}` : unit(ms).padStart(6);
+    };
     const section = fall.total > 0 ? `This turn took ${unit(fall.span)}` : "No times reported";
     const rows = fall.rows.map((row) => ({
       id: `timing:${row.id}`,
       section,
       label: `${"  ".repeat(row.depth)}${row.label}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
-      hint: `at ${unit(row.start).padStart(5)} · took ${unit(row.end - row.start).padStart(5)}${row.slowest ? " · slowest" : ""}`,
+      hint: `at ${fig(row.start)} · took ${fig(row.end - row.start)}${row.slowest ? " · slowest" : ""}`,
       bar: fall.total > 0 ? ([row.start / fall.total, row.end / fall.total] as [number, number]) : undefined,
       run: () => {},
     }));
     // Time before the first step (a request waiting for an answer, a slow start) has no step of its own: name it, so the rows add up to the turn.
     const first = fall.rows.reduce((least, row) => Math.min(least, row.start), Number.POSITIVE_INFINITY);
     if (fall.total > 0 && Number.isFinite(first) && first >= 400) {
-      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at ${"0ms".padStart(5)} · took ${unit(first).padStart(5)}`, bar: [0, first / fall.total], run: () => {} });
+      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at ${fig(0)} · took ${fig(first)}`, bar: [0, first / fall.total], run: () => {} });
     }
     // And the time after the last step (the closing reply, the settle), so the rows add up to the turn's total.
     const last = fall.rows.reduce((most, row) => Math.max(most, row.end), 0);
     if (fall.total > 0 && fall.span - last >= 400) {
-      rows.push({ id: "timing:after", section, label: "After the last step", hint: `at ${unit(last).padStart(5)} · took ${unit(fall.span - last).padStart(5)}`, bar: [last / fall.total, fall.span / fall.total], run: () => {} });
+      rows.push({ id: "timing:after", section, label: "After the last step", hint: `at ${fig(last)} · took ${fig(fall.span - last)}`, bar: [last / fall.total, fall.span / fall.total], run: () => {} });
     }
     return rows;
   };
@@ -864,9 +880,13 @@ export function App(p: {
       ...(share === null || share < 0.01 ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
       ...days,
       // As the web dialog's bars: each harness and model's share of the busiest one, under the name the header and the composer use.
-      ...r.byHarness.map((h) => row("By harness", `${app.boot()?.harnesses.find((x) => x.id === h.harnessId)?.displayName ?? h.harnessId} · ${h.sessions} ${h.sessions === 1 ? "chat" : "chats"}`, words(h.totals), [0, tokensOf(h.totals) / Math.max(1, ...r.byHarness.map((x) => tokensOf(x.totals)))])),
+      ...r.byHarness.map((h) => row("By harness", app.boot()?.harnesses.find((x) => x.id === h.harnessId)?.displayName ?? h.harnessId, words(h.totals), [0, tokensOf(h.totals) / Math.max(1, ...r.byHarness.map((x) => tokensOf(x.totals)))])),
       ...r.byModel.slice(0, 8).map((m) => row("By model", m.model, words(m.totals), [0, tokensOf(m.totals) / Math.max(1, ...r.byModel.slice(0, 8).map((x) => tokensOf(x.totals)))])),
-      ...r.top.slice(0, 8).map((x) => row("Most used chats", x.session.title || x.session.id, words(x.totals))),
+      // As the web's rows: the chat's harness, project and age beside its figures, and its share of the busiest chat as a bar.
+      ...r.top.slice(0, 8).map((x) => {
+        const meta = [app.boot()?.harnesses.find((h) => h.id === x.session.harnessId)?.displayName ?? x.session.harnessId, app.overview().workspaces.find((w) => w.id === x.session.workspaceId)?.name ?? "", ago(x.session.updatedAt)].filter(Boolean).join(" · ");
+        return row("Most used chats", x.session.title || x.session.id, `${meta} · ${words(x.totals)}`, [0, tokensOf(x.totals) / Math.max(1, ...r.top.slice(0, 8).map((y) => tokensOf(y.totals)))]);
+      }),
     ];
   };
 
@@ -1051,7 +1071,7 @@ export function App(p: {
                   <Picker title="Permission mode" placeholder="Search modes…" items={permissionItems()} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "timing"}>
-                  <Picker title="Timing" placeholder="Search steps…" items={timingItems()} firstHeading info onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
+                  <Picker title="Timing" placeholder="Search steps…" items={timingItems()} axis={timingAxis()} firstHeading info onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
                 </Show>
                 <Show when={dialog() === "usage"}>
                   <Picker title={`Usage across chats · ${usageDays()} days`} tabHint={`Tab: ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
