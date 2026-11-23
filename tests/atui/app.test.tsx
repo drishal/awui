@@ -806,9 +806,10 @@ describe("atui", () => {
     ui.keys.pressEnter();
     const shown = await ui.until("Last 7 days");
     expect(shown).toContain("Usage across chats");
-    expect(shown).toContain("Show the last 30 days");
-    await ui.click("Show the last 30 days");
-    expect(await ui.until("Last 30 days")).toContain("● Show the last 30 days");
+    expect(shown).toContain("Tab 30");
+    // Tab cycles the range, as the web dialog's 7/30/90 switch does.
+    ui.keys.pressTab();
+    expect(await ui.until("Last 30 days")).toContain("Tab 90");
     await ui.escape();
     expect(await ui.until("Ask Fake to")).not.toContain("Usage across chats");
   }, 40_000);

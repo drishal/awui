@@ -35,7 +35,7 @@ import { glideBy, glideTo, Shimmer } from "./fx.js";
 import { findTurns } from "../../web/find.js";
 import { turnMarkdown } from "../../web/turn-markdown.js";
 import { SwitchGhost } from "./ghost.js";
-import { Picker, type PreviewText } from "./picker.js";
+import { Picker, type PickerItem, type PreviewText } from "./picker.js";
 import { RequestCard } from "./request.js";
 import { RAIL_WIDTH, Sidebar, SidebarRail, type SidebarTab } from "./sidebar.js";
 import { Splash } from "./splash.js";
@@ -777,7 +777,7 @@ export function App(p: {
   };
 
   /** The Timing picker's rows: each model step, call and subagent run of one turn, where it started and how long it took (the web's waterfall, as a list). */
-  const timingItems = (): PaletteItem[] => {
+  const timingItems = (): PickerItem[] => {
     const c = app.chat();
     const id = app.timingFor();
     if (!c || id === null) return [];
@@ -790,6 +790,7 @@ export function App(p: {
       section,
       label: `${"  ".repeat(row.depth)}${row.label}${row.slowest ? "  ⚑ slowest" : ""}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
       hint: `at ${atLabel(row.start)} · took ${atLabel(row.end - row.start)}`,
+      bar: fall.total > 0 ? ([row.start / fall.total, row.end / fall.total] as [number, number]) : undefined,
       run: () => {},
     }));
   };
@@ -800,14 +801,15 @@ export function App(p: {
     () => (dialog() === "usage" ? usageDays() : undefined),
     (days) => app.usageReport(days).catch(() => null),
   );
-  const usageItems = (): PaletteItem[] => {
+  const usageItems = (): PickerItem[] => {
     const r = usage();
     if (!r) return [];
     const head = `Last ${r.days} days`;
     const words = (t: Parameters<typeof tokensOf>[0] & { cost: number; unpriced: number; calls: number }) => `${shortTokens(tokensOf(t))} tokens · ${dollars(t.cost, t.calls > t.unpriced)}`;
     const share = cacheShare(r.totals);
-    const row = (section: string, label: string, hint: string): PaletteItem => ({ id: `usage:${section}:${label}`, section, label, hint, run: () => {} });
-    const days = ([7, 30, 90] as const).map((d) => ({ id: `usage-days:${d}`, section: head, label: `${d === r.days ? "● " : "○ "}Show the last ${d} days`, hint: "", run: () => { setUsageDays(d); setDialog("usage"); } }));
+    const row = (section: string, label: string, hint: string, bar?: [number, number]): PickerItem => ({ id: `usage:${section}:${label}`, section, label, hint, bar, run: () => {} });
+    const tallest = Math.max(1, ...r.byDay.map((d) => tokensOf(d.totals)));
+    const days = r.byDay.slice(-14).map((d) => row("By day", new Date(`${d.day}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }), shortTokens(tokensOf(d.totals)), [0, tokensOf(d.totals) / tallest]));
     return [
       row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
       ...(share === null ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
@@ -935,6 +937,7 @@ export function App(p: {
                   <text selectable={false} flexShrink={0}>
                     <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{`${harnessGlyph(c().harnessId)} ${app.harness()?.displayName ?? c().harnessId}`}</span>
                     {"  "}
+                    <span style={{ fg: c().pending.length > 0 ? t().warn : c().status === "error" ? t().danger : isBusy(c().status) ? t().accent : t().ok }}>{"● "}</span>
                     <Show when={c().pending.length > 0}>
                       <span style={{ fg: t().warn }}>Waiting for you</span>
                     </Show>
@@ -999,10 +1002,10 @@ export function App(p: {
                   <Picker title="Permission mode" placeholder="Search modes…" items={permissionItems()} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "timing"}>
-                  <Picker title="Timing" placeholder="Search steps…" items={timingItems()} firstHeading onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
+                  <Picker title="Timing" placeholder="Search steps…" items={timingItems()} firstHeading info onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
                 </Show>
                 <Show when={dialog() === "usage"}>
-                  <Picker title="Usage across chats" placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading onClose={() => setDialog(null)} side={room()} />
+                  <Picker title={`Usage across chats · ${usageDays()} days · Tab ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"}`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
                   <Picker title="Queued messages" placeholder="Search queued messages…" items={queueItems()} firstHeading onClose={() => setDialog(null)} side={room()} />
