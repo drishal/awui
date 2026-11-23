@@ -151,8 +151,8 @@ export function ReviewView(p: { onClose: () => void }) {
                 return (
                   <text wrapMode="none" truncate marginTop={index() === 0 ? 0 : 1}>
                     <b style={{ fg: t().text }}>{row.path}</b>
-                    <span style={{ fg: t().ok }}>{`  +${row.added}`}</span>
-                    <span style={{ fg: t().danger }}>{` −${row.removed}`}</span>
+                    <Show when={row.added > 0}><span style={{ fg: t().ok }}>{`  +${row.added}`}</span></Show>
+                    <Show when={row.removed > 0}><span style={{ fg: t().danger }}>{` −${row.removed}`}</span></Show>
                     <Show when={marks()?.byPath.get(row.path)}>
                       {(counts) => (
                         <span style={{ fg: t().muted }}>{`  · ${counts().agent} from this chat`}</span>
@@ -212,7 +212,7 @@ export function ReviewView(p: { onClose: () => void }) {
       <text flexShrink={0} fg={t().muted} marginBottom={1}>
         {sending()
           ? "Sending…"
-          : `↑↓ line · ]/[ file · Enter comment · r resolve · x delete · S send ${open().length} · Esc close`}
+          : `↑↓ line · ]/[ file · Enter comment · r resolve · x delete${open().length > 0 ? ` · S send ${open().length}` : ""} · Esc close`}
       </text>
     </box>
   );
