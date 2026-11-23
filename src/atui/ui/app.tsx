@@ -657,7 +657,7 @@ export function App(p: {
     add({ id: "model", label: "Choose model…", hint: keys.model, disabled: caps?.supportsModelSelection ? undefined : "This harness has no models to pick", run: () => setDialog("models") });
     if (caps?.supportsThinkingLevel) add({ id: "thinking", label: "Choose thinking level…", hint: keys.thinking, run: () => setDialog("thinking") });
     if (c?.capabilities.supportsPermissionMode && c.config.permissionModes?.length) add({ id: "permission", label: "Choose permission mode…", keywords: "approvals ask auto accept edits", run: () => setDialog("permission") });
-    if ((c?.queue.steering.length ?? 0) + (c?.queue.followUp.length ?? 0) > 0) add({ id: "queue", label: "Edit queued messages…", keywords: "steering follow-up pending waiting", run: () => setDialog("queue") });
+    if (c) add({ id: "queue", label: "Edit queued messages…", keywords: "steering follow-up pending waiting", run: () => setDialog("queue") });
     add({ id: "refresh-models", label: "Refresh models", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }), run: () => void app.refreshModels() });
     add({ id: "harness", label: hasPrompt() ? "Choose harness, or hand this chat off…" : "Choose harness…", hint: keys.harness, run: () => setDialog("harness") });
     add({ id: "quit", label: "Quit atui", hint: leader("q", keybinds()), searchOnly: true, run: p.onExit });
@@ -767,10 +767,12 @@ export function App(p: {
     const c = app.chat();
     if (!c) return [];
     const turns = buildTurns(c.items, c.status, c.runStartedAt);
-    return findTurns(turns, query).map((m) => ({
+    // A row is one line: a short radius keeps the match inside what the picker draws, and the project's own path is dropped as the transcript drops it.
+    const root = `${c.workspace.path}/`;
+    return findTurns(turns, query, 16).map((m) => ({
       id: `find:${m.turnId}`,
       section: "Turns",
-      label: `${clip(turns[m.index]?.prompt?.text.replace(/\s+/g, " ") ?? "", 22)} › ${m.snippet}`,
+      label: `${clip(turns[m.index]?.prompt?.text.replace(/\s+/g, " ") ?? "", 18)} › ${m.snippet.split(root).join("").replace(/…\S*?\.\.\.[^\s/]*\//g, "")}`,
       hint: `turn ${m.index + 1} · ${m.inWork ? "work · " : ""}${m.count}×`,
       run: () => revealTurn(m.index, m.inWork),
     }));

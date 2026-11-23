@@ -59,7 +59,7 @@ export function findSnippet(text: string, needle: string, radius = 36): string {
  * Every turn that mentions `query`, in transcript order, with how many times, a line around the first match, and whether
  * it sits in the work (atui's find is a list of these, where the web's marks the page itself).
  */
-export function findTurns(turns: readonly Turn[], query: string): TurnMatch[] {
+export function findTurns(turns: readonly Turn[], query: string, radius = 36): TurnMatch[] {
   if (!query.trim()) return [];
   const out: TurnMatch[] = [];
   turns.forEach((turn, index) => {
@@ -68,7 +68,7 @@ export function findTurns(turns: readonly Turn[], query: string): TurnMatch[] {
     const inVisible = findOffsets(visible, query).length;
     const inWork = findOffsets(work, query).length;
     if (inVisible + inWork === 0) return;
-    out.push({ index, turnId: turn.id, count: inVisible + inWork, snippet: findSnippet(inVisible > 0 ? visible : work, query), inWork: inVisible === 0 });
+    out.push({ index, turnId: turn.id, count: inVisible + inWork, snippet: findSnippet(inVisible > 0 ? visible : work, query, radius), inWork: inVisible === 0 });
   });
   return out;
 }

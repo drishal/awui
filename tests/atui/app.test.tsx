@@ -1251,7 +1251,7 @@ describe("atui", () => {
     // f narrows to one project, and Enter opens the card under the cursor.
     ui.keys.pressKey("f");
     const filtered = await ui.until("Any pull request");
-    expect(filtered).toContain("alpha · Any pull request");
+    expect(filtered).toContain("alpha [f] · Any pull request");
     ui.keys.pressEnter();
     await ui.until("❯ board please");
   }, 60_000);
