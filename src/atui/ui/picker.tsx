@@ -12,17 +12,17 @@ import { useTheme } from "./context.js";
 /** A row that also draws a span of a track (a step's place on a turn's time, a day's share of the busiest): `[from, to]`, each 0 to 1. */
 export type PickerItem = PaletteItem & { bar?: [number, number] };
 
-/** A track's cells: wide where the list is, so two steps a few hundred milliseconds apart do not land in one cell. */
-const TRACK_WIDE = 18;
-const TRACK = 12;
-/** The track as the filled run and the empty rest around it. */
-function trackParts(bar: [number, number], TRACK: number): [string, string, string] {
-  // An empty span (a day with nothing) draws no fill, only the track.
-  if (bar[1] - bar[0] <= 0) return ["─".repeat(TRACK), "", ""];
-  const start = Math.min(TRACK - 1, Math.max(0, Math.round(bar[0] * TRACK)));
-  // The width comes from the duration, not from where the rounded end lands, so equal durations draw equal bars.
-  const end = Math.min(TRACK, start + Math.max(1, Math.round((bar[1] - bar[0]) * TRACK)));
-  return ["─".repeat(start), "█".repeat(end - start), "─".repeat(TRACK - end)];
+/** The track as a run of rule, a solid run, the eighth-block edge that finishes it, and the rule after. The start rounds to a cell, the end to an eighth, so equal times draw equal bars and a few hundred milliseconds show. */
+const EDGES = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
+function trackParts(bar: [number, number], cells: number): { before: string; solid: number; edge: string; after: string } {
+  // An empty span (a day with nothing) draws no fill, only the rule.
+  if (bar[1] - bar[0] <= 0) return { before: "─".repeat(cells), solid: 0, edge: "", after: "" };
+  const start = Math.min(cells - 1, Math.max(0, Math.round(bar[0] * cells)));
+  const width8 = Math.max(2, Math.round((bar[1] - bar[0]) * cells * 8));
+  const end8 = Math.min((cells - start) * 8, width8);
+  const solid = Math.floor(end8 / 8);
+  const edge = EDGES[end8 % 8] ?? "";
+  return { before: "─".repeat(start), solid, edge, after: "─".repeat(Math.max(0, cells - start - solid - (edge ? 1 : 0))) };
 }
 
 /** What a preview pane shows: a heading and the text under it. */
@@ -54,6 +54,8 @@ export function Picker(p: {
   empty?: string;
   /** Tab does this (the usage picker's 7, 30, 90 days). */
   onTab?: () => void;
+  /** What Tab does, in words ("Tab: 30 days"): it leads the key hints, so the title stays a name. */
+  tabHint?: string;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
   noun?: [string, string];
   /** Columns the side panel takes: the picker fits what is left of the screen, never under the panel. */
@@ -91,8 +93,12 @@ export function Picker(p: {
   /** Lines a row takes: itself, a heading over it, and a blank line above a heading that is not the first. */
   const cost = (list: PickerItem[], at: number) => 1 + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
   /** A bar row's label column: the track starts here, a little over a third of the list. */
-  const track = () => (listWidth() >= 64 ? TRACK_WIDE : TRACK);
-  const barLabel = () => Math.max(18, Math.floor(listWidth() * (listWidth() > 70 ? 0.45 : 0.37)));
+  const barLabel = () => Math.max(18, Math.floor(listWidth() * (listWidth() > 70 ? 0.4 : 0.37)));
+  /** The track takes what the label and the widest figure leave, so a wide sheet has a long bar and no dead gap: 12 cells at least, 44 at most. */
+  const track = () => {
+    const figures = Math.max(0, ...shown().filter((i) => i.bar).map((i) => (i.hint ?? "").length));
+    return Math.max(12, Math.min(44, listWidth() - barLabel() - figures - 3));
+  };
   const lines = () => height() - 5;
   /** The rows that fit: from the first one that keeps the highlighted row in view, as many as the box holds, and the room a "more below" line takes. */
   const windowed = createMemo(() => {
@@ -169,7 +175,7 @@ export function Picker(p: {
     >
       <text fg={t().muted}>
         <b>{p.title}</b>
-        <span style={{ fg: t().muted }}>{"   ↑↓ Enter · Esc"}</span>
+        <span style={{ fg: t().muted }}>{`   ${p.tabHint ? `${p.tabHint} · ` : ""}↑↓ Enter · Esc`}</span>
       </text>
       <box flexDirection="row" flexShrink={0}>
         <text fg={t().accent} flexShrink={0}>{"› "}</text>
@@ -200,9 +206,10 @@ export function Picker(p: {
                     <Show when={item.bar}>
                       {(bar) => (
                         <text flexShrink={0} fg={t().muted}>
-                          {trackParts(bar(), track())[0]}
-                          <span style={{ fg: t().accent }}>{trackParts(bar(), track())[1]}</span>
-                          {trackParts(bar(), track())[2]}
+                          {trackParts(bar(), track()).before}
+                          <span style={{ bg: t().accent }}>{" ".repeat(trackParts(bar(), track()).solid)}</span>
+                          <span style={{ fg: t().accent }}>{trackParts(bar(), track()).edge}</span>
+                          {trackParts(bar(), track()).after}
                         </text>
                       )}
                     </Show>
