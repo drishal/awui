@@ -234,6 +234,32 @@ test.describe("shared look in config.yml", () => {
     await expect(page.locator("html")).not.toHaveAttribute("data-tool-style", "lines");
   });
 
+  test("the normalizer backend uses the styled picker and cancels its keyboard selection", async ({ page }) => {
+    const { base } = ctx as NonNullable<typeof ctx>;
+    await page.goto(`${base}/`);
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await openSection(settings, "Tool cards");
+    const picker = settings.getByRole("button", { name: "Tool-card backend" });
+    await expect(picker).toContainText("Local Clef-flash");
+    await expect(picker).toHaveAttribute("aria-haspopup", "listbox");
+    await expect(picker).toHaveCSS("border-radius", "8px");
+
+    const control = settings.locator('[data-settings-row="normalizer-backend"] > .form-control');
+    await expect.poll(async () => (await control.boundingBox())?.width ?? 0).toBe(240);
+    await expect.poll(async () => (await picker.boundingBox())?.width ?? 0).toBe(240);
+
+    await picker.focus();
+    await page.keyboard.press("ArrowDown");
+    const menu = settings.getByRole("listbox", { name: "Tool-card backend" });
+    await expect(menu).toBeFocused();
+    await expect(menu.getByRole("option", { name: "Local Clef-flash", exact: true })).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(picker).toContainText("Local Clef-flash");
+    await expect(settings.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  });
   test("sections switch in place, keep an edit made in another one, and save with one Save", async ({ page }) => {
     const { base, configFile } = ctx as NonNullable<typeof ctx>;
     await page.goto(`${base}/`);

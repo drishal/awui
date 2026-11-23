@@ -400,6 +400,19 @@
   min-width: 8ch;
 }
 
+/* Use the form's usual single-line control width instead of shrinking to the chosen backend. */
+[data-settings-row="normalizer-backend"] > .form-control > .select-wrap,
+[data-settings-row="normalizer-backend"] > .form-control > .select-wrap > .select-trigger {
+  width: 240px;
+}
+
+@media (max-width: 640px) {
+  [data-settings-row="normalizer-backend"] > .form-control > .select-wrap,
+  [data-settings-row="normalizer-backend"] > .form-control > .select-wrap > .select-trigger {
+    width: 100%;
+  }
+}
+
 /* Shared agent profiles: one block each, the seat's identity above its defaults. */
 .agent-profiles {
   display: flex;
