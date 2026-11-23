@@ -155,7 +155,7 @@ export function ReviewView(p: { onClose: () => void }) {
                     <span style={{ fg: t().danger }}>{` −${row.removed}`}</span>
                     <Show when={marks()?.byPath.get(row.path)}>
                       {(counts) => (
-                        <span style={{ fg: t().muted }}>{`  · ${counts().agent} from this chat${counts().changed > 0 ? `, ${counts().changed} changed since` : ""}`}</span>
+                        <span style={{ fg: t().muted }}>{`  · ${counts().agent} from this chat`}</span>
                       )}
                     </Show>
                   </text>
