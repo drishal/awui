@@ -32,6 +32,46 @@ function processText(turn: Turn): string {
   return parts.join("\n");
 }
 
+/** Where in a turn a match can be: its visible prompt and answer, or the work its fold holds. */
+export interface TurnMatch {
+  /** The turn's index among the transcript's turns (the box to scroll to). */
+  index: number;
+  turnId: string;
+  count: number;
+  /** The first match with some of the text around it, on one line. */
+  snippet: string;
+  /** The match is inside the work (a closed fold hides it), not in the prompt or the answer. */
+  inWork: boolean;
+}
+
+/** A line of `text` around its first match of `needle`, `radius` characters either side, whitespace folded to single spaces. */
+export function findSnippet(text: string, needle: string, radius = 36): string {
+  const at = findOffsets(text, needle)[0];
+  if (at === undefined) return "";
+  const from = Math.max(0, at - radius);
+  const to = Math.min(text.length, at + needle.length + radius);
+  const flat = text.slice(from, to).replace(/\s+/g, " ").trim();
+  return `${from > 0 ? "…" : ""}${flat}${to < text.length ? "…" : ""}`;
+}
+
+/**
+ * Every turn that mentions `query`, in transcript order, with how many times, a line around the first match, and whether
+ * it sits in the work (atui's find is a list of these, where the web's marks the page itself).
+ */
+export function findTurns(turns: readonly Turn[], query: string): TurnMatch[] {
+  if (!query.trim()) return [];
+  const out: TurnMatch[] = [];
+  turns.forEach((turn, index) => {
+    const visible = [turn.prompt?.text ?? "", turn.answer?.text ?? ""].join("\n");
+    const work = processText(turn);
+    const inVisible = findOffsets(visible, query).length;
+    const inWork = findOffsets(work, query).length;
+    if (inVisible + inWork === 0) return;
+    out.push({ index, turnId: turn.id, count: inVisible + inWork, snippet: findSnippet(inVisible > 0 ? visible : work, query), inWork: inVisible === 0 });
+  });
+  return out;
+}
+
 /** Turns whose fold holds a match: they open so their matches can be shown. */
 export function foldsToOpen(turns: readonly Turn[], query: string): string[] {
   if (!query.trim()) return [];

@@ -32,6 +32,7 @@ import { accentOf } from "../theme.js";
 import { Composer } from "./composer.js";
 import { AtuiContext } from "./context.js";
 import { glideBy, glideTo, Shimmer } from "./fx.js";
+import { findTurns } from "../../web/find.js";
 import { SwitchGhost } from "./ghost.js";
 import { Picker, type PreviewText } from "./picker.js";
 import { RequestCard } from "./request.js";
@@ -53,14 +54,14 @@ import { WhichKey } from "./whichkey.js";
 import { turnOffset, vimKey, pushJump, type Jump } from "../vim.js";
 import { buildTurns, turnOfTool } from "../../web/turns.js";
 
-type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "history" | "run" | null;
+type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "history" | "find" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
  * forty actions under one "Actions" word gave no way to scan it. An id not named here is "More".
  */
 const PALETTE_GROUPS: Record<string, string> = {
-  new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", sessions: "Chats",
+  new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", find: "Chats", sessions: "Chats",
   retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", "put-back": "Chats", quote: "Chats",
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
   model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
@@ -494,6 +495,11 @@ export function App(p: {
       setHint(null);
       return setLeaderOn(true);
     }
+    // C-s: find in chat, in both styles (a ctrl chord, so vim's NORMAL keys are untouched).
+    if (key.ctrl && !key.meta && key.name === "s" && app.chat()) {
+      key.preventDefault();
+      return setDialog("find");
+    }
     if (keybinds() === "emacs" && key.ctrl && key.name === "t") {
       key.preventDefault();
       p.onShowThoughts(!thoughts());
@@ -614,6 +620,7 @@ export function App(p: {
     if (c && runnables().length > 0) add({ id: "run", label: "Run a command from the answer…", hint: leader("x", keybinds()), run: () => setDialog("run") });
     add({ id: "quote", label: "Quote the selection into the message", hint: "M-q", searchOnly: true, run: quoteSelection });
     if (app.putBackable()) add({ id: "put-back", label: "Put the undone files back", hint: leader("z", keybinds()), run: () => void app.putBack() });
+    if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
     add({ id: "sidebar", label: sidebar() ? "Fold the side panel" : "Unfold the side panel", hint: leader("b", keybinds()), run: () => runLeader("b") });
@@ -715,6 +722,35 @@ export function App(p: {
       current: level === current,
       disabled: idle ? undefined : "Wait until the agent is idle",
       run: () => void app.pickThinking(level),
+    }));
+  };
+
+  /** Bring one turn into view; its work opens first when the match is in it (a fold hides it). */
+  const revealTurn = (index: number, inWork: boolean) => {
+    if (inWork) setShowWork(true);
+    // A fold that opens moves everything below it: measure after the next frame.
+    setTimeout(() => {
+      const box = scroller;
+      if (!box) return;
+      const y = box.content.getChildren().map((child) => (child as { y: number }).y)[index];
+      if (y !== undefined) {
+        mark();
+        glideTo(box, y);
+      }
+    }, inWork ? 80 : 0);
+  };
+
+  /** Find in chat: the turns that mention what is typed, each with a line around the first match; Enter goes to the turn. */
+  const findItems = (query: string): PaletteItem[] => {
+    const c = app.chat();
+    if (!c) return [];
+    const turns = buildTurns(c.items, c.status, c.runStartedAt);
+    return findTurns(turns, query).map((m) => ({
+      id: `find:${m.turnId}`,
+      section: "Turns",
+      label: m.snippet,
+      hint: `${m.inWork ? "in the work · " : ""}${m.count === 1 ? "1 match" : `${m.count} matches`} · turn ${m.index + 1}`,
+      run: () => revealTurn(m.index, m.inWork),
     }));
   };
 
@@ -895,6 +931,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "harness"}>
                   <Picker title="Harness" placeholder="Search harnesses…" items={harnessItems()} onClose={() => setDialog(null)} firstHeading={hasPrompt()} side={room()} />
+                </Show>
+                <Show when={dialog() === "find"}>
+                  <Picker title="Find in chat" placeholder="Type to find text in this chat…" items={[]} search={findItems} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "permission"}>
                   <Picker title="Permission mode" placeholder="Search modes…" items={permissionItems()} onClose={() => setDialog(null)} side={room()} />

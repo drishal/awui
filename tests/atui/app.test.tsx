@@ -377,6 +377,33 @@ describe("atui", () => {
     await ui.until(() => ui?.app.chat()?.status === "idle" && ui?.app.chat()?.config.model === "fake/slow", 15_000);
   }, 30_000);
 
+  it("finds text in the chat with C-s: the turns that mention it, a line around the match, Enter goes to the turn", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("first needle prompt");
+    ui.keys.pressEnter();
+    await ui.until("Echo: first needle prompt");
+    await idle(ui);
+    await ui.type("second haystack prompt");
+    ui.keys.pressEnter();
+    await ui.until("Echo: second haystack prompt");
+    await idle(ui);
+    ui.keys.pressKey("s", { ctrl: true });
+    await ui.until("Type to find text in this chat…");
+    await ui.type("needle");
+    const found = await ui.until("turn 1");
+    expect(found).toContain("matches · turn 1");
+    expect(found).not.toContain("turn 2");
+    ui.keys.pressEnter();
+    await ui.until(() => ui?.app.chat() !== null);
+    await wait(80);
+    expect(await ui.frame()).not.toContain("Find in chat");
+    // Nothing matches: the picker says so instead of listing the whole chat.
+    ui.keys.pressKey("s", { ctrl: true });
+    await ui.until("Type to find text in this chat…");
+    await ui.type("zzzz");
+    expect(await ui.until("Nothing matches “zzzz”")).toContain("Find in chat");
+  }, 30_000);
+
   it("shows the permission mode where the harness has one, and changes it from its chip", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("hello permission");

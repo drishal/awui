@@ -28,6 +28,8 @@ export function Picker(p: {
   onClose: () => void;
   firstHeading?: boolean;
   preview?: (item: PaletteItem) => Promise<PreviewText | null> | null;
+  /** Items made from the query itself (find in chat): instead of ranking `items`, which stay empty. Nothing is listed until something is typed. */
+  search?: (query: string) => PaletteItem[];
   /** Columns the side panel takes: the picker fits what is left of the screen, never under the panel. */
   side?: number;
 }) {
@@ -35,7 +37,7 @@ export function Picker(p: {
   const size = useTerminalDimensions();
   const [query, setQuery] = createSignal("");
   const [active, setActive] = createSignal(0);
-  const shown = createMemo(() => rankItems(p.items, query()));
+  const shown = createMemo(() => (p.search ? p.search(query()) : rankItems(p.items, query())));
   createEffect(
     on(shown, (list) => {
       const first = list.findIndex((i) => !i.disabled);
@@ -149,7 +151,7 @@ export function Picker(p: {
             }}
           </For>
           <Show when={shown().length === 0}>
-            <text fg={t().muted}>{`Nothing matches “${query().trim()}”`}</text>
+            <text fg={t().muted}>{p.search && !query().trim() ? p.placeholder : `Nothing matches “${query().trim()}”`}</text>
           </Show>
         </box>
         <Show when={previewing()}>
