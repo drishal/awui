@@ -762,6 +762,20 @@ export function App(p: {
     }, inWork ? 80 : 0);
   };
 
+  /** A snippet without the project's own path: the whole of it where it appears, and the tail of it where the snippet's cut began in the middle of it ("…RXL/ws/alpha/src/a.ts"). */
+  const plainPath = (snippet: string, root: string): string => {
+    let out = snippet.split(root).join("");
+    for (let i = 1; i < root.length - 3; i++) {
+      const tail = root.slice(i);
+      const at = out.indexOf(tail);
+      if (at >= 0 && at <= 1) {
+        out = out.slice(at + tail.length);
+        break;
+      }
+    }
+    return out;
+  };
+
   /** Find in chat: the turns that mention what is typed, each with a line around the first match; Enter goes to the turn. */
   const findItems = (query: string): PaletteItem[] => {
     const c = app.chat();
@@ -772,7 +786,7 @@ export function App(p: {
     return findTurns(turns, query, 16).map((m) => ({
       id: `find:${m.turnId}`,
       section: "Turns",
-      label: `${clip(turns[m.index]?.prompt?.text.replace(/\s+/g, " ") ?? "", 18)} › ${m.snippet.split(root).join("").replace(/…\S*?\.\.\.[^\s/]*\//g, "")}`,
+      label: `${clip(turns[m.index]?.prompt?.text.replace(/\s+/g, " ") ?? "", 18)} › ${plainPath(m.snippet, root)}`,
       hint: `turn ${m.index + 1} · ${m.inWork ? "work · " : ""}${m.count}×`,
       run: () => revealTurn(m.index, m.inWork),
     }));
@@ -786,19 +800,20 @@ export function App(p: {
     const turn = buildTurns(c.items, c.status, c.runStartedAt).find((x) => x.prompt?.id === id);
     if (!turn) return [];
     const fall = turnWaterfall(turn, c.workspace.path, Date.now());
-    const section = fall.total > 0 ? `This turn took ${atLabel(fall.total)}` : "No times reported";
+    const unit = (ms: number) => atLabel(ms).replace(" ", "");
+    const section = fall.total > 0 ? `This turn took ${unit(fall.total)}` : "No times reported";
     const rows = fall.rows.map((row) => ({
       id: `timing:${row.id}`,
       section,
       label: `${"  ".repeat(row.depth)}${row.label}${row.slowest ? "  ⚑ slowest" : ""}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
-      hint: `at ${atLabel(row.start)} · took ${atLabel(row.end - row.start)}`,
+      hint: `at ${unit(row.start)} · took ${unit(row.end - row.start)}`,
       bar: fall.total > 0 ? ([row.start / fall.total, row.end / fall.total] as [number, number]) : undefined,
       run: () => {},
     }));
     // Time before the first step (a request waiting for an answer, a slow start) has no step of its own: name it, so the rows add up to the turn.
     const first = fall.rows.reduce((least, row) => Math.min(least, row.start), Number.POSITIVE_INFINITY);
     if (fall.total > 0 && Number.isFinite(first) && first >= 400) {
-      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at 0 ms · took ${atLabel(first)}`, bar: [0, first / fall.total], run: () => {} });
+      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at 0ms · took ${unit(first)}`, bar: [0, first / fall.total], run: () => {} });
     }
     return rows;
   };
