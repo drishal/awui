@@ -9,6 +9,19 @@ import { matchSpans } from "../assist.js";
 import { clip } from "../format.js";
 import { useTheme } from "./context.js";
 
+/** A row that also draws a span of a track (a step's place on a turn's time, a day's share of the busiest): `[from, to]`, each 0 to 1. */
+export type PickerItem = PaletteItem & { bar?: [number, number] };
+
+const TRACK = 12;
+/** The track as the filled run and the empty rest around it. */
+function trackParts(bar: [number, number]): [string, string, string] {
+  // An empty span (a day with nothing) draws no fill, only the track.
+  if (bar[1] - bar[0] <= 0) return ["░".repeat(TRACK), "", ""];
+  const start = Math.min(TRACK - 1, Math.max(0, Math.round(bar[0] * TRACK)));
+  const end = Math.min(TRACK, Math.max(start + 1, Math.round(bar[1] * TRACK)));
+  return ["░".repeat(start), "█".repeat(end - start), "░".repeat(TRACK - end)];
+}
+
 /** What a preview pane shows: a heading and the text under it. */
 export interface PreviewText {
   head: string;
@@ -24,12 +37,16 @@ const PAGE = 8;
 export function Picker(p: {
   title: string;
   placeholder: string;
-  items: PaletteItem[];
+  items: PickerItem[];
   onClose: () => void;
   firstHeading?: boolean;
   preview?: (item: PaletteItem) => Promise<PreviewText | null> | null;
   /** Items made from the query itself (find in chat): instead of ranking `items`, which stay empty. Nothing is listed until something is typed. */
   search?: (query: string) => PaletteItem[];
+  /** Rows that only inform (timing, usage): nothing is highlighted, and Enter just closes. */
+  info?: boolean;
+  /** Tab does this (the usage picker's 7, 30, 90 days). */
+  onTab?: () => void;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
   noun?: [string, string];
   /** Columns the side panel takes: the picker fits what is left of the screen, never under the panel. */
@@ -39,7 +56,7 @@ export function Picker(p: {
   const size = useTerminalDimensions();
   const [query, setQuery] = createSignal("");
   const [active, setActive] = createSignal(0);
-  const shown = createMemo(() => (p.search ? p.search(query()) : rankItems(p.items, query())));
+  const shown = createMemo((): PickerItem[] => (p.search ? p.search(query()) : (rankItems(p.items, query()) as PickerItem[])));
   createEffect(
     on(shown, (list) => {
       const first = list.findIndex((i) => !i.disabled);
@@ -59,11 +76,30 @@ export function Picker(p: {
   const rowsNeeded = () => {
     const list = shown();
     const headings = query().trim() ? 0 : list.filter((item, at) => (at === 0 ? Boolean(p.firstHeading) : list[at - 1]?.section !== item.section)).length;
-    return Math.max(1, list.length) + headings;
+    return Math.max(1, list.length) + headings * 2;
   };
   const height = () => Math.min(previewing() ? 22 : Math.max(8, rowsNeeded() + 5), 22, size().height - 4);
-  const visible = () => height() - 5;
-  const offset = () => Math.max(0, Math.min(active() - Math.floor(visible() / 2), shown().length - visible()));
+  /** Is a heading drawn above row `at`? Not while a query is typed; the first one only when the picker names it. */
+  const headed = (list: PickerItem[], at: number) => !query().trim() && (list[at - 1]?.section !== list[at]?.section) && (at > 0 || Boolean(p.firstHeading));
+  /** Lines a row takes: itself, a heading over it, and a blank line above a heading that is not the first. */
+  const cost = (list: PickerItem[], at: number) => 1 + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
+  const lines = () => height() - 5;
+  /** The rows that fit: from the first one that keeps the highlighted row in view, as many as the box holds, and the room a "more below" line takes. */
+  const windowed = createMemo(() => {
+    const list = shown();
+    const room = lines();
+    const fit = (from: number, budget: number) => {
+      let used = 0;
+      let to = from;
+      while (to < list.length && used + cost(list, to) <= budget) used += cost(list, to++);
+      return to;
+    };
+    let from = 0;
+    const budget = list.length > 0 && fit(0, room) < list.length ? room - 1 : room;
+    while (from < list.length - 1 && fit(from, budget) <= active()) from++;
+    const to = fit(from, budget);
+    return { from, to, more: list.length - to };
+  });
 
   const move = (step: number) => {
     const list = shown();
@@ -82,7 +118,7 @@ export function Picker(p: {
   const run = (item: PaletteItem | undefined) => {
     if (!item || item.disabled) return;
     p.onClose();
-    item.run();
+    if (!p.info) item.run();
   };
 
   useKeyboard((key) => {
@@ -94,6 +130,9 @@ export function Picker(p: {
     } else if (step !== undefined) {
       key.preventDefault();
       move(step);
+    } else if (key.name === "tab" && p.onTab) {
+      key.preventDefault();
+      p.onTab();
     } else if (key.name === "return") {
       key.preventDefault();
       run(shown()[active()]);
@@ -128,30 +167,43 @@ export function Picker(p: {
       </box>
       <box flexDirection="row" flexGrow={1} marginTop={1}>
         <box flexDirection="column" width={listWidth()} flexShrink={0}>
-          <For each={shown().slice(offset(), offset() + visible())}>
+          <For each={shown().slice(windowed().from, windowed().to)}>
             {(item, i) => {
-              const at = () => i() + offset();
-              const head = () => at() === 0 || shown()[at() - 1]?.section !== item.section;
+              const at = () => i() + windowed().from;
+              const lit = () => !p.info && at() === active();
               return (
                 <box flexDirection="column">
-                  <Show when={!query().trim() && head() && (i() > 0 || p.firstHeading)}>
-                    <text fg={t().muted}><b>{item.section}</b></text>
+                  <Show when={headed(shown(), at())}>
+                    <text fg={t().muted} marginTop={at() > 0 ? 1 : 0}><b>{item.section}</b></text>
                   </Show>
-                  <box flexDirection="row" backgroundColor={at() === active() ? t().selection : undefined} onMouseDown={() => run(item)}>
-                    <text flexGrow={1} fg={item.disabled ? t().muted : at() === active() ? t().text : t().text2} wrapMode="none" truncate>
+                  <box flexDirection="row" backgroundColor={lit() ? t().selection : undefined} onMouseDown={() => run(item)}>
+                    <text flexGrow={1} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
                       {item.current ? "✓ " : "  "}
-                      <Index each={matchSpans(clip(item.label, listWidth() - 20), query())}>
+                      <Index each={matchSpans(clip(item.label, listWidth() - (item.bar ? 36 : 20)), query())}>
                         {(part) => <span style={part().hit && !item.disabled ? { fg: t().accent } : {}}>{part().text}</span>}
                       </Index>
                     </text>
                     <Show when={item.hint}>
-                      <text flexShrink={0} fg={t().muted}>{` ${clip(item.hint ?? "", listWidth() >= 60 ? 28 : 18)}`}</text>
+                      <text flexShrink={0} fg={t().muted}>{` ${clip(item.hint ?? "", listWidth() >= 60 ? 30 : 18)}`}</text>
+                    </Show>
+                    <Show when={item.bar}>
+                      {(bar) => (
+                        <text flexShrink={0} fg={t().border}>
+                          {" "}
+                          {trackParts(bar())[0]}
+                          <span style={{ fg: t().accent }}>{trackParts(bar())[1]}</span>
+                          {trackParts(bar())[2]}
+                        </text>
+                      )}
                     </Show>
                   </box>
                 </box>
               );
             }}
           </For>
+          <Show when={windowed().more > 0}>
+            <text fg={t().muted}>{`  ↓ ${windowed().more} more`}</text>
+          </Show>
           <Show when={shown().length === 0}>
             <text fg={t().muted}>{p.search && !query().trim() ? p.placeholder : `Nothing matches “${query().trim()}”`}</text>
           </Show>
