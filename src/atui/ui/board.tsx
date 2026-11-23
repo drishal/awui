@@ -142,7 +142,12 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   const width = () => Math.max(30, Math.min(160, size().width - (p.side ?? 0) - 4));
   const columnWidth = () => Math.max(18, Math.floor((width() - 4) / 3) - 1);
   const height = () => Math.max(6, size().height - 8);
-  const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} · ${PR_FILTER_LABELS[pr()]}`;
+  const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} [f] · ${PR_FILTER_LABELS[pr()]} [r]`;
+  /** The frame fits its cards (about four rows each, plus the head and the column titles) up to the room the sheet stands in, so a board with a few cards is not a frame of empty rows. */
+  const boxHeight = () => {
+    const tallest = Math.max(...BOARD_COLUMNS.map((id) => cards()[id].length));
+    return Math.min(Math.max(10, size().height - 6), Math.max(10, tallest * 4 + 6));
+  };
 
   return (
     <box
@@ -150,7 +155,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
       /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
          the title bar, so a terminal-height overlay would put its last row off the frame. */
       top={0}
-      bottom={0}
+      height={boxHeight()}
       left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
       width={width()}
       zIndex={15}
