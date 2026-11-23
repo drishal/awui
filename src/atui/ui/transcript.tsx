@@ -219,6 +219,7 @@ function PromptActions(p: { item: UserItem; through: number; onDone: () => void 
       </Show>
       <Chip label="⧉ Copy" onPress={run(() => void renderer.copyToClipboardOSC52(p.item.text))} />
       <Show when={turn()?.answer?.text}>{(answer) => <Chip label="⧉ Copy answer" onPress={run(() => void renderer.copyToClipboardOSC52(answer()))} />}</Show>
+      <Show when={turn()?.answer}><Chip label="◷ Timing" onPress={run(() => app.setTimingFor(p.item.id))} /></Show>
       <Show when={turn()}>{(whole) => <Chip label="⧉ Copy turn as Markdown" onPress={run(() => void renderer.copyToClipboardOSC52(turnMarkdown(whole(), c()?.workspace.path ?? "")))} />}</Show>
       <Show when={!idle()}>
         <text selectable={false} fg={t().muted}>{" Retry and Edit wait until the agent is idle"}</text>

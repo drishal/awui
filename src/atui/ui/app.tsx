@@ -54,15 +54,16 @@ import { Transcript } from "./transcript.js";
 import { WhichKey } from "./whichkey.js";
 import { turnOffset, vimKey, pushJump, type Jump } from "../vim.js";
 import { buildTurns, turnOfTool } from "../../web/turns.js";
+import { atLabel, turnWaterfall } from "../../web/waterfall.js";
 
-type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "queue" | "history" | "find" | "run" | null;
+type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "history" | "find" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
  * forty actions under one "Actions" word gave no way to scan it. An id not named here is "More".
  */
 const PALETTE_GROUPS: Record<string, string> = {
-  new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", find: "Chats", queue: "Chats", "copy-answer": "Chats", "copy-turn": "Chats", sessions: "Chats",
+  new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", find: "Chats", queue: "Chats", timing: "Chats", "copy-answer": "Chats", "copy-turn": "Chats", sessions: "Chats",
   retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", "put-back": "Chats", quote: "Chats",
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
   model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
@@ -94,6 +95,10 @@ export function App(p: {
   const [sideTab, setSideTab] = createSignal<SidebarTab>("sessions");
   const [focus, setFocus] = createSignal<"composer" | "sidebar">("composer");
   const [dialog, setDialog] = createSignal<Dialog>(null);
+  // The chip under a prompt asks for the Timing picker through the state; the dialog is this screen's.
+  createEffect(() => {
+    if (app.timingFor() !== null) setDialog("timing");
+  });
   // The work shows, as neat-render draws it (nothing folds); C-x e folds every turn to its line.
   const thoughts = () => p.showThoughts;
   const [showWork, setShowWork] = createSignal(true);
@@ -630,6 +635,10 @@ export function App(p: {
         add({ id: "copy-turn", label: "Copy the last turn as Markdown", searchOnly: true, run: () => { void renderer.copyToClipboardOSC52(turnMarkdown(done, c.workspace.path)); flash("Copied the last turn as Markdown"); } });
       }
     }
+    if (c && last) {
+      const lastDone = [...buildTurns(c.items, c.status, c.runStartedAt)].reverse().find((x) => x.prompt && x.answer);
+      if (lastDone?.prompt) add({ id: "timing", label: "Timing of the last turn…", keywords: "waterfall slow speed duration steps calls", run: () => { app.setTimingFor(lastDone.prompt?.id ?? null); setDialog("timing"); } });
+    }
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
@@ -762,6 +771,24 @@ export function App(p: {
       label: m.snippet,
       hint: `${m.inWork ? "in the work · " : ""}${m.count === 1 ? "1 match" : `${m.count} matches`} · turn ${m.index + 1}`,
       run: () => revealTurn(m.index, m.inWork),
+    }));
+  };
+
+  /** The Timing picker's rows: each model step, call and subagent run of one turn, where it started and how long it took (the web's waterfall, as a list). */
+  const timingItems = (): PaletteItem[] => {
+    const c = app.chat();
+    const id = app.timingFor();
+    if (!c || id === null) return [];
+    const turn = buildTurns(c.items, c.status, c.runStartedAt).find((x) => x.prompt?.id === id);
+    if (!turn) return [];
+    const fall = turnWaterfall(turn, c.workspace.path, Date.now());
+    const section = fall.total > 0 ? `This turn took ${atLabel(fall.total)}` : "No times reported";
+    return fall.rows.map((row) => ({
+      id: `timing:${row.id}`,
+      section,
+      label: `${"  ".repeat(row.depth)}${row.label}${row.slowest ? "  ⚑ slowest" : ""}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
+      hint: `${atLabel(row.start)} +${atLabel(row.end - row.start)}`,
+      run: () => {},
     }));
   };
 
@@ -962,6 +989,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "permission"}>
                   <Picker title="Permission mode" placeholder="Search modes…" items={permissionItems()} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "timing"}>
+                  <Picker title="Timing" placeholder="Search steps…" items={timingItems()} firstHeading onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
                   <Picker title="Queued messages" placeholder="Search queued messages…" items={queueItems()} firstHeading onClose={() => setDialog(null)} side={room()} />

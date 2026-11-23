@@ -782,6 +782,22 @@ describe("atui", () => {
     expect(await ui.frame()).not.toContain("1 F first tab chat");
   }, 40_000);
 
+  it("shows a turn's timing from the chip under its prompt: each step with where it started and how long it took", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("showcase timing");
+    ui.keys.pressEnter();
+    await idle(ui);
+    await ui.click("❯ showcase timing");
+    await ui.until("◷ Timing");
+    await ui.click("◷ Timing");
+    const shown = await ui.until("Search steps…");
+    expect(shown).toContain("This turn took");
+    expect(shown).toContain("Edited src/server.ts");
+    // Esc closes it and the screen is the chat again.
+    await ui.escape();
+    expect(await ui.until("Message the agent")).not.toContain("Search steps…");
+  }, 40_000);
+
   it("offers a prompt's actions on a click: Edit replaces it in place, Esc drops an edit", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("first try");

@@ -789,6 +789,8 @@ export function createAtui(server: Server, opts: AtuiOptions) {
 
   /** A prompt being edited in the composer: Enter replaces it (as the web UI's Edit does). */
   const [editing, setEditing] = createSignal<{ through: number; item: UserItem } | null>(null);
+  /** The prompt (by item id) whose turn the Timing picker shows; null is closed. */
+  const [timingFor, setTimingFor] = createSignal<string | null>(null);
   /** A queued message taken back out of the harness's queue: the composer puts it in its draft once, then clears this. */
   const [pullback, setPullback] = createSignal<string | null>(null);
   /** Replaces the harness's whole queue (the web UI's queue edit); `field` and `index` name the message to drop, and `text` puts it back in the composer when given. */
@@ -1032,6 +1034,8 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     setEditing,
     pullback,
     setPullback,
+    timingFor,
+    setTimingFor,
     dropQueued,
     undoTurn,
     setUndoTurn,
