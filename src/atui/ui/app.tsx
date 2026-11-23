@@ -23,7 +23,7 @@ import type { UserItem } from "../../shared/protocol.js";
 import type { PaletteItem } from "../../web/palette.js";
 import { isBusy } from "../../web/session-groups.js";
 import { atuiColumn, chatWidthLabel, CHAT_WIDTHS, nextChatWidth } from "../../shared/chat-width.js";
-import { ago, STATUS_LABEL } from "../format.js";
+import { ago, clip, STATUS_LABEL } from "../format.js";
 import { actionKeys, leader, leaderPrefix, LEADER_KEYS, VIM_HELP, type KeybindStyle } from "../keys.js";
 import { harnessGlyph } from "../neat.js";
 import type { Atui } from "../state.js";
@@ -770,8 +770,8 @@ export function App(p: {
     return findTurns(turns, query).map((m) => ({
       id: `find:${m.turnId}`,
       section: "Turns",
-      label: m.snippet,
-      hint: `${m.inWork ? "in the work · " : ""}${m.count === 1 ? "1 match" : `${m.count} matches`} · turn ${m.index + 1}`,
+      label: `${clip(turns[m.index]?.prompt?.text.replace(/\s+/g, " ") ?? "", 22)} › ${m.snippet}`,
+      hint: `turn ${m.index + 1} · ${m.inWork ? "work · " : ""}${m.count}×`,
       run: () => revealTurn(m.index, m.inWork),
     }));
   };
@@ -785,7 +785,7 @@ export function App(p: {
     if (!turn) return [];
     const fall = turnWaterfall(turn, c.workspace.path, Date.now());
     const section = fall.total > 0 ? `This turn took ${atLabel(fall.total)}` : "No times reported";
-    return fall.rows.map((row) => ({
+    const rows = fall.rows.map((row) => ({
       id: `timing:${row.id}`,
       section,
       label: `${"  ".repeat(row.depth)}${row.label}${row.slowest ? "  ⚑ slowest" : ""}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
@@ -793,6 +793,12 @@ export function App(p: {
       bar: fall.total > 0 ? ([row.start / fall.total, row.end / fall.total] as [number, number]) : undefined,
       run: () => {},
     }));
+    // Time before the first step (a request waiting for an answer, a slow start) has no step of its own: name it, so the rows add up to the turn.
+    const first = fall.rows.reduce((least, row) => Math.min(least, row.start), Number.POSITIVE_INFINITY);
+    if (fall.total > 0 && Number.isFinite(first) && first >= 400) {
+      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at 0 ms · took ${atLabel(first)}`, bar: [0, first / fall.total], run: () => {} });
+    }
+    return rows;
   };
 
   /** Usage across every chat, the web dialog's figures as a list: totals, then by harness, model and the chats that used the most. */
@@ -809,7 +815,24 @@ export function App(p: {
     const share = cacheShare(r.totals);
     const row = (section: string, label: string, hint: string, bar?: [number, number]): PickerItem => ({ id: `usage:${section}:${label}`, section, label, hint, bar, run: () => {} });
     const tallest = Math.max(1, ...r.byDay.map((d) => tokensOf(d.totals)));
-    const days = r.byDay.slice(-14).map((d) => row("By day", new Date(`${d.day}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }), shortTokens(tokensOf(d.totals)), [0, tokensOf(d.totals) / tallest]));
+    const dayName = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    // A run of days with nothing is one line, not a column of empty tracks.
+    const days: PickerItem[] = [];
+    let idle: string[] = [];
+    const flush = () => {
+      if (idle.length === 0) return;
+      days.push(row("By day", idle.length === 1 ? dayName(idle[0] as string) : `${dayName(idle[0] as string)} to ${dayName(idle[idle.length - 1] as string)}`, "none"));
+      idle = [];
+    };
+    for (const d of r.byDay.slice(-14)) {
+      const total = tokensOf(d.totals);
+      if (total === 0) idle.push(d.day);
+      else {
+        flush();
+        days.push(row("By day", dayName(d.day), shortTokens(total), [0, total / tallest]));
+      }
+    }
+    flush();
     return [
       row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
       ...(share === null ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
@@ -828,7 +851,7 @@ export function App(p: {
       id: `queue:${field}:${index}`,
       section: field === "steering" ? "Steering: sent at the next step" : "Follow-ups: sent when the run ends",
       label: text.replace(/\s+/g, " "),
-      hint: "Enter edits",
+      hint: "Enter edits · x removes",
       run: () => void app.dropQueued(field, index, true),
     });
     return [...q.steering.map((x, i) => row("steering", x, i)), ...q.followUp.map((x, i) => row("followUp", x, i))];
@@ -985,7 +1008,7 @@ export function App(p: {
                   <Toasts />
                   {/* A picker floats over the chat (the transcript stays drawn behind it) rather than taking its place. */}
                   <Show when={dialog() !== null}>
-                    <box position="absolute" top={0} left={0} right={0} flexDirection="column">
+                    <box position="absolute" top={0} left={0} right={0} flexDirection="column" backgroundColor={app.glass() ? undefined : t().bg}>
                 <Show when={dialog() === "palette"}>
                   <Picker title="Commands" placeholder="Search commands, sessions, thinking…" items={paletteItems()} onClose={() => setDialog(null)} firstHeading side={room()} />
                 </Show>
@@ -1005,10 +1028,10 @@ export function App(p: {
                   <Picker title="Timing" placeholder="Search steps…" items={timingItems()} firstHeading info onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
                 </Show>
                 <Show when={dialog() === "usage"}>
-                  <Picker title={`Usage across chats · ${usageDays()} days · Tab ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"}`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title={`Usage across chats · ${usageDays()} days · Tab: ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
-                  <Picker title="Queued messages" placeholder="Search queued messages…" items={queueItems()} firstHeading onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Queued messages" placeholder="Search queued messages…" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); setDialog(null); return true; }} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "thinking"}>
                   <Picker title="Thinking" placeholder="Search levels…" items={thinkingItems()} onClose={() => setDialog(null)} side={room()} />

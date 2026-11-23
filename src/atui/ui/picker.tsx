@@ -45,6 +45,8 @@ export function Picker(p: {
   search?: (query: string) => PaletteItem[];
   /** Rows that only inform (timing, usage): nothing is highlighted, and Enter just closes. */
   info?: boolean;
+  /** A key pressed over the highlighted row, when the query is empty (the queue picker's `x` removes): true when it took the key. */
+  onRowKey?: (key: string, item: PickerItem | undefined) => boolean;
   /** Tab does this (the usage picker's 7, 30, 90 days). */
   onTab?: () => void;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
@@ -130,6 +132,8 @@ export function Picker(p: {
     } else if (step !== undefined) {
       key.preventDefault();
       move(step);
+    } else if (p.onRowKey && !query() && !key.ctrl && !key.meta && key.name.length === 1 && p.onRowKey(key.name, shown()[active()])) {
+      key.preventDefault();
     } else if (key.name === "tab" && p.onTab) {
       key.preventDefault();
       p.onTab();

@@ -391,7 +391,8 @@ describe("atui", () => {
     await ui.until("Type to find text in this chat…");
     await ui.type("needle");
     const found = await ui.until("turn 1");
-    expect(found).toContain("matches · turn 1");
+    expect(found).toMatch(/turn 1 · \d+×/);
+    expect(found).toContain("1 turn");
     expect(found).not.toContain("turn 2");
     ui.keys.pressEnter();
     await ui.until(() => ui?.app.chat() !== null);
@@ -435,6 +436,21 @@ describe("atui", () => {
     // The message left the queue and is the draft again, to edit and send as it was.
     await ui.until(() => (ui?.app.chat()?.queue.steering.length ?? 0) + (ui?.app.chat()?.queue.followUp.length ?? 0) === 0);
     expect(await ui.until("then the first follow-up")).not.toContain("+1 queued");
+  }, 40_000);
+
+  it("removes a queued message with x in the queue picker", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("slow stream for the queue removal");
+    ui.keys.pressEnter();
+    await ui.until(() => ui?.app.chat()?.status === "running");
+    await ui.type("remove this follow-up");
+    ui.keys.pressEnter();
+    await ui.until(() => (ui?.app.chat()?.queue.steering.length ?? 0) + (ui?.app.chat()?.queue.followUp.length ?? 0) === 1);
+    await ui.click("+1 queued");
+    await ui.until("Enter edits · x removes");
+    ui.keys.pressKey("x");
+    await ui.until(() => (ui?.app.chat()?.queue.steering.length ?? 0) + (ui?.app.chat()?.queue.followUp.length ?? 0) === 0);
+    expect(await ui.until("Message the agent")).not.toContain("remove this follow-up");
   }, 40_000);
 
   it("changes thinking, model, and harness directly, hands the chat off, and opens history", async () => {
@@ -806,10 +822,10 @@ describe("atui", () => {
     ui.keys.pressEnter();
     const shown = await ui.until("Last 7 days");
     expect(shown).toContain("Usage across chats");
-    expect(shown).toContain("Tab 30");
+    expect(shown).toContain("Tab: 30 days");
     // Tab cycles the range, as the web dialog's 7/30/90 switch does.
     ui.keys.pressTab();
-    expect(await ui.until("Last 30 days")).toContain("Tab 90");
+    expect(await ui.until("Last 30 days")).toContain("Tab: 90 days");
     await ui.escape();
     expect(await ui.until("Ask Fake to")).not.toContain("Usage across chats");
   }, 40_000);
