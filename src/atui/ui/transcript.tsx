@@ -785,7 +785,7 @@ function ProcessItem(p: { item: ChatItem; workspace: string; column: number; tho
               <Thought item={item()} open={app.thoughtOpen(item().id)} onToggle={() => app.toggleThought(item().id)} />
             </Show>
             <Show when={!p.thoughtOnly && saysSomething(item().text)}>
-              <Md text={item().text} streaming={item().streaming} fg={t().text2} id={item().id} />
+              <Md text={item().text} streaming={item().streaming} fg={t().text} id={item().id} />
             </Show>
           </box>
         )}
@@ -808,7 +808,9 @@ function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { cou
   const label = () => {
     void tick();
     const text = foldLabel(p.turn, Date.now(), p.part);
-    return waiting() ? text.replace(/^Working/, "Waiting for you") : text;
+    // The line names what it waits on, as Tern's does ("Waiting for you · Allow tool: read").
+    const asked = (app.chat()?.pending[0]?.title ?? "").split("\n")[0] ?? "";
+    return waiting() ? text.replace(/^Working/, "Waiting for you") + (asked ? ` · ${clip(asked, 48)}` : "") : text;
   };
   const thought = () => (live() && !p.open ? latestThought(p.turn) : null);
   return (
