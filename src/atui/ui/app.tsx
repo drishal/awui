@@ -861,7 +861,7 @@ export function App(p: {
     flush();
     return [
       row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
-      ...(share === null ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
+      ...(share === null || share < 0.01 ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
       ...days,
       // As the web dialog's bars: each harness and model's share of the busiest one, under the name the header and the composer use.
       ...r.byHarness.map((h) => row("By harness", `${app.boot()?.harnesses.find((x) => x.id === h.harnessId)?.displayName ?? h.harnessId} · ${h.sessions} ${h.sessions === 1 ? "chat" : "chats"}`, words(h.totals), [0, tokensOf(h.totals) / Math.max(1, ...r.byHarness.map((x) => tokensOf(x.totals)))])),
