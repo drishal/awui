@@ -193,17 +193,17 @@ export function Sidebar(p: {
         <span style={{ fg: t().border }}>{"━".repeat(Math.max(0, p.width - 22))}</span>
       </text>
       <Show when={p.tab === "sessions"} fallback={<><InfoBody width={p.width} /><text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "Tab sessions · Esc back" : `${leader("i", p.vim ? "vim" : "emacs")} info`}</text></>}>
-        <box flexDirection="row" marginTop={1} paddingLeft={1} backgroundColor={t().surface2} onMouseDown={() => { app.newChat(); p.onOpened(); }}>
+        <box flexDirection="row" flexShrink={0} marginTop={1} paddingLeft={1} backgroundColor={t().surface2} onMouseDown={() => { app.newChat(); p.onOpened(); }}>
           <text selectable={false} fg={t().accent}>+</text><text selectable={false} fg={t().text}>{" New chat"}</text><box flexGrow={1} /><text selectable={false} fg={t().muted}>{`${app.harness()?.displayName ?? ""} `}</text>
         </box>
-        <box backgroundColor={t().surface} marginTop={1} onMouseDown={p.onProject}>
+        <box backgroundColor={t().surface} flexShrink={0} marginTop={1} onMouseDown={p.onProject}>
           <text selectable={false} wrapMode="none">
             <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{` ${monogram(app.workspace()?.name ?? "")} `}</span>
             <span style={{ fg: t().muted }}>{` ${clipPath(app.workspace()?.path ?? "no project", Math.max(6, width() - 8))} `}</span>
           </text>
         </box>
         <text selectable={false} fg={t().border} wrapMode="none" flexShrink={0}>{"─".repeat(Math.max(0, p.width - 4))}</text>
-        <scrollbox ref={(el: ScrollBoxRenderable) => (scroller = el)} flexGrow={1} marginTop={1} verticalScrollbarOptions={{ visible: false }}>
+        <scrollbox ref={(el: ScrollBoxRenderable) => (scroller = el)} flexGrow={1} flexShrink={1} minHeight={0} marginTop={1} verticalScrollbarOptions={{ visible: false }}>
           <For each={navRows()}>
             {(row) => {
               const chosen = () => row ? selection() === keyOf(row) && p.active : false;

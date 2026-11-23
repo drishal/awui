@@ -75,6 +75,21 @@ const sheetFits = (frame: string, title: string) => {
 };
 
 describe("atui", () => {
+  it("keeps the sidebar's New chat row and project card when the list is far taller than the screen", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 140, height: 36 });
+    await ui.until("Fake Echo ▾");
+    await ui.type("hello");
+    ui.keys.pressEnter();
+    await idle(ui);
+    const workspaceId = ui.app.workspace()?.id;
+    expect(workspaceId).toBeTruthy();
+    for (let i = 0; i < 60; i++) await ui.app.server.call("/api/chats", { body: { workspaceId, harnessId: "fake" } });
+    const frame = await ui.until("● 61");
+    // Squeezed to nothing by the list, these rows once left a blank band under the tabs.
+    expect(frame).toContain("+ New chat");
+    expect(frame).toMatch(/A\s+…\/\S*alpha/);
+  }, 60_000);
+
   it("keeps the original controls neat and clickable without a second toolbar", async () => {
     ui = await mount(path.join(server.root, "alpha"), { width: 140, height: 36 });
     const start = await ui.until("Fake Echo ▾");
