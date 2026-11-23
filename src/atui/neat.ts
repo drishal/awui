@@ -273,7 +273,7 @@ export function sigmaFacts(turn: Pick<Turn, "process" | "workAfter" | "answer" |
   const took = span ?? whole;
   const thinking = [...items, ...(turn.answer ? [turn.answer] : [])].reduce((n, i) => n + (i.kind === "assistant" ? i.thinking.length : 0), 0);
   const failures = calls.filter((c) => c.status === "error").length;
-  const facts = [calls.length > 0 ? plural(calls.length, "call") : "", took !== undefined ? durationLabel(took) : "", thinking > 0 ? `~${tokenCount(thinking)} thought tokens` : ""].filter(Boolean);
+  const facts = [calls.length > 0 ? plural(calls.length, "call") : "", took !== undefined ? `${calls.length > 0 && span !== undefined ? "over " : ""}${durationLabel(took)}` : "", thinking > 0 ? `~${tokenCount(thinking)} thought tokens` : ""].filter(Boolean);
   return { facts, failed: failures > 0 ? `${failures} failed` : null };
 }
 
