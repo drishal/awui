@@ -192,7 +192,7 @@ export function Picker(p: {
                   <box flexDirection="row" backgroundColor={lit() ? t().selection : undefined} onMouseDown={() => run(item)}>
                     <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel() : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
                       {item.current ? "✓ " : "  "}
-                      <Index each={matchSpans(clip(item.label, (item.bar ? barLabel() : listWidth()) - (item.bar ? 3 : 20)), query())}>
+                      <Index each={matchSpans(clip(item.label, item.bar ? barLabel() - 3 : listWidth() - 3 - (item.hint ? Math.min(item.hint.length, listWidth() >= 60 ? 30 : 18) + 1 : 0)), query())}>
                         {(part) => <span style={part().hit && !item.disabled ? { fg: t().accent } : {}}>{part().text}</span>}
                       </Index>
                     </text>
