@@ -419,6 +419,24 @@ describe("atui", () => {
     expect(await ui.until("Accept edits ▾")).not.toContain("Ask first ▾");
   }, 30_000);
 
+  it("lists the queued messages from the +N queued chip and pulls one back into the composer", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("slow stream for the queue");
+    ui.keys.pressEnter();
+    await ui.until(() => ui?.app.chat()?.status === "running");
+    await ui.type("then the first follow-up");
+    ui.keys.pressEnter();
+    await ui.until(() => (ui?.app.chat()?.queue.steering.length ?? 0) + (ui?.app.chat()?.queue.followUp.length ?? 0) === 1);
+    expect(await ui.until("+1 queued")).toContain("+1 queued");
+    await ui.click("+1 queued");
+    const picker = await ui.until("Search queued messages…");
+    expect(picker).toContain("then the first follow-up");
+    ui.keys.pressEnter();
+    // The message left the queue and is the draft again, to edit and send as it was.
+    await ui.until(() => (ui?.app.chat()?.queue.steering.length ?? 0) + (ui?.app.chat()?.queue.followUp.length ?? 0) === 0);
+    expect(await ui.until("then the first follow-up")).not.toContain("+1 queued");
+  }, 40_000);
+
   it("changes thinking, model, and harness directly, hands the chat off, and opens history", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 50 });
     await ui.type("remember the harness");

@@ -789,6 +789,18 @@ export function createAtui(server: Server, opts: AtuiOptions) {
 
   /** A prompt being edited in the composer: Enter replaces it (as the web UI's Edit does). */
   const [editing, setEditing] = createSignal<{ through: number; item: UserItem } | null>(null);
+  /** A queued message taken back out of the harness's queue: the composer puts it in its draft once, then clears this. */
+  const [pullback, setPullback] = createSignal<string | null>(null);
+  /** Replaces the harness's whole queue (the web UI's queue edit); `field` and `index` name the message to drop, and `text` puts it back in the composer when given. */
+  const dropQueued = async (field: "steering" | "followUp", index: number, edit: boolean) => {
+    const c = chat();
+    const text = c?.queue[field][index];
+    if (!c || text === undefined) return;
+    const next = { steering: [...c.queue.steering], followUp: [...c.queue.followUp] };
+    next[field].splice(index, 1);
+    await server.call(`/api/chats/${c.chatId}/queue`, { method: "PUT", body: next });
+    if (edit) setPullback(text);
+  };
   /**
    * Review threads by chat, as the server holds them: the same ones the web
    * panel shows, read when the review opens. Every write asks the server and
@@ -1018,6 +1030,9 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     stepTab,
     editing,
     setEditing,
+    pullback,
+    setPullback,
+    dropQueued,
     undoTurn,
     setUndoTurn,
     reviewComments,

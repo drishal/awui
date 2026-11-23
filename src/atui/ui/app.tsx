@@ -55,14 +55,14 @@ import { WhichKey } from "./whichkey.js";
 import { turnOffset, vimKey, pushJump, type Jump } from "../vim.js";
 import { buildTurns, turnOfTool } from "../../web/turns.js";
 
-type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "history" | "find" | "run" | null;
+type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "queue" | "history" | "find" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
  * forty actions under one "Actions" word gave no way to scan it. An id not named here is "More".
  */
 const PALETTE_GROUPS: Record<string, string> = {
-  new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", find: "Chats", "copy-answer": "Chats", "copy-turn": "Chats", sessions: "Chats",
+  new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", find: "Chats", queue: "Chats", "copy-answer": "Chats", "copy-turn": "Chats", sessions: "Chats",
   retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", "put-back": "Chats", quote: "Chats",
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
   model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
@@ -646,6 +646,7 @@ export function App(p: {
     add({ id: "model", label: "Choose model…", hint: keys.model, disabled: caps?.supportsModelSelection ? undefined : "This harness has no models to pick", run: () => setDialog("models") });
     if (caps?.supportsThinkingLevel) add({ id: "thinking", label: "Choose thinking level…", hint: keys.thinking, run: () => setDialog("thinking") });
     if (c?.capabilities.supportsPermissionMode && c.config.permissionModes?.length) add({ id: "permission", label: "Choose permission mode…", keywords: "approvals ask auto accept edits", run: () => setDialog("permission") });
+    if ((c?.queue.steering.length ?? 0) + (c?.queue.followUp.length ?? 0) > 0) add({ id: "queue", label: "Edit queued messages…", keywords: "steering follow-up pending waiting", run: () => setDialog("queue") });
     add({ id: "refresh-models", label: "Refresh models", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }), run: () => void app.refreshModels() });
     add({ id: "harness", label: hasPrompt() ? "Choose harness, or hand this chat off…" : "Choose harness…", hint: keys.harness, run: () => setDialog("harness") });
     add({ id: "quit", label: "Quit atui", hint: leader("q", keybinds()), searchOnly: true, run: p.onExit });
@@ -762,6 +763,20 @@ export function App(p: {
       hint: `${m.inWork ? "in the work · " : ""}${m.count === 1 ? "1 match" : `${m.count} matches`} · turn ${m.index + 1}`,
       run: () => revealTurn(m.index, m.inWork),
     }));
+  };
+
+  /** What waits in the harness's queue, steering first: Enter takes a message back into the composer to edit, and it leaves the queue. */
+  const queueItems = (): PaletteItem[] => {
+    const q = app.chat()?.queue;
+    if (!q) return [];
+    const row = (field: "steering" | "followUp", text: string, index: number): PaletteItem => ({
+      id: `queue:${field}:${index}`,
+      section: field === "steering" ? "Steering: sent at the next step" : "Follow-ups: sent when the run ends",
+      label: text.replace(/\s+/g, " "),
+      hint: "Enter edits",
+      run: () => void app.dropQueued(field, index, true),
+    });
+    return [...q.steering.map((x, i) => row("steering", x, i)), ...q.followUp.map((x, i) => row("followUp", x, i))];
   };
 
   /** The harness's permission modes (Claude Code's acceptEdits, Codex's approval policy…), the mode in force checked; one that asks nothing is marked. */
@@ -947,6 +962,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "permission"}>
                   <Picker title="Permission mode" placeholder="Search modes…" items={permissionItems()} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "queue"}>
+                  <Picker title="Queued messages" placeholder="Search queued messages…" items={queueItems()} firstHeading onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "thinking"}>
                   <Picker title="Thinking" placeholder="Search levels…" items={thinkingItems()} onClose={() => setDialog(null)} side={room()} />

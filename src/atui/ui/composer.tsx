@@ -56,7 +56,7 @@ export function Composer(p: {
   compactChoice: boolean | null;
   onCompactChoice: (on: boolean | null) => void;
   /** The existing agent, model, and thinking labels open their own pickers. */
-  onPick: (picker: "harness" | "models" | "thinking" | "permission") => void;
+  onPick: (picker: "harness" | "models" | "thinking" | "permission" | "queue") => void;
   onGit: () => void;
   /** A click on the context figure (or the rate beside it) opens the active-work panel, as C-x p does. */
   onContext: () => void;
@@ -137,6 +137,14 @@ export function Composer(p: {
   // each streamed event, which emptied the list mid-run (the / menu fell back to awui's own commands).
   const chatId = createMemo(() => app.chat()?.chatId);
   createEffect(on(chatId, () => setCommands(null)));
+  // A queued message pulled back from the queue picker: its text becomes the draft (Enter queues it again, as the web's edit does).
+  createEffect(() => {
+    const back = app.pullback();
+    if (back === null) return;
+    app.setPullback(null);
+    area?.setText(back);
+    area?.gotoBufferEnd();
+  });
   // Asked for once each is first wanted: the commands (and skills), and the saved prompts.
   const wantsCommands = () => p.focused && (slash() !== undefined || skillQuery() !== undefined);
   createEffect(
@@ -554,11 +562,11 @@ export function Composer(p: {
             )}
           </Show>
         </box>
+        <Show when={queued() > 0}>
+          <text flexShrink={0} fg={t().accent} onMouseDown={() => p.onPick("queue")}>{`  +${queued()} queued`}</text>
+        </Show>
         <text flexShrink={0} onMouseDown={() => app.git() ? p.onGit() : p.onContext()}>
           {"  "}
-          <Show when={queued() > 0}>
-            <span style={{ fg: t().accent }}>{`+${queued()} queued  `}</span>
-          </Show>
           <Show when={app.git()}>
             {(g) => (
               <>
