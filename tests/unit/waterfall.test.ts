@@ -59,7 +59,12 @@ describe("turnWaterfall", () => {
     delete bare.at;
     delete bare.endedAt;
     const w = turnWaterfall(turnOf([{ kind: "user", id: "u", text: "go" }, bare]), WS, T0);
-    expect(w).toEqual({ rows: [], total: 0, ticks: [] });
+    expect(w).toEqual({ rows: [], total: 0, span: 0, ticks: [] });
+  });
+  it("reports the turn's real length beside the axis it rounds up to", () => {
+    const w = turnWaterfall(turnOf([{ kind: "user", id: "u", text: "go" }, tool("t1", "bash", 0, 1.7)]), WS, T0);
+    expect(w.span).toBeGreaterThan(0);
+    expect(w.total).toBeGreaterThanOrEqual(w.span);
   });
   it("folds a subagent call's runs under it, with only the tokens and cost they reported", () => {
     const call = tool("t1", "task", T0 + 500, T0 + 20_500, {

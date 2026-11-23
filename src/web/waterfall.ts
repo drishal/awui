@@ -33,6 +33,8 @@ export interface Waterfall {
   rows: WaterfallRow[];
   /** The axis's length in milliseconds (the last tick). 0 when the turn has no times. */
   total: number;
+  /** The turn's real length: from its start to the end of its last step or its settle, before the axis rounds up. 0 when the turn has no times. */
+  span: number;
   ticks: Array<{ ms: number; label: string }>;
 }
 
@@ -122,7 +124,7 @@ export function turnWaterfall(turn: Turn, workspace: string, now: number): Water
       }
     }
   }
-  if (raw.length === 0) return { rows: [], total: 0, ticks: [] };
+  if (raw.length === 0) return { rows: [], total: 0, span: 0, ticks: [] };
   const origin = Math.min(turn.prompt?.at ?? Infinity, ...raw.map((r) => r.at));
   const ended = Math.max(...raw.map((r) => r.endAt), turn.live ? now : (turn.endedAt ?? 0));
   const axis = niceAxis(Math.max(ended - origin, 1));
@@ -144,5 +146,5 @@ export function turnWaterfall(turn: Turn, workspace: string, now: number): Water
     if (best < second * 1.2) slowestId = undefined;
   }
   const rows = raw.map(({ at, endAt, ...r }) => ({ ...r, start: at - origin, end: endAt - origin, slowest: r.id === slowestId }));
-  return { rows, ...axis };
+  return { rows, span: Math.max(ended - origin, 0), ...axis };
 }
