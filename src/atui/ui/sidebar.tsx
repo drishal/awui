@@ -226,8 +226,8 @@ export function Sidebar(p: {
                     <text selectable={false} fg={t().text} wrapMode="none">{` ${name()}`}</text><box flexGrow={1} />
                     {/* The same marks the session rows teach: ▲ a session asking, ● one live on the server. */}
                     {needs() > 0 ? <text selectable={false} fg={t().warn}>{`▲${needs()} `}</text> : null}
-                    {live() > 0 && needs() === 0 ? <text selectable={false} fg={t().ok}>{"● "}</text> : null}
                     {row.count > 0 && needs() === 0 ? <text selectable={false} fg={t().muted}>{`${row.count} `}</text> : null}
+                    {live() > 0 && needs() === 0 ? <text selectable={false} fg={t().ok}>{"● "}</text> : null}
                   </box>
                 );
               }
