@@ -377,6 +377,21 @@ describe("atui", () => {
     await ui.until(() => ui?.app.chat()?.status === "idle" && ui?.app.chat()?.config.model === "fake/slow", 15_000);
   }, 30_000);
 
+  it("shows the permission mode where the harness has one, and changes it from its chip", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("hello permission");
+    ui.keys.pressEnter();
+    await ui.until("Echo: hello permission");
+    await idle(ui);
+    expect(await ui.frame()).toContain("Ask first ▾");
+    await ui.click("Ask first ▾");
+    await ui.until("Search modes…");
+    await ui.type("accept");
+    ui.keys.pressEnter();
+    await ui.until(() => ui?.app.chat()?.config.permissionMode === "acceptEdits");
+    expect(await ui.until("Accept edits ▾")).not.toContain("Ask first ▾");
+  }, 30_000);
+
   it("changes thinking, model, and harness directly, hands the chat off, and opens history", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 50 });
     await ui.type("remember the harness");

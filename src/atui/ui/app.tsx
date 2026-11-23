@@ -53,7 +53,7 @@ import { WhichKey } from "./whichkey.js";
 import { turnOffset, vimKey, pushJump, type Jump } from "../vim.js";
 import { buildTurns, turnOfTool } from "../../web/turns.js";
 
-type Dialog = "palette" | "models" | "harness" | "thinking" | "history" | "run" | null;
+type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "history" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -63,7 +63,7 @@ const PALETTE_GROUPS: Record<string, string> = {
   new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", sessions: "Chats",
   retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", "put-back": "Chats", quote: "Chats",
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
-  model: "Agent", thinking: "Agent", "refresh-models": "Agent", harness: "Agent",
+  model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
   sidebar: "View", panel: "View", work: "View", thoughts: "View", keybinds: "View", glass: "View",
   git: "Project", github: "Project",
 };
@@ -628,6 +628,7 @@ export function App(p: {
     const caps = c?.capabilities ?? app.harness()?.capabilities;
     add({ id: "model", label: "Choose model…", hint: keys.model, disabled: caps?.supportsModelSelection ? undefined : "This harness has no models to pick", run: () => setDialog("models") });
     if (caps?.supportsThinkingLevel) add({ id: "thinking", label: "Choose thinking level…", hint: keys.thinking, run: () => setDialog("thinking") });
+    if (c?.capabilities.supportsPermissionMode && c.config.permissionModes?.length) add({ id: "permission", label: "Choose permission mode…", keywords: "approvals ask auto accept edits", run: () => setDialog("permission") });
     add({ id: "refresh-models", label: "Refresh models", keywords: "reload default list", ...(idle ? {} : { disabled: "Wait until the agent is idle" }), run: () => void app.refreshModels() });
     add({ id: "harness", label: hasPrompt() ? "Choose harness, or hand this chat off…" : "Choose harness…", hint: keys.harness, run: () => setDialog("harness") });
     add({ id: "quit", label: "Quit atui", hint: leader("q", keybinds()), searchOnly: true, run: p.onExit });
@@ -714,6 +715,20 @@ export function App(p: {
       current: level === current,
       disabled: idle ? undefined : "Wait until the agent is idle",
       run: () => void app.pickThinking(level),
+    }));
+  };
+
+  /** The harness's permission modes (Claude Code's acceptEdits, Codex's approval policy…), the mode in force checked; one that asks nothing is marked. */
+  const permissionItems = (): PaletteItem[] => {
+    const c = app.chat();
+    if (!c?.capabilities.supportsPermissionMode) return [];
+    return (c.config.permissionModes ?? []).map((m) => ({
+      id: m.id,
+      section: "Permission mode",
+      label: m.caution ? `${m.label} ⚠` : m.label,
+      hint: m.description,
+      current: m.id === c.config.permissionMode,
+      run: () => void app.configure({ permissionMode: m.id }),
     }));
   };
 
@@ -880,6 +895,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "harness"}>
                   <Picker title="Harness" placeholder="Search harnesses…" items={harnessItems()} onClose={() => setDialog(null)} firstHeading={hasPrompt()} side={room()} />
+                </Show>
+                <Show when={dialog() === "permission"}>
+                  <Picker title="Permission mode" placeholder="Search modes…" items={permissionItems()} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "thinking"}>
                   <Picker title="Thinking" placeholder="Search levels…" items={thinkingItems()} onClose={() => setDialog(null)} side={room()} />

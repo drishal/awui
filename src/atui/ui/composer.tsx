@@ -56,7 +56,7 @@ export function Composer(p: {
   compactChoice: boolean | null;
   onCompactChoice: (on: boolean | null) => void;
   /** The existing agent, model, and thinking labels open their own pickers. */
-  onPick: (picker: "harness" | "models" | "thinking") => void;
+  onPick: (picker: "harness" | "models" | "thinking" | "permission") => void;
   onGit: () => void;
   /** A click on the context figure (or the rate beside it) opens the active-work panel, as C-x p does. */
   onContext: () => void;
@@ -529,6 +529,14 @@ export function Composer(p: {
             {(level) => (
               <box flexShrink={0} backgroundColor={app.glass() ? undefined : t().surface2} marginLeft={1} onMouseDown={() => p.onPick("thinking")}>
                 <text fg={t().muted}>{` ${levelTitle(level())} ▾ `}</text>
+              </box>
+            )}
+          </Show>
+          {/* The web's permission pill: the mode in force, a mode that asks nothing marked. Only a harness that has modes shows it. */}
+          <Show when={caps()?.supportsPermissionMode ? app.chat()?.config.permissionModes?.find((m) => m.id === app.chat()?.config.permissionMode) : undefined}>
+            {(mode) => (
+              <box flexShrink={0} backgroundColor={app.glass() ? undefined : t().surface2} marginLeft={1} onMouseDown={() => p.onPick("permission")}>
+                <text fg={mode().caution ? t().warn : t().muted}>{` ${mode().label} ▾ `}</text>
               </box>
             )}
           </Show>
