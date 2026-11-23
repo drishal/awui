@@ -872,21 +872,30 @@ export function App(p: {
     const dayName = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
     // A run of days with nothing is one line, not a column of empty tracks.
     const days: PickerItem[] = [];
+    const dayTokens = new Map<string, number>();
     let idle: string[] = [];
     const flush = () => {
       if (idle.length === 0) return;
       days.push(row("By day", idle.length === 1 ? dayName(idle[0] as string) : `${dayName(idle[0] as string)} to ${dayName(idle[idle.length - 1] as string)}`, "none", [0, 0]));
       idle = [];
     };
-    for (const d of r.byDay.slice(-14)) {
+    for (const d of r.byDay) {
       const total = tokensOf(d.totals);
       if (total === 0) idle.push(d.day);
       else {
         flush();
-        days.push(row("By day", dayName(d.day), shortTokens(total), [0, total / tallest]));
+        const item = row("By day", dayName(d.day), shortTokens(total), [0, total / tallest]);
+        dayTokens.set(item.id, total);
+        days.push(item);
       }
     }
     flush();
+    // Rows are capped, but never silently: the oldest days past the cap fold into one line that says how many and how much, so the head's range is what the rows add up to.
+    const MAX_DAY_ROWS = 14;
+    if (days.length > MAX_DAY_ROWS) {
+      const folded = days.splice(0, days.length - (MAX_DAY_ROWS - 1));
+      days.unshift(row("By day", `Earlier days (${folded.length} rows)`, shortTokens(folded.reduce((n, f) => n + (dayTokens.get(f.id) ?? 0), 0)), [0, 0]));
+    }
     return [
       row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
       ...(share === null || share < 0.01 ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
