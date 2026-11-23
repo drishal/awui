@@ -72,7 +72,7 @@ export function Splash(p: { /** The chat column: the width the transcript and co
                   <Show when={i() > 0}>
                     <span style={{ fg: t().border }}> · </span>
                   </Show>
-                  <span style={{ fg: t().text2 }}>{h.key}</span> {h.label}
+                  <span style={{ fg: t().text2 }}>{h.key}</span><span style={{ fg: t().muted }}>{` ${h.label}`}</span>
                 </>
               )}
             </For>

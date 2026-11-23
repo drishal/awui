@@ -78,10 +78,10 @@ describe("atui", () => {
   it("keeps the original controls neat and clickable without a second toolbar", async () => {
     ui = await mount(path.join(server.root, "alpha"), { width: 140, height: 36 });
     const start = await ui.until("Fake Echo ▾");
-    expect(start).not.toContain("Send ↵");
+    expect(start).not.toContain("Send ↑");
     expect(start).not.toContain("▤ alpha ▾");
     await ui.type("sent from the arrow");
-    await ui.click("↵");
+    await ui.click("↑");
     await idle(ui);
     expect(await ui.frame()).toContain("Echo: sent from the arrow");
     await ui.click("Fake ▾");
@@ -644,7 +644,7 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await ui.until("Echo: tool edit please");
     await idle(ui);
-    expect(await ui.frame()).toContain("│ Sessions │");
+    expect(await ui.frame()).toContain("Sessions    Info");
     // C-x i: the Info tab, where the right panel's context and usage now live.
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("i");
@@ -657,9 +657,9 @@ describe("atui", () => {
     // « folds it to a rail; » unfolds it.
     await ui.click("Sessions");
     const folded = await ui.until("»");
-    expect(folded).not.toContain("│ Sessions │");
+    expect(folded).not.toContain("Sessions    Info");
     await ui.click("»");
-    await ui.until("│ Sessions │");
+    await ui.until("Sessions    Info");
   }, 30_000);
 
   it("shows a ghost of the thread, named, while a session takes its time to open", async () => {

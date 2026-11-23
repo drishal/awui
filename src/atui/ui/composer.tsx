@@ -455,6 +455,7 @@ export function Composer(p: {
             p.ref(el);
           }}
           focused={p.focused}
+          flexGrow={1}
           placeholder={placeholder()}
           placeholderColor={t().muted}
           textColor={t().text}
@@ -475,8 +476,9 @@ export function Composer(p: {
           onSubmit={() => void submit()}
           onContentChange={() => setText(area?.plainText ?? "")}
         />
-        <box flexShrink={0} border={["left", "right"]} borderColor={t().border} marginLeft={1} onMouseDown={() => void submit()}>
-          <text fg={t().accent}>{` ↵ `}</text>
+        <box flexShrink={0} marginLeft={1} onMouseDown={() => void submit()}>
+          {/* The web composer's send is an up-arrow in a round button, dim while there is nothing to send. */}
+          <text fg={text().trim() ? t().accent : t().muted}><b>{` ↑ `}</b></text>
         </box>
         <Show when={ghost()}>
           {(rest) => (
@@ -497,17 +499,18 @@ export function Composer(p: {
           <Show when={app.conn() !== "connected" && app.conn() !== "idle"}>
             <text flexShrink={0} wrapMode="none" fg={t().warn}>{"◌ reconnecting  "}</text>
           </Show>
-          <box flexShrink={0} border={["left", "right"]} borderColor={accentOf(t(), app.harness()?.accent)} onMouseDown={() => p.onPick("harness")}>
+          {/* Chips are fills, as the web's pills are: a one-row box with side borders drew bare pipes. */}
+          <box flexShrink={0} backgroundColor={app.glass() ? undefined : mix(t().surface, accentOf(t(), app.harness()?.accent), 0.18)} onMouseDown={() => p.onPick("harness")}>
             <text fg={accentOf(t(), app.harness()?.accent)}>{` ${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾ `}</text>
           </box>
           <Show when={caps()?.supportsModelSelection}>
-            <box flexShrink={1} border={["left", "right"]} borderColor={t().border} marginLeft={1} onMouseDown={() => p.onPick("models")}>
+            <box flexShrink={1} backgroundColor={app.glass() ? undefined : t().surface2} marginLeft={1} onMouseDown={() => p.onPick("models")}>
               <text fg={t().text2} truncate>{` ${words().name} ▾ `}</text>
             </box>
           </Show>
           <Show when={caps()?.supportsThinkingLevel ? words().level : null}>
             {(level) => (
-              <box flexShrink={0} border={["left", "right"]} borderColor={t().border} marginLeft={1} onMouseDown={() => p.onPick("thinking")}>
+              <box flexShrink={0} backgroundColor={app.glass() ? undefined : t().surface2} marginLeft={1} onMouseDown={() => p.onPick("thinking")}>
                 <text fg={t().muted}>{` ${levelTitle(level())} ▾ `}</text>
               </box>
             )}
