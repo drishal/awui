@@ -44,6 +44,7 @@ import { DelegatedView } from "./delegated.js";
 import { ContextRailView } from "./rail.js";
 import { ReviewView } from "./review.js";
 import { GitView } from "./git.js";
+import { TerminalView } from "./terminal.js";
 import { GitHubView } from "./github.js";
 import { collectChanges } from "../../web/review.js";
 import { Toasts } from "./toasts.js";
@@ -87,6 +88,7 @@ export function App(p: {
   const [board, setBoard] = createSignal(false);
   /** The git panel: the project's status, staging, and commits (C-x u). */
   const [gitting, setGitting] = createSignal(false);
+  const [shell, setShell] = createSignal(false);
   /** The GitHub panel: the project's PR, its checks, and its stack (C-x p). */
   const [hubbing, setHubbing] = createSignal(false);
   /** A command run from an answer (C-x x), and what it gave once done. */
@@ -386,9 +388,11 @@ export function App(p: {
         p.onShowThoughts(!thoughts());
         flash(thoughts() ? `Reasoning visible (${leader("o", keybinds())} folds)` : `Reasoning folded (${leader("o", keybinds())} shows)`);
         return;
-      case "u":
-        if (!app.chat()) return flash("No chat to read the git status of");
-        return setGitting(true);
+      case "u": {
+        setGitting(true);
+        void app.openGit();
+        return;
+      }
       case "z":
         if (!app.putBackable()) return flash("Nothing to put back: no files were undone here");
         return void app.putBack();
@@ -422,7 +426,7 @@ export function App(p: {
   };
 
   useKeyboard((key) => {
-    if (dialog() || app.undoTurn() !== null || reviewing() || running() || delegated() !== null || rail() || board() || gitting() || hubbing()) return;
+    if (dialog() || app.undoTurn() !== null || reviewing() || running() || delegated() !== null || rail() || board() || gitting() || hubbing() || shell()) return;
     if (key.meta && !key.ctrl && key.name === "q") {
       key.preventDefault();
       return quoteSelection();
@@ -749,7 +753,7 @@ export function App(p: {
 
   // A dialog takes the conversation's place rather than drawing over it: OpenTUI paints a bordered box's own body
   // after a sibling overlay, so a floating picker lets the cards behind it through.
-  const sheet = () => dialog() !== null || reviewing() || app.undoTurn() !== null || running() !== null || delegated() !== null || rail() || board() || gitting() || hubbing();
+  const sheet = () => dialog() !== null || reviewing() || app.undoTurn() !== null || running() !== null || delegated() !== null || rail() || board() || gitting() || hubbing() || shell();
   /** What the side panel leaves of the screen for a sheet. */
   const room = () => (sidebar() ? sideWidth() : RAIL_WIDTH);
 
@@ -769,6 +773,8 @@ export function App(p: {
               }}
               onOpened={() => leave("insert")}
               onLeave={() => leave("keep")}
+              onProject={() => setDialog("history")}
+              onTerminal={() => setShell(true)}
               vim={keybinds() === "vim"}
             />
           </Show>
@@ -835,6 +841,7 @@ export function App(p: {
                         compactChoice={compactChoice()}
                         onCompactChoice={setCompactChoice}
                         onPick={setDialog}
+                        onGit={() => { setGitting(true); void app.openGit(); }}
                         onContext={() => setRail(true)}
                         column={column()}
                         keybinds={keybinds()}
@@ -899,6 +906,9 @@ export function App(p: {
                 </Show>
                 <Show when={gitting()}>
                   <GitView onClose={() => setGitting(false)} />
+                </Show>
+                <Show when={shell()}>
+                  <TerminalView onClose={() => setShell(false)} />
                 </Show>
                 <Show when={hubbing()}>
                   <GitHubView onClose={() => setHubbing(false)} />

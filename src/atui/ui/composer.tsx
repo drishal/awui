@@ -12,12 +12,12 @@
 import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show } from "solid-js";
 import { createHostClipboard, decodePasteBytes, type HostClipboardService, type TextareaRenderable } from "@opentui/core";
 import { useKeyboard, usePaste } from "@opentui/solid";
-import { IMAGE_MIME_TYPES, MAX_IMAGES, type SavedPrompt, type SlashCommand } from "../../shared/protocol.js";
+import { IMAGE_MIME_TYPES, MAX_IMAGES, type GitStatus, type SavedPrompt, type SlashCommand } from "../../shared/protocol.js";
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../../web/commands.js";
 import { blanks, matchPrompts, nextBlank, promptGist } from "../../web/prompt-blanks.js";
 import { levelTitle } from "../../web/config-summary.js";
 import { applyMention, ghostCompletion, mentionAt } from "../assist.js";
-import { streamedChars, tokens } from "../format.js";
+import { streamedChars, tokens, clip } from "../format.js";
 import { leader, type KeybindStyle } from "../keys.js";
 import { mix, shimmer, sparkline, streamRate } from "../fx.js";
 import { attachmentFrom, attachmentFromFile, byteSize, clipboardImageByTool, imagePathsFromPaste, type PendingImage } from "../images.js";
@@ -54,8 +54,9 @@ export function Composer(p: {
   focused: boolean;
   compactChoice: boolean | null;
   onCompactChoice: (on: boolean | null) => void;
-  /** A click on the footer's harness, model, or thinking level opens its picker. */
+  /** The existing agent, model, and thinking labels open their own pickers. */
   onPick: (picker: "harness" | "models" | "thinking") => void;
+  onGit: () => void;
   /** A click on the context figure (or the rate beside it) opens the active-work panel, as C-x p does. */
   onContext: () => void;
   /** What the status bar used to say, now in the footer: vim's mode, a waiting leader, a passing hint. */
@@ -325,9 +326,9 @@ export function Composer(p: {
   const tone = () => contextTone(t(), percent() ?? 0);
   // What waits to go: steering and follow-ups the harness holds. A count, since the queue itself is its own picker.
   const queued = () => (app.chat()?.queue.steering.length ?? 0) + (app.chat()?.queue.followUp.length ?? 0);
+
   /** A repo's state in one word: what is uncommitted, or nothing. */
-  const gitWord = (g: NonNullable<ReturnType<typeof app.git>>) =>
-    g.counts.conflicts > 0 ? `${g.counts.conflicts} conflicted` : g.files.length === 0 ? "clean" : `${g.files.length} changed`;
+  const gitWord = (g: GitStatus) => g.counts.conflicts > 0 ? `${g.counts.conflicts} conflicted` : g.files.length === 0 ? "clean" : `${g.files.length} changed`;
 
   // How fast the agent writes: what the turn has streamed, sampled on the clock while it runs.
   const [rate, setRate] = createSignal<number | null>(null);
@@ -360,6 +361,7 @@ export function Composer(p: {
   // The chips' words: the chat's model and level, else the start screen's catalog default (web/model-label.ts).
   const caps = () => app.chat()?.capabilities ?? app.harness()?.capabilities;
   const words = () => app.chips();
+
 
   return (
     <box flexDirection="column" flexShrink={0} marginLeft={2} marginRight={2}>
@@ -441,6 +443,7 @@ export function Composer(p: {
         alignSelf="center"
         border
         borderStyle="rounded"
+        flexDirection="row"
         borderColor={p.focused ? accentOf(t(), app.harness()?.accent) : t().border}
         backgroundColor={app.glass() ? undefined : t().surface}
         paddingLeft={1}
@@ -472,6 +475,9 @@ export function Composer(p: {
           onSubmit={() => void submit()}
           onContentChange={() => setText(area?.plainText ?? "")}
         />
+        <box flexShrink={0} border={["left", "right"]} borderColor={t().border} marginLeft={1} onMouseDown={() => void submit()}>
+          <text fg={t().accent}>{` ↵ `}</text>
+        </box>
         <Show when={ghost()}>
           {(rest) => (
             <box position="absolute" top={0} left={1 + text().length}>
@@ -483,35 +489,27 @@ export function Composer(p: {
       <box flexDirection="row" paddingLeft={1} paddingRight={1}>
         <box flexDirection="row" flexGrow={1} overflow="hidden">
           <Show when={p.status.mode}>
-            {(mode) => (
-              <text flexShrink={0} wrapMode="none" fg={mode() === "normal" ? t().accent : t().muted}>
-                <b>{mode() === "normal" ? "-- NORMAL -- " : "-- INSERT -- "}</b>
-              </text>
-            )}
+            {(mode) => <text flexShrink={0} wrapMode="none" fg={mode() === "normal" ? t().accent : t().muted}><b>{mode() === "normal" ? "-- NORMAL -- " : "-- INSERT -- "}</b></text>}
           </Show>
           <Show when={p.status.leader}>
-            <text flexShrink={0} wrapMode="none" fg={t().accent}>
-              <b>{`${p.status.leader} … `}</b>
-            </text>
+            <text flexShrink={0} wrapMode="none" fg={t().accent}><b>{`${p.status.leader} … `}</b></text>
           </Show>
           <Show when={app.conn() !== "connected" && app.conn() !== "idle"}>
-            <text flexShrink={0} wrapMode="none" fg={t().warn}>
-              {"◌ reconnecting  "}
-            </text>
+            <text flexShrink={0} wrapMode="none" fg={t().warn}>{"◌ reconnecting  "}</text>
           </Show>
-          <text flexShrink={0} wrapMode="none" fg={accentOf(t(), app.harness()?.accent)} onMouseDown={() => p.onPick("harness")}>
-            {`${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾`}
-          </text>
+          <box flexShrink={0} border={["left", "right"]} borderColor={accentOf(t(), app.harness()?.accent)} onMouseDown={() => p.onPick("harness")}>
+            <text fg={accentOf(t(), app.harness()?.accent)}>{` ${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾ `}</text>
+          </box>
           <Show when={caps()?.supportsModelSelection}>
-            <text flexShrink={1} wrapMode="none" truncate fg={t().text2} onMouseDown={() => p.onPick("models")}>
-              {`  ${words().name} ▾`}
-            </text>
+            <box flexShrink={1} border={["left", "right"]} borderColor={t().border} marginLeft={1} onMouseDown={() => p.onPick("models")}>
+              <text fg={t().text2} truncate>{` ${words().name} ▾ `}</text>
+            </box>
           </Show>
           <Show when={caps()?.supportsThinkingLevel ? words().level : null}>
             {(level) => (
-              <text flexShrink={0} wrapMode="none" fg={t().muted} onMouseDown={() => p.onPick("thinking")}>
-                {`  ${levelTitle(level())} ▾`}
-              </text>
+              <box flexShrink={0} border={["left", "right"]} borderColor={t().border} marginLeft={1} onMouseDown={() => p.onPick("thinking")}>
+                <text fg={t().muted}>{` ${levelTitle(level())} ▾ `}</text>
+              </box>
             )}
           </Show>
           <Show when={app.editing() !== null}>
@@ -528,18 +526,17 @@ export function Composer(p: {
             )}
           </Show>
         </box>
-        <text flexShrink={0} onMouseDown={() => p.onContext()}>
+        <text flexShrink={0} onMouseDown={() => app.git() ? p.onGit() : p.onContext()}>
           {"  "}
           <Show when={queued() > 0}>
             <span style={{ fg: t().accent }}>{`+${queued()} queued  `}</span>
           </Show>
-          {/* The project's git state, as the web UI's composer row has it: the branch, its distance from the upstream, what is uncommitted. */}
           <Show when={app.git()}>
             {(g) => (
               <>
-                <span style={{ fg: t().accent }}>{g().branch ?? `detached ${g().head ?? ""}`}</span>
+                <span style={{ fg: t().accent, bg: t().surface }}>{` ⑂ ${g().branch ?? `detached ${g().head ?? ""}`} `}</span>
                 <Show when={g().upstream && (g().ahead > 0 || g().behind > 0)}>
-                  <span style={{ fg: t().muted }}>{` ${g().ahead > 0 ? `↑${g().ahead}` : ""}${g().behind > 0 ? `↓${g().behind}` : ""}`}</span>
+                  <span style={{ fg: t().muted }}>{`${g().ahead > 0 ? ` ↑${g().ahead}` : ""}${g().behind > 0 ? ` ↓${g().behind}` : ""}`}</span>
                 </Show>
                 <Show when={g().added + g().removed > 0}>
                   <span style={{ fg: t().ok }}>{` +${g().added}`}</span>

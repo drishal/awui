@@ -264,6 +264,12 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     }
   };
 
+  /** Clicking the original branch status opens Git, including before the first prompt. */
+  const openGit = async () => {
+    const c = await ensureChat();
+    if (c) await refreshGit();
+  };
+
   const timers: Array<ReturnType<typeof setInterval>> = [];
 
   const init = async () => {
@@ -1057,6 +1063,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     init,
     refreshSessions,
     refreshGit,
+    openGit,
     refreshLimits,
     refreshUi,
     setChatWidth,

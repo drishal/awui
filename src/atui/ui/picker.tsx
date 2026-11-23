@@ -45,8 +45,8 @@ export function Picker(p: {
   const room = () => size().width - (p.side ?? 0);
   const previewing = () => Boolean(p.preview) && room() >= PREVIEW_WIDTH;
   const width = () => Math.max(30, Math.min(previewing() ? 128 : 72, room() - 4));
-  /** The list's own width: all of it, or about half beside a preview. */
-  const listWidth = () => (previewing() ? Math.min(64, Math.floor(width() * 0.52)) : width() - 2);
+  /** The list's own width: all of it, or about half beside a preview. The box's border and padding come off first. */
+  const listWidth = () => (previewing() ? Math.min(64, Math.floor(width() * 0.52)) : width() - 4);
   const [shownPreview] = createResource(
     () => (previewing() ? shown()[active()] : undefined),
     (item) => p.preview?.(item) ?? null,

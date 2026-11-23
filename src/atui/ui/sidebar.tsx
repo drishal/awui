@@ -56,6 +56,9 @@ export function Sidebar(p: {
   onCollapse: () => void;
   onOpened: () => void;
   onLeave: () => void;
+  /** The current project's row opens its existing folder and session picker. */
+  onProject: () => void;
+  onTerminal: () => void;
   /** In the vim style, l leaves the list for the conversation, h's other half. */
   vim?: boolean;
 }) {
@@ -164,16 +167,22 @@ export function Sidebar(p: {
   // mark is the row's own `▲`; a blank or a second "!" here only pushed the title off its budget.
   const meta = (row: Extract<SidebarRow, { kind: "session" }>) => `${row.project ? `${clip(row.project, 10)} ` : ""}${age(row.s.updatedAt)}`;
   const Tab = (q: { id: SidebarTab; label: string }) => (
-    <text selectable={false} flexShrink={0} fg={p.tab === q.id ? t().text : t().muted} onMouseDown={() => p.onTab(q.id)}>
-      {p.tab === q.id ? <b>{q.label}</b> : q.label}
-    </text>
+    <box flexShrink={0} border={["left", "right"]} borderColor={p.tab === q.id ? t().accent : t().border} onMouseDown={() => q.id === "sessions" ? (p.tab === "sessions" ? p.onCollapse() : p.onTab("sessions")) : p.onTab(q.id)}>
+      <text selectable={false} fg={p.tab === q.id ? t().accent : t().muted}>
+        {p.tab === q.id ? <b>{` ${q.label} `}</b> : ` ${q.label} `}
+      </text>
+    </box>
   );
 
   return (
     <box flexDirection="column" width={p.width} flexShrink={0} border={["right"]} borderColor={t().border} paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" flexShrink={0}>
-        <Tab id="sessions" label="Sessions" /><text selectable={false} fg={t().border}>{" │ "}</text><Tab id="info" label="Info" />
-        <box flexGrow={1} /><box width={3} flexShrink={0} justifyContent="flex-end" onMouseDown={p.onCollapse}><text selectable={false} fg={t().muted}>«</text></box>
+        <Tab id="sessions" label="Sessions" />
+        <text selectable={false} fg={t().border}>{" │ "}</text><Tab id="info" label="Info" />
+        <box flexGrow={1} />
+        <box border={["left", "right"]} borderColor={t().border} onMouseDown={p.onTerminal}>
+          <text selectable={false} fg={t().accent}>{" >_ "}</text>
+        </box>
       </box>
       <text selectable={false} flexShrink={0} wrapMode="none">
         <span style={{ fg: p.tab === "sessions" ? t().accent : t().border }}>{"━".repeat("Sessions".length)}</span>
@@ -185,9 +194,12 @@ export function Sidebar(p: {
         <box flexDirection="row" marginTop={1} paddingLeft={1} backgroundColor={t().surface2} onMouseDown={() => { app.newChat(); p.onOpened(); }}>
           <text selectable={false} fg={t().accent}>+</text><text selectable={false} fg={t().text}>{" New chat"}</text><box flexGrow={1} /><text selectable={false} fg={t().muted}>{`${app.harness()?.displayName ?? ""} `}</text>
         </box>
-        <text selectable={false} fg={t().muted} wrapMode="none" truncate flexShrink={0}>
-          <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{monogram(app.workspace()?.name ?? "")}</span>{`  ${clipPath(app.workspace()?.path ?? "no project", Math.max(6, width() - 4))}`}
-        </text>
+        <box border={["left", "right"]} borderColor={t().border} marginTop={1} onMouseDown={p.onProject}>
+          <text selectable={false} wrapMode="none">
+            <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{` ${monogram(app.workspace()?.name ?? "")} `}</span>
+            <span style={{ fg: t().muted }}>{` ${clipPath(app.workspace()?.path ?? "no project", Math.max(6, width() - 8))} `}</span>
+          </text>
+        </box>
         <text selectable={false} fg={t().border} wrapMode="none" flexShrink={0}>{"─".repeat(Math.max(0, p.width - 4))}</text>
         <scrollbox ref={(el: ScrollBoxRenderable) => (scroller = el)} flexGrow={1} marginTop={1} verticalScrollbarOptions={{ visible: false }}>
           <For each={navRows()}>

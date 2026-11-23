@@ -60,10 +60,12 @@ const markdownHeights = (root: { getChildren?: () => unknown[] }): number[] => {
 const assistant = (m: Mounted) => m.app.chat()?.items.find((item) => item.kind === "assistant");
 
 /** Rounded borders survive in the conversation column, not under the sidebar. */
-const sheetFits = (frame: string) => {
-  const rows = frame.split("\n");
-  const top = rows.findIndex(r => r.includes("╭"));
-  const bottom = rows.findLastIndex(r => r.includes("╰"));
+const sheetFits = (frame: string, title: string) => {
+  const first = frame.split("\n").find((row) => !row.includes("Sessions") && !row.includes("Info") && row.trimStart().startsWith("│"));
+  const side = first ? first.indexOf("│") + 1 : 0;
+  const rows = frame.split("\n").map((row) => row.slice(side));
+  const top = rows.findIndex(row => row.includes(`╭─ ${title}`));
+  const bottom = rows.findIndex((row, index) => index > top && row.includes("╯"));
   expect(top).toBeGreaterThanOrEqual(0);
   expect(bottom).toBeGreaterThan(top);
   const right = rows[top]!.lastIndexOf("╮");
@@ -73,6 +75,51 @@ const sheetFits = (frame: string) => {
 };
 
 describe("atui", () => {
+  it("keeps the original controls neat and clickable without a second toolbar", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 140, height: 36 });
+    const start = await ui.until("Fake Echo ▾");
+    expect(start).not.toContain("Send ↵");
+    expect(start).not.toContain("▤ alpha ▾");
+    await ui.type("sent from the arrow");
+    await ui.click("↵");
+    await idle(ui);
+    expect(await ui.frame()).toContain("Echo: sent from the arrow");
+    await ui.click("Fake ▾");
+    await ui.until("Search harnesses…");
+    await ui.escape();
+    await ui.click("Fake Echo ▾");
+    await ui.until("Search models…");
+    await ui.escape();
+    await ui.click("Sessions");
+    await ui.until("»");
+    await ui.click("»");
+    await ui.until(">_");
+    await ui.click(">_");
+    await ui.until("Project terminal", 15_000);
+    await ui.type("printf neat-terminal-ok\\n\n");
+    await ui.until("neat-terminal-ok", 15_000);
+    await ui.escape();
+    await ui.until("Fake Echo ▾");
+  }, 30_000);
+
+  it("opens Git from the branch button, including before a first message", async () => {
+    const repo = path.join(server.root, "buttonrepo");
+    mkdirSync(repo, { recursive: true });
+    writeFileSync(path.join(repo, "README.md"), "initial\n");
+    execFileSync("git", ["init", "-qb", "master"], { cwd: repo });
+    ui = await mount(repo, { height: 44 });
+    await ui.app.ensureChat();
+    await ui.until("master");
+    await ui.click("master");
+    await ui.until(() => ui?.app.git() !== null, 15_000);
+    const panel = await ui.until("master");
+    expect(panel).toContain("Upstream");
+    expect(panel).toContain("README.md");
+    expect(ui.app.chat()).not.toBeNull();
+    await ui.escape();
+    await ui.until("Fake Echo ▾");
+  }, 30_000);
+
   it("keeps the board, active work and delegated sheets inside the conversation column", async () => {
     for (const width of [100, 140]) {
       ui = await mount(path.join(server.root, "alpha"), { width, height: 44 });
@@ -83,7 +130,7 @@ describe("atui", () => {
         ui.keys.pressKey("x", { ctrl: true });
         ui.keys.pressKey(key);
         const frame = await ui.until(expected);
-        sheetFits(frame);
+        sheetFits(frame, expected);
         if (key === "k") expect(frame).toContain("Enter opens · Esc closes");
         ui.keys.pressEscape();
         await wait(60);
@@ -114,7 +161,8 @@ describe("atui", () => {
     expect(f).toContain("● Echo: showcase tool edit please");
     expect(f).toMatch(/Σ \d+ calls · /);
     expect(f).not.toContain("Worked for");
-    expect(f).toContain("Fake Echo ▾  Low ▾");
+    expect(f).toContain("Fake Echo ▾");
+    expect(f).toContain("Low ▾");
     // Clicked, a call is framed on the tree's trunk, its outcome in the bottom edge.
     await ui.click("Edited src/app.ts");
     const framed = await ui.until("╰─ +1 −1");
@@ -307,7 +355,8 @@ describe("atui", () => {
     // Before any chat: the catalog's answer, not a bare "Model" and "Thinking".
     const f = await ui.until("Fake Echo ▾");
     expect(ui.app.chat()).toBeNull();
-    expect(f).toContain("Fake Echo ▾  Low ▾");
+    expect(f).toContain("Fake Echo ▾");
+    expect(f).toContain("Low ▾");
     // Alt+M offers the catalog's models; the pick is kept for the chat the first message makes.
     ui.keys.pressKey("m", { meta: true });
     await ui.until("Search models…");
@@ -358,18 +407,18 @@ describe("atui", () => {
     // Wide enough for NORMAL's whole hint beside the context and its sparkline (a narrower footer cuts the hint).
     ui = await mount(path.join(server.root, "beta"), { keybinds: "vim", height: 30, width: 170 });
     // The vim style starts in NORMAL: the footer says so, and the Emacs chords are off.
-    expect(await ui.until("-- NORMAL --")).toContain("-- NORMAL --");
+    expect(await ui.until("NORMAL")).toContain("NORMAL");
     ui.keys.pressKey("k", { ctrl: true });
     expect(await ui.frame()).not.toContain("Search commands, sessions, thinking…");
     // i goes to INSERT; Esc comes back to NORMAL, where letters move instead of typing.
     ui.keys.pressKey("i");
-    await ui.until("-- INSERT --");
+    await ui.until("INSERT");
     await ui.type("slow stream for scrolling");
     ui.keys.pressEnter();
     await ui.until("Echo: slow stream for scrolling");
     await idle(ui);
     await ui.escape();
-    expect(await ui.until("-- NORMAL --")).toContain("gg/G top/bottom");
+    expect(await ui.until("NORMAL")).toContain("gg/G top/bottom");
     // The pinned prompt, once the view has really settled, is the jump test's clock:
     // it shows exactly when the top has scrolled away.
     const pinned = async (want: boolean, ms = 5000) => {
@@ -403,12 +452,12 @@ describe("atui", () => {
     ui.keys.pressKey(":");
     await ui.until("Search commands, sessions, thinking…");
     await ui.escape();
-    expect(await ui.frame()).toContain("-- NORMAL --");
+    expect(await ui.frame()).toContain("NORMAL");
     // ":" then "quit" would leave; typing again is i.
     ui.keys.pressKey("i");
-    await ui.until("-- INSERT --");
+    await ui.until("INSERT");
     await ui.type("typed again");
-    expect(await ui.until("typed again")).toContain("-- INSERT --");
+    expect(await ui.until("typed again")).toContain("INSERT");
   }, 40_000);
 
   it("answers an approval with a number and a question with the arrows", async () => {
@@ -595,7 +644,7 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await ui.until("Echo: tool edit please");
     await idle(ui);
-    expect(await ui.frame()).toContain("Sessions │ Info");
+    expect(await ui.frame()).toContain("│ Sessions │");
     // C-x i: the Info tab, where the right panel's context and usage now live.
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("i");
@@ -606,11 +655,11 @@ describe("atui", () => {
     await ui.click("Sessions");
     await ui.until("C-x s to browse");
     // « folds it to a rail; » unfolds it.
-    await ui.click("«");
+    await ui.click("Sessions");
     const folded = await ui.until("»");
-    expect(folded).not.toContain("Sessions │ Info");
+    expect(folded).not.toContain("│ Sessions │");
     await ui.click("»");
-    await ui.until("Sessions │ Info");
+    await ui.until("│ Sessions │");
   }, 30_000);
 
   it("shows a ghost of the thread, named, while a session takes its time to open", async () => {
@@ -1265,7 +1314,7 @@ describe("atui's keybind styles", () => {
     expect(panel).toContain("v → keybinds (vim)");
     ui.keys.pressKey("v");
     // The vim style: NORMAL at once, the footer says it, and the Emacs chords are off.
-    const normal = await ui.until("-- NORMAL --");
+    const normal = await ui.until("NORMAL");
     expect(normal).toContain("Vim keybinds");
     ui.keys.pressKey("k", { ctrl: true });
     expect(await ui.frame()).not.toContain("Search commands, sessions, thinking…");
@@ -1282,7 +1331,7 @@ describe("atui's keybind styles", () => {
 
   it("gives vim its tabs, its new chat, its close, and its quit", async () => {
     ui = await mount(path.join(server.root, "beta"), { keybinds: "vim", width: 150, height: 36 });
-    await ui.until("-- NORMAL --");
+    await ui.until("NORMAL");
     // o: a new chat, straight into INSERT.
     ui.keys.pressKey("o");
     await ui.until("What should Fake do in");
@@ -1292,7 +1341,7 @@ describe("atui's keybind styles", () => {
     await idle(ui);
     // A second chat in a tab of its own (Space then a, vim's leader), then gt steps between them.
     await ui.escape();
-    await ui.until("-- NORMAL --");
+    await ui.until("NORMAL");
     await ui.type(" ");
     ui.keys.pressKey("a");
     await ui.until("What should Fake do in");
@@ -1301,7 +1350,7 @@ describe("atui's keybind styles", () => {
     await ui.until("Echo: second tab in vim");
     await idle(ui);
     await ui.escape();
-    await ui.until("-- NORMAL --");
+    await ui.until("NORMAL");
     expect(await ui.frame()).toContain("2 F second tab in vim");
     ui.keys.pressKey("g");
     ui.keys.pressKey("t");
