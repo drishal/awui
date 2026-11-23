@@ -84,6 +84,14 @@ describe("atui", () => {
     await ui.click("↑");
     await idle(ui);
     expect(await ui.frame()).toContain("Echo: sent from the arrow");
+    // ↑ in the empty box recalls the sent prompt, ↓ past the newest empties it again.
+    ui.keys.pressArrow("up");
+    await ui.until(() => (ui?.app.chat() ? true : false));
+    await wait(60);
+    expect((await ui.frame()).split("\n").some((line) => line.includes("│ sent from the arrow"))).toBe(true);
+    ui.keys.pressArrow("down");
+    await wait(60);
+    expect((await ui.frame()).split("\n").some((line) => line.includes("│ sent from the arrow"))).toBe(false);
     await ui.click("Fake ▾");
     await ui.until("Search harnesses…");
     await ui.escape();

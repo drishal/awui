@@ -16,6 +16,7 @@ import { IMAGE_MIME_TYPES, MAX_IMAGES, type GitStatus, type SavedPrompt, type Sl
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../../web/commands.js";
 import { blanks, matchPrompts, nextBlank, promptGist } from "../../web/prompt-blanks.js";
 import { levelTitle } from "../../web/config-summary.js";
+import { recallStep, sentPrompts, type Recall } from "../../web/prompt-history.js";
 import { applyMention, ghostCompletion, mentionAt } from "../assist.js";
 import { streamedChars, tokens, clip } from "../format.js";
 import { leader, type KeybindStyle } from "../keys.js";
@@ -263,6 +264,22 @@ export function Composer(p: {
         complete(c);
       }
     }
+  });
+
+  // ↑ in an empty box walks back through this chat's sent prompts, ↓ forward and, past the newest, empties it
+  // (the web composer's and Tern's recall, one function). The walk ends the moment the text is edited.
+  let recall: Recall | null = null;
+  useKeyboard((key) => {
+    if (!p.focused || key.defaultPrevented || menuOpen() || fileMenu().length > 0 || !area) return;
+    if ((key.name !== "up" && key.name !== "down") || key.shift || key.ctrl || key.meta) return;
+    const c = app.chat();
+    if (!c) return;
+    const step = recallStep(sentPrompts(c.items), recall, key.name, area.plainText, area.cursorOffset);
+    if (!step) return;
+    key.preventDefault();
+    recall = step.recall;
+    area.setText(step.text);
+    area.gotoBufferEnd();
   });
 
   // A saved prompt's blanks: Tab to the next, Shift+Tab back (unless the only one is already selected).
