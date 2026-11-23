@@ -16,7 +16,12 @@ export function WhichKey(p: { state: Partial<Record<string, string>>; onPick: (k
   const columns = () => whichKeyColumns(LEADER_KEYS, size().width - pad() * 2, WHICH_KEY_CELL);
   const label = (k: PrefixKey) => (p.state[k.key] ? `${k.label} (${p.state[k.key]})` : k.label);
   return (
-    <box flexDirection="row" flexShrink={0} border={["top"]} borderColor={t().border} paddingLeft={pad()} paddingRight={pad()} backgroundColor={t().bg}>
+    <box flexDirection="column" flexShrink={0} border={["top"]} borderColor={t().border} paddingLeft={pad()} paddingRight={pad()} backgroundColor={t().bg}>
+      <text wrapMode="none" truncate>
+        <span style={{ fg: t().accent }}><b>C-x</b></span>
+        <span style={{ fg: t().muted }}>{"  press a key · click one · Esc cancels"}</span>
+      </text>
+      <box flexDirection="row">
       <For each={columns()}>
         {(column) => (
           <box flexDirection="column" width={WHICH_KEY_CELL} flexShrink={0}>
@@ -32,6 +37,7 @@ export function WhichKey(p: { state: Partial<Record<string, string>>; onPick: (k
           </box>
         )}
       </For>
+      </box>
     </box>
   );
 }

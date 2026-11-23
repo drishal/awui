@@ -473,7 +473,7 @@ describe("atui", () => {
 
   it("lives in the vim keybind style: NORMAL at start, i to type, motions, : and the jumplist", async () => {
     // Wide enough for NORMAL's whole hint beside the context and its sparkline (a narrower footer cuts the hint).
-    ui = await mount(path.join(server.root, "beta"), { keybinds: "vim", height: 30, width: 170 });
+    ui = await mount(path.join(server.root, "beta"), { keybinds: "vim", height: 30, width: 190 });
     // The vim style starts in NORMAL: the footer says so, and the Emacs chords are off.
     expect(await ui.until("NORMAL")).toContain("NORMAL");
     ui.keys.pressKey("k", { ctrl: true });
