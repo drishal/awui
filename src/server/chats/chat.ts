@@ -509,9 +509,12 @@ class EventReducer {
         const edits = (base.category === "edit" || base.category === "write") && base.paths.length > 0;
         // The harness's own diff beats the arguments' one; with neither, its output's own count. What an
         // adapter states as `facts` is read first, and the `details` shape-sniffing stays the fallback.
+        // A call that is not an edit by name can still report one (Pi's codemode runs edits inside a script).
         const facts = event.facts;
-        const reported = edits ? (facts?.diff ?? resultDiff(event.details, event.output)) : null;
-        const settled: ToolItem = { ...base, ...(!edits ? {} : reported ? editShape(reported, null) : base.diff ? {} : editShape(null, bounded.text)) };
+        const reported = facts?.diff ?? (edits ? resultDiff(event.details, event.output) : null);
+        // The result can name the files it changed when the call's arguments did not (a codemode script).
+        const paths = facts?.paths && facts.paths.length > 0 ? [...new Set([...base.paths, ...facts.paths])] : null;
+        const settled: ToolItem = { ...base, ...(paths ? { paths } : {}), ...(!edits && !reported ? {} : reported ? editShape(reported, null) : base.diff ? {} : editShape(null, bounded.text)) };
         if (settled.category === "agent" || (event.details !== undefined && hasAgentCells(event.details))) {
           const runs = runsFromDetails(event.toolCallId, event.details, settled.subagents ?? null);
           if (runs) settled.subagents = settleRuns(runs, event.output, event.isError);

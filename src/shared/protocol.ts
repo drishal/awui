@@ -791,6 +791,8 @@ export interface ToolItem {
 export interface ToolResultFacts {
   exitCode?: number;
   diff?: ToolDiff;
+  /** The files the result changed, when the call's arguments name none (Pi's codemode writes from inside a script). */
+  paths?: string[];
   plan?: string;
   todos?: TodoItem[];
   jobs?: BackgroundJob[];

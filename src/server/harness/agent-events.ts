@@ -7,7 +7,7 @@ import { awuiOpenCodeFamily } from "../../shared/awui-mcp.js";
 // family is read from the same places so no client re-derives them.
 import { toolArgs, toolFacts, type ToolFacts } from "../../shared/output-facts.js";
 import { isPlanCall, orchestrationTool } from "../../shared/tool-row.js";
-import { argsDiff, resultDiff } from "./tool-diff.js";
+import { argsDiff, callPaths, resultDiff } from "./tool-diff.js";
 import { imageRefs } from "../image-store.js";
 import { applyReports, asyncReports, detailReports, hasAgentCells, isAgentTool, notifyReports, runsFromArgs, runsFromDetails, settleRuns, type AgentReport } from "./subagents.js";
 import { htmlRenderRef, isHtmlRenderCall, splitRenderMarker } from "./render-token.js";
@@ -618,6 +618,9 @@ export function normalizeAgentEvent(event: unknown, settledType: string): Harnes
       const facts: ToolResultFacts = {};
       const diff = details === undefined ? null : resultDiff(details, output);
       if (diff) facts.diff = diff;
+      // A codemode script's own arguments name no file: the calls it made are the files it changed.
+      const changedPaths = callPaths(details);
+      if (changedPaths.length > 0) facts.paths = changedPaths;
       const todos = todoItemsFromDetails(details);
       if (todos.length > 0) facts.todos = todos;
       const jobs = jobsFromCall(name, event.args, details, output);
@@ -824,11 +827,17 @@ export function historyToItems(messages: unknown[]): ChatItem[] {
           tool.truncated = bounded.truncated;
           tool.status = raw.isError === true ? "error" : "done";
           if (at !== undefined) tool.endedAt = at;
-          if (tool.category === "edit" || tool.category === "write") {
-            const reported = resultDiff(raw.details, toolResultText(raw));
+          const edits = tool.category === "edit" || tool.category === "write";
+          // A call that is not an edit by name can still report one (Pi's codemode runs edits inside a
+          // script): read its structured side only, so a command's JSON output is never taken for a diff.
+          const reported = resultDiff(raw.details, edits ? toolResultText(raw) : "");
+          if (edits || reported) {
             Object.assign(tool, reported ? editShape(reported, null) : tool.diff ? {} : editShape(null, bounded.text));
             if (tool.status === "error") delete tool.diffStat;
           }
+          // A result can name the files it changed when the call's arguments did not (a codemode script).
+          const changed = callPaths(raw.details);
+          if (changed.length > 0) tool.paths = [...new Set([...tool.paths, ...changed])];
           if (tool.category === "agent" || hasAgentCells(raw.details)) {
             const runs = runsFromDetails(String(raw.toolCallId), raw.details, tool.subagents ?? null);
             if (runs) tool.subagents = settleRuns(runs, bounded.text, tool.status === "error");

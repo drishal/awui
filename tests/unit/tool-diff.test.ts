@@ -48,4 +48,20 @@ describe("tool diffs", () => {
     expect(shape(hermes?.lines ?? [])).toEqual(["-1|a", "+1|b"]);
     expect(resultDiff(undefined, "Edited")).toBeNull();
   });
+
+  it("reads a codemode script's edits from the nested calls it recorded", () => {
+    // Pi's codemode result carries `calls` (the script's own record), not a diff: each call's
+    // arguments are the edit it ran. A one-line insert is one added line under its file.
+    const calls = [
+      { id: "c/1", name: "insert", args: JSON.stringify({ path: "SCRATCH.md", anchor: "a1b2c", direction: "after", text: "touched by the live check" }) },
+      { id: "c/2", name: "replace_match", args: JSON.stringify({ path: "src/app.ts", replace_from: "x1", replace_to: "x1", match: "const a = 1;", replacement: "const a = 2;" }) },
+      // The record truncates long arguments; a call whose JSON no longer parses claims nothing.
+      { id: "c/3", name: "write", args: '{"path":"big.ts","content":"one\\ntw...' },
+    ];
+    const diff = resultDiff({ calls }, "");
+    expect(diff).toMatchObject({ added: 2, removed: 1 });
+    expect(shape(diff?.lines ?? [])).toEqual(["@|SCRATCH.md", "+1|touched by the live check", "~|", "@|src/app.ts", "-|const a = 1;", "+|const a = 2;"]);
+    // Nothing edited: no diff, and no invented one.
+    expect(resultDiff({ calls: [{ name: "read", args: JSON.stringify({ path: "a.ts" }) }] }, "")).toBeNull();
+  });
 });

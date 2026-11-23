@@ -5,6 +5,7 @@
 // none, the diff comes from the call's arguments (old/new text, a patch, a
 // file's new content).
 import type { DiffLine, ToolDiff } from "../../shared/protocol.js";
+import { toolArgs } from "../../shared/output-facts.js";
 import { parseUnified as normalizeUnified } from "../../shared/unified-diff.js";
 
 type Obj = Record<string, unknown>;
@@ -234,6 +235,12 @@ export function argsDiff(args: unknown): ToolDiff | null {
   if (oldText !== null || newText !== null) {
     return finish(foldContext(lineDiff(splitLines(oldText ?? ""), splitLines(newText ?? ""))));
   }
+  // Pi's hashline insert: `text` arrives after (or before) an anchor line, so it is all new lines.
+  if (typeof args.anchor === "string" && typeof args.direction === "string" && typeof args.text === "string") return allAdded(args.text);
+  // Pi's hashline replace_match: the matched text becomes the replacement, so read it as old/new.
+  if (typeof args.match === "string" && typeof args.replacement === "string") {
+    return finish(foldContext(lineDiff(splitLines(args.match), splitLines(args.replacement))));
+  }
   if (Array.isArray(args.edits)) {
     const lines: DiffLine[] = [];
     for (const entry of args.edits) {
@@ -283,6 +290,50 @@ export function unifiedDiff(filePath: string, oldText: string, newText: string):
   return text;
 }
 
+/**
+ * The change a codemode script made, from the nested calls it recorded: each call's
+ * arguments describe one edit (`write`'s content, `insert`'s text, a hashline
+ * `replace_match`), and a file's hunk header keeps a multi-file script readable.
+ * The record truncates its arguments, so a call whose JSON no longer parses says
+ * nothing rather than guessing.
+ */
+function callsDiff(calls: unknown[]): ToolDiff | null {
+  const lines: DiffLine[] = [];
+  let added = 0;
+  let removed = 0;
+  for (const call of calls) {
+    if (!isObj(call)) continue;
+    const args = typeof call.args === "string" ? toolArgs(call.args) : isObj(call.args) ? call.args : undefined;
+    if (args === undefined) continue;
+    const part = argsDiff(args);
+    if (!part) continue;
+    const path = firstString(args, ["path", "file_path", "filePath"]);
+    if (lines.length > 0) lines.push({ kind: "gap", text: "" });
+    if (path) lines.push({ kind: "hunk", text: path });
+    lines.push(...part.lines);
+    added += part.added;
+    removed += part.removed;
+  }
+  return added + removed > 0 ? { lines, added, removed } : null;
+}
+
+/**
+ * The files a codemode result's nested calls edited, in first-use order: only a call whose
+ * arguments describe a change counts, so a script that read a file does not name it as changed.
+ */
+export function callPaths(details: unknown): string[] {
+  if (!isObj(details) || !Array.isArray(details.calls)) return [];
+  const paths = new Set<string>();
+  for (const call of details.calls) {
+    if (!isObj(call)) continue;
+    const args = typeof call.args === "string" ? toolArgs(call.args) : isObj(call.args) ? call.args : undefined;
+    if (args === undefined || !argsDiff(args)) continue;
+    const path = firstString(args, ["path", "file_path", "filePath"]);
+    if (path) paths.add(path);
+  }
+  return [...paths];
+}
+
 /** The diff a harness reported with its result, if it reported one. */
 export function resultDiff(details: unknown, output: string): ToolDiff | null {
   if (isObj(details)) {
@@ -300,6 +351,12 @@ export function resultDiff(details: unknown, output: string): ToolDiff | null {
     }
     // Claude Code's Write of a new file: no patch, only the content.
     if (details.type === "create" && typeof details.content === "string") return allAdded(details.content);
+    // Pi's codemode hands over the calls its script made instead of a diff of its own: each
+    // call's arguments are the edit it ran, so read them as the script's change.
+    if (Array.isArray(details.calls) && details.calls.length > 0) {
+      const diff = callsDiff(details.calls);
+      if (diff) return diff;
+    }
   }
   // Hermes answers with JSON carrying a unified diff.
   const trimmed = output.trimStart();

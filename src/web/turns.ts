@@ -174,7 +174,10 @@ export function buildTurns(items: ChatItem[], status: ChatStatus, runStartedAt: 
     for (const item of rest) {
       if (item.kind === "tool") {
         counts[item.category] = (counts[item.category] ?? 0) + 1;
-        if ((item.category === "edit" || item.category === "write") && item.status !== "error") {
+        // A call that is not an edit by name can still report one (Pi's codemode wrote from a script): its
+        // diff and the files it names are the turn's change too.
+        const changes = item.category === "edit" || item.category === "write" || item.diffStat !== undefined || item.diff !== undefined;
+        if (changes && item.status !== "error") {
           for (const p of item.paths) changed.add(p);
           // The stat counts every line of a diff, including the ones the wire cut, so a cut diff still sums in full.
           // A finished edit with neither a stat nor a diff (a harness that reports none) is what makes the sums a lower bound.
