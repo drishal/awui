@@ -26,6 +26,7 @@ import { latestThoughtLine, neatRow, rowHead, sigmaFacts, thinkingMeta, workRuns
 import { callDuration } from "../../shared/tool-row.js";
 import { JobBlocks } from "./job.js";
 import { chatJobs, type ChatJob } from "../../web/jobs.js";
+import { formatWhen } from "../../web/turn-time.js";
 import { accentOf, categoryTone, type Theme } from "../theme.js";
 import { highlightPreview } from "../words.js";
 import { useAtui, useTheme } from "./context.js";
@@ -250,6 +251,8 @@ function UserPrompt(p: { item: UserItem; glow: number; through: number }) {
             </box>
           </Show>
         </box>
+        {/* When it was sent, as the web's prompt shows it ("3:41 pm", "Mon 3:41 pm"); nothing where the harness did not record it. */}
+        <Show when={p.item.at}>{(at) => <text selectable={false} flexShrink={0} fg={t().muted} bg={app.glass() ? undefined : t().surface}>{` ${formatWhen(at())}`}</text>}</Show>
       </box>
       <Show when={actions()}>
         <PromptActions item={p.item} through={p.through} onDone={() => setActions(false)} />
