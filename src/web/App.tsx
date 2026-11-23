@@ -2351,6 +2351,11 @@ export function App() {
                     <span className="badge badge-harness" style={harnessColor(chat.harnessId)}>
                       {chatHarness?.displayName ?? chat.harnessId}
                     </span>
+                    {chat.capabilities.supportsProjectFolders ? (
+                      <span className="chat-path" title={chat.workspace.path}>
+                        {chat.workspace.name}
+                      </span>
+                    ) : null}
                     <span className={`status status-${chat.status}${chat.pending.length > 0 ? " is-asking" : ""}`} data-testid="chat-status">
                       <StatusWord text={chat.pending.length > 0 ? "Needs you" : STATUS_LABEL[chat.status] ?? chat.status} />
                     </span>
@@ -2358,11 +2363,6 @@ export function App() {
                     {chatStatusLine ? (
                       <span className={`chat-agent-status is-${chatStatusLine.state}`} title={`The agent set this ${ago(chatStatusLine.at)}`}>
                         {agentStatusText(chatStatusLine)}
-                      </span>
-                    ) : null}
-                    {chat.capabilities.supportsProjectFolders ? (
-                      <span className="chat-path" title={chat.workspace.path}>
-                        {chat.workspace.name}
                       </span>
                     ) : null}
                     {chat.viewers >= 2 ? (

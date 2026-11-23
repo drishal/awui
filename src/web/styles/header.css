@@ -35,6 +35,25 @@
   font-size: 12px;
   color: var(--muted-text);
 }
+/* Harness, project, and working share one control-height row. Center the dots
+ * as flex children: an inline-block baseline offset drops Working below Pi. */
+.chat-sub .status {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+}
+
+.chat-sub .status::before {
+  flex: none;
+  margin: 0 5px 0 0;
+  vertical-align: middle;
+}
+
+.chat-sub .chat-path::before {
+  content: "-";
+  margin-right: 8px;
+  color: var(--muted);
+}
 
 /* The harness tag on the header's second line keeps its colour dot but not its chip: a filled pill there
    competes with the tab highlighted above it. */
