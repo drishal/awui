@@ -72,7 +72,7 @@ export function Picker(p: {
   );
   const room = () => size().width - (p.side ?? 0);
   const previewing = () => Boolean(p.preview) && room() >= PREVIEW_WIDTH;
-  const width = () => Math.max(30, Math.min(previewing() ? 128 : 72, room() - 4));
+  const width = () => Math.max(30, Math.min(previewing() ? 128 : p.info ? 100 : 72, room() - 4));
   /** The list's own width: all of it, or about half beside a preview. The box's border and padding come off first. */
   const listWidth = () => (previewing() ? Math.min(64, Math.floor(width() * 0.52)) : width() - 4);
   const [shownPreview] = createResource(
@@ -92,7 +92,7 @@ export function Picker(p: {
   const cost = (list: PickerItem[], at: number) => 1 + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
   /** A bar row's label column: the track starts here, a little over a third of the list. */
   const track = () => (listWidth() >= 64 ? TRACK_WIDE : TRACK);
-  const barLabel = () => Math.max(18, Math.floor(listWidth() * 0.37));
+  const barLabel = () => Math.max(18, Math.floor(listWidth() * (listWidth() > 70 ? 0.45 : 0.37)));
   const lines = () => height() - 5;
   /** The rows that fit: from the first one that keeps the highlighted row in view, as many as the box holds, and the room a "more below" line takes. */
   const windowed = createMemo(() => {
@@ -192,7 +192,7 @@ export function Picker(p: {
                   <box flexDirection="row" backgroundColor={lit() ? t().selection : undefined} onMouseDown={() => run(item)}>
                     <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel() : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
                       {item.current ? "✓ " : "  "}
-                      <Index each={matchSpans(clip(item.label, item.bar ? barLabel() - 3 : listWidth() - 3 - (item.hint ? Math.min(item.hint.length, listWidth() >= 60 ? 30 : 18) + 1 : 0)), query())}>
+                      <Index each={matchSpans(clip(item.label, item.bar ? barLabel() - 3 : listWidth() - 3 - (item.hint ? Math.min(item.hint.length, listWidth() >= 60 ? 30 : 18) + 3 : 0)), query())}>
                         {(part) => <span style={part().hit && !item.disabled ? { fg: t().accent } : {}}>{part().text}</span>}
                       </Index>
                     </text>
@@ -207,7 +207,10 @@ export function Picker(p: {
                       )}
                     </Show>
                     <Show when={item.hint}>
-                      <text flexShrink={item.bar ? 1 : 0} flexGrow={item.bar ? 1 : 0} wrapMode="none" truncate fg={t().muted}>{` ${item.bar ? item.hint : clip(item.hint ?? "", listWidth() >= 60 ? 30 : 18)}`}</text>
+                      {/* A bar row's figures sit at the right edge, so one column of them lines up down the sheet. */}
+                      <box flexGrow={item.bar ? 1 : 0} flexShrink={item.bar ? 1 : 0} flexDirection="row" justifyContent={item.bar ? "flex-end" : undefined}>
+                        <text flexShrink={item.bar ? 1 : 0} wrapMode="none" truncate fg={t().muted}>{` ${item.bar ? item.hint : clip(item.hint ?? "", listWidth() >= 60 ? 30 : 18)}`}</text>
+                      </box>
                     </Show>
                   </box>
                 </box>

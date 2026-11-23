@@ -765,6 +765,10 @@ export function App(p: {
   /** A snippet without the project's own path: the whole of it where it appears, and the tail of it where the snippet's cut began in the middle of it ("…RXL/ws/alpha/src/a.ts"). */
   const plainPath = (snippet: string, root: string): string => {
     let out = snippet.split(root).join("");
+    // A cut that ends on the project's folder, just before the file's own name: the folder says nothing, so it goes and the cut shows.
+    const bare = root.replace(/\/$/, "");
+    if (out.endsWith(bare + "…")) out = out.slice(0, -bare.length - 1) + "…";
+    else if (out.includes(bare + "…")) out = out.replace(bare + "…", "…");
     for (let i = 1; i < root.length - 3; i++) {
       const tail = root.slice(i);
       const at = out.indexOf(tail);
@@ -801,7 +805,7 @@ export function App(p: {
     if (!turn) return [];
     const fall = turnWaterfall(turn, c.workspace.path, Date.now());
     const unit = (ms: number) => atLabel(ms).replace(" ", "");
-    const section = fall.total > 0 ? `This turn took ${unit(fall.total)}` : "No times reported";
+    const section = fall.total > 0 ? `This turn took ${unit(fall.span)}` : "No times reported";
     const rows = fall.rows.map((row) => ({
       id: `timing:${row.id}`,
       section,
@@ -817,8 +821,8 @@ export function App(p: {
     }
     // And the time after the last step (the closing reply, the settle), so the rows add up to the turn's total.
     const last = fall.rows.reduce((most, row) => Math.max(most, row.end), 0);
-    if (fall.total > 0 && fall.total - last >= 400) {
-      rows.push({ id: "timing:after", section, label: "After the last step", hint: `at ${unit(last).padStart(5)} · took ${unit(fall.total - last).padStart(5)}`, bar: [last / fall.total, 1], run: () => {} });
+    if (fall.total > 0 && fall.span - last >= 400) {
+      rows.push({ id: "timing:after", section, label: "After the last step", hint: `at ${unit(last).padStart(5)} · took ${unit(fall.span - last).padStart(5)}`, bar: [last / fall.total, fall.span / fall.total], run: () => {} });
     }
     return rows;
   };
@@ -843,7 +847,7 @@ export function App(p: {
     let idle: string[] = [];
     const flush = () => {
       if (idle.length === 0) return;
-      days.push(row("By day", idle.length === 1 ? dayName(idle[0] as string) : `${dayName(idle[0] as string)} to ${dayName(idle[idle.length - 1] as string)}`, "none"));
+      days.push(row("By day", idle.length === 1 ? dayName(idle[0] as string) : `${dayName(idle[0] as string)} to ${dayName(idle[idle.length - 1] as string)}`, "none", [0, 0]));
       idle = [];
     };
     for (const d of r.byDay.slice(-14)) {
@@ -859,8 +863,9 @@ export function App(p: {
       row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
       ...(share === null ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
       ...days,
-      ...r.byHarness.map((h) => row("By harness", `${h.harnessId} · ${h.sessions} ${h.sessions === 1 ? "chat" : "chats"}`, words(h.totals))),
-      ...r.byModel.slice(0, 8).map((m) => row("By model", m.model, words(m.totals))),
+      // As the web dialog's bars: each harness and model's share of the busiest one, under the name the header and the composer use.
+      ...r.byHarness.map((h) => row("By harness", `${app.boot()?.harnesses.find((x) => x.id === h.harnessId)?.displayName ?? h.harnessId} · ${h.sessions} ${h.sessions === 1 ? "chat" : "chats"}`, words(h.totals), [0, tokensOf(h.totals) / Math.max(1, ...r.byHarness.map((x) => tokensOf(x.totals)))])),
+      ...r.byModel.slice(0, 8).map((m) => row("By model", m.model, words(m.totals), [0, tokensOf(m.totals) / Math.max(1, ...r.byModel.slice(0, 8).map((x) => tokensOf(x.totals)))])),
       ...r.top.slice(0, 8).map((x) => row("Most used chats", x.session.title || x.session.id, words(x.totals))),
     ];
   };
