@@ -91,7 +91,7 @@ export function Picker(p: {
   const cost = (list: PickerItem[], at: number) => 1 + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
   /** A bar row's label column: the track starts here, a little over a third of the list. */
   const track = () => (listWidth() >= 64 ? TRACK_WIDE : TRACK);
-  const barLabel = () => Math.max(18, Math.floor(listWidth() * 0.4));
+  const barLabel = () => Math.max(18, Math.floor(listWidth() * 0.37));
   const lines = () => height() - 5;
   /** The rows that fit: from the first one that keeps the highlighted row in view, as many as the box holds, and the room a "more below" line takes. */
   const windowed = createMemo(() => {

@@ -806,19 +806,19 @@ export function App(p: {
       id: `timing:${row.id}`,
       section,
       label: `${"  ".repeat(row.depth)}${row.label}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
-      hint: `at ${unit(row.start).padStart(6)} · took ${unit(row.end - row.start).padStart(6)}${row.slowest ? " · slowest" : ""}`,
+      hint: `at ${unit(row.start).padStart(5)} · took ${unit(row.end - row.start).padStart(5)}${row.slowest ? " · slowest" : ""}`,
       bar: fall.total > 0 ? ([row.start / fall.total, row.end / fall.total] as [number, number]) : undefined,
       run: () => {},
     }));
     // Time before the first step (a request waiting for an answer, a slow start) has no step of its own: name it, so the rows add up to the turn.
     const first = fall.rows.reduce((least, row) => Math.min(least, row.start), Number.POSITIVE_INFINITY);
     if (fall.total > 0 && Number.isFinite(first) && first >= 400) {
-      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at ${"0ms".padStart(6)} · took ${unit(first).padStart(6)}`, bar: [0, first / fall.total], run: () => {} });
+      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at ${"0ms".padStart(5)} · took ${unit(first).padStart(5)}`, bar: [0, first / fall.total], run: () => {} });
     }
     // And the time after the last step (the closing reply, the settle), so the rows add up to the turn's total.
     const last = fall.rows.reduce((most, row) => Math.max(most, row.end), 0);
     if (fall.total > 0 && fall.total - last >= 400) {
-      rows.push({ id: "timing:after", section, label: "After the last step", hint: `at ${unit(last).padStart(6)} · took ${unit(fall.total - last).padStart(6)}`, bar: [last / fall.total, 1], run: () => {} });
+      rows.push({ id: "timing:after", section, label: "After the last step", hint: `at ${unit(last).padStart(5)} · took ${unit(fall.total - last).padStart(5)}`, bar: [last / fall.total, 1], run: () => {} });
     }
     return rows;
   };
