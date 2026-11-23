@@ -18,7 +18,7 @@ import { sparkline, SPARK_H, SPARK_W } from "../sparkline.js";
 import { type DraftSize, draftRow, draftSize, draftWarning } from "../token-estimate.js";
 import { buildTurns, type Turn } from "../turns.js";
 import { Dialog } from "./Dialog.js";
-import { IconChevronRight } from "../icons.js";
+import { IconChevronRight, Spinner } from "../icons.js";
 import { TimingView } from "./TimingView.js";
 import { Dot } from "./Dot.js";
 import { Rolling } from "./Rolling.js";
@@ -175,6 +175,12 @@ function UsageBody({
             state={compacting && x.id === "messages" ? "busy" : look !== null && look !== x.id ? "dim" : undefined}
           />
         ))}
+        {compacting ? (
+          <p className="usage-note usage-compacting" role="status" data-testid="compacting-context">
+            <Spinner size={12} /> <strong>Compacting context…</strong>
+            <span className="usage-compacting-detail">The current size stays until the harness reports the new one.</span>
+          </p>
+        ) : null}
         {compacted ? (
           <p className="usage-note usage-compacted" role="status" data-testid="compacted">
             Compacted ✓
@@ -631,7 +637,7 @@ export function ContextRing({
   const r = 3.5;
   const c = 2 * Math.PI * r;
   const tone = contextTone(pct);
-  const detail = `${Math.round(pct)}% of context used${context.tokens !== null ? ` · ${compact(context.tokens)} / ${compact(context.window)} tokens` : ""}`;
+  const detail = `${compacting ? "Compacting context. " : ""}${Math.round(pct)}% of context used${context.tokens !== null ? ` · ${compact(context.tokens)} / ${compact(context.window)} tokens` : ""}`;
   const peek = { context, usage, draft: size, canCompact, history, compacting, compacted };
 
   return (
@@ -640,7 +646,7 @@ export function ContextRing({
       <button
         ref={ring}
         type="button"
-        className={`context-ring tone-${tone}`}
+        className={`context-ring tone-${tone}${compacting ? " is-compacting" : ""}`}
         aria-label={detail}
         aria-expanded={open}
         aria-haspopup="dialog"

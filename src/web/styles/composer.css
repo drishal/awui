@@ -1189,6 +1189,22 @@
   color: var(--ok);
   animation: rise-in var(--dur-enter) var(--ease-out);
 }
+.usage-compacting {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--accent);
+}
+
+.usage-compacting-detail {
+  flex-basis: 100%;
+  color: var(--muted-text);
+}
+
+.context-ring.is-compacting svg {
+  animation: pulse 1.2s ease-in-out infinite;
+}
 
 .usage-row {
   display: flex;

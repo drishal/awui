@@ -759,6 +759,7 @@ class FakeLiveChat implements LiveChat {
         this.emit({ type: "compacting", active: true });
         await this.pause(signal, 60);
         this.emit({ type: "compacting", active: false });
+        this.emit({ type: "notice", level: "info", text: "Compacted conversation automatically" });
         await this.pause(signal, 60);
       }
       if (/\bunfinished\b/i.test(text)) {

@@ -45,6 +45,52 @@
   padding-bottom: var(--gap-turn);
 }
 
+/* Compaction is a lasting history boundary, not a dismissible info notice.
+ * For a compaction inside a run, the fold still says so when it is closed. */
+.compaction-marker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--hairline-strong);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-2);
+  font-size: var(--chat-small);
+}
+
+.compaction-title {
+  font-weight: 600;
+}
+
+.compaction-detail {
+  color: var(--muted-text);
+}
+
+.compaction-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 5px 0 10px;
+  color: var(--accent);
+  font-size: var(--chat-small);
+}
+
+.process-compacted {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .turn-preamble {
   padding: 10px 0 6px;
   display: flex;

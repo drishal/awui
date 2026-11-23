@@ -100,6 +100,7 @@ describe("a run that does more than write", () => {
     await until(() => live().status === "compacting");
     // pi sends no second start when its mid-run compaction ends: the run is still the one from the prompt.
     await until(() => live().status !== "compacting");
+    expect(live().snapshot().items.some((i) => i.kind === "notice" && i.text === "Compacted conversation automatically")).toBe(true);
     expect(live().status).toBe("running");
     const queued = await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "and now this", mode: "followUp" });
     expect(queued.status).toBe(202);

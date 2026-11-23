@@ -16,6 +16,25 @@ async function openFold(page: Page, index = -1) {
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
 
+test("the chat header keeps harness and project before its status", async ({ page }) => {
+  await signInAndOpen(page);
+  await openChat(page);
+  const parts = await page.locator(".chat-sub").evaluate((el) => Array.from(el.children, (child) => child.className));
+  expect(parts.indexOf("badge badge-harness")).toBeGreaterThanOrEqual(0);
+  expect(parts.indexOf("chat-path")).toBe(parts.indexOf("badge badge-harness") + 1);
+  expect(parts.some((name) => name.includes("status status-"))).toBe(true);
+  expect(parts.findIndex((name) => name.includes("status status-"))).toBeGreaterThan(parts.indexOf("chat-path"));
+  for (const width of [1280, 320]) {
+    await page.setViewportSize({ width, height: 720 });
+    const dotCenters = await page.locator(".chat-header .badge-harness, .chat-header .status").evaluateAll((nodes) => nodes.map((el) => {
+      const box = el.getBoundingClientRect();
+      return box.y + (box.height - parseFloat(getComputedStyle(el, "::before").height)) / 2 + 3;
+    }));
+    expect(dotCenters[0]).toBe(dotCenters[1]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+});
+
 test("this machine opens straight into the app: no token, no sign-in", async ({ page }) => {
   await page.goto("/");
   // The start screen: a box to type in, no sign-in on this machine.
@@ -442,6 +461,50 @@ test("a chip offers to compact a full context before the next message", async ({
   await expect(page.getByTestId("chat-status")).toHaveText("Compacting");
   await expect(page.getByTestId("answer").last()).toContainText("Echo: now compact first", { timeout: 20_000 });
   await expect(chip).toHaveCount(0);
+});
+
+test("compaction has a live row and a lasting boundary after it finishes", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "before compaction");
+  await send(page, "/compact");
+  await expect(page.getByTestId("compaction-live")).toHaveText("Compacting context…");
+  await page.getByTestId("context-ring").click();
+  const panel = page.getByRole("dialog", { name: "Context and usage" });
+  await expect(panel.getByTestId("compacting-context")).toContainText("Compacting context…");
+  await expect(panel.getByTestId("compacting-context")).toContainText("The current size stays until the harness reports the new one.");
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });
+  const marker = page.getByTestId("compaction-marker");
+  await expect(marker).toContainText("Compacted conversation");
+  await expect(marker).toContainText("A summary continues below");
+  await expect(marker.getByRole("button", { name: "Dismiss notice" })).toHaveCount(0);
+  await expect(panel.getByTestId("compacting-context")).toHaveCount(0);
+  await page.getByTestId("context-ring").click();
+  await page.reload();
+  await expect(page.getByTestId("compaction-marker")).toContainText("A summary continues below");
+  await expect(page.getByTestId("compaction-live")).toHaveCount(0);
+});
+
+test("a folded run keeps a mid-run compaction visible", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "midcompact please");
+  await expect(page.getByTestId("compaction-live")).toHaveText("Compacting context…");
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });
+  const fold = page.getByTestId("process-toggle");
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await expect(fold.getByTestId("compact-fold")).toHaveText("Compacted");
+  await fold.click();
+  const marker = page.getByTestId("compaction-marker");
+  await expect(marker).toContainText("Compacted conversation automatically");
+  await expect(marker).toContainText("A summary continues below");
+  await fold.click();
+  await expect(fold.getByTestId("compact-fold")).toHaveText("Compacted");
+  await expect(page.getByTestId("answer").last()).toContainText("Echo: midcompact please");
+  await sendAndWait(page, "another turn");
+  await sendAndWait(page, "a third message");
+  await expect(page.getByTestId("turn").first().getByTestId("compact-fold")).toHaveText("Compacted");
+  await expect(page.getByTestId("turn").last().getByTestId("compact-fold")).toHaveCount(0);
 });
 
 test("selecting text in an answer offers to quote it into the message", async ({ page }) => {

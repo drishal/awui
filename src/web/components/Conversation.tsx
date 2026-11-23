@@ -5,7 +5,7 @@
 //  - Hermes Desktop: flat-not-boxed, pinned prompts, red only for failures.
 import { createContext, Fragment, memo, startTransition, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssistantItem, ChatItem, ChatStatus, ImageRef, NoticeItem, RequestItem, SecondOpinion, ToolCategory, ToolItem, UserItem } from "../../shared/protocol.js";
-import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronUp, IconClock, IconCopy, IconEdit, IconFile, IconFork, IconImage, IconInfo, IconLink, IconRefresh, IconSearch, IconSidebar, IconSpark, IconUndo, IconWarning, IconX, RaySpinner, Spinner, ToolIcon } from "../icons.js";
+import { IconAlertCircle, IconArchive, IconCheck, IconChevronDown, IconChevronUp, IconClock, IconCopy, IconEdit, IconFile, IconFork, IconImage, IconInfo, IconLink, IconRefresh, IconSearch, IconSidebar, IconSpark, IconUndo, IconWarning, IconX, RaySpinner, Spinner, ToolIcon } from "../icons.js";
 import { promptLink } from "../prompt-link.js";
 import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
 import { useToolStyle } from "../tool-style.js";
@@ -333,9 +333,36 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   );
 });
 
+/** A successful compaction is a lasting boundary in the thread, not a disposable notice. */
+function isCompactionNotice(item: NoticeItem): boolean {
+  return item.level === "info" && /^(?:Compacted conversation(?: automatically)?|Earlier conversation was compacted)$/.test(item.text);
+}
+
+function CompactionDivider({ item }: { item: NoticeItem }) {
+  const title = item.text.startsWith("Earlier") ? "Earlier conversation compacted" : item.text;
+  return (
+    <div className="compaction-marker" role="separator" aria-label={title} data-testid="compaction-marker">
+      <IconArchive size={14} />
+      <span className="compaction-title">{title}</span>
+      <span className="compaction-detail">A summary continues below</span>
+    </div>
+  );
+}
+
+/** The harness has no success item yet: the current chat's operation is live. */
+function CompactionLive() {
+  return (
+    <div className="compaction-live" role="status" data-testid="compaction-live">
+      <Spinner size={13} />
+      <span>Compacting context…</span>
+    </div>
+  );
+}
+
 function NoticeRow({ item }: { item: NoticeItem }) {
   const [dismissed, setDismissed] = useState(false);
   // Hide this row only for the current view; never mutate the harness transcript.
+  if (isCompactionNotice(item)) return <CompactionDivider item={item} />;
   if (dismissed) return null;
   const arrival = useArrival(item.id);
   const icon = item.level === "error" ? <IconWarning size={14} /> : item.level === "warning" ? <IconWarning size={14} /> : <IconInfo size={14} />;
@@ -1009,6 +1036,7 @@ function ProcessFold({
   const duration =
     turn.startedAt !== undefined ? formatDuration((turn.live ? now : (turn.endedAt ?? turn.startedAt)) - turn.startedAt) : null;
   const leading = place === undefined || place === "first";
+  const compacted = items.some((item) => item.kind === "notice" && isCompactionNotice(item));
   const label = live ? <PhaseLabel phase={phase} /> : leading ? (duration ? `Worked for ${duration}` : "Worked") : null;
   const answerThinking = answerAt >= 0 && turn.answer?.thinking ? turn.answer : null;
   const thought = live && !open ? latestThought(turn) : null;
@@ -1090,6 +1118,7 @@ function ProcessFold({
               </span>
             ) : null}
           </span>
+          {compacted ? <span className="process-compacted" data-testid="compact-fold"><IconArchive size={12} />Compacted</span> : null}
           {/* Outside the label, which ellipsises: the count stays whole on a narrow screen, and shows with the fold closed.
               The ChangedFiles row below the answer repeats it when it renders, so a settled turn with files shows one. */}
           {leading && turn.changeStat && (turn.live || turn.changedFiles.length === 0) ? <ChangeCounts stat={turn.changeStat} /> : null}
@@ -1944,6 +1973,7 @@ export function Conversation({
                   />
                 </Fragment>
               ))}
+              {status === "compacting" ? <CompactionLive /> : null}
             </div>
             </FoldContext.Provider>
             </RowOpenContext.Provider>
