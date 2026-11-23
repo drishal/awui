@@ -770,7 +770,10 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await idle(ui);
     await ui.click("❯ first try");
-    await ui.until("↻ Retry");
+    const offered = await ui.until("↻ Retry");
+    // The reply and the whole turn (prompt, work, answer) copy beside the prompt's own text.
+    expect(offered).toContain("⧉ Copy answer");
+    expect(offered).toContain("⧉ Copy turn as Markdown");
     await ui.click("✎ Edit");
     await ui.until("editing message 1");
     // Esc drops it.

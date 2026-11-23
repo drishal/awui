@@ -33,6 +33,7 @@ import { Composer } from "./composer.js";
 import { AtuiContext } from "./context.js";
 import { glideBy, glideTo, Shimmer } from "./fx.js";
 import { findTurns } from "../../web/find.js";
+import { turnMarkdown } from "../../web/turn-markdown.js";
 import { SwitchGhost } from "./ghost.js";
 import { Picker, type PreviewText } from "./picker.js";
 import { RequestCard } from "./request.js";
@@ -61,7 +62,7 @@ type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "hi
  * forty actions under one "Actions" word gave no way to scan it. An id not named here is "More".
  */
 const PALETTE_GROUPS: Record<string, string> = {
-  new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", find: "Chats", sessions: "Chats",
+  new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", find: "Chats", "copy-answer": "Chats", "copy-turn": "Chats", sessions: "Chats",
   retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", "put-back": "Chats", quote: "Chats",
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
   model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
@@ -620,6 +621,15 @@ export function App(p: {
     if (c && runnables().length > 0) add({ id: "run", label: "Run a command from the answer…", hint: leader("x", keybinds()), run: () => setDialog("run") });
     add({ id: "quote", label: "Quote the selection into the message", hint: "M-q", searchOnly: true, run: quoteSelection });
     if (app.putBackable()) add({ id: "put-back", label: "Put the undone files back", hint: leader("z", keybinds()), run: () => void app.putBack() });
+    if (c && last) {
+      const turns = buildTurns(c.items, c.status, c.runStartedAt);
+      const done = [...turns].reverse().find((x) => x.prompt && x.answer?.text);
+      if (done?.answer?.text) {
+        const answer = done.answer.text;
+        add({ id: "copy-answer", label: "Copy the last answer", searchOnly: true, run: () => { void renderer.copyToClipboardOSC52(answer); flash("Copied the last answer"); } });
+        add({ id: "copy-turn", label: "Copy the last turn as Markdown", searchOnly: true, run: () => { void renderer.copyToClipboardOSC52(turnMarkdown(done, c.workspace.path)); flash("Copied the last turn as Markdown"); } });
+      }
+    }
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });

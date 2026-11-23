@@ -27,6 +27,7 @@ import { callDuration } from "../../shared/tool-row.js";
 import { JobBlocks } from "./job.js";
 import { chatJobs, type ChatJob } from "../../web/jobs.js";
 import { formatWhen } from "../../web/turn-time.js";
+import { turnMarkdown } from "../../web/turn-markdown.js";
 import { accentOf, categoryTone, type Theme } from "../theme.js";
 import { highlightPreview } from "../words.js";
 import { useAtui, useTheme } from "./context.js";
@@ -193,6 +194,11 @@ function PromptActions(p: { item: UserItem; through: number; onDone: () => void 
   const idle = () => c()?.status === "idle" || c()?.status === "error";
   const inPlace = () => c()?.capabilities.supportsRewind ?? false;
   const canFork = () => c()?.capabilities.supportsFork ?? false;
+  // The turn this prompt opens: its answer and its whole turn as Markdown are copyable beside the prompt's own text.
+  const turn = () => {
+    const chat = c();
+    return chat ? buildTurns(chat.items, chat.status, chat.runStartedAt).find((x) => x.prompt?.id === p.item.id) : undefined;
+  };
   const canBranch = () => idle() && (inPlace() || p.through === 1 || canFork());
   const hasCheckpoint = () => (c()?.checkpoints ?? []).includes(p.through);
   const run = (action: () => void) => () => {
@@ -212,6 +218,8 @@ function PromptActions(p: { item: UserItem; through: number; onDone: () => void 
         <Chip label="⑂ Fork before" onPress={run(() => void app.fork(p.through - 1))} />
       </Show>
       <Chip label="⧉ Copy" onPress={run(() => void renderer.copyToClipboardOSC52(p.item.text))} />
+      <Show when={turn()?.answer?.text}>{(answer) => <Chip label="⧉ Copy answer" onPress={run(() => void renderer.copyToClipboardOSC52(answer()))} />}</Show>
+      <Show when={turn()}>{(whole) => <Chip label="⧉ Copy turn as Markdown" onPress={run(() => void renderer.copyToClipboardOSC52(turnMarkdown(whole(), c()?.workspace.path ?? "")))} />}</Show>
       <Show when={!idle()}>
         <text selectable={false} fg={t().muted}>{" Retry and Edit wait until the agent is idle"}</text>
       </Show>
