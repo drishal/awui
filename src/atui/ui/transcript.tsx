@@ -679,9 +679,9 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
           <b style={{ fg: t().text }}>{head().verb}</b>
           <Show when={head().detail}>
             {(d) => (
-              <Show when={href()} fallback={<span style={{ fg: t().link }}>{` ${d()}`}</span>}>
+              <Show when={href()} fallback={<span style={{ fg: t().text2 }}>{` ${d()}`}</span>}>
                 {(url) => (
-                  <a href={url()} style={{ fg: t().link }}>
+                  <a href={url()} style={{ fg: t().text2 }}>
                     {` ${d()}`}
                   </a>
                 )}
@@ -748,7 +748,8 @@ function Request(p: { item: RequestItem }) {
   const t = useTheme();
   const denied = () => /Denied|Cancelled|Dismissed/.test(p.item.outcome ?? "");
   return (
-    <text selectable={false} fg={p.item.outcome ? (denied() ? t().warn : t().muted) : t().warn} wrapMode="word">
+    // A question still open is drawn by the card under the transcript, which is what asks for you: the row is its quiet record, not a second alarm.
+    <text selectable={false} fg={denied() ? t().warn : t().muted} wrapMode="word">
       {p.item.outcome ? (denied() ? "✗ " : "✓ ") : "? "}
       <span style={{ fg: t().text2 }}>{clip(p.item.request.title, 80)}</span>
       <span style={{ fg: t().muted }}>{` → ${p.item.outcome ?? "waiting for you"}`}</span>

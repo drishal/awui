@@ -135,7 +135,8 @@ export function categoryTone(theme: Theme, category: ToolItem["category"]): stri
     case "agent":
       return theme.thinking;
     case "other":
-      return theme.warn;
+      // The web's --cat-other is --cat-plan, the accent.
+      return theme.accent;
     default:
       return theme.muted;
   }
