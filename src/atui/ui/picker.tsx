@@ -12,9 +12,11 @@ import { useTheme } from "./context.js";
 /** A row that also draws a span of a track (a step's place on a turn's time, a day's share of the busiest): `[from, to]`, each 0 to 1. */
 export type PickerItem = PaletteItem & { bar?: [number, number] };
 
+/** A track's cells: wide where the list is, so two steps a few hundred milliseconds apart do not land in one cell. */
+const TRACK_WIDE = 18;
 const TRACK = 12;
 /** The track as the filled run and the empty rest around it. */
-function trackParts(bar: [number, number]): [string, string, string] {
+function trackParts(bar: [number, number], TRACK: number): [string, string, string] {
   // An empty span (a day with nothing) draws no fill, only the track.
   if (bar[1] - bar[0] <= 0) return ["░".repeat(TRACK), "", ""];
   const start = Math.min(TRACK - 1, Math.max(0, Math.round(bar[0] * TRACK)));
@@ -88,6 +90,7 @@ export function Picker(p: {
   /** Lines a row takes: itself, a heading over it, and a blank line above a heading that is not the first. */
   const cost = (list: PickerItem[], at: number) => 1 + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
   /** A bar row's label column: the track starts here, a little over a third of the list. */
+  const track = () => (listWidth() >= 64 ? TRACK_WIDE : TRACK);
   const barLabel = () => Math.max(18, Math.floor(listWidth() * 0.4));
   const lines = () => height() - 5;
   /** The rows that fit: from the first one that keeps the highlighted row in view, as many as the box holds, and the room a "more below" line takes. */
@@ -196,9 +199,9 @@ export function Picker(p: {
                     <Show when={item.bar}>
                       {(bar) => (
                         <text flexShrink={0} fg={t().muted}>
-                          {trackParts(bar())[0]}
-                          <span style={{ fg: t().accent }}>{trackParts(bar())[1]}</span>
-                          {trackParts(bar())[2]}
+                          {trackParts(bar(), track())[0]}
+                          <span style={{ fg: t().accent }}>{trackParts(bar(), track())[1]}</span>
+                          {trackParts(bar(), track())[2]}
                         </text>
                       )}
                     </Show>
