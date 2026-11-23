@@ -51,7 +51,7 @@ const PULSE_TICKS = 4.5;
 const pulseOn = () => Math.floor(tick() / PULSE_TICKS) % 2 === 0;
 
 /** The glyph a settled row wears, one per kind of call as the web's chips are, so a column of rows reads by shape as well as by colour. */
-const KIND_MARK: Record<ToolItem["category"], string> = { read: "▤", edit: "✎", write: "✎", command: "▸", search: "◎", web: "⊕", agent: "◈", other: "●" };
+const KIND_MARK: Record<ToolItem["category"], string> = { read: "▤", edit: "±", write: "±", command: "▸", search: "◎", web: "⊕", agent: "◈", other: "●" };
 
 /** The row's bullet, neat-render's: the category's colour when it settles, red on failure, filled and hollow in turn while it runs; a settled call wears its kind's glyph. */
 function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean; category: ToolItem["category"] }) {
@@ -543,7 +543,7 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
       <box flexDirection="column" onMouseDown={() => setOpen(!open())}>
         <text wrapMode="none" truncate>
           <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
-          <b style={{ fg: t().text2 }}>{head().verb}</b>
+          <span style={{ fg: t().text2 }}>{head().verb}</span>
           <Show when={!wraps()}>
             <Show when={head().detail}>
               {(d) => (
@@ -691,7 +691,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
         <text flexShrink={1} minWidth={0} wrapMode="none" truncate>
           <span style={{ fg: t().border }}>{fork()}</span>
           <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
-          <b style={{ fg: t().text2 }}>{head().verb}</b>
+          <span style={{ fg: t().text2 }}>{head().verb}</span>
           <Show when={head().detail}>
             {(d) => (
               <Show when={href()} fallback={<span style={{ fg: t().text2 }}>{` ${d()}`}</span>}>
@@ -1086,7 +1086,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       <Show when={files().length > 0 && !p.turn().live}>
         <box marginTop={sigmaShown() ? 0 : 1}>
           <text selectable={false} fg={t().muted} wrapMode="word">
-            <span style={{ fg: t().ok }}>{"✎ "}</span>
+            <span style={{ fg: t().ok }}>{"± "}</span>
             {`Changed ${files().length} ${files().length === 1 ? "file" : "files"} · `}
             {/* Each name is a link to its file, where the terminal has links. */}
             <Index each={files().slice(0, FILES_SHOWN)}>
