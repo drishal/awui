@@ -8,6 +8,7 @@ import type { InteractionAnswer, InteractionRequest } from "../../shared/protoco
 import { splitStep } from "../../web/questions.js";
 import { MAX_DENIAL_REASON_CHARS } from "../../shared/protocol.js";
 import { isApproval, optionsOf } from "../requests.js";
+import { mix } from "../fx.js";
 import { useAtui, useTheme } from "./context.js";
 
 export function RequestCard(p: { request: InteractionRequest; more: number; active: boolean; column: number }) {
@@ -89,7 +90,7 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
         <b>{head().text}</b>
       </text>
       <Show when={detail()}>
-        <box border={["left"]} borderColor={t().border} paddingLeft={1} marginTop={1} maxHeight={10}>
+        <box border={["left"]} borderColor={approval() ? mix(t().border, t().warn, 0.6) : t().border} paddingLeft={1} marginTop={1} maxHeight={10}>
           <text fg={t().text2} wrapMode="char">
             {detail()}
           </text>
