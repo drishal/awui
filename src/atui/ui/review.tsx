@@ -130,6 +130,11 @@ export function ReviewView(p: { onClose: () => void }) {
     else if (key.name === "s" && key.shift) void send();
   });
 
+  /** A line's tint: green or red for an add or delete; the cursor's row lays the selection over that tint rather than replacing it, so it keeps its diff context. */
+  const rowTint = (kind: string, cursor: boolean) => {
+    const base = kind === "add" ? mix(t().bg, t().ok, 0.12) : kind === "del" ? mix(t().bg, t().danger, 0.12) : undefined;
+    return cursor ? mix(base ?? t().bg, t().selection, 0.7) : base;
+  };
   const lineColor = (kind: string) => (kind === "add" ? t().ok : kind === "del" ? t().danger : t().text2);
 
   return (
@@ -164,7 +169,7 @@ export function ReviewView(p: { onClose: () => void }) {
               const threads = () => placed().placed.get(row.key) ?? [];
               return (
                 <box flexDirection="column">
-                  <box flexDirection="row" backgroundColor={here() ? mix(t().bg, t().selection, 0.85) : row.line.kind === "add" ? mix(t().bg, t().ok, 0.12) : row.line.kind === "del" ? mix(t().bg, t().danger, 0.12) : undefined} onMouseDown={() => setAt(index())}>
+                  <box flexDirection="row" backgroundColor={rowTint(row.line.kind, here())} onMouseDown={() => setAt(index())}>
                     <text flexShrink={0} fg={here() ? t().accent : t().border}>
                       {here() ? "▌" : " "}
                     </text>
