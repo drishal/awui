@@ -46,6 +46,14 @@ export function toolKind(item: Extract<ChatItem, { kind: "tool" }>): ToolKindChi
   return { key: item.category, category: item.category };
 }
 
+/**
+ * The glyph a row's lead draws, from the chip its run's stack drew: a passing test run wears the
+ * flask there, so it must wear it on the row too rather than the command's terminal.
+ */
+export function rowMark(kind: ToolKindChip): { category: ToolCategory; test: boolean; plan: boolean } {
+  return { category: kind.category, test: kind.test === true, plan: kind.plan === true };
+}
+
 /** The distinct kinds of tool the items called, in the order each was first used. */
 export function toolKinds(items: readonly ChatItem[]): ToolKindChip[] {
   const seen = new Map<string, ToolKindChip>();

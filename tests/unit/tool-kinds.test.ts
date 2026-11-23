@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChatItem, ToolCategory, ToolItem } from "../../src/shared/protocol.js";
 import { toolCategory, toolKindOf } from "../../src/server/harness/agent-events.js";
-import { iconStack, monogram, serverHue, toolKind, toolKinds, usedLabel } from "../../src/web/tool-kinds.js";
+import { iconStack, monogram, rowMark, serverHue, toolKind, toolKinds, usedLabel } from "../../src/web/tool-kinds.js";
 
 const tool = (name: string, category: ToolCategory): ChatItem => ({ kind: "tool", id: name, name, args: "{}", status: "done", output: "", truncated: false, category, summary: "", paths: [] });
 
@@ -33,6 +33,14 @@ describe("a test run", () => {
     expect(toolKinds([run])[0]).toEqual({ key: "test", category: "command", test: true });
     expect(toolKinds([bash("hello, all tests passed I think")])[0]?.key).toBe("command");
     expect(toolKinds([run, bash("ls"), run]).map((k) => k.key)).toEqual(["test", "command"]);
+  });
+
+  it("wears the flask on its row, not the command's terminal mark", () => {
+    // The flat line skin draws the row's own glyph; a settled command whose output is a test tally
+    // must wear the same test mark its chip does, and a plan call its checklist.
+    const run = bash(" Test Files  1 passed (1)\n      Tests  8 passed (8)\n   Duration  200ms") as Extract<ChatItem, { kind: "tool" }>;
+    expect(rowMark(toolKind(run))).toEqual({ category: "command", test: true, plan: false });
+    expect(rowMark(toolKind(tool("todo", "other") as Extract<ChatItem, { kind: "tool" }>))).toEqual({ category: "other", test: false, plan: true });
   });
 });
 

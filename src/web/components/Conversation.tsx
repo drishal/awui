@@ -18,7 +18,7 @@ import { JobCard } from "./JobCard.js";
 import { chatJobs } from "../jobs.js";
 import { phaseDelay, workingPhase } from "../working-phase.js";
 import { retryLabel, retryPrompt, type RetryMode } from "../tool-retry.js";
-import { iconStack, monogram, serverHue, toolKind, toolKinds, usedLabel, type ToolKindChip } from "../tool-kinds.js";
+import { iconStack, monogram, rowMark, serverHue, toolKind, toolKinds, usedLabel, type ToolKindChip } from "../tool-kinds.js";
 import { Dot } from "./Dot.js";
 import { SecondOpinionCard } from "./SecondOpinionCard.js";
 import { Rolling } from "./Rolling.js";
@@ -234,7 +234,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
             {lines ? (
               // The line skin: the icon alone, no chip around it, as the flat list drew it.
               <span className="tool-plain-lead" aria-hidden="true">
-                {running ? <Spinner size={13} /> : failed ? <IconAlertCircle size={14} /> : <ToolIcon category={item.category} size={14} />}
+                {running ? <Spinner size={13} /> : failed ? <IconAlertCircle size={14} /> : <ToolIcon {...rowMark(kind)} size={14} />}
               </span>
             ) : (
               <KindChip kind={kind} running={running} />
