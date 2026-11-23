@@ -837,7 +837,7 @@ export function App(p: {
     flush();
     return [
       row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
-      ...(share === null ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
+      ...(share === null ? [] : [row(head, "Served from the prompt cache", `cache ${Math.round(share * 100)}%`)]),
       ...days,
       ...r.byHarness.map((h) => row("By harness", `${h.harnessId} · ${h.sessions} ${h.sessions === 1 ? "chat" : "chats"}`, words(h.totals))),
       ...r.byModel.slice(0, 8).map((m) => row("By model", m.model, words(m.totals))),
