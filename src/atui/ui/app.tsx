@@ -807,6 +807,15 @@ export function App(p: {
     return fall.total > 0 ? fall.ticks.map((tick) => ({ at: tick.ms / fall.total, label: tick.label.replace(" ", "") })) : undefined;
   };
 
+  /** The title over Timing's figures: the start and the duration, over the tail "slowest" takes when a step is it. */
+  const timingHead = (): string => {
+    const c = app.chat();
+    const id = app.timingFor();
+    const turn = c && id !== null ? buildTurns(c.items, c.status, c.runStartedAt).find((x) => x.prompt?.id === id) : undefined;
+    const anySlow = turn && c ? turnWaterfall(turn, c.workspace.path, Date.now()).rows.some((r) => r.slowest) : false;
+    return `${"start".padStart(6)}  ${"took".padStart(6)}${anySlow ? " ".repeat(9) : ""}`;
+  };
+
   /** The Timing picker's rows: each model step, call and subagent run of one turn, where it started and how long it took (the web's waterfall, as a list). */
   const timingItems = (): PickerItem[] => {
     const c = app.chat();
@@ -816,6 +825,9 @@ export function App(p: {
     if (!turn) return [];
     const fall = turnWaterfall(turn, c.workspace.path, Date.now());
     const unit = (ms: number) => atLabel(ms).replace(" ", "");
+    /** "slowest" is a fixed tail on every row when any step is it, so the figures keep one right edge. */
+    const anySlow = fall.rows.some((r) => r.slowest);
+    const slowTail = (slowest: boolean) => (anySlow ? (slowest ? "  slowest" : " ".repeat(9)) : "");
     /** A time as a figure in one column: the number right-aligned, its unit in a fixed two-cell tail, so 1ms, 164ms and 1.1s line up on the digits. */
     const fig = (ms: number) => {
       const m = /^([\d.]+)(\D+)$/.exec(unit(ms));
@@ -826,19 +838,19 @@ export function App(p: {
       id: `timing:${row.id}`,
       section,
       label: `${"  ".repeat(row.depth)}${row.label}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
-      hint: `at ${fig(row.start)} · took ${fig(row.end - row.start)}${row.slowest ? " · slowest" : ""}`,
+      hint: `${fig(row.start)}  ${fig(row.end - row.start)}${slowTail(row.slowest)}`,
       bar: fall.total > 0 ? ([row.start / fall.total, row.end / fall.total] as [number, number]) : undefined,
       run: () => {},
     }));
     // Time before the first step (a request waiting for an answer, a slow start) has no step of its own: name it, so the rows add up to the turn.
     const first = fall.rows.reduce((least, row) => Math.min(least, row.start), Number.POSITIVE_INFINITY);
     if (fall.total > 0 && Number.isFinite(first) && first >= 400) {
-      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `at ${fig(0)} · took ${fig(first)}`, bar: [0, first / fall.total], run: () => {} });
+      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `${fig(0)}  ${fig(first)}${slowTail(false)}`, bar: [0, first / fall.total], run: () => {} });
     }
     // And the time after the last step (the closing reply, the settle), so the rows add up to the turn's total.
     const last = fall.rows.reduce((most, row) => Math.max(most, row.end), 0);
     if (fall.total > 0 && fall.span - last >= 400) {
-      rows.push({ id: "timing:after", section, label: "After the last step", hint: `at ${fig(last)} · took ${fig(fall.span - last)}`, bar: [last / fall.total, fall.span / fall.total], run: () => {} });
+      rows.push({ id: "timing:after", section, label: "After the last step", hint: `${fig(last)}  ${fig(fall.span - last)}${slowTail(false)}`, bar: [last / fall.total, fall.span / fall.total], run: () => {} });
     }
     return rows;
   };
@@ -1071,7 +1083,7 @@ export function App(p: {
                   <Picker title="Permission mode" placeholder="Search modes…" items={permissionItems()} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "timing"}>
-                  <Picker title="Timing" placeholder="Search steps…" items={timingItems()} axis={timingAxis()} firstHeading info onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
+                  <Picker title="Timing" placeholder="Search steps…" items={timingItems()} axis={timingAxis()} axisHead={timingHead()} firstHeading info onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
                 </Show>
                 <Show when={dialog() === "usage"}>
                   <Picker title={`Usage across chats · ${usageDays()} days`} tabHint={`Tab: ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />

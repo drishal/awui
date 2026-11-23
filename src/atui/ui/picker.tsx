@@ -26,17 +26,20 @@ function trackParts(bar: [number, number], cells: number): { before: string; sol
   return { before: "─".repeat(start), solid, edge, after: "─".repeat(Math.max(0, cells - start - solid - (edge ? 1 : 0))) };
 }
 
-/** A scale's labels set along `cells` columns at their fractions; the last is right-aligned to the track's end so it never runs past it. */
+/** A scale's labels set along `cells` columns, each centred on its tick and kept inside the track. A label that would touch the one before it is left out, except the last (the axis's end), which wins the place instead. */
 function axisLine(ticks: Array<{ at: number; label: string }>, cells: number): string {
-  const line: string[] = Array(cells).fill(" ");
+  const placed: Array<{ from: number; label: string }> = [];
   ticks.forEach((tick, n) => {
-    const last = n === ticks.length - 1;
-    const from = last ? cells - tick.label.length : Math.min(Math.round(tick.at * (cells - 1)), cells - tick.label.length);
-    if (from < 0) return;
-    // A label never lands on the one before it (one blank cell between).
-    const taken = line.slice(Math.max(0, from - 1), from + tick.label.length + 1).some((c) => c !== " ");
-    if (!taken) [...tick.label].forEach((c, k) => (line[from + k] = c));
+    const centre = Math.round(tick.at * (cells - 1));
+    const from = Math.max(0, Math.min(cells - tick.label.length, centre - Math.floor(tick.label.length / 2)));
+    const before = placed[placed.length - 1];
+    const touches = before !== undefined && from <= before.from + before.label.length;
+    if (touches && n === ticks.length - 1) placed.pop();
+    else if (touches) return;
+    placed.push({ from, label: tick.label });
   });
+  const line: string[] = Array(cells).fill(" ");
+  for (const item of placed) [...item.label].forEach((c, k) => (line[item.from + k] = c));
   return line.join("");
 }
 
@@ -71,6 +74,8 @@ export function Picker(p: {
   onTab?: () => void;
   /** A scale for the bar rows under the first heading: labels at fractions (0 to 1) of the track, from the same ticks the web draws. */
   axis?: Array<{ at: number; label: string }>;
+  /** The title over the bar rows' figure column ("start     took"), set at the right of the scale's line. */
+  axisHead?: string;
   /** What Tab does, in words ("Tab: 30 days"): it leads the key hints, so the title stays a name. */
   tabHint?: string;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
@@ -112,8 +117,8 @@ export function Picker(p: {
   /** A bar row's label column: the track starts here, a little over a third of the list. */
   const barLabel = () => Math.max(18, Math.floor(listWidth() * (listWidth() > 70 ? 0.4 : 0.37)));
   /** The track takes what the label and the widest figure leave, so a wide sheet has a long bar and no dead gap: 12 cells at least, 44 at most. */
-  const track = () => {
-    const figures = Math.max(0, ...shown().filter((i) => i.bar).map((i) => (i.hint ?? "").length));
+  const track = (section?: string) => {
+    const figures = Math.max(0, ...shown().filter((i) => i.bar && (section === undefined || i.section === section)).map((i) => (i.hint ?? "").length));
     return Math.max(12, Math.min(44, listWidth() - barLabel() - figures - 3));
   };
   const lines = () => height() - 5;
@@ -212,7 +217,10 @@ export function Picker(p: {
                     <text fg={t().muted} marginTop={at() > 0 ? 1 : 0}><b>{item.section}</b></text>
                   </Show>
                   <Show when={at() === 0 && p.axis && item.bar}>
-                    <text fg={t().muted} wrapMode="none">{`${" ".repeat(barLabel())}${axisLine(p.axis ?? [], track())}`}</text>
+                    <box flexDirection="row" flexShrink={0}>
+                      <text fg={t().muted} flexShrink={0} wrapMode="none">{`${" ".repeat(barLabel())}${axisLine(p.axis ?? [], track(item.section))}`}</text>
+                      <box flexGrow={1} flexDirection="row" justifyContent="flex-end"><text fg={t().muted} wrapMode="none">{p.axisHead ? `${p.axisHead}` : ""}</text></box>
+                    </box>
                   </Show>
                   <box flexDirection="row" backgroundColor={lit() ? t().selection : undefined} onMouseDown={() => run(item)}>
                     <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel() : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
@@ -225,10 +233,10 @@ export function Picker(p: {
                     <Show when={item.bar}>
                       {(bar) => (
                         <text flexShrink={0} fg={t().muted}>
-                          {trackParts(bar(), track()).before}
-                          <span style={{ bg: t().accent }}>{" ".repeat(trackParts(bar(), track()).solid)}</span>
-                          <span style={{ fg: t().accent, bg: mix(t().surface, t().accent, 0.3) }}>{trackParts(bar(), track()).edge}</span>
-                          {trackParts(bar(), track()).after}
+                          {trackParts(bar(), track(item.section)).before}
+                          <span style={{ bg: t().accent }}>{" ".repeat(trackParts(bar(), track(item.section)).solid)}</span>
+                          <span style={{ fg: t().accent, bg: mix(t().surface, t().accent, 0.5) }}>{trackParts(bar(), track(item.section)).edge}</span>
+                          {trackParts(bar(), track(item.section)).after}
                         </text>
                       )}
                     </Show>
