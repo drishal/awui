@@ -20,7 +20,8 @@ function trackParts(bar: [number, number], TRACK: number): [string, string, stri
   // An empty span (a day with nothing) draws no fill, only the track.
   if (bar[1] - bar[0] <= 0) return ["─".repeat(TRACK), "", ""];
   const start = Math.min(TRACK - 1, Math.max(0, Math.round(bar[0] * TRACK)));
-  const end = Math.min(TRACK, Math.max(start + 1, Math.round(bar[1] * TRACK)));
+  // The width comes from the duration, not from where the rounded end lands, so equal durations draw equal bars.
+  const end = Math.min(TRACK, start + Math.max(1, Math.round((bar[1] - bar[0]) * TRACK)));
   return ["─".repeat(start), "█".repeat(end - start), "─".repeat(TRACK - end)];
 }
 
