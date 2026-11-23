@@ -447,7 +447,7 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await ui.until(() => (ui?.app.chat()?.queue.steering.length ?? 0) + (ui?.app.chat()?.queue.followUp.length ?? 0) === 1);
     await ui.click("+1 queued");
-    await ui.until("Enter edits · x removes");
+    await ui.until("x removes");
     ui.keys.pressKey("x");
     await ui.until(() => (ui?.app.chat()?.queue.steering.length ?? 0) + (ui?.app.chat()?.queue.followUp.length ?? 0) === 0);
     expect(await ui.until("Message the agent")).not.toContain("remove this follow-up");

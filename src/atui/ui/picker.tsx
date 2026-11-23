@@ -87,6 +87,8 @@ export function Picker(p: {
   const headed = (list: PickerItem[], at: number) => !query().trim() && (list[at - 1]?.section !== list[at]?.section) && (at > 0 || Boolean(p.firstHeading));
   /** Lines a row takes: itself, a heading over it, and a blank line above a heading that is not the first. */
   const cost = (list: PickerItem[], at: number) => 1 + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
+  /** A bar row's label column: the track starts here, a little over a third of the list. */
+  const barLabel = () => Math.max(18, Math.floor(listWidth() * 0.4));
   const lines = () => height() - 5;
   /** The rows that fit: from the first one that keeps the highlighted row in view, as many as the box holds, and the room a "more below" line takes. */
   const windowed = createMemo(() => {
@@ -184,24 +186,24 @@ export function Picker(p: {
                     <text fg={t().muted} marginTop={at() > 0 ? 1 : 0}><b>{item.section}</b></text>
                   </Show>
                   <box flexDirection="row" backgroundColor={lit() ? t().selection : undefined} onMouseDown={() => run(item)}>
-                    <text flexGrow={1} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
+                    <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel() : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
                       {item.current ? "✓ " : "  "}
-                      <Index each={matchSpans(clip(item.label, listWidth() - (item.bar ? 36 : 20)), query())}>
+                      <Index each={matchSpans(clip(item.label, (item.bar ? barLabel() : listWidth()) - (item.bar ? 3 : 20)), query())}>
                         {(part) => <span style={part().hit && !item.disabled ? { fg: t().accent } : {}}>{part().text}</span>}
                       </Index>
                     </text>
-                    <Show when={item.hint}>
-                      <text flexShrink={0} fg={t().muted}>{` ${clip(item.hint ?? "", listWidth() >= 60 ? 30 : 18)}`}</text>
-                    </Show>
+                    {/* A bar row reads label, track, then the figures, so the track sits beside what it measures. */}
                     <Show when={item.bar}>
                       {(bar) => (
-                        <text flexShrink={0} fg={t().border}>
-                          {" "}
+                        <text flexShrink={0} fg={t().muted}>
                           {trackParts(bar())[0]}
                           <span style={{ fg: t().accent }}>{trackParts(bar())[1]}</span>
                           {trackParts(bar())[2]}
                         </text>
                       )}
+                    </Show>
+                    <Show when={item.hint}>
+                      <text flexShrink={item.bar ? 1 : 0} flexGrow={item.bar ? 1 : 0} wrapMode="none" truncate fg={t().muted}>{` ${item.bar ? item.hint : clip(item.hint ?? "", listWidth() >= 60 ? 30 : 18)}`}</text>
                     </Show>
                   </box>
                 </box>
