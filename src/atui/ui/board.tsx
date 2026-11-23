@@ -140,7 +140,8 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   });
 
   const width = () => Math.max(30, Math.min(160, size().width - (p.side ?? 0) - 4));
-  const columnWidth = () => Math.max(18, Math.floor((width() - 4) / 3) - 1);
+  /** The columns share the frame's whole inside: two of a third each, the last the rest, so the cards end where the head does. */
+  const columnWidth = (last: boolean) => Math.max(18, last ? width() - 4 - 2 * Math.floor((width() - 4) / 3) : Math.floor((width() - 4) / 3));
   const height = () => Math.max(6, size().height - 8);
   const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} [f] · ${PR_FILTER_LABELS[pr()]} [r]`;
   /** The frame fits its cards (about four rows each, plus the head and the column titles) up to the room the sheet stands in, so a board with a few cards is not a frame of empty rows. */
@@ -184,7 +185,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
             const active = () => column() === id;
             const at = () => (active() ? clampCursor(columnCards(), cursor()) : -1);
             return (
-              <box flexDirection="column" width={columnWidth()} flexShrink={0} paddingRight={1}>
+              <box flexDirection="column" width={columnWidth(id === BOARD_COLUMNS[BOARD_COLUMNS.length - 1])} flexShrink={0} paddingRight={1}>
                 <text flexShrink={0} fg={active() ? (id === "needs" && counts()[id] > 0 ? t().warn : t().accent) : t().muted} wrapMode="none" truncate>
                   <b>{BOARD_TITLES[id]}</b>
                   <span style={{ fg: t().muted }}>{` ${counts()[id]}`}</span>
