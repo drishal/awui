@@ -33,7 +33,6 @@ export function ReviewView(p: { onClose: () => void }) {
   const placed = createMemo(() => placeThreads(files(), app.reviewComments(chatId())));
   const [at, setAt] = createSignal(firstStop(rows()));
   const [writing, setWriting] = createSignal<{ key: string; threadId?: string; draft: string } | null>(null);
-  // Which lines the agent wrote and which have changed since (shared/review.ts's rule over the server's present-file read).
   const [sending, setSending] = createSignal(false);
   // Which lines the agent wrote and which have changed since (shared/review.ts's rule over the server's present-file read).
   const [marks, setMarks] = createSignal<OriginMarks | null>(null);
@@ -138,7 +137,7 @@ export function ReviewView(p: { onClose: () => void }) {
       <box flexDirection="row" flexShrink={0} marginTop={1}>
         <text flexGrow={1} fg={t().text}>
           <b>Review changes</b>
-          <span style={{ fg: t().muted }}>{`  ${files().length} ${files().length === 1 ? "file" : "files"} · ${open().length} open${resolved().length > 0 ? ` · ${resolved().length} resolved` : ""}`}</span>
+          <span style={{ fg: t().muted }}>{`  ${files().length} ${files().length === 1 ? "file" : "files"} ${open().length > 0 ? ` · ${open().length} open` : ""}${resolved().length > 0 ? ` · ${resolved().length} resolved` : ""}`}</span>
         </text>
       </box>
       <Show when={files().length > 0} fallback={<text flexGrow={1} fg={t().muted}>The agent has not edited any files in this chat.</text>}>
@@ -172,8 +171,16 @@ export function ReviewView(p: { onClose: () => void }) {
                     <text flexShrink={0} fg={t().muted}>
                       {`${row.line.line !== undefined ? String(row.line.line).padStart(5) : "     "} `}
                     </text>
-                    <text flexGrow={1} wrapMode="none" truncate fg={lineColor(row.line.kind)}>
-                      {row.line.kind === "hunk" || row.line.kind === "gap" ? clip(row.line.text || "⋯", 120) : `${SIGN[row.line.kind]} ${row.line.text}`}
+                    <text flexGrow={1} wrapMode="none" truncate fg={t().text}>
+                      {row.line.kind === "hunk" || row.line.kind === "gap" ? (
+                        clip(row.line.text || "⋯", 120)
+                      ) : (
+                        <>
+                          {/* As the web's diff does: only the sign carries the hue, the code stays in the text colour on the tint, so it keeps its contrast. */}
+                          <span style={{ fg: lineColor(row.line.kind) }}>{`${SIGN[row.line.kind]} `}</span>
+                          {row.line.text}
+                        </>
+                      )}
                     </text>
                     <Show when={lineChanged(row.key)}>
                       <text flexShrink={0} fg={t().warn}>↯ changed since</text>
