@@ -50,12 +50,15 @@ const IMAGE_ROWS = 8;
 const PULSE_TICKS = 4.5;
 const pulseOn = () => Math.floor(tick() / PULSE_TICKS) % 2 === 0;
 
-/** The row's bullet, neat-render's: the category's colour when it settles, red on failure, filled and hollow in turn while it runs. */
+/** The glyph a settled row wears, one per kind of call as the web's chips are, so a column of rows reads by shape as well as by colour. */
+const KIND_MARK: Record<ToolItem["category"], string> = { read: "▤", edit: "✎", write: "✎", command: "▸", search: "◎", web: "⊕", agent: "◈", other: "●" };
+
+/** The row's bullet, neat-render's: the category's colour when it settles, red on failure, filled and hollow in turn while it runs; a settled call wears its kind's glyph. */
 function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean; category: ToolItem["category"] }) {
   const t = useTheme();
   const on = () => p.status !== "running" || pulseOn();
   const color = () => (p.status === "error" || p.failedOutput ? t().danger : p.status === "running" ? (on() ? t().warn : t().muted) : categoryTone(t(), p.category));
-  return <span style={{ fg: color() }}>{on() ? "● " : "○ "}</span>;
+  return <span style={{ fg: color() }}>{p.status === "running" ? (on() ? "● " : "○ ") : `${p.status === "error" || p.failedOutput ? "✗" : KIND_MARK[p.category]} `}</span>;
 }
 
 /**
@@ -540,7 +543,7 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
       <box flexDirection="column" onMouseDown={() => setOpen(!open())}>
         <text wrapMode="none" truncate>
           <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
-          <b style={{ fg: t().text }}>{head().verb}</b>
+          <b style={{ fg: t().text2 }}>{head().verb}</b>
           <Show when={!wraps()}>
             <Show when={head().detail}>
               {(d) => (
@@ -688,7 +691,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
         <text flexShrink={1} minWidth={0} wrapMode="none" truncate>
           <span style={{ fg: t().border }}>{fork()}</span>
           <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} />
-          <b style={{ fg: t().text }}>{head().verb}</b>
+          <b style={{ fg: t().text2 }}>{head().verb}</b>
           <Show when={head().detail}>
             {(d) => (
               <Show when={href()} fallback={<span style={{ fg: t().text2 }}>{` ${d()}`}</span>}>
@@ -808,9 +811,8 @@ function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { cou
   const label = () => {
     void tick();
     const text = foldLabel(p.turn, Date.now(), p.part);
-    // The line names what it waits on, as Tern's does ("Waiting for you · Allow tool: read").
-    const asked = (app.chat()?.pending[0]?.title ?? "").split("\n")[0] ?? "";
-    return waiting() ? text.replace(/^Working/, "Waiting for you") + (asked ? ` · ${clip(asked, 48)}` : "") : text;
+    // The request's own card, just below, names what it waits on; the line says only that the turn waits.
+    return waiting() ? text.replace(/^Working/, "Waiting for you") : text;
   };
   const thought = () => (live() && !p.open ? latestThought(p.turn) : null);
   return (

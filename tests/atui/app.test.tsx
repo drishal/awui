@@ -163,9 +163,9 @@ describe("atui", () => {
     // neat-render's turn: the prompt behind a ❯, the calls fired together on one tree, each
     // outcome at the end of its line, the answer marked, and a Σ line of what the turn did.
     expect(f).toContain("❯ showcase tool edit please");
-    expect(f).toContain("┌─ ● Read README.md");
-    expect(f).toMatch(/├─ ● Edited src\/app\.ts +\+1 −1/);
-    expect(f).toMatch(/└─ ● /);
+    expect(f).toContain("┌─ ▤ Read README.md");
+    expect(f).toMatch(/├─ ✎ Edited src\/app\.ts +\+1 −1/);
+    expect(f).toMatch(/└─ [▤✎▸◎⊕◈●✗] /);
     expect(f).toContain("● Echo: showcase tool edit please");
     expect(f).toMatch(/Σ \d+ calls · /);
     expect(f).not.toContain("Worked for");
@@ -225,7 +225,7 @@ describe("atui", () => {
     await idle(ui);
     const f = await ui.until("Echo: interleaved please");
     const reply = f.indexOf("this is reply block 1");
-    const command = f.indexOf("● Ran");
+    const command = f.indexOf("▸ Ran");
     expect(reply).toBeGreaterThan(0);
     expect(command).toBeGreaterThan(reply);
     expect(f.indexOf("Echo: interleaved please")).toBeGreaterThan(command);
