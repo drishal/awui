@@ -12,7 +12,7 @@
 // glass mode (no fills, the terminal's background shows through); background
 // sessions' news toasts in the corner, and the terminal's title and tab
 // progress follow the chat.
-import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, on, onCleanup, Show } from "solid-js";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { RunResult } from "../../shared/protocol.js";
@@ -55,8 +55,9 @@ import { WhichKey } from "./whichkey.js";
 import { turnOffset, vimKey, pushJump, type Jump } from "../vim.js";
 import { buildTurns, turnOfTool } from "../../web/turns.js";
 import { atLabel, turnWaterfall } from "../../web/waterfall.js";
+import { cacheShare, dollars, shortTokens, tokensOf } from "../../web/usage.js";
 
-type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "history" | "find" | "run" | null;
+type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -68,7 +69,7 @@ const PALETTE_GROUPS: Record<string, string> = {
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
   model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
   sidebar: "View", panel: "View", work: "View", thoughts: "View", keybinds: "View", glass: "View",
-  git: "Project", github: "Project",
+  git: "Project", github: "Project", usage: "Project",
 };
 /** The headings' order; Tabs, Sessions and the thinking levels keep their own and follow. */
 const PALETTE_ORDER = ["Chats", "Tabs", "Agent", "View", "Project", "More"];
@@ -639,6 +640,7 @@ export function App(p: {
       const lastDone = [...buildTurns(c.items, c.status, c.runStartedAt)].reverse().find((x) => x.prompt && x.answer);
       if (lastDone?.prompt) add({ id: "timing", label: "Timing of the last turn…", keywords: "waterfall slow speed duration steps calls", run: () => { app.setTimingFor(lastDone.prompt?.id ?? null); setDialog("timing"); } });
     }
+    add({ id: "usage", label: "Usage across chats…", keywords: "tokens cost spend cache models harnesses", run: () => setDialog("usage") });
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
@@ -790,6 +792,30 @@ export function App(p: {
       hint: `${atLabel(row.start)} +${atLabel(row.end - row.start)}`,
       run: () => {},
     }));
+  };
+
+  /** Usage across every chat, the web dialog's figures as a list: totals, then by harness, model and the chats that used the most. */
+  const [usageDays, setUsageDays] = createSignal(7);
+  const [usage] = createResource(
+    () => (dialog() === "usage" ? usageDays() : undefined),
+    (days) => app.usageReport(days).catch(() => null),
+  );
+  const usageItems = (): PaletteItem[] => {
+    const r = usage();
+    if (!r) return [];
+    const head = `Last ${r.days} days`;
+    const words = (t: Parameters<typeof tokensOf>[0] & { cost: number; unpriced: number; calls: number }) => `${shortTokens(tokensOf(t))} tokens · ${dollars(t.cost, t.calls > t.unpriced)}`;
+    const share = cacheShare(r.totals);
+    const row = (section: string, label: string, hint: string): PaletteItem => ({ id: `usage:${section}:${label}`, section, label, hint, run: () => {} });
+    const days = ([7, 30, 90] as const).map((d) => ({ id: `usage-days:${d}`, section: head, label: `${d === r.days ? "● " : "○ "}Show the last ${d} days`, hint: "", run: () => { setUsageDays(d); setDialog("usage"); } }));
+    return [
+      row(head, `${r.totals.sessions} chats · ${r.totals.calls} calls`, words(r.totals)),
+      ...(share === null ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
+      ...days,
+      ...r.byHarness.map((h) => row("By harness", h.harnessId, `${words(h.totals)} · ${h.sessions} chats`)),
+      ...r.byModel.slice(0, 8).map((m) => row("By model", m.model, words(m.totals))),
+      ...r.top.slice(0, 8).map((x) => row("Most used chats", x.session.title || x.session.id, words(x.totals))),
+    ];
   };
 
   /** What waits in the harness's queue, steering first: Enter takes a message back into the composer to edit, and it leaves the queue. */
@@ -992,6 +1018,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "timing"}>
                   <Picker title="Timing" placeholder="Search steps…" items={timingItems()} firstHeading onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
+                </Show>
+                <Show when={dialog() === "usage"}>
+                  <Picker title="Usage across chats" placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
                   <Picker title="Queued messages" placeholder="Search queued messages…" items={queueItems()} firstHeading onClose={() => setDialog(null)} side={room()} />

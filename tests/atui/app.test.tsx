@@ -798,6 +798,21 @@ describe("atui", () => {
     expect(await ui.until("Message the agent")).not.toContain("Search steps…");
   }, 40_000);
 
+  it("opens usage across chats from the palette and switches its range", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("usage across");
+    ui.keys.pressEnter();
+    const shown = await ui.until("Last 7 days");
+    expect(shown).toContain("Usage across chats");
+    expect(shown).toContain("Show the last 30 days");
+    await ui.click("Show the last 30 days");
+    expect(await ui.until("Last 30 days")).toContain("● Show the last 30 days");
+    await ui.escape();
+    expect(await ui.until("Ask Fake to")).not.toContain("Usage across chats");
+  }, 40_000);
+
   it("offers a prompt's actions on a click: Edit replaces it in place, Esc drops an edit", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("first try");
