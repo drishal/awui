@@ -830,7 +830,7 @@ export function App(p: {
     const slowTail = (slowest: boolean) => (anySlow ? (slowest ? "  slowest" : " ".repeat(9)) : "");
     /** A time as a figure in one column: the number right-aligned, its unit in a fixed two-cell tail, so 1ms, 164ms and 1.1s line up on the digits. */
     const fig = (ms: number) => {
-      const m = /^([\d.]+)(\D+)$/.exec(unit(ms));
+      const m = /^([\d.]+)(ms|s)$/.exec(unit(ms));
       return m ? `${(m[1] ?? "").padStart(4)}${(m[2] ?? "").padEnd(2)}` : unit(ms).padStart(6);
     };
     const section = fall.total > 0 ? `This turn took ${unit(fall.span)}` : "No times reported";
@@ -906,7 +906,7 @@ export function App(p: {
       // As the web's rows: the chat's harness, project and age beside its figures, and its share of the busiest chat as a bar.
       ...r.top.slice(0, 8).map((x) => {
         const meta = [app.boot()?.harnesses.find((h) => h.id === x.session.harnessId)?.displayName ?? x.session.harnessId, app.overview().workspaces.find((w) => w.id === x.session.workspaceId)?.name ?? "", ago(x.session.updatedAt)].filter(Boolean).join(" · ");
-        return row("Most used chats", x.session.title || x.session.id, `${meta} · ${words(x.totals)}`, [0, tokensOf(x.totals) / Math.max(1, ...r.top.slice(0, 8).map((y) => tokensOf(y.totals)))]);
+        return row("Most used chats", x.session.title || x.session.id, `${meta} · ${shortTokens(tokensOf(x.totals))} · ${dollars(x.totals.cost, x.totals.calls > x.totals.unpriced)}`, [0, tokensOf(x.totals) / Math.max(1, ...r.top.slice(0, 8).map((y) => tokensOf(y.totals)))]);
       }),
     ];
   };
@@ -1095,7 +1095,7 @@ export function App(p: {
                   <Picker title="Timing" placeholder="Search steps…" items={timingItems()} axis={timingAxis()} axisHead={timingHead()} firstHeading info onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
                 </Show>
                 <Show when={dialog() === "usage"}>
-                  <Picker title={`Usage across chats · ${usageDays()} days`} tabHint={`Tab: ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Usage across chats" tabHint={`Tab: ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
                   <Picker title="Queued messages · x removes" placeholder="Search queued messages…" empty="No queued messages: a steering or follow-up message parks here" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); return true; }} onClose={() => setDialog(null)} side={room()} />

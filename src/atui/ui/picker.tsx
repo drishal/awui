@@ -7,7 +7,6 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import { rankItems, type PaletteItem } from "../../web/palette.js";
 import { matchSpans } from "../assist.js";
 import { clip } from "../format.js";
-import { mix } from "../fx.js";
 import { useTheme } from "./context.js";
 
 /** A row that also draws a span of a track (a step's place on a turn's time, a day's share of the busiest): `[from, to]`, each 0 to 1. */
@@ -109,17 +108,22 @@ export function Picker(p: {
     const headings = query().trim() ? 0 : list.filter((item, at) => (at === 0 ? Boolean(p.firstHeading) : list[at - 1]?.section !== item.section)).length;
     return Math.max(1, list.length) + headings * 2 + (p.axis ? 1 : 0);
   };
-  const height = () => Math.min(previewing() ? 22 : Math.max(8, rowsNeeded() + 5), 22, size().height - 4);
+  const height = () => Math.min(previewing() ? 22 : Math.max(7, rowsNeeded() + 5), 22, size().height - 4);
   /** Is a heading drawn above row `at`? Not while a query is typed; the first one only when the picker names it. */
   const headed = (list: PickerItem[], at: number) => !query().trim() && (list[at - 1]?.section !== list[at]?.section) && (at > 0 || Boolean(p.firstHeading));
   /** Lines a row takes: itself, a heading over it, and a blank line above a heading that is not the first. */
   const cost = (list: PickerItem[], at: number) => 1 + (at === 0 && p.axis ? 1 : 0) + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
   /** A bar row's label column: the track starts here, a little over a third of the list. */
-  const barLabel = () => Math.max(18, Math.floor(listWidth() * (listWidth() > 70 ? 0.4 : 0.37)));
-  /** The track takes what the label and the widest figure leave, so a wide sheet has a long bar and no dead gap: 12 cells at least, 44 at most. */
-  const track = (section?: string) => {
-    const figures = Math.max(0, ...shown().filter((i) => i.bar && (section === undefined || i.section === section)).map((i) => (i.hint ?? "").length));
-    return Math.max(12, Math.min(44, listWidth() - barLabel() - figures - 3));
+  /** The label column of a bar row: as wide as its longest label asks (and two cells over), never more than a share of the sheet, so short labels leave the track the room. */
+  const barLabel = () => {
+    const widest = Math.max(0, ...shown().filter((i) => i.bar).map((i) => i.label.length + 4));
+    const cap = Math.floor(listWidth() * (listWidth() > 70 ? 0.4 : 0.37));
+    return Math.max(18, Math.min(cap, widest));
+  };
+  /** The track takes what the label and the widest figure leave, so a wide sheet has a long bar and no dead gap: 12 cells at least, 64 at most. */
+  const track = () => {
+    const figures = Math.max(0, ...shown().filter((i) => i.bar).map((i) => (i.hint ?? "").length));
+    return Math.max(12, Math.min(64, listWidth() - barLabel() - figures - 3));
   };
   const lines = () => height() - 5;
   /** The rows that fit: from the first one that keeps the highlighted row in view, as many as the box holds, and the room a "more below" line takes. */
@@ -218,7 +222,7 @@ export function Picker(p: {
                   </Show>
                   <Show when={at() === 0 && p.axis && item.bar}>
                     <box flexDirection="row" flexShrink={0}>
-                      <text fg={t().muted} flexShrink={0} wrapMode="none">{`${" ".repeat(barLabel())}${axisLine(p.axis ?? [], track(item.section))}`}</text>
+                      <text fg={t().muted} flexShrink={0} wrapMode="none">{`${" ".repeat(barLabel())}${axisLine(p.axis ?? [], track())}`}</text>
                       <box flexGrow={1} flexDirection="row" justifyContent="flex-end"><text fg={t().muted} wrapMode="none">{p.axisHead ? `${p.axisHead}` : ""}</text></box>
                     </box>
                   </Show>
@@ -233,10 +237,10 @@ export function Picker(p: {
                     <Show when={item.bar}>
                       {(bar) => (
                         <text flexShrink={0} fg={t().muted}>
-                          {trackParts(bar(), track(item.section)).before}
-                          <span style={{ bg: t().accent }}>{" ".repeat(trackParts(bar(), track(item.section)).solid)}</span>
-                          <span style={{ fg: t().accent, bg: mix(t().surface, t().accent, 0.5) }}>{trackParts(bar(), track(item.section)).edge}</span>
-                          {trackParts(bar(), track(item.section)).after}
+                          {trackParts(bar(), track()).before}
+                          <span style={{ bg: t().accent }}>{" ".repeat(trackParts(bar(), track()).solid)}</span>
+                          <span style={{ fg: t().accent }}>{trackParts(bar(), track()).edge}</span>
+                          {trackParts(bar(), track()).after}
                         </text>
                       )}
                     </Show>
