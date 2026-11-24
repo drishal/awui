@@ -1860,6 +1860,24 @@ describe("atui's keybind styles", () => {
     expect(sheet).toContain("Start with 2 agents");
     expect(sheet).toMatch(/◉ Fake/);
     ui.keys.pressEnter();
-    expect(await ui.until("each in its own worktree")).toContain("Started 2 agents");
+    // The comparison's sheet opens on the two agents, with a winner still to pick.
+    const race = await ui.until("Pick a winner");
+    expect(race).toContain("Comparison");
+    expect(race).toMatch(/Keep Fake's as the winner/);
+    await ui.type("Keep Fake's as the winner");
+    ui.keys.pressEnter();
+    await ui.until("marked as the winner");
+    ui.keys.pressEscape();
+    await wait(300);
+    // A second comparison in the same project starts too: the worktree names do not collide.
+    await ui.type("tidy the docs");
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("compare agents");
+    ui.keys.pressEnter();
+    await ui.until("Run it with");
+    ui.keys.pressEnter();
+    const second = await ui.until("Pick a winner");
+    expect(second).toContain("tidy the docs");
   }, 60_000);
 });

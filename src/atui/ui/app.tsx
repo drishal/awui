@@ -20,7 +20,7 @@ import { createEffect, createMemo, createResource, createSignal, For, on, onClea
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { AGENT_STATUS_WORDS, agentStatusText } from "../../web/agent-status.js";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
-import type { ChatSearch, CheckpointComparison, CheckpointPoint, FileView, RunResult, WorkspaceInfo, WorktreeInfo } from "../../shared/protocol.js";
+import type { ChatSearch, CheckpointComparison, RaceSummary, RaceWinnerResult, CheckpointPoint, FileView, RunResult, WorkspaceInfo, WorktreeInfo } from "../../shared/protocol.js";
 import { runnable } from "../../web/code-blocks.js";
 import { codeBlocks, quoteText, runForMessage, runStatus } from "../assist.js";
 import { RunOutput } from "./runout.js";
@@ -66,7 +66,7 @@ import { buildTurns, turnOfTool } from "../../web/turns.js";
 import { atLabel, turnWaterfall } from "../../web/waterfall.js";
 import { cacheShare, dollars, shortTokens, tokensOf } from "../../web/usage.js";
 
-type Dialog = "palette" | "timeline" | "files" | "worktrees" | "compare" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
+type Dialog = "palette" | "timeline" | "files" | "worktrees" | "compare" | "race" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -78,7 +78,7 @@ const PALETTE_GROUPS: Record<string, string> = {
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
   model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
   sidebar: "View", panel: "View", work: "View", thoughts: "View", keybinds: "View", glass: "View", icons: "View",
-  git: "Project", github: "Project", usage: "Project", compare: "Project",
+  git: "Project", github: "Project", usage: "Project", compare: "Project", race: "Project",
 };
 /** The headings' order; Tabs, Sessions and the thinking levels keep their own and follow. */
 const PALETTE_ORDER = ["Chats", "Tabs", "Agent", "View", "Project", "More"];
@@ -929,6 +929,10 @@ export function App(p: {
     setCompareChoice((mine && ids.includes(mine) ? [mine, ...ids.filter((id) => id !== mine)] : ids).slice(0, 2));
     setDialog("compare");
   };
+  const comparePrefix = (prompt: string) => {
+    const words = prompt.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean).slice(0, 3).join("-");
+    return `${words || "compare"}-${Date.now().toString(36).slice(-4)}`.slice(0, 40);
+  };
   const compareItems = (): PaletteItem[] => {
     const chosen = compareChoice();
     const ready = chosen.length >= 2 && chosen.length <= 4;
@@ -946,11 +950,13 @@ export function App(p: {
           setDialog(null);
           flash("Starting the comparison…");
           void app.server
-            .call<{ results: Array<{ harnessId: string; error?: string }> }>("/api/compare", { body: { workspaceId: ws.id, name: "compare", base: "HEAD", prompt, choices: chosen.map((harnessId) => ({ harnessId })) } })
+            // The task prefix names each worktree, and a worktree's name is taken for good: the draft's first words plus a short time suffix keep a second comparison from colliding with the first.
+            .call<{ raceId: string | null; results: Array<{ harnessId: string; error?: string }> }>("/api/compare", { body: { workspaceId: ws.id, name: comparePrefix(prompt), base: "HEAD", prompt, choices: chosen.map((harnessId) => ({ harnessId })) } })
             .then((r) => {
               const failed = r.results.filter((x) => x.error);
               composer?.setText("");
-              app.setBanner({ level: failed.length > 0 ? "warning" : "info", text: failed.length > 0 ? `Started ${r.results.length - failed.length} of ${r.results.length}: ${failed.map((x) => `${x.harnessId}: ${x.error}`).join("; ")}` : `Started ${r.results.length} agents, each in its own worktree: open them from the sidebar` });
+              app.setBanner({ level: failed.length > 0 ? "warning" : "info", text: failed.length > 0 ? `Started ${r.results.length - failed.length} of ${r.results.length}: ${failed.map((x) => `${x.harnessId}: ${x.error}`).join("; ")}` : `Started ${r.results.length} agents, each in its own worktree` });
+              if (r.raceId && failed.length < r.results.length) openRace(r.raceId);
             })
             .catch((error: unknown) => app.setBanner({ level: "warning", text: error instanceof Error ? error.message : String(error) }));
         },
@@ -963,6 +969,54 @@ export function App(p: {
         run: () => setCompareChoice((now) => (now.includes(h.id) ? now.filter((id) => id !== h.id) : now.length >= 4 ? now : [...now, h.id])),
       })),
     ];
+  };
+  /** A comparison's sheet (the web's Race panel): each member's state and changes, its chat to open (Review there reads its diff), and the winner to keep or apply. Refreshed every two seconds while it is open. */
+  const [raceId, setRaceId] = createSignal<string | null>(null);
+  const [race, { refetch: refetchRace }] = createResource(
+    () => (dialog() === "race" ? raceId() : null),
+    (id) => app.server.call<RaceSummary>(`/api/races/${encodeURIComponent(id)}`).catch(() => null),
+  );
+  createEffect(() => {
+    if (dialog() !== "race") return;
+    const timer = setInterval(() => void refetchRace(), 2000);
+    onCleanup(() => clearInterval(timer));
+  });
+  const openRace = (id: string) => {
+    setRaceId(id);
+    setDialog("race");
+  };
+  const raceAct = (path: string, bodyValue: unknown, done: (r: never) => string) =>
+    void app.server
+      .call(`/api/races/${encodeURIComponent(raceId() ?? "")}/${path}`, { body: bodyValue })
+      .then((r) => {
+        app.setBanner({ level: "info", text: done(r as never) });
+        void refetchRace();
+      })
+      .catch((error: unknown) => app.setBanner({ level: "warning", text: error instanceof Error ? error.message : String(error) }));
+  const raceItems = (query: string): PaletteItem[] => {
+    const r = race();
+    if (!r) return [];
+    const items: PaletteItem[] = r.members.map((m) => ({
+      id: `race:${m.chatId}`,
+      section: "Agents",
+      label: `${r.winnerChatId === m.chatId ? "★ " : ""}${app.boot()?.harnesses.find((h) => h.id === m.harnessId)?.displayName ?? m.harnessId}${m.model ? ` · ${m.model}` : ""}`,
+      hint: `${m.status}${m.added !== undefined ? ` · +${m.added} −${m.removed ?? 0}${m.files ? ` · ${m.files.length} file${m.files.length === 1 ? "" : "s"}` : ""}` : ""}${m.dirty ? " · uncommitted" : ""}`,
+      run: () => {
+        setDialog(null);
+        void app.openChat(m.chatId);
+      },
+    }));
+    if (r.winnerChatId === null) {
+      for (const m of r.members) {
+        const name = app.boot()?.harnesses.find((h) => h.id === m.harnessId)?.displayName ?? m.harnessId;
+        items.push({ id: `keep:${m.chatId}`, section: "Pick a winner", label: `Keep ${name}'s as the winner`, hint: "marks it; changes stay in its worktree", run: () => raceAct("winner", { chatId: m.chatId, mode: "keep" }, () => `${name} marked as the winner`) });
+        items.push({ id: `apply:${m.chatId}`, section: "Pick a winner", label: `Apply ${name}'s changes here`, hint: "into this project's working tree, never committed", run: () => raceAct("winner", { chatId: m.chatId, mode: "apply" }, (x: RaceWinnerResult) => x.instructions) });
+      }
+    } else if (!r.cleanedAt) {
+      items.push({ id: "race:cleanup", section: "Tidy up", label: "Remove the other agents' worktrees", hint: "skips running or uncommitted ones", run: () => raceAct("cleanup", { discard: [] }, () => "Cleaned up what git agrees to drop") });
+    }
+    const q = query.trim().toLowerCase();
+    return q ? items.filter((i) => `${i.label} ${i.hint ?? ""}`.toLowerCase().includes(q)) : items;
   };
   const openTreeChat = async (workspace: WorkspaceInfo) => {
     setDialog(null);
@@ -1483,6 +1537,9 @@ export function App(p: {
                 <Show when={dialog() === "compare"}>
                   <Picker title="Compare agents" placeholder="Pick who runs the draft…" items={[]} search={compareItems} empty="No agents available" firstHeading noun={["agent", "agents"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
+                <Show when={dialog() === "race"}>
+                  <Picker title={race()?.prompt ? `Comparison · ${clip(race()?.prompt ?? "", 60)}` : "Comparison"} placeholder="Enter opens an agent's chat; its Review shows what it changed…" items={[]} search={raceItems} empty={race.loading ? "Reading the comparison…" : "This comparison is gone"} firstHeading noun={["row", "rows"]} onClose={() => setDialog(null)} side={room()} />
+                </Show>
                 <Show when={dialog() === "worktrees"}>
                   <Picker title="Worktrees" placeholder="Type a name to make a worktree, or pick one to open a chat in…" items={[]} search={worktreeItems} empty={trees.loading ? "Reading the worktrees…" : "No worktrees yet: type a name to make one"} firstHeading noun={["worktree", "worktrees"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
@@ -1620,6 +1677,10 @@ export function App(p: {
                   <ContextRailView
                     side={room()}
                     onClose={() => setRail(false)}
+                    onRace={(id) => {
+                      setRail(false);
+                      openRace(id);
+                    }}
                     onChat={(chatId) => {
                       setRail(false);
                       void app.openChat(chatId);

@@ -28,6 +28,8 @@ export interface RailActions {
   onReview: () => void;
   /** The Info tab: the context window, the session's tokens, git, and the limits. */
   onUsage: () => void;
+  /** A comparison's card: its sheet (members, their changes, picking a winner) opens. */
+  onRace: (raceId: string) => void;
   /** The sidebar/rail's width: this sheet centres inside the conversation column. */
   side?: number;
   onClose: () => void;
@@ -79,7 +81,7 @@ export function ContextRailView(p: RailActions) {
       case "questions":
         return p.onClose();
       case "race":
-        return setNote("A comparison opens in the browser: its chats and their diffs are the web UI's Race panel.");
+        return p.onRace(row.target.raceId);
     }
   };
 
