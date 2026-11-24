@@ -133,7 +133,7 @@ export function ReviewView(p: { onClose: () => void }) {
   /** A line's tint: green or red for an add or delete; the cursor's row lays the selection over that tint rather than replacing it, so it keeps its diff context. */
   const rowTint = (kind: string, cursor: boolean) => {
     const base = kind === "add" ? mix(t().bg, t().ok, 0.12) : kind === "del" ? mix(t().bg, t().danger, 0.12) : undefined;
-    return cursor ? (base ? mix(base, t().selection, 0.7) : t().selection) : base;
+    return cursor ? (base ? mix(base, t().selection, 0.45) : t().selection) : base;
   };
   const lineColor = (kind: string) => (kind === "add" ? t().ok : kind === "del" ? t().danger : t().text2);
 
