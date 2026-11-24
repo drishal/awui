@@ -28,6 +28,7 @@ import { promisify } from "node:util";
 import {
   asHarnessId,
   type ChatConfig,
+  type BranchInfo,
   type ChatItem,
   type ContextCategory,
   type ContextUsage,
@@ -50,6 +51,7 @@ import { ompLimits } from "./limits.js";
 import { rewindExtension, rewindExtensionArgs, rewindWithExtension } from "./rewind-extension.js";
 import { orchestrateExtensionArgs, orchestrationInstructionsFor, renderHtmlExtension, renderHtmlExtensionArgs } from "./render-extension.js";
 import { readJsonlEntries } from "./jsonl.js";
+import { sessionBranches } from "./session-branches.js";
 import { versionLabel } from "./version.js";
 import { EventHub } from "./event-hub.js";
 import { seedTranscript, type HandoffSeed } from "./handoff.js";
@@ -622,6 +624,7 @@ export class OmpAdapter implements HarnessAdapter {
     supportsAccountSelection: true,
     supportsModelSelection: true,
     supportsFork: true,
+    supportsBranches: true,
     supportsHandoff: true,
     supportsRewind: rewindExtension() !== null,
     supportsHtmlRender: renderHtmlExtension() !== null,
@@ -764,6 +767,28 @@ export class OmpAdapter implements HarnessAdapter {
       }
     }
     return null;
+  }
+
+  /** The session file's branches: what an edit or a retry left behind beside the path the chat is on. */
+  async listBranches(req: { cwd: string; nativeId: string }): Promise<BranchInfo[] | null> {
+    const file = await this.sessionFile(req.nativeId);
+    const entries = file ? await readJsonlEntries(file).catch(() => null) : null;
+    return entries ? sessionBranches(entries) : null;
+  }
+
+  /** A copy of the path to one leaf, in a session of its own (the file it came from is not touched). */
+  async forkBranch(req: { cwd: string; nativeId: string; leafId: string }): Promise<{ nativeId: string }> {
+    const file = await this.sessionFile(req.nativeId);
+    if (!file) throw new Error(`omp session ${req.nativeId} is not on disk`);
+    const source = await fs.readFile(file, "utf8");
+    const id = uuidv7();
+    const now = new Date();
+    const body = forkSessionText(source, { throughTurns: 0, leafId: req.leafId, id, now, cwd: req.cwd, parentSession: req.nativeId });
+    const target = path.join(path.dirname(file), `${sessionFileTimestamp(now)}_${id}.jsonl`);
+    const tmp = `${target}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, body, { mode: 0o600 });
+    await fs.rename(tmp, target);
+    return { nativeId: id };
   }
 
   /**

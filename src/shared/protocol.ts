@@ -23,6 +23,8 @@ export interface HarnessCapabilities {
   supportsModelSelection: boolean;
   /** The chat can be branched into a new session at a chosen turn. */
   supportsFork: boolean;
+  /** The session file keeps abandoned branches (an edit or a retry leaves the old path behind), which can be listed and continued in a session of their own (Pi, omp). Absent: no. */
+  supportsBranches?: boolean;
   /** A portable transcript seed can start a fresh session here. */
   supportsHandoff: boolean;
   /** A past prompt can be replaced in place: the session drops it and what followed, then runs the new one (Hermes). */
@@ -1991,6 +1993,21 @@ export interface SessionPreview {
 export const forkChatSchema = z.object({
   through: z.number().int().min(1).max(10_000),
 });
+/** One branch of a session's tree: a path from its first prompt to a leaf, as a Pi-family session file keeps them. */
+export interface BranchInfo {
+  /** The leaf entry the branch ends on: what a fork of it is asked for. */
+  leafId: string;
+  /** The branch the chat is on now (the file's last entry is its leaf). */
+  active: boolean;
+  /** Prompts on the path. */
+  turns: number;
+  /** How many of those prompts the active branch shares from the start. */
+  shared: number;
+  /** The prompt that tells it from the active branch (the first they differ at), else its last one: one line, bounded. */
+  prompt: string;
+}
+/** Continue a branch of the session's tree in a session of its own. */
+export const branchChatSchema = z.object({ leafId: z.string().min(1).max(200) });
 /** Replace user turn `turn` (1-based, as fork counts) and everything after it with a new prompt, in place. */
 /** Continue this chat in another harness: transcript seed plus an optional first prompt. */
 /** A chain runs at most this many steps. */

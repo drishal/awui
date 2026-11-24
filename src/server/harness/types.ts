@@ -2,6 +2,7 @@
 // only to these types; SDK- or protocol-specific shapes stay inside adapters.
 import type {
   BackgroundJob,
+  BranchInfo,
   ChatConfig,
   ChatItem,
   ConfigPatch,
@@ -257,6 +258,14 @@ export interface HarnessAdapter {
    * capabilities.supportsFork.
    */
   forkSession(req: { cwd: string; nativeId: string; throughTurns: number }): Promise<{ nativeId: string }>;
+  /**
+   * The branches of the session's tree, the active one first, as its file keeps them
+   * (an edit or retry leaves the old path behind). Null when the file is not readable
+   * here. Callers gate on capabilities.supportsBranches.
+   */
+  listBranches?(req: { cwd: string; nativeId: string }): Promise<BranchInfo[] | null>;
+  /** A new session holding the path to `leafId`, resumable like any other; the source file is never touched. */
+  forkBranch?(req: { cwd: string; nativeId: string; leafId: string }): Promise<{ nativeId: string }>;
   /**
    * Start a fresh session seeded with a portable transcript (cross-harness
    * handoff). Tool records arrive as plain transcript text, never live tool

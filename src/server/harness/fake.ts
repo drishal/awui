@@ -62,6 +62,7 @@ import {
   type ChatItem,
   type ConfigPatch,
   type ContextUsage,
+  type BranchInfo,
   type HarnessCapabilities,
   type ImageAttachment,
   type InteractionAnswer,
@@ -167,6 +168,8 @@ interface FakeSession {
   cwd: string;
   title: string;
   messages: unknown[];
+  /** The paths an edit or a retry left behind, oldest first: each is a whole message list as it stood before the rewind. */
+  branches?: unknown[][];
   updatedAt: Date;
   /** The per-child auth-account slot used for tests of native pin behavior. */
   pinAccount?: (index: number) => Promise<void>;
@@ -230,6 +233,7 @@ export class FakeAdapter implements HarnessAdapter {
       supportsRename: true,
       supportsModelSelection: true,
       supportsFork: true,
+      supportsBranches: true,
       supportsHandoff: true,
       supportsRewind: true,
       supportsHtmlRender: true,
@@ -306,6 +310,34 @@ export class FakeAdapter implements HarnessAdapter {
       messages: source.messages.slice(0, forkCutIndex(source.messages, req.throughTurns)),
       updatedAt: new Date(),
     });
+    return { nativeId };
+  }
+
+  /** The session's paths: the one it is on, then what rewinds left behind (newest first), as a Pi-family file would list them. */
+  async listBranches(req: { cwd: string; nativeId: string }): Promise<BranchInfo[] | null> {
+    const source = this.sessions.get(req.nativeId);
+    if (!source || source.cwd !== req.cwd) return null;
+    const prompts = (messages: unknown[]) => messages.filter((m) => (m as { role?: unknown }).role === "user").map((m) => String((m as { content?: unknown }).content ?? ""));
+    const active = prompts(source.messages);
+    const out: BranchInfo[] = [{ leafId: "active", active: true, turns: active.length, shared: active.length, prompt: active[active.length - 1] ?? "" }];
+    (source.branches ?? []).forEach((messages, index) => {
+      const mine = prompts(messages);
+      let shared = 0;
+      while (shared < mine.length && mine[shared] === active[shared]) shared += 1;
+      out.splice(1, 0, { leafId: `alt-${index}`, active: false, turns: mine.length, shared, prompt: (shared >= mine.length ? mine[mine.length - 1] : mine[shared]) ?? "" });
+    });
+    return out;
+  }
+
+  /** A new in-memory session holding one path of the tree. */
+  async forkBranch(req: { cwd: string; nativeId: string; leafId: string }): Promise<{ nativeId: string }> {
+    const source = this.sessions.get(req.nativeId);
+    if (!source || source.cwd !== req.cwd) throw new Error("Unknown session");
+    const alt = /^alt-(\d+)$/.exec(req.leafId)?.[1];
+    const messages = alt === undefined ? (req.leafId === "active" ? source.messages : undefined) : source.branches?.[Number(alt)];
+    if (!messages) throw new Error("That branch is not in the session");
+    const nativeId = randomUUID();
+    this.sessions.set(nativeId, { nativeId, cwd: source.cwd, title: source.title, messages: messages.slice(), updatedAt: new Date() });
     return { nativeId };
   }
 
@@ -502,6 +534,7 @@ class FakeLiveChat implements LiveChat {
     let seen = 0;
     const cut = this.session.messages.findIndex((m) => (m as { role?: unknown }).role === "user" && ++seen === turn);
     if (cut < 0) throw new Error("That message is no longer in the session");
+    (this.session.branches ??= []).push(this.session.messages.slice());
     this.session.messages.splice(cut);
     return this.prompt(text, images);
   }

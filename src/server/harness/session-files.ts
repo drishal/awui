@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto";
 import { isObj, type Obj } from "./agent-events.js";
 import { toolRecordText, type SeedEntry } from "./handoff.js";
 import { parseJsonlLine, scanJsonlLines } from "./jsonl.js";
+import { chainTo } from "./session-branches.js";
 
 /** Time-ordered session id, the shape both harnesses mint for new sessions. */
 export function uuidv7(now = Date.now()): string {
@@ -40,6 +41,8 @@ function activeBranch(entries: Obj[]): Obj[] {
 export interface ForkOptions {
   /** Keep everything up to and including turn N (1-based). */
   throughTurns: number;
+  /** Keep the whole path to this entry instead (a branch the chat is not on); `throughTurns` is then ignored. */
+  leafId?: string;
   /** Id for the copy; also used by the caller for the file name. */
   id: string;
   now: Date;
@@ -76,10 +79,11 @@ export function forkSessionText(text: string, options: ForkOptions): string {
     }
     entries.push(parsed);
   }
-  const branch = activeBranch(entries);
+  const branch = options.leafId ? chainTo(entries, options.leafId) : activeBranch(entries);
+  if (branch.length === 0) throw new Error("That branch is not in the session");
   let cut = branch.length;
   let turn = 0;
-  for (let i = 0; i < branch.length; i += 1) {
+  for (let i = 0; !options.leafId && i < branch.length; i += 1) {
     const entry = branch[i];
     if (!entry || entry.type !== "message") continue;
     const message = entry.message;

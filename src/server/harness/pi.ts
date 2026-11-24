@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import {
   asHarnessId,
   type ChatConfig,
+  type BranchInfo,
   type ChatItem,
   type ContextCategory,
   type ContextUsage,
@@ -35,6 +36,7 @@ import { orchestrateExtensionArgs, renderHtmlExtension, renderHtmlExtensionArgs 
 import { versionLabel } from "./version.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import { foldJsonlFile, FoldStore, readJsonlEntries } from "./jsonl.js";
+import { chainTo, sessionBranches } from "./session-branches.js";
 import type {
   HarnessAdapter,
   HarnessDiscovery,
@@ -426,6 +428,7 @@ export class PiAdapter implements HarnessAdapter {
     supportsRename: true,
     supportsModelSelection: true,
     supportsFork: true,
+    supportsBranches: true,
     supportsHandoff: true,
     supportsRewind: rewindExtension() !== null,
     supportsHtmlRender: renderHtmlExtension() !== null,
@@ -555,17 +558,43 @@ export class PiAdapter implements HarnessAdapter {
       }
     }
     if (!target || typeof target.id !== "string") throw new Error("There is nothing before that turn to fork");
-    const id = randomUUID();
     const kept: Obj[] = [];
     for (const entry of branch) {
       kept.push(entry);
       if (entry.id === target.id) break;
     }
+    return this.writeFork(dir, meta.path, header, kept);
+  }
+
+  /** The session's branches: what an edit or a retry left behind beside the path the chat is on. */
+  async listBranches(req: { cwd: string; nativeId: string }): Promise<BranchInfo[] | null> {
+    const dir = this.sessionDirFor(req.cwd, await this.resolveAgentDir());
+    const meta = (await listSessionFiles(dir)).find((m) => m.id === req.nativeId);
+    const entries = meta ? await readJsonlEntries(meta.path).catch(() => null) : null;
+    return entries ? sessionBranches(entries) : null;
+  }
+
+  /** A copy of the path to one leaf, in a session of its own (the file it came from is not touched). */
+  async forkBranch(req: { cwd: string; nativeId: string; leafId: string }): Promise<{ nativeId: string }> {
+    const dir = this.sessionDirFor(req.cwd, await this.resolveAgentDir());
+    const meta = (await listSessionFiles(dir)).find((m) => m.id === req.nativeId);
+    if (!meta) throw new Error("Session not found in Pi's session list");
+    const entries = await readJsonlEntries(meta.path);
+    const header = entries[0]?.type === "session" ? entries[0] : null;
+    if (!header) throw new Error("Session file has no header");
+    const kept = chainTo(entries.filter((e) => e.type !== "session"), req.leafId);
+    if (kept.length === 0) throw new Error("That branch is not in the session");
+    return this.writeFork(dir, meta.path, header, kept);
+  }
+
+  /** The copy of `kept` as a new session file: a fresh header id, entry ids remapped so it stands alone, compaction references past the cut dropped. */
+  private async writeFork(dir: string, sourcePath: string, header: Obj, kept: Obj[]): Promise<{ nativeId: string }> {
+    const id = randomUUID();
     const remap = new Map<string, string>();
     for (const entry of kept) if (typeof entry.id === "string") remap.set(entry.id, randomUUID());
     const now = new Date();
     // pi's header shape: ISO timestamp, parentSession as the source file's path.
-    const lines: string[] = [JSON.stringify({ ...header, id, parentSession: meta.path, timestamp: now.toISOString() })];
+    const lines: string[] = [JSON.stringify({ ...header, id, parentSession: sourcePath, timestamp: now.toISOString() })];
     for (const entry of kept) {
       const copy: Obj = { ...entry, id: remap.get(entry.id as string) };
       if (typeof entry.parentId === "string" && remap.has(entry.parentId)) copy.parentId = remap.get(entry.parentId);

@@ -164,6 +164,40 @@ describe("chat lifecycle over HTTP + SSE", () => {
     sse.close();
   });
 
+  it("lists the branches an edit left behind and continues one in a session of its own", async () => {
+    const { agent, ws, t } = await setup();
+    const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;
+    expect(chat.capabilities.supportsBranches).toBe(true);
+    const sse = openSse(t, chat.chatId, agent.cookie);
+    await sse.waitFor(() => sse.chatEvents().some((e) => e.type === "snapshot"));
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "first question" });
+    await sse.waitFor(() => sse.chatEvents().some((e) => e.type === "status" && e.status === "idle"));
+    await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "second question" });
+    await sse.waitFor(() => sse.chatEvents().filter((e) => e.type === "status" && e.status === "idle").length >= 2);
+    // Nothing was replaced yet: one branch, the active one.
+    const before = (await agent.get(`/api/chats/${chat.chatId}/branches`)).body as { branches: Array<{ leafId: string; active: boolean; turns: number; shared: number; prompt: string }> };
+    expect(before.branches).toHaveLength(1);
+    // Editing the second prompt leaves the old path behind.
+    await agent.post(`/api/chats/${chat.chatId}/rewind`).send({ turn: 2, text: "a better second question" });
+    await sse.waitFor(() => sse.chatEvents().filter((e) => e.type === "status" && e.status === "idle").length >= 3);
+    const after = (await agent.get(`/api/chats/${chat.chatId}/branches`)).body as typeof before;
+    expect(after.branches.map((b) => [b.active, b.turns, b.shared, b.prompt])).toEqual([
+      [true, 2, 2, "a better second question"],
+      [false, 2, 1, "second question"],
+    ]);
+    const old = after.branches[1];
+    const forked = await agent.post(`/api/chats/${chat.chatId}/branch`).send({ leafId: old?.leafId });
+    expect(forked.status).toBe(201);
+    const copy = forked.body as ChatSnapshot;
+    expect(copy.chatId).not.toBe(chat.chatId);
+    expect(copy.items.filter((i) => i.kind === "user").map((i) => (i.kind === "user" ? i.text : ""))).toEqual(["first question", "second question"]);
+    // The source is untouched, and a leaf that is not in the tree is a 404.
+    const source = (await agent.get(`/api/chats/${chat.chatId}`)).body as ChatSnapshot;
+    expect(source.items.filter((i) => i.kind === "user").map((i) => (i.kind === "user" ? i.text : ""))).toEqual(["first question", "a better second question"]);
+    expect((await agent.post(`/api/chats/${chat.chatId}/branch`).send({ leafId: "nope" })).status).toBe(404);
+    sse.close();
+  });
+
   it("hands a chat off to another harness with transcript and draft", async () => {
     const { agent, ws } = await setup();
     const chat = (await agent.post("/api/chats").send({ harnessId: "fake", workspaceId: ws.id })).body as ChatSnapshot;

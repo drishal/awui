@@ -253,6 +253,7 @@ leaves a button that fails. Gate any server route on the flag too.
 | `supportsCompact` | Compact, and the full-context chip | `Composer.tsx`, `App.tsx`, `chat.ts` |
 | `supportsRename` | Renaming the chat | `App.tsx`, `chat.ts`, `app.ts` |
 | `supportsFork` | Fork from a finished turn | `App.tsx`, `app.ts` |
+| `supportsBranches` (optional) | The session file keeps the paths an edit or retry left behind: `GET /api/chats/:id/branches` lists them (`listBranches`), `POST /api/chats/:id/branch` continues one in a new session (`forkBranch`); atui's *Branches…* sheet (Pi, omp; `session-branches.ts`) | `app.ts`, `atui/ui/app.tsx` |
 | `supportsHandoff` | Being the target of a cross-harness handoff | `App.tsx`, `ComposerControls.tsx`, `app.ts` |
 | `supportsRewind` | Edit/Retry a past prompt in place | `App.tsx`, `SidePane.tsx`, `chat.ts` |
 | `supportsResumeCommand` | Copy resume command | `Sidebar.tsx`, `App.tsx`, `app.ts`, `resume-command.ts`, `HandoverDialog.tsx`, `handover.ts` |

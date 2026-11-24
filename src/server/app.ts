@@ -34,6 +34,7 @@ import {
   fileViewSchema,
   fileUploadSchema,
   forkChatSchema,
+  branchChatSchema,
   handoffSchema,
   MAX_IMAGE_BYTES,
   MAX_IMAGES,
@@ -2978,6 +2979,27 @@ export async function createApp(deps: AppDeps) {
     if (!chat.nativeId) throw new ChatError(409, "not_started", "This chat has no session to fork yet");
     const forked = await chat.adapter.forkSession({ cwd: chat.workspace.path, nativeId: chat.nativeId, throughTurns: through });
     res.status(201).json((await manager.resume(chat.adapter, chat.workspace, forked.nativeId)).snapshot());
+  });
+
+  // The tree of a Pi-family session: what an edit or retry left behind beside the path the chat is on. Read from the file, never
+  // started; a fork of a branch is a new session in the harness's own store (the source file is not touched).
+  app.get("/api/chats/:id/branches", requireGrant("chat.read"), async (req, res) => {
+    const chat = manager.get(req.params.id);
+    const { adapter } = chat;
+    if (!adapter.capabilities.supportsBranches || !adapter.listBranches) throw new ChatError(400, "unsupported", `${adapter.displayName} sessions keep no branches`);
+    if (!chat.nativeId) return res.json({ branches: [] });
+    res.json({ branches: (await adapter.listBranches({ cwd: chat.workspace.path, nativeId: chat.nativeId })) ?? [] });
+  });
+  app.post("/api/chats/:id/branch", requireGrant("chat.write"), async (req, res) => {
+    const { leafId } = body(branchChatSchema, req);
+    const chat = manager.get(req.params.id);
+    const { adapter } = chat;
+    if (!adapter.capabilities.supportsBranches || !adapter.forkBranch) throw new ChatError(400, "unsupported", `${adapter.displayName} sessions keep no branches`);
+    if (!chat.nativeId) throw new ChatError(409, "not_started", "This chat has no session to branch yet");
+    const forked = await adapter.forkBranch({ cwd: chat.workspace.path, nativeId: chat.nativeId, leafId }).catch((error: unknown) => {
+      throw new ChatError(404, "no_branch", errorMessage(error));
+    });
+    res.status(201).json((await manager.resume(adapter, chat.workspace, forked.nativeId)).snapshot());
   });
 
   /** Continue `chat` in `harness`: a copy of its turns where the harness keeps them, else a fresh chat briefed with a summary. */
