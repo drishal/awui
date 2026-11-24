@@ -1191,7 +1191,7 @@ export function App(p: {
                   <Toasts />
                   {/* A picker floats over the chat (the transcript stays drawn behind it) rather than taking its place. */}
                   <Show when={dialog() !== null}>
-                    <box position="absolute" top={0} left={0} right={0} flexDirection="column" backgroundColor={app.glass() ? undefined : t().bg}>
+                    <box position="absolute" top={0} left={0} right={0} flexDirection="column">
                 <Show when={dialog() === "palette"}>
                   <Picker title="Commands" placeholder="Search commands, sessions, thinking…" items={paletteItems()} onClose={() => setDialog(null)} firstHeading side={room()} />
                 </Show>
