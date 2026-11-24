@@ -216,7 +216,7 @@ export function Picker(p: {
       </box>
       <box flexDirection="row" flexShrink={0}>
         <text fg={t().accent} flexShrink={0}>{"› "}</text>
-        <input focused flexGrow={1} placeholder={p.placeholder} textColor={t().text} backgroundColor={sheetGround(t())} focusedBackgroundColor={sheetGround(t())} onInput={(value: string) => setQuery(value)} />
+        <input focused flexGrow={1} placeholder={p.placeholder} placeholderColor={t().muted} textColor={t().text} backgroundColor={sheetGround(t())} focusedBackgroundColor={sheetGround(t())} onInput={(value: string) => setQuery(value)} />
         <Show when={query().trim()}>
           <text fg={t().muted} flexShrink={0}>{`${shown().length} ${shown().length === 1 ? (p.noun?.[0] ?? "match") : (p.noun?.[1] ?? "matches")}`}</text>
         </Show>

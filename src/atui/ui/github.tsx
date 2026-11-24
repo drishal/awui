@@ -377,7 +377,7 @@ export function GitHubView(p: { onClose: () => void }) {
                 <input
                   focused
                   flexGrow={1}
-                  placeholder={FIELD_LABEL[(form() as Form).field]}
+                  placeholder={FIELD_LABEL[(form() as Form).field]} placeholderColor={t().muted}
                   textColor={t().text}
                   backgroundColor={t().surface}
                   focusedBackgroundColor={t().surface}

@@ -112,7 +112,7 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
                 ref={(el: TextareaRenderable) => (input = el)}
                 focused={p.active}
                 initialValue={p.request.prefill ?? ""}
-                placeholder={p.request.placeholder ?? "Type the answer…"}
+                placeholder={p.request.placeholder ?? "Type the answer…"} placeholderColor={t().muted}
                 textColor={t().text}
                 minHeight={1}
                 maxHeight={p.request.kind === "editor" ? 12 : 4}
@@ -167,7 +167,7 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
                 const current = input?.plainText ?? "";
                 setDenialReason(current.slice(0, MAX_DENIAL_REASON_CHARS));
               }}
-              placeholder="What should the agent change?"
+              placeholder="What should the agent change?" placeholderColor={t().muted}
               textColor={t().text}
               minHeight={1}
               maxHeight={5}

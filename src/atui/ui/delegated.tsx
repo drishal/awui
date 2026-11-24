@@ -385,7 +385,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
           <input
             focused
             flexGrow={1}
-            placeholder="Optional, sent with apply or keep: Enter save · Esc cancel"
+            placeholder="Optional, sent with apply or keep: Enter save · Esc cancel" placeholderColor={t().muted}
             textColor={t().text}
             backgroundColor={sheetGround(t())}
             focusedBackgroundColor={t().surface}
