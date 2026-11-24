@@ -12,6 +12,7 @@ import type { RaceSummary, ReviewThread, SecondOpinion } from "../../shared/prot
 import { contextCards, gitSummaryLine, type ContextCard, type ContextCardRow } from "../../web/context-panel.js";
 import { clip } from "../format.js";
 import { moveRow, rowWindow } from "../delegated.js";
+import { mix } from "../fx.js";
 import { railEntries, railSummary, toneDot, toneOf, type RailEntry } from "../rail.js";
 import { useAtui, useTheme } from "./context.js";
 import { fitHints } from "../footer.js";
@@ -148,7 +149,7 @@ export function ContextRailView(p: RailActions) {
                     </text>
                     {/* A rule to the row's edge, as Usage's and the palette's headings carry (the box clips what does not fit). */}
                     <box flexGrow={1} flexShrink={1} overflow="hidden" paddingLeft={1}>
-                      <text fg={t().border} wrapMode="none">{"─".repeat(200)}</text>
+                      <text fg={mix(t().border, t().text2, 0.4)} wrapMode="none">{"─".repeat(200)}</text>
                     </box>
                   </box>
                 </Show>

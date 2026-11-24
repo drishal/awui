@@ -237,7 +237,7 @@ export function Picker(p: {
                     <text fg={t().muted} marginTop={at() > 0 ? 1 : 0} wrapMode="none" truncate>
                       <b>{item.section}</b>
                       {/* A rule to the list's edge: the heading is a step above the rows' text2, not a row of its own. */}
-                      <span style={{ fg: t().border }}>{item.section && item.section.length + 3 < listWidth() ? `  ${"─".repeat(listWidth() - item.section.length - 3)}` : ""}</span>
+                      <span style={{ fg: mix(t().border, t().text2, 0.4) }}>{item.section && item.section.length + 3 < listWidth() ? `  ${"─".repeat(listWidth() - item.section.length - 3)}` : ""}</span>
                     </text>
                   </Show>
                   <Show when={at() === 0 && p.axis && item.bar}>
