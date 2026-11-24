@@ -1207,9 +1207,8 @@ export function App(p: {
     const busiest = Math.max(0, ...cells);
     const activity = cells.map((v) => (v === 0 ? "·" : sparkline([v], busiest))).join("");
     return [
-      row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
+      row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, `${activity}  ${words(r.totals)}`),
       ...(share === null || share < 0.01 ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
-      row(head, `Activity, oldest to newest`, activity),
       ...days,
       // As the web dialog's bars: each harness and model's share of the busiest one, under the name the header and the composer use.
       ...r.byHarness.map((h) => row("By harness", app.boot()?.harnesses.find((x) => x.id === h.harnessId)?.displayName ?? h.harnessId, fig(h.totals), [0, tokensOf(h.totals) / Math.max(1, ...r.byHarness.map((x) => tokensOf(x.totals)))])),

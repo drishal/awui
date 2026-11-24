@@ -959,7 +959,7 @@ describe("atui", () => {
     const shown = await ui.until("Last 7 days");
     expect(shown).toContain("Usage across chats");
     expect(shown).toContain("Tab 30 days");
-    expect(shown).toMatch(/Activity, oldest to newest\s+[·▁▂▃▄▅▆▇█]{7}/);
+    expect(shown).toMatch(/[·▁▂▃▄▅▆▇█]{7}\s+\d+(\.\d)?[kM]? tokens/);
     // Tab cycles the range, as the web dialog's 7/30/90 switch does.
     ui.keys.pressTab();
     expect(await ui.until("Last 30 days")).toContain("Tab 90 days");
