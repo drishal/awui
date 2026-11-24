@@ -4,9 +4,9 @@
 // it. Pure: positions in, cells out.
 import type { Turn } from "../web/turns.js";
 
-export type TurnTone = "live" | "failed" | "edited" | "rendered" | "plain";
+export type TurnTone = "live" | "failed" | "edited" | "rendered" | "plain" | "found";
 
-/** What a turn did, as its tick's colour: running, failed, changed files, published a page, or just talked. */
+/** What a turn did (a turn the last find matched is "found", set by the caller, not here), as its tick's colour: running, failed, changed files, published a page, or just talked. */
 export function turnTone(turn: Turn): TurnTone {
   if (turn.live) return "live";
   const failed = turn.errors.length > 0 || Boolean(turn.answer?.error && turn.answer.error !== "Stopped") || turn.process.some((i) => i.kind === "tool" && i.status === "error");

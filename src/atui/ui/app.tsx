@@ -1079,7 +1079,7 @@ export function App(p: {
                         when={hasPrompt()}
                         fallback={<Splash column={column()} keybinds={keybinds()} question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
                       >
-                        <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} column={column} />
+                        <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} column={column} found={() => landed()?.query ?? null} />
                       </Show>
                     }
                   >

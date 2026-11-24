@@ -17,6 +17,7 @@ import { BoxRenderable, type MarkdownBlock, type Renderable, type RenderNodeCont
 import { useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { AssistantItem, ChatItem, ImageRef, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../../shared/protocol.js";
 import { buildTurns, formatDuration, latestThought, modelName, modelSwitches, relativePath, saysSomething, workAfterSegment, workCounts, workSegments, type Turn, type WorkSegment } from "../../web/turns.js";
+import { findTurns } from "../../web/find.js";
 import { clip, fileUrl, foldLabel, outputTail, unifiedDiff } from "../format.js";
 import type { TodoEntry } from "../../shared/todo-entries.js";
 import { easeOut, flashAt, mix, unrollCounts } from "../fx.js";
@@ -1141,7 +1142,7 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
       p.geometry.height,
     ),
   );
-  const toneColor = (tone: TurnTone) => ({ live: t().accent, failed: t().danger, edited: t().ok, rendered: t().thinking, plain: t().text2 })[tone];
+  const toneColor = (tone: TurnTone) => ({ live: t().accent, failed: t().danger, edited: t().ok, rendered: t().thinking, plain: t().text2, found: t().warn })[tone];
   return (
     // Overlaid at the transcript's right edge rather than taking a layout column: the rows
     // budget on the chat column alone, so a scrolled chat's last facts column is never clipped.
@@ -1160,7 +1161,7 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
   );
 }
 
-export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; column: Accessor<number> }) {
+export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; column: Accessor<number>; found?: Accessor<string | null> }) {
   const app = useAtui();
   const t = useTheme();
   const turns = createMemo(() => {
@@ -1190,7 +1191,11 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
       });
     }),
   );
-  const tones = createMemo(() => turns().map(turnTone));
+  const tones = createMemo(() => {
+    const query = p.found?.() ?? null;
+    const hit = new Set(query ? findTurns(turns(), query, 0, workspace()).map((m) => m.turnId) : []);
+    return turns().map((turn): TurnTone => (hit.has(turn.id) ? "found" : turnTone(turn)));
+  });
   const scrollable = () => geometry().content > geometry().height + 1;
   const pinned = createMemo(() => {
     const at = pinnedTurn(geometry().tops, geometry().top);
