@@ -504,6 +504,7 @@ describe("atui", () => {
     ui.keys.pressEnter();
     const pinned = await ui.until("1/3");
     expect(pinned).toContain("Draw the reason inline");
+    expect(pinned).toMatch(/1\/3  ◐ .*Draw the reason inline.*·/);
     await idle(ui);
     expect(await ui.until("Message the agent")).not.toContain("1/3  ◐");
   }, 40_000);

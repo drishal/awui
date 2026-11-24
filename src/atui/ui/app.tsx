@@ -28,7 +28,8 @@ import type { UserItem } from "../../shared/protocol.js";
 import type { PaletteItem } from "../../web/palette.js";
 import { isBusy } from "../../web/session-groups.js";
 import { atuiColumn, chatWidthLabel, CHAT_WIDTHS, nextChatWidth } from "../../shared/chat-width.js";
-import { ago, clip, STATUS_LABEL } from "../format.js";
+import { ago, clip, foldLabel, STATUS_LABEL } from "../format.js";
+import { tick } from "./ticker.js";
 import { actionKeys, leader, leaderPrefix, LEADER_KEYS, VIM_HELP, type KeybindStyle } from "../keys.js";
 import { harnessGlyph } from "../neat.js";
 import type { Atui } from "../state.js";
@@ -1063,7 +1064,12 @@ export function App(p: {
     const done = todos.filter((x) => /done|complete/.test(x.status)).length;
     if (todos.length === 0 || done === todos.length) return null;
     const now = todos.find((x) => /progress|active|doing/.test(x.status)) ?? todos.find((x) => !/done|complete/.test(x.status));
-    return { done, total: todos.length, current: now?.text ?? "" };
+    // The run's own clock and counts ("1m 4s · 3 reads"), the Working line's figures, so they stay in view when that line has scrolled off.
+    void tick();
+    const c = app.chat();
+    const turn = c ? [...buildTurns(c.items, c.status, c.runStartedAt)].reverse().find((x) => x.live) : undefined;
+    const run = turn ? foldLabel(turn, Date.now()).replace(/^Working( · )?/, "") : "";
+    return { done, total: todos.length, current: now?.text ?? "", run };
   };
 
   /** The Timing picker's rows: each model step, call and subagent run of one turn, where it started and how long it took (the web's waterfall, as a list). */
@@ -1440,6 +1446,7 @@ export function App(p: {
                         <span style={{ fg: t().text2 }}>{`${plan().done}/${plan().total}`}</span>
                         <span style={{ fg: t().muted }}>{"  ◐ "}</span>
                         <span style={{ fg: t().text }}>{plan().current}</span>
+                        {plan().run ? <span style={{ fg: t().muted }}>{`  ·  ${plan().run}`}</span> : null}
                       </text>
                     )}
                   </Show>
