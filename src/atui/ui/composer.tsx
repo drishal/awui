@@ -370,10 +370,12 @@ export function Composer(p: {
   const offerText = () => (offer() ? `${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  ` : "");
   const sparkText = () => (app.contextHistory().length > 1 ? `${sparkline(app.contextHistory().slice(-12), 100)} ` : "");
   const ctxText = () => (percent() !== null ? `ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%` : "");
+  // The word that says what the level is; a narrow pane keeps the model's name whole instead.
+  const thinkWord = () => (p.column >= 80 ? "Think " : "");
   const permissionLabel = () => (caps()?.supportsPermissionMode ? app.chat()?.config.permissionModes?.find((m) => m.id === app.chat()?.config.permissionMode)?.label : undefined);
   const kept = () => {
     const g = app.git();
-    const chips = ` ${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾ `.length + (caps()?.supportsThinkingLevel && words().level ? ` Think ${levelTitle(words().level ?? "")} ▾ `.length + 1 : 0) + (permissionLabel() ? ` ${permissionLabel()} ▾ `.length + 1 : 0) + (p.status.mode ? 14 : 0) + (queued() > 0 ? `  +${queued()} queued`.length : 0) + (p.status.note ? p.status.note.length + 2 : 0);
+    const chips = ` ${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾ `.length + (caps()?.supportsThinkingLevel && words().level ? ` ${thinkWord()}${levelTitle(words().level ?? "")} ▾ `.length + 1 : 0) + (permissionLabel() ? ` ${permissionLabel()} ▾ `.length + 1 : 0) + (p.status.mode ? 14 : 0) + (queued() > 0 ? `  +${queued()} queued`.length : 0) + (p.status.note ? p.status.note.length + 2 : 0);
     // The model's name keeps a dozen cells; what the chips and it leave is the right side's.
     const budget = p.column - 2 - chips - 14;
     return fitFooter(
@@ -571,7 +573,7 @@ export function Composer(p: {
           <Show when={caps()?.supportsThinkingLevel ? words().level : null}>
             {(level) => (
               <box flexShrink={0} backgroundColor={app.glass() ? undefined : t().surface2} marginLeft={1} onMouseDown={() => p.onPick("thinking")}>
-                <text fg={t().muted}>{` Think ${levelTitle(level())} ▾ `}</text>
+                <text fg={t().muted}>{` ${thinkWord()}${levelTitle(level())} ▾ `}</text>
               </box>
             )}
           </Show>
