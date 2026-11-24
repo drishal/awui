@@ -1173,7 +1173,8 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       <For each={p.turn().errors}>{(item) => <Notice item={item} />}</For>
       <Show when={sigmaShown()}>
         <box marginTop={1}>
-          <text selectable={false} fg={t().muted} wrapMode="word">
+          {/* A click on the turn's summary opens its Timing, as the web's clock button on the turn footer does. */}
+          <text selectable={false} fg={t().muted} wrapMode="word" onMouseDown={() => app.setTimingFor(p.turn().prompt?.id ?? null)}>
             <span style={{ fg: t().muted }}>{"Σ "}</span>
             {sigma().facts.join(" · ")}
             <Show when={sigma().failed}>

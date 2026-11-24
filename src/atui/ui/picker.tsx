@@ -45,6 +45,13 @@ function axisLine(ticks: Array<{ at: number; label: string }>, cells: number): s
   return line.join("");
 }
 
+/** A ruler for the scale: `─` along the track with a `┬` at every tick, whether or not its label found room above. */
+function tickLine(ticks: Array<{ at: number }>, cells: number): string {
+  const line: string[] = Array(cells).fill("─");
+  for (const tick of ticks) line[Math.round(tick.at * (cells - 1))] = "┬";
+  return line.join("");
+}
+
 /** What a preview pane shows: a heading and the text under it. */
 export interface PreviewText {
   head: string;
@@ -260,6 +267,8 @@ export function Picker(p: {
                       <text fg={t().muted} flexShrink={0} wrapMode="none">{`${" ".repeat(barLabel())}${axisLine(p.axis ?? [], track())}`}</text>
                       <box flexGrow={1} flexDirection="row" justifyContent="flex-end"><text fg={t().muted} wrapMode="none">{p.axisHead ? `${p.axisHead}` : ""}</text></box>
                     </box>
+                    {/* The scale's ticks, a ruler under the labels: every tick has its mark, also where a crowded label was left out. */}
+                    <text fg={mix(t().border, t().muted, 0.5)} wrapMode="none">{`${" ".repeat(barLabel())}${tickLine(p.axis ?? [], track())}`}</text>
                   </Show>
                   <box flexDirection="row" backgroundColor={lit() ? t().selection : undefined} onMouseDown={() => run(item)}>
                     <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel() : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>

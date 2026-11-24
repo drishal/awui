@@ -1096,6 +1096,18 @@ describe("atui", () => {
     expect(await ui.until("Message the agent")).not.toContain("Search steps…");
   }, 40_000);
 
+  it("opens a turn's timing from a click on its Σ line, and rules the axis with a tick for every label", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("showcase timing");
+    ui.keys.pressEnter();
+    await idle(ui);
+    await ui.until("Σ ");
+    await ui.click("Σ ");
+    const shown = await ui.until("Search steps…");
+    expect(shown).toContain("This turn took");
+    expect(shown).toMatch(/┬[─┬]*┬/);
+  }, 40_000);
+
   it("opens usage across chats from the palette and switches its range", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     ui.keys.pressKey("k", { ctrl: true });
