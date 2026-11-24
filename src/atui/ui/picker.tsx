@@ -78,7 +78,7 @@ export function Picker(p: {
   axisHead?: string;
   /** Bars that are shares of their own list (usage), not a span on a timeline: drawn in a tint, so a column of full bars does not shout over its figures. */
   softBars?: boolean;
-  /** What Tab does, in words ("Tab show 30 days"): it leads the key hints, so the title stays a name. */
+  /** What Tab does, in words ("Tab 30 days"): it leads the key hints, so the title stays a name. */
   tabHint?: string;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
   noun?: [string, string];
