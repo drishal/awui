@@ -271,16 +271,14 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
       flexDirection="column"
       border
       borderStyle="rounded"
-      borderColor={t().border}
+      borderColor={t().accent}
       backgroundColor={t().surface}
-      title=" Delegated work "
-      titleColor={t().text}
       paddingLeft={1}
       paddingRight={1}
     >
       <text flexShrink={0} fg={t().text2} wrapMode="none" truncate>
-        <b>{workerCount(rows().length)}</b>
-        <span style={{ fg: t().muted }}>{`  ${tasksMeta(tasks()) ?? "every worker has finished"}`}</span>
+        <b>Delegated work</b>
+        <span style={{ fg: t().muted }}>{`   ${workerCount(rows().length)} · ${tasksMeta(tasks()) ?? "every worker has finished"}`}</span>
       </text>
       <Show
         when={row()}

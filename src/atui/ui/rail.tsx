@@ -117,17 +117,15 @@ export function ContextRailView(p: RailActions) {
       flexDirection="column"
       border
       borderStyle="rounded"
-      borderColor={t().border}
+      borderColor={t().accent}
       backgroundColor={t().surface}
-      title=" Active work "
-      titleColor={t().text}
       paddingLeft={1}
       paddingRight={1}
     >
       <box flexDirection="row" flexShrink={0}>
         <text flexGrow={1} wrapMode="none" truncate>
-          <b>{clip(chat()?.title || "New chat", width() - 40)}</b>
-          <span style={{ fg: t().muted }}>{`  ${chat()?.harnessId ?? ""} · ${chat()?.workspace.name ?? ""}`}</span>
+          <b>Active work</b>
+          <span style={{ fg: t().muted }}>{`   ${clip(chat()?.title || "New chat", width() - 60)} · ${chat()?.harnessId ?? ""} · ${chat()?.workspace.name ?? ""}`}</span>
         </text>
         <text flexShrink={0} fg={t().muted}>
           {gitSummaryLine(app.git()) ?? ""}

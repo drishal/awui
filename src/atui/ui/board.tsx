@@ -163,19 +163,18 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
       flexDirection="column"
       border
       borderStyle="rounded"
-      borderColor={t().border}
+      borderColor={t().accent}
       backgroundColor={t().surface}
-      title=" Agents "
-      titleColor={t().text}
       paddingLeft={1}
       paddingRight={1}
     >
       <box flexDirection="row" flexShrink={0}>
         <text flexGrow={1} fg={t().muted} wrapMode="none" truncate>
-          {filterLine()}
+          <b style={{ fg: t().text }}>Agents</b>
+          {`   ${filterLine()}`}
         </text>
         <text flexShrink={0} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? (width() < 120 ? "Enter opens · Esc closes" : "←→ column · ↑↓ card · Enter opens · f project · r pull request · Esc closes")}
+          {note() ?? (width() < 100 ? "Enter opens · Esc closes" : width() < 130 ? "←→ column · ↑↓ card · Enter opens · Esc closes" : "←→ column · ↑↓ card · Enter opens · f project · r pull request · Esc closes")}
         </text>
       </box>
       <box flexDirection="row" flexGrow={1} overflow="hidden" marginTop={1}>

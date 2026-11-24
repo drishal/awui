@@ -59,12 +59,13 @@ const markdownHeights = (root: { getChildren?: () => unknown[] }): number[] => {
 
 const assistant = (m: Mounted) => m.app.chat()?.items.find((item) => item.kind === "assistant");
 
-/** Rounded borders survive in the conversation column, not under the sidebar. */
+/** Rounded borders survive in the conversation column, not under the sidebar, and the title sits inside them like a picker's. */
 const sheetFits = (frame: string, title: string) => {
   const first = frame.split("\n").find((row) => !row.includes("Sessions") && !row.includes("Info") && row.trimStart().startsWith("│"));
   const side = first ? first.indexOf("│") + 1 : 0;
   const rows = frame.split("\n").map((row) => row.slice(side));
-  const top = rows.findIndex(row => row.includes(`╭─ ${title}`));
+  // One chrome with the pickers: the title is the first row inside the rounded frame, not a word cut into its border.
+  const top = rows.findIndex((row, i) => row.includes(title) && Boolean(rows[i - 1]?.includes("╭")) && Boolean(rows[i - 1]?.includes("╮"))) - 1;
   const bottom = rows.findIndex((row, index) => index > top && row.includes("╯"));
   expect(top).toBeGreaterThanOrEqual(0);
   expect(bottom).toBeGreaterThan(top);
