@@ -1058,6 +1058,9 @@ export function App(p: {
   /** The conversation's theme: dimmed while a sheet floats over it (the sheet is the figure), except in Find, whose whole point is to read the matches it lands on. */
   const sceneTheme = () => (dialog() !== null && dialog() !== "find" ? dimmed(app.theme()) : app.theme());
 
+  /** The run clock's whole seconds: the plan row shows nothing finer, so it rebuilds the turns once a second, not on every 100 ms tick. */
+  const runSecond = createMemo(() => Math.floor(tick() / 10));
+
   /** The plan a run is working through, pinned above the composer while it runs: how many steps are done and the one under way (the first undone step when the harness marks none). */
   const planStrip = () => {
     const todos = app.chat()?.todos ?? [];
@@ -1065,7 +1068,7 @@ export function App(p: {
     if (todos.length === 0 || done === todos.length) return null;
     const now = todos.find((x) => /progress|active|doing/.test(x.status)) ?? todos.find((x) => !/done|complete/.test(x.status));
     // The run's own clock and counts ("1m 4s · 3 reads"), the Working line's figures, so they stay in view when that line has scrolled off.
-    void tick();
+    void runSecond();
     const c = app.chat();
     const turn = c ? [...buildTurns(c.items, c.status, c.runStartedAt)].reverse().find((x) => x.live) : undefined;
     const run = turn ? foldLabel(turn, Date.now()).replace(/^Working( · )?/, "") : "";
