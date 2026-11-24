@@ -32,6 +32,7 @@ describe("atui presets", () => {
     expect(presetName("x".repeat(80))).toHaveLength(32);
     expect(presetWords({ name: "n", harnessId: "pi", model: "opus", thinkingLevel: "high" }, "Pi")).toBe("Pi · opus · High");
     expect(presetWords({ name: "n", harnessId: "pi", model: "p/opus", thinkingLevel: "high" }, "Pi", "Opus 4")).toBe("Pi · Opus 4 · High");
+    expect(presetWords({ name: "n", harnessId: "claude", permissionMode: "acceptEdits" }, "Claude Code", undefined, "Accept edits")).toBe("Claude Code · Accept edits");
     expect(presetWords({ name: "n", harnessId: "pi" }, "Pi")).toBe("Pi");
   });
   it("is remembered between runs", () => {

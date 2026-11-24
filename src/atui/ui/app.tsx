@@ -1090,7 +1090,7 @@ export function App(p: {
       section: "Start a chat with",
       label: preset.name,
       // The catalog on this screen is the current harness's: a preset for another harness shows its model's own key.
-      hint: presetWords(preset, harnessName(preset.harnessId), preset.harnessId === (app.chat()?.harnessId ?? app.harnessId()) ? app.pickerModels().find((m) => m.key === preset.model)?.name : undefined),
+      hint: presetWords(preset, harnessName(preset.harnessId), preset.harnessId === (app.chat()?.harnessId ?? app.harnessId()) ? app.pickerModels().find((m) => m.key === preset.model)?.name : undefined, preset.harnessId === app.chat()?.harnessId ? app.chat()?.config.permissionModes?.find((m) => m.id === preset.permissionMode)?.label : undefined),
       disabled: app.boot()?.harnesses.find((h) => h.id === preset.harnessId)?.available === false ? "That harness is not available" : undefined,
       run: () => {
         setDialog(null);

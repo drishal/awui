@@ -1,5 +1,5 @@
 // Agent presets: a name for a harness, model and thinking level together ("Explore": the
-// cheap model, low thinking; "Deep work": the strongest one, high), kept in atui.json so a
+// cheap model, low thinking; "Deep work": the strongest one, high; and how much it asks before acting), kept in atui.json so a
 // new chat can start from one in a step, as omo's role-named agents do. Pure: the palette
 // asks, state.ts applies one, prefs.ts keeps the list.
 import { levelTitle } from "../web/config-summary.js";
@@ -9,6 +9,8 @@ export interface Preset {
   harnessId: string;
   model?: string;
   thinkingLevel?: string;
+  /** The harness's own permission mode id, applied once the chat exists (the create call takes none). */
+  permissionMode?: string;
 }
 
 /** The list stays short enough to read in one sheet. */
@@ -32,7 +34,8 @@ export function parsePresets(raw: unknown): Preset[] {
     if (!name || !harnessId || out.some((p) => p.name.toLowerCase() === name.toLowerCase())) continue;
     const model = word(r.model);
     const thinkingLevel = word(r.thinkingLevel, 64);
-    out.push({ name, harnessId, ...(model ? { model } : {}), ...(thinkingLevel ? { thinkingLevel } : {}) });
+    const permissionMode = word(r.permissionMode, 64);
+    out.push({ name, harnessId, ...(model ? { model } : {}), ...(thinkingLevel ? { thinkingLevel } : {}), ...(permissionMode ? { permissionMode } : {}) });
     if (out.length >= MAX_PRESETS) break;
   }
   return out;
@@ -55,6 +58,6 @@ export function withPresetAt(list: Preset[], preset: Preset, index: number): Pre
   return [...list.slice(0, at), preset, ...list.slice(at)].slice(0, MAX_PRESETS);
 }
 
-/** What a preset row says after its name, as the chips word it: "Claude Code · Opus 4 · High" (`modelName` is the catalog's label for the model, when this screen has that harness's catalog; else the model's own key). */
-export const presetWords = (p: Preset, harnessName: string, modelName?: string): string =>
-  [harnessName, modelName ?? p.model, p.thinkingLevel ? levelTitle(p.thinkingLevel) : undefined].filter(Boolean).join(" · ");
+/** What a preset row says after its name, as the chips word it: "Claude Code · Opus 4 · High" (`modelName` and `modeLabel` are the catalog's and the harness's labels, when this screen has that harness; else the keys themselves). */
+export const presetWords = (p: Preset, harnessName: string, modelName?: string, modeLabel?: string): string =>
+  [harnessName, modelName ?? p.model, p.thinkingLevel ? levelTitle(p.thinkingLevel) : undefined, p.permissionMode ? (modeLabel ?? p.permissionMode) : undefined].filter(Boolean).join(" · ");

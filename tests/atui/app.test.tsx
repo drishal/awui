@@ -1931,6 +1931,18 @@ describe("atui's keybind styles", () => {
     await wait(200);
     expect(ui.app.presets().map((x) => x.name)).toEqual(["Explore", "Other"]);
   }, 40_000);
+  it("starts a chat from a preset in that preset's permission mode", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    ui.app.startPreset({ name: "Careful", harnessId: "fake", permissionMode: "acceptEdits" });
+    await wait(300);
+    await ui.type("hello preset mode");
+    ui.keys.pressEnter();
+    await ui.until("Echo: hello preset mode");
+    await ui.until(() => ui?.app.chat()?.config.permissionMode === "acceptEdits");
+    expect(await ui.until("Accept edits ▾")).toContain("Accept edits");
+    // Saving the open chat keeps that mode with the preset.
+    expect(ui.app.savePreset("Mode")?.permissionMode).toBe("acceptEdits");
+  }, 30_000);
   it("ends a finished turn's Σ line with what that turn cost when the harness prices the model", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("priced tool please");

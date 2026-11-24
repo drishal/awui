@@ -408,8 +408,8 @@ export function createAtui(server: Server, opts: AtuiOptions) {
   /** The start screen's catalog: what the chips name and the pickers offer before a chat exists. */
   const [startCatalog, setStartCatalog] = createSignal<{ models: ModelInfo[]; thinkingLevels: string[]; defaultModel: { model: string; thinkingLevel: string | null } | null } | null>(null);
   /** What the start screen's pickers chose: the chat its first message creates starts on these. */
-  const [startPick, setStartPick] = createSignal<{ model?: string; thinkingLevel?: string }>({});
-  let pendingPick: { model?: string; thinkingLevel?: string } | null = null;
+  const [startPick, setStartPick] = createSignal<{ model?: string; thinkingLevel?: string; permissionMode?: string }>({});
+  let pendingPick: { model?: string; thinkingLevel?: string; permissionMode?: string } | null = null;
   /** Which answer the client has asked for last: one for a screen the user has left is dropped. */
   let catalogSeq = 0;
   const loadStartCatalog = async (forHarness: string, forWs: WorkspaceInfo, refresh = false): Promise<void> => {
@@ -702,6 +702,9 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     const body = { harnessId: h, workspaceId: ws.id, ...(pick.model ? { model: pick.model } : {}), ...(pick.thinkingLevel ? { thinkingLevel: pick.thinkingLevel } : {}) };
     const snapshot = await server.call<ChatSnapshot>("/api/chats", { body });
     show(snapshot);
+    // A preset's permission mode: the create call takes none, so it is set the moment the chat exists (only when this harness offers that mode).
+    const mode = pick.permissionMode;
+    if (mode && snapshot.config.permissionModes?.some((m) => m.id === mode) && snapshot.config.permissionMode !== mode) await configure({ permissionMode: mode });
     return snapshot;
   };
 
@@ -819,7 +822,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
 
   /** A new chat made from a preset: its harness, then its model and level for the chat's start (the same picks the start screen's chips make). */
   const startPreset = (preset: Preset) => {
-    const pick = { ...(preset.model ? { model: preset.model } : {}), ...(preset.thinkingLevel ? { thinkingLevel: preset.thinkingLevel } : {}) };
+    const pick = { ...(preset.model ? { model: preset.model } : {}), ...(preset.thinkingLevel ? { thinkingLevel: preset.thinkingLevel } : {}), ...(preset.permissionMode ? { permissionMode: preset.permissionMode } : {}) };
     const same = untrack(startKey) === `${preset.harnessId}\0${untrack(workspace)?.id}`;
     if (same) return setStartPick(pick);
     pendingPick = pick;
@@ -837,7 +840,8 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     const pick = startPick();
     const model = c ? c.config.model : pick.model;
     const level = c ? c.config.thinkingLevel : pick.thinkingLevel;
-    const preset: Preset = { name, harnessId: h, ...(model ? { model } : {}), ...(level ? { thinkingLevel: level } : {}) };
+    const mode = c ? c.config.permissionMode : pick.permissionMode;
+    const preset: Preset = { name, harnessId: h, ...(model ? { model } : {}), ...(level ? { thinkingLevel: level } : {}), ...(mode ? { permissionMode: mode } : {}) };
     setPresets((list) => withPreset(list, preset));
     return preset;
   };
