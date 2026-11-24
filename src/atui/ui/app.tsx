@@ -912,7 +912,8 @@ export function App(p: {
       // As the web's rows: the chat's harness, project and age beside its figures, and its share of the busiest chat as a bar.
       ...r.top.slice(0, 8).map((x) => {
         const meta = [app.boot()?.harnesses.find((h) => h.id === x.session.harnessId)?.displayName ?? x.session.harnessId, app.overview().workspaces.find((w) => w.id === x.session.workspaceId)?.name ?? "", ago(x.session.updatedAt)].filter(Boolean).join(" · ");
-        return row("Most used chats", x.session.title || x.session.id, `${meta} · ${shortTokens(tokensOf(x.totals))} · ${dollars(x.totals.cost, x.totals.calls > x.totals.unpriced)}`, [0, tokensOf(x.totals) / Math.max(1, ...r.top.slice(0, 8).map((y) => tokensOf(y.totals)))]);
+        // The provenance rides with the name, so every figure at the right is short and the tracks run long, whatever the chat.
+        return row("Most used chats", `${clip(x.session.title || x.session.id, 22)} · ${meta}`, fig(x.totals), [0, tokensOf(x.totals) / Math.max(1, ...r.top.slice(0, 8).map((y) => tokensOf(y.totals)))]);
       }),
     ];
   };
