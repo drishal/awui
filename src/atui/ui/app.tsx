@@ -1089,7 +1089,8 @@ export function App(p: {
       id: `preset:${preset.name}`,
       section: "Start a chat with",
       label: preset.name,
-      hint: presetWords(preset, harnessName(preset.harnessId)),
+      // The catalog on this screen is the current harness's: a preset for another harness shows its model's own key.
+      hint: presetWords(preset, harnessName(preset.harnessId), preset.harnessId === (app.chat()?.harnessId ?? app.harnessId()) ? app.pickerModels().find((m) => m.key === preset.model)?.name : undefined),
       disabled: app.boot()?.harnesses.find((h) => h.id === preset.harnessId)?.available === false ? "That harness is not available" : undefined,
       run: () => {
         setDialog(null);
@@ -1097,7 +1098,7 @@ export function App(p: {
         flash(`New chat from “${preset.name}”`);
       },
     }));
-    rows.push({ id: "preset:save", section: "Save", label: "Save this setup as a preset…", hint: "harness, model and thinking level", run: () => setDialog("preset-save") });
+    rows.push({ id: "preset:save", section: "Save", label: "Save this setup as a preset…", hint: "harness · model · level", run: () => setDialog("preset-save") });
     return rows;
   };
   /** The save sheet: what is typed is the name; one row says what it will keep, and whether it replaces one. */

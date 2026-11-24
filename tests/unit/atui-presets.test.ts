@@ -30,7 +30,8 @@ describe("atui presets", () => {
   it("words a name to one line and a preset as harness, model and level", () => {
     expect(presetName("  Deep\n  work  ")).toBe("Deep work");
     expect(presetName("x".repeat(80))).toHaveLength(32);
-    expect(presetWords({ name: "n", harnessId: "pi", model: "opus", thinkingLevel: "high" }, "Pi")).toBe("Pi · opus · high");
+    expect(presetWords({ name: "n", harnessId: "pi", model: "opus", thinkingLevel: "high" }, "Pi")).toBe("Pi · opus · High");
+    expect(presetWords({ name: "n", harnessId: "pi", model: "p/opus", thinkingLevel: "high" }, "Pi", "Opus 4")).toBe("Pi · Opus 4 · High");
     expect(presetWords({ name: "n", harnessId: "pi" }, "Pi")).toBe("Pi");
   });
   it("is remembered between runs", () => {

@@ -2,6 +2,7 @@
 // cheap model, low thinking; "Deep work": the strongest one, high), kept in atui.json so a
 // new chat can start from one in a step, as omo's role-named agents do. Pure: the palette
 // asks, state.ts applies one, prefs.ts keeps the list.
+import { levelTitle } from "../web/config-summary.js";
 
 export interface Preset {
   name: string;
@@ -47,5 +48,6 @@ export function withPreset(list: Preset[], preset: Preset): Preset[] {
 /** The list without the preset of this name. */
 export const withoutPreset = (list: Preset[], name: string): Preset[] => list.filter((p) => p.name.toLowerCase() !== name.toLowerCase());
 
-/** What a preset row says after its name: "Claude Code · opus · high". */
-export const presetWords = (p: Preset, harnessName: string): string => [harnessName, p.model, p.thinkingLevel].filter(Boolean).join(" · ");
+/** What a preset row says after its name, as the chips word it: "Claude Code · Opus 4 · High" (`modelName` is the catalog's label for the model, when this screen has that harness's catalog; else the model's own key). */
+export const presetWords = (p: Preset, harnessName: string, modelName?: string): string =>
+  [harnessName, modelName ?? p.model, p.thinkingLevel ? levelTitle(p.thinkingLevel) : undefined].filter(Boolean).join(" · ");
