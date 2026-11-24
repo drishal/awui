@@ -2,6 +2,7 @@
 // the model and harness pickers. Matching is the web palette's (rankItems);
 // the letters that matched are drawn brighter. A picker given `preview`
 // (history) shows the highlighted item beside the list on a wide terminal.
+import { mix } from "../fx.js";
 import { createEffect, createMemo, createResource, createSignal, For, Index, on, Show } from "solid-js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import { rankItems, type PaletteItem } from "../../web/palette.js";
@@ -75,6 +76,8 @@ export function Picker(p: {
   axis?: Array<{ at: number; label: string }>;
   /** The title over the bar rows' figure column ("start     took"), set at the right of the scale's line. */
   axisHead?: string;
+  /** Bars that are shares of their own list (usage), not a span on a timeline: drawn in a tint, so a column of full bars does not shout over its figures. */
+  softBars?: boolean;
   /** What Tab does, in words ("Tab show 30 days"): it leads the key hints, so the title stays a name. */
   tabHint?: string;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
@@ -115,6 +118,7 @@ export function Picker(p: {
   const cost = (list: PickerItem[], at: number) => 1 + (at === 0 && p.axis ? 1 : 0) + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
   /** A bar row's label column: the track starts here, a little over a third of the list. */
   /** The label column of a bar row: as wide as its longest label asks (and two cells over), never more than a share of the sheet, so short labels leave the track the room. */
+  const barColor = () => (p.softBars ? mix(t().bg, t().accent, 0.68) : t().accent);
   const barLabel = () => {
     const widest = Math.max(0, ...shown().filter((i) => i.bar).map((i) => i.label.length + 4));
     const cap = Math.floor(listWidth() * (listWidth() > 70 ? 0.48 : 0.37));
@@ -241,8 +245,8 @@ export function Picker(p: {
                       {(bar) => (
                         <text flexShrink={0} fg={t().muted}>
                           {trackParts(bar(), track()).before}
-                          <span style={{ bg: t().accent }}>{" ".repeat(trackParts(bar(), track()).solid)}</span>
-                          <span style={{ fg: t().accent }}>{trackParts(bar(), track()).edge}</span>
+                          <span style={{ bg: barColor() }}>{" ".repeat(trackParts(bar(), track()).solid)}</span>
+                          <span style={{ fg: barColor() }}>{trackParts(bar(), track()).edge}</span>
                           {trackParts(bar(), track()).after}
                         </text>
                       )}
