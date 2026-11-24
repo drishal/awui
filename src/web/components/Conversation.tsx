@@ -1098,13 +1098,17 @@ function ProcessFold({
   const answerAt = segment ? segment.answerAt : turn.answerAt;
   const toolCount = items.filter((item) => item.kind === "tool").length;
   const stack = iconStack(toolKinds(items));
+  // One call is its own card, live or settled: a header saying "Running npm test… · Used 1 tool" over the row that
+  // says the same thing would only say it twice. Two or more calls get the header, which carries the phase and clock.
+  const single = toolCount === 1 && items.every((item) => item.kind === "tool" || item.kind === "assistant");
   const duration =
     turn.startedAt !== undefined ? formatDuration((turn.live ? now : (turn.endedAt ?? turn.startedAt)) - turn.startedAt) : null;
   const leading = place === undefined || place === "first";
   const compacted = items.some((item) => item.kind === "notice" && isCompactionNotice(item));
   const label = live ? <PhaseLabel phase={phase} /> : leading ? (duration ? `Worked for ${duration}` : "Worked") : null;
   const answerThinking = answerAt >= 0 && turn.answer?.thinking ? turn.answer : null;
-  const thought = live && !open ? latestThought(turn) : null;
+  // The pill is for a folded fold: a one-call card is open, and its own thought row is in the body.
+  const thought = live && !open && !single ? latestThought(turn) : null;
   const root = useRef<HTMLDivElement>(null);
   const wantFailed = useRef(false);
   // Goes to the first failed row once it is drawn. A body that had fully left after closing mounts its rows a
@@ -1128,11 +1132,7 @@ function ProcessFold({
     }
   }, [open]);
   const bodyId = `fold-${foldId}`;
-  // One settled call is its own card: a header saying "Used 1 tool" over that call would only say it twice.
-  // A live card keeps its header, which carries the phase and the clock while the run goes.
-  const single = !live && toolCount === 1 && items.every((item) => item.kind === "tool" || item.kind === "assistant");
   // A stretch with no tool and no header to show (a middle stretch of notices between replies)
-  // draws its rows inline: an empty pill with the rows folded inside it says nothing. A leading
   // fold keeps its card — its header says "Worked", and Find opens it by that id.
   if (!live && toolCount === 0 && !label) {
     const inlineThought = answerThinking ? <ThoughtRow id={answerThinking.id} thinking={answerThinking.thinking} streaming={answerThinking.streaming && !answerThinking.text} /> : null;
