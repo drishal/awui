@@ -204,15 +204,24 @@
     var(--hover);
 }
 
+/* A thumb you are meant to grab: 20px, with the accent as its inner ring rather than a wide border,
+   and the same soft shadow the raised faces use. It grows by a pixel while held. */
 .text-slider-input::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  margin-top: -6px;
-  border: 2px solid var(--accent);
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  border: 0;
   border-radius: 50%;
   background: var(--bg);
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+  box-shadow: inset 0 0 0 2px var(--accent), var(--shadow-soft);
+  cursor: grab;
+  transition: box-shadow var(--dur-hover) var(--ease-out);
+}
+
+.text-slider-input::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-soft);
 }
 
 .text-slider-input::-moz-range-track {
@@ -227,13 +236,20 @@
   background: var(--accent);
 }
 
+/* Firefox draws its own box, so the thumb is sized here rather than by a margin: same 20px, same
+   inner ring and soft shadow, so the two engines read alike. */
 .text-slider-input::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--accent);
+  width: 20px;
+  height: 20px;
+  border: 0;
   border-radius: 50%;
   background: var(--bg);
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+  box-shadow: inset 0 0 0 2px var(--accent), var(--shadow-soft);
+  cursor: grab;
+}
+
+.text-slider-input::-moz-range-thumb:active {
+  cursor: grabbing;
 }
 
 .text-slider-input:focus-visible {
