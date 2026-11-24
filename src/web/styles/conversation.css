@@ -1820,18 +1820,26 @@
   font-size: var(--chat-small);
 }
 
-/* A path is a row of the card: it takes the head's gutter, and hovering it says it opens. */
+/* A path is a row of the card: a 20px icon slot in the head's gutter, the file's folder quiet and its own name in
+   the text colour, and hovering it says it opens. */
 .changed-list li > .file-link,
 .changed-more {
   display: flex;
   align-items: center;
+  gap: 8px;
   width: 100%;
-  min-height: calc(24px * var(--chat-scale));
+  min-height: calc(30px * var(--chat-scale));
   padding: 0 12px;
   border: 0;
   border-radius: 0;
   background: none;
   text-align: left;
+}
+
+.changed-list li > .file-link > .icon {
+  flex: none;
+  width: 20px;
+  color: var(--muted-text);
 }
 
 .changed-list li > .file-link:hover,
@@ -1840,8 +1848,12 @@
 }
 
 .changed-list code {
-  color: var(--text-2);
-  font-size: calc(var(--chat-small) - 0.6px);
+  color: var(--text);
+  font-size: calc(13.5px * var(--chat-scale));
+}
+
+.changed-dir {
+  color: var(--muted-text);
 }
 
 /* The rest of a long list, and the way back: a quiet row of its own, in the link's colour. */

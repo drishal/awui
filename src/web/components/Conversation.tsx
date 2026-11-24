@@ -929,14 +929,15 @@ function ChangeCounts({ stat, withFiles = false }: { stat: ChangeStat; withFiles
 }
 
 /**
+/**
  * The files a turn changed, as one small card under its answer: how many and how much on its head, the paths
- * under that, and the way into the review panel beside them. A long list shows three and keeps the rest behind
+ * under that, and the way into the review panel beside them. A long list shows four and keeps the rest behind
  * one more click, so a turn that touched twelve files still reads as a card and not as a wall.
  */
 function ChangedFiles({ id, files, workspace, stat, onReview }: { id: string; files: string[]; workspace: string; stat: ChangeStat | null; onReview?: (() => void) | undefined }) {
   const rel = files.map((f) => relativePath(f, workspace));
   const [open, setOpen] = useRowOpen(id, false);
-  const shown = open ? rel : rel.slice(0, 3);
+  const shown = open ? rel : rel.slice(0, 4);
   const rest = rel.length - shown.length;
   return (
     <div className="changed-files" data-testid="changed-files">
@@ -954,13 +955,21 @@ function ChangedFiles({ id, files, workspace, stat, onReview }: { id: string; fi
           ) : null}
         </div>
         <ul className="changed-list">
-          {shown.map((f) => (
-            <li key={f}>
-              <FileLink path={f}>
-                <code>{f}</code>
-              </FileLink>
-            </li>
-          ))}
+          {shown.map((f) => {
+            // The file's own name carries the row; its folder is context, so it goes quieter.
+            const cut = f.lastIndexOf("/");
+            return (
+              <li key={f}>
+                <FileLink path={f}>
+                  <IconFile size={14} />
+                  <code>
+                    {cut > 0 ? <span className="changed-dir">{f.slice(0, cut + 1)}</span> : null}
+                    <span className="changed-base">{f.slice(cut + 1)}</span>
+                  </code>
+                </FileLink>
+              </li>
+            );
+          })}
           {rest > 0 ? (
             <li>
               <button type="button" className="changed-more" aria-expanded={false} onClick={() => setOpen(true)}>
@@ -968,7 +977,7 @@ function ChangedFiles({ id, files, workspace, stat, onReview }: { id: string; fi
               </button>
             </li>
           ) : null}
-          {open && rel.length > 3 ? (
+          {open && rel.length > 4 ? (
             <li>
               <button type="button" className="changed-more" aria-expanded onClick={() => setOpen(false)}>
                 Show fewer
