@@ -13,6 +13,7 @@ import type { ChatSnapshot, GitHubCheckView, PrStack, Tour } from "../../shared/
 import { checkFailed, checkWords, layerChecks, layerWord, mergeNotes, prNumberOf, upstreamWords } from "../../shared/github-words.js";
 import { clip } from "../format.js";
 import { useAtui, useTheme } from "./context.js";
+import { fitHints } from "../footer.js";
 
 interface Status {
   available: boolean;
@@ -57,6 +58,7 @@ const FIELD_LABEL: Record<Form["field"], string> = {
 export function GitHubView(p: { onClose: () => void }) {
   const app = useAtui();
   const t = useTheme();
+  const size = useTerminalDimensions();
   const chat = () => app.chat();
   const ws = () => app.workspace();
   const [status, setStatus] = createSignal<Status | null>(null);
@@ -422,7 +424,7 @@ export function GitHubView(p: { onClose: () => void }) {
           <text flexShrink={0} fg={t().muted} marginBottom={1}>
             {busy()
               ? `${busy()}…`
-              : `p push · n new PR · s stack · M merge stack · w ${watched() ? "unwatch" : "watch"} · t tour${failing().length > 0 ? " · x repair" : ""} · r refresh · Esc close`}
+              : fitHints(["p push", "n new PR", "s stack", "M merge stack", `w ${watched() ? "unwatch" : "watch"}`, "t tour", ...(failing().length > 0 ? ["x repair"] : []), "r refresh", "Esc close"], Math.max(20, size().width - 40))}
           </text>
         </>
       )}

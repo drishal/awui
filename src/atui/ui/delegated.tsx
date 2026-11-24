@@ -17,6 +17,7 @@ import { clip } from "../format.js";
 import { reviewRows } from "../review.js";
 import { toneDot, toneOf } from "../rail.js";
 import { useAtui, useTheme } from "./context.js";
+import { fitHints } from "../footer.js";
 
 const SIGN = { add: "+", del: "−", ctx: " ", hunk: "", gap: "" } as const;
 
@@ -400,7 +401,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
             : busy()
               ? "Working…"
               : row()
-                ? "↑↓ scroll · a apply · k keep · u undo · d remove · n note · o chat · x cancel · Esc back"
+                ? fitHints(["↑↓ scroll", "a apply", "k keep", "u undo", "d remove", "n note", "o chat", "x cancel", "Esc back"], Math.max(20, width() - 4))
                 : "")}
       </text>
       </Show>

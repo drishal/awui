@@ -29,6 +29,18 @@ export function fitFooter(segments: readonly FooterSegment[], budget: number): S
   return new Set(kept.map((s) => s.id));
 }
 
+/**
+ * A key line that fits `width`: its hints ("↑↓ move", "Enter open", …) are joined with " · ", the last one (Esc) and the
+ * first stay, and the ones between leave from the end backwards until the line fits, so a narrow pane drops whole hints
+ * and never wraps or cuts one (the footer's own rule).
+ */
+export function fitHints(parts: readonly string[], width: number): string {
+  const kept = [...parts];
+  const line = () => kept.join(" · ");
+  while (kept.length > 2 && line().length > width) kept.splice(kept.length - 2, 1);
+  return line();
+}
+
 /** What a chat has spent, for the footer: "$0.12 · cache 84%". Nothing is shown for what is unknown (no price, no cached input). */
 export function spendWords(usage: { input: number; cachedInput: number; cost: number | null } | null | undefined): string {
   if (!usage) return "";

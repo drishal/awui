@@ -16,6 +16,7 @@ import { mix } from "../fx.js";
 import { firstStop, gitRows, moveCursor, moveGroup, rowPaths, rowWords, settleCursor, stageAction, type GitRow } from "../git.js";
 import { windowStart } from "../review.js";
 import { useAtui, useTheme } from "./context.js";
+import { fitHints } from "../footer.js";
 
 export function GitView(p: { onClose: () => void }) {
   const app = useAtui();
@@ -280,7 +281,7 @@ export function GitView(p: { onClose: () => void }) {
             </Show>
           </box>
           <text flexShrink={0} fg={t().muted} marginBottom={1} wrapMode="none" truncate>
-            {busy() ? `${busy()}…` : size().width < 112 ? "↑↓ move · Enter stage/unstage · Esc close" : "↑↓ move · {/} group · Enter stage/unstage · a all · u undo · c commit · d diff · r refresh · Esc close"}
+            {busy() ? `${busy()}…` : fitHints(["↑↓ move", "Enter stage/unstage", "{/} group", "a all", "u undo", "c commit", "d diff", "r refresh", "Esc close"], Math.max(20, size().width - 40))}
           </text>
         </Show>
       </Show>

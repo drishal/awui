@@ -15,6 +15,7 @@ import { clip } from "../format.js";
 import { mix } from "../fx.js";
 import { firstStop, moveCursor, moveFile, reviewRows, windowStart, type ReviewRow } from "../review.js";
 import { useAtui, useTheme } from "./context.js";
+import { fitHints } from "../footer.js";
 
 const SIGN = { add: "+", del: "-", ctx: " ", hunk: "", gap: "" } as const;
 
@@ -146,7 +147,7 @@ export function ReviewView(p: { onClose: () => void }) {
         </text>
         {/* The keys sit right of the title, as every other sheet draws them; a line's thread keys appear once the cursor is on a thread. */}
         <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">
-          {sending() ? "Sending…" : `↑↓ line · ]/[ file · Enter comment${onLine()[0] ? " · r resolve · x delete" : ""}${open().length > 0 ? ` · S send ${open().length}` : ""} · Esc close`}
+          {sending() ? "Sending…" : fitHints(["↑↓ line", "]/[ file", "Enter comment", ...(onLine()[0] ? ["r resolve", "x delete"] : []), ...(open().length > 0 ? [`S send ${open().length}`] : []), "Esc close"], Math.max(20, size().width - 76))}
         </text>
       </box>
       <Show when={files().length > 0} fallback={<text flexGrow={1} fg={t().muted}>The agent has not edited any files in this chat.</text>}>

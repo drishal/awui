@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { fitFooter, spendWords } from "../../src/atui/footer.js";
+import { fitFooter, fitHints, spendWords } from "../../src/atui/footer.js";
+
+describe("fitHints", () => {
+  const parts = ["↑↓ move", "Enter open", "o chat", "x cancel", "Esc close"];
+  it("keeps the whole line when it fits", () => {
+    expect(fitHints(parts, 80)).toBe("↑↓ move · Enter open · o chat · x cancel · Esc close");
+  });
+  it("drops whole hints from the end, keeping the first and the Esc", () => {
+    expect(fitHints(parts, 40)).toBe("↑↓ move · Enter open · Esc close");
+    expect(fitHints(parts, 5)).toBe("↑↓ move · Esc close");
+  });
+});
 
 describe("spendWords", () => {
   it("words the price and the cache's share, and leaves out what is unknown", () => {
