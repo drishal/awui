@@ -1363,7 +1363,7 @@ export function App(p: {
         id: `branch:${b.leafId}`,
         section: b.active ? "This chat" : "Left behind",
         label: clip(`${b.prompt || "(no prompt)"}${sameAsk && b.answer ? ` → ${b.answer}` : ""}`, 80),
-        hint: b.active ? prompts(b.turns) : [sameAsk ? "another answer" : b.shared > 0 ? `splits after prompt ${b.shared} of ${b.turns}` : prompts(b.turns), b.at ? ago(new Date(b.at).toISOString()) : ""].filter(Boolean).join(" · "),
+        hint: [b.active ? prompts(b.turns) : sameAsk ? "another answer" : b.shared > 0 ? `splits after prompt ${b.shared} of ${b.turns}` : prompts(b.turns), b.at ? ago(new Date(b.at).toISOString()) : ""].filter(Boolean).join(" · "),
         current: b.active,
         // The path the chat is on has nothing to continue: the cursor starts on a row Enter can use.
         inert: b.active,
