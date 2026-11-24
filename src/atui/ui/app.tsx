@@ -1478,7 +1478,7 @@ export function App(p: {
                           <span style={{ fg: t().muted }}>{"  ◐ "}</span>
                           <span style={{ fg: t().text }}>{plan().current}</span>
                           {plan().run ? <span style={{ fg: t().muted }}>{`  ·  ${plan().run}`}</span> : null}
-                          <span style={{ fg: t().border }}>{planOpen() ? "  ▾" : "  ▸"}</span>
+                          <span style={{ fg: t().text2 }}>{planOpen() ? "  ▾" : "  ▸"}</span>
                         </text>
                       </box>
                     )}
