@@ -98,7 +98,7 @@ export function Picker(p: {
   );
   const room = () => size().width - (p.side ?? 0);
   const previewing = () => Boolean(p.preview) && room() >= PREVIEW_WIDTH;
-  const width = () => Math.max(30, Math.min(previewing() ? 128 : p.info ? 100 : 72, room() - 4));
+  const width = () => Math.max(30, Math.min(previewing() ? 128 : p.info || p.softBars ? 100 : 72, room() - 4));
   /** The list's own width: all of it, or about half beside a preview. The box's border and padding come off first. */
   const listWidth = () => (previewing() ? Math.min(64, Math.floor(width() * 0.52)) : width() - 4);
   const [shownPreview] = createResource(
@@ -116,7 +116,6 @@ export function Picker(p: {
   const headed = (list: PickerItem[], at: number) => !query().trim() && (list[at - 1]?.section !== list[at]?.section) && (at > 0 || Boolean(p.firstHeading));
   /** Lines a row takes: itself, a heading over it, and a blank line above a heading that is not the first. */
   const cost = (list: PickerItem[], at: number) => 1 + (at === 0 && p.axis ? 1 : 0) + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
-  /** A bar row's label column: the track starts here, a little over a third of the list. */
   /** The label column of a bar row: as wide as its longest label asks (and two cells over), never more than a share of the sheet, so short labels leave the track the room. */
   const barColor = () => (p.softBars ? mix(t().bg, t().accent, 0.68) : t().accent);
   const barLabel = () => {
