@@ -56,12 +56,6 @@ export const WHICH_KEY_CELL = 26;
 /** The air a which-key line keeps inside its cell, so one column never reads as part of the next. */
 export const WHICH_KEY_AIR = 2;
 /** NORMAL mode's reminder as it starts, short enough for the composer's footer (the README has them all). */
-/** The style's keys on one line, for a narrow terminal's hint. */
-export const KEYS_HELP: Record<KeybindStyle, string> = {
-  emacs: LEADER_HELP,
-  vim: "j/k gg/G {/} · SPC actions · : commands · i type",
-};
-
 /** NORMAL's reminder as it starts, short enough for the composer's footer. */
 export const VIM_HELP = "j/k scroll · gg/G top/bottom · {/} turns · SPC actions · : commands · i type";
 

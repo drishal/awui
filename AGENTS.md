@@ -515,7 +515,7 @@ value), `settings.ts` (read/write, and whether it needs a restart),
 `SettingsDialog.tsx`, `config.example.yml`, and `docs/configuration.md`.
 
 **atui features.** State and server calls in `src/atui/state.ts`; keys in
-`ui/app.tsx` (the palette, the Ctrl+X leader, `LEADER_HELP`, `KEYS_HELP`, and
+`ui/app.tsx` (the palette, the Ctrl+X leader, `LEADER_HELP`, `VIM_HELP`, and
 vim's NORMAL mode in `vim.ts` all need to agree); pure logic in a module with a
 unit test; a `tests/atui` case that drives it by keys or clicks.
 
