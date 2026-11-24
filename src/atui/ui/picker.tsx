@@ -128,14 +128,14 @@ export function Picker(p: {
   /** The label column of a bar row: as wide as its longest label asks (and two cells over), never more than a share of the sheet, so short labels leave the track the room. */
   const barColor = (tone?: "warn") => { const ink = tone === "warn" ? t().warn : t().accent; return p.softBars ? mix(t().bg, ink, 0.68) : ink; };
   const barLabel = (section?: string) => {
-    // Per section: a long label in one (the most used chats) must not push every other section's bars away from what they measure.
-    const widest = Math.max(0, ...shown().filter((i) => i.bar && i.section === section).map((i) => i.label.length + 4));
+    // One column for the whole sheet, capped at a share of it: a bar means the same length in every section (a long label is clipped at the cap, not allowed to push the rest).
+    const widest = Math.max(0, ...shown().filter((i) => i.bar).map((i) => i.label.length + 4));
     const cap = Math.floor(listWidth() * (listWidth() > 70 ? 0.48 : 0.37));
     return Math.max(18, Math.min(cap, widest));
   };
   /** The track takes what the label and the widest figure leave, so a wide sheet has a long bar and no dead gap: 12 cells at least, 64 at most. */
   const track = (section?: string) => {
-    const figures = Math.max(0, ...shown().filter((i) => i.bar && i.section === section).map((i) => (i.hint ?? "").length));
+    const figures = Math.max(0, ...shown().filter((i) => i.bar).map((i) => (i.hint ?? "").length));
     return Math.max(12, Math.min(64, listWidth() - barLabel(section) - figures - 3));
   };
   const lines = () => height() - 5;
