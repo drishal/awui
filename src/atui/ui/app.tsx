@@ -696,6 +696,11 @@ export function App(p: {
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     if (c && landed()) add({ id: "find-clear", label: "Clear find marks", hint: "M-n / M-p stop stepping", keywords: "find search unmark gutter", run: () => { setLanded(null); flash("Find marks cleared"); } });
     add({ id: "edit-draft", label: "Edit the draft in $EDITOR", hint: "M-e", keywords: "external editor vim nano long prompt compose", run: () => void editDraft() });
+    {
+      // Tern's "Show failed calls": the latest call that failed, its work folds opened and its turn in view.
+      const failed = [...(c?.items ?? [])].reverse().find((item) => item.kind === "tool" && item.status === "error");
+      if (failed) add({ id: "failed-call", label: "Show the last failed call", keywords: "error red broke test failure", run: () => revealTool(failed.id) });
+    }
     if ((app.chat()?.checkpoints.length ?? 0) > 0) add({ id: "timeline", label: "File timeline…", keywords: "checkpoints undo restore files before each prompt history changes", run: () => setDialog("timeline") });
     if (app.workspace()) add({ id: "worktrees", label: "Worktrees…", hint: "make one, or open a chat in one", keywords: "git isolated checkout branch tree new worktree", run: () => setDialog("worktrees") });
     if (c || app.workspace()) add({ id: "open-file", label: "Open a file…", keywords: "view read mention attach project files path", run: () => setDialog("files") });

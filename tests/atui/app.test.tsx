@@ -487,6 +487,22 @@ describe("atui", () => {
     expect(await ui.until("Accept edits ▾")).not.toContain("Ask first ▾");
   }, 30_000);
 
+  it("jumps to the last failed call from the palette", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("tool toolfail");
+    ui.keys.pressEnter();
+    await ui.until("Echo: tool toolfail");
+    await idle(ui);
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands, sessions, thinking…");
+    await ui.type("failed call");
+    await ui.until("Show the last failed call");
+    ui.keys.pressEnter();
+    // The work opens to the call that failed: its row is on screen.
+    await ui.until("npm run e2e");
+    expect(await ui.frame()).not.toContain("Search commands, sessions, thinking…");
+  }, 30_000);
+
   it("cycles the permission mode with Shift+Tab from the composer", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("hello cycling");
