@@ -20,7 +20,7 @@ import { createEffect, createMemo, createResource, createSignal, For, on, onClea
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { AGENT_STATUS_WORDS, agentStatusText } from "../../web/agent-status.js";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
-import type { ChatSearch, CheckpointComparison, RaceCleanupResult, RaceFileDiff, RaceSummary, RaceWinnerResult, CheckpointPoint, FileView, RunResult, WorkspaceInfo, WorktreeInfo } from "../../shared/protocol.js";
+import type { BranchInfo, ChatSearch, CheckpointComparison, RaceCleanupResult, RaceFileDiff, RaceSummary, RaceWinnerResult, CheckpointPoint, FileView, RunResult, WorkspaceInfo, WorktreeInfo } from "../../shared/protocol.js";
 import { runnable } from "../../web/code-blocks.js";
 import { codeBlocks, quoteText, runForMessage, runStatus } from "../assist.js";
 import { RunOutput } from "./runout.js";
@@ -68,7 +68,7 @@ import { buildTurns, turnOfTool } from "../../web/turns.js";
 import { atLabel, turnWaterfall } from "../../web/waterfall.js";
 import { cacheShare, dollars, shortTokens, tokensOf } from "../../web/usage.js";
 
-type Dialog = "palette" | "timeline" | "files" | "worktrees" | "compare" | "race" | "presets" | "preset-save" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
+type Dialog = "palette" | "timeline" | "files" | "worktrees" | "compare" | "race" | "branches" | "presets" | "preset-save" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -76,7 +76,7 @@ type Dialog = "palette" | "timeline" | "files" | "worktrees" | "compare" | "race
  */
 const PALETTE_GROUPS: Record<string, string> = {
   new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", find: "Chats", queue: "Chats", timing: "Chats", "copy-answer": "Chats", "copy-turn": "Chats", sessions: "Chats",
-  retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", "put-back": "Chats", quote: "Chats",
+  retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", branches: "Chats", "put-back": "Chats", quote: "Chats",
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
   model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent", presets: "Agent",
   sidebar: "View", panel: "View", work: "View", thoughts: "View", keybinds: "View", glass: "View", icons: "View",
@@ -674,6 +674,7 @@ export function App(p: {
       add({ id: "retry", label: "Retry the last message", disabled: branch ? undefined : why, run: () => void app.rerun(through, last, last.text) });
       add({ id: "edit", label: "Edit the last message", disabled: branch ? undefined : why, run: () => app.setEditing({ through, item: last }) });
       if (c.checkpoints.includes(through)) add({ id: "undo", label: "Undo file changes from the last message…", disabled: idle ? undefined : "Wait until the agent is idle", run: () => app.setUndoTurn(through) });
+      if (c.capabilities.supportsBranches && c.sessionId) add({ id: "branches", label: "Branches: continue a path an edit left behind…", keywords: "tree branch fork edit retry rewind history paths", run: () => setDialog("branches") });
       if (c.capabilities.supportsFork) add({ id: "fork", label: "Fork this chat into a new tab", searchOnly: true, disabled: idle ? undefined : "Wait until the agent is idle", run: () => void app.fork(through) });
     }
     if (c) {
@@ -1342,6 +1343,34 @@ export function App(p: {
     return rows;
   };
 
+  /** The session's tree (Pi, omp): the path the chat is on, then the paths an edit or a retry left behind; Enter continues one in a new tab. Keyed by chat, so a second chat does not wear the first one's rows while it loads. */
+  const [branchRead] = createResource(
+    () => (dialog() === "branches" ? app.chat()?.chatId : undefined),
+    (id) =>
+      app.server
+        .call<{ branches: BranchInfo[] }>(`/api/chats/${id}/branches`)
+        .then((r) => ({ id, branches: r.branches }))
+        .catch(() => ({ id, branches: [] as BranchInfo[] })),
+  );
+  const branchItems = (): PickerItem[] => {
+    const read = branchRead();
+    if (!read || read.id !== app.chat()?.chatId) return [];
+    const prompts = (n: number) => `${n} ${n === 1 ? "prompt" : "prompts"}`;
+    return read.branches.map((b) => ({
+      id: `branch:${b.leafId}`,
+      section: b.active ? "This chat" : "Left behind",
+      label: clip(b.prompt || "(no prompt)", 80),
+      hint: b.active ? prompts(b.turns) : b.shared > 0 ? `${prompts(b.turns)} · ${b.shared} shared` : prompts(b.turns),
+      current: b.active,
+      run: () => {
+        setDialog(null);
+        if (b.active) return flash("This chat is already on that branch");
+        void app.openBranch(b.leafId);
+        flash("Continuing that branch in a new tab");
+      },
+    }));
+  };
+
   /** The file timeline (the web's Timeline dialog): each prompt's checkpoint, newest first; Enter opens the undo that puts the files back as they were then, and the preview says what changed since. */
   const [points] = createResource(
     () => (dialog() === "timeline" ? app.chat()?.chatId : undefined),
@@ -1660,6 +1689,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "usage"}>
                   <Picker softBars title="Usage across chats" tabHint={`Tab ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "branches"}>
+                  <Picker title="Branches" placeholder="Search the session's paths…" empty={branchRead.loading ? "Reading the session…" : "No paths to show yet"} items={branchItems()} firstHeading noun={["path", "paths"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "presets"}>
                   <Picker title="Presets" tabHint={app.forgotten() ? "x forget · u undo" : "x forget"} placeholder="Search presets…" empty="No presets yet" items={presetItems()} firstHeading onRowKey={(key, item) => { if (key === "u" && app.forgotten()) { const back = app.restorePreset(); if (back) flash(`“${back.name}” is back`); return true; } const name = /^preset:(.+)$/.exec(item?.id ?? "")?.[1]; if (key !== "x" || !name || name === "save") return false; app.dropPreset(name); flash("Forgotten · u puts it back"); return true; }} onClose={() => setDialog(null)} side={room()} />

@@ -1047,6 +1047,18 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     }
   };
 
+  /** The path to one leaf of the session's tree, continued in a session of its own that opens in a new tab (the chat it came from is not touched). */
+  const openBranch = async (leafId: string) => {
+    const c = chat();
+    if (!c) return;
+    try {
+      show(await server.call<ChatSnapshot>(`/api/chats/${c.chatId}/branch`, { body: { leafId } }), { newTab: true });
+      void refreshSessions();
+    } catch (error) {
+      fail(error);
+    }
+  };
+
   /** What putting the files back as they were before prompt `turn` would do. */
   const checkpointPreview = async (turn: number): Promise<CheckpointPreview | null> => {
     const c = chat();
@@ -1201,6 +1213,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     startPreset,
     savePreset,
     dropPreset,
+    openBranch,
     restorePreset,
     forgotten,
     handoff,

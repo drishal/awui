@@ -1931,6 +1931,39 @@ describe("atui's keybind styles", () => {
     await wait(200);
     expect(ui.app.presets().map((x) => x.name)).toEqual(["Explore", "Other"]);
   }, 40_000);
+  it("lists the paths an edit left behind and continues one in a new tab", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("first branch question");
+    ui.keys.pressEnter();
+    await ui.until("Echo: first branch question");
+    await idle(ui);
+    await ui.type("second branch question");
+    ui.keys.pressEnter();
+    await ui.until("Echo: second branch question");
+    await idle(ui);
+    const original = ui.app.chat()?.chatId;
+    // Replacing the second prompt leaves the first path behind.
+    const last = ui.app.chat()?.items.filter((i) => i.kind === "user").at(-1);
+    if (last?.kind !== "user") throw new Error("no prompt");
+    await ui.app.rerun(2, last, "a replaced second question");
+    await ui.until("Echo: a replaced second question");
+    await idle(ui);
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("branches");
+    await ui.until("Branches: continue a path");
+    ui.keys.pressEnter();
+    const sheet = await ui.until("Left behind");
+    expect(sheet).toContain("This chat");
+    expect(sheet).toContain("a replaced second question");
+    expect(sheet).toMatch(/second branch question\s+2 prompts · 1 shared/);
+    // The old path is the second row: Enter continues it in a tab of its own.
+    ui.keys.pressArrow("down");
+    ui.keys.pressEnter();
+    await ui.until(() => ui?.app.chat()?.chatId !== original);
+    const prompts = ui.app.chat()?.items.filter((i) => i.kind === "user").map((i) => (i.kind === "user" ? i.text : ""));
+    expect(prompts).toEqual(["first branch question", "second branch question"]);
+  }, 40_000);
   it("starts a chat from a preset in that preset's permission mode", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     ui.app.startPreset({ name: "Careful", harnessId: "fake", permissionMode: "acceptEdits" });
