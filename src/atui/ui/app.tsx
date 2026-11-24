@@ -55,7 +55,8 @@ import { TerminalView } from "./terminal.js";
 import { GitHubView } from "./github.js";
 import { collectChanges } from "../../web/review.js";
 import { Toasts } from "./toasts.js";
-import { KIND_MARK, Transcript } from "./transcript.js";
+import { callMark, Transcript } from "./transcript.js";
+import type { ToolKindChip } from "../../web/tool-kinds.js";
 import { WhichKey } from "./whichkey.js";
 import { turnOffset, vimKey, pushJump, type Jump } from "../vim.js";
 import { buildTurns, turnOfTool } from "../../web/turns.js";
@@ -1049,9 +1050,9 @@ export function App(p: {
     return `${"start".padStart(6)}  ${"took".padStart(6)}${anySlow ? " ".repeat(9) : ""}`;
   };
 
-  /** The mark before a Timing row: the transcript's own glyph for the call's kind (± › ◎ ▤ ⊕ ◈), ◇ for thinking, ● for the answer, ↳ for a subagent run. */
-  const timingMark = (row: { kind: string; category?: string }) =>
-    row.kind === "thinking" ? "◇" : row.kind === "reply" ? "●" : row.kind === "subagent" ? "↳" : (KIND_MARK[(row.category ?? "other") as keyof typeof KIND_MARK] ?? "●");
+  /** The mark before a Timing row: the transcript's own mark for the call (± › ◎ ▤ ⊕ ◈, ≡ a plan, ◇ an MCP server, ✗ a failure), ▾ for thinking as its row has, ● for the answer, ↳ for a subagent run. */
+  const timingMark = (row: { kind: string; chip?: ToolKindChip; failed?: boolean }) =>
+    row.kind === "thinking" ? "▾" : row.kind === "reply" ? "●" : row.kind === "subagent" ? "↳" : callMark(row.failed === true, row.chip, row.chip?.category ?? "other");
 
   /** The Timing picker's rows: each model step, call and subagent run of one turn, where it started and how long it took (the web's waterfall, as a list). */
   const timingItems = (): PickerItem[] => {

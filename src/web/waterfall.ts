@@ -5,6 +5,7 @@
 // has not ended yet ends at `now`, a subagent run is placed at its call's start for as long as
 // the run reports (its own start is not known), and tokens and cost appear only on the runs
 // whose harness reported them (no harness reports them per model step or tool call).
+import { toolKind, type ToolKindChip } from "./tool-kinds.js";
 import type { AssistantItem, ChatItem } from "../shared/protocol.js";
 import { dollars, shortTokens } from "./usage.js";
 import { toolSentence } from "../shared/tool-row.js";
@@ -16,8 +17,9 @@ export interface WaterfallRow {
   id: string;
   label: string;
   kind: WaterfallKind;
-  /** A tool row's own kind (read, edit, command …), so a client can mark it as the transcript marks the call. */
-  category?: string;
+  /** A tool row's own kind chip (its category, an MCP server, a plan) and whether it failed, so a client can mark it as the transcript marks the call. */
+  chip?: ToolKindChip;
+  failed?: boolean;
   /** 0 for a step or call, 1 for a subagent run under its call. */
   depth: number;
   /** Milliseconds from the start of the axis (the prompt). */
@@ -115,7 +117,7 @@ export function turnWaterfall(turn: Turn, workspace: string, now: number): Water
       if (item.at === undefined) continue;
       const running = item.status === "running" && item.endedAt === undefined;
       const endAt = running ? now : Math.max(item.at, item.endedAt ?? item.at);
-      raw.push({ id: item.id, label: toolSentence(item, workspace).text, kind: item.category === "agent" ? "agent" : "tool", category: item.category, depth: 0, at: item.at, endAt, running, extra: "" });
+      raw.push({ id: item.id, label: toolSentence(item, workspace).text, kind: item.category === "agent" ? "agent" : "tool", chip: toolKind(item), failed: item.status === "error", depth: 0, at: item.at, endAt, running, extra: "" });
       for (const run of item.subagents?.runs ?? []) {
         const live = run.status === "running" || run.status === "pending";
         const ms = run.durationMs ?? (live ? Math.max(0, now - item.at) : undefined);

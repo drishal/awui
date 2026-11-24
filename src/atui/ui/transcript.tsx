@@ -59,11 +59,16 @@ const pulseOn = () => Math.floor(tick() / PULSE_TICKS) % 2 === 0;
 export const KIND_MARK: Record<ToolItem["category"], string> = { read: "▤", edit: "±", write: "±", command: "›", search: "◎", web: "⊕", agent: "◈", other: "●" };
 
 /** The row's bullet, neat-render's: the category's colour when it settles, red on failure, filled and hollow in turn while it runs; a settled call wears its kind's glyph. */
+/** A settled call's glyph: ✗ a failure, ≡ a plan, ◇ an MCP server's call, else its kind's mark; the Timing rows wear the same. */
+export function callMark(failed: boolean, chip: ToolKindChip | undefined, category: ToolItem["category"]): string {
+  return failed ? "✗" : chip?.plan ? "≡" : chip?.server ? "◇" : KIND_MARK[chip?.category ?? category];
+}
+
 function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean; category: ToolItem["category"]; chip?: ToolKindChip }) {
   const t = useTheme();
   const on = () => p.status !== "running" || pulseOn();
   const color = () => (p.status === "error" || p.failedOutput ? t().danger : p.status === "running" ? (on() ? t().warn : t().muted) : categoryTone(t(), p.category));
-  return <span style={{ fg: color() }}>{p.status === "running" ? (on() ? "● " : "○ ") : `${p.status === "error" || p.failedOutput ? "✗" : p.chip?.plan ? "≡" : p.chip?.server ? "◇" : KIND_MARK[p.chip?.category ?? p.category]} `}</span>;
+  return <span style={{ fg: color() }}>{p.status === "running" ? (on() ? "● " : "○ ") : `${callMark(p.status === "error" || Boolean(p.failedOutput), p.chip, p.category)} `}</span>;
 }
 
 /**

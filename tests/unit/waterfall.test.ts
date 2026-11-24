@@ -13,6 +13,17 @@ const tool = (id: string, name: string, at: number, endedAt: number | undefined,
 const answer = (at: number, endedAt: number): ChatItem => ({ kind: "assistant", id: "a", text: "Done.", thinking: "", streaming: false, at, endedAt });
 const turnOf = (items: ChatItem[], status: "idle" | "running" = "idle") => buildTurns(items, status)[0]!;
 
+describe("a row's kind chip", () => {
+  it("carries the call's chip and failure, so a client marks it as the transcript marks the call", () => {
+    const plan = tool("p", "ExitPlanMode", T0 + 100, T0 + 200, { category: "other", plan: "x" });
+    const bad = tool("b", "bash", T0 + 300, T0 + 400, { status: "error" });
+    const rows = turnWaterfall(turnOf([user(T0), plan, bad, answer(T0 + 500, T0 + 600)]), WS, T0 + 700).rows;
+    expect(rows.find((r) => r.id === "p")?.chip?.plan).toBe(true);
+    expect(rows.find((r) => r.id === "b")?.failed).toBe(true);
+    expect(rows.find((r) => r.id === "b")?.chip?.category).toBe("command");
+  });
+});
+
 describe("niceAxis", () => {
   it("picks 1, 2 or 5 times a power of ten", () => {
     expect(niceStep(38_200)).toBe(10_000);
