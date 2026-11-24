@@ -1230,7 +1230,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
         </scrollbox>
         <Show when={pinned()}>
           {(prompt) => (
-            <box position="absolute" top={0} left={0} width="100%" flexDirection="row" justifyContent="center" backgroundColor={app.glass() ? undefined : t().bg} zIndex={5}>
+            <box position="absolute" top={0} left={0} width="100%" flexDirection="row" justifyContent="center" backgroundColor={app.glass() ? undefined : t().surface} zIndex={5}>
               <box width="100%" maxWidth={p.column()} paddingLeft={2} paddingRight={2} flexDirection="row">
                 <text selectable={false} fg={t().muted} wrapMode="none" truncate>
                   <span style={{ fg: t().muted }}>{"↑ "}</span>
