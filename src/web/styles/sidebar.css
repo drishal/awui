@@ -27,11 +27,25 @@
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-weight: 600;
   font-size: 14.5px;
   letter-spacing: 0.01em;
 }
 
+/* The start screen's glyph, at the size of a wordmark's dot: it is the same mark the hero draws,
+   so the app has one face rather than a word and a picture. */
+.brand-mark {
+  display: flex;
+  flex: none;
+  color: var(--accent);
+}
+
+.brand-mark svg {
+  display: block;
+}
 .new-chat {
   display: flex;
   align-items: center;
@@ -496,11 +510,16 @@
   color: var(--accent);
 }
 
+/* A project head is a label over its rows, not a row of its own: small, spaced capitals, so the
+   sessions below it read as the list's content. The chevron, count and branch stay as they were. */
 .project-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /* A repository's projects sit together: each says its branch. */
@@ -663,10 +682,10 @@
 .session {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   min-height: var(--row-h);
-  padding: 0 10px;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -677,9 +696,11 @@
   background: var(--hover);
 }
 
+/* The open session is a wash plus one hairline of its harness colour: a 1px ring says "this one"
+   without the 2px bar that used to cut the row's left gutter. */
 .session.is-active {
   background: color-mix(in oklab, var(--harness, var(--accent)) var(--tint), var(--surface-2));
-  box-shadow: inset 2px 0 0 var(--harness, var(--accent));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--harness, var(--accent)) 40%, transparent);
 }
 
 .session-title {
@@ -688,7 +709,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 
 .session-meta {

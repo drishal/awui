@@ -47,6 +47,24 @@ function relativeTime(iso: string | null): string {
   return iso ? shortAgo(new Date(iso).getTime()) : "";
 }
 
+/**
+ * The wordmark's mark: the same terminal bubble the start screen draws, small enough to sit beside
+ * "awui" in the sidebar's head. The caret and the underscore are the accent's text colour so they
+ * stay readable on the filled bubble in either scheme.
+ */
+function BrandMark() {
+  return (
+    <span className="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 64 64" width="18" height="18" fill="none">
+        <rect x="6" y="8" width="52" height="38" rx="11" fill="currentColor" />
+        <path d="M20 46v10l11-10z" fill="currentColor" />
+        <path d="M25 19l8 8-8 8" stroke="var(--accent-fg)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M38 35h7" stroke="var(--accent-fg)" strokeWidth="4.5" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
+
 
 export type MarkChange = { pinned?: boolean; archived?: boolean; settled?: boolean; snoozedUntil?: number | null; unread?: boolean };
 
@@ -419,7 +437,7 @@ function SessionRow({
           if (e.key === "ArrowUp" ? move.up : move.down) move.by(e.key === "ArrowUp" ? -1 : 1);
         }}
         aria-current={active ? "true" : undefined}
-        title={project ? `${s.title} · ${project}` : undefined}
+        title={project ? `${s.title} · ${project}` : s.title}
       >
         {working ? (
           <WorkingRing harnessId={s.harnessId} colored />
@@ -1164,7 +1182,7 @@ export function Sidebar(props: {
         }}
       >
         <div className="sidebar-head">
-          <span className="brand">awui</span>
+          <span className="brand"><BrandMark />awui</span>
           {props.themeMenu}
           <button type="button" className="icon-btn sidebar-settings" aria-label="Settings" title="Settings" onClick={props.onSettings}>
             <IconSettings size={16} />
