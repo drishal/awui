@@ -857,7 +857,7 @@ function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { cou
   const t = useTheme();
   const app = useAtui();
   const live = () => p.turn.live && (!p.part || p.part.place === "last");
-  // A turn parked on a question is not working: the line says so, in the warn colour, with no spinner.
+  // A turn parked on a question is not working: the line says so, a notch brighter than a settled fold so it does not read as finished, with no spinner.
   const waiting = () => live() && (app.chat()?.pending.length ?? 0) > 0;
   const label = () => {
     void tick();
@@ -869,7 +869,7 @@ function Fold(p: { turn: Turn; open: boolean; onToggle: () => void; part?: { cou
   return (
     <box flexDirection="column" marginTop={1}>
       <box flexDirection="row" onMouseDown={p.onToggle}>
-        <text selectable={false} fg={p.fade === undefined ? t().muted : mix(t().bg, t().muted, p.fade)}>
+        <text selectable={false} fg={p.fade !== undefined ? mix(t().bg, t().muted, p.fade) : waiting() ? t().text2 : t().muted}>
           <Show when={live()} fallback={`${p.open ? "▾ " : "▸ "}${label()}`}>
             <Show when={!waiting()} fallback={`▸ ${label()}`}>
               <Spinner />
