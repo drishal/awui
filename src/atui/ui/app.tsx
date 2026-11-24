@@ -652,16 +652,16 @@ export function App(p: {
         run: () => setReviewing(true),
       });
     }
-    add({ id: "board", label: "Agents: every session, by column", hint: leader("k", keybinds()), keywords: "dashboard kanban needs working done", run: () => runLeader("k") });
+    add({ id: "board", label: "Agents board", hint: leader("k", keybinds()), keywords: "every session by column dashboard kanban needs working done", run: () => runLeader("k") });
     if (c) {
       const workers = c.delegated ?? [];
       const git = app.git();
-      add({ id: "delegated", label: "Delegated work: review a worker…", hint: leader("j", keybinds()), disabled: workers.length > 0 ? undefined : "This chat has delegated nothing", run: () => runLeader("j") });
-      add({ id: "active-work", label: "Active work: workers, jobs, questions, context", hint: leader("p", keybinds()), run: () => runLeader("p") });
-      add({ id: "git", label: "Git: stage, commit, and the diffs", hint: leader("u", keybinds()), ...(git ? { keywords: git.branch ?? "detached" } : {}), run: () => setGitting(true) });
+      add({ id: "delegated", label: "Delegated work…", hint: leader("j", keybinds()), keywords: "review a worker", disabled: workers.length > 0 ? undefined : "This chat has delegated nothing", run: () => runLeader("j") });
+      add({ id: "active-work", label: "Active work", hint: leader("p", keybinds()), keywords: "workers jobs questions context", run: () => runLeader("p") });
+      add({ id: "git", label: "Git", hint: leader("u", keybinds()), keywords: `stage commit diffs ${git?.branch ?? "detached"}`, run: () => setGitting(true) });
     }
     // The PR screen reads the project alone, so it is offered with no chat too.
-    add({ id: "github", label: "GitHub: the pull request, its checks, and the stack", run: () => setHubbing(true) });
+    add({ id: "github", label: "GitHub", hint: "pull request, checks, stack", run: () => setHubbing(true) });
     if (c && runnables().length > 0) add({ id: "run", label: "Run a command from the answer…", hint: leader("x", keybinds()), run: () => setDialog("run") });
     add({ id: "quote", label: "Quote the selection into the message", hint: "M-q", searchOnly: true, run: quoteSelection });
     if (app.putBackable()) add({ id: "put-back", label: "Put the undone files back", hint: leader("z", keybinds()), run: () => void app.putBack() });
@@ -683,10 +683,10 @@ export function App(p: {
     if (c && landed()) add({ id: "find-clear", label: "Clear find marks", hint: "M-n / M-p stop stepping", keywords: "find search unmark gutter", run: () => { setLanded(null); flash("Find marks cleared"); } });
     add({ id: "edit-draft", label: "Edit the draft in $EDITOR", hint: "M-e", keywords: "external editor vim nano long prompt compose", run: () => void editDraft() });
     if ((app.chat()?.checkpoints.length ?? 0) > 0) add({ id: "timeline", label: "File timeline…", keywords: "checkpoints undo restore files before each prompt history changes", run: () => setDialog("timeline") });
-    if (app.workspace()) add({ id: "worktrees", label: "Worktrees: make one, or open a chat in one…", keywords: "git isolated checkout branch tree new worktree", run: () => setDialog("worktrees") });
+    if (app.workspace()) add({ id: "worktrees", label: "Worktrees…", hint: "make one, or open a chat in one", keywords: "git isolated checkout branch tree new worktree", run: () => setDialog("worktrees") });
     if (c || app.workspace()) add({ id: "open-file", label: "Open a file…", keywords: "view read mention attach project files path", run: () => setDialog("files") });
     add({ id: "search-chats", label: "Search every chat…", keywords: "find text sessions history all projects harnesses grep", run: () => setDialog("chats") });
-    add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
+    add({ id: "history", label: "History…", hint: keys.history, keywords: "every session by project", run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
     add({ id: "sidebar", label: sidebar() ? "Fold the side panel" : "Unfold the side panel", hint: leader("b", keybinds()), run: () => runLeader("b") });
     add({ id: "panel", label: sidebar() && sideTab() === "info" ? "Show sessions" : "Show info: context, usage, git, limits", hint: leader("i", keybinds()), run: () => runLeader("i") });

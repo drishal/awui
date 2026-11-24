@@ -968,7 +968,7 @@ describe("atui", () => {
     ui.keys.pressKey("k", { ctrl: true });
     await ui.until("Search commands, sessions, thinking…");
     await ui.type("worktrees");
-    await ui.until("Worktrees: make one");
+    await ui.until("Worktrees…");
     ui.keys.pressEnter();
     await ui.type("tryout");
     await ui.until("Create worktree “tryout” from HEAD");
