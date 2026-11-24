@@ -228,7 +228,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           {note() ?? fitHints(["↑↓ card", "Enter open", "←→ column", "Esc close"], width() - 15 - filterLine().length)}
         </text>
       </box>
-      <box flexDirection="row" flexShrink={0} overflow="hidden" marginTop={1}>
+      <box flexDirection="row" flexGrow={1} overflow="hidden" marginTop={1} border={["bottom"]} borderColor={t().border}>
         <For each={BOARD_COLUMNS}>
           {(id) => {
             const columnCards = () => cards()[id];
@@ -301,7 +301,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           }}
         </For>
       </box>
-      <box flexShrink={0} marginTop={1} height={DETAIL_ROWS} flexDirection="column" border={["top"]} borderColor={t().border} overflow="hidden">
+      <box flexShrink={0} marginTop={1} height={DETAIL_ROWS} flexDirection="column" overflow="hidden">
         <Show when={here()} fallback={<text fg={t().muted}>No card under the cursor</text>}>
           {(card) => (
             <>
