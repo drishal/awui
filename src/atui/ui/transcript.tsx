@@ -1179,7 +1179,7 @@ const FIND_MARK = "\uf002";
 const sameGeometry = (a: Geometry, b: Geometry) => a.content === b.content && a.top === b.top && a.height === b.height && a.tops.length === b.tops.length && a.tops.every((v, i) => v === b.tops[i]);
 
 /** The gutter: a tick per turn in its tone, the visible stretch as a brighter track; a click jumps there. */
-function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number) => void }) {
+function Minimap(p: { geometry: Geometry; tones: TurnTone[]; inset: number; onJump: (to: number) => void }) {
   const t = useTheme();
   const cells = createMemo(() =>
     minimapCells(
@@ -1187,14 +1187,14 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
       p.geometry.content,
       p.geometry.top,
       p.geometry.height,
-      p.geometry.height,
+      Math.max(1, p.geometry.height - p.inset),
     ),
   );
   const toneColor = (tone: TurnTone) => ({ live: t().accent, failed: t().danger, edited: t().ok, rendered: t().thinking, plain: t().text2, found: t().info })[tone];
   return (
     // Overlaid at the transcript's right edge rather than taking a layout column: the rows
     // budget on the chat column alone, so a scrolled chat's last facts column is never clipped.
-    <box flexDirection="column" width={1} position="absolute" top={0} bottom={0} right={0}>
+    <box flexDirection="column" width={1} position="absolute" top={p.inset} bottom={0} right={0}>
       <Index each={cells()}>
         {(cell, row) => (
           <text
@@ -1297,7 +1297,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
         </Show>
       </box>
       <Show when={scrollable()}>
-        <Minimap geometry={geometry()} tones={tones()} onJump={(to) => glideTo(scroller, to)} />
+        <Minimap geometry={geometry()} tones={tones()} inset={pinned() ? 1 : 0} onJump={(to) => glideTo(scroller, to)} />
       </Show>
     </box>
   );
