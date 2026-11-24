@@ -17,13 +17,13 @@ export function findOffsets(haystack: string, needle: string): number[] {
 }
 
 /** The text a turn's fold holds: what is hidden while it is closed. */
-function processText(turn: Turn): string {
+function processText(turn: Turn, workspace = ""): string {
   const parts: string[] = [];
   for (const item of [...turn.process, ...turn.workAfter]) {
     if (item.kind === "assistant") parts.push(item.text, item.thinking);
     else if (item.kind === "tool") {
       // What the row says: its sentence, the facts beside it, and a failure's line. Not the tool's raw name or summary: they are not drawn, so a match there would be counted but never seen ("edit" and "Edited" are one call, not two).
-      const sentence = toolSentence(item, "");
+      const sentence = toolSentence(item, workspace);
       parts.push(sentence.text, sentence.facts.join(" "), sentence.error ?? "");
     }
     else if (item.kind === "notice") parts.push(item.text);
@@ -57,17 +57,16 @@ export function findSnippet(text: string, needle: string, radius = 36): string {
 
 /**
  * Every turn that mentions `query`, in transcript order, with how many times, a line around the first match, and whether
- * it sits in the work (atui's find is a list of these, where the web's marks the page itself). `strip` is text taken out of
- * every line first, the project's own folder.
+ * it sits in the work (atui's find is a list of these, where the web's marks the page itself). `workspace` is the project's own folder: calls word their paths
+ * relative to it.
  */
-export function findTurns(turns: readonly Turn[], query: string, radius = 36, strip = ""): TurnMatch[] {
+export function findTurns(turns: readonly Turn[], query: string, radius = 36, workspace = ""): TurnMatch[] {
   if (!query.trim()) return [];
   const out: TurnMatch[] = [];
   turns.forEach((turn, index) => {
-    // `strip` (a project's own root) leaves the text before it is matched and cut, so a snippet never starts mid-path.
-    const plain = (text: string) => (strip ? text.split(strip).join("") : text);
-    const visible = plain([turn.prompt?.text ?? "", turn.answer?.text ?? ""].join("\n"));
-    const work = plain(processText(turn));
+    const visible = [turn.prompt?.text ?? "", turn.answer?.text ?? ""].join("\n");
+    // The project's own folder is left out of a call's paths before the text is matched and cut, so a snippet never starts mid-path.
+    const work = processText(turn, workspace);
     const inVisible = findOffsets(visible, query).length;
     const inWork = findOffsets(work, query).length;
     if (inVisible + inWork === 0) return;

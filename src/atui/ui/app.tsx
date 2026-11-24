@@ -787,7 +787,7 @@ export function App(p: {
     const turns = buildTurns(c.items, c.status, c.runStartedAt);
     // A row is one line: a short radius keeps the match inside what the picker draws, and the project's own path is dropped as the transcript drops it.
     const root = `${c.workspace.path}/`;
-    return findTurns(turns, query, 30, root).map((m) => ({
+    return findTurns(turns, query, 30, c.workspace.path).map((m) => ({
       id: `find:${m.turnId}`,
       section: "Turns",
       // The match is what a find row is for, so it takes the whole label; the hint names the turn.

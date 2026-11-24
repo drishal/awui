@@ -41,7 +41,7 @@ describe("find in chat", () => {
     expect(findTurns(buildTurns(items, "idle"), "  ")).toEqual([]);
     // The project's own folder leaves the text before it is cut, so a snippet never starts in the middle of a path.
     const under: ChatItem[] = [user("p1", "go"), { kind: "tool", id: "t9", name: "edit", args: "", status: "done", output: "", truncated: false, category: "edit", summary: "/home/me/proj/src/needle.ts", paths: ["/home/me/proj/src/needle.ts"] }, reply("a9", "done")];
-    expect(findTurns(buildTurns(under, "idle"), "needle", 30, "/home/me/proj/")[0]?.snippet).not.toContain("/home/me");
+    expect(findTurns(buildTurns(under, "idle"), "needle", 30, "/home/me/proj")[0]?.snippet).not.toContain("/home/me");
     expect(findSnippet("a".repeat(100) + "needle" + "b".repeat(100), "needle", 5)).toBe("…aaaaaneedlebbbbb…");
   });
 });
