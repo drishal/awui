@@ -22,9 +22,9 @@ function processText(turn: Turn): string {
   for (const item of [...turn.process, ...turn.workAfter]) {
     if (item.kind === "assistant") parts.push(item.text, item.thinking);
     else if (item.kind === "tool") {
-      // What the row says: its sentence, the facts beside it, and a failure's line.
+      // What the row says: its sentence, the facts beside it, and a failure's line. Not the tool's raw name or summary: they are not drawn, so a match there would be counted but never seen ("edit" and "Edited" are one call, not two).
       const sentence = toolSentence(item, "");
-      parts.push(item.name, item.summary, sentence.text, sentence.facts.join(" "), sentence.error ?? "");
+      parts.push(sentence.text, sentence.facts.join(" "), sentence.error ?? "");
     }
     else if (item.kind === "notice") parts.push(item.text);
   }

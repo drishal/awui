@@ -35,7 +35,8 @@ describe("find in chat", () => {
       reply("a3", "nothing"),
     ];
     const found = findTurns(buildTurns(items, "idle"), "NEEDLE");
-    expect(found.map((m) => [m.index, m.count, m.inWork])).toEqual([[0, 2, true], [1, 3, false]]);
+    expect(found.map((m) => [m.index, m.count, m.inWork])).toEqual([[0, 1, true], [1, 3, false]]);
+    // One read call is one match: its sentence is what is drawn, not its raw name and summary as well.
     expect(found[1]?.snippet).toContain("Needle");
     expect(findTurns(buildTurns(items, "idle"), "  ")).toEqual([]);
     expect(findSnippet("a".repeat(100) + "needle" + "b".repeat(100), "needle", 5)).toBe("…aaaaaneedlebbbbb…");
