@@ -5,8 +5,9 @@
 const FENCE = /^\s*(`{3,}|~{3,})/;
 
 /**
- * The words a find landed on, set in bold (the Markdown renderer takes no inline marks, so the landed turn draws its strong runs on a warn-tinted ground,
- * syntaxFor's `found` mode, as the web marks them): every case-insensitive occurrence of `query` outside fenced code and inline code spans. A match already inside bold stays as it is.
+ * The words a find landed on, wrapped in `~~` (the Markdown renderer takes no inline marks, so the landed turn draws its struck runs on a warn-tinted ground,
+ * syntaxFor's `found` mode, as the web marks them; real bold in the answer stays plain bold, never mistaken for a match): every case-insensitive occurrence of `query`
+ * outside fenced code and inline code spans, also inside bold.
  */
 export function markMatches(markdown: string, query: string): string {
   const q = query.trim();
@@ -32,8 +33,7 @@ export function markMatches(markdown: string, query: string): string {
           let at = 0;
           for (let hit = part.toLowerCase().indexOf(needle); hit >= 0; hit = part.toLowerCase().indexOf(needle, at)) {
             const end = hit + needle.length;
-            const inBold = /\*\*/.test(part.slice(Math.max(0, hit - 2), hit)) || /\*\*/.test(part.slice(end, end + 2));
-            out += part.slice(at, hit) + (inBold ? part.slice(hit, end) : `**${part.slice(hit, end)}**`);
+            out += part.slice(at, hit) + `~~${part.slice(hit, end)}~~`;
             at = end;
           }
           return out + part.slice(at);

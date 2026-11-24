@@ -187,9 +187,10 @@ describe("markdown", () => {
     expect(taskBoxes("```\n- [ ] code\n```")).toBe("```\n- [ ] code\n```");
     expect(taskBoxes("a [link](x)")).toBe("a [link](x)");
     // A find's words are set in bold outside code, whatever their case, and left alone inside it or inside bold already.
-    expect(markMatches("Needle in a haystack, a NEEDLE too", "needle")).toBe("**Needle** in a haystack, a **NEEDLE** too");
-    expect(markMatches("see `needle` here\n```\nneedle\n```\nneedle", "needle")).toBe("see `needle` here\n```\nneedle\n```\n**needle**");
-    expect(markMatches("a **needle** b", "needle")).toBe("a **needle** b");
+    expect(markMatches("Needle in a haystack, a NEEDLE too", "needle")).toBe("~~Needle~~ in a haystack, a ~~NEEDLE~~ too");
+    expect(markMatches("see `needle` here\n```\nneedle\n```\nneedle", "needle")).toBe("see `needle` here\n```\nneedle\n```\n~~needle~~");
+    expect(markMatches("a **needle** b", "needle")).toBe("a **~~needle~~** b");
+    expect(markMatches("line 1 with **markdown**", "line")).toBe("~~line~~ 1 with **markdown**");
     expect(markMatches("nothing", "  ")).toBe("nothing");
   });
 

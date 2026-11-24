@@ -1006,7 +1006,7 @@ function Answer(p: { item: AssistantItem; mark?: string | null }) {
 
 function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; onToggle: () => void; switchedTo: string | null; column: number; foundQuery?: string | null; foundOf?: string }) {
   const t = useTheme();
-  // The turn a find landed on says where the words are: one line around the first match with the words in the accent and bold; the answer's own copy of the words is set bold too (markMatches), but bold alone also reads as emphasis, so the strip names them.
+  // The turn a find landed on says where the words are: one line around the first match with the words in the accent and bold; the answer's own copy of the words sits on a warn-tinted ground (markMatches), and the strip names them too.
   const hit = createMemo(() => {
     const query = p.foundQuery;
     const m = query ? findTurns([p.turn()], query, 44, p.workspace)[0] : undefined;

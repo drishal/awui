@@ -8,7 +8,7 @@ import { mix } from "../fx.js";
 const cache = new WeakMap<NativeResourceOwner, Map<string, SyntaxStyle>>();
 
 /** The theme's styles, owned by the renderer that draws them; quiet styles never leak into answers. */
-/** `found`: the landed turn of a find, whose bold runs are the matched words, set on a warn-tinted ground as the web marks them. */
+/** `found`: the landed turn of a find, whose struck runs are the matched words, set on a warn-tinted ground as the web marks them. */
 export function syntaxFor(theme: Theme, owner: NativeResourceOwner, quiet = false, found = false): SyntaxStyle {
   const key = `${JSON.stringify(theme)}:${quiet}:${found}`;
   let mine = cache.get(owner);
@@ -34,9 +34,10 @@ export function syntaxFor(theme: Theme, owner: NativeResourceOwner, quiet = fals
       "markup.heading.4": heading,
       "markup.heading.5": heading,
       "markup.heading.6": heading,
-      "markup.strong": found ? { fg: c(theme.text), bg: c(mix(theme.bg, theme.warn, 0.4)), bold: true } : { fg: c(emphasis), bold: true },
+      "markup.strong": { fg: c(emphasis), bold: true },
       "markup.italic": { fg: c(emphasis), italic: true },
-      "markup.strikethrough": { fg: c(theme.muted) },
+      // In a find's landed turn the struck runs are the matches (markMatches); the line itself is never drawn, the ground is the mark.
+      "markup.strikethrough": found ? { fg: c(theme.text), bg: c(mix(theme.bg, theme.warn, 0.4)), bold: true } : { fg: c(theme.muted) },
       "markup.raw": { fg: c(theme.rare) },
       "markup.raw.block": { fg: c(block) },
       "markup.link": { fg: c(theme.link), underline: true },
