@@ -514,7 +514,7 @@ describe("atui", () => {
   }, 40_000);
 
   it("unrolls a framed call's whole output with a click and folds it again", async () => {
-    ui = await mount(path.join(server.root, "alpha"), { height: 60 });
+    ui = await mount(path.join(server.root, "alpha"), { height: 80 });
     await ui.type("tool longlog");
     ui.keys.pressEnter();
     await ui.until("Echo: tool longlog");
