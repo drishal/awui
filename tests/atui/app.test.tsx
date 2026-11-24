@@ -1891,4 +1891,43 @@ describe("atui's keybind styles", () => {
     const second = await ui.until("Pick a winner");
     expect(second).toContain("tidy the docs");
   }, 60_000);
+  it("saves a setup as a named preset, starts a chat from it, and forgets it", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("presets");
+    ui.keys.pressEnter();
+    // No preset yet: the sheet offers to save this screen's setup.
+    expect(await ui.until("Save this setup as a preset")).toContain("Presets");
+    ui.keys.pressEnter();
+    await ui.until("Name it");
+    await ui.type("Explore");
+    expect(await ui.until("Save as “Explore”")).toContain("Fake");
+    ui.keys.pressEnter();
+    await ui.until("Preset “Explore” saved");
+    expect(ui.app.presets()).toEqual([expect.objectContaining({ name: "Explore", harnessId: "fake" })]);
+    // The same name replaces it rather than adding a second.
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("presets");
+    ui.keys.pressEnter();
+    const sheet = await ui.until("Start a chat with");
+    expect(sheet).toMatch(/Explore\s+Fake/);
+    // A preset for the other harness starts a chat there.
+    ui.app.savePreset("Other");
+    ui.app.startPreset({ name: "Other", harnessId: "fake-b" });
+    await wait(300);
+    expect(ui.app.harnessId()).toBe("fake-b");
+    // x forgets the highlighted one.
+    ui.keys.pressEscape();
+    await wait(200);
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("presets");
+    ui.keys.pressEnter();
+    await ui.until("Start a chat with");
+    ui.keys.pressKey("x");
+    await wait(200);
+    expect(ui.app.presets().map((x) => x.name)).toEqual(["Other"]);
+  }, 40_000);
 });

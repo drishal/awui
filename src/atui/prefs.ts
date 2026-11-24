@@ -5,6 +5,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { parsePresets, type Preset } from "./presets.js";
 
 export interface AtuiPrefs {
   vim?: boolean;
@@ -16,6 +17,8 @@ export interface AtuiPrefs {
   glass?: boolean;
   /** The marks for calls and edits: plain Unicode (default), or Nerd Font glyphs (src/atui/icons.ts). */
   icons?: "unicode" | "nerd";
+  /** Named harness + model + thinking bundles a new chat can start from (src/atui/presets.ts). */
+  presets?: Preset[];
 }
 export function prefsFile(env: Record<string, string | undefined> = process.env): string {
   const base = env.XDG_CONFIG_HOME || path.join(env.HOME || homedir(), ".config");
@@ -34,6 +37,7 @@ export function readPrefs(file = prefsFile()): AtuiPrefs {
       ...(typeof r.showThoughts === "boolean" ? { showThoughts: r.showThoughts } : {}),
       ...(typeof r.glass === "boolean" ? { glass: r.glass } : {}),
       ...(r.icons === "unicode" || r.icons === "nerd" ? { icons: r.icons } : {}),
+      ...("presets" in r ? { presets: parsePresets(r.presets) } : {}),
     };
   } catch {
     return {};

@@ -43,6 +43,7 @@ import { findTurns } from "../../web/find.js";
 import { turnMarkdown } from "../../web/turn-markdown.js";
 import { SwitchGhost } from "./ghost.js";
 import { Picker, type PickerItem, type PreviewText } from "./picker.js";
+import { presetName, presetWords, type Preset } from "../presets.js";
 import { CLEANUP_WORD, STATUS_WORD, loserState } from "../../web/race-words.js";
 import { RequestCard } from "./request.js";
 import { RAIL_WIDTH, Sidebar, SidebarRail, type SidebarTab } from "./sidebar.js";
@@ -67,7 +68,7 @@ import { buildTurns, turnOfTool } from "../../web/turns.js";
 import { atLabel, turnWaterfall } from "../../web/waterfall.js";
 import { cacheShare, dollars, shortTokens, tokensOf } from "../../web/usage.js";
 
-type Dialog = "palette" | "timeline" | "files" | "worktrees" | "compare" | "race" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
+type Dialog = "palette" | "timeline" | "files" | "worktrees" | "compare" | "race" | "presets" | "preset-save" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -77,7 +78,7 @@ const PALETTE_GROUPS: Record<string, string> = {
   new: "Chats", "new-tab": "Chats", "next-tab": "Chats", "prev-tab": "Chats", "close-tab": "Chats", history: "Chats", find: "Chats", queue: "Chats", timing: "Chats", "copy-answer": "Chats", "copy-turn": "Chats", sessions: "Chats",
   retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", "put-back": "Chats", quote: "Chats",
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
-  model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
+  model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent", presets: "Agent",
   sidebar: "View", panel: "View", work: "View", thoughts: "View", keybinds: "View", glass: "View", icons: "View",
   git: "Project", github: "Project", usage: "Project", compare: "Project", race: "Project",
 };
@@ -96,6 +97,8 @@ export function App(p: {
   onGlass?: (on: boolean) => void;
   /** The icon set was switched from the palette (remembered by main.tsx). */
   onIcons?: (set: IconSet) => void;
+  /** The presets list changed (saved or dropped); main.tsx remembers it. */
+  onPresets?: (list: Preset[]) => void;
   showThoughts: boolean;
   onShowThoughts: (on: boolean) => void;
   /** The terminal's title and progress indicator changed (none in tests). */
@@ -155,6 +158,8 @@ export function App(p: {
     hintTimer = setTimeout(() => setHint(null), ms);
   };
   onCleanup(() => clearTimeout(hintTimer));
+
+  createEffect(on(app.presets, (list) => p.onPresets?.(list), { defer: true }));
 
   // The session being opened, once it has taken long enough to be worth a screen of its own.
   const [ghost, setGhost] = createSignal<{ title: string; harnessId: string } | null>(null);
@@ -738,6 +743,7 @@ export function App(p: {
         flash(next === "nerd" ? "Nerd Font icons on (back with the palette: Icons)" : "Plain Unicode icons");
       },
     });
+    add({ id: "presets", label: "Presets: start a chat with a saved agent setup…", keywords: "preset role agent profile bundle model thinking harness save", run: () => setDialog("presets") });
     // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it: every device draws it (C-x l cycles).
     CHAT_WIDTHS.forEach((w) => add({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, keywords: "column layout measure", current: (boot?.ui.chatWidth ?? null) === w, run: () => void pickWidth(w) }));
     if (c?.capabilities.supportsCompact) add({ id: "compact", label: "Compact context", hint: leader("c", keybinds()), disabled: idle ? undefined : "Wait until the agent is idle", run: () => runLeader("c") });
@@ -1069,6 +1075,44 @@ export function App(p: {
       .call<RaceFileDiff>(`/api/races/${encodeURIComponent(r.id)}/members/${encodeURIComponent(m.chatId)}/diff?path=${encodeURIComponent(first.path)}`)
       .then((d) => ({ head, body: `${top}\n\n${first.path}\n${(d.diff?.lines ?? []).slice(0, 40).map((l) => `${l.kind === "add" ? "+" : l.kind === "del" ? "−" : " "} ${l.text}`).join("\n")}` }))
       .catch(() => ({ head, body: top }));
+  };
+  /** The presets sheet: each saved bundle starts a chat (x forgets it), and the last row saves what this screen has now. */
+  const presetItems = (): PaletteItem[] => {
+    const harnessName = (id: string) => app.boot()?.harnesses.find((h) => h.id === id)?.displayName ?? id;
+    const rows: PaletteItem[] = app.presets().map((preset) => ({
+      id: `preset:${preset.name}`,
+      section: "Start a chat with",
+      label: preset.name,
+      hint: presetWords(preset, harnessName(preset.harnessId)),
+      disabled: app.boot()?.harnesses.find((h) => h.id === preset.harnessId)?.available === false ? "That harness is not available" : undefined,
+      run: () => {
+        setDialog(null);
+        app.startPreset(preset);
+        flash(`New chat from “${preset.name}”`);
+      },
+    }));
+    rows.push({ id: "preset:save", section: "Save", label: "Save this setup as a preset…", hint: "harness, model and thinking level", run: () => setDialog("preset-save") });
+    return rows;
+  };
+  /** The save sheet: what is typed is the name; one row says what it will keep, and whether it replaces one. */
+  const presetSaveItems = (query: string): PaletteItem[] => {
+    const name = presetName(query);
+    if (!name) return [];
+    const same = app.presets().some((x) => x.name.toLowerCase() === name.toLowerCase());
+    const chips = app.chips();
+    return [
+      {
+        id: "preset:name",
+        section: same ? "Replace" : "Save",
+        label: `${same ? "Replace" : "Save as"} “${name}”`,
+        hint: [app.harness()?.displayName, chips.label].filter(Boolean).join(" · "),
+        run: () => {
+          setDialog(null);
+          const saved = app.savePreset(name);
+          if (saved) flash(`Preset “${saved.name}” saved`);
+        },
+      },
+    ];
   };
   const openTreeChat = async (workspace: WorkspaceInfo) => {
     setDialog(null);
@@ -1609,6 +1653,12 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "usage"}>
                   <Picker softBars title="Usage across chats" tabHint={`Tab ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "presets"}>
+                  <Picker title="Presets · x forgets one" placeholder="Search presets…" empty="No presets yet" items={presetItems()} firstHeading onRowKey={(key, item) => { const name = /^preset:(.+)$/.exec(item?.id ?? "")?.[1]; if (key !== "x" || !name || name === "save") return false; app.dropPreset(name); return true; }} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "preset-save"}>
+                  <Picker title="Save a preset" placeholder="Name it (Explore, Review, Deep work…)" items={[]} search={presetSaveItems} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
                   <Picker title="Queued messages · x removes" placeholder="Search queued messages…" empty="No queued messages: a steering or follow-up message parks here" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); return true; }} onClose={() => setDialog(null)} side={room()} />

@@ -43,6 +43,7 @@ import { newsBetween, type News } from "./assist.js";
 import { imageModeFrom, imageProtocol, type ImageMode } from "./images.js";
 import { followChat, idempotencyKey, Server, ServerError, type Connection } from "./client.js";
 import { themeFrom, type Theme } from "./theme.js";
+import { presetName, withPreset, withoutPreset, type Preset } from "./presets.js";
 
 export interface AtuiOptions {
   cwd: string;
@@ -59,6 +60,8 @@ export interface AtuiOptions {
   glass?: boolean;
   /** The marks for calls and edits (--icons): plain Unicode, or Nerd Font glyphs. */
   icons?: "unicode" | "nerd";
+  /** The saved presets (atui.json), read at start. */
+  presets?: Preset[];
   /** Reasoning is expanded by default, like pi's neat-render; false starts it folded. */
   showThoughts?: boolean;
   /** Tell the desktop (a terminal notification) that a background session finished or asks; none in tests. */
@@ -118,6 +121,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
   const [toasts, setToasts] = createSignal<Toast[]>([]);
   const [contextHistory, setContextHistory] = createSignal<number[]>([]);
   const [glass, setGlass] = createSignal(opts.glass ?? false);
+  const [presets, setPresets] = createSignal<Preset[]>(opts.presets ?? []);
   const [tabs, setTabs] = createSignal<TabState>(NO_TABS);
   /** Each tab's chat as last shown, by tab key: a switch back shows it at once, and its stream replays what it missed. */
   const tabCache = new Map<string, ChatState>();
@@ -367,6 +371,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
   const [startCatalog, setStartCatalog] = createSignal<{ models: ModelInfo[]; thinkingLevels: string[]; defaultModel: { model: string; thinkingLevel: string | null } | null } | null>(null);
   /** What the start screen's pickers chose: the chat its first message creates starts on these. */
   const [startPick, setStartPick] = createSignal<{ model?: string; thinkingLevel?: string }>({});
+  let pendingPick: { model?: string; thinkingLevel?: string } | null = null;
   /** Which answer the client has asked for last: one for a screen the user has left is dropped. */
   let catalogSeq = 0;
   const loadStartCatalog = async (forHarness: string, forWs: WorkspaceInfo, refresh = false): Promise<void> => {
@@ -388,7 +393,9 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     on(startKey, (key) => {
       catalogSeq += 1;
       setStartCatalog(null);
-      setStartPick({});
+      // A preset's model and level wait here for the screen they were meant for.
+      setStartPick(pendingPick ?? {});
+      pendingPick = null;
       const h = untrack(harnessId);
       const ws = untrack(workspace);
       if (!key || !h || !ws) return;
@@ -772,6 +779,32 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     if (chat()) newChat();
   };
 
+  /** A new chat made from a preset: its harness, then its model and level for the chat's start (the same picks the start screen's chips make). */
+  const startPreset = (preset: Preset) => {
+    const pick = { ...(preset.model ? { model: preset.model } : {}), ...(preset.thinkingLevel ? { thinkingLevel: preset.thinkingLevel } : {}) };
+    const same = untrack(startKey) === `${preset.harnessId}\0${untrack(workspace)?.id}`;
+    if (same) return setStartPick(pick);
+    pendingPick = pick;
+    batch(() => {
+      setHarnessId(preset.harnessId);
+      newChat();
+    });
+  };
+  /** Keep what the screen has now (the open chat's harness, model and level, else the start screen's) under a name, replacing a preset of that name. Null for an empty name. */
+  const savePreset = (raw: string): Preset | null => {
+    const name = presetName(raw);
+    const h = chat()?.harnessId ?? harnessId();
+    if (!name || !h) return null;
+    const c = chat();
+    const pick = startPick();
+    const model = c ? c.config.model : pick.model;
+    const level = c ? c.config.thinkingLevel : pick.thinkingLevel;
+    const preset: Preset = { name, harnessId: h, ...(model ? { model } : {}), ...(level ? { thinkingLevel: level } : {}) };
+    setPresets((list) => withPreset(list, preset));
+    return preset;
+  };
+  const dropPreset = (name: string) => setPresets((list) => withoutPreset(list, name));
+
   /** Move the open chat to another harness: a copy of the conversation, or a summary its first prompt carries. */
   const handoff = async (id: string) => {
     const c = chat();
@@ -1103,6 +1136,10 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     configure,
     compact,
     chooseHarness,
+    presets,
+    startPreset,
+    savePreset,
+    dropPreset,
     handoff,
     dispose,
   };
