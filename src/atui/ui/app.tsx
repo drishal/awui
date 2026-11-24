@@ -1457,7 +1457,7 @@ export function App(p: {
                   </Show>
                   <Show when={app.busy() && planStrip()}>
                     {(plan) => (
-                      <box flexDirection="column" backgroundColor={t().surface} onMouseDown={() => setPlanOpen(!planOpen())}>
+                      <box flexDirection="column" width="100%" backgroundColor={t().surface} onMouseDown={() => setPlanOpen(!planOpen())}>
                         <Show when={planOpen()}>
                           <For each={(app.chat()?.todos ?? []).slice(0, PLAN_ROWS)}>
                             {(todo) => {
@@ -1475,7 +1475,7 @@ export function App(p: {
                         <text selectable={false} wrapMode="none" truncate fg={t().muted} paddingLeft={2}>
                           <span style={{ fg: t().accent }}>{"≡ "}</span>
                           <span style={{ fg: t().text2 }}>{`${plan().done}/${plan().total}`}</span>
-                          <span style={{ fg: t().muted }}>{"  ◐ "}</span>
+                          <span style={{ fg: t().accent }}>{"  ◐ "}</span>
                           <span style={{ fg: t().text }}>{plan().current}</span>
                           {plan().run ? <span style={{ fg: t().muted }}>{`  ·  ${plan().run}`}</span> : null}
                           <span style={{ fg: t().text2 }}>{planOpen() ? "  ▾" : "  ▸"}</span>
