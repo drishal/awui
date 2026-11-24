@@ -110,7 +110,7 @@ describe("the board's headings and cards", () => {
     expect(cardStatusLine(s("a", { agentStatus: { state: "done", comment: "", at: 1 } }))).toBe("done");
     expect(cardStatusLine(s("a"))).toBeNull();
     expect(previewLine(null)).toBeNull();
-    expect(previewLine({ prompt: "a\n  prompt ", answer: null, turns: 1, model: null, files: [] })).toBe("a prompt");
+    expect(previewLine({ prompt: "a\n  prompt ", answer: null, turns: 1, model: null, files: [] })).toBe("a · prompt");
     const long = previewLine({ prompt: null, answer: "x".repeat(400), turns: 1, model: null, files: [] });
     expect(long).toHaveLength(220);
     expect(long?.endsWith("…")).toBe(true);

@@ -13,8 +13,8 @@ describe("previewLine", () => {
     expect(previewLine(null)).toBeNull();
   });
 
-  it("strips Markdown markers line by line and runs the lines together", () => {
-    expect(previewLine(preview({ answer: "## Result\n**Fixed** the `parser`\n- one\n- two" }))).toBe("Result Fixed the parser one two");
+  it("strips Markdown markers line by line and joins the lines with a dot", () => {
+    expect(previewLine(preview({ answer: "## Result\n**Fixed** the `parser`\n- one\n- two" }))).toBe("Result · Fixed the parser · one · two");
   });
 
   it("cuts a long line at 220 characters", () => {
