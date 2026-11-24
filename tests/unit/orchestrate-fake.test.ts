@@ -37,7 +37,7 @@ describe("a chat that delegates through the tools", () => {
 
     // A real child chat, openable and carrying its lineage back to this one.
     const child = app.manager.list().find((c) => c.lineage?.parentChatId === chat.chatId);
-    expect(child?.lineage).toMatchObject({ kind: "delegate", parentChatId: chat.chatId, depth: 1 });
+    expect(child?.lineage).toMatchObject({ kind: "delegate", parentChatId: chat.chatId, depth: 1, role: "test" });
     const childSnap = (await agent.get(`/api/chats/${child?.chatId}`)).body as ChatSnapshot;
     expect(childSnap.lineage?.taskId).toBeTruthy();
     expect(childSnap.items.some((i) => i.kind === "assistant" && i.text.includes("child"))).toBe(true);

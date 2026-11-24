@@ -1339,6 +1339,8 @@ export interface ChatLineage {
   parentChatId: string;
   parentTitle: string | null;
   depth: number;
+  /** The role the task was given (a bot profile's, or the one the caller named), when it has one: a board card words it. */
+  role?: string;
   /**
    * The mesh peer the child runs on, when the delegation was remote; null or
    * absent for a task that runs on this machine.
