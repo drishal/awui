@@ -1164,16 +1164,39 @@
   font-weight: 500;
 }
 
-/* Diffs: tinted rows, a number gutter, the changed words marked. */
+/* Diffs: tinted rows, a number gutter, the changed words marked. The tints are percentages of the outcome hues,
+   so a base16 theme colours them by overriding --ok and --danger alone. */
 .diff {
-  --diff-add-bg: color-mix(in srgb, var(--ok) 11%, transparent);
-  --diff-add-mark: color-mix(in srgb, var(--ok) 30%, transparent);
-  --diff-del-bg: color-mix(in srgb, var(--danger) 10%, transparent);
-  --diff-del-mark: color-mix(in srgb, var(--danger) 28%, transparent);
+  --diff-add-tint: 11%;
+  --diff-add-mark-tint: 30%;
+  --diff-del-tint: 10%;
+  --diff-del-mark-tint: 28%;
+  --diff-add-bg: color-mix(in srgb, var(--ok) var(--diff-add-tint), transparent);
+  --diff-add-mark: color-mix(in srgb, var(--ok) var(--diff-add-mark-tint), transparent);
+  --diff-del-bg: color-mix(in srgb, var(--danger) var(--diff-del-tint), transparent);
+  --diff-del-mark: color-mix(in srgb, var(--danger) var(--diff-del-mark-tint), transparent);
   max-height: 440px;
   overflow-y: auto;
   overscroll-behavior-y: auto;
   padding: 4px 0;
+}
+
+/* On a light page the same percentages wash out to almost nothing against a near-white card: the tints take a
+   little more there, and the word marks more again, so an added line is not a green suggestion. */
+:root[data-theme="light"] .diff {
+  --diff-add-tint: 14%;
+  --diff-add-mark-tint: 32%;
+  --diff-del-tint: 13%;
+  --diff-del-mark-tint: 30%;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .diff {
+    --diff-add-tint: 14%;
+    --diff-add-mark-tint: 32%;
+    --diff-del-tint: 13%;
+    --diff-del-mark-tint: 30%;
+  }
 }
 
 .diff-line {
