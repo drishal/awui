@@ -136,7 +136,7 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
               <box flexDirection="column" backgroundColor={i() === index() ? t().selection : undefined} onMouseDown={() => choose(o)}>
                 <text fg={i() === index() ? t().text : t().text2}>
                   <span style={{ fg: i() === index() ? t().accent : t().muted }}>{i() === index() ? "▌ " : "  "}</span>
-                  <span style={{ fg: o.recommended ? t().accent : t().muted }}>{i() < 9 ? `${i() + 1}. ` : "   "}</span>
+                  <span style={{ fg: o.recommended ? t().accent : i() === index() ? t().text2 : t().muted }}>{i() < 9 ? `${i() + 1}. ` : "   "}</span>
                   {/* The card's own semantics, as the web card's buttons: Approve in the ok tone, Deny in danger — only a true approval's options, never a question's choices. */}
                   <Show when={optionTone(o)} fallback={o.label}>
                     {(tone) => <span style={{ fg: tone() }}>{o.label}</span>}

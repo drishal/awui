@@ -407,7 +407,7 @@ describe("the conversation behind a floating sheet", () => {
     expect(d.surface).toBe(DARK.surface);
     expect(d.border).toBe(DARK.border);
     expect(d.selection).toBe(DARK.selection);
-    expect(d.text).toBe(mix(DARK.text, DARK.bg, 0.38));
+    expect(d.text).toBe(mix(DARK.text, DARK.bg, 0.6));
     expect(d.text).not.toBe(DARK.text);
     expect(dimmed(DARK, 0)).toEqual(DARK);
   });

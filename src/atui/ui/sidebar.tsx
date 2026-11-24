@@ -164,6 +164,8 @@ export function Sidebar(p: {
   const inner = () => p.width - 3;
   const breath = () => breathe(tick(), BREATH_TICKS);
   // The breath fades from 60 % warn, not 35 %: the floor is measured against the page, and on the lit row (a lighter ground) a fainter one all but vanished, yet the waiting mark is the one thing that row has to show.
+  /** On the lit row's ground (selection) the breath fades from 80 % warn, so the mark keeps 4.5:1 at its faintest and still breathes. */
+  const litAskingTone = () => mix(mix(t().selection, t().warn, 0.8), t().warn, breath());
   const askingTone = () => mix(mix(t().bg, t().warn, 0.6), t().warn, breath());
   const herdrTone = (s: ProjectSession) => (s.herdr?.status === "blocked" ? askingTone() : s.herdr?.status === "working" ? t().accent : t().muted);
   // Right of the title: the other project's name when the row is not this one's, then the age. The asking
@@ -242,7 +244,7 @@ export function Sidebar(p: {
               const rowMeta = () => meta(row);
               return (
                 <box flexDirection="row" paddingLeft={2} paddingRight={1} backgroundColor={chosen() ? t().selection : isActive(s) ? mix(t().surface2, t().accent, 0.22) : undefined} onMouseDown={() => { setSelection(keyOf(row)); void app.openSession(s).then(p.onOpened); }}>
-                  <text selectable={false} flexShrink={0} fg={s.asking ? askingTone() : isBusy(s.status) ? t().accent : s.liveChatId ? t().ok : s.herdr ? herdrTone(s) : t().muted}>{s.asking ? "▲ " : isBusy(s.status) ? `${spinnerFor(s.harnessId)[tick() % spinnerFor(s.harnessId).length]} ` : s.liveChatId ? "● " : s.herdr ? "◆ " : "· "}</text>
+                  <text selectable={false} flexShrink={0} fg={s.asking ? (chosen() || isActive(s) ? litAskingTone() : askingTone()) : isBusy(s.status) ? t().accent : s.liveChatId ? t().ok : s.herdr ? herdrTone(s) : t().muted}>{s.asking ? "▲ " : isBusy(s.status) ? `${spinnerFor(s.harnessId)[tick() % spinnerFor(s.harnessId).length]} ` : s.liveChatId ? "● " : s.herdr ? "◆ " : "· "}</text>
                   <text selectable={false} flexGrow={1} fg={s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(s) ? t().text : t().text2} wrapMode="none">{clip(s.title || "New chat", width() - 4 - rowMeta().length)}</text>
                   <text selectable={false} flexShrink={0} fg={chosen() || isActive(s) ? t().text2 : t().muted}>{rowMeta()}</text>
                 </box>

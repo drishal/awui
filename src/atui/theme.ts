@@ -148,7 +148,7 @@ export function categoryTone(theme: Theme, category: ToolItem["category"]): stri
 }
 
 /** The scheme with its ink eased toward the page by `by`: the conversation behind a floating sheet, so the sheet is the figure and the transcript the ground. Grounds, borders and the selection stay. */
-export function dimmed(theme: Theme, by = 0.38): Theme {
+export function dimmed(theme: Theme, by = 0.6): Theme {
   const ease = (hex: string) => mix(hex, theme.bg, by);
   return { ...theme, text: ease(theme.text), text2: ease(theme.text2), muted: ease(theme.muted), accent: ease(theme.accent), link: ease(theme.link), ok: ease(theme.ok), warn: ease(theme.warn), danger: ease(theme.danger), info: ease(theme.info), orange: ease(theme.orange), thinking: ease(theme.thinking), rare: ease(theme.rare) };
 }
