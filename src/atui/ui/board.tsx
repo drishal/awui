@@ -177,7 +177,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
 
   const width = () => Math.max(30, size().width - (p.side ?? 0) - 4);
   /** The columns share the frame's whole inside: two of a third each, the last the rest, so the cards end where the head does. */
-  const columnWidth = (last: boolean) => Math.max(18, last ? width() - 4 - 2 * Math.floor((width() - 4) / 3) : Math.floor((width() - 4) / 3));
+  const columnWidth = (last: boolean) => Math.max(18, last ? width() - 2 * Math.floor(width() / 3) : Math.floor(width() / 3));
   /** Lines a card takes: its title and meta, an agent's status, a pull request, a child per line, and the blank line above it. */
   const cardLines = (card: BoardCard) => 3 + (card.session.agentStatus ? 1 : 0) + (prBadge(card.session, prs() ? { [card.session.workspaceId]: prs()[card.session.workspaceId] ?? null } : undefined) ? 1 : 0) + card.children.length;
   /** The cards a column draws: from the first that keeps the cursor's card in view, as many as the frame's inside holds, leaving a line for "earlier" and "more". */
@@ -190,7 +190,8 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     while (to < list.length && span(from, to + 1) <= budget) to++;
     return { from, to: Math.max(to, Math.min(list.length, cur + 1)) };
   };
-  const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} · ${PR_FILTER_LABELS[pr()]}`;
+  // Each filter wears the key that changes it (f, r), so narrowing the board is findable without the key line, which drops hints on a narrow pane.
+  const filterLine = () => `f ${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} · r ${PR_FILTER_LABELS[pr()]}`;
   /** The frame takes the room the sheet stands in: the columns above, the selected card's detail under them, so the pane is one surface and not a small box over blank rows. */
   const boxHeight = () => Math.max(9 + DETAIL_ROWS, size().height - 7);
 
@@ -209,7 +210,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           {`   ${filterLine()}`}
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? fitHints(["↑↓ card", "Enter open", "←→ column", "f project", "r PR", "Esc close"], width() - 15 - filterLine().length)}
+          {note() ?? fitHints(["↑↓ card", "Enter open", "←→ column", "Esc close"], width() - 15 - filterLine().length)}
         </text>
       </box>
       <box flexDirection="row" flexShrink={0} overflow="hidden" marginTop={1}>

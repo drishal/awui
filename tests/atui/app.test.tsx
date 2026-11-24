@@ -1595,7 +1595,7 @@ describe("atui", () => {
     // f narrows to one project, and Enter opens the card under the cursor.
     ui.keys.pressKey("f");
     const filtered = await ui.until("Any pull request");
-    expect(filtered).toContain("alpha · Any pull request");
+    expect(filtered).toContain("f alpha · r Any pull request");
     // Other chats may share the project, so the test names its card instead of trusting where the cursor starts.
     await ui.click("board please");
     ui.keys.pressEnter();
