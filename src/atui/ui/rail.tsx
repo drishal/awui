@@ -163,7 +163,7 @@ export function ContextRailView(p: RailActions) {
                   <text flexShrink={0} fg={index() === at() ? t().text2 : t().muted} wrapMode="none" truncate>
                     {` ${clip(entry.row.meta, Math.max(12, width() - 52))}`}
                   </text>
-                  <text flexShrink={0} fg={toneOf(t(), entry.row.status.tone)}>{`  ${entry.row.status.word}`}</text>
+                  <text flexShrink={0} fg={toneOf(t(), entry.row.status.tone)}>{`  ${entry.row.status.word} `}</text>
                 </box>
                 <Show when={entry.row.note}>
                   {(text) => <text fg={t().muted}>{`      ${clip(text(), width() - 8)}`}</text>}

@@ -9,7 +9,7 @@ export type IconSet = "unicode" | "nerd";
 export type IconName = "read" | "edit" | "write" | "command" | "search" | "web" | "agent" | "other" | "plan" | "mcp" | "fail" | "pencil" | "find" | "changed" | "routine" | "retry";
 
 const UNICODE: Record<IconName, string> = { read: "▤", edit: "±", write: "±", command: "›", search: "◎", web: "⊕", agent: "◈", other: "●", plan: "≡", mcp: "◇", fail: "✗", pencil: "✎", find: "⌕", changed: "±", routine: "↻", retry: "↻" };
-// Nerd Font Awesome: file-text, pencil, floppy (a write), terminal, search, globe, sitemap, circle, tasks, plug, times, pencil, search, pencil-square-o.
+// Nerd Font Awesome: file-text, pencil, floppy (a write), terminal, search, globe, sitemap, circle, tasks, plug, times, pencil, search (the Changed line shares the edit pencil, as the Unicode set shares ±).
 const NERD: Record<IconName, string> = {
   read: "",
   edit: "",
@@ -24,7 +24,7 @@ const NERD: Record<IconName, string> = {
   fail: "",
   pencil: "",
   find: "",
-  changed: "",
+  changed: "",
   routine: "",
   retry: "",
 };
