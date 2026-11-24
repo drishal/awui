@@ -127,15 +127,16 @@ export function Picker(p: {
   const cost = (list: PickerItem[], at: number) => 1 + (at === 0 && p.axis ? 1 : 0) + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
   /** The label column of a bar row: as wide as its longest label asks (and two cells over), never more than a share of the sheet, so short labels leave the track the room. */
   const barColor = (tone?: "warn") => { const ink = tone === "warn" ? t().warn : t().accent; return p.softBars ? mix(t().bg, ink, 0.68) : ink; };
-  const barLabel = () => {
-    const widest = Math.max(0, ...shown().filter((i) => i.bar).map((i) => i.label.length + 4));
+  const barLabel = (section?: string) => {
+    // Per section: a long label in one (the most used chats) must not push every other section's bars away from what they measure.
+    const widest = Math.max(0, ...shown().filter((i) => i.bar && i.section === section).map((i) => i.label.length + 4));
     const cap = Math.floor(listWidth() * (listWidth() > 70 ? 0.48 : 0.37));
     return Math.max(18, Math.min(cap, widest));
   };
   /** The track takes what the label and the widest figure leave, so a wide sheet has a long bar and no dead gap: 12 cells at least, 64 at most. */
-  const track = () => {
-    const figures = Math.max(0, ...shown().filter((i) => i.bar).map((i) => (i.hint ?? "").length));
-    return Math.max(12, Math.min(64, listWidth() - barLabel() - figures - 3));
+  const track = (section?: string) => {
+    const figures = Math.max(0, ...shown().filter((i) => i.bar && i.section === section).map((i) => (i.hint ?? "").length));
+    return Math.max(12, Math.min(64, listWidth() - barLabel(section) - figures - 3));
   };
   const lines = () => height() - 5;
   /** The rows that fit: from the first one that keeps the highlighted row in view, as many as the box holds, and the room a "more below" line takes. */
@@ -233,18 +234,22 @@ export function Picker(p: {
               return (
                 <box flexDirection="column">
                   <Show when={headed(shown(), at())}>
-                    <text fg={t().muted} marginTop={at() > 0 ? 1 : 0}><b>{item.section}</b></text>
+                    <text fg={t().muted} marginTop={at() > 0 ? 1 : 0} wrapMode="none" truncate>
+                      <b>{item.section}</b>
+                      {/* A rule to the list's edge: the heading is a step above the rows' text2, not a row of its own. */}
+                      <span style={{ fg: t().border }}>{item.section && item.section.length + 3 < listWidth() ? `  ${"─".repeat(listWidth() - item.section.length - 3)}` : ""}</span>
+                    </text>
                   </Show>
                   <Show when={at() === 0 && p.axis && item.bar}>
                     <box flexDirection="row" flexShrink={0}>
-                      <text fg={t().muted} flexShrink={0} wrapMode="none">{`${" ".repeat(barLabel())}${axisLine(p.axis ?? [], track())}`}</text>
+                      <text fg={t().muted} flexShrink={0} wrapMode="none">{`${" ".repeat(barLabel(item.section))}${axisLine(p.axis ?? [], track(item.section))}`}</text>
                       <box flexGrow={1} flexDirection="row" justifyContent="flex-end"><text fg={t().muted} wrapMode="none">{p.axisHead ? `${p.axisHead}` : ""}</text></box>
                     </box>
                   </Show>
                   <box flexDirection="row" backgroundColor={lit() ? t().selection : undefined} onMouseDown={() => run(item)}>
-                    <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel() : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
+                    <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel(item.section) : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
                       {item.current ? "✓ " : "  "}
-                      <Index each={matchSpans(clip(item.label, item.bar ? barLabel() - 3 : listWidth() - 3 - (item.hint ? Math.min(item.hint.length, listWidth() >= 60 ? 30 : 18) + 3 : 0)), query())}>
+                      <Index each={matchSpans(clip(item.label, item.bar ? barLabel(item.section) - 3 : listWidth() - 3 - (item.hint ? Math.min(item.hint.length, listWidth() >= 60 ? 30 : 18) + 3 : 0)), query())}>
                         {(part) => <span style={part().hit && !item.disabled ? { fg: lit() ? mix(t().accent, t().text, 0.4) : t().accent, bold: lit() } : {}}>{part().text}</span>}
                       </Index>
                     </text>
@@ -252,10 +257,10 @@ export function Picker(p: {
                     <Show when={item.bar}>
                       {(bar) => (
                         <text flexShrink={0} fg={t().muted}>
-                          {trackParts(bar(), track()).before}
-                          <span style={{ bg: barColor(item.barTone) }}>{" ".repeat(trackParts(bar(), track()).solid)}</span>
-                          <span style={{ fg: barColor(item.barTone) }}>{trackParts(bar(), track()).edge}</span>
-                          {trackParts(bar(), track()).after}
+                          {trackParts(bar(), track(item.section)).before}
+                          <span style={{ bg: barColor(item.barTone) }}>{" ".repeat(trackParts(bar(), track(item.section)).solid)}</span>
+                          <span style={{ fg: barColor(item.barTone) }}>{trackParts(bar(), track(item.section)).edge}</span>
+                          {trackParts(bar(), track(item.section)).after}
                         </text>
                       )}
                     </Show>
