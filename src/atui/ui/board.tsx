@@ -40,7 +40,7 @@ import { useAtui, useTheme } from "./context.js";
 /** How many projects' pull requests are read when the board opens: gh is slow and a badge is decoration. */
 const PR_READS = 8;
 /** Rows the selected card's detail takes under the columns: its rule, title line, prompt, up to three of the answer, and its files. */
-const DETAIL_ROWS = 7;
+const DETAIL_ROWS = 8;
 
 /** One column's cards, the cursor kept inside the column's own list. */
 const clampCursor = (cards: BoardCard[], at: number): number => (cards.length === 0 ? 0 : Math.min(at, cards.length - 1));
@@ -128,6 +128,21 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     setCursor(0);
   });
 
+  // A card that finishes while the board is open leaves the column the cursor stood in: when that column empties, the cursor follows to the first one that holds something instead of standing on nothing.
+  let heldHere = 0;
+  createEffect(() => {
+    const all = cards();
+    const now = (all[column()] ?? []).length;
+    const emptied = heldHere > 0 && now === 0;
+    heldHere = now;
+    if (!emptied) return;
+    const first = BOARD_COLUMNS.find((id) => all[id].length > 0);
+    if (first) {
+      setColumn(first);
+      setCursor(0);
+    }
+  });
+
   /** A filter change can empty the column the cursor stood in: it moves to the first column that still has a
       card, so Enter always has one to open. */
   const reclamp = () => {
@@ -191,7 +206,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     return { from, to: Math.max(to, Math.min(list.length, cur + 1)) };
   };
   // Each filter wears the key that changes it (f, r), so narrowing the board is findable without the key line, which drops hints on a narrow pane.
-  const filterLine = () => `f ${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} · r ${PR_FILTER_LABELS[pr()]}`;
+  const filterLine = () => `f ${project() ? projectName(project() as string) : `Every project (${counts().needs + counts().working + counts().done})`} · r ${PR_FILTER_LABELS[pr()]}`;
   /** The frame takes the room the sheet stands in: the columns above, the selected card's detail under them, so the pane is one surface and not a small box over blank rows. */
   const boxHeight = () => Math.max(9 + DETAIL_ROWS, size().height - 7);
 
@@ -261,9 +276,9 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                                 <text wrapMode="none" truncate onMouseDown={() => p.onOpenSession(child)}>
                                   <span style={{ fg: i() === at() ? t().text2 : t().border }}>{"   └ "}</span>
                                   <span style={{ fg: child.asking ? t().warn : isBusy(child.status) ? t().accent : child.liveChatId ? t().ok : t().muted }}>{child.asking ? "▲ " : "● "}</span>
-                                  <Show when={parts().role}>{(role) => <span style={{ fg: t().text2 }}>{role()}</span>}</Show>
-                                  <Show when={parts().host}>{(host) => <span style={{ fg: quiet() }}>{`${parts().role ? " · " : ""}${host()}`}</span>}</Show>
-                                  <Show when={parts().model}>{(model) => <span style={{ fg: quiet() }}>{`${parts().role || parts().host ? " · " : ""}${model()}`}</span>}</Show>
+                                  <Show when={parts().host}>{(host) => <span style={{ fg: quiet() }}>{host()}</span>}</Show>
+                                  <Show when={parts().model}>{(model) => <span style={{ fg: quiet() }}>{`${parts().host ? " · " : ""}${model()}`}</span>}</Show>
+                                  <Show when={parts().role}>{(role) => <span style={{ fg: t().text2 }}>{`${parts().host || parts().model ? " · " : ""}${role()}`}</span>}</Show>
                                   <Show when={parts().title}>{(title) => <span style={{ fg: quiet() }}>{`${parts().role || parts().host || parts().model ? " · " : ""}${title()}`}</span>}</Show>
                                   <Show when={state()} fallback={<span style={{ fg: t().ok }}>{" ✓"}</span>}>
                                     <span style={{ fg: child.asking ? t().warn : t().accent }}>{state()}</span>
@@ -302,6 +317,13 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                 <text flexShrink={0} fg={t().muted}>{"Said    "}</text>
                 <text flexGrow={1} fg={t().text} wrapMode="word">{said()}</text>
               </box>
+              {/* A worker's own row drops its model and host before it squeezes the title, so they are said here, whole. */}
+              <Show when={card().children.length > 0}>
+                <text wrapMode="none" truncate>
+                  <span style={{ fg: t().muted }}>{"Workers "}</span>
+                  <span style={{ fg: t().text2 }}>{card().children.map((child) => [childHost(child), previewOf(child)?.model, child.lineage?.role].filter(Boolean).join(" · ") || "worker").join("  ·  ")}</span>
+                </text>
+              </Show>
               <Show when={(full()?.files.length ?? 0) > 0}>
                 <text wrapMode="none" truncate>
                   <span style={{ fg: t().muted }}>{"Files   "}</span>

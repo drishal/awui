@@ -21,7 +21,7 @@ const SEP = 3;
 const MIN_TITLE = 5;
 
 /** The title is worth more than the model or host (the card above already says where it runs): they leave before it falls under this. */
-const WORTH_KEEPING = 12;
+const WORTH_KEEPING = 10;
 
 /** `avail` is the cells the row has after its `└ ● ` lead; `state` (or the two-cell " ✓") is always kept. */
 export function workerRow(input: { title: string; role?: string | null; host?: string | null; model?: string | null; state: string }, avail: number): WorkerRowParts {

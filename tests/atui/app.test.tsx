@@ -153,8 +153,8 @@ describe("atui", () => {
         sheetFits(frame, expected);
         if (key === "k") {
           expect(frame).toMatch(/Enter open · .*Esc close/);
-          // The delegated worker's row names the model it runs on (read once its preview arrives).
-          if (width === 140) expect(await ui.until("fake/echo")).toMatch(/└ .*fake\/echo/);
+          // The worker's row gives its title the room, so its model is said whole under the board (read once its preview arrives).
+          if (width === 140) expect(await ui.until("Workers fake/echo · test")).toMatch(/└ .*test · /);
         }
         ui.keys.pressEscape();
         await wait(60);

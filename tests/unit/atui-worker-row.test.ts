@@ -16,8 +16,8 @@ describe("workerRow", () => {
   it("lets the model and host go before the title is squeezed to a stub, while the role stays named", () => {
     const row = workerRow(worker, 30);
     expect(row).toMatchObject({ role: "test", model: "" });
-    expect(row.title.length).toBeGreaterThanOrEqual(12);
-    expect(workerRow({ ...worker, host: "laptop" }, 30)).toMatchObject({ role: "test", host: "", model: "" });
+    expect(row.title.length).toBeGreaterThanOrEqual(10);
+    expect(workerRow({ ...worker, host: "laptop" }, 24)).toMatchObject({ role: "test", host: "", model: "" });
   });
   it("drops the model first, then the host, then the role, only when the facts themselves do not fit", () => {
     expect(workerRow(worker, 10)).toMatchObject({ role: "test", model: "" });
