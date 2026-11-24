@@ -76,7 +76,9 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
   const diffRows = createMemo(() => reviewRows(changes() ?? []));
   const height = () => Math.max(4, size().height - 7);
   const width = () => Math.max(30, size().width - (p.side ?? 0) - 4);
-  const start = () => rowWindow(rows().length, at(), height());
+  /** The list leaves room under it for the selected worker's detail (its doing or its result). */
+  const listHeight = () => Math.max(3, height() - 8);
+  const start = () => rowWindow(rows().length, at(), listHeight());
   const tick = setInterval(() => setNow(Date.now()), 1000);
   onCleanup(() => clearInterval(tick));
 
@@ -285,7 +287,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
         fallback={
           <box flexDirection="column" flexGrow={1} overflow="hidden" marginTop={1}>
             <Show when={rows().length > 0} fallback={<text fg={t().muted}>This chat has delegated nothing. A worker appears here when its agent starts one.</text>}>
-              <For each={rows().slice(start(), start() + height())}>
+              <For each={rows().slice(start(), start() + listHeight())}>
                 {(target, i) => {
                   const index = () => start() + i();
                   return (
@@ -303,6 +305,22 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
                   );
                 }}
               </For>
+              {/* What the selected worker is doing, or what it ended with: the list's one-line row, said in full. */}
+              <Show when={tasks().find((x) => x.id === rows()[at()]?.key)}>
+                {(task) => (
+                  <box flexDirection="column" flexShrink={0} marginTop={1} border={["top"]} borderColor={t().border} paddingTop={0}>
+                    <text fg={t().muted}>
+                      <b>{task().result ? "Result" : "Doing"}</b>
+                      <span>{`  ${task().role ? `${task().role} · ` : ""}${harnessName(task().harnessId)}${task().model ? ` ${task().model}` : ""}${task().scope && task().scope?.attempted ? ` · ${task().scope?.blocked ?? 0} of ${task().scope?.attempted} out-of-scope writes blocked` : ""}`}</span>
+                    </text>
+                    <box maxHeight={5} overflow="hidden">
+                      <text fg={t().text2} wrapMode="word">
+                        {task().result?.error ?? task().result?.finalText ?? task().asking ?? task().activity ?? "Nothing reported yet."}
+                      </text>
+                    </box>
+                  </box>
+                )}
+              </Show>
             </Show>
           </box>
         }

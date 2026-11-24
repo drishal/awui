@@ -1425,6 +1425,8 @@ describe("atui", () => {
     const list = await ui.until("Fake delegated task");
     expect(list).toContain("1 worker");
     expect(list).toContain("Delegated work");
+    // The selected worker's detail sits under the list: what it ended with, said in full.
+    expect(list).toMatch(/Result {2}test · Fake/);
     // Opened: the worker's changed file and its diff, and the review that decides what happens to it.
     ui.keys.pressEnter();
     const detail = await ui.until("Apply patch into lead");
