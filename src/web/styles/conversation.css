@@ -2028,7 +2028,7 @@
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
-  height: 30px;
+  height: 32px;
   padding: 0 calc(max(0px, (100% - 8px - var(--chat-col)) / 2) + 20px);
   border: 0;
   border-bottom: 1px solid var(--hairline);
@@ -2054,9 +2054,15 @@
   color: var(--text);
 }
 
+/* The number is a small pill of its own, so it reads as the turn's tag and not as the first word of the line. */
 .sticky-number {
   flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
   color: var(--muted-text);
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 

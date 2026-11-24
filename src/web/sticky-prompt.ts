@@ -3,7 +3,7 @@
 // Pure, so the rule is tested without a browser; the component only measures and calls this.
 
 /** The bar's height in px (`.sticky-prompt` in conversation.css): a turn ends for the bar this far before the view's top, as the next prompt would slide under it. */
-export const STICKY_BAR_PX = 30;
+export const STICKY_BAR_PX = 32;
 
 /** Where one turn sits, in px from the top of the conversation's view (negative: above it). */
 export interface TurnBox {
@@ -40,8 +40,8 @@ export function stickyTurn(count: number, box: (index: number) => TurnBox | null
   return at !== null && at.bottom > clearance ? found : -1;
 }
 
-/** How much of a prompt the bar's line keeps: enough to recognise the ask, short of a paragraph under a 13 px row. */
-const STICKY_LINE_CHARS = 160;
+/** How much of a prompt the bar's line keeps: one clause, enough to recognise the ask under a 13 px row. */
+const STICKY_LINE_CHARS = 90;
 
 /** A prompt's Markdown as its words: line-leading marks (a heading's #, a bullet, 1., a quote's >), links that keep
  *  their text, code backticks, and the bold/italic marks. Anything left over still reads (a table's pipes, a fence),
@@ -58,11 +58,15 @@ function stickyWords(text: string): string {
     .replace(/(?<![\w])(_{1,3})(?=\S)([^]*?)(?<=\S)\1(?![\w])/g, "$2");
 }
 
-/** A prompt as one line for the bar: its words without Markdown's marks, whitespace folded, bounded (the bar ellipsises what does not fit). */
+/** A prompt as one line for the bar: its first line of words (a heading is its first line; folding the rest in made
+ *  "## Migration order" and the list under it read as one run-on sentence), whitespace folded, bounded. */
 export function stickyLine(text: string): string {
-  // Only the head is read: an editor's answer can be a megabyte, and the line keeps 160 characters of it,
-  // while these expressions would walk the whole thing.
-  const line = stickyWords(text.slice(0, 4_000)).replace(/\s+/g, " ").trim().slice(0, STICKY_LINE_CHARS);
+  // Only the head is read: an editor's answer can be a megabyte, while these expressions would walk all of it.
+  const first = stickyWords(text.slice(0, 4_000))
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  const line = (first ?? "").replace(/\s+/g, " ").slice(0, STICKY_LINE_CHARS);
   return line || "(no text)";
 }
 
