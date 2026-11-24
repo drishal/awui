@@ -4,6 +4,8 @@
 // this file draws it and maps Enter to opening the chat. C-x k opens it. ←/→ a column, ↑/↓ a card,
 // Enter opens the chat, f narrows to one project, r to a pull-request state, Esc closes.
 import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
+import type { SessionPreview } from "../../shared/protocol.js";
+import { previewLine } from "../../web/preview-line.js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import type { ProjectSession, SessionsOverview } from "../../shared/protocol.js";
 import {
@@ -66,6 +68,21 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   const cards = createMemo(() => boardCards(overview(), { project: project(), pr: pr(), prStates: prStates(), working: (s) => isBusy(s.status) }));
   const counts = createMemo(() => boardCounts(cards()));
   const here = (): BoardCard | undefined => cards()[column()][clampCursor(cards()[column()], cursor())];
+  // The card under the cursor says what its session last said (the web dashboard's card line), read once per version of the session.
+  const [previews, setPreviews] = createSignal<Record<string, string | null>>({});
+  createEffect(() => {
+    const s = here()?.session;
+    if (!s) return;
+    const key = `${s.id}@${s.updatedAt ?? ""}`;
+    if (key in previews()) return;
+    setPreviews((all) => ({ ...all, [key]: null }));
+    const q = new URLSearchParams({ harnessId: s.harnessId, workspaceId: s.workspaceId, sessionId: s.id });
+    void app.server.call<SessionPreview>(`/api/sessions/preview?${q}`).then((r) => setPreviews((all) => ({ ...all, [key]: previewLine(r) }))).catch(() => undefined);
+  });
+  const preview = () => {
+    const s = here()?.session;
+    return s ? previews()[`${s.id}@${s.updatedAt ?? ""}`] ?? null : null;
+  };
 
   onMount(() => {
     void app.refreshSessions().finally(() => setReading(false));
@@ -155,7 +172,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     while (to < list.length && span(from, to + 1) <= budget) to++;
     return { from, to: Math.max(to, Math.min(list.length, cur + 1)) };
   };
-  const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} [f] · ${PR_FILTER_LABELS[pr()]} [r]`;
+  const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} · ${PR_FILTER_LABELS[pr()]}`;
   /** The frame fits its cards (about four rows each, plus the head and the column titles) up to the room the sheet stands in, so a board with a few cards is not a frame of empty rows. */
   const boxHeight = () => {
     const tallest = Math.max(...BOARD_COLUMNS.map((id) => cards()[id].length));
@@ -167,7 +184,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
       position="absolute"
       /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
          the title bar, so a terminal-height overlay would put its last row off the frame. */
-      top={0}
+      top={1}
       height={boxHeight()}
       left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
       width={width()}
@@ -186,7 +203,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           {`   ${filterLine()}`}
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? (width() < 100 ? "Enter open · Esc close" : width() < 135 ? "←→↑↓ move · Enter open · Esc close" : "←→ column · ↑↓ card · Enter open · f project · r PR · Esc close")}
+          {note() ?? (width() < 100 ? "Enter open · Esc close" : width() < 110 ? "←→↑↓ move · Enter open · Esc close" : width() < 135 ? "←→↑↓ move · Enter open · f project · r PR · Esc close" : "←→ column · ↑↓ card · Enter open · f project · r PR · Esc close")}
         </text>
       </box>
       <box flexDirection="row" flexGrow={1} overflow="hidden" marginTop={1}>
@@ -253,7 +270,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
         </For>
       </box>
       <text flexShrink={0} fg={t().muted} wrapMode="none" truncate>
-        {here() ? `Selected: ${harnessName(here()?.session.harnessId ?? "")} · ${projectName(here()?.session.workspaceId ?? "")} · ${plainTitle(here()?.session.title ?? "")}` : "No card under the cursor"}
+        {here() ? (preview() ? `Last: ${preview()}` : `${harnessName(here()?.session.harnessId ?? "")} · ${projectName(here()?.session.workspaceId ?? "")} · ${plainTitle(here()?.session.title ?? "")}`) : "No card under the cursor"}
       </text>
     </box>
   );

@@ -266,7 +266,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
       position="absolute"
       /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
          the title bar, so a terminal-height overlay would put its last row off the frame. */
-      top={0}
+      top={1}
       height={boxHeight()}
       left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
       width={width()}
