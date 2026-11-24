@@ -589,7 +589,7 @@ function ToolRow(p: { item: ToolItem; workspace: string; column: number }) {
       <box flexDirection="column" onMouseDown={() => setOpen(!open())}>
         <text wrapMode="none" truncate>
           <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} chip={toolKind(p.item)} />
-          <span style={{ fg: t().text2 }}>{head().verb}</span>
+          <span style={{ fg: t().text }}><b>{head().verb}</b></span>
           <Show when={!wraps()}>
             <Show when={head().detail}>
               {(d) => (
@@ -737,7 +737,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
         <text flexShrink={1} minWidth={0} wrapMode="none" truncate>
           <span style={{ fg: spineOf(t()) }}>{fork()}</span>
           <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} chip={toolKind(p.item)} />
-          <span style={{ fg: t().text2 }}>{head().verb}</span>
+          <span style={{ fg: t().text }}><b>{head().verb}</b></span>
           <Show when={head().detail}>
             {(d) => (
               <Show when={href()} fallback={<Marked text={` ${d()}`} ink={t().text2} />}>
