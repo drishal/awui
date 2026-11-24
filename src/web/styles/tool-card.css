@@ -232,6 +232,8 @@
   background: color-mix(in srgb, var(--danger) 7%, transparent);
 }
 
+/* A row gets room to breathe: at 3px of vertical padding eight calls stacked into a wall of hairlines, and the eye
+   had nowhere to land between them. Compact density keeps its own tighter row (tokens.css). */
 .tool-head {
   gap: 10px;
   height: auto;
@@ -239,6 +241,11 @@
   padding: 3px 12px 3px 10px;
   border-radius: 0;
   color: var(--text);
+}
+
+:root:not([data-density="compact"]) .tool-head {
+  min-height: calc((var(--drow-h) + 12px) * var(--chat-scale));
+  padding-block: 5px;
 }
 
 /* A hover fills the row's whole width; an open row needs no shade of its own, its panel says it is open. */
@@ -308,6 +315,18 @@
 .tool-fact .is-failed,
 .io-text .is-test-failure {
   color: var(--danger);
+}
+
+/* An exit code is a value, not a sentence: it takes a chip's shape so a failed row's "exit 1" reads at a glance
+   beside the reason it came with. */
+.tool-fact .tool-exit {
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Tool rows by category: the glyph takes --cat-*, the row text stays --text. */
@@ -414,10 +433,12 @@
 }
 
 
+/* Why it failed, in the UI's own type: the command stays monospaced (it is a command), the sentence about it does
+   not, or a failed row's reason read as more machine output than the machine's own. */
 .tool-error {
-  color: var(--muted-text);
-  font-family: var(--font-mono);
-  font-size: calc(var(--chat-small) - 0.6px);
+  color: var(--text-2);
+  font-family: var(--font-sans);
+  font-size: calc(var(--chat-small) - 0.2px);
 }
 
 .tool-error::before {

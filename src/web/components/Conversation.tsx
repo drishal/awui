@@ -255,7 +255,7 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
               {/* The word, only when it is not already in the counts: a failed call's outcome is spoken here rather than
                   drawn as a second mark at the row's end. */}
               {outcomeFailed && !sentence.facts.some((fact) => /\bfailed\b/i.test(fact)) ? <span className="tool-outcome">failed</span> : null}
-              {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : sentence.facts.length > 0 ? <span className="tool-fact">{sentence.facts.map((fact, i) => <Fragment key={i}><span className={sentence.failed && /\bfailed\b/i.test(fact) ? "is-failed" : undefined}>{fact}</span>{i < sentence.facts.length - 1 ? " · " : null}</Fragment>)}</span> : null}
+              {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : sentence.facts.length > 0 ? <span className="tool-fact">{sentence.facts.map((fact, i) => <Fragment key={i}><span className={sentence.failed && /\bfailed\b/i.test(fact) ? "is-failed" : /^exit \d+$/i.test(fact) ? "tool-exit" : undefined}>{fact}</span>{i < sentence.facts.length - 1 ? " · " : null}</Fragment>)}</span> : null}
               {time ? <span className="tool-time"><Rolling text={time} /></span> : null}
             </span>
             {/* Ask to retry cannot sit inside this button, so its twin holds its place here, unseen: the status mark and

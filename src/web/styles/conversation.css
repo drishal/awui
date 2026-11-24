@@ -1182,15 +1182,15 @@
   min-width: 0;
 }
 
-/* A fixed gutter (the widest number, set by DiffView, plus .diff-no's 16px of padding), the same on every row. */
+/* A fixed gutter (the widest number, set by DiffView, plus .diff-no's 20px of padding), the same on every row. */
 .diff.is-numbered .diff-line {
-  grid-template-columns: calc(var(--diff-digits, 3) * 1ch + 16px) 20px minmax(0, 1fr);
+  grid-template-columns: calc(var(--diff-digits, 3) * 1ch + 20px) 20px minmax(0, 1fr);
 }
 
 /* Full muted text, not faded further: a reviewer reads these to find the line, and at 70% they fell
    below AA on the dark diff tints. */
 .diff-no {
-  padding: 0 4px 0 12px;
+  padding: 0 4px 0 16px;
   color: var(--muted-text);
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1211,7 +1211,7 @@
 }
 
 .diff.is-attributed.is-numbered .diff-line {
-  grid-template-columns: 12px calc(var(--diff-digits, 3) * 1ch + 16px) 20px minmax(0, 1fr);
+  grid-template-columns: 12px calc(var(--diff-digits, 3) * 1ch + 20px) 20px minmax(0, 1fr);
 }
 
 .diff-origin {
@@ -1238,7 +1238,7 @@
 
 .diff-text {
   min-width: 0;
-  padding-right: 12px;
+  padding-right: 16px;
   color: var(--text-2);
   white-space: pre-wrap;
   word-break: break-word;
