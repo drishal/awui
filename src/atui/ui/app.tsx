@@ -882,7 +882,8 @@ export function App(p: {
                   id: `chats:${r.session.harnessId}:${r.session.id}`,
                   section: "Chats",
                   label: hit?.snippet ?? (r.session.title || "New chat"),
-                  hint: `${clip(r.session.title || "New chat", 22)} · ${names.get(r.session.workspaceId) ?? ""}${r.more > 0 ? ` · +${r.more}` : ""}`,
+                  // A row whose words are the chat's title does not repeat it: the hint is then where and when, as the sidebar says it.
+                  hint: [hit?.kind === "title" || !hit ? (app.boot()?.harnesses.find((h) => h.id === r.session.harnessId)?.displayName ?? r.session.harnessId) : clip(r.session.title || "New chat", 22), names.get(r.session.workspaceId) ?? "", hit?.kind === "title" || !hit ? ago(r.session.updatedAt) : "", r.more > 0 ? `+${r.more}` : ""].filter(Boolean).join(" · "),
                   run: () => void app.openSession(r.session).then(() => {
                     // The chat is on screen: the first turn with the words is where the find lands, as it does from Ctrl+S.
                     setTimeout(() => {

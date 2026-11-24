@@ -99,7 +99,12 @@ export function Picker(p: {
   );
   const room = () => size().width - (p.side ?? 0);
   const previewing = () => Boolean(p.preview) && room() >= PREVIEW_WIDTH;
-  const width = () => Math.max(30, Math.min(previewing() ? 128 : p.info || p.softBars ? 100 : 72, room() - 4));
+  // A sheet that would leave only a sliver of transcript at its sides takes the whole column instead (the transcript's own 2-cell margins), so no clipped words peek out beside it.
+  const width = () => {
+    const cap = previewing() ? 128 : p.info || p.softBars ? 100 : 72;
+    const full = room() - 4;
+    return Math.max(30, full - cap <= 6 ? full : Math.min(cap, full));
+  };
   /** The list's own width: all of it, or about half beside a preview. The box's border and padding come off first. */
   const listWidth = () => (previewing() ? Math.min(64, Math.floor(width() * 0.52)) : width() - 4);
   const [shownPreview] = createResource(
