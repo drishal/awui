@@ -157,8 +157,10 @@ export function clip(text: string, width: number): string {
   const wordStart = hard.lastIndexOf(" ") + 1;
   // Back up to the word's start only when that keeps most of the budget: a long first word
   // ("fix src/verylongpath…") is worth more cut than lost to a near-empty prefix ("fix…").
-  if (next !== "" && next !== " " && wordStart > 0 && wordStart * 5 >= hard.length * 3) return `${hard.slice(0, wordStart).trimEnd()}…`;
-  return `${hard}…`;
+  // A cut never ends on a joiner ("showcase timing ·…"): the dot or dash that led to what was lost goes with it.
+  const bare = (cut: string) => cut.replace(/[\s·\-–:,;|/]+$/, "");
+  if (next !== "" && next !== " " && wordStart > 0 && wordStart * 5 >= hard.length * 3) return `${bare(hard.slice(0, wordStart))}…`;
+  return `${bare(hard) || hard}…`;
 }
 
 /**

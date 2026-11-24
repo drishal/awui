@@ -96,6 +96,8 @@ describe("atui formatting", () => {
     expect(claude.windows.map((w) => windowLabel(w.label))).toEqual(["5h", "7d"]);
     // Whitespace collapses to single spaces and the cut never leaves one hanging before the ellipsis.
     expect(clip("a  long\n line", 8)).toBe("a long…");
+    // A cut never ends on a joiner: the dot that led to what was lost goes too.
+    expect(clip("showcase timing · Fake · alpha", 17)).toBe("showcase timing…");
     // A path keeps its end, cut at a folder: the project's own name is the part that tells two apart.
     expect(clipPath("/tmp/atui-scratch/workspaces/alpha", 24)).toBe("…/workspaces/alpha");
     expect(clipPath("/tmp/atui-scratch/workspaces/alpha", 14)).toBe("…/alpha");
