@@ -222,7 +222,7 @@ function PromptActions(p: { item: UserItem; through: number; onDone: () => void 
   return (
     <box flexDirection="row" flexWrap="wrap" marginTop={0} paddingLeft={1}>
       <Show when={canBranch()}>
-        <Chip label="↻ Retry" onPress={run(() => void app.rerun(p.through, p.item, p.item.text))} />
+        <Chip label={`${icon("retry")} Retry`} onPress={run(() => void app.rerun(p.through, p.item, p.item.text))} />
         <Chip label={`${icon("pencil")} Edit`} onPress={run(() => app.setEditing({ through: p.through, item: p.item }))} />
       </Show>
       <Show when={idle() && hasCheckpoint()}>
