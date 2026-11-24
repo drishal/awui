@@ -19,6 +19,8 @@ import { fitHints } from "../footer.js";
 import { highlightPreview, type Segment } from "../words.js";
 
 const SIGN = { add: "+", del: "-", ctx: " ", hunk: "", gap: "" } as const;
+/** What is drawn for a sign: the true minus, as the header's own −N and every other sheet write it. */
+const SHOWN_SIGN = { ...SIGN, del: "−" } as const;
 
 export function ReviewView(p: { onClose: () => void }) {
   const app = useAtui();
@@ -203,7 +205,7 @@ export function ReviewView(p: { onClose: () => void }) {
                       ) : (
                         <>
                           {/* As the web's diff does: the sign carries the hue (eased toward the text so it keeps its contrast on the tint), the code stays in the text colour, and the words that changed sit on a stronger tint. */}
-                          <span style={{ fg: mix(lineColor(row.line.kind), t().text, 0.3) }}>{`${SIGN[row.line.kind]} `}</span>
+                          <span style={{ fg: mix(lineColor(row.line.kind), t().text, 0.3) }}>{`${SHOWN_SIGN[row.line.kind]} `}</span>
                           <For each={marked().get(row.key) ?? [{ text: row.line.text, changed: false }]}>
                             {(seg) => <span style={{ bg: seg.changed && (marked().get(row.key)?.length ?? 1) > 1 ? mix(t().bg, lineColor(row.line.kind), 0.3) : undefined }}>{seg.text}</span>}
                           </For>

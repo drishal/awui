@@ -196,7 +196,7 @@ export function GitView(p: { onClose: () => void }) {
                     <text wrapMode="none" truncate>
                       <span style={{ fg: t().border }}>{line.line !== undefined ? String(line.line).padStart(5) : "     "} </span>
                       <span style={{ fg: line.kind === "add" ? t().ok : line.kind === "del" ? t().danger : t().text2 }}>
-                        {`${line.kind === "add" ? "+" : line.kind === "del" ? "-" : " "}${line.kind === "hunk" || line.kind === "gap" ? clip(line.text || "⋯", 110) : line.text}`}
+                        {`${line.kind === "add" ? "+" : line.kind === "del" ? "−" : " "}${line.kind === "hunk" || line.kind === "gap" ? clip(line.text || "⋯", 110) : line.text}`}
                       </span>
                     </text>
                   )}

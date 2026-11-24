@@ -931,7 +931,7 @@ describe("atui", () => {
     expect(view).toContain("src/app.ts");
     // The attribution marks: the file head says which lines this chat wrote (the fake edit's own).
     await ui.until("from this chat");
-    expect(view).toMatch(/▌\s+\d*\s*- a/);
+    expect(view).toMatch(/▌\s+\d*\s*[-−] a/);
     ui.keys.pressEnter();
     await ui.until("What should change here?");
     await ui.type("keep a");
