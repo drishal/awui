@@ -14,6 +14,9 @@ export interface WorkerRowParts {
   state: string;
 }
 
+/** The cells a " · " takes. */
+const SEP = 3;
+
 /** Fewest cells a title is worth drawing in. */
 const MIN_TITLE = 5;
 
@@ -22,11 +25,15 @@ export function workerRow(input: { title: string; role?: string | null; host?: s
   const state = input.state;
   const extras = { role: input.role ?? "", host: input.host ?? "", model: input.model ?? "" };
   const fixed = Math.max(state.length, 2);
-  const used = () => (extras.role ? extras.role.length + 1 : 0) + (extras.host ? extras.host.length + 1 : 0) + (extras.model ? extras.model.length + 1 : 0) + fixed;
+  // The facts and the title are separated by " · " (the dot every other row joins with), so each one after the first costs three cells.
+  const used = () => {
+    const present = [extras.role, extras.host, extras.model].filter(Boolean);
+    return present.reduce((n, x) => n + x.length, 0) + SEP * Math.max(0, present.length - 1) + fixed;
+  };
   for (const key of ["model", "host", "role"] as const) {
     if (used() <= avail) break;
     extras[key] = "";
   }
-  const room = avail - used() - 1;
+  const room = avail - used() - 1 - (extras.role || extras.host || extras.model ? SEP : 0);
   return { title: room >= MIN_TITLE ? clip(input.title, room) : "", role: extras.role, host: extras.host, model: extras.model, state };
 }

@@ -262,9 +262,9 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                                   <span style={{ fg: i() === at() ? t().text2 : t().border }}>{"   └ "}</span>
                                   <span style={{ fg: child.asking ? t().warn : isBusy(child.status) ? t().accent : child.liveChatId ? t().ok : t().muted }}>{child.asking ? "▲ " : "● "}</span>
                                   <Show when={parts().role}>{(role) => <span style={{ fg: t().text2 }}>{role()}</span>}</Show>
-                                  <Show when={parts().host}>{(host) => <span style={{ fg: quiet() }}>{` ${host()}`}</span>}</Show>
-                                  <Show when={parts().model}>{(model) => <span style={{ fg: quiet() }}>{` ${model()}`}</span>}</Show>
-                                  <Show when={parts().title}>{(title) => <span style={{ fg: quiet() }}>{`${parts().role || parts().host || parts().model ? " " : ""}${title()}`}</span>}</Show>
+                                  <Show when={parts().host}>{(host) => <span style={{ fg: quiet() }}>{`${parts().role ? " · " : ""}${host()}`}</span>}</Show>
+                                  <Show when={parts().model}>{(model) => <span style={{ fg: quiet() }}>{`${parts().role || parts().host ? " · " : ""}${model()}`}</span>}</Show>
+                                  <Show when={parts().title}>{(title) => <span style={{ fg: quiet() }}>{`${parts().role || parts().host || parts().model ? " · " : ""}${title()}`}</span>}</Show>
                                   <Show when={state()} fallback={<span style={{ fg: t().ok }}>{" ✓"}</span>}>
                                     <span style={{ fg: child.asking ? t().warn : t().accent }}>{state()}</span>
                                   </Show>

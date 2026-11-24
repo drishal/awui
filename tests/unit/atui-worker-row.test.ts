@@ -11,7 +11,7 @@ describe("workerRow", () => {
     const row = workerRow(worker, 30);
     expect(row).toMatchObject({ role: "test", model: "fake/echo" });
     expect(row.title.endsWith("…")).toBe(true);
-    expect(row.title.length + 1 + row.role.length + 1 + row.model.length + 1 + 2).toBeLessThanOrEqual(30);
+    expect(row.title.length + 3 + row.role.length + 3 + row.model.length + 2).toBeLessThanOrEqual(30);
   });
   it("leaves the title out rather than show a stub, while the seat stays named", () => {
     expect(workerRow(worker, 20)).toMatchObject({ title: "", role: "test", model: "fake/echo" });
