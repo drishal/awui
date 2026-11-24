@@ -24,7 +24,7 @@ import { mix, shimmer, sparkline, streamRate } from "../fx.js";
 import { attachmentFrom, attachmentFromFile, byteSize, clipboardImageByTool, imagePathsFromPaste, type PendingImage } from "../images.js";
 import { harnessGlyph } from "../neat.js";
 import { accentOf, CONTEXT_HEAVY_TOKENS, contextTone } from "../theme.js";
-import { fitFooter } from "../footer.js";
+import { fitFooter, spendWords } from "../footer.js";
 import { useAtui, useTheme } from "./context.js";
 import { Shimmer } from "./fx.js";
 import { JobsStrip } from "./job.js";
@@ -362,13 +362,18 @@ export function Composer(p: {
   const gitBranchText = (g: GitStatus) => ` ⑂ ${g.branch ?? `detached ${g.head ?? ""}`} ${g.upstream && (g.ahead > 0 || g.behind > 0) ? `${g.ahead > 0 ? ` ↑${g.ahead}` : ""}${g.behind > 0 ? ` ↓${g.behind}` : ""}` : ""}`;
   const gitCountsText = (g: GitStatus) => `${g.added + g.removed > 0 ? ` +${g.added} −${g.removed}` : ""} ${gitWord(g)}  `;
   const rateText = () => (app.chat()?.status === "running" && (rate() ?? 0) >= 1 ? `~${Math.round(rate() ?? 0)} tok/s ${rates().length > 1 ? `${sparkline(rates())}  ` : ""}` : "");
+  // The chat's spend, where the eye already is (pi's statusline carries it): a price and the cache's share, each only when known.
+  const spendText = () => {
+    const words = spendWords(app.chat()?.usage);
+    return words ? `${words}  ` : "";
+  };
   const offerText = () => (offer() ? `${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  ` : "");
   const sparkText = () => (app.contextHistory().length > 1 ? `${sparkline(app.contextHistory().slice(-12), 100)} ` : "");
   const ctxText = () => (percent() !== null ? `ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%` : "");
   const permissionLabel = () => (caps()?.supportsPermissionMode ? app.chat()?.config.permissionModes?.find((m) => m.id === app.chat()?.config.permissionMode)?.label : undefined);
   const kept = () => {
     const g = app.git();
-    const chips = ` ${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾ `.length + (caps()?.supportsThinkingLevel && words().level ? ` ${levelTitle(words().level ?? "")} ▾ `.length + 1 : 0) + (permissionLabel() ? ` ${permissionLabel()} ▾ `.length + 1 : 0) + (p.status.mode ? 14 : 0) + (queued() > 0 ? `  +${queued()} queued`.length : 0);
+    const chips = ` ${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾ `.length + (caps()?.supportsThinkingLevel && words().level ? ` Think ${levelTitle(words().level ?? "")} ▾ `.length + 1 : 0) + (permissionLabel() ? ` ${permissionLabel()} ▾ `.length + 1 : 0) + (p.status.mode ? 14 : 0) + (queued() > 0 ? `  +${queued()} queued`.length : 0) + (p.status.note ? p.status.note.length + 2 : 0);
     // The model's name keeps a dozen cells; what the chips and it leave is the right side's.
     const budget = p.column - 2 - chips - 14;
     return fitFooter(
@@ -377,6 +382,7 @@ export function Composer(p: {
         { id: "offer", width: offerText().length, rank: 3 },
         { id: "counts", width: g ? gitCountsText(g).length : 0, rank: 4 },
         { id: "rate", width: rateText().length, rank: 5 },
+        { id: "spend", width: spendText().length, rank: 5.5 },
         { id: "spark", width: sparkText().length, rank: 6 },
         { id: "ctx", width: ctxText().length + 2, rank: 1 },
       ],
@@ -565,7 +571,7 @@ export function Composer(p: {
           <Show when={caps()?.supportsThinkingLevel ? words().level : null}>
             {(level) => (
               <box flexShrink={0} backgroundColor={app.glass() ? undefined : t().surface2} marginLeft={1} onMouseDown={() => p.onPick("thinking")}>
-                <text fg={t().muted}>{` ${levelTitle(level())} ▾ `}</text>
+                <text fg={t().muted}>{` Think ${levelTitle(level())} ▾ `}</text>
               </box>
             )}
           </Show>
@@ -621,6 +627,9 @@ export function Composer(p: {
             <Show when={rates().length > 1}>
               <span style={{ fg: t().text2 }}>{`${sparkline(rates())}  `}</span>
             </Show>
+          </Show>
+          <Show when={kept().has("spend") && spendText()}>
+            <span style={{ fg: t().muted }}>{spendText()}</span>
           </Show>
           <Show when={kept().has("offer") && offer()}>
             <span style={{ fg: compactFirst() ? t().warn : t().muted }}>{offerText()}</span>

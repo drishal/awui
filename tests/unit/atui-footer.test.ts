@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { fitFooter } from "../../src/atui/footer.js";
+import { fitFooter, spendWords } from "../../src/atui/footer.js";
+
+describe("spendWords", () => {
+  it("words the price and the cache's share, and leaves out what is unknown", () => {
+    expect(spendWords({ input: 200, cachedInput: 800, cost: 0.1234 })).toBe("$0.12 · cache 80%");
+    expect(spendWords({ input: 200, cachedInput: 0, cost: 0.004 })).toBe("<$0.01");
+    expect(spendWords({ input: 200, cachedInput: 600, cost: null })).toBe("cache 75%");
+    expect(spendWords({ input: 0, cachedInput: 0, cost: null })).toBe("");
+    expect(spendWords(null)).toBe("");
+  });
+});
 
 const segs = [
   { id: "git", width: 18, rank: 2 },

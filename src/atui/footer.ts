@@ -28,3 +28,13 @@ export function fitFooter(segments: readonly FooterSegment[], budget: number): S
   }
   return new Set(kept.map((s) => s.id));
 }
+
+/** What a chat has spent, for the footer: "$0.12 · cache 84%". Nothing is shown for what is unknown (no price, no cached input). */
+export function spendWords(usage: { input: number; cachedInput: number; cost: number | null } | null | undefined): string {
+  if (!usage) return "";
+  const parts: string[] = [];
+  if (usage.cost !== null && usage.cost > 0) parts.push(usage.cost < 0.01 ? "<$0.01" : `$${usage.cost.toFixed(2)}`);
+  const read = usage.input + usage.cachedInput;
+  if (usage.cachedInput > 0 && read > 0) parts.push(`cache ${Math.round((usage.cachedInput / read) * 100)}%`);
+  return parts.join(" · ");
+}
