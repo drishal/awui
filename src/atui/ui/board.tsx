@@ -28,6 +28,7 @@ import {
 } from "../../web/dashboard.js";
 import { isBusy } from "../../web/session-groups.js";
 import { plainTitle } from "../../web/plain-title.js";
+import { fitHints } from "../footer.js";
 import { agentStatusText } from "../../web/agent-status.js";
 import { ago } from "../format.js";
 import { harnessGlyph } from "../neat.js";
@@ -203,7 +204,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           {`   ${filterLine()}`}
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? (width() < 90 ? "Enter open · Esc close" : width() < 135 ? "Enter open · f project · r PR · Esc close" : "←→ column · ↑↓ card · Enter open · f project · r PR · Esc close")}
+          {note() ?? fitHints(["←→ column", "↑↓ card", "Enter open", "f project", "r PR", "Esc close"], width() - 15 - filterLine().length)}
         </text>
       </box>
       <box flexDirection="row" flexGrow={1} overflow="hidden" marginTop={1}>

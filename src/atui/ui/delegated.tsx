@@ -287,7 +287,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
         </text>
         {/* The list's keys sit beside the title like every other sheet's; a worker's own screen and its prompts keep their longer line below. */}
         <Show when={!row() && !error() && !confirming() && !busy()}>
-          <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">{width() < 90 ? "Enter open · Esc close" : `↑↓ move · Enter open · o chat${rows().some((r) => !r.finished) ? " · x cancel" : ""} · Esc close`}</text>
+          <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">{fitHints(["↑↓ move", "Enter open", "o chat", ...(rows().some((r) => !r.finished) ? ["x cancel"] : []), "Esc close"], width() - 40)}</text>
         </Show>
       </box>
       <Show

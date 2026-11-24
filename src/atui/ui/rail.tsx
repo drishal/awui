@@ -14,6 +14,7 @@ import { clip } from "../format.js";
 import { moveRow, rowWindow } from "../delegated.js";
 import { railEntries, railSummary, toneDot, toneOf, type RailEntry } from "../rail.js";
 import { useAtui, useTheme } from "./context.js";
+import { fitHints } from "../footer.js";
 
 export interface RailActions {
   /** Open a chat by its id, in a tab of its own (a worker's, a parent's, an opinion's). */
@@ -133,7 +134,7 @@ export function ContextRailView(p: RailActions) {
           <span style={{ fg: t().muted }}>{`   ${clip(chat()?.title || "New chat", width() - 60)} · ${app.boot()?.harnesses.find((h) => h.id === chat()?.harnessId)?.displayName ?? chat()?.harnessId ?? ""} · ${chat()?.workspace.name ?? ""}`}</span>
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? (entries().length === 0 ? "Esc close" : width() < 90 ? "Enter open · Esc close" : `↑↓ move · Enter open${entries().some((e) => e.row.target.kind === "chat") ? " · o chat" : ""} · Esc close`)}
+          {note() ?? (entries().length === 0 ? "Esc close" : fitHints(["↑↓ move", "Enter open", ...(entries().some((e) => e.row.target.kind === "chat") ? ["o chat"] : []), "Esc close"], width() - 40))}
         </text>
       </box>
       <text flexShrink={0} fg={t().text2} wrapMode="none" truncate>
