@@ -35,9 +35,39 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 22px;
   color: var(--warn);
   font-size: 12px;
   font-weight: 600;
+}
+
+/* Stop is the card's escape, not one of its answers: a small quiet mark at the far end of the status line. */
+.approval-stop {
+  flex: none;
+  min-height: 22px;
+  margin-left: auto;
+  padding: 0 6px;
+  color: color-mix(in srgb, var(--danger) 70%, var(--muted-text));
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+/* The clock and the queue count already take the free space: the way out follows them. */
+.approval-strip:has(.approval-countdown, .approval-more) .approval-stop {
+  margin-left: 8px;
+}
+
+.approval-stop:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+
+/* Touch: the strip is the only place the way out of a run lives now, so it is a finger's size there. */
+@media (pointer: coarse) {
+  .approval-stop {
+    min-height: 32px;
+    padding: 0 10px;
+  }
 }
 
 .approval-dot {
@@ -60,10 +90,21 @@
 }
 
 .approval-headline {
-  margin: 8px 0 6px;
-  font-size: var(--chat-font);
+  margin: 8px 0 4px;
+  font-size: calc(15px * var(--chat-scale));
   font-weight: 600;
+  line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+/* What approving does, in plain words above the payload: the card asks for a decision, so it says what the
+   decision does before it shows the command or path it does it to. */
+.approval-consequence {
+  margin: 0 0 8px;
+  color: var(--text-2);
+  font-family: var(--font-sans);
+  font-size: calc(12.5px * var(--chat-scale));
+  line-height: 1.45;
 }
 
 .approval-detail {
@@ -83,9 +124,35 @@
 .approval-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* The decision itself: two answers of one weight, 38px tall so a phone's thumb lands on one. Approve fills the
+   accent (the card's only primary), Deny keeps an edge so it reads as a real choice beside it. */
+.approval-actions .approval-approve,
+.approval-actions .approval-deny {
+  min-height: 38px;
+  padding: 0 18px;
+  font-size: calc(13.5px * var(--chat-scale));
+  font-weight: 600;
+}
+
+.approval-actions .approval-approve {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.approval-actions .approval-approve:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.approval-actions .approval-approve:disabled {
+  opacity: 0.6;
+}
+
 
 .approval-spacer {
   flex: 1;
@@ -102,8 +169,8 @@
   font-size: var(--chat-small);
 }
 
-/* Stop stays apart from the answer, on the left, but drawn as a button: as bare red text beside a bordered Deny and a
-   filled Approve it read as a status label. Its outline takes the danger hue faintly, so it still yields to them. */
+/* A form question's Stop stays apart from its Submit, on the left, but drawn as a button: as bare red text beside a
+   bordered Cancel and a filled Submit it read as a status label. Its outline takes the danger hue faintly. */
 .approval-actions .btn-danger-text {
   border-color: color-mix(in srgb, var(--danger) 30%, transparent);
 }
@@ -232,6 +299,11 @@
   gap: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--hairline);
+}
+
+/* A question's keys, beside the way out of it: only the keys this card really answers. */
+.approval-foot .approval-hint {
+  text-align: left;
 }
 
 .approval-hint {

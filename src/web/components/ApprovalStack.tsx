@@ -9,6 +9,7 @@ import { HTML_RENDER_THEME_MESSAGE, htmlRenderThemeFragment, htmlRenderThemeFrom
 import { useNow } from "../hooks.js";
 import { IconCheck, IconStop, IconX } from "../icons.js";
 import type { FoldedRequest } from "../approval-fold.js";
+import { approvalConsequence } from "../approval-consequence.js";
 import { approvalAnswers, isApproval } from "../../shared/approval.js";
 import { choicesOf, splitStep } from "../questions.js";
 import { Dot } from "./Dot.js";
@@ -199,6 +200,20 @@ export function ApprovalStack({
   const detail = labelled ? "" : [restLines.join("\n").trim(), message].filter(Boolean).join("\n\n");
   const behind = Math.min(pending.length - 1, 2);
   const answers = approvalAnswers(request);
+  // What approving does, in one plain sentence above the payload; absent when the title does not name it.
+  const consequence = approval ? approvalConsequence(titleLine) : null;
+  // The card answers ↑ ↓ as the shortcut sheet says: the two decisions take turns under the finger.
+  const decisions = useRef<(HTMLButtonElement | null)[]>([]);
+  const moveDecision = (e: React.KeyboardEvent) => {
+    if (!approval || busy || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+    if ((e.target as HTMLElement).closest("input, textarea")) return;
+    const buttons = decisions.current.filter((b): b is HTMLButtonElement => b !== null);
+    if (buttons.length < 2) return;
+    e.preventDefault();
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    buttons[(at + 1) % buttons.length]?.focus();
+  };
 
   return (
     <div className={`approval-stack behind-${behind}`} data-testid="approval-card">
@@ -207,6 +222,8 @@ export function ApprovalStack({
         aria-label="The agent is waiting for you"
         role="group"
         onKeyDown={(e) => {
+          // The question's digits pick an option; ↑ ↓ walk the two decisions of an approval.
+          moveDecision(e);
           if (!question || busy || e.ctrlKey || e.metaKey || e.altKey || !/^[1-9]$/.test(e.key)) return;
           if ((e.target as HTMLElement).closest("input, textarea")) return;
           const option = request.options?.[Number(e.key) - 1];
@@ -222,8 +239,16 @@ export function ApprovalStack({
           {step ? <span className="approval-chip">{step}</span> : null}
           {request.expiresAt ? <Countdown expiresAt={request.expiresAt} /> : null}
           {pending.length > 1 ? <span className="approval-more">{pending.length - 1} more</span> : null}
+          {/* Stopping the run is the card's third choice, not part of its decision: it sits in the status line
+              above, where it reads as an escape from the whole request rather than a button beside Approve. */}
+          {approval || request.kind === "select" ? (
+            <button type="button" className="btn btn-small btn-ghost btn-danger-text approval-stop" onClick={onStop} disabled={stopping} title="Stop the run instead of answering">
+              <IconStop size={11} /> {stopping ? "Stopping…" : "Stop"}
+            </button>
+          ) : null}
         </header>
         <div className="approval-headline">{headline}</div>
+        {consequence ? <p className="approval-consequence">{consequence}</p> : null}
         {detail ? question ? <p className="approval-message">{detail}</p> : <pre className="approval-detail">{detail}</pre> : null}
 
         {request.kind === "form" ? (
@@ -281,22 +306,21 @@ export function ApprovalStack({
               />
             </div>
             <div className="approval-actions">
-              <button type="button" className="btn btn-ghost btn-danger-text" onClick={onStop} disabled={stopping}>
-                <IconStop size={12} /> {stopping ? "Stopping…" : "Stop"}
-              </button>
               <span className="approval-spacer" />
               {/* Bordered: Deny is a real choice beside Approve, not a dismiss link. */}
               <button
+                ref={(el) => { decisions.current[0] = el; }}
                 type="button"
-                className="btn"
+                className="btn approval-deny"
                 disabled={busy}
                 onClick={() => answers && onAnswer(request, answers.deny, denialReason.trim() || undefined)}
               >
                 Deny
               </button>
               <button
+                ref={(el) => { decisions.current[1] = el; }}
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-primary approval-approve"
                 disabled={busy}
                 autoFocus
                 onClick={() => answers && onAnswer(request, answers.approve)}
@@ -309,9 +333,6 @@ export function ApprovalStack({
           <>
             <ChoiceList request={request} busy={busy} onAnswer={(a) => onAnswer(request, a)} />
             <div className="approval-foot">
-              <button type="button" className="btn btn-small btn-ghost btn-danger-text" onClick={onStop} disabled={stopping}>
-                <IconStop size={11} /> {stopping ? "Stopping…" : "Stop"}
-              </button>
               <span className="approval-hint">
                 {(request.options?.length ?? 0) > 1 ? (
                   <>
