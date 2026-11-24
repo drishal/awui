@@ -240,6 +240,9 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
     if (action) return run(action);
   });
 
+  /** A list of workers fits its rows (a worker takes up to two lines) up to the room the sheet stands in; one worker's own screen takes all of it, its files scrolling. */
+  const boxHeight = () => Math.min(Math.max(10, size().height - 6), row() ? Number.MAX_SAFE_INTEGER : Math.max(10, rows().length * 2 + 8));
+
   const taskLine = (target: TaskRow) => (
     // Never shrunk: the files below take the free space, and a shrunk header would overlap its own rows.
     <box flexDirection="column" flexShrink={0}>
@@ -264,7 +267,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
       /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
          the title bar, so a terminal-height overlay would put its last row off the frame. */
       top={0}
-      bottom={0}
+      height={boxHeight()}
       left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
       width={width()}
       zIndex={15}

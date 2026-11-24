@@ -130,7 +130,7 @@ export function ContextRailView(p: RailActions) {
       <box flexDirection="row" flexShrink={0}>
         <text flexGrow={1} wrapMode="none" truncate>
           <b>Active work</b>
-          <span style={{ fg: t().muted }}>{`   ${clip(chat()?.title || "New chat", width() - 60)} · ${chat()?.harnessId ?? ""} · ${chat()?.workspace.name ?? ""}`}</span>
+          <span style={{ fg: t().muted }}>{`   ${clip(chat()?.title || "New chat", width() - 60)} · ${app.boot()?.harnesses.find((h) => h.id === chat()?.harnessId)?.displayName ?? chat()?.harnessId ?? ""} · ${chat()?.workspace.name ?? ""}`}</span>
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
           {note() ?? (width() < 90 ? "Enter opens · Esc closes" : "↑↓ row · Enter opens · o opens the chat · Esc closes")}
