@@ -45,6 +45,17 @@
   flex: 1 1 auto;
 }
 
+/* A live head's clock keeps the run's life too: a narrow sheen crossing its surface-2 pad, slow enough to read as a
+   pulse rather than a spinner. tokens.css switches every animation off under reduced motion. */
+.process-card.is-live .process-time {
+  padding: 0 4px;
+  border-radius: 4px;
+  background:
+    linear-gradient(100deg, transparent 49%, color-mix(in srgb, var(--text) 16%, transparent) 50%, transparent 51%) 0 0 / 400% 100%,
+    var(--surface-2);
+  animation: shimmer 2.4s linear infinite;
+}
+
 .process-card .process-chevron {
   margin-left: auto;
   color: var(--muted-text);
