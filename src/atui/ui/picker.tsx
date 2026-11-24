@@ -140,7 +140,8 @@ export function Picker(p: {
   const barLabel = () => {
     // One column for the whole sheet, capped at a share of it: a bar means the same length in every section (a long label is clipped at the cap, not allowed to push the rest).
     const widest = Math.max(0, ...shown().filter((i) => i.bar).map((i) => i.label.length + 4));
-    const cap = Math.floor(listWidth() * (listWidth() > 70 ? 0.48 : 0.37));
+    // A soft-bar sheet (Usage) measures amounts, not names: its label is clipped sooner (the web's is a fixed 140 px) so a long chat title does not push every bar to the middle.
+    const cap = Math.floor(listWidth() * (p.softBars ? 0.26 : listWidth() > 70 ? 0.48 : 0.37));
     return Math.max(18, Math.min(cap, widest));
   };
   /** The track takes what the label and the widest figure leave, so a wide sheet has a long bar and no dead gap: 12 cells at least, 64 at most. */
