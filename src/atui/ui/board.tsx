@@ -270,7 +270,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                             {(child) => {
                               // The row is measured, not left to the renderer's middle cut: the title clips at its end and the extras leave whole.
                               const state = () => (child.asking ? " needs you" : isBusy(child.status) ? " working" : "");
-                              const parts = () => workerRow({ title: plainTitle(child.title) || "Untitled", role: child.lineage?.role, host: childHost(child), model: previewOf(child)?.model, state: state() }, columnWidth(id === BOARD_COLUMNS[BOARD_COLUMNS.length - 1]) - 1 - 7);
+                              const parts = () => workerRow({ title: plainTitle(child.lineage?.taskTitle || child.title) || "Untitled", role: child.lineage?.role, host: childHost(child), model: previewOf(child)?.model, state: state() }, columnWidth(id === BOARD_COLUMNS[BOARD_COLUMNS.length - 1]) - 1 - 7);
                               const quiet = () => (i() === at() ? t().text2 : t().muted);
                               return (
                                 <text wrapMode="none" truncate onMouseDown={() => p.onOpenSession(child)}>

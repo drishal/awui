@@ -425,7 +425,7 @@ export class Orchestrator {
     const task = this.tasks.find((t) => this.startedFrom(t, chat));
     if (!task) return undefined;
     // host rides along so a board card can say the child runs on a peer.
-    return { kind: "delegate", taskId: task.id, parentChatId: task.parentChatId, parentTitle: task.parentTitle, depth: task.depth, ...(task.role ? { role: task.role } : {}), host: task.peer?.name ?? null };
+    return { kind: "delegate", taskId: task.id, parentChatId: task.parentChatId, parentTitle: task.parentTitle, depth: task.depth, taskTitle: task.title, ...(task.role ? { role: task.role } : {}), host: task.peer?.name ?? null };
   }
 
   /**
@@ -1536,7 +1536,7 @@ export class Orchestrator {
     task.childChatId = child.chatId;
     task.childSessionId = child.sessionId;
     // host rides along here too: a peer child shows its @host badge from the moment it exists, not only after a reopen.
-    child.lineage = { kind: "delegate", taskId: task.id, parentChatId: caller.chatId, parentTitle: caller.title || null, depth, ...(task.role ? { role: task.role } : {}), ...(task.peer ? { host: task.peer.name } : {}) };
+    child.lineage = { kind: "delegate", taskId: task.id, parentChatId: caller.chatId, parentTitle: caller.title || null, depth, taskTitle: task.title, ...(task.role ? { role: task.role } : {}), ...(task.peer ? { host: task.peer.name } : {}) };
     // The boundary judges writes with the task's guard; a task with no scope gets none (the common case).
     const guard = task.scope ? makeGuard(task.scope, (iso?.ws ?? workspace).path, this.guardFields(child)) : null;
     if (guard) this.guards.set(task.id, guard);

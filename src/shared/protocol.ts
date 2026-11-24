@@ -1342,6 +1342,8 @@ export interface ChatLineage {
   parentChatId: string;
   parentTitle: string | null;
   depth: number;
+  /** The name the task was given (the caller's, else its brief's first line): the one name the Delegated sheet and a board row both use for the worker. */
+  taskTitle?: string;
   /** The role the task was given (a bot profile's, or the one the caller named), when it has one: a board card words it. */
   role?: string;
   /**
