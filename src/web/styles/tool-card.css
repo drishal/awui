@@ -260,15 +260,26 @@
   font-size: 0.95em;
 }
 
+/* The row's counts, in one column down the card: tabular and right-aligned, so "+3 −2", "5 lines" and
+   "2 results in 2 files" line their numbers up rather than drifting with the sentence's length. */
 .tool-facts {
   display: inline-flex;
   flex: none;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
+  min-width: 8ch;
   color: var(--muted-text);
   font-size: calc(var(--chat-small) - 0.6px);
   font-variant-numeric: tabular-nums;
+  text-align: right;
   white-space: nowrap;
+}
+
+/* A settled call that failed says so in a word beside its counts (the end mark is the only one it draws). */
+.tool-outcome {
+  color: var(--danger);
+  font-weight: 600;
 }
 
 .tool-facts .drow-aside {
@@ -293,9 +304,6 @@
   color: var(--danger);
 }
 
-.tool-row[data-outcome="fail"] .tool-status {
-  color: var(--muted-text);
-}
 
 .tool-fact .is-failed,
 .io-text .is-test-failure {
@@ -353,9 +361,14 @@
   background: color-mix(in srgb, var(--danger) 6%, transparent);
 }
 
-/* Done ✓ quiet at 80 %: the status column's resting colour. */
-.tool-row[data-status="done"]:not([data-outcome="fail"]) .tool-status {
-  color: color-mix(in srgb, var(--ok) 80%, transparent);
+/* A failed call carries its outcome on the glyph that names the tool as well as on its rule, so the row says
+   it before the sentence is read. A settled call that worked keeps its category's hue: success is the quiet
+   default, and painting every glyph green would replace the one thing the glyph is for. */
+.tool-row.is-failed .tool-plain-lead,
+.tool-row.is-failed .kind-chip,
+.tool-row[data-outcome="fail"] .tool-plain-lead,
+.tool-row[data-outcome="fail"] .kind-chip {
+  color: var(--danger);
 }
 
 .tool-chevron {
@@ -559,10 +572,14 @@
     flex: 1 1 0;
   }
 
+  /* Under the sentence they read left to right with it, not pushed to the row's far edge. */
   .tool-facts {
     order: 5;
     flex: 1 0 100%;
+    justify-content: flex-start;
+    min-width: 0;
     padding-left: 30px;
+    text-align: left;
   }
 
   .process-failed {

@@ -30,17 +30,17 @@ test("a labelled copy button (a tool output sheet's Copy) says Copied for a mome
   await expect(sheet.getByRole("button", { name: "Copy", exact: true })).toHaveText("Copy");
 });
 
-test("a call that settles in view draws its check, and a chat opened later has the plain check", async ({ page }) => {
+test("a run that settles in view draws its check, and a chat opened later has the plain check", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
-  await send(page, "slow tool");
-  // The drawn check carries a one-unit dash while it draws and keeps it as a solid line after.
-  const drawn = page.locator(".tool-status svg.check-draw path");
+  await send(page, "slow tool ticking");
+  // A call's row draws no mark of its own; the card's header marks the run, and it draws the check in view.
+  const drawn = page.locator('[data-testid="process-status"] svg.check-draw path');
   await expect(drawn.first()).toBeAttached();
   await expect(drawn.first()).toHaveAttribute("pathLength", "1");
   await expect.poll(() => drawn.first().evaluate((el) => getComputedStyle(el).animationName)).toBe("check-draw");
   await page.reload();
-  await expect(page.locator(".tool-status svg.check-draw")).toHaveCount(0);
+  await expect(page.locator('[data-testid="process-status"] svg.check-draw')).toHaveCount(0);
 });
 
 test("the header's status word blurs in when it changes, not on first paint", async ({ page }) => {
@@ -60,9 +60,9 @@ test("with reduced motion the drawn check and the blurred word are plain", async
   await page.emulateMedia({ reducedMotion: "reduce" });
   await signInAndOpen(page);
   await newChat(page);
-  await send(page, "slow tool");
-  await expect(page.locator(".tool-status svg.check-draw path").first()).toBeAttached();
-  await expect.poll(() => page.locator(".tool-status svg.check-draw path").first().evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+  await send(page, "slow tool ticking");
+  await expect(page.locator('[data-testid="process-status"] svg.check-draw path').first()).toBeAttached();
+  await expect.poll(() => page.locator('[data-testid="process-status"] svg.check-draw path').first().evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
   await expect(page.getByTestId("chat-status").locator(".word-in")).toHaveCount(1);
   await expect.poll(() => page.getByTestId("chat-status").locator(".word-in").evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
   // Let the run settle here: left going, it finishes under the next test, whose page shows a "finished" notice over it.

@@ -210,6 +210,8 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
   const retry = useContext(RetryContext);
   const [asked, setAsked] = useState(false);
   const factText = sentence.facts.join(" · ");
+  // A call fails two ways: the harness reports an error, or the result itself did (a test run with a failure).
+  const outcomeFailed = failed || sentence.failed === true;
   const status = STATUS_WORD[item.status];
   // A test run that announced its total shows how far it has got while it runs.
   const progress = useMemo(() => (running && item.category === "command" && item.output ? testProgress(item.output) : null), [running, item.category, item.output]);
@@ -250,14 +252,20 @@ const ToolRow = memo(function ToolRow({ item, workspace }: { item: ToolItem; wor
               ) : null}
             </span>
             <span className="tool-facts">
+              {/* The word, only when it is not already in the counts: a failed call's outcome is spoken here rather than
+                  drawn as a second mark at the row's end. */}
+              {outcomeFailed && !sentence.facts.some((fact) => /\bfailed\b/i.test(fact)) ? <span className="tool-outcome">failed</span> : null}
               {item.diffStat ? <span className="drow-aside"><DiffBadge added={item.diffStat.added} removed={item.diffStat.removed} /></span> : sentence.facts.length > 0 ? <span className="tool-fact">{sentence.facts.map((fact, i) => <Fragment key={i}><span className={sentence.failed && /\bfailed\b/i.test(fact) ? "is-failed" : undefined}>{fact}</span>{i < sentence.facts.length - 1 ? " · " : null}</Fragment>)}</span> : null}
               {time ? <span className="tool-time"><Rolling text={time} /></span> : null}
             </span>
             {/* Ask to retry cannot sit inside this button, so its twin holds its place here, unseen: the status mark and
                 chevron keep the rows' column whatever the label's width, and the real button is laid over it. */}
             {retryFace ? <span className="btn btn-small btn-ghost tool-retry-room" aria-hidden="true">{retryFace}</span> : null}
+            {/* One mark at the row's end, and only while it matters. A settled call that worked keeps the column but
+                draws nothing there: the card's header marks the run, and a check on every row was the second of two
+                marks per row. The failed row keeps its glyph, in the same slot the spinner used, and says the word. */}
             <span className="tool-status" role="img" aria-label={status}>
-              {running ? <Spinner size={14} /> : failed ? <IconAlertCircle size={15} /> : <IconCheck size={14} draw={live} />}
+              {running ? <Spinner size={14} /> : failed ? <IconAlertCircle size={15} /> : null}
             </span>
             <IconChevronDown size={14} className="tool-chevron" />
           </button>

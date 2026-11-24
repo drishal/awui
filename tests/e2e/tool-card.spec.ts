@@ -24,8 +24,10 @@ test("a run of calls is one card: a header that counts and stacks the kinds, a s
   await expect(page.locator('[data-tool="bash"] .tool-fact')).toHaveText("5 passed");
   await expect(page.locator('[data-tool="grep"] .tool-fact')).toHaveText("2 results in 2 files");
   await expect(page.locator('[data-tool="web_fetch"] .tool-sentence')).toHaveText("Fetched example.com/docs/listen");
-  // Every row has its mark in one column, and the button's name is the whole sentence and its state.
-  await expect(rows.locator('.tool-status[aria-label="done"]')).toHaveCount(8);
+  // A settled call that worked draws no mark of its own (the card's header carries the run's check): its status
+  // slot stays, so the rows keep one column, but nothing is drawn in it, and the chevron is the row's end.
+  await expect(rows.locator(".tool-status svg")).toHaveCount(0);
+  await expect(rows.locator(".tool-chevron")).toHaveCount(8);
   await expect(page.locator('[data-tool="grep"] .tool-head')).toHaveAccessibleName("Searched for listen\\( in src, 2 results in 2 files, done");
 });
 
@@ -48,7 +50,8 @@ test("a test run's summary is read from its output: the counts and the failing t
   });
   expect(failureColour.danger).toBe(failureColour.expected);
   await expect(row.getByTestId("tool-error")).toHaveText("keeps the order of two lists");
-  expect(await row.locator(".tool-status").evaluate(el => getComputedStyle(el).color)).toBe(await row.locator(".tool-facts").evaluate(el => getComputedStyle(el).color));
+  // The counts already say "1 failed", so the row does not repeat it as a word.
+  await expect(row.locator(".tool-outcome")).toHaveCount(0);
 });
 
 test("an opened call is one tile: the sentence keeps its verb and facts, the body says the command and the reason once", async ({ page }) => {
@@ -168,7 +171,9 @@ test("a running call reads in the present tense with a spinner, then settles wit
   await expect(row.locator(".tool-sentence")).toHaveText("Running npm test");
   await expect(row.locator('.tool-status[aria-label="running"]')).toBeVisible();
   await expect(row.locator(".tool-sentence")).toHaveText("Ran npm test", { timeout: 20_000 });
-  await expect(row.locator('.tool-status[aria-label="done"]')).toBeVisible();
+  // Settled, the spinner gives way to nothing: the call's outcome is the row's quiet end, and the card's header
+  // marks the run.
+  await expect(row.locator(".tool-status svg")).toHaveCount(0);
 });
 
 test("Ask to retry sends a prompt naming the call when idle, and only the latest turn has it", async ({ page }) => {
@@ -224,9 +229,11 @@ test.describe("on a phone", () => {
     expect(button!.y + button!.height).toBeLessThanOrEqual(card!.y + card!.height + 1);
     expect(button!.width).toBeLessThan(card!.width * 0.7);
     expect(button!.height).toBeGreaterThanOrEqual(32);
-    // The retry holds its own room in the row: the failed call's mark stays in the passing call's column.
-    const [failedMark, passedMark] = [await failed.locator(".tool-status").boundingBox(), await row.locator(".tool-status").boundingBox()];
-    expect(Math.abs(failedMark!.x - passedMark!.x)).toBeLessThan(1);
+    // Both rows end with the chevron in one column; the failed one adds its mark in the slot before it.
+    const [failedChevron, passedChevron] = [await failed.locator(".tool-chevron").boundingBox(), await row.locator(".tool-chevron").boundingBox()];
+    expect(Math.abs(failedChevron!.x - passedChevron!.x)).toBeLessThan(1);
+    const failedMark = await failed.locator('.tool-status[aria-label="failed"]').boundingBox();
+    expect(failedMark!.x).toBeLessThan(failedChevron!.x);
   });
 });
 
