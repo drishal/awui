@@ -1723,6 +1723,34 @@ export interface SavedPrompt {
   updatedAt: number;
 }
 
+/** Agent presets (a name for a harness, model, thinking level and permission mode together) are kept on the server, so atui, the browser and Tern read one list. */
+export const MAX_AGENT_PRESETS = 12;
+export const MAX_AGENT_PRESET_NAME = 32;
+
+export interface AgentPreset {
+  name: string;
+  harnessId: string;
+  model?: string;
+  thinkingLevel?: string;
+  /** The harness's own permission mode id, applied once the chat exists. */
+  permissionMode?: string;
+}
+
+/** The whole list, replaced in one write (names unique, ignoring case, is checked by the store). */
+export const agentPresetsSchema = z.object({
+  presets: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(MAX_AGENT_PRESET_NAME).refine((v) => !/[\u0000-\u001f]/.test(v), "must be one line"),
+        harnessId: z.string().min(1).max(64),
+        model: z.string().min(1).max(200).optional(),
+        thinkingLevel: z.string().min(1).max(64).optional(),
+        permissionMode: z.string().min(1).max(64).optional(),
+      }),
+    )
+    .max(MAX_AGENT_PRESETS),
+});
+
 /** A project file for the file viewer: relative to the project (or absolute inside it). */
 export const fileViewSchema = z.object({ path: z.string().min(1).max(4096) });
 

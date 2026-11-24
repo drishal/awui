@@ -197,6 +197,7 @@ src/server/
   project-search.ts           Search in project: bounded `git grep -F` (else a scan of project-files' walk).
   file-view.ts                The file viewer: one of the project's own files (project-files' list), realpath-confined, bounded.
   saved-prompts.ts            Saved prompts: the server's list for every device, names unique, bounded, in the state folder.
+  agent-presets.ts            Agent presets: atui's named harness + model + level + permission-mode bundles, one list on the server for every client, replaced whole, names unique, bounded, in the state folder.
   usage-report.ts             Usage across chats: each session's calls (adapter.readUsage), added up by day, harness, model, chat.
   model-catalog.ts            The start screen's models, levels, and default per harness and project: served at once, refreshed behind, saved across restarts.
   chat-search.ts              Search every chat: the sidebar's sessions read (never started), matched, bounded, cached per version.

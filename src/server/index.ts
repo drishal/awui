@@ -45,6 +45,7 @@ import { startDueHeartbeats } from "./heartbeat-runner.js";
 import { Heartbeats } from "./heartbeats.js";
 import { routineNote, runRoutine } from "./routine-runner.js";
 import { SessionOrder } from "./session-order.js";
+import { AgentPresets } from "./agent-presets.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { ReviewThreads } from "./review-threads.js";
 import { SecondOpinions } from "./second-opinions.js";
@@ -424,6 +425,7 @@ async function main(): Promise<void> {
   const modelCatalog = new ModelCatalog(path.join(config.stateDir, "model-catalog.json"));
   const order = await SessionOrder.open(config.stateDir);
   const prompts = await SavedPrompts.open(config.stateDir);
+  const agentPresets = await AgentPresets.open(config.stateDir);
   const reviewThreads = await ReviewThreads.open(config.stateDir);
   const secondOpinions = await SecondOpinions.open(config.stateDir);
   const races = await Races.open(config.stateDir, raceChatsFor(manager));
@@ -472,6 +474,7 @@ async function main(): Promise<void> {
     routineRuns,
     order,
     prompts,
+    agentPresets,
     reviewThreads,
     secondOpinions,
     races,

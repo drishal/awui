@@ -78,6 +78,7 @@ import {
   gitPathsSchema,
   gitCommitSchema,
   savedPromptSchema,
+  agentPresetsSchema,
   sessionMarkSchema,
   routineSchema,
   routineRunsQuerySchema,
@@ -158,6 +159,7 @@ import { Handovers } from "./handover.js";
 import { AgentStatuses } from "./agent-status.js";
 import { SessionOrder } from "./session-order.js";
 import { checkoutOf } from "./checkouts.js";
+import { AgentPresets } from "./agent-presets.js";
 import { SavedPrompts } from "./saved-prompts.js";
 import { Routines } from "./routines.js";
 import { Heartbeats, viewOf as heartbeatViewOf } from "./heartbeats.js";
@@ -255,6 +257,7 @@ export interface AppDeps {
   order?: SessionOrder;
   /** Saved prompts, for every device; in memory when absent (tests). */
   prompts?: SavedPrompts;
+  agentPresets?: AgentPresets;
   /** Scheduled runs; in memory when absent. */
   routines?: Routines;
   /** Agent-scoped heartbeats (heartbeats.ts); in memory when absent. */
@@ -411,6 +414,7 @@ export async function createApp(deps: AppDeps) {
   const races = deps.races ?? Races.inMemory(raceChatsFor(manager));
   const order = deps.order ?? SessionOrder.inMemory();
   const prompts = deps.prompts ?? SavedPrompts.inMemory();
+  const agentPresets = deps.agentPresets ?? AgentPresets.inMemory();
   const routines = deps.routines ?? Routines.inMemory();
   const heartbeats = deps.heartbeats ?? Heartbeats.inMemory();
   const routineRuns = deps.routineRuns ?? RoutineRuns.inMemory();
@@ -1786,6 +1790,14 @@ export async function createApp(deps: AppDeps) {
   app.delete("/api/prompts/:id", requireGrant("chat.write"), async (req, res) => {
     await prompts.remove(req.params.id);
     res.json({ ok: true });
+  });
+
+  // Agent presets (agent-presets.ts): atui's named harness + model + level bundles, shared by every client; the list is replaced whole.
+  app.get("/api/presets", requireGrant("chat.read"), (_req, res) => {
+    res.json({ presets: agentPresets.list() });
+  });
+  app.put("/api/presets", requireGrant("chat.write"), async (req, res) => {
+    res.json({ presets: await agentPresets.replace(body(agentPresetsSchema, req).presets) });
   });
 
   // The file viewer: one of the project's own files, read-only and bounded (file-view.ts).
