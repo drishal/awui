@@ -255,8 +255,8 @@ export function thinkingMeta(item: AssistantItem, now = Date.now()): string {
 }
 
 /**
- * The Σ line under a finished turn: its calls, how long the work took (from
- * the calls' own times, else the turn's), the reasoning's size, and failures.
+ * The Σ line under a finished turn: its calls, how long the turn took (the
+ * turn's own clock, else the calls' span), the reasoning's size, and failures.
  * Empty when there is nothing measurable to say.
  */
 export function sigmaFacts(turn: Pick<Turn, "process" | "workAfter" | "answer" | "startedAt" | "endedAt">): { facts: string[]; failed: string | null } {
@@ -270,10 +270,11 @@ export function sigmaFacts(turn: Pick<Turn, "process" | "workAfter" | "answer" |
   }
   const span = first !== Number.POSITIVE_INFINITY && last - first >= DURATION_AFTER_MS ? last - first : undefined;
   const whole = turn.startedAt !== undefined && turn.endedAt !== undefined && turn.endedAt - turn.startedAt >= DURATION_AFTER_MS ? turn.endedAt - turn.startedAt : undefined;
-  const took = span ?? whole;
+  // The whole turn first, so this line and the Timing sheet name one figure; the calls' own span only when the turn has no clock.
+  const took = whole ?? span;
   const thinking = [...items, ...(turn.answer ? [turn.answer] : [])].reduce((n, i) => n + (i.kind === "assistant" ? i.thinking.length : 0), 0);
   const failures = calls.filter((c) => c.status === "error").length;
-  const facts = [calls.length > 0 ? plural(calls.length, "call") : "", took !== undefined ? `${calls.length > 0 && span !== undefined ? "over " : ""}${durationLabel(took)}` : "", thinking > 0 ? `~${tokenCount(thinking)} thought tokens` : ""].filter(Boolean);
+  const facts = [calls.length > 0 ? plural(calls.length, "call") : "", took !== undefined ? `${calls.length > 0 && whole === undefined && span !== undefined ? "over " : ""}${durationLabel(took)}` : "", thinking > 0 ? `~${tokenCount(thinking)} thought tokens` : ""].filter(Boolean);
   return { facts, failed: failures > 0 ? `${failures} failed` : null };
 }
 

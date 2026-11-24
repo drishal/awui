@@ -102,7 +102,7 @@ describe("atui rows, neat-render's way", () => {
     expect(latestThoughtLine("First idea.\n\n> - then the second\n")).toBe("then the second");
   });
 
-  it("closes a finished turn with its Σ: calls, the calls' own span, reasoning, failures", () => {
+  it("closes a finished turn with its Σ: calls, the turn's own time, reasoning, failures", () => {
     const turn = {
       process: [
         tool({ id: "1", at: 1000, endedAt: 2000 }),
@@ -114,8 +114,9 @@ describe("atui rows, neat-render's way", () => {
       startedAt: 0,
       endedAt: 20_000,
     };
-    expect(sigmaFacts(turn)).toEqual({ facts: ["2 calls", "over 7.5s", "~640 thought tokens"], failed: "1 failed" });
-    // Without the calls' times it falls back to the turn's; a turn with nothing to say says nothing.
+    expect(sigmaFacts(turn)).toEqual({ facts: ["2 calls", "20.0s", "~640 thought tokens"], failed: "1 failed" });
+    // Without the turn's clock it falls back to the calls' span, worded "over"; without the calls' times, to the turn's; a turn with nothing to say says nothing.
+    expect(sigmaFacts({ ...turn, startedAt: undefined, endedAt: undefined }).facts).toEqual(["2 calls", "over 7.5s", "~640 thought tokens"]);
     expect(sigmaFacts({ ...turn, process: [tool({ id: "1" })] }).facts).toEqual(["1 call", "20.0s"]);
     expect(sigmaFacts({ process: [], workAfter: [], answer: null, startedAt: 0, endedAt: 200 })).toEqual({ facts: [], failed: null });
   });
