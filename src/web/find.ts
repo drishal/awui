@@ -48,11 +48,15 @@ export interface TurnMatch {
 export function findSnippet(text: string, needle: string, radius = 36): string {
   const at = findOffsets(text, needle)[0];
   if (at === undefined) return "";
-  const from = Math.max(0, at - radius);
-  const to = Math.min(text.length, at + needle.length + radius);
+  // The window stops at the match's own line: a work fold's calls are one line each, so a snippet never runs on into the next call.
+  const lineStart = text.lastIndexOf("\n", at) + 1;
+  const lineEndAt = text.indexOf("\n", at + needle.length);
+  const lineEnd = lineEndAt < 0 ? text.length : lineEndAt;
+  const from = Math.max(lineStart, at - radius);
+  const to = Math.min(lineEnd, at + needle.length + radius);
   // Markdown marks (bold, code spans) are noise in a one-line snippet.
   const flat = text.slice(from, to).replace(/\s+/g, " ").replace(/\*\*|__|`/g, "").trim();
-  return `${from > 0 ? "…" : ""}${flat}${to < text.length ? "…" : ""}`;
+  return `${from > lineStart ? "…" : ""}${flat}${to < lineEnd ? "…" : ""}`;
 }
 
 /**

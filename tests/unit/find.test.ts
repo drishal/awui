@@ -43,5 +43,7 @@ describe("find in chat", () => {
     const under: ChatItem[] = [user("p1", "go"), { kind: "tool", id: "t9", name: "edit", args: "", status: "done", output: "", truncated: false, category: "edit", summary: "/home/me/proj/src/needle.ts", paths: ["/home/me/proj/src/needle.ts"] }, reply("a9", "done")];
     expect(findTurns(buildTurns(under, "idle"), "needle", 30, "/home/me/proj")[0]?.snippet).not.toContain("/home/me");
     expect(findSnippet("a".repeat(100) + "needle" + "b".repeat(100), "needle", 5)).toBe("…aaaaaneedlebbbbb…");
+    // A work fold's calls are one line each: the snippet ends where the matched call does.
+    expect(findSnippet("read src/a.ts\nedit src/needle.ts done\nread src/b.ts", "needle", 30)).toBe("edit src/needle.ts done");
   });
 });
