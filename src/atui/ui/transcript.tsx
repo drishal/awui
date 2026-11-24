@@ -41,7 +41,6 @@ import { tick } from "./ticker.js";
 
 installOpenTuiListGuard();
 
-/** The call tree's connectors: structure, not a divider, so they sit a step above the border colour (the border alone is about 1.4:1 on the background). */
 /** The words a find landed on in this turn (null outside it): the work's rows paint their own copy of them, as the answer does, so the strip's "in the work" count points at something lit. */
 const FoundWords = createContext<Accessor<string | null | undefined>>(() => null);
 
@@ -66,6 +65,7 @@ function Marked(p: { text: string; ink: string }) {
   return <For each={parts()}>{(part) => <span style={part.hit ? { fg: t().text, bg: mix(t().bg, t().warn, 0.4) } : { fg: p.ink }}>{part.text}</span>}</For>;
 }
 
+/** The call tree's connectors: structure, not a divider, so they sit a step above the border colour (the border alone is about 1.4:1 on the background). */
 const spineOf = (theme: Theme) => mix(theme.border, theme.muted, 0.55);
 
 const OUTPUT_LINES = 14;
@@ -1317,7 +1317,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
         <Show when={pinned()}>
           {(prompt) => (
             <box position="absolute" top={0} left={0} width="100%" flexDirection="row" justifyContent="center" backgroundColor={app.glass() ? undefined : t().surface} border={["bottom"]} borderColor={mix(t().border, t().text2, 0.4)} zIndex={5}>
-              <box width="100%" maxWidth={p.column()} paddingLeft={2} paddingRight={2} flexDirection="row">
+              <box width="100%" maxWidth={p.column()} paddingLeft={0} paddingRight={2} flexDirection="row">
                 <text selectable={false} fg={t().muted} wrapMode="none" truncate>
                   <span style={{ fg: t().muted }}>{"⇡ "}</span>
                   {clip(prompt().text, p.column())}
