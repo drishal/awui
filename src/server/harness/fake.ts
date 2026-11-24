@@ -1155,7 +1155,8 @@ class FakeLiveChat implements LiveChat {
         details: { diff: "  9 import { listen, log } from \"./net\";\n 10 \n-11 const port = 3000;\n+11 const port = Number(process.env.PORT ?? 3000);\n 12 const host = \"localhost\";\n-13 listen(port);\n+13 listen(port, host);\n+14 log(`listening on ${host}:${port}`);\n   ...\n 40 export {};", firstChangedLine: 11 },
       },
       { name: "write", args: { path: `${cwd}/notes/todo.md`, content: "# Todo\n\n- [ ] ship the diff view\n- [x] tidy tool cards\n" }, output: "Wrote 4 lines to notes/todo.md" },
-      { name: "bash", args: { command: "npm test -- --run tool-diff", timeout: 120 }, output: " ✓ tests/unit/tool-diff.test.ts (5 tests) 12ms\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)" },
+      { name: "bash", args: { command: "npm test -- --run tool-diff", timeout: 120 }, output: " ✓ tests/unit/tool-diff.test.ts (5 tests) 12ms\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)", // Five streamed updates make this the turn's slowest call, so Timing has a step to paint in the warn ink.
+        updates: ["RUN  v1", "RUN  v1 · tool-diff", "RUN  v1 · tool-diff · 2/5", "RUN  v1 · tool-diff · 4/5", "RUN  v1 · tool-diff · 5/5"] },
       { name: "grep", args: { pattern: "listen\\(", path: "src" }, output: "src/server.ts:13:listen(port, host);\nsrc/net.ts:4:export function listen(port: number, host?: string) {" },
       { name: "read", args: { path: `${cwd}/src/net.ts`, offset: 1, limit: 20 }, output: "1\timport { createServer } from \"node:http\";\n2\t\n3\texport function listen(port: number, host?: string) {\n4\t  createServer().listen(port, host);\n5\t}" },
       { name: "web_fetch", args: { url: "https://example.com/docs/listen" }, output: "Example Domain\nThis domain is for use in illustrative examples in documents." },
