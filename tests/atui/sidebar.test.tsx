@@ -78,7 +78,8 @@ describe("atui projects", () => {
       // `n` on an empty project enters it before the first message is accepted.
       ui.keys.pressKey("x", { ctrl: true });
       ui.keys.pressKey("s");
-      ui.keys.pressKey("HOME");
+      // Select gamma by its own heading (the monogram and name), not by position: what sits first depends on whether alpha's run has settled.
+      await ui.click("G  gamma");
       ui.keys.pressKey("n");
       await wait(60);
       expect(ui.app.chat()).toBeNull();

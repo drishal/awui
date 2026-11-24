@@ -34,8 +34,11 @@ async function paintedWidth(ui: Mounted, text: string): Promise<number> {
   const rows = await ui.spans();
   const row = rows.find((line) => line.map((span) => span.text).join("").includes(text));
   if (!row) throw new Error(`the frame shows no ${JSON.stringify(text)}`);
-  const paint = row.find((span) => span.text.includes(text))?.bg.toInts().join();
-  const start = row.findIndex((span) => span.bg.toInts().join() === paint);
+  const at = row.findIndex((span) => span.text.includes(text));
+  const paint = row[at]?.bg.toInts().join();
+  // Walk back from the text's own cell, so a sidebar row with the same fill on this line is not counted.
+  let start = at;
+  while (start > 0 && row[start - 1]?.bg.toInts().join() === paint) start--;
   let width = 0;
   for (let i = start; i >= 0 && i < row.length && row[i]?.bg.toInts().join() === paint; i++) width += row[i]?.width ?? 0;
   return width;

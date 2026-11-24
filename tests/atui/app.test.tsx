@@ -747,7 +747,7 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await ui.until("Echo: tool edit please");
     await idle(ui);
-    expect(await ui.frame()).toContain("Sessions    Info");
+    expect(await ui.frame()).toContain("Sessions  Info");
     // C-x i: the Info tab, where the right panel's context and usage now live.
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("i");
@@ -760,9 +760,9 @@ describe("atui", () => {
     // The tab strip's « (nf angle-double-left) folds it to a rail; the rail's » unfolds it.
     await ui.click("\uf100");
     const folded = await ui.until("\uf101");
-    expect(folded).not.toContain("Sessions    Info");
+    expect(folded).not.toContain("Sessions  Info");
     await ui.click("\uf101");
-    await ui.until("Sessions    Info");
+    await ui.until("Sessions  Info");
   }, 30_000);
 
   it("shows a ghost of the thread, named, while a session takes its time to open", async () => {
@@ -1335,7 +1335,7 @@ describe("atui's density at 80 columns", () => {
 
   it("marks a session that needs you on the folded rail, and keeps one column of air beside its title", async () => {
     ui = await mount(path.join(server.root, "alpha"), { width: 80, height: 30 });
-    await ui.type("please ask first");
+    await ui.type("please ask");
     ui.keys.pressEnter();
     await ui.until("Waiting for approval");
     // The card arrives on the chat's own stream; the asking flag rides the overview, a beat behind.
@@ -1352,7 +1352,7 @@ describe("atui's density at 80 columns", () => {
     ui.keys.pressKey("x", { ctrl: true });
     ui.keys.pressKey("b");
     const open = await ui.until("C-x s browse");
-    expect(open).toMatch(/▲ please ask first\s+now/);
+    expect(open).toMatch(/▲ please ask\s+now/);
     expect(open).not.toContain("! now");
     // Folded again, the mark is still the only thing that asks for you.
     ui.keys.pressKey("x", { ctrl: true });

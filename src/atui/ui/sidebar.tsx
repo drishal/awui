@@ -160,6 +160,8 @@ export function Sidebar(p: {
   });
 
   const width = () => p.width - 5;
+  // The box's own width inside its border and padding: every rule and tint spans exactly this, so their right edges agree.
+  const inner = () => p.width - 3;
   const breath = () => breathe(tick(), BREATH_TICKS);
   const askingTone = () => mix(mix(t().bg, t().warn, 0.35), t().warn, breath());
   const herdrTone = (s: ProjectSession) => (s.herdr?.status === "blocked" ? askingTone() : s.herdr?.status === "working" ? t().accent : t().muted);
@@ -180,39 +182,37 @@ export function Sidebar(p: {
     <box flexDirection="column" width={p.width} flexShrink={0} border={["right"]} borderColor={t().border} paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" flexShrink={0}>
         <Tab id="sessions" label="Sessions" />
-        <text selectable={false}>{"  "}</text><Tab id="info" label="Info" />
+        <Tab id="info" label="Info" />
         <box flexGrow={1} />
-        <box onMouseDown={p.onTerminal}>
-          <text selectable={false} fg={t().accent}>{" >_ "}</text>
-        </box>
-        {/* nf-fa-angle_double_left: the fold button, the mirror of the rail's expand mark. */}
+        {/* nf-fa-angle_double_left: the fold button, the mirror of the rail's expand mark, at the strip's far right like a tab bar's close. */}
         <box onMouseDown={p.onCollapse}>
-          <text selectable={false} fg={t().muted}>{" \uf100 "}</text>
+          <text selectable={false} fg={t().muted}>{" \uf100"}</text>
         </box>
       </box>
       <text selectable={false} flexShrink={0} wrapMode="none">
         <span style={{ fg: p.tab === "sessions" ? t().accent : t().border }}>{"━".repeat("Sessions".length + 2)}</span>
-        <span style={{ fg: t().border }}>{"━━"}</span>
         <span style={{ fg: p.tab === "info" ? t().accent : t().border }}>{"━".repeat("Info".length + 2)}</span>
-        <span style={{ fg: t().border }}>{"━".repeat(Math.max(0, p.width - 22))}</span>
+        <span style={{ fg: t().border }}>{"━".repeat(Math.max(0, inner() - 16))}</span>
       </text>
-      <Show when={p.tab === "sessions"} fallback={<><InfoBody width={p.width} /><text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "Tab sessions · Esc back" : `${leader("i", p.vim ? "vim" : "emacs")} info`}</text></>}>
-        <box flexDirection="row" flexShrink={0} marginTop={1} paddingLeft={1} backgroundColor={t().surface2} onMouseDown={() => { app.newChat(); p.onOpened(); }}>
-          <text selectable={false} fg={t().accent}>+</text><text selectable={false} fg={t().text}>{" New chat"}</text><box flexGrow={1} /><text selectable={false} fg={t().muted}>{`${app.harness()?.displayName ?? ""} `}</text>
+      <Show when={p.tab === "sessions"} fallback={<><box marginTop={1} flexGrow={1}><InfoBody width={p.width} /></box><box paddingLeft={1} flexShrink={0}><text selectable={false} fg={t().muted}>{p.active ? "Tab sessions · Esc back" : `${leader("i", p.vim ? "vim" : "emacs")} info`}</text></box></>}>
+        <box flexDirection="row" flexShrink={0} marginTop={1} paddingLeft={1} paddingRight={1} backgroundColor={t().surface2} onMouseDown={() => { app.newChat(); p.onOpened(); }}>
+          <text selectable={false} fg={t().accent}>+</text><text selectable={false} fg={t().text}>{" New chat"}</text><box flexGrow={1} /><text selectable={false} fg={t().muted}>{app.harness()?.displayName ?? ""}</text>
         </box>
-        <box backgroundColor={t().surface} flexShrink={0} marginTop={1} onMouseDown={p.onProject}>
-          <text selectable={false} wrapMode="none">
-            <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{` ${monogram(app.workspace()?.name ?? "")} `}</span>
-            <span style={{ fg: t().muted }}>{` ${clipPath(app.workspace()?.path ?? "no project", Math.max(6, width() - 8))} `}</span>
-          </text>
+        <box flexDirection="row" backgroundColor={t().surface} flexShrink={0} paddingLeft={1} paddingRight={1} onMouseDown={p.onProject}>
+          <text selectable={false} fg={accentOf(t(), app.harness()?.accent)}>{`${monogram(app.workspace()?.name ?? "")} `}</text>
+          <text selectable={false} fg={t().muted} wrapMode="none">{clipPath(app.workspace()?.path ?? "no project", Math.max(6, width() - 8))}</text>
+          <box flexGrow={1} />
+          {/* The project's terminal belongs on the project's own row, not in the tab strip. */}
+          <box onMouseDown={(e: { stopPropagation: () => void }) => { e.stopPropagation(); p.onTerminal(); }}>
+            <text selectable={false} fg={t().accent}>{" >_"}</text>
+          </box>
         </box>
-        <text selectable={false} fg={t().border} wrapMode="none" flexShrink={0}>{"─".repeat(Math.max(0, p.width - 4))}</text>
         <scrollbox ref={(el: ScrollBoxRenderable) => (scroller = el)} flexGrow={1} flexShrink={1} minHeight={0} marginTop={1} verticalScrollbarOptions={{ visible: false }}>
           <For each={navRows()}>
             {(row, at) => {
               const chosen = () => row ? selection() === keyOf(row) && p.active : false;
               if (row.kind === "section") return (
-                <box flexDirection="row" marginTop={at() === 0 ? 0 : 1} onMouseDown={() => activate(row)}>
+                <box flexDirection="row" marginTop={at() === 0 ? 0 : 1} paddingLeft={1} paddingRight={1} onMouseDown={() => activate(row)}>
                   <text selectable={false} fg={chosen() ? t().accent : t().muted}>{`${isFolded(row) ? "▸" : "▾"} ${row.label}`}</text><text selectable={false} fg={t().muted}>{`  ${row.count}`}</text><box flexGrow={1} />
                 </box>
               );
@@ -224,9 +224,9 @@ export function Sidebar(p: {
                 const live = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.liveChatId && !s.asking && !isBusy(s.status)).length;
                 const needs = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.asking).length;
                 return (
-                  <box flexDirection="row" marginTop={at() === 0 ? 0 : 1} backgroundColor={chosen() ? t().selection : row.current ? t().surface : undefined} onMouseDown={() => activate(row)}>
+                  <box flexDirection="row" marginTop={at() === 0 ? 0 : 1} paddingLeft={1} paddingRight={1} backgroundColor={chosen() ? t().selection : row.current ? t().surface : undefined} onMouseDown={() => activate(row)}>
                     <text selectable={false} fg={row.current ? t().accent : t().muted}>{`${isFolded(row) ? "▸" : "▾"} `}</text>
-                    <text selectable={false} fg={t().accent} bg={t().surface2}>{` ${monogram(row.workspace.name)} `}</text>
+                    <text selectable={false} fg={t().accent}>{` ${monogram(row.workspace.name)} `}</text>
                     <text selectable={false} fg={t().text} wrapMode="none">{` ${name()}`}</text><box flexGrow={1} />
                     {/* The same marks the session rows teach: ▲ a session asking, ● one live on the server. */}
                     {needs() > 0 ? <text selectable={false} fg={t().warn}>{`▲ ${needs()} `}</text> : null}
@@ -239,16 +239,16 @@ export function Sidebar(p: {
               const { s } = row;
               const rowMeta = () => meta(row);
               return (
-                <box flexDirection="row" backgroundColor={chosen() ? t().selection : isActive(s) ? mix(t().surface2, t().accent, 0.22) : undefined} onMouseDown={() => { setSelection(keyOf(row)); void app.openSession(s).then(p.onOpened); }}>
+                <box flexDirection="row" paddingLeft={2} paddingRight={1} backgroundColor={chosen() ? t().selection : isActive(s) ? mix(t().surface2, t().accent, 0.22) : undefined} onMouseDown={() => { setSelection(keyOf(row)); void app.openSession(s).then(p.onOpened); }}>
                   <text selectable={false} flexShrink={0} fg={s.asking ? askingTone() : isBusy(s.status) ? t().accent : s.liveChatId ? t().ok : s.herdr ? herdrTone(s) : t().muted}>{s.asking ? "▲ " : isBusy(s.status) ? `${spinnerFor(s.harnessId)[tick() % spinnerFor(s.harnessId).length]} ` : s.liveChatId ? "● " : s.herdr ? "◆ " : "· "}</text>
-                  <text selectable={false} flexGrow={1} fg={s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(s) ? t().text : t().text2} wrapMode="none">{clip(s.title || "New chat", width() - rowMeta().length - 1)}</text>
+                  <text selectable={false} flexGrow={1} fg={s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(s) ? t().text : t().text2} wrapMode="none">{clip(s.title || "New chat", width() - 4 - rowMeta().length)}</text>
                   <text selectable={false} flexShrink={0} fg={t().muted}>{rowMeta()}</text>
                 </box>
               );
             }}
           </For>
         </scrollbox>
-        <text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "↑↓ move · t tab · Esc back" : `${leader("s", p.vim ? "vim" : "emacs")} browse`}</text>
+        <box paddingLeft={1} flexShrink={0}><text selectable={false} fg={t().muted}>{p.active ? "↑↓ move · t tab · Esc back" : `${leader("s", p.vim ? "vim" : "emacs")} browse`}</text></box>
       </Show>
     </box>
   );
