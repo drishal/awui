@@ -223,6 +223,20 @@ describe("atui", () => {
     // The sentence explains the empty list, so it sits above the context card, not under it.
     expect(rail.indexOf("Workers this chat delegates")).toBeLessThan(rail.indexOf("Context and usage"));
   }, 30_000);
+  it("masks a password prompt, shows bullets for what is typed, and sends it once", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("sudo please");
+    ui.keys.pressEnter();
+    const card = await ui.until("Sudo password");
+    expect(card).toContain("Masked in this terminal");
+    await ui.type("hunter2");
+    const typed = await ui.until("> •••••••");
+    // The characters are never drawn; only their count is.
+    expect(typed).not.toContain("hunter2");
+    ui.keys.pressEnter();
+    const done = await ui.until("Password accepted");
+    expect(done).not.toContain("hunter2");
+  }, 30_000);
   it("opens the file sheet on a file from an opened call's View line", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 80 });
     await ui.type("showcase tool edit please");

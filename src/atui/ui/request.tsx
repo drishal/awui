@@ -15,6 +15,8 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
   const app = useAtui();
   const t = useTheme();
   const options = createMemo(() => optionsOf(p.request));
+  /** How many characters the (masked) field holds, for the bullets drawn under it. */
+  const [typed, setTyped] = createSignal(0);
   const [index, setIndex] = createSignal(0);
   createEffect(
     on(
@@ -108,23 +110,29 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
               when={p.request.kind !== "form"}
               fallback={<text fg={t().muted} wrapMode="word">This form can only be filled in the web UI. Press Esc to dismiss.</text>}
             >
-              <textarea
-                ref={(el: TextareaRenderable) => (input = el)}
-                focused={p.active}
-                initialValue={p.request.prefill ?? ""}
-                placeholder={p.request.placeholder ?? "Type the answer…"} placeholderColor={t().muted}
-                textColor={t().text}
-                minHeight={1}
-                maxHeight={p.request.kind === "editor" ? 12 : 4}
-                keyBindings={[
-                  { name: "return", action: "submit" },
-                  { name: "return", shift: true, action: "newline" },
-                  { name: "linefeed", action: "newline" },
-                ]}
-                onSubmit={() => answer(p.request.kind === "editor" ? { kind: "editor", value: input?.plainText ?? "" } : { kind: "input", value: input?.plainText ?? "" })}
-              />
+              {/* A password's field is clipped to no height: it still takes the keys and a paste, but no character is ever drawn. */}
+              <box height={p.request.secret ? 0 : undefined} overflow="hidden" flexShrink={0}>
+                <textarea
+                  ref={(el: TextareaRenderable) => (input = el)}
+                  focused={p.active}
+                  initialValue={p.request.prefill ?? ""}
+                  placeholder={p.request.placeholder ?? "Type the answer…"} placeholderColor={t().muted}
+                  textColor={t().text}
+                  onContentChange={() => setTyped(input?.plainText.length ?? 0)}
+                  minHeight={1}
+                  maxHeight={p.request.kind === "editor" ? 12 : 4}
+                  keyBindings={[
+                    { name: "return", action: "submit" },
+                    { name: "return", shift: true, action: "newline" },
+                    { name: "linefeed", action: "newline" },
+                  ]}
+                  onSubmit={() => answer(p.request.kind === "editor" ? { kind: "editor", value: input?.plainText ?? "" } : { kind: "input", value: input?.plainText ?? "" })}
+                />
+              </box>
               <Show when={p.request.secret}>
-                <text fg={t().muted}>Visible in this terminal. Sent once and not stored.</text>
+                {/* A password is never drawn: the field's ink is its own ground and the bullets say how much is typed. */}
+                <text fg={t().text2}>{`> ${"•".repeat(Math.min(typed(), 60))}`}</text>
+                <text fg={t().muted}>Masked in this terminal. Sent once and not stored.</text>
               </Show>
             </Show>
           </box>

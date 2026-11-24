@@ -374,6 +374,19 @@ describe("awui tern", () => {
     expect(tern.text("main")).toContain("Approved");
   });
 
+  it("draws a password prompt's field as dots and sends the answer once", async () => {
+    client = await start();
+    const { tern, app, until } = client;
+    tern.type("sudo please\r");
+    await until(() => tern.nodes.has("dock.d.req"), "the password card");
+    // The field is Tern's secret input (a dot per character, its own eye to reveal it locally).
+    expect(tern.find("input", "dock")[0]?.p).toMatchObject({ secret: true });
+    tern.type("hunter2\r");
+    await until(() => !tern.nodes.has("dock.d.req") && app.chat()?.status === "idle", "the prompt to go");
+    expect(tern.text("main")).toContain("Password accepted");
+    expect(tern.errors).toEqual([]);
+  });
+
   it("takes an optional reason before sending a denial", async () => {
     client = await start();
     const { tern, app, until } = client;

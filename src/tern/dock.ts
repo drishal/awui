@@ -221,6 +221,8 @@ function requestNode(r: InteractionRequest, cx: DockCx): Node {
           cursor: cx.answer.cursor,
           ...(cx.answer.anchor !== null ? { anchor: cx.answer.anchor } : {}),
           placeholder: cx.denying ? "Reason for denial (optional)" : (r.placeholder ?? "Your answer"),
+          // A password is drawn as dots (Tern's own eye can reveal it locally); it is never stored.
+          ...(r.secret && !cx.denying ? { secret: true } : {}),
           onFocus: cx.on.focusAnswer,
           onEdit: cx.on.editAnswer,
         })
