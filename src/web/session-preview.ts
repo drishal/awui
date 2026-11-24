@@ -23,10 +23,4 @@ export function sessionPreview(s: ProjectSession): Promise<SessionPreview | null
   return hit;
 }
 
-/** The one line a card shows of it: the last answer, else the last prompt, collapsed. */
-export function previewLine(preview: SessionPreview | null): string | null {
-  const text = preview?.answer ?? preview?.prompt ?? null;
-  if (!text) return null;
-  const line = text.replace(/\s+/g, " ").trim();
-  return line.length > 220 ? `${line.slice(0, 219).trimEnd()}…` : line;
-}
+export { previewLine } from "./preview-line.js";
