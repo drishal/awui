@@ -1297,14 +1297,16 @@
   word-break: break-word;
 }
 
+/* An added or removed row is marked in its gutter, not only washed: a 3px bar in its own hue, so the two kinds
+   differ at a glance and a reader who skims stops on the right rows. The tint percentages are left as they are. */
 .diff-line.is-add {
   background: var(--diff-add-bg);
-  box-shadow: inset 2px 0 0 var(--ok);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ok) 70%, transparent);
 }
 
 .diff-line.is-del {
   background: var(--diff-del-bg);
-  box-shadow: inset 2px 0 0 var(--danger);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--danger) 70%, transparent);
 }
 
 /* The sign and number take the row's hue toward the text colour: plain --ok on the added row's tint measured 3.9:1
