@@ -242,8 +242,6 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
     if (action) return run(action);
   });
 
-  /** A list of workers fits its rows (a worker takes up to two lines) up to the room the sheet stands in; one worker's own screen takes all of it, its files scrolling. */
-  const boxHeight = () => Math.min(Math.max(8, size().height - 6), row() ? Number.MAX_SAFE_INTEGER : Math.max(6, rows().length * 2 + 4 + (error() || confirming() || busy() ? 2 : 0)));
 
   const taskLine = (target: TaskRow) => (
     // Never shrunk: the files below take the free space, and a shrunk header would overlap its own rows.
@@ -265,19 +263,11 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
 
   return (
     <box
-      position="absolute"
-      /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
-         the title bar, so a terminal-height overlay would put its last row off the frame. */
-      top={1}
-      height={boxHeight()}
-      left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
-      width={width()}
-      zIndex={15}
+      /* A full-pane view like Review, Git and GitHub: its own header row and no frame, so there is no box floating over blank rows. */
+      flexGrow={1}
       flexDirection="column"
-      border
-      borderStyle="rounded"
-      borderColor={t().accent}
-      backgroundColor={sheetGround(t())}
+      maxWidth={width()}
+      backgroundColor={app.glass() ? undefined : t().bg}
       paddingLeft={1}
       paddingRight={1}
     >
@@ -305,11 +295,11 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
                         <text flexShrink={0} fg={index() === at() ? t().accent : t().border}>{index() === at() ? "▌" : " "}</text>
                         <text flexShrink={0} fg={toneOf(t(), target.status.tone)}>{`${toneDot(target.status.tone)} `}</text>
                         <text flexGrow={1} wrapMode="none" truncate fg={t().text}>{target.title}</text>
-                        <text flexShrink={0} fg={t().muted} wrapMode="none" truncate>{target.meta ? ` ${clip(target.meta, Math.max(10, width() - 48))} ·` : ""}</text>
+                        <text flexShrink={0} fg={index() === at() ? t().text2 : t().muted} wrapMode="none" truncate>{target.meta ? ` ${clip(target.meta, Math.max(10, width() - 48))} ·` : ""}</text>
                         <text flexShrink={0} fg={toneOf(t(), target.status.tone)}>{` ${target.word}`}</text>
-                        <text flexShrink={0} fg={t().muted}>{`  ${target.elapsed}`}</text>
+                        <text flexShrink={0} fg={index() === at() ? t().text2 : t().muted}>{`  ${target.elapsed}`}</text>
                       </box>
-                      {target.line ? <text fg={t().muted} wrapMode="none" truncate>{`   ${clip(target.line, width() - 8)}`}</text> : null}
+                      {target.line ? <text fg={index() === at() ? t().text2 : t().muted} wrapMode="none" truncate>{`   ${clip(target.line, width() - 8)}`}</text> : null}
                     </box>
                   );
                 }}

@@ -59,20 +59,15 @@ const markdownHeights = (root: { getChildren?: () => unknown[] }): number[] => {
 
 const assistant = (m: Mounted) => m.app.chat()?.items.find((item) => item.kind === "assistant");
 
-/** Rounded borders survive in the conversation column, not under the sidebar, and the title sits inside them like a picker's. */
+/** A full-pane view starts inside the conversation column, not under the sidebar: its title sits right of the sidebar's edge, with no frame of its own (Review's grammar). */
 const sheetFits = (frame: string, title: string) => {
-  const first = frame.split("\n").find((row) => !row.includes("Sessions") && !row.includes("Info") && row.trimStart().startsWith("│"));
-  const side = first ? first.indexOf("│") + 1 : 0;
-  const rows = frame.split("\n").map((row) => row.slice(side));
-  // One chrome with the pickers: the title is the first row inside the rounded frame, not a word cut into its border.
-  const top = rows.findIndex((row, i) => row.includes(title) && Boolean(rows[i - 1]?.includes("╭")) && Boolean(rows[i - 1]?.includes("╮"))) - 1;
-  const bottom = rows.findIndex((row, index) => index > top && row.includes("╯"));
-  expect(top).toBeGreaterThanOrEqual(0);
-  expect(bottom).toBeGreaterThan(top);
-  const right = rows[top]!.lastIndexOf("╮");
-  expect(right).toBeLessThan(rows[top]!.length);
-  expect(rows[bottom]?.[right]).toBe("╯");
-  for (const row of rows.slice(top + 1, bottom)) expect(row[right]).toBe("│");
+  const rows = frame.split("\n");
+  const edge = rows.find((row) => !row.includes("Sessions") && !row.includes("Info") && row.trimStart().startsWith("│"))?.indexOf("│") ?? -1;
+  const at = rows.find((row, i) => i > 1 && row.includes(title));
+  expect(at).toBeDefined();
+  expect(at?.indexOf(title) ?? 0).toBeGreaterThan(edge);
+  // No frame of its own: the title is not the row under a rounded top edge.
+  expect(rows[rows.indexOf(at as string) - 1] ?? "").not.toContain("╭");
 };
 
 describe("atui", () => {
@@ -144,7 +139,7 @@ describe("atui", () => {
     await ui.until("Fake Echo ▾");
   }, 30_000);
 
-  it("keeps the board, active work and delegated sheets inside the conversation column", async () => {
+  it("keeps the board, active work and delegated views inside the conversation column", async () => {
     for (const width of [100, 140]) {
       ui = await mount(path.join(server.root, "alpha"), { width, height: 44 });
       await ui.type("delegate please");

@@ -34,7 +34,6 @@ import { ago, clip } from "../format.js";
 import { harnessGlyph } from "../neat.js";
 import { moveRow } from "../delegated.js";
 import { accentOf } from "../theme.js";
-import { sheetGround } from "../fx.js";
 import { useAtui, useTheme } from "./context.js";
 
 /** How many projects' pull requests are read when the board opens: gh is slow and a badge is decoration. */
@@ -185,19 +184,11 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
 
   return (
     <box
-      position="absolute"
-      /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
-         the title bar, so a terminal-height overlay would put its last row off the frame. */
-      top={1}
-      height={boxHeight()}
-      left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
-      width={width()}
-      zIndex={15}
+      /* A full-pane view like Review, Git and GitHub: its own header row and no frame, so there is no box floating over blank rows. */
+      flexGrow={1}
       flexDirection="column"
-      border
-      borderStyle="rounded"
-      borderColor={t().accent}
-      backgroundColor={sheetGround(t())}
+      maxWidth={width()}
+      backgroundColor={app.glass() ? undefined : t().bg}
       paddingLeft={1}
       paddingRight={1}
     >
@@ -239,7 +230,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                             <span style={{ fg: card.session.asking ? t().warn : isBusy(card.session.status) ? t().accent : card.session.liveChatId ? t().ok : t().muted }}>{card.session.asking ? "▲ " : "● "}</span>
                             <b>{plainTitle(card.session.title) || "Untitled"}</b>
                           </text>
-                          <text fg={t().muted} wrapMode="none" truncate>
+                          <text fg={i() === at() ? t().text2 : t().muted} wrapMode="none" truncate>
                             {`     ${projectName(card.session.workspaceId)} · ${card.session.updatedAt ? ago(card.session.updatedAt) : ""}${card.session.asking ? " · needs you" : ""}${card.session.origin === "agent" ? " · delegated" : ""}`}
                           </text>
                           <Show when={card.session.agentStatus}>

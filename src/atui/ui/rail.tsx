@@ -13,7 +13,6 @@ import { contextCards, gitSummaryLine, type ContextCard, type ContextCardRow } f
 import { clip } from "../format.js";
 import { moveRow, rowWindow } from "../delegated.js";
 import { railEntries, railSummary, toneDot, toneOf, type RailEntry } from "../rail.js";
-import { sheetGround } from "../fx.js";
 import { useAtui, useTheme } from "./context.js";
 import { fitHints } from "../footer.js";
 
@@ -64,11 +63,6 @@ export function ContextRailView(p: RailActions) {
   const height = () => Math.max(6, size().height - 10);
   const width = () => Math.max(30, Math.min(110, size().width - (p.side ?? 0) - 4));
   const start = () => rowWindow(entries().length, at(), height());
-  /** The frame fits what it holds (each row, a heading over each group, the title and summary lines) up to the room the sheet stands in, so one worker is not a pane of empty rows. */
-  const boxHeight = () => {
-    const lines = entries().reduce((n, e, i, all) => n + 1 + (i === 0 || all[i - 1]?.card.id !== e.card.id ? (i === 0 ? 1 : 2) : 0) + (e.row.note ? 1 : 0), 0);
-    return Math.min(Math.max(8, size().height - 6), Math.max(8, Math.max(lines, 1) + 6));
-  };
 
   const open = (row: ContextCardRow) => {
     if (row.taskId) return p.onTask(row.taskId);
@@ -113,19 +107,11 @@ export function ContextRailView(p: RailActions) {
 
   return (
     <box
-      position="absolute"
-      /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
-         the title bar, so a terminal-height overlay would put its last row off the frame. */
-      top={1}
-      height={boxHeight()}
-      left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
-      width={width()}
-      zIndex={15}
+      /* A full-pane view like Review, Git and GitHub: its own header row and no frame, so there is no box floating over blank rows. */
+      flexGrow={1}
       flexDirection="column"
-      border
-      borderStyle="rounded"
-      borderColor={t().accent}
-      backgroundColor={sheetGround(t())}
+      maxWidth={width()}
+      backgroundColor={app.glass() ? undefined : t().bg}
       paddingLeft={1}
       paddingRight={1}
     >
@@ -165,7 +151,7 @@ export function ContextRailView(p: RailActions) {
                   <text flexGrow={1} wrapMode="none" truncate fg={t().text}>
                     {entry.row.title}
                   </text>
-                  <text flexShrink={0} fg={t().muted} wrapMode="none" truncate>
+                  <text flexShrink={0} fg={index() === at() ? t().text2 : t().muted} wrapMode="none" truncate>
                     {` ${clip(entry.row.meta, Math.max(12, width() - 52))}`}
                   </text>
                   <text flexShrink={0} fg={toneOf(t(), entry.row.status.tone)}>{`  ${entry.row.status.word}`}</text>
