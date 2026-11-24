@@ -893,7 +893,7 @@ export function App(p: {
     const fig = (t: Figures) => `${shortTokens(tokensOf(t))} · ${dollars(t.cost, t.calls > t.unpriced)}`;
     const words = (t: Figures) => `${shortTokens(tokensOf(t))} tokens · ${dollars(t.cost, t.calls > t.unpriced)}`;
     const share = cacheShare(r.totals);
-    const row = (section: string, label: string, hint: string, bar?: [number, number]): PickerItem => ({ id: `usage:${section}:${label}`, section, label, hint, bar, run: () => {} });
+    const row = (section: string, label: string, hint: string, bar?: [number, number], run: () => void = () => {}): PickerItem => ({ id: `usage:${section}:${label}`, section, label, hint, bar, run });
     const tallest = Math.max(1, ...r.byDay.map((d) => tokensOf(d.totals)));
     const dayName = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
     // A run of days with nothing is one line, not a column of empty tracks.
@@ -935,7 +935,7 @@ export function App(p: {
       ...r.top.slice(0, 8).map((x) => {
         const meta = [app.boot()?.harnesses.find((h) => h.id === x.session.harnessId)?.displayName ?? x.session.harnessId, app.overview().workspaces.find((w) => w.id === x.session.workspaceId)?.name ?? "", ago(x.session.updatedAt)].filter(Boolean).join(" · ");
         // The provenance rides with the name, so every figure at the right is short and the tracks run long, whatever the chat.
-        return row("Most used chats", `${clip(x.session.title || x.session.id, 22)} · ${meta}`, fig(x.totals), [0, tokensOf(x.totals) / Math.max(1, ...r.top.slice(0, 8).map((y) => tokensOf(y.totals)))]);
+        return row("Most used chats", `${clip(x.session.title || x.session.id, 22)} · ${meta}`, fig(x.totals), [0, tokensOf(x.totals) / Math.max(1, ...r.top.slice(0, 8).map((y) => tokensOf(y.totals)))], () => void app.openSession(x.session));
       }),
     ];
   };
@@ -1124,7 +1124,7 @@ export function App(p: {
                   <Picker title="Timing" placeholder="Search steps…" items={timingItems()} axis={timingAxis()} axisHead={timingHead()} firstHeading info onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
                 </Show>
                 <Show when={dialog() === "usage"}>
-                  <Picker softBars title="Usage across chats" tabHint={`Tab show ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
+                  <Picker softBars title="Usage across chats" tabHint={`Tab show ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
                   <Picker title="Queued messages · x removes" placeholder="Search queued messages…" empty="No queued messages: a steering or follow-up message parks here" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); return true; }} onClose={() => setDialog(null)} side={room()} />
