@@ -58,11 +58,13 @@
   /* Small uppercase section labels (Recent, Todos, Actions…): one size and tracking everywhere. */
   --label-size: 11px;
   --label-tracking: 0.05em;
-  --bg: #ffffff;
-  --surface: #f9fafb;
-  --surface-2: #eef1f5;
+  /* Light is a grey page with white faces on it: the page sits a step below the surfaces, so a
+     card, the composer, and a menu read as things laid over it rather than as its own level. */
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #e8ecf1;
   --selection: #dbe7fd;
-  --border: #d2d8e2;
+  --border: #cfd6df;
   --control-border: #8a9099;
   --text: #0f1115;
   --text-2: #43454a;
@@ -83,16 +85,18 @@
   --thinking: #6d4fc2;
   --rare: #8a5a00;
   --brown: #92400e;
-  --shadow-strength: 0.06;
+  /* A white page needs a real shadow and a firmer hairline to read as layered at all. */
+  --shadow-strength: 0.1;
   /* How much of the text colour a hairline takes: a dark page needs a little more for a
      1px edge to read (a base16 theme inherits whichever scheme it is). */
-  --hairline-mix: 13%;
+  --hairline-mix: 16%;
   /* How much lighter than its surface a raised face (a segmented control's chosen pill) is: a light
      page lifts it with a shadow on white, a dark one has to lighten it or it sinks below its track. */
   --raise-mix: 0%;
   /* How much of the surface an in-page card keeps before the page shows through: enough to
-     read as a face above --bg in either scheme, not enough to become a second background. */
-  --card-mix: 70%;
+     read as a face above --bg in either scheme, not enough to become a second background.
+     Light keeps nearly all of the white, because what lifts a card there is its shadow. */
+  --card-mix: 76%;
 }
 
 @media (prefers-color-scheme: dark) {
