@@ -1054,6 +1054,15 @@ export function App(p: {
   const timingMark = (row: { kind: string; chip?: ToolKindChip; failed?: boolean }) =>
     row.kind === "thinking" ? "▾" : row.kind === "reply" ? "●" : row.kind === "subagent" ? "↳" : callMark(row.failed === true, row.chip, row.chip?.category ?? "other");
 
+  /** The plan a run is working through, pinned above the composer while it runs: how many steps are done and the one under way (the first undone step when the harness marks none). */
+  const planStrip = () => {
+    const todos = app.chat()?.todos ?? [];
+    const done = todos.filter((x) => /done|complete/.test(x.status)).length;
+    if (todos.length === 0 || done === todos.length) return null;
+    const now = todos.find((x) => /progress|active|doing/.test(x.status)) ?? todos.find((x) => !/done|complete/.test(x.status));
+    return { done, total: todos.length, current: now?.text ?? "" };
+  };
+
   /** The Timing picker's rows: each model step, call and subagent run of one turn, where it started and how long it took (the web's waterfall, as a list). */
   const timingItems = (): PickerItem[] => {
     const c = app.chat();
@@ -1418,6 +1427,16 @@ export function App(p: {
                   <Picker title="History" placeholder="Search sessions, projects, harnesses…" items={historyItems()} onClose={() => setDialog(null)} firstHeading preview={historyPreview} side={room()} />
                 </Show>
                     </box>
+                  </Show>
+                  <Show when={app.busy() && planStrip()}>
+                    {(plan) => (
+                      <text selectable={false} wrapMode="none" truncate fg={t().muted} paddingLeft={1}>
+                        <span style={{ fg: t().accent }}>{"≡ "}</span>
+                        <span style={{ fg: t().text2 }}>{`${plan().done}/${plan().total}`}</span>
+                        <span style={{ fg: t().muted }}>{"  ◐ "}</span>
+                        <span style={{ fg: t().text }}>{plan().current}</span>
+                      </text>
+                    )}
                   </Show>
                   <Composer
                         status={{ mode: keybinds() === "vim" ? (normal() ? "normal" : "insert") : null, leader: leaderOn() ? leaderPrefix(keybinds()) : null, note: hint() }}

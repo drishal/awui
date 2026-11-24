@@ -503,6 +503,16 @@ describe("atui", () => {
     expect(await ui.frame()).not.toContain("Search commands, sessions, thinking…");
   }, 30_000);
 
+  it("pins the plan above the composer while a run works through it, and unpins it when the run settles", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("todolist slow");
+    ui.keys.pressEnter();
+    const pinned = await ui.until("1/3");
+    expect(pinned).toContain("Draw the reason inline");
+    await idle(ui);
+    expect(await ui.until("Message the agent")).not.toContain("1/3  ◐");
+  }, 40_000);
+
   it("unrolls a framed call's whole output with a click and folds it again", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 60 });
     await ui.type("tool longlog");
