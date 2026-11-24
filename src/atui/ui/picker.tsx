@@ -246,7 +246,7 @@ export function Picker(p: {
                     </Show>
                     <Show when={item.hint}>
                       {/* A bar row's figures sit at the right edge, so one column of them lines up down the sheet. */}
-                      <box flexGrow={item.bar ? 1 : 0} flexShrink={item.bar ? 1 : 0} flexDirection="row" justifyContent={item.bar ? "flex-end" : undefined}>
+                      <box flexGrow={item.bar ? 1 : 0} flexShrink={item.bar ? 1 : 0} flexDirection="row" justifyContent={item.bar ? "flex-end" : undefined} backgroundColor={lit() ? t().selection : undefined}>
                         <text flexShrink={item.bar ? 1 : 0} wrapMode="none" truncate fg={t().muted}>{` ${item.bar ? item.hint : clip(item.hint ?? "", listWidth() >= 60 ? 30 : 18)}`}</text>
                       </box>
                     </Show>
