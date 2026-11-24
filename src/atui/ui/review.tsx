@@ -16,6 +16,7 @@ import { mix } from "../fx.js";
 import { firstStop, moveCursor, moveFile, reviewRows, windowStart, type ReviewRow } from "../review.js";
 import { useAtui, useTheme } from "./context.js";
 import { fitHints } from "../footer.js";
+import { highlightPreview, type Segment } from "../words.js";
 
 const SIGN = { add: "+", del: "-", ctx: " ", hunk: "", gap: "" } as const;
 
@@ -133,17 +134,32 @@ export function ReviewView(p: { onClose: () => void }) {
 
   /** A line's tint: green or red for an add or delete; the cursor's row lays the selection over that tint rather than replacing it, so it keeps its diff context. */
   const rowTint = (kind: string, cursor: boolean) => {
-    const base = kind === "add" ? mix(t().bg, t().ok, 0.12) : kind === "del" ? mix(t().bg, t().danger, 0.12) : undefined;
+    const base = kind === "add" ? mix(t().bg, t().ok, 0.12) : kind === "del" ? mix(t().bg, t().danger, 0.12) : kind === "hunk" ? mix(t().bg, t().accent, 0.1) : undefined;
     return cursor ? (base ? mix(base, t().selection, 0.45) : t().selection) : base;
   };
   const lineColor = (kind: string) => (kind === "add" ? t().ok : kind === "del" ? t().danger : t().text2);
+  /** Each line's words with the changed ones marked, as the transcript's edit card and the web's diff do: a deleted run is paired with the added run after it. */
+  const marked = createMemo(() => {
+    const out = new Map<string, Segment[]>();
+    let run: Array<{ key: string; marker: "+" | "-" | " "; text: string }> = [];
+    const flush = () => {
+      highlightPreview(run.map((r) => ({ marker: r.marker, text: r.text }))).forEach((l, i) => out.set((run[i] as { key: string }).key, l.segments));
+      run = [];
+    };
+    for (const r of rows()) {
+      if (r.kind === "line" && (r.line.kind === "add" || r.line.kind === "del" || r.line.kind === "ctx")) run.push({ key: r.key, marker: SIGN[r.line.kind] as "+" | "-" | " ", text: r.line.text });
+      else flush();
+    }
+    flush();
+    return out;
+  });
 
   return (
     <box flexGrow={1} flexDirection="column" backgroundColor={app.glass() ? undefined : t().bg} paddingLeft={2} paddingRight={2}>
       <box flexDirection="row" flexShrink={0} marginTop={1}>
         <text flexGrow={1} fg={t().text} wrapMode="none" truncate>
           <b>Review changes</b>
-          <span style={{ fg: t().muted }}>{`  ${files().length} ${files().length === 1 ? "file" : "files"} ${open().length > 0 ? ` · ${open().length} open` : ""}${resolved().length > 0 ? ` · ${resolved().length} resolved` : ""}`}</span>
+          <span style={{ fg: t().muted }}>{`   ${files().length} ${files().length === 1 ? "file" : "files"} ${open().length > 0 ? ` · ${open().length} open` : ""}${resolved().length > 0 ? ` · ${resolved().length} resolved` : ""}`}</span>
         </text>
         {/* The keys sit right of the title, as every other sheet draws them; a line's thread keys appear once the cursor is on a thread. */}
         <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">
@@ -183,12 +199,14 @@ export function ReviewView(p: { onClose: () => void }) {
                     </text>
                     <text flexGrow={1} wrapMode="none" truncate fg={t().text}>
                       {row.line.kind === "hunk" || row.line.kind === "gap" ? (
-                        clip(row.line.text || "⋯", 120)
+                        clip(row.line.text || "⋯ lines not shown", 120)
                       ) : (
                         <>
-                          {/* As the web's diff does: only the sign carries the hue, the code stays in the text colour on the tint, so it keeps its contrast. */}
-                          <span style={{ fg: lineColor(row.line.kind) }}>{`${SIGN[row.line.kind]} `}</span>
-                          {row.line.text}
+                          {/* As the web's diff does: the sign carries the hue (eased toward the text so it keeps its contrast on the tint), the code stays in the text colour, and the words that changed sit on a stronger tint. */}
+                          <span style={{ fg: mix(lineColor(row.line.kind), t().text, 0.3) }}>{`${SIGN[row.line.kind]} `}</span>
+                          <For each={marked().get(row.key) ?? [{ text: row.line.text, changed: false }]}>
+                            {(seg) => <span style={{ bg: seg.changed && (marked().get(row.key)?.length ?? 1) > 1 ? mix(t().bg, lineColor(row.line.kind), 0.3) : undefined }}>{seg.text}</span>}
+                          </For>
                         </>
                       )}
                     </text>

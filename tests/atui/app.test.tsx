@@ -927,7 +927,7 @@ describe("atui", () => {
     await idle(ui);
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("d");
-    const view = await ui.until("Review changes  1 file");
+    const view = await ui.until("Review changes   1 file");
     expect(view).toContain("src/app.ts");
     // The attribution marks: the file head says which lines this chat wrote (the fake edit's own).
     await ui.until("from this chat");
