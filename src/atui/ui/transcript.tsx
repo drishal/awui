@@ -15,7 +15,7 @@
 import { createContext, createEffect, createMemo, createResource, createSignal, For, Index, Match, on, onCleanup, Show, Switch, useContext, type Accessor } from "solid-js";
 import { BoxRenderable, type MarkdownBlock, type Renderable, type RenderNodeContext, type ScrollBoxRenderable } from "@opentui/core";
 import { useRenderer, useTerminalDimensions } from "@opentui/solid";
-import type { AssistantItem, ChatItem, ImageRef, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../../shared/protocol.js";
+import type { AssistantItem, ChatItem, DiffLine, ImageRef, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../../shared/protocol.js";
 import { buildTurns, formatDuration, latestThought, modelName, modelSwitches, relativePath, saysSomething, workAfterSegment, workCounts, workSegments, type Turn, type WorkSegment } from "../../web/turns.js";
 import { findTurns } from "../../web/find.js";
 import { clip, fileUrl, foldLabel, outputTail, unifiedDiff } from "../format.js";
@@ -350,6 +350,29 @@ function Thought(p: { item: AssistantItem; open: boolean; onToggle: () => void }
   );
 }
 
+/** An edit's lines as plain tinted rows with the found words lit: what the framed card draws while a find lands inside the diff. */
+function FoundDiff(p: { lines: DiffLine[] }) {
+  const t = useTheme();
+  const sign = { add: "+", del: "-", ctx: " " } as const;
+  return (
+    <box flexDirection="column">
+      <For each={p.lines}>
+        {(l) =>
+          l.kind === "hunk" || l.kind === "gap" ? (
+            <text fg={t().muted} wrapMode="none" truncate>{"⋯"}</text>
+          ) : (
+            <box flexDirection="row" backgroundColor={l.kind === "add" ? mix(t().bg, t().ok, 0.16) : l.kind === "del" ? mix(t().bg, t().danger, 0.16) : undefined}>
+              <text flexShrink={0} fg={t().muted}>{`${l.line !== undefined ? String(l.line).padStart(4) : "    "} `}</text>
+              <text flexShrink={0} fg={l.kind === "add" ? t().ok : l.kind === "del" ? t().danger : t().muted}>{`${sign[l.kind]} `}</text>
+              <text flexGrow={1} wrapMode="word" fg={t().text}><Marked text={l.text} ink={t().text} /></text>
+            </box>
+          )
+        }
+      </For>
+    </box>
+  );
+}
+
 /**
  * A clicked call, framed the way omp draws it: the call, an Output rule, what
  * it printed (or an edit's diff, highlighted for its language and side by
@@ -365,6 +388,12 @@ function ToolDetails(p: { item: ToolItem; workspace: string }) {
   const tone = () => (p.item.status === "running" ? t().accent : p.item.status === "error" ? t().danger : t().border);
   const file = () => relativePath(p.item.paths[0] ?? p.item.summary, p.workspace);
   const diff = createMemo(() => (p.item.diff && (p.item.category === "edit" || p.item.category === "write") ? unifiedDiff(file(), p.item.diff) : null));
+  // `<diff>` has no per-span hook, so while a find lands inside this edit's lines the card draws them itself (tinted rows, the found words lit) and goes back to the highlighted diff once the find moves off.
+  const found = useContext(FoundWords);
+  const diffHit = createMemo(() => {
+    const q = found()?.trim().toLowerCase();
+    return !!q && !!diff() && !!p.item.diff?.lines.some((l) => (l.kind === "add" || l.kind === "del" || l.kind === "ctx") && l.text.toLowerCase().includes(q));
+  });
   const command = () => (p.item.category === "command" && row().detail?.startsWith("$ ") ? (row().detail as string).slice(2) : null);
   // The frame keeps the last lines (where a failure usually ends); a click unrolls the whole stored output (the server bounds it at 16 KB) and a click folds it again.
   const [all, setAll] = createSignal(false);
@@ -392,8 +421,11 @@ function ToolDetails(p: { item: ToolItem; workspace: string }) {
           </text>
         )}
       </Show>
+      <Show when={diffHit() && p.item.diff}>
+        {(d) => <FoundDiff lines={d().lines} />}
+      </Show>
       <Show
-        when={diff()}
+        when={!diffHit() && diff()}
         fallback={
           <Show when={output()}>
             <Show when={command()}>

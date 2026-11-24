@@ -238,6 +238,27 @@ describe("atui", () => {
     const page = read?.find((x) => x.text.includes("Read"))?.bg.toInts().join();
     expect(hit?.bg.toInts().join()).not.toBe(page);
   }, 30_000);
+  it("paints a find's words inside an open edit's diff, which OpenTUI's diff view cannot", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 60, width: 140 });
+    await ui.type("showcase tool listen");
+    ui.keys.pressEnter();
+    await ui.until("┌─ ▤ Read README.md");
+    await idle(ui);
+    await ui.click("Edited src/server.ts");
+    await ui.until("process.env");
+    ui.keys.pressKey("s", { ctrl: true });
+    await ui.until("Type to find text in this chat…");
+    await ui.type("listen");
+    await wait(500);
+    ui.keys.pressEnter();
+    await wait(300);
+    const rows = (await ui.spans()) ?? [];
+    const line = rows.find((l) => l.map((x) => x.text).join("").includes("listen(port, host)"));
+    const hit = line?.find((x) => x.text === "listen");
+    expect(hit).toBeDefined();
+    const code = line?.find((x) => x.text.includes("log("));
+    expect(hit?.bg.toInts().join()).not.toBe(code?.bg.toInts().join());
+  }, 30_000);
   it("starts a rename from the palette by putting /rename in the composer", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("hello rename");
