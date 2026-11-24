@@ -88,6 +88,8 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     return s ? previews()[`${s.id}@${s.updatedAt ?? ""}`] ?? null : null;
   };
   const preview = () => previewLine(full());
+  /** What the card's session last said, as one line (the detail wraps it to at most three rows). */
+  const said = () => (full()?.answer ? previewLine({ ...(full() as SessionPreview), prompt: null }) ?? "—" : full() ? "No answer yet" : "");
 
   onMount(() => {
     void app.refreshSessions().finally(() => setReading(false));
@@ -283,9 +285,9 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                 <span style={{ fg: t().muted }}>{"You     "}</span>
                 <span style={{ fg: t().text2 }}>{previewLine(full() ? { ...(full() as SessionPreview), answer: null } : null) ?? (full() ? "—" : "Reading…")}</span>
               </text>
-              <box flexDirection="row" maxHeight={3} overflow="hidden">
+              <box flexDirection="row" height={Math.min(3, Math.max(1, Math.ceil((said() ?? "").length / Math.max(10, width() - 14))))} overflow="hidden">
                 <text flexShrink={0} fg={t().muted}>{"Said    "}</text>
-                <text flexGrow={1} fg={t().text} wrapMode="word">{full()?.answer ? previewLine({ ...(full() as SessionPreview), prompt: null }) ?? "—" : full() ? "No answer yet" : ""}</text>
+                <text flexGrow={1} fg={t().text} wrapMode="word">{said()}</text>
               </box>
               <Show when={(full()?.files.length ?? 0) > 0}>
                 <text wrapMode="none" truncate>
