@@ -1430,7 +1430,7 @@ export function App(p: {
                   </Show>
                   <Show when={app.busy() && planStrip()}>
                     {(plan) => (
-                      <text selectable={false} wrapMode="none" truncate fg={t().muted} paddingLeft={1}>
+                      <text selectable={false} wrapMode="none" truncate fg={t().muted} paddingLeft={2}>
                         <span style={{ fg: t().accent }}>{"≡ "}</span>
                         <span style={{ fg: t().text2 }}>{`${plan().done}/${plan().total}`}</span>
                         <span style={{ fg: t().muted }}>{"  ◐ "}</span>
