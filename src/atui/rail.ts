@@ -18,7 +18,7 @@ export function railEntries(cards: ContextCard[]): RailEntry[] {
 
 /**
  * What the rail says over its cards: how much is running, how much waits on a person, and what
- * failed. "Nothing is running" when there is nothing to count, so an idle chat says why the rail
+ * failed. "Nothing is running." when there is nothing to count, so an idle chat says why the rail
  * is quiet rather than showing an empty figure.
  */
 export function railSummary(cards: ContextCard[]): string {
@@ -27,7 +27,7 @@ export function railSummary(cards: ContextCard[]): string {
   const waiting = rows.filter((row) => row.status.tone === "waiting").length;
   const failed = rows.filter((row) => row.status.tone === "failed").length;
   const parts = [working > 0 ? `${working} working` : null, waiting > 0 ? `${waiting} ${waiting === 1 ? "needs you" : "need you"}` : null, failed > 0 ? `${failed} failed` : null].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : "Nothing is running";
+  return parts.length > 0 ? parts.join(" · ") : "Nothing is running.";
 }
 
 /** The colour a row's status word and its dot are drawn in: the browser's reading, in the terminal's palette. */

@@ -92,7 +92,7 @@ describe("the rail's flat list and its summary", () => {
   it("sums what is working, what waits, and what failed; and says so when nothing is", () => {
     expect(railSummary(cards)).toBe("1 working · 1 needs you · 1 failed");
     expect(railSummary([card("questions", [{ key: "a", title: "x", meta: "", status: { tone: "waiting", word: "Needs you" }, target: { kind: "questions" } }, { key: "b", title: "y", meta: "", status: { tone: "waiting", word: "Needs you" }, target: { kind: "questions" } }])])).toBe("2 need you");
-    expect(railSummary([card("memory", [{ key: "usage", title: "Context used", meta: "", status: { tone: "quiet", word: "42%" }, target: { kind: "usage" } }])])).toBe("Nothing is running");
+    expect(railSummary([card("memory", [{ key: "usage", title: "Context used", meta: "", status: { tone: "quiet", word: "42%" }, target: { kind: "usage" } }])])).toBe("Nothing is running.");
   });
 
   it("colours a status by its tone, and draws a quiet one hollow", () => {
