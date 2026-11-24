@@ -22,6 +22,11 @@ export function mix(a: string, b: string, t: number): string {
   return `#${c(ar, br)}${c(ag, bg)}${c(ab, bb)}`;
 }
 
+/** The ground of a sheet that lifts over the conversation: a step further from the page than the prompt strip's `surface`, so a modal reads as raised, not as one more strip. */
+export function sheetGround(theme: { bg: string; surface2: string }): string {
+  return mix(theme.bg, theme.surface2, 0.55);
+}
+
 /**
  * The colour at `value` along a ramp of stops (`[at, colour]`, in order of
  * `at`): the nearest stops mixed, the ends held beyond them.

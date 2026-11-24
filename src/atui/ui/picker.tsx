@@ -2,7 +2,7 @@
 // the model and harness pickers. Matching is the web palette's (rankItems);
 // the letters that matched are drawn brighter. A picker given `preview`
 // (history) shows the highlighted item beside the list on a wide terminal.
-import { mix } from "../fx.js";
+import { mix, sheetGround } from "../fx.js";
 import { createEffect, createMemo, createResource, createSignal, For, Index, on, Show } from "solid-js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import { rankItems, type PaletteItem } from "../../web/palette.js";
@@ -198,20 +198,20 @@ export function Picker(p: {
       border
       borderStyle="rounded"
       borderColor={t().accent}
-      backgroundColor={t().surface}
+      backgroundColor={sheetGround(t())}
       paddingLeft={1}
       paddingRight={1}
     >
       {/* The title at the left and its keys at the right, as the other sheets draw theirs; an info sheet's rows are not chosen, so it does not offer Enter. */}
       <box flexDirection="row" flexShrink={0}>
-        <text flexGrow={1} fg={t().muted} wrapMode="none" truncate>
+        <text flexGrow={1} fg={t().text} wrapMode="none" truncate>
           <b>{p.title}</b>
         </text>
         <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">{`${p.tabHint ? `${p.tabHint} · ` : ""}${p.info ? "↑↓ scroll" : "↑↓ move · Enter select"} · Esc close`}</text>
       </box>
       <box flexDirection="row" flexShrink={0}>
         <text fg={t().accent} flexShrink={0}>{"› "}</text>
-        <input focused flexGrow={1} placeholder={p.placeholder} textColor={t().text} backgroundColor={t().surface} focusedBackgroundColor={t().surface} onInput={(value: string) => setQuery(value)} />
+        <input focused flexGrow={1} placeholder={p.placeholder} textColor={t().text} backgroundColor={sheetGround(t())} focusedBackgroundColor={sheetGround(t())} onInput={(value: string) => setQuery(value)} />
         <Show when={query().trim()}>
           <text fg={t().muted} flexShrink={0}>{`${shown().length} ${shown().length === 1 ? (p.noun?.[0] ?? "match") : (p.noun?.[1] ?? "matches")}`}</text>
         </Show>

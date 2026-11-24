@@ -13,6 +13,7 @@ import { contextCards, gitSummaryLine, type ContextCard, type ContextCardRow } f
 import { clip } from "../format.js";
 import { moveRow, rowWindow } from "../delegated.js";
 import { railEntries, railSummary, toneDot, toneOf, type RailEntry } from "../rail.js";
+import { sheetGround } from "../fx.js";
 import { useAtui, useTheme } from "./context.js";
 import { fitHints } from "../footer.js";
 
@@ -124,7 +125,7 @@ export function ContextRailView(p: RailActions) {
       border
       borderStyle="rounded"
       borderColor={t().accent}
-      backgroundColor={t().surface}
+      backgroundColor={sheetGround(t())}
       paddingLeft={1}
       paddingRight={1}
     >

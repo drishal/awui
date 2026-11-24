@@ -16,6 +16,7 @@ import { ACTION_KEYS, clockNote, moveRow, rowWindow, taskRows, workerCount, type
 import { clip } from "../format.js";
 import { reviewRows } from "../review.js";
 import { toneDot, toneOf } from "../rail.js";
+import { sheetGround } from "../fx.js";
 import { useAtui, useTheme } from "./context.js";
 import { fitHints } from "../footer.js";
 
@@ -276,7 +277,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
       border
       borderStyle="rounded"
       borderColor={t().accent}
-      backgroundColor={t().surface}
+      backgroundColor={sheetGround(t())}
       paddingLeft={1}
       paddingRight={1}
     >
@@ -308,7 +309,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
                         <text flexShrink={0} fg={toneOf(t(), target.status.tone)}>{` ${target.word}`}</text>
                         <text flexShrink={0} fg={t().muted}>{`  ${target.elapsed}`}</text>
                       </box>
-                      {target.line ? <text fg={t().muted} wrapMode="none" truncate>{`    ${clip(target.line, width() - 8)}`}</text> : null}
+                      {target.line ? <text fg={t().muted} wrapMode="none" truncate>{`   ${clip(target.line, width() - 8)}`}</text> : null}
                     </box>
                   );
                 }}
@@ -386,7 +387,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
             flexGrow={1}
             placeholder="Optional, sent with apply or keep: Enter save · Esc cancel"
             textColor={t().text}
-            backgroundColor={t().surface}
+            backgroundColor={sheetGround(t())}
             focusedBackgroundColor={t().surface}
             value={note()}
             onInput={(value: string) => setNote(value)}

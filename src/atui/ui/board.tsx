@@ -34,6 +34,7 @@ import { ago } from "../format.js";
 import { harnessGlyph } from "../neat.js";
 import { moveRow } from "../delegated.js";
 import { accentOf } from "../theme.js";
+import { sheetGround } from "../fx.js";
 import { useAtui, useTheme } from "./context.js";
 
 /** How many projects' pull requests are read when the board opens: gh is slow and a badge is decoration. */
@@ -194,7 +195,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
       border
       borderStyle="rounded"
       borderColor={t().accent}
-      backgroundColor={t().surface}
+      backgroundColor={sheetGround(t())}
       paddingLeft={1}
       paddingRight={1}
     >
@@ -204,7 +205,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           {`   ${filterLine()}`}
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? fitHints(["←→ column", "↑↓ card", "Enter open", "f project", "r PR", "Esc close"], width() - 15 - filterLine().length)}
+          {note() ?? fitHints(["↑↓ card", "Enter open", "←→ column", "f project", "r PR", "Esc close"], width() - 15 - filterLine().length)}
         </text>
       </box>
       <box flexDirection="row" flexGrow={1} overflow="hidden" marginTop={1}>
@@ -237,10 +238,10 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                             <b>{plainTitle(card.session.title) || "Untitled"}</b>
                           </text>
                           <text fg={t().muted} wrapMode="none" truncate>
-                            {`   ${projectName(card.session.workspaceId)} · ${card.session.updatedAt ? ago(card.session.updatedAt) : ""}${card.session.asking ? " · needs you" : ""}${card.session.origin === "agent" ? " · delegated" : ""}`}
+                            {`     ${projectName(card.session.workspaceId)} · ${card.session.updatedAt ? ago(card.session.updatedAt) : ""}${card.session.asking ? " · needs you" : ""}${card.session.origin === "agent" ? " · delegated" : ""}`}
                           </text>
                           <Show when={card.session.agentStatus}>
-                            {(status) => <text fg={t().text2} wrapMode="none" truncate>{`   ${agentStatusText(status())}`}</text>}
+                            {(status) => <text fg={t().text2} wrapMode="none" truncate>{`     ${agentStatusText(status())}`}</text>}
                           </Show>
                           <Show when={prBadge(card.session, prs() ? { [card.session.workspaceId]: prs()[card.session.workspaceId] ?? null } : undefined)}>
                             {(badge) => <text fg={t().link} wrapMode="none" truncate>{`   ${badge().words}`}</text>}
