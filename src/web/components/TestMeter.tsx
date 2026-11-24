@@ -17,7 +17,6 @@ export function TestMeter({ progress, live = true }: { progress: TestProgress; l
           <strong>{done}</strong>/{total} tests
         </span>
         {failed > 0 ? <span className="test-meter-failed">{failed} failed</span> : null}
-        <span className="test-meter-pct">{Math.round(share * 100)}%</span>
       </div>
       <div
         className="test-meter-track"

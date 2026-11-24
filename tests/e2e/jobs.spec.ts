@@ -22,11 +22,16 @@ test("a background job shows its progress above the composer and in the wait tha
   await expect(card).toHaveAttribute("data-job", "bg_1", { timeout: 10_000 });
   await expect(card).toContainText("Running the e2e suite");
   await expect(card.getByRole("img", { name: "Running" })).toBeVisible();
-  // omp's widget: a meter that fills as tests finish, the passed and failed counts, a square a test.
+  // omp's widget: a meter that fills as tests finish, the passed and failed counts on its head line, a square a
+  // test. The counts are said once, in the head, not again as pills under it.
   const meter = card.getByRole("progressbar", { name: "tests done" });
   await expect.poll(async () => Number(await meter.getAttribute("aria-valuenow")), { timeout: 10_000 }).toBeGreaterThan(20);
-  await expect(card.locator(".job-stat")).toHaveCount(2);
+  await expect(card.getByTestId("job-tally")).toContainText("failed");
+  await expect(card.locator(".job-stat")).toHaveCount(0);
   await expect(card.locator(".job-cell.tone-error")).toHaveCount(1);
+  // The meter is segmented: green up to what passed, its red cap the one failure, and no amber bar to the end.
+  await expect(card.locator(".job-track-fail")).toBeVisible();
+  await expect(card.locator(".job-stage")).toHaveCount(0);
   // The wait's row says what it waits on, as a line: the one live progress bar is above the composer,
   // not repeated in every call that looked at the job.
   await expect(page.locator('[data-tool="wait"] .tool-sentence')).toHaveText("Waiting on bg_1: Running the e2e suite");

@@ -121,6 +121,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The run's tally where the harness states counts beside a grid of the same tests: "11 passed · 1 failed", the
+   number that failed in the danger colour, so a reader sees the one failure without reading the words. */
+.job-tally {
+  display: inline-flex;
+  flex: none;
+  align-items: baseline;
+  color: var(--text-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.job-tally-part {
+  color: var(--muted-text);
+}
+
+.job-tally-part strong {
+  color: var(--tone, var(--text));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .job-id {
   flex: none;
   padding: 1px 7px;
@@ -215,10 +237,12 @@
   gap: 4px;
 }
 
+/* Four pixels, so a bar reads as a measure and not as a panel: the passed share green, its last stretch the
+   failed one in red, and the track what has not run yet. */
 .job-track {
   position: relative;
   display: block;
-  height: 6px;
+  height: 4px;
   overflow: hidden;
   border-radius: 999px;
   background: color-mix(in srgb, var(--text) 9%, transparent);
@@ -227,10 +251,24 @@
 .job-track-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  width: calc(var(--share) * 100%);
+  width: calc((var(--share) - var(--failed, 0)) * 100%);
   border-radius: inherit;
   background: var(--tone, var(--accent));
   transition: width 0.5s var(--ease-out);
+}
+
+/* The failures sit at the end of what finished, never in place of the pass: red then reads as a cap on green,
+   and a segment too small to see still keeps 8px, the width at which a colour is a colour. */
+.job-track-fail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc((var(--share) - var(--failed, 0)) * 100%);
+  width: calc(var(--failed, 0) * 100%);
+  min-width: 8px;
+  border-radius: inherit;
+  background: var(--danger);
+  transition: left 0.5s var(--ease-out), width 0.5s var(--ease-out);
 }
 
 .job-card.is-running .job-meter .job-track-fill {
@@ -238,6 +276,11 @@
     linear-gradient(100deg, transparent 30%, color-mix(in srgb, white 35%, transparent) 50%, transparent 70%) 0 0 / 200% 100%,
     var(--tone, var(--accent));
   animation: shimmer 1.8s linear infinite;
+}
+
+/* A meter whose run failed is not amber: what passed is green, and the red cap says what did not. */
+.job-card .job-meter.has-failed .job-track-fill {
+  --tone: var(--ok);
 }
 
 .job-stats {

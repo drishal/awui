@@ -791,9 +791,6 @@
   color: var(--danger);
 }
 
-.test-meter-pct {
-  margin-left: auto;
-}
 
 .test-meter-track {
   position: relative;
