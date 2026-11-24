@@ -7,8 +7,27 @@ export type SectionId = "needs" | "working" | "pinned";
 export type SidebarRow =
   | { kind: "section"; id: SectionId; label: string; count: number }
   | { kind: "project"; workspace: WorkspaceInfo; count: number; current: boolean; newest?: ProjectSession }
-  | { kind: "session"; s: ProjectSession; project?: string };
+  | { kind: "session"; s: ProjectSession; project?: string; child?: true };
 export type ProjectOption = { workspace: WorkspaceInfo; sessions: ProjectSession[] };
+
+/**
+ * A list of sessions with each running delegated child moved to just after its parent
+ * and marked, when the parent is in the same list; a child whose parent is elsewhere
+ * keeps its own place, as the board's cards do. Order within the rest is untouched.
+ */
+export function nestDelegated(sessions: readonly ProjectSession[]): Array<{ s: ProjectSession; child: boolean }> {
+  const parentOf = new Map<string, ProjectSession>();
+  for (const s of sessions) if (s.liveChatId) parentOf.set(s.liveChatId, s);
+  const kids = new Map<string, ProjectSession[]>();
+  const nested = new Set<string>();
+  for (const s of sessions) {
+    const parent = s.lineage ? parentOf.get(s.lineage.parentChatId) : undefined;
+    if (!parent || parent.id === s.id) continue;
+    nested.add(s.id);
+    kids.set(parent.id, [...(kids.get(parent.id) ?? []), s]);
+  }
+  return sessions.filter((s) => !nested.has(s.id)).flatMap((s) => [{ s, child: false }, ...(kids.get(s.id) ?? []).map((k) => ({ s: k, child: true }))]);
+}
 
 /** Preserve web session grouping, but retain offered empty projects as scoped-new-chat targets. */
 export function sidebarProjects(overview: SessionsOverview, opts: GroupOptions): ProjectOption[] {
@@ -31,9 +50,9 @@ export function sidebarRows(overview: SessionsOverview, opts: GroupOptions, fold
     if (sessions.length === 0) continue;
     rows.push({ kind: "section", id, label, count: sessions.length });
     if (folded.has(`shut:${id}`) && !folded.has(`open:${id}`)) continue;
-    for (const s of sessions) {
+    for (const { s, child } of nestDelegated(sessions)) {
       const ws = overview.workspaces.find((w) => w.id === s.workspaceId);
-      rows.push({ kind: "session", s, ...(ws && ws.id !== opts.currentId ? { project: ws.name } : {}) });
+      rows.push({ kind: "session", s, ...(ws && ws.id !== opts.currentId ? { project: ws.name } : {}), ...(child ? { child: true as const } : {}) });
     }
   }
   for (const group of sidebarProjects(overview, opts)) {
@@ -42,7 +61,7 @@ export function sidebarRows(overview: SessionsOverview, opts: GroupOptions, fold
     rows.push({ kind: "project", workspace: group.workspace, count: group.sessions.length, current, ...(newest ? { newest } : {}) });
     const key = `project:${group.workspace.id}`;
     if (!projectOpen(folded, group.workspace.id, current)) continue;
-    for (const s of group.sessions) rows.push({ kind: "session", s });
+    for (const { s, child } of nestDelegated(group.sessions)) rows.push({ kind: "session", s, ...(child ? { child: true as const } : {}) });
   }
   return rows;
 }

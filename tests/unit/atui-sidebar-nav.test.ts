@@ -1,7 +1,7 @@
 // Navigation state does not confuse two displays of one session, or another project's parent.
 import { describe, expect, it } from "vitest";
 import type { ProjectSession, SessionsOverview } from "../../src/shared/protocol.js";
-import { projectOpen, sidebarFolded, sidebarKey, sidebarParentKey, sidebarRows, sidebarSelectedIndex, sidebarTabRow } from "../../src/atui/sidebar-nav.js";
+import { nestDelegated, projectOpen, sidebarFolded, sidebarKey, sidebarParentKey, sidebarRows, sidebarSelectedIndex, sidebarTabRow } from "../../src/atui/sidebar-nav.js";
 import { asHarnessId } from "../../src/shared/protocol.js";
 
 const session = (id: string, workspaceId: string, flags: Partial<ProjectSession> = {}): ProjectSession => ({ id, harnessId: asHarnessId("fake"), workspaceId, title: id, updatedAt: null, ...flags });
@@ -78,5 +78,11 @@ describe("atui sidebar navigation", () => {
     // Two occurrences of one session keep distinct keys.
     const bothOccurrences = after.map((row, index) => sidebarKey(row, index, after)).filter((item, i, all) => item?.startsWith("s:alpha-session:") && all.indexOf(item) !== i);
     expect(bothOccurrences).toEqual([]);
+  });
+
+  it("moves a running delegated child to just after its parent, and leaves one whose parent is elsewhere", () => {
+    const lineage = (parentChatId: string) => ({ kind: "delegate" as const, taskId: "t", parentChatId, parentTitle: null, depth: 1 });
+    const list = [session("kid", "alpha", { liveChatId: "c-kid", lineage: lineage("c-lead") }), session("other", "alpha"), session("lead", "alpha", { liveChatId: "c-lead" }), session("stray", "alpha", { lineage: lineage("c-gone") })];
+    expect(nestDelegated(list).map((x) => `${x.s.id}${x.child ? "*" : ""}`)).toEqual(["other", "lead", "kid*", "stray"]);
   });
 });
