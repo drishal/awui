@@ -333,6 +333,7 @@ function Thought(p: { item: AssistantItem; open: boolean; onToggle: () => void }
  */
 function ToolDetails(p: { item: ToolItem; workspace: string }) {
   const t = useTheme();
+  const app = useAtui();
   const renderer = useRenderer();
   const size = useTerminalDimensions();
   const row = createMemo(() => neatRow(p.item, p.workspace));
@@ -352,6 +353,12 @@ function ToolDetails(p: { item: ToolItem; workspace: string }) {
   const status = () => (p.item.status === "running" ? "running…" : row().facts.join(" · "));
   return (
     <box border borderStyle="rounded" borderColor={tone()} bottomTitle={status() ? ` ${status()} ` : undefined} flexDirection="column" paddingLeft={1} paddingRight={1} marginTop={1} marginBottom={1}>
+      {/* A call that touched a file offers the file: a click opens the file sheet on it. */}
+      <Show when={p.item.paths[0]}>
+        {(path) => (
+          <text selectable={false} wrapMode="none" truncate fg={t().link} onMouseDown={(e: { stopPropagation: () => void }) => { e.stopPropagation(); app.setFilePeek(relativePath(path(), p.workspace)); }}>{`▤ View ${relativePath(path(), p.workspace)}`}</text>
+        )}
+      </Show>
       <Show when={command()}>
         {(c) => (
           <text wrapMode="word">

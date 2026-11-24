@@ -193,6 +193,21 @@ describe("atui", () => {
     expect(folded).toMatch(/▸ Worked for \d+s · 2 reads, 1 search, 2 edits/);
     expect(folded).not.toContain("┌─ ● Read");
   }, 30_000);
+  it("opens the file sheet on a file from an opened call's View line", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 80 });
+    await ui.type("showcase tool edit please");
+    ui.keys.pressEnter();
+    await ui.until("Changed 3 files");
+    await idle(ui);
+    await ui.click("Edited src/app.ts");
+    await ui.until("╰─ +1 −1");
+    await ui.click("▤ View src/app.ts");
+    const sheet = await ui.until("Open a file");
+    expect(sheet).toContain("src/app.ts");
+    await ui.escape();
+    await wait(150);
+    expect(await ui.frame()).not.toContain("Open a file");
+  }, 30_000);
   it("shows reasoning by default, folds one block or all, and finishes streaming", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 60 });
     await ui.type("showcase");

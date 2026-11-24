@@ -90,6 +90,8 @@ export function message(error: unknown): string {
 
 export function createAtui(server: Server, opts: AtuiOptions) {
   const [showThoughts, setShowThoughts] = createSignal(opts.showThoughts ?? true);
+  /** A project file a transcript row asked to see (workspace-relative): the file sheet opens on it, and clears this when it closes. */
+  const [filePeek, setFilePeek] = createSignal<string | null>(null);
   // Local fold overrides belong to the open conversation, not a streaming item's identity.
   const [thoughtOverrides, setThoughtOverrides] = createSignal<Record<string, boolean>>({});
   const thoughtOpen = (id: string) => thoughtOverrides()[id] ?? showThoughts();
@@ -1017,6 +1019,8 @@ export function createAtui(server: Server, opts: AtuiOptions) {
   return {
     pacedMemory,
     showThoughts,
+    filePeek,
+    setFilePeek,
     setShowThoughts,
     thoughtOpen,
     toggleThought,

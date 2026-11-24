@@ -871,6 +871,8 @@ export function App(p: {
   const [landed, setLanded] = createSignal<{ query: string; turnId: string; /** Which match of the chat's turns this is, "2/5", when there are several. */ of?: string } | null>(null);
   // A find belongs to the chat it was made in: another chat starts without its marks, and M-n / M-p do nothing there until a new find lands.
   createEffect(on(() => app.chat()?.chatId, () => setLanded(null), { defer: true }));
+  // A call's file link (a click on its "View" line) opens the file sheet on that file.
+  createEffect(on(() => app.filePeek(), (file) => { if (file) setDialog("files"); }, { defer: true }));
   const stepFind = (by: 1 | -1) => {
     const found = landed();
     const c = app.chat();
@@ -1412,7 +1414,7 @@ export function App(p: {
                   <Picker title="Worktrees" placeholder="Type a name to make a worktree, or pick one to open a chat in…" items={[]} search={worktreeItems} empty={trees.loading ? "Reading the worktrees…" : "No worktrees yet: type a name to make one"} firstHeading noun={["worktree", "worktrees"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "files"}>
-                  <Picker title="Open a file" placeholder="Type a file name…" items={[]} search={fileItems} preview={filePreview} noun={["file", "files"]} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Open a file" placeholder="Type a file name…" items={[]} search={fileItems} preview={filePreview} noun={["file", "files"]} initialQuery={app.filePeek() ?? undefined} onClose={() => { app.setFilePeek(null); setDialog(null); }} side={room()} />
                 </Show>
                 <Show when={dialog() === "chats"}>
                   <Picker title="Search every chat" placeholder="Type to search every chat's words…" items={[]} search={chatItems} noun={["chat", "chats"]} onClose={() => setDialog(null)} side={room()} />

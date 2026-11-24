@@ -85,10 +85,12 @@ export function Picker(p: {
   noun?: [string, string];
   /** Columns the side panel takes: the picker fits what is left of the screen, never under the panel. */
   side?: number;
+  /** Words the search starts with (a file a row asked to see), already typed in the box. */
+  initialQuery?: string;
 }) {
   const t = useTheme();
   const size = useTerminalDimensions();
-  const [query, setQuery] = createSignal("");
+  const [query, setQuery] = createSignal(p.initialQuery ?? "");
   const [active, setActive] = createSignal(0);
   const shown = createMemo((): PickerItem[] => (p.search ? p.search(query()) : (rankItems(p.items, query()) as PickerItem[])));
   createEffect(
@@ -216,7 +218,7 @@ export function Picker(p: {
       </box>
       <box flexDirection="row" flexShrink={0}>
         <text fg={t().accent} flexShrink={0}>{"› "}</text>
-        <input focused flexGrow={1} placeholder={p.placeholder} placeholderColor={t().muted} textColor={t().text} backgroundColor={sheetGround(t())} focusedBackgroundColor={sheetGround(t())} onInput={(value: string) => setQuery(value)} />
+        <input focused flexGrow={1} value={p.initialQuery ?? ""} placeholder={p.placeholder} placeholderColor={t().muted} textColor={t().text} backgroundColor={sheetGround(t())} focusedBackgroundColor={sheetGround(t())} onInput={(value: string) => setQuery(value)} />
         <Show when={query().trim()}>
           <text fg={t().muted} flexShrink={0}>{`${shown().length} ${shown().length === 1 ? (p.noun?.[0] ?? "match") : (p.noun?.[1] ?? "matches")}`}</text>
         </Show>
