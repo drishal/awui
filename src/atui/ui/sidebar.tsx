@@ -72,6 +72,8 @@ export function Sidebar(p: {
     const c = app.chat();
     return Boolean(c && ((c.sessionId !== null && s.id === c.sessionId) || s.liveChatId === c.chatId));
   };
+  /** Whether a session runs now. The open one is read from the live chat the header reads, never the overview stream that can lag it by a beat, so the two never disagree about Idle. */
+  const busyNow = (s: ProjectSession) => (isActive(s) ? app.busy() : isBusy(s.status));
   const rows = createMemo<SidebarRow[]>(() => sidebarRows(app.overview(), { currentId: app.workspace()?.id ?? null, query: "", harnessId: app.harnessId(), isActive, now: Date.now() }, folded()));
   const navRows = rows;
   const selectedRow = () => sidebarSelectedIndex(rows(), selection());
@@ -225,8 +227,8 @@ export function Sidebar(p: {
                 // The card's ● counts what the rows' ● means — the group's own sessions with a live
                 // chat on the server, a subset of its total (asking and working ones sit in the
                 // lists above, pinned in their own) — so the mark says one thing in both places.
-                const live = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.liveChatId && !s.asking && !isBusy(s.status)).length;
-                const working = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && !s.asking && isBusy(s.status)).length;
+                const live = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.liveChatId && !s.asking && !busyNow(s)).length;
+                const working = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && !s.asking && busyNow(s)).length;
                 const needs = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.asking).length;
                 return (
                   <box flexDirection="row" marginTop={at() === 0 ? 0 : 1} paddingLeft={1} paddingRight={1} backgroundColor={chosen() ? t().selection : row.current ? t().surface : undefined} onMouseDown={() => activate(row)}>
@@ -246,7 +248,7 @@ export function Sidebar(p: {
               const rowMeta = () => meta(row);
               return (
                 <box flexDirection="row" paddingLeft={2} paddingRight={1} backgroundColor={chosen() ? t().selection : isActive(s) ? mix(t().surface2, t().accent, 0.22) : undefined} onMouseDown={() => { setSelection(keyOf(row)); void app.openSession(s).then(p.onOpened); }}>
-                  <text selectable={false} flexShrink={0} fg={s.asking ? (chosen() || isActive(s) ? litAskingTone() : askingTone()) : isBusy(s.status) ? t().accent : s.liveChatId ? t().ok : s.herdr ? herdrTone(s) : t().muted}>{s.asking ? "▲ " : isBusy(s.status) ? `${spinnerFor(s.harnessId)[tick() % spinnerFor(s.harnessId).length]} ` : s.liveChatId ? "● " : s.herdr ? "◆ " : "· "}</text>
+                  <text selectable={false} flexShrink={0} fg={s.asking ? (chosen() || isActive(s) ? litAskingTone() : askingTone()) : busyNow(s) ? t().accent : s.liveChatId ? t().ok : s.herdr ? herdrTone(s) : t().muted}>{s.asking ? "▲ " : busyNow(s) ? `${spinnerFor(s.harnessId)[tick() % spinnerFor(s.harnessId).length]} ` : s.liveChatId ? "● " : s.herdr ? "◆ " : "· "}</text>
                   <text selectable={false} flexGrow={1} fg={s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(s) ? t().text : t().text2} wrapMode="none">{clip(s.title || "New chat", width() - 4 - rowMeta().length)}</text>
                   <text selectable={false} flexShrink={0} fg={chosen() || isActive(s) ? t().text2 : t().muted}>{rowMeta()}</text>
                 </box>
