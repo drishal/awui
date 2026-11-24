@@ -149,6 +149,8 @@ export function Picker(p: {
     const figures = Math.max(0, ...shown().filter((i) => i.bar).map((i) => (i.hint ?? "").length));
     return Math.max(12, Math.min(64, listWidth() - barLabel() - figures - 3));
   };
+  /** The cells a row's hint may take: 30 (18 on a narrow sheet), more when the label is short and the row has the room. */
+  const hintCap = (item: PickerItem) => Math.max(listWidth() >= 60 ? 30 : 18, listWidth() - 7 - item.label.length);
   const lines = () => height() - 5;
   /** The rows that fit: from the first one that keeps the highlighted row in view, as many as the box holds, and the room a "more below" line takes. */
   const windowed = createMemo(() => {
@@ -262,7 +264,7 @@ export function Picker(p: {
                   <box flexDirection="row" backgroundColor={lit() ? t().selection : undefined} onMouseDown={() => run(item)}>
                     <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel() : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
                       {item.current ? "✓ " : "  "}
-                      <Index each={matchSpans(clip(item.label, item.bar ? barLabel() - 3 : listWidth() - 3 - (item.hint ? Math.min(item.hint.length, listWidth() >= 60 ? 30 : 18) + 3 : 0)), query())}>
+                      <Index each={matchSpans(clip(item.label, item.bar ? barLabel() - 3 : listWidth() - 3 - (item.hint ? Math.min(item.hint.length, hintCap(item)) + 3 : 0)), query())}>
                         {(part) => <span style={part().hit && !item.disabled ? { fg: lit() ? mix(t().accent, t().text, 0.4) : t().accent, bold: lit() } : {}}>{part().text}</span>}
                       </Index>
                     </text>
@@ -280,7 +282,7 @@ export function Picker(p: {
                     <Show when={item.hint}>
                       {/* A bar row's figures sit at the right edge, so one column of them lines up down the sheet. */}
                       <box flexGrow={item.bar ? 1 : 0} flexShrink={item.bar ? 1 : 0} flexDirection="row" justifyContent={item.bar ? "flex-end" : undefined} backgroundColor={lit() ? t().selection : undefined}>
-                        <text flexShrink={item.bar ? 1 : 0} wrapMode="none" truncate fg={lit() ? t().text2 : t().muted}>{` ${item.bar ? item.hint : clip(item.hint ?? "", listWidth() >= 60 ? 30 : 18)}`}</text>
+                        <text flexShrink={item.bar ? 1 : 0} wrapMode="none" truncate fg={lit() ? t().text2 : t().muted}>{` ${item.bar ? item.hint : clip(item.hint ?? "", hintCap(item))}`}</text>
                       </box>
                     </Show>
                   </box>
