@@ -114,7 +114,7 @@ export function ContextRailView(p: RailActions) {
       position="absolute"
       /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
          the title bar, so a terminal-height overlay would put its last row off the frame. */
-      top={0}
+      top={1}
       height={boxHeight()}
       left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
       width={width()}
@@ -133,7 +133,7 @@ export function ContextRailView(p: RailActions) {
           <span style={{ fg: t().muted }}>{`   ${clip(chat()?.title || "New chat", width() - 60)} · ${app.boot()?.harnesses.find((h) => h.id === chat()?.harnessId)?.displayName ?? chat()?.harnessId ?? ""} · ${chat()?.workspace.name ?? ""}`}</span>
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? (entries().length === 0 ? "Esc close" : width() < 90 ? "Enter open · Esc close" : "↑↓ move · Enter open · o chat · Esc close")}
+          {note() ?? (entries().length === 0 ? "Esc close" : width() < 90 ? "Enter open · Esc close" : `↑↓ move · Enter open${entries().some((e) => e.row.target.kind === "chat") ? " · o chat" : ""} · Esc close`)}
         </text>
       </box>
       <text flexShrink={0} fg={t().text2} wrapMode="none" truncate>
