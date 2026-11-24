@@ -15,7 +15,7 @@
 import { createEffect, createMemo, createResource, createSignal, on, onCleanup, Show } from "solid-js";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
-import type { RunResult } from "../../shared/protocol.js";
+import type { ChatSearch, RunResult } from "../../shared/protocol.js";
 import { runnable } from "../../web/code-blocks.js";
 import { codeBlocks, quoteText, runForMessage, runStatus } from "../assist.js";
 import { RunOutput } from "./runout.js";
@@ -57,7 +57,7 @@ import { buildTurns, turnOfTool } from "../../web/turns.js";
 import { atLabel, turnWaterfall } from "../../web/waterfall.js";
 import { cacheShare, dollars, shortTokens, tokensOf } from "../../web/usage.js";
 
-type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "run" | null;
+type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -648,6 +648,7 @@ export function App(p: {
     add({ id: "usage", label: "Usage across chats", keywords: "tokens cost spend cache models harnesses", run: () => setDialog("usage") });
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     if (c && landed()) add({ id: "find-clear", label: "Clear find marks", hint: "M-n / M-p stop stepping", keywords: "find search unmark gutter", run: () => { setLanded(null); flash("Find marks cleared"); } });
+    add({ id: "search-chats", label: "Search every chat…", keywords: "find text sessions history all projects harnesses grep", run: () => setDialog("chats") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
     add({ id: "sidebar", label: sidebar() ? "Fold the side panel" : "Unfold the side panel", hint: leader("b", keybinds()), run: () => runLeader("b") });
@@ -820,6 +821,52 @@ export function App(p: {
     revealTurn(next.index, next.inWork);
     flash(`match ${hits.indexOf(next) + 1} of ${hits.length} · M-n next · M-p previous`, 8000);
     return true;
+  };
+
+  /** Search every chat: the server's bounded read of every session (the web's Search chats), one row per chat with its first hit. Results arrive after a short pause; a row opens its chat with the words landed in the first turn that has them. */
+  const [chatHits, setChatHits] = createSignal<{ q: string; items: PaletteItem[] }>({ q: "", items: [] });
+  let chatSearchSeq = 0;
+  let chatSearchTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(chatSearchTimer));
+  const chatItems = (query: string): PaletteItem[] => {
+    const q = query.trim();
+    const have = chatHits();
+    if (q.length < 2) return [];
+    if (have.q !== q) {
+      const mine = ++chatSearchSeq;
+      clearTimeout(chatSearchTimer);
+      chatSearchTimer = setTimeout(() => {
+        void app.server
+          .call<ChatSearch>(`/api/sessions/search?q=${encodeURIComponent(q)}`)
+          .then((found) => {
+            if (mine !== chatSearchSeq) return;
+            const names = new Map(found.workspaces.map((w) => [w.id, w.name]));
+            setChatHits({
+              q,
+              items: found.results.map((r) => {
+                const hit = r.hits.find((h) => h.kind !== "title") ?? r.hits[0];
+                return {
+                  id: `chats:${r.session.harnessId}:${r.session.id}`,
+                  section: "Chats",
+                  label: hit?.snippet ?? (r.session.title || "New chat"),
+                  hint: `${clip(r.session.title || "New chat", 22)} · ${names.get(r.session.workspaceId) ?? ""}${r.more > 0 ? ` · +${r.more}` : ""}`,
+                  run: () => void app.openSession(r.session).then(() => {
+                    // The chat is on screen: the first turn with the words is where the find lands, as it does from Ctrl+S.
+                    setTimeout(() => {
+                      const c = app.chat();
+                      const first = c ? findTurns(buildTurns(c.items, c.status, c.runStartedAt), q, 30, c.workspace.path)[0] : undefined;
+                      if (first) { setLanded({ query: q, turnId: first.turnId }); revealTurn(first.index, first.inWork); }
+                    }, 150);
+                  }),
+                };
+              }),
+            });
+          })
+          .catch(() => mine === chatSearchSeq && setChatHits({ q, items: [] }));
+      }, 220);
+      return [];
+    }
+    return have.items;
   };
 
   /** The Timing picker's scale: the waterfall's own ticks as fractions of its axis, so the bars read against a time. */
@@ -1123,6 +1170,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "find"}>
                   <Picker title="Find in chat" placeholder="Type to find text in this chat…" items={[]} search={findItems} noun={["turn", "turns"]} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "chats"}>
+                  <Picker title="Search every chat" placeholder="Type to search every chat's words…" items={[]} search={chatItems} noun={["chat", "chats"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "permission"}>
                   <Picker title="Permission mode" placeholder="Search modes…" items={permissionItems()} onClose={() => setDialog(null)} side={room()} />

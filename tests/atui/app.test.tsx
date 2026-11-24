@@ -437,6 +437,17 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await ui.until("Find marks cleared");
     expect(await ui.frame()).not.toMatch(/◎ .* in the turn/);
+    // Search every chat: the palette's entry lists chats whose words match, the first hit as the row.
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands, sessions, thinking…");
+    await ui.type("search every");
+    await ui.until("Search every chat…");
+    ui.keys.pressEnter();
+    await ui.until("Type to search every chat's words…");
+    await ui.type("haystack");
+    expect(await ui.until("1 chat")).toMatch(/haystack/);
+    ui.keys.pressEnter();
+    await ui.until("◎");
     // Nothing matches: the picker says so instead of listing the whole chat.
     ui.keys.pressKey("s", { ctrl: true });
     await ui.until("Type to find text in this chat…");
