@@ -140,9 +140,13 @@ export function ReviewView(p: { onClose: () => void }) {
   return (
     <box flexGrow={1} flexDirection="column" backgroundColor={app.glass() ? undefined : t().bg} paddingLeft={2} paddingRight={2}>
       <box flexDirection="row" flexShrink={0} marginTop={1}>
-        <text flexGrow={1} fg={t().text}>
+        <text flexGrow={1} fg={t().text} wrapMode="none" truncate>
           <b>Review changes</b>
           <span style={{ fg: t().muted }}>{`  ${files().length} ${files().length === 1 ? "file" : "files"} ${open().length > 0 ? ` · ${open().length} open` : ""}${resolved().length > 0 ? ` · ${resolved().length} resolved` : ""}`}</span>
+        </text>
+        {/* The keys sit right of the title, as every other sheet draws them; a line's thread keys appear once the cursor is on a thread. */}
+        <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">
+          {sending() ? "Sending…" : `↑↓ line · ]/[ file · Enter comment${onLine()[0] ? " · r resolve · x delete" : ""}${open().length > 0 ? ` · S send ${open().length}` : ""} · Esc close`}
         </text>
       </box>
       <Show when={files().length > 0} fallback={<text flexGrow={1} fg={t().muted}>The agent has not edited any files in this chat.</text>}>
@@ -221,11 +225,6 @@ export function ReviewView(p: { onClose: () => void }) {
           </For>
         </box>
       </Show>
-      <text flexShrink={0} fg={t().muted} marginBottom={1}>
-        {sending()
-          ? "Sending…"
-          : `↑↓ line · ]/[ file · Enter comment · r resolve · x delete${open().length > 0 ? ` · S send ${open().length}` : ""} · Esc close`}
-      </text>
     </box>
   );
 }
