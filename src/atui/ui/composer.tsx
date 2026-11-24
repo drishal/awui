@@ -23,7 +23,7 @@ import { leader, type KeybindStyle } from "../keys.js";
 import { mix, shimmer, sparkline, streamRate } from "../fx.js";
 import { attachmentFrom, attachmentFromFile, byteSize, clipboardImageByTool, imagePathsFromPaste, type PendingImage } from "../images.js";
 import { harnessGlyph } from "../neat.js";
-import { accentOf, CONTEXT_HEAVY_TOKENS, contextTone } from "../theme.js";
+import { accentOf, contextTone } from "../theme.js";
 import { icon } from "../icons.js";
 import { fitFooter, spendWords } from "../footer.js";
 import { useAtui, useTheme } from "./context.js";
@@ -362,7 +362,7 @@ export function Composer(p: {
   // The right side of the footer, as strings, so the same text is both measured and drawn. The footer stays one
   // line and never wraps: under a narrow pane whole segments leave (least important first) rather than any being cut:
   // the run's tokens, the context's sparkline, the chat's spend, the write rate, git's counts, the offer, then the
-  // branch, so the context figure is the last to go.
+  // branch, so the context figure is the last to go. The window's own size rides beside the share at every context size, as Active work words it.
   const gitBranchText = (g: GitStatus) => ` ⑂ ${g.branch ?? `detached ${g.head ?? ""}`} ${g.upstream && (g.ahead > 0 || g.behind > 0) ? `${g.ahead > 0 ? ` ↑${g.ahead}` : ""}${g.behind > 0 ? ` ↓${g.behind}` : ""}` : ""}`;
   const gitCountsText = (g: GitStatus) => `${g.added + g.removed > 0 ? ` +${g.added} −${g.removed}` : ""} ${gitWord(g)}  `;
   const rateText = () => (app.chat()?.status === "running" && (rate() ?? 0) >= 1 ? `~${Math.round(rate() ?? 0)} tok/s ${rates().length > 1 ? `${sparkline(rates())}  ` : ""}` : "");
@@ -379,7 +379,12 @@ export function Composer(p: {
   };
   const offerText = () => (offer() ? `${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  ` : "");
   const sparkText = () => (app.contextHistory().length > 1 ? `${sparkline(app.contextHistory().slice(-12), 100)} ` : "");
-  const ctxText = () => (percent() !== null ? `ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%` : "");
+  const ctxText = () => (percent() !== null ? `ctx ${Math.round(percent() ?? 0)}%` : "");
+  // The window's own size beside the share (Active work's "24k of 100k 24%"), at every context size and not only past heavy: one figure with the share, the same warn tone, yielding first when the two no longer fit.
+  const winText = () => {
+    const ctx = app.chat()?.context;
+    return ctx?.tokens != null && ctx.window ? `${tokens(ctx.tokens)}/${tokens(ctx.window)}` : "";
+  };
   // The harness chip keeps its mark and colour on a narrow pane and shortens its name to five characters from 76 columns down and gives it up below 54 (the model chip beside it names the same thing); the permission chip shortens to its first word below 72, so the level chip keeps its noun and the model's name stays whole.
   const harnessWord = () => (p.column >= 76 ? `${app.harness()?.displayName ?? "—"} ` : p.column >= 54 ? `${clip(app.harness()?.displayName ?? "—", 5)} ` : "");
   const thinkWord = () => "Think ";
@@ -403,6 +408,7 @@ export function Composer(p: {
         { id: "spark", width: sparkText().length, rank: 6 },
         { id: "tokens", width: tokensText().length, rank: 7 },
         { id: "ctx", width: ctxText().length + 2, rank: 1 },
+        { id: "win", width: winText().length, rank: 1 },
       ],
       budget,
     );
@@ -669,6 +675,9 @@ export function Composer(p: {
                 {/* The last dozen samples: enough to see the trend without taking the hint's room. */}
                 <Show when={kept().has("spark") && sparkText()}>
                   <span style={{ fg: tone() }}>{sparkText()}</span>
+                </Show>
+                <Show when={kept().has("win") && winText()}>
+                  <span style={{ fg: tone() }}>{winText()}</span>
                 </Show>
                 <Show when={percent() !== null}>
                   <span style={{ fg: tone() }}>{ctxText()}</span>

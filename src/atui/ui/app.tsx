@@ -29,7 +29,7 @@ import type { PaletteItem } from "../../web/palette.js";
 import { isBusy } from "../../web/session-groups.js";
 import { atuiColumn, chatWidthLabel, CHAT_WIDTHS, nextChatWidth } from "../../shared/chat-width.js";
 import { ago, clip, foldLabel, STATUS_LABEL, tokens } from "../format.js";
-import { spendWords } from "../footer.js";
+import { spendWords, fitFooter } from "../footer.js";
 import { tick } from "./ticker.js";
 import { actionKeys, leader, leaderPrefix, LEADER_KEYS, VIM_HELP, type KeybindStyle } from "../keys.js";
 import { harnessGlyph } from "../neat.js";
@@ -90,21 +90,38 @@ const TWICE_MS = 1200;
 /** A session that opens within this shows at once; one that takes longer gets the ghost thread meanwhile. */
 const GHOST_AFTER_MS = 50;
 
-/** The chat's own figures under a full-pane view (review, board, delegated work, …), where the composer's footer is not drawn: how full the context is, and what the run has used, so the one number to know before the next send never goes. */
+/** The chat's own figures under a full-pane view (review, board, delegated work, …), where the composer's footer is not drawn: how full the context is, and what the run has used, so the one number to know before the next send never goes. Whole segments leave under a narrow pane, least important first, as the composer's footer does — never a mid-word cut. */
 function Instruments() {
   const app = useAtui();
   const t = useTheme();
-  const words = () => {
-    const c = app.chat();
-    if (!c) return "";
-    const usage = c.usage;
-    const parts: string[] = [];
-    if (c.context?.percent != null) parts.push(`ctx ${Math.round(c.context.percent)}%`);
-    if (usage && usage.input + usage.cachedInput + usage.output > 0) parts.push(`in ${tokens(usage.input + usage.cachedInput)} · out ${tokens(usage.output)}`);
-    const spend = spendWords(usage);
-    if (spend) parts.push(spend);
-    return parts.join(" · ");
+  const size = useTerminalDimensions();
+  const ctx = () => {
+    const c = app.chat()?.context;
+    if (c?.percent == null) return "";
+    return `ctx ${Math.round(c.percent)}%`;
   };
+  // The window's own size beside the share, as the composer's footer draws it: the same figures, the same ranks, so the same ones leave first.
+  const win = () => {
+    const c = app.chat()?.context;
+    return c?.tokens != null && c.window ? `${tokens(c.tokens)}/${tokens(c.window)}` : "";
+  };
+  const tokensText = () => {
+    const usage = app.chat()?.usage;
+    return usage && usage.input + usage.cachedInput + usage.output > 0 ? `in ${tokens(usage.input + usage.cachedInput)} · out ${tokens(usage.output)}` : "";
+  };
+  const spendText = () => spendWords(app.chat()?.usage);
+  // The same ranks the composer's footer uses, so the same figures leave first: the run's tokens, then the spend, then the window beside the share, never the share itself.
+  const kept = () =>
+    fitFooter(
+      [
+        { id: "tokens", width: tokensText().length, rank: 7 },
+        { id: "spend", width: spendText().length, rank: 5.5 },
+        { id: "ctx", width: ctx().length, rank: 1 },
+        { id: "win", width: win().length, rank: 1 },
+      ],
+      Math.max(0, size().width - 4),
+    );
+  const words = () => [kept().has("win") && win(), kept().has("ctx") && ctx(), kept().has("tokens") && tokensText(), kept().has("spend") && spendText()].filter(Boolean).join(" · ");
   return (
     <Show when={words()}>
       <box flexShrink={0} flexDirection="row" justifyContent="flex-end" paddingLeft={2} paddingRight={2}>
@@ -1308,8 +1325,8 @@ export function App(p: {
   const timingMark = (row: { kind: string; chip?: ToolKindChip; failed?: boolean }) =>
     row.kind === "thinking" ? "▾" : row.kind === "reply" ? "●" : row.kind === "subagent" ? "↳" : callMark(row.failed === true, row.chip, row.chip?.category ?? "other");
 
-  /** The conversation's theme: dimmed while a sheet floats over it (the sheet is the figure), except in Find, whose whole point is to read the matches it lands on. */
-  const sceneTheme = () => (dialog() !== null && dialog() !== "find" ? dimmed(app.theme()) : app.theme());
+  /** The conversation's theme: dimmed while a sheet floats over it (the sheet is the figure), so the list never cuts the work at full brightness. */
+  const sceneTheme = () => (dialog() !== null ? dimmed(app.theme()) : app.theme());
 
   /** The run clock's whole seconds: the plan row shows nothing finer, so it rebuilds the turns once a second, not on every 100 ms tick. */
   const runSecond = createMemo(() => Math.floor(tick() / 10));
@@ -1382,13 +1399,13 @@ export function App(p: {
     if (!read || read.id !== app.chat()?.chatId) return [];
     const prompts = (n: number) => `${n} ${n === 1 ? "prompt" : "prompts"}`;
     const rows: PickerItem[] = read.branches.map((b) => {
-      // Two paths that share every prompt differ by their answer, so the answer's opening is what the row shows.
+      // Two paths that share every prompt differ by their answer, so the answer's opening rides the hint where it cannot be clipped away.
       const sameAsk = !b.active && b.shared >= b.turns;
       return {
         id: `branch:${b.leafId}`,
         section: b.active ? "This chat" : "Left behind",
         label: clip(`${b.prompt || "(no prompt)"}${sameAsk && b.answer ? ` → ${b.answer}` : ""}`, 80),
-        hint: [b.active ? prompts(b.turns) : sameAsk ? "another answer" : b.shared > 0 ? `splits after prompt ${b.shared} of ${b.turns}` : prompts(b.turns), b.at ? ago(new Date(b.at).toISOString()) : ""].filter(Boolean).join(" · "),
+        hint: [b.active ? prompts(b.turns) : sameAsk ? (b.answer ? clip(b.answer, 60) : "another answer") : b.shared > 0 ? `splits after prompt ${b.shared} of ${b.turns}` : prompts(b.turns), b.at ? ago(new Date(b.at).toISOString()) : ""].filter(Boolean).join(" · "),
         current: b.active,
         // The path the chat is on has nothing to continue: the cursor starts on a row Enter can use.
         inert: b.active,

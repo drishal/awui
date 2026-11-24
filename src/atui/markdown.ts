@@ -7,13 +7,15 @@ const FENCE = /^\s*(`{3,}|~{3,})/;
 /**
  * The words a find landed on, wrapped in `~~` (the Markdown renderer takes no inline marks, so the landed turn draws its struck runs on a warn-tinted ground,
  * syntaxFor's `found` mode, as the web marks them; real bold in the answer stays plain bold, never mistaken for a match): every case-insensitive occurrence of `query`
- * outside fenced code and inline code spans, also inside bold.
+ * outside fenced code and inline code spans, also inside bold. The `current`-th overall occurrence (the landed one, 0-based) is wrapped in `**` instead —
+ * the emphasis/accent against the others' warn ground — so a turn that says "line" and "lines" still names which one landed. Omitted, every match warns.
  */
-export function markMatches(markdown: string, query: string): string {
+export function markMatches(markdown: string, query: string, current = -1): string {
   const q = query.trim();
   if (q.length === 0) return markdown;
   const needle = q.toLowerCase();
   let fence: string | null = null;
+  let seen = -1;
   return markdown
     .split("\n")
     .map((line) => {
@@ -33,7 +35,8 @@ export function markMatches(markdown: string, query: string): string {
           let at = 0;
           for (let hit = part.toLowerCase().indexOf(needle); hit >= 0; hit = part.toLowerCase().indexOf(needle, at)) {
             const end = hit + needle.length;
-            out += part.slice(at, hit) + `~~${part.slice(hit, end)}~~`;
+            seen += 1;
+            out += part.slice(at, hit) + (seen === current ? `**${part.slice(hit, end)}**` : `~~${part.slice(hit, end)}~~`);
             at = end;
           }
           return out + part.slice(at);
