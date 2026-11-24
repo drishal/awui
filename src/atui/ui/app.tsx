@@ -1106,17 +1106,18 @@ export function App(p: {
       label: `${"  ".repeat(row.depth)}${timingMark(row)} ${row.label}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
       hint: `${fig(row.start)}  ${fig(row.end - row.start)}${slowTail(row.slowest)}`,
       bar: fall.total > 0 ? ([row.start / fall.total, row.end / fall.total] as [number, number]) : undefined,
+      barTone: row.slowest ? ("warn" as const) : undefined,
       run: () => {},
     }));
     // Time before the first step (a request waiting for an answer, a slow start) has no step of its own: name it, so the rows add up to the turn.
     const first = fall.rows.reduce((least, row) => Math.min(least, row.start), Number.POSITIVE_INFINITY);
     if (fall.total > 0 && Number.isFinite(first) && first >= 400) {
-      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `${fig(0)}  ${fig(first)}${slowTail(false)}`, bar: [0, first / fall.total], run: () => {} });
+      rows.unshift({ id: "timing:before", section, label: "Before the first step", hint: `${fig(0)}  ${fig(first)}${slowTail(false)}`, bar: [0, first / fall.total], barTone: undefined, run: () => {} });
     }
     // And the time after the last step (the closing reply, the settle), so the rows add up to the turn's total.
     const last = fall.rows.reduce((most, row) => Math.max(most, row.end), 0);
     if (fall.total > 0 && fall.span - last >= 400) {
-      rows.push({ id: "timing:after", section, label: "After the last step", hint: `${fig(last)}  ${fig(fall.span - last)}${slowTail(false)}`, bar: [last / fall.total, fall.span / fall.total], run: () => {} });
+      rows.push({ id: "timing:after", section, label: "After the last step", hint: `${fig(last)}  ${fig(fall.span - last)}${slowTail(false)}`, bar: [last / fall.total, fall.span / fall.total], barTone: undefined, run: () => {} });
     }
     return rows;
   };

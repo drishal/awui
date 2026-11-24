@@ -12,7 +12,8 @@ import { useTheme } from "./context.js";
 
 /** A row that also draws a span of a track (a step's place on a turn's time, a day's share of the busiest): `[from, to]`, each 0 to 1. */
 /** `inert`: a row that only informs (Usage's totals) is stepped over and never lit, so the cursor rests only where Enter does something. */
-export type PickerItem = PaletteItem & { bar?: [number, number]; inert?: boolean };
+/** `warn` paints the bar in the warning ink: the one row a sheet is built to find (Timing's slowest step), as the web paints it. */
+export type PickerItem = PaletteItem & { bar?: [number, number]; inert?: boolean; barTone?: "warn" };
 
 /** The track as a run of rule, a solid run, the eighth-block edge that finishes it, and the rule after. The start rounds to a cell, the end to an eighth, so equal times draw equal bars and a few hundred milliseconds show. */
 const EDGES = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
@@ -125,7 +126,7 @@ export function Picker(p: {
   /** Lines a row takes: itself, a heading over it, and a blank line above a heading that is not the first. */
   const cost = (list: PickerItem[], at: number) => 1 + (at === 0 && p.axis ? 1 : 0) + (headed(list, at) ? (at > 0 ? 2 : 1) : 0);
   /** The label column of a bar row: as wide as its longest label asks (and two cells over), never more than a share of the sheet, so short labels leave the track the room. */
-  const barColor = () => (p.softBars ? mix(t().bg, t().accent, 0.68) : t().accent);
+  const barColor = (tone?: "warn") => { const ink = tone === "warn" ? t().warn : t().accent; return p.softBars ? mix(t().bg, ink, 0.68) : ink; };
   const barLabel = () => {
     const widest = Math.max(0, ...shown().filter((i) => i.bar).map((i) => i.label.length + 4));
     const cap = Math.floor(listWidth() * (listWidth() > 70 ? 0.48 : 0.37));
@@ -252,8 +253,8 @@ export function Picker(p: {
                       {(bar) => (
                         <text flexShrink={0} fg={t().muted}>
                           {trackParts(bar(), track()).before}
-                          <span style={{ bg: barColor() }}>{" ".repeat(trackParts(bar(), track()).solid)}</span>
-                          <span style={{ fg: barColor() }}>{trackParts(bar(), track()).edge}</span>
+                          <span style={{ bg: barColor(item.barTone) }}>{" ".repeat(trackParts(bar(), track()).solid)}</span>
+                          <span style={{ fg: barColor(item.barTone) }}>{trackParts(bar(), track()).edge}</span>
                           {trackParts(bar(), track()).after}
                         </text>
                       )}
