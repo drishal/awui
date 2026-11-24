@@ -852,12 +852,12 @@ export function App(p: {
       // The match is what a find row is for, so it takes the whole label; the hint names the turn.
       label: plainPath(m.snippet, root),
       hint: `turn ${m.index + 1}${m.inWork ? " · work" : ""}${m.count > 1 ? ` · ${m.count}×` : ""}`,
-      run: () => { setLanded({ query, turnId: m.turnId }); revealTurn(m.index, m.inWork); if (hits.length > 1) flash(`match ${hits.indexOf(m) + 1} of ${hits.length} · M-n next · M-p previous`, 8000); },
+      run: () => { setLanded({ query, turnId: m.turnId, of: hits.length > 1 ? `${hits.indexOf(m) + 1}/${hits.length}` : undefined }); revealTurn(m.index, m.inWork); if (hits.length > 1) flash(`match ${hits.indexOf(m) + 1} of ${hits.length} · M-n next · M-p previous`, 8000); },
     }));
   };
 
   /** The find that last landed (its words and the turn it landed on): M-n and M-p step to the next and previous turn that matches, as a browser's find does, without reopening the sheet. */
-  const [landed, setLanded] = createSignal<{ query: string; turnId: string } | null>(null);
+  const [landed, setLanded] = createSignal<{ query: string; turnId: string; /** Which match of the chat's turns this is, "2/5", when there are several. */ of?: string } | null>(null);
   // A find belongs to the chat it was made in: another chat starts without its marks, and M-n / M-p do nothing there until a new find lands.
   createEffect(on(() => app.chat()?.chatId, () => setLanded(null), { defer: true }));
   const stepFind = (by: 1 | -1) => {
@@ -868,7 +868,7 @@ export function App(p: {
     if (hits.length === 0) { setLanded(null); return false; }
     const at = hits.findIndex((m) => m.turnId === found.turnId);
     const next = hits[at < 0 ? (by === 1 ? 0 : hits.length - 1) : (at + by + hits.length) % hits.length] as (typeof hits)[number];
-    setLanded({ query: found.query, turnId: next.turnId });
+    setLanded({ query: found.query, turnId: next.turnId, of: hits.length > 1 ? `${hits.indexOf(next) + 1}/${hits.length}` : undefined });
     revealTurn(next.index, next.inWork);
     flash(`match ${hits.indexOf(next) + 1} of ${hits.length} · M-n next · M-p previous`, 8000);
     return true;
@@ -1008,8 +1008,9 @@ export function App(p: {
                     // The chat is on screen: the first turn with the words is where the find lands, as it does from Ctrl+S.
                     setTimeout(() => {
                       const c = app.chat();
-                      const first = c ? findTurns(buildTurns(c.items, c.status, c.runStartedAt), q, 30, c.workspace.path)[0] : undefined;
-                      if (first) { setLanded({ query: q, turnId: first.turnId }); revealTurn(first.index, first.inWork); }
+                      const all = c ? findTurns(buildTurns(c.items, c.status, c.runStartedAt), q, 30, c.workspace.path) : [];
+                      const first = all[0];
+                      if (first) { setLanded({ query: q, turnId: first.turnId, of: all.length > 1 ? `1/${all.length}` : undefined }); revealTurn(first.index, first.inWork); }
                     }, 150);
                   }),
                 };

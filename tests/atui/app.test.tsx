@@ -430,6 +430,7 @@ describe("atui", () => {
     await ui.until("match 2 of 2 · M-n next · M-p previous");
     // The turn the find landed on carries a strip with its words; the palette clears it.
     expect(await ui.frame()).toMatch(/\uf002 .*prompt.* in the turn/);
+    expect(await ui.frame()).toContain("match 2/2");
     ui.keys.pressKey("k", { ctrl: true });
     await ui.until("Search commands, sessions, thinking…");
     await ui.type("clear find");

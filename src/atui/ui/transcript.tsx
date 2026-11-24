@@ -1000,7 +1000,7 @@ function Answer(p: { item: AssistantItem; mark?: string | null }) {
   );
 }
 
-function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; onToggle: () => void; switchedTo: string | null; column: number; foundQuery?: string | null }) {
+function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; onToggle: () => void; switchedTo: string | null; column: number; foundQuery?: string | null; foundOf?: string }) {
   const t = useTheme();
   // The turn a find landed on says where the words are: one line around the first match with the words in the accent and bold; the answer's own copy of the words is set bold too (markMatches), but bold alone also reads as emphasis, so the strip names them.
   const hit = createMemo(() => {
@@ -1064,7 +1064,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
             <text selectable={false} fg={t().muted} wrapMode="none" truncate>
               <span style={{ fg: t().info }}>{`${FIND_MARK} `}</span>
               <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().accent }}><b>{part.text}</b></span> : <span style={{ fg: t().text2 }}>{part.text}</span>)}</For>
-              <span style={{ fg: t().muted }}>{`  ·  ${h().count > 1 ? `${h().count} matches · ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"} · M-n/M-p step`}</span>
+              <span style={{ fg: t().muted }}>{`  ·  ${p.foundOf ? `match ${p.foundOf} · ` : ""}${h().count > 1 ? `${h().count} matches · ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"} · M-n/M-p step`}</span>
             </text>
           </box>
         )}
@@ -1200,7 +1200,7 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
   );
 }
 
-export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; column: Accessor<number>; found?: Accessor<{ query: string; turnId: string } | null> }) {
+export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; column: Accessor<number>; found?: Accessor<{ query: string; turnId: string; of?: string } | null> }) {
   const app = useAtui();
   const t = useTheme();
   const turns = createMemo(() => {
@@ -1267,6 +1267,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
                 open={isOpen(turn())}
                 onToggle={() => setOverrides((o) => ({ ...o, [turn().id]: !isOpen(turn()) }))}
                 foundQuery={p.found?.()?.turnId === turn().id ? (p.found?.()?.query ?? null) : null}
+                foundOf={p.found?.()?.turnId === turn().id ? p.found?.()?.of : undefined}
                 switchedTo={switches().has(turn().id) ? modelName(switches().get(turn().id) as string, models()) : null}
                 column={p.column()}
               />
