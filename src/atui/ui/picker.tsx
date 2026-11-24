@@ -75,7 +75,7 @@ export function Picker(p: {
   axis?: Array<{ at: number; label: string }>;
   /** The title over the bar rows' figure column ("start     took"), set at the right of the scale's line. */
   axisHead?: string;
-  /** What Tab does, in words ("Tab: 30 days"): it leads the key hints, so the title stays a name. */
+  /** What Tab does, in words ("Tab 30 days"): it leads the key hints, so the title stays a name. */
   tabHint?: string;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
   noun?: [string, string];

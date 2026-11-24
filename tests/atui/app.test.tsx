@@ -155,7 +155,7 @@ describe("atui", () => {
         ui.keys.pressKey(key);
         const frame = await ui.until(expected);
         sheetFits(frame, expected);
-        if (key === "k") expect(frame).toContain("Enter open · Esc close");
+        if (key === "k") expect(frame).toMatch(/Enter open · .*Esc close/);
         ui.keys.pressEscape();
         await wait(60);
       }
@@ -841,10 +841,10 @@ describe("atui", () => {
     ui.keys.pressEnter();
     const shown = await ui.until("Last 7 days");
     expect(shown).toContain("Usage across chats");
-    expect(shown).toContain("Tab: 30 days");
+    expect(shown).toContain("Tab 30 days");
     // Tab cycles the range, as the web dialog's 7/30/90 switch does.
     ui.keys.pressTab();
-    expect(await ui.until("Last 30 days")).toContain("Tab: 90 days");
+    expect(await ui.until("Last 30 days")).toContain("Tab 90 days");
     await ui.escape();
     expect(await ui.until("Ask Fake to")).not.toContain("Usage across chats");
   }, 40_000);
@@ -1270,7 +1270,7 @@ describe("atui", () => {
     // f narrows to one project, and Enter opens the card under the cursor.
     ui.keys.pressKey("f");
     const filtered = await ui.until("Any pull request");
-    expect(filtered).toContain("alpha [f] · Any pull request");
+    expect(filtered).toContain("alpha · Any pull request");
     ui.keys.pressEnter();
     await ui.until("❯ board please");
   }, 60_000);

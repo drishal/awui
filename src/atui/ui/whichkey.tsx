@@ -19,7 +19,7 @@ export function WhichKey(p: { state: Partial<Record<string, string>>; onPick: (k
     <box flexDirection="column" flexShrink={0} border={["top"]} borderColor={t().border} paddingLeft={pad()} paddingRight={pad()} backgroundColor={t().bg}>
       <text wrapMode="none" truncate>
         <span style={{ fg: t().accent }}><b>C-x</b></span>
-        <span style={{ fg: t().muted }}>{"  press a key · click one · Esc cancels"}</span>
+        <span style={{ fg: t().muted }}>{"  press a key · click one · Esc cancel"}</span>
       </text>
       <box flexDirection="row">
       <For each={columns()}>

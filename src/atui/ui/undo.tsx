@@ -1,7 +1,7 @@
 // Undo file changes from a prompt on (the web UI's restore dialog): what
 // putting the files back as they were before it would do, file by file, each
 // ticked to start with: put back, deleted (it is new since), or brought back
-// (it was deleted since). ↑/↓ or a click move and tick, Space ticks, Enter
+// (it was deleted since). ↑/↓ or a click move and tick, Space tick, Enter
 // undoes the ticked ones, Esc closes. C-x z puts them back again afterwards.
 import { createResource, createSignal, For, Show } from "solid-js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
@@ -95,7 +95,7 @@ export function UndoDialog(p: { turn: number; onClose: () => void; side?: number
         </Show>
       </Show>
       <text fg={t().muted} marginTop={1}>
-        {busy() ? "Undoing…" : `↑↓ move · Space ticks · Enter undo ${ticked().length} · Esc close`}
+        {busy() ? "Undoing…" : `↑↓ move · Space tick · Enter undo ${ticked().length} · Esc close`}
       </text>
     </box>
   );

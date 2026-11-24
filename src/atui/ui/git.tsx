@@ -207,7 +207,7 @@ export function GitView(p: { onClose: () => void }) {
                 </Show>
               </Show>
               <text flexShrink={0} fg={t().muted} marginBottom={1} wrapMode="none" truncate>
-                ↑↓ scroll · Esc back to the files
+                ↑↓ scroll · Esc back
               </text>
             </box>
           }

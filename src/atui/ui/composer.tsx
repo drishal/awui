@@ -579,7 +579,7 @@ export function Composer(p: {
           </Show>
           <Show when={app.editing() !== null}>
             <text flexShrink={0} wrapMode="none" fg={t().accent}>
-              {`  ✎ editing message ${app.editing()?.through ?? ""} · Enter replaces it · Esc cancels`}
+              {`  ✎ editing message ${app.editing()?.through ?? ""} · Enter replace · Esc cancel`}
             </text>
           </Show>
           <Show when={p.status.note}>
