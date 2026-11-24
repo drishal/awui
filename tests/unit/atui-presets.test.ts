@@ -1,7 +1,7 @@
 // Agent presets (src/atui/presets.ts): the saved list is read leniently, names are unique,
 // the list is capped, and a preset round-trips through atui.json.
 import { describe, expect, it } from "vitest";
-import { MAX_PRESETS, parsePresets, presetName, presetWords, withPreset, withoutPreset } from "../../src/atui/presets.js";
+import { MAX_PRESETS, parsePresets, presetName, presetWords, withPreset, withPresetAt, withoutPreset } from "../../src/atui/presets.js";
 import { prefsFile, readPrefs, writePrefs } from "../../src/atui/prefs.js";
 import { tempDir } from "../helpers/app.js";
 
@@ -40,5 +40,13 @@ describe("atui presets", () => {
     expect(readPrefs(file).presets).toEqual([{ name: "Explore", harnessId: "pi", thinkingLevel: "low" }]);
     writePrefs({ presets: [] }, file);
     expect(readPrefs(file).presets).toEqual([]);
+  });
+  it("puts a forgotten preset back where it sat, unless its name was taken", () => {
+    const a = { name: "A", harnessId: "pi" };
+    const b = { name: "B", harnessId: "pi" };
+    const c = { name: "C", harnessId: "pi" };
+    expect(withPresetAt([a, c], b, 1).map((x) => x.name)).toEqual(["A", "B", "C"]);
+    expect(withPresetAt([a], c, 5).map((x) => x.name)).toEqual(["A", "C"]);
+    expect(withPresetAt([a, b], { ...b, harnessId: "omp" }, 0)).toEqual([a, b]);
   });
 });

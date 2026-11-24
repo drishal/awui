@@ -48,6 +48,13 @@ export function withPreset(list: Preset[], preset: Preset): Preset[] {
 /** The list without the preset of this name. */
 export const withoutPreset = (list: Preset[], name: string): Preset[] => list.filter((p) => p.name.toLowerCase() !== name.toLowerCase());
 
+/** A preset put back where it was (the forget's undo): its old place, or the end when the list has shrunk; a name taken meanwhile is left alone. */
+export function withPresetAt(list: Preset[], preset: Preset, index: number): Preset[] {
+  if (list.some((p) => p.name.toLowerCase() === preset.name.toLowerCase())) return list;
+  const at = Math.max(0, Math.min(index, list.length));
+  return [...list.slice(0, at), preset, ...list.slice(at)].slice(0, MAX_PRESETS);
+}
+
 /** What a preset row says after its name, as the chips word it: "Claude Code · Opus 4 · High" (`modelName` is the catalog's label for the model, when this screen has that harness's catalog; else the model's own key). */
 export const presetWords = (p: Preset, harnessName: string, modelName?: string): string =>
   [harnessName, modelName ?? p.model, p.thinkingLevel ? levelTitle(p.thinkingLevel) : undefined].filter(Boolean).join(" · ");

@@ -1926,6 +1926,10 @@ describe("atui's keybind styles", () => {
     ui.keys.pressKey("x");
     await wait(200);
     expect(ui.app.presets().map((x) => x.name)).toEqual(["Other"]);
+    // u in the sheet puts it back where it was.
+    ui.keys.pressKey("u");
+    await wait(200);
+    expect(ui.app.presets().map((x) => x.name)).toEqual(["Explore", "Other"]);
   }, 40_000);
   it("ends a finished turn's Σ line with what that turn cost when the harness prices the model", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });

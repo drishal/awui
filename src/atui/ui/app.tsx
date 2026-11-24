@@ -1662,7 +1662,7 @@ export function App(p: {
                   <Picker softBars title="Usage across chats" tabHint={`Tab ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "presets"}>
-                  <Picker title="Presets · x forgets one" placeholder="Search presets…" empty="No presets yet" items={presetItems()} firstHeading onRowKey={(key, item) => { const name = /^preset:(.+)$/.exec(item?.id ?? "")?.[1]; if (key !== "x" || !name || name === "save") return false; app.dropPreset(name); return true; }} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title={app.forgotten() ? "Presets · x forgets · u undoes" : "Presets · x forgets one"} placeholder="Search presets…" empty="No presets yet" items={presetItems()} firstHeading onRowKey={(key, item) => { if (key === "u" && app.forgotten()) { const back = app.restorePreset(); if (back) flash(`“${back.name}” is back`); return true; } const name = /^preset:(.+)$/.exec(item?.id ?? "")?.[1]; if (key !== "x" || !name || name === "save") return false; app.dropPreset(name); flash("Forgotten · u puts it back"); return true; }} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "preset-save"}>
                   <Picker title="Save a preset" placeholder="Name it (Explore, Review, Deep work…)" items={[]} search={presetSaveItems} count={false} onClose={() => setDialog(null)} side={room()} />

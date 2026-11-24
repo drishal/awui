@@ -43,7 +43,7 @@ import { newsBetween, type News } from "./assist.js";
 import { imageModeFrom, imageProtocol, type ImageMode } from "./images.js";
 import { followChat, idempotencyKey, Server, ServerError, type Connection } from "./client.js";
 import { themeFrom, type Theme } from "./theme.js";
-import { presetName, withPreset, withoutPreset, type Preset } from "./presets.js";
+import { presetName, withPreset, withPresetAt, withoutPreset, type Preset } from "./presets.js";
 
 export interface AtuiOptions {
   cwd: string;
@@ -841,7 +841,24 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     setPresets((list) => withPreset(list, preset));
     return preset;
   };
-  const dropPreset = (name: string) => setPresets((list) => withoutPreset(list, name));
+  /** The preset last forgotten and where it sat, for its undo. */
+  const [forgotten, setForgotten] = createSignal<{ preset: Preset; index: number } | null>(null);
+  const dropPreset = (name: string) => {
+    const list = presets();
+    const index = list.findIndex((p) => p.name.toLowerCase() === name.toLowerCase());
+    const preset = list[index];
+    if (!preset) return;
+    setForgotten({ preset, index });
+    setPresets(withoutPreset(list, name));
+  };
+  /** Puts the last forgotten preset back where it was; the preset, or null when there is none to restore. */
+  const restorePreset = (): Preset | null => {
+    const f = forgotten();
+    if (!f) return null;
+    setForgotten(null);
+    setPresets((list) => withPresetAt(list, f.preset, f.index));
+    return f.preset;
+  };
 
   /** Move the open chat to another harness: a copy of the conversation, or a summary its first prompt carries. */
   const handoff = async (id: string) => {
@@ -1180,6 +1197,8 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     startPreset,
     savePreset,
     dropPreset,
+    restorePreset,
+    forgotten,
     handoff,
     dispose,
   };
