@@ -639,11 +639,31 @@
 
 }
 
-/* A phone's header has room for its words or its icons, not both: "Worked for 1s · Used 9 tools" stays whole,
-   and the rows below still carry each call's icon. */
+/* A phone's header has room for its words or its icons, not both: the rows below still carry each call's icon,
+   and the words take the space the stack had — over two lines when they need them, rather than cutting the count
+   off at "Used 8 t…". */
 @media (max-width: 480px) {
   .process-card .kind-stack {
     display: none;
+  }
+
+  .process-card .process-label {
+    white-space: normal;
+    line-height: 1.3;
+  }
+
+  /* A call's counts stay on its own line: the sentence ellipsises instead, and the line wraps as a whole (with a
+     narrower gap than the desktop's) when even that is not enough. */
+  .tool-head {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .tool-facts {
+    order: 0;
+    flex: 0 0 auto;
+    min-width: 6ch;
+    padding-left: 0;
   }
 }
 
