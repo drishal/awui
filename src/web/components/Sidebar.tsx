@@ -444,15 +444,20 @@ function SessionRow({
         ) : (
           <span className="harness-dot" style={harnessColor(s.harnessId)} role="img" aria-label={harnessName} title={harnessName} />
         )}
-        <span className="session-title">{plainTitle(s.title)}</span>
-        {s.agentStatus ? (
-          <span className={`session-agent is-${s.agentStatus.state}`} title={`${agentStatusText(s.agentStatus)} · set by the agent ${ago(s.agentStatus.at)}`}>
-            {s.agentStatus.comment || agentStatusText(s.agentStatus)}
-          </span>
-        ) : null}
-        {s.unread ? <span className="session-unread" role="img" aria-label="Unread" title="Unread" /> : null}
+        <span className="session-body">
+          <span className="session-title">{plainTitle(s.title)}</span>
+          {/* A second line of scent: what the agent says it is doing, else the project this row is out of.
+              Inside a project the heading already names it, so a quiet row keeps one line. */}
+          {s.agentStatus ? (
+            <span className={`session-sub session-agent is-${s.agentStatus.state}`} title={`${agentStatusText(s.agentStatus)} · set by the agent ${ago(s.agentStatus.at)}`}>
+              {s.agentStatus.comment || agentStatusText(s.agentStatus)}
+            </span>
+          ) : project ? (
+            <span className="session-sub">{project}</span>
+          ) : null}
+        </span>
         <span className="session-meta">
-          {project ? <span className="session-project">{project}</span> : null}
+          {s.unread ? <span className="session-unread" role="img" aria-label="Unread" title="Unread" /> : null}
           {s.liveChatId && !working ? <span className="live-dot" title="Open in this server" aria-label="live" /> : null}
           {s.parked && !s.liveChatId ? (
             <span className="session-parked" role="img" aria-label="Parked" title="Parked: the agent was parked after sitting idle; opening it resumes the same session" />

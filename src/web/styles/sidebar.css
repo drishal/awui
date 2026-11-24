@@ -679,13 +679,16 @@
   color: var(--text);
 }
 
+/* A row is a dot, the words, and the clock. The words may take two lines (a cut-off title says nothing about
+   whether the chat is about the same thing as its neighbour), so the row grows instead of clipping at ~28
+   characters; a row with nothing more to say keeps one line and the slack centres. */
 .session {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  min-height: var(--row-h);
-  padding: 0 8px;
+  min-height: calc(var(--row-h) + 6px);
+  padding: 4px 8px;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -703,15 +706,40 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--harness, var(--accent)) 40%, transparent);
 }
 
-.session-title {
+/* Title over sub-line, centred in the row: one line is the quiet case, two lines the settled one. */
+.session-body {
+  display: grid;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13.5px;
+  align-content: center;
+  gap: 1px;
 }
 
+.session-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13.5px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* The second line: where the row is out of its project, or what the agent says it is doing (the
+   `.session-agent` tones keep that row's own colour). */
+.session-sub {
+  overflow: hidden;
+  color: var(--muted-text);
+  font-size: 11.5px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session .session-agent {
+  max-width: none;
+  font-size: 11.5px;
+}
 .session-meta {
   display: flex;
   align-items: center;
@@ -800,12 +828,6 @@
   color: var(--muted-text);
 }
 
-.session-project {
-  max-width: 7em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .project-toggle.is-static {
   cursor: default;
