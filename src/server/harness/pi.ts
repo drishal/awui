@@ -26,7 +26,7 @@ import {
   type SubagentRun,
   type TodoItem,
 } from "../../shared/protocol.js";
-import { historyToItems, isObj, normalizeAgentEvent, piTodos, type Obj, usageEntries } from "./agent-events.js";
+import { asksForSecret, historyToItems, isObj, normalizeAgentEvent, piTodos, type Obj, usageEntries } from "./agent-events.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
 import { seedTranscript, type HandoffSeed } from "./handoff.js";
 import { branchMessagesOfEntries, readFileMessages, seedSessionText, sessionFileTimestamp, uuidv7 } from "./session-files.js";
@@ -810,6 +810,7 @@ class PiLiveChat implements LiveChat {
           ...(Array.isArray(frame.options) ? { options: frame.options.map(String) } : {}),
           ...(typeof frame.placeholder === "string" ? { placeholder: frame.placeholder } : {}),
           ...(typeof frame.prefill === "string" ? { prefill: frame.prefill } : {}),
+          ...(asksForSecret(frame) ? { secret: true } : {}),
           ...(timeout ? { expiresAt: Date.now() + timeout } : {}),
         },
         undefined,

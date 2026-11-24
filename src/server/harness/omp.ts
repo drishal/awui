@@ -42,7 +42,7 @@ import {
   type SubagentRun,
   type TodoItem,
 } from "../../shared/protocol.js";
-import { commandOutputEvents, historyToItems, isObj, normalizeAgentEvent, type Obj, todoPhaseItems, usageEntries } from "./agent-events.js";
+import { asksForSecret, commandOutputEvents, historyToItems, isObj, normalizeAgentEvent, type Obj, todoPhaseItems, usageEntries } from "./agent-events.js";
 import { parseProviderList, type ProviderAccount as OauthAccountChoice } from "../accounts.js";
 import { PendingRequests, StderrTail, terminateChild } from "./child-process.js";
 import { branchMessagesOfEntries, forkSessionText, readFileMessages, seedSessionText, sessionFileTimestamp, uuidv7 } from "./session-files.js";
@@ -1081,6 +1081,7 @@ class OmpLiveChat implements LiveChat {
           ...(Array.isArray(frame.options) ? { options: frame.options.map(String) } : {}),
           ...(typeof frame.placeholder === "string" ? { placeholder: frame.placeholder } : {}),
           ...(typeof frame.prefill === "string" ? { prefill: frame.prefill } : {}),
+          ...(asksForSecret(frame) ? { secret: true } : {}),
           ...(timeout ? { expiresAt: Date.now() + timeout } : {}),
         },
       });

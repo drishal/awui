@@ -21,6 +21,19 @@ export const MAX_TOOL_ARGS_CHARS = 4_000;
 export type Obj = Record<string, unknown>;
 export const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 
+/**
+ * Does a Pi-family `input` dialog ask for a value the person must not be shown back? Pi's RPC `input` request carries only a title and a
+ * placeholder (an extension's masked terminal field, like the sudo extension's, cannot cross RPC: `ui.custom` is a no-op there, so
+ * such an extension asks with a plain `ui.input`), so a request that says it wants a password or passphrase is drawn as a masked field
+ * and never echoed, and one that states `secret: true` itself is believed.
+ */
+export function asksForSecret(frame: { method?: unknown; title?: unknown; message?: unknown; placeholder?: unknown; secret?: unknown }): boolean {
+  if (frame.method !== "input") return false;
+  if (frame.secret === true) return true;
+  const words = [frame.title, frame.message, frame.placeholder].filter((x): x is string => typeof x === "string").join(" ");
+  return /\b(?:pass(?:word|phrase|code)|secret)\b/i.test(words);
+}
+
 /** Keep the head and tail of oversized output; payloads stay bounded on the wire. */
 export function boundText(text: string, max = MAX_TOOL_OUTPUT_CHARS): { text: string; truncated: boolean } {
   if (text.length <= max) return { text, truncated: false };

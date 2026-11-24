@@ -149,6 +149,15 @@ if (args[0] === "acp") {
       const response = await promise;
       out({ type: "extension_ui_request", id: randomUUID(), method: "notify", message: response.data ? JSON.stringify(response.data) : "form cancelled", notifyType: "info" });
     }
+    if (/\bsudo\b/.test(message)) {
+      // The sudo extension's prompt over RPC: a plain `input` dialog (its masked ui.custom field is a no-op there), answered with the password.
+      const uiId = randomUUID();
+      const { promise, resolve } = Promise.withResolvers();
+      pendingUi.set(uiId, resolve);
+      out({ type: "extension_ui_request", id: uiId, method: "input", title: "sudo password required: install a package", placeholder: "password" });
+      const answer = await promise;
+      out({ type: "extension_ui_request", id: randomUUID(), method: "notify", message: answer.value === "hunter2" ? "sudo granted" : "sudo cancelled", notifyType: "info" });
+    }
     if (/\bask\b/.test(message)) {
       // "ask twice" raises both requests before awaiting (stacked approvals).
       const count = /\btwice\b/.test(message) ? 2 : 1;

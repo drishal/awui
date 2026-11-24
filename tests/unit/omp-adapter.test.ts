@@ -177,6 +177,19 @@ describe("omp adapter (scripted omp)", () => {
     expect(chat.snapshot().items.some((i) => i.kind === "tool")).toBe(true);
   });
 
+  it("draws an extension's password prompt as a masked field and delivers the answer without echoing it", async () => {
+    const { chat } = await openChat();
+    await chat.send("sudo please", "normal");
+    await until(() => chat.snapshot().pending.length === 1);
+    const request = chat.snapshot().pending[0];
+    // A plain `input` that asks for a password is secret: the card masks it, and the answer's summary never repeats it.
+    expect(request).toMatchObject({ kind: "input", secret: true, title: "sudo password required: install a package" });
+    expect(chat.answer(request?.id as string, { kind: "input", value: "hunter2" })).toBe("Answered");
+    await until(() => chat.status === "idle");
+    expect(chat.snapshot().items.some((i) => i.kind === "notice" && i.text === "sudo granted")).toBe(true);
+    expect(JSON.stringify(chat.snapshot())).not.toContain("hunter2");
+  });
+
   it("serves omp 19.1's whole-form ask request and answers it with the form data", async () => {
     const { chat } = await openChat();
     await chat.send("form please", "normal");
