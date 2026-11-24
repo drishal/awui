@@ -40,7 +40,7 @@ export function SidebarRail(p: { asking: number; onExpand: () => void }) {
   const mark = () => (p.asking === 1 ? "▲" : p.asking > 9 ? "▲+" : `▲${p.asking}`);
   return (
     <box flexDirection="column" width={RAIL_WIDTH} flexShrink={0} border={["right"]} borderColor={t().border} alignItems="center" onMouseDown={p.onExpand}>
-      <text selectable={false} fg={t().accent}>»</text>
+      <text selectable={false} fg={t().accent}>{"\uf101"}</text>
       <Show when={p.asking > 0}>
         <text selectable={false} wrapMode="none" fg={mix(mix(t().bg, t().warn, 0.35), t().warn, breathe(tick(), BREATH_TICKS))}>{mark()}</text>
       </Show>
@@ -185,6 +185,10 @@ export function Sidebar(p: {
         <box onMouseDown={p.onTerminal}>
           <text selectable={false} fg={t().accent}>{" >_ "}</text>
         </box>
+        {/* nf-fa-angle_double_left: the fold button, the mirror of the rail's expand mark. */}
+        <box onMouseDown={p.onCollapse}>
+          <text selectable={false} fg={t().muted}>{" \uf100 "}</text>
+        </box>
       </box>
       <text selectable={false} flexShrink={0} wrapMode="none">
         <span style={{ fg: p.tab === "sessions" ? t().accent : t().border }}>{"━".repeat("Sessions".length + 2)}</span>
@@ -205,10 +209,10 @@ export function Sidebar(p: {
         <text selectable={false} fg={t().border} wrapMode="none" flexShrink={0}>{"─".repeat(Math.max(0, p.width - 4))}</text>
         <scrollbox ref={(el: ScrollBoxRenderable) => (scroller = el)} flexGrow={1} flexShrink={1} minHeight={0} marginTop={1} verticalScrollbarOptions={{ visible: false }}>
           <For each={navRows()}>
-            {(row) => {
+            {(row, at) => {
               const chosen = () => row ? selection() === keyOf(row) && p.active : false;
               if (row.kind === "section") return (
-                <box flexDirection="row" marginTop={1} onMouseDown={() => activate(row)}>
+                <box flexDirection="row" marginTop={at() === 0 ? 0 : 1} onMouseDown={() => activate(row)}>
                   <text selectable={false} fg={chosen() ? t().accent : t().muted}>{`${isFolded(row) ? "▸" : "▾"} ${row.label}`}</text><text selectable={false} fg={t().muted}>{`  ${row.count}`}</text><box flexGrow={1} />
                 </box>
               );
@@ -220,7 +224,7 @@ export function Sidebar(p: {
                 const live = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.liveChatId && !s.asking && !isBusy(s.status)).length;
                 const needs = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.asking).length;
                 return (
-                  <box flexDirection="row" marginTop={1} backgroundColor={chosen() ? t().selection : row.current ? t().surface : undefined} onMouseDown={() => activate(row)}>
+                  <box flexDirection="row" marginTop={at() === 0 ? 0 : 1} backgroundColor={chosen() ? t().selection : row.current ? t().surface : undefined} onMouseDown={() => activate(row)}>
                     <text selectable={false} fg={row.current ? t().accent : t().muted}>{`${isFolded(row) ? "▸" : "▾"} `}</text>
                     <text selectable={false} fg={t().accent} bg={t().surface2}>{` ${monogram(row.workspace.name)} `}</text>
                     <text selectable={false} fg={t().text} wrapMode="none">{` ${name()}`}</text><box flexGrow={1} />

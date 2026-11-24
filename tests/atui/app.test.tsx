@@ -115,8 +115,8 @@ describe("atui", () => {
     await ui.until("Search models…");
     await ui.escape();
     await ui.click("Sessions");
-    await ui.until("»");
-    await ui.click("»");
+    await ui.until("\uf101");
+    await ui.click("\uf101");
     await ui.until(">_");
     await ui.click(">_");
     await ui.until("Project terminal", 15_000);
@@ -757,11 +757,11 @@ describe("atui", () => {
     expect(info).toMatch(/\+\d+ −\d+ ■{5}/);
     await ui.click("Sessions");
     await ui.until("C-x s browse");
-    // « folds it to a rail; » unfolds it.
-    await ui.click("Sessions");
-    const folded = await ui.until("»");
+    // The tab strip's « (nf angle-double-left) folds it to a rail; the rail's » unfolds it.
+    await ui.click("\uf100");
+    const folded = await ui.until("\uf101");
     expect(folded).not.toContain("Sessions    Info");
-    await ui.click("»");
+    await ui.click("\uf101");
     await ui.until("Sessions    Info");
   }, 30_000);
 
@@ -1345,7 +1345,7 @@ describe("atui's density at 80 columns", () => {
     const spans = (await ui.spans()).flatMap((line) => line);
     expect(spans.find((s) => s.text.includes("Approve"))?.fg.toInts().slice(0, 3)).toEqual([78, 209, 126]);
     expect(spans.find((s) => s.text.includes("Deny"))?.fg.toInts().slice(0, 3)).toEqual([248, 113, 113]);
-    // The rail (the panel is folded at this width) carries the asking mark under its `»`.
+    // The rail (the panel is folded at this width) carries the asking mark under its `\uf101`.
     expect(card.split("\n").slice(0, 3).map((line) => line.slice(0, 3)).join("")).toContain("▲");
     // Open the panel (it opens unfocused): the asking row is there, its meta the age alone — the old
     // row put a second "!" beside the `▲` the prefix already shows.
