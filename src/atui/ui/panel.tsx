@@ -7,7 +7,7 @@ import { createMemo, For, Show } from "solid-js";
 import { collectChanges } from "../../web/review.js";
 import { accountName, clip, fileUrl, tokens, windowLabel } from "../format.js";
 import { meter, statBar } from "../fx.js";
-import { contextTone } from "../theme.js";
+import { CONTEXT_HEAVY_TOKENS, contextTone } from "../theme.js";
 import { useAtui, useTheme } from "./context.js";
 
 /** Cells in a changed file's stat bar. */
@@ -69,12 +69,12 @@ export function InfoBody(p: { width: number }) {
         {(ctx) => (
           <box flexDirection="column">
             <Heading label="Context" />
-            <text fg={(ctx().percent ?? 0) >= 65 ? contextTone(t(), ctx().percent ?? 0) : t().text2}>
+            <text fg={(ctx().percent ?? 0) >= 65 || (ctx().tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? contextTone(t(), ctx().percent ?? 0, ctx().tokens) : t().text2}>
               {`${ctx().percent === null ? "—" : `${Math.round(ctx().percent ?? 0)}%`}  ${tokens(ctx().tokens ?? 0)} / ${tokens(ctx().window)}`}
             </text>
             <Show when={ctx().percent !== null}>
               <text wrapMode="none">
-                <Meter fraction={(ctx().percent ?? 0) / 100} width={w()} tone={contextTone(t(), ctx().percent ?? 0)} />
+                <Meter fraction={(ctx().percent ?? 0) / 100} width={w()} tone={contextTone(t(), ctx().percent ?? 0, ctx().tokens)} />
               </text>
             </Show>
             <For each={(ctx().categories ?? []).slice(0, 6)}>
