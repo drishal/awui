@@ -5,7 +5,7 @@
 //  - Hermes Desktop: flat-not-boxed, pinned prompts, red only for failures.
 import { createContext, Fragment, memo, startTransition, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssistantItem, ChatItem, ChatStatus, ImageRef, NoticeItem, RequestItem, SecondOpinion, ToolCategory, ToolItem, UserItem } from "../../shared/protocol.js";
-import { IconAlertCircle, IconArchive, IconCheck, IconChevronDown, IconChevronUp, IconClock, IconCopy, IconEdit, IconFile, IconFork, IconImage, IconInfo, IconLink, IconRefresh, IconSearch, IconSidebar, IconSpark, IconUndo, IconWarning, IconX, RaySpinner, Spinner, ToolIcon } from "../icons.js";
+import { IconAlertCircle, IconArchive, IconCheck, IconChevronDown, IconChevronUp, IconClock, IconCopy, IconEdit, IconFile, IconFork, IconImage, IconInfo, IconLink, IconMore, IconRefresh, IconSearch, IconSidebar, IconSpark, IconUndo, IconWarning, IconX, RaySpinner, Spinner, ToolIcon } from "../icons.js";
 import { promptLink } from "../prompt-link.js";
 import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
 import { useToolStyle } from "../tool-style.js";
@@ -815,6 +815,18 @@ function Answer({
     ...(canFork ? [{ label: "Fork from here", icon: <IconFork size={16} />, run: () => onFork(through) }] : []),
     ...(canRestore ? [{ label: "Undo file changes from here", icon: <IconUndo size={16} />, run: () => onRestore(through) }] : []),
   ];
+  // What the row keeps is what a reader does with a reply; everything else is one ⋯ away (and on the sheet above).
+  const more: SheetAction[] = [
+    ...(onTiming ? [{ label: "Timing", icon: <IconClock size={14} />, run: onTiming }] : []),
+    ...(onSideThread ? [{ label: "Ask about this turn", icon: <IconSidebar size={14} />, run: () => onSideThread(through) }] : []),
+    ...(onOpinion ? [{ label: "Second opinion", icon: <IconSpark size={14} />, run: () => onOpinion(through) }] : []),
+    ...(canFork ? [{ label: "Fork from here", icon: <IconFork size={14} />, run: () => onFork(through) }] : []),
+    ...(canRestore ? [{ label: "Undo file changes from here", icon: <IconUndo size={14} />, run: () => onRestore(through) }] : []),
+  ];
+  // The menu is placed against the button's box, the way the sidebar's row menus are, so it opens upward from a row
+  // that is often at the bottom of the conversation.
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const [at, setAt] = useState<DOMRect | null>(null);
   return (
     <div className={`answer${arrival}${item.streaming ? " is-streaming" : ""}`} data-testid="answer" {...press}>
       {sheet ? <ActionSheet title={timing ? `Reply · ${timing}` : "Reply"} actions={sheetActions} onClose={() => setSheet(false)} /> : null}
@@ -835,54 +847,62 @@ function Answer({
               onCopy={copyTurn}
             />
           ) : null}
-          {onTiming ? (
-            <button type="button" className="ghost-icon" aria-label="Timing" title="Timing: when each step and call of this turn ran" onClick={onTiming}>
-              <IconClock size={14} />
-            </button>
-          ) : null}
-          {onSideThread ? (
-            <button
-              type="button"
-              className="ghost-icon"
-              aria-label="Ask about this turn"
-              title="Ask about this turn: a question in a chat of its own, beside this one"
-              onClick={() => onSideThread(through)}
-            >
-              <IconSidebar size={14} />
-            </button>
-          ) : null}
-          {onOpinion ? (
-            <button
-              type="button"
-              className="ghost-icon"
-              aria-label="Second opinion"
-              title="Second opinion: send this turn to another harness, which reviews it in its own chat"
-              onClick={() => onOpinion(through)}
-            >
-              <IconSpark size={14} />
-            </button>
-          ) : null}
-          {canFork ? (
-            <button
-              type="button"
-              className="ghost-icon"
-              aria-label="Fork from here"
-              title="Fork from here"
-              onClick={() => onFork(through)}
-            >
-              <IconFork size={14} />
-            </button>
-          ) : null}
-          {canRestore ? (
-            <button
-              type="button"
-              className="ghost-icon"
-              aria-label="Undo file changes from here"
-              title="Undo file changes from this turn on"
-              onClick={() => onRestore(through)}
-            >
-              <IconUndo size={14} />
-            </button>
+          {/* The rest leave the row: five more 32px buttons made seven, and seven quiet icons read as a toolbar over
+              the reply. They are one ⋯ away, in the same list the sidebar's row menus use. */}
+          {more.length > 0 ? (
+            <div className="menu answer-menu">
+              <button
+                ref={moreButton}
+                type="button"
+                className={`ghost-icon${at ? " is-open" : ""}`}
+                aria-label="More actions for this reply"
+                aria-haspopup="true"
+                aria-expanded={at !== null}
+                title="More actions"
+                onClick={() => setAt(at ? null : (moreButton.current?.getBoundingClientRect() ?? null))}
+              >
+                <IconMore size={14} />
+              </button>
+              {at ? (
+                <>
+                  <div className="menu-backdrop" aria-hidden="true" onClick={() => setAt(null)} />
+                  <ul
+                    className="menu-list answer-menu-list"
+                    role="menu"
+                    aria-label="More actions for this reply"
+                    style={{
+                      position: "fixed",
+                      left: Math.max(8, Math.min(at.left, window.innerWidth - 240)),
+                      // Under half the screen the list hangs below the row; lower down, where a reply's actions usually
+                      // sit, it rises above them instead of opening over the composer or off the screen.
+                      ...(at.top > window.innerHeight / 2 ? { bottom: window.innerHeight - at.top + 6 } : { top: at.bottom + 6 }),
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Escape") return;
+                      e.stopPropagation();
+                      setAt(null);
+                      moreButton.current?.focus();
+                    }}
+                  >
+                    {more.map((action) => (
+                      <li key={action.label}>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setAt(null);
+                            action.run();
+                          }}
+                        >
+                          {action.icon}
+                          {action.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </div>
           ) : null}
           {timing ? (
             <span className="answer-timing" data-testid="answer-timing">

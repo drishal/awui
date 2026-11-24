@@ -1617,12 +1617,48 @@
   gap: 10px;
 }
 
+/* The reply's actions: what a reader does with it (copy, copy the turn, everything else), at 28px so the row is a
+   line of quiet marks under the answer rather than a toolbar. Half-legible at rest and whole on hover, as before. */
 .answer-actions {
   display: flex;
+  align-items: center;
   gap: 2px;
   margin: 6px 0 0 -6px;
-  opacity: 0.45;
+  opacity: 0.7;
   transition: opacity var(--dur-enter) var(--ease-out);
+}
+
+.answer-actions .ghost-icon {
+  width: 28px;
+  height: 28px;
+}
+
+/* A touch screen has no hover to invite the press: the marks stay whole and finger-sized. */
+@media (pointer: coarse) {
+  .answer-actions .ghost-icon {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* The ⋯ list rises from the row (a reply's actions sit at the bottom of a conversation, so a menu below them would
+   open over the composer). Same list, same items, as the sidebar's row menus. */
+.answer-menu-list {
+  min-width: 210px;
+  padding: 5px;
+}
+
+.answer-menu-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.answer-menu-list button svg {
+  flex: none;
+  color: var(--muted-text);
 }
 
 .turn:hover .answer-actions,

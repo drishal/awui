@@ -7,9 +7,11 @@ test("the Timing view lists a turn's calls as named bars, with the slowest marke
   await signInAndOpen(page);
   await newChat(page);
   await sendAndWait(page, "showcase");
-  // Reachable from the answer's action row by keyboard.
-  const open = page.getByTestId("turn").last().getByRole("button", { name: "Timing" });
-  await open.focus();
+  // Reachable from the answer's action row by keyboard: its ⋯ menu, then the item.
+  const turn = page.getByTestId("turn").last();
+  await turn.getByRole("button", { name: "More actions for this reply" }).focus();
+  await page.keyboard.press("Enter");
+  await turn.getByRole("menuitem", { name: "Timing" }).focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Timing" });
   await expect(dialog).toBeVisible();
@@ -40,7 +42,9 @@ test.describe("on a phone", () => {
     await page.keyboard.press("Escape");
     await newChat(page);
     await sendAndWait(page, "showcase");
-    await page.getByTestId("turn").last().getByRole("button", { name: "Timing" }).click();
+    const turn = page.getByTestId("turn").last();
+    await turn.getByRole("button", { name: "More actions for this reply" }).click();
+    await turn.getByRole("menuitem", { name: "Timing" }).click();
     const dialog = page.getByRole("dialog", { name: "Timing" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByTestId("timing-slowest")).toHaveCount(1);

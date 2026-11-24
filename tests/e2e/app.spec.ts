@@ -1238,8 +1238,10 @@ test("a finished turn forks into a new chat holding just that turn", async ({ pa
   await sendAndWait(page, "first question");
   await sendAndWait(page, "second question");
   await expect(prompts(page)).toHaveText(["first question", "second question"]);
-  // The fork button lives on a finished answer; the copy opens in its place.
-  await page.getByTestId("answer").first().getByRole("button", { name: "Fork from here" }).click();
+  // Forking lives in a finished answer's ⋯ menu; the copy opens in its place.
+  const first = page.getByTestId("turn").first();
+  await first.getByRole("button", { name: "More actions for this reply" }).click();
+  await first.getByRole("menuitem", { name: "Fork from here" }).click();
   await expect(prompts(page)).toHaveText(["first question"]);
   await expect(status(page)).toHaveText("Idle");
   await expect(page.getByTestId("turn")).toHaveCount(1);
