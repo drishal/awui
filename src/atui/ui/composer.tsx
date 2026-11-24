@@ -11,7 +11,7 @@
 // writes, how fast (tokens a second, with their own sparkline).
 import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show, type JSX } from "solid-js";
 import { createHostClipboard, decodePasteBytes, type HostClipboardService, type TextareaRenderable } from "@opentui/core";
-import { useKeyboard, usePaste, useTerminalDimensions } from "@opentui/solid";
+import { useKeyboard, usePaste } from "@opentui/solid";
 import { IMAGE_MIME_TYPES, MAX_IMAGES, type GitStatus, type SavedPrompt, type SlashCommand } from "../../shared/protocol.js";
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../../web/commands.js";
 import { blanks, matchPrompts, nextBlank, promptGist } from "../../web/prompt-blanks.js";
@@ -359,9 +359,10 @@ export function Composer(p: {
   /** A repo's state in one word: what is uncommitted, or nothing. */
   const gitWord = (g: GitStatus) => g.counts.conflicts > 0 ? `${g.counts.conflicts} conflicted` : g.files.length === 0 ? "clean" : `${g.files.length} changed`;
 
-  // The right side of the footer, as strings, so the same text is both measured and drawn. Under a narrow pane whole
-  // segments leave (least important first) rather than any being cut: ctx, then the branch, the offer, git's counts,
-  // the write rate and the context's sparkline.
+  // The right side of the footer, as strings, so the same text is both measured and drawn. The footer stays one
+  // line and never wraps: under a narrow pane whole segments leave (least important first) rather than any being cut:
+  // the run's tokens, the context's sparkline, the chat's spend, the write rate, git's counts, the offer, then the
+  // branch, so the context figure is the last to go.
   const gitBranchText = (g: GitStatus) => ` ⑂ ${g.branch ?? `detached ${g.head ?? ""}`} ${g.upstream && (g.ahead > 0 || g.behind > 0) ? `${g.ahead > 0 ? ` ↑${g.ahead}` : ""}${g.behind > 0 ? ` ↓${g.behind}` : ""}` : ""}`;
   const gitCountsText = (g: GitStatus) => `${g.added + g.removed > 0 ? ` +${g.added} −${g.removed}` : ""} ${gitWord(g)}  `;
   const rateText = () => (app.chat()?.status === "running" && (rate() ?? 0) >= 1 ? `~${Math.round(rate() ?? 0)} tok/s ${rates().length > 1 ? `${sparkline(rates())}  ` : ""}` : "");
@@ -370,19 +371,12 @@ export function Composer(p: {
     const words = spendWords(app.chat()?.usage);
     return words ? `${words}  ` : "";
   };
-  // A second footer row where there is room (pi's statusline has two): the run's tokens in and out, the cache's share, the price and the write rate, so
-  // row one keeps what steers (chips, git, ctx). A short or narrow pane keeps one row and the old rank-dropping, so nothing is lost there.
-  const size = useTerminalDimensions();
-  const telemetryText = () => {
+  // The run's tokens in and out, once the chat has any (`in 20k · out 400`). The chat's spend rides beside it;
+  // both are the first to go under a narrow pane, so a tight footer keeps what steers (chips, git, ctx).
+  const tokensText = () => {
     const usage = app.chat()?.usage;
-    const parts: string[] = [];
-    if (usage && usage.input + usage.cachedInput + usage.output > 0) parts.push(`in ${tokens(usage.input + usage.cachedInput)} · out ${tokens(usage.output)}`);
-    const spend = spendWords(usage);
-    if (spend) parts.push(spend);
-    return parts.join(" · ");
+    return usage && usage.input + usage.cachedInput + usage.output > 0 ? `in ${tokens(usage.input + usage.cachedInput)} · out ${tokens(usage.output)}  ` : "";
   };
-  // Kept as soon as the room is there (not only while figures exist), so the composer and transcript never jump a row when the first token or the usage arrives.
-  const secondRow = () => size().height >= 32 && p.column >= 90 && Boolean(app.chat());
   const offerText = () => (offer() ? `${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  ` : "");
   const sparkText = () => (app.contextHistory().length > 1 ? `${sparkline(app.contextHistory().slice(-12), 100)} ` : "");
   const ctxText = () => (percent() !== null ? `ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%` : "");
@@ -404,9 +398,10 @@ export function Composer(p: {
         { id: "git", width: g ? gitBranchText(g).length : 0, rank: 2 },
         { id: "offer", width: offerText().length, rank: 3 },
         { id: "counts", width: g ? gitCountsText(g).length : 0, rank: 4 },
-        { id: "rate", width: secondRow() ? 0 : rateText().length, rank: 5 },
-        { id: "spend", width: secondRow() ? 0 : spendText().length, rank: 5.5 },
+        { id: "rate", width: rateText().length, rank: 5 },
+        { id: "spend", width: spendText().length, rank: 5.5 },
         { id: "spark", width: sparkText().length, rank: 6 },
+        { id: "tokens", width: tokensText().length, rank: 7 },
         { id: "ctx", width: ctxText().length + 2, rank: 1 },
       ],
       budget,
@@ -629,8 +624,12 @@ export function Composer(p: {
         <Show when={queued() > 0}>
           <text flexShrink={0} fg={t().accent} onMouseDown={() => p.onPick("queue")}>{`  +${queued()} queued`}</text>
         </Show>
-        <text flexShrink={0} onMouseDown={() => app.git() ? p.onGit() : p.onContext()}>
+        {/* One line always: the rank-dropping above sheds segments until the rest fits, and this clips rather than wraps. */}
+        <text flexShrink={0} wrapMode="none" truncate onMouseDown={() => app.git() ? p.onGit() : p.onContext()}>
           {"  "}
+          <Show when={kept().has("tokens") && tokensText()}>
+            <span style={{ fg: t().muted }}>{tokensText()}</span>
+          </Show>
           <Show when={app.git()}>
             {(g) => (
               <>
@@ -682,20 +681,6 @@ export function Composer(p: {
           </Show>
         </text>
       </box>
-      <Show when={secondRow()}>
-        {/* Right-aligned under row one's right side: the figures the footer used to drop first, now with a row of their own. */}
-        <box flexDirection="row" paddingLeft={1} paddingRight={1} justifyContent="flex-end">
-          <text flexShrink={0} wrapMode="none" truncate fg={t().muted}>
-            {telemetryText()}
-            <Show when={rateText()}>
-              <span>{`${telemetryText() ? " · " : ""}~${Math.round(rate() ?? 0)} tok/s `}</span>
-              <Show when={rates().length > 1}>
-                <span style={{ fg: t().text2 }}>{sparkline(rates())}</span>
-              </Show>
-            </Show>
-          </text>
-        </box>
-      </Show>
     </box>
   );
 }

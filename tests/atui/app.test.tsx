@@ -302,25 +302,25 @@ describe("atui", () => {
     const done = await ui.until("Password accepted");
     expect(done).not.toContain("hunter2");
   }, 30_000);
-  it("carries the chat's tokens, cache and price on a second footer row where there is room, and keeps one row where there is not", async () => {
+  it("keeps the footer to one line, carrying the chat's tokens beside its spend where there is room", async () => {
     ui = await mount(path.join(server.root, "alpha"), { width: 140, height: 40 });
     await ui.type("showcase timing");
     ui.keys.pressEnter();
     await idle(ui);
     const roomy = await ui.until(/* the usage arrives with the run's end */ "cache ");
     expect(roomy).toMatch(/in [\d.]+k? · out [\d.]+k?/);
-    // The first row keeps what steers; the figures are the row under it.
+    // One footer line only: the figures share the row that steers, and nothing wraps below it.
     const rows = roomy.split("\n");
     const first = rows.findIndex((r) => /Think \w+ ▾/.test(r));
-    expect(rows[first]).not.toContain("cache ");
-    expect(rows[first + 1]).toMatch(/in [\d.]+k? · out/);
+    expect(rows[first]).toMatch(/in [\d.]+k? · out/);
+    expect(rows[first + 1] ?? "").not.toMatch(/in [\d.]+k? · out/);
     await ui.unmount();
     ui = await mount(path.join(server.root, "alpha"), { width: 70, height: 28 });
     await ui.type("showcase timing");
     ui.keys.pressEnter();
     await idle(ui);
     const tight = await ui.frame();
-    // A short, narrow pane keeps one row, and the level chip keeps its noun.
+    // A short, narrow pane keeps one row, drops the run's tokens first, and the level chip keeps its noun.
     expect(tight).not.toMatch(/in [\d.]+k? · out/);
     expect(tight).toContain("Think ");
   }, 40_000);
