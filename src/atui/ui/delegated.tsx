@@ -310,7 +310,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
                         <text flexGrow={1} wrapMode="none" truncate fg={t().text}>{target.title}</text>
                         <text flexShrink={0} fg={index() === at() ? t().text2 : t().muted} wrapMode="none" truncate>{target.meta ? ` ${clip(target.meta, Math.max(10, width() - 48))} ·` : ""}</text>
                         <text flexShrink={0} fg={toneOf(t(), target.status.tone)}>{` ${target.word}`}</text>
-                        <text flexShrink={0} fg={index() === at() ? t().text2 : t().muted}>{`  ${target.elapsed}`}</text>
+                        <text flexShrink={0} fg={index() === at() ? t().text2 : t().muted}>{target.elapsed ? ` · ${target.elapsed}` : ""}</text>
                       </box>
                       {target.line ? <text fg={index() === at() ? t().text2 : t().muted} wrapMode="none" truncate>{`   ${clip(target.line, width() - 8)}`}</text> : null}
                     </box>
