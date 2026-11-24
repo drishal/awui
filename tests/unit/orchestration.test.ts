@@ -207,7 +207,7 @@ describe("delegated tasks", () => {
 
     // The child is openable like any chat and carries the lineage chip's data.
     const childSnap = (await agent.get(`/api/chats/${childId}`)).body as ChatSnapshot;
-    expect(childSnap.lineage).toEqual({ kind: "delegate", taskId: started.taskId, parentChatId: chat.chatId, parentTitle: null, depth: 1 });
+    expect(childSnap.lineage).toEqual({ kind: "delegate", taskId: started.taskId, parentChatId: chat.chatId, parentTitle: null, depth: 1, taskTitle: "Summariser" });
     expect(childSnap.chatId).toBe(childId);
 
     // The brief the parent agent sent is a user item marked agent-authored.
