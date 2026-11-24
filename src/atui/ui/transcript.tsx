@@ -12,7 +12,7 @@
 // characters (comfortable), 160 (wide), or the pane's whole width (full); a gutter on the right maps
 // every turn and scrolls on a click, and the prompt of the turn you are reading stays pinned
 // at the top.
-import { createEffect, createMemo, createResource, createSignal, For, Index, Match, on, onCleanup, Show, Switch, type Accessor } from "solid-js";
+import { createContext, createEffect, createMemo, createResource, createSignal, For, Index, Match, on, onCleanup, Show, Switch, useContext, type Accessor } from "solid-js";
 import { BoxRenderable, type MarkdownBlock, type Renderable, type RenderNodeContext, type ScrollBoxRenderable } from "@opentui/core";
 import { useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { AssistantItem, ChatItem, ImageRef, NoticeItem, RequestItem, SubagentRun, ToolItem, UserItem } from "../../shared/protocol.js";
@@ -42,6 +42,30 @@ import { tick } from "./ticker.js";
 installOpenTuiListGuard();
 
 /** The call tree's connectors: structure, not a divider, so they sit a step above the border colour (the border alone is about 1.4:1 on the background). */
+/** The words a find landed on in this turn (null outside it): the work's rows paint their own copy of them, as the answer does, so the strip's "in the work" count points at something lit. */
+const FoundWords = createContext<Accessor<string | null | undefined>>(() => null);
+
+/** `text` with every case-insensitive occurrence of the found words on a warn-tinted ground (the ink stays as it was); plain when no find is landed. */
+function Marked(p: { text: string; ink: string }) {
+  const t = useTheme();
+  const words = useContext(FoundWords);
+  const parts = createMemo(() => {
+    const q = words()?.trim().toLowerCase();
+    if (!q) return [{ text: p.text, hit: false }];
+    const out: Array<{ text: string; hit: boolean }> = [];
+    const lower = p.text.toLowerCase();
+    let at = 0;
+    for (let i = lower.indexOf(q); i >= 0; i = lower.indexOf(q, at)) {
+      if (i > at) out.push({ text: p.text.slice(at, i), hit: false });
+      out.push({ text: p.text.slice(i, i + q.length), hit: true });
+      at = i + q.length;
+    }
+    if (at < p.text.length) out.push({ text: p.text.slice(at), hit: false });
+    return out;
+  });
+  return <For each={parts()}>{(part) => <span style={part.hit ? { fg: t().text, bg: mix(t().bg, t().warn, 0.4) } : { fg: p.ink }}>{part.text}</span>}</For>;
+}
+
 const spineOf = (theme: Theme) => mix(theme.border, theme.muted, 0.55);
 
 const OUTPUT_LINES = 14;
@@ -716,10 +740,10 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
           <span style={{ fg: t().text2 }}>{head().verb}</span>
           <Show when={head().detail}>
             {(d) => (
-              <Show when={href()} fallback={<span style={{ fg: t().text2 }}>{` ${d()}`}</span>}>
+              <Show when={href()} fallback={<Marked text={` ${d()}`} ink={t().text2} />}>
                 {(url) => (
                   <a href={url()} style={{ fg: t().text2 }}>
-                    {` ${d()}`}
+                    <Marked text={` ${d()}`} ink={t().text2} />
                   </a>
                 )}
               </Show>
@@ -738,7 +762,7 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
                   <Show when={i > 0}>
                     <span style={{ fg: t().muted }}> · </span>
                   </Show>
-                  <Show when={bad(f())} fallback={<span style={{ fg: t().muted }}>{f()}</span>}>
+                  <Show when={bad(f())} fallback={<Marked text={f()} ink={t().muted} />}>
                     <u style={{ fg: t().danger }}>{f()}</u>
                   </Show>
                 </>
@@ -1074,6 +1098,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
   const sigmaShown = () => p.open && !p.turn().live && Boolean(p.turn().prompt) && (sigma().facts.length > 0 || sigma().failed !== null);
   const FILES_SHOWN = 4;
   return (
+    <FoundWords.Provider value={() => p.foundQuery}>
     <box flexDirection="column" width="100%" maxWidth={p.column} flexShrink={0}>
       <Show when={hit()}>
         {(h) => (
@@ -1170,6 +1195,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       </Show>
       <For each={p.turn().after}>{(item) => <Notice item={item} />}</For>
     </box>
+    </FoundWords.Provider>
   );
 }
 

@@ -218,34 +218,26 @@ describe("atui", () => {
     await ui.until("┌─ ▤ Read README.md");
     setIconSet("unicode");
   }, 30_000);
-  it("compares the draft across two agents, each in a worktree of its own", async () => {
-    // A comparison makes worktrees, so the project has to be a Git checkout with a commit.
-    const alpha = path.join(server.root, "compare-project");
-    mkdirSync(alpha, { recursive: true });
-    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd: alpha, stdio: "ignore" });
-    git("init", "-q");
-    writeFileSync(path.join(alpha, "README.md"), "hello\n");
-    git("add", "README.md");
-    git("commit", "-q", "-m", "init");
-    ui = await mount(alpha, { height: 40 });
-    ui.keys.pressKey("k", { ctrl: true });
-    await ui.until("Search commands");
-    await ui.type("compare agents");
+  it("paints a find's words inside an open turn's tool rows, so the count of matches in the work points at something lit", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("showcase tool edit please");
     ui.keys.pressEnter();
-
-    // The draft is the prompt: with none the sheet does not open and says why.
-    expect(await ui.until("Write the prompt first")).not.toContain("Run it with");
-    await ui.type("tidy the readme");
-    ui.keys.pressKey("k", { ctrl: true });
-    await ui.until("Search commands");
-    await ui.type("compare agents");
+    await ui.until("┌─ ▤ Read README.md");
+    await idle(ui);
+    ui.keys.pressKey("s", { ctrl: true });
+    await ui.until("Type to find text in this chat…");
+    await ui.type("lines");
+    await wait(500);
     ui.keys.pressEnter();
-    const sheet = await ui.until("Run it with");
-    expect(sheet).toContain("Start with 2 agents");
-    expect(sheet).toMatch(/◉ Fake/);
-    ui.keys.pressEnter();
-    expect(await ui.until("each in its own worktree")).toContain("Started 2 agents");
-  }, 60_000);
+    await wait(300);
+    const rows = (await ui.spans()) ?? [];
+    const read = rows.find((l) => l.map((x) => x.text).join("").includes("Read README.md"));
+    const hit = read?.find((x) => x.text === "lines");
+    // The words sit on a ground of their own (the warn tint), not the page's.
+    expect(hit).toBeDefined();
+    const page = read?.find((x) => x.text.includes("Read"))?.bg.toInts().join();
+    expect(hit?.bg.toInts().join()).not.toBe(page);
+  }, 30_000);
   it("starts a rename from the palette by putting /rename in the composer", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("hello rename");
@@ -1841,5 +1833,33 @@ describe("atui's keybind styles", () => {
     ui.keys.pressKey("Z");
     ui.keys.pressKey("Z");
     expect(ui.exited()).toBe(true);
+  }, 60_000);
+  it("compares the draft across two agents, each in a worktree of its own", async () => {
+    // A comparison makes worktrees, so the project has to be a Git checkout with a commit.
+    const alpha = path.join(server.root, "compare-project");
+    mkdirSync(alpha, { recursive: true });
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd: alpha, stdio: "ignore" });
+    git("init", "-q");
+    writeFileSync(path.join(alpha, "README.md"), "hello\n");
+    git("add", "README.md");
+    git("commit", "-q", "-m", "init");
+    ui = await mount(alpha, { height: 40 });
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("compare agents");
+    ui.keys.pressEnter();
+
+    // The draft is the prompt: with none the sheet does not open and says why.
+    expect(await ui.until("Write the prompt first")).not.toContain("Run it with");
+    await ui.type("tidy the readme");
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("compare agents");
+    ui.keys.pressEnter();
+    const sheet = await ui.until("Run it with");
+    expect(sheet).toContain("Start with 2 agents");
+    expect(sheet).toMatch(/◉ Fake/);
+    ui.keys.pressEnter();
+    expect(await ui.until("each in its own worktree")).toContain("Started 2 agents");
   }, 60_000);
 });
