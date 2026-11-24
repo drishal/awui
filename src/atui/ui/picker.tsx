@@ -13,7 +13,7 @@ import { useTheme } from "./context.js";
 /** A row that also draws a span of a track (a step's place on a turn's time, a day's share of the busiest): `[from, to]`, each 0 to 1. */
 /** `inert`: a row that only informs (Usage's totals) is stepped over and never lit, so the cursor rests only where Enter does something. */
 /** `warn` paints the bar in the warning ink: the one row a sheet is built to find (Timing's slowest step), as the web paints it. */
-export type PickerItem = PaletteItem & { bar?: [number, number]; inert?: boolean; barTone?: "warn" };
+export type PickerItem = PaletteItem & { bar?: [number, number]; inert?: boolean; barTone?: "warn"; /** Enter runs the row and leaves the sheet open (a toggle, an action whose result is read here). */ stay?: boolean };
 
 /** The track as a run of rule, a solid run, the eighth-block edge that finishes it, and the rule after. The start rounds to a cell, the end to an eighth, so equal times draw equal bars and a few hundred milliseconds show. */
 const EDGES = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
@@ -94,12 +94,20 @@ export function Picker(p: {
   const [query, setQuery] = createSignal(p.initialQuery ?? "");
   const [active, setActive] = createSignal(0);
   const shown = createMemo((): PickerItem[] => (p.search ? p.search(query()) : (rankItems(p.items, query()) as PickerItem[])));
+  // A list that is rebuilt under the cursor (the comparison sheet refreshes every two seconds) keeps it on the same row; a new query, or a row that is gone, starts at the first.
+  let lastQuery = query();
+  let lastId: string | undefined;
   createEffect(
     on(shown, (list) => {
+      const same = query() === lastQuery ? list.findIndex((i) => i.id === lastId && !i.disabled && !i.inert) : -1;
+      lastQuery = query();
       const first = list.findIndex((i) => !i.disabled && !i.inert);
-      setActive(first < 0 ? 0 : first);
+      setActive(same >= 0 ? same : first < 0 ? 0 : first);
     }),
   );
+  createEffect(() => {
+    lastId = shown()[active()]?.id;
+  });
   const room = () => size().width - (p.side ?? 0);
   const previewing = () => Boolean(p.preview) && room() >= PREVIEW_WIDTH;
   // A sheet that would leave only a sliver of transcript at its sides takes the whole column instead (the transcript's own 2-cell margins), so no clipped words peek out beside it.
@@ -172,7 +180,7 @@ export function Picker(p: {
 
   const run = (item: PaletteItem | undefined) => {
     if (!item || item.disabled || (item as PickerItem).inert) return;
-    p.onClose();
+    if (!(item as PickerItem).stay) p.onClose();
     if (!p.info) item.run();
   };
 
