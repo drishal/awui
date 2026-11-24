@@ -31,6 +31,7 @@ import { plainTitle } from "../../web/plain-title.js";
 import { fitHints } from "../footer.js";
 import { agentStatusText } from "../../web/agent-status.js";
 import { ago, clip } from "../format.js";
+import { workerRow } from "../worker-row.js";
 import { harnessGlyph } from "../neat.js";
 import { moveRow } from "../delegated.js";
 import { accentOf } from "../theme.js";
@@ -250,17 +251,25 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                             {(badge) => <text fg={t().link} wrapMode="none" truncate>{`   ${badge().words}`}</text>}
                           </Show>
                           <For each={card.children}>
-                            {(child) => (
-                              <text wrapMode="none" truncate onMouseDown={() => p.onOpenSession(child)}>
-                                <span style={{ fg: t().border }}>{"   └ "}</span>
-                                <span style={{ fg: harnessAccent(child.harnessId) }}>{"● "}</span>
-                                <span style={{ fg: t().text2 }}>{plainTitle(child.title) || "Untitled"}</span>
-                                <Show when={child.lineage?.role}>{(role) => <span style={{ fg: t().muted }}>{` ${role()}`}</span>}</Show>
-                                <Show when={childHost(child)}>{(host) => <span style={{ fg: t().muted }}>{` ${host()}`}</span>}</Show>
-                                <Show when={previewOf(child)?.model}>{(model) => <span style={{ fg: t().muted }}>{` ${model()}`}</span>}</Show>
-                                <span style={{ fg: child.asking ? t().warn : isBusy(child.status) ? t().accent : t().muted }}>{child.asking || isBusy(child.status) ? ` ${child.asking ? "needs you" : "working"}` : " "}<Show when={!child.asking && !isBusy(child.status)} fallback={null}><span style={{ fg: t().ok }}>✓</span></Show></span>
-                              </text>
-                            )}
+                            {(child) => {
+                              // The row is measured, not left to the renderer's middle cut: the title clips at its end and the extras leave whole.
+                              const state = () => (child.asking ? " needs you" : isBusy(child.status) ? " working" : "");
+                              const parts = () => workerRow({ title: plainTitle(child.title) || "Untitled", role: child.lineage?.role, host: childHost(child), model: previewOf(child)?.model, state: state() }, columnWidth(id === BOARD_COLUMNS[BOARD_COLUMNS.length - 1]) - 1 - 7);
+                              const quiet = () => (i() === at() ? t().text2 : t().muted);
+                              return (
+                                <text wrapMode="none" truncate onMouseDown={() => p.onOpenSession(child)}>
+                                  <span style={{ fg: i() === at() ? t().text2 : t().border }}>{"   └ "}</span>
+                                  <span style={{ fg: child.asking ? t().warn : isBusy(child.status) ? t().accent : child.liveChatId ? t().ok : t().muted }}>{child.asking ? "▲ " : "● "}</span>
+                                  <Show when={parts().role}>{(role) => <span style={{ fg: t().text2 }}>{role()}</span>}</Show>
+                                  <Show when={parts().host}>{(host) => <span style={{ fg: quiet() }}>{` ${host()}`}</span>}</Show>
+                                  <Show when={parts().model}>{(model) => <span style={{ fg: quiet() }}>{` ${model()}`}</span>}</Show>
+                                  <Show when={parts().title}>{(title) => <span style={{ fg: quiet() }}>{`${parts().role || parts().host || parts().model ? " " : ""}${title()}`}</span>}</Show>
+                                  <Show when={state()} fallback={<span style={{ fg: t().ok }}>{" ✓"}</span>}>
+                                    <span style={{ fg: child.asking ? t().warn : t().accent }}>{state()}</span>
+                                  </Show>
+                                </text>
+                              );
+                            }}
                           </For>
                         </box>
                         );
