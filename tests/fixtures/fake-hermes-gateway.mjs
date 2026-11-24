@@ -313,6 +313,16 @@ server.on("upgrade", (req, socket) => {
         const wrapped = (result) => mutateResult(params, result);
         if (params.operation === "rename") return callChild(id, "session.title", { session_id: params.session_id, title: payload.title }, wrapped);
         if (params.operation === "model") {
+          // The owner's selection guard (gateway/session_mutation_model.py): a data-training tier is
+          // refused until the caller sends back the token bound to the target, and refuses nothing.
+          const token = `tok-${payload.model}`;
+          if (String(payload.model ?? "").includes("contributor") && payload.confirm !== token) {
+            return send({ jsonrpc: "2.0", id, result: {
+              session_id: params.session_id, operation: "model", confirm_required: true, confirm: token,
+              target_model: payload.model, target_provider: payload.provider ?? "",
+              confirm_message: "!!! CONTRIBUTOR TIER — TRAINS ON YOUR DATA !!!\n\nConfirm only if training on your prompts and completions is acceptable.",
+            } });
+          }
           const value = payload.provider ? `${payload.model} --provider ${payload.provider}` : payload.model;
           // The real reply projects the route now in force (gateway/session_mutation_model.py).
           return callChild(id, "config.set", { session_id: params.session_id, key: "model", value }, (result) => mutateResult(params, { ...result, model: payload.model, ...(payload.provider ? { provider: payload.provider } : {}) }));

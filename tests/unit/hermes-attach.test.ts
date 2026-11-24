@@ -121,7 +121,7 @@ describe("a Hermes home whose gateway is running", () => {
 
   it("reads a project's sessions and its models over the attachment", async () => {
     expect((await adapter.listSessions(project)).map((row) => row.nativeId)).toEqual(["20261002_120000_fake1"]);
-    expect((await adapter.listModels(project, true)).map((model) => model.key)).toEqual(["fake/fake-model", "fake/fake-mini"]);
+    expect((await adapter.listModels(project, true)).map((model) => model.key)).toEqual(["fake/fake-model", "fake/fake-mini", "fake/fake-contributor"]);
     expect(liveHermesLinks()).toBe(0);
   });
 
@@ -241,6 +241,33 @@ describe("a Hermes home whose gateway is running", () => {
     const assistant = chat.snapshot().items.find((i) => i.kind === "assistant");
     expect(assistant).toMatchObject({ text: "on fake as fake-mini" });
     expect(await live.getUsage()).toMatchObject({ turns: 1 });
+  });
+
+  it("asks before a guarded model pick and commits it only on Approve", async () => {
+    const { chat } = await openChat();
+    await chat.setConfig({ model: "fake/fake-contributor" });
+    // The refusal wrote nothing: the chat still runs the model it was on.
+    expect(chat.snapshot().config.model).toBe("fake/fake-model");
+    await until(() => chat.snapshot().pending.length === 1);
+    const request = chat.snapshot().pending[0];
+    expect(request).toMatchObject({ kind: "confirm", title: "Switch to fake-contributor?", message: expect.stringContaining("TRAINS ON YOUR DATA") });
+    expect(chat.answer(request?.id as string, { kind: "confirm", confirmed: true })).toBe("Approved");
+    await until(() => chat.snapshot().config.model === "fake/fake-contributor");
+    const models = canonical().filter((call) => call.name === "session.mutate" && call.params.operation === "model");
+    expect(models.at(-1)?.params.payload).toMatchObject({ model: "fake-contributor", provider: "fake", confirm: "tok-fake-contributor" });
+  });
+
+  it("keeps the model when the guarded pick is denied", async () => {
+    const { chat } = await openChat();
+    await chat.setConfig({ model: "fake/fake-contributor" });
+    await until(() => chat.snapshot().pending.length === 1);
+    const request = chat.snapshot().pending[0];
+    expect(chat.answer(request?.id as string, { kind: "confirm", confirmed: false })).toBe("Denied");
+    // A denial sends nothing: the refused attempt is the only model mutation on the wire.
+    expect(chat.snapshot().config.model).toBe("fake/fake-model");
+    const models = canonical().filter((call) => call.name === "session.mutate" && call.params.operation === "model");
+    expect(models).toHaveLength(1);
+    expect(models[0]?.params.payload).toEqual({ model: "fake-contributor", provider: "fake" });
   });
 
   it("changes the model after a turn, when the owner has moved the execution generation", async () => {

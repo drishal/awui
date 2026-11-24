@@ -340,7 +340,10 @@ export class CanonicalChatLink implements GatewayLink {
       const model = parts.shift() ?? "";
       const providerAt = parts.indexOf("--provider");
       const provider = providerAt >= 0 ? parts[providerAt + 1] : undefined;
-      return this.mutate("model", { model, ...(provider ? { provider } : {}) }, true);
+      // A guarded tier answers `confirmation_required` with a token; the approved pick sends it back
+      // in the payload, which is the only thing that commits the same target.
+      const confirm = str(params.confirm);
+      return this.mutate("model", { model, ...(provider ? { provider } : {}), ...(confirm ? { confirm } : {}) }, true);
     }
     if (key === "reasoning") return this.mutate("reasoning", { effort: str(params.value) }, true);
     // `show_reasoning` stays this verb: the session's live-stream flag, not an effort

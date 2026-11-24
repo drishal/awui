@@ -591,7 +591,19 @@ interface PendingValue {
   kind: "value";
   requestId: string | number;
 }
-type PendingRequest = PendingApproval | PendingClarify | PendingValue;
+/**
+ * A model pick Hermes's selection guard refused until the person confirms it (the data-policy
+ * warning: a `-contributor` tier trains on prompts). The refusal wrote nothing and came with a
+ * token bound to the fence it was refused at; sending that token back commits the pick.
+ */
+interface PendingModel {
+  kind: "model";
+  sessionId: string;
+  value: string;
+  picked: string;
+  token: string;
+}
+type PendingRequest = PendingApproval | PendingClarify | PendingValue | PendingModel;
 
 /**
  * Whether a one-string prompt names this chat's session: its own runtime id, or
@@ -623,6 +635,8 @@ class HermesLiveChat implements LiveChat {
   private running = false;
   private disposed = false;
   private pending = new Map<string, PendingRequest>();
+  /** The number of model confirmations raised, for a card id no other request can take. */
+  private modelConfirms = 0;
 
   constructor(
     private readonly adapter: HermesAdapter,
@@ -1085,6 +1099,12 @@ class HermesLiveChat implements LiveChat {
       this.live.respond(direct.requestId, { value });
       return true;
     }
+    if (direct?.kind === "model") {
+      this.pending.delete(requestId);
+      // Anything but Approve keeps the model the chat is on; the refusal wrote nothing to undo.
+      if (answer.kind === "confirm" && answer.confirmed) void this.applyModelConfirmation(direct);
+      return true;
+    }
     const [frameId, qid] = requestId.split(":");
     const group = frameId ? this.pending.get(frameId) : undefined;
     if (group?.kind === "clarify" && qid) {
@@ -1293,7 +1313,15 @@ class HermesLiveChat implements LiveChat {
     if (patch.model !== undefined) {
       const value = await this.switchTarget(patch.model);
       const result = await this.live.request<Obj>("config.set", { session_id: id, key: "model", value, confirm_expensive_model: false });
-      if (result?.confirm_required === true) throw new Error(str(result.confirm_message) || "That model needs confirmation");
+      // A guarded tier (Hermes's data-policy rule, say a `-contributor` model) is refused until the
+      // person says yes. The refusal wrote nothing; ask on the chat's own approval card, and commit
+      // the pick with its token when the answer is Approve.
+      if (result?.confirm_required === true) {
+        const token = str(result.confirm);
+        if (!token) throw new Error(str(result.confirm_message) || "That model needs confirmation");
+        this.askModelConfirmation(id, value, patch.model, token, result);
+        return;
+      }
       this.pickedKey = patch.model;
       this.models = null;
       // The canonical mutation's reply names the route now in force (its model and provider). Take it at once:
@@ -1303,6 +1331,42 @@ class HermesLiveChat implements LiveChat {
     }
     if (patch.thinkingLevel !== undefined) {
       await this.live.request("config.set", { session_id: id, key: "reasoning", value: patch.thinkingLevel });
+    }
+  }
+
+  /** Put a guarded model pick on the chat as a yes/no card; its Approve sends the token back. */
+  private askModelConfirmation(sessionId: string, value: string, picked: string, token: string, result: Obj): void {
+    const requestId = `model-confirm:${++this.modelConfirms}`;
+    this.pending.set(requestId, { kind: "model", sessionId, value, picked, token });
+    const name = str(result.target_model) || picked;
+    this.emit({
+      type: "request",
+      request: {
+        id: requestId,
+        kind: "confirm",
+        title: `Switch to ${name}?`,
+        message: str(result.confirm_message) || "Hermes asks you to confirm this model before it switches.",
+        createdAt: Date.now(),
+      },
+    });
+  }
+
+  /** Commit a model pick whose guard the person approved; a moved fence asks again with its new token. */
+  private async applyModelConfirmation(pending: PendingModel): Promise<void> {
+    try {
+      const result = await this.live.request<Obj>("config.set", { session_id: pending.sessionId, key: "model", value: pending.value, confirm: pending.token });
+      if (result?.confirm_required === true) {
+        const token = str(result.confirm);
+        if (!token) throw new Error(str(result.confirm_message) || "That model needs confirmation");
+        this.askModelConfirmation(pending.sessionId, pending.value, pending.picked, token, result);
+        return;
+      }
+      this.pickedKey = pending.picked;
+      this.models = null;
+      if (str(result?.model)) this.applyInfo({ model: str(result?.model), ...(str(result?.provider) ? { provider: str(result.provider) } : {}) });
+      else this.emit({ type: "config", config: { model: this.modelKey() || null } });
+    } catch (error) {
+      this.emit({ type: "notice", level: "error", text: `Model switch failed: ${error instanceof Error ? error.message : String(error)}` });
     }
   }
 

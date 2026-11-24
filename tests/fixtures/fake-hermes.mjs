@@ -405,7 +405,7 @@ rl.on("line", (line) => {
         : {
             providers: [
               ...moaRow,
-              { slug: "fake", name: "Fake", models: ["fake-model", "fake-mini"], capabilities: { "fake-model": { reasoning: true, fast: false }, "fake-mini": { reasoning: false, fast: true } }, authenticated: true, is_current: true },
+              { slug: "fake", name: "Fake", models: ["fake-model", "fake-mini", "fake-contributor"], capabilities: { "fake-model": { reasoning: true, fast: false }, "fake-mini": { reasoning: false, fast: true }, "fake-contributor": { reasoning: true, fast: false } }, authenticated: true, is_current: true },
               ...(proxied ? [{ slug: "opencode-go", name: "OpenCode Go", models: ["deepseek-v4.1-flash"], capabilities: {}, authenticated: true }] : []),
             ],
             model: "fake-model",
