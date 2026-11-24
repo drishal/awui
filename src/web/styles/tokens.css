@@ -62,7 +62,7 @@
   --surface: #f9fafb;
   --surface-2: #eef1f5;
   --selection: #dbe7fd;
-  --border: #d9dee7;
+  --border: #d2d8e2;
   --control-border: #8a9099;
   --text: #0f1115;
   --text-2: #43454a;
@@ -83,21 +83,24 @@
   --thinking: #6d4fc2;
   --rare: #8a5a00;
   --brown: #92400e;
-  --shadow-strength: 0.08;
+  --shadow-strength: 0.06;
   /* How much of the text colour a hairline takes: a dark page needs a little more for a
      1px edge to read (a base16 theme inherits whichever scheme it is). */
-  --hairline-mix: 10%;
+  --hairline-mix: 13%;
   /* How much lighter than its surface a raised face (a segmented control's chosen pill) is: a light
      page lifts it with a shadow on white, a dark one has to lighten it or it sinks below its track. */
   --raise-mix: 0%;
+  /* How much of the surface an in-page card keeps before the page shows through: enough to
+     read as a face above --bg in either scheme, not enough to become a second background. */
+  --card-mix: 70%;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #141416;
-    --surface: #1b1b1f;
-    --surface-2: #26262b;
+    --bg: #0e1014;
+    --surface: #171a20;
+    --surface-2: #22262e;
     --selection: #34415b;
     --border: #313137;
     --control-border: #67707a;
@@ -122,16 +125,17 @@
     --brown: #d6a26a;
     --shadow-strength: 0.32;
     --hairline-mix: 13%;
-    --raise-mix: 15%;
+    --raise-mix: 16%;
+    --card-mix: 62%;
   }
 }
 
 :root[data-theme="dark"],
 .theme-swatch-face[data-swatch="dark"] {
   color-scheme: dark;
-  --bg: #141416;
-  --surface: #1b1b1f;
-  --surface-2: #26262b;
+  --bg: #0e1014;
+  --surface: #171a20;
+  --surface-2: #22262e;
   --selection: #34415b;
   --border: #313137;
   --control-border: #67707a;
@@ -156,7 +160,8 @@
   --brown: #d6a26a;
   --shadow-strength: 0.32;
   --hairline-mix: 13%;
-  --raise-mix: 15%;
+  --raise-mix: 16%;
+  --card-mix: 62%;
 }
 
 :root[data-theme="light"] {
@@ -205,10 +210,10 @@
   --hover: color-mix(in srgb, var(--text) 6%, transparent);
   --active: color-mix(in srgb, var(--text) 10%, transparent);
   --bubble: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
-  --card: color-mix(in srgb, var(--surface) 55%, var(--bg));
+  --card: color-mix(in srgb, var(--surface) var(--card-mix), var(--bg));
   --raised: color-mix(in srgb, var(--text) var(--raise-mix), var(--surface));
   --code-bg: color-mix(in srgb, var(--surface-2) 45%, var(--bg));
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.8)), 0 6px 22px rgb(0 0 0 / var(--shadow-strength));
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.8)), 0 8px 24px rgb(0 0 0 / calc(var(--shadow-strength) * 0.55));
   --shadow-float: 0 2px 6px rgb(0 0 0 / var(--shadow-strength)), 0 16px 40px rgb(0 0 0 / calc(var(--shadow-strength) * 1.4));
   /* One short scale: a radius says what a thing is, not how soft it feels. Controls
      (buttons, chips, segmented choices, pickers) share --r-control; in-page tiles take
