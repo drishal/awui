@@ -12,9 +12,14 @@ test("work happens along with its chart: context count follows the original tool
   await expect(panel.locator(".context-count")).toHaveCount(1);
   await expect(panel.locator(".context-count").first()).toHaveText("2");
   await expect(panel.getByRole("heading", { name: "Background jobs" })).toHaveCount(0);
-  // What the chat is sits in the summary above the groups, and each run reads one status word.
-  await expect(panel.locator(".context-summary-title")).toContainText("subagents");
-  await expect(panel.locator(".context-summary-meta")).toContainText("alpha");
+  // Where the project stands is one row above the groups (the header already names the chat and project),
+  // and each run reads one status word.
+  const gitRow = panel.locator(".context-git");
+  await expect(gitRow).toBeVisible();
+  await expect(gitRow.locator(".context-git-branch")).not.toBeEmpty();
+  await expect(gitRow.getByRole("button", { name: "Review changes" })).toBeVisible();
+  // The context number rides on its group's heading, so a folded rail still reads it.
+  await expect(panel.locator(".context-section-memory .context-head-value")).toHaveText(/%|—/);
   await expect(panel.locator(".context-status").first()).toHaveText("Done");
   const briefButton = panel.getByRole("button", { name: "Open scout run", exact: true }).first();
   await briefButton.click();

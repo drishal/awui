@@ -13,8 +13,7 @@ import { IconAgents, IconBranch, IconChevronRight, IconEdit, IconFork, IconGauge
 import { Dialog } from "./Dialog.js";
 import { ConfirmButton } from "./ConfirmButton.js";
 import { DiffBadge } from "./ToolBody.js";
-import { plainTitle } from "../plain-title.js";
-import { ContextGroup, ContextList, ContextQuiet, ContextRow, ContextRowButton, ContextStatus } from "./ContextRows.js";
+import { ContextGroup, ContextList, ContextRow, ContextRowButton, ContextStatus } from "./ContextRows.js";
 import { gitSummary, jobEntries, jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, tokenCount, validatedFolds, type ContextSectionId } from "../context-panel.js";
 
 export interface ContextActions {
@@ -114,21 +113,21 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
 
   const details = (
     <>
-      <div className="context-summary">
-        <div className="context-summary-main">
-          <p className="context-summary-title" title={plainTitle(chat.title || chat.harnessId)}>{plainTitle(chat.title || chat.harnessId)}</p>
-          <p className="context-summary-meta">{chat.workspace.name}</p>
+      {/* Where the project stands, in one row: the header above already names the chat and its project, so
+          this card holds only what they do not — the branch, what it changed, and the way into review. */}
+      {project ? (
+        <div className="context-git">
+          <IconBranch size={12} className="context-git-branch-icon" />
+          <span className="context-git-branch" title={`On ${project.branch}`}>{project.branch}</span>
+          {project.operation ? <span className="context-git-op">{OPERATION_LABEL[project.operation]}</span> : null}
+          <span className="context-git-diff">
+            {project.files > 0 ? <><span className="context-git-files">{project.files} {project.files === 1 ? "file" : "files"}</span><DiffBadge added={project.added} removed={project.removed} /></> : <span className="context-git-clean">clean</span>}
+          </span>
+          <button type="button" className="context-git-review" aria-label="Review changes" title="Review changes" onClick={() => onReview()}>
+            <IconEdit size={13} />
+          </button>
         </div>
-        {project ? <div className="context-summary-git">
-          <IconBranch size={12} className="context-summary-branch-icon" />
-          <span className="context-summary-branch" title={`On ${project.branch}`}>{project.branch}</span>
-          {project.operation ? <span className="context-summary-op">{OPERATION_LABEL[project.operation]} in progress</span> : null}
-          <span className="context-summary-diff">{project.files > 0 ? <><span className="context-summary-files">{project.files} {project.files === 1 ? "file" : "files"}</span><DiffBadge added={project.added} removed={project.removed} /></> : <span className="context-summary-clean">clean</span>}</span>
-        </div> : null}
-        <button type="button" className="context-summary-action" onClick={() => onReview()}>
-          <IconEdit size={12} />Review changes<IconChevronRight size={12} className="context-summary-action-open" />
-        </button>
-      </div>
+      ) : null}
 
       {runs.length > 0 || chat.lineage ? <ContextGroup id="agents" label={labels.agents} count={runs.length || undefined} open={open.agents} attention={runs.some((run) => run.status === "failed") ? "accent" : false} onToggle={toggle}>
         <ContextList>
@@ -193,14 +192,14 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
         </ContextList>
       </ContextGroup> : null}
 
-      <ContextGroup id="memory" label={labels.memory} open={open.memory} attention={chat.context?.percent && chat.context.percent >= 80 ? "warn" : false} onToggle={toggle}>
-        {chat.context ? <>
-          <ContextList>
-            <ContextRow icon={<IconGauge size={13} />} title="Context used" meta={`${tokenCount(chat.context.tokens)} of ${tokenCount(chat.context.window)} tokens`} aside={<strong className="context-percent">{chat.context.percent === null ? "—" : `${Math.round(chat.context.percent)}%`}</strong>} actions={<ContextRowButton label="Open context and timings" onClick={onUsage}><IconChevronRight size={13} /></ContextRowButton>} />
-          </ContextList>
-          <div className="context-usage-bar" style={{ "--context-value": `${Math.min(100, chat.context.percent ?? 0)}%` } as React.CSSProperties} />
-        </> : <ContextQuiet>This harness has not reported context-window usage yet.</ContextQuiet>}
-      </ContextGroup>
+      {/* Only a harness that reports a window has anything to say here, and then the number rides on the
+          group's own heading: folded or open, the rail still says how full the context is. */}
+      {chat.context ? <ContextGroup id="memory" label={labels.memory} open={open.memory} attention={chat.context.percent !== null && chat.context.percent >= 80 ? "warn" : false} value={<span className="context-head-value">{chat.context.percent === null ? "—" : `${Math.round(chat.context.percent)}%`}</span>} onToggle={toggle}>
+        <ContextList>
+          <ContextRow icon={<IconGauge size={13} />} title="Context used" meta={`${tokenCount(chat.context.tokens)} of ${tokenCount(chat.context.window)} tokens`} actions={<ContextRowButton label="Open context and timings" onClick={onUsage}><IconChevronRight size={13} /></ContextRowButton>} />
+        </ContextList>
+        <div className="context-usage-bar" style={{ "--context-value": `${Math.min(100, chat.context.percent ?? 0)}%` } as React.CSSProperties} />
+      </ContextGroup> : null}
       {error ? <p className="context-error" role="alert">{error}</p> : null}
     </>
   );
