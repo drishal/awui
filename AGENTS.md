@@ -411,7 +411,7 @@ if every test passes.
   takes but never settles), `midcompact` (compact inside a run, then carry on),
   `contended` (refuse a prompt while a run is going), `testrun` (a command
   printing a Vitest summary with one failure), `toolfail` (a command call that
-  errors), `imagecall` (a read of a picture, its result an image block), `manycalls`
+  errors), `longlog` (a command printing forty lines, past a framed call's cap), `imagecall` (a read of a picture, its result an image block), `manycalls`
   (twelve quick reads, a run long enough to fold),
   `widethought` (two calls with narrated thinking between, a code line in it
   far wider than the column), `moaref` (a MoA turn's reference advice as
