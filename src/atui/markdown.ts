@@ -4,6 +4,45 @@
 
 const FENCE = /^\s*(`{3,}|~{3,})/;
 
+/**
+ * The words a find landed on, set in bold (the Markdown renderer takes no inline marks, but its strong style is its own colour and weight, so a match reads
+ * as marked): every case-insensitive occurrence of `query` outside fenced code and inline code spans. A match already inside bold stays as it is.
+ */
+export function markMatches(markdown: string, query: string): string {
+  const q = query.trim();
+  if (q.length === 0) return markdown;
+  const needle = q.toLowerCase();
+  let fence: string | null = null;
+  return markdown
+    .split("\n")
+    .map((line) => {
+      const f = FENCE.exec(line)?.[1];
+      if (f) {
+        if (fence === null) fence = f[0] as string;
+        else if (f[0] === fence) fence = null;
+        return line;
+      }
+      if (fence !== null) return line;
+      // Inline code spans are kept whole; the text between them is where matches are set.
+      return line
+        .split(/(`[^`]*`)/)
+        .map((part, i) => {
+          if (i % 2 === 1) return part;
+          let out = "";
+          let at = 0;
+          for (let hit = part.toLowerCase().indexOf(needle); hit >= 0; hit = part.toLowerCase().indexOf(needle, at)) {
+            const end = hit + needle.length;
+            const inBold = /\*\*/.test(part.slice(Math.max(0, hit - 2), hit)) || /\*\*/.test(part.slice(end, end + 2));
+            out += part.slice(at, hit) + (inBold ? part.slice(hit, end) : `**${part.slice(hit, end)}**`);
+            at = end;
+          }
+          return out + part.slice(at);
+        })
+        .join("");
+    })
+    .join("\n");
+}
+
 /** `- [ ] x` → `- ☐ x`, `- [x] x` → `- ☑ x`; code blocks are left alone. */
 export function taskBoxes(markdown: string): string {
   if (!markdown.includes("[")) return markdown;

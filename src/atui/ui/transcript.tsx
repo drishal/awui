@@ -21,7 +21,7 @@ import { findTurns } from "../../web/find.js";
 import { clip, fileUrl, foldLabel, outputTail, unifiedDiff } from "../format.js";
 import type { TodoEntry } from "../../shared/todo-entries.js";
 import { easeOut, flashAt, mix, unrollCounts } from "../fx.js";
-import { filetypeOf, taskBoxes } from "../markdown.js";
+import { filetypeOf, markMatches, taskBoxes } from "../markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll, turnTone, type TurnTone } from "../minimap.js";
 import { latestThoughtLine, neatRow, rowHead, sigmaFacts, thinkingMeta, workRuns, type NeatRow, type WorkRun } from "../neat.js";
 import { callDuration } from "../../shared/tool-row.js";
@@ -127,7 +127,7 @@ export function renderDecoratedBlock(theme: Theme, cache: Map<string, BlockWrap>
 }
 
 /** Markdown as atui draws it: revealed at a steady pace while it streams, task lists as boxes, tables in rounded borders. Exported for tests. */
-export function Md(p: { text: string; streaming: boolean; fg: string; id?: string; quiet?: boolean }) {
+export function Md(p: { text: string; streaming: boolean; fg: string; id?: string; quiet?: boolean; /** The words a find landed on: set in bold in the text. */ mark?: string | null }) {
   const t = useTheme();
   const app = useAtui();
   const renderer = useRenderer();
@@ -145,7 +145,7 @@ export function Md(p: { text: string; streaming: boolean; fg: string; id?: strin
   const renderBlock = (block: MarkdownBlock, ctx: RenderNodeContext) => renderDecoratedBlock(t(), wraps, block, ctx);
   // No cursor and no clock: the content changes only when text arrives, so
   // nothing reflows between deltas (the Working row shows a turn is live).
-  const content = () => taskBoxes(paced());
+  const content = () => taskBoxes(p.mark ? markMatches(paced(), p.mark) : paced());
   return (
     <markdown
       content={content()}
@@ -973,7 +973,7 @@ function SegmentedWork(p: { turn: Turn; segments: WorkSegment[]; open: boolean; 
 }
 
 /** The answer, neat-render's: its first line marked with the accent `●` once it is written, the rest in the same two-column gutter. */
-function Answer(p: { item: AssistantItem }) {
+function Answer(p: { item: AssistantItem; mark?: string | null }) {
   const t = useTheme();
   return (
     <box flexDirection="column" marginTop={1}>
@@ -983,7 +983,7 @@ function Answer(p: { item: AssistantItem }) {
             {p.item.streaming ? "  " : "● "}
           </text>
           <box flexDirection="column" flexGrow={1} flexShrink={1}>
-            <Md text={p.item.text} streaming={p.item.streaming} fg={t().text} id={p.item.id} />
+            <Md text={p.item.text} streaming={p.item.streaming} fg={t().text} id={p.item.id} mark={p.mark} />
           </box>
         </box>
       </Show>
@@ -1093,7 +1093,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       >
         <SegmentedWork turn={p.turn()} segments={segments()} open={p.open} onToggle={p.onToggle} workspace={p.workspace} column={p.column} fade={fade()} />
       </Show>
-      <Show when={p.turn().answer}>{(a) => <Answer item={a()} />}</Show>
+      <Show when={p.turn().answer}>{(a) => <Answer item={a()} mark={p.foundQuery} />}</Show>
       <Show when={afterWork()}>
         {(segment) => (
           <>

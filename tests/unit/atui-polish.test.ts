@@ -7,7 +7,7 @@ import { asHarnessId } from "../../src/shared/protocol.js";
 import { applyMention, codeBlocks, ghostCompletion, matchSpans, mentionAt, newsBetween, notifySequence, quoteText, runForMessage, runStatus, tipAt, tipsFor, TIPS } from "../../src/atui/assist.js";
 import { breathe, flashAt, meter, mix, ramp, revealCut, revealStep, scrollPath, shimmer, sparkline, spinnerFor, statBar, streamRate, unrollCounts } from "../../src/atui/fx.js";
 import { contextTone, DARK } from "../../src/atui/theme.js";
-import { filetypeOf, taskBoxes } from "../../src/atui/markdown.js";
+import { filetypeOf, markMatches, taskBoxes } from "../../src/atui/markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll } from "../../src/atui/minimap.js";
 import { actionKeys, LEADER_HELP, LEADER_KEYS, splashHintLine, WHICH_KEY_AIR, WHICH_KEY_CELL, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
 import { clip, tabTitleChars, wrapLines } from "../../src/atui/format.js";
@@ -186,6 +186,11 @@ describe("markdown", () => {
     expect(taskBoxes("- [ ] write\n- [x] test\n* [X] ship")).toBe("- ☐ write\n- ☑ test\n* ☑ ship");
     expect(taskBoxes("```\n- [ ] code\n```")).toBe("```\n- [ ] code\n```");
     expect(taskBoxes("a [link](x)")).toBe("a [link](x)");
+    // A find's words are set in bold outside code, whatever their case, and left alone inside it or inside bold already.
+    expect(markMatches("Needle in a haystack, a NEEDLE too", "needle")).toBe("**Needle** in a haystack, a **NEEDLE** too");
+    expect(markMatches("see `needle` here\n```\nneedle\n```\nneedle", "needle")).toBe("see `needle` here\n```\nneedle\n```\n**needle**");
+    expect(markMatches("a **needle** b", "needle")).toBe("a **needle** b");
+    expect(markMatches("nothing", "  ")).toBe("nothing");
   });
 
   it("names a file's language from its extension", () => {
