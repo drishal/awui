@@ -66,7 +66,7 @@ import { buildTurns, turnOfTool } from "../../web/turns.js";
 import { atLabel, turnWaterfall } from "../../web/waterfall.js";
 import { cacheShare, dollars, shortTokens, tokensOf } from "../../web/usage.js";
 
-type Dialog = "palette" | "timeline" | "files" | "worktrees" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
+type Dialog = "palette" | "timeline" | "files" | "worktrees" | "compare" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -78,7 +78,7 @@ const PALETTE_GROUPS: Record<string, string> = {
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
   model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
   sidebar: "View", panel: "View", work: "View", thoughts: "View", keybinds: "View", glass: "View", icons: "View",
-  git: "Project", github: "Project", usage: "Project",
+  git: "Project", github: "Project", usage: "Project", compare: "Project",
 };
 /** The headings' order; Tabs, Sessions and the thinking levels keep their own and follow. */
 const PALETTE_ORDER = ["Chats", "Tabs", "Agent", "View", "Project", "More"];
@@ -712,6 +712,7 @@ export function App(p: {
       if (failed) add({ id: "failed-call", label: "Show the last failed call", keywords: "error red broke test failure", run: () => revealTool(failed.id) });
     }
     if ((app.chat()?.checkpoints.length ?? 0) > 0) add({ id: "timeline", label: "File timeline…", keywords: "checkpoints undo restore files before each prompt history changes", run: () => setDialog("timeline") });
+    if (app.workspace()) add({ id: "compare", label: "Compare agents on the draft in worktrees…", hint: "one prompt, each agent its own checkout", keywords: "race fan out several harnesses isolated", run: () => openCompare() });
     if (app.workspace()) add({ id: "worktrees", label: "Worktrees…", hint: "make one, or open a chat in one", keywords: "git isolated checkout branch tree new worktree", run: () => setDialog("worktrees") });
     if (c || app.workspace()) add({ id: "open-file", label: "Open a file…", keywords: "view read mention attach project files path", run: () => setDialog("files") });
     add({ id: "search-chats", label: "Search every chat…", keywords: "find text sessions history all projects harnesses grep", run: () => setDialog("chats") });
@@ -917,6 +918,52 @@ export function App(p: {
     () => (dialog() === "worktrees" ? app.workspace()?.id : undefined),
     (id) => app.server.call<{ worktrees: WorktreeInfo[] }>(`/api/workspaces/${encodeURIComponent(id)}/worktrees`).then((r) => r.worktrees).catch(() => [] as WorktreeInfo[]),
   );
+  /** Compare (the web's CompareDialog): the composer's draft goes to two to four agents at once, each in a new worktree of its own and with its own chat; nothing merges. The draft is the prompt, so the sheet only asks who. */
+  const [compareChoice, setCompareChoice] = createSignal<Array<ReturnType<typeof compareHarnesses>[number]["id"]>>([]);
+  const compareHarnesses = () => (app.boot()?.harnesses ?? []).filter((h) => h.available && !h.capabilities.webOnly);
+  const openCompare = () => {
+    if (!composer?.plainText.trim()) return flash("Write the prompt first: every agent gets it");
+    if (compareHarnesses().length < 2) return flash("Compare needs two available agents");
+    const mine = app.harness()?.id;
+    const ids = compareHarnesses().map((h) => h.id);
+    setCompareChoice((mine && ids.includes(mine) ? [mine, ...ids.filter((id) => id !== mine)] : ids).slice(0, 2));
+    setDialog("compare");
+  };
+  const compareItems = (): PaletteItem[] => {
+    const chosen = compareChoice();
+    const ready = chosen.length >= 2 && chosen.length <= 4;
+    return [
+      {
+        id: "cmp:start",
+        section: "Compare",
+        label: `Start with ${chosen.length} agent${chosen.length === 1 ? "" : "s"}`,
+        hint: "Enter",
+        disabled: ready ? undefined : "Pick two to four agents",
+        run: () => {
+          const ws = app.workspace();
+          const prompt = composer?.plainText ?? "";
+          if (!ws || !prompt.trim()) return;
+          setDialog(null);
+          flash("Starting the comparison…");
+          void app.server
+            .call<{ results: Array<{ harnessId: string; error?: string }> }>("/api/compare", { body: { workspaceId: ws.id, name: "compare", base: "HEAD", prompt, choices: chosen.map((harnessId) => ({ harnessId })) } })
+            .then((r) => {
+              const failed = r.results.filter((x) => x.error);
+              composer?.setText("");
+              app.setBanner({ level: failed.length > 0 ? "warning" : "info", text: failed.length > 0 ? `Started ${r.results.length - failed.length} of ${r.results.length}: ${failed.map((x) => `${x.harnessId}: ${x.error}`).join("; ")}` : `Started ${r.results.length} agents, each in its own worktree: open them from the sidebar` });
+            })
+            .catch((error: unknown) => app.setBanner({ level: "warning", text: error instanceof Error ? error.message : String(error) }));
+        },
+      },
+      ...compareHarnesses().map((h): PaletteItem => ({
+        id: `cmp:${h.id}`,
+        section: "Run it with",
+        label: `${chosen.includes(h.id) ? "◉" : "○"} ${h.displayName}`,
+        hint: chosen.includes(h.id) ? "Enter to leave out" : "Enter to include",
+        run: () => setCompareChoice((now) => (now.includes(h.id) ? now.filter((id) => id !== h.id) : now.length >= 4 ? now : [...now, h.id])),
+      })),
+    ];
+  };
   const openTreeChat = async (workspace: WorkspaceInfo) => {
     setDialog(null);
     app.newChat({ newTab: true, workspace });
@@ -1432,6 +1479,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "timeline"}>
                   <Picker title="File timeline" placeholder="Search prompts…" empty={points.loading ? "Reading the checkpoints…" : "No file checkpoints in this chat yet"} items={timelineItems()} preview={timelinePreview} noun={["checkpoint", "checkpoints"]} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "compare"}>
+                  <Picker title="Compare agents" placeholder="Pick who runs the draft…" items={[]} search={compareItems} empty="No agents available" firstHeading noun={["agent", "agents"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "worktrees"}>
                   <Picker title="Worktrees" placeholder="Type a name to make a worktree, or pick one to open a chat in…" items={[]} search={worktreeItems} empty={trees.loading ? "Reading the worktrees…" : "No worktrees yet: type a name to make one"} firstHeading noun={["worktree", "worktrees"]} onClose={() => setDialog(null)} side={room()} />
