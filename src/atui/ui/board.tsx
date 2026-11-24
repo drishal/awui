@@ -198,7 +198,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           {`   ${filterLine()}`}
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? fitHints(["↑↓ card", "Enter open", "←→ column", "f project", "r PR", "Esc close"], width() - 15 - filterLine().length)}
+          {note() ?? fitHints(["↑↓ card", "Enter open", "f project", "r PR", "←→ column", "Esc close"], width() - 15 - filterLine().length)}
         </text>
       </box>
       <box flexDirection="row" flexShrink={0} overflow="hidden" marginTop={1}>
