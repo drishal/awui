@@ -370,12 +370,13 @@ export function Composer(p: {
   const offerText = () => (offer() ? `${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  ` : "");
   const sparkText = () => (app.contextHistory().length > 1 ? `${sparkline(app.contextHistory().slice(-12), 100)} ` : "");
   const ctxText = () => (percent() !== null ? `ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%` : "");
-  // The word that says what the level is; a narrow pane keeps the model's name whole instead.
+  // The harness chip keeps its mark and colour on a narrow pane and gives up its name (the model chip beside it names the same thing), so every chip stays labelled and the model's name stays whole.
+  const harnessWord = () => (p.column >= 80 ? `${app.harness()?.displayName ?? "—"} ` : "");
   const thinkWord = () => (p.column >= 80 ? "Think " : "");
   const permissionLabel = () => (caps()?.supportsPermissionMode ? app.chat()?.config.permissionModes?.find((m) => m.id === app.chat()?.config.permissionMode)?.label : undefined);
   const kept = () => {
     const g = app.git();
-    const chips = ` ${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾ `.length + (caps()?.supportsThinkingLevel && words().level ? ` ${thinkWord()}${levelTitle(words().level ?? "")} ▾ `.length + 1 : 0) + (permissionLabel() ? ` ${permissionLabel()} ▾ `.length + 1 : 0) + (p.status.mode ? 14 : 0) + (queued() > 0 ? `  +${queued()} queued`.length : 0) + (p.status.note ? p.status.note.length + 2 : 0);
+    const chips = ` ${harnessGlyph(app.harness()?.id ?? "")} ${harnessWord()}▾ `.length + (caps()?.supportsThinkingLevel && words().level ? ` ${thinkWord()}${levelTitle(words().level ?? "")} ▾ `.length + 1 : 0) + (permissionLabel() ? ` ${permissionLabel()} ▾ `.length + 1 : 0) + (p.status.mode ? 14 : 0) + (queued() > 0 ? `  +${queued()} queued`.length : 0) + (p.status.note ? p.status.note.length + 2 : 0);
     // The model's name keeps a dozen cells; what the chips and it leave is the right side's.
     const budget = p.column - 2 - chips - 14;
     return fitFooter(
@@ -563,7 +564,7 @@ export function Composer(p: {
           </Show>
           {/* Chips are fills, as the web's pills are: a one-row box with side borders drew bare pipes. */}
           <box flexShrink={0} backgroundColor={app.glass() ? undefined : mix(t().surface, accentOf(t(), app.harness()?.accent), 0.18)} onMouseDown={() => p.onPick("harness")}>
-            <text fg={accentOf(t(), app.harness()?.accent)}>{` ${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾ `}</text>
+            <text fg={accentOf(t(), app.harness()?.accent)}>{` ${harnessGlyph(app.harness()?.id ?? "")} ${harnessWord()}▾ `}</text>
           </box>
           <Show when={caps()?.supportsModelSelection}>
             <box flexShrink={1} backgroundColor={app.glass() ? undefined : t().surface2} marginLeft={1} onMouseDown={() => p.onPick("models")}>
