@@ -149,7 +149,7 @@ export function Md(p: { text: string; streaming: boolean; fg: string; id?: strin
   return (
     <markdown
       content={content()}
-      syntaxStyle={syntaxFor(t(), renderer.nativeScene, p.quiet)}
+      syntaxStyle={syntaxFor(t(), renderer.nativeScene, p.quiet, Boolean(p.mark))}
       fg={p.fg}
       conceal
       streaming={p.streaming || paced().length < p.text.length}
@@ -1063,8 +1063,8 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
           <box flexDirection="row" marginTop={1}>
             <text selectable={false} fg={t().muted} wrapMode="none" truncate>
               <span style={{ fg: t().info }}>{`${FIND_MARK} `}</span>
-              <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().accent }}><b>{part.text}</b></span> : <span>{part.text}</span>)}</For>
-              <span style={{ fg: t().muted }}>{`  ${h().count > 1 ? `${h().count} matches · ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"} · M-n/M-p step`}</span>
+              <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().accent }}><b>{part.text}</b></span> : <span style={{ fg: t().text2 }}>{part.text}</span>)}</For>
+              <span style={{ fg: t().muted }}>{`  ·  ${h().count > 1 ? `${h().count} matches · ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"} · M-n/M-p step`}</span>
             </text>
           </box>
         )}

@@ -5,8 +5,8 @@
 const FENCE = /^\s*(`{3,}|~{3,})/;
 
 /**
- * The words a find landed on, set in bold (the Markdown renderer takes no inline marks, but its strong style is its own colour and weight, so a match reads
- * as marked): every case-insensitive occurrence of `query` outside fenced code and inline code spans. A match already inside bold stays as it is.
+ * The words a find landed on, set in bold (the Markdown renderer takes no inline marks, so the landed turn draws its strong runs on a warn-tinted ground,
+ * syntaxFor's `found` mode, as the web marks them): every case-insensitive occurrence of `query` outside fenced code and inline code spans. A match already inside bold stays as it is.
  */
 export function markMatches(markdown: string, query: string): string {
   const q = query.trim();

@@ -8,8 +8,9 @@ import { mix } from "../fx.js";
 const cache = new WeakMap<NativeResourceOwner, Map<string, SyntaxStyle>>();
 
 /** The theme's styles, owned by the renderer that draws them; quiet styles never leak into answers. */
-export function syntaxFor(theme: Theme, owner: NativeResourceOwner, quiet = false): SyntaxStyle {
-  const key = `${JSON.stringify(theme)}:${quiet}`;
+/** `found`: the landed turn of a find, whose bold runs are the matched words, set on a warn-tinted ground as the web marks them. */
+export function syntaxFor(theme: Theme, owner: NativeResourceOwner, quiet = false, found = false): SyntaxStyle {
+  const key = `${JSON.stringify(theme)}:${quiet}:${found}`;
   let mine = cache.get(owner);
   if (!mine) cache.set(owner, (mine = new Map()));
   const hit = mine.get(key);
@@ -33,7 +34,7 @@ export function syntaxFor(theme: Theme, owner: NativeResourceOwner, quiet = fals
       "markup.heading.4": heading,
       "markup.heading.5": heading,
       "markup.heading.6": heading,
-      "markup.strong": { fg: c(emphasis), bold: true },
+      "markup.strong": found ? { fg: c(theme.text), bg: c(mix(theme.bg, theme.warn, 0.4)), bold: true } : { fg: c(emphasis), bold: true },
       "markup.italic": { fg: c(emphasis), italic: true },
       "markup.strikethrough": { fg: c(theme.muted) },
       "markup.raw": { fg: c(theme.rare) },
