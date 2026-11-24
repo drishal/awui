@@ -118,8 +118,10 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.context-summary-meta { display: flex; min-width: 0; align-items: center; gap: 5px; margin: 0; overflow: hidden; color: var(--muted-text); font-size: var(--chat-small); text-overflow: ellipsis; white-space: nowrap; }
-.context-summary-sep { color: var(--hairline-strong); }
+/* The project's folder: one line, cut with an ellipsis. (It used to hold the harness name too,
+   which the chat's header already says.) */
+.context-summary-meta { min-width: 0; margin: 0; overflow: hidden; color: var(--muted-text); font-size: var(--chat-small); text-overflow: ellipsis; white-space: nowrap; }
+
 .context-summary-git { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: var(--label-size); }
 .context-summary-branch-icon { color: var(--muted-text); }
 .context-summary-branch { min-width: 0; overflow: hidden; color: var(--text-2); font-family: var(--font-mono); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }

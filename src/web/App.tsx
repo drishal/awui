@@ -2830,7 +2830,6 @@ export function App() {
               }
             : null
         }
-        harnessName={chatHarness?.displayName ?? null}
         version={boot.version}
       />
 

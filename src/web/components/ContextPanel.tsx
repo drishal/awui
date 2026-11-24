@@ -117,7 +117,7 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
       <div className="context-summary">
         <div className="context-summary-main">
           <p className="context-summary-title" title={plainTitle(chat.title || chat.harnessId)}>{plainTitle(chat.title || chat.harnessId)}</p>
-          <p className="context-summary-meta"><span className="context-summary-harness">{chat.harnessId}</span><span className="context-summary-sep" aria-hidden="true">·</span>{chat.workspace.name}</p>
+          <p className="context-summary-meta">{chat.workspace.name}</p>
         </div>
         {project ? <div className="context-summary-git">
           <IconBranch size={12} className="context-summary-branch-icon" />

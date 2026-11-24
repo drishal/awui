@@ -1,10 +1,10 @@
-// Thin app-wide status bar (after Hermes Desktop): connection, harness and
-// model, project, version. Desktop only; phones get a header banner instead.
+// Thin app-wide status bar: connection, project, version. It says the harness and model once
+// already — the chat's header tag and the composer's chips — so repeating them here only made a
+// third place to keep in step. Desktop only; phones get a header banner instead.
 // A shown Board room takes the place of the chat's three items (its own
 // connection, its name and turn state, its workspace); the room is never
 // faked into a ChatState.
 import type { ChatState } from "../chat-state.js";
-import { levelTitle } from "../config-summary.js";
 import type { ConnectionState } from "../stream.js";
 import { dotted } from "./Dot.js";
 
@@ -28,16 +28,13 @@ export function StatusBar({
   conn,
   chat,
   room,
-  harnessName,
   version,
 }: {
   conn: ConnectionState;
   chat: ChatState | null;
   room: StatusBarRoom | null;
-  harnessName: string | null;
   version: string;
 }) {
-  const model = chat?.config.models.find((m) => m.key === chat.config.model)?.name ?? chat?.config.model ?? null;
   return (
     <footer className="status-bar" aria-label="Status">
       {room ? (
@@ -51,11 +48,7 @@ export function StatusBar({
       ) : (
         <span className="sb-item muted">No chat open</span>
       )}
-      {room ? (
-        <span className="sb-item">{dotted([room.name, room.status])}</span>
-      ) : chat && harnessName ? (
-        <span className="sb-item">{dotted([harnessName, model, chat.config.thinkingLevel ? levelTitle(chat.config.thinkingLevel) : null])}</span>
-      ) : null}
+      {room ? <span className="sb-item">{dotted([room.name, room.status])}</span> : null}
       {room ? <span className="sb-item sb-path" title={room.workspace}>{folderName(room.workspace)}</span> : chat ? <span className="sb-item sb-path" title={chat.workspace.path}>{folderName(chat.workspace.path)}</span> : null}
       <span className="sb-spacer" />
       <span className="sb-item">v{version}</span>
