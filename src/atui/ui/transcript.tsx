@@ -1180,8 +1180,8 @@ interface Geometry {
   height: number;
 }
 
-/** The mark of a find: on the landed turn's strip and the gutter's tick (a Nerd Font magnifier, as the sidebar's \uf100 fold button is; ◎ is already the search tool's). */
-const FIND_MARK = "\uf002";
+/** The mark of a find: on the landed turn's strip and the gutter's tick (⌕, plain Unicode so no font is needed; ◎ is already the search tool's). */
+const FIND_MARK = "⌕";
 
 const sameGeometry = (a: Geometry, b: Geometry) => a.content === b.content && a.top === b.top && a.height === b.height && a.tops.length === b.tops.length && a.tops.every((v, i) => v === b.tops[i]);
 

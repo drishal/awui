@@ -40,7 +40,7 @@ export function SidebarRail(p: { asking: number; onExpand: () => void }) {
   const mark = () => (p.asking === 1 ? "▲" : p.asking > 9 ? "▲+" : `▲${p.asking}`);
   return (
     <box flexDirection="column" width={RAIL_WIDTH} flexShrink={0} border={["right"]} borderColor={t().border} alignItems="center" onMouseDown={p.onExpand}>
-      <text selectable={false} fg={t().accent}>{"\uf101"}</text>
+      <text selectable={false} fg={t().accent}>{"»"}</text>
       <Show when={p.asking > 0}>
         <text selectable={false} wrapMode="none" fg={mix(mix(t().bg, t().warn, 0.6), t().warn, breathe(tick(), BREATH_TICKS))}>{mark()}</text>
       </Show>
@@ -192,7 +192,7 @@ export function Sidebar(p: {
         <box flexGrow={1} />
         {/* nf-fa-angle_double_left: the fold button, the mirror of the rail's expand mark, at the strip's far right like a tab bar's close. */}
         <box onMouseDown={p.onCollapse}>
-          <text selectable={false} fg={t().muted}>{" \uf100"}</text>
+          <text selectable={false} fg={t().muted}>{" «"}</text>
         </box>
       </box>
       <text selectable={false} flexShrink={0} wrapMode="none">

@@ -110,8 +110,8 @@ describe("atui", () => {
     await ui.until("Search models…");
     await ui.escape();
     await ui.click("Sessions");
-    await ui.until("\uf101");
-    await ui.click("\uf101");
+    await ui.until("»");
+    await ui.click("»");
     await ui.until(">_");
     await ui.click(">_");
     await ui.until("Project terminal", 15_000);
@@ -463,7 +463,7 @@ describe("atui", () => {
     ui.keys.pressKey("p", { meta: true });
     await ui.until("match 2 of 2 · M-n next · M-p previous");
     // The turn the find landed on carries a strip with its words; the palette clears it.
-    expect(await ui.frame()).toMatch(/\uf002 .*prompt.* in the turn/);
+    expect(await ui.frame()).toMatch(/⌕ .*prompt.* in the turn/);
     expect(await ui.frame()).toContain("match 2/2");
     ui.keys.pressKey("k", { ctrl: true });
     await ui.until("Search commands, sessions, thinking…");
@@ -471,7 +471,7 @@ describe("atui", () => {
     await ui.until("Clear find marks");
     ui.keys.pressEnter();
     await ui.until("Find marks cleared");
-    expect(await ui.frame()).not.toMatch(/\uf002 .* in the turn/);
+    expect(await ui.frame()).not.toMatch(/⌕ .* in the turn/);
     // Search every chat: the palette's entry lists chats whose words match, the first hit as the row.
     ui.keys.pressKey("k", { ctrl: true });
     await ui.until("Search commands, sessions, thinking…");
@@ -482,7 +482,7 @@ describe("atui", () => {
     await ui.type("haystack");
     expect(await ui.until("1 chat")).toMatch(/haystack/);
     ui.keys.pressEnter();
-    await ui.until("\uf002");
+    await ui.until("⌕");
     // Nothing matches: the picker says so instead of listing the whole chat.
     ui.keys.pressKey("s", { ctrl: true });
     await ui.until("Type to find text in this chat…");
@@ -914,10 +914,10 @@ describe("atui", () => {
     await ui.click("Sessions");
     await ui.until("C-x s browse");
     // The tab strip's « (nf angle-double-left) folds it to a rail; the rail's » unfolds it.
-    await ui.click("\uf100");
-    const folded = await ui.until("\uf101");
+    await ui.click("«");
+    const folded = await ui.until("»");
     expect(folded).not.toContain("Sessions  Info");
-    await ui.click("\uf101");
+    await ui.click("»");
     await ui.until("Sessions  Info");
   }, 30_000);
 
@@ -1579,7 +1579,7 @@ describe("atui's density at 80 columns", () => {
     const spans = (await ui.spans()).flatMap((line) => line);
     expect(spans.find((s) => s.text.includes("Approve"))?.fg.toInts().slice(0, 3)).toEqual([78, 209, 126]);
     expect(spans.find((s) => s.text.includes("Deny"))?.fg.toInts().slice(0, 3)).toEqual([248, 113, 113]);
-    // The rail (the panel is folded at this width) carries the asking mark under its `\uf101`.
+    // The rail (the panel is folded at this width) carries the asking mark under its `»`.
     expect(card.split("\n").slice(0, 3).map((line) => line.slice(0, 3)).join("")).toContain("▲");
     // Open the panel (it opens unfocused): the asking row is there, its meta the age alone — the old
     // row put a second "!" beside the `▲` the prefix already shows.
