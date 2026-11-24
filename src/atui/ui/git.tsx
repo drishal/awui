@@ -280,7 +280,7 @@ export function GitView(p: { onClose: () => void }) {
             </Show>
           </box>
           <text flexShrink={0} fg={t().muted} marginBottom={1} wrapMode="none" truncate>
-            {busy() ? `${busy()}…` : size().width < 112 ? "↑↓ file · Enter stage/unstage · Esc close" : "↑↓ file · {/} group · Enter stage/unstage · a all · u undo · c commit · d diff · r refresh · Esc close"}
+            {busy() ? `${busy()}…` : size().width < 112 ? "↑↓ move · Enter stage/unstage · Esc close" : "↑↓ move · {/} group · Enter stage/unstage · a all · u undo · c commit · d diff · r refresh · Esc close"}
           </text>
         </Show>
       </Show>

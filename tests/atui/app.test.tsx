@@ -155,7 +155,7 @@ describe("atui", () => {
         ui.keys.pressKey(key);
         const frame = await ui.until(expected);
         sheetFits(frame, expected);
-        if (key === "k") expect(frame).toContain("Enter opens · Esc closes");
+        if (key === "k") expect(frame).toContain("Enter open · Esc close");
         ui.keys.pressEscape();
         await wait(60);
       }
@@ -567,7 +567,7 @@ describe("atui", () => {
     const asked = await ui.until("Waiting for approval");
     expect(asked).toContain("› 1. Approve");
     // Two answers, so the hint names 1–2 rather than a fixed 1–9.
-    expect(asked).toContain("1–2 to choose");
+    expect(asked).toContain("1–2 choose");
     ui.keys.pressKey("1");
     await ui.until("Echo: please ask first");
     await idle(ui);
@@ -603,7 +603,7 @@ describe("atui", () => {
     await idle(ui);
     await ui.type("/fake");
     const menu = await ui.until("/fake-status");
-    expect(menu).toContain("Tab completes");
+    expect(menu).toContain("Tab complete");
     ui.keys.pressTab();
     await wait(50);
     ui.keys.pressEnter();
@@ -702,7 +702,7 @@ describe("atui", () => {
     for (let i = 0; i < 5; i++) ui.keys.pressBackspace();
     // "@": the project's files; Tab puts the path in.
     await ui.type("look at @serv");
-    await ui.until("Tab or Enter inserts");
+    await ui.until("Tab or Enter insert");
     ui.keys.pressTab();
     await ui.until("look at @src/server.ts");
     ui.keys.pressEnter();
@@ -1143,7 +1143,7 @@ describe("atui", () => {
     }
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("s");
-    await ui.until("↑↓ Enter · t tab · Esc back");
+    await ui.until("↑↓ move · t tab · Esc back");
     ui.keys.pressArrow("down");
     await wait(30);
     ui.keys.pressEnter();
@@ -1236,7 +1236,7 @@ describe("atui", () => {
     await ui.until("Esc back");
     // Esc back to the list, and x asks before stopping the worker.
     await ui.escape();
-    await ui.until("Enter opens");
+    await ui.until("Enter open");
     ui.keys.pressKey("x");
     const asked = await ui.until("y confirms");
     expect(asked).toContain("Cancel Fake delegated task?");
@@ -1388,7 +1388,7 @@ describe("atui's density at 80 columns", () => {
     // selected session, and the approval stays pending — answered only when the composer owns the keys.
     ui.keys.pressKey("x", { ctrl: true });
     await ui.type("s");
-    await ui.until("↑↓ Enter · t tab · Esc");
+    await ui.until("↑↓ move · t tab · Esc");
     ui.keys.pressEnter();
     await wait(200);
     const pending = ui.app.chat()?.pending ?? [];

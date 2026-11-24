@@ -65,7 +65,7 @@ export function ContextRailView(p: RailActions) {
   /** The frame fits what it holds (each row, a heading over each group, the title and summary lines) up to the room the sheet stands in, so one worker is not a pane of empty rows. */
   const boxHeight = () => {
     const lines = entries().reduce((n, e, i, all) => n + 1 + (i === 0 || all[i - 1]?.card.id !== e.card.id ? (i === 0 ? 1 : 2) : 0) + (e.row.note ? 1 : 0), 0);
-    return Math.min(Math.max(10, size().height - 6), Math.max(10, Math.max(lines, 1) + 7));
+    return Math.min(Math.max(8, size().height - 6), Math.max(8, Math.max(lines, 1) + 6));
   };
 
   const open = (row: ContextCardRow) => {
@@ -133,7 +133,7 @@ export function ContextRailView(p: RailActions) {
           <span style={{ fg: t().muted }}>{`   ${clip(chat()?.title || "New chat", width() - 60)} · ${app.boot()?.harnesses.find((h) => h.id === chat()?.harnessId)?.displayName ?? chat()?.harnessId ?? ""} · ${chat()?.workspace.name ?? ""}`}</span>
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? (width() < 90 ? "Enter opens · Esc closes" : "↑↓ row · Enter opens · o opens the chat · Esc closes")}
+          {note() ?? (entries().length === 0 ? "Esc close" : width() < 90 ? "Enter open · Esc close" : "↑↓ move · Enter open · o chat · Esc close")}
         </text>
       </box>
       <text flexShrink={0} fg={t().text2} wrapMode="none" truncate>

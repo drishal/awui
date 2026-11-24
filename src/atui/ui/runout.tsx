@@ -57,7 +57,7 @@ export function RunOutput(p: { command: string; result: RunResult | null; onAdd:
         </scrollbox>
       </Show>
       <text flexShrink={0} fg={t().muted}>
-        {p.result ? "Enter puts the command and its output into your message · Esc closes" : "Esc closes (the command keeps running)"}
+        {p.result ? "Enter put in message · Esc close" : "Esc close (the command keeps running)"}
       </text>
     </box>
   );

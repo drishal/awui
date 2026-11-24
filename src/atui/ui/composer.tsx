@@ -441,7 +441,7 @@ export function Composer(p: {
             )}
           </For>
           <text fg={t().muted}>
-            {kind() === "prompt" ? "↑↓ move · Tab or Enter puts it in · Esc closes" : "↑↓ move · Tab completes · Esc closes"}
+            {kind() === "prompt" ? "↑↓ move · Tab or Enter insert · Esc close" : "↑↓ move · Tab complete · Esc close"}
             <Show when={kind() === "slash" && (commands() ?? []).some(isSkill) && !(slash() ?? "").startsWith("skill")}>
               <span style={{ fg: t().thinking }}>{`  · ${(commands() ?? []).filter(isSkill).length} skills under $`}</span>
             </Show>
@@ -484,7 +484,7 @@ export function Composer(p: {
               );
             }}
           </For>
-          <text fg={t().muted}>↑↓ move · Tab or Enter inserts · Esc closes</text>
+          <text fg={t().muted}>↑↓ move · Tab or Enter insert · Esc close</text>
         </box>
       </Show>
       <Show when={(app.chat()?.items.length ?? 0) > 0}>

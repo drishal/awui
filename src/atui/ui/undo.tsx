@@ -95,7 +95,7 @@ export function UndoDialog(p: { turn: number; onClose: () => void; side?: number
         </Show>
       </Show>
       <text fg={t().muted} marginTop={1}>
-        {busy() ? "Undoing…" : `↑↓ move · Space ticks · Enter undoes ${ticked().length} · Esc closes`}
+        {busy() ? "Undoing…" : `↑↓ move · Space ticks · Enter undo ${ticked().length} · Esc close`}
       </text>
     </box>
   );

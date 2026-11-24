@@ -180,7 +180,7 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
           </box>
         </Show>
       </Show>
-      <text fg={t().muted}>{denying() ? "Enter denies · Shift+Enter new line · Esc dismisses" : options().length > 0 ? `↑↓ or ${options().length > 1 ? `1–${Math.min(9, options().length)}` : "1"} to choose${options().some((o) => o.label === "Deny") ? " · Deny opens a reason field" : ""} · Esc dismisses` : "Enter sends · Shift+Enter new line · Esc dismisses"}</text>
+      <text fg={t().muted}>{denying() ? "Enter deny · Shift+Enter new line · Esc dismiss" : options().length > 0 ? `↑↓ or ${options().length > 1 ? `1–${Math.min(9, options().length)}` : "1"} choose${options().some((o) => o.label === "Deny") ? " · Deny asks why" : ""} · Esc dismiss` : "Enter send · Shift+Enter new line · Esc dismiss"}</text>
     </box>
   );
 }

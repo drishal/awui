@@ -185,7 +185,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           {`   ${filterLine()}`}
         </text>
         <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? (width() < 100 ? "Enter opens · Esc closes" : width() < 135 ? "←→ ↑↓ move · Enter opens · Esc closes" : "←→ column · ↑↓ card · Enter opens · f project · r pull request · Esc closes")}
+          {note() ?? (width() < 100 ? "Enter open · Esc close" : width() < 135 ? "←→↑↓ move · Enter open · Esc close" : "←→ column · ↑↓ card · Enter open · f project · r PR · Esc close")}
         </text>
       </box>
       <box flexDirection="row" flexGrow={1} overflow="hidden" marginTop={1}>

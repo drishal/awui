@@ -382,7 +382,7 @@ export function GitHubView(p: { onClose: () => void }) {
                   value={fieldOf(form() as Form)}
                   onInput={(value: string) => setForm((cur) => (cur ? setField(cur, value) : cur))}
                 />
-                <text fg={t().muted}>Enter next · Esc cancels the form</text>
+                <text fg={t().muted}>Enter next · Esc cancel</text>
               </box>
             ) : null}
             {stack()?.layers.length ? (

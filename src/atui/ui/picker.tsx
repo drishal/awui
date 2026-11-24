@@ -203,7 +203,7 @@ export function Picker(p: {
         <text flexGrow={1} fg={t().muted} wrapMode="none" truncate>
           <b>{p.title}</b>
         </text>
-        <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">{`${p.tabHint ? `${p.tabHint} · ` : ""}${p.info ? "↑↓ scroll" : "↑↓ Enter"} · Esc`}</text>
+        <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">{`${p.tabHint ? `${p.tabHint} · ` : ""}${p.info ? "↑↓ scroll" : "↑↓ move · Enter select"} · Esc close`}</text>
       </box>
       <box flexDirection="row" flexShrink={0}>
         <text fg={t().accent} flexShrink={0}>{"› "}</text>

@@ -241,7 +241,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
   });
 
   /** A list of workers fits its rows (a worker takes up to two lines) up to the room the sheet stands in; one worker's own screen takes all of it, its files scrolling. */
-  const boxHeight = () => Math.min(Math.max(10, size().height - 6), row() ? Number.MAX_SAFE_INTEGER : Math.max(10, rows().length * 2 + 8));
+  const boxHeight = () => Math.min(Math.max(8, size().height - 6), row() ? Number.MAX_SAFE_INTEGER : Math.max(6, rows().length * 2 + 4 + (error() || confirming() || busy() ? 2 : 0)));
 
   const taskLine = (target: TaskRow) => (
     // Never shrunk: the files below take the free space, and a shrunk header would overlap its own rows.
@@ -286,7 +286,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
         </text>
         {/* The list's keys sit beside the title like every other sheet's; a worker's own screen and its prompts keep their longer line below. */}
         <Show when={!row() && !error() && !confirming() && !busy()}>
-          <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">{width() < 90 ? "Enter opens · Esc closes" : "↑↓ worker · Enter opens · o chat · x cancel · Esc closes"}</text>
+          <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">{width() < 90 ? "Enter open · Esc close" : "↑↓ move · Enter open · o chat · x cancel · Esc close"}</text>
         </Show>
       </box>
       <Show
@@ -303,7 +303,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
                         <text flexShrink={0} fg={index() === at() ? t().accent : t().border}>{index() === at() ? "▌" : " "}</text>
                         <text flexShrink={0} fg={toneOf(t(), target.status.tone)}>{`${toneDot(target.status.tone)} `}</text>
                         <text flexGrow={1} wrapMode="none" truncate fg={t().text}>{target.title}</text>
-                        <text flexShrink={0} fg={t().muted} wrapMode="none" truncate>{` ${clip(target.meta, Math.max(10, width() - 46))}`}</text>
+                        <text flexShrink={0} fg={t().muted} wrapMode="none" truncate>{target.meta ? ` ${clip(target.meta, Math.max(10, width() - 48))} ·` : ""}</text>
                         <text flexShrink={0} fg={toneOf(t(), target.status.tone)}>{` ${target.word}`}</text>
                         <text flexShrink={0} fg={t().muted}>{`  ${target.elapsed}`}</text>
                       </box>
