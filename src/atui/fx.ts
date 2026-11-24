@@ -166,6 +166,8 @@ const SPINNERS: Record<string, string[]> = {
   codex: ["▙", "▛", "▜", "▟"],
   // DeepSeek Harness's spark, turning.
   dsh: ["✦", "✧", "✶", "✷"],
+  // Grok Build's corner, turning.
+  grok: ["◢", "◣", "◤", "◥"],
 };
 
 /** Each harness's own spinner (Claude Code's asterisks for Claude, omp's moon for omp); braille dots otherwise. */
