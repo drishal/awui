@@ -7,6 +7,9 @@
 }
 
 .conversation {
+  /* A column, so the thread can take the empty height above it (see .thread below). */
+  display: flex;
+  flex-direction: column;
   height: 100%;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -35,10 +38,21 @@
 
 /* Room under the last line for the "Jump to latest" pill, which floats 10px above this edge: without it the
    pill sits on the last row of a diff or a reply when the chat is scrolled to its end. */
+/* A short thread sits at the bottom, against the composer where the next prompt will go, instead of leaving a
+   few hundred pixels of nothing above the dock. An auto margin on the first turn (not justify-content, which
+   would push a long thread's top out of reach) does the moving: the thread still grows past the view as it fills. */
 .thread {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
   max-width: var(--chat-col);
   margin: 0 auto;
   padding: 8px 20px 44px;
+}
+
+.thread > .turn:first-child,
+.thread > .model-switch:first-child + .turn {
+  margin-top: auto;
 }
 
 .turn {
