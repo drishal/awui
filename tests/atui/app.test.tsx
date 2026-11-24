@@ -429,14 +429,14 @@ describe("atui", () => {
     ui.keys.pressKey("p", { meta: true });
     await ui.until("match 2 of 2 · M-n next · M-p previous");
     // The turn the find landed on carries a strip with its words; the palette clears it.
-    expect(await ui.frame()).toMatch(/◎ .*prompt.* in the turn/);
+    expect(await ui.frame()).toMatch(/\uf002 .*prompt.* in the turn/);
     ui.keys.pressKey("k", { ctrl: true });
     await ui.until("Search commands, sessions, thinking…");
     await ui.type("clear find");
     await ui.until("Clear find marks");
     ui.keys.pressEnter();
     await ui.until("Find marks cleared");
-    expect(await ui.frame()).not.toMatch(/◎ .* in the turn/);
+    expect(await ui.frame()).not.toMatch(/\uf002 .* in the turn/);
     // Search every chat: the palette's entry lists chats whose words match, the first hit as the row.
     ui.keys.pressKey("k", { ctrl: true });
     await ui.until("Search commands, sessions, thinking…");
@@ -447,7 +447,7 @@ describe("atui", () => {
     await ui.type("haystack");
     expect(await ui.until("1 chat")).toMatch(/haystack/);
     ui.keys.pressEnter();
-    await ui.until("◎");
+    await ui.until("\uf002");
     // Nothing matches: the picker says so instead of listing the whole chat.
     ui.keys.pressKey("s", { ctrl: true });
     await ui.until("Type to find text in this chat…");

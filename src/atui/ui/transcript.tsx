@@ -1008,15 +1008,17 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
     const m = query ? findTurns([p.turn()], query, 44, p.workspace)[0] : undefined;
     if (!query || !m) return null;
     const parts: Array<{ text: string; match: boolean }> = [];
-    const lower = m.snippet.toLowerCase();
+    // A list marker or heading hashes at the start are Markdown, not words: the strip quotes the text only.
+    const snippet = m.snippet.replace(/^(…)?\s*(?:[-*+]|\d+\.|#{1,6})\s+/, "$1");
+    const lower = snippet.toLowerCase();
     const q = query.toLowerCase();
     let at = 0;
     for (let i = lower.indexOf(q); i >= 0 && q; i = lower.indexOf(q, at)) {
-      if (i > at) parts.push({ text: m.snippet.slice(at, i), match: false });
-      parts.push({ text: m.snippet.slice(i, i + q.length), match: true });
+      if (i > at) parts.push({ text: snippet.slice(at, i), match: false });
+      parts.push({ text: snippet.slice(i, i + q.length), match: true });
       at = i + q.length;
     }
-    if (at < m.snippet.length) parts.push({ text: m.snippet.slice(at), match: false });
+    if (at < snippet.length) parts.push({ text: snippet.slice(at), match: false });
     return { parts, count: m.count, inWork: m.inWork };
   });
   const hasProcess = () => p.turn().process.length > 0 || Boolean(p.turn().answer?.thinking.trim());
@@ -1060,9 +1062,9 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
         {(h) => (
           <box flexDirection="row" marginTop={1}>
             <text selectable={false} fg={t().muted} wrapMode="none" truncate>
-              <span style={{ fg: t().info }}>{"◎ "}</span>
-              <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().bg, bg: t().warn }}>{part.text}</span> : <span>{part.text}</span>)}</For>
-              <span style={{ fg: t().muted }}>{`  ${h().inWork ? "in the work" : "in the turn"}${h().count > 1 ? ` · ${h().count}×` : ""}`}</span>
+              <span style={{ fg: t().info }}>{`${FIND_MARK} `}</span>
+              <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().accent }}><b>{part.text}</b></span> : <span>{part.text}</span>)}</For>
+              <span style={{ fg: t().muted }}>{`  ${h().count > 1 ? `${h().count} matches · ` : ""}${h().inWork ? "in the work" : "in the turn"}`}</span>
             </text>
           </box>
         )}
@@ -1162,6 +1164,9 @@ interface Geometry {
   height: number;
 }
 
+/** The mark of a find: on the landed turn's strip and the gutter's tick (a Nerd Font magnifier, as the sidebar's \uf100 fold button is; ◎ is already the search tool's). */
+const FIND_MARK = "\uf002";
+
 const sameGeometry = (a: Geometry, b: Geometry) => a.content === b.content && a.top === b.top && a.height === b.height && a.tops.length === b.tops.length && a.tops.every((v, i) => v === b.tops[i]);
 
 /** The gutter: a tick per turn in its tone, the visible stretch as a brighter track; a click jumps there. */
@@ -1187,7 +1192,7 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
             fg={cell().tone ? toneColor(cell().tone as TurnTone) : cell().inView ? mix(t().muted, t().text, 0.35) : t().border}
             onMouseDown={() => p.onJump(rowToScroll(row, cells().length, p.geometry.content, p.geometry.height))}
           >
-            {cell().tone ? (cell().tone === "live" ? "◆" : cell().tone === "found" ? "◎" : "●") : cell().inView ? "┃" : "│"}
+            {cell().tone ? (cell().tone === "live" ? "◆" : cell().tone === "found" ? FIND_MARK : "●") : cell().inView ? "┃" : "│"}
           </text>
         )}
       </Index>
