@@ -1472,14 +1472,17 @@ export function App(p: {
                             }}
                           </For>
                         </Show>
-                        <text selectable={false} wrapMode="none" truncate fg={t().muted} paddingLeft={2}>
-                          <span style={{ fg: t().accent }}>{"≡ "}</span>
-                          <span style={{ fg: t().text2 }}>{`${plan().done}/${plan().total}`}</span>
-                          <span style={{ fg: t().accent }}>{"  ◐ "}</span>
-                          <span style={{ fg: t().text }}>{plan().current}</span>
-                          {plan().run ? <span style={{ fg: t().muted }}>{`  ·  ${plan().run}`}</span> : null}
-                          <span style={{ fg: t().text2 }}>{planOpen() ? "  ▾" : "  ▸"}</span>
-                        </text>
+                        <box flexDirection="row" paddingLeft={2} paddingRight={2}>
+                          <text selectable={false} flexGrow={1} wrapMode="none" truncate fg={t().muted}>
+                            <span style={{ fg: t().accent }}>{"≡ "}</span>
+                            <span style={{ fg: t().text2 }}>{`${plan().done}/${plan().total}`}</span>
+                            <span style={{ fg: t().accent }}>{"  ◐ "}</span>
+                            <span style={{ fg: t().text }}>{plan().current}</span>
+                            {plan().run ? <span style={{ fg: t().muted }}>{`  ·  ${plan().run}`}</span> : null}
+                          </text>
+                          {/* The expander sits at the band's right edge, where every sheet's key hints do. */}
+                          <text selectable={false} flexShrink={0} fg={t().text2}>{planOpen() ? "▾" : "▸"}</text>
+                        </box>
                       </box>
                     )}
                   </Show>
