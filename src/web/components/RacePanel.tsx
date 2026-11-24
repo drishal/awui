@@ -8,32 +8,11 @@ import { useEffect, useState } from "react";
 import type { BreakdownRules } from "../../shared/breakdown.js";
 import type { HarnessStatus, RaceCleanupResult, RaceMemberView, RaceSummary, RaceWinnerResult, ToolDiff } from "../../shared/protocol.js";
 import { ago } from "../turns.js";
+import { CLEANUP_WORD, STATUS_WORD, loserState } from "../race-words.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
 import { CodeBreakdown } from "./CodeBreakdown.js";
 import { DiffView } from "./ToolBody.js";
-
-const STATUS_WORD: Record<RaceMemberView["status"], string> = { running: "running", settled: "finished", failed: "failed", closed: "chat closed" };
-
-/** Why a cleanup would keep this loser, in the panel's words. */
-function loserState(member: RaceMemberView): string {
-  if (member.status === "running") return "still running";
-  if (member.dirty) return "has uncommitted work";
-  if ((member.unmerged ?? 0) > 0) return `${member.unmerged} unmerged commit${member.unmerged === 1 ? "" : "s"}`;
-  if (member.status === "closed") return "clean, chat closed";
-  return "clean";
-}
-
-const CLEANUP_WORD: Record<string, string> = {
-  running: "kept: still running",
-  uncommitted: "kept: uncommitted work",
-  moved: "kept: its HEAD moved off the branch",
-  unmerged: "kept: unmerged commits",
-  branch_kept: "worktree removed, branch kept",
-  worktree_gone: "worktree was already gone",
-  worktree_refused: "kept: git refused to remove it",
-  outside_project: "kept: its worktree is outside the project",
-};
 
 export function RacePanel({
   initialRaceId,

@@ -20,7 +20,7 @@ import { createEffect, createMemo, createResource, createSignal, For, on, onClea
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { AGENT_STATUS_WORDS, agentStatusText } from "../../web/agent-status.js";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
-import type { ChatSearch, CheckpointComparison, RaceSummary, RaceWinnerResult, CheckpointPoint, FileView, RunResult, WorkspaceInfo, WorktreeInfo } from "../../shared/protocol.js";
+import type { ChatSearch, CheckpointComparison, RaceCleanupResult, RaceFileDiff, RaceSummary, RaceWinnerResult, CheckpointPoint, FileView, RunResult, WorkspaceInfo, WorktreeInfo } from "../../shared/protocol.js";
 import { runnable } from "../../web/code-blocks.js";
 import { codeBlocks, quoteText, runForMessage, runStatus } from "../assist.js";
 import { RunOutput } from "./runout.js";
@@ -43,6 +43,7 @@ import { findTurns } from "../../web/find.js";
 import { turnMarkdown } from "../../web/turn-markdown.js";
 import { SwitchGhost } from "./ghost.js";
 import { Picker, type PickerItem, type PreviewText } from "./picker.js";
+import { CLEANUP_WORD, STATUS_WORD, loserState } from "../../web/race-words.js";
 import { RequestCard } from "./request.js";
 import { RAIL_WIDTH, Sidebar, SidebarRail, type SidebarTab } from "./sidebar.js";
 import { Splash } from "./splash.js";
@@ -993,30 +994,76 @@ export function App(p: {
         void refetchRace();
       })
       .catch((error: unknown) => app.setBanner({ level: "warning", text: error instanceof Error ? error.message : String(error) }));
-  const raceItems = (query: string): PaletteItem[] => {
+  /** Losers whose unmerged branch the cleanup may drop (the web's "Discard its branch" boxes), and what the last cleanup did, in the panel's words. */
+  const [raceDiscard, setRaceDiscard] = createSignal<string[]>([]);
+  const [raceCleaned, setRaceCleaned] = createSignal<RaceCleanupResult["results"] | null>(null);
+  const raceName = (harnessId: string) => app.boot()?.harnesses.find((h) => h.id === harnessId)?.displayName ?? harnessId;
+  const raceItems = (query: string): PickerItem[] => {
     const r = race();
     if (!r) return [];
-    const items: PaletteItem[] = r.members.map((m) => ({
+    const items: PickerItem[] = r.members.map((m) => ({
       id: `race:${m.chatId}`,
       section: "Agents",
-      label: `${r.winnerChatId === m.chatId ? "★ " : ""}${app.boot()?.harnesses.find((h) => h.id === m.harnessId)?.displayName ?? m.harnessId}${m.model ? ` · ${m.model}` : ""}`,
-      hint: `${m.status}${m.added !== undefined ? ` · +${m.added} −${m.removed ?? 0}${m.files ? ` · ${m.files.length} file${m.files.length === 1 ? "" : "s"}` : ""}` : ""}${m.dirty ? " · uncommitted" : ""}`,
+      label: `${r.winnerChatId === m.chatId ? "★ " : ""}${raceName(m.harnessId)}${m.model ? ` · ${m.model}` : ""}`,
+      hint: `${STATUS_WORD[m.status]}${m.added !== undefined ? ` · +${m.added} −${m.removed ?? 0}${m.files ? ` · ${m.files.length} file${m.files.length === 1 ? "" : "s"}` : ""}` : ""}${m.dirty ? " · uncommitted" : ""}`,
       run: () => {
         setDialog(null);
         void app.openChat(m.chatId);
       },
     }));
-    if (r.winnerChatId === null) {
-      for (const m of r.members) {
-        const name = app.boot()?.harnesses.find((h) => h.id === m.harnessId)?.displayName ?? m.harnessId;
-        items.push({ id: `keep:${m.chatId}`, section: "Pick a winner", label: `Keep ${name}'s as the winner`, hint: "marks it; changes stay in its worktree", run: () => raceAct("winner", { chatId: m.chatId, mode: "keep" }, () => `${name} marked as the winner`) });
-        items.push({ id: `apply:${m.chatId}`, section: "Pick a winner", label: `Apply ${name}'s changes here`, hint: "into this project's working tree, never committed", run: () => raceAct("winner", { chatId: m.chatId, mode: "apply" }, (x: RaceWinnerResult) => x.instructions) });
+    // A winner is never final: while the comparison stands, every other agent can still be picked (the web keeps "Pick X" on each).
+    for (const m of r.members) {
+      if (r.winnerChatId === m.chatId) continue;
+      const name = raceName(m.harnessId);
+      items.push({ id: `keep:${m.chatId}`, section: "Pick a winner", label: r.winnerChatId === null ? `Keep ${name}'s as the winner` : `Make ${name} the winner instead`, hint: "stays in its worktree", run: () => raceAct("winner", { chatId: m.chatId, mode: "keep" }, () => { setRaceCleaned(null); return `${name} marked as the winner`; }), stay: true });
+      items.push({ id: `apply:${m.chatId}`, section: "Pick a winner", label: `Apply ${name}'s changes here`, hint: "into this tree, uncommitted", run: () => raceAct("winner", { chatId: m.chatId, mode: "apply" }, (x: RaceWinnerResult) => { setRaceCleaned(null); return x.instructions; }), stay: true });
+    }
+    if (r.winnerChatId !== null) {
+      const losers = r.members.filter((m) => m.chatId !== r.winnerChatId);
+      for (const m of losers) {
+        if ((m.unmerged ?? 0) <= 0) continue;
+        const on = raceDiscard().includes(m.chatId);
+        items.push({ id: `discard:${m.chatId}`, section: "Tidy up", label: `${on ? "◉" : "○"} Discard ${raceName(m.harnessId)}'s branch too`, hint: `${loserState(m)}; Enter ${on ? "keeps" : "drops"} it`, run: () => setRaceDiscard((now) => (on ? now.filter((id) => id !== m.chatId) : [...now, m.chatId])), stay: true });
       }
-    } else if (!r.cleanedAt) {
-      items.push({ id: "race:cleanup", section: "Tidy up", label: "Remove the other agents' worktrees", hint: "skips running or uncommitted ones", run: () => raceAct("cleanup", { discard: [] }, () => "Cleaned up what git agrees to drop") });
+      if (losers.length > 0) {
+        items.push({
+          id: "race:cleanup",
+          section: "Tidy up",
+          label: `Clean up ${losers.length} loser${losers.length === 1 ? "" : "s"}`,
+          hint: "skips running or uncommitted ones",
+          stay: true,
+          run: () =>
+            raceAct("cleanup", { discard: raceDiscard() }, (x: RaceCleanupResult) => {
+              setRaceCleaned(x.results);
+              setRaceDiscard([]);
+              const kept = x.results.filter((row) => row.reason && row.reason !== "branch_kept").length;
+              return kept === 0 ? "Cleaned up every loser" : `Cleaned up ${x.results.length - kept} of ${x.results.length}; the rest were kept (see the list)`;
+            }),
+        });
+      }
+      for (const row of raceCleaned() ?? []) {
+        const m = r.members.find((x) => x.chatId === row.chatId);
+        items.push({ id: `did:${row.chatId}`, section: "Last cleanup", label: m ? raceName(m.harnessId) : row.chatId, hint: row.reason ? CLEANUP_WORD[row.reason] ?? row.reason : "worktree and branch removed", inert: true, run: () => {} });
+      }
     }
     const q = query.trim().toLowerCase();
     return q ? items.filter((i) => `${i.label} ${i.hint ?? ""}`.toLowerCase().includes(q)) : items;
+  };
+  /** What an agent's row shows beside the list: its opening answer, then what it changed against the fork point, file by file, and the first file's diff. */
+  const racePreview = (item: PaletteItem): Promise<PreviewText | null> | null => {
+    const r = race();
+    const chatId = item.id.startsWith("race:") && item.id !== "race:cleanup" ? item.id.slice(5) : null;
+    const m = r && chatId ? r.members.find((x) => x.chatId === chatId) : undefined;
+    if (!r || !m) return null;
+    const files = m.files ?? [];
+    const head = `${raceName(m.harnessId)}${m.model ? ` · ${m.model}` : ""} · ${STATUS_WORD[m.status]}`;
+    const top = [m.answer ? clip(m.answer, 300) : "No answer yet", "", files.length === 0 ? "Nothing changed against the fork point." : files.map((f) => `${f.binary ? "binary" : `+${f.added} −${f.removed}`}  ${f.path}`).join("\n")].join("\n");
+    const first = files.find((f) => !f.binary);
+    if (!first) return Promise.resolve({ head, body: top });
+    return app.server
+      .call<RaceFileDiff>(`/api/races/${encodeURIComponent(r.id)}/members/${encodeURIComponent(m.chatId)}/diff?path=${encodeURIComponent(first.path)}`)
+      .then((d) => ({ head, body: `${top}\n\n${first.path}\n${(d.diff?.lines ?? []).slice(0, 40).map((l) => `${l.kind === "add" ? "+" : l.kind === "del" ? "−" : " "} ${l.text}`).join("\n")}` }))
+      .catch(() => ({ head, body: top }));
   };
   const openTreeChat = async (workspace: WorkspaceInfo) => {
     setDialog(null);
@@ -1538,7 +1585,7 @@ export function App(p: {
                   <Picker title="Compare agents" placeholder="Pick who runs the draft…" items={[]} search={compareItems} empty="No agents available" firstHeading noun={["agent", "agents"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "race"}>
-                  <Picker title={race()?.prompt ? `Comparison · ${clip(race()?.prompt ?? "", 60)}` : "Comparison"} placeholder="Enter opens an agent's chat; its Review shows what it changed…" items={[]} search={raceItems} empty={race.loading ? "Reading the comparison…" : "This comparison is gone"} firstHeading noun={["row", "rows"]} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title={race()?.prompt ? `Comparison · ${clip(race()?.prompt ?? "", 60)}` : "Comparison"} placeholder="Enter opens an agent's chat; its Review shows what it changed…" items={[]} search={raceItems} preview={racePreview} empty={race.loading ? "Reading the comparison…" : "This comparison is gone"} firstHeading noun={["row", "rows"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "worktrees"}>
                   <Picker title="Worktrees" placeholder="Type a name to make a worktree, or pick one to open a chat in…" items={[]} search={worktreeItems} empty={trees.loading ? "Reading the worktrees…" : "No worktrees yet: type a name to make one"} firstHeading noun={["worktree", "worktrees"]} onClose={() => setDialog(null)} side={room()} />

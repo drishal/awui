@@ -1864,7 +1864,18 @@ describe("atui's keybind styles", () => {
     const race = await ui.until("Pick a winner");
     expect(race).toContain("Comparison");
     expect(race).toMatch(/Keep Fake's as the winner/);
-    await ui.type("Keep Fake's as the winner");
+    // Two agents, then the first one's Keep row.
+    ui.keys.pressArrow("down");
+    ui.keys.pressArrow("down");
+    ui.keys.pressEnter();
+    // A winner is not final: the sheet stays open, offers the other agent "instead", and the clean-up of the losers.
+    const picked = await ui.until("Clean up 1 loser");
+    expect(picked).toMatch(/Make .* the winner instead/);
+    expect(picked).toContain("Tidy up");
+    // The sheet refreshes every two seconds; the cursor stays on the row it was moved to (walking down to "instead", then waiting out a refresh).
+    ui.keys.pressArrow("down");
+    ui.keys.pressArrow("down");
+    await wait(2600);
     ui.keys.pressEnter();
     await ui.until("marked as the winner");
     ui.keys.pressEscape();
