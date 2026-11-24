@@ -932,7 +932,7 @@ export function App(p: {
   };
   const comparePrefix = (prompt: string) => {
     const words = prompt.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean).slice(0, 3).join("-");
-    return `${words || "compare"}-${Date.now().toString(36).slice(-4)}`.slice(0, 40);
+    return `${words || "compare"}-${Date.now().toString(36).slice(-6)}`.slice(0, 40);
   };
   const compareItems = (): PaletteItem[] => {
     const chosen = compareChoice();
@@ -951,7 +951,7 @@ export function App(p: {
           setDialog(null);
           flash("Starting the comparison…");
           void app.server
-            // The task prefix names each worktree, and a worktree's name is taken for good: the draft's first words plus a short time suffix keep a second comparison from colliding with the first.
+            // The task prefix names each worktree, and a worktree's name is taken for good: the draft's first words plus a time suffix keep a second comparison from colliding with the first.
             .call<{ raceId: string | null; results: Array<{ harnessId: string; error?: string }> }>("/api/compare", { body: { workspaceId: ws.id, name: comparePrefix(prompt), base: "HEAD", prompt, choices: chosen.map((harnessId) => ({ harnessId })) } })
             .then((r) => {
               const failed = r.results.filter((x) => x.error);
