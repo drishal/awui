@@ -486,6 +486,18 @@ describe("atui", () => {
     expect(await ui.until("Accept edits ▾")).not.toContain("Ask first ▾");
   }, 30_000);
 
+  it("cycles the permission mode with Shift+Tab from the composer", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("hello cycling");
+    ui.keys.pressEnter();
+    await ui.until("Echo: hello cycling");
+    await idle(ui);
+    expect(await ui.frame()).toContain("Ask first ▾");
+    ui.keys.pressTab({ shift: true });
+    await ui.until(() => ui?.app.chat()?.config.permissionMode !== "default" && ui?.app.chat()?.config.permissionMode !== undefined);
+    expect(await ui.frame()).not.toContain("Ask first ▾");
+  }, 30_000);
+
   it("lists the queued messages from the +N queued chip and pulls one back into the composer", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("slow stream for the queue");

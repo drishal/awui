@@ -540,6 +540,20 @@ export function App(p: {
       key.preventDefault();
       return void editDraft();
     }
+    // Shift+Tab: the next permission mode, as Claude Code's does; the footer's chip changes in place and a flash names it.
+    if (key.shift && !key.ctrl && !key.meta && key.name === "tab" && focus() === "composer" && !dialog() && !pending()) {
+      const c = app.chat();
+      // A mode marked as cautious (it runs everything unasked) is never one keypress away: the picker chooses it on purpose.
+      const modes = c?.capabilities.supportsPermissionMode ? (c.config.permissionModes ?? []).filter((m) => !m.caution || m.id === c.config.permissionMode) : [];
+      if (c && modes.length > 1) {
+        key.preventDefault();
+        const next = modes[(modes.findIndex((m) => m.id === c.config.permissionMode) + 1) % modes.length];
+        if (next) {
+          void app.configure({ permissionMode: next.id });
+          return flash(`Permission mode: ${next.label}`);
+        }
+      }
+    }
     // M-n / M-p: step through the turns the last find matched (a meta chord, so no typed letter or vim key is touched).
     if (key.meta && !key.ctrl && (key.name === "n" || key.name === "p") && landed()) {
       key.preventDefault();
@@ -656,7 +670,7 @@ export function App(p: {
     if (c) {
       const workers = c.delegated ?? [];
       const git = app.git();
-      add({ id: "delegated", label: "Delegated work…", hint: leader("j", keybinds()), keywords: "review a worker", disabled: workers.length > 0 ? undefined : "This chat has delegated nothing", run: () => runLeader("j") });
+      add({ id: "delegated", label: "Delegated work", hint: leader("j", keybinds()), keywords: "review a worker", disabled: workers.length > 0 ? undefined : "This chat has delegated nothing", run: () => runLeader("j") });
       add({ id: "active-work", label: "Active work", hint: leader("p", keybinds()), keywords: "workers jobs questions context", run: () => runLeader("p") });
       add({ id: "git", label: "Git", hint: leader("u", keybinds()), keywords: `stage commit diffs ${git?.branch ?? "detached"}`, run: () => setGitting(true) });
     }
