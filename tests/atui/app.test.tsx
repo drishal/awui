@@ -220,6 +220,8 @@ describe("atui", () => {
     const rail = await ui.until("Active work");
     expect(rail).toContain("Nothing is running.");
     expect(rail).toContain("Workers this chat delegates, background jobs");
+    // The sentence explains the empty list, so it sits above the context card, not under it.
+    expect(rail.indexOf("Workers this chat delegates")).toBeLessThan(rail.indexOf("Context and usage"));
   }, 30_000);
   it("opens the file sheet on a file from an opened call's View line", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 80 });
