@@ -62,6 +62,11 @@ export function ContextRailView(p: RailActions) {
   const height = () => Math.max(6, size().height - 10);
   const width = () => Math.max(30, Math.min(110, size().width - (p.side ?? 0) - 4));
   const start = () => rowWindow(entries().length, at(), height());
+  /** The frame fits what it holds (each row, a heading over each group, the title and summary lines) up to the room the sheet stands in, so one worker is not a pane of empty rows. */
+  const boxHeight = () => {
+    const lines = entries().reduce((n, e, i, all) => n + 1 + (i === 0 || all[i - 1]?.card.id !== e.card.id ? (i === 0 ? 1 : 2) : 0) + (e.row.note ? 1 : 0), 0);
+    return Math.min(Math.max(10, size().height - 6), Math.max(10, Math.max(lines, 1) + 7));
+  };
 
   const open = (row: ContextCardRow) => {
     if (row.taskId) return p.onTask(row.taskId);
@@ -110,7 +115,7 @@ export function ContextRailView(p: RailActions) {
       /* Stretched to the box it stands in, not measured off the terminal: a sheet sits under the tab strip and
          the title bar, so a terminal-height overlay would put its last row off the frame. */
       top={0}
-      bottom={0}
+      height={boxHeight()}
       left={Math.max(0, Math.floor((size().width - (p.side ?? 0) - width()) / 2))}
       width={width()}
       zIndex={15}
@@ -127,12 +132,13 @@ export function ContextRailView(p: RailActions) {
           <b>Active work</b>
           <span style={{ fg: t().muted }}>{`   ${clip(chat()?.title || "New chat", width() - 60)} · ${chat()?.harnessId ?? ""} · ${chat()?.workspace.name ?? ""}`}</span>
         </text>
-        <text flexShrink={0} fg={t().muted}>
-          {gitSummaryLine(app.git()) ?? ""}
+        <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
+          {note() ?? (width() < 90 ? "Enter opens · Esc closes" : "↑↓ row · Enter opens · o opens the chat · Esc closes")}
         </text>
       </box>
-      <text flexShrink={0} fg={t().text2}>
+      <text flexShrink={0} fg={t().text2} wrapMode="none" truncate>
         {railSummary(cards())}
+        <span style={{ fg: t().muted }}>{gitSummaryLine(app.git()) ? `   ${gitSummaryLine(app.git())}` : ""}</span>
       </text>
       <box flexDirection="column" flexGrow={1} overflow="hidden" marginTop={1}>
         <For each={shown()}>
@@ -173,9 +179,6 @@ export function ContextRailView(p: RailActions) {
           <text fg={t().muted}>Nothing to show: this chat has no workers, runs, or comments yet.</text>
         </Show>
       </box>
-      <text flexShrink={0} fg={note() ? t().warn : t().muted} marginTop={1}>
-        {note() ?? "↑↓ row · Enter opens · o opens the chat · Esc closes"}
-      </text>
     </box>
   );
 }
