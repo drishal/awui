@@ -97,4 +97,18 @@ describe("atui projects", () => {
       await server.stop();
     }
   }, 30_000);
+  it("marks a chat another agent started with ◈ before its age", async () => {
+    const server = await startServer({ port: 4885 });
+    let ui: Mounted | null = null;
+    try {
+      ui = await mount(path.join(server.root, "alpha"), { width: 150, height: 38, base: server.base });
+      await ui.type("delegate please");
+      ui.keys.pressEnter();
+      await ui.until(() => ui?.app.overview().sessions.some((x) => x.origin === "agent") ?? false, 20_000);
+      expect(await ui.until("◈ ")).toMatch(/◈ (now|\d+[smhd])/);
+    } finally {
+      await ui?.unmount();
+      await server.stop();
+    }
+  }, 40_000);
 });

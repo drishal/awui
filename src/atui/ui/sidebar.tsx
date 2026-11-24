@@ -167,7 +167,8 @@ export function Sidebar(p: {
   const herdrTone = (s: ProjectSession) => (s.herdr?.status === "blocked" ? askingTone() : s.herdr?.status === "working" ? t().accent : t().muted);
   // Right of the title: the other project's name when the row is not this one's, then the age. The asking
   // mark is the row's own `▲`; a blank or a second "!" here only pushed the title off its budget.
-  const meta = (row: Extract<SidebarRow, { kind: "session" }>) => `${row.project ? `${clip(row.project, 10)} ` : ""}${age(row.s.updatedAt)}`;
+  // A chat another agent or a routine started wears its starter's mark before its age (the web's hover card says the same in words), so a delegated worker never reads as one the user opened.
+  const meta = (row: Extract<SidebarRow, { kind: "session" }>) => `${row.project ? `${clip(row.project, 10)} ` : ""}${row.s.origin === "agent" ? "◈ " : row.s.origin === "routine" ? "↻ " : ""}${age(row.s.updatedAt)}`;
   // Tabs are plain padded labels: a one-row box with side borders drew bare pipes between them, and the
   // underline under the strip says which one is open.
   const Tab = (q: { id: SidebarTab; label: string }) => (
