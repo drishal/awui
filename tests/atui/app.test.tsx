@@ -841,10 +841,10 @@ describe("atui", () => {
     ui.keys.pressEnter();
     const shown = await ui.until("Last 7 days");
     expect(shown).toContain("Usage across chats");
-    expect(shown).toContain("Tab 30 days");
+    expect(shown).toContain("Tab show 30 days");
     // Tab cycles the range, as the web dialog's 7/30/90 switch does.
     ui.keys.pressTab();
-    expect(await ui.until("Last 30 days")).toContain("Tab 90 days");
+    expect(await ui.until("Last 30 days")).toContain("Tab show 90 days");
     await ui.escape();
     expect(await ui.until("Ask Fake to")).not.toContain("Usage across chats");
   }, 40_000);
@@ -1059,7 +1059,7 @@ describe("atui", () => {
     ui.keys.pressEnter();
     await ui.until(() => (ui?.app.git()?.counts.staged ?? 0) === 1);
     ui.keys.pressKey("c");
-    await ui.until("Commit message: Enter commits, Esc drops");
+    await ui.until("Commit message: Enter commit · Esc cancel");
     await ui.type("commit from atui");
     ui.keys.pressEnter();
     await ui.until(() => (ui?.app.git()?.counts.staged ?? 1) === 0 && (ui?.app.git()?.counts.changed ?? 1) === 0);

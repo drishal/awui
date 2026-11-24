@@ -792,7 +792,7 @@ export function App(p: {
       section: "Turns",
       // The match is what a find row is for, so it takes the whole label; the hint names the turn.
       label: plainPath(m.snippet, root),
-      hint: `turn ${m.index + 1} · ${m.inWork ? "work · " : ""}${m.count}×`,
+      hint: `turn ${m.index + 1}${m.inWork ? " · work" : ""}${m.count > 1 ? ` · ${m.count}×` : ""}`,
       run: () => revealTurn(m.index, m.inWork),
     }));
   };
@@ -1102,7 +1102,7 @@ export function App(p: {
                   <Picker title="Timing" placeholder="Search steps…" items={timingItems()} axis={timingAxis()} axisHead={timingHead()} firstHeading info onClose={() => { setDialog(null); app.setTimingFor(null); }} side={room()} />
                 </Show>
                 <Show when={dialog() === "usage"}>
-                  <Picker title="Usage across chats" tabHint={`Tab ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Usage across chats" tabHint={`Tab show ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading info onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
                   <Picker title="Queued messages · x removes" placeholder="Search queued messages…" empty="No queued messages: a steering or follow-up message parks here" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); return true; }} onClose={() => setDialog(null)} side={room()} />

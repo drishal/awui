@@ -221,7 +221,7 @@ export function GitView(p: { onClose: () => void }) {
                 <input
                   focused
                   flexGrow={1}
-                  placeholder="Commit message: Enter commits, Esc drops"
+                  placeholder="Commit message: Enter commit · Esc cancel"
                   textColor={t().text}
                   backgroundColor={t().surface}
                   focusedBackgroundColor={t().surface}
