@@ -503,6 +503,23 @@ describe("atui", () => {
     expect(await ui.frame()).not.toContain("Search commands, sessions, thinking…");
   }, 30_000);
 
+  it("unrolls a framed call's whole output with a click and folds it again", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 60 });
+    await ui.type("tool longlog");
+    ui.keys.pressEnter();
+    await ui.until("Echo: tool longlog");
+    await idle(ui);
+    // A call row opens into its framed output on a click.
+    await ui.click("Ran $ npm run build");
+    const folded = await ui.until("lines above · click to show all");
+    expect(folded).not.toContain("build step 1 done");
+    await ui.click("lines above · click to show all");
+    const open = await ui.until("click to fold");
+    expect(open).toContain("build step 1 done");
+    await ui.click("click to fold");
+    await ui.until("lines above · click to show all");
+  }, 30_000);
+
   it("cycles the permission mode with Shift+Tab from the composer", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("hello cycling");

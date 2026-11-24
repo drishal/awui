@@ -26,6 +26,7 @@
 //   "e2eprogress" run a Playwright suite whose line reporter prints its progress a test at a time, one failing
 //   "manycalls" twelve quick reads in a row (a run long enough to fold)
 //   "toolfail" a command call that fails (port in use), then the run carries on
+//   "longlog"  a command call that prints forty lines, past the framed call's cap
 //   "imagecall" a read of a picture, whose result carries an image block
 //   "todolist" a rpiv-todo `todo` call whose result carries the whole numbered list (the status stack's source)
 //   "widethought" a call, thinking shaped like narration with a code line wider than the column, another call
@@ -900,6 +901,9 @@ class FakeLiveChat implements LiveChat {
         // A test run that ends with one failure, as Vitest prints it.
         const output = " RUN  v5.0.3 /work\n\n \u276f tests/unit/sum.test.ts (2 tests | 1 failed) 10ms\n   \u00d7 keeps the order of two lists 7ms\n\n FAIL  tests/unit/sum.test.ts > keeps the order of two lists\nAssertionError: expected [ 1, 2 ] to deeply equal [ 2, 1 ]\n\n Test Files  1 failed (1)\n      Tests  1 failed | 1 passed (2)\n   Duration  220ms";
         await this.call({ name: "bash", args: { command: "npm test" }, output }, signal);
+      }
+      if (/\blonglog\b/i.test(text)) {
+        await this.call({ name: "bash", args: { command: "npm run build" }, output: Array.from({ length: 40 }, (_, n) => `build step ${n + 1} done`).join("\n"), details: { exit: 0 } }, signal);
       }
       if (/\btoolfail\b/i.test(text)) {
         await this.call({ name: "bash", args: { command: "npm run e2e" }, output: "Error: port 4791 is already in use\n    at Server.setupListenHandle", isError: true, details: { exit: 1 } }, signal);

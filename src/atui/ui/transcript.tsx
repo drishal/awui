@@ -335,10 +335,14 @@ function ToolDetails(p: { item: ToolItem; workspace: string }) {
   const file = () => relativePath(p.item.paths[0] ?? p.item.summary, p.workspace);
   const diff = createMemo(() => (p.item.diff && (p.item.category === "edit" || p.item.category === "write") ? unifiedDiff(file(), p.item.diff) : null));
   const command = () => (p.item.category === "command" && row().detail?.startsWith("$ ") ? (row().detail as string).slice(2) : null);
+  // The frame keeps the last lines (where a failure usually ends); a click unrolls the whole stored output (the server bounds it at 16 KB) and a click folds it again.
+  const [all, setAll] = createSignal(false);
+  const lineCount = createMemo(() => p.item.output.replace(/\n+$/, "").split("\n").length);
   const output = createMemo(() => {
     const lines = p.item.output.replace(/\n+$/, "").split("\n");
-    const shown = lines.slice(-OUTPUT_LINES).join("\n");
-    return lines.length > OUTPUT_LINES ? `… ${lines.length - OUTPUT_LINES} lines above\n${shown}` : shown;
+    if (lines.length <= OUTPUT_LINES) return lines.join("\n");
+    if (all()) return `▴ ${lines.length} lines · click to fold\n${lines.join("\n")}`;
+    return `… ${lines.length - OUTPUT_LINES} lines above · click to show all\n${lines.slice(-OUTPUT_LINES).join("\n")}`;
   });
   const status = () => (p.item.status === "running" ? "running…" : row().facts.join(" · "));
   return (
@@ -358,7 +362,7 @@ function ToolDetails(p: { item: ToolItem; workspace: string }) {
             <Show when={command()}>
               <box border={["top"]} borderColor={tone()} title=" Output " titleColor={t().text2} />
             </Show>
-            <text fg={t().text2} wrapMode="char">
+            <text fg={t().text2} wrapMode="char" onMouseDown={() => lineCount() > OUTPUT_LINES && setAll((on) => !on)}>
               {output()}
             </text>
           </Show>
