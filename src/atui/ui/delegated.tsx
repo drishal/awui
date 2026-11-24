@@ -279,10 +279,16 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
       paddingLeft={1}
       paddingRight={1}
     >
-      <text flexShrink={0} fg={t().text2} wrapMode="none" truncate>
-        <b>Delegated work</b>
-        <span style={{ fg: t().muted }}>{`   ${workerCount(rows().length)} · ${tasksMeta(tasks()) ?? "every worker has finished"}`}</span>
-      </text>
+      <box flexDirection="row" flexShrink={0}>
+        <text flexGrow={1} fg={t().text2} wrapMode="none" truncate>
+          <b>Delegated work</b>
+          <span style={{ fg: t().muted }}>{`   ${workerCount(rows().length)} · ${tasksMeta(tasks()) ?? "every worker has finished"}`}</span>
+        </text>
+        {/* The list's keys sit beside the title like every other sheet's; a worker's own screen and its prompts keep their longer line below. */}
+        <Show when={!row() && !error() && !confirming() && !busy()}>
+          <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">{width() < 90 ? "Enter opens · Esc closes" : "↑↓ worker · Enter opens · o chat · x cancel · Esc closes"}</text>
+        </Show>
+      </box>
       <Show
         when={row()}
         fallback={
@@ -386,6 +392,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
           />
         </box>
       </Show>
+      <Show when={row() || error() || confirming() || busy()}>
       <text flexShrink={0} fg={error() ? t().danger : confirming() ? t().warn : t().muted} marginTop={1} wrapMode="word">
         {error() ??
           (confirming()
@@ -394,8 +401,9 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
               ? "Working…"
               : row()
                 ? "↑↓ scroll · a apply · k keep · u undo · d remove · n note · o chat · x cancel · Esc back"
-                : "↑↓ worker · Enter opens · o open its chat · x cancel · Esc closes")}
+                : "")}
       </text>
+      </Show>
     </box>
   );
 }
