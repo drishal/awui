@@ -2,7 +2,7 @@
 // draws Pi's: the prompt behind a `❯` on a fill strip, the work shown rather
 // than folded (a lone call a bulleted row with its outcome on a `└` line and
 // an edit's first changed lines under it, calls fired together hung off one
-// tree with each outcome at the end of its line, reasoning shown under `◇ Thinking`
+// tree with each outcome at the end of its line, reasoning shown under `▾ Thinking`
 // by default, folding via C-t/C-x o or a click), the answer marked with an accent `●`, and a Σ line of what the turn
 // did. Replies the agent wrote between tool calls show in order. C-x e folds
 // every turn to a "Worked for …" line (the web UI's), and a running turn keeps

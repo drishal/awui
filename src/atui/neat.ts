@@ -1,14 +1,14 @@
 // What a turn says, the way neat-render (the pi extension in
 // ~/.pi/agent/extensions) words it. A lone call is its verb and target, the
 // outcome on a `└` line under it; calls fired together hang off one tree,
-// each outcome at the end of its own line; reasoning is one `◇ Thinking` line;
+// each outcome at the end of its own line; reasoning is one `▾ Thinking` line;
 // a finished turn closes with a Σ line of what it did.
 //
 //   ● Read src/app.ts:1-20            ┌─ ● Read    README.md        2 lines
 //     └ 20 lines                      ├─ ● Search  listen in src    2 results
 //                                     └─ ● Edit    src/app.ts       Added 3 lines
 //   ● Edit src/app.ts
-//     └ Added 3 lines, removed 1 line   ◇ Thinking 2.1s ~140 tokens
+//     └ Added 3 lines, removed 1 line   ▾ Thinking 2.1s ~140 tokens
 //       - const a = 1;
 //       + const a = 2;                  Σ 3 calls · 7.5s · ~640 thought
 //
