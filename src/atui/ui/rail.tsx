@@ -67,7 +67,7 @@ export function ContextRailView(p: RailActions) {
   /** The frame fits what it holds (each row, a heading over each group, the title and summary lines) up to the room the sheet stands in, so one worker is not a pane of empty rows. */
   const boxHeight = () => {
     const lines = entries().reduce((n, e, i, all) => n + 1 + (i === 0 || all[i - 1]?.card.id !== e.card.id ? (i === 0 ? 1 : 2) : 0) + (e.row.note ? 1 : 0), 0);
-    return Math.min(Math.max(8, size().height - 6), Math.max(8, Math.max(lines, 1) + 7));
+    return Math.min(Math.max(8, size().height - 6), Math.max(8, Math.max(lines, 1) + 6));
   };
 
   const open = (row: ContextCardRow) => {
