@@ -57,14 +57,17 @@ export function findSnippet(text: string, needle: string, radius = 36): string {
 
 /**
  * Every turn that mentions `query`, in transcript order, with how many times, a line around the first match, and whether
- * it sits in the work (atui's find is a list of these, where the web's marks the page itself).
+ * it sits in the work (atui's find is a list of these, where the web's marks the page itself). `strip` is text taken out of
+ * every line first, the project's own folder.
  */
-export function findTurns(turns: readonly Turn[], query: string, radius = 36): TurnMatch[] {
+export function findTurns(turns: readonly Turn[], query: string, radius = 36, strip = ""): TurnMatch[] {
   if (!query.trim()) return [];
   const out: TurnMatch[] = [];
   turns.forEach((turn, index) => {
-    const visible = [turn.prompt?.text ?? "", turn.answer?.text ?? ""].join("\n");
-    const work = processText(turn);
+    // `strip` (a project's own root) leaves the text before it is matched and cut, so a snippet never starts mid-path.
+    const plain = (text: string) => (strip ? text.split(strip).join("") : text);
+    const visible = plain([turn.prompt?.text ?? "", turn.answer?.text ?? ""].join("\n"));
+    const work = plain(processText(turn));
     const inVisible = findOffsets(visible, query).length;
     const inWork = findOffsets(work, query).length;
     if (inVisible + inWork === 0) return;
