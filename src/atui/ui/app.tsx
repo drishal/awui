@@ -28,7 +28,8 @@ import type { UserItem } from "../../shared/protocol.js";
 import type { PaletteItem } from "../../web/palette.js";
 import { isBusy } from "../../web/session-groups.js";
 import { atuiColumn, chatWidthLabel, CHAT_WIDTHS, nextChatWidth } from "../../shared/chat-width.js";
-import { ago, clip, foldLabel, STATUS_LABEL } from "../format.js";
+import { ago, clip, foldLabel, STATUS_LABEL, tokens } from "../format.js";
+import { spendWords } from "../footer.js";
 import { tick } from "./ticker.js";
 import { actionKeys, leader, leaderPrefix, LEADER_KEYS, VIM_HELP, type KeybindStyle } from "../keys.js";
 import { harnessGlyph } from "../neat.js";
@@ -36,7 +37,7 @@ import type { Atui } from "../state.js";
 import { terminalState, type TerminalState } from "../terminal.js";
 import { accentOf, dimmed } from "../theme.js";
 import { Composer } from "./composer.js";
-import { AtuiContext, ThemeOverride } from "./context.js";
+import { AtuiContext, ThemeOverride, useAtui, useTheme } from "./context.js";
 import { glideBy, glideTo, Shimmer } from "./fx.js";
 import { sparkline } from "../fx.js";
 import { findTurns } from "../../web/find.js";
@@ -88,6 +89,30 @@ const PALETTE_ORDER = ["Chats", "Tabs", "Agent", "View", "Project", "More"];
 const TWICE_MS = 1200;
 /** A session that opens within this shows at once; one that takes longer gets the ghost thread meanwhile. */
 const GHOST_AFTER_MS = 50;
+
+/** The chat's own figures under a full-pane view (review, board, delegated work, …), where the composer's footer is not drawn: how full the context is, and what the run has used, so the one number to know before the next send never goes. */
+function Instruments() {
+  const app = useAtui();
+  const t = useTheme();
+  const words = () => {
+    const c = app.chat();
+    if (!c) return "";
+    const usage = c.usage;
+    const parts: string[] = [];
+    if (c.context?.percent != null) parts.push(`ctx ${Math.round(c.context.percent)}%`);
+    if (usage && usage.input + usage.cachedInput + usage.output > 0) parts.push(`in ${tokens(usage.input + usage.cachedInput)} · out ${tokens(usage.output)}`);
+    const spend = spendWords(usage);
+    if (spend) parts.push(spend);
+    return parts.join(" · ");
+  };
+  return (
+    <Show when={words()}>
+      <box flexShrink={0} flexDirection="row" justifyContent="flex-end" paddingLeft={2} paddingRight={2}>
+        <text selectable={false} fg={t().muted} wrapMode="none" truncate>{words()}</text>
+      </box>
+    </Show>
+  );
+}
 
 export function App(p: {
   app: Atui;
@@ -1863,6 +1888,7 @@ export function App(p: {
                   />
                 </Show>
                 <Show when={app.undoTurn()}>{(turn) => <UndoDialog turn={turn()} onClose={() => app.setUndoTurn(null)} side={room()} />}</Show>
+                <Instruments />
               </box>
             </Show>
           </box>

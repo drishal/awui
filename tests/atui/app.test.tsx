@@ -1096,6 +1096,18 @@ describe("atui", () => {
     expect(await ui.until("Message the agent")).not.toContain("Search steps…");
   }, 40_000);
 
+  it("keeps the chat's context and token figures under a full-pane view, where the composer's footer is gone", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("showcase tool please");
+    ui.keys.pressEnter();
+    await idle(ui);
+    await ui.until("ctx ");
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("d");
+    const review = await ui.until("Review changes");
+    expect(review).not.toContain("Message the agent");
+    expect(review).toMatch(/ctx \d+% · in \d+k? · out \d+/);
+  }, 40_000);
   it("opens a turn's timing from a click on its Σ line, and rules the axis with a tick for every label", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("showcase timing");
