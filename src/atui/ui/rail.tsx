@@ -60,7 +60,7 @@ export function ContextRailView(p: RailActions) {
   const [at, setAt] = createSignal(0);
   const here = () => entries()[at()] as RailEntry | undefined;
   // The rows are drawn with their headings, so the window is measured in drawn lines, not rows.
-  const height = () => Math.max(6, size().height - 10);
+  const height = () => Math.max(6, size().height - 11);
   const width = () => Math.max(30, size().width - (p.side ?? 0) - 4);
   const start = () => rowWindow(entries().length, at(), height());
 
@@ -110,12 +110,11 @@ export function ContextRailView(p: RailActions) {
       /* A full-pane view like Review, Git and GitHub: its own header row and no frame, so there is no box floating over blank rows. */
       flexGrow={1}
       flexDirection="column"
-      maxWidth={width()}
       backgroundColor={app.glass() ? undefined : t().bg}
-      paddingLeft={1}
-      paddingRight={1}
+      paddingLeft={2}
+      paddingRight={2}
     >
-      <box flexDirection="row" flexShrink={0}>
+      <box flexDirection="row" flexShrink={0} marginTop={1}>
         <text flexGrow={1} wrapMode="none" truncate>
           <b>Active work</b>
           <span style={{ fg: t().muted }}>{`   ${clip(chat()?.title || "New chat", width() - 60)} · ${app.boot()?.harnesses.find((h) => h.id === chat()?.harnessId)?.displayName ?? chat()?.harnessId ?? ""} · ${chat()?.workspace.name ?? ""}`}</span>

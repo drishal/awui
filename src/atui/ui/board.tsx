@@ -180,19 +180,18 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   };
   const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} · ${PR_FILTER_LABELS[pr()]}`;
   /** The frame takes the room the sheet stands in: the columns above, the selected card's detail under them, so the pane is one surface and not a small box over blank rows. */
-  const boxHeight = () => Math.max(9 + DETAIL_ROWS, size().height - 6);
+  const boxHeight = () => Math.max(9 + DETAIL_ROWS, size().height - 7);
 
   return (
     <box
       /* A full-pane view like Review, Git and GitHub: its own header row and no frame, so there is no box floating over blank rows. */
       flexGrow={1}
       flexDirection="column"
-      maxWidth={width()}
       backgroundColor={app.glass() ? undefined : t().bg}
-      paddingLeft={1}
-      paddingRight={1}
+      paddingLeft={2}
+      paddingRight={2}
     >
-      <box flexDirection="row" flexShrink={0}>
+      <box flexDirection="row" flexShrink={0} marginTop={1}>
         <text flexGrow={1} fg={t().muted} wrapMode="none" truncate>
           <b style={{ fg: t().text }}>Agents</b>
           {`   ${filterLine()}`}

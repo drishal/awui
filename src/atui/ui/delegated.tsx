@@ -74,7 +74,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
     return known ? reviewActions(known) : [];
   });
   const diffRows = createMemo(() => reviewRows(changes() ?? []));
-  const height = () => Math.max(4, size().height - 6);
+  const height = () => Math.max(4, size().height - 7);
   const width = () => Math.max(30, size().width - (p.side ?? 0) - 4);
   const start = () => rowWindow(rows().length, at(), height());
   const tick = setInterval(() => setNow(Date.now()), 1000);
@@ -266,12 +266,11 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
       /* A full-pane view like Review, Git and GitHub: its own header row and no frame, so there is no box floating over blank rows. */
       flexGrow={1}
       flexDirection="column"
-      maxWidth={width()}
       backgroundColor={app.glass() ? undefined : t().bg}
-      paddingLeft={1}
-      paddingRight={1}
+      paddingLeft={2}
+      paddingRight={2}
     >
-      <box flexDirection="row" flexShrink={0}>
+      <box flexDirection="row" flexShrink={0} marginTop={1}>
         <text flexGrow={1} fg={t().text2} wrapMode="none" truncate>
           <b>Delegated work</b>
           <span style={{ fg: t().muted }}>{`   ${workerCount(rows().length)} · ${tasksMeta(tasks()) ?? "every worker has finished"}`}</span>
