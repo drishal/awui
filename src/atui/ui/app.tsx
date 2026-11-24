@@ -1278,7 +1278,7 @@ export function App(p: {
     return `${"start".padStart(6)}  ${"took".padStart(6)}${anySlow ? " ".repeat(9) : ""}`;
   };
 
-  /** The mark before a Timing row: the transcript's own mark for the call (± › ◎ ▤ ⊕ ◈ in Unicode, Nerd Font glyphs when chosen; ≡ a plan, ◇ an MCP server, ✗ a failure), ▾ for thinking as its row has, ● for the answer, ↳ for a subagent run. */
+  /** The mark before a Timing row: the transcript's own mark for the call (✎ ⊞ › ◎ ▤ ⊕ ◈ in Unicode, Nerd Font glyphs when chosen; ≡ a plan, ◇ an MCP server, ✗ a failure), ▾ for thinking as its row has, ● for the answer, ↳ for a subagent run. */
   const timingMark = (row: { kind: string; chip?: ToolKindChip; failed?: boolean }) =>
     row.kind === "thinking" ? "▾" : row.kind === "reply" ? "●" : row.kind === "subagent" ? "↳" : callMark(row.failed === true, row.chip, row.chip?.category ?? "other");
 
