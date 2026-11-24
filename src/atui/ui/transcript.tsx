@@ -1042,6 +1042,7 @@ function Answer(p: { item: AssistantItem; mark?: string | null }) {
 }
 
 function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; onToggle: () => void; switchedTo: string | null; column: number; foundQuery?: string | null; foundOf?: string }) {
+  const app = useAtui();
   const t = useTheme();
   // The turn a find landed on says where the words are: one line around the first match with the words in the accent and bold; the answer's own copy of the words sits on a warn-tinted ground (markMatches), and the strip names them too.
   const hit = createMemo(() => {
@@ -1094,7 +1095,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
   const fade = () => (since() === null ? undefined : easeOut(Math.min(1, (since() as number) * 2.5)));
   const files = () => p.turn().changedFiles.map((f) => relativePath(f, p.workspace));
   // A finished turn closes with what it did, neat-render's Σ line: calls, time, reasoning, failures.
-  const sigma = createMemo(() => sigmaFacts(p.turn()));
+  const sigma = createMemo(() => sigmaFacts(p.turn(), app.turnSpend()[p.turn().prompt?.id ?? ""]));
   const sigmaShown = () => p.open && !p.turn().live && Boolean(p.turn().prompt) && (sigma().facts.length > 0 || sigma().failed !== null);
   const FILES_SHOWN = 4;
   return (

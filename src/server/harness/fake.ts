@@ -51,6 +51,7 @@
 //   "consult-ask"   a consultant whose harness raises a confirm request
 //   "roomtwice"     a short answer naming the bot, so two addressed bots differ
 //   "roomwork"      a thought, a read and a command, then a reply with its own thinking (a run as a chat turn)
+//   "priced"        every call is priced ($0.014 each), so a turn's spend shows (atui's Σ line)
 //   "usagevary"     different token counts per model, and a null cost for fake/slow
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -460,6 +461,10 @@ class FakeLiveChat implements LiveChat {
     if (this.coldCache) {
       const expired = { promptCacheTtlMs: 300_000, promptCacheExpiresAt: Date.now() - 30 * 60_000 };
       return { turns: role("user"), steps, input: steps * 1200, cachedInput: Math.max(0, steps - 1) * 900, cacheWrite: 0, output: steps * 40, cost: null, ...expired };
+    }
+    // "priced": every call has a price, so a turn's spend can be told from the session's running total.
+    if (this.session.messages.some((m) => isObj(m) && m.role === "user" && typeof m.content === "string" && m.content.includes("priced"))) {
+      return { turns: role("user"), steps, input: steps * 1200, cachedInput: Math.max(0, steps - 1) * 900, cacheWrite: 0, output: steps * 40, cost: steps * 0.014 };
     }
     // "usagevary" rooms report different counts per model, and one unpriced model, for aggregation and null-cost tests.
     const vary = this.session.messages.some((m) => isObj(m) && m.role === "user" && typeof m.content === "string" && m.content.includes("usagevary"));

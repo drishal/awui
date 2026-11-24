@@ -254,12 +254,19 @@ export function thinkingMeta(item: AssistantItem, now = Date.now()): string {
   return [ms >= 250 ? durationLabel(ms) : "", `~${thoughtTokens(item.thinking)} tokens`].filter(Boolean).join(" · ");
 }
 
+/** A turn's cost: $0.014, three places under a dollar (a cent is too coarse for one turn), two above; a hair of a cent is "<$0.001". */
+export function spendLabel(usd: number): string {
+  if (usd < 0.001) return "<$0.001";
+  return `$${usd < 1 ? usd.toFixed(3) : usd.toFixed(2)}`;
+}
+
 /**
  * The Σ line under a finished turn: its calls, how long the turn took (the
  * turn's own clock, else the calls' span), the reasoning's size, and failures.
- * Empty when there is nothing measurable to say.
+ * Empty when there is nothing measurable to say. `spend` (USD this client saw the
+ * session's running total grow over the turn, when the harness prices the model) ends the facts.
  */
-export function sigmaFacts(turn: Pick<Turn, "process" | "workAfter" | "answer" | "startedAt" | "endedAt">): { facts: string[]; failed: string | null } {
+export function sigmaFacts(turn: Pick<Turn, "process" | "workAfter" | "answer" | "startedAt" | "endedAt">, spend?: number): { facts: string[]; failed: string | null } {
   const items: ChatItem[] = [...turn.process, ...turn.workAfter];
   const calls = items.filter((i): i is ToolItem => i.kind === "tool");
   let first = Number.POSITIVE_INFINITY;
@@ -274,7 +281,7 @@ export function sigmaFacts(turn: Pick<Turn, "process" | "workAfter" | "answer" |
   const took = whole ?? span;
   const thinking = [...items, ...(turn.answer ? [turn.answer] : [])].reduce((n, i) => n + (i.kind === "assistant" ? i.thinking.length : 0), 0);
   const failures = calls.filter((c) => c.status === "error").length;
-  const facts = [calls.length > 0 ? plural(calls.length, "call") : "", took !== undefined ? `${calls.length > 0 && whole === undefined && span !== undefined ? "over " : ""}${durationLabel(took)}` : "", thinking > 0 ? `~${tokenCount(thinking)} thought tokens` : ""].filter(Boolean);
+  const facts = [calls.length > 0 ? plural(calls.length, "call") : "", took !== undefined ? `${calls.length > 0 && whole === undefined && span !== undefined ? "over " : ""}${durationLabel(took)}` : "", thinking > 0 ? `~${tokenCount(thinking)} thought tokens` : "", spend !== undefined && spend > 0 ? spendLabel(spend) : ""].filter(Boolean);
   return { facts, failed: failures > 0 ? `${failures} failed` : null };
 }
 

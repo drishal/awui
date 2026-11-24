@@ -1930,4 +1930,24 @@ describe("atui's keybind styles", () => {
     await wait(200);
     expect(ui.app.presets().map((x) => x.name)).toEqual(["Other"]);
   }, 40_000);
+  it("ends a finished turn's Σ line with what that turn cost when the harness prices the model", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("priced tool please");
+    ui.keys.pressEnter();
+    await ui.until("priced tool please");
+    await idle(ui);
+    await ui.until(() => Object.keys(ui?.app.turnSpend() ?? {}).length === 1);
+    await ui.type("priced again");
+    ui.keys.pressEnter();
+    await ui.until("priced again");
+    await idle(ui);
+    await wait(500);
+    const spends = Object.values(ui.app.turnSpend());
+    // Two turns, each its own share: the second is one call's price, not the session's running total.
+    expect(spends).toHaveLength(2);
+    expect(spends[1]).toBeCloseTo(0.014, 3);
+    expect(spends[0]).toBeGreaterThanOrEqual(0.014);
+    const frame = await ui.frame();
+    expect(frame).toMatch(/Σ .*\$0\.014/);
+  }, 40_000);
 });

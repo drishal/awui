@@ -348,6 +348,32 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     ),
   );
 
+  // What each turn cost, from the session's running total: the total when a prompt first appears is its base, and the total
+  // the harness reports as the run settles, less that base, is the turn's. Only turns this client watched have one: the
+  // prompts a chat already had when it was opened have no base, and an unpriced model never makes a total.
+  const [turnSpend, setTurnSpend] = createSignal<Record<string, number>>({});
+  const spendBases = new Map<string, number | null>();
+  let spendChat: string | null = null;
+  createEffect(() => {
+    const c = chat();
+    if (!c) return;
+    const users = untrack(() => c.items.filter((i) => i.kind === "user"));
+    if (c.chatId !== spendChat) {
+      spendChat = c.chatId;
+      spendBases.clear();
+      setTurnSpend({});
+      // A chat opened with prompts already in it has no base for them; the first prompt of a new chat, still running, started from nothing.
+      for (const u of users) spendBases.set(u.id, !c.usage?.cost && users.length === 1 && c.status === "running" ? 0 : null);
+    }
+    const total = c.usage ? c.usage.cost : null;
+    for (const u of users) if (!spendBases.has(u.id)) spendBases.set(u.id, typeof total === "number" ? total : users.length <= 1 ? 0 : null);
+    const last = users[users.length - 1];
+    const base = last ? spendBases.get(last.id) : null;
+    if (!last || base === null || base === undefined || typeof total !== "number") return;
+    const amount = total - base;
+    if (amount > 0) setTurnSpend((m) => (m[last.id] === amount ? m : { ...m, [last.id]: amount }));
+  });
+
   // The context share over this chat's life, for the status line's sparkline.
   createEffect(on(chatId, () => setContextHistory([])));
   createEffect(
@@ -1136,6 +1162,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     configure,
     compact,
     chooseHarness,
+    turnSpend,
     presets,
     startPreset,
     savePreset,
