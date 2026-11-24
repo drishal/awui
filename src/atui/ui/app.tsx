@@ -859,6 +859,12 @@ export function App(p: {
 
   /** Search every chat: the server's bounded read of every session (the web's Search chats), one row per chat with its first hit. Results arrive after a short pause; a row opens its chat with the words landed in the first turn that has them. */
   const [chatHits, setChatHits] = createSignal<{ q: string; items: PaletteItem[] }>({ q: "", items: [] });
+  // A body hit whose snippet is the chat's own title says nothing the row has not said: its hint falls back to the harness.
+  const sameWords = (snippet: string | undefined, title: string | undefined) => {
+    const a = (snippet ?? "").trim().toLowerCase();
+    const b = (title ?? "").trim().toLowerCase();
+    return a.length > 0 && b.length > 0 && (a.includes(b) || b.includes(a));
+  };
   let chatSearchSeq = 0;
   let chatSearchTimer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(chatSearchTimer));
@@ -884,7 +890,7 @@ export function App(p: {
                   section: "Chats",
                   label: hit?.snippet ?? (r.session.title || "New chat"),
                   // A row whose words are the chat's title does not repeat it: the hint is then where and when, as the sidebar says it.
-                  hint: [hit?.kind === "title" || !hit ? (app.boot()?.harnesses.find((h) => h.id === r.session.harnessId)?.displayName ?? r.session.harnessId) : clip(r.session.title || "New chat", 22), names.get(r.session.workspaceId) ?? "", hit?.kind === "title" || !hit ? ago(r.session.updatedAt) : "", r.more > 0 ? `+${r.more}` : ""].filter(Boolean).join(" · "),
+                  hint: [hit?.kind === "title" || !hit || sameWords(hit.snippet, r.session.title) ? (app.boot()?.harnesses.find((h) => h.id === r.session.harnessId)?.displayName ?? r.session.harnessId) : clip(r.session.title || "New chat", 22), names.get(r.session.workspaceId) ?? "", hit?.kind === "title" || !hit ? ago(r.session.updatedAt) : "", r.more > 0 ? `+${r.more}` : ""].filter(Boolean).join(" · "),
                   run: () => void app.openSession(r.session).then(() => {
                     // The chat is on screen: the first turn with the words is where the find lands, as it does from Ctrl+S.
                     setTimeout(() => {
