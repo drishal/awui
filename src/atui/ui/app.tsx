@@ -790,7 +790,8 @@ export function App(p: {
     return findTurns(turns, query, 30).map((m) => ({
       id: `find:${m.turnId}`,
       section: "Turns",
-      label: `${clip(turns[m.index]?.prompt?.text.replace(/\s+/g, " ") ?? "", 18)} › ${plainPath(m.snippet, root)}`,
+      // The match is what a find row is for, so it takes the whole label; the hint names the turn.
+      label: plainPath(m.snippet, root),
       hint: `turn ${m.index + 1} · ${m.inWork ? "work · " : ""}${m.count}×`,
       run: () => revealTurn(m.index, m.inWork),
     }));
@@ -865,7 +866,10 @@ export function App(p: {
     const r = usage();
     if (!r) return [];
     const head = `Last ${r.days} days`;
-    const words = (t: Parameters<typeof tokensOf>[0] & { cost: number; unpriced: number; calls: number }) => `${shortTokens(tokensOf(t))} tokens · ${dollars(t.cost, t.calls > t.unpriced)}`;
+    type Figures = Parameters<typeof tokensOf>[0] & { cost: number; unpriced: number; calls: number };
+    // One grammar down the sheet: tokens, then cost. Only the first row spells the word out.
+    const fig = (t: Figures) => `${shortTokens(tokensOf(t))} · ${dollars(t.cost, t.calls > t.unpriced)}`;
+    const words = (t: Figures) => `${shortTokens(tokensOf(t))} tokens · ${dollars(t.cost, t.calls > t.unpriced)}`;
     const share = cacheShare(r.totals);
     const row = (section: string, label: string, hint: string, bar?: [number, number]): PickerItem => ({ id: `usage:${section}:${label}`, section, label, hint, bar, run: () => {} });
     const tallest = Math.max(1, ...r.byDay.map((d) => tokensOf(d.totals)));
@@ -873,6 +877,7 @@ export function App(p: {
     // A run of days with nothing is one line, not a column of empty tracks.
     const days: PickerItem[] = [];
     const dayTokens = new Map<string, number>();
+    const dayCost = new Map<string, number>();
     let idle: string[] = [];
     const flush = () => {
       if (idle.length === 0) return;
@@ -884,8 +889,9 @@ export function App(p: {
       if (total === 0) idle.push(d.day);
       else {
         flush();
-        const item = row("By day", dayName(d.day), shortTokens(total), [0, total / tallest]);
+        const item = row("By day", dayName(d.day), fig(d.totals), [0, total / tallest]);
         dayTokens.set(item.id, total);
+        dayCost.set(item.id, d.totals.cost);
         days.push(item);
       }
     }
@@ -894,15 +900,15 @@ export function App(p: {
     const MAX_DAY_ROWS = 14;
     if (days.length > MAX_DAY_ROWS) {
       const folded = days.splice(0, days.length - (MAX_DAY_ROWS - 1));
-      days.unshift(row("By day", `Earlier days (${folded.length} rows)`, shortTokens(folded.reduce((n, f) => n + (dayTokens.get(f.id) ?? 0), 0)), [0, 0]));
+      days.unshift(row("By day", `Earlier days (${folded.length} rows)`, `${shortTokens(folded.reduce((n, f) => n + (dayTokens.get(f.id) ?? 0), 0))} · ${dollars(folded.reduce((n, f) => n + (dayCost.get(f.id) ?? 0), 0), true)}`, [0, 0]));
     }
     return [
       row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
       ...(share === null || share < 0.01 ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
       ...days,
       // As the web dialog's bars: each harness and model's share of the busiest one, under the name the header and the composer use.
-      ...r.byHarness.map((h) => row("By harness", app.boot()?.harnesses.find((x) => x.id === h.harnessId)?.displayName ?? h.harnessId, words(h.totals), [0, tokensOf(h.totals) / Math.max(1, ...r.byHarness.map((x) => tokensOf(x.totals)))])),
-      ...r.byModel.slice(0, 8).map((m) => row("By model", m.model, words(m.totals), [0, tokensOf(m.totals) / Math.max(1, ...r.byModel.slice(0, 8).map((x) => tokensOf(x.totals)))])),
+      ...r.byHarness.map((h) => row("By harness", app.boot()?.harnesses.find((x) => x.id === h.harnessId)?.displayName ?? h.harnessId, fig(h.totals), [0, tokensOf(h.totals) / Math.max(1, ...r.byHarness.map((x) => tokensOf(x.totals)))])),
+      ...r.byModel.slice(0, 8).map((m) => row("By model", m.model, fig(m.totals), [0, tokensOf(m.totals) / Math.max(1, ...r.byModel.slice(0, 8).map((x) => tokensOf(x.totals)))])),
       // As the web's rows: the chat's harness, project and age beside its figures, and its share of the busiest chat as a bar.
       ...r.top.slice(0, 8).map((x) => {
         const meta = [app.boot()?.harnesses.find((h) => h.id === x.session.harnessId)?.displayName ?? x.session.harnessId, app.overview().workspaces.find((w) => w.id === x.session.workspaceId)?.name ?? "", ago(x.session.updatedAt)].filter(Boolean).join(" · ");
