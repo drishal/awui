@@ -86,8 +86,12 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
           <span style={{ fg: t().muted }}>{`  +${p.more} more`}</span>
         </Show>
       </text>
+      {/* "Allow tool: read": the label is quiet, the thing being allowed carries the weight (the web card's emphasis). */}
       <text fg={t().text} wrapMode="word">
-        <b>{head().text}</b>
+        <Show when={head().text.indexOf(": ") > 0 && head().text.indexOf(": ") < 24} fallback={<b>{head().text}</b>}>
+          <span style={{ fg: t().text2 }}>{head().text.slice(0, head().text.indexOf(": ") + 2)}</span>
+          <span style={{ fg: t().accent }}><b>{head().text.slice(head().text.indexOf(": ") + 2)}</b></span>
+        </Show>
       </text>
       <Show when={detail()}>
         <box border={["left"]} borderColor={approval() ? mix(t().border, t().warn, 0.6) : t().border} paddingLeft={1} marginTop={1} maxHeight={10}>
@@ -129,9 +133,9 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
         <box flexDirection="column" marginTop={1}>
           <For each={options()}>
             {(o, i) => (
-              <box flexDirection="column" onMouseDown={() => choose(o)}>
+              <box flexDirection="column" backgroundColor={i() === index() ? t().selection : undefined} onMouseDown={() => choose(o)}>
                 <text fg={i() === index() ? t().text : t().text2}>
-                  <span style={{ fg: i() === index() ? t().accent : t().muted }}>{i() === index() ? "› " : "  "}</span>
+                  <span style={{ fg: i() === index() ? t().accent : t().muted }}>{i() === index() ? "▌ " : "  "}</span>
                   <span style={{ fg: o.recommended ? t().accent : t().muted }}>{i() < 9 ? `${i() + 1}. ` : "   "}</span>
                   {/* The card's own semantics, as the web card's buttons: Approve in the ok tone, Deny in danger — only a true approval's options, never a question's choices. */}
                   <Show when={optionTone(o)} fallback={o.label}>

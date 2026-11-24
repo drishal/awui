@@ -615,7 +615,7 @@ describe("atui", () => {
     await ui.type("please ask first");
     ui.keys.pressEnter();
     const asked = await ui.until("Waiting for approval");
-    expect(asked).toContain("› 1. Approve");
+    expect(asked).toContain("▌ 1. Approve");
     // Two answers, so the hint names 1–2 rather than a fixed 1–9.
     expect(asked).toContain("1–2 choose");
     ui.keys.pressKey("1");
