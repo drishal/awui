@@ -193,6 +193,18 @@ describe("atui", () => {
     expect(folded).toMatch(/▸ Worked for \d+s · 2 reads, 1 search, 2 edits/);
     expect(folded).not.toContain("┌─ ● Read");
   }, 30_000);
+  it("starts a rename from the palette by putting /rename in the composer", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("hello rename");
+    ui.keys.pressEnter();
+    await ui.until("Echo: hello rename");
+    await idle(ui);
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("rename this");
+    ui.keys.pressEnter();
+    expect(await ui.until("/rename")).not.toContain("Search commands");
+  }, 30_000);
   it("opens the file sheet on a file from an opened call's View line", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 80 });
     await ui.type("showcase tool edit please");

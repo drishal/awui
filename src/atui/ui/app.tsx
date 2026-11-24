@@ -701,6 +701,7 @@ export function App(p: {
     add({ id: "usage", label: "Usage across chats", keywords: "tokens cost spend cache models harnesses", run: () => setDialog("usage") });
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     if (c && landed()) add({ id: "find-clear", label: "Clear find marks", hint: "M-n / M-p stop stepping", keywords: "find search unmark gutter", run: () => { setLanded(null); flash("Find marks cleared"); } });
+    if (c?.capabilities.supportsRename) add({ id: "rename", label: "Rename this chat…", keywords: "title name call retitle", run: () => { setDialog(null); if (!composer) return; composer.setText("/rename "); composer.gotoBufferEnd(); leave(); } });
     add({ id: "edit-draft", label: "Edit the draft in $EDITOR", hint: "M-e", keywords: "external editor vim nano long prompt compose", run: () => void editDraft() });
     {
       // Tern's "Show failed calls": the latest call that failed, its work folds opened and its turn in view.
