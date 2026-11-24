@@ -24,6 +24,7 @@ import { mix, shimmer, sparkline, streamRate } from "../fx.js";
 import { attachmentFrom, attachmentFromFile, byteSize, clipboardImageByTool, imagePathsFromPaste, type PendingImage } from "../images.js";
 import { harnessGlyph } from "../neat.js";
 import { accentOf, CONTEXT_HEAVY_TOKENS, contextTone } from "../theme.js";
+import { fitFooter } from "../footer.js";
 import { useAtui, useTheme } from "./context.js";
 import { Shimmer } from "./fx.js";
 import { JobsStrip } from "./job.js";
@@ -355,6 +356,33 @@ export function Composer(p: {
   /** A repo's state in one word: what is uncommitted, or nothing. */
   const gitWord = (g: GitStatus) => g.counts.conflicts > 0 ? `${g.counts.conflicts} conflicted` : g.files.length === 0 ? "clean" : `${g.files.length} changed`;
 
+  // The right side of the footer, as strings, so the same text is both measured and drawn. Under a narrow pane whole
+  // segments leave (least important first) rather than any being cut: ctx, then the branch, the offer, git's counts,
+  // the write rate and the context's sparkline.
+  const gitBranchText = (g: GitStatus) => ` ⑂ ${g.branch ?? `detached ${g.head ?? ""}`} ${g.upstream && (g.ahead > 0 || g.behind > 0) ? `${g.ahead > 0 ? ` ↑${g.ahead}` : ""}${g.behind > 0 ? ` ↓${g.behind}` : ""}` : ""}`;
+  const gitCountsText = (g: GitStatus) => `${g.added + g.removed > 0 ? ` +${g.added} −${g.removed}` : ""} ${gitWord(g)}  `;
+  const rateText = () => (app.chat()?.status === "running" && (rate() ?? 0) >= 1 ? `~${Math.round(rate() ?? 0)} tok/s ${rates().length > 1 ? `${sparkline(rates())}  ` : ""}` : "");
+  const offerText = () => (offer() ? `${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  ` : "");
+  const sparkText = () => (app.contextHistory().length > 1 ? `${sparkline(app.contextHistory().slice(-12), 100)} ` : "");
+  const ctxText = () => (percent() !== null ? `ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%` : "");
+  const kept = () => {
+    const g = app.git();
+    const chips = ` ${harnessGlyph(app.harness()?.id ?? "")} ${app.harness()?.displayName ?? "—"} ▾ `.length + (caps()?.supportsThinkingLevel && words().level ? ` ${levelTitle(words().level ?? "")} ▾ `.length + 1 : 0) + (p.status.mode ? 14 : 0) + (queued() > 0 ? `  +${queued()} queued`.length : 0);
+    // The model's name keeps a dozen cells; what the chips and it leave is the right side's.
+    const budget = p.column - 2 - chips - 14;
+    return fitFooter(
+      [
+        { id: "git", width: g ? gitBranchText(g).length : 0, rank: 2 },
+        { id: "offer", width: offerText().length, rank: 3 },
+        { id: "counts", width: g ? gitCountsText(g).length : 0, rank: 4 },
+        { id: "rate", width: rateText().length, rank: 5 },
+        { id: "spark", width: sparkText().length, rank: 6 },
+        { id: "ctx", width: ctxText().length + 2, rank: 1 },
+      ],
+      budget,
+    );
+  };
+
   // How fast the agent writes: what the turn has streamed, sampled on the clock while it runs.
   const [rate, setRate] = createSignal<number | null>(null);
   const [rates, setRates] = createSignal<number[]>([]);
@@ -530,7 +558,7 @@ export function Composer(p: {
           </box>
           <Show when={caps()?.supportsModelSelection}>
             <box flexShrink={1} backgroundColor={app.glass() ? undefined : t().surface2} marginLeft={1} onMouseDown={() => p.onPick("models")}>
-              <text fg={t().text2} truncate>{` ${words().name} ▾ `}</text>
+              <text fg={t().text2} wrapMode="none" truncate>{` ${words().name} ▾ `}</text>
             </box>
           </Show>
           <Show when={caps()?.supportsThinkingLevel ? words().level : null}>
@@ -570,38 +598,42 @@ export function Composer(p: {
           <Show when={app.git()}>
             {(g) => (
               <>
-                <span style={{ fg: t().accent, bg: t().surface }}>{` ⑂ ${g().branch ?? `detached ${g().head ?? ""}`} `}</span>
-                <Show when={g().upstream && (g().ahead > 0 || g().behind > 0)}>
-                  <span style={{ fg: t().muted }}>{`${g().ahead > 0 ? ` ↑${g().ahead}` : ""}${g().behind > 0 ? ` ↓${g().behind}` : ""}`}</span>
+                <Show when={kept().has("git")}>
+                  <span style={{ fg: t().accent, bg: t().surface }}>{` ⑂ ${g().branch ?? `detached ${g().head ?? ""}`} `}</span>
+                  <Show when={g().upstream && (g().ahead > 0 || g().behind > 0)}>
+                    <span style={{ fg: t().muted }}>{`${g().ahead > 0 ? ` ↑${g().ahead}` : ""}${g().behind > 0 ? ` ↓${g().behind}` : ""}`}</span>
+                  </Show>
                 </Show>
-                <Show when={g().added + g().removed > 0}>
-                  <span style={{ fg: t().ok }}>{` +${g().added}`}</span>
-                  <span style={{ fg: t().danger }}>{` −${g().removed}`}</span>
+                <Show when={kept().has("counts")}>
+                  <Show when={g().added + g().removed > 0}>
+                    <span style={{ fg: t().ok }}>{` +${g().added}`}</span>
+                    <span style={{ fg: t().danger }}>{` −${g().removed}`}</span>
+                  </Show>
+                  <span style={{ fg: g().counts.conflicts > 0 ? t().danger : g().files.length === 0 ? t().muted : t().text2 }}>{` ${gitWord(g())}  `}</span>
                 </Show>
-                <span style={{ fg: g().counts.conflicts > 0 ? t().danger : g().files.length === 0 ? t().muted : t().text2 }}>{` ${gitWord(g())}  `}</span>
               </>
             )}
           </Show>
           {/* Gone the moment the run ends, not at the next sample. */}
-          <Show when={app.chat()?.status === "running" && (rate() ?? 0) >= 1}>
+          <Show when={kept().has("rate") && rateText()}>
             <span style={{ fg: t().muted }}>{`~${Math.round(rate() ?? 0)} tok/s `}</span>
             <Show when={rates().length > 1}>
               <span style={{ fg: t().text2 }}>{`${sparkline(rates())}  `}</span>
             </Show>
           </Show>
-          <Show when={offer()}>
-            <span style={{ fg: compactFirst() ? t().warn : t().muted }}>{`${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  `}</span>
+          <Show when={kept().has("offer") && offer()}>
+            <span style={{ fg: compactFirst() ? t().warn : t().muted }}>{offerText()}</span>
           </Show>
           <Show
             when={app.chat()?.status === "compacting"}
             fallback={
               <>
                 {/* The last dozen samples: enough to see the trend without taking the hint's room. */}
-                <Show when={app.contextHistory().length > 1}>
-                  <span style={{ fg: tone() }}>{`${sparkline(app.contextHistory().slice(-12), 100)} `}</span>
+                <Show when={kept().has("spark") && sparkText()}>
+                  <span style={{ fg: tone() }}>{sparkText()}</span>
                 </Show>
                 <Show when={percent() !== null}>
-                  <span style={{ fg: tone() }}>{`ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%`}</span>
+                  <span style={{ fg: tone() }}>{ctxText()}</span>
                 </Show>
               </>
             }
