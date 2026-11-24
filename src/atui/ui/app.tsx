@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createEffect, createMemo, createResource, createSignal, on, onCleanup, Show } from "solid-js";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
+import { AGENT_STATUS_WORDS, agentStatusText } from "../../web/agent-status.js";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { ChatSearch, RunResult } from "../../shared/protocol.js";
 import { runnable } from "../../web/code-blocks.js";
@@ -1150,6 +1151,10 @@ export function App(p: {
                     </Show>
                     <Show when={c().pending.length === 0 && isBusy(c().status)} fallback={c().pending.length > 0 ? null : <span style={{ fg: c().status === "error" ? t().danger : t().muted }}>{STATUS_LABEL[c().status]}</span>}>
                       <Shimmer text={STATUS_LABEL[c().status]} base={t().accent} glow={t().text} />
+                    </Show>
+                    {/* The line an agent set for its chat (set_status), as the web's header draws it: the state's word, and its own sentence while the pane is wide enough. */}
+                    <Show when={app.overview().sessions.find((x) => x.liveChatId === c().chatId || x.id === c().sessionId)?.agentStatus}>
+                      {(status) => <span style={{ fg: t().text2 }}>{`  ◈ ${size().width >= 110 ? clip(agentStatusText(status()), 44) : AGENT_STATUS_WORDS[status().state]}`}</span>}
                     </Show>
                     <span style={{ fg: t().muted }}>{`  ${c().workspace.name}`}</span>
                   </text>
