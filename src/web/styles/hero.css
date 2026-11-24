@@ -16,49 +16,72 @@
 }
 
 .hero-mark {
+  position: relative;
   display: flex;
   justify-content: center;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
   color: var(--harness, var(--accent));
 }
 
-.hero-mark svg {
-  display: block;
+/* One soft wash behind the mark, so the top of the screen has a light source instead of a bare glyph.
+   It is mixed from the accent, so a theme (and a base16 scheme) moves it with everything else, and it
+   sits behind the mark in paint order, so nothing needs a z-index. */
+.hero-mark::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(420px, 92vw);
+  height: 280px;
+  max-width: 100vw;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(55% 45% at 50% 40%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 72%);
+  pointer-events: none;
 }
 
-/* The three things to try: quiet pills that fill the box. */
+.hero-mark svg {
+  position: relative;
+  display: block;
+}
+/* The three things to try: quiet cards that fill the box. */
 .hero-examples {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   margin: 0 16px 16px;
   padding: 0;
   list-style: none;
 }
 
 .hero-example {
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--r-control);
-  background: transparent;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
   color: var(--text-2);
   font-size: 13px;
   font-weight: 500;
+  transition:
+    transform 0.12s var(--ease-out),
+    border-color 0.12s var(--ease-out),
+    color 0.12s var(--ease-out);
 }
 
+/* A card lifts off the page by one pixel: enough to feel pressed, not enough to jump. */
 .hero-example:hover {
-  background: var(--hover);
+  transform: translateY(-1px);
+  border-color: var(--hairline-strong);
   color: var(--text);
 }
-
 .hero-title {
-  margin: 0 16px 6px;
-  font-size: 24px;
+  margin: 0 16px 8px;
+  font-size: 30px;
   font-weight: 600;
   text-align: center;
-  letter-spacing: calc(var(--tracking-tight) * 1.4);
+  letter-spacing: var(--tracking-tight);
 }
 
 .hero-project {
@@ -66,9 +89,12 @@
 }
 
 .hero-sub {
-  margin: 0 16px 18px;
+  /* One sentence that says what the agent will do: a comfortable measure, never a full-pane line. */
+  max-width: calc(44ch + 32px);
+  margin: 0 auto 18px;
+  padding: 0 16px;
   text-align: center;
-  font-size: 13px;
+  font-size: 13.5px;
 }
 
 .hero-notices {

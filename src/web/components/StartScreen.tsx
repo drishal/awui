@@ -192,11 +192,14 @@ export function StartScreen({
     <div className={`hero start-screen${landing ? " is-leaving" : ""}`} style={harnessColor(harnessId ?? undefined)} inert={landing ? true : undefined}>
       <div className="hero-inner">
         <span className="hero-mark" aria-hidden="true">
-          <svg viewBox="0 0 64 64" width="44" height="44" fill="none">
-            <rect x="6" y="8" width="52" height="38" rx="11" fill="currentColor" />
-            <path d="M20 46v10l11-10z" fill="currentColor" />
-            <path d="M25 19l8 8-8 8" stroke="var(--accent-fg)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M38 35h7" stroke="var(--accent-fg)" strokeWidth="4.5" strokeLinecap="round" />
+          {/* The mark: a terminal bubble drawn in one hue, its prompt and cursor in the accent's ink, and a
+              soft sheen under the top edge so the shape reads as a lit surface rather than a flat blob. */}
+          <svg viewBox="0 0 64 64" width="52" height="52" fill="none">
+            <rect x="6" y="10" width="52" height="38" rx="12" fill="currentColor" />
+            <path d="M21 46h11l-13 10z" fill="currentColor" />
+            <path d="M20 16h24" stroke="var(--accent-fg)" strokeWidth="2.5" strokeLinecap="round" opacity="0.3" />
+            <path d="M24 23l8 7-8 7" stroke="var(--accent-fg)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M38 37h6" stroke="var(--accent-fg)" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
         </span>
         <h2 className="hero-title">
