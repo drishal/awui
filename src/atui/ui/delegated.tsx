@@ -14,6 +14,7 @@ import { reviewActions, reviewWords, tasksMeta, type ReviewAction, type ReviewFa
 import { collectChanges } from "../../web/review.js";
 import { ACTION_KEYS, clockNote, moveRow, rowWindow, taskRows, workerCount, type TaskRow } from "../delegated.js";
 import { clip } from "../format.js";
+import { plainTitle } from "../../web/plain-title.js";
 import { reviewRows } from "../review.js";
 import { toneDot, toneOf } from "../rail.js";
 import { sheetGround } from "../fx.js";
@@ -39,6 +40,17 @@ const factsOf = (answer: ReviewAnswer | null): ReviewFacts | null =>
         reason: answer.reason,
       }
     : null;
+
+/**
+ * The selected worker's doing or result as plain lines (Markdown markers out, as a card's line is, so no `**` shows), without its
+ * first line when the list row above already says it and more follows.
+ */
+export function detailText(task: DelegatedTaskView, rowLine: string | null | undefined): string {
+  const raw = task.result?.error ?? task.result?.finalText ?? task.asking ?? task.activity ?? "Nothing reported yet.";
+  const lines = raw.split("\n").map((l) => plainTitle(l.trim())).filter(Boolean);
+  const same = (a: string, b: string | null | undefined) => Boolean(b) && a.replace(/\s+/g, " ") === b?.replace(/\s+/g, " ");
+  return (lines.length > 1 && same(lines[0] ?? "", rowLine) ? lines.slice(1) : lines).join("\n") || raw;
+}
 
 export function DelegatedView(p: { onClose: () => void; initialTaskId?: string | null; onOpenChat: (chatId: string) => void; side?: number }) {
   const app = useAtui();
@@ -315,7 +327,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
                     </text>
                     <box maxHeight={5} overflow="hidden">
                       <text fg={t().text2} wrapMode="word">
-                        {task().result?.error ?? task().result?.finalText ?? task().asking ?? task().activity ?? "Nothing reported yet."}
+                        {detailText(task(), rows()[at()]?.line)}
                       </text>
                     </box>
                   </box>

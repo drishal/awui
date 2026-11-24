@@ -1434,6 +1434,8 @@ describe("atui", () => {
     expect(list).toContain("Delegated work");
     // The selected worker's detail sits under the list: what it ended with, said in full.
     expect(list).toMatch(/Result {2}test · Fake/);
+    // In plain words: the result's Markdown markers are not drawn.
+    expect(list).not.toContain("**");
     // Opened: the worker's changed file and its diff, and the review that decides what happens to it.
     ui.keys.pressEnter();
     const detail = await ui.until("Apply patch into lead");
