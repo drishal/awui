@@ -20,7 +20,7 @@ import { createEffect, createMemo, createResource, createSignal, on, onCleanup, 
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { AGENT_STATUS_WORDS, agentStatusText } from "../../web/agent-status.js";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
-import type { ChatSearch, RunResult } from "../../shared/protocol.js";
+import type { ChatSearch, CheckpointComparison, CheckpointPoint, RunResult } from "../../shared/protocol.js";
 import { runnable } from "../../web/code-blocks.js";
 import { codeBlocks, quoteText, runForMessage, runStatus } from "../assist.js";
 import { RunOutput } from "./runout.js";
@@ -62,7 +62,7 @@ import { buildTurns, turnOfTool } from "../../web/turns.js";
 import { atLabel, turnWaterfall } from "../../web/waterfall.js";
 import { cacheShare, dollars, shortTokens, tokensOf } from "../../web/usage.js";
 
-type Dialog = "palette" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
+type Dialog = "palette" | "timeline" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -682,6 +682,7 @@ export function App(p: {
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     if (c && landed()) add({ id: "find-clear", label: "Clear find marks", hint: "M-n / M-p stop stepping", keywords: "find search unmark gutter", run: () => { setLanded(null); flash("Find marks cleared"); } });
     add({ id: "edit-draft", label: "Edit the draft in $EDITOR", hint: "M-e", keywords: "external editor vim nano long prompt compose", run: () => void editDraft() });
+    if ((app.chat()?.checkpoints.length ?? 0) > 0) add({ id: "timeline", label: "File timeline…", keywords: "checkpoints undo restore files before each prompt history changes", run: () => setDialog("timeline") });
     add({ id: "search-chats", label: "Search every chat…", keywords: "find text sessions history all projects harnesses grep", run: () => setDialog("chats") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
@@ -969,6 +970,38 @@ export function App(p: {
     return rows;
   };
 
+  /** The file timeline (the web's Timeline dialog): each prompt's checkpoint, newest first; Enter opens the undo that puts the files back as they were then, and the preview says what changed since. */
+  const [points] = createResource(
+    () => (dialog() === "timeline" ? app.chat()?.chatId : undefined),
+    (id) => app.server.call<{ points: CheckpointPoint[] }>(`/api/chats/${id}/checkpoints`).then((r) => r.points).catch(() => [] as CheckpointPoint[]),
+  );
+  const timelineItems = (): PickerItem[] => {
+    const idle = !app.busy();
+    return [...(points() ?? [])].reverse().map((pt) => ({
+      id: `tl:${pt.turn}`,
+      section: "Checkpoints",
+      label: clip(pt.prompt.replace(/\s+/g, " ").trim() || `Message ${pt.turn}`, 80),
+      hint: `Message ${pt.turn} · ${ago(new Date(pt.at).toISOString())}`,
+      disabled: idle ? undefined : "Wait until the agent is idle",
+      run: () => { setDialog(null); app.setUndoTurn(pt.turn); },
+    }));
+  };
+  const timelinePreview = (item: PaletteItem): Promise<PreviewText | null> | null => {
+    const turn = Number(item.id.replace("tl:", ""));
+    const id = app.chat()?.chatId;
+    if (!id || !Number.isFinite(turn)) return null;
+    return app.server
+      .call<CheckpointComparison>(`/api/chats/${id}/checkpoints/compare?from=${turn}&to=now`)
+      .then((r) => {
+        const n = r.files.length + r.more;
+        const sign = { added: "+", deleted: "−", modified: "~" } as const;
+        const lines = r.files.map((f) => `${sign[f.change]} ${f.path}${f.diff ? `  +${f.diff.added} −${f.diff.removed}` : f.note ? `  ${f.note}` : ""}`);
+        if (r.more > 0) lines.push(`… and ${r.more} more`);
+        return { head: n === 0 ? `Since message ${turn}: nothing changed` : `Since message ${turn}: ${n} ${n === 1 ? "file" : "files"} changed`, body: lines.join("\n") || "The files are as they were then." };
+      })
+      .catch(() => null);
+  };
+
   /** Usage across every chat, the web dialog's figures as a list: totals, then by harness, model and the chats that used the most. */
   const [usageDays, setUsageDays] = createSignal(7);
   const [usage] = createResource(
@@ -1215,6 +1248,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "find"}>
                   <Picker title="Find in chat" placeholder="Type to find text in this chat…" items={[]} search={findItems} noun={["turn", "turns"]} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "timeline"}>
+                  <Picker title="File timeline" placeholder="Search prompts…" empty={points.loading ? "Reading the checkpoints…" : "No file checkpoints in this chat yet"} items={timelineItems()} preview={timelinePreview} noun={["checkpoint", "checkpoints"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "chats"}>
                   <Picker title="Search every chat" placeholder="Type to search every chat's words…" items={[]} search={chatItems} noun={["chat", "chats"]} onClose={() => setDialog(null)} side={room()} />

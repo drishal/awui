@@ -956,6 +956,34 @@ describe("atui", () => {
     expect(readFileSync(path.join(repo, "app.ts"), "utf8")).toBe("const a = 2;\n");
   }, 40_000);
 
+  it("lists a chat's file checkpoints in a timeline and opens the undo from one", async () => {
+    const repo = path.join(server.root, "repo-timeline");
+    mkdirSync(repo, { recursive: true });
+    writeFileSync(path.join(repo, "app.ts"), "const a = 1;\n");
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo });
+    git("init", "-q");
+    git("add", ".");
+    git("commit", "-qm", "init");
+    ui = await mount(repo, { height: 40, width: 150 });
+    await ui.type("change the app");
+    ui.keys.pressEnter();
+    await idle(ui);
+    await ui.until(() => (ui?.app.chat()?.checkpoints ?? []).includes(1));
+    writeFileSync(path.join(repo, "app.ts"), "const a = 2;\n");
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands, sessions, thinking…");
+    await ui.type("file timeline");
+    await ui.until("File timeline…");
+    ui.keys.pressEnter();
+    // One row per prompt, with the files changed since it in the preview.
+    const sheet = await ui.until("Since message 1: 1 file changed");
+    expect(sheet).toContain("change the app");
+    expect(sheet).toContain("Message 1");
+    expect(sheet).toContain("~ app.ts");
+    ui.keys.pressEnter();
+    await ui.until("Undo file changes from message 1 on");
+  }, 40_000);
+
   it("reviews the chat's changes: a thread on a line, resolved, and its open ones sent as one prompt", async () => {
     ui = await mount(path.join(server.root, "beta"), { height: 40 });
     await ui.type("edit please");
