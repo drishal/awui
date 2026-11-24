@@ -727,7 +727,12 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
           </text>
         </Show>
       </box>
-      <CallExtras item={p.item} summary={row()} jobs={jobs()} />
+      {/* A plan, todos, jobs, or agents hung under a call that is not the last keep the trunk running beside them (the blocks pad 4, so the trunk's own cell is taken back). */}
+      <box flexDirection="column" border={p.last ? [] : ["left"]} borderColor={t().border}>
+        <box flexDirection="column" marginLeft={p.last ? 0 : -1}>
+          <CallExtras item={p.item} summary={row()} jobs={jobs()} />
+        </box>
+      </box>
       <Show when={tail().length > 0 || open()}>
         <box flexDirection="column" border={p.last ? [] : ["left"]} borderColor={t().border} paddingLeft={p.last ? 3 : 2}>
           <Index each={tail()}>
