@@ -100,7 +100,6 @@ test("a changed file opens in the viewer, coloured, its added lines marked, and 
   await newChat(page);
   await sendAndWait(page, "edit please");
   const turn = page.getByTestId("turn").last();
-  await turn.getByTestId("changed-files").getByRole("button").first().click();
   await turn.getByTestId("changed-files").getByRole("button", { name: "src/app.ts", exact: true }).click();
   const viewer = page.getByRole("dialog", { name: "File src/app.ts" });
   await expect(viewer).toBeVisible();

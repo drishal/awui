@@ -161,19 +161,22 @@ test("an edit row carries its +N −M badge", async ({ page }) => {
   await expect(row.locator(".diff-line.is-add .diff-text")).toHaveText("b");
 });
 
-test("a finished turn's counts show once, on its Changed files row", async ({ page }) => {
+test("a finished turn's counts show once, on its changed files card", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
   await sendAndWait(page, "please edit the app, then read a tool");
   const turn = page.getByTestId("turn").last();
-  // A settled turn with files renders the Changed files row, so the fold head repeats no diffstat.
+  // A settled turn with files renders the changed files card, so the fold head repeats no diffstat.
   await expect(turn.getByTestId("process-toggle")).toHaveAttribute("aria-expanded", "false");
   await expect(turn.getByTestId("process-toggle").getByTestId("change-stat")).toHaveCount(0);
-  // The Changed files row carries them with the file count, and still opens its list.
+  // The card's head says how many files and how much, and the paths themselves are rows under it.
   const changed = turn.getByTestId("changed-files");
-  await expect(changed.getByTestId("change-stat")).toHaveText("+1 −1 · 1 file");
-  await changed.getByRole("button").first().click();
+  await expect(changed).toContainText("Edited 1 file");
+  await expect(changed.getByTestId("change-stat")).toHaveText("+1 −1");
   await expect(changed.getByRole("button", { name: "src/app.ts", exact: true })).toBeVisible();
+  // Its Review button is the same way into the panel the chat header's is.
+  await changed.getByRole("button", { name: "Review", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Review changes" })).toBeVisible();
 });
 
 test("tool cards: the harness's numbered diff, a terminal, a search, a fetch", async ({ page }) => {
@@ -905,7 +908,7 @@ test("context ring, edited files, and the turn rail", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "Context and usage" }).getByRole("region")).toHaveCount(1);
   await page.keyboard.press("Escape");
   await sendAndWait(page, "please edit the app");
-  await expect(page.getByTestId("changed-files")).toContainText("Changed 1 file");
+  await expect(page.getByTestId("changed-files")).toContainText("Edited 1 file");
   await expect(page.getByTestId("changed-files")).toContainText("src/app.ts");
   await expect(page.getByTestId("tool-row").last()).toContainText("src/app.ts");
   await expect(page.getByTestId("context-ring")).toBeVisible();

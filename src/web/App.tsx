@@ -2686,6 +2686,7 @@ export function App() {
                   nameOfHarness={(harnessId) => boot.harnesses.find((h) => h.id === harnessId)?.displayName ?? harnessId}
                   onOpenOpinion={(chatId) => void openChatById(chatId)}
                   onSideThread={(through) => setSideThreadTurn(through)}
+                  onReview={() => setReviewOpen(true)}
                 />
                 {chat.gone ? <div className="banner banner-info">{chat.gone}</div> : null}
                 <Composer

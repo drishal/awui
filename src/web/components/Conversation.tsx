@@ -908,27 +908,55 @@ function ChangeCounts({ stat, withFiles = false }: { stat: ChangeStat; withFiles
   );
 }
 
-function ChangedFiles({ id, files, workspace, stat }: { id: string; files: string[]; workspace: string; stat: ChangeStat | null }) {
+/**
+ * The files a turn changed, as one small card under its answer: how many and how much on its head, the paths
+ * under that, and the way into the review panel beside them. A long list shows three and keeps the rest behind
+ * one more click, so a turn that touched twelve files still reads as a card and not as a wall.
+ */
+function ChangedFiles({ id, files, workspace, stat, onReview }: { id: string; files: string[]; workspace: string; stat: ChangeStat | null; onReview?: (() => void) | undefined }) {
   const rel = files.map((f) => relativePath(f, workspace));
+  const [open, setOpen] = useRowOpen(id, false);
+  const shown = open ? rel : rel.slice(0, 3);
+  const rest = rel.length - shown.length;
   return (
     <div className="changed-files" data-testid="changed-files">
-      <DisclosureRow
-        icon={<IconEdit size={14} />}
-        title={`Changed ${files.length} file${files.length === 1 ? "" : "s"}`}
-        summary={rel.slice(0, 3).join(", ") + (rel.length > 3 ? ` +${rel.length - 3}` : "")}
-        aside={stat ? <ChangeCounts stat={stat} withFiles /> : null}
-        rowId={id}
-      >
+      <div className="changed-card">
+        <div className="changed-head">
+          <IconEdit size={13} aria-hidden="true" />
+          <span className="changed-title">
+            Edited {rel.length} {rel.length === 1 ? "file" : "files"}
+          </span>
+          {stat ? <ChangeCounts stat={stat} /> : null}
+          {onReview ? (
+            <button type="button" className="btn btn-small changed-review" title="Open the review panel: the diffs, with comments on the lines" onClick={onReview}>
+              Review
+            </button>
+          ) : null}
+        </div>
         <ul className="changed-list">
-          {rel.map((f) => (
+          {shown.map((f) => (
             <li key={f}>
               <FileLink path={f}>
                 <code>{f}</code>
               </FileLink>
             </li>
           ))}
+          {rest > 0 ? (
+            <li>
+              <button type="button" className="changed-more" aria-expanded={false} onClick={() => setOpen(true)}>
+                +{rest} more
+              </button>
+            </li>
+          ) : null}
+          {open && rel.length > 3 ? (
+            <li>
+              <button type="button" className="changed-more" aria-expanded onClick={() => setOpen(false)}>
+                Show fewer
+              </button>
+            </li>
+          ) : null}
         </ul>
-      </DisclosureRow>
+      </div>
     </div>
   );
 }
@@ -1288,6 +1316,7 @@ function TurnBody({
   onOpinion,
   onSideThread,
   onOpenOpinion,
+  onReview,
 }: {
   turn: Turn;
   open: boolean;
@@ -1310,6 +1339,8 @@ function TurnBody({
   onOpenOpinion?: ((chatId: string) => void) | undefined;
   /** Opens the turn's Timing view; absent where there is none (a room's run). */
   onTiming?: () => void;
+  /** Opens the review panel from the changed-files card; absent where there is none. */
+  onReview?: (() => void) | undefined;
   /** Replaces the answer row's quiet timing line (a room's run puts its usage there); absent, the turn's own timing. */
   timing?: string | null;
 }) {
@@ -1366,7 +1397,7 @@ function TurnBody({
       {turn.errors.map((item) => (
         <NoticeRow key={item.id} item={item} />
       ))}
-      {turn.changedFiles.length > 0 && !turn.live ? <ChangedFiles id={`changed-${turn.id}`} files={turn.changedFiles} workspace={workspace} stat={turn.changeStat} /> : null}
+      {turn.changedFiles.length > 0 && !turn.live ? <ChangedFiles id={`changed-${turn.id}`} files={turn.changedFiles} workspace={workspace} stat={turn.changeStat} {...(onReview ? { onReview } : {})} /> : null}
       {turn.after.length > 0 ? (
         <div className="turn-after">
           {turn.after.map((item) => (
@@ -1397,6 +1428,7 @@ const TurnView = memo(function TurnView({
   onOpinion,
   onSideThread,
   onOpenOpinion,
+  onReview,
 }: {
   turn: Turn;
   open: boolean;
@@ -1415,6 +1447,8 @@ const TurnView = memo(function TurnView({
   onOpinion?: ((through: number) => void) | undefined;
   onSideThread?: ((through: number) => void) | undefined;
   onOpenOpinion?: ((chatId: string) => void) | undefined;
+  /** Opens the review panel from the turn's changed files; absent where there is none. */
+  onReview?: (() => void) | undefined;
   /** The latest turn's plan can be acted on (idle, nothing asked): Implement sends it on. */
   onImplement: (() => void) | null;
   /** What "Ask to retry" does, for the latest turn only (null: no button). */
@@ -1443,7 +1477,7 @@ const TurnView = memo(function TurnView({
     <RetryContext.Provider value={retry}>
     <section className="turn" id={`turn-${turn.id}`} data-turn-id={turn.id} data-testid="turn">
       <UserPrompt item={turn.prompt} through={turn.through} canBranch={canBranch} hasCheckpoint={hasCheckpoint} actions={promptActions} />
-      <TurnBody turn={turn} open={open} onToggle={onToggle} workspace={workspace} canFork={canFork} onFork={onFork} canRestore={canRestore} onRestore={onRestore} onImplement={onImplement} onTiming={openTiming} {...(opinions ? { opinions } : {})} {...(nameOfHarness ? { nameOfHarness } : {})} {...(onOpinion ? { onOpinion } : {})} {...(onSideThread ? { onSideThread } : {})} {...(onOpenOpinion ? { onOpenOpinion } : {})} />
+      <TurnBody turn={turn} open={open} onToggle={onToggle} workspace={workspace} canFork={canFork} onFork={onFork} canRestore={canRestore} onRestore={onRestore} onImplement={onImplement} onTiming={openTiming} {...(opinions ? { opinions } : {})} {...(nameOfHarness ? { nameOfHarness } : {})} {...(onOpinion ? { onOpinion } : {})} {...(onSideThread ? { onSideThread } : {})} {...(onOpenOpinion ? { onOpenOpinion } : {})} {...(onReview ? { onReview } : {})} />
       {timingDialog}
     </section>
     </RetryContext.Provider>
@@ -1514,6 +1548,7 @@ export function Conversation({
   opinionsFor,
   nameOfHarness,
   onOpenOpinion,
+  onReview,
 }: {
   chatId: string;
   items: ChatItem[];
@@ -1550,6 +1585,8 @@ export function Conversation({
   nameOfHarness?: (harnessId: string) => string;
   /** Open the chat an opinion runs in (the card's Open chat). */
   onOpenOpinion?: (chatId: string) => void;
+  /** Open the review panel: the files a turn changed lead to it. Absent in a room's run. */
+  onReview?: (() => void) | undefined;
 }) {
   const [arrivals] = useState(() => new Arrivals());
   arrivals.update(chatId, items);
@@ -1978,6 +2015,7 @@ export function Conversation({
                     {...(onOpinion ? { onOpinion } : {})}
                     {...(onSideThread ? { onSideThread } : {})}
                     {...(onOpenOpinion ? { onOpenOpinion } : {})}
+                    {...(onReview ? { onReview } : {})}
                   />
                 </Fragment>
               ))}
