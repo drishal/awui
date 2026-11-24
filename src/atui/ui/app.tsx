@@ -1457,7 +1457,7 @@ export function App(p: {
                   </Show>
                   <Show when={app.busy() && planStrip()}>
                     {(plan) => (
-                      <box flexDirection="column" width="100%" backgroundColor={t().surface} onMouseDown={() => setPlanOpen(!planOpen())}>
+                      <box flexDirection="column" width={column()} alignSelf="center" backgroundColor={t().surface} onMouseDown={() => setPlanOpen(!planOpen())}>
                         <Show when={planOpen()}>
                           <For each={(app.chat()?.todos ?? []).slice(0, PLAN_ROWS)}>
                             {(todo) => {
