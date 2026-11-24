@@ -49,8 +49,10 @@
   min-width: 0;
   margin: 0 0 0 6px;
   overflow: hidden;
-  color: var(--muted-text);
-  font-size: var(--label-size);
+  /* A rail heading is read at a glance, so it is a step up from the section labels under it:
+     12px 600 in the secondary text colour, on the same tracking as every other small label. */
+  color: var(--text-2);
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: var(--label-tracking);
   text-overflow: ellipsis;
