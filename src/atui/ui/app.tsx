@@ -1341,7 +1341,7 @@ export function App(p: {
                 {(c) => (
                   <text selectable={false} flexShrink={0}>
                     <span style={{ fg: accentOf(t(), app.harness()?.accent) }}>{`${harnessGlyph(c().harnessId)} ${app.harness()?.displayName ?? c().harnessId}`}</span>
-                    <span style={{ fg: t().border }}>{" · "}</span>
+                    <span style={{ fg: t().muted }}>{" · "}</span>
                     <span style={{ fg: c().pending.length > 0 ? t().warn : c().status === "error" ? t().danger : isBusy(c().status) ? t().accent : t().ok }}>{c().pending.length > 0 ? "▲ " : "● "}</span>
                     <Show when={c().pending.length > 0}>
                       <span style={{ fg: t().warn }}>Waiting for you</span>
@@ -1351,7 +1351,12 @@ export function App(p: {
                     </Show>
                     {/* The line an agent set for its chat (set_status), as the web's header draws it: the state's word, and its own sentence while the pane is wide enough. */}
                     <Show when={app.overview().sessions.find((x) => x.liveChatId === c().chatId || x.id === c().sessionId)?.agentStatus}>
-                      {(status) => <span style={{ fg: t().text2 }}>{` · ◈ ${size().width >= 110 ? clip(agentStatusText(status()), 44) : AGENT_STATUS_WORDS[status().state]}`}</span>}
+                      {(status) => (
+                        <>
+                          <span style={{ fg: t().muted }}>{" · "}</span>
+                          <span style={{ fg: t().text2 }}>{`◈ ${size().width >= 110 ? clip(agentStatusText(status()), 44) : AGENT_STATUS_WORDS[status().state]}`}</span>
+                        </>
+                      )}
                     </Show>
                     <span style={{ fg: t().muted }}>{` · ${c().workspace.name}`}</span>
                   </text>
