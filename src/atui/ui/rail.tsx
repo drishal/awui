@@ -139,12 +139,18 @@ export function ContextRailView(p: RailActions) {
             return (
               <box flexDirection="column" flexShrink={0}>
                 <Show when={first()}>
-                  <text flexShrink={0} fg={t().muted} marginTop={index() === 0 ? 0 : 1}>
-                    <b>{`${entry.card.label}${entry.card.count > 0 ? ` (${entry.card.count})` : ""}`}</b>
-                    <Show when={entry.card.attention}>
-                      <span style={{ fg: entry.card.attention === "warn" ? t().warn : t().accent }}>{" ●"}</span>
-                    </Show>
-                  </text>
+                  <box flexDirection="row" flexShrink={0} marginTop={index() === 0 ? 0 : 1}>
+                    <text flexShrink={0} fg={t().muted}>
+                      <b>{`${entry.card.label}${entry.card.count > 0 ? ` (${entry.card.count})` : ""}`}</b>
+                      <Show when={entry.card.attention}>
+                        <span style={{ fg: entry.card.attention === "warn" ? t().warn : t().accent }}>{" ●"}</span>
+                      </Show>
+                    </text>
+                    {/* A rule to the row's edge, as Usage's and the palette's headings carry (the box clips what does not fit). */}
+                    <box flexGrow={1} flexShrink={1} overflow="hidden" paddingLeft={1}>
+                      <text fg={t().border} wrapMode="none">{"─".repeat(200)}</text>
+                    </box>
+                  </box>
                 </Show>
                 <box flexDirection="row" backgroundColor={index() === at() ? t().selection : undefined} onMouseDown={() => setAt(index())}>
                   <text flexShrink={0} fg={index() === at() ? t().accent : t().border}>
