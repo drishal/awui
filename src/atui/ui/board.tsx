@@ -283,7 +283,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                 <span style={{ fg: t().muted }}>{"You     "}</span>
                 <span style={{ fg: t().text2 }}>{previewLine(full() ? { ...(full() as SessionPreview), answer: null } : null) ?? (full() ? "—" : "Reading…")}</span>
               </text>
-              <box flexDirection="row" height={3} overflow="hidden">
+              <box flexDirection="row" maxHeight={3} overflow="hidden">
                 <text flexShrink={0} fg={t().muted}>{"Said    "}</text>
                 <text flexGrow={1} fg={t().text} wrapMode="word">{full()?.answer ? previewLine({ ...(full() as SessionPreview), prompt: null }) ?? "—" : full() ? "No answer yet" : ""}</text>
               </box>
