@@ -389,7 +389,7 @@ function toSession(
     title: s.title,
     updatedAt: latest(s.updatedAt, live?.talkedAt ?? null),
     ...(s.messageCount !== undefined ? { messageCount: s.messageCount } : {}),
-    ...(live ? { liveChatId: live.chatId, status: live.status, ...(live.pendingCount > 0 ? { asking: true as const } : {}) } : {}),
+    ...(live ? { liveChatId: live.chatId, status: live.status, ...(live.pendingCount > 0 ? { asking: true as const } : {}), ...(live.lineage ? { lineage: live.lineage } : {}) } : {}),
   };
   return ws ? { ...summary, workspaceId: ws.id } : summary;
 }

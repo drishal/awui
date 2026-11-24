@@ -137,8 +137,9 @@ export interface SessionSummary {
    */
   origin?: SessionOrigin;
   /**
-   * For a live delegated child: whose it is, as its chat carries it. A finished child has
-   * no chat here and no lineage, so only a running delegation nests under its parent.
+   * For a delegated child with a live chat: whose it is, as its chat carries it (listed or not
+   * yet listed on disk). A child whose chat has been reaped has none, so only a delegation
+   * with a live chat nests under its parent.
    */
   lineage?: ChatLineage;
   /**
