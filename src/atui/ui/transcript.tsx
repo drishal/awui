@@ -39,6 +39,9 @@ import { tick } from "./ticker.js";
 
 installOpenTuiListGuard();
 
+/** The call tree's connectors: structure, not a divider, so they sit a step above the border colour (the border alone is about 1.4:1 on the background). */
+const spineOf = (theme: Theme) => mix(theme.border, theme.muted, 0.55);
+
 const OUTPUT_LINES = 14;
 /** A running command's last lines, shown under its row while it works. */
 const LIVE_LINES = 3;
@@ -410,7 +413,7 @@ function AgentTree(p: { runs: SubagentRun[] }) {
       <Index each={p.runs}>
         {(r, i) => (
           <text wrapMode="none" truncate>
-            <span style={{ fg: t().border }}>{i === p.runs.length - 1 ? "└─ " : "├─ "}</span>
+            <span style={{ fg: spineOf(t()) }}>{i === p.runs.length - 1 ? "└─ " : "├─ "}</span>
             {mark(r())}
             <b style={{ fg: t().text2 }}>{` ${r().agent}`}</b>
             <span style={{ fg: t().muted }}>{`  ${doing(r())}`}</span>
@@ -683,14 +686,14 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
       <Show when={row().note}>
         {(note) => (
           <text wrapMode="none" truncate>
-            <span style={{ fg: t().border }}>{p.first ? "┌  " : "│  "}</span>
+            <span style={{ fg: spineOf(t()) }}>{p.first ? "┌  " : "│  "}</span>
             <i style={{ fg: t().muted }}>{`# ${clip(note(), p.column - 5)}`}</i>
           </text>
         )}
       </Show>
       <box flexDirection="row" onMouseDown={() => setOpen(!open())}>
         <text flexShrink={1} minWidth={0} wrapMode="none" truncate>
-          <span style={{ fg: t().border }}>{fork()}</span>
+          <span style={{ fg: spineOf(t()) }}>{fork()}</span>
           <Bullet status={p.item.status} failedOutput={row().failed} category={p.item.category} chip={toolKind(p.item)} />
           <span style={{ fg: t().text2 }}>{head().verb}</span>
           <Show when={head().detail}>
@@ -728,13 +731,13 @@ function TreeRow(p: { item: ToolItem; workspace: string; first: boolean; last: b
         </Show>
       </box>
       {/* A plan, todos, jobs, or agents hung under a call that is not the last keep the trunk running beside them (the blocks pad 4, so the trunk's own cell is taken back). */}
-      <box flexDirection="column" border={p.last ? [] : ["left"]} borderColor={t().border}>
+      <box flexDirection="column" border={p.last ? [] : ["left"]} borderColor={spineOf(t())}>
         <box flexDirection="column" marginLeft={p.last ? 0 : -1}>
           <CallExtras item={p.item} summary={row()} jobs={jobs()} />
         </box>
       </box>
       <Show when={tail().length > 0 || open()}>
-        <box flexDirection="column" border={p.last ? [] : ["left"]} borderColor={t().border} paddingLeft={p.last ? 3 : 2}>
+        <box flexDirection="column" border={p.last ? [] : ["left"]} borderColor={spineOf(t())} paddingLeft={p.last ? 3 : 2}>
           <Index each={tail()}>
             {(line) => (
               <text fg={t().muted} wrapMode="none" truncate>
