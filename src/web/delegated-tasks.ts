@@ -17,6 +17,12 @@ export function hostBadge(task: DelegatedTaskView): string | null {
  */
 export function metaText(task: DelegatedTaskView, harnessName: (id: string) => string): string {
   const parts = [harnessName(task.harnessId), hostBadge(task), task.model, task.role, task.profile].filter((p): p is string => typeof p === "string" && p !== "");
+  // Over the budget a whole fact goes, never half of one: the profile first, then the model, then the host, so the role (what the worker is for) stays.
+  for (const drop of [task.profile, task.model, hostBadge(task)]) {
+    if (parts.join(" · ").length <= META_CHARS) break;
+    const at = drop ? parts.indexOf(drop) : -1;
+    if (at > 0) parts.splice(at, 1);
+  }
   return bound(parts.join(" · "), META_CHARS);
 }
 

@@ -51,6 +51,9 @@ describe("who runs a task", () => {
   it("names the harness, then what the task asked for", () => {
     expect(metaText(task(), name)).toBe("Pi");
     expect(metaText(task({ model: "claude-sonnet-4-5", role: "review" }), name)).toBe("Pi · claude-sonnet-4-5 · review");
+    // Over the budget a whole fact goes, never half of one: the model before the role.
+    expect(metaText(task({ model: "claude-sonnet-4-5-20250929", role: "test", profile: "careful-reviewer-profile" }), name)).toBe("Pi · claude-sonnet-4-5-20250929 · test");
+    expect(metaText(task({ model: "claude-sonnet-4-5-20250929-with-a-long-tail", role: "test" }), name)).toBe("Pi · test");
     expect(metaText(task({ profile: "reviewer" }), name)).toBe("Pi · reviewer");
     // A harness the client does not know keeps its id rather than vanishing.
     expect(metaText(task({ harnessId: asHarnessId("dsh") }), name)).toBe("dsh");
@@ -62,7 +65,7 @@ describe("who runs a task", () => {
     expect(metaText(task({ host: "lab-vm-3", model: "claude-sonnet-4-5" }), name)).toBe("Pi · @lab-vm-3 · claude-sonnet-4-5");
   });
   it("cuts a long line and says it did", () => {
-    const long = metaText(task({ model: "a-very-long-model-name-that-runs-on", role: "review" }), name);
+    const long = metaText(task({ model: "a-model", role: "a-very-long-role-name-that-does-not-fit-the-budget" }), name);
     expect(long.length).toBe(42);
     expect(long.endsWith("…")).toBe(true);
   });
