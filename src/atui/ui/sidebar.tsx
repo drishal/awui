@@ -244,7 +244,7 @@ export function Sidebar(p: {
             }}
           </For>
         </scrollbox>
-        <text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "↑↓ move · t tab · Esc back" : `${leader("s", p.vim ? "vim" : "emacs")} to browse`}</text>
+        <text selectable={false} fg={t().muted} flexShrink={0}>{p.active ? "↑↓ move · t tab · Esc back" : `${leader("s", p.vim ? "vim" : "emacs")} browse`}</text>
       </Show>
     </box>
   );

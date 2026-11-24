@@ -756,7 +756,7 @@ describe("atui", () => {
     // Each changed file with its stat bar.
     expect(info).toMatch(/\+\d+ −\d+ ■{5}/);
     await ui.click("Sessions");
-    await ui.until("C-x s to browse");
+    await ui.until("C-x s browse");
     // « folds it to a rail; » unfolds it.
     await ui.click("Sessions");
     const folded = await ui.until("»");
@@ -1351,7 +1351,7 @@ describe("atui's density at 80 columns", () => {
     // row put a second "!" beside the `▲` the prefix already shows.
     ui.keys.pressKey("x", { ctrl: true });
     ui.keys.pressKey("b");
-    const open = await ui.until("C-x s to browse");
+    const open = await ui.until("C-x s browse");
     expect(open).toMatch(/▲ please ask first\s+now/);
     expect(open).not.toContain("! now");
     // Folded again, the mark is still the only thing that asks for you.
@@ -1369,7 +1369,7 @@ describe("atui's density at 80 columns", () => {
     // its tip out to the very edges. Inside the column, every line keeps its left margin.
     ui.keys.pressKey("x", { ctrl: true });
     ui.keys.pressKey("b");
-    const open = await ui.until("C-x s to browse");
+    const open = await ui.until("C-x s browse");
     expect(open.split("\n").every((line) => line === "" || line.startsWith(" "))).toBe(true);
     // A line without the panel's border is conversation: it keeps the panel's width of margin —
     // the old splash wrapped its tip to the pane's very left edge.
@@ -1411,7 +1411,7 @@ describe("atui's keybind styles", () => {
     expect(emacs).toContain("@ files");
     expect(emacs).not.toContain(": commands");
     expect(emacs).not.toContain("SPC s sessions");
-    expect(emacs).toContain("C-x s to browse");
+    expect(emacs).toContain("C-x s browse");
     // C-x v: the vim style, and the same row now names those keys.
     ui.keys.pressKey("x", { ctrl: true });
     ui.keys.pressKey("v");
@@ -1421,14 +1421,14 @@ describe("atui's keybind styles", () => {
     expect(vim).toContain("@ files");
     expect(vim).not.toContain("C-k commands");
     expect(vim).not.toContain("C-x s sessions");
-    expect(vim).toContain("SPC s to browse");
+    expect(vim).toContain("SPC s browse");
     // Space v back to Emacs restores the chords.
     await ui.type(" ");
     ui.keys.pressKey("v");
     const back = await ui.until("C-k commands");
     expect(back).toContain("C-x s sessions");
     expect(back).toContain("C-r history");
-    expect(back).toContain("C-x s to browse");
+    expect(back).toContain("C-x s browse");
     expect(back).not.toContain(": commands");
     await ui.unmount();
     // Starting already in vim names the same keys, with no Emacs chords left on the row.

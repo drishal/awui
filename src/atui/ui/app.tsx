@@ -638,9 +638,9 @@ export function App(p: {
     }
     if (c && last) {
       const lastDone = [...buildTurns(c.items, c.status, c.runStartedAt)].reverse().find((x) => x.prompt && x.answer);
-      if (lastDone?.prompt) add({ id: "timing", label: "Timing of the last turn…", keywords: "waterfall slow speed duration steps calls", run: () => { app.setTimingFor(lastDone.prompt?.id ?? null); setDialog("timing"); } });
+      if (lastDone?.prompt) add({ id: "timing", label: "Timing of the last turn", keywords: "waterfall slow speed duration steps calls", run: () => { app.setTimingFor(lastDone.prompt?.id ?? null); setDialog("timing"); } });
     }
-    add({ id: "usage", label: "Usage across chats…", keywords: "tokens cost spend cache models harnesses", run: () => setDialog("usage") });
+    add({ id: "usage", label: "Usage across chats", keywords: "tokens cost spend cache models harnesses", run: () => setDialog("usage") });
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
