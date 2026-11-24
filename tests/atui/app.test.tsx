@@ -428,6 +428,15 @@ describe("atui", () => {
     await ui.until("match 1 of 2 · M-n next · M-p previous");
     ui.keys.pressKey("p", { meta: true });
     await ui.until("match 2 of 2 · M-n next · M-p previous");
+    // The turn the find landed on carries a strip with its words; the palette clears it.
+    expect(await ui.frame()).toMatch(/◎ .*prompt.* in the turn/);
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands, sessions, thinking…");
+    await ui.type("clear find");
+    await ui.until("Clear find marks");
+    ui.keys.pressEnter();
+    await ui.until("Find marks cleared");
+    expect(await ui.frame()).not.toMatch(/◎ .* in the turn/);
     // Nothing matches: the picker says so instead of listing the whole chat.
     ui.keys.pressKey("s", { ctrl: true });
     await ui.until("Type to find text in this chat…");

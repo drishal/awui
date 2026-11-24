@@ -1000,8 +1000,25 @@ function Answer(p: { item: AssistantItem }) {
   );
 }
 
-function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; onToggle: () => void; switchedTo: string | null; column: number }) {
+function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; onToggle: () => void; switchedTo: string | null; column: number; foundQuery?: string | null }) {
   const t = useTheme();
+  // The turn a find landed on says where the words are: one line around the first match, the words on a warm ground (the Markdown renderer takes no inline marks, so the strip stands over the turn).
+  const hit = createMemo(() => {
+    const query = p.foundQuery;
+    const m = query ? findTurns([p.turn()], query, 44, p.workspace)[0] : undefined;
+    if (!query || !m) return null;
+    const parts: Array<{ text: string; match: boolean }> = [];
+    const lower = m.snippet.toLowerCase();
+    const q = query.toLowerCase();
+    let at = 0;
+    for (let i = lower.indexOf(q); i >= 0 && q; i = lower.indexOf(q, at)) {
+      if (i > at) parts.push({ text: m.snippet.slice(at, i), match: false });
+      parts.push({ text: m.snippet.slice(i, i + q.length), match: true });
+      at = i + q.length;
+    }
+    if (at < m.snippet.length) parts.push({ text: m.snippet.slice(at), match: false });
+    return { parts, count: m.count, inWork: m.inWork };
+  });
   const hasProcess = () => p.turn().process.length > 0 || Boolean(p.turn().answer?.thinking.trim());
   // Work the agent did after writing its reply draws below it, as its own fold.
   const afterWork = () => workAfterSegment(p.turn());
@@ -1039,6 +1056,17 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
   const FILES_SHOWN = 4;
   return (
     <box flexDirection="column" width="100%" maxWidth={p.column} flexShrink={0}>
+      <Show when={hit()}>
+        {(h) => (
+          <box flexDirection="row" marginTop={1} paddingLeft={2}>
+            <text selectable={false} fg={t().muted} wrapMode="none" truncate>
+              <span style={{ fg: t().info }}>{"◎ "}</span>
+              <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().bg, bg: t().warn }}>{part.text}</span> : <span>{part.text}</span>)}</For>
+              <span style={{ fg: t().muted }}>{`  ${h().inWork ? "in the work" : "in the turn"}${h().count > 1 ? ` · ${h().count}×` : ""}`}</span>
+            </text>
+          </box>
+        )}
+      </Show>
       <Show when={p.switchedTo}>
         {(name) => (
           <box flexDirection="row" marginTop={1}>
@@ -1142,7 +1170,7 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
       p.geometry.height,
     ),
   );
-  const toneColor = (tone: TurnTone) => ({ live: t().accent, failed: t().danger, edited: t().ok, rendered: t().thinking, plain: t().text2, found: t().warn })[tone];
+  const toneColor = (tone: TurnTone) => ({ live: t().accent, failed: t().danger, edited: t().ok, rendered: t().thinking, plain: t().text2, found: t().info })[tone];
   return (
     // Overlaid at the transcript's right edge rather than taking a layout column: the rows
     // budget on the chat column alone, so a scrolled chat's last facts column is never clipped.
@@ -1153,7 +1181,7 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
             fg={cell().tone ? toneColor(cell().tone as TurnTone) : cell().inView ? mix(t().muted, t().text, 0.35) : t().border}
             onMouseDown={() => p.onJump(rowToScroll(row, cells().length, p.geometry.content, p.geometry.height))}
           >
-            {cell().tone ? (cell().tone === "live" ? "◆" : "●") : cell().inView ? "┃" : "│"}
+            {cell().tone ? (cell().tone === "live" ? "◆" : cell().tone === "found" ? "◎" : "●") : cell().inView ? "┃" : "│"}
           </text>
         )}
       </Index>
@@ -1161,7 +1189,7 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; onJump: (to: number
   );
 }
 
-export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; column: Accessor<number>; found?: Accessor<string | null> }) {
+export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; column: Accessor<number>; found?: Accessor<{ query: string; turnId: string } | null> }) {
   const app = useAtui();
   const t = useTheme();
   const turns = createMemo(() => {
@@ -1192,7 +1220,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
     }),
   );
   const tones = createMemo(() => {
-    const query = p.found?.() ?? null;
+    const query = p.found?.()?.query ?? null;
     const hit = new Set(query ? findTurns(turns(), query, 0, workspace()).map((m) => m.turnId) : []);
     return turns().map((turn): TurnTone => (hit.has(turn.id) ? "found" : turnTone(turn)));
   });
@@ -1233,6 +1261,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
             )}
           </Index>
         </scrollbox>
+                foundQuery={p.found?.()?.turnId === turn().id ? (p.found?.()?.query ?? null) : null}
         <Show when={pinned()}>
           {(prompt) => (
             <box position="absolute" top={0} left={0} width="100%" flexDirection="row" justifyContent="center" backgroundColor={app.glass() ? undefined : t().surface} zIndex={5}>

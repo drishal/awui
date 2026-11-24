@@ -647,6 +647,7 @@ export function App(p: {
     }
     add({ id: "usage", label: "Usage across chats", keywords: "tokens cost spend cache models harnesses", run: () => setDialog("usage") });
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
+    if (c && landed()) add({ id: "find-clear", label: "Clear find marks", hint: "M-n / M-p stop stepping", keywords: "find search unmark gutter", run: () => { setLanded(null); flash("Find marks cleared"); } });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
     add({ id: "sidebar", label: sidebar() ? "Fold the side panel" : "Unfold the side panel", hint: leader("b", keybinds()), run: () => runLeader("b") });
@@ -805,6 +806,8 @@ export function App(p: {
 
   /** The find that last landed (its words and the turn it landed on): M-n and M-p step to the next and previous turn that matches, as a browser's find does, without reopening the sheet. */
   const [landed, setLanded] = createSignal<{ query: string; turnId: string } | null>(null);
+  // A find belongs to the chat it was made in: another chat starts without its marks, and M-n / M-p do nothing there until a new find lands.
+  createEffect(on(() => app.chat()?.chatId, () => setLanded(null), { defer: true }));
   const stepFind = (by: 1 | -1) => {
     const found = landed();
     const c = app.chat();
@@ -1083,7 +1086,7 @@ export function App(p: {
                         when={hasPrompt()}
                         fallback={<Splash column={column()} keybinds={keybinds()} question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
                       >
-                        <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} column={column} found={() => landed()?.query ?? null} />
+                        <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} column={column} found={landed} />
                       </Show>
                     }
                   >
