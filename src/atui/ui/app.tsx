@@ -38,6 +38,7 @@ import { accentOf, dimmed } from "../theme.js";
 import { Composer } from "./composer.js";
 import { AtuiContext, ThemeOverride } from "./context.js";
 import { glideBy, glideTo, Shimmer } from "./fx.js";
+import { sparkline } from "../fx.js";
 import { findTurns } from "../../web/find.js";
 import { turnMarkdown } from "../../web/turn-markdown.js";
 import { SwitchGhost } from "./ghost.js";
@@ -1199,9 +1200,16 @@ export function App(p: {
       const folded = days.splice(0, days.length - (MAX_DAY_ROWS - 1));
       days.unshift(row("By day", `Earlier days (${folded.length} rows)`, `${shortTokens(folded.reduce((n, f) => n + (dayTokens.get(f.id) ?? 0), 0))} · ${dollars(folded.reduce((n, f) => n + (dayCost.get(f.id) ?? 0), 0), true)}`, [0, 0]));
     }
+    // The days as one strip of cells, a block a day scaled to the busiest and a dot for none; past 30 days, neighbours share a cell so it stays one line.
+    const perCell = Math.max(1, Math.ceil(r.byDay.length / 30));
+    const cells: number[] = [];
+    for (let i = 0; i < r.byDay.length; i += perCell) cells.push(r.byDay.slice(i, i + perCell).reduce((n, d) => n + tokensOf(d.totals), 0));
+    const busiest = Math.max(0, ...cells);
+    const activity = cells.map((v) => (v === 0 ? "·" : sparkline([v], busiest))).join("");
     return [
       row(head, `${r.totals.sessions} ${r.totals.sessions === 1 ? "chat" : "chats"} · ${r.totals.calls} ${r.totals.calls === 1 ? "call" : "calls"}`, words(r.totals)),
       ...(share === null || share < 0.01 ? [] : [row(head, "Served from the prompt cache", `${Math.round(share * 100)}%`)]),
+      row(head, `Activity, oldest to newest`, activity),
       ...days,
       // As the web dialog's bars: each harness and model's share of the busiest one, under the name the header and the composer use.
       ...r.byHarness.map((h) => row("By harness", app.boot()?.harnesses.find((x) => x.id === h.harnessId)?.displayName ?? h.harnessId, fig(h.totals), [0, tokensOf(h.totals) / Math.max(1, ...r.byHarness.map((x) => tokensOf(x.totals)))])),
