@@ -237,7 +237,7 @@ export function ReviewView(p: { onClose: () => void }) {
                     <text flexShrink={0} fg={here() ? t().accent : t().border}>
                       {here() ? "▌" : " "}
                     </text>
-                    <text flexShrink={0} fg={t().muted}>
+                    <text flexShrink={0} fg={here() ? t().text2 : t().muted}>
                       {`${row.line.line !== undefined ? String(row.line.line).padStart(5) : "     "} `}
                     </text>
                     <text flexGrow={1} wrapMode="none" truncate fg={t().text}>
