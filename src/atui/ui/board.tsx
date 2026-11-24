@@ -163,7 +163,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     }
   });
 
-  const width = () => Math.max(30, Math.min(160, size().width - (p.side ?? 0) - 4));
+  const width = () => Math.max(30, size().width - (p.side ?? 0) - 4);
   /** The columns share the frame's whole inside: two of a third each, the last the rest, so the cards end where the head does. */
   const columnWidth = (last: boolean) => Math.max(18, last ? width() - 4 - 2 * Math.floor((width() - 4) / 3) : Math.floor((width() - 4) / 3));
   /** Lines a card takes: its title and meta, an agent's status, a pull request, a child per line, and the blank line above it. */

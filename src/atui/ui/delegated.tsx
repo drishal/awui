@@ -75,7 +75,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
   });
   const diffRows = createMemo(() => reviewRows(changes() ?? []));
   const height = () => Math.max(4, size().height - 6);
-  const width = () => Math.max(30, Math.min(120, size().width - (p.side ?? 0) - 4));
+  const width = () => Math.max(30, size().width - (p.side ?? 0) - 4);
   const start = () => rowWindow(rows().length, at(), height());
   const tick = setInterval(() => setNow(Date.now()), 1000);
   onCleanup(() => clearInterval(tick));

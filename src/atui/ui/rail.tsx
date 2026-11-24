@@ -61,7 +61,7 @@ export function ContextRailView(p: RailActions) {
   const here = () => entries()[at()] as RailEntry | undefined;
   // The rows are drawn with their headings, so the window is measured in drawn lines, not rows.
   const height = () => Math.max(6, size().height - 10);
-  const width = () => Math.max(30, Math.min(110, size().width - (p.side ?? 0) - 4));
+  const width = () => Math.max(30, size().width - (p.side ?? 0) - 4);
   const start = () => rowWindow(entries().length, at(), height());
 
   const open = (row: ContextCardRow) => {
