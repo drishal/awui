@@ -20,7 +20,7 @@ import { createEffect, createMemo, createResource, createSignal, on, onCleanup, 
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { AGENT_STATUS_WORDS, agentStatusText } from "../../web/agent-status.js";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
-import type { ChatSearch, CheckpointComparison, CheckpointPoint, RunResult } from "../../shared/protocol.js";
+import type { ChatSearch, CheckpointComparison, CheckpointPoint, FileView, RunResult } from "../../shared/protocol.js";
 import { runnable } from "../../web/code-blocks.js";
 import { codeBlocks, quoteText, runForMessage, runStatus } from "../assist.js";
 import { RunOutput } from "./runout.js";
@@ -62,7 +62,7 @@ import { buildTurns, turnOfTool } from "../../web/turns.js";
 import { atLabel, turnWaterfall } from "../../web/waterfall.js";
 import { cacheShare, dollars, shortTokens, tokensOf } from "../../web/usage.js";
 
-type Dialog = "palette" | "timeline" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
+type Dialog = "palette" | "timeline" | "files" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -683,6 +683,7 @@ export function App(p: {
     if (c && landed()) add({ id: "find-clear", label: "Clear find marks", hint: "M-n / M-p stop stepping", keywords: "find search unmark gutter", run: () => { setLanded(null); flash("Find marks cleared"); } });
     add({ id: "edit-draft", label: "Edit the draft in $EDITOR", hint: "M-e", keywords: "external editor vim nano long prompt compose", run: () => void editDraft() });
     if ((app.chat()?.checkpoints.length ?? 0) > 0) add({ id: "timeline", label: "File timeline…", keywords: "checkpoints undo restore files before each prompt history changes", run: () => setDialog("timeline") });
+    if (c || app.workspace()) add({ id: "open-file", label: "Open a file…", keywords: "view read mention attach project files path", run: () => setDialog("files") });
     add({ id: "search-chats", label: "Search every chat…", keywords: "find text sessions history all projects harnesses grep", run: () => setDialog("chats") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });
@@ -865,6 +866,58 @@ export function App(p: {
     const a = (snippet ?? "").trim().toLowerCase();
     const b = (title ?? "").trim().toLowerCase();
     return a.length > 0 && b.length > 0 && (a.includes(b) || b.includes(a));
+  };
+  /** Open a file: the project's own files by name (the server's ranked list), the file's head beside the row (the web's file viewer, read-only), and Enter puts an @mention of it in the message. */
+  const [fileHits, setFileHits] = createSignal<{ q: string; items: PaletteItem[] }>({ q: "\u0000", items: [] });
+  let fileSeq = 0;
+  let fileTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(fileTimer));
+  const fileItems = (query: string): PaletteItem[] => {
+    const q = query.trim();
+    const have = fileHits();
+    if (have.q !== q) {
+      const mine = ++fileSeq;
+      clearTimeout(fileTimer);
+      fileTimer = setTimeout(() => {
+        void app.searchFiles(q).then((files) => {
+          if (mine !== fileSeq) return;
+          setFileHits({
+            q,
+            items: files.slice(0, 60).map((file) => ({
+              id: `file:${file}`,
+              section: "Files",
+              label: file,
+              run: () => {
+                setDialog(null);
+                if (!composer) return;
+                const now = composer.plainText.trimEnd();
+                composer.setText(`${now ? `${now} ` : ""}@${file} `);
+                composer.gotoBufferEnd();
+                leave();
+              },
+            })),
+          });
+        });
+      }, 120);
+    }
+    return have.items;
+  };
+  const FILE_PREVIEW_LINES = 60;
+  const filePreview = (item: PaletteItem): Promise<PreviewText | null> | null => {
+    const file = item.id.startsWith("file:") ? item.id.slice(5) : null;
+    const ws = app.chat()?.workspace ?? app.workspace();
+    if (!file || !ws) return null;
+    return app.server
+      .call<FileView>(`/api/workspaces/${encodeURIComponent(ws.id)}/file?path=${encodeURIComponent(file)}`)
+      .then((view) => {
+        if (view.binary || view.text === null) return { head: file, body: `A binary file · ${view.size} bytes` };
+        const lines = view.text.split("\n");
+        const shown = lines.slice(0, FILE_PREVIEW_LINES);
+        const wide = String(shown.length).length;
+        const more = view.truncated || lines.length > shown.length ? `\n… ${view.lines} lines in all` : "";
+        return { head: `${file} · ${view.lines} ${view.lines === 1 ? "line" : "lines"}`, body: shown.map((l, i) => `${String(i + 1).padStart(wide)}  ${l}`).join("\n") + more };
+      })
+      .catch(() => null);
   };
   let chatSearchSeq = 0;
   let chatSearchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1251,6 +1304,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "timeline"}>
                   <Picker title="File timeline" placeholder="Search prompts…" empty={points.loading ? "Reading the checkpoints…" : "No file checkpoints in this chat yet"} items={timelineItems()} preview={timelinePreview} noun={["checkpoint", "checkpoints"]} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "files"}>
+                  <Picker title="Open a file" placeholder="Type a file name…" items={[]} search={fileItems} preview={filePreview} noun={["file", "files"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "chats"}>
                   <Picker title="Search every chat" placeholder="Type to search every chat's words…" items={[]} search={chatItems} noun={["chat", "chats"]} onClose={() => setDialog(null)} side={room()} />

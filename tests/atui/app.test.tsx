@@ -956,6 +956,25 @@ describe("atui", () => {
     expect(readFileSync(path.join(repo, "app.ts"), "utf8")).toBe("const a = 2;\n");
   }, 40_000);
 
+  it("opens a project file read-only and mentions it in the message", async () => {
+    const dir = path.join(server.root, "repo-files");
+    mkdirSync(path.join(dir, "src"), { recursive: true });
+    writeFileSync(path.join(dir, "src", "hello-viewer.ts"), "export const greeting = \"hi\";\nexport const two = 2;\n");
+    ui = await mount(dir, { height: 40, width: 150 });
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands, sessions, thinking…");
+    await ui.type("open a file");
+    await ui.until("Open a file…");
+    ui.keys.pressEnter();
+    await ui.type("hello-viewer");
+    // The file's head sits beside the row, numbered.
+    const sheet = await ui.until("export const two = 2;");
+    expect(sheet).toContain("src/hello-viewer.ts");
+    expect(sheet).toContain("2 lines");
+    ui.keys.pressEnter();
+    await ui.until("@src/hello-viewer.ts");
+  }, 40_000);
+
   it("lists a chat's file checkpoints in a timeline and opens the undo from one", async () => {
     const repo = path.join(server.root, "repo-timeline");
     mkdirSync(repo, { recursive: true });
