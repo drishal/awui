@@ -11,6 +11,9 @@ export function useAtui(): Atui {
   return app;
 }
 
+/** A theme a part of the screen draws with instead of the app's (the conversation behind a floating sheet is drawn dimmed). */
+export const ThemeOverride = createContext<Accessor<Theme>>();
+
 export function useTheme(): Accessor<Theme> {
-  return useAtui().theme;
+  return useContext(ThemeOverride) ?? useAtui().theme;
 }

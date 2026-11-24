@@ -6,7 +6,7 @@ import type { ProjectSession } from "../../src/shared/protocol.js";
 import { asHarnessId } from "../../src/shared/protocol.js";
 import { applyMention, codeBlocks, ghostCompletion, matchSpans, mentionAt, newsBetween, notifySequence, quoteText, runForMessage, runStatus, tipAt, tipsFor, TIPS } from "../../src/atui/assist.js";
 import { breathe, flashAt, meter, mix, ramp, revealCut, revealStep, scrollPath, shimmer, sparkline, spinnerFor, statBar, streamRate, unrollCounts } from "../../src/atui/fx.js";
-import { contextTone, DARK } from "../../src/atui/theme.js";
+import { contextTone, DARK, dimmed } from "../../src/atui/theme.js";
 import { filetypeOf, markMatches, taskBoxes } from "../../src/atui/markdown.js";
 import { minimapCells, pinnedTurn, rowToScroll } from "../../src/atui/minimap.js";
 import { actionKeys, LEADER_HELP, LEADER_KEYS, splashHintLine, WHICH_KEY_AIR, WHICH_KEY_CELL, whichKeyColumns, whichKeyGrid } from "../../src/atui/keys.js";
@@ -397,5 +397,18 @@ describe("layout budgets", () => {
     expect(wrapLines("short", 40)).toEqual(["short"]);
     expect(wrapLines("", 40)).toEqual([]);
     expect(wrapLines("fix src/verylongpath", 40)).toEqual(["fix src/verylongpath"]);
+  });
+});
+
+describe("the conversation behind a floating sheet", () => {
+  it("eases its ink toward the page and keeps the grounds, borders and selection", () => {
+    const d = dimmed(DARK);
+    expect(d.bg).toBe(DARK.bg);
+    expect(d.surface).toBe(DARK.surface);
+    expect(d.border).toBe(DARK.border);
+    expect(d.selection).toBe(DARK.selection);
+    expect(d.text).toBe(mix(DARK.text, DARK.bg, 0.38));
+    expect(d.text).not.toBe(DARK.text);
+    expect(dimmed(DARK, 0)).toEqual(DARK);
   });
 });

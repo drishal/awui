@@ -33,9 +33,9 @@ import { actionKeys, leader, leaderPrefix, LEADER_KEYS, VIM_HELP, type KeybindSt
 import { harnessGlyph } from "../neat.js";
 import type { Atui } from "../state.js";
 import { terminalState, type TerminalState } from "../terminal.js";
-import { accentOf } from "../theme.js";
+import { accentOf, dimmed } from "../theme.js";
 import { Composer } from "./composer.js";
-import { AtuiContext } from "./context.js";
+import { AtuiContext, ThemeOverride } from "./context.js";
 import { glideBy, glideTo, Shimmer } from "./fx.js";
 import { findTurns } from "../../web/find.js";
 import { turnMarkdown } from "../../web/turn-markdown.js";
@@ -1054,6 +1054,9 @@ export function App(p: {
   const timingMark = (row: { kind: string; chip?: ToolKindChip; failed?: boolean }) =>
     row.kind === "thinking" ? "▾" : row.kind === "reply" ? "●" : row.kind === "subagent" ? "↳" : callMark(row.failed === true, row.chip, row.chip?.category ?? "other");
 
+  /** The conversation's theme: dimmed while a sheet floats over it (the sheet is the figure), except in Find, whose whole point is to read the matches it lands on. */
+  const sceneTheme = () => (dialog() !== null && dialog() !== "find" ? dimmed(app.theme()) : app.theme());
+
   /** The plan a run is working through, pinned above the composer while it runs: how many steps are done and the one under way (the first undone step when the harness marks none). */
   const planStrip = () => {
     const todos = app.chat()?.todos ?? [];
@@ -1343,7 +1346,9 @@ export function App(p: {
                         when={hasPrompt()}
                         fallback={<Splash column={column()} keybinds={keybinds()} question={`What should ${app.harness()?.displayName ?? "the agent"} do in ${app.workspace()?.name ?? "this project"}?`} subtitle="It runs with its normal tools, as you, in this folder." />}
                       >
-                        <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} column={column} found={landed} />
+                        <ThemeOverride.Provider value={sceneTheme}>
+                          <Transcript ref={(el) => (scroller = el as ScrollBoxRenderable)} showWork={showWork()} column={column} found={landed} />
+                        </ThemeOverride.Provider>
                       </Show>
                     }
                   >
