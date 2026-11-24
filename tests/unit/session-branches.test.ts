@@ -21,8 +21,8 @@ const entries = (): Obj[] => [
 describe("sessionBranches", () => {
   it("lists each leaf, the active path first, with the prompt that tells it apart", () => {
     expect(sessionBranches(entries())).toEqual([
-      { leafId: "a2b", active: true, turns: 2, shared: 2, prompt: "a better second question" },
-      { leafId: "a2", active: false, turns: 2, shared: 1, prompt: "second question" },
+      { leafId: "a2b", active: true, turns: 2, shared: 2, prompt: "a better second question", answer: "two again" },
+      { leafId: "a2", active: false, turns: 2, shared: 1, prompt: "second question", answer: "two" },
     ]);
   });
   it("is one branch for a straight session, and none for an empty one", () => {
@@ -32,9 +32,9 @@ describe("sessionBranches", () => {
   it("shows the last prompt of a branch that only answered differently", () => {
     const retried = [...entries().slice(0, 5), reply("a2c", "u2", "two, another way")];
     const branches = sessionBranches(retried);
-    expect(branches.map((b) => [b.leafId, b.active, b.shared, b.prompt])).toEqual([
-      ["a2c", true, 2, "second question"],
-      ["a2", false, 2, "second question"],
+    expect(branches.map((b) => [b.leafId, b.active, b.shared, b.prompt, b.answer])).toEqual([
+      ["a2c", true, 2, "second question", "two, another way"],
+      ["a2", false, 2, "second question", "two"],
     ]);
   });
   it("walks a chain to a leaf, root first", () => {

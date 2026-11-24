@@ -2005,6 +2005,10 @@ export interface BranchInfo {
   shared: number;
   /** The prompt that tells it from the active branch (the first they differ at), else its last one: one line, bounded. */
   prompt: string;
+  /** How the agent's reply after that prompt opens on this path: one line, bounded; absent when there is none. It is what tells two paths apart that share every prompt. */
+  answer?: string;
+  /** When the path's last entry was written (epoch ms), when the file says. */
+  at?: number;
 }
 /** Continue a branch of the session's tree in a session of its own. */
 export const branchChatSchema = z.object({ leafId: z.string().min(1).max(200) });

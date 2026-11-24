@@ -1956,9 +1956,8 @@ describe("atui's keybind styles", () => {
     const sheet = await ui.until("Left behind");
     expect(sheet).toContain("This chat");
     expect(sheet).toContain("a replaced second question");
-    expect(sheet).toMatch(/second branch question\s+2 prompts · 1 shared/);
-    // The old path is the second row: Enter continues it in a tab of its own.
-    ui.keys.pressArrow("down");
+    expect(sheet).toMatch(/second branch question\s+splits after prompt 1 of 2/);
+    // The cursor starts on the left-behind path (the chat's own has nothing to continue): Enter continues it in a tab of its own.
     ui.keys.pressEnter();
     await ui.until(() => ui?.app.chat()?.chatId !== original);
     const prompts = ui.app.chat()?.items.filter((i) => i.kind === "user").map((i) => (i.kind === "user" ? i.text : ""));

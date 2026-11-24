@@ -317,14 +317,24 @@ export class FakeAdapter implements HarnessAdapter {
   async listBranches(req: { cwd: string; nativeId: string }): Promise<BranchInfo[] | null> {
     const source = this.sessions.get(req.nativeId);
     if (!source || source.cwd !== req.cwd) return null;
-    const prompts = (messages: unknown[]) => messages.filter((m) => (m as { role?: unknown }).role === "user").map((m) => String((m as { content?: unknown }).content ?? ""));
+    const users = (messages: unknown[]) => messages.filter((m) => (m as { role?: unknown }).role === "user");
+    const prompts = (messages: unknown[]) => users(messages).map((m) => String((m as { content?: unknown }).content ?? ""));
+    /** How the reply after user turn `turn` (0-based) opens, and when the path's last message was written. */
+    const replyAfter = (messages: unknown[], turn: number): { answer?: string; at?: number } => {
+      const from = messages.indexOf(users(messages)[turn]);
+      const reply = messages.slice(from + 1).find((m) => (m as { role?: unknown }).role === "assistant" && Array.isArray((m as { content?: unknown }).content)) as { content: Array<{ type?: string; text?: string }> } | undefined;
+      const text = (reply?.content ?? []).map((part) => (part.type === "text" ? part.text ?? "" : "")).join(" ").replace(/\s+/g, " ").trim();
+      const at = (messages[messages.length - 1] as { timestamp?: unknown } | undefined)?.timestamp;
+      return { ...(text ? { answer: text.slice(0, 120) } : {}), ...(typeof at === "number" ? { at } : {}) };
+    };
     const active = prompts(source.messages);
-    const out: BranchInfo[] = [{ leafId: "active", active: true, turns: active.length, shared: active.length, prompt: active[active.length - 1] ?? "" }];
+    const out: BranchInfo[] = [{ leafId: "active", active: true, turns: active.length, shared: active.length, prompt: active[active.length - 1] ?? "", ...replyAfter(source.messages, active.length - 1) }];
     (source.branches ?? []).forEach((messages, index) => {
       const mine = prompts(messages);
       let shared = 0;
       while (shared < mine.length && mine[shared] === active[shared]) shared += 1;
-      out.splice(1, 0, { leafId: `alt-${index}`, active: false, turns: mine.length, shared, prompt: (shared >= mine.length ? mine[mine.length - 1] : mine[shared]) ?? "" });
+      const telling = shared >= mine.length ? mine.length - 1 : shared;
+      out.splice(1, 0, { leafId: `alt-${index}`, active: false, turns: mine.length, shared, prompt: mine[telling] ?? "", ...replyAfter(messages, telling) });
     });
     return out;
   }

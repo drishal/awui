@@ -26,6 +26,16 @@ function promptOf(entry: Obj): string | null {
   return line.length > PROMPT_CHARS ? `${line.slice(0, PROMPT_CHARS - 1).trimEnd()}…` : line;
 }
 
+/** The words of an assistant message as one bounded line, or null when it says none (a bare tool call). */
+function replyOf(entry: Obj | undefined): string | null {
+  if (!entry || entry.type !== "message" || !isObj(entry.message) || entry.message.role !== "assistant") return null;
+  const content = entry.message.content;
+  const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((part) => (isObj(part) && part.type === "text" && typeof part.text === "string" ? part.text : "")).join(" ") : "";
+  const line = text.replace(/\s+/g, " ").trim();
+  if (!line) return null;
+  return line.length > PROMPT_CHARS ? `${line.slice(0, PROMPT_CHARS - 1).trimEnd()}…` : line;
+}
+
 /** The entries from the first one down to `leafId`, root first; empty when the id is not in the tree. */
 export function chainTo(entries: Obj[], leafId: string): Obj[] {
   const byId = new Map<string, Obj>();
@@ -59,14 +69,19 @@ export function sessionBranches(all: Obj[]): BranchInfo[] {
     const leaf = entries[i] as Obj;
     const id = entryId(leaf) as string;
     if (parents.has(id)) continue;
-    const prompts = chainTo(entries, id).filter((e) => promptOf(e) !== null);
+    const chain = chainTo(entries, id);
+    const prompts = chain.filter((e) => promptOf(e) !== null);
     if (prompts.length === 0) continue;
     const active = id === activeLeaf;
     let shared = 0;
     while (shared < prompts.length && shared < activePrompts.length && entryId(prompts[shared] as Obj) === activePrompts[shared]) shared += 1;
     // The prompt that tells it from the active path; a branch that only answered differently shows its last one.
     const telling = active || shared >= prompts.length ? prompts[prompts.length - 1] : prompts[shared];
-    out.push({ leafId: id, active, turns: prompts.length, shared, prompt: promptOf(telling as Obj) ?? "" });
+    // The first words of the reply after that prompt: the one thing that differs when two paths share every prompt.
+    const after = chain.slice(chain.indexOf(telling as Obj) + 1);
+    const answer = after.map(replyOf).find((text): text is string => text !== null);
+    const at = typeof leaf.timestamp === "string" ? Date.parse(leaf.timestamp) : NaN;
+    out.push({ leafId: id, active, turns: prompts.length, shared, prompt: promptOf(telling as Obj) ?? "", ...(answer ? { answer } : {}), ...(Number.isFinite(at) ? { at } : {}) });
   }
   out.sort((a, b) => Number(b.active) - Number(a.active));
   return out.slice(0, MAX_BRANCHES);
