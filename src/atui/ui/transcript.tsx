@@ -1058,7 +1058,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
     <box flexDirection="column" width="100%" maxWidth={p.column} flexShrink={0}>
       <Show when={hit()}>
         {(h) => (
-          <box flexDirection="row" marginTop={1} paddingLeft={2}>
+          <box flexDirection="row" marginTop={1}>
             <text selectable={false} fg={t().muted} wrapMode="none" truncate>
               <span style={{ fg: t().info }}>{"◎ "}</span>
               <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().bg, bg: t().warn }}>{part.text}</span> : <span>{part.text}</span>)}</For>
