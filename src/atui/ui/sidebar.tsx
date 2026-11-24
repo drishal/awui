@@ -244,7 +244,7 @@ export function Sidebar(p: {
                 <box flexDirection="row" paddingLeft={2} paddingRight={1} backgroundColor={chosen() ? t().selection : isActive(s) ? mix(t().surface2, t().accent, 0.22) : undefined} onMouseDown={() => { setSelection(keyOf(row)); void app.openSession(s).then(p.onOpened); }}>
                   <text selectable={false} flexShrink={0} fg={s.asking ? askingTone() : isBusy(s.status) ? t().accent : s.liveChatId ? t().ok : s.herdr ? herdrTone(s) : t().muted}>{s.asking ? "▲ " : isBusy(s.status) ? `${spinnerFor(s.harnessId)[tick() % spinnerFor(s.harnessId).length]} ` : s.liveChatId ? "● " : s.herdr ? "◆ " : "· "}</text>
                   <text selectable={false} flexGrow={1} fg={s.asking ? mix(t().text2, t().warn, 0.4 * breath()) : isActive(s) ? t().text : t().text2} wrapMode="none">{clip(s.title || "New chat", width() - 4 - rowMeta().length)}</text>
-                  <text selectable={false} flexShrink={0} fg={chosen() ? t().text2 : t().muted}>{rowMeta()}</text>
+                  <text selectable={false} flexShrink={0} fg={chosen() || isActive(s) ? t().text2 : t().muted}>{rowMeta()}</text>
                 </box>
               );
             }}
