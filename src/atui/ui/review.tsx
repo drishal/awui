@@ -211,7 +211,7 @@ export function ReviewView(p: { onClose: () => void }) {
                       <input
                         focused
                         flexGrow={1}
-                        placeholder={writing()?.threadId ? "Add to the thread: Enter save · Esc cancel" : "What should change here? Enter saves, Esc drops"}
+                        placeholder={writing()?.threadId ? "Add to the thread: Enter save · Esc cancel" : "What should change here? Enter save · Esc cancel"}
                         textColor={t().text}
                         backgroundColor={t().surface}
                         focusedBackgroundColor={t().surface}
