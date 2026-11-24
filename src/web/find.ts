@@ -38,6 +38,8 @@ export interface TurnMatch {
   index: number;
   turnId: string;
   count: number;
+  /** How many of `count` sit in the prompt or the answer (what is painted); the rest are in the work. */
+  visible: number;
   /** The first match with some of the text around it, on one line. */
   snippet: string;
   /** The match is inside the work (a closed fold hides it), not in the prompt or the answer. */
@@ -74,7 +76,7 @@ export function findTurns(turns: readonly Turn[], query: string, radius = 36, wo
     const inVisible = findOffsets(visible, query).length;
     const inWork = findOffsets(work, query).length;
     if (inVisible + inWork === 0) return;
-    out.push({ index, turnId: turn.id, count: inVisible + inWork, snippet: findSnippet(inVisible > 0 ? visible : work, query, radius), inWork: inVisible === 0 });
+    out.push({ index, turnId: turn.id, count: inVisible + inWork, visible: inVisible, snippet: findSnippet(inVisible > 0 ? visible : work, query, radius), inWork: inVisible === 0 });
   });
   return out;
 }

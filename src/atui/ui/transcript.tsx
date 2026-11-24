@@ -1028,7 +1028,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       at = i + q.length;
     }
     if (at < snippet.length) parts.push({ text: snippet.slice(at), match: false });
-    return { parts, count: m.count, inWork: m.inWork };
+    return { parts, count: m.count, inWork: m.inWork, hidden: m.count - m.visible };
   });
   const hasProcess = () => p.turn().process.length > 0 || Boolean(p.turn().answer?.thinking.trim());
   // Work the agent did after writing its reply draws below it, as its own fold.
@@ -1073,7 +1073,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
             <text selectable={false} fg={t().muted} wrapMode="none" truncate>
               <span style={{ fg: t().info }}>{`${FIND_MARK} `}</span>
               <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().accent }}><b>{part.text}</b></span> : <span style={{ fg: t().text2 }}>{part.text}</span>)}</For>
-              <span style={{ fg: t().muted }}>{`  ·  ${p.foundOf ? `match ${p.foundOf} · ` : ""}${h().count > 1 ? `${h().count} matches · ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"}${p.foundOf ? " · M-n/M-p step" : ""}`}</span>
+              <span style={{ fg: t().muted }}>{`  ·  ${p.foundOf ? `match ${p.foundOf} · ` : ""}${h().count > 1 ? `${h().count} matches${h().hidden > 0 && h().hidden < h().count ? `, ${h().hidden} in the work` : ""} · ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"}${p.foundOf ? " · M-n/M-p step" : ""}`}</span>
             </text>
           </box>
         )}
