@@ -14,15 +14,21 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: var(--composer-pad-top) 10px var(--composer-pad-bottom) 14px;
+  /* Two more pixels than the density tokens allow, and the same 14px gutter on both sides: the
+     card reads as one surface around the text, not a box with a text column in it. */
+  padding: calc(var(--composer-pad-top) + 2px) 14px calc(var(--composer-pad-bottom) + 2px);
   border-radius: var(--r-panel);
   background: var(--card);
-  box-shadow: var(--shadow-soft), 0 0 0 1px var(--hairline);
+  /* The ring, the soft edge, and one wide cast shadow that lifts the card off the transcript without
+     a hard line under it. It is a variable because the ring changes on focus and on a drop: every
+     state keeps the cast. It follows the theme's shadow strength, so light stays light. */
+  --composer-cast: 0 4px 24px -2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.8));
+  box-shadow: var(--shadow-soft), var(--composer-cast), 0 0 0 1px var(--hairline);
   transition: box-shadow 0.12s ease;
 }
 
 .composer-card:focus-within {
-  box-shadow: var(--shadow-soft), 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--shadow-soft), var(--composer-cast), 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .composer-card.is-closed {
@@ -127,7 +133,7 @@
 
 /* Dropping files: the card outlines itself as the target. */
 .composer-card.is-dragging {
-  box-shadow: var(--shadow-soft), 0 0 0 2px var(--accent);
+  box-shadow: var(--shadow-soft), var(--composer-cast), 0 0 0 2px var(--accent);
 }
 
 /* What a drop does, over the card while files are dragged on it; the pointer passes through, so the drag never leaves the card. */
@@ -379,7 +385,9 @@
   outline: none;
   resize: none;
   background: transparent;
-  font-size: var(--chat-font);
+  /* Half a pixel above the transcript's --chat-font: what you are typing leads, and the setting's
+     text size still scales it. */
+  font-size: calc(15px * var(--chat-scale));
   line-height: 1.5;
 }
 
@@ -511,7 +519,8 @@
 }
 
 .composer.is-hero .composer-input {
-  min-height: 52px;
+  /* Two lines of the start screen's question, not three: the card there is a question, not a page. */
+  min-height: 44px;
 }
 
 .composer-bar {
@@ -682,7 +691,7 @@
   }
 
   .composer-card.is-folded:focus-within {
-    box-shadow: var(--shadow-soft), 0 0 0 1px var(--hairline);
+    box-shadow: var(--shadow-soft), var(--composer-cast), 0 0 0 1px var(--hairline);
   }
 
   .composer-card.is-folded .composer-input {
