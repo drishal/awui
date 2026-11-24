@@ -237,6 +237,28 @@ describe("atui", () => {
     const done = await ui.until("Password accepted");
     expect(done).not.toContain("hunter2");
   }, 30_000);
+  it("carries the chat's tokens, cache and price on a second footer row where there is room, and keeps one row where there is not", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { width: 140, height: 40 });
+    await ui.type("showcase timing");
+    ui.keys.pressEnter();
+    await idle(ui);
+    const roomy = await ui.until(/* the usage arrives with the run's end */ "cache ");
+    expect(roomy).toMatch(/in [\d.]+k? · out [\d.]+k?/);
+    // The first row keeps what steers; the figures are the row under it.
+    const rows = roomy.split("\n");
+    const first = rows.findIndex((r) => /Think \w+ ▾/.test(r));
+    expect(rows[first]).not.toContain("cache ");
+    expect(rows[first + 1]).toMatch(/in [\d.]+k? · out/);
+    await ui.unmount();
+    ui = await mount(path.join(server.root, "alpha"), { width: 70, height: 28 });
+    await ui.type("showcase timing");
+    ui.keys.pressEnter();
+    await idle(ui);
+    const tight = await ui.frame();
+    // A short, narrow pane keeps one row, and the level chip keeps its noun.
+    expect(tight).not.toMatch(/in [\d.]+k? · out/);
+    expect(tight).toContain("Think ");
+  }, 40_000);
   it("opens the file sheet on a file from an opened call's View line", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 80 });
     await ui.type("showcase tool edit please");

@@ -11,7 +11,7 @@
 // writes, how fast (tokens a second, with their own sparkline).
 import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show, type JSX } from "solid-js";
 import { createHostClipboard, decodePasteBytes, type HostClipboardService, type TextareaRenderable } from "@opentui/core";
-import { useKeyboard, usePaste } from "@opentui/solid";
+import { useKeyboard, usePaste, useTerminalDimensions } from "@opentui/solid";
 import { IMAGE_MIME_TYPES, MAX_IMAGES, type GitStatus, type SavedPrompt, type SlashCommand } from "../../shared/protocol.js";
 import { APP_COMMANDS, isSkill, mergeCommands, skillMenu, skillName, slashMenu } from "../../web/commands.js";
 import { blanks, matchPrompts, nextBlank, promptGist } from "../../web/prompt-blanks.js";
@@ -369,13 +369,29 @@ export function Composer(p: {
     const words = spendWords(app.chat()?.usage);
     return words ? `${words}  ` : "";
   };
+  // A second footer row where there is room (pi's statusline has two): the run's tokens in and out, the cache's share, the price and the write rate, so
+  // row one keeps what steers (chips, git, ctx). A short or narrow pane keeps one row and the old rank-dropping, so nothing is lost there.
+  const size = useTerminalDimensions();
+  const telemetryText = () => {
+    const usage = app.chat()?.usage;
+    const parts: string[] = [];
+    if (usage && usage.input + usage.cachedInput + usage.output > 0) parts.push(`in ${tokens(usage.input + usage.cachedInput)} · out ${tokens(usage.output)}`);
+    const spend = spendWords(usage);
+    if (spend) parts.push(spend);
+    return parts.join(" · ");
+  };
+  const secondRow = () => size().height >= 32 && p.column >= 90 && Boolean(telemetryText() || rateText());
   const offerText = () => (offer() ? `${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  ` : "");
   const sparkText = () => (app.contextHistory().length > 1 ? `${sparkline(app.contextHistory().slice(-12), 100)} ` : "");
   const ctxText = () => (percent() !== null ? `ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%` : "");
-  // The harness chip keeps its mark and colour on a narrow pane and shortens its name to five characters from 76 columns down and gives it up below 54 (the model chip beside it names the same thing); the level chip drops its "Think" from 66, so the words leave one at a time and the model's name stays whole.
+  // The harness chip keeps its mark and colour on a narrow pane and shortens its name to five characters from 76 columns down and gives it up below 54 (the model chip beside it names the same thing); the permission chip shortens to its first word below 72, so the level chip keeps its noun and the model's name stays whole.
   const harnessWord = () => (p.column >= 76 ? `${app.harness()?.displayName ?? "—"} ` : p.column >= 54 ? `${clip(app.harness()?.displayName ?? "—", 5)} ` : "");
-  const thinkWord = () => (p.column >= 66 ? "Think " : "");
-  const permissionLabel = () => (caps()?.supportsPermissionMode ? app.chat()?.config.permissionModes?.find((m) => m.id === app.chat()?.config.permissionMode)?.label : undefined);
+  const thinkWord = () => "Think ";
+  // The permission chip is the first to give up words: "Ask first" is "Ask" below 72 columns (Shift+Tab flashes the whole name), so the level chip never has to lose its noun.
+  const permissionLabel = () => {
+    const label = caps()?.supportsPermissionMode ? app.chat()?.config.permissionModes?.find((m) => m.id === app.chat()?.config.permissionMode)?.label : undefined;
+    return label && p.column < 72 ? (label.split(" ")[0] ?? label) : label;
+  };
   const kept = () => {
     const g = app.git();
     const chips = ` ${harnessGlyph(app.harness()?.id ?? "")} ${harnessWord()}▾ `.length + (caps()?.supportsThinkingLevel && words().level ? ` ${thinkWord()}${levelTitle(words().level ?? "")} ▾ `.length + 1 : 0) + (permissionLabel() ? ` ${permissionLabel()} ▾ `.length + 1 : 0) + (p.status.mode ? 14 : 0) + (queued() > 0 ? `  +${queued()} queued`.length : 0) + (p.status.note ? p.status.note.length + 2 : 0);
@@ -386,8 +402,8 @@ export function Composer(p: {
         { id: "git", width: g ? gitBranchText(g).length : 0, rank: 2 },
         { id: "offer", width: offerText().length, rank: 3 },
         { id: "counts", width: g ? gitCountsText(g).length : 0, rank: 4 },
-        { id: "rate", width: rateText().length, rank: 5 },
-        { id: "spend", width: spendText().length, rank: 5.5 },
+        { id: "rate", width: secondRow() ? 0 : rateText().length, rank: 5 },
+        { id: "spend", width: secondRow() ? 0 : spendText().length, rank: 5.5 },
         { id: "spark", width: sparkText().length, rank: 6 },
         { id: "ctx", width: ctxText().length + 2, rank: 1 },
       ],
@@ -590,7 +606,7 @@ export function Composer(p: {
           <Show when={caps()?.supportsPermissionMode ? app.chat()?.config.permissionModes?.find((m) => m.id === app.chat()?.config.permissionMode) : undefined}>
             {(mode) => (
               <box flexShrink={0} backgroundColor={app.glass() ? undefined : t().surface2} marginLeft={1} onMouseDown={() => p.onPick("permission")}>
-                <text fg={mode().caution ? t().warn : t().muted}>{` ${mode().label} ▾ `}</text>
+                <text fg={mode().caution ? t().warn : t().muted}>{` ${permissionLabel() ?? mode().label} ▾ `}</text>
               </box>
             )}
           </Show>
@@ -664,6 +680,20 @@ export function Composer(p: {
           </Show>
         </text>
       </box>
+      <Show when={secondRow()}>
+        {/* Right-aligned under row one's right side: the figures the footer used to drop first, now with a row of their own. */}
+        <box flexDirection="row" paddingLeft={1} paddingRight={1} justifyContent="flex-end">
+          <text flexShrink={0} wrapMode="none" truncate fg={t().muted}>
+            {telemetryText()}
+            <Show when={rateText()}>
+              <span>{`${telemetryText() ? " · " : ""}~${Math.round(rate() ?? 0)} tok/s `}</span>
+              <Show when={rates().length > 1}>
+                <span style={{ fg: t().text2 }}>{sparkline(rates())}</span>
+              </Show>
+            </Show>
+          </text>
+        </box>
+      </Show>
     </box>
   );
 }
