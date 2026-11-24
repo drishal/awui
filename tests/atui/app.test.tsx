@@ -181,7 +181,7 @@ describe("atui", () => {
     expect(f).toContain("❯ showcase tool edit please");
     expect(f).toContain("┌─ ▤ Read README.md");
     expect(f).toMatch(/├─ ✎ Edited src\/app\.ts +\+1 −1/);
-    expect(f).toMatch(/└─ [▤✎⊞›◎⊕◈◇≡●✗] /);
+    expect(f).toMatch(/└─ [▤✎⊞›⌕↗◈◇≡●✗] /);
     expect(f).toContain("● Echo: showcase tool edit please");
     expect(f).toMatch(/Σ \d+ calls · /);
     expect(f).not.toContain("Worked for");
