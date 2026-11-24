@@ -237,7 +237,10 @@ describe("atui", () => {
     await ui.type("showcase");
     ui.keys.pressEnter();
     await idle(ui);
-    const shown = await ui.until("Considering: Echo: showcase");
+    await ui.until("Considering: Echo: showcase");
+    // Under a loaded machine the first frame after the status flips can still be the working one: wait for the settled frame.
+    let shown = await ui.frame();
+    for (let i = 0; i < 40 && shown.includes("Working ·"); i++) { await new Promise((r) => setTimeout(r, 50)); shown = await ui.frame(); }
     expect(shown).not.toContain("░ nop placeholder");
     expect(shown).not.toContain("Working ·");
     expect(shown).not.toContain("Running");
