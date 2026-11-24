@@ -10,7 +10,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show }
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { ChatSnapshot, DelegatedTaskView, IntegrationRecord } from "../../shared/protocol.js";
-import { reviewActions, reviewWords, tasksMeta, type ReviewAction, type ReviewFacts } from "../../web/delegated-tasks.js";
+import { metaText, reviewActions, reviewWords, tasksMeta, type ReviewAction, type ReviewFacts } from "../../web/delegated-tasks.js";
 import { collectChanges } from "../../web/review.js";
 import { ACTION_KEYS, clockNote, moveRow, rowWindow, taskRows, workerCount, type TaskRow } from "../delegated.js";
 import { clip } from "../format.js";
@@ -323,7 +323,7 @@ export function DelegatedView(p: { onClose: () => void; initialTaskId?: string |
                   <box flexDirection="column" flexShrink={0} marginTop={1} border={["top"]} borderColor={t().border} paddingTop={0}>
                     <text fg={t().muted}>
                       <b>{task().result ? "Result" : "Doing"}</b>
-                      <span>{`  ${task().role ? `${task().role} · ` : ""}${harnessName(task().harnessId)}${task().model ? ` ${task().model}` : ""}${task().scope && task().scope?.attempted ? ` · ${task().scope?.blocked ?? 0} of ${task().scope?.attempted} out-of-scope writes blocked` : ""}`}</span>
+                      <span>{`  ${metaText(task(), harnessName)}${task().scope && task().scope?.attempted ? ` · ${task().scope?.blocked ?? 0} of ${task().scope?.attempted} out-of-scope writes blocked` : ""}`}</span>
                     </text>
                     <box maxHeight={5} overflow="hidden">
                       <text fg={t().text2} wrapMode="word">
