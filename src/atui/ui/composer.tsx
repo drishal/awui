@@ -372,8 +372,8 @@ export function Composer(p: {
   const offerText = () => (offer() ? `${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  ` : "");
   const sparkText = () => (app.contextHistory().length > 1 ? `${sparkline(app.contextHistory().slice(-12), 100)} ` : "");
   const ctxText = () => (percent() !== null ? `ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%` : "");
-  // The harness chip keeps its mark and colour on a narrow pane and gives up its name (the model chip beside it names the same thing) from 76 columns down; the level chip drops its "Think" from 66, so the words leave one at a time and the model's name stays whole.
-  const harnessWord = () => (p.column >= 76 ? `${app.harness()?.displayName ?? "—"} ` : "");
+  // The harness chip keeps its mark and colour on a narrow pane and shortens its name to five characters from 76 columns down and gives it up below 60 (the model chip beside it names the same thing); the level chip drops its "Think" from 66, so the words leave one at a time and the model's name stays whole.
+  const harnessWord = () => (p.column >= 76 ? `${app.harness()?.displayName ?? "—"} ` : p.column >= 60 ? `${clip(app.harness()?.displayName ?? "—", 5)} ` : "");
   const thinkWord = () => (p.column >= 66 ? "Think " : "");
   const permissionLabel = () => (caps()?.supportsPermissionMode ? app.chat()?.config.permissionModes?.find((m) => m.id === app.chat()?.config.permissionMode)?.label : undefined);
   const kept = () => {
