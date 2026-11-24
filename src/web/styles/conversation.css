@@ -494,10 +494,13 @@
   min-width: 0;
 }
 
+/* A prompt's bubble: its own edge, and one square corner at the bottom right, where the speaker's hand would be.
+   Without the edge it read as an accidental grey pill rather than a thing the person wrote. */
 .bubble {
   max-width: 100%;
   padding: 10px 16px;
-  border-radius: var(--r-xl);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xl) var(--r-xl) var(--r-xs) var(--r-xl);
   background: var(--bubble);
   font-size: var(--chat-font);
   line-height: 1.5;
@@ -525,9 +528,10 @@
 .prompt-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 2px;
   margin-top: -2px;
-  opacity: 0.45;
+  opacity: 0.7;
   transition: opacity var(--dur-enter) var(--ease-out);
 }
 

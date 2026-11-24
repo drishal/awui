@@ -93,7 +93,7 @@ test("the rows under a prompt and an answer sit quiet until the turn is wanted, 
   // At rest the older turn's rows are faint and the latest turn's are full.
   await page.mouse.move(2, 2);
   await expect.poll(() => opacityOf(older.locator(".answer-actions"))).toBeCloseTo(0.7, 1);
-  await expect.poll(() => opacityOf(older.getByTestId("prompt-actions"))).toBeCloseTo(0.45, 1);
+  await expect.poll(() => opacityOf(older.getByTestId("prompt-actions"))).toBeCloseTo(0.7, 1);
   await expect.poll(() => opacityOf(latest.locator(".answer-actions"))).toBe(1);
   // Hovering the turn lights both its rows; so does focus inside it.
   await older.hover();
