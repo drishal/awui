@@ -16,7 +16,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createEffect, createMemo, createResource, createSignal, on, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, Show } from "solid-js";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { AGENT_STATUS_WORDS, agentStatusText } from "../../web/agent-status.js";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
@@ -100,6 +100,9 @@ export function App(p: {
   const t = app.theme;
   const size = useTerminalDimensions();
   const [sidebar, setSidebar] = createSignal(size().width >= 110);
+  /** The pinned plan row opened into its steps (a click on it), and how many it lists. */
+  const [planOpen, setPlanOpen] = createSignal(false);
+  const PLAN_ROWS = 6;
   const [sideTab, setSideTab] = createSignal<SidebarTab>("sessions");
   const [focus, setFocus] = createSignal<"composer" | "sidebar">("composer");
   const [dialog, setDialog] = createSignal<Dialog>(null);
@@ -1444,13 +1447,30 @@ export function App(p: {
                   </Show>
                   <Show when={app.busy() && planStrip()}>
                     {(plan) => (
-                      <text selectable={false} wrapMode="none" truncate fg={t().muted} paddingLeft={2}>
-                        <span style={{ fg: t().accent }}>{"≡ "}</span>
-                        <span style={{ fg: t().text2 }}>{`${plan().done}/${plan().total}`}</span>
-                        <span style={{ fg: t().muted }}>{"  ◐ "}</span>
-                        <span style={{ fg: t().text }}>{plan().current}</span>
-                        {plan().run ? <span style={{ fg: t().muted }}>{`  ·  ${plan().run}`}</span> : null}
-                      </text>
+                      <box flexDirection="column" backgroundColor={t().surface} onMouseDown={() => setPlanOpen(!planOpen())}>
+                        <Show when={planOpen()}>
+                          <For each={(app.chat()?.todos ?? []).slice(0, PLAN_ROWS)}>
+                            {(todo) => {
+                              const done = /done|complete/.test(todo.status);
+                              const now = /progress|active|doing/.test(todo.status);
+                              return (
+                                <text selectable={false} wrapMode="none" truncate fg={done ? t().muted : t().text} paddingLeft={4}>
+                                  <span style={{ fg: done ? t().ok : now ? t().accent : t().muted }}>{done ? "✓ " : now ? "◐ " : "○ "}</span>
+                                  {todo.text}
+                                </text>
+                              );
+                            }}
+                          </For>
+                        </Show>
+                        <text selectable={false} wrapMode="none" truncate fg={t().muted} paddingLeft={2}>
+                          <span style={{ fg: t().accent }}>{"≡ "}</span>
+                          <span style={{ fg: t().text2 }}>{`${plan().done}/${plan().total}`}</span>
+                          <span style={{ fg: t().muted }}>{"  ◐ "}</span>
+                          <span style={{ fg: t().text }}>{plan().current}</span>
+                          {plan().run ? <span style={{ fg: t().muted }}>{`  ·  ${plan().run}`}</span> : null}
+                          <span style={{ fg: t().border }}>{planOpen() ? "  ▾" : "  ▸"}</span>
+                        </text>
+                      </box>
                     )}
                   </Show>
                   <Composer

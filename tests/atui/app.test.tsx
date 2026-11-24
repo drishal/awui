@@ -509,6 +509,21 @@ describe("atui", () => {
     expect(await ui.until("Message the agent")).not.toContain("1/3  ◐");
   }, 40_000);
 
+  it("opens the pinned plan into its steps with a click and folds it again", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("todolist slow");
+    ui.keys.pressEnter();
+    await ui.until("1/3");
+    expect(await ui.frame()).not.toContain("○ Run the suite");
+    await ui.click("1/3  ◐");
+    const open = await ui.until("○ Run the suite");
+    expect(open).toContain("✓ Read the tool card");
+    await ui.click("1/3  ◐");
+    await wait(150);
+    expect(await ui.frame()).not.toContain("○ Run the suite");
+    await idle(ui);
+  }, 40_000);
+
   it("unrolls a framed call's whole output with a click and folds it again", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 80 });
     await ui.type("tool longlog");
