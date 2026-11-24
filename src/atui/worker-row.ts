@@ -20,6 +20,9 @@ const SEP = 3;
 /** Fewest cells a title is worth drawing in. */
 const MIN_TITLE = 5;
 
+/** The title is worth more than the model or host (the card above already says where it runs): they leave before it falls under this. */
+const WORTH_KEEPING = 12;
+
 /** `avail` is the cells the row has after its `└ ● ` lead; `state` (or the two-cell " ✓") is always kept. */
 export function workerRow(input: { title: string; role?: string | null; host?: string | null; model?: string | null; state: string }, avail: number): WorkerRowParts {
   const state = input.state;
@@ -34,6 +37,8 @@ export function workerRow(input: { title: string; role?: string | null; host?: s
     if (used() <= avail) break;
     extras[key] = "";
   }
-  const room = avail - used() - 1 - (extras.role || extras.host || extras.model ? SEP : 0);
+  const roomNow = () => avail - used() - 1 - (extras.role || extras.host || extras.model ? SEP : 0);
+  for (const key of ["model", "host"] as const) if (roomNow() < WORTH_KEEPING && extras[key]) extras[key] = "";
+  const room = roomNow();
   return { title: room >= MIN_TITLE ? clip(input.title, room) : "", role: extras.role, host: extras.host, model: extras.model, state };
 }

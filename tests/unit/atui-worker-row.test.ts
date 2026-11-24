@@ -8,13 +8,16 @@ describe("workerRow", () => {
     expect(workerRow(worker, 60)).toMatchObject({ title: "Reply with the word child exactly", role: "test", model: "fake/echo" });
   });
   it("keeps the role and model whole and clips the title at its end", () => {
-    const row = workerRow(worker, 30);
+    const row = workerRow(worker, 40);
     expect(row).toMatchObject({ role: "test", model: "fake/echo" });
     expect(row.title.endsWith("…")).toBe(true);
-    expect(row.title.length + 3 + row.role.length + 3 + row.model.length + 2).toBeLessThanOrEqual(30);
+    expect(row.title.length + 3 + row.role.length + 3 + row.model.length + 2).toBeLessThanOrEqual(40);
   });
-  it("leaves the title out rather than show a stub, while the seat stays named", () => {
-    expect(workerRow(worker, 20)).toMatchObject({ title: "", role: "test", model: "fake/echo" });
+  it("lets the model and host go before the title is squeezed to a stub, while the role stays named", () => {
+    const row = workerRow(worker, 30);
+    expect(row).toMatchObject({ role: "test", model: "" });
+    expect(row.title.length).toBeGreaterThanOrEqual(12);
+    expect(workerRow({ ...worker, host: "laptop" }, 30)).toMatchObject({ role: "test", host: "", model: "" });
   });
   it("drops the model first, then the host, then the role, only when the facts themselves do not fit", () => {
     expect(workerRow(worker, 10)).toMatchObject({ role: "test", model: "" });
