@@ -1099,7 +1099,7 @@ export function App(p: {
         flash(`New chat from “${preset.name}”`);
       },
     }));
-    rows.push({ id: "preset:save", section: "Save", label: "Save this setup as a preset…", hint: "harness · model · level · mode", run: () => setDialog("preset-save") });
+    rows.push({ id: "preset:save", section: "This setup", label: "Save this setup as a preset…", hint: "harness · model · level · mode", run: () => setDialog("preset-save") });
     return rows;
   };
   /** The save sheet: what is typed is the name; one row says what it will keep, and whether it replaces one. */
