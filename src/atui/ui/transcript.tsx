@@ -353,13 +353,13 @@ function Thought(p: { item: AssistantItem; open: boolean; onToggle: () => void }
 /** An edit's lines as plain tinted rows with the found words lit: what the framed card draws while a find lands inside the diff. */
 function FoundDiff(p: { lines: DiffLine[] }) {
   const t = useTheme();
-  const sign = { add: "+", del: "-", ctx: " " } as const;
+  const sign = { add: "+", del: "−", ctx: " " } as const;
   return (
     <box flexDirection="column">
       <For each={p.lines}>
         {(l) =>
           l.kind === "hunk" || l.kind === "gap" ? (
-            <text fg={t().muted} wrapMode="none" truncate>{"⋯"}</text>
+            <text fg={t().muted} wrapMode="none" truncate>{l.text ? `⋯ ${l.text}` : "⋯ lines not shown"}</text>
           ) : (
             <box flexDirection="row" backgroundColor={l.kind === "add" ? mix(t().bg, t().ok, 0.16) : l.kind === "del" ? mix(t().bg, t().danger, 0.16) : undefined}>
               <text flexShrink={0} fg={t().muted}>{`${l.line !== undefined ? String(l.line).padStart(4) : "    "} `}</text>
@@ -1076,24 +1076,12 @@ function Answer(p: { item: AssistantItem; mark?: string | null }) {
 function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; onToggle: () => void; switchedTo: string | null; column: number; foundQuery?: string | null; foundOf?: string }) {
   const app = useAtui();
   const t = useTheme();
-  // The turn a find landed on says where the words are: one line around the first match with the words in the accent and bold; the answer's own copy of the words sits on a warn-tinted ground (markMatches), and the strip names them too.
+  // The turn a find landed on says where the words are: the words searched for and how many matches the turn holds; the answer's own copy of the words sits on a warn-tinted ground (markMatches), and the strip names them too.
   const hit = createMemo(() => {
     const query = p.foundQuery;
-    const m = query ? findTurns([p.turn()], query, 44, p.workspace)[0] : undefined;
+    const m = query ? findTurns([p.turn()], query, 0, p.workspace)[0] : undefined;
     if (!query || !m) return null;
-    const parts: Array<{ text: string; match: boolean }> = [];
-    // A list marker or heading hashes at the start are Markdown, not words: the strip quotes the text only.
-    const snippet = m.snippet.replace(/^(…)?\s*(?:[-*+]|\d+\.|#{1,6})\s+/, "$1");
-    const lower = snippet.toLowerCase();
-    const q = query.toLowerCase();
-    let at = 0;
-    for (let i = lower.indexOf(q); i >= 0 && q; i = lower.indexOf(q, at)) {
-      if (i > at) parts.push({ text: snippet.slice(at, i), match: false });
-      parts.push({ text: snippet.slice(i, i + q.length), match: true });
-      at = i + q.length;
-    }
-    if (at < snippet.length) parts.push({ text: snippet.slice(at), match: false });
-    return { parts, count: m.count, inWork: m.inWork, hidden: m.count - m.visible };
+    return { count: m.count, inWork: m.inWork, hidden: m.count - m.visible };
   });
   const hasProcess = () => p.turn().process.length > 0 || Boolean(p.turn().answer?.thinking.trim());
   // Work the agent did after writing its reply draws below it, as its own fold.
@@ -1138,7 +1126,8 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
           <box flexDirection="row" marginTop={1}>
             <text selectable={false} fg={t().muted} wrapMode="none" truncate>
               <span style={{ fg: t().info }}>{`${icon("find")} `}</span>
-              <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().accent }}><b>{part.text}</b></span> : <span style={{ fg: t().text2 }}>{part.text}</span>)}</For>
+              {/* The strip names what was searched for, as the web's find bar does; the turn below is already lit with the words, so no excerpt repeats it. */}
+              <span style={{ fg: t().accent }}><b>{`“${clip(p.foundQuery?.trim() ?? "", 32)}”`}</b></span>
               <span style={{ fg: t().muted }}>{`  ·  ${p.foundOf ? `match ${p.foundOf} · ` : ""}${h().count > 1 ? `${h().count} matches ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"}${h().count > 1 && h().hidden > 0 && h().hidden < h().count ? ` (${h().hidden} in the work)` : ""} · Esc clears`}</span>
             </text>
           </box>
