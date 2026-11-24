@@ -205,6 +205,18 @@ describe("atui", () => {
     ui.keys.pressEnter();
     expect(await ui.until("/rename")).not.toContain("Search commands");
   }, 30_000);
+  it("says what will fill Active work when a chat has only its context", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("hello quiet rail");
+    ui.keys.pressEnter();
+    await ui.until("Echo: hello quiet rail");
+    await idle(ui);
+    ui.keys.pressKey("x", { ctrl: true });
+    ui.keys.pressKey("p");
+    const rail = await ui.until("Active work");
+    expect(rail).toContain("Nothing is running.");
+    expect(rail).toContain("Workers this chat delegates, background jobs");
+  }, 30_000);
   it("opens the file sheet on a file from an opened call's View line", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 80 });
     await ui.type("showcase tool edit please");

@@ -162,6 +162,10 @@ export function ContextRailView(p: RailActions) {
             );
           }}
         </For>
+        {/* A chat with only its context shown says what will fill the pane, so the view reads as ready rather than unfinished. */}
+        <Show when={entries().length > 0 && !entries().some((e) => e.card.id !== "memory")}>
+          <text fg={t().muted} wrapMode="word" marginTop={2}>Workers this chat delegates, background jobs, runs, and questions waiting on you appear here while they work; Enter on one opens it.</text>
+        </Show>
         <Show when={entries().length === 0}>
           <text fg={t().muted}>Nothing to show: this chat has no workers, runs, or comments yet.</text>
         </Show>
