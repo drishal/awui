@@ -367,7 +367,7 @@ test("a prompt's actions show on hover: edit replaces it in place, retry branche
   await sendAndWait(page, "second idea");
   const second = page.locator(".turn-prompt").nth(1);
   const actions = second.getByTestId("prompt-actions");
-  await expect(page.locator(".turn-prompt").nth(0).getByTestId("prompt-actions")).toHaveCSS("opacity", "0.45");
+  await expect(page.locator(".turn-prompt").nth(0).getByTestId("prompt-actions")).toHaveCSS("opacity", "0.7");
   await second.hover();
   await expect(actions).toHaveCSS("opacity", "1");
   await actions.getByRole("button", { name: "Edit" }).click();
