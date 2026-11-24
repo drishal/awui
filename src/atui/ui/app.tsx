@@ -1098,7 +1098,7 @@ export function App(p: {
         flash(`New chat from “${preset.name}”`);
       },
     }));
-    rows.push({ id: "preset:save", section: "Save", label: "Save this setup as a preset…", hint: "harness · model · level", run: () => setDialog("preset-save") });
+    rows.push({ id: "preset:save", section: "Save", label: "Save this setup as a preset…", hint: "harness · model · level · mode", run: () => setDialog("preset-save") });
     return rows;
   };
   /** The save sheet: what is typed is the name; one row says what it will keep, and whether it replaces one. */
@@ -1112,7 +1112,7 @@ export function App(p: {
         id: "preset:name",
         section: same ? "Replace" : "Save",
         label: `${same ? "Replace" : "Save as"} “${name}”`,
-        hint: [app.harness()?.displayName, chips.label].filter(Boolean).join(" · "),
+        hint: [app.harness()?.displayName, chips.label, app.chat()?.config.permissionModes?.find((m) => m.id === app.chat()?.config.permissionMode)?.label].filter(Boolean).join(" · "),
         run: () => {
           setDialog(null);
           const saved = app.savePreset(name);
