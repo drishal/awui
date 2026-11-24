@@ -226,6 +226,7 @@ export function Sidebar(p: {
                 // chat on the server, a subset of its total (asking and working ones sit in the
                 // lists above, pinned in their own) — so the mark says one thing in both places.
                 const live = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.liveChatId && !s.asking && !isBusy(s.status)).length;
+                const working = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && !s.asking && isBusy(s.status)).length;
                 const needs = () => app.overview().sessions.filter((s) => s.workspaceId === row.workspace.id && s.harnessId === app.harnessId() && s.asking).length;
                 return (
                   <box flexDirection="row" marginTop={at() === 0 ? 0 : 1} paddingLeft={1} paddingRight={1} backgroundColor={chosen() ? t().selection : row.current ? t().surface : undefined} onMouseDown={() => activate(row)}>
@@ -234,8 +235,9 @@ export function Sidebar(p: {
                     <text selectable={false} fg={t().text} wrapMode="none">{` ${name()}`}</text><box flexGrow={1} />
                     {/* The same marks the session rows teach: ▲ a session asking, ● one live on the server. */}
                     {needs() > 0 ? <text selectable={false} fg={t().warn}>{`▲ ${needs()} `}</text> : null}
-                    {/* The mark leads the count in both states, as the session rows' marks lead their titles. */}
-                    {live() > 0 && needs() === 0 ? <text selectable={false} fg={t().ok}>{"● "}</text> : null}
+                    {/* The mark leads the count in every state, as the session rows' marks lead their titles; a run in progress shows the row's own spinner (▲ asks, then ◐ works, then ● lives). */}
+                    {working() > 0 && needs() === 0 ? <text selectable={false} fg={t().accent}>{`${spinnerFor(app.harnessId())[tick() % spinnerFor(app.harnessId()).length]} `}</text> : null}
+                    {live() > 0 && working() === 0 && needs() === 0 ? <text selectable={false} fg={t().ok}>{"● "}</text> : null}
                     {row.count > 0 && needs() === 0 ? <text selectable={false} fg={t().muted}>{`${row.count} `}</text> : null}
                   </box>
                 );
