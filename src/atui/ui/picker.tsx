@@ -117,7 +117,7 @@ export function Picker(p: {
     const headings = query().trim() ? 0 : list.filter((item, at) => (at === 0 ? Boolean(p.firstHeading) : list[at - 1]?.section !== item.section)).length;
     return Math.max(1, list.length) + headings * 2 + (p.axis ? 1 : 0);
   };
-  const height = () => Math.min(previewing() ? 22 : Math.max(7, rowsNeeded() + 5), 22, size().height - 4);
+  const height = () => Math.min(previewing() ? 22 : Math.max(6, rowsNeeded() + 5), 22, size().height - 4);
   /** Is a heading drawn above row `at`? Not while a query is typed; the first one only when the picker names it. */
   const headed = (list: PickerItem[], at: number) => !query().trim() && (list[at - 1]?.section !== list[at]?.section) && (at > 0 || Boolean(p.firstHeading));
   /** Lines a row takes: itself, a heading over it, and a blank line above a heading that is not the first. */
