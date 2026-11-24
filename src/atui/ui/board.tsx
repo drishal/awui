@@ -234,7 +234,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
         </For>
       </box>
       <text flexShrink={0} fg={t().muted} wrapMode="none" truncate>
-        {here() ? `${harnessName(here()?.session.harnessId ?? "")} · ${projectName(here()?.session.workspaceId ?? "")} · ${plainTitle(here()?.session.title ?? "")}` : "No card under the cursor"}
+        {here() ? `Selected: ${harnessName(here()?.session.harnessId ?? "")} · ${projectName(here()?.session.workspaceId ?? "")} · ${plainTitle(here()?.session.title ?? "")}` : "No card under the cursor"}
       </text>
     </box>
   );
