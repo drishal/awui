@@ -57,15 +57,20 @@ export function windowStart(total: number, at: number, height: number): number {
 export const GAP_LINES_MAX = 80;
 
 /**
- * The file lines a gap row hides, as [first line, count]: only a gap that says how many unchanged lines it folds ("12 unchanged lines"), right
- * after a context or added line that carries its number in the file. Anything else (a hunk break, a truncated edit) has no place to read from.
+ * The file lines a gap row hides, as [first line, count]: right after a context or added line that carries its number in the file, and either
+ * saying how many unchanged lines it folds ("12 unchanged lines") or sitting between two numbered lines. A truncated edit ("N more lines") has no place to read from.
  */
 export function gapSpan(rows: ReviewRow[], at: number): { from: number; count: number } | null {
   const row = rows[at];
   if (row?.kind !== "line" || row.line.kind !== "gap") return null;
-  const count = Number(/^(\d+) unchanged lines?$/.exec(row.line.text)?.[1]);
   const before = rows[at - 1];
-  if (!Number.isFinite(count) || count < 1 || before?.kind !== "line" || before.file !== row.file || (before.line.kind !== "ctx" && before.line.kind !== "add") || before.line.line === undefined) return null;
+  if (before?.kind !== "line" || before.file !== row.file || (before.line.kind !== "ctx" && before.line.kind !== "add") || before.line.line === undefined) return null;
+  // The gap may say how many lines it folds; a bare hunk break does not, but the numbers either side of it do (the next kept line's number less the last one's).
+  const said = Number(/^(\d+) unchanged lines?$/.exec(row.line.text)?.[1]);
+  const next = rows[at + 1];
+  const between = next?.kind === "line" && next.file === row.file && (next.line.kind === "ctx" || next.line.kind === "add") && next.line.line !== undefined && !row.line.text ? next.line.line - before.line.line - 1 : NaN;
+  const count = Number.isFinite(said) ? said : between;
+  if (!Number.isFinite(count) || count < 1) return null;
   return { from: before.line.line + 1, count };
 }
 

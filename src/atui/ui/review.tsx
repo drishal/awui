@@ -38,7 +38,7 @@ export function ReviewView(p: { onClose: () => void }) {
   const [opened, setOpened] = createSignal<ReadonlyMap<string, string[]>>(new Map());
   const rows = createMemo(() => openGaps(base(), opened()));
   /** The gaps that can open: they name how many unchanged lines they fold, after a line that has its number. */
-  const openable = createMemo(() => new Set(base().flatMap((row, i) => (row.kind === "line" && gapSpan(base(), i) ? [row.key] : []))));
+  const openable = createMemo(() => new Map(base().flatMap((row, i): Array<[string, number]> => { const span = row.kind === "line" ? gapSpan(base(), i) : null; return row.kind === "line" && span ? [[row.key, span.count]] : []; })));
   // The server's threads, where the lines they pin to are now drawn.
   const placed = createMemo(() => placeThreads(files(), app.reviewComments(chatId())));
   const [at, setAt] = createSignal(firstStop(rows()));
@@ -242,7 +242,7 @@ export function ReviewView(p: { onClose: () => void }) {
                     </text>
                     <text flexGrow={1} wrapMode="none" truncate fg={t().text}>
                       {row.line.kind === "hunk" || row.line.kind === "gap" ? (
-                        clip(`${row.line.text ? `⋯ ${row.line.text}` : "⋯ lines not shown"}${openable().has(row.key) ? " · e shows them" : ""}`, 120)
+                        clip(`${openable().has(row.key) ? `⋯ ${openable().get(row.key)} unchanged lines · e shows them` : row.line.text ? `⋯ ${row.line.text}` : "⋯ lines not shown"}`, 120)
                       ) : (
                         <>
                           {/* As the web's diff does: the sign carries the hue (eased toward the text so it keeps its contrast on the tint), the code stays in the text colour, and the words that changed sit on a stronger tint. */}

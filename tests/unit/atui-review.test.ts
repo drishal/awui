@@ -67,4 +67,14 @@ describe("review in atui", () => {
     const partial = openGaps(rows, new Map([[key, ["a"]]]));
     expect(partial.some((r) => r.kind === "line" && r.line.kind === "gap" && r.line.text === "2 more unchanged lines")).toBe(true);
   });
+
+  it("counts a bare hunk break's hidden lines from the numbers either side of it", () => {
+    const folded: FileChanges[] = [{ path: "d.ts", added: 1, removed: 0, edits: [{ turn: 1, tool: edit("f1", [["add", "new", 14], ["gap", ""], ["ctx", "far", 40]]) }] }];
+    const rows = reviewRows(folded);
+    const at = rows.findIndex((r) => r.kind === "line" && r.line.kind === "gap");
+    expect(gapSpan(rows, at)).toEqual({ from: 15, count: 25 });
+    // A deleted line carries the old file's number, so a gap before one has nothing to count.
+    const beforeDel = reviewRows([{ path: "e.ts", added: 0, removed: 1, edits: [{ turn: 1, tool: edit("f2", [["add", "x", 3], ["gap", ""], ["del", "y", 9]]) }] }]);
+    expect(gapSpan(beforeDel, beforeDel.findIndex((r) => r.kind === "line" && r.line.kind === "gap"))).toBeNull();
+  });
 });
