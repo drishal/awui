@@ -142,7 +142,18 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   const width = () => Math.max(30, Math.min(160, size().width - (p.side ?? 0) - 4));
   /** The columns share the frame's whole inside: two of a third each, the last the rest, so the cards end where the head does. */
   const columnWidth = (last: boolean) => Math.max(18, last ? width() - 4 - 2 * Math.floor((width() - 4) / 3) : Math.floor((width() - 4) / 3));
-  const height = () => Math.max(6, size().height - 8);
+  /** Lines a card takes: its title and meta, an agent's status, a pull request, a child per line, and the blank line above it. */
+  const cardLines = (card: BoardCard) => 3 + (card.session.agentStatus ? 1 : 0) + (prBadge(card.session, prs() ? { [card.session.workspaceId]: prs()[card.session.workspaceId] ?? null } : undefined) ? 1 : 0) + card.children.length;
+  /** The cards a column draws: from the first that keeps the cursor's card in view, as many as the frame's inside holds, leaving a line for "earlier" and "more". */
+  const windowOf = (list: readonly BoardCard[], cur: number) => {
+    const budget = Math.max(3, boxHeight() - 8);
+    const span = (from: number, to: number) => list.slice(from, to).reduce((n, c) => n + cardLines(c), 0);
+    let from = 0;
+    while (from < cur && span(from, cur + 1) > budget) from++;
+    let to = from;
+    while (to < list.length && span(from, to + 1) <= budget) to++;
+    return { from, to: Math.max(to, Math.min(list.length, cur + 1)) };
+  };
   const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} [f] · ${PR_FILTER_LABELS[pr()]} [r]`;
   /** The frame fits its cards (about four rows each, plus the head and the column titles) up to the room the sheet stands in, so a board with a few cards is not a frame of empty rows. */
   const boxHeight = () => {
@@ -183,6 +194,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
             const columnCards = () => cards()[id];
             const active = () => column() === id;
             const at = () => (active() ? clampCursor(columnCards(), cursor()) : -1);
+            const win = () => windowOf(columnCards(), Math.max(0, at()));
             return (
               <box flexDirection="column" width={columnWidth(id === BOARD_COLUMNS[BOARD_COLUMNS.length - 1])} flexShrink={0} paddingRight={1}>
                 <text flexShrink={0} fg={active() ? (id === "needs" && counts()[id] > 0 ? t().warn : t().accent) : t().muted} wrapMode="none" truncate>
@@ -191,8 +203,13 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                 </text>
                 <Show when={columnCards().length > 0} fallback={<text flexShrink={0} fg={t().muted} wrapMode="word">{reading() ? "Reading this server's sessions…" : BOARD_EMPTY[id]}</text>}>
                   <box flexDirection="column" overflow="hidden">
-                    <For each={columnCards().slice(0, height())}>
-                      {(card, i) => (
+                    <Show when={win().from > 0}>
+                      <text flexShrink={0} fg={t().muted}>{`${win().from} earlier`}</text>
+                    </Show>
+                    <For each={columnCards().slice(win().from, win().to)}>
+                      {(card, k) => {
+                        const i = () => win().from + k();
+                        return (
                         <box flexDirection="column" flexShrink={0} marginTop={i() === 0 ? 0 : 1} backgroundColor={i() === at() ? t().selection : undefined} onMouseDown={() => { setColumn(id); setCursor(i()); }}>
                           <text wrapMode="none" truncate>
                             <span style={{ fg: i() === at() ? t().accent : t().border }}>{i() === at() ? "▌" : " "}</span>
@@ -220,10 +237,11 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                             )}
                           </For>
                         </box>
-                      )}
+                        );
+                      }}
                     </For>
-                    <Show when={columnCards().length > height()}>
-                      <text flexShrink={0} fg={t().muted}>{`${columnCards().length - height()} more`}</text>
+                    <Show when={columnCards().length > win().to}>
+                      <text flexShrink={0} fg={t().muted}>{`${columnCards().length - win().to} more`}</text>
                     </Show>
                   </box>
                 </Show>
