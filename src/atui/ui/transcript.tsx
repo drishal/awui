@@ -1125,7 +1125,13 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
         <box marginTop={sigmaShown() ? 0 : 1}>
           <text selectable={false} fg={t().muted} wrapMode="word">
             <span style={{ fg: categoryTone(t(), "edit") }}>{"± "}</span>
-            {`Changed ${files().length} ${files().length === 1 ? "file" : "files"} · `}
+            {`Changed ${files().length} ${files().length === 1 ? "file" : "files"}`}
+            {/* The size of the turn's edit, as the web's changed badge says it; a figure from a partial count is not shown. */}
+            <Show when={p.turn().changeStat && !p.turn().changeStat?.partial}>
+              <span style={{ fg: t().ok }}>{` +${p.turn().changeStat?.added ?? 0}`}</span>
+              <span style={{ fg: t().danger }}>{` −${p.turn().changeStat?.removed ?? 0}`}</span>
+            </Show>
+            {" · "}
             {/* Each name is a link to its file, where the terminal has links. */}
             <Index each={files().slice(0, FILES_SHOWN)}>
               {(f, i) => (
@@ -1255,19 +1261,19 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
                 workspace={workspace()}
                 open={isOpen(turn())}
                 onToggle={() => setOverrides((o) => ({ ...o, [turn().id]: !isOpen(turn()) }))}
+                foundQuery={p.found?.()?.turnId === turn().id ? (p.found?.()?.query ?? null) : null}
                 switchedTo={switches().has(turn().id) ? modelName(switches().get(turn().id) as string, models()) : null}
                 column={p.column()}
               />
             )}
           </Index>
         </scrollbox>
-                foundQuery={p.found?.()?.turnId === turn().id ? (p.found?.()?.query ?? null) : null}
         <Show when={pinned()}>
           {(prompt) => (
             <box position="absolute" top={0} left={0} width="100%" flexDirection="row" justifyContent="center" backgroundColor={app.glass() ? undefined : t().surface} zIndex={5}>
               <box width="100%" maxWidth={p.column()} paddingLeft={2} paddingRight={2} flexDirection="row">
                 <text selectable={false} fg={t().muted} wrapMode="none" truncate>
-                  <span style={{ fg: t().muted }}>{"↑ "}</span>
+                  <span style={{ fg: t().muted }}>{"⇡ "}</span>
                   {clip(prompt().text, p.column())}
                 </text>
               </box>

@@ -546,7 +546,7 @@ describe("atui", () => {
     // it shows exactly when the top has scrolled away.
     const pinned = async (want: boolean, ms = 5000) => {
       for (const start = Date.now(); Date.now() - start < ms; ) {
-        if ((await ui!.frame()).includes("↑ slow stream for scrolling") === want) return;
+        if ((await ui!.frame()).includes("⇡ slow stream for scrolling") === want) return;
         await wait(50);
       }
       throw new Error(`the pinned prompt did not ${want ? "appear" : "vanish"}`);
