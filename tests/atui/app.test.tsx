@@ -956,6 +956,28 @@ describe("atui", () => {
     expect(readFileSync(path.join(repo, "app.ts"), "utf8")).toBe("const a = 2;\n");
   }, 40_000);
 
+  it("makes a worktree from the palette and opens a chat in it", async () => {
+    const repo = path.join(server.root, "repo-worktree");
+    mkdirSync(repo, { recursive: true });
+    writeFileSync(path.join(repo, "app.ts"), "const a = 1;\n");
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo });
+    git("init", "-q");
+    git("add", ".");
+    git("commit", "-qm", "init");
+    ui = await mount(repo, { height: 40, width: 150 });
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands, sessions, thinking…");
+    await ui.type("worktrees");
+    await ui.until("Worktrees: make one");
+    ui.keys.pressEnter();
+    await ui.type("tryout");
+    await ui.until("Create worktree “tryout” from HEAD");
+    ui.keys.pressEnter();
+    await ui.until(() => (ui?.app.workspace()?.path ?? "").includes("tryout"));
+    // The header names the checkout the chat now runs in.
+    await ui.until("tryout-");
+  }, 40_000);
+
   it("opens a project file read-only and mentions it in the message", async () => {
     const dir = path.join(server.root, "repo-files");
     mkdirSync(path.join(dir, "src"), { recursive: true });

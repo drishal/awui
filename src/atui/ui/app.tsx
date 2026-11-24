@@ -20,7 +20,7 @@ import { createEffect, createMemo, createResource, createSignal, on, onCleanup, 
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { AGENT_STATUS_WORDS, agentStatusText } from "../../web/agent-status.js";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
-import type { ChatSearch, CheckpointComparison, CheckpointPoint, FileView, RunResult } from "../../shared/protocol.js";
+import type { ChatSearch, CheckpointComparison, CheckpointPoint, FileView, RunResult, WorkspaceInfo, WorktreeInfo } from "../../shared/protocol.js";
 import { runnable } from "../../web/code-blocks.js";
 import { codeBlocks, quoteText, runForMessage, runStatus } from "../assist.js";
 import { RunOutput } from "./runout.js";
@@ -62,7 +62,7 @@ import { buildTurns, turnOfTool } from "../../web/turns.js";
 import { atLabel, turnWaterfall } from "../../web/waterfall.js";
 import { cacheShare, dollars, shortTokens, tokensOf } from "../../web/usage.js";
 
-type Dialog = "palette" | "timeline" | "files" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
+type Dialog = "palette" | "timeline" | "files" | "worktrees" | "models" | "harness" | "thinking" | "permission" | "queue" | "timing" | "usage" | "history" | "find" | "chats" | "run" | null;
 
 /**
  * The palette's headings, as Tern's palette groups its commands (Chats, Agent, View, Project, More): a flat list of
@@ -683,6 +683,7 @@ export function App(p: {
     if (c && landed()) add({ id: "find-clear", label: "Clear find marks", hint: "M-n / M-p stop stepping", keywords: "find search unmark gutter", run: () => { setLanded(null); flash("Find marks cleared"); } });
     add({ id: "edit-draft", label: "Edit the draft in $EDITOR", hint: "M-e", keywords: "external editor vim nano long prompt compose", run: () => void editDraft() });
     if ((app.chat()?.checkpoints.length ?? 0) > 0) add({ id: "timeline", label: "File timeline…", keywords: "checkpoints undo restore files before each prompt history changes", run: () => setDialog("timeline") });
+    if (app.workspace()) add({ id: "worktrees", label: "Worktrees: make one, or open a chat in one…", keywords: "git isolated checkout branch tree new worktree", run: () => setDialog("worktrees") });
     if (c || app.workspace()) add({ id: "open-file", label: "Open a file…", keywords: "view read mention attach project files path", run: () => setDialog("files") });
     add({ id: "search-chats", label: "Search every chat…", keywords: "find text sessions history all projects harnesses grep", run: () => setDialog("chats") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
@@ -866,6 +867,50 @@ export function App(p: {
     const a = (snippet ?? "").trim().toLowerCase();
     const b = (title ?? "").trim().toLowerCase();
     return a.length > 0 && b.length > 0 && (a.includes(b) || b.includes(a));
+  };
+  /** Worktrees (the web's picker, without its setup step): this project's isolated checkouts, each opening a new chat in it, and the typed name offered as a new one from HEAD. */
+  const [trees] = createResource(
+    () => (dialog() === "worktrees" ? app.workspace()?.id : undefined),
+    (id) => app.server.call<{ worktrees: WorktreeInfo[] }>(`/api/workspaces/${encodeURIComponent(id)}/worktrees`).then((r) => r.worktrees).catch(() => [] as WorktreeInfo[]),
+  );
+  const openTreeChat = async (workspace: WorkspaceInfo) => {
+    setDialog(null);
+    app.newChat({ newTab: true, workspace });
+  };
+  const worktreeItems = (query: string): PaletteItem[] => {
+    const q = query.trim();
+    const ws = app.workspace();
+    const items: PaletteItem[] = [];
+    if (q && ws) {
+      items.push({
+        id: "wt:new",
+        section: "New",
+        label: `Create worktree “${q}” from HEAD`,
+        hint: "Enter",
+        run: () => {
+          setDialog(null);
+          void app.server
+            .call<WorktreeInfo & { workspace: WorkspaceInfo }>(`/api/workspaces/${encodeURIComponent(ws.id)}/worktrees`, { body: { name: q, base: "HEAD" } })
+            .then((made) => {
+              void openTreeChat(made.workspace);
+            })
+            .catch((error: unknown) => app.setBanner({ level: "warning", text: error instanceof Error ? error.message : String(error) }));
+        },
+      });
+    }
+    for (const tree of trees() ?? []) {
+      if (q && !`${tree.branch} ${tree.id}`.toLowerCase().includes(q.toLowerCase())) continue;
+      items.push({
+        id: `wt:${tree.id}`,
+        section: "Worktrees",
+        label: tree.branch,
+        hint: `from ${tree.base} · ${ago(new Date(tree.createdAt).toISOString())}`,
+        run: () => {
+          void app.server.call<WorkspaceInfo>("/api/workspaces/open", { body: { path: tree.path } }).then(openTreeChat).catch((error: unknown) => app.setBanner({ level: "warning", text: error instanceof Error ? error.message : String(error) }));
+        },
+      });
+    }
+    return items;
   };
   /** Open a file: the project's own files by name (the server's ranked list), the file's head beside the row (the web's file viewer, read-only), and Enter puts an @mention of it in the message. */
   const [fileHits, setFileHits] = createSignal<{ q: string; items: PaletteItem[] }>({ q: "\u0000", items: [] });
@@ -1304,6 +1349,9 @@ export function App(p: {
                 </Show>
                 <Show when={dialog() === "timeline"}>
                   <Picker title="File timeline" placeholder="Search prompts…" empty={points.loading ? "Reading the checkpoints…" : "No file checkpoints in this chat yet"} items={timelineItems()} preview={timelinePreview} noun={["checkpoint", "checkpoints"]} onClose={() => setDialog(null)} side={room()} />
+                </Show>
+                <Show when={dialog() === "worktrees"}>
+                  <Picker title="Worktrees" placeholder="Type a name to make a worktree, or pick one to open a chat in…" items={[]} search={worktreeItems} empty={trees.loading ? "Reading the worktrees…" : "No worktrees yet: type a name to make one"} firstHeading noun={["worktree", "worktrees"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "files"}>
                   <Picker title="Open a file" placeholder="Type a file name…" items={[]} search={fileItems} preview={filePreview} noun={["file", "files"]} onClose={() => setDialog(null)} side={room()} />
