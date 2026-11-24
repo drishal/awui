@@ -9,7 +9,7 @@
 // history as a sparkline, green to amber to red as it fills, and a sweep while
 // it compacts), whether the next message compacts first, and while the agent
 // writes, how fast (tokens a second, with their own sparkline).
-import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show, type JSX } from "solid-js";
 import { createHostClipboard, decodePasteBytes, type HostClipboardService, type TextareaRenderable } from "@opentui/core";
 import { useKeyboard, usePaste } from "@opentui/solid";
 import { IMAGE_MIME_TYPES, MAX_IMAGES, type GitStatus, type SavedPrompt, type SlashCommand } from "../../shared/protocol.js";
@@ -67,6 +67,8 @@ export function Composer(p: {
   column: number;
   /** The keybind style, so the footer's compact-first cue names the right leader. */
   keybinds: KeybindStyle;
+  /** A request the agent is waiting on: its card takes the input's place, and the footer stays under it so the model, mode and context do not vanish while an approval asks. */
+  card?: () => JSX.Element;
   ref: (el: TextareaRenderable) => void;
 }) {
   const app = useAtui();
@@ -501,56 +503,62 @@ export function Composer(p: {
           <JobsStrip items={app.chat()?.items ?? []} />
         </box>
       </Show>
-      <box
-        width={p.column}
-        alignSelf="center"
-        border
-        borderStyle="rounded"
-        flexDirection="row"
-        borderColor={p.focused ? accentOf(t(), app.harness()?.accent) : t().border}
-        backgroundColor={app.glass() ? undefined : t().surface}
-        paddingLeft={1}
-        paddingRight={1}
-      >
-        <textarea
-          ref={(el: TextareaRenderable) => {
-            area = el;
-            p.ref(el);
-          }}
-          focused={p.focused}
-          flexGrow={1}
-          placeholder={placeholder()}
-          placeholderColor={t().muted}
-          textColor={t().text}
-          focusedTextColor={t().text}
-          backgroundColor={app.glass() ? undefined : t().surface}
-          focusedBackgroundColor={app.glass() ? undefined : t().surface}
-          cursorColor={t().accent}
-          wrapMode="word"
-          minHeight={1}
-          maxHeight={8}
-          keyBindings={[
-            { name: "return", action: "submit" },
-            { name: "kpenter", action: "submit" },
-            { name: "return", shift: true, action: "newline" },
-            { name: "return", meta: true, action: "newline" },
-            { name: "linefeed", action: "newline" },
-          ]}
-          onSubmit={() => void submit()}
-          onContentChange={() => setText(area?.plainText ?? "")}
-        />
-        <box flexShrink={0} marginLeft={1} onMouseDown={() => void submit()}>
-          {/* The web composer's send is an up-arrow in a round button, dim while there is nothing to send. */}
-          <text fg={text().trim() ? t().accent : t().muted}><b>{` ↑ `}</b></text>
-        </box>
-        <Show when={ghost()}>
-          {(rest) => (
-            <box position="absolute" top={0} left={1 + text().length}>
-              <text fg={t().muted}>{rest()}</text>
+      <Show when={p.card} keyed fallback={
+        <>
+          <box
+            width={p.column}
+            alignSelf="center"
+            border
+            borderStyle="rounded"
+            flexDirection="row"
+            borderColor={p.focused ? accentOf(t(), app.harness()?.accent) : t().border}
+            backgroundColor={app.glass() ? undefined : t().surface}
+            paddingLeft={1}
+            paddingRight={1}
+          >
+            <textarea
+              ref={(el: TextareaRenderable) => {
+                area = el;
+                p.ref(el);
+              }}
+              focused={p.focused}
+              flexGrow={1}
+              placeholder={placeholder()}
+              placeholderColor={t().muted}
+              textColor={t().text}
+              focusedTextColor={t().text}
+              backgroundColor={app.glass() ? undefined : t().surface}
+              focusedBackgroundColor={app.glass() ? undefined : t().surface}
+              cursorColor={t().accent}
+              wrapMode="word"
+              minHeight={1}
+              maxHeight={8}
+              keyBindings={[
+                { name: "return", action: "submit" },
+                { name: "kpenter", action: "submit" },
+                { name: "return", shift: true, action: "newline" },
+                { name: "return", meta: true, action: "newline" },
+                { name: "linefeed", action: "newline" },
+              ]}
+              onSubmit={() => void submit()}
+              onContentChange={() => setText(area?.plainText ?? "")}
+            />
+            <box flexShrink={0} marginLeft={1} onMouseDown={() => void submit()}>
+              {/* The web composer's send is an up-arrow in a round button, dim while there is nothing to send. */}
+              <text fg={text().trim() ? t().accent : t().muted}><b>{` ↑ `}</b></text>
             </box>
-          )}
-        </Show>
-      </box>
+            <Show when={ghost()}>
+              {(rest) => (
+                <box position="absolute" top={0} left={1 + text().length}>
+                  <text fg={t().muted}>{rest()}</text>
+                </box>
+              )}
+            </Show>
+          </box>
+        </>
+      }>
+        {(card) => card()}
+      </Show>
       <box flexDirection="row" paddingLeft={1} paddingRight={1}>
         <box flexDirection="row" flexGrow={1} overflow="hidden">
           <Show when={p.status.mode}>

@@ -1248,11 +1248,7 @@ export function App(p: {
                 </Show>
                     </box>
                   </Show>
-                  <Show
-                    when={pending()}
-                    keyed
-                    fallback={
-                      <Composer
+                  <Composer
                         status={{ mode: keybinds() === "vim" ? (normal() ? "normal" : "insert") : null, leader: leaderOn() ? leaderPrefix(keybinds()) : null, note: hint() }}
                         focused={focus() === "composer" && !dialog() && !normal() && app.undoTurn() === null && !reviewing() && !running()}
                         compactChoice={compactChoice()}
@@ -1262,12 +1258,9 @@ export function App(p: {
                         onContext={() => setRail(true)}
                         column={column()}
                         keybinds={keybinds()}
+                        card={(() => { const request = pending(); return request ? () => <RequestCard request={request} more={(app.chat()?.pending.length ?? 1) - 1} active={focus() === "composer" && !dialog()} column={column()} /> : undefined; })()}
                         ref={(el) => (composer = el)}
                       />
-                    }
-                  >
-                    {(request) => <RequestCard request={request} more={(app.chat()?.pending.length ?? 1) - 1} active={focus() === "composer" && !dialog()} column={column()} />}
-                  </Show>
                 </box>
               }
             >
