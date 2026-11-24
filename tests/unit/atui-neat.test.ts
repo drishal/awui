@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantItem, ToolItem } from "../../src/shared/protocol.js";
-import { spendLabel, harnessGlyph, humanise, latestThoughtLine, neatRow, rowHead, shortPath, sigmaFacts, splitComments, thinkingMeta, thoughtTitle, thoughtTokens, workRuns } from "../../src/atui/neat.js";
+import { harnessGlyph, humanise, latestThoughtLine, neatRow, rowHead, shortPath, sigmaFacts, splitComments, thinkingMeta, thoughtTitle, thoughtTokens, workRuns } from "../../src/atui/neat.js";
 
 const tool = (over: Partial<ToolItem>): ToolItem => ({
   kind: "tool",
@@ -121,9 +121,9 @@ describe("atui rows, neat-render's way", () => {
     expect(sigmaFacts({ process: [], workAfter: [], answer: null, startedAt: 0, endedAt: 200 })).toEqual({ facts: [], failed: null });
     // A priced turn ends with its spend; nothing else measurable still shows it.
     expect(sigmaFacts({ ...turn, process: [tool({ id: "1" })] }, 0.014).facts).toEqual(["1 call", "20.0s", "$0.014"]);
-    expect(sigmaFacts({ process: [], workAfter: [], answer: null, startedAt: 0, endedAt: 200 }, 0.5).facts).toEqual(["$0.500"]);
+    expect(sigmaFacts({ process: [], workAfter: [], answer: null, startedAt: 0, endedAt: 200 }, 0.5).facts).toEqual(["$0.50"]);
     expect(sigmaFacts({ ...turn, process: [tool({ id: "1" })] }, 0).facts).toEqual(["1 call", "20.0s"]);
-    expect([0.0004, 0.0141, 0.5, 12.345].map(spendLabel)).toEqual(["<$0.001", "$0.014", "$0.500", "$12.35"]);
+    expect(sigmaFacts({ process: [], workAfter: [], answer: null, startedAt: 0, endedAt: 200 }, 12.345).facts).toEqual(["$12.35"]);
   });
 
   it("shortens paths and marks the card with the harness", () => {

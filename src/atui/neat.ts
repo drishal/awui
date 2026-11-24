@@ -15,6 +15,7 @@
 // Worked out apart from the drawing so it can be tested.
 import type { AssistantItem, ChatItem, ToolItem } from "../shared/protocol.js";
 import { clip } from "./format.js";
+import { spendLabel } from "./footer.js";
 import { relativePath, type Turn } from "../web/turns.js";
 import { todoEntries, type TodoEntry } from "../shared/todo-entries.js";
 import { isPlanCall, toolSentence, toolWords } from "../shared/tool-row.js";
@@ -252,12 +253,6 @@ export function workRuns<T>(rows: T[], callOf: (row: T) => ToolItem | null): Wor
 export function thinkingMeta(item: AssistantItem, now = Date.now()): string {
   const ms = item.at !== undefined ? (item.endedAt ?? (item.streaming ? now : undefined) ?? item.at) - item.at : 0;
   return [ms >= 250 ? durationLabel(ms) : "", `~${thoughtTokens(item.thinking)} tokens`].filter(Boolean).join(" · ");
-}
-
-/** A turn's cost: $0.014, three places under a dollar (a cent is too coarse for one turn), two above; a hair of a cent is "<$0.001". */
-export function spendLabel(usd: number): string {
-  if (usd < 0.001) return "<$0.001";
-  return `$${usd < 1 ? usd.toFixed(3) : usd.toFixed(2)}`;
 }
 
 /**

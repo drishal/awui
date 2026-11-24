@@ -41,11 +41,17 @@ export function fitHints(parts: readonly string[], width: number): string {
   return line();
 }
 
+/** A price in dollars, one wording for the footer's chat total and a turn's Σ figure so the same sum never reads two ways: $0.028 under ten cents (a cent is too coarse for one call), $0.50 and $12.35 above; a hair of a cent is "<$0.001". */
+export function spendLabel(usd: number): string {
+  if (usd < 0.001) return "<$0.001";
+  return `$${usd < 0.1 ? usd.toFixed(3) : usd.toFixed(2)}`;
+}
+
 /** What a chat has spent, for the footer: "$0.12 · cache 84%". Nothing is shown for what is unknown (no price, no cached input). */
 export function spendWords(usage: { input: number; cachedInput: number; cost: number | null } | null | undefined): string {
   if (!usage) return "";
   const parts: string[] = [];
-  if (usage.cost !== null && usage.cost > 0) parts.push(usage.cost < 0.01 ? "<$0.01" : `$${usage.cost.toFixed(2)}`);
+  if (usage.cost !== null && usage.cost > 0) parts.push(spendLabel(usage.cost));
   const read = usage.input + usage.cachedInput;
   if (usage.cachedInput > 0 && read > 0) parts.push(`cache ${Math.round((usage.cachedInput / read) * 100)}%`);
   return parts.join(" · ");

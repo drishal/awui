@@ -15,7 +15,9 @@ describe("fitHints", () => {
 describe("spendWords", () => {
   it("words the price and the cache's share, and leaves out what is unknown", () => {
     expect(spendWords({ input: 200, cachedInput: 800, cost: 0.1234 })).toBe("$0.12 · cache 80%");
-    expect(spendWords({ input: 200, cachedInput: 0, cost: 0.004 })).toBe("<$0.01");
+    expect(spendWords({ input: 200, cachedInput: 0, cost: 0.004 })).toBe("$0.004");
+    expect(spendWords({ input: 200, cachedInput: 0, cost: 0.0004 })).toBe("<$0.001");
+    expect(spendWords({ input: 200, cachedInput: 0, cost: 0.028 })).toBe("$0.028");
     expect(spendWords({ input: 200, cachedInput: 600, cost: null })).toBe("cache 75%");
     expect(spendWords({ input: 0, cachedInput: 0, cost: null })).toBe("");
     expect(spendWords(null)).toBe("");
