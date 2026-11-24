@@ -563,7 +563,10 @@ describe("atui", () => {
     ui = await mount(path.join(server.root, "beta"));
     await ui.type("please ask first");
     ui.keys.pressEnter();
-    expect(await ui.until("Waiting for approval")).toContain("› 1. Approve");
+    const asked = await ui.until("Waiting for approval");
+    expect(asked).toContain("› 1. Approve");
+    // Two answers, so the hint names 1–2 rather than a fixed 1–9.
+    expect(asked).toContain("1–2 to choose");
     ui.keys.pressKey("1");
     await ui.until("Echo: please ask first");
     await idle(ui);
