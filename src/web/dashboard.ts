@@ -17,7 +17,7 @@ export const BOARD_TITLES: Record<BoardColumn, string> = { needs: "Needs you", w
 /** How a column reads when it holds nothing, so an empty board says why. */
 export const BOARD_EMPTY: Record<BoardColumn, string> = {
   needs: "Nothing waiting on you.",
-  working: "Nothing running.",
+  working: "Nothing is running.",
   done: "Nothing finished yet.",
 };
 
