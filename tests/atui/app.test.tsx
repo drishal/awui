@@ -1942,6 +1942,9 @@ describe("atui's keybind styles", () => {
     const spends = Object.values(ui.app.turnSpend());
     // Two turns, each its own share: the second is one call's price, not the session's running total.
     expect(spends).toHaveLength(2);
+    // Kept per chat, so a tab switched away from and back keeps its figures.
+    const chatId = ui.app.chat()?.chatId ?? "";
+    expect(Object.keys(ui.app.turnSpend()).every((k) => k.startsWith(`${chatId}:`))).toBe(true);
     expect(spends[1]).toBeCloseTo(0.014, 3);
     expect(spends[0]).toBeGreaterThanOrEqual(0.014);
     const frame = await ui.frame();

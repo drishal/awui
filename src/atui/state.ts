@@ -352,27 +352,39 @@ export function createAtui(server: Server, opts: AtuiOptions) {
   // the harness reports as the run settles, less that base, is the turn's. Only turns this client watched have one: the
   // prompts a chat already had when it was opened have no base, and an unpriced model never makes a total.
   const [turnSpend, setTurnSpend] = createSignal<Record<string, number>>({});
-  const spendBases = new Map<string, number | null>();
-  let spendChat: string | null = null;
+  // Per chat, so a tab switched away from and back keeps its figures; the newest SPEND_CHATS chats are remembered.
+  const spendBases = new Map<string, Map<string, number | null>>();
+  const SPEND_CHATS = 20;
   createEffect(() => {
     const c = chat();
     if (!c) return;
     const users = untrack(() => c.items.filter((i) => i.kind === "user"));
-    if (c.chatId !== spendChat) {
-      spendChat = c.chatId;
-      spendBases.clear();
-      setTurnSpend({});
+    let bases = spendBases.get(c.chatId);
+    if (!bases) {
+      bases = new Map();
+      spendBases.set(c.chatId, bases);
       // A chat opened with prompts already in it has no base for them; the first prompt of a new chat, still running, started from nothing.
-      for (const u of users) spendBases.set(u.id, !c.usage?.cost && users.length === 1 && c.status === "running" ? 0 : null);
+      for (const u of users) bases.set(u.id, !c.usage?.cost && users.length === 1 && c.status === "running" ? 0 : null);
+      const oldest = spendBases.size > SPEND_CHATS ? spendBases.keys().next().value : undefined;
+      if (oldest !== undefined) {
+        spendBases.delete(oldest);
+        setTurnSpend((m) => Object.fromEntries(Object.entries(m).filter(([k]) => !k.startsWith(`${oldest}:`))));
+      }
     }
     const total = c.usage ? c.usage.cost : null;
-    for (const u of users) if (!spendBases.has(u.id)) spendBases.set(u.id, typeof total === "number" ? total : users.length <= 1 ? 0 : null);
+    for (const u of users) if (!bases.has(u.id)) bases.set(u.id, typeof total === "number" ? total : users.length <= 1 ? 0 : null);
     const last = users[users.length - 1];
-    const base = last ? spendBases.get(last.id) : null;
+    const base = last ? bases.get(last.id) : null;
     if (!last || base === null || base === undefined || typeof total !== "number") return;
     const amount = total - base;
-    if (amount > 0) setTurnSpend((m) => (m[last.id] === amount ? m : { ...m, [last.id]: amount }));
+    const key = `${c.chatId}:${last.id}`;
+    if (amount > 0) setTurnSpend((m) => (m[key] === amount ? m : { ...m, [key]: amount }));
   });
+  /** What a prompt of the shown chat cost, when this client watched it. */
+  const spendOf = (promptId: string | undefined): number | undefined => {
+    const id = chat()?.chatId;
+    return id && promptId ? turnSpend()[`${id}:${promptId}`] : undefined;
+  };
 
   // The context share over this chat's life, for the status line's sparkline.
   createEffect(on(chatId, () => setContextHistory([])));
@@ -1163,6 +1175,7 @@ export function createAtui(server: Server, opts: AtuiOptions) {
     compact,
     chooseHarness,
     turnSpend,
+    spendOf,
     presets,
     startPreset,
     savePreset,
