@@ -16,6 +16,8 @@ export interface WaterfallRow {
   id: string;
   label: string;
   kind: WaterfallKind;
+  /** A tool row's own kind (read, edit, command …), so a client can mark it as the transcript marks the call. */
+  category?: string;
   /** 0 for a step or call, 1 for a subagent run under its call. */
   depth: number;
   /** Milliseconds from the start of the axis (the prompt). */
@@ -113,7 +115,7 @@ export function turnWaterfall(turn: Turn, workspace: string, now: number): Water
       if (item.at === undefined) continue;
       const running = item.status === "running" && item.endedAt === undefined;
       const endAt = running ? now : Math.max(item.at, item.endedAt ?? item.at);
-      raw.push({ id: item.id, label: toolSentence(item, workspace).text, kind: item.category === "agent" ? "agent" : "tool", depth: 0, at: item.at, endAt, running, extra: "" });
+      raw.push({ id: item.id, label: toolSentence(item, workspace).text, kind: item.category === "agent" ? "agent" : "tool", category: item.category, depth: 0, at: item.at, endAt, running, extra: "" });
       for (const run of item.subagents?.runs ?? []) {
         const live = run.status === "running" || run.status === "pending";
         const ms = run.durationMs ?? (live ? Math.max(0, now - item.at) : undefined);

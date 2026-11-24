@@ -56,7 +56,7 @@ const PULSE_TICKS = 4.5;
 const pulseOn = () => Math.floor(tick() / PULSE_TICKS) % 2 === 0;
 
 /** The glyph a settled row wears, one per kind of call as the web's chips are, so a column of rows reads by shape as well as by colour. */
-const KIND_MARK: Record<ToolItem["category"], string> = { read: "▤", edit: "±", write: "±", command: "›", search: "◎", web: "⊕", agent: "◈", other: "●" };
+export const KIND_MARK: Record<ToolItem["category"], string> = { read: "▤", edit: "±", write: "±", command: "›", search: "◎", web: "⊕", agent: "◈", other: "●" };
 
 /** The row's bullet, neat-render's: the category's colour when it settles, red on failure, filled and hollow in turn while it runs; a settled call wears its kind's glyph. */
 function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean; category: ToolItem["category"]; chip?: ToolKindChip }) {

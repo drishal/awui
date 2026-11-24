@@ -55,7 +55,7 @@ import { TerminalView } from "./terminal.js";
 import { GitHubView } from "./github.js";
 import { collectChanges } from "../../web/review.js";
 import { Toasts } from "./toasts.js";
-import { Transcript } from "./transcript.js";
+import { KIND_MARK, Transcript } from "./transcript.js";
 import { WhichKey } from "./whichkey.js";
 import { turnOffset, vimKey, pushJump, type Jump } from "../vim.js";
 import { buildTurns, turnOfTool } from "../../web/turns.js";
@@ -1049,6 +1049,10 @@ export function App(p: {
     return `${"start".padStart(6)}  ${"took".padStart(6)}${anySlow ? " ".repeat(9) : ""}`;
   };
 
+  /** The mark before a Timing row: the transcript's own glyph for the call's kind (± › ◎ ▤ ⊕ ◈), ◇ for thinking, ● for the answer, ↳ for a subagent run. */
+  const timingMark = (row: { kind: string; category?: string }) =>
+    row.kind === "thinking" ? "◇" : row.kind === "reply" ? "●" : row.kind === "subagent" ? "↳" : (KIND_MARK[(row.category ?? "other") as keyof typeof KIND_MARK] ?? "●");
+
   /** The Timing picker's rows: each model step, call and subagent run of one turn, where it started and how long it took (the web's waterfall, as a list). */
   const timingItems = (): PickerItem[] => {
     const c = app.chat();
@@ -1070,7 +1074,7 @@ export function App(p: {
     const rows = fall.rows.map((row) => ({
       id: `timing:${row.id}`,
       section,
-      label: `${"  ".repeat(row.depth)}${row.label}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
+      label: `${"  ".repeat(row.depth)}${timingMark(row)} ${row.label}${row.running ? "  running" : ""}${row.extra ? `  ${row.extra}` : ""}`,
       hint: `${fig(row.start)}  ${fig(row.end - row.start)}${slowTail(row.slowest)}`,
       bar: fall.total > 0 ? ([row.start / fall.total, row.end / fall.total] as [number, number]) : undefined,
       run: () => {},
