@@ -881,7 +881,7 @@ export function App(p: {
     let idle: string[] = [];
     const flush = () => {
       if (idle.length === 0) return;
-      days.push(row("By day", idle.length === 1 ? dayName(idle[0] as string) : `${dayName(idle[0] as string)} to ${dayName(idle[idle.length - 1] as string)}`, "none", [0, 0]));
+      days.push(row("By day", `No use ${idle.length === 1 ? dayName(idle[0] as string) : `${dayName(idle[0] as string)} to ${dayName(idle[idle.length - 1] as string)}`}`, "", [0, 0]));
       idle = [];
     };
     for (const d of r.byDay) {
