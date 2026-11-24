@@ -1435,6 +1435,9 @@ describe("atui", () => {
     expect(board).toContain("Done");
     expect(board).toContain("Every project");
     expect(board).toContain("board please");
+    // The card under the cursor is told in full under the columns: its prompt and what it answered.
+    const told = await ui.until("Said");
+    expect(told).toContain("You");
     // f narrows to one project, and Enter opens the card under the cursor.
     ui.keys.pressKey("f");
     const filtered = await ui.until("Any pull request");

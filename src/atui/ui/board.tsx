@@ -39,6 +39,8 @@ import { useAtui, useTheme } from "./context.js";
 
 /** How many projects' pull requests are read when the board opens: gh is slow and a badge is decoration. */
 const PR_READS = 8;
+/** Rows the selected card's detail takes under the columns: its rule, title line, prompt, up to three of the answer, and its files. */
+const DETAIL_ROWS = 7;
 
 /** One column's cards, the cursor kept inside the column's own list. */
 const clampCursor = (cards: BoardCard[], at: number): number => (cards.length === 0 ? 0 : Math.min(at, cards.length - 1));
@@ -71,7 +73,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   const counts = createMemo(() => boardCounts(cards()));
   const here = (): BoardCard | undefined => cards()[column()][clampCursor(cards()[column()], cursor())];
   // The card under the cursor says what its session last said (the web dashboard's card line), read once per version of the session.
-  const [previews, setPreviews] = createSignal<Record<string, string | null>>({});
+  const [previews, setPreviews] = createSignal<Record<string, SessionPreview | null>>({});
   createEffect(() => {
     const s = here()?.session;
     if (!s) return;
@@ -79,12 +81,13 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     if (key in previews()) return;
     setPreviews((all) => ({ ...all, [key]: null }));
     const q = new URLSearchParams({ harnessId: s.harnessId, workspaceId: s.workspaceId, sessionId: s.id });
-    void app.server.call<SessionPreview>(`/api/sessions/preview?${q}`).then((r) => setPreviews((all) => ({ ...all, [key]: previewLine(r) }))).catch(() => undefined);
+    void app.server.call<SessionPreview>(`/api/sessions/preview?${q}`).then((r) => setPreviews((all) => ({ ...all, [key]: r }))).catch(() => undefined);
   });
-  const preview = () => {
+  const full = () => {
     const s = here()?.session;
     return s ? previews()[`${s.id}@${s.updatedAt ?? ""}`] ?? null : null;
   };
+  const preview = () => previewLine(full());
 
   onMount(() => {
     void app.refreshSessions().finally(() => setReading(false));
@@ -166,7 +169,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   const cardLines = (card: BoardCard) => 3 + (card.session.agentStatus ? 1 : 0) + (prBadge(card.session, prs() ? { [card.session.workspaceId]: prs()[card.session.workspaceId] ?? null } : undefined) ? 1 : 0) + card.children.length;
   /** The cards a column draws: from the first that keeps the cursor's card in view, as many as the frame's inside holds, leaving a line for "earlier" and "more". */
   const windowOf = (list: readonly BoardCard[], cur: number) => {
-    const budget = Math.max(3, boxHeight() - 8);
+    const budget = Math.max(3, boxHeight() - 8 - DETAIL_ROWS);
     const span = (from: number, to: number) => list.slice(from, to).reduce((n, c) => n + cardLines(c), 0);
     let from = 0;
     while (from < cur && span(from, cur + 1) > budget) from++;
@@ -175,11 +178,8 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
     return { from, to: Math.max(to, Math.min(list.length, cur + 1)) };
   };
   const filterLine = () => `${project() ? projectName(project() as string) : `Every project (${overview().sessions.filter((s) => !s.archived).length})`} · ${PR_FILTER_LABELS[pr()]}`;
-  /** The frame fits its cards (about four rows each, plus the head and the column titles) up to the room the sheet stands in, so a board with a few cards is not a frame of empty rows. */
-  const boxHeight = () => {
-    const tallest = Math.max(...BOARD_COLUMNS.map((id) => cards()[id].length));
-    return Math.min(Math.max(9, size().height - 6), Math.max(9, tallest * 4 + 5));
-  };
+  /** The frame takes the room the sheet stands in: the columns above, the selected card's detail under them, so the pane is one surface and not a small box over blank rows. */
+  const boxHeight = () => Math.max(9 + DETAIL_ROWS, size().height - 6);
 
   return (
     <box
@@ -271,9 +271,32 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           }}
         </For>
       </box>
-      <text flexShrink={0} fg={t().muted} wrapMode="none" truncate>
-        {here() ? (preview() ? <><b style={{ fg: t().text2 }}>{clip(plainTitle(here()?.session.title ?? "") || "Untitled", 28)}</b>{`: ${preview()}`}</> : `${harnessName(here()?.session.harnessId ?? "")} · ${projectName(here()?.session.workspaceId ?? "")} · ${plainTitle(here()?.session.title ?? "")}`) : "No card under the cursor"}
-      </text>
+      <box flexShrink={0} height={DETAIL_ROWS} flexDirection="column" border={["top"]} borderColor={t().border} overflow="hidden">
+        <Show when={here()} fallback={<text fg={t().muted}>No card under the cursor</text>}>
+          {(card) => (
+            <>
+              <text wrapMode="none" truncate>
+                <b style={{ fg: t().text }}>{plainTitle(card().session.title) || "Untitled"}</b>
+                <span style={{ fg: t().muted }}>{`   ${harnessName(card().session.harnessId)}${full()?.model ? ` · ${full()?.model}` : ""} · ${projectName(card().session.workspaceId)}${full() ? ` · ${full()?.turns} ${full()?.turns === 1 ? "turn" : "turns"}` : ""}`}</span>
+              </text>
+              <text wrapMode="none" truncate>
+                <span style={{ fg: t().muted }}>{"You     "}</span>
+                <span style={{ fg: t().text2 }}>{previewLine(full() ? { ...(full() as SessionPreview), answer: null } : null) ?? (full() ? "—" : "Reading…")}</span>
+              </text>
+              <box flexDirection="row" height={3} overflow="hidden">
+                <text flexShrink={0} fg={t().muted}>{"Said    "}</text>
+                <text flexGrow={1} fg={t().text} wrapMode="word">{full()?.answer ? previewLine({ ...(full() as SessionPreview), prompt: null }) ?? "—" : full() ? "No answer yet" : ""}</text>
+              </box>
+              <Show when={(full()?.files.length ?? 0) > 0}>
+                <text wrapMode="none" truncate>
+                  <span style={{ fg: t().muted }}>{"Files   "}</span>
+                  <span style={{ fg: t().text2 }}>{(full()?.files ?? []).join(", ")}</span>
+                </text>
+              </Show>
+            </>
+          )}
+        </Show>
+      </box>
     </box>
   );
 }
