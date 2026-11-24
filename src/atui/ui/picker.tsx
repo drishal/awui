@@ -198,10 +198,13 @@ export function Picker(p: {
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg={t().muted}>
-        <b>{p.title}</b>
-        <span style={{ fg: t().muted }}>{`   ${p.tabHint ? `${p.tabHint} · ` : ""}↑↓ Enter · Esc`}</span>
-      </text>
+      {/* The title at the left and its keys at the right, as the other sheets draw theirs; an info sheet's rows are not chosen, so it does not offer Enter. */}
+      <box flexDirection="row" flexShrink={0}>
+        <text flexGrow={1} fg={t().muted} wrapMode="none" truncate>
+          <b>{p.title}</b>
+        </text>
+        <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">{`${p.tabHint ? `${p.tabHint} · ` : ""}${p.info ? "↑↓ scroll" : "↑↓ Enter"} · Esc`}</text>
+      </box>
       <box flexDirection="row" flexShrink={0}>
         <text fg={t().accent} flexShrink={0}>{"› "}</text>
         <input focused flexGrow={1} placeholder={p.placeholder} textColor={t().text} backgroundColor={t().surface} focusedBackgroundColor={t().surface} onInput={(value: string) => setQuery(value)} />
