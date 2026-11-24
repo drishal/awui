@@ -242,7 +242,7 @@ export function Picker(p: {
                     <text flexGrow={item.bar ? 0 : 1} width={item.bar ? barLabel() : undefined} fg={item.disabled ? t().muted : lit() ? t().text : t().text2} wrapMode="none" truncate>
                       {item.current ? "✓ " : "  "}
                       <Index each={matchSpans(clip(item.label, item.bar ? barLabel() - 3 : listWidth() - 3 - (item.hint ? Math.min(item.hint.length, listWidth() >= 60 ? 30 : 18) + 3 : 0)), query())}>
-                        {(part) => <span style={part().hit && !item.disabled ? { fg: t().accent } : {}}>{part().text}</span>}
+                        {(part) => <span style={part().hit && !item.disabled ? { fg: lit() ? mix(t().accent, t().text, 0.4) : t().accent, bold: lit() } : {}}>{part().text}</span>}
                       </Index>
                     </text>
                     {/* A bar row reads label, track, then the figures, so the track sits beside what it measures. */}
@@ -259,7 +259,7 @@ export function Picker(p: {
                     <Show when={item.hint}>
                       {/* A bar row's figures sit at the right edge, so one column of them lines up down the sheet. */}
                       <box flexGrow={item.bar ? 1 : 0} flexShrink={item.bar ? 1 : 0} flexDirection="row" justifyContent={item.bar ? "flex-end" : undefined} backgroundColor={lit() ? t().selection : undefined}>
-                        <text flexShrink={item.bar ? 1 : 0} wrapMode="none" truncate fg={t().muted}>{` ${item.bar ? item.hint : clip(item.hint ?? "", listWidth() >= 60 ? 30 : 18)}`}</text>
+                        <text flexShrink={item.bar ? 1 : 0} wrapMode="none" truncate fg={lit() ? t().text2 : t().muted}>{` ${item.bar ? item.hint : clip(item.hint ?? "", listWidth() >= 60 ? 30 : 18)}`}</text>
                       </box>
                     </Show>
                   </box>
