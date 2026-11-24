@@ -109,7 +109,12 @@ export function themeFrom(info: Pick<ThemeInfo, "vars"> | null): Theme {
  * The context's colour at `percent` full: green while there is room, amber
  * from where compacting starts to be offered, red as it runs out.
  */
-export function contextTone(theme: Theme, percent: number): string {
+/** Tokens after which a context is called heavy whatever its share: on a 1M window, 65 % is long past slow and costly (pi's statusline and omp warn the same way). */
+export const CONTEXT_HEAVY_TOKENS = 150_000;
+
+export function contextTone(theme: Theme, percent: number, tokens?: number | null): string {
+  // The absolute count can only raise the tone (to warn), never calm a high share.
+  if (tokens != null && tokens >= CONTEXT_HEAVY_TOKENS && percent < 65) return theme.warn;
   return ramp(percent, [
     [40, theme.ok],
     [65, theme.warn],

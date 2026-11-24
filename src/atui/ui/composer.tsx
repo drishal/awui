@@ -23,7 +23,7 @@ import { leader, type KeybindStyle } from "../keys.js";
 import { mix, shimmer, sparkline, streamRate } from "../fx.js";
 import { attachmentFrom, attachmentFromFile, byteSize, clipboardImageByTool, imagePathsFromPaste, type PendingImage } from "../images.js";
 import { harnessGlyph } from "../neat.js";
-import { accentOf, contextTone } from "../theme.js";
+import { accentOf, CONTEXT_HEAVY_TOKENS, contextTone } from "../theme.js";
 import { useAtui, useTheme } from "./context.js";
 import { Shimmer } from "./fx.js";
 import { JobsStrip } from "./job.js";
@@ -348,7 +348,7 @@ export function Composer(p: {
     return "Message the agent…";
   };
 
-  const tone = () => contextTone(t(), percent() ?? 0);
+  const tone = () => contextTone(t(), percent() ?? 0, app.chat()?.context?.tokens);
   // What waits to go: steering and follow-ups the harness holds. A count, since the queue itself is its own picker.
   const queued = () => (app.chat()?.queue.steering.length ?? 0) + (app.chat()?.queue.followUp.length ?? 0);
 
@@ -601,7 +601,7 @@ export function Composer(p: {
                   <span style={{ fg: tone() }}>{`${sparkline(app.contextHistory().slice(-12), 100)} `}</span>
                 </Show>
                 <Show when={percent() !== null}>
-                  <span style={{ fg: tone() }}>{`ctx ${Math.round(percent() ?? 0)}%`}</span>
+                  <span style={{ fg: tone() }}>{`ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%`}</span>
                 </Show>
               </>
             }
