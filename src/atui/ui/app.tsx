@@ -1356,19 +1356,25 @@ export function App(p: {
     const read = branchRead();
     if (!read || read.id !== app.chat()?.chatId) return [];
     const prompts = (n: number) => `${n} ${n === 1 ? "prompt" : "prompts"}`;
-    return read.branches.map((b) => ({
-      id: `branch:${b.leafId}`,
-      section: b.active ? "This chat" : "Left behind",
-      label: clip(b.prompt || "(no prompt)", 80),
-      hint: b.active ? prompts(b.turns) : b.shared > 0 ? `${prompts(b.turns)} · ${b.shared} shared` : prompts(b.turns),
-      current: b.active,
-      run: () => {
-        setDialog(null);
-        if (b.active) return flash("This chat is already on that branch");
-        void app.openBranch(b.leafId);
-        flash("Continuing that branch in a new tab");
-      },
-    }));
+    const rows: PickerItem[] = read.branches.map((b) => {
+      // Two paths that share every prompt differ by their answer, so the answer's opening is what the row shows.
+      const sameAsk = !b.active && b.shared >= b.turns;
+      return {
+        id: `branch:${b.leafId}`,
+        section: b.active ? "This chat" : "Left behind",
+        label: clip(`${b.prompt || "(no prompt)"}${sameAsk && b.answer ? ` → ${b.answer}` : ""}`, 80),
+        hint: b.active ? prompts(b.turns) : [sameAsk ? "another answer" : b.shared > 0 ? `splits after prompt ${b.shared} of ${b.turns}` : prompts(b.turns), b.at ? ago(new Date(b.at).toISOString()) : ""].filter(Boolean).join(" · "),
+        current: b.active,
+        // The path the chat is on has nothing to continue: the cursor starts on a row Enter can use.
+        inert: b.active,
+        run: () => {
+          setDialog(null);
+          void app.openBranch(b.leafId);
+          flash("Continuing that branch in a new tab");
+        },
+      };
+    });
+    return rows;
   };
 
   /** The file timeline (the web's Timeline dialog): each prompt's checkpoint, newest first; Enter opens the undo that puts the files back as they were then, and the preview says what changed since. */
@@ -1691,7 +1697,7 @@ export function App(p: {
                   <Picker softBars title="Usage across chats" tabHint={`Tab ${usageDays() === 7 ? "30" : usageDays() === 30 ? "90" : "7"} days`} placeholder={usage.loading ? "Reading every session…" : "Search usage…"} items={usageItems()} firstHeading onTab={() => setUsageDays((d) => (d === 7 ? 30 : d === 30 ? 90 : 7))} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "branches"}>
-                  <Picker title="Branches" placeholder="Search the session's paths…" empty={branchRead.loading ? "Reading the session…" : "No paths to show yet"} items={branchItems()} firstHeading noun={["path", "paths"]} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Branches" placeholder="Search the session's paths…" empty={branchRead.loading ? "Reading the session…" : "No paths to show yet. Retry or edit a prompt to leave one behind"} items={branchItems()} firstHeading noun={["path", "paths"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "presets"}>
                   <Picker title="Presets" tabHint={app.forgotten() ? "x forget · u undo" : "x forget"} placeholder="Search presets…" empty="No presets yet" items={presetItems()} firstHeading onRowKey={(key, item) => { if (key === "u" && app.forgotten()) { const back = app.restorePreset(); if (back) flash(`“${back.name}” is back`); return true; } const name = /^preset:(.+)$/.exec(item?.id ?? "")?.[1]; if (key !== "x" || !name || name === "save") return false; app.dropPreset(name); flash("Forgotten · u puts it back"); return true; }} onClose={() => setDialog(null)} side={room()} />
