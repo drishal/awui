@@ -968,6 +968,9 @@ describe("atui", () => {
     // The attribution marks: the file head says which lines this chat wrote (the fake edit's own).
     await ui.until("from this chat");
     expect(view).toMatch(/▌\s+\d*\s*[-−] a/);
+    // e opens hidden lines; this edit folds none, and the review says so rather than doing nothing.
+    ui.keys.pressKey("e");
+    await ui.until("No hidden lines to show here");
     ui.keys.pressEnter();
     await ui.until("What should change here?");
     await ui.type("keep a");

@@ -9,7 +9,7 @@ import { commentable, commentKey, type FileChanges } from "../web/review.js";
 export type ReviewRow =
   | { kind: "file"; file: number; path: string; added: number; removed: number }
   | { kind: "edit"; file: number; label: string }
-  | { kind: "line"; file: number; path: string; key: string; line: DiffLine };
+  | { kind: "line"; file: number; path: string; key: string; line: DiffLine; /** A line of the file as it is now, shown from a gap: read-only, so the cursor skips it and no thread can pin to it. */ shown?: true };
 
 export function reviewRows(files: FileChanges[]): ReviewRow[] {
   const rows: ReviewRow[] = [];
@@ -24,7 +24,7 @@ export function reviewRows(files: FileChanges[]): ReviewRow[] {
   return rows;
 }
 
-const stop = (row: ReviewRow | undefined): boolean => row?.kind === "line" && commentable(row.line);
+const stop = (row: ReviewRow | undefined): boolean => row?.kind === "line" && !row.shown && commentable(row.line);
 
 /** The first row the cursor may stand on, or -1. */
 export const firstStop = (rows: ReviewRow[]): number => rows.findIndex(stop);
@@ -51,4 +51,41 @@ export function moveFile(rows: ReviewRow[], at: number, by: 1 | -1): number {
 /** The first row to draw so that `at` sits a third of the way down `height` rows (or the top or the end is reached). */
 export function windowStart(total: number, at: number, height: number): number {
   return Math.max(0, Math.min(at - Math.floor(height / 3), total - height));
+}
+
+/** The most lines one gap opens: the rest stays folded, as the web's "Show all" bounds a huge file. */
+export const GAP_LINES_MAX = 80;
+
+/**
+ * The file lines a gap row hides, as [first line, count]: only a gap that says how many unchanged lines it folds ("12 unchanged lines"), right
+ * after a context or added line that carries its number in the file. Anything else (a hunk break, a truncated edit) has no place to read from.
+ */
+export function gapSpan(rows: ReviewRow[], at: number): { from: number; count: number } | null {
+  const row = rows[at];
+  if (row?.kind !== "line" || row.line.kind !== "gap") return null;
+  const count = Number(/^(\d+) unchanged lines?$/.exec(row.line.text)?.[1]);
+  const before = rows[at - 1];
+  if (!Number.isFinite(count) || count < 1 || before?.kind !== "line" || before.file !== row.file || (before.line.kind !== "ctx" && before.line.kind !== "add") || before.line.line === undefined) return null;
+  return { from: before.line.line + 1, count };
+}
+
+/** The first gap at or after row `at` (in its file) that can open, or the nearest before it: what the review's `e` key opens. */
+export function nearestGap(rows: ReviewRow[], at: number): number {
+  const file = (rows[at] as { file?: number } | undefined)?.file;
+  for (let i = at; i < rows.length && (rows[i] as { file?: number }).file === file; i++) if (gapSpan(rows, i)) return i;
+  for (let i = at - 1; i >= 0 && (rows[i] as { file?: number }).file === file; i--) if (gapSpan(rows, i)) return i;
+  return -1;
+}
+
+/** `rows` with each opened gap replaced by the file's own lines (as `ctx`, read-only), `lines` being those it read, by the gap row's key. */
+export function openGaps(rows: ReviewRow[], opened: ReadonlyMap<string, string[]>): ReviewRow[] {
+  const out: ReviewRow[] = [];
+  rows.forEach((row, i) => {
+    const text = row.kind === "line" ? opened.get(row.key) : undefined;
+    const span = text ? gapSpan(rows, i) : null;
+    if (row.kind !== "line" || !text || !span) return void out.push(row);
+    text.forEach((line, n) => out.push({ kind: "line", file: row.file, path: row.path, key: `${row.key}+${n}`, line: { kind: "ctx", text: line, line: span.from + n }, shown: true }));
+    if (span.count > text.length) out.push({ kind: "line", file: row.file, path: row.path, key: `${row.key}~`, line: { kind: "gap", text: `${span.count - text.length} more unchanged lines` } });
+  });
+  return out;
 }

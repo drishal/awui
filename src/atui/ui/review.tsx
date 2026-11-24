@@ -6,14 +6,15 @@
 // thread), r resolves or reopens it, x deletes it, S sends, Esc closes. The
 // threads are the web panel's, so the same review is on every device
 // (atui/review.ts lays the rows out).
-import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import type { ReviewThread } from "../../shared/protocol.js";
 import { anchorOf, collectChanges, placeThreads } from "../../web/review.js";
 import { readMarks, type OriginMarks } from "../attribution.js";
 import { clip } from "../format.js";
 import { mix } from "../fx.js";
-import { firstStop, moveCursor, moveFile, reviewRows, windowStart, type ReviewRow } from "../review.js";
+import { firstStop, GAP_LINES_MAX, gapSpan, moveCursor, moveFile, nearestGap, openGaps, reviewRows, windowStart, type ReviewRow } from "../review.js";
+import type { FileView } from "../../shared/protocol.js";
 import { useAtui, useTheme } from "./context.js";
 import { fitHints } from "../footer.js";
 import { highlightPreview, type Segment } from "../words.js";
@@ -32,7 +33,12 @@ export function ReviewView(p: { onClose: () => void }) {
     const c = chat();
     return c ? collectChanges(c.items, c.workspace.path) : [];
   });
-  const rows = createMemo(() => reviewRows(files()));
+  const base = createMemo(() => reviewRows(files()));
+  // The gaps the reader opened (the file's own lines as they are now, read-only), by the gap row's key.
+  const [opened, setOpened] = createSignal<ReadonlyMap<string, string[]>>(new Map());
+  const rows = createMemo(() => openGaps(base(), opened()));
+  /** The gaps that can open: they name how many unchanged lines they fold, after a line that has its number. */
+  const openable = createMemo(() => new Set(base().flatMap((row, i) => (row.kind === "line" && gapSpan(base(), i) ? [row.key] : []))));
   // The server's threads, where the lines they pin to are now drawn.
   const placed = createMemo(() => placeThreads(files(), app.reviewComments(chatId())));
   const [at, setAt] = createSignal(firstStop(rows()));
@@ -72,6 +78,40 @@ export function ReviewView(p: { onClose: () => void }) {
     // A pin the agent's later edits moved to another line is queued to the server, so a batched prompt names it.
     void app.reanchorReview(c.chatId);
   });
+
+  // A one-line word in the header's key spot (a gap that cannot open, a file that moved), gone after a few seconds.
+  const [note, setNote] = createSignal("");
+  let noteTimer: ReturnType<typeof setTimeout> | undefined;
+  const say = (text: string) => {
+    setNote(text);
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => setNote(""), 4000);
+  };
+  onCleanup(() => clearTimeout(noteTimer));
+
+  /** e: open the nearest gap's lines from the file as it is now (bounded; a file that has since changed shows its present lines, so they are never commentable). */
+  const expand = async () => {
+    const c = chat();
+    const list = base();
+    const here = current();
+    const from = here ? list.findIndex((r) => r.kind === "line" && r.key === here.key) : 0;
+    const gap = nearestGap(list, Math.max(0, from));
+    const row = list[gap];
+    const span = gap < 0 ? null : gapSpan(list, gap);
+    if (!c || !span || row?.kind !== "line") return say("No hidden lines to show here");
+    try {
+      const view = await app.server.call<FileView>(`/api/workspaces/${encodeURIComponent(c.workspace.id)}/file?path=${encodeURIComponent(row.path)}`);
+      if (view.text === null) return say("That file is not text");
+      const lines = view.text.split("\n").slice(span.from - 1, span.from - 1 + Math.min(span.count, GAP_LINES_MAX));
+      if (lines.length === 0) return say("The file is shorter now; those lines are gone");
+      const keep = here?.key;
+      setOpened((m) => new Map(m).set(row.key, lines));
+      // The rows below shifted: the cursor stays on its own line.
+      if (keep) setAt(Math.max(0, rows().findIndex((r) => r.kind === "line" && r.key === keep)));
+    } catch {
+      say("Could not read the file");
+    }
+  };
 
   const save = async () => {
     const w = writing();
@@ -129,7 +169,8 @@ export function ReviewView(p: { onClose: () => void }) {
       // A line that already has a thread takes the note into it; an empty one starts a thread.
       const existing = onLine().find((entry) => entry.thread.status === "open");
       setWriting({ key: row.key, ...(existing ? { threadId: existing.thread.id } : {}), draft: "" });
-    } else if (key.name === "r" && onLine()[0]) void toggleResolve((onLine()[0] as { thread: ReviewThread }).thread);
+    } else if (key.name === "e") void expand();
+    else if (key.name === "r" && onLine()[0]) void toggleResolve((onLine()[0] as { thread: ReviewThread }).thread);
     else if (key.name === "x" && onLine()[0]) void remove((onLine()[0] as { thread: ReviewThread }).thread);
     else if (key.name === "s" && key.shift) void send();
   });
@@ -165,7 +206,7 @@ export function ReviewView(p: { onClose: () => void }) {
         </text>
         {/* The keys sit right of the title, as every other sheet draws them; a line's thread keys appear once the cursor is on a thread. */}
         <text flexShrink={0} marginLeft={2} fg={t().muted} wrapMode="none">
-          {sending() ? "Sending…" : fitHints(["↑↓ line", "]/[ file", "Enter comment", ...(onLine()[0] ? ["r resolve", "x delete"] : []), ...(open().length > 0 ? [`S send ${open().length}`] : []), "Esc close"], Math.max(20, size().width - 76))}
+          {sending() ? "Sending…" : note() ? note() : fitHints(["↑↓ line", "]/[ file", "Enter comment", ...(openable().size > 0 ? ["e show lines"] : []), ...(onLine()[0] ? ["r resolve", "x delete"] : []), ...(open().length > 0 ? [`S send ${open().length}`] : []), "Esc close"], Math.max(20, size().width - 76))}
         </text>
       </box>
       <Show when={files().length > 0} fallback={<text flexGrow={1} fg={t().muted}>The agent has not edited any files in this chat.</text>}>
@@ -201,7 +242,7 @@ export function ReviewView(p: { onClose: () => void }) {
                     </text>
                     <text flexGrow={1} wrapMode="none" truncate fg={t().text}>
                       {row.line.kind === "hunk" || row.line.kind === "gap" ? (
-                        clip(row.line.text || "⋯ lines not shown", 120)
+                        clip(`${row.line.text ? `⋯ ${row.line.text}` : "⋯ lines not shown"}${openable().has(row.key) ? " · e shows them" : ""}`, 120)
                       ) : (
                         <>
                           {/* As the web's diff does: the sign carries the hue (eased toward the text so it keeps its contrast on the tint), the code stays in the text colour, and the words that changed sit on a stronger tint. */}
