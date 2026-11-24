@@ -973,10 +973,15 @@ export function App(p: {
   };
   /** A comparison's sheet (the web's Race panel): each member's state and changes, its chat to open (Review there reads its diff), and the winner to keep or apply. Refreshed every two seconds while it is open. */
   const [raceId, setRaceId] = createSignal<string | null>(null);
-  const [race, { refetch: refetchRace }] = createResource(
+  const [raceRead, { refetch: refetchRace }] = createResource(
     () => (dialog() === "race" ? raceId() : null),
     (id) => app.server.call<RaceSummary>(`/api/races/${encodeURIComponent(id)}`).catch(() => null),
   );
+  /** The comparison being shown: a resource keeps the last value while the next one loads, so a second comparison must not wear the first one's rows. */
+  const race = () => {
+    const r = raceRead();
+    return r && r.id === raceId() ? r : undefined;
+  };
   createEffect(() => {
     if (dialog() !== "race") return;
     const timer = setInterval(() => void refetchRace(), 2000);
@@ -1585,7 +1590,7 @@ export function App(p: {
                   <Picker title="Compare agents" placeholder="Pick who runs the draft…" items={[]} search={compareItems} empty="No agents available" firstHeading noun={["agent", "agents"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "race"}>
-                  <Picker title={race()?.prompt ? `Comparison · ${clip(race()?.prompt ?? "", 60)}` : "Comparison"} placeholder="Enter opens an agent's chat; its Review shows what it changed…" items={[]} search={raceItems} preview={racePreview} empty={race.loading ? "Reading the comparison…" : "This comparison is gone"} firstHeading noun={["row", "rows"]} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title={race()?.prompt ? `Comparison · ${clip(race()?.prompt ?? "", 60)}` : "Comparison"} placeholder="Enter opens an agent's chat; its Review shows what it changed…" items={[]} search={raceItems} preview={racePreview} empty={raceRead.loading || (raceRead() && !race()) ? "Reading the comparison…" : "This comparison is gone"} firstHeading noun={["row", "rows"]} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "worktrees"}>
                   <Picker title="Worktrees" placeholder="Type a name to make a worktree, or pick one to open a chat in…" items={[]} search={worktreeItems} empty={trees.loading ? "Reading the worktrees…" : "No worktrees yet: type a name to make one"} firstHeading noun={["worktree", "worktrees"]} onClose={() => setDialog(null)} side={room()} />
