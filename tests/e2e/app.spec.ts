@@ -1491,18 +1491,18 @@ test("the sidebar is resizable by drag and keyboard, and remembers its width", a
   const sidebar = page.locator(".sidebar");
   const handle = page.getByRole("separator", { name: "Resize sidebar" });
   const width = async () => (await sidebar.boundingBox())?.width ?? 0;
-  expect(Math.round(await width())).toBe(272);
+  expect(Math.round(await width())).toBe(292);
   const box = (await handle.boundingBox()) as { x: number; y: number; width: number; height: number };
   await page.mouse.move(box.x + box.width / 2, box.y + 200);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + 120, box.y + 200, { steps: 6 });
   await page.mouse.up();
-  expect(Math.round(await width())).toBe(392);
+  expect(Math.round(await width())).toBe(412);
   await page.reload();
-  expect(Math.round(await width())).toBe(392);
+  expect(Math.round(await width())).toBe(412);
   await handle.focus();
   await page.keyboard.press("ArrowLeft");
-  expect(Math.round(await width())).toBe(376);
+  expect(Math.round(await width())).toBe(396);
   await page.keyboard.press("Home");
   expect(Math.round(await width())).toBe(200);
   // Dragging far past the limit clamps instead of swallowing the chat.
@@ -1513,7 +1513,7 @@ test("the sidebar is resizable by drag and keyboard, and remembers its width", a
   await page.mouse.up();
   expect(Math.round(await width())).toBe(560);
   await handle.dblclick();
-  expect(Math.round(await width())).toBe(272);
+  expect(Math.round(await width())).toBe(292);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(handle).toBeHidden();
 });

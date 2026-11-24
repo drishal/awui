@@ -230,7 +230,7 @@
   --col: 960px;
   /* The conversation's own width (Settings → Chat width); drawers keep --col. */
   --chat-col: var(--col);
-  --sidebar-w: 272px;
+  --sidebar-w: 292px;
   --chat-scale: 1;
   --chat-font: calc(14.5px * var(--chat-scale));
   --chat-small: calc(13px * var(--chat-scale));

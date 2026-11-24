@@ -2,7 +2,7 @@
 // arrow keys (Shift for bigger steps), Home/End, and double-click to reset.
 import { useRef } from "react";
 
-export const SIDEBAR_DEFAULT = 272;
+export const SIDEBAR_DEFAULT = 292;
 export const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 560;
 
