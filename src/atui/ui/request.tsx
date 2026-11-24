@@ -121,11 +121,16 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
                   onContentChange={() => setTyped(input?.plainText.length ?? 0)}
                   minHeight={1}
                   maxHeight={p.request.kind === "editor" ? 12 : 4}
-                  keyBindings={[
-                    { name: "return", action: "submit" },
-                    { name: "return", shift: true, action: "newline" },
-                    { name: "linefeed", action: "newline" },
-                  ]}
+                  // A password is one line: a newline would join the secret invisibly and sudo would get the wrong one.
+                  keyBindings={
+                    p.request.secret
+                      ? [{ name: "return", action: "submit" }]
+                      : [
+                          { name: "return", action: "submit" },
+                          { name: "return", shift: true, action: "newline" },
+                          { name: "linefeed", action: "newline" },
+                        ]
+                  }
                   onSubmit={() => answer(p.request.kind === "editor" ? { kind: "editor", value: input?.plainText ?? "" } : { kind: "input", value: input?.plainText ?? "" })}
                 />
               </box>
@@ -192,7 +197,7 @@ export function RequestCard(p: { request: InteractionRequest; more: number; acti
           </box>
         </Show>
       </Show>
-      <text fg={t().muted} marginTop={1}>{denying() ? "Enter deny · Shift+Enter new line · Esc cancel" : options().length > 0 ? `↑↓ or ${options().length > 1 ? `1–${Math.min(9, options().length)}` : "1"} choose${options().some((o) => o.label === "Deny") ? " · Deny asks why" : ""} · Esc cancel` : "Enter send · Shift+Enter new line · Esc cancel"}</text>
+      <text fg={t().muted} marginTop={1}>{denying() ? "Enter deny · Shift+Enter new line · Esc cancel" : options().length > 0 ? `↑↓ or ${options().length > 1 ? `1–${Math.min(9, options().length)}` : "1"} choose${options().some((o) => o.label === "Deny") ? " · Deny asks why" : ""} · Esc cancel` : p.request.secret ? "Enter send · Esc cancel" : "Enter send · Shift+Enter new line · Esc cancel"}</text>
     </box>
   );
 }

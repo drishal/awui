@@ -250,6 +250,9 @@ describe("atui", () => {
     ui.keys.pressEnter();
     const card = await ui.until("Sudo password");
     expect(card).toContain("Masked in this terminal");
+    // One line only: a newline would join the secret unseen, so the hint offers none.
+    expect(card).toContain("Enter send · Esc cancel");
+    expect(card).not.toContain("Shift+Enter new line");
     await ui.type("hunter2");
     const typed = await ui.until("> •••••••");
     // The characters are never drawn; only their count is.
