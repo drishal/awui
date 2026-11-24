@@ -893,7 +893,7 @@ export function App(p: {
     const fig = (t: Figures) => `${shortTokens(tokensOf(t))} · ${dollars(t.cost, t.calls > t.unpriced)}`;
     const words = (t: Figures) => `${shortTokens(tokensOf(t))} tokens · ${dollars(t.cost, t.calls > t.unpriced)}`;
     const share = cacheShare(r.totals);
-    const row = (section: string, label: string, hint: string, bar?: [number, number], run: () => void = () => {}): PickerItem => ({ id: `usage:${section}:${label}`, section, label, hint, bar, run });
+    const row = (section: string, label: string, hint: string, bar?: [number, number], run?: () => void): PickerItem => ({ id: `usage:${section}:${label}`, section, label, hint, bar, run: run ?? (() => {}), ...(run ? {} : { inert: true }) });
     const tallest = Math.max(1, ...r.byDay.map((d) => tokensOf(d.totals)));
     const dayName = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
     // A run of days with nothing is one line, not a column of empty tracks.
@@ -903,7 +903,11 @@ export function App(p: {
     let idle: string[] = [];
     const flush = () => {
       if (idle.length === 0) return;
-      days.push(row("By day", `No use ${idle.length === 1 ? dayName(idle[0] as string) : `${dayName(idle[0] as string)} to ${dayName(idle[idle.length - 1] as string)}`}`, "", [0, 0]));
+      // One short label (a range in the same month shares its month name) with the count as the hint, so a narrow sheet never cuts a date mid-word.
+      const from = dayName(idle[0] as string);
+      const to = dayName(idle[idle.length - 1] as string);
+      const span = idle.length === 1 ? from : from.split(" ")[0] === to.split(" ")[0] ? `${from}–${to.split(" ")[1]}` : `${from}–${to}`;
+      days.push(row("By day", `No use ${span}`, idle.length === 1 ? "" : `${idle.length} days`, [0, 0]));
       idle = [];
     };
     for (const d of r.byDay) {

@@ -11,7 +11,8 @@ import { clip } from "../format.js";
 import { useTheme } from "./context.js";
 
 /** A row that also draws a span of a track (a step's place on a turn's time, a day's share of the busiest): `[from, to]`, each 0 to 1. */
-export type PickerItem = PaletteItem & { bar?: [number, number] };
+/** `inert`: a row that only informs (Usage's totals) is stepped over and never lit, so the cursor rests only where Enter does something. */
+export type PickerItem = PaletteItem & { bar?: [number, number]; inert?: boolean };
 
 /** The track as a run of rule, a solid run, the eighth-block edge that finishes it, and the rule after. The start rounds to a cell, the end to an eighth, so equal times draw equal bars and a few hundred milliseconds show. */
 const EDGES = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
@@ -92,7 +93,7 @@ export function Picker(p: {
   const shown = createMemo((): PickerItem[] => (p.search ? p.search(query()) : (rankItems(p.items, query()) as PickerItem[])));
   createEffect(
     on(shown, (list) => {
-      const first = list.findIndex((i) => !i.disabled);
+      const first = list.findIndex((i) => !i.disabled && !i.inert);
       setActive(first < 0 ? 0 : first);
     }),
   );
@@ -153,7 +154,7 @@ export function Picker(p: {
     for (let n = 0; n < Math.abs(step); n++) {
       let next = i;
       do next += Math.sign(step);
-      while (next >= 0 && next < list.length && list[next]?.disabled);
+      while (next >= 0 && next < list.length && (list[next]?.disabled || list[next]?.inert));
       if (next < 0 || next >= list.length) break;
       i = next;
     }
@@ -161,7 +162,7 @@ export function Picker(p: {
   };
 
   const run = (item: PaletteItem | undefined) => {
-    if (!item || item.disabled) return;
+    if (!item || item.disabled || (item as PickerItem).inert) return;
     p.onClose();
     if (!p.info) item.run();
   };
@@ -220,7 +221,7 @@ export function Picker(p: {
           <For each={shown().slice(windowed().from, windowed().to)}>
             {(item, i) => {
               const at = () => i() + windowed().from;
-              const lit = () => !p.info && at() === active();
+              const lit = () => !p.info && at() === active() && !item.inert;
               return (
                 <box flexDirection="column">
                   <Show when={headed(shown(), at())}>
