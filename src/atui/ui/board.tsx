@@ -30,7 +30,7 @@ import { isBusy } from "../../web/session-groups.js";
 import { plainTitle } from "../../web/plain-title.js";
 import { fitHints } from "../footer.js";
 import { agentStatusText } from "../../web/agent-status.js";
-import { ago } from "../format.js";
+import { ago, clip } from "../format.js";
 import { harnessGlyph } from "../neat.js";
 import { moveRow } from "../delegated.js";
 import { accentOf } from "../theme.js";
@@ -178,7 +178,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   /** The frame fits its cards (about four rows each, plus the head and the column titles) up to the room the sheet stands in, so a board with a few cards is not a frame of empty rows. */
   const boxHeight = () => {
     const tallest = Math.max(...BOARD_COLUMNS.map((id) => cards()[id].length));
-    return Math.min(Math.max(10, size().height - 6), Math.max(10, tallest * 4 + 6));
+    return Math.min(Math.max(9, size().height - 6), Math.max(9, tallest * 4 + 5));
   };
 
   return (
@@ -272,7 +272,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
         </For>
       </box>
       <text flexShrink={0} fg={t().muted} wrapMode="none" truncate>
-        {here() ? (preview() ? `Last: ${preview()}` : `${harnessName(here()?.session.harnessId ?? "")} · ${projectName(here()?.session.workspaceId ?? "")} · ${plainTitle(here()?.session.title ?? "")}`) : "No card under the cursor"}
+        {here() ? (preview() ? <><b style={{ fg: t().text2 }}>{clip(plainTitle(here()?.session.title ?? "") || "Untitled", 28)}</b>{`: ${preview()}`}</> : `${harnessName(here()?.session.harnessId ?? "")} · ${projectName(here()?.session.workspaceId ?? "")} · ${plainTitle(here()?.session.title ?? "")}`) : "No card under the cursor"}
       </text>
     </box>
   );
