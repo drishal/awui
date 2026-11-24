@@ -80,9 +80,9 @@ export function findTurns(turns: readonly Turn[], query: string, radius = 36, wo
 }
 
 /** Turns whose fold holds a match: they open so their matches can be shown. */
-export function foldsToOpen(turns: readonly Turn[], query: string): string[] {
+export function foldsToOpen(turns: readonly Turn[], query: string, workspace = ""): string[] {
   if (!query.trim()) return [];
-  return turns.filter((t) => t.prompt && findOffsets(processText(t), query).length > 0).map((t) => t.id);
+  return turns.filter((t) => t.prompt && findOffsets(processText(t, workspace), query).length > 0).map((t) => t.id);
 }
 
 /** The next match to show, from `current`, wrapping around; -1 when there are none. */

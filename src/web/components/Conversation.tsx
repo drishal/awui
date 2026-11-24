@@ -1844,9 +1844,9 @@ export function Conversation({
   useEffect(() => {
     if (!searched) return;
     setDrawn((d) => (d.chatId === chatId && d.from === 0 ? d : { chatId, from: 0 }));
-    const open = foldsToOpen(turnsRef.current, searched);
+    const open = foldsToOpen(turnsRef.current, searched, workspace);
     if (open.length > 0) setOverrides((prev) => (open.every((id) => prev[id]) ? prev : { ...prev, ...Object.fromEntries(open.map((id) => [id, true])) }));
-  }, [searched, chatId]);
+  }, [searched, chatId, workspace]);
   useEffect(() => {
     const thread = scroller.current?.querySelector(".thread");
     if (!searched || !thread) {
