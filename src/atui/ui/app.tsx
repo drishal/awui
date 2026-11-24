@@ -1665,7 +1665,7 @@ export function App(p: {
                   <Picker title="Presets · x forgets one" placeholder="Search presets…" empty="No presets yet" items={presetItems()} firstHeading onRowKey={(key, item) => { const name = /^preset:(.+)$/.exec(item?.id ?? "")?.[1]; if (key !== "x" || !name || name === "save") return false; app.dropPreset(name); return true; }} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "preset-save"}>
-                  <Picker title="Save a preset" placeholder="Name it (Explore, Review, Deep work…)" items={[]} search={presetSaveItems} onClose={() => setDialog(null)} side={room()} />
+                  <Picker title="Save a preset" placeholder="Name it (Explore, Review, Deep work…)" items={[]} search={presetSaveItems} count={false} onClose={() => setDialog(null)} side={room()} />
                 </Show>
                 <Show when={dialog() === "queue"}>
                   <Picker title="Queued messages · x removes" placeholder="Search queued messages…" empty="No queued messages: a steering or follow-up message parks here" items={queueItems()} firstHeading onRowKey={(key, item) => { const m = /^queue:(steering|followUp):(\d+)$/.exec(item?.id ?? ""); if (key !== "x" || !m) return false; void app.dropQueued(m[1] as "steering" | "followUp", Number(m[2]), false); return true; }} onClose={() => setDialog(null)} side={room()} />

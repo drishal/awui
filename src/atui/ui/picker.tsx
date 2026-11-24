@@ -84,6 +84,8 @@ export function Picker(p: {
   tabHint?: string;
   /** What a row is, for the match count when a row is not one match (find lists turns): singular and plural. */
   noun?: [string, string];
+  /** False for a sheet whose box is a name being typed, not a search: no "1 match" beside it. */
+  count?: boolean;
   /** Columns the side panel takes: the picker fits what is left of the screen, never under the panel. */
   side?: number;
   /** Words the search starts with (a file a row asked to see), already typed in the box. */
@@ -230,7 +232,9 @@ export function Picker(p: {
         <text fg={t().accent} flexShrink={0}>{"› "}</text>
         <input focused flexGrow={1} value={p.initialQuery ?? ""} placeholder={p.placeholder} placeholderColor={t().muted} textColor={t().text} backgroundColor={sheetGround(t())} focusedBackgroundColor={sheetGround(t())} onInput={(value: string) => setQuery(value)} />
         <Show when={query().trim()}>
-          <text fg={t().muted} flexShrink={0}>{`${shown().length} ${shown().length === 1 ? (p.noun?.[0] ?? "match") : (p.noun?.[1] ?? "matches")}`}</text>
+          <Show when={p.count !== false}>
+            <text fg={t().muted} flexShrink={0}>{`${shown().length} ${shown().length === 1 ? (p.noun?.[0] ?? "match") : (p.noun?.[1] ?? "matches")}`}</text>
+          </Show>
         </Show>
       </box>
       <box flexDirection="row" flexGrow={1} marginTop={1}>
