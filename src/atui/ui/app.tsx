@@ -12,6 +12,10 @@
 // glass mode (no fills, the terminal's background shows through); background
 // sessions' news toasts in the corner, and the terminal's title and tab
 // progress follow the chat.
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createEffect, createMemo, createResource, createSignal, on, onCleanup, Show } from "solid-js";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
@@ -350,6 +354,29 @@ export function App(p: {
     if (await app.setChatWidth(width)) flash(`Chat width: ${chatWidthLabel(width)}`);
   };
 
+  /** The draft in the user's own editor ($VISUAL, else $EDITOR): the screen is handed over, the file read back into the composer when the editor exits. For prompts too long to shape in a box. */
+  const editDraft = async () => {
+    const editor = process.env.VISUAL || process.env.EDITOR;
+    if (!editor) return flash("Set $VISUAL or $EDITOR to edit a draft in it");
+    if (!composer) return;
+    const dir = mkdtempSync(path.join(tmpdir(), "atui-draft-"));
+    const file = path.join(dir, "prompt.md");
+    writeFileSync(file, composer.plainText, { mode: 0o600 });
+    // Without a terminal on stdout (the test renderer draws to memory) there is no screen to hand over; the editor still runs.
+    const handed = Boolean(process.stdout.isTTY) && (await renderer.suspend().then(() => true, () => false));
+    // The file path is a positional argument, never spliced into the command; the editor may carry its own flags ("code -w").
+    const ran = spawnSync("sh", ["-c", `${editor} "$1"`, "sh", file], { stdio: "inherit" });
+    if (handed) await renderer.resume();
+    try {
+      if (ran.status === 0) composer.setText(readFileSync(file, "utf8").replace(/\n+$/, ""));
+      else flash("The editor exited with an error; the draft is unchanged");
+    } finally {
+      unlinkSync(file);
+      rmdirSync(dir);
+    }
+    composer.focus();
+  };
+
   const runLeader = (name: string) => {
     switch (name) {
       case "b":
@@ -507,6 +534,11 @@ export function App(p: {
       key.preventDefault();
       return setDialog("find");
     }
+    // M-e: the draft in $VISUAL / $EDITOR, in both styles (a meta chord, so typed letters and vim's keys are untouched).
+    if (key.meta && !key.ctrl && key.name === "e" && focus() === "composer") {
+      key.preventDefault();
+      return void editDraft();
+    }
     // M-n / M-p: step through the turns the last find matched (a meta chord, so no typed letter or vim key is touched).
     if (key.meta && !key.ctrl && (key.name === "n" || key.name === "p") && landed()) {
       key.preventDefault();
@@ -648,6 +680,7 @@ export function App(p: {
     add({ id: "usage", label: "Usage across chats", keywords: "tokens cost spend cache models harnesses", run: () => setDialog("usage") });
     if (c) add({ id: "find", label: "Find in chat…", hint: "C-s", keywords: "search text turns", run: () => setDialog("find") });
     if (c && landed()) add({ id: "find-clear", label: "Clear find marks", hint: "M-n / M-p stop stepping", keywords: "find search unmark gutter", run: () => { setLanded(null); flash("Find marks cleared"); } });
+    add({ id: "edit-draft", label: "Edit the draft in $EDITOR", hint: "M-e", keywords: "external editor vim nano long prompt compose", run: () => void editDraft() });
     add({ id: "search-chats", label: "Search every chat…", keywords: "find text sessions history all projects harnesses grep", run: () => setDialog("chats") });
     add({ id: "history", label: "History: every session, by project…", hint: keys.history, run: () => setDialog("history") });
     add({ id: "sessions", label: "Browse sessions", hint: leader("s", keybinds()), run: () => runLeader("s") });

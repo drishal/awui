@@ -455,6 +455,22 @@ describe("atui", () => {
     expect(await ui.until("Nothing matches “zzzz”")).toContain("Find in chat");
   }, 30_000);
 
+  it("edits the draft in $EDITOR from M-e and takes the file back", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 30 });
+    const was = process.env.VISUAL;
+    // A stand-in editor: it writes one line into the file it is given ($0 inside the quoted script).
+    process.env.VISUAL = "sh -c 'printf from-editor > \"$0\"'";
+    try {
+      await ui.type("short draft");
+      ui.keys.pressKey("e", { meta: true });
+      await ui.until("from-editor");
+      expect(await ui.frame()).not.toContain("short draft");
+    } finally {
+      if (was === undefined) delete process.env.VISUAL;
+      else process.env.VISUAL = was;
+    }
+  }, 30_000);
+
   it("shows the permission mode where the harness has one, and changes it from its chip", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     await ui.type("hello permission");
