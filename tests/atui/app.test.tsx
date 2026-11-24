@@ -551,14 +551,11 @@ describe("atui", () => {
     await ui.until("match 1 of 2 · M-n next · M-p previous");
     ui.keys.pressKey("p", { meta: true });
     await ui.until("match 2 of 2 · M-n next · M-p previous");
-    // The turn the find landed on carries a strip with its words; the palette clears it.
+    // The turn the find landed on carries a strip with its words (and says Esc clears it); the palette clears it too.
     expect(await ui.frame()).toMatch(/⌕ .*prompt.* in the turn/);
     expect(await ui.frame()).toContain("match 2/2");
-    ui.keys.pressKey("k", { ctrl: true });
-    await ui.until("Search commands, sessions, thinking…");
-    await ui.type("clear find");
-    await ui.until("Clear find marks");
-    ui.keys.pressEnter();
+    expect(await ui.frame()).toContain("Esc clears");
+    ui.keys.pressEscape();
     await ui.until("Find marks cleared");
     expect(await ui.frame()).not.toMatch(/⌕ .* in the turn/);
     // Search every chat: the palette's entry lists chats whose words match, the first hit as the row.

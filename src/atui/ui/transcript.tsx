@@ -1107,7 +1107,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
             <text selectable={false} fg={t().muted} wrapMode="none" truncate>
               <span style={{ fg: t().info }}>{`${icon("find")} `}</span>
               <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().accent }}><b>{part.text}</b></span> : <span style={{ fg: t().text2 }}>{part.text}</span>)}</For>
-              <span style={{ fg: t().muted }}>{`  ·  ${p.foundOf ? `match ${p.foundOf} · ` : ""}${h().count > 1 ? `${h().count} matches ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"}${h().count > 1 && h().hidden > 0 && h().hidden < h().count ? ` (${h().hidden} in the work)` : ""}${p.foundOf || h().count > 1 ? " · M-n/M-p step" : ""}`}</span>
+              <span style={{ fg: t().muted }}>{`  ·  ${p.foundOf ? `match ${p.foundOf} · ` : ""}${h().count > 1 ? `${h().count} matches ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"}${h().count > 1 && h().hidden > 0 && h().hidden < h().count ? ` (${h().hidden} in the work)` : ""} · Esc clears`}</span>
             </text>
           </box>
         )}

@@ -574,6 +574,12 @@ export function App(p: {
       key.preventDefault();
       if (stepFind(key.name === "n" ? 1 : -1)) return;
     }
+    // Esc puts the find's marks away (the palette's "Clear find marks" is the same): in Vim style only outside the composer, where Esc leaves INSERT.
+    if (key.name === "escape" && !key.ctrl && !key.meta && landed() && !pending() && (keybinds() === "emacs" || focus() !== "composer")) {
+      key.preventDefault();
+      setLanded(null);
+      return flash("Find marks cleared");
+    }
     if (keybinds() === "emacs" && key.ctrl && key.name === "t") {
       key.preventDefault();
       p.onShowThoughts(!thoughts());
