@@ -117,7 +117,7 @@ export function Picker(p: {
   /** The label column of a bar row: as wide as its longest label asks (and two cells over), never more than a share of the sheet, so short labels leave the track the room. */
   const barLabel = () => {
     const widest = Math.max(0, ...shown().filter((i) => i.bar).map((i) => i.label.length + 4));
-    const cap = Math.floor(listWidth() * (listWidth() > 70 ? 0.4 : 0.37));
+    const cap = Math.floor(listWidth() * (listWidth() > 70 ? 0.48 : 0.37));
     return Math.max(18, Math.min(cap, widest));
   };
   /** The track takes what the label and the widest figure leave, so a wide sheet has a long bar and no dead gap: 12 cells at least, 64 at most. */
