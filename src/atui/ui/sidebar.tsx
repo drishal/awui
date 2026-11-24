@@ -42,7 +42,7 @@ export function SidebarRail(p: { asking: number; onExpand: () => void }) {
     <box flexDirection="column" width={RAIL_WIDTH} flexShrink={0} border={["right"]} borderColor={t().border} alignItems="center" onMouseDown={p.onExpand}>
       <text selectable={false} fg={t().accent}>{"\uf101"}</text>
       <Show when={p.asking > 0}>
-        <text selectable={false} wrapMode="none" fg={mix(mix(t().bg, t().warn, 0.35), t().warn, breathe(tick(), BREATH_TICKS))}>{mark()}</text>
+        <text selectable={false} wrapMode="none" fg={mix(mix(t().bg, t().warn, 0.6), t().warn, breathe(tick(), BREATH_TICKS))}>{mark()}</text>
       </Show>
     </box>
   );
@@ -163,7 +163,8 @@ export function Sidebar(p: {
   // The box's own width inside its border and padding: every rule and tint spans exactly this, so their right edges agree.
   const inner = () => p.width - 3;
   const breath = () => breathe(tick(), BREATH_TICKS);
-  const askingTone = () => mix(mix(t().bg, t().warn, 0.35), t().warn, breath());
+  // The breath fades from 60 % warn, not 35 %: the floor is measured against the page, and on the lit row (a lighter ground) a fainter one all but vanished, yet the waiting mark is the one thing that row has to show.
+  const askingTone = () => mix(mix(t().bg, t().warn, 0.6), t().warn, breath());
   const herdrTone = (s: ProjectSession) => (s.herdr?.status === "blocked" ? askingTone() : s.herdr?.status === "working" ? t().accent : t().muted);
   // Right of the title: the other project's name when the row is not this one's, then the age. The asking
   // mark is the row's own `▲`; a blank or a second "!" here only pushed the title off its budget.
