@@ -73,18 +73,29 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
   const here = (): BoardCard | undefined => cards()[column()][clampCursor(cards()[column()], cursor())];
   // The card under the cursor says what its session last said (the web dashboard's card line), read once per version of the session.
   const [previews, setPreviews] = createSignal<Record<string, SessionPreview | null>>({});
-  createEffect(() => {
-    const s = here()?.session;
-    if (!s) return;
+  const readPreview = (s: ProjectSession) => {
     const key = `${s.id}@${s.updatedAt ?? ""}`;
     if (key in previews()) return;
     setPreviews((all) => ({ ...all, [key]: null }));
     const q = new URLSearchParams({ harnessId: s.harnessId, workspaceId: s.workspaceId, sessionId: s.id });
     void app.server.call<SessionPreview>(`/api/sessions/preview?${q}`).then((r) => setPreviews((all) => ({ ...all, [key]: r }))).catch(() => undefined);
+  };
+  // The cursor's card and its delegated workers: the card's detail line and each worker's model ("which seat runs what").
+  createEffect(() => {
+    const card = here();
+    if (!card) return;
+    readPreview(card.session);
+    for (const child of card.children) readPreview(child);
   });
+  // Every worker row shows its model, so the others' are read too (cached per version, bounded).
+  createEffect(() => {
+    let left = 24;
+    for (const column of Object.values(cards())) for (const card of column) for (const child of card.children) if (left-- > 0) readPreview(child);
+  });
+  const previewOf = (s: ProjectSession): SessionPreview | null => previews()[`${s.id}@${s.updatedAt ?? ""}`] ?? null;
   const full = () => {
     const s = here()?.session;
-    return s ? previews()[`${s.id}@${s.updatedAt ?? ""}`] ?? null : null;
+    return s ? previewOf(s) : null;
   };
   const preview = () => previewLine(full());
   /** What the card's session last said, as one line (the detail wraps it to at most three rows). */
@@ -246,6 +257,7 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
                                 <span style={{ fg: t().text2 }}>{plainTitle(child.title) || "Untitled"}</span>
                                 <Show when={child.lineage?.role}>{(role) => <span style={{ fg: t().muted }}>{` ${role()}`}</span>}</Show>
                                 <Show when={childHost(child)}>{(host) => <span style={{ fg: t().muted }}>{` ${host()}`}</span>}</Show>
+                                <Show when={previewOf(child)?.model}>{(model) => <span style={{ fg: t().muted }}>{` ${model()}`}</span>}</Show>
                                 <span style={{ fg: child.asking ? t().warn : isBusy(child.status) ? t().accent : t().muted }}>{child.asking || isBusy(child.status) ? ` ${child.asking ? "needs you" : "working"}` : " "}<Show when={!child.asking && !isBusy(child.status)} fallback={null}><span style={{ fg: t().ok }}>✓</span></Show></span>
                               </text>
                             )}

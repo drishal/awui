@@ -150,7 +150,11 @@ describe("atui", () => {
         ui.keys.pressKey(key);
         const frame = await ui.until(expected);
         sheetFits(frame, expected);
-        if (key === "k") expect(frame).toMatch(/Enter open · .*Esc close/);
+        if (key === "k") {
+          expect(frame).toMatch(/Enter open · .*Esc close/);
+          // The delegated worker's row names the model it runs on (read once its preview arrives).
+          if (width === 140) expect(await ui.until("fake/echo")).toMatch(/└ .*fake\/echo/);
+        }
         ui.keys.pressEscape();
         await wait(60);
       }
