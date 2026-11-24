@@ -799,7 +799,7 @@ export function App(p: {
       // The match is what a find row is for, so it takes the whole label; the hint names the turn.
       label: plainPath(m.snippet, root),
       hint: `turn ${m.index + 1}${m.inWork ? " · work" : ""}${m.count > 1 ? ` · ${m.count}×` : ""}`,
-      run: () => { setLanded({ query, turnId: m.turnId }); revealTurn(m.index, m.inWork); if (hits.length > 1) flash(`match ${hits.indexOf(m) + 1} of ${hits.length} · M-n next · M-p previous`); },
+      run: () => { setLanded({ query, turnId: m.turnId }); revealTurn(m.index, m.inWork); if (hits.length > 1) flash(`match ${hits.indexOf(m) + 1} of ${hits.length} · M-n next · M-p previous`, 8000); },
     }));
   };
 
@@ -815,7 +815,7 @@ export function App(p: {
     const next = hits[at < 0 ? (by === 1 ? 0 : hits.length - 1) : (at + by + hits.length) % hits.length] as (typeof hits)[number];
     setLanded({ query: found.query, turnId: next.turnId });
     revealTurn(next.index, next.inWork);
-    flash(`match ${hits.indexOf(next) + 1} of ${hits.length} · M-n next · M-p previous`);
+    flash(`match ${hits.indexOf(next) + 1} of ${hits.length} · M-n next · M-p previous`, 8000);
     return true;
   };
 
