@@ -380,7 +380,8 @@ export function Composer(p: {
     if (spend) parts.push(spend);
     return parts.join(" · ");
   };
-  const secondRow = () => size().height >= 32 && p.column >= 90 && Boolean(telemetryText() || rateText());
+  // Kept as soon as the room is there (not only while figures exist), so the composer and transcript never jump a row when the first token or the usage arrives.
+  const secondRow = () => size().height >= 32 && p.column >= 90 && Boolean(app.chat());
   const offerText = () => (offer() ? `${compactFirst() ? "compact first" : "full history"} ${tokens(app.chat()?.context?.tokens ?? 0)} (${leader("f", p.keybinds)})  ` : "");
   const sparkText = () => (app.contextHistory().length > 1 ? `${sparkline(app.contextHistory().slice(-12), 100)} ` : "");
   const ctxText = () => (percent() !== null ? `ctx ${(app.chat()?.context?.tokens ?? 0) >= CONTEXT_HEAVY_TOKENS ? `${tokens(app.chat()?.context?.tokens ?? 0)} · ` : ""}${Math.round(percent() ?? 0)}%` : "");
