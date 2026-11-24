@@ -14,6 +14,8 @@ export interface AtuiPrefs {
   showThoughts?: boolean;
   /** No fills behind the transcript, composer, and status line: the terminal's own background shows through. */
   glass?: boolean;
+  /** The marks for calls and edits: plain Unicode (default), or Nerd Font glyphs (src/atui/icons.ts). */
+  icons?: "unicode" | "nerd";
 }
 export function prefsFile(env: Record<string, string | undefined> = process.env): string {
   const base = env.XDG_CONFIG_HOME || path.join(env.HOME || homedir(), ".config");
@@ -31,6 +33,7 @@ export function readPrefs(file = prefsFile()): AtuiPrefs {
       ...(typeof r.keybinds === "string" && (r.keybinds === "emacs" || r.keybinds === "vim") ? { keybinds: r.keybinds } : {}),
       ...(typeof r.showThoughts === "boolean" ? { showThoughts: r.showThoughts } : {}),
       ...(typeof r.glass === "boolean" ? { glass: r.glass } : {}),
+      ...(r.icons === "unicode" || r.icons === "nerd" ? { icons: r.icons } : {}),
     };
   } catch {
     return {};

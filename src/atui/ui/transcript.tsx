@@ -31,6 +31,7 @@ import { chatJobs, type ChatJob } from "../../web/jobs.js";
 import { formatWhen } from "../../web/turn-time.js";
 import { turnMarkdown } from "../../web/turn-markdown.js";
 import { accentOf, categoryTone, type Theme } from "../theme.js";
+import { icon } from "../icons.js";
 import { highlightPreview } from "../words.js";
 import { useAtui, useTheme } from "./context.js";
 import { glideTo, Shimmer, Spinner, usePaced } from "./fx.js";
@@ -56,12 +57,12 @@ const PULSE_TICKS = 4.5;
 const pulseOn = () => Math.floor(tick() / PULSE_TICKS) % 2 === 0;
 
 /** The glyph a settled row wears, one per kind of call as the web's chips are, so a column of rows reads by shape as well as by colour. */
-export const KIND_MARK: Record<ToolItem["category"], string> = { read: "▤", edit: "±", write: "±", command: "›", search: "◎", web: "⊕", agent: "◈", other: "●" };
+export const kindMark = (category: ToolItem["category"]): string => icon(category);
 
 /** The row's bullet, neat-render's: the category's colour when it settles, red on failure, filled and hollow in turn while it runs; a settled call wears its kind's glyph. */
 /** A settled call's glyph: ✗ a failure, ≡ a plan, ◇ an MCP server's call, else its kind's mark; the Timing rows wear the same. */
 export function callMark(failed: boolean, chip: ToolKindChip | undefined, category: ToolItem["category"]): string {
-  return failed ? "✗" : chip?.plan ? "≡" : chip?.server ? "◇" : KIND_MARK[chip?.category ?? category];
+  return failed ? icon("fail") : chip?.plan ? icon("plan") : chip?.server ? icon("mcp") : kindMark(chip?.category ?? category);
 }
 
 function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolean; category: ToolItem["category"]; chip?: ToolKindChip }) {
@@ -222,7 +223,7 @@ function PromptActions(p: { item: UserItem; through: number; onDone: () => void 
     <box flexDirection="row" flexWrap="wrap" marginTop={0} paddingLeft={1}>
       <Show when={canBranch()}>
         <Chip label="↻ Retry" onPress={run(() => void app.rerun(p.through, p.item, p.item.text))} />
-        <Chip label="✎ Edit" onPress={run(() => app.setEditing({ through: p.through, item: p.item }))} />
+        <Chip label={`${icon("pencil")} Edit`} onPress={run(() => app.setEditing({ through: p.through, item: p.item }))} />
       </Show>
       <Show when={idle() && hasCheckpoint()}>
         <Chip label="↶ Undo files" tone={t().warn} onPress={run(() => app.setUndoTurn(p.through))} />
@@ -1078,7 +1079,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
         {(h) => (
           <box flexDirection="row" marginTop={1}>
             <text selectable={false} fg={t().muted} wrapMode="none" truncate>
-              <span style={{ fg: t().info }}>{`${FIND_MARK} `}</span>
+              <span style={{ fg: t().info }}>{`${icon("find")} `}</span>
               <For each={h().parts}>{(part) => (part.match ? <span style={{ fg: t().accent }}><b>{part.text}</b></span> : <span style={{ fg: t().text2 }}>{part.text}</span>)}</For>
               <span style={{ fg: t().muted }}>{`  ·  ${p.foundOf ? `match ${p.foundOf} · ` : ""}${h().count > 1 ? `${h().count} matches${h().hidden > 0 && h().hidden < h().count ? ` (${h().hidden} in the work)` : ""} · ` : ""}${h().inWork && !p.open ? "in the work" : "in the turn"}${p.foundOf || h().count > 1 ? " · M-n/M-p step" : ""}`}</span>
             </text>
@@ -1142,7 +1143,7 @@ function TurnView(p: { turn: Accessor<Turn>; workspace: string; open: boolean; o
       <Show when={files().length > 0 && !p.turn().live}>
         <box marginTop={sigmaShown() ? 0 : 1}>
           <text selectable={false} fg={t().muted} wrapMode="word">
-            <span style={{ fg: categoryTone(t(), "edit") }}>{"± "}</span>
+            <span style={{ fg: categoryTone(t(), "edit") }}>{`${icon("changed")} `}</span>
             {`Changed ${files().length} ${files().length === 1 ? "file" : "files"}`}
             {/* The size of the turn's edit, as the web's changed badge says it; a figure from a partial count is not shown. */}
             <Show when={p.turn().changeStat && !p.turn().changeStat?.partial}>
@@ -1180,8 +1181,6 @@ interface Geometry {
   height: number;
 }
 
-/** The mark of a find: on the landed turn's strip and the gutter's tick (⌕, plain Unicode so no font is needed; ◎ is already the search tool's). */
-const FIND_MARK = "⌕";
 
 const sameGeometry = (a: Geometry, b: Geometry) => a.content === b.content && a.top === b.top && a.height === b.height && a.tops.length === b.tops.length && a.tops.every((v, i) => v === b.tops[i]);
 
@@ -1208,7 +1207,7 @@ function Minimap(p: { geometry: Geometry; tones: TurnTone[]; inset: number; onJu
             fg={cell().tone ? toneColor(cell().tone as TurnTone) : cell().inView ? mix(t().muted, t().text, 0.35) : t().border}
             onMouseDown={() => p.onJump(rowToScroll(row, cells().length, p.geometry.content, p.geometry.height))}
           >
-            {cell().tone ? (cell().tone === "live" ? "◆" : cell().tone === "found" ? FIND_MARK : "●") : cell().inView ? "┃" : "│"}
+            {cell().tone ? (cell().tone === "live" ? "◆" : cell().tone === "found" ? icon("find") : "●") : cell().inView ? "┃" : "│"}
           </text>
         )}
       </Index>

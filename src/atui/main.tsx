@@ -8,6 +8,7 @@ import { DEFAULT_URL, parseArgs, USAGE } from "./args.js";
 import { notifySequence } from "./assist.js";
 import { createHerdrReporter, herdrPane, paneReport, resumeArgv } from "./herdr.js";
 import { readPrefs, writePrefs } from "./prefs.js";
+import { iconSetFrom, setIconSet } from "./icons.js";
 import { createAtui, message, type Atui } from "./state.js";
 import { isBusy } from "../web/session-groups.js";
 import { progressSequence, speaksProgress, type Progress, type TerminalState } from "./terminal.js";
@@ -30,6 +31,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   }
   const server = new Server(parsed.url);
   const prefs = readPrefs();
+  // The marks for calls and edits: --icons, else $ATUI_ICONS, else what the palette last chose, else plain Unicode (src/atui/icons.ts).
+  setIconSet(parsed.icons ?? iconSetFrom(process.env.ATUI_ICONS) ?? prefs.icons ?? "unicode");
   // A desktop notification through the terminal (OSC 9 / 777): it moves no cursor, so it can go between frames.
   const notify = (title: string, body: string) => void process.stdout.write(notifySequence(process.env, title, body));
   const app = createRoot(() => createAtui(server, { ...parsed, glass: prefs.glass ?? false, showThoughts: prefs.showThoughts, notify }));
@@ -76,7 +79,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   };
   // The keybind style: the command line, else $ATUI_KEYBINDS/$ATUI_VIM, else what C-x v or SPC v last chose.
   const style = parsed.keybinds ?? (process.env.ATUI_KEYBINDS === "vim" || process.env.ATUI_KEYBINDS === "emacs" ? process.env.ATUI_KEYBINDS : process.env.ATUI_VIM ? (process.env.ATUI_VIM === "1" ? "vim" : "emacs") : undefined) ?? prefs.keybinds ?? "emacs";
-  await render(() => <App app={app} onExit={exit} keybinds={style} onKeybinds={(s) => writePrefs({ keybinds: s })} showThoughts={app.showThoughts()} onShowThoughts={(on) => { app.setShowThoughts(on); writePrefs({ showThoughts: on }); }} onGlass={(on) => writePrefs({ glass: on })} onTerminal={onTerminal} />, renderer);
+  await render(() => <App app={app} onExit={exit} keybinds={style} onKeybinds={(s) => writePrefs({ keybinds: s })} showThoughts={app.showThoughts()} onShowThoughts={(on) => { app.setShowThoughts(on); writePrefs({ showThoughts: on }); }} onGlass={(on) => writePrefs({ glass: on })} onIcons={(set) => writePrefs({ icons: set })} onTerminal={onTerminal} />, renderer);
 }
 
 /** In a herdr pane, and unless the server's setting or --no-herdr says not: tell herdr what this atui's chats do. */

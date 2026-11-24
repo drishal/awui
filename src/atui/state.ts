@@ -57,6 +57,8 @@ export interface AtuiOptions {
   images?: ImageMode;
   /** No fills behind the transcript, composer, and status line (the remembered choice, else off). */
   glass?: boolean;
+  /** The marks for calls and edits (--icons): plain Unicode, or Nerd Font glyphs. */
+  icons?: "unicode" | "nerd";
   /** Reasoning is expanded by default, like pi's neat-render; false starts it folded. */
   showThoughts?: boolean;
   /** Tell the desktop (a terminal notification) that a background session finished or asks; none in tests. */

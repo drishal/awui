@@ -116,6 +116,8 @@ describe("atui theme", () => {
 describe("atui command line", () => {
   it("reads the server, harness, and what to open", () => {
     expect(parseArgs(["--harness", "omp", "--resume"], { AWUI_URL: "http://box:4783/" })).toMatchObject({ url: "http://box:4783", harness: "omp", resume: true });
+    expect(parseArgs(["--icons", "nerd"], {})).toMatchObject({ icons: "nerd" });
+    expect(parseArgs(["--icons", "fancy"], {})).toEqual({ error: "--icons takes unicode or nerd" });
     expect(parseArgs(["--vim"], {})).toMatchObject({ keybinds: "vim" });
     expect(parseArgs(["--no-vim"], {})).toMatchObject({ keybinds: "emacs" });
     expect(parseArgs(["--keybinds", "vim"], {})).toMatchObject({ keybinds: "vim" });

@@ -17,6 +17,7 @@ import { firstStop, GAP_LINES_MAX, gapSpan, moveCursor, moveFile, nearestGap, op
 import type { FileView } from "../../shared/protocol.js";
 import { useAtui, useTheme } from "./context.js";
 import { fitHints } from "../footer.js";
+import { icon } from "../icons.js";
 import { highlightPreview, type Segment } from "../words.js";
 
 const SIGN = { add: "+", del: "-", ctx: " ", hunk: "", gap: "" } as const;
@@ -262,7 +263,7 @@ export function ReviewView(p: { onClose: () => void }) {
                       const done = () => entry.thread.status === "resolved";
                       return (
                         <text fg={done() ? t().muted : t().warn} wrapMode="word">
-                          {`        ${done() ? "✓" : "✎"} ${entry.thread.notes.map((note) => note.text).join(" · ")}${entry.stale ? "  (line changed since)" : ""}`}
+                          {`        ${done() ? "✓" : icon("pencil")} ${entry.thread.notes.map((note) => note.text).join(" · ")}${entry.stale ? "  (line changed since)" : ""}`}
                         </text>
                       );
                     }}

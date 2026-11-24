@@ -58,6 +58,7 @@ import { GitHubView } from "./github.js";
 import { collectChanges } from "../../web/review.js";
 import { Toasts } from "./toasts.js";
 import { callMark, Transcript } from "./transcript.js";
+import { iconSet, setIconSet, type IconSet } from "../icons.js";
 import type { ToolKindChip } from "../../web/tool-kinds.js";
 import { WhichKey } from "./whichkey.js";
 import { turnOffset, vimKey, pushJump, type Jump } from "../vim.js";
@@ -76,7 +77,7 @@ const PALETTE_GROUPS: Record<string, string> = {
   retry: "Chats", edit: "Chats", undo: "Chats", fork: "Chats", "put-back": "Chats", quote: "Chats",
   stop: "Agent", review: "Agent", board: "Agent", delegated: "Agent", "active-work": "Agent", run: "Agent", compact: "Agent",
   model: "Agent", thinking: "Agent", permission: "Agent", "refresh-models": "Agent", harness: "Agent",
-  sidebar: "View", panel: "View", work: "View", thoughts: "View", keybinds: "View", glass: "View",
+  sidebar: "View", panel: "View", work: "View", thoughts: "View", keybinds: "View", glass: "View", icons: "View",
   git: "Project", github: "Project", usage: "Project",
 };
 /** The headings' order; Tabs, Sessions and the thinking levels keep their own and follow. */
@@ -92,6 +93,8 @@ export function App(p: {
   keybinds?: KeybindStyle;
   onKeybinds?: (style: KeybindStyle) => void;
   onGlass?: (on: boolean) => void;
+  /** The icon set was switched from the palette (remembered by main.tsx). */
+  onIcons?: (set: IconSet) => void;
   showThoughts: boolean;
   onShowThoughts: (on: boolean) => void;
   /** The terminal's title and progress indicator changed (none in tests). */
@@ -720,6 +723,19 @@ export function App(p: {
     add({ id: "thoughts", label: thoughts() ? "Fold all reasoning" : "Show all reasoning", hint: keys.thoughts, run: () => { p.onShowThoughts(!thoughts()); setDialog(null); } });
     add({ id: "keybinds", label: keybinds() === "vim" ? "Emacs keybinds: the C-x chords" : "Vim keybinds: NORMAL keys, Space actions", keywords: "emacs vim keys mode style", hint: leader("v", keybinds()), run: () => runLeader("v") });
     add({ id: "glass", label: app.glass() ? "Glass off: solid panels" : "Glass on: see the terminal through", hint: leader("g", keybinds()), run: () => runLeader("g") });
+    // Plain Unicode marks work in every font; Nerd Font glyphs (omp's look) need a patched one, so it is a choice and the default stays Unicode.
+    add({
+      id: "icons",
+      label: iconSet() === "nerd" ? "Icons: plain Unicode (any font)" : "Icons: Nerd Font glyphs (needs a Nerd Font)",
+      keywords: "glyphs symbols nerd font unicode pencil",
+      run: () => {
+        const next: IconSet = iconSet() === "nerd" ? "unicode" : "nerd";
+        setIconSet(next);
+        p.onIcons?.(next);
+        setDialog(null);
+        flash(next === "nerd" ? "Nerd Font icons on (back with the palette: Icons)" : "Plain Unicode icons");
+      },
+    });
     // The shared chat width (config.yml's chat_width), as the web UI's Settings dialog sets it: every device draws it (C-x l cycles).
     CHAT_WIDTHS.forEach((w) => add({ id: `width:${w}`, label: `Chat width: ${chatWidthLabel(w)}`, keywords: "column layout measure", current: (boot?.ui.chatWidth ?? null) === w, run: () => void pickWidth(w) }));
     if (c?.capabilities.supportsCompact) add({ id: "compact", label: "Compact context", hint: leader("c", keybinds()), disabled: idle ? undefined : "Wait until the agent is idle", run: () => runLeader("c") });
@@ -1058,7 +1074,7 @@ export function App(p: {
     return `${"start".padStart(6)}  ${"took".padStart(6)}${anySlow ? " ".repeat(9) : ""}`;
   };
 
-  /** The mark before a Timing row: the transcript's own mark for the call (± › ◎ ▤ ⊕ ◈, ≡ a plan, ◇ an MCP server, ✗ a failure), ▾ for thinking as its row has, ● for the answer, ↳ for a subagent run. */
+  /** The mark before a Timing row: the transcript's own mark for the call (± › ◎ ▤ ⊕ ◈ in Unicode, Nerd Font glyphs when chosen; ≡ a plan, ◇ an MCP server, ✗ a failure), ▾ for thinking as its row has, ● for the answer, ↳ for a subagent run. */
   const timingMark = (row: { kind: string; chip?: ToolKindChip; failed?: boolean }) =>
     row.kind === "thinking" ? "▾" : row.kind === "reply" ? "●" : row.kind === "subagent" ? "↳" : callMark(row.failed === true, row.chip, row.chip?.category ?? "other");
 

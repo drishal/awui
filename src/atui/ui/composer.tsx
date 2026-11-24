@@ -24,6 +24,7 @@ import { mix, shimmer, sparkline, streamRate } from "../fx.js";
 import { attachmentFrom, attachmentFromFile, byteSize, clipboardImageByTool, imagePathsFromPaste, type PendingImage } from "../images.js";
 import { harnessGlyph } from "../neat.js";
 import { accentOf, CONTEXT_HEAVY_TOKENS, contextTone } from "../theme.js";
+import { icon } from "../icons.js";
 import { fitFooter, spendWords } from "../footer.js";
 import { useAtui, useTheme } from "./context.js";
 import { Shimmer } from "./fx.js";
@@ -613,7 +614,7 @@ export function Composer(p: {
           </Show>
           <Show when={app.editing() !== null}>
             <text flexShrink={0} wrapMode="none" fg={t().accent}>
-              {`  ✎ editing message ${app.editing()?.through ?? ""} · Enter replace · Esc cancel`}
+              {`  ${icon("pencil")} editing message ${app.editing()?.through ?? ""} · Enter replace · Esc cancel`}
             </text>
           </Show>
           <Show when={p.status.note}>

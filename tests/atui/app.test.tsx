@@ -9,6 +9,7 @@ import path from "node:path";
 /** The blinking stream cursor atui used to draw; it is gone, like in opencode, pi and Claude Code. */
 const OLD_CARET = "▍";
 import { contextTone } from "../../src/atui/theme.js";
+import { setIconSet } from "../../src/atui/icons.js";
 import { mount, startServer, wait, type Mounted } from "./helpers.js";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -196,6 +197,26 @@ describe("atui", () => {
     const folded = await ui.until("▸ Worked for");
     expect(folded).toMatch(/▸ Worked for \d+s · 2 reads, 1 search, 2 edits/);
     expect(folded).not.toContain("┌─ ● Read");
+  }, 30_000);
+  it("switches the marks to Nerd Font glyphs from the palette and back", async () => {
+    ui = await mount(path.join(server.root, "alpha"), { height: 40 });
+    await ui.type("showcase tool edit please");
+    ui.keys.pressEnter();
+    await ui.until("┌─ ▤ Read README.md");
+    await idle(ui);
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("icons");
+    ui.keys.pressEnter();
+    const nerd = await ui.until("\uf15c Read README.md");
+    expect(nerd).toMatch(/├─ \uf040 Edited src\/app\.ts/);
+    expect(nerd).not.toContain("▤ Read README.md");
+    ui.keys.pressKey("k", { ctrl: true });
+    await ui.until("Search commands");
+    await ui.type("icons");
+    ui.keys.pressEnter();
+    await ui.until("┌─ ▤ Read README.md");
+    setIconSet("unicode");
   }, 30_000);
   it("starts a rename from the palette by putting /rename in the composer", async () => {
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });

@@ -16,6 +16,8 @@ Usage: atui [options]
                       (default: as last set, or $ATUI_KEYBINDS, or $ATUI_VIM)
   --images <mode>     how prompt images are drawn: auto (ask the terminal), kitty
                       (kitty, Ghostty), sixel, blocks, or off (default $ATUI_IMAGES, auto)
+  --icons <set>       the marks for calls and edits: unicode (any font, default) or
+                      nerd (Nerd Font glyphs); else $ATUI_ICONS, else the palette's choice
   --no-herdr          in a herdr pane, do not report the chats' state to herdr
                       (the server's herdr setting turns it off for every atui)
   -h, --help          this help
@@ -61,6 +63,10 @@ export function parseArgs(argv: string[], env: Record<string, string | undefined
       const v = value();
       if (v !== "emacs" && v !== "vim") return { error: "--keybinds takes emacs or vim" };
       out.keybinds = v;
+    } else if (arg === "--icons") {
+      const v = value();
+      if (v !== "unicode" && v !== "nerd") return { error: "--icons takes unicode or nerd" };
+      out.icons = v;
     } else if (arg === "--vim") out.keybinds = "vim";
     else if (arg === "--no-vim") out.keybinds = "emacs";
     else if (arg === "--no-herdr") out.herdr = false;
