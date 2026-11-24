@@ -53,8 +53,19 @@ describe("which turn's prompt the bar shows", () => {
 describe("the bar's words", () => {
   it("folds a prompt to one bounded line", () => {
     expect(stickyLine("  fix the\n\n  build   please ")).toBe("fix the build please");
-    expect(stickyLine("x".repeat(500))).toHaveLength(200);
+    expect(stickyLine("x".repeat(500))).toHaveLength(160);
     expect(stickyLine("  \n ")).toBe("(no text)");
+  });
+
+  it("reads a prompt's Markdown as its words", () => {
+    // The frame's own prompt: a heading, a numbered list with bold and inline code.
+    expect(stickyLine("## Migration order\n\n1. **Freeze** writes to `users_legacy` for five minutes.\n2. Backfill in batches.")).toBe("Migration order Freeze writes to users_legacy for five minutes. Backfill in batches.");
+    expect(stickyLine("- a bullet\n- another")).toBe("a bullet another");
+    expect(stickyLine("_italic_ and __bold__ and ***both***")).toBe("italic and bold and both");
+    expect(stickyLine("See [the docs](https://example.com/a_b) for it")).toBe("See the docs for it");
+    expect(stickyLine("> quoted [![alt](img.png)](x) words")).toBe("quoted alt words");
+    // Underscores inside a name are not an italic mark.
+    expect(stickyLine("rename_this_file and keep it")).toBe("rename_this_file and keep it");
   });
 
   it("names the prompt it goes back to", () => {

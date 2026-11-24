@@ -40,9 +40,29 @@ export function stickyTurn(count: number, box: (index: number) => TurnBox | null
   return at !== null && at.bottom > clearance ? found : -1;
 }
 
-/** A prompt as one line for the bar: whitespace folded, bounded (the bar ellipsises what does not fit). */
+/** How much of a prompt the bar's line keeps: enough to recognise the ask, short of a paragraph under a 13 px row. */
+const STICKY_LINE_CHARS = 160;
+
+/** A prompt's Markdown as its words: line-leading marks (a heading's #, a bullet, 1., a quote's >), links that keep
+ *  their text, code backticks, and the bold/italic marks. Anything left over still reads (a table's pipes, a fence),
+ *  so this strips rather than renders: the bar is one quiet line, not a preview. */
+function stickyWords(text: string): string {
+  return text
+    .replace(/^[ \t]{0,3}(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)/gm, "")
+    // An image first, so the one a link wraps (`[![alt](img)](url)`) is not left half-read.
+    .replace(/!\[([^\]]*)\]\([^)\s]*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)\s]*\)/g, "$1")
+    .replace(/`+([^`]*)`+/g, "$1")
+    // Emphasis: asterisks anywhere, underscores only as a mark, so a name like `rename_this_file` keeps its underscores.
+    .replace(/(\*{1,3})(?=\S)([^]*?)(?<=\S)\1/g, "$2")
+    .replace(/(?<![\w])(_{1,3})(?=\S)([^]*?)(?<=\S)\1(?![\w])/g, "$2");
+}
+
+/** A prompt as one line for the bar: its words without Markdown's marks, whitespace folded, bounded (the bar ellipsises what does not fit). */
 export function stickyLine(text: string): string {
-  const line = text.replace(/\s+/g, " ").trim().slice(0, 200);
+  // Only the head is read: an editor's answer can be a megabyte, and the line keeps 160 characters of it,
+  // while these expressions would walk the whole thing.
+  const line = stickyWords(text.slice(0, 4_000)).replace(/\s+/g, " ").trim().slice(0, STICKY_LINE_CHARS);
   return line || "(no text)";
 }
 
