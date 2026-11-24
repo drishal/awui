@@ -1304,7 +1304,7 @@ export function Transcript(p: { ref?: (el: unknown) => void; showWork: boolean; 
         </Show>
       </box>
       <Show when={scrollable()}>
-        <Minimap geometry={geometry()} tones={tones()} inset={pinned() ? 1 : 0} onJump={(to) => glideTo(scroller, to)} />
+        <Minimap geometry={geometry()} tones={tones()} inset={pinned() ? 2 : 0} onJump={(to) => glideTo(scroller, to)} />
       </Show>
     </box>
   );
