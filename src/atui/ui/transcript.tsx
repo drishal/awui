@@ -62,7 +62,7 @@ function Bullet(p: { status: "running" | "done" | "error"; failedOutput?: boolea
   const t = useTheme();
   const on = () => p.status !== "running" || pulseOn();
   const color = () => (p.status === "error" || p.failedOutput ? t().danger : p.status === "running" ? (on() ? t().warn : t().muted) : categoryTone(t(), p.category));
-  return <span style={{ fg: color() }}>{p.status === "running" ? (on() ? "● " : "○ ") : `${p.status === "error" || p.failedOutput ? "✗" : p.chip?.plan ? "≡" : p.chip?.server ? "◇" : KIND_MARK[p.category]} `}</span>;
+  return <span style={{ fg: color() }}>{p.status === "running" ? (on() ? "● " : "○ ") : `${p.status === "error" || p.failedOutput ? "✗" : p.chip?.plan ? "≡" : p.chip?.server ? "◇" : KIND_MARK[p.chip?.category ?? p.category]} `}</span>;
 }
 
 /**
