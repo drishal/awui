@@ -43,7 +43,7 @@ import { newsBetween, type News } from "./assist.js";
 import { imageModeFrom, imageProtocol, type ImageMode } from "./images.js";
 import { followChat, idempotencyKey, Server, ServerError, type Connection } from "./client.js";
 import { themeFrom, type Theme } from "./theme.js";
-import { presetName, withPreset, withPresetAt, withoutPreset, type Preset } from "./presets.js";
+import { parsePresets, presetName, withPreset, withPresetAt, withoutPreset, type Preset } from "./presets.js";
 
 export interface AtuiOptions {
   cwd: string;
@@ -122,6 +122,20 @@ export function createAtui(server: Server, opts: AtuiOptions) {
   const [contextHistory, setContextHistory] = createSignal<number[]>([]);
   const [glass, setGlass] = createSignal(opts.glass ?? false);
   const [presets, setPresets] = createSignal<Preset[]>(opts.presets ?? []);
+  /** The list the server last held, as JSON, so a read from it is never written straight back; null until the server has answered. */
+  let syncedPresets: string | null = null;
+  createEffect(
+    on(
+      presets,
+      (list) => {
+        const json = JSON.stringify(list);
+        if (syncedPresets === null || json === syncedPresets) return;
+        syncedPresets = json;
+        void server.call("/api/presets", { method: "PUT", body: { presets: list } }).catch(() => undefined);
+      },
+      { defer: true },
+    ),
+  );
   const [tabs, setTabs] = createSignal<TabState>(NO_TABS);
   /** Each tab's chat as last shown, by tab key: a switch back shows it at once, and its stream replays what it missed. */
   const tabCache = new Map<string, ChatState>();
@@ -289,6 +303,13 @@ export function createAtui(server: Server, opts: AtuiOptions) {
       setBoot(b);
       setTheme(themeFrom(t));
     });
+    // The presets are the server's, shared with every client; a list that only atui.json has (from before) is sent up once, and an unreachable route leaves the local copy.
+    const remote = await server.call<{ presets: unknown }>("/api/presets").then((r) => parsePresets(r.presets), () => null);
+    if (remote) {
+      if (remote.length === 0 && presets().length > 0) void server.call("/api/presets", { method: "PUT", body: { presets: presets() } }).catch(() => undefined);
+      else setPresets(remote);
+      syncedPresets = JSON.stringify(remote.length === 0 ? presets() : remote);
+    }
     const wanted = opts.harness ? b.harnesses.find((h) => h.id === opts.harness || h.displayName.toLowerCase() === opts.harness?.toLowerCase()) : undefined;
     if (opts.harness && !wanted) throw new Error(`No harness "${opts.harness}"; known: ${b.harnesses.map((h) => h.id).join(", ")}`);
     const pick = wanted ?? b.harnesses.find((h) => h.available);

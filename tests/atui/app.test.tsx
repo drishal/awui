@@ -1922,6 +1922,8 @@ describe("atui's keybind styles", () => {
     expect(second).toContain("tidy the docs");
   }, 60_000);
   it("saves a setup as a named preset, starts a chat from it, and forgets it", async () => {
+    // The presets are the server's, shared by the whole suite: this test starts from none.
+    await fetch(`${server.base}/api/presets`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ presets: [] }) });
     ui = await mount(path.join(server.root, "alpha"), { height: 40 });
     ui.keys.pressKey("k", { ctrl: true });
     await ui.until("Search commands");
@@ -1936,6 +1938,9 @@ describe("atui's keybind styles", () => {
     ui.keys.pressEnter();
     await ui.until("Preset “Explore” saved");
     expect(ui.app.presets()).toEqual([expect.objectContaining({ name: "Explore", harnessId: "fake" })]);
+    // It went to the server, where the browser and Tern read the same list.
+    await wait(300);
+    expect(((await (await fetch(`${server.base}/api/presets`)).json()) as { presets: Array<{ name: string }> }).presets.map((x) => x.name)).toEqual(["Explore"]);
     // The same name replaces it rather than adding a second.
     ui.keys.pressKey("k", { ctrl: true });
     await ui.until("Search commands");
