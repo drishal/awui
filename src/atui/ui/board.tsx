@@ -173,8 +173,8 @@ export function BoardView(p: { onClose: () => void; onOpenSession: (s: ProjectSe
           <b style={{ fg: t().text }}>Agents</b>
           {`   ${filterLine()}`}
         </text>
-        <text flexShrink={0} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
-          {note() ?? (width() < 100 ? "Enter opens · Esc closes" : width() < 130 ? "←→ column · ↑↓ card · Enter opens · Esc closes" : "←→ column · ↑↓ card · Enter opens · f project · r pull request · Esc closes")}
+        <text flexShrink={0} marginLeft={2} fg={note() ? t().warn : t().muted} wrapMode="none" truncate>
+          {note() ?? (width() < 100 ? "Enter opens · Esc closes" : width() < 135 ? "←→ ↑↓ move · Enter opens · Esc closes" : "←→ column · ↑↓ card · Enter opens · f project · r pull request · Esc closes")}
         </text>
       </box>
       <box flexDirection="row" flexGrow={1} overflow="hidden" marginTop={1}>
