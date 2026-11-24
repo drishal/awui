@@ -1216,8 +1216,9 @@ function ProcessFold({
       </div>}
       {thought ? (
         <div className="process-thought" data-testid="live-thought">
-          <IconSpark size={13} />
-          <span>{thought}</span>
+          <IconSpark size={12} />
+          <span className="process-thought-label">Thought{duration ? ` · ${duration}` : ""}</span>
+          <span className="process-thought-text">{thought}</span>
         </div>
       ) : null}
       <Collapse open={open || single} unfurl>

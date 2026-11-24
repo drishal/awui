@@ -97,8 +97,10 @@
   background: color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
+/* The live thought is a pill in the card's gutter, as wide as it needs and no wider. */
 .process-card .process-thought {
-  padding: 0 12px 8px;
+  align-self: flex-start;
+  margin: 0 12px 8px;
 }
 
 /* The icon stack: one glyph per kind of tool, side by side and bare (overlapping ringed discs

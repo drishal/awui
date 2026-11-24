@@ -137,27 +137,39 @@
   text-overflow: ellipsis;
 }
 
-/* A folded live turn keeps its latest thought in view under "Working". */
+/* A folded live turn keeps its latest thought in view under its head: one quiet pill, the label saying it is a
+   thought and how long it has run, one clause of what it says. Full-bleed narration made the fold's one moving part
+   look like a call. */
 .process-thought {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 2px 0 6px 2px;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: var(--r-control);
+  background: var(--surface-2);
   color: var(--muted-text);
-  font-size: calc(13px * var(--chat-scale));
+  font-size: 11.5px;
   line-height: 1.5;
 }
 
 .process-thought .icon {
   flex: none;
-  margin-top: 3px;
 }
 
-.process-thought span {
-  display: -webkit-box;
+.process-thought-label {
+  flex: none;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.process-thought-text {
+  min-width: 0;
+  max-width: 60ch;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Compact before send: amber when the next message compacts first, muted when it goes in full. */
