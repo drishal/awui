@@ -414,6 +414,20 @@ describe("atui", () => {
     await ui.until(() => ui?.app.chat() !== null);
     await wait(80);
     expect(await ui.frame()).not.toContain("Find in chat");
+    // M-n and M-p step through the turns the find matched, wrapping, without reopening the sheet.
+    ui.keys.pressKey("s", { ctrl: true });
+    await ui.until("Type to find text in this chat…");
+    await ui.type("prompt");
+    await ui.until("2 turns");
+    ui.keys.pressEnter();
+    await ui.until("match 1 of 2 · M-n next · M-p previous");
+    await wait(120);
+    ui.keys.pressKey("n", { meta: true });
+    await ui.until("match 2 of 2 · M-n next · M-p previous");
+    ui.keys.pressKey("n", { meta: true });
+    await ui.until("match 1 of 2 · M-n next · M-p previous");
+    ui.keys.pressKey("p", { meta: true });
+    await ui.until("match 2 of 2 · M-n next · M-p previous");
     // Nothing matches: the picker says so instead of listing the whole chat.
     ui.keys.pressKey("s", { ctrl: true });
     await ui.until("Type to find text in this chat…");

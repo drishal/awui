@@ -507,6 +507,11 @@ export function App(p: {
       key.preventDefault();
       return setDialog("find");
     }
+    // M-n / M-p: step through the turns the last find matched (a meta chord, so no typed letter or vim key is touched).
+    if (key.meta && !key.ctrl && (key.name === "n" || key.name === "p") && landed()) {
+      key.preventDefault();
+      if (stepFind(key.name === "n" ? 1 : -1)) return;
+    }
     if (keybinds() === "emacs" && key.ctrl && key.name === "t") {
       key.preventDefault();
       p.onShowThoughts(!thoughts());
@@ -787,14 +792,31 @@ export function App(p: {
     const turns = buildTurns(c.items, c.status, c.runStartedAt);
     // A row is one line: a short radius keeps the match inside what the picker draws, and the project's own path is dropped as the transcript drops it.
     const root = `${c.workspace.path}/`;
-    return findTurns(turns, query, 30, c.workspace.path).map((m) => ({
+    const hits = findTurns(turns, query, 30, c.workspace.path);
+    return hits.map((m) => ({
       id: `find:${m.turnId}`,
       section: "Turns",
       // The match is what a find row is for, so it takes the whole label; the hint names the turn.
       label: plainPath(m.snippet, root),
       hint: `turn ${m.index + 1}${m.inWork ? " · work" : ""}${m.count > 1 ? ` · ${m.count}×` : ""}`,
-      run: () => revealTurn(m.index, m.inWork),
+      run: () => { setLanded({ query, turnId: m.turnId }); revealTurn(m.index, m.inWork); if (hits.length > 1) flash(`match ${hits.indexOf(m) + 1} of ${hits.length} · M-n next · M-p previous`); },
     }));
+  };
+
+  /** The find that last landed (its words and the turn it landed on): M-n and M-p step to the next and previous turn that matches, as a browser's find does, without reopening the sheet. */
+  const [landed, setLanded] = createSignal<{ query: string; turnId: string } | null>(null);
+  const stepFind = (by: 1 | -1) => {
+    const found = landed();
+    const c = app.chat();
+    if (!found || !c) return false;
+    const hits = findTurns(buildTurns(c.items, c.status, c.runStartedAt), found.query, 30, c.workspace.path);
+    if (hits.length === 0) { setLanded(null); return false; }
+    const at = hits.findIndex((m) => m.turnId === found.turnId);
+    const next = hits[at < 0 ? (by === 1 ? 0 : hits.length - 1) : (at + by + hits.length) % hits.length] as (typeof hits)[number];
+    setLanded({ query: found.query, turnId: next.turnId });
+    revealTurn(next.index, next.inWork);
+    flash(`match ${hits.indexOf(next) + 1} of ${hits.length} · M-n next · M-p previous`);
+    return true;
   };
 
   /** The Timing picker's scale: the waterfall's own ticks as fractions of its axis, so the bars read against a time. */
