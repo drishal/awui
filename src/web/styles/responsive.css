@@ -64,6 +64,8 @@
     inset: 0 auto 0 0;
     z-index: 40;
     width: min(88vw, 340px);
+    /* The drawer's own head sits clear of the notch, as its last row clears the home indicator. */
+    padding-top: calc(12px + env(safe-area-inset-top));
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
     border-right: 0;
     box-shadow: var(--shadow-float);
@@ -94,7 +96,8 @@
 
   .chat-header {
     min-height: 50px;
-    padding: 6px 10px;
+    /* Clear of the notch: the title sits under the status bar, never behind it. */
+    padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
   }
 
   /* The project stays on a phone, shortened, so the header still says where the chat runs. */
@@ -107,17 +110,41 @@
     max-width: 12ch;
   }
 
+  /* A phone has a notch and a rounded edge: the transcript keeps a real gutter on both sides and
+     stays clear of the home indicator, so no line starts or ends under the curve. */
   .thread {
-    padding: 4px 12px 36px;
+    padding: 4px max(16px, env(safe-area-inset-right)) calc(36px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
-  .jump {
+  /* The transcript runs under the dock; this fades it out rather than letting the dock cut a line. */
+  .conversation-wrap::after {
+    content: "";
+    position: absolute;
     right: 0;
-    width: 34px;
+    bottom: 0;
+    left: 0;
+    height: 28px;
+    pointer-events: none;
+    background: linear-gradient(to top, var(--bg), transparent);
+  }
+
+  /* The way back to the newest turn floats over that fade instead of butting against the cut edge. */
+  .jump {
+    right: 8px;
+    bottom: 6px;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--hairline-strong);
+    border-radius: 999px;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .jump::before {
+    display: none;
   }
 
   .sticky-prompt {
-    padding-inline: 12px;
+    padding-inline: 16px;
   }
 
   .bubble-stack {
