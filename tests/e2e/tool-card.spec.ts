@@ -127,8 +127,10 @@ test("a failed call tints its row with the reason, opens its card, and the tally
   expect(reasonBox!.y).toBeLessThan(sentenceBox!.y + sentenceBox!.height);
   const [rowBox, headBox] = [await row.boundingBox(), await row.locator(".tool-head").boundingBox()];
   expect(rowBox!.height).toBeLessThanOrEqual(headBox!.height + 2);
-  await expect(row.locator('.tool-status[aria-label="failed"]')).toBeVisible();
-  // The harness reported exit 1, so the row carries it as a fact beside the reason.
+  // One danger chip, not three statements: the exit code is the row's verdict, so the word "failed" is not
+  // repeated beside it, and the row's end mark is gone (the chip and the tint already say it).
+  await expect(row.locator(".tool-outcome")).toHaveCount(0);
+  await expect(row.locator(".tool-status svg")).toHaveCount(0);
   await expect(row.locator(".tool-fact")).toHaveText("exit 1");
   // The row's name carries the reason, since the name replaces the text inside it.
   await expect(row.locator(".tool-head")).toHaveAccessibleName(/Couldn't run npm run e2e, exit 1, Error: port 4791 is already in use,\s*(?:[^,]+, )?failed/);
@@ -240,8 +242,10 @@ test.describe("on a phone", () => {
     // Both rows end with the chevron in one column; the failed one adds its mark in the slot before it.
     const [failedChevron, passedChevron] = [await failed.locator(".tool-chevron").boundingBox(), await row.locator(".tool-chevron").boundingBox()];
     expect(Math.abs(failedChevron!.x - passedChevron!.x)).toBeLessThan(1);
-    const failedMark = await failed.locator('.tool-status[aria-label="failed"]').boundingBox();
-    expect(failedMark!.x).toBeLessThan(failedChevron!.x);
+    // The failed row's status slot stays empty now (its chip says what failed), but it keeps the column, so the
+    // retry's room sits where the mark used to and both chevrons land on the same x.
+    const failedSlot = await failed.locator(".tool-status").boundingBox();
+    expect(failedSlot!.x).toBeLessThan(failedChevron!.x);
   });
 });
 

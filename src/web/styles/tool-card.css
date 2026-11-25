@@ -312,10 +312,33 @@
   white-space: nowrap;
 }
 
-/* A settled call that failed says so in a word beside its counts (the end mark is the only one it draws). */
-.tool-outcome {
+/* A call's duration is the row's other measure, so it sits apart from the counts and a step below them: at the
+   counts' own ink, "+3 −2 · 4s" read as one run of numbers rather than a change and a time. It keeps a column's
+   width, so a ticking clock does not shift the chevron. */
+.tool-time {
+  min-width: 4ch;
+  margin-left: 1px;
+  color: color-mix(in srgb, var(--muted-text) 85%, transparent);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* A settled call that failed says so once, in a chip beside its counts: the exit code when there is one, else
+   the word. Both take the same shape, so the row reads as one verdict wherever the harness reports it. */
+.tool-outcome,
+.tool-fact .tool-exit {
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
   font-weight: 600;
+}
+
+/* An exit code is a value, not a sentence: monospaced and tabular, so two of them line up. */
+.tool-fact .tool-exit {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
 }
 
 .tool-facts .drow-aside {
@@ -346,17 +369,6 @@
   color: var(--danger);
 }
 
-/* An exit code is a value, not a sentence: it takes a chip's shape so a failed row's "exit 1" reads at a glance
-   beside the reason it came with. */
-.tool-fact .tool-exit {
-  padding: 0 5px;
-  border-radius: var(--r-xs);
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  color: var(--danger);
-  font-family: var(--font-mono);
-  font-size: 0.95em;
-  font-variant-numeric: tabular-nums;
-}
 
 /* Tool rows by category: the glyph takes --cat-*, the row text stays --text. */
 .tool-plain-lead,
