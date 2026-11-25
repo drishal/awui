@@ -69,7 +69,7 @@ banners-dialogs.css), so search rather than guess.
 | Agent-rendered page visual preview | `HtmlRenderFrame.tsx`, server `render-preview.ts` | `subagents.css`, bounded in-memory Chromium only | `render-preview.test.ts`, `workspace-features.test.ts` |
 | Heavy auxiliary dialogs | `SettingsDialog.tsx`, `UsageDialog.tsx`, `TimelineDialog.tsx`, `RoutinesDialog.tsx`, board and project tools loaded through App.tsx's lazy boundaries | their area stylesheets; desktop chunks load only on open | build + relevant feature specs |
 | Phones: drawer, sheets, long press, row swipe actions | `ActionSheet.tsx`, `gestures.ts` (`useRowSwipe` in `Sidebar.tsx`'s rows) | `phones.css`, `responsive.css`, `sidebar.css` | `phone.spec.ts`, `toasts-and-swipes.spec.ts` |
-| Current-chat context rail and details | `ContextPanel.tsx` (a summary card whose last row opens review, then one card per group) over the shared rows and cards in `ContextRows.tsx`; derived facts, status words, and project summary in `context-panel.ts`; `App.tsx`'s outer context-work slot outside the original split; `styles/context-panel.css`; native `tool-row`/`request-row` ids attach directly to original tools and permission form, and race/comments/second-opinion interactions keep their existing owning views | 40px collapsed rail with count badges, ~280px detail, gives its detail back to native side/work panels, phone shows same details in `Dialog`; a group with nothing to say is left out rather than drawn as an empty "0"; every fold saved through browser preference `context.folds` | `tests/e2e/context-panel.spec.ts`, `tests/unit/context-panel.test.ts` |
+| Current-chat context rail and details | `ContextPanel.tsx` (a summary card whose last row opens review, then one card per group) over the shared rows and cards in `ContextRows.tsx`; derived facts, status words, and project summary in `context-panel.ts`; `App.tsx`'s outer context-work slot outside the original split; `styles/context-panel.css`; native `tool-row`/`request-row` ids attach directly to original tools and permission form, and race/comments/second-opinion interactions keep their existing owning views | 40px collapsed rail with count badges, a 240–280px detail (20vw, so the transcript keeps its measure), the usage group open by default around one 44px row with the context pie, gives its detail back to native side/work panels, phone shows same details in `Dialog`; a group with nothing to say is left out rather than drawn as an empty "0", and a rail with nothing at all says so in one muted line; every fold saved through browser preference `context.folds` | `tests/e2e/context-panel.spec.ts`, `tests/unit/context-panel.test.ts` |
 | Motion and the ripple (turn entrance, streaming caret, start-screen mark) | `ripple.ts`, `arrivals.ts`, `morph.ts` (a box handed from one mount to the next: start screen → chat) | `motion.css`, `ripple.css` | `app.spec.ts`, `motion.spec.ts`, `start-screen.spec.ts` |
 
 Every component opens with a comment saying what it draws and why it is
@@ -97,8 +97,11 @@ a literal colour.
   `--r-xl` 14, `--r-panel` 16 (px). A radius says what a thing is: controls
   (buttons, chips, segmented choices, pickers) take `--r-control`, in-page tiles
   `--r-md`, menus `--r-lg`, dialogs and the prompt bubble `--r-xl`, the
-  composer, the status dock over it (at its width), and the approval card `--r-panel`. `999px` / `50%` is only for a dot or a
-  single glyph (send, switches, status dots, the context ring).
+  status dock over it (at its width) and the approval card `--r-panel`, and the
+  composer one step rounder still (`--r-panel` + 4 px): it is the page's
+  softest object, and the difference is what separates it from the cards above
+  it. `999px` / `50%` is only for a dot or a single glyph (send, switches,
+  status dots, the context ring).
 - **Widths:** `--col` 960 px (review drawers), `--chat-col` (the conversation
   and composer; config.yml's `chat_width`), `--sidebar-w`.
 - **Density:** `--row-h`, `--head-h`, `--section-gap`, `--gap-turn`, `--gap-process`,
@@ -112,7 +115,7 @@ a literal colour.
   `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat
   title, dialog titles, the start screen) take `--tracking-tight`.
 - **Control sizes:** the composer's row is 32 px tall on every screen, its
-  chips and icon buttons at `--r-control`, and Send a round 36 px (the row's one
+  chips and icon buttons at `--r-control`, and Send a round 40 px (the row's one
   control a size larger; the composer is the exception to `phones.css` raising
   touch targets to 36–44 px elsewhere: a phone keeps its one slim row at 32 px).
   Keep a row of controls one height: mismatched heights and radii are what makes a
@@ -145,7 +148,7 @@ a literal colour.
   gone inside the pill). The harness's default permission mode is a quiet 32 px
   shield beside the pill, with its mode in the tooltip and the accessible name; a mode
   that stops asking keeps its word and its warn wash (the harness segment then keeps
-  just its mark). Send is the row's one solid and the one control a size larger, 36 px
+  just its mark). Send is the row's one solid and the one control a size larger, 40 px
   round. The row carries `data-harness-accent`: a harness whose accent is `thinking`
   (omp, Awui) ramps reasoning in grey, and one whose accent is `ok` (DeepSeek Harness)
   gets a grey shield, so no two parts ever share a hue.
