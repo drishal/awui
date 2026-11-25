@@ -41,7 +41,7 @@
   pointer-events: none;
 }
 
-/* A 1px line every 24px each way, masked out in a disc so the sheet ends before the heading instead of
+/* A 1px line every 24px each way, masked out in an ellipse so the sheet ends before the heading instead of
    stopping at an edge. Half a cell of offset puts the glyph in the middle of one, not on a crossing. */
 .hero-mark-grid {
   position: absolute;
@@ -55,7 +55,10 @@
     repeating-linear-gradient(to right, var(--hero-grid) 0 1px, transparent 1px 24px),
     repeating-linear-gradient(to bottom, var(--hero-grid) 0 1px, transparent 1px 24px);
   background-position: calc(50% - 12px) calc(50% - 12px);
-  mask-image: radial-gradient(closest-side, #000 30%, transparent 92%);
+  /* Fully clear where the headline's cap height starts: measured, the h1's box begins 100 px above this box's
+     bottom edge, and its cap line sits about 90 px below the mask's centre — just past where this ends. The
+     sheet reads as the mark's own paper, never as a table drawn behind the words. */
+  mask-image: radial-gradient(60% 50% at 50% 38%, #000 20%, transparent 62%);
   pointer-events: none;
 }
 
