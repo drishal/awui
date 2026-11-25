@@ -1195,12 +1195,14 @@
 }
 
 /* Diffs: tinted rows, a number gutter, the changed words marked. The tints are percentages of the outcome hues,
-   so a base16 theme colours them by overriding --ok and --danger alone. */
+   so a base16 theme colours them by overriding --ok and --danger alone.
+   Added and removed weigh the same: at 11% against 10% every edit quietly said the removal mattered less.
+   Eight percent leaves the row's bar and the changed words to carry the signal. */
 .diff {
-  --diff-add-tint: 11%;
-  --diff-add-mark-tint: 30%;
-  --diff-del-tint: 10%;
-  --diff-del-mark-tint: 28%;
+  --diff-add-tint: 8%;
+  --diff-add-mark-tint: 46%;
+  --diff-del-tint: 8%;
+  --diff-del-mark-tint: 42%;
   --diff-add-bg: color-mix(in srgb, var(--ok) var(--diff-add-tint), transparent);
   --diff-add-mark: color-mix(in srgb, var(--ok) var(--diff-add-mark-tint), transparent);
   --diff-del-bg: color-mix(in srgb, var(--danger) var(--diff-del-tint), transparent);
@@ -1212,20 +1214,16 @@
 }
 
 /* On a light page the same percentages wash out to almost nothing against a near-white card: the tints take a
-   little more there, and the word marks more again, so an added line is not a green suggestion. */
+   little more there, so an added line is not a green suggestion. The word marks are strong enough in both. */
 :root[data-theme="light"] .diff {
-  --diff-add-tint: 14%;
-  --diff-add-mark-tint: 32%;
-  --diff-del-tint: 13%;
-  --diff-del-mark-tint: 30%;
+  --diff-add-tint: 11%;
+  --diff-del-tint: 11%;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) .diff {
-    --diff-add-tint: 14%;
-    --diff-add-mark-tint: 32%;
-    --diff-del-tint: 13%;
-    --diff-del-mark-tint: 30%;
+    --diff-add-tint: 11%;
+    --diff-del-tint: 11%;
   }
 }
 
@@ -1309,19 +1307,8 @@
   box-shadow: inset 3px 0 0 color-mix(in srgb, var(--danger) 70%, transparent);
 }
 
-/* The sign and number take the row's hue toward the text colour: plain --ok on the added row's tint measured 3.9:1
-   in light, the faintest text in the card. */
-.diff-line.is-add .diff-sign,
-.diff-line.is-add .diff-no {
-  color: color-mix(in srgb, var(--ok) 70%, var(--text));
-  opacity: 1;
-}
-
-.diff-line.is-del .diff-sign,
-.diff-line.is-del .diff-no {
-  color: color-mix(in srgb, var(--danger) 70%, var(--text));
-  opacity: 1;
-}
+/* The row's bar, tint and marked words already say added or removed; a green number was a fourth signal, and
+   the brightest ink in the card. Gutter numbers and signs stay the muted measurement colour on every row. */
 
 .diff-line.is-add .diff-text,
 .diff-line.is-del .diff-text {
