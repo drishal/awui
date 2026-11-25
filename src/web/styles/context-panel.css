@@ -25,7 +25,9 @@
   background: var(--card);
   transition: flex-basis 160ms var(--ease-out), background-color 160ms var(--ease-out);
 }
-.context-panel.is-expanded { flex-basis: 280px; }
+/* The detail is a reading column, not a second page: it never takes more than a fifth of a wide
+   window, so the transcript keeps its measure and the rail's own rows stay on one line. */
+.context-panel.is-expanded { flex-basis: clamp(240px, 20vw, 280px); }
 
 .context-work > .context-panel > .loader { margin: auto; padding: 14px; }
 .context-work > .context-panel > .loader .loader-label { white-space: normal; text-align: center; }
@@ -255,12 +257,26 @@
 
 /* ---- context usage: the number on the group's heading, then its one thin track ---- */
 .context-head-value { color: var(--text-2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+/* The usage card's one tall row: the pie, the share in words, and the way into the full view. It is the
+   rail's only 44px row, which is what makes the card read as the panel's anchor when nothing is running. */
+.context-usage-row { min-height: 44px; padding: 6px 6px 6px 8px; gap: 10px; }
+.context-usage-row .context-row-icon { width: 24px; height: 24px; }
+/* The same accent the thin track under it uses: one figure, one hue, and the disc's faint fill keeps
+   the unfilled share visible without a ring. Warn and danger still take the whole pie. */
+.context-pie { display: grid; place-items: center; color: var(--accent); }
+/* The disc needs more of itself on a dark scheme (--raise-mix), or a small share reads as a spinner. */
+.context-pie circle:first-child { fill-opacity: calc(22% + var(--raise-mix) * 0.6); }
+.context-pie circle:last-child { transition: stroke-dasharray 0.3s var(--ease-out); }
+.context-pie.tone-warn { color: var(--warn); }
+.context-pie.tone-danger { color: var(--danger); }
+.context-usage-row .context-row-title { font-size: 12.5px; }
 .context-usage-bar { position: relative; height: 3px; margin: 2px 7px 6px; background: var(--surface-2); border-radius: 2px; }
 .context-usage-bar::after { display: block; width: var(--context-value); height: 100%; content: ""; border-radius: inherit; background: var(--accent); }
 
+/* The rail with nothing in it: one quiet sentence where the groups would be, never a stack of empty ones. */
+.context-idle { margin: 16px 6px 0; color: var(--muted-text); font-size: 11.5px; line-height: 1.5; }
 .context-error { margin: 10px 2px 0; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 
-@media (min-width: 1200px) { .context-panel.is-expanded { flex-basis: min(320px, 31vw); } }
 @media (pointer: coarse) {
   /* A thumb: rows and their buttons grow, while the 40px rail keeps its width. */
   .context-row { padding: 7px 6px; }
@@ -268,4 +284,7 @@
   .context-foot-button { padding-block: 9px; }
 }
 @media (max-width: 819px) { .context-work > .chat-split { min-width: 0; }.chat-split { grid-template-columns: minmax(0, 1fr) !important; } }
-@media (prefers-reduced-motion: reduce) { .context-panel { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .context-panel { transition: none; }
+  .context-pie circle:last-child { transition: none; }
+}

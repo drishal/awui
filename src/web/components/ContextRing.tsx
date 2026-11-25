@@ -509,6 +509,24 @@ function DetailsBody({
   );
 }
 
+/**
+ * The context pie as a drawing of its own: a faint disc, and the used share as a stroke as wide as
+ * its own diameter (r 3.5, width 7), so it fills a sector out to the disc's edge and never reads as
+ * a loader. The composer's chip draws it at 16px, the context rail's usage row at 24px, and the colour
+ * comes from the caller: the chip's `tone-*` classes, or the rail's own quiet accent.
+ */
+export function ContextPie({ percent, size = 16 }: { percent: number; size?: number }) {
+  const pct = Math.max(0, Math.min(100, percent));
+  const r = 3.5;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="7" fill="currentColor" fillOpacity="0.2" />
+      <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeWidth={r * 2} strokeDasharray={`${(pct / 100) * c} ${c}`} transform="rotate(-90 8 8)" />
+    </svg>
+  );
+}
+
 /** The chip's full view: mounted only while it is open, so a closed chip never folds the chat into turns. */
 function ContextDetails({
   context,
@@ -632,10 +650,6 @@ export function ContextRing({
   // Hidden until the harness itself knows how full the window is: an empty ring reads like a spinner.
   if (!hasContextFigure(context)) return figure ? <div className="context-ring-wrap">{figure}</div> : null;
   const pct = Math.max(0, Math.min(100, context.percent));
-  // A pie, which no loader looks like: a faint disc, and the used share drawn as a stroke as wide as its own
-  // diameter (r 3.5, width 7) so it fills a sector out to the disc's edge.
-  const r = 3.5;
-  const c = 2 * Math.PI * r;
   const tone = contextTone(pct);
   const detail = `${compacting ? "Compacting context. " : ""}${Math.round(pct)}% of context used${context.tokens !== null ? ` · ${compact(context.tokens)} / ${compact(context.window)} tokens` : ""}`;
   const peek = { context, usage, draft: size, canCompact, history, compacting, compacted };
@@ -653,10 +667,7 @@ export function ContextRing({
         data-testid="context-ring"
         onClick={() => setOpen((v) => !v)}
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="7" fill="currentColor" fillOpacity="0.2" />
-          <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeWidth={r * 2} strokeDasharray={`${(pct / 100) * c} ${c}`} transform="rotate(-90 8 8)" />
-        </svg>
+        <ContextPie percent={pct} />
         <span className="context-pct">{Math.round(pct)}%</span>
       </button>
       {showPop && !coarse() ? (

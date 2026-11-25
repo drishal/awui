@@ -9,11 +9,13 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChatSnapshot, DelegatedTaskView, GitStatus, RaceSummary, ReviewThread, SecondOpinion } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { save, load } from "../storage.js";
-import { IconAgents, IconBranch, IconChevronRight, IconEdit, IconFork, IconGauge, IconSidebar, IconSpark, IconSplit, IconStop, IconTerminal, IconTool, IconWarning } from "../icons.js";
+import { IconAgents, IconBranch, IconChevronRight, IconEdit, IconFork, IconSidebar, IconSpark, IconSplit, IconStop, IconTerminal, IconTool, IconWarning } from "../icons.js";
 import { Dialog } from "./Dialog.js";
 import { ConfirmButton } from "./ConfirmButton.js";
 import { DiffBadge } from "./ToolBody.js";
 import { ContextGroup, ContextList, ContextRow, ContextRowButton, ContextStatus } from "./ContextRows.js";
+import { ContextPie } from "./ContextRing.js";
+import { contextTone } from "../context-tone.js";
 import { gitSummary, jobEntries, jobReadout, raceCount, runEntries, runReadout, taskAttention, taskReadout, tokenCount, validatedFolds, type ContextSectionId } from "../context-panel.js";
 
 export interface ContextActions {
@@ -39,7 +41,9 @@ export interface ContextRailProps extends ContextActions {
 
 type Props = ContextRailProps;
 type OpenState = Record<ContextSectionId, boolean>;
-const DEFAULT_OPEN: OpenState = { agents: true, tasks: true, jobs: true, questions: true, races: false, opinions: false, review: false, memory: false };
+// The usage card is open by default: it is the rail's floor, the one card that always has a figure to
+// show, and the panel is composed around it. The other quiet groups start folded.
+const DEFAULT_OPEN: OpenState = { agents: true, tasks: true, jobs: true, questions: true, races: false, opinions: false, review: false, memory: true };
 const labels: Record<ContextSectionId, string> = { agents: "Agents and lineage", tasks: "Delegated work", jobs: "Background jobs", questions: "Questions and permissions", races: "Comparisons and races", opinions: "Second opinions", review: "Review comments", memory: "Context and usage" };
 const OPERATION_LABEL: Record<NonNullable<GitStatus["operation"]>, string> = { merge: "merge", rebase: "rebase", "cherry-pick": "cherry-pick", revert: "revert", bisect: "bisect" };
 
@@ -110,6 +114,9 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
   };
   const inWorkspace = (races ?? []).filter((race) => race.workspaceId === chat.workspace.id);
   const error = noteError ?? reviewError;
+  // Nothing above the usage card: an empty rail says so once, in words, instead of leaving a silence
+  // that reads like a panel still loading. The groups keep their rule — no empty group, no zero count.
+  const idle = runs.length === 0 && !chat.lineage && tasks.length === 0 && jobs.length === 0 && !hasQuestions && inWorkspace.length === 0 && (opinions?.length ?? 0) === 0 && (threads?.length ?? 0) === 0;
 
   const details = (
     <>
@@ -128,6 +135,8 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
           </button>
         </div>
       ) : null}
+
+      {idle ? <p className="context-idle">No runs, jobs or comments yet.</p> : null}
 
       {runs.length > 0 || chat.lineage ? <ContextGroup id="agents" label={labels.agents} count={runs.length || undefined} open={open.agents} attention={runs.some((run) => run.status === "failed") ? "accent" : false} onToggle={toggle}>
         <ContextList>
@@ -196,7 +205,7 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
           group's own heading: folded or open, the rail still says how full the context is. */}
       {chat.context ? <ContextGroup id="memory" label={labels.memory} open={open.memory} attention={chat.context.percent !== null && chat.context.percent >= 80 ? "warn" : false} value={<span className="context-head-value">{chat.context.percent === null ? "—" : `${Math.round(chat.context.percent)}%`}</span>} onToggle={toggle}>
         <ContextList>
-          <ContextRow icon={<IconGauge size={13} />} title="Context used" meta={`${tokenCount(chat.context.tokens)} of ${tokenCount(chat.context.window)} tokens`} actions={<ContextRowButton label="Open context and timings" onClick={onUsage}><IconChevronRight size={13} /></ContextRowButton>} />
+          <ContextRow className="context-usage-row" icon={<span className={`context-pie tone-${contextTone(chat.context.percent ?? 0)}`}><ContextPie percent={chat.context.percent ?? 0} size={24} /></span>} title="Context used" meta={`${tokenCount(chat.context.tokens)} of ${tokenCount(chat.context.window)} tokens`} actions={<ContextRowButton label="Open context and timings" onClick={onUsage}><IconChevronRight size={13} /></ContextRowButton>} />
         </ContextList>
         <div className="context-usage-bar" style={{ "--context-value": `${Math.min(100, chat.context.percent ?? 0)}%` } as React.CSSProperties} />
       </ContextGroup> : null}
