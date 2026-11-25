@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { flight, glide, handoff, pending, takeBox, viewTransition, type Box } from "../../src/web/morph.js";
+import { flight, glide, handoff, land, pending, takeBox, viewTransition, type Box } from "../../src/web/morph.js";
 
 const box = (left: number, top: number, width: number, height: number): Box => ({ left, top, width, height });
 
@@ -70,6 +70,38 @@ describe("glide", () => {
     // Nothing to glide to: same box, no travel.
     expect(glide(box(100, 300, 200, 40), el)).toBeNull();
     expect(glide(box(0, 0, 1, 1), null)).toBeNull();
+  });
+  it("names a glide the caller's id gives it, and takes over only its own id", () => {
+    stubPage();
+    vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "linear" }));
+    const other = { id: "morph:other", cancel: vi.fn(), oncancel: null, onfinish: null };
+    const animate = vi.fn(() => ({ id: "morph:start-card", oncancel: null, onfinish: null }));
+    const el = {
+      getAnimations: () => [other],
+      getBoundingClientRect: () => ({ left: 10, top: 20, width: 30, height: 40 }),
+      animate,
+    } as unknown as HTMLElement;
+    glide(box(10, 60, 30, 40), el, { id: "morph:start-card" });
+    const [frames, timing] = animate.mock.calls[0] as unknown as [Array<Record<string, string>>, { id: string }];
+    expect(frames[0]?.transform).toBe("translate(0px, 40px)");
+    expect(timing).toMatchObject({ id: "morph:start-card" });
+    // A glide of another id keeps running: one claim per id, not per element.
+    expect(other.cancel).not.toHaveBeenCalled();
+  });
+  it("lands with the handoff key as the glide's id", () => {
+    stubPage();
+    vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "linear" }));
+    const animate = vi.fn(() => ({ id: "morph:start-card", oncancel: null, onfinish: null }));
+    const el = {
+      getAnimations: () => [],
+      getBoundingClientRect: () => ({ left: 0, top: 500, width: 400, height: 60 }),
+      animate,
+    } as unknown as HTMLElement;
+    handoff("start-card", box(0, 100, 400, 60), 1000);
+    const run = land("start-card", el, {}, 1100);
+    expect(run).not.toBeNull();
+    const [, timing] = animate.mock.calls[0] as unknown as [unknown[], { id: string }];
+    expect(timing).toMatchObject({ id: "morph:start-card" });
   });
 });
 

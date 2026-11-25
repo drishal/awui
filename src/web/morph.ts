@@ -64,6 +64,11 @@ export function flight(from: Box, to: Box, height = false): { dx: number; dy: nu
 }
 
 export interface LandOptions {
+  /**
+   * The animation's id. A caller that wants its glide told apart from another (a test sampling flights, a
+   * second move of a different element) names it; the default follows the handoff key, or `morph:glide`.
+   */
+  id?: string;
   /** Milliseconds; the card-sized default is a calm one. */
   duration?: number;
   /** A start that waits a little behind the rest of the swap. */
@@ -86,7 +91,9 @@ export interface LandOptions {
  */
 export function land(key: string, el: HTMLElement | null, opts: LandOptions = {}, now = Date.now()): Animation | null {
   const from = takeBox(key, now);
-  return from ? glide(from, el, opts) : null;
+  if (!from) return null;
+  // The key names the handoff, so it names the glide too: two ends of one swap keep telling themselves apart by id.
+  return glide(from, el, { ...opts, id: opts.id ?? `morph:${key.split(":")[0]}` });
 }
 
 /**
@@ -97,8 +104,8 @@ export function land(key: string, el: HTMLElement | null, opts: LandOptions = {}
 export function glide(from: Box, el: HTMLElement | null, opts: LandOptions = {}): Animation | null {
   if (!el || motionOff()) return null;
   // One id for every glide, so a second move of the same element takes over from the first instead of
-  // stacking two transforms on it.
-  const id = `morph:glide`;
+  // stacking two transforms on it. A caller may name its own (land does: the handoff key names the glide).
+  const id = opts.id ?? `morph:glide`;
   // The old glide's cancel event fires after this call returns; unhooked, it cannot strip the new one's class.
   for (const running of el.getAnimations()) {
     if (running.id !== id) continue;
