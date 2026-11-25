@@ -31,8 +31,10 @@ test("work happens along with its chart: context count follows the original tool
     await expect(gitRow.locator(".context-git-branch")).not.toBeEmpty();
     await expect(gitRow.getByRole("button", { name: "Review changes" })).toBeVisible();
   }
-  // The context number rides on its group's heading, so a folded rail still reads it.
-  await expect(panel.locator(".context-section-memory .context-head-value")).toHaveText(/%|—/);
+  // The context figure lives in its card (the ring and the token line), and on the composer's ring: the
+  // group's heading does not repeat it.
+  await expect(panel.locator(".context-usage-row .context-pie")).toBeVisible();
+  await expect(panel.locator(".context-usage-row .context-row-meta")).toContainText(/tokens/);
   await expect(panel.locator(".context-status").first()).toHaveText("Done");
   const briefButton = panel.getByRole("button", { name: "Open scout run", exact: true }).first();
   await briefButton.click();

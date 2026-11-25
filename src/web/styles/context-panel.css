@@ -255,8 +255,7 @@
 .context-question p .icon { margin-top: 2px; color: var(--warn); }
 .context-question .context-foot-button { justify-content: flex-start; padding-left: 7px; color: var(--warn); }
 
-/* ---- context usage: the number on the group's heading, then its one thin track ---- */
-.context-head-value { color: var(--text-2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+/* ---- context usage: the ring on the row, then its one thin track ---- */
 /* The usage card's one tall row: the pie, the share in words, and the way into the full view. It is the
    rail's only 44px row, which is what makes the card read as the panel's anchor when nothing is running. */
 .context-usage-row { min-height: 44px; padding: 6px 6px 6px 8px; gap: 10px; }

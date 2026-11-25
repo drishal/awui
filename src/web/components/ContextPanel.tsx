@@ -214,9 +214,9 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
         </ContextList>
       </ContextGroup> : null}
 
-      {/* Only a harness that reports a window has anything to say here, and then the number rides on the
-          group's own heading: folded or open, the rail still says how full the context is. */}
-      {chat.context ? <ContextGroup id="memory" label={labels.memory} open={open.memory} attention={chat.context.percent !== null && chat.context.percent >= 80 ? "warn" : false} value={<span className="context-head-value">{chat.context.percent === null ? "—" : `${Math.round(chat.context.percent)}%`}</span>} onToggle={toggle}>
+      {/* Only a harness that reports a window has anything to say here. The figure lives in the card's own
+          ring and second line, and again on the composer's ring: the heading does not say it a third time. */}
+      {chat.context ? <ContextGroup id="memory" label={labels.memory} open={open.memory} attention={chat.context.percent !== null && chat.context.percent >= 80 ? "warn" : false} onToggle={toggle}>
         <ContextList>
           <ContextRow className="context-usage-row" icon={<span className={`context-pie tone-${contextTone(chat.context.percent ?? 0)}`}><ContextPie percent={chat.context.percent ?? 0} size={24} /></span>} title="Context used" meta={`${tokenCount(chat.context.tokens)} of ${tokenCount(chat.context.window)} tokens`} actions={<ContextRowButton label="Open context and timings" onClick={onUsage}><IconChevronRight size={13} /></ContextRowButton>} />
         </ContextList>
