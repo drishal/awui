@@ -45,6 +45,7 @@
 
 .brand-mark svg {
   display: block;
+  overflow: hidden;
 }
 .new-chat {
   display: flex;
