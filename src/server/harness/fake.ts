@@ -40,6 +40,7 @@
 //   "desktop" a write to a file outside the project (the row's path cannot be opened)
 //   "mermaidflow" answer with one complete mermaid flowchart fence, in small chunks (a diagram that grows)
 //   "mermaidwide" a flowchart wider than its card: zoom, pan and reset through Pele's controls
+//   "mermaidtypes" sequence, state, class and pie fences, so lazy diagram families load in one answer
 //   "mermaidbad" the same, with text Pele cannot draw: the source and a quiet note instead of a diagram
 //
 // Board rooms drive this adapter through the real server. A Board invocation is
@@ -1018,6 +1019,11 @@ class FakeLiveChat implements LiveChat {
       if (/\bmermaidwide\b/i.test(text)) {
         // Natural width beyond the transcript: Pele's controls should let the reader zoom and pan.
         await this.say("A wide flow:\n\n```mermaid\nflowchart LR\n  A[One] --> B[Two] --> C[Three] --> D[Four]\n  D --> E[Five] --> F[Six] --> G[Seven] --> H[Eight]\n  H --> I[Nine] --> J[Ten] --> K[Eleven] --> L[Twelve]\n```\n", signal, true);
+        return;
+      }
+      if (/\bmermaidtypes\b/i.test(text)) {
+        // Four lazy-loaded families in one answer: the loader and CSP path must work beyond flowcharts.
+        await this.say("Four diagram kinds:\n\n```mermaid\nsequenceDiagram\n  Alice->>Bob: Hello\n  Bob-->>Alice: Reply\n```\n\n```mermaid\nstateDiagram-v2\n  [*] --> Idle\n  Idle --> Done\n```\n\n```mermaid\nclassDiagram\n  class Agent\n  Agent : +run()\n```\n\n```mermaid\npie title Jobs\n  \"Done\": 8\n  \"Open\": 2\n```\n", signal, true);
         return;
       }
       if (/\bmermaidbad\b/i.test(text)) {

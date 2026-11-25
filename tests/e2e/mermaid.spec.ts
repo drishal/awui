@@ -97,3 +97,20 @@ test("a wide diagram offers zoom, and reset restores its first frame", async ({ 
   await expect.poll(() => svg.getAttribute("viewBox")).toBe(initial);
   await expect(zoomOut).toBeDisabled();
 });
+
+test("sequence, state, class, and pie diagrams all render", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "mermaidtypes please");
+  const answer = page.getByTestId("turn").last().getByTestId("answer");
+  const diagrams = answer.getByTestId("mermaid-diagram");
+  await expect(diagrams).toHaveCount(4);
+  const labels = [["Alice", "Bob", "Hello", "Reply"], ["Idle", "Done"], ["Agent", "+run()"], ["Jobs", "Done", "Open"]];
+  for (const [index, expected] of labels.entries()) {
+    const diagram = diagrams.nth(index);
+    const svg = diagram.locator("svg.pele");
+    await expect(svg).toBeVisible({ timeout: 20_000 });
+    for (const label of expected) await expect(svg).toContainText(label);
+    await expect(diagram.getByTestId("mermaid-note")).toHaveCount(0);
+  }
+});
