@@ -584,3 +584,15 @@ test("the model chip keeps its box while its menu opens", async ({ page }) => {
   await page.waitForTimeout(700);
   expect(await places()).toEqual(rest);
 });
+
+test("the focused message box draws no halo of its own: the card's ring carries focus", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "focus ring check");
+  await page.keyboard.press("Tab");
+  await box(page).focus();
+  await page.keyboard.press("ArrowRight");
+  // The global :focus-visible adds a 1px page-coloured halo; on the editor it drew a dark rectangle around the text.
+  await expect(box(page)).toHaveCSS("box-shadow", "none");
+  await expect(box(page)).toHaveCSS("outline-style", "none");
+});

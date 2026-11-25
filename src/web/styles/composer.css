@@ -413,6 +413,12 @@
   cursor: text;
 }
 
+/* The global focus ring is an outline plus a 1px --bg halo. The box has no outline of its own (the card's
+   ring carries focus), and the halo alone drew a dark rectangle around the text while typing. */
+.composer-input:focus-visible {
+  box-shadow: none;
+}
+
 .composer-input.is-empty {
   position: relative;
 }
