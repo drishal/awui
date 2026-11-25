@@ -255,7 +255,7 @@
   height: 4px;
   overflow: hidden;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 9%, transparent);
+  background: rgb(255 255 255 / 0.1);
 }
 
 .job-track-fill {

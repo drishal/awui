@@ -212,6 +212,9 @@ test("tool cards: the harness's numbered diff, a terminal, a search, a fetch", a
   for (const name of ["edit", "write", "bash", "grep", "web_fetch"]) await tool(name).getByRole("button").first().click();
   // Pi's own diff wins over the arguments': its line numbers, its skipped run, the changed words marked.
   const edit = tool("edit");
+  const diff = edit.locator(".diff");
+  expect(Number(await diff.getAttribute("aria-rowcount"))).toBeGreaterThan(0);
+  expect(await diff.locator(".diff-line [role=cell]").count()).toBeGreaterThan(0);
   await expect(edit.locator(".diff-line.is-add .diff-no").first()).toHaveText("11");
   await expect(edit.locator(".diff-gap")).toHaveCount(1);
   await expect(edit.locator(".diff-line.is-add .diff-word").first()).toHaveText(", host");
@@ -1638,6 +1641,9 @@ test("subagents show live, then their answers, and open their own transcripts", 
   await row.locator(".run-head").first().click();
   await expect(row.locator(".run-brief")).toContainText("Find where the server starts listening.");
   await expect(row.locator(".run-output")).toContainText("src/server.ts:13");
+  await expect(row.locator(".run-output")).toHaveCSS("border-top-width", "0px");
+  await expect(row.locator(".run-output")).toHaveCSS("padding-left", "15px");
+  await expect(row.getByRole("heading", { name: "Answer", exact: true })).toHaveCSS("font-size", "10px");
   await row.getByRole("button", { name: "Open transcript" }).click();
   const panel = page.getByRole("dialog", { name: "Transcript of 0" });
   await expect(panel.locator(".run-panel-brief")).toContainText("Task: Find where the server starts listening.");

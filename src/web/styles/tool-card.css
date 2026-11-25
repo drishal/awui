@@ -195,7 +195,7 @@
 /* The rows: hairlines between, the card's padding around. */
 .process-card .process-body {
   gap: 0;
-  padding: 0;
+  padding: 0 0 12px;
   border-top: 1px solid var(--hairline);
 }
 
@@ -467,7 +467,10 @@
 }
 
 .tool-chevron {
-  flex: none;
+  display: grid;
+  flex: 0 0 44px;
+  align-self: stretch;
+  place-content: center;
   color: var(--muted-text);
   opacity: 0.6;
   transition: transform var(--dur-spring) var(--spring);
@@ -500,11 +503,11 @@
   pointer-events: none;
 }
 
-/* The real button, laid over its twin: 12px padding + 14px chevron + gap + 16px status + gap from the right. */
+/* The real button, laid over its twin: 12px padding + 44px chevron column + gap + 16px status + gap from the right. */
 .tool-retry {
   position: absolute;
   top: 50%;
-  right: 62px;
+  right: 92px;
   translate: 0 -50%;
 }
 
@@ -871,7 +874,18 @@
 }
 
 .test-meter-failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--danger);
+}
+
+.test-dot.failed {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--danger);
 }
 
 
@@ -880,7 +894,7 @@
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 9%, transparent);
+  background: rgb(255 255 255 / 0.1);
 }
 
 .test-meter-fill,
@@ -1010,10 +1024,10 @@
   color: var(--muted-text);
 }
 
-/* The card places Ask to retry at 62px: 12px of head padding plus the chevron, the gap, the
+/* The card places Ask to retry at 92px: 12px of head padding plus the 44px chevron column, the gap, the
    status, and the gap. Lines padding is 2px, so the same stack sits 10px closer to the edge. */
 :root[data-tool-style="lines"] .tool-retry {
-  right: 52px;
+  right: 82px;
 }
 
 /* An opened call's output keeps its code surface, inset under the sentence it belongs to

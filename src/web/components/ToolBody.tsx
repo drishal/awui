@@ -195,20 +195,22 @@ export function DiffView({
   );
   const shown = all ? diff.lines : diff.lines.slice(0, FOLDED_LINES);
   return (
+    <>
     <div
       className={`diff${numbered ? " is-numbered" : ""}${onLine ? " is-commentable" : ""}${origins ? " is-attributed" : ""}`}
       role="table"
       aria-label="Changes"
+      aria-rowcount={diff.lines.length}
       style={numbered ? ({ "--diff-digits": digits } as CSSProperties) : undefined}
     >
       {shown.map((l, i) =>
         l.kind === "gap" ? (
           <div className="diff-gap" role="row" key={i}>
-            <span>{l.text || "⋯"}</span>
+            <span role="cell">{l.text || "⋯"}</span>
           </div>
         ) : l.kind === "hunk" ? (
           <div className="diff-hunk" role="row" key={i}>
-            {workspace ? relativePath(l.text, workspace) : l.text}
+            <span role="cell">{workspace ? relativePath(l.text, workspace) : l.text}</span>
           </div>
         ) : (
           <Fragment key={i}>
@@ -229,23 +231,24 @@ export function DiffView({
                   }
                 : {})}
             >
-              {origins ? <span className={`diff-origin is-${origins.get(i) ?? "none"}`} role="img" aria-label={origins.has(i) ? ORIGIN_TITLE[origins.get(i) as LineOrigin] : undefined} title={origins.has(i) ? ORIGIN_TITLE[origins.get(i) as LineOrigin] : undefined} /> : null}
-              {numbered ? <span className="diff-no">{l.line ?? ""}</span> : null}
-              <span className="diff-sign" aria-label={l.kind === "add" ? "added" : l.kind === "del" ? "removed" : undefined}>
+              {origins ? <span className={`diff-origin is-${origins.get(i) ?? "none"}`} role="cell" aria-label={origins.has(i) ? ORIGIN_TITLE[origins.get(i) as LineOrigin] : undefined} title={origins.has(i) ? ORIGIN_TITLE[origins.get(i) as LineOrigin] : undefined} /> : null}
+              {numbered ? <span className="diff-no" role="cell">{l.line ?? ""}</span> : null}
+              <span className="diff-sign" role="cell" aria-label={l.kind === "add" ? "added" : l.kind === "del" ? "removed" : undefined}>
                 {SIGN[l.kind]}
               </span>
-              <span className="diff-text">{!l.text ? " " : tokens ? colouredLine(tokens[i] ?? [], marks.get(i)) : lineText(l.text, marks.get(i))}</span>
+              <span className="diff-text" role="cell">{!l.text ? " " : tokens ? colouredLine(tokens[i] ?? [], marks.get(i)) : lineText(l.text, marks.get(i))}</span>
             </div>
             {notes?.get(i) ?? null}
           </Fragment>
         ),
       )}
-      {!all && diff.lines.length > FOLDED_LINES ? (
-        <button type="button" className="diff-more" onClick={() => setAll(true)}>
-          Show all {diff.lines.length} lines
-        </button>
-      ) : null}
     </div>
+    {!all && diff.lines.length > FOLDED_LINES ? (
+      <button type="button" className="diff-more" onClick={() => setAll(true)}>
+        Show all {diff.lines.length} lines
+      </button>
+    ) : null}
+    </>
   );
 }
 

@@ -182,6 +182,17 @@
   word-break: break-word;
 }
 
+.tool-card.is-agent .run-body h4 {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+/* The card is the only inset: a bordered answer inside it read as two boxes. */
+.tool-card.is-agent .run-output {
+  padding: 15px;
+  border: 0;
+}
+
 .run-steps {
   display: flex;
   flex-direction: column;

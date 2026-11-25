@@ -829,7 +829,9 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 8px 0 2px;
+  padding: 8px 0 12px;
+  /* The last 16px fade only its padding, never the last Thought row's glyphs. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
 }
 
 /* A stretch that is only thinking, between replies: its thought rows as they are, no fold. */
@@ -1743,6 +1745,20 @@
     width: 32px;
     height: 32px;
   }
+}
+
+/* The quiet marks still get a full 32px target, with the same 15px glyph on every action row. */
+.prompt-actions .ghost-icon,
+.answer-actions .ghost-icon {
+  width: 32px;
+  height: 32px;
+  padding-inline: 6px;
+}
+
+.prompt-actions .ghost-icon > svg,
+.answer-actions .ghost-icon > svg {
+  width: 15px;
+  height: 15px;
 }
 
 /* The ⋯ list rises from the row (a reply's actions sit at the bottom of a conversation, so a menu below them would

@@ -16,6 +16,7 @@ test("a run of calls is one card: a header that counts and stacks the kinds, a s
   await toggle.click();
   const rows = page.getByTestId("tool-row");
   await expect(rows).toHaveCount(8);
+  expect((await rows.first().locator(".tool-chevron").boundingBox())!.width).toBe(44);
   // Back-to-back plan updates fold into one row: the newest checklist, not a second copy.
   await expect(rows.filter({ hasText: "Updated the plan" })).toHaveCount(1);
   await expect(rows.filter({ hasText: "Updated the plan" }).locator(".tool-chevron")).toBeVisible();
@@ -95,6 +96,9 @@ test("thinking shaped like narration folds as a Thought, and its wide line wraps
   // Settled (the card's fold and the thought's both), the bodies stop clipping; the thought's column must still be the card's.
   await expect(card.locator(".collapse.is-unfurl.is-settled")).toHaveCount(1);
   await expect(thought.locator(".collapse.is-settled")).toHaveCount(1);
+  const mask = await card.locator(".process-body").evaluate((el) => ({ image: getComputedStyle(el).maskImage, padding: getComputedStyle(el).paddingBottom }));
+  expect(mask.image).toContain("16px");
+  expect(mask.padding).toBe("12px");
   const [cardWidth, bodyWidth] = await Promise.all([card.evaluate((el) => el.clientWidth), body.evaluate((el) => el.getBoundingClientRect().width)]);
   expect(bodyWidth).toBeLessThanOrEqual(cardWidth);
   // Its blank lines are paragraph breaks with a margin between, not a whole empty line of text each.
@@ -285,6 +289,9 @@ test("a running test command shows how far it has got, and the bar goes when it 
   await expect(bar).toHaveAttribute("aria-valuemax", "8");
   await expect.poll(async () => Number(await bar.getAttribute("aria-valuenow")), { timeout: 10_000 }).toBeGreaterThanOrEqual(4);
   await expect(meter.getByText("1 failed")).toBeVisible();
+  await expect(bar).toHaveCSS("background-color", "rgba(255, 255, 255, 0.1)");
+  await expect(meter.locator(".test-dot.failed")).toHaveCSS("width", "4px");
+  await expect(meter.locator(".test-dot.failed")).toHaveCSS("height", "4px");
   await expect(meter.locator(".test-meter-now")).toContainText("tests/e2e/tabs.spec.ts");
   // Settled, the row's facts take over and the live bar leaves.
   await expect(page.locator(".answer-actions").last()).toBeVisible({ timeout: 20_000 });
