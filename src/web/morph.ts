@@ -86,8 +86,19 @@ export interface LandOptions {
  */
 export function land(key: string, el: HTMLElement | null, opts: LandOptions = {}, now = Date.now()): Animation | null {
   const from = takeBox(key, now);
-  if (!el || !from || motionOff()) return null;
-  const id = `morph:${key.split(":")[0]}`;
+  return from ? glide(from, el, opts) : null;
+}
+
+/**
+ * Glide `el` from a box the caller measured itself, for a move whose two ends live in one screen and so
+ * need no handoff: a list's highlight travelling to the row that became active, a row's head opening into
+ * the card beneath it. Same cancel-and-restart rules as `land`.
+ */
+export function glide(from: Box, el: HTMLElement | null, opts: LandOptions = {}): Animation | null {
+  if (!el || motionOff()) return null;
+  // One id for every glide, so a second move of the same element takes over from the first instead of
+  // stacking two transforms on it.
+  const id = `morph:glide`;
   // The old glide's cancel event fires after this call returns; unhooked, it cannot strip the new one's class.
   for (const running of el.getAnimations()) {
     if (running.id !== id) continue;

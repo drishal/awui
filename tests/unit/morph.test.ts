@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { flight, handoff, pending, takeBox, viewTransition, type Box } from "../../src/web/morph.js";
+import { flight, glide, handoff, pending, takeBox, viewTransition, type Box } from "../../src/web/morph.js";
 
 const box = (left: number, top: number, width: number, height: number): Box => ({ left, top, width, height });
 
@@ -46,6 +46,30 @@ describe("morph", () => {
     expect(flight(box(0, 0, 500, 120), box(0, 0, 500, 90))).toBeNull();
     expect(flight(box(0, 0, 500, 120), box(0, 0, 500, 90), true)).toEqual({ dx: 0, dy: 0, dh: true });
     expect(flight(box(0, 0, 500, 90.3), box(0, 0, 500, 90), true)).toBeNull();
+  });
+});
+
+describe("glide", () => {
+  it("travels from a box the caller measured, and takes over from a glide already running on the element", () => {
+    stubPage();
+    vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "linear" }));
+    const running = { id: "morph:glide", cancel: vi.fn(), oncancel: null, onfinish: null };
+    const animate = vi.fn(() => ({ id: "morph:glide", oncancel: null, onfinish: null }));
+    const el = {
+      getAnimations: () => [running],
+      getBoundingClientRect: () => ({ left: 100, top: 300, width: 200, height: 40 }),
+      animate,
+    } as unknown as HTMLElement;
+    glide(box(100, 200, 200, 40), el);
+    expect(running.cancel).toHaveBeenCalledTimes(1);
+    const [frames, timing] = animate.mock.calls[0] as unknown as [Array<Record<string, string>>, { duration: number; easing: string }];
+    expect(frames[0]?.transform).toBe("translate(0px, -100px)");
+    expect(frames[1]?.transform).toBe("none");
+    expect(frames[0]?.height).toBeUndefined();
+    expect(timing).toMatchObject({ duration: 420, easing: "linear" });
+    // Nothing to glide to: same box, no travel.
+    expect(glide(box(100, 300, 200, 40), el)).toBeNull();
+    expect(glide(box(0, 0, 1, 1), null)).toBeNull();
   });
 });
 
