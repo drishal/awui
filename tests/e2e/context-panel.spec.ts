@@ -46,7 +46,7 @@ test("work happens along with its chart: context count follows the original tool
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: /Transcript of/ })).toHaveCount(0);
 
-  const usageFold = panel.getByRole("button", { name: "Context and usage", exact: true });
+  const usageFold = panel.getByRole("button", { name: /Context and usage/ });
   if ((await usageFold.getAttribute("aria-expanded")) !== "true") await usageFold.click();
   await expect(panel.getByRole("button", { name: "Open context and timings" })).toBeVisible({ timeout: 10_000 });
   // The row opens the full view, not the composer ring's small popover.

@@ -189,8 +189,12 @@ test.describe("shared look in config.yml", () => {
     // The old line's reading order: the facts follow the words instead of being pushed to the edge.
     const grepRow = page.locator('[data-tool="grep"]');
     const grepBox = (await grepRow.boundingBox()) ?? { x: 0, width: 0, y: 0, height: 0 };
+    const sentBox = (await grepRow.locator(".tool-sentence").boundingBox()) ?? { x: 0, width: 0, y: 0, height: 0 };
     const factsBox = (await grepRow.locator(".tool-facts").boundingBox()) ?? { x: 0, width: 0, y: 0, height: 0 };
-    expect(factsBox.x).toBeLessThan(grepBox.x + grepBox.width / 2);
+    // Facts follow the words, a short gap apart, rather than sitting in a column at the tile's far edge.
+    expect(factsBox.x).toBeGreaterThan(sentBox.x + sentBox.width - 1);
+    expect(factsBox.x).toBeLessThan(sentBox.x + sentBox.width + 16);
+    expect(factsBox.x + factsBox.width).toBeLessThan(grepBox.x + grepBox.width - 24);
 
     // A thought and a call share the header's edges: the icon column, the words, and the chevron.
     await page.request.post(`${base}/api/chats/${chatId}/messages`, { data: { text: "widethought", mode: "normal" } });

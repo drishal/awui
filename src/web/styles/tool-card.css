@@ -665,14 +665,19 @@
     line-height: 1.3;
   }
 
-  /* A call's counts stay on its own line: the sentence ellipsises instead, and the line wraps as a whole (with a
-     narrower gap than the desktop's) when even that is not enough. */
-  .tool-head {
-    flex-wrap: wrap;
+  /* A call's counts stay on the call's line: the sentence ellipsises instead of dropping the
+     counts under it. nowrap beats the 640px wrap so the two share one row. */
+  .tool-row .tool-head {
+    flex-wrap: nowrap;
     gap: 6px;
   }
 
-  .tool-facts {
+  .tool-row .tool-sentence {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .tool-row .tool-facts {
     order: 0;
     flex: 0 0 auto;
     min-width: 6ch;
@@ -904,11 +909,12 @@
    instead of being pushed to the tile's far edge. The status column stays on the right, in line. */
 :root[data-tool-style="lines"] .tool-head .tool-sentence {
   flex: 0 1 auto;
+  min-width: 0;
 }
 
 :root[data-tool-style="lines"] .tool-head .tool-facts {
-  /* Follow the words, a short gap apart, instead of sitting in the column at the tile's far edge. */
-  margin-left: 8px;
+  /* Follow the words; the head's gap is the only space between them. */
+  margin-left: 0;
   justify-content: flex-start;
   min-width: 0;
   text-align: left;
@@ -925,6 +931,7 @@
    on that gap and shove the sentence right. */
 :root[data-tool-style="lines"] .tool-head {
   padding: 3px 2px;
+  justify-content: flex-start;
 }
 
 /* The bare icon takes the chip's slot, so the sentences still line up in one column. */
