@@ -309,7 +309,8 @@ test("an approval takes over the composer and is recorded in the turn", async ({
   await expect(card).toContainText("Waiting for approval");
   await expect(card).toContainText("Allow tool: read");
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
-  await expect(card.getByRole("button")).toHaveText(["Stop", "Deny", "Approve"]);
+  // Stop, the optional note's word, then the two decisions.
+  await expect(card.getByRole("button")).toHaveText(["Stop", "Add reason…", "Deny", "Approve"]);
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card).toHaveCount(0);
   await expect(status(page)).toHaveText("Idle", { timeout: 15_000 });

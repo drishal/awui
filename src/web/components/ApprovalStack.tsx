@@ -186,9 +186,13 @@ export function ApprovalStack({
   const request = pending[0] as InteractionRequest;
   const [value, setValue] = useState(request.secret ? "" : (request.prefill ?? ""));
   const [denialReason, setDenialReason] = useState("");
+  // The note to a denial is an aside, not a field every approval asks for: it stays a word in the actions row
+  // until someone writes one, so the card is two decisions tall rather than two decisions and a text box.
+  const [reasonOpen, setReasonOpen] = useState(false);
   useEffect(() => {
     setValue(request.secret ? "" : (request.prefill ?? ""));
     setDenialReason("");
+    setReasonOpen(false);
   }, [request.id, request.prefill, request.secret]);
   const approval = isApproval(request);
   const [titleLine = "", ...restLines] = request.title.split("\n");
@@ -294,6 +298,14 @@ export function ApprovalStack({
         ) : approval ? (
           <>
             <div className="approval-actions">
+              {/* A denial may carry a note; most do not, and a permanent box for it made the card twice as tall
+                  as the decision it asks for. The word opens the box, which takes the focus, and stays out of the
+                  ↑ ↓ walk of the two decisions. */}
+              {reasonOpen ? null : (
+                <button type="button" className="btn btn-small btn-ghost approval-reason-open" disabled={busy} onClick={() => setReasonOpen(true)} title="Add a note to a Deny (optional)">
+                  Add reason…
+                </button>
+              )}
               <span className="approval-spacer" />
               {/* Bordered: Deny is a real choice beside Approve, not a dismiss link. */}
               <button
@@ -316,20 +328,23 @@ export function ApprovalStack({
                 Approve
               </button>
             </div>
-            {/* The reason is an aside to a denial, not a field to fill: one quiet line under the decision,
-                which opens to a few lines while it is being written. */}
-            <div className="approval-reason">
-              <textarea
-                id={`denial-reason-${request.id}`}
-                className="input"
-                value={denialReason}
-                onChange={(e) => setDenialReason(e.target.value)}
-                maxLength={MAX_DENIAL_REASON_CHARS}
-                rows={1}
-                aria-label="Reason for denial (optional)"
-                placeholder="Reason for denial (optional) — sent with Deny"
-              />
-            </div>
+            {reasonOpen ? (
+              <div className="approval-reason">
+                <label className="approval-reason-label" htmlFor={`denial-reason-${request.id}`}>
+                  Reason for denial (optional)
+                </label>
+                <textarea
+                  id={`denial-reason-${request.id}`}
+                  className="input"
+                  value={denialReason}
+                  onChange={(e) => setDenialReason(e.target.value)}
+                  maxLength={MAX_DENIAL_REASON_CHARS}
+                  rows={2}
+                  placeholder="Sent with Deny"
+                  autoFocus
+                />
+              </div>
+            ) : null}
           </>
         ) : (
           <>

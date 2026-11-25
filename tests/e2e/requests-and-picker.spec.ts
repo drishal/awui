@@ -9,6 +9,11 @@ test("an answered request folds into one line naming the answer", async ({ page 
   await send(page, "ask before reading");
   const card = page.getByTestId("approval-card");
   await expect(card).toContainText("Waiting for approval");
+  // While the card says the whole request, the row above names only what is asked about, and no outcome the
+  // card is already stating.
+  await expect(page.getByTestId("request-row")).toContainText("Approval");
+  await expect(page.getByTestId("request-subject")).toHaveText("read");
+  await expect(page.getByTestId("request-row")).not.toContainText("Waiting for you");
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card).toHaveCount(0);
   const folded = page.getByTestId("approval-folded");
@@ -23,6 +28,9 @@ test("a denied request folds into a line that says so", async ({ page }) => {
   await newChat(page);
   await send(page, "ask before reading");
   const card = page.getByTestId("approval-card");
+  // The note is behind a word, not a box every approval has to look past.
+  await expect(card.getByRole("textbox", { name: "Reason for denial (optional)" })).toHaveCount(0);
+  await card.getByRole("button", { name: "Add reason…" }).click();
   await card.getByRole("textbox", { name: "Reason for denial (optional)" }).fill("Read instead of changing the file.");
   await card.getByRole("button", { name: "Deny" }).click();
   await expect(page.getByTestId("approval-folded")).toContainText("Denied: Allow tool: read");

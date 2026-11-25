@@ -134,6 +134,14 @@ function firstLine(text: string): string {
   return text.trim().split("\n").find((l) => l.trim()) ?? "";
 }
 
+/** What a waiting request is about, in a row that sits above the card saying the whole of it: "read" rather than
+ *  "Allow tool: read", so the line and the card do not say the same thing twice, one above the other. */
+function requestSubject(title: string): string {
+  const line = firstLine(title);
+  const subject = line.replace(/^(?:allow|approve|confirm)\s+(?:tool:?\s*)?/i, "").trim();
+  return subject || line;
+}
+
 /** Past this many lines a call's output scrolls in its panel, and "Full output" opens it in a sheet. */
 const FULL_OUTPUT_LINES = 16;
 
@@ -407,15 +415,22 @@ function RequestRow({ item }: { item: RequestItem }) {
   const arrival = useArrival(item.id);
   const outcome = item.outcome ?? "Waiting for you…";
   const tone = /Denied|Cancelled|Dismissed/.test(outcome) ? "warn" : undefined;
+  // Waiting, the card below is the state ("Waiting for approval", the whole title, the decisions): the row need
+  // only name what is being asked about. Answered, the row is the record, so it says the outcome it took.
+  const waiting = item.outcome === undefined;
   return (
     <div className={`request-row${arrival}`} id={`request-${item.request.id}`} data-request-id={item.request.id} data-testid="request-row">
       <DisclosureRow
         icon={item.outcome ? (tone ? <IconX size={14} /> : <IconCheck size={14} />) : <Spinner size={13} />}
         title={item.request.kind === "form" ? "Form" : item.request.kind === "confirm" || item.request.options?.includes("Approve") ? "Approval" : "Question"}
         summary={
-          <>
-            {firstLine(item.request.title)} <span className="request-outcome">→ {outcome}</span>
-          </>
+          waiting ? (
+            <span data-testid="request-subject">{requestSubject(item.request.title)}</span>
+          ) : (
+            <>
+              {firstLine(item.request.title)} <span className="request-outcome">→ {outcome}</span>
+            </>
+          )
         }
         {...(tone ? { tone } : {})}
         rowId={item.id}

@@ -27,6 +27,14 @@
   opacity: 0.7;
 }
 
+/* The card's angle, drawn as a conic gradient's start so it can be animated. A registered property is what
+   lets a gradient's angle interpolate; where a browser has no @property the ring simply sits still. */
+@property --approval-turn {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .approval-card {
   position: relative;
   z-index: 1;
@@ -34,6 +42,37 @@
   border-radius: var(--r-panel);
   background: var(--card);
   box-shadow: var(--shadow-soft), 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
+/* Waiting wears a light: one hairline of the warn hue travelling the card's edge once every twelve seconds,
+   drawn inside the 1px ring the card already has. It says the card is live without a second spinner beside the
+   run's, and it is slow enough to read as a breath rather than a progress bar. The ring is a padded box masked
+   to its border, so the gradient never tints the card's face; reduced motion stops it (tokens.css). */
+.approval-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--approval-turn),
+    transparent 0deg,
+    color-mix(in srgb, var(--warn) 55%, transparent) 22deg,
+    var(--warn) 34deg,
+    transparent 62deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: approval-turn 12s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes approval-turn {
+  to {
+    --approval-turn: 360deg;
+  }
 }
 
 .approval-strip {
@@ -182,24 +221,37 @@
   }
 }
 
-/* An optional note to a denial sits under the decision as one line, opened to three while it is written:
-   a permanent 90px box asked every approval for a paragraph. Its 36px height is the card's control height. */
+/* A note to a denial is optional and usually empty: the actions row offers the words "Add reason…", and the box
+   appears under the decision only once someone wants one, with a real label over it. A field every approval had
+   to look past made the card twice as tall as the decision it asks for. */
+.approval-reason-open {
+  color: var(--muted-text);
+  font-weight: 500;
+}
+
+.approval-reason-open:hover:not(:disabled) {
+  color: var(--text);
+}
+
 .approval-reason {
-  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.approval-reason-label {
+  color: var(--muted-text);
+  font-size: calc(var(--chat-small) - 0.5px);
+  font-weight: 500;
 }
 
 .approval-reason .input {
   width: 100%;
-  min-height: 36px;
-  height: 36px;
   padding: 8px 12px;
   resize: none;
   font-size: var(--chat-small);
-  transition: height var(--dur-hover) var(--ease-out);
-}
-
-.approval-reason .input:focus {
-  height: 72px;
+  line-height: 1.45;
 }
 
 /* A form question's Stop stays apart from its Submit, on the left, but drawn as a button: as bare red text beside a
