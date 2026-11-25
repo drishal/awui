@@ -11,9 +11,14 @@
 .main {
   display: flex;
   flex-direction: column;
+  /* The pane's own light: one wide, faint accent wash from the top edge, so the header, the
+     transcript and the dock sit on a surface with depth rather than on a flat fill. It takes the
+     link hue, the quietest accent role, and stays behind everything the pane draws. */
+  background:
+    radial-gradient(900px 260px at 50% 0%, color-mix(in srgb, var(--link) 6%, transparent), transparent 70%),
+    var(--bg);
   min-width: 0;
   min-height: 0;
-  background: var(--bg);
 }
 
 /* Settings can hide the bar; the grid's last row then takes no height. */

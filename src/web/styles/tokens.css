@@ -85,11 +85,12 @@
   --thinking: #6d4fc2;
   --rare: #8a5a00;
   --brown: #92400e;
-  /* A white page needs a real shadow and a firmer hairline to read as layered at all. */
-  --shadow-strength: 0.1;
+  /* A white page needs a real shadow and a firmer hairline to read as layered at all: at 0.1 the
+     composer and the cards sat flat on it and at 16% the edges dissolved. */
+  --shadow-strength: 0.16;
   /* How much of the text colour a hairline takes: a dark page needs a little more for a
      1px edge to read (a base16 theme inherits whichever scheme it is). */
-  --hairline-mix: 16%;
+  --hairline-mix: 18%;
   /* How much lighter than its surface a raised face (a segmented control's chosen pill) is: a light
      page lifts it with a shadow on white, a dark one has to lighten it or it sinks below its track. */
   --raise-mix: 0%;
@@ -130,7 +131,7 @@
     --thinking: #b69cff;
     --rare: #d29922;
     --brown: #d6a26a;
-    --shadow-strength: 0.32;
+    --shadow-strength: 0.4;
     --hairline-mix: 13%;
     --raise-mix: 16%;
     --card-mix: 62%;
@@ -166,7 +167,7 @@
   --thinking: #b69cff;
   --rare: #d29922;
   --brown: #d6a26a;
-  --shadow-strength: 0.32;
+  --shadow-strength: 0.4;
   --hairline-mix: 13%;
   --raise-mix: 16%;
   --card-mix: 62%;
