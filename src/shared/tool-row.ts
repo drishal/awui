@@ -149,6 +149,17 @@ export function changeFact(added: number, removed: number): string | undefined {
   return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
+/**
+ * A harness's own acknowledgments of an edit, word for word ("Edited src/app.ts (+1 −1)"), for the case where it is
+ * all the output says and it agrees with the diff on screen: the row's sentence names the file and its facts carry
+ * the same +a −r, so the body leaves the echo out. Any other output — a warning, an error, another tally — stays.
+ */
+export function echoesDiff(output: string | undefined, diff: { added: number; removed: number }): boolean {
+  if (!output) return false;
+  const m = /^Edited\s+.+?\s+\(\+(\d+)\s+[-−](\d+)\)$/.exec(output.trim());
+  return m !== null && Number(m[1]) === diff.added && Number(m[2]) === diff.removed;
+}
+
 /** The actions rpiv-todo's `todo` takes; any other `action` belongs to another tool. */
 const TODO_ACTIONS = new Set(["create", "update", "list", "get", "delete", "clear"]);
 

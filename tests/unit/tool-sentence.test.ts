@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolItem } from "../../src/shared/protocol.js";
-import { callDuration, callTime, errorLine, orchestrationTool, TOOK_AFTER_MS, toolSentence, toolWords } from "../../src/shared/tool-row.js";
+import { callDuration, callTime, echoesDiff, errorLine, orchestrationTool, TOOK_AFTER_MS, toolSentence, toolWords } from "../../src/shared/tool-row.js";
 
 const WS = "/home/me/proj";
 function tool(over: Partial<ToolItem> & Pick<ToolItem, "name" | "category">): ToolItem {
@@ -74,6 +74,19 @@ describe("toolSentence: edit and write", () => {
     expect(toolSentence(write, WS).text).toBe("Wrote notes.md");
     expect(toolSentence({ ...write, status: "error" }, WS).text).toBe("Couldn't write notes.md");
     expect(toolSentence(write, WS).facts).toEqual(["+4"]);
+  });
+  it("knows its own echo of the diff, and only that", () => {
+    const diff = { added: 12, removed: 3 };
+    expect(echoesDiff("Edited src/turns.ts (+12 -3)", diff)).toBe(true);
+    expect(echoesDiff("Edited src/turns.ts (+12 −3)\n", diff)).toBe(true);
+    expect(echoesDiff("Edited a path with spaces.ts (+12 −3)", diff)).toBe(true);
+    // Another tally, extra words, another verb, a failure: the body keeps all of them.
+    expect(echoesDiff("Edited src/turns.ts (+12 -4)", diff)).toBe(false);
+    expect(echoesDiff("Edited src/turns.ts (+12 -3) and left 2 warnings", diff)).toBe(false);
+    expect(echoesDiff("Wrote src/turns.ts (+12 -3)", diff)).toBe(false);
+    expect(echoesDiff("Edited src/turns.ts (+12 -3)\nErrno 13", diff)).toBe(false);
+    expect(echoesDiff("", diff)).toBe(false);
+    expect(echoesDiff(undefined, diff)).toBe(false);
   });
 });
 

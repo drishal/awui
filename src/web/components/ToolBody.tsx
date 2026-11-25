@@ -12,6 +12,7 @@ import { IconCheck, IconCircle, IconDot, IconFile, IconGlobe, IconSearch, IconTe
 import { parseJsonContainer } from "../json-tree.js";
 import { relativePath } from "../turns.js";
 import { toolFacts } from "../../shared/output-facts.js";
+import { echoesDiff } from "../../shared/tool-row.js";
 import { FileLink } from "./FileLink.js";
 import { JsonTree } from "./JsonTree.js";
 
@@ -382,7 +383,11 @@ function CallBody({ item, workspace }: { item: ToolItem; workspace: string }) {
   );
 
   if ((item.category === "edit" || item.category === "write") && item.diff) {
-    const settledNote = item.output && item.status !== "running" && (failed || item.output.length < 400);
+    // A harness that acknowledges an edit with its own tally ("Edited src/app.ts (+1 −1)") repeats what the row's
+    // sentence and facts already say, and a note under the diff repeats it a third time: leave the echo out when it
+    // agrees with the diff, keep every other word (a warning, an error, a tally that does not match).
+    const echoes = !failed && echoesDiff(item.output, item.diff);
+    const settledNote = !echoes && item.output && item.status !== "running" && (failed || item.output.length < 400);
     // The row's own sentence already names the file, mono and before its counts, so the opened tile does not repeat
     // it as a loose caption over the diff: the diff is the file the row names. A call whose file the row cannot name
     // (no path in its arguments) keeps the caption, which is then the only place it is said.
@@ -393,7 +398,7 @@ function CallBody({ item, workspace }: { item: ToolItem; workspace: string }) {
       <>
         <DiffView diff={item.diff} workspace={workspace} file={path} colour={item.status !== "running"} />
         {settledNote ? <div className={`tool-card-note${failed ? " is-error" : ""}`}>{item.output}</div> : null}
-        {item.output && !settledNote && item.status !== "running" ? (
+        {item.output && !settledNote && !echoes && item.status !== "running" ? (
           <details className="tool-card-raw">
             <summary>Output</summary>
             <pre className="io-text">{item.output}</pre>
