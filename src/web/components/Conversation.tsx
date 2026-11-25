@@ -134,6 +134,12 @@ function firstLine(text: string): string {
   return text.trim().split("\n").find((l) => l.trim()) ?? "";
 }
 
+/** A thought's one-line summary: the first line with the markers its body renders as style taken out. The summary
+ *  previews the words, so "render **markdown** an" reads as "render markdown an"; the opened body keeps them. */
+function summaryLine(text: string): string {
+  return firstLine(text).replace(/(\*\*|__|`)/g, "");
+}
+
 /** What a waiting request is about, in a row that sits above the card saying the whole of it: "read" rather than
  *  "Allow tool: read", so the line and the card do not say the same thing twice, one above the other. */
 function requestSubject(title: string): string {
@@ -168,7 +174,7 @@ const ThoughtRow = memo(function ThoughtRow({ id, thinking, streaming, at, ended
     <DisclosureRow
       icon={streaming ? <Spinner size={13} /> : <IconSpark size={14} />}
       title={streaming ? "Thinking" : took ? `Thought · ${took}` : "Thought"}
-      summary={<span className="drow-prose">{firstLine(thinking)}</span>}
+      summary={<span className="drow-prose">{summaryLine(thinking)}</span>}
       autoOpen={streaming}
       hideSummaryWhenOpen
       rowId={id}

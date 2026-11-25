@@ -772,7 +772,8 @@ class FakeLiveChat implements LiveChat {
       }
       if (/\bslowthought\b/i.test(text)) {
         // A thought read out slowly, then a command: the row is open while it streams and folds once the call starts.
-        await this.think("Looking for the card's model, then its driver, before running the command.", signal, 8);
+        // A bold word in it: the summary line previews the words, so the markers must not reach it (app.spec).
+        await this.think("Looking for the card's **model**, then its driver, before running the command.", signal, 8);
         await this.call({ name: "bash", args: { command: "npm run check" }, output: "ok" }, signal);
       }
       if (/\bworkreply\b/i.test(text)) {

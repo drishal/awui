@@ -1843,8 +1843,9 @@ test("a thought reads itself out while it streams, then folds to one line when t
   await signInAndOpen(page);
   await newChat(page);
   await send(page, "slowthought please");
-  // The answer has a thought row of its own later; pin this one by its text.
-  const thought = page.getByTestId("thought-row").filter({ hasText: "Looking for the card's model" });
+  // The answer has a thought row of its own later; pin this one by its text (up to the bold word: while the
+  // body is open it shows the markers, and the folded summary strips them).
+  const thought = page.getByTestId("thought-row").filter({ hasText: "Looking for the card's" });
   const head = thought.locator(".drow-head");
   // Streaming: it is open by itself, so its text is readable as it arrives.
   await expect(head).toHaveAttribute("aria-expanded", "true");
@@ -1852,10 +1853,15 @@ test("a thought reads itself out while it streams, then folds to one line when t
   // The command starts: the row folds back to its first line, without a click.
   await expect(head).toHaveAttribute("aria-expanded", "false", { timeout: 20_000 });
   await expect(thought).toContainText("Looking for the card's model");
+  // The summary previews the words, not the Markdown: the bold markers are taken out of that line only.
+  const summary = thought.locator(".drow-summary");
+  await expect(summary).toHaveText("Looking for the card's model, then its driver, before running the command.");
   await expect(thought.locator(".thought-body")).toBeHidden();
   // Once it is past, a click still opens it for reading.
   await head.click();
   await expect(thought.locator(".thought-body")).toBeVisible();
+  // The body is what the agent wrote, markers and all.
+  await expect(thought.locator(".thought-body")).toContainText("**model**");
 });
 
 test("work above a reply folds away as the reply lands, while the work after it stays open", async ({ page }) => {
