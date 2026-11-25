@@ -2436,8 +2436,9 @@ export function App() {
                       </span>
                     ) : null}
                     {chat.viewers >= 2 ? (
-                      <span className="chat-viewers" data-testid="chat-viewers" title={`${chat.viewers} devices have this chat open; you see the same run on each`}>
-                        {chat.viewers} devices
+                      // Count only on screen; the full sentence stays for assistive technology.
+                      <span className="chat-viewers" data-testid="chat-viewers" aria-label={`${chat.viewers} devices`} title={`${chat.viewers} devices have this chat open; you see the same run on each`}>
+                        {chat.viewers}
                       </span>
                     ) : null}
                   </div>
@@ -2861,7 +2862,7 @@ export function App() {
             />
           ) : null}
         </div>
-          {chat && (!wide ? contextSheet : !contextClosed) && !room.roomId ? <LazyPanel contextPanel><ContextPanel chat={chat} expanded={!side && !toolPanel && !viewer} onOpen={() => setContextSheet(true)} onClose={() => setContextSheet(false)} mode={!wide ? "sheet" : "inline"} onOpenChat={(id) => void openChatById(id)} onCancelTask={(task) => void cancelDelegated(task)} onReview={() => setReviewOpen(true)} onRace={(raceId) => setRacesOpen({ raceId })} onOpinion={(opinion) => void openChatById(opinion.chatId)} onUsage={() => {
+          {chat && (!wide ? contextSheet : !contextClosed) && !room.roomId ? <LazyPanel contextPanel><ContextPanel chat={chat} expanded={!side && !toolPanel && !viewer} composerVisible={!side && !toolPanel && !viewer} onOpen={() => setContextSheet(true)} onClose={() => setContextSheet(false)} mode={!wide ? "sheet" : "inline"} onOpenChat={(id) => void openChatById(id)} onCancelTask={(task) => void cancelDelegated(task)} onReview={() => setReviewOpen(true)} onRace={(raceId) => setRacesOpen({ raceId })} onOpinion={(opinion) => void openChatById(opinion.chatId)} onUsage={() => {
             const button = document.querySelector<HTMLButtonElement>(`[data-pane="main"] [data-testid="context-ring"]`);
             // Not a click: that opens the ring's small popover. This asks for the full view (ContextRing.tsx listens).
             button?.dispatchEvent(new CustomEvent("awui:context-details"));

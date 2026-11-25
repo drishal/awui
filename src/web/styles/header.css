@@ -141,7 +141,10 @@
   .chat-sub .chat-viewers {
     flex-shrink: 10;
     min-width: 0;
-    overflow: hidden;
+    /* The presence chip is a bare count: it shrinks but can no longer ellipsise a word. */
+    min-width: 0;
+    flex-shrink: 10;
+    overflow: visible;
   }
 }
 

@@ -11,9 +11,10 @@ test("a second page on the same chat shows '2 devices' in the header, and it goe
   const other = await context.newPage();
   await other.goto("/");
   await expect(other.getByTestId("chat-status")).toHaveText("Idle");
-  await expect(page.getByTestId("chat-viewers")).toHaveText("2 devices", { timeout: 10_000 });
+  await expect(page.getByTestId("chat-viewers")).toHaveText("2", { timeout: 10_000 });
+  await expect(page.getByTestId("chat-viewers")).toHaveAccessibleName("2 devices");
   await expect(page.getByTestId("chat-viewers")).toHaveAttribute("title", /2 devices/);
-  await expect(other.getByTestId("chat-viewers")).toHaveText("2 devices", { timeout: 10_000 });
+  await expect(other.getByTestId("chat-viewers")).toHaveText("2", { timeout: 10_000 });
   await other.close();
   await expect(page.getByTestId("chat-viewers")).toHaveCount(0, { timeout: 10_000 });
 });
