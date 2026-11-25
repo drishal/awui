@@ -35,6 +35,7 @@ test("work happens along with its chart: context count follows the original tool
   // group's heading does not repeat it.
   await expect(panel.locator(".context-usage-row .context-pie")).toBeVisible();
   await expect(panel.locator(".context-usage-row .context-row-meta")).toContainText(/tokens/);
+  await expect(panel.locator(".context-usage-bar")).toHaveCount(0);
   await expect(panel.locator(".context-status").first()).toHaveText("Done");
   const briefButton = panel.getByRole("button", { name: "Open scout run", exact: true }).first();
   await briefButton.click();
@@ -67,7 +68,7 @@ test("work happens along with its chart: context count follows the original tool
   await expect(railToggle).toHaveCSS("height", "34px");
   const railUsage = panel.getByRole("button", { name: /^Context used: \d+% of / });
   await expect(railUsage).toBeVisible();
-  await expect(railUsage.locator(".context-rail-figure")).toHaveCSS("font-size", "10px");
+  await expect(railUsage.locator(".context-rail-figure")).toHaveCount(0);
   await expect(railUsage.locator("svg").first()).toHaveAttribute("width", "28");
   await expect(panel.locator(".context-live-grow")).toHaveCount(0);
   await expect.poll(async () => (await panel.evaluate((el) => getComputedStyle(el).flexBasis)), { timeout: 3000 }).toBe("40px");
