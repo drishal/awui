@@ -209,7 +209,7 @@ test("an earlier turn's failed call has no retry while a new turn runs", async (
 
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-  test("the facts stay on the call's line and the retry stays on the call's line", async ({ page }) => {
+  test("the counts take their own line and the retry stays on the call's line", async ({ page }) => {
     await signInAndOpen(page);
     await page.keyboard.press("Escape");
     await newChat(page);
@@ -225,12 +225,13 @@ test.describe("on a phone", () => {
     expect(await toggle.locator(".process-label").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const row = page.locator('[data-tool="bash"]').first();
     const [sentence, facts] = [await row.locator(".tool-sentence").boundingBox(), await row.locator(".tool-facts").boundingBox()];
-    // On a phone the counts stay on the call's line — beside the sentence, never wrapped under it — even where
-    // the sentence takes the second line it is allowed; the sentence ellipsises first.
-    expect(facts!.x).toBeGreaterThan(sentence!.x);
-    // They share the sentence's line: most of the counts' box sits inside the sentence's box, never below it.
-    const shared = Math.min(facts!.y + facts!.height, sentence!.y + sentence!.height) - Math.max(facts!.y, sentence!.y);
-    expect(shared).toBeGreaterThan(facts!.height * 0.6);
+    // On a phone the counts take a line of their own under the sentence, so a command is read to its end instead of
+    // being cut at "…tool-diff" to leave a counts column beside it.
+    expect(facts!.y).toBeGreaterThanOrEqual(sentence!.y + sentence!.height - 1);
+    // That line is a thumb's row, and the counts sit at its right edge rather than following the words.
+    const head = await row.locator(".tool-head").boundingBox();
+    expect(head!.height).toBeGreaterThanOrEqual(43);
+    expect(facts!.x + facts!.width).toBeGreaterThan(sentence!.x + sentence!.width - 1);
     const failed = page.locator('[data-status="error"]');
     // The row's own line, not .tool-row: an opened fold's row boxes only its line, and the button is laid over that.
     const [button, card] = [await failed.getByRole("button", { name: /^Ask the agent to retry/ }).boundingBox(), await failed.locator(".tool-row-line").boundingBox()];
