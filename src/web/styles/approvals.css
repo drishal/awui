@@ -1,12 +1,13 @@
 /* ---- approvals ------------------------------------------------------------------ */
 
-/* A decision is read, not scanned: the card keeps a reading measure instead of the chat's full width,
-   centred over the composer. */
+/* The card takes the composer's lane, not a reading measure of its own: it stands where the composer stands, under
+   the same thread, git row and cards, and at 720px it sat inset ~40px on both sides, reading as a dialog floating
+   over the chat. It also has the width to use — an approval carries a command's name, a question its choices. */
 .approval-stack {
   position: relative;
   width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
+  max-width: var(--chat-col);
+  margin-inline: auto;
 }
 
 .approval-stack.behind-1::before,
