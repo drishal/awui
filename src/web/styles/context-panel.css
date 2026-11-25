@@ -193,20 +193,24 @@
 .context-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 7px;
+  align-items: start;
+  gap: 4px;
   min-width: 0;
   padding: 5px 6px;
   border-radius: var(--r-sm);
 }
 .context-row:hover { background: var(--hover); }
-.context-row-icon { display: grid; place-items: center; color: var(--muted-text); }
+/* The row's grid starts at the first text line: the icon and the trailing status/button unit
+   align with it, not with the row's middle, so a two-line title never centres its neighbours. */
+.context-row-icon { display: grid; place-items: center; color: var(--muted-text); margin-top: 1px; }
 .context-row-text { display: grid; min-width: 0; gap: 1px; }
-.context-row-title { overflow: hidden; color: var(--text); font-size: 12.5px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.context-row-title { overflow: hidden; color: var(--text); font-size: 12.5px; line-height: 1.35; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; }
+.context-row-aside { display: flex; align-items: flex-start; gap: 4px; }
+/* The status is shorter than the button beside it: nudge it down to share the first text line. */
+.context-row-aside .context-status { margin-top: 4px; }
+.context-row-aside :is(.context-row-button, .confirm-button) { flex-shrink: 0; }
 .context-row-meta { overflow: hidden; color: var(--muted-text); font-size: 11.5px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .context-row-note { color: var(--muted-text); font-size: 11px; line-height: 1.35; }
-.context-row-aside { display: flex; align-items: center; gap: 4px; }
-.context-row-actions { display: flex; align-items: center; gap: 2px; }
 .context-status { display: inline-flex; align-items: center; gap: 4px; color: var(--muted-text); font-size: 11px; white-space: nowrap; }
 .context-status-dot { flex: none; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .context-status.is-working { color: var(--accent); }

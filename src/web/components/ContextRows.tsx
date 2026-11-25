@@ -35,8 +35,7 @@ export function ContextRow({ icon, title, meta, note, aside, actions, harness, c
       {meta ? <span className="context-row-meta">{meta}</span> : null}
       {note ? <span className="context-row-note">{note}</span> : null}
     </span>
-    {aside ? <span className="context-row-aside">{aside}</span> : null}
-    {actions ? <span className="context-row-actions">{actions}</span> : null}
+    {(aside || actions) ? <span className="context-row-aside">{aside}{actions}</span> : null}
   </li>;
 }
 

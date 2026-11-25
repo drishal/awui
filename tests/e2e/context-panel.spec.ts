@@ -37,7 +37,8 @@ test("work happens along with its chart: context count follows the original tool
   await expect(panel.locator(".context-usage-row .context-row-meta")).toContainText(/tokens/);
   await expect(panel.locator(".context-usage-bar")).toHaveCount(0);
   // The quiet groups start folded: open the agents and lineage group to reach the run rows.
-  await panel.getByRole("button", { name: /Agents and lineage/ }).click();
+  const agentsFold = panel.getByRole("button", { name: /Agents and lineage/ });
+  if ((await agentsFold.getAttribute("aria-expanded")) !== "true") await agentsFold.click();
   await expect(panel.locator(".context-status").first()).toHaveText("Done");
   const briefButton = panel.getByRole("button", { name: "Open scout run", exact: true }).first();
   await briefButton.click();
