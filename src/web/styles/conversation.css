@@ -1605,9 +1605,12 @@
   color: var(--danger);
 }
 
+/* The reply is what a reader came for, so it is a step larger than the chrome around it and set in the
+   page's own ink: at the interface size, beside a 13px card, a long answer read as annotation. The size is
+   a multiple of the chat font, so Settings → text size still moves it. */
 .answer {
-  font-size: var(--chat-font);
-  line-height: 1.6;
+  font-size: calc(var(--chat-font) * 1.07);
+  line-height: 1.62;
   color: var(--text);
   overflow-wrap: anywhere;
 }
@@ -1916,8 +1919,12 @@
   font-size: 1.35em;
 }
 
+/* A section heading is a break in the answer, not a bigger line of it: one size above the body, heavier,
+   and far enough above to be met after a paragraph rather than skimmed into it. */
 .md h2 {
-  font-size: 1.2em;
+  margin-top: 24px;
+  font-size: calc(var(--chat-font) * 1.38);
+  font-weight: 700;
 }
 
 .md h3 {
@@ -1978,14 +1985,29 @@
   text-align: left;
 }
 
+/* A table header is a label band, not the first row of data: small caps, tracked out, heavier, over a
+   2px rule that ends the band. The data itself sits a step back from the prose, and alternate rows take a
+   surface so a wide row (a step, an owner, a risk) is read straight across rather than by pointing. */
 .md th {
-  border-bottom-color: var(--hairline-strong);
+  border-bottom: 2px solid var(--hairline-strong);
   background: var(--code-bg);
   color: var(--muted-text);
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.md td {
+  color: var(--text-2);
+}
+
+.md tbody tr:nth-child(even) td {
+  background: var(--surface-2);
+}
+
+.md tbody tr:hover td {
+  background: var(--hover);
 }
 
 .md tr:last-child td {
