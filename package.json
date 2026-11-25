@@ -51,6 +51,7 @@
     "@xterm/xterm": "^6.0.0",
     "express": "5.2.1",
     "helmet": "8.3.0",
+    "pele": "1.13.0",
     "playwright-core": "1.63.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

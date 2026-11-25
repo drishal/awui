@@ -38,6 +38,8 @@
 //              edits a file, so its patch can be reviewed
 //   "unsafe" a real write to unsafe-outside.ts in the project root, which a delegated child's write scope refuses
 //   "desktop" a write to a file outside the project (the row's path cannot be opened)
+//   "mermaidflow" answer with one complete mermaid flowchart fence, in small chunks (a diagram that grows)
+//   "mermaidbad" the same, with text Pele cannot draw: the source and a quiet note instead of a diagram
 //
 // Board rooms drive this adapter through the real server. A Board invocation is
 // recognised by the prompt envelope's "## Current request" section, and its
@@ -1005,6 +1007,16 @@ class FakeLiveChat implements LiveChat {
       }
       if (/\bquietrun\b/i.test(text)) {
         await this.reply("QUIET: nothing needed today.", signal);
+        return;
+      }
+      if (/\bmermaidflow\b/i.test(text)) {
+        // One complete mermaid fence, in small chunks: a test watches the diagram appear as the answer grows.
+        await this.say("Here is the flow:\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Render]\n  B --> C[SVG]\n```\n", signal, true);
+        return;
+      }
+      if (/\bmermaidbad\b/i.test(text)) {
+        // A fence Pele cannot draw once the answer settles: the source and a quiet note, never a banner.
+        await this.say("A diagram that will not draw:\n\n```mermaid\nflowchart LR\n  A]broken[ --> B[Render]\n```\n", signal, true);
         return;
       }
       if (/\bfail\b/i.test(text)) {

@@ -1,0 +1,85 @@
+/* Mermaid diagrams in an answer (components/MermaidDiagram.tsx): Pele's SVG, coloured
+   by the page's own tokens so a theme switch needs no redraw, in a card shaped like
+   the code block beside it (header band, hairline, one radius). Pele's variables are
+   mapped here and nowhere else, so a base16 theme, light, and dark all follow from
+   the same tokens; nothing below names a colour of its own. */
+
+/* Pele reads these off the SVG's ancestors (pele.run/theming). The shape tokens are
+   Pele's own: its rounded rects take --pele-radius, its labels --pele-font. */
+.pele-diagram,
+.pele {
+  --pele-bg: var(--surface);
+  --pele-fg: var(--text);
+  --pele-muted: var(--muted);
+  --pele-line: var(--text);
+  --pele-surface: var(--surface-2);
+  --pele-surface-alt: var(--bg);
+  --pele-border: var(--border);
+  --pele-accent: var(--accent);
+  --pele-font: var(--font-sans);
+  --pele-font-mono: var(--font-mono);
+  --pele-radius: var(--r-md);
+  --pele-series-1: var(--accent);
+  --pele-series-2: var(--ok);
+  --pele-series-3: var(--warn);
+  --pele-series-4: var(--info);
+  --pele-series-5: var(--orange);
+  --pele-series-6: var(--thinking);
+  --pele-series-7: var(--danger);
+  --pele-series-8: var(--brown);
+}
+
+.mermaid-diagram {
+  position: relative;
+  margin: 0.7em 0;
+}
+
+/* The header band is .code-head's own; the actions wait for a hover there, so they need the
+   rule that shows them, since the block's own one hangs off .code-block. */
+.mermaid-diagram:hover .code-actions,
+.mermaid-diagram .code-actions:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .mermaid-diagram .code-actions {
+    opacity: 1;
+  }
+}
+
+/* A block-level canvas whose width never depends on the diagram: Pele measures this box and
+   redraws its layout when the box narrows. No display rule here — the element is hidden with
+   the hidden attribute while the source is up, and that attribute must keep doing its job. */
+.mermaid-canvas {
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-top-width: 0;
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  background: var(--code-bg);
+  overflow-x: auto;
+}
+
+.mermaid-canvas svg {
+  display: block;
+  margin: 0 auto;
+}
+
+/* Pele prints its own error line inside the canvas and dims the diagram it kept; the source and
+   the note under the card say the same thing without shouting over the answer's text. */
+.mermaid-canvas .pele-error {
+  display: none;
+}
+
+/* The fence's text, as the code block it would have been: .md pre carries the padding, type,
+   and background, so only the card's edges are set here. */
+pre.mermaid-source {
+  margin: 0;
+  border-top-width: 0;
+  border-radius: 0 0 var(--r-md) var(--r-md);
+}
+
+.mermaid-note {
+  margin-top: 6px;
+  color: var(--muted-text);
+  font-size: var(--chat-small);
+}

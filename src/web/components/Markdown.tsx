@@ -2,12 +2,15 @@
 // HTML is shown as the text it is — nothing here parses it into elements —
 // links are http(s)/mailto only and open in a new tab, and remote images never
 // load (their alt text and URL show instead). Code blocks get a header (language,
-// Wrap, Copy), and Run on a one-line shell block in a finished answer.
+// Wrap, Copy), and Run on a one-line shell block in a finished answer; a mermaid
+// fence is drawn as a diagram instead (MermaidDiagram.tsx).
 import { memo, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import type { PluggableList } from "unified";
 import remarkGfm from "remark-gfm";
+import { isMermaidFence } from "../mermaid.js";
 import { CodeBlock } from "./CodeBlock.js";
+import { MermaidDiagram } from "./MermaidDiagram.js";
 
 const SAFE_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 
@@ -67,6 +70,8 @@ function withCode(allowRun: boolean, streaming: boolean): Components {
       const code = (node as Hast | undefined)?.children?.find((c) => c.tagName === "code");
       const classes = Array.isArray(code?.properties?.className) ? (code.properties.className as string[]) : [];
       const lang = classes.find((c) => c.startsWith("language-"))?.slice(9) ?? null;
+      // A mermaid fence is drawn (src/web/mermaid.ts lazy-loads Pele); every other block stays text.
+      if (isMermaidFence(lang)) return <MermaidDiagram code={hastText(code)} streaming={streaming} />;
       return (
         <CodeBlock lang={lang} code={hastText(code)} allowRun={allowRun} streaming={streaming}>
           {children}
