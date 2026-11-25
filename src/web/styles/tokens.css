@@ -97,6 +97,9 @@
      read as a face above --bg in either scheme, not enough to become a second background.
      Light keeps nearly all of the white, because what lifts a card there is its shadow. */
   --card-mix: 76%;
+  /* How much accent the start screen's wash behind its mark takes: a grey page eats more of it
+     than a near-black one, so light asks for the stronger wash of the two. */
+  --hero-wash: 16%;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -131,6 +134,7 @@
     --hairline-mix: 13%;
     --raise-mix: 16%;
     --card-mix: 62%;
+    --hero-wash: 12%;
   }
 }
 
@@ -166,6 +170,7 @@
   --hairline-mix: 13%;
   --raise-mix: 16%;
   --card-mix: 62%;
+  --hero-wash: 12%;
 }
 
 :root[data-theme="light"] {

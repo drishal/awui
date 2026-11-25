@@ -192,14 +192,14 @@ export function StartScreen({
     <div className={`hero start-screen${landing ? " is-leaving" : ""}`} style={harnessColor(harnessId ?? undefined)} inert={landing ? true : undefined}>
       <div className="hero-inner">
         <span className="hero-mark" aria-hidden="true">
-          {/* The mark: a terminal bubble drawn in one hue, its prompt and cursor in the accent's ink, and a
-              soft sheen under the top edge so the shape reads as a lit surface rather than a flat blob. */}
-          <svg viewBox="0 0 64 64" width="52" height="52" fill="none">
-            <rect x="6" y="10" width="52" height="38" rx="12" fill="currentColor" />
-            <path d="M21 46h11l-13 10z" fill="currentColor" />
-            <path d="M20 16h24" stroke="var(--accent-fg)" strokeWidth="2.5" strokeLinecap="round" opacity="0.3" />
-            <path d="M24 23l8 7-8 7" stroke="var(--accent-fg)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M38 37h6" stroke="var(--accent-fg)" strokeWidth="2.5" strokeLinecap="round" />
+          {/* The mark: an outlined prompt chevron with its cursor, drawn on the dot grid behind it. One
+              hairline sheen inside the chevron's upper arm is the only fill, so it reads as a lit edge
+              rather than a flat glyph. Nothing here is traced from a reference. */}
+          <span className="hero-mark-grid" />
+          <svg viewBox="0 0 56 56" width="56" height="56" fill="none">
+            <path d="M16 16 29 28 16 40" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M34 40h6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+            <path d="M19 19.3 26.1 25.9" stroke="var(--accent-fg)" strokeWidth="1.2" strokeLinecap="round" opacity="0.45" />
           </svg>
         </span>
         <h2 className="hero-title">
