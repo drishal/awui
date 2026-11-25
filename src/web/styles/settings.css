@@ -114,13 +114,13 @@
   grid-column: 2;
   min-height: 0;
   margin-right: -18px;
-  padding: 14px 18px 64px;
+  padding: 14px 18px 40px;
   overflow-y: auto;
-  /* Rows fade out at the bottom edge rather than being cut (as in the palette); the padding under
-     the last row matches the fade, so a row is never cut through its text. A section scrolled to by
-     the rail's search leaves the same room under itself, so its own first row is not what fades. */
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent);
-  scroll-padding-block-end: 72px;
+  /* Rows fade out at the bottom edge rather than being cut (as in the palette). The fade is short and the
+     room under the last row is longer than it, so the last control is read at full strength: a 64px fade
+     over a 64px gap washed out whatever the pane had scrolled to. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  scroll-padding-block-end: 44px;
 }
 
 /* Phones show one pane at a time; this is the way back from a section to the list. */
@@ -128,8 +128,11 @@
   display: none;
 }
 
-/* The bar under both panes: the form's state, the restart notice, and the one Save. */
+/* The bar under both panes: the form's state, the restart notice, and the one Save. It is opaque and
+   edged, so the pane's fade ends above it instead of running into the bar's own text. */
 .settings-bar {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   grid-row: 3;
@@ -137,8 +140,9 @@
   gap: 8px;
   margin: 0 -18px -18px;
   padding: 10px 18px 14px;
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--hairline-strong);
   background: var(--card);
+  box-shadow: 0 -6px 12px -8px rgb(0 0 0 / calc(var(--shadow-strength) * 2));
 }
 
 .settings-bar-row {
