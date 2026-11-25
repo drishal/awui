@@ -11,6 +11,37 @@
   border-bottom: 1px solid var(--hairline);
 }
 
+/* The header's controls are one dense row beside the title: 32px squares, so seven of them weigh less than
+   the words they sit next to. A touch screen keeps the 44px squares phones.css gives every icon button. */
+.chat-header .icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
+@media (pointer: coarse) {
+  .chat-header .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Commands and the overflow menu are the header's second group, and the hairline in the gap before them
+   says so: the panel toggles change what you see, those two take a typed word or a menu. It is drawn in
+   the gap rather than as a border, so the square keeps its size and the icon its centre. */
+.chat-header .palette-open {
+  position: relative;
+}
+
+.chat-header .palette-open::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: -6px;
+  width: 1px;
+  background: var(--hairline);
+}
+
 .chat-title {
   flex: 1;
   min-width: 0;

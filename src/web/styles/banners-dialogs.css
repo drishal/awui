@@ -329,11 +329,19 @@
   margin-right: auto;
 }
 
+/* Review is the header's one anchor: the pill only exists while there are changes to look at, so it wears
+   the accent as a tint and a border of its own, while the row of ghost icons beside it stays ghosts. */
 .review-open {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   margin-right: 4px;
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--hairline-strong));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.review-open:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 @media (max-width: 640px) {
@@ -353,7 +361,10 @@
   min-width: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--hover);
+  /* The count is the pill's reason for being: an accent step under the tint, in the secondary ink so the
+     figure stays legible on a light scheme too. */
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--text-2);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
