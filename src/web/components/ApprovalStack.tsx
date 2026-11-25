@@ -293,18 +293,6 @@ export function ApprovalStack({
           </form>
         ) : approval ? (
           <>
-            <div className="approval-denial-reason">
-              <textarea
-                id={`denial-reason-${request.id}`}
-                className="input"
-                value={denialReason}
-                onChange={(e) => setDenialReason(e.target.value)}
-                maxLength={MAX_DENIAL_REASON_CHARS}
-                rows={2}
-                aria-label="Reason for denial (optional)"
-                placeholder="Reason for denial (optional) — sent with Deny"
-              />
-            </div>
             <div className="approval-actions">
               <span className="approval-spacer" />
               {/* Bordered: Deny is a real choice beside Approve, not a dismiss link. */}
@@ -328,19 +316,34 @@ export function ApprovalStack({
                 Approve
               </button>
             </div>
+            {/* The reason is an aside to a denial, not a field to fill: one quiet line under the decision,
+                which opens to a few lines while it is being written. */}
+            <div className="approval-reason">
+              <textarea
+                id={`denial-reason-${request.id}`}
+                className="input"
+                value={denialReason}
+                onChange={(e) => setDenialReason(e.target.value)}
+                maxLength={MAX_DENIAL_REASON_CHARS}
+                rows={1}
+                aria-label="Reason for denial (optional)"
+                placeholder="Reason for denial (optional) — sent with Deny"
+              />
+            </div>
           </>
         ) : (
           <>
             <ChoiceList request={request} busy={busy} onAnswer={(a) => onAnswer(request, a)} />
             <div className="approval-foot">
+              {/* Only the keys this card answers: with one option there is nowhere for ↑ ↓ to go. */}
               <span className="approval-hint">
                 {(request.options?.length ?? 0) > 1 ? (
                   <>
                     1–{Math.min(9, request.options?.length ?? 0)} to choose
                     <Dot />
+                    ↑↓ to move
                   </>
                 ) : null}
-                ↑↓ to move
               </span>
               <button type="button" className="btn btn-small btn-ghost" disabled={busy} onClick={() => onAnswer(request, { kind: "cancel" })}>
                 Dismiss
