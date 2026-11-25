@@ -76,7 +76,7 @@
   width: 100%;
   max-width: var(--chat-col);
   margin: 0 auto;
-  padding: 8px 20px 44px;
+  padding: 8px 20px 6px;
 }
 
 .thread > .turn:first-child,
@@ -88,11 +88,11 @@
   padding-bottom: var(--gap-turn);
 }
 
-/* The thread's last turn keeps 40 px of quiet under it. The jump pill floats in the transcript's bottom corner, and
-   at the end of the scroll it sat on the last line of the last turn — the reserved room is what it floats in, and it
-   belongs on the turn rather than the thread's padding so a phone's own bottom padding keeps its gutter. */
+/* The thread's last turn keeps the room the jump pill floats in, and no more: the pill is 32px in the transcript's
+   bottom corner with a 4px ring and 12px of edge below it, so 44px clears it. Anything past that is a band of empty
+   page between the answer and the dock above the next prompt. */
 .thread > .turn:last-child {
-  padding-bottom: calc(var(--gap-turn) + 40px);
+  padding-bottom: calc(var(--gap-turn) + 28px);
 }
 
 /* Compaction is a lasting history boundary, not a dismissible info notice.
