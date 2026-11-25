@@ -395,6 +395,52 @@
   }
 }
 
+/* The blueprint behind that mark is a slow sheet under it: eight pixels of drift across 40 s, out and back. The
+   mask that ends the grid also softens the move, so an empty chat is a room with air in it, never a picture that
+   is obviously animating. */
+.hero-mark-grid {
+  animation: grid-drift 40s ease-in-out infinite alternate;
+}
+
+@keyframes grid-drift {
+  from {
+    transform: translate(-50%, -50%);
+  }
+  to {
+    transform: translate(-50%, calc(-50% - 8px));
+  }
+}
+
+/* A running call says so in the harness rule it already carries: one bright arc travels down that 2 px line
+   every 2.4 s and is gone, the page's own ink at a fifth, so it brightens a dark theme's rule and shades a light
+   one's. Eight running rows therefore pulse once between them rather than eight spinners at once. */
+.tool-row[data-status="running"] {
+  /* The arc needs the row as its box; only a running row is positioned, so a failed row's retry button keeps
+     the card as its frame. */
+  position: relative;
+}
+
+.tool-row[data-status="running"]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 42%;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--text) 20%, transparent) 45%, transparent);
+  animation: rule-arc 2.4s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes rule-arc {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(240%);
+  }
+}
+
 /* A call seen running: its icon pops when the spinner gives way. */
 .tool-row.is-live:not([data-status="running"]) .drow-icon > svg {
   animation: icon-in 0.32s var(--ease-spring);
