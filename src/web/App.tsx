@@ -1863,118 +1863,60 @@ export function App() {
     const busy = chat ? isBusy(chat.status) : false;
     const idle = chat ? chat.status === "idle" || chat.status === "error" : false;
     const waitIdle = idle ? undefined : "Wait until the agent is idle";
-    items.push({ id: "new", section: "Actions", label: "New chat", hint: workspace?.name, run: () => showStart() });
-    if (workspace) {
-      items.push({ id: "worker-plan", section: "Project", label: "Worker plan…", hint: "Edit tasks, dependencies, and write scopes; only confirm starts workers", searchOnly: true, run: () => setWorkerPlanOpen(true) });
-      items.push({ id: "worktrees", section: "Project", label: "Worktrees…", hint: "Create or open an isolated checkout", searchOnly: true, run: () => setWorktreeOpen(true) });
-      items.push({ id: "terminal", section: "Project", label: "Terminal", hint: workspace.name, searchOnly: true, run: () => openTool("terminal") });
-      items.push({ id: "github", section: "Project", label: "GitHub and pull requests…", hint: workspace.name, searchOnly: true, run: () => openTool("github") });
-      items.push({ id: "compare", section: "Project", label: "Compare agents in isolated worktrees…", disabled: available.length < 2 ? "Need two available harnesses" : undefined, searchOnly: true, run: () => setCompareOpen(true) });
-      items.push({ id: "races", section: "Project", label: "Races: compare a prompt's results…", searchOnly: true, run: () => setRacesOpen({ raceId: null }) });
-    }
+    // Three sections in the order the palette draws them: the chat you are in, the work around it
+    // (its project, its other sessions), then the app itself.
+    items.push({ id: "new", section: "Chat", label: "New chat", hint: workspace?.name, run: () => showStart() });
     items.push({
       id: "new-tab",
-      section: "Actions",
+      section: "Chat",
       label: "New chat in a new tab",
       disabled: newChatDisabled ?? undefined,
       searchOnly: true,
       run: newTab,
     });
     if (chat && chat.status !== "disposed") {
-      if (busy) items.push({ id: "stop", section: "Actions", label: "Stop", run: stop });
-      if (chat.capabilities.supportsRename) items.push({ id: "rename", section: "Actions", label: "Rename chat", run: () => setRenameOpen(true) });
+      if (busy) items.push({ id: "stop", section: "Chat", label: "Stop", run: stop });
+      if (chat.capabilities.supportsRename) items.push({ id: "rename", section: "Chat", label: "Rename chat", run: () => setRenameOpen(true) });
       items.push({
         id: "chat-link",
-        section: "Actions",
+        section: "Chat",
         label: "Copy chat link",
         hint: "opens this chat again, even after a reopen",
         keywords: "share url deep link",
         run: () => void navigator.clipboard?.writeText(chatLink(window.location.origin, chatLinkKey(chat))),
       });
-      if (chat.capabilities.supportsCompact) items.push({ id: "compact", section: "Actions", label: "Compact context", disabled: chat.status === "idle" ? undefined : "Wait until the agent is idle", run: () => void compact() });
-      items.push({ id: "restart", section: "Actions", label: "Restart agent session", hint: "New process, same conversation", disabled: chat.status === "idle" || chat.status === "error" ? undefined : "Wait until the agent is idle", run: () => void restartChat() });
-      items.push({ id: "review", section: "Actions", label: "Review changes", hint: changedFiles > 0 ? `${changedFiles} ${changedFiles === 1 ? "file" : "files"}` : undefined, disabled: changedFiles > 0 ? undefined : "No files changed yet", run: () => setReviewOpen(true) });
+      if (chat.capabilities.supportsCompact) items.push({ id: "compact", section: "Chat", label: "Compact context", disabled: chat.status === "idle" ? undefined : "Wait until the agent is idle", run: () => void compact() });
+      items.push({ id: "restart", section: "Chat", label: "Restart agent session", hint: "New process, same conversation", disabled: chat.status === "idle" || chat.status === "error" ? undefined : "Wait until the agent is idle", run: () => void restartChat() });
+      items.push({ id: "review", section: "Chat", label: "Review changes", hint: changedFiles > 0 ? `${changedFiles} ${changedFiles === 1 ? "file" : "files"}` : undefined, disabled: changedFiles > 0 ? undefined : "No files changed yet", run: () => setReviewOpen(true) });
       items.push({
         id: "timeline",
-        section: "Actions",
+        section: "Chat",
         label: "File timeline",
         hint: chat.checkpoints.length > 0 ? `${chat.checkpoints.length} ${chat.checkpoints.length === 1 ? "checkpoint" : "checkpoints"}` : undefined,
         keywords: "checkpoints compare history diff",
         disabled: chat.checkpoints.length > 0 ? undefined : "No checkpoints yet (one is taken before each prompt in a git repository)",
         run: () => setTimelineOpen(true),
       });
-      items.push({ id: "export", section: "Actions", label: "Export as Markdown", disabled: hasPrompt ? undefined : "Nothing to export yet", run: exportChat });
-      items.push({ id: "close", section: "Actions", label: isBusy(chat.status) ? "Stop and close chat" : "Close chat", run: () => void closeChat() });
+      items.push({ id: "export", section: "Chat", label: "Export as Markdown", disabled: hasPrompt ? undefined : "Nothing to export yet", run: exportChat });
+      items.push({ id: "close", section: "Chat", label: isBusy(chat.status) ? "Stop and close chat" : "Close chat", run: () => void closeChat() });
     }
     items.push({
       id: "beside",
-      section: "Actions",
+      section: "Chat",
       label: side ? "Close the chat beside" : "Open a chat beside this one",
       hint: "split",
       keywords: "split side by side compare two",
       disabled: wide ? undefined : "Needs a wider window",
       run: () => (side ? setSide(null) : void openBeside()),
     });
-    items.push({ id: "usage", section: "Actions", label: "Usage across chats", hint: "tokens, cost", keywords: "spend dashboard stats", run: () => setUsageOpen(true) });
-    items.push({ id: "dashboard", section: "Actions", label: "Agent dashboard…", hint: "needs you · working · done", keywords: "board kanban overview agents progress", run: () => setDashboardOpen(true) });
-    items.push({ id: "routines", section: "Actions", label: "Routines…", hint: "scheduled prompts", keywords: "schedule cron jobs recurring", run: () => setRoutinesOpen(true) });
-    items.push({ id: "reload-app", section: "Actions", label: "Reload the app", hint: "after an update", keywords: "refresh update deploy new build", run: () => void reloadApp() });
-    items.push({ id: "prompts", section: "Actions", label: "Saved prompts…", hint: "#", keys: true, keywords: "templates snippets", run: () => setPromptsOpen({}) });
-    items.push({ id: "open-file", section: "Actions", label: "Open a file…", hint: searchWorkspace?.name, keywords: "view read go to", disabled: searchWorkspace ? undefined : "Choose a project first", run: () => setViewer({ request: null }) });
-    items.push({ id: "search-all", section: "Actions", label: "Search every chat", hint: shortcutHint("history-search"), keys: true, keywords: "history find", run: () => setChatSearch("") });
-    items.push({
-      id: "search",
-      section: "Actions",
-      label: "Search in project",
-      hint: shortcutHint("search"), keys: true,
-      disabled: searchWorkspace ? undefined : "Choose a project first",
-      run: () => setSearchOpen(true),
-    });
-    items.push({ id: "folder", section: "Actions", label: "Choose project folder…", run: () => setPickerOpen(true) });
-    items.push({ id: "reopen", section: "Actions", label: "Reopen closed tab", hint: shortcutHint("reopen"), keys: true, disabled: closedTabs.current.length ? undefined : "No tab closed yet", searchOnly: true, run: reopenClosedTab });
-    const shownTab = tabState.tabs[tabState.active];
-    if (shownTab) {
-      items.push({
-        id: "pin-tab",
-        section: "Actions",
-        label: shownTab.pinned ? "Unpin tab" : "Pin tab",
-        hint: "this tab",
-        keywords: "tabs keep left strip",
-        searchOnly: true,
-        run: () => pinTabAt(tabState.active, !shownTab.pinned),
-      });
-    }
-    items.push({ id: "back", section: "Actions", label: "Back to the previous chat", hint: shortcutHint("back"), keys: true, searchOnly: true, disabled: visits.current.at > 0 ? undefined : "Nothing before this", run: () => stepVisits(-1) });
-    items.push({ id: "forward", section: "Actions", label: "Forward to the next chat", hint: shortcutHint("forward"), keys: true, searchOnly: true, disabled: visits.current.at < visits.current.list.length - 1 ? undefined : "Nothing after this", run: () => stepVisits(1) });
-    items.push({ id: "sidebar", section: "Actions", label: collapsed ? "Show sidebar" : "Hide sidebar", searchOnly: true, run: () => collapseSidebar(!collapsed) });
-    items.push({ id: "settings", section: "Actions", label: "Settings", run: () => setSettingsOpen(true) });
-    items.push({ id: "shortcuts", section: "Actions", label: "Keyboard shortcuts", hint: shortcutHint("shortcuts"), keys: true, keywords: "keys help", run: () => setShortcutsOpen(true) });
-    items.push({ id: "pair", section: "Actions", label: "Pair a phone", searchOnly: true, run: () => setPairOpen(true) });
-
-    // Pinned first, then newest; the eight at the top show before anything is typed.
-    const sessions = [...overview.sessions.filter((x) => x.pinned), ...overview.sessions.filter((x) => !x.pinned)];
-    sessions.forEach((x, i) => {
-      const project = overview.workspaces.find((w) => w.id === x.workspaceId)?.name ?? "";
-      items.push({
-        id: `s:${x.id}`,
-        section: "Sessions",
-        label: x.title,
-        hint: project,
-        keywords: `${harnessName(x.harnessId)}${x.pinned ? " pinned" : ""}${x.archived ? " archived" : ""}`,
-        searchOnly: i >= 8 || x.archived,
-        current: (chat?.sessionId !== null && chat?.sessionId === x.id) || (x.liveChatId !== undefined && x.liveChatId === chat?.chatId),
-        run: () => void openSession(x),
-      });
-    });
-
     if (chat && chat.status !== "disposed" && chat.capabilities.supportsModelSelection) {
       for (const m of chat.config.models) {
-        items.push({ id: `m:${m.key}`, section: "Model", label: m.name, hint: m.provider, keywords: m.key, searchOnly: true, current: m.key === chat.config.model, disabled: waitIdle, run: () => void configure({ model: m.key }) });
+        items.push({ id: `m:${m.key}`, section: "Chat", label: m.name, hint: m.provider, keywords: m.key, searchOnly: true, current: m.key === chat.config.model, disabled: waitIdle, run: () => void configure({ model: m.key }) });
       }
     }
     if (chat && chat.status !== "disposed" && chat.capabilities.supportsThinkingLevel) {
       for (const level of chat.config.thinkingLevels) {
-        items.push({ id: `t:${level}`, section: "Thinking", label: `Thinking: ${level}`, searchOnly: true, current: level === chat.config.thinkingLevel, disabled: waitIdle, run: () => void configure({ thinkingLevel: level }) });
+        items.push({ id: `t:${level}`, section: "Chat", label: `Thinking: ${level}`, searchOnly: true, current: level === chat.config.thinkingLevel, disabled: waitIdle, run: () => void configure({ thinkingLevel: level }) });
       }
     }
     // Mid-run too, unlike model and thinking.
@@ -1982,7 +1924,7 @@ export function App() {
       for (const mode of chat.config.permissionModes ?? []) {
         items.push({
           id: `p:${mode.id}`,
-          section: "Permissions",
+          section: "Chat",
           label: `Permissions: ${mode.label}`,
           keywords: `${mode.id} ${mode.description}`,
           searchOnly: true,
@@ -1991,10 +1933,50 @@ export function App() {
         });
       }
     }
+
+    if (workspace) {
+      items.push({ id: "worker-plan", section: "Work", label: "Worker plan…", hint: "Edit tasks, dependencies, and write scopes; only confirm starts workers", searchOnly: true, run: () => setWorkerPlanOpen(true) });
+      items.push({ id: "worktrees", section: "Work", label: "Worktrees…", hint: "Create or open an isolated checkout", searchOnly: true, run: () => setWorktreeOpen(true) });
+      items.push({ id: "terminal", section: "Work", label: "Terminal", hint: workspace.name, searchOnly: true, run: () => openTool("terminal") });
+      items.push({ id: "github", section: "Work", label: "GitHub and pull requests…", hint: workspace.name, searchOnly: true, run: () => openTool("github") });
+      items.push({ id: "compare", section: "Work", label: "Compare agents in isolated worktrees…", disabled: available.length < 2 ? "Need two available harnesses" : undefined, searchOnly: true, run: () => setCompareOpen(true) });
+      items.push({ id: "races", section: "Work", label: "Races: compare a prompt's results…", searchOnly: true, run: () => setRacesOpen({ raceId: null }) });
+    }
+    // Pinned first, then newest; the eight at the top show before anything is typed.
+    const sessions = [...overview.sessions.filter((x) => x.pinned), ...overview.sessions.filter((x) => !x.pinned)];
+    sessions.forEach((x, i) => {
+      const project = overview.workspaces.find((w) => w.id === x.workspaceId)?.name ?? "";
+      items.push({
+        id: `s:${x.id}`,
+        section: "Work",
+        label: x.title,
+        hint: project,
+        keywords: `${harnessName(x.harnessId)}${x.pinned ? " pinned" : ""}${x.archived ? " archived" : ""}`,
+        searchOnly: i >= 8 || x.archived,
+        current: (chat?.sessionId !== null && chat?.sessionId === x.id) || (x.liveChatId !== undefined && x.liveChatId === chat?.chatId),
+        run: () => void openSession(x),
+      });
+    });
+    items.push({ id: "open-file", section: "Work", label: "Open a file…", hint: searchWorkspace?.name, keywords: "view read go to", disabled: searchWorkspace ? undefined : "Choose a project first", run: () => setViewer({ request: null }) });
+    items.push({
+      id: "search",
+      section: "Work",
+      label: "Search in project",
+      hint: shortcutHint("search"), keys: true,
+      disabled: searchWorkspace ? undefined : "Choose a project first",
+      run: () => setSearchOpen(true),
+    });
+    items.push({ id: "search-all", section: "Work", label: "Search every chat", hint: shortcutHint("history-search"), keys: true, keywords: "history find", run: () => setChatSearch("") });
+    items.push({ id: "folder", section: "Work", label: "Choose project folder…", run: () => setPickerOpen(true) });
+    items.push({ id: "prompts", section: "Work", label: "Saved prompts…", hint: "#", keys: true, keywords: "templates snippets", run: () => setPromptsOpen({}) });
+    items.push({ id: "routines", section: "Work", label: "Routines…", hint: "scheduled prompts", keywords: "schedule cron jobs recurring", run: () => setRoutinesOpen(true) });
+    items.push({ id: "dashboard", section: "Work", label: "Agent dashboard…", hint: "needs you · working · done", keywords: "board kanban overview agents progress", run: () => setDashboardOpen(true) });
+
+    items.push({ id: "usage", section: "App", label: "Usage across chats", hint: "tokens, cost", keywords: "spend dashboard stats", run: () => setUsageOpen(true) });
     for (const h of boot.harnesses) {
       items.push({
         id: `h:${h.id}`,
-        section: "Harness",
+        section: "App",
         label: `Harness: ${h.displayName}`,
         hint: "for new chats",
         searchOnly: true,
@@ -2008,7 +1990,7 @@ export function App() {
       const look = optionLook(option);
       items.push({
         id: `theme:${option.key}`,
-        section: "Theme",
+        section: "App",
         label: `Theme: ${option.label}`,
         hint: option.note ?? "every device",
         keywords: option.entry ? "base16 scheme" : undefined,
@@ -2019,7 +2001,27 @@ export function App() {
         run: () => void chooseTheme(option),
       });
     }
-    items.push({ id: "theme:manage", section: "Theme", label: "Manage themes…", hint: "upload, make, edit", keywords: "base16 scheme theme library", searchOnly: true, run: () => openThemeSettings() });
+    items.push({ id: "settings", section: "App", label: "Settings", run: () => setSettingsOpen(true) });
+    items.push({ id: "shortcuts", section: "App", label: "Keyboard shortcuts", hint: shortcutHint("shortcuts"), keys: true, keywords: "keys help", run: () => setShortcutsOpen(true) });
+    items.push({ id: "sidebar", section: "App", label: collapsed ? "Show sidebar" : "Hide sidebar", searchOnly: true, run: () => collapseSidebar(!collapsed) });
+    items.push({ id: "back", section: "App", label: "Back to the previous chat", hint: shortcutHint("back"), keys: true, searchOnly: true, disabled: visits.current.at > 0 ? undefined : "Nothing before this", run: () => stepVisits(-1) });
+    items.push({ id: "forward", section: "App", label: "Forward to the next chat", hint: shortcutHint("forward"), keys: true, searchOnly: true, disabled: visits.current.at < visits.current.list.length - 1 ? undefined : "Nothing after this", run: () => stepVisits(1) });
+    items.push({ id: "reopen", section: "App", label: "Reopen closed tab", hint: shortcutHint("reopen"), keys: true, disabled: closedTabs.current.length ? undefined : "No tab closed yet", searchOnly: true, run: reopenClosedTab });
+    const shownTab = tabState.tabs[tabState.active];
+    if (shownTab) {
+      items.push({
+        id: "pin-tab",
+        section: "App",
+        label: shownTab.pinned ? "Unpin tab" : "Pin tab",
+        hint: "this tab",
+        keywords: "tabs keep left strip",
+        searchOnly: true,
+        run: () => pinTabAt(tabState.active, !shownTab.pinned),
+      });
+    }
+    items.push({ id: "reload-app", section: "App", label: "Reload the app", hint: "after an update", keywords: "refresh update deploy new build", run: () => void reloadApp() });
+    items.push({ id: "pair", section: "App", label: "Pair a phone", searchOnly: true, run: () => setPairOpen(true) });
+    items.push({ id: "theme:manage", section: "App", label: "Manage themes…", hint: "upload, make, edit", keywords: "base16 scheme theme library", searchOnly: true, run: () => openThemeSettings() });
     return items;
   };
 

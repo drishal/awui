@@ -325,6 +325,13 @@ export const IconSwap = (p: IconProps) => (
   </Svg>
 );
 
+/** One conversation: a bubble with a tail, for a session and for the search across them. */
+export const IconChat = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M13 3.5H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2v2.5L8.5 11.5H13a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1z" />
+  </Svg>
+);
+
 export const IconDot = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="8" cy="8" r="2.5" fill="currentColor" stroke="none" />

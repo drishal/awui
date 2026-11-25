@@ -501,6 +501,63 @@
   color: var(--muted-text);
 }
 
+/* Each row leads with what kind of thing it is: a 16px slot, muted, so the label and its key stay the
+   loudest parts of the row. */
+.palette-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-text);
+}
+
+.palette-option.is-active .palette-icon {
+  color: var(--text-2);
+}
+
+/* The three sections are the list's spine: a heading over the rows it names, in the same small uppercase
+   label every other section header uses. */
+.palette .model-group-head {
+  padding: 10px 8px 4px;
+}
+
+.palette .model-group-head:first-child {
+  padding-top: 4px;
+}
+
+/* The keys the list itself answers, under it: one 30px strip, so nobody has to guess how to move or run. */
+.palette-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+  min-height: 30px;
+  padding: 0 14px;
+  border-top: 1px solid var(--hairline);
+  background: var(--card);
+  color: var(--muted-text);
+  font-size: 11.5px;
+}
+
+.palette-foot > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.palette-foot kbd {
+  min-width: 16px;
+  padding: 1px 4px;
+  border: 1px solid var(--hairline-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  font: 500 10.5px/13px var(--font-sans);
+  text-align: center;
+  color: var(--muted-text);
+}
+
 /* The keyboard's row: the selected fill with the sidebar's accent rule (the hover tint was too faint to follow on
    a dark card). The rule is a bar of its own, inset from the row's squared-off ends: an inset shadow follows the
    row's 8px radius and draws a bracket instead. */
@@ -538,7 +595,8 @@
 }
 
 @media (hover: none) {
-  .palette-kbd {
+  .palette-kbd,
+  .palette-foot {
     display: none;
   }
 }
