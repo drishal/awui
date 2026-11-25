@@ -62,6 +62,14 @@ test("work happens along with its chart: context count follows the original tool
   await page.getByRole("button", { name: "Collapse context panel", exact: true }).click();
   await expect(panel).toHaveClass(/is-collapsed/);
   await expect(panel.getByRole("heading", { name: "Active work" })).toHaveCount(0);
+  const railToggle = panel.getByRole("button", { name: "Expand context panel", exact: true });
+  await expect(railToggle).toHaveCSS("width", "34px");
+  await expect(railToggle).toHaveCSS("height", "34px");
+  const railUsage = panel.getByRole("button", { name: /^Context used: \d+% of / });
+  await expect(railUsage).toBeVisible();
+  await expect(railUsage.locator(".context-rail-figure")).toHaveCSS("font-size", "10px");
+  await expect(railUsage.locator("svg").first()).toHaveAttribute("width", "28");
+  await expect(panel.locator(".context-live-grow")).toHaveCount(0);
   await expect.poll(async () => (await panel.evaluate((el) => getComputedStyle(el).flexBasis)), { timeout: 3000 }).toBe("40px");
   const box = await panel.boundingBox();
   expect(box?.width).toBeCloseTo(40, 1);

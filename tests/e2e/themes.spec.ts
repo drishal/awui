@@ -124,6 +124,10 @@ test("the command palette switches theme, previewing the highlighted one", async
 
   await page.keyboard.press("Control+k");
   await search.fill("theme solarized");
+  await expect(page.locator(".palette-description").first()).toBeVisible();
+  await expect(page.locator(".palette-description").first()).toHaveCSS("font-size", "12px");
+  await expect(page.locator(".palette-keys").first()).toHaveCSS("flex-basis", "72px");
+  await expect(page.locator(".palette-group-count").first()).not.toBeEmpty();
   await page.keyboard.press("Enter");
   await expect.poll(config).toContain("theme_scheme: solarized-light");
   await expect(page.getByRole("button", { name: "Theme: Solarized Light" })).toBeVisible();

@@ -484,8 +484,9 @@
 .palette-text {
   flex: 1 1 auto;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
   min-width: 0;
 }
 
@@ -497,14 +498,12 @@
   white-space: nowrap;
 }
 
-.palette-hint {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 45%;
+.palette-description {
+  max-width: 52%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--muted-text);
 }
 
@@ -515,9 +514,22 @@
 
 /* Shortcuts as keycaps, one per key, so a combination reads as keys rather than as another word of detail. */
 .palette-keys {
-  flex: none;
+  flex: 0 0 72px;
   display: inline-flex;
+  justify-content: flex-end;
   gap: 3px;
+}
+
+.palette-list .model-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted-text);
+}
+
+.palette-group-count {
+  font-variant-numeric: tabular-nums;
 }
 
 .palette-keys kbd {

@@ -244,6 +244,9 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
         <button type="button" className="context-rail-button" title="Project comparisons and races" aria-label="Inspect project races" onClick={() => { if (inWorkspace.length === 0) { onRace(null); return; } openDetail(); if (!open.races) toggle("races"); }}><IconSplit size={16} />{numberOfRaces > 0 ? <span className="context-rail-badge">{numberOfRaces > 9 ? "9+" : numberOfRaces}</span> : null}</button>
       </div> : null}
     </div>
-    {detail ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot"><span className={`context-live-grow${running || hasQuestions ? " is-on" : ""}`} /></div>}
+    {detail ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot">{chat.context ? <button type="button" className="context-rail-usage" onClick={onUsage} title="Open context and model usage" aria-label={chat.context.percent === null ? "Open context and model usage" : `Context used: ${Math.round(chat.context.percent)}% of ${tokenCount(chat.context.window)}`}>
+      <span className={`context-pie tone-${contextTone(chat.context.percent ?? 0)}`}><ContextPie percent={chat.context.percent ?? 0} size={28} /></span>
+      {chat.context.percent === null ? null : <span className="context-rail-figure">{Math.round(chat.context.percent)}%</span>}
+    </button> : null}</div>}
   </aside>;
 }

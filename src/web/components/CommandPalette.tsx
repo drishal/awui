@@ -60,7 +60,52 @@ const ICONS: Record<string, ReactNode> = {
   "theme:manage": <IconPalette size={16} />,
 };
 
-/** The list's ids the map does not name one by one: a session, a model, a level, a mode, a harness. */
+/** A short second line for command rows; sessions, models and harnesses use their existing detail instead. */
+const DESCRIPTIONS: Record<string, string> = {
+  new: "Start a chat in this project",
+  "new-tab": "Open another chat tab",
+  stop: "Stop the running agent",
+  rename: "Rename this chat",
+  "chat-link": "Copy a link to this chat",
+  compact: "Free context for a longer run",
+  restart: "Continue in another harness",
+  review: "Inspect files changed in this chat",
+  timeline: "Browse file snapshots by turn",
+  export: "Download this chat as Markdown",
+  close: "Close this chat tab",
+  beside: "Open a chat beside this one",
+  "worker-plan": "Inspect a delegated worker's plan",
+  worktrees: "Manage isolated Git checkouts",
+  terminal: "Open a terminal in this project",
+  github: "Inspect or create a pull request",
+  compare: "Compare isolated agent runs",
+  races: "Inspect project comparisons",
+  "open-file": "Open a file in this project",
+  search: "Find text inside this chat",
+  "search-all": "Search chats across projects",
+  folder: "Choose another project folder",
+  prompts: "Browse saved prompts",
+  routines: "Schedule recurring prompts",
+  dashboard: "See agents that need your attention",
+  usage: "Inspect context and model usage",
+  settings: "Edit server and device settings",
+  shortcuts: "Show every keyboard shortcut",
+  sidebar: "Fold or open the sessions rail",
+  back: "Return to the previous page",
+  forward: "Go to the next page",
+  reopen: "Reopen a recently closed chat",
+  "undo-mark": "Undo this chat's file changes",
+  find: "Find text inside this chat",
+  "pin-tab": "Pin this chat tab",
+  "reload-app": "Reload the latest app build",
+  pair: "Pair another device",
+  "theme:manage": "Manage colour schemes",
+};
+
+function descriptionFor(item: PaletteItem): string | undefined {
+  return item.disabled ?? (!item.keys ? item.hint : undefined) ?? DESCRIPTIONS[item.id];
+}
+
 function iconFor(id: string): ReactNode {
   const fixed = ICONS[id];
   if (fixed) return fixed;
@@ -80,6 +125,11 @@ export function CommandPalette({ items, onClose, onPreviewEnd }: { items: Palett
   const [active, setActive] = useState(0);
   const listId = useId();
   const shown = useMemo(() => rankItems(items, query), [items, query]);
+  const sectionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of shown) counts.set(item.section, (counts.get(item.section) ?? 0) + 1);
+    return counts;
+  }, [shown]);
 
   useEffect(() => {
     const el = ref.current;
@@ -175,11 +225,13 @@ export function CommandPalette({ items, onClose, onPreviewEnd }: { items: Palett
         <ul ref={listRef} id={listId} className="palette-list" role="listbox" aria-label="Results">
           {shown.map((item, i) => {
             const head = i === 0 || shown[i - 1]?.section !== item.section;
+            const description = descriptionFor(item);
             return (
               <li key={item.id} role="presentation">
                 {head ? (
                   <div className="model-group-head" role="presentation">
                     {item.section}
+                    <span className="palette-group-count">{sectionCounts.get(item.section)}</span>
                   </div>
                 ) : null}
                 <div
@@ -188,24 +240,25 @@ export function CommandPalette({ items, onClose, onPreviewEnd }: { items: Palett
                   role="option"
                   aria-selected={i === active}
                   aria-disabled={item.disabled ? true : undefined}
+                  aria-label={item.label}
+                  aria-description={description}
                   title={item.disabled}
                   className={`model-option palette-option${i === active ? " is-active" : ""}${item.disabled ? " is-disabled" : ""}`}
                   onPointerMove={() => !item.disabled && i !== active && setActive(i)}
                   onClick={() => run(item)}
                 >
                   <span className="palette-icon" aria-hidden="true">{item.icon ?? iconFor(item.id)}</span>
-                  {/* Label and detail share one baseline: centred on their own, the smaller detail rode high. */}
                   <span className="palette-text">
                     <span className="palette-label">{item.label}</span>
-                    {item.hint && !item.keys ? <span className="palette-hint">{item.hint}</span> : null}
+                    {description ? <span className="palette-description">{description}</span> : null}
                   </span>
-                  {item.hint && item.keys ? (
-                    <span className="palette-keys">
-                      {item.hint.split(/(?<=.)\+(?=.)/).map((key, k) => (
-                        <kbd key={k}>{key}</kbd>
-                      ))}
-                    </span>
-                  ) : null}
+                  <span className="palette-keys">
+                    {item.hint && item.keys
+                      ? item.hint.split(/(?<=.)\+(?=.)/).map((key, k) => (
+                          <kbd key={k}>{key}</kbd>
+                        ))
+                      : null}
+                  </span>
                   {item.current ? <IconCheck size={14} className="palette-check" /> : null}
                 </div>
               </li>

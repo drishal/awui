@@ -66,6 +66,11 @@ test.describe("shared look in config.yml", () => {
     // No per-device look controls remain: theme and text size live in the server form.
     await expect(settings.getByRole("tab", { name: "This device", exact: true })).toHaveAttribute("aria-selected", "true");
     await openSection(settings, "Appearance");
+    const section = settings.locator("#settings-panel-look");
+    await expect(section).toHaveCSS("border-radius", "12px");
+    await expect(section).toHaveCSS("padding", "16px");
+    await expect(section.locator("h3")).toHaveCSS("font-size", "11px");
+    await expect(section.locator("h3")).toHaveCSS("font-weight", "700");
     await settings.getByRole("button", { name: "Theme", exact: true }).click();
     await settings.getByRole("listbox", { name: "Theme" }).getByRole("option", { name: "Dark" }).click();
     const slider = settings.getByRole("slider", { name: "Chat text size" });

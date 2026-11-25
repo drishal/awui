@@ -45,7 +45,7 @@
   flex-direction: column;
   gap: 6px;
   min-height: 0;
-  padding: 6px 4px 8px;
+  padding: 10px 4px 8px;
 }
 .context-eyebrow {
   flex: 1;
@@ -67,8 +67,8 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   border: 0;
   border-radius: var(--r-sm);
@@ -95,8 +95,10 @@
   text-align: center;
 }
 .context-rail-foot { display: flex; flex: 1; min-height: 0; align-items: center; justify-content: center; gap: 8px; padding-bottom: 6px; }
-.context-live-grow { width: 3px; height: 20px; background: var(--hairline-strong); border-radius: 4px; }
-.context-live-grow.is-on { background: var(--warn); }
+.context-rail-usage { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0; border: 0; background: transparent; color: var(--muted-text); cursor: pointer; }
+.context-rail-usage > .context-pie { display: block; }
+.context-rail-figure { font-size: 10px; font-variant-numeric: tabular-nums; }
+.context-rail-usage:hover .context-rail-figure { color: var(--text); }
 
 /* ---- the scrolled detail ---- */
 .context-scroller { flex: 1; min-height: 0; padding: 9px 10px 20px; overflow: auto; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted-text) 30%, transparent) transparent; }
