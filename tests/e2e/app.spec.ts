@@ -947,7 +947,7 @@ test("context ring, edited files, and the turn rail", async ({ page }) => {
   await expect(page.getByTestId("changed-files")).toContainText("src/app.ts");
   await expect(page.getByTestId("tool-row").last()).toContainText("src/app.ts");
   await expect(page.getByTestId("context-ring")).toBeVisible();
-  await expect(page.getByTestId("context-ring")).toHaveAccessibleName(/% of context used · .* tokens/);
+  await expect(page.getByTestId("context-ring")).toHaveAccessibleName(/^Context used: \d+% of .* · .* tokens used$/);
   // One panel: what fills the window, the session's tokens, and model timing.
   await page.getByTestId("context-ring").click();
   const panel = page.getByRole("dialog", { name: "Context and usage" });
