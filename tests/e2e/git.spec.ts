@@ -47,6 +47,30 @@ test("the status stack's ridge folds the git row too, and brings it back", async
   const row = page.getByTestId("git-row");
   await expect(row).toBeVisible();
   // The stack holds the git row alone (base-only): its ridge is the one pill above it.
+  // With a pointer the grip is out of flow on the dock's top edge, so the lone lane sits at the dock's edge
+  // instead of under a 14px empty ridge row of its own (round 7: a navy band over "master not pushed").
+  const geometry = await page.locator(".status-stack").evaluate((stack) => {
+    const top = stack.getBoundingClientRect().top;
+    const grip = stack.querySelector(".stack-ridge") as HTMLElement;
+    const lane = stack.querySelector('[data-testid="git-row"]') as HTMLElement;
+    return {
+      position: getComputedStyle(grip).position,
+      gripTop: Math.round(grip.getBoundingClientRect().top - top),
+      laneTop: lane.getBoundingClientRect().top - top,
+    };
+  });
+  expect(geometry.position).toBe("absolute");
+  expect(geometry.gripTop).toBe(0);
+  expect(geometry.laneTop).toBeLessThanOrEqual(2);
+  // The grip starts at the dock's edge, not over the prompt's resize strip: a press on the strip's centre is the
+  // strip's, or the prompt could not be dragged taller in a chat whose dock is one lane.
+  const strip = page.getByRole("separator", { name: "Resize the prompt box" });
+  const stripBox = (await strip.boundingBox()) as { x: number; y: number; width: number; height: number };
+  const underStrip = await page.evaluate(
+    ([x, y]) => document.elementFromPoint(x as number, y as number)?.getAttribute("aria-label") ?? document.elementFromPoint(x as number, y as number)?.className,
+    [stripBox.x + stripBox.width / 2, stripBox.y + stripBox.height / 2],
+  );
+  expect(underStrip).toBe("Resize the prompt box");
   const ridge = page.getByRole("button", { name: "Hide status" });
   await ridge.click();
   await expect(row).toBeHidden();

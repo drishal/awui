@@ -38,6 +38,8 @@
   height: 4px;
   border-radius: 4px;
   background: var(--hairline-strong);
+  /* Decoration only: the ridge is the control, so its bar never takes a press meant for what it straddles. */
+  pointer-events: none;
 }
 
 .stack-ridge:hover .ridge-bar,
@@ -46,7 +48,7 @@
 }
 
 /* With a mouse the grip shows only when it is wanted: always on, a bar centred on the dock's top edge read as
-   a break in its border. Touch keeps it, since there is no hover to find it by. */
+   a break in its border. A finger keeps the row, since it has no hover to find the grip by. */
 @media (hover: hover) {
   .ridge-bar {
     opacity: 0;
@@ -57,6 +59,30 @@
   .stack-ridge:focus-visible .ridge-bar,
   .status-stack:hover .ridge-bar {
     opacity: 1;
+  }
+
+  /* A lone lane gets the dock's top edge instead of an empty 14px ridge row above it (round 7's dead band over
+     "master not pushed"): the grip comes out of flow, its bar still straddling that edge, and its own target is
+     the lane's top band. The composer's resize strip runs along the same edge, so the grip starts at the edge
+     rather than 7px above it, and it lets the strip keep any press that lands on the strip: the strip is the
+     gesture people reach for there. A full dock keeps the row (inside the card it reads as the card's top
+     padding), and so does a hidden one, whose count sits in the ridge. */
+  .status-stack.is-base-only:not(.is-hidden) {
+    position: relative;
+  }
+
+  .status-stack.is-base-only:not(.is-hidden) .stack-ridge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+  }
+
+  /* The bar keeps the place it had when its row was in flow: centred on the dock's top edge. */
+  .status-stack.is-base-only:not(.is-hidden) .ridge-bar {
+    position: absolute;
+    top: -2px;
+    left: calc(50% - 17px);
   }
 }
 
