@@ -12,6 +12,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChainStep, QueueState, TodoItem } from "../../shared/protocol.js";
 import { addToDraft } from "../draft-bus.js";
+import { useMediaQuery } from "../hooks.js";
 import { IconAgents, IconChevronDown, IconClock, IconEdit, IconQueue, IconSteer, IconSwap, IconWarning, IconX, Spinner } from "../icons.js";
 import { jobLine, type JobProgress } from "../job-progress.js";
 import { announceLanding, ranFromQueue, type Spot } from "../queue-glide.js";
@@ -105,6 +106,9 @@ export function StatusStack({
 }) {
   const key = `stack.${chatId}`;
   const [hidden, setHidden] = useState(() => load<boolean>(key, false));
+  // A phone's dock is a shelf: a card starts shut on its head (the title and its count) and opens on a tap, so the
+  // conversation keeps the screen. A desk has the height to open them.
+  const phone = useMediaQuery("(max-width: 600px)");
   useEffect(() => setHidden(load<boolean>(key, false)), [key]);
   const queued = [...queue.steering.map((t, i) => ({ t, k: "Steering", i })), ...queue.followUp.map((t, i) => ({ t, k: "Follow-up", i }))];
   const [editing, setEditing] = useState<{ k: string; i: number; original: string; draft: string } | null>(null);
@@ -212,7 +216,7 @@ export function StatusStack({
             </div>
           ) : null}
           {background.length > 0 ? (
-            <Group title="Background" meta={runningJobs > 0 ? `${runningJobs} running` : "finished"} defaultOpen>
+            <Group title="Background" meta={runningJobs > 0 ? `${runningJobs} running` : "finished"} defaultOpen={!phone}>
               <div className="job-list" data-testid="background-jobs">
                 {background.map((job) => (
                   <JobCard key={job.id} job={job} />
@@ -317,12 +321,12 @@ export function StatusStack({
             </div>
           ) : null}
           {showTasks ? (
-            <Group title="Delegated" meta={tasksMeta(tasks) ?? undefined} defaultOpen>
+            <Group title="Delegated" meta={tasksMeta(tasks) ?? undefined} defaultOpen={!phone}>
               <DelegatedTasks tasks={tasks} chatId={chatId} workspaceId={workspaceId} harnessName={harnessName} onOpen={onOpenTask} onCancel={onCancelTask} />
             </Group>
           ) : null}
           {todos.length > 0 ? (
-            <Group title="Todos" meta={`${done}/${todos.length}`} defaultOpen>
+            <Group title="Todos" meta={`${done}/${todos.length}`} defaultOpen={!phone}>
               <TodoTree todos={todos} working={working} jobs={jobsById} />
             </Group>
           ) : null}
