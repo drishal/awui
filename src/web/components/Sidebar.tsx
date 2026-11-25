@@ -1196,8 +1196,11 @@ export function Sidebar(props: {
     setLastCurrent(currentId);
     setFocus("auto");
   }
-  // A projectless harness's flat history has no projects to focus.
-  const focusId = !projectScoped(props.harnesses, props.harnessId ?? "") || focus === "all" ? null : focus === "auto" ? currentId : focus;
+  // A projectless harness's flat history has no projects to focus, and neither has a lone project: with one,
+  // "All projects" is the same list, so the plain group head stays instead of growing a back row that goes
+  // nowhere. The count is the whole overview's, so a filter does not switch the layout under the pointer.
+  const focusable = projectScoped(props.harnesses, props.harnessId ?? "") && props.overview.workspaces.length > 1;
+  const focusId = !focusable || focus === "all" ? null : focus === "auto" ? currentId : focus;
   const sessionList = useRef<HTMLUListElement>(null);
   useViewSlide(sessionList, focusId ?? "all");
   const focused = useMemo(() => {

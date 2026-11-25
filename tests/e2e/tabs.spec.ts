@@ -493,7 +493,11 @@ test("a project's folder shows its own monogram", async ({ page }) => {
 });
 
 test("a project's icon can be set on this device", async ({ page }) => {
+  // The folder head this test drives needs focus mode, which needs a second project with a session.
+  await signInAndOpen(page, "beta");
+  await sendAndWait(page, "a beta chat for the folder icon");
   await signInAndOpen(page);
+  await sendAndWait(page, "an alpha chat for the folder icon");
   await showSidebar(page);
   const head = page.getByTestId("focused-project");
   // The folder switcher, not the "New chat in alpha" button beside it.

@@ -1127,6 +1127,9 @@ test("several pending requests stack; answering the front one reveals the next",
 });
 
 test("the sidebar focuses the current project and opens its sessions across harnesses", async ({ page }) => {
+  // Focus mode is for two projects or more: alpha gets a chat of its own, then this test works in beta.
+  await signInAndOpen(page);
+  await sendAndWait(page, "an alpha chat for the focus view");
   await signInAndOpen(page, "beta");
   // Other specs share this server and this folder, so count what this one adds to it.
   await chooseHarness(page, "Fake");
@@ -1210,7 +1213,11 @@ async function slideFrom(page: Page, selector: string): Promise<string> {
 }
 
 test("the sidebar's list slides back when it returns to all projects", async ({ page }) => {
+  // Focus mode is for two projects or more: a chat in each, then work in alpha.
+  await signInAndOpen(page, "beta");
+  await sendAndWait(page, "a beta chat for the focus slide");
   await signInAndOpen(page);
+  await sendAndWait(page, "an alpha chat for the focus slide");
   // Back out to all projects: the list comes from the left.
   expect(await slideFrom(page, '[data-testid="focused-project"] .focus-back')).toBe("translateX(-22px)");
   await expect(page.getByTestId("focused-project")).toHaveCount(0);
