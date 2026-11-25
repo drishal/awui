@@ -441,12 +441,15 @@ function CallBody({ item, workspace }: { item: ToolItem; workspace: string }) {
   }
 
   if (item.category === "read" && path) {
+    // The row names the file ("Read src/net.ts"), so an opened row goes straight to what it read: a caption over
+    // the content said the same path a second time. The head stays on a standalone card, where nothing else does
+    // (that is why the row keeps its target: `names` is false, so opening the row does not hide the file either).
     return card(
-      <CardHead icon={<IconFile size={13} />} meta={lineRange(args)} repeats="icon">
+      <CardHead icon={<IconFile size={13} />} meta={lineRange(args)} repeats="all">
         <FileLink path={path} />
       </CardHead>,
       <Output item={item} label={null} />,
-      true,
+      false,
     );
   }
 
