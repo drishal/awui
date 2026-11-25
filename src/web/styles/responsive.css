@@ -113,16 +113,10 @@
   /* A phone has a notch and a rounded edge: the transcript keeps a real gutter on both sides and stays clear of the
      home indicator, so no line starts or ends under the curve. Its foot reserves the page's own margin, not a lane
      for the jump pill: the pill floats only while the reader is scrolled up (Conversation's showJump), and it carries
-     its own clearance above the home indicator below. */
+     its own clearance above the home indicator below. The 40px at the top is the same reserve the desk keeps: the
+     top fade's height, so the first row starts clear of it. The last turn keeps the bottom fade's room itself. */
   .thread {
-    padding: 4px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  }
-
-  /* The foot's 12px is what the transcript's bottom fade may cover, so a phone's fade ends inside it: taller, it
-     would tint the last row's descenders at rest. */
-  .conversation-wrap::after {
-    height: 14px;
-    background: linear-gradient(to top, var(--bg) 2px, transparent);
+    padding: 40px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
 

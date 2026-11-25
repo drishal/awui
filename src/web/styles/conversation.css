@@ -6,9 +6,12 @@
   min-height: 0;
 }
 
-/* The transcript runs under the header and the dock, so both edges fade it out instead of cutting a line: 20px
-   of page at the top, 28px at the bottom. They sit above the rows (z 2) and below the sticky prompt (4), the
-   jump pill (5) and the find bar (6), and take no pointer, so a row under a fade is still clickable. */
+/* The transcript runs under the header and the dock, so both edges fade it out instead of cutting a line. The fade
+   is two rows long and starts with 10px of page at the edge: a row that leaves is gone before it is dimmed, and one
+   that is half out is dimmed between its lines, not sliced through a glyph. The thread reserves both heights (its
+   padding at the top, the last turn's at the bottom), so a row at rest is never under one. They sit above the rows
+   (z 2) and below the sticky prompt (4), the jump pill (5) and the find bar (6), and take no pointer, so a row under
+   a fade is still clickable. */
 .conversation-wrap::before,
 .conversation-wrap::after {
   content: "";
@@ -21,14 +24,14 @@
 
 .conversation-wrap::before {
   top: 0;
-  height: 20px;
-  background: linear-gradient(to bottom, var(--bg), transparent);
+  height: 40px;
+  background: linear-gradient(to bottom, var(--bg) 10px, transparent);
 }
 
 .conversation-wrap::after {
   bottom: 0;
-  height: 28px;
-  background: linear-gradient(to top, var(--bg), transparent);
+  height: 36px;
+  background: linear-gradient(to top, var(--bg) 10px, transparent);
 }
 
 .conversation {
@@ -76,7 +79,9 @@
   width: 100%;
   max-width: var(--chat-col);
   margin: 0 auto;
-  padding: 8px 20px 6px;
+  /* 40px: the top fade's height, so the first row at rest starts where the page does again (conversation.css's
+     .conversation-wrap::before) instead of sitting under its own scrim. */
+  padding: 40px 20px 6px;
 }
 
 .thread > .turn:first-child,
