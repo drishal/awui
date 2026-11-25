@@ -110,6 +110,12 @@ a literal colour.
   `data-density="compact"` on `<html>`, and `tokens.css` overrides them there,
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
   a literal, for a new row height or gap.
+- **Sidebar rows:** `config.yml`'s `sidebar_style: compact` sets
+  `data-sidebar="compact"` on `<html>`, and `sidebar.css` ends with the handful
+  of overrides that bring back the tight rows older versions drew (4px padding,
+  1px between rows, no inset hairline, the clock centred, the agent's state as
+  coloured words). It changes the row look only: heads, chips, hover cards, and
+  the wash keep their own rules, and a phone's row is still 44px tall.
 - **Text:** `--chat-font` = 14.5 px × `--chat-scale` (config.yml's text size).
   A small uppercase section label (Recent, Todos, Actions) is 600 weight at
   `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat

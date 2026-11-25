@@ -1289,3 +1289,64 @@ body.is-resizing {
     white-space: nowrap;
   }
 }
+
+/* The compact session rows (config.yml's `sidebar_style: compact`): the list older versions drew, before
+   the rows were separated. Every rule here restates one value the separated look set above, and only
+   those: delete the block and the default look returns whole. The panel around the rows (heads, chips,
+   hover cards, the active wash) keeps its own rules either way. */
+:root[data-sidebar="compact"] .session {
+  align-items: center;
+  padding: 4px 8px;
+}
+
+:root[data-sidebar="compact"] .session-body {
+  align-content: center;
+  gap: 1px;
+}
+
+/* One ink for every title: the separated look eases the row down to 86% so a whole column of two-line
+   titles does not read as bold, which only matters once the rows carry that rhythm. */
+:root[data-sidebar="compact"] .session-title {
+  color: var(--text);
+}
+
+:root[data-sidebar="compact"] .session-sub,
+:root[data-sidebar="compact"] .session .session-agent {
+  font-size: 11.5px;
+}
+
+/* An agent's state is the words' own colour here, not a 6px dot beside them. */
+:root[data-sidebar="compact"] .session .session-agent::before {
+  content: none;
+}
+
+:root[data-sidebar="compact"] .session .session-agent.is-blocked {
+  color: var(--warn);
+}
+
+:root[data-sidebar="compact"] .session .session-agent.is-review,
+:root[data-sidebar="compact"] .session .session-agent.is-done {
+  color: var(--ok);
+}
+
+/* The clock is centred with the row instead of pinned to the title's first line, which only a two-line
+   row needs to tell apart. */
+:root[data-sidebar="compact"] .session-meta {
+  padding-top: 0;
+  font-size: 12px;
+}
+
+:root[data-sidebar="compact"] .session-time,
+:root[data-sidebar="compact"] .session-wake {
+  min-width: 3.2ch;
+}
+
+/* Tight rows with no hairline: 1px is the whole gap, so there is no room for the inset line to sit in
+   (and nothing to hide under a filled row). A phone's 44px row height is phones.css's, unchanged. */
+:root[data-sidebar="compact"] .session-item + .session-item {
+  margin-top: 1px;
+}
+
+:root[data-sidebar="compact"] .session-item + .session-item > .session::before {
+  content: none;
+}
