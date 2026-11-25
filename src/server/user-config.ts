@@ -8,7 +8,7 @@ import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 import { DEFAULT_BREAKDOWN_RULES, type BreakdownRules } from "../shared/breakdown.js";
-import { chatWidthSchema, densitySchema, NORMALIZER_BACKENDS, themeChoiceSchema, themeIdSchema, toolStyleSchema, uiFontSchema, type ChatWidth, type Density, type ThemeChoice, type ToolStyle, type UiFont } from "../shared/protocol.js";
+import { chatWidthSchema, densitySchema, NORMALIZER_BACKENDS, sidebarStyleSchema, themeChoiceSchema, themeIdSchema, toolStyleSchema, uiFontSchema, type ChatWidth, type Density, type SidebarStyle, type ThemeChoice, type ToolStyle, type UiFont } from "../shared/protocol.js";
 import { IS_WINDOWS, defaultConfigDir } from "./platform-win.js";
 
 export const CONFIG_FILE = "config.yml";
@@ -31,6 +31,8 @@ export interface UiSettings {
   chatWidth: ChatWidth | null;
   /** Shared row and gap density; null: comfortable. */
   density: Density | null;
+  /** The sidebar's session rows (today's separated rows, or the tight rows older versions had); null: separated. */
+  sidebarStyle: SidebarStyle | null;
   /** How a turn's work is drawn; null: cards. */
   toolStyle: ToolStyle | null;
   /** The web UI's type; null: the bundled font. */
@@ -311,6 +313,8 @@ const schema = z
     chat_width: chatWidthSchema.optional(),
     /** Shared density of the web UI's rows and gaps: comfortable (today's look) or compact. */
     density: densitySchema.optional(),
+    /** How the sidebar's session rows are drawn: separated (today's look) or compact (the tight rows older versions had). */
+    sidebar_style: sidebarStyleSchema.optional(),
     /** How a turn's work is drawn: the card (today's look), or the flat line list older versions drew. */
     tool_style: toolStyleSchema.optional(),
     /** The web UI's type: the bundled font (the same on every machine), or each device's system font. */
@@ -545,6 +549,7 @@ export function uiSettings(c: UserConfig | undefined, env: NodeJS.ProcessEnv = p
     textScale: c?.text_scale ?? null,
     chatWidth: c?.chat_width ?? null,
     density: c?.density ?? null,
+    sidebarStyle: c?.sidebar_style ?? null,
     toolStyle: c?.tool_style ?? null,
     font: c?.font ?? null,
     herdr: herdrEnabled(c, env),

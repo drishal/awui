@@ -1514,6 +1514,9 @@ export type ChatWidth = z.infer<typeof chatWidthSchema>;
 /** How tight the web UI's rows and gaps sit: today's look, or tighter sidebar rows, turns, tool rows, composer, and tab strip. */
 export const densitySchema = z.enum(["comfortable", "compact"]);
 export type Density = z.infer<typeof densitySchema>;
+/** How the sidebar's session rows are drawn: today's separated rows, or the tight rows older versions had. */
+export const sidebarStyleSchema = z.enum(["separated", "compact"]);
+export type SidebarStyle = z.infer<typeof sidebarStyleSchema>;
 /** How a turn's work is drawn: the card that groups a run's calls as one tile, or the flat line list older versions drew. */
 export const toolStyleSchema = z.enum(["cards", "lines"]);
 export type ToolStyle = z.infer<typeof toolStyleSchema>;
@@ -1534,7 +1537,7 @@ export interface Bootstrap {
   home: string;
   theme: { active: string; problem?: string };
   /** From config.yml: the shared look (theme null lets theme.yml decide, scale null is 100%). Re-read on every page load. */
-  ui: { theme: ThemeChoice | null; themeScheme: string | null; textScale: number | null; chatWidth: ChatWidth | null; density: Density | null; toolStyle: ToolStyle | null; font: UiFont | null; autocollapseSidebar: boolean; showStatusBar: boolean; herdr: boolean };
+  ui: { theme: ThemeChoice | null; themeScheme: string | null; textScale: number | null; chatWidth: ChatWidth | null; density: Density | null; sidebarStyle: SidebarStyle | null; toolStyle: ToolStyle | null; font: UiFont | null; autocollapseSidebar: boolean; showStatusBar: boolean; herdr: boolean };
   pairing: { urls: string[] };
   /** From config.yml's `breakdown:`: which changed paths a card counts as tests and as generated output (shared/breakdown.ts holds the defaults). */
   breakdown: BreakdownRules;
@@ -2358,6 +2361,8 @@ export interface ServerSettingsValues {
   chatWidth: ChatWidth | null;
   /** null is comfortable. */
   density: Density | null;
+  /** null is separated. */
+  sidebarStyle: SidebarStyle | null;
   /** null is cards. */
   toolStyle: ToolStyle | null;
   /** null is the bundled font. */
@@ -2566,6 +2571,7 @@ export const settingsPatchSchema = z
     textScale: z.number().min(0.5).max(2).nullable().optional(),
     chatWidth: chatWidthSchema.nullable().optional(),
     density: densitySchema.nullable().optional(),
+    sidebarStyle: sidebarStyleSchema.nullable().optional(),
     toolStyle: toolStyleSchema.nullable().optional(),
     font: uiFontSchema.nullable().optional(),
     autocollapseSidebar: z.boolean().optional(),

@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { readSettings, writeSettings, type SettingsContext } from "../../src/server/settings.js";
+import { readUserConfig, uiSettings } from "../../src/server/user-config.js";
 import { settingsPatchSchema } from "../../src/shared/protocol.js";
 import { tempDir } from "../helpers/app.js";
 
@@ -48,6 +49,7 @@ describe("settings", () => {
       textScale: null,
       chatWidth: null,
       density: null,
+      sidebarStyle: null,
       toolStyle: null,
       font: null,
       autocollapseSidebar: true,
@@ -115,6 +117,30 @@ describe("settings", () => {
     expect(readFileSync(file, "utf8")).not.toContain("font:");
     expect(settingsPatchSchema.safeParse({ font: "comic" }).success).toBe(false);
     expect(settingsPatchSchema.safeParse({ toolStyle: "tiles" }).success).toBe(false);
+  });
+
+  it("round-trips sidebar_style and saves the default as no setting at all", () => {
+    const { ctx, file } = setup(FILE);
+    // Nothing written yet: the dialog sees null, and separated is what a null means.
+    expect(readSettings(ctx, true).values.sidebarStyle).toBeNull();
+    // The key reads back the same way the bootstrap reports it to a page.
+    writeFileSync(file, `${readFileSync(file, "utf8")}sidebar_style: compact\n`);
+    expect(readSettings(ctx, true).values.sidebarStyle).toBe("compact");
+    expect(uiSettings(readUserConfig(path.dirname(file))?.config).sidebarStyle).toBe("compact");
+    // A save writes the key, and it applies on the next page load rather than at a restart.
+    const saved = writeSettings(ctx, { sidebarStyle: "separated" });
+    expect(saved.values.sidebarStyle).toBe("separated");
+    expect(readFileSync(file, "utf8")).toContain("sidebar_style: separated");
+    expect(saved.restartPending).toEqual([]);
+    // Separated is the default: null removes the key, and so does "separated" itself from the dialog.
+    expect(writeSettings(ctx, { sidebarStyle: null }).values.sidebarStyle).toBeNull();
+    expect(readFileSync(file, "utf8")).not.toContain("sidebar_style");
+    expect(writeSettings(ctx, { sidebarStyle: "separated" }).values.sidebarStyle).toBe("separated");
+    // A value the schema does not know is refused before anything is written.
+    expect(settingsPatchSchema.safeParse({ sidebarStyle: "wide" }).success).toBe(false);
+    expect(settingsPatchSchema.safeParse({ sidebarStyle: "compact" }).success).toBe(true);
+    expect(() => writeSettings(ctx, { sidebarStyle: "wide" } as never)).toThrow();
+    expect(readFileSync(file, "utf8")).toContain("sidebar_style: separated");
   });
 
   it("saves the orchestration switch and leaves the rest of its block alone", () => {

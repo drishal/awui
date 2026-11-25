@@ -46,6 +46,7 @@ allowed_hosts: [box.tail.ts.net]
 theme: base16
 chat_width: full
 density: compact
+sidebar_style: compact
 tool_style: lines
 font: system
 autocollapse_sidebar: false
@@ -62,7 +63,7 @@ herdr_socket: ~/run/herdr.sock
       WORKSPACE_ROOTS: `/home/x/code${path.delimiter}/srv`,
       ALLOWED_HOSTS: "box.tail.ts.net",
     });
-    expect(uiSettings(read?.config, {})).toEqual({ theme: "base16", themeScheme: null, textScale: null, chatWidth: "full", density: "compact", toolStyle: "lines", font: "system", autocollapseSidebar: false, showStatusBar: false, herdr: false });
+    expect(uiSettings(read?.config, {})).toEqual({ theme: "base16", themeScheme: null, textScale: null, chatWidth: "full", density: "compact", sidebarStyle: "compact", toolStyle: "lines", font: "system", autocollapseSidebar: false, showStatusBar: false, herdr: false });
     // AWUI_HERDR wins over the file, as every variable does.
     expect(uiSettings(read?.config, { AWUI_HERDR: "1" }).herdr).toBe(true);
     expect(read?.config.herdr_socket).toBe("~/run/herdr.sock");
@@ -71,7 +72,7 @@ herdr_socket: ~/run/herdr.sock
   });
 
   it("defaults the browser settings, and an empty file is no settings", () => {
-    expect(uiSettings(undefined, {})).toEqual({ theme: null, themeScheme: null, textScale: null, chatWidth: null, density: null, toolStyle: null, font: null, autocollapseSidebar: true, showStatusBar: false, herdr: true });
+    expect(uiSettings(undefined, {})).toEqual({ theme: null, themeScheme: null, textScale: null, chatWidth: null, density: null, sidebarStyle: null, toolStyle: null, font: null, autocollapseSidebar: true, showStatusBar: false, herdr: true });
     expect(readUserConfig(folder(""))?.config).toEqual({});
   });
 

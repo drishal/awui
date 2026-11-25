@@ -449,6 +449,13 @@ export function App() {
     if (density === "compact") document.documentElement.setAttribute("data-density", "compact");
     else document.documentElement.removeAttribute("data-density");
   }, [density]);
+  // The sidebar's session rows: `sidebar.css` keeps the compact look, the rows older versions had, under
+  // its own attribute, so the setting swaps rows and nothing else in the panel.
+  const sidebarStyle = boot?.ui.sidebarStyle ?? null;
+  useEffect(() => {
+    if (sidebarStyle === "compact") document.documentElement.setAttribute("data-sidebar", "compact");
+    else document.documentElement.removeAttribute("data-sidebar");
+  }, [sidebarStyle]);
   // The tool-call skin is an attribute too (tool-card.css flattens the card under it); the rows that
   // say different words read the same choice from ToolStyleContext.
   const toolStyle = boot?.ui.toolStyle ?? "cards";

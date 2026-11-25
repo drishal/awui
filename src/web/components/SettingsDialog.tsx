@@ -12,7 +12,7 @@
 // phone the same two panes become a list and a detail: the rail, then the
 // section with a way back.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, AgentProfilePatch, AgentProfileSettings, Bootstrap, ChatWidth, Density, HarnessStatus, NormalizerBackend, NormalizerProbe, NormalizerStatus, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, ThemeChoice, ThemeList, ToolStyle, UiFont } from "../../shared/protocol.js";
+import type { AcpAgentPatch, AcpAgentProbe, AcpAgentSettings, AgentProfilePatch, AgentProfileSettings, Bootstrap, ChatWidth, Density, HarnessStatus, NormalizerBackend, NormalizerProbe, NormalizerStatus, RestartSetting, ServerSettings, ServerSettingsValues, SettingsPatch, SidebarStyle, ThemeChoice, ThemeList, ToolStyle, UiFont } from "../../shared/protocol.js";
 import { asHarnessId } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { Dialog } from "./Dialog.js";
@@ -225,6 +225,7 @@ interface Draft {
   textScale: number;
   chatWidth: ChatWidth;
   density: Density;
+  sidebarStyle: SidebarStyle;
   toolStyle: ToolStyle;
   font: UiFont;
   autocollapseSidebar: boolean;
@@ -271,6 +272,7 @@ function draftOf(v: ServerSettingsValues): Draft {
     textScale: v.textScale ?? 1,
     chatWidth: v.chatWidth ?? "comfortable",
     density: v.density ?? "comfortable",
+    sidebarStyle: v.sidebarStyle ?? "separated",
     toolStyle: v.toolStyle ?? "cards",
     font: v.font ?? "bundled",
     autocollapseSidebar: v.autocollapseSidebar,
@@ -318,6 +320,9 @@ function patchOf(d: Draft, v: ServerSettingsValues): SettingsPatch {
   if (width !== v.chatWidth) p.chatWidth = width;
   const density = d.density === "comfortable" ? null : d.density;
   if (density !== v.density) p.density = density;
+  // Separated is the default: saved as no setting at all.
+  const sidebarStyle = d.sidebarStyle === "separated" ? null : d.sidebarStyle;
+  if (sidebarStyle !== v.sidebarStyle) p.sidebarStyle = sidebarStyle;
   // Cards are the default: saved as no setting at all.
   const toolStyle = d.toolStyle === "cards" ? null : d.toolStyle;
   if (toolStyle !== v.toolStyle) p.toolStyle = toolStyle;
@@ -500,6 +505,7 @@ export function SettingsDialog({
         patch.textScale !== undefined ||
         patch.chatWidth !== undefined ||
         patch.density !== undefined ||
+        patch.sidebarStyle !== undefined ||
         patch.toolStyle !== undefined ||
         patch.font !== undefined ||
         patch.autocollapseSidebar !== undefined ||
@@ -512,6 +518,7 @@ export function SettingsDialog({
           textScale: next.values.textScale,
           chatWidth: next.values.chatWidth,
           density: next.values.density,
+          sidebarStyle: next.values.sidebarStyle,
           toolStyle: next.values.toolStyle,
           font: next.values.font,
           autocollapseSidebar: next.values.autocollapseSidebar,
@@ -925,6 +932,23 @@ export function SettingsDialog({
                       { value: "compact", label: "Compact" },
                     ]}
                     onChange={(density) => update({ density })}
+                  />
+                </FormRow>
+                <FormRow
+                  row="sidebar"
+                  hidden={!shows("look", "sidebar")}
+                  label="Sidebar"
+                  desc={draft.sidebarStyle === "compact" ? "Tight rows: the session list older versions drew, with no divider between sessions." : "Sessions set apart: a line between rows, and each clock against its title."}
+                >
+                  <Segmented<SidebarStyle>
+                    label="Sidebar"
+                    value={draft.sidebarStyle}
+                    disabled={!editable}
+                    options={[
+                      { value: "separated", label: "Separated" },
+                      { value: "compact", label: "Compact" },
+                    ]}
+                    onChange={(sidebarStyle) => update({ sidebarStyle })}
                   />
                 </FormRow>
                 <FormRow
