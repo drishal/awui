@@ -20,7 +20,9 @@ import { oldestSeq } from "./room-state.js";
 import { BotEditor } from "./components/BotEditor.js";
 import { RoomEditor } from "./components/RoomEditor.js";
 import { RoomHeadActions, RoomHeadSub } from "./components/RoomHeader.js";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { land, MORPH_IN_MS, viewTransition } from "./morph.js";
 import type {
   SessionMarkState,
   ChatSnapshot,
@@ -296,7 +298,12 @@ export function App() {
   const [contextSheet, setContextSheet] = useState(false);
   const [toolPanel, setToolPanel] = useState<null | "terminal" | "github">(null);
   const [toolWorkspace, setToolWorkspace] = useState<WorkspaceInfo | null>(null);
-  const openTool = (kind: "terminal" | "github", ws = workspace) => { setToolWorkspace(ws); setToolPanel(kind); };
+  const openTool = (kind: "terminal" | "github", ws = workspace) => {
+    surfaceSwap(() => {
+      setToolWorkspace(ws);
+      setToolPanel(kind);
+    });
+  };
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -624,7 +631,29 @@ export function App() {
 
   // ---- opening a chat at once -----------------------------------------------------------
 
-  // A click on a session answers in the same frame: its tab, title, and a loading
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useLayoutEffect(() => {
+    if (!chat?.chatId) return;
+    // A session title clicked in the rail lands in the header, not in a second copy of itself.
+    land("sidebar-title", titleRef.current, { duration: MORPH_IN_MS, spring: true, from: { opacity: 0.4 } });
+  }, [chat?.chatId]);
+
+  const [viewSwap, setViewSwap] = useState(false);
+  /** Swap a whole surface only when neither side streams. The marker class leaves when the transition ends. */
+  const surfaceSwap = (action: () => void) => {
+    const transition = viewTransition(() => {
+      flushSync(() => {
+        setViewSwap(true);
+        action();
+      });
+    }, { busy: isBusy(chat?.status) || isBusy(side?.initial?.status ?? "idle") });
+    if (!transition) {
+      setViewSwap(false);
+      return;
+    }
+    void transition.finished.finally(() => setViewSwap(false));
+  };
+
   // screen show while the snapshot comes, and the screen fades once the chat has drawn.
   // Each open takes a number, so a slow earlier one landing after a later click is dropped.
   const nav = useRef(0);
@@ -638,9 +667,20 @@ export function App() {
   /** Start an open: later ones win. With a target, its loading screen shows until showChat. */
   const beginOpen = (target: SplashTarget | null): number => {
     nav.current += 1;
+    setSplashReady(false);
     setSplash(target ? { target, leaving: false } : null);
     return nav.current;
   };
+  const [splashReady, setSplashReady] = useState(false);
+  useEffect(() => {
+    if (!splash?.target || splash.leaving) {
+      setSplashReady(false);
+      return;
+    }
+    // One loader per surface, and only after a short wait. The old thread never joins the opening hero.
+    const timer = window.setTimeout(() => setSplashReady(true), 150);
+    return () => window.clearTimeout(timer);
+  }, [splash]);
   useEffect(() => {
     if (!splash?.leaving) return;
     const t = window.setTimeout(() => setSplash(null), 260);
@@ -1004,8 +1044,10 @@ export function App() {
     newChat: () => newChat(),
     openSessions: () => setDrawerOpen(true),
     openSettings: (section) => {
-      setSettingsSection(section || undefined);
-      setSettingsOpen(true);
+      surfaceSwap(() => {
+        setSettingsSection(section || undefined);
+        setSettingsOpen(true);
+      });
     },
     seed: (s) => setStartSeed(s),
   });
@@ -1041,6 +1083,8 @@ export function App() {
       return;
     }
     const token = beginOpen(splashFor(tab));
+    // Clear the old thread up front; the new session's one loading surface appears after 150 ms.
+    setChat(null);
     setBanner(null);
     try {
       if (tab.chatId) {
@@ -1077,7 +1121,7 @@ export function App() {
     }
   };
 
-  const activateTab = (index: number) => {
+  const activateTabNow = (index: number) => {
     const tab = tabsRef.current.tabs[index];
     if (!tab) {
       leaveRoom();
@@ -1110,6 +1154,8 @@ export function App() {
     }
     void loadTab(tab);
   };
+
+  const activateTab = (index: number) => surfaceSwap(() => activateTabNow(index));
 
   /** Closed tabs, newest last, for Alt+Shift+T (the browser keeps Ctrl+Shift+T). */
   const closedTabs = useRef<Tab[]>([]);
@@ -1850,9 +1896,11 @@ export function App() {
 
   /** Settings at Appearance, where the theme library is managed. */
   const openThemeSettings = () => {
-    setSettingsSection("look");
-    setSettingsOpen(true);
-    setDrawerOpen(false);
+    surfaceSwap(() => {
+      setSettingsSection("look");
+      setSettingsOpen(true);
+      setDrawerOpen(false);
+    });
   };
 
   const paletteItems = (): PaletteItem[] => {
@@ -1971,7 +2019,7 @@ export function App() {
     items.push({ id: "folder", section: "Work", label: "Choose project folder…", run: () => setPickerOpen(true) });
     items.push({ id: "prompts", section: "Work", label: "Saved prompts…", hint: "#", keys: true, keywords: "templates snippets", run: () => setPromptsOpen({}) });
     items.push({ id: "routines", section: "Work", label: "Routines…", hint: "scheduled prompts", keywords: "schedule cron jobs recurring", run: () => setRoutinesOpen(true) });
-    items.push({ id: "dashboard", section: "Work", label: "Agent dashboard…", hint: "needs you · working · done", keywords: "board kanban overview agents progress", run: () => setDashboardOpen(true) });
+    items.push({ id: "dashboard", section: "Work", label: "Agent dashboard…", hint: "needs you · working · done", keywords: "board kanban overview agents progress", run: () => surfaceSwap(() => setDashboardOpen(true)) });
 
     items.push({ id: "usage", section: "App", label: "Usage across chats", hint: "tokens, cost", keywords: "spend dashboard stats", run: () => setUsageOpen(true) });
     for (const h of boot.harnesses) {
@@ -2002,7 +2050,7 @@ export function App() {
         run: () => void chooseTheme(option),
       });
     }
-    items.push({ id: "settings", section: "App", label: "Settings", run: () => setSettingsOpen(true) });
+    items.push({ id: "settings", section: "App", label: "Settings", run: () => surfaceSwap(() => setSettingsOpen(true)) });
     items.push({ id: "shortcuts", section: "App", label: "Keyboard shortcuts", hint: shortcutHint("shortcuts"), keys: true, keywords: "keys help", run: () => setShortcutsOpen(true) });
     items.push({ id: "sidebar", section: "App", label: collapsed ? "Show sidebar" : "Hide sidebar", searchOnly: true, run: () => collapseSidebar(!collapsed) });
     items.push({ id: "back", section: "App", label: "Back to the previous chat", hint: shortcutHint("back"), keys: true, searchOnly: true, disabled: visits.current.at > 0 ? undefined : "Nothing before this", run: () => stepVisits(-1) });
@@ -2291,14 +2339,16 @@ export function App() {
           onTestNotify={testNotify}
           onUiSaved={(ui) => setBoot((b) => (b ? { ...b, ui: { ...b.ui, ...ui } } : b))}
           onClose={() => {
-            setSettingsOpen(false);
-            setSettingsSection(undefined);
+            surfaceSwap(() => {
+              setSettingsOpen(false);
+              setSettingsSection(undefined);
+            });
           }}
         />
         </Suspense>
       ) : null}
 
-      <main className="main">
+      <main className={`main${viewSwap ? " is-swapping" : ""}`}>
         {tabState.tabs.length >= (narrow ? 2 : 1) ? (
           <TabStrip
             tabs={tabState.tabs}
@@ -2350,7 +2400,7 @@ export function App() {
               </>
             ) : (
               <>
-                {headerTitle ? <h1>{headerTitle}</h1> : null}
+                {headerTitle ? <h1 ref={titleRef}>{headerTitle}</h1> : null}
                 {chat ? (
                   <div className="chat-sub">
                     <span className="badge badge-harness" style={harnessColor(chat.harnessId)}>
@@ -2582,7 +2632,7 @@ export function App() {
           style={split.style}
         >
           <div className="chat-body" data-pane="main">
-            {room.roomId ? (
+            {splash && !splash.leaving ? null : room.roomId ? (
               <Suspense fallback={<Loader label="Opening room…" />}>
               <RoomView
                 key={room.roomId}
@@ -2753,7 +2803,7 @@ export function App() {
                 onSend={startSend}
               />
             )}
-            {splash ? <SwitchSplash target={splash.target} leaving={splash.leaving} /> : null}
+            {splash && (splash.leaving || splashReady) ? <SwitchSplash target={splash.target} leaving={splash.leaving} /> : null}
           </div>
           {side ? <div
             ref={split.ref}
@@ -2775,7 +2825,7 @@ export function App() {
             onKeyDown={split.key}
             onDoubleClick={split.toggle}
           /> : null}
-          {toolPanel && toolWorkspace && chat ? <div className="work-panel-slot"><LazyPanel>{toolPanel === "terminal" ? <TerminalPanel workspace={toolWorkspace} onClose={() => setToolPanel(null)} /> : <GitHubPanel workspace={toolWorkspace} chat={chat} onOpen={(snapshot) => showChat(snapshot, { keepDrawer: true })} onClose={() => setToolPanel(null)} />}</LazyPanel></div> : null}
+          {toolPanel && toolWorkspace && chat ? <div className="work-panel-slot"><LazyPanel>{toolPanel === "terminal" ? <TerminalPanel workspace={toolWorkspace} onClose={() => surfaceSwap(() => setToolPanel(null))} /> : <GitHubPanel workspace={toolWorkspace} chat={chat} onOpen={(snapshot) => showChat(snapshot, { keepDrawer: true })} onClose={() => surfaceSwap(() => setToolPanel(null))} />}</LazyPanel></div> : null}
           {side ? (
             <SidePane
               initial={side.initial}
@@ -3005,7 +3055,7 @@ export function App() {
       ) : null}
       {dashboardOpen ? (
         <Suspense fallback={<Loader label="Opening the dashboard…" overlay />}>
-        <Dashboard overview={overview} harnesses={boot.harnesses} onOpenSession={(s, ws) => { setDashboardOpen(false); void openSession(s, ws ? { workspace: ws } : {}); }} onClose={() => setDashboardOpen(false)} />
+        <Dashboard overview={overview} harnesses={boot.harnesses} onOpenSession={(s, ws) => { surfaceSwap(() => setDashboardOpen(false)); void openSession(s, ws ? { workspace: ws } : {}); }} onClose={() => surfaceSwap(() => setDashboardOpen(false))} />
         </Suspense>
       ) : null}
       {viewer && searchWorkspace ? <FileViewer workspace={searchWorkspace} request={viewer.request} changes={chat ? changes : []} onClose={() => setViewer(null)} /> : null}

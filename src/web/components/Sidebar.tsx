@@ -31,6 +31,7 @@ import { setProjectIcon, useProjectIcons } from "../project-icons.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
+import { type Box, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
 /** Sessions shown per project before "Show N more". */
 const VISIBLE_CURRENT = 8;
@@ -367,6 +368,7 @@ function SessionRow({
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const selection = useSelectionMode();
   const moreRef = useRef<HTMLButtonElement>(null);
+  const titleRef = useRef<HTMLSpanElement>(null);
   // A session not saved yet has nothing to mark.
   const markable = !s.id.includes(":live-");
   const { warm } = useContext(RowActions);
@@ -402,6 +404,7 @@ function SessionRow({
             toggleSelection(s.id, e.shiftKey);
             return;
           }
+          handoff("sidebar-title", titleRef.current?.getBoundingClientRect() ?? null);
           onOpen(e.ctrlKey || e.metaKey);
         }}
         onMouseDown={(e) => {
@@ -451,7 +454,7 @@ function SessionRow({
           <span className="harness-dot is-blank" aria-hidden="true" />
         )}
         <span className="session-body">
-          <span className="session-title">{plainTitle(s.title)}</span>
+          <span className="session-title" ref={titleRef}>{plainTitle(s.title)}</span>
           {/* A second line only where it says something new: the agent's own status, or the project a row
               is out of. Inside a project the branch is the heading's fact, so the rows stay one line and
               the list is scanned by title. */}
@@ -588,9 +591,63 @@ function SectionList({
           </span>
         )}
       </div>
-      {open ? <ul className="session-sublist">{sessions.map(row)}</ul> : null}
+      {open ? (
+        <ul className="session-sublist">
+          <ActiveWash />
+          {sessions.map(row)}
+        </ul>
+      ) : null}
     </li>
   );
+}
+
+/** One active wash per visible list. Its identity is the actual row marked aria-current. */
+function ActiveWash() {
+  const ref = useRef<HTMLLIElement>(null);
+  const previous = useRef<{ row: HTMLElement | null; box: Box | null }>({ row: null, box: null });
+  const place = (el: HTMLElement, row: HTMLElement): Box => {
+    const box = row.getBoundingClientRect();
+    const parent = el.parentElement?.getBoundingClientRect();
+    Object.assign(el.style, {
+      left: `${box.left - (parent?.left ?? 0)}px`,
+      top: `${box.top - (parent?.top ?? 0)}px`,
+      width: `${box.width}px`,
+      height: `${box.height}px`,
+    });
+    return box;
+  };
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const row = el.parentElement?.querySelector<HTMLElement>('.session[aria-current="true"]') ?? null;
+    el.hidden = !row;
+    if (!row) {
+      previous.current = { row: null, box: null };
+      return;
+    }
+    const box = place(el, row);
+    const from = previous.current;
+    const onscreen = (r: Box) => r.top + r.height > 0 && r.top < window.innerHeight;
+    if (from.row && from.row !== row && from.box && onscreen(box) && onscreen(from.box)) {
+      el.dataset.moved = "true";
+      glide(from.box, el, { duration: MORPH_IN_MS, height: true, spring: true, id: "morph:session-active" });
+    } else {
+      el.dataset.moved = "false";
+    }
+    previous.current = { row, box };
+  });
+  useEffect(() => {
+    const el = ref.current;
+    const list = el?.parentElement;
+    if (!el || !list || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const row = list.querySelector<HTMLElement>('.session[aria-current="true"]');
+      if (row) previous.current = { row, box: place(el, row) };
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+  return <li ref={ref} className="session-active-bg" role="presentation" aria-hidden="true" />;
 }
 
 /** One project: header (collapse, new chat here), date-divided sessions, "Show N more". */
@@ -732,6 +789,7 @@ function ProjectGroupView({
       </div>
       {open ? (
         <ul className="session-sublist">
+          <ActiveWash />
           {rows}
           {sessions.length === 0 ? <li className="sidebar-note">No sessions here yet</li> : null}
           {hidden > 0 ? (
@@ -982,6 +1040,7 @@ function FocusedProjectView({
     <li className="project-group is-open is-current focus-group">
       <FocusedHeader workspace={workspace} {...(checkout ? { checkout } : {})} total={total} canStartChat={canStartChat} onNewChat={onNewChat} onShowAll={onShowAll} onFocus={onFocus} scope={scope} />
       <ul className="session-sublist">
+        <ActiveWash />
         {sections.length === 0 ? <li className="sidebar-note">No past sessions here yet</li> : rows}
         {hidden > 0 ? (
           <li>
@@ -1386,6 +1445,7 @@ export function Sidebar(props: {
                       </span>
                     </div>
                     <ul className="session-sublist">
+                      <ActiveWash />
                       {sec.sessions.map((s) => historyRow(s))}
                     </ul>
                   </li>

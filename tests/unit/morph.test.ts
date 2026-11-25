@@ -109,7 +109,7 @@ describe("view transition", () => {
   it("swaps whole surfaces, and only where the platform can and nobody objects", () => {
     const started = stubPage();
     const commit = vi.fn();
-    viewTransition(commit);
+    expect(viewTransition(commit)).toBeDefined();
     expect(started).toHaveBeenCalledTimes(1);
     expect(commit).toHaveBeenCalledTimes(1);
     expect(commit.mock.invocationCallOrder[0]).toBeGreaterThan(started.mock.invocationCallOrder[0] ?? 0);

@@ -152,11 +152,11 @@ export interface ViewTransitionOptions {
  * `commit` must put the new surface in the DOM before it returns: React batches state updates, so a caller
  * flushes synchronously (`flushSync`) or returns a promise that resolves once the commit has painted.
  */
-export function viewTransition(commit: () => void | Promise<void>, opts: ViewTransitionOptions = {}): void {
+export function viewTransition(commit: () => void | Promise<void>, opts: ViewTransitionOptions = {}): ViewTransition | undefined {
   const start = typeof document === "undefined" ? undefined : document.startViewTransition;
   if (typeof start !== "function" || opts.busy || handheld() || motionOff()) {
     void commit();
-    return;
+    return undefined;
   }
-  start.call(document, commit);
+  return start.call(document, commit);
 }

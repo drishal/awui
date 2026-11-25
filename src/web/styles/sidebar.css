@@ -402,14 +402,51 @@
 
 .session-list,
 .session-sublist {
+  position: relative;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/* Only newly inserted rows enter: an existing session switch never replays the whole list. */
+.session-item {
+  transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+@starting-style {
+  .session-item {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* The list's first child, so it paints under the rows by order alone: a z-index on the rows would stack
+   each one over the menu opened from the row above it. */
+.session-active-bg {
+  position: absolute;
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--harness, var(--accent)) 12%, var(--surface-2));
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--harness, var(--accent)) 75%, transparent);
+  pointer-events: none;
+}
+
+.session-active-bg[data-moved="true"] {
+  animation: session-wash-in 90ms var(--ease-out);
+}
+
+.session-sublist:has(.session-active-bg) .session.is-active {
+  background: transparent;
+  box-shadow: none;
+}
+
+@keyframes session-wash-in {
+  from { opacity: 0.65; }
+}
+
 .session-list {
   flex: 1;
   min-height: 0;
+  overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior: contain;
   margin: 0 -4px;
