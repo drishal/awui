@@ -253,13 +253,17 @@ export function DiffView({
   );
 }
 
+/**
+ * "+3 −2" in the diff colours. Both counts keep their slot even when one is zero (the CSS lays them in two columns),
+ * so a list of changed files reads down one column of additions and one of removals instead of numbers that move.
+ */
 export function DiffBadge({ added, removed }: { added: number; removed: number }) {
   if (added === 0 && removed === 0) return null;
   return (
     <span className="diff-stat" aria-label={`${added} additions, ${removed} deletions`}>
-      {added > 0 ? <span className="diff-added">+{added}</span> : null}
+      <span className="diff-added">{added > 0 ? `+${added}` : ""}</span>
       {added > 0 && removed > 0 ? " " : null}
-      {removed > 0 ? <span className="diff-removed">−{removed}</span> : null}
+      <span className="diff-removed">{removed > 0 ? `−${removed}` : ""}</span>
     </span>
   );
 }

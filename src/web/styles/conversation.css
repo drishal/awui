@@ -971,8 +971,15 @@
   align-items: center;
 }
 
+/* The two counts sit in their own columns (DiffBadge draws both, empty when zero), so a list of files reads +3 above
+   +4 and −2 above nothing: a column to scan, not a number that moved because this file had no removals. 3ch fits
+   two digits; a wider count grows its column rather than being clipped. */
 .diff-stat {
   flex: none;
+  display: inline-grid;
+  grid-template-columns: minmax(3ch, max-content) minmax(3ch, max-content);
+  justify-items: end;
+  column-gap: 2px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
