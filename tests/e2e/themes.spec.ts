@@ -107,7 +107,7 @@ test("the theme menu previews a scheme while pointed at, and saves the one chose
   await menu.getByRole("menuitemradio", { name: "Light", exact: true }).click();
   await expect(page.getByRole("button", { name: "Theme: Light" })).toBeVisible();
   await expect.poll(config).toContain("theme: light");
-  await expect.poll(() => background(page)).toBe("rgb(255, 255, 255)");
+  await expect.poll(() => background(page)).toBe("rgb(242, 243, 246)");
 });
 
 test("the command palette switches theme, previewing the highlighted one", async ({ page }) => {
