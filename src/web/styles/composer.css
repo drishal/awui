@@ -682,6 +682,7 @@
     flex: 1;
     min-width: 0;
     width: auto;
+    max-width: 40vw;
     height: 32px;
     min-height: 32px;
     justify-content: center;

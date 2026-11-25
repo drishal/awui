@@ -651,7 +651,7 @@ export function ContextRing({
   if (!hasContextFigure(context)) return figure ? <div className="context-ring-wrap">{figure}</div> : null;
   const pct = Math.max(0, Math.min(100, context.percent));
   const tone = contextTone(pct);
-  const detail = `${compacting ? "Compacting context. " : ""}${Math.round(pct)}% of context used${context.tokens !== null ? ` · ${compact(context.tokens)} / ${compact(context.window)} tokens` : ""}`;
+  const detail = `${compacting ? "Compacting context. " : ""}Context used: ${Math.round(pct)}% of ${compact(context.window)}${context.tokens !== null ? ` · ${compact(context.tokens)} tokens used` : ""}`;
   const peek = { context, usage, draft: size, canCompact, history, compacting, compacted };
 
   return (

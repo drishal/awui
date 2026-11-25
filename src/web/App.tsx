@@ -2147,9 +2147,9 @@ export function App() {
   const hasPrompt = chat ? chat.items.some((i) => i.kind === "user") : false;
   /** The chat being opened names the header until it is shown. */
   const heading = splash && !splash.leaving ? splash.target : null;
-  // The app's name is the sidebar's; the header names what is open, or nothing on
-  // the start screen (its own heading is right below).
-  const headerTitle = chat ? plainTitle(chat.title) || "New chat" : !projectScoped(boot?.harnesses ?? [], harnessId ?? "") || !workspace ? "" : workspace.name;
+  // The app's name is the sidebar's. The header names the open chat, a chosen folder, or the new chat
+  // being composed. A phone without a folder still needs that context instead of a lone drawer button.
+  const headerTitle = chat ? plainTitle(chat.title) || "New chat" : workspace?.name ?? "New chat";
 
   return (
     <ToolStyleContext.Provider value={toolStyle}>

@@ -10,6 +10,7 @@ const tabs = (page: import("@playwright/test").Page) => page.getByRole("tablist"
 test("a fresh browser lands on the start screen: a box, and a folder chip asking for one", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /What should Fake work on\?/ })).toBeVisible();
+  await expect(page.locator(".chat-title h1")).toHaveText("New chat");
   await expect(page.getByRole("textbox", { name: box })).toBeVisible();
   const chip = folderChip(page);
   await expect(chip).toHaveText(/Choose a folder/);

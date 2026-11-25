@@ -154,6 +154,10 @@ test("a phone composer folds its pickers into one settings chip", async ({ page 
   await expect(chip).toBeVisible();
   await expect(page.locator(".composer-pickers")).toBeHidden();
   await expect(chip).toContainText("Fake");
+  await expect(chip).toHaveCSS("max-width", "156px");
+  await expect(page.getByTestId("context-ring")).toHaveAccessibleName(/^Context used: \d+% of 100K/);
+  await expect(page.locator(".context-pct")).toBeVisible();
+  await expect(page.locator(".context-pct")).toHaveCSS("font-size", "10px");
   await chip.click();
   const sheet = page.getByRole("dialog", { name: "Chat settings" });
   await expect(sheet).toBeVisible();
