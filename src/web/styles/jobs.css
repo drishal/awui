@@ -147,6 +147,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Two counts of one run are one phrase ("11 passed · 1 failed"): the separator sits closer here than on a fact
+   line, where dots divide things as far apart as a server and a duration. At 8px a side the dot read as a comma. */
+.job-tally .dot {
+  margin: 0 6px;
+}
+
 .job-id {
   flex: none;
   padding: 1px 7px;

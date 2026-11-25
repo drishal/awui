@@ -32,15 +32,19 @@ function failedShare(blocks: JobBlock[]): number {
   return 0;
 }
 
-function Meter({ block, failed }: { block: Extract<JobBlock, { kind: "meter" }>; failed: number }) {
+function Meter({ block, failed, showTop }: { block: Extract<JobBlock, { kind: "meter" }>; failed: number; showTop: boolean }) {
   // A meter over a run with failures is not one amber bar to its end: the passed share is green, the failed
-  // share its red cap, and the rest the track, so the bar cannot say "all done, and wrong" at once.
+  // share its red cap, and the rest the track, so the bar cannot say "all done, and wrong" at once. Its numbers
+  // are the head's tally when there is one: the harness's own "12/12" beside "11 passed · 1 failed" read as a
+  // third count, and as twelve passes. The bar alone carries the shape then.
   return (
     <div className={`job-meter${failed > 0 ? " has-failed" : toneClass(block.tone)}`}>
-      <div className="job-block-top">
-        <span>{block.label}</span>
-        <span className="job-block-value">{block.text ?? `${Math.round(block.value * 100)}%`}</span>
-      </div>
+      {showTop ? (
+        <div className="job-block-top">
+          <span>{block.label}</span>
+          <span className="job-block-value">{block.text ?? `${Math.round(block.value * 100)}%`}</span>
+        </div>
+      ) : null}
       <div
         className="job-track"
         role="progressbar"
@@ -75,10 +79,10 @@ function Spark({ block }: { block: Extract<JobBlock, { kind: "spark" }> }) {
   );
 }
 
-function Block({ block, failed }: { block: JobBlock; failed: number }) {
+function Block({ block, failed, counted }: { block: JobBlock; failed: number; counted: boolean }) {
   switch (block.kind) {
     case "meter":
-      return <Meter block={block} failed={failed} />;
+      return <Meter block={block} failed={failed} showTop={!counted} />;
     case "stat":
       return (
         <div className="job-stats">
@@ -183,7 +187,7 @@ export function JobCard({ job, variant = "full" }: { job: ChatJob; variant?: "fu
       ) : null}
       {flat ? null : widget && widget.blocks.length > 0 ? (
         <div className="job-widget">
-          {widget.blocks.map((block, i) => (counted && block.kind === "stat" ? null : <Block key={i} block={block} failed={failed} />))}
+          {widget.blocks.map((block, i) => (counted && block.kind === "stat" ? null : <Block key={i} block={block} failed={failed} counted={counted} />))}
         </div>
       ) : progress ? (
         <TestMeter progress={progress} live={running} />
