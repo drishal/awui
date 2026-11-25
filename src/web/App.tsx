@@ -172,7 +172,7 @@ export function App() {
     setRecent,
     setChat,
   });
-  const { overview, sessionsError, sessionsLoading, refreshSessions, markSession, orderSessions } = useSessions({ boot, workspace, chat });
+  const { overview, sessionsError, sessionsLoading, sessionsLoaded, refreshSessions, markSession, orderSessions } = useSessions({ boot, workspace, chat });
 
   // Rooms are a sibling of chats: the URL's #room= names the shown one, and only
   // that room streams. The sidebar list and the bot profiles are plain fetches.
@@ -567,9 +567,12 @@ export function App() {
 
   // What needs you, from another tab (attention.ts): a count in the title and on the favicon, and a chime.
   const askingIds = useMemo(() => overview.sessions.flatMap((x) => (x.asking && x.liveChatId ? [x.liveChatId] : [])), [overview]);
-  // Chats already asking when the page loads are not news; only a new question chimes.
+  // Chats already asking when the page loads are not news; only a new question chimes. The baseline is the
+  // first real list: the overview starts empty, and taking that as the baseline made every chat that was
+  // already waiting look new the moment the list arrived (a "needs you" card per chat on every page load).
   const askedBefore = useRef<Set<string> | null>(null);
   useEffect(() => {
+    if (!sessionsLoaded) return;
     const before = askedBefore.current;
     askedBefore.current = new Set(askingIds);
     if (!before) return;
@@ -579,7 +582,7 @@ export function App() {
       const s = id === chatId ? undefined : overview.sessions.find((x) => x.liveChatId === id);
       if (s) toasts.push({ key: `ask:${id}`, text: `“${s.title}” needs you`, sessionId: s.id, ms: 12000, kind: "warn" });
     }
-  }, [askingIds]);
+  }, [askingIds, sessionsLoaded]);
 
   // A notice about the chat you are reading is news you already have: opening that chat takes its cards
   // away (they were raised a moment before you arrived, and it is the approval card or the answer itself

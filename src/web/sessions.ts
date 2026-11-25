@@ -15,6 +15,8 @@ export function useSessions({ boot, workspace, chat }: { boot: Bootstrap | null;
   const [overview, setOverview] = useState<SessionsOverview>({ workspaces: [], sessions: [], errors: [] });
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState(false);
+  // True once the first list has arrived: before it the overview is empty, not "nothing is asking".
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
   // Every harness, every project; the sidebar filters by harness and groups by project.
   const sessionsRequest = useRef(0);
   const refreshSessions = useCallback(async () => {
@@ -26,6 +28,7 @@ export function useSessions({ boot, workspace, chat }: { boot: Bootstrap | null;
       const next = await api<SessionsOverview>(`/api/sessions${workspace ? `?path=${encodeURIComponent(workspace.path)}` : ""}`);
       if (seq !== sessionsRequest.current) return;
       setOverview(next);
+      setSessionsLoaded(true);
       setSessionsError(next.errors.length > 0 ? next.errors.join(" · ") : null);
     } catch (e) {
       if (seq === sessionsRequest.current) setSessionsError(errorText(e));
@@ -89,5 +92,5 @@ export function useSessions({ boot, workspace, chat }: { boot: Bootstrap | null;
     setOverview((o) => ({ ...o, orders: { ...o.orders, [key]: ids } }));
   }, []);
 
-  return { overview, sessionsError, sessionsLoading, refreshSessions, markSession, orderSessions };
+  return { overview, sessionsError, sessionsLoading, sessionsLoaded, refreshSessions, markSession, orderSessions };
 }

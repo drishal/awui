@@ -73,25 +73,28 @@ test("a notice keeps its lane left of the context rail", async ({ page }) => {
   expect(stack!.x + stack!.width).toBeLessThanOrEqual(button.x + 1);
 });
 
-test("a notice raised before the rail exists still clears it once a chat opens", async ({ page }) => {
+test("a notice raised on the start screen keeps its lane left of the rail once a chat opens", async ({ page }) => {
   await signInAndOpen(page);
+  const ws = (await (await page.request.post("/api/workspaces/open", { data: { path: `${process.env.AWUI_E2E_ROOT as string}/alpha` } })).json()) as { id: string };
+  const start = async (text: string) => {
+    const chat = (await (await page.request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+    if (text) await page.request.post(`/api/chats/${chat.chatId}/messages`, { data: { text, mode: "normal" } });
+    return chat.chatId;
+  };
   // An idle chat to open later: opening it raises and dismisses nothing, so the notices' count never changes
-  // and only the page's structure does.
-  await newChat(page);
-  await sendAndWait(page, "late rail idle");
-  for (const which of ["one", "two"]) {
-    await newChat(page);
-    await send(page, `ask late rail ${which}`);
-    await expect(page.getByTestId("approval-card")).toBeVisible();
-  }
-  // A fresh load lands on the start screen (no rail) and the chats still waiting on you raise their notices
-  // there: the stack measures a page without a rail.
+  // and only the page's structure does. The other chat is idle too, until the page is on the start screen.
+  await start("late rail idle");
+  const asker = await start("late rail quiet");
+  // A fresh load lands on the start screen: no rail, and the stack will measure a page without one.
   await page.goto("/");
   await expect(page.locator(".context-panel")).toHaveCount(0);
+  await showSidebar(page);
+  await expect(page.locator(".session", { hasText: "late rail idle" }).first()).toBeVisible();
+  // A chat that starts waiting on you while you are elsewhere raises its notice here.
+  await page.request.post(`/api/chats/${asker}/messages`, { data: { text: "ask late rail", mode: "normal" } });
   await expect(cards(page).first()).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(500);
-  // A chat opens under them and the rail mounts: the stack must move over to make room, not cover it.
-  await showSidebar(page);
+  // A chat opens under it and the rail mounts: the stack must move over to make room, not cover it.
   await page.locator(".session", { hasText: "late rail idle" }).first().click();
   await expect(page.locator(".context-panel")).toBeVisible();
   const rail = (await page.locator(".context-panel").boundingBox())!;
@@ -99,6 +102,19 @@ test("a notice raised before the rail exists still clears it once a chat opens",
     const stack = await page.getByTestId("toast-stack").boundingBox();
     return stack ? stack.x + stack.width <= rail.x + 1 : true;
   }).toBe(true);
+});
+
+test("chats already waiting when the page loads raise no notice; only a new question does", async ({ page }) => {
+  await signInAndOpen(page);
+  const ws = (await (await page.request.post("/api/workspaces/open", { data: { path: `${process.env.AWUI_E2E_ROOT as string}/alpha` } })).json()) as { id: string };
+  const chat = (await (await page.request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await page.request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: "ask already waiting", mode: "normal" } });
+  await page.goto("/");
+  await showSidebar(page);
+  await expect(page.locator(".session", { hasText: "ask already waiting" }).first()).toBeVisible();
+  // The list has arrived and it has a chat asking: that is the page's baseline, not news.
+  await page.waitForTimeout(1500);
+  await expect(cards(page)).toHaveCount(0);
 });
 
 test("a notice about the chat you open goes with the arrival", async ({ page }) => {
