@@ -1028,11 +1028,44 @@
   opacity: 0.45;
 }
 
+/* Steer and Follow-up are the same send in two tenses — into this run, or the next — so they are one
+   segmented 32px pair: a single hairline between the halves, the outer corners rounded. One capability
+   alone keeps both outer corners. */
+.steer-split {
+  display: inline-flex;
+  align-items: center;
+}
+
+.steer-split .pill-btn {
+  padding: 0 11px;
+  border-radius: 0;
+  font-weight: 550;
+}
+
+.steer-split .pill-btn:first-child { border-radius: var(--r-control) 0 0 var(--r-control); }
+.steer-split .pill-btn:last-child { border-radius: 0 var(--r-control) var(--r-control) 0; }
+
+/* The two share one edge: the hairline between them is one line, not two touching. */
+.steer-split .pill-btn + .pill-btn {
+  margin-left: -1px;
+}
+
+.steer-split .pill-btn:hover:not(:disabled) {
+  position: relative;
+  z-index: 1;
+}
+
 /* Send ends the composer's row and is the one solid on it: a circle a size larger than the 32px
    controls beside it, so the eye leaves the row there. A phone keeps its slim 32px row below. */
 .composer-actions .round-btn {
   width: 40px;
   height: 40px;
+}
+
+/* Stop is not part of the sending row's rhythm: the one danger mark keeps a wider gap, so a mis-aimed
+   Steer never lands on it. */
+.composer-actions .round-btn.is-stop {
+  margin-left: 4px;
 }
 
 .round-btn {

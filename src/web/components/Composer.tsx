@@ -431,6 +431,9 @@ export function Composer({
   };
   const [thenMenu, setThenMenu] = useState(false);
   const { render: showThen, leaving: thenLeaving } = useLeave(thenMenu);
+  // The harness the last handoff went to, so the button can say what it now does: "Then" alone does not
+  // tell you that it continues this message in another agent once the run ends.
+  const [thenTarget, setThenTarget] = useState<string | null>(null);
   /** The draft as the chain's next step: sent when the run before it is over (or, with `harness`, a handoff carrying it). */
   const addThen = async (harness?: string) => {
     const draft = text.trim();
@@ -440,6 +443,7 @@ export function Composer({
       // Only what went into the step: anything typed while it was on its way stays.
       setText((current) => (current.trim() === draft ? "" : current));
       setThenMenu(false);
+      if (harness) setThenTarget(harness);
     }
   };
 
@@ -1226,15 +1230,21 @@ export function Composer({
               <ContextRing context={chat.context} usage={chat.usage} draft={{ text, images: images.length }} canCompact={caps.supportsCompact} history={chat.contextHistory} compacting={chat.status === "compacting"} timing={{ items: chat.items, status: chat.status, workspace: chat.workspace.path }} />
               {busy ? (
                 <>
-                  {caps.supportsSteer ? (
-                    <button type="button" className="pill-btn" disabled={empty || sending || !running || tooLong} onClick={() => void submit("steer")}>
-                      Steer
-                    </button>
-                  ) : null}
-                  {caps.supportsFollowUp ? (
-                    <button type="button" className="pill-btn" disabled={empty || sending || !running || tooLong} onClick={() => void submit("followUp")}>
-                      Follow-up
-                    </button>
+                  {/* Steer and Follow-up are one thing in two tenses — into this run, or the next — so they are
+                      one segmented pair instead of two more pills in the row beside Then and Stop. */}
+                  {caps.supportsSteer || caps.supportsFollowUp ? (
+                    <span className="steer-split">
+                      {caps.supportsSteer ? (
+                        <button type="button" className="pill-btn" disabled={empty || sending || !running || tooLong} onClick={() => void submit("steer")}>
+                          Steer
+                        </button>
+                      ) : null}
+                      {caps.supportsFollowUp ? (
+                        <button type="button" className="pill-btn" disabled={empty || sending || !running || tooLong} onClick={() => void submit("followUp")}>
+                          Follow-up
+                        </button>
+                      ) : null}
+                    </span>
                   ) : null}
                   {!caps.supportsSteer ? (
                     <button type="button" className="pill-btn" disabled={empty || sending || stopping || tooLong} onClick={() => void submit("stopAndSend")}>
@@ -1246,10 +1256,10 @@ export function Composer({
                       type="button"
                       className="pill-btn then-btn"
                       disabled={empty || tooLong}
-                      title="Send this once the run is over, even with this page closed (Ctrl+Shift+Enter)"
+                      title={thenTarget ? `Send this once the run is over, then hand it to ${name(thenTarget)} — even with this page closed (Ctrl+Shift+Enter)` : "Send this once the run is over, even with this page closed (Ctrl+Shift+Enter)"}
                       onClick={() => void addThen()}
                     >
-                      Then
+                      {thenTarget ? `Then → ${name(thenTarget)}` : "Then"}
                     </button>
                     <button type="button" className="pill-btn then-more" aria-label="Then hand off to…" aria-expanded={thenMenu} onClick={() => setThenMenu((v) => !v)}>
                       <IconChevronDown size={12} />
