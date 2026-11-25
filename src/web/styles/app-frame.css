@@ -5,7 +5,7 @@
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100dvh;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .main {

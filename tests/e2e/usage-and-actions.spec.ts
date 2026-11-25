@@ -117,6 +117,48 @@ test("the rows under a prompt and an answer sit quiet until the turn is wanted, 
   await expect(older.getByRole("button", { name: "Copy message" })).toBeVisible();
 });
 
+test("a copied reply and transient dialogs never unpin the app frame", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "copy question");
+  const turn = page.getByTestId("turn").last();
+  const frameIsPinned = async (step: string) => {
+    const frame = await page.locator(".app").evaluate((app) => {
+      app.scrollTop = 0;
+      return {
+        top: app.scrollTop,
+        content: app.scrollHeight,
+        view: app.clientHeight,
+        header: app.querySelector(".chat-header")?.getBoundingClientRect().top,
+      };
+    });
+    expect(frame, step).toEqual({ top: 0, content: frame.view, view: frame.view, header: 36 });
+  };
+  await frameIsPinned("initial chat");
+  await turn.getByRole("button", { name: "Copy reply" }).click();
+  await expect(turn.getByRole("status").filter({ hasText: "Copied" })).toHaveCount(1);
+  await frameIsPinned("copy live region");
+  await page.getByRole("button", { name: "Hide chat context" }).click();
+  await frameIsPinned("context rail hidden");
+  await page.getByRole("button", { name: "Show chat context" }).click();
+  await frameIsPinned("context rail shown");
+  await page.keyboard.press("Control+k");
+  await expect(page.getByRole("dialog", { name: "Commands" })).toBeVisible();
+  await frameIsPinned("command palette opened");
+  await page.keyboard.press("Escape");
+  await frameIsPinned("command palette closed");
+  await page.getByTestId("model-picker").click();
+  await expect(page.getByRole("dialog", { name: "Choose a model" })).toBeVisible();
+  await frameIsPinned("model picker opened");
+  await page.keyboard.press("Escape");
+  await frameIsPinned("model picker closed");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  await frameIsPinned("settings opened");
+  await page.keyboard.press("Escape");
+  await frameIsPinned("settings closed");
+});
 test("with reduced motion the rows under a turn are simply visible", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await signInAndOpen(page);

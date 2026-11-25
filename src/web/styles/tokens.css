@@ -443,9 +443,12 @@ h3,
 }
 
 /* An element only a screen reader should find (a live region's announcement,
-   a label where an icon sits): present in the tree, nowhere on the page. */
+   a label where an icon sits): present in the tree, nowhere on the page.
+   Keep the box at the viewport's top-left, containing block or not: an absolute box can otherwise grow the
+   app frame or a transcript when its live text changes, and no ancestor needs a scrolling region for that. */
 .visually-hidden {
-  position: absolute;
+  position: fixed;
+  inset: 0 auto auto 0;
   width: 1px;
   height: 1px;
   padding: 0;
