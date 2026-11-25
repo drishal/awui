@@ -36,7 +36,7 @@
   max-width: 100vw;
   transform: translate(-50%, -50%);
   background:
-    radial-gradient(circle 124px at 50% 50%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 72%),
+    radial-gradient(circle 124px at 50% 50%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 72%),
     radial-gradient(55% 45% at 50% 40%, color-mix(in srgb, var(--accent) var(--hero-wash), transparent), transparent 72%);
   pointer-events: none;
 }
@@ -50,9 +50,12 @@
   width: 288px;
   height: 288px;
   transform: translate(-50%, -50%);
+  /* One step firmer than a hairline: a grid drawn in --hairline vanished on the light page's white cards, and at
+     this strength it still reads as the paper the mark stands on rather than as a table. */
+  --grid-line: color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 6%), transparent);
   background-image:
-    repeating-linear-gradient(to right, var(--hairline) 0 1px, transparent 1px 24px),
-    repeating-linear-gradient(to bottom, var(--hairline) 0 1px, transparent 1px 24px);
+    repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 24px);
   background-position: calc(50% - 12px) calc(50% - 12px);
   mask-image: radial-gradient(closest-side, #000 30%, transparent 92%);
   pointer-events: none;

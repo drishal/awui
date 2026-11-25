@@ -59,8 +59,9 @@
   --label-size: 11px;
   --label-tracking: 0.05em;
   /* Light is a grey page with white faces on it: the page sits a step below the surfaces, so a
-     card, the composer, and a menu read as things laid over it rather than as its own level. */
-  --bg: #f4f5f7;
+     card, the composer, and a menu read as things laid over it rather than as its own level. The step
+     deepened when #f4f5f7 left the white cards with too little page to stand on. */
+  --bg: #f2f3f6;
   --surface: #ffffff;
   --surface-2: #e8ecf1;
   --selection: #dbe7fd;
@@ -86,11 +87,16 @@
   --rare: #8a5a00;
   --brown: #92400e;
   /* A white page needs a real shadow and a firmer hairline to read as layered at all: at 0.1 the
-     composer and the cards sat flat on it and at 16% the edges dissolved. */
-  --shadow-strength: 0.16;
+     composer and the cards sat flat on it and at 16% the edges dissolved; 0.2 was the shadow a white card
+     needs to float over a grey page rather than sit in it. */
+  --shadow-strength: 0.2;
+  /* The one edge a light card's shadow cannot draw: an inner line along its bottom, where a white face over a
+     near-white page lost its shape even with the shadow. A dark page separates by tone, so it takes none. */
+  --card-edge: inset 0 -1px 0 color-mix(in srgb, var(--text) 6%, transparent);
   /* How much of the text colour a hairline takes: a dark page needs a little more for a
-     1px edge to read (a base16 theme inherits whichever scheme it is). */
-  --hairline-mix: 18%;
+     1px edge to read (a base16 theme inherits whichever scheme it is); a light one at 18% had
+     hairlines that disappeared into the white faces they were meant to bound. */
+  --hairline-mix: 22%;
   /* How much lighter than its surface a raised face (a segmented control's chosen pill) is: a light
      page lifts it with a shadow on white, a dark one has to lighten it or it sinks below its track. */
   --raise-mix: 0%;
@@ -136,6 +142,7 @@
     --raise-mix: 16%;
     --card-mix: 62%;
     --hero-wash: 6%;
+    --card-edge: none;
   }
 }
 
@@ -172,6 +179,7 @@
   --raise-mix: 16%;
   --card-mix: 62%;
   --hero-wash: 6%;
+  --card-edge: none;
 }
 
 :root[data-theme="light"] {
@@ -223,7 +231,9 @@
   --card: color-mix(in srgb, var(--surface) var(--card-mix), var(--bg));
   --raised: color-mix(in srgb, var(--text) var(--raise-mix), var(--surface));
   --code-bg: color-mix(in srgb, var(--surface-2) 45%, var(--bg));
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.8)), 0 8px 24px rgb(0 0 0 / calc(var(--shadow-strength) * 0.55));
+  /* Everything lifted off the page shares one shadow, and on a light page that shadow carries --card-edge
+     as well: an inset bottom line is the only edge a shadow cannot draw for a white card. */
+  --shadow-soft: var(--card-edge), 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.8)), 0 8px 24px rgb(0 0 0 / calc(var(--shadow-strength) * 0.55));
   --shadow-float: 0 2px 6px rgb(0 0 0 / var(--shadow-strength)), 0 16px 40px rgb(0 0 0 / calc(var(--shadow-strength) * 1.4));
   /* One short scale: a radius says what a thing is, not how soft it feels. Controls
      (buttons, chips, segmented choices, pickers) share --r-control; in-page tiles take
@@ -262,12 +272,12 @@
    --surface-2, passing with no room for a tinted row, where a dark page's 5.5:1 already has it. Only the
    text role moves; icons, dividers and hairlines keep --muted. A theme that sets --muted-text still wins. */
 :root[data-theme="light"] {
-  --muted-text: #5c6166;
+  --muted-text: #5b6472;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --muted-text: #5c6166;
+    --muted-text: #5b6472;
   }
 }
 
