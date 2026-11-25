@@ -109,9 +109,10 @@
      needs less of it than a dark one — at 6% the wash, the grid and the beam averaged into a grey smear
      over #f2f3f6 instead of reading as three separate things. */
   --hero-wash: 4%;
-  /* The blueprint's lines. A light page draws them in its border tone, which is paper rather than ink;
-     a dark page keeps the text mix, because there a pale hairline is what reads as paper. */
-  --hero-grid: color-mix(in srgb, var(--border) 75%, transparent);
+  /* The blueprint's lines. A light page draws them in its border tone — the token meant for a 1px edge, so
+     the mesh reads as the paper the mark stands on rather than as a table drawn in ink; a dark page keeps
+     the text mix, because there a pale hairline is what reads as paper. */
+  --hero-grid: var(--border);
   /* The one bright pixel inside a glass surface's top edge (glass.css). A white line is light on a dark
      page and almost nothing on a light one, where the shadow and the hairline carry the edge instead. */
   --glass-specular: rgb(255 255 255 / 0.45);

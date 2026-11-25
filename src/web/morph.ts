@@ -64,6 +64,11 @@ export function flight(from: Box, to: Box, height = false): { dx: number; dy: nu
 }
 
 export interface LandOptions {
+  /**
+   * The animation's id. A caller that wants its glide told apart from another (a test sampling flights, a
+   * second move of a different element) names it; the default follows the handoff key, or `morph:glide`.
+   */
+  id?: string;
   /** Milliseconds; the card-sized default is a calm one. */
   duration?: number;
   /** A start that waits a little behind the rest of the swap. */
@@ -86,7 +91,9 @@ export interface LandOptions {
  */
 export function land(key: string, el: HTMLElement | null, opts: LandOptions = {}, now = Date.now()): Animation | null {
   const from = takeBox(key, now);
-  return from ? glide(from, el, opts) : null;
+  if (!from) return null;
+  // The key names the handoff, so it names the glide too: two ends of one swap keep telling themselves apart by id.
+  return glide(from, el, { ...opts, id: opts.id ?? `morph:${key.split(":")[0]}` });
 }
 
 /**
