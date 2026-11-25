@@ -11,7 +11,7 @@ import { findOffsets, foldsToOpen, stepMatch } from "../find.js";
 import { useToolStyle } from "../tool-style.js";
 import { buildTurns, changeStatLabel, countParts, countSummary, formatDuration, isEmojiOnly, latestThought, modelName, modelSwitches, relativePath, sameChangeStat, saysSomething, segmentStartsOpen, toolLabel, type ChangeStat, type Turn, workAfterSegment, workSegments, type WorkSegment } from "../turns.js";
 import { useNow } from "../hooks.js";
-import { callDuration, toolSentence } from "../../shared/tool-row.js";
+import { callDuration, TOOK_AFTER_MS, toolSentence } from "../../shared/tool-row.js";
 import { testProgress } from "../../shared/output-facts.js";
 import { TestMeter } from "./TestMeter.js";
 import { JobCard } from "./JobCard.js";
@@ -145,8 +145,19 @@ function requestSubject(title: string): string {
 /** Past this many lines a call's output scrolls in its panel, and "Full output" opens it in a sheet. */
 const FULL_OUTPUT_LINES = 16;
 
-/** A thought reads itself out while it streams, then folds to its first line once the agent moves on. */
-const ThoughtRow = memo(function ThoughtRow({ id, thinking, streaming }: { id: string; thinking: string; streaming: boolean }) {
+/** How long a settled thought ran, once that is worth saying: under the threshold a duration is noise ("Thought · 0.2s"
+ *  on every passing idea), so it takes the same floor a call's row takes. */
+function thoughtTook(at: number | undefined, endedAt: number | undefined): string | undefined {
+  if (at === undefined || endedAt === undefined) return undefined;
+  const ms = endedAt - at;
+  return ms >= TOOK_AFTER_MS ? formatDuration(ms) : undefined;
+}
+
+/** A thought reads itself out while it streams, then folds to its first line once the agent moves on, and says how
+ *  long it took — the live pill above had a clock, and a settled row that dropped it lost the one thing a long
+ *  think costs. */
+const ThoughtRow = memo(function ThoughtRow({ id, thinking, streaming, at, endedAt }: { id: string; thinking: string; streaming: boolean; at?: number | undefined; endedAt?: number | undefined }) {
+  const took = streaming ? undefined : thoughtTook(at, endedAt);
   const body = useRef<HTMLDivElement>(null);
   // Its body is capped, so a long thought scrolls itself: the newest words stay in view as they arrive.
   useEffect(() => {
@@ -156,7 +167,7 @@ const ThoughtRow = memo(function ThoughtRow({ id, thinking, streaming }: { id: s
   return (
     <DisclosureRow
       icon={streaming ? <Spinner size={13} /> : <IconSpark size={14} />}
-      title={streaming ? "Thinking" : "Thought"}
+      title={streaming ? "Thinking" : took ? `Thought · ${took}` : "Thought"}
       summary={<span className="drow-prose">{firstLine(thinking)}</span>}
       autoOpen={streaming}
       hideSummaryWhenOpen
@@ -456,7 +467,8 @@ function ProcessAssistant({ item, thoughtOnly = false }: { item: AssistantItem; 
   if (!text && !thinking) return null;
   return (
     <div className={`process-step${arrival}`}>
-      {thinking ? <ThoughtRow id={item.id} thinking={thinking} streaming={item.streaming && !text} /> : null}
+      {/* A thought between calls has a clock: its item's own span, from its first token to the call that followed. */}
+      {thinking ? <ThoughtRow id={item.id} thinking={thinking} streaming={item.streaming && !text} at={item.at} endedAt={item.endedAt} /> : null}
       {text ? (
         <div className="process-text">
           <Markdown text={item.text} />
