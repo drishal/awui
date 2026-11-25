@@ -721,8 +721,10 @@
   .composer-card.is-folded .composer-input {
     order: 1;
     flex: 1;
-    /* A floor for the placeholder's own words: the model chip beside it shrinks first. */
-    min-width: 76px;
+    /* A floor for the placeholder's own words: the model chip beside it shrinks first. Wide enough for the
+       folded placeholder ("Message…", 74px at this size) with air around it, so the box never cuts the words
+       into an ellipsis the reader has to guess at. */
+    min-width: 112px;
     min-height: 32px;
     padding: 6px 2px;
     /* One line's worth: the placeholder sets the row's height. */
@@ -775,8 +777,10 @@
     gap: 0;
     padding: 0 2px;
     background: none;
-    color: var(--muted-text);
-    font-size: 11.5px;
+    /* The model stays legible at 12px in the body's second ink: at 11.5px in the muted tone the one fact the
+       folded row still states (which model answers) sat below the row's other words. */
+    color: var(--text-2);
+    font-size: 12px;
   }
 
   .composer-card.is-folded .composer-config-chip > .harness-dot,
@@ -799,6 +803,14 @@
   .composer-card.is-folded .context-ring {
     height: 28px;
     padding: 0 4px;
+  }
+}
+
+/* A 320px phone cannot hold the box's floor and the model's sentence: the box drops to 84px (still 10px more
+   than the placeholder's 74) so the chip keeps the model's name instead of a letter and its ellipsis. */
+@media (max-width: 359px) {
+  .composer-card.is-folded .composer-input {
+    min-width: 84px;
   }
 }
 

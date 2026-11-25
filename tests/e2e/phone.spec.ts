@@ -154,6 +154,23 @@ test("a phone composer folds its pickers into one settings chip", async ({ page 
   await expect(chip).toContainText("Fake Echo");
   await expect(chip).toContainText("Low");
   await expect(chip).toHaveCSS("max-width", "156px");
+  // The folded row's own words fit the box the chip leaves it: "Message the agent…" is 146px in a 112px box, so
+  // the row read "Message the …". The placeholder stays one word plus its ellipsis, and the box stays unclipped.
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute("data-placeholder", "Message…");
+  const fitted = await page.getByRole("textbox", { name: "Message" }).evaluate((el) => {
+    const probe = document.createElement("span");
+    probe.textContent = el.getAttribute("data-placeholder") ?? "";
+    const cs = getComputedStyle(el);
+    probe.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font:${cs.font}`;
+    el.appendChild(probe);
+    const natural = probe.getBoundingClientRect().width;
+    probe.remove();
+    return { natural, box: el.getBoundingClientRect().width };
+  });
+  expect(fitted.natural).toBeLessThan(fitted.box - 8);
+  // And the model it still states reads at the chip's 12px, not the 11.5px footer size it was cut to.
+  await expect(chip).toHaveCSS("font-size", "12px");
+  expect(await chip.locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   await expect(page.locator(".composer-pickers")).toBeHidden();
   // Writing opens the card; the same chip then carries the whole summary (harness, effort, mode).
   await page.getByRole("textbox", { name: "Message" }).click();

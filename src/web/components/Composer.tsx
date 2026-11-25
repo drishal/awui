@@ -1094,7 +1094,11 @@ export function Composer({
                     : "The agent is working…"
                   : images.length > 0
                     ? "Say what to do with the image…"
-                    : (placeholder ?? "Message the agent…")
+                    : pillRow
+                      ? // The folded row is a phone's whole composer, and its box is 112px wide: "Message the agent…"
+                        // is 146px there and was cut to "Message the …". One word and the ellipsis fit with air.
+                        "Message…"
+                      : (placeholder ?? "Message the agent…")
             }
             onChange={setText}
             onKeyDown={onKeyDown}
