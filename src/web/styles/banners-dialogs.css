@@ -99,6 +99,26 @@
   font-size: 13px;
 }
 
+/* The gutter's key, in the diff's own two glyphs: a dot for a line this chat wrote, a ring for one that
+   changed since. It sits between the header and the files, so it is read before the first mark, once. */
+.review-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 16px 0;
+  font-size: 11.5px;
+}
+
+.review-legend .diff-origin {
+  flex: none;
+  width: 12px;
+}
+
+.review-legend .diff-origin + .diff-origin {
+  margin-left: 10px;
+}
+
 .review-files {
   flex: 1;
   min-height: 0;

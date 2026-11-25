@@ -94,6 +94,9 @@ export function ReviewPanel({
   const files = useMemo(() => collectChanges(items, workspace), [items, workspace]);
   // Which of these lines the agent wrote, and which have been changed outside this chat since.
   const origins = useAttribution(chatId, files);
+  // Whether any diff in the panel carries a gutter mark: the key under the header is drawn only then, so a
+  // chat with no attribution (or a file the read had to leave out) is never explained with nothing to explain.
+  const marked = useMemo(() => [...origins.byPath.values()].some((counts) => counts.agent + counts.changed > 0), [origins]);
   const storageKey = `review.${chatId}`;
   const threadsPath = `/api/chats/${chatId}/review-threads`;
   const [threads, setThreads] = useState<ReviewThread[]>([]);
@@ -304,6 +307,14 @@ export function ReviewPanel({
             <IconX size={16} />
           </button>
         </header>
+        {marked ? (
+          <p className="review-legend muted" data-testid="review-legend" title="A line changed outside this chat is marked, not attributed: an editor and a command of the agent's look the same">
+            <span className="diff-origin is-agent" aria-hidden="true" />
+            written by this chat
+            <span className="diff-origin is-changed" aria-hidden="true" />
+            changed since
+          </p>
+        ) : null}
         {error ? (
           <p className="review-error" role="alert">
             {error}
@@ -322,8 +333,8 @@ export function ReviewPanel({
                   const counts = origins.byPath.get(f.path);
                   if (!counts || counts.agent + counts.changed === 0) return null;
                   return (
-                    <span className="review-attribution muted" data-testid="review-attribution" title="Lines this chat's edits wrote, and how many have changed since (marked with a dot in the gutter; a changed line gets an amber ring). Who changed a line outside this chat is not recorded here: an editor and a command of the agent's look the same">
-                      {counts.agent} from this chat{counts.changed > 0 ? ` · ${counts.changed} changed since` : ""}
+                    <span className="review-attribution muted" data-testid="review-attribution">
+                      {counts.agent} {counts.agent === 1 ? "line" : "lines"} written here{counts.changed > 0 ? ` · ${counts.changed} changed since` : ""}
                     </span>
                   );
                 })()}
