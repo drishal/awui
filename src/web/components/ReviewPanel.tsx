@@ -452,20 +452,25 @@ export function ReviewPanel({
             </div>
           </div>
         ) : null}
+        {/* The foot promises nothing it cannot do: with no comment written yet it says how to start one,
+            instead of a Send button that is greyed out and counts to zero. */}
         <footer className="review-foot">
           <span className="muted" role="status">
             {open.length === 0 && resolved.length === 0 ? "No comments yet" : `${open.length} open`}
             {resolved.length > 0 ? ` · ${resolved.length} resolved` : null}
             {notice !== null ? ` · ${notice}` : null}
+            {open.length === 0 && resolved.length === 0 ? " · click a line to comment on it" : null}
           </span>
           {resolved.length > 0 ? (
             <button type="button" className="btn btn-small" aria-pressed={showResolved} onClick={() => setShowResolved((on) => !on)}>
               {showResolved ? "Open only" : "All"}
             </button>
           ) : null}
-          <button type="button" className="btn btn-small btn-primary" disabled={open.length === 0 || sending || picking} onClick={() => setPicking(true)}>
-            {open.length === 1 ? "Send 1 comment" : `Send ${open.length} comments`}
-          </button>
+          {open.length > 0 ? (
+            <button type="button" className="btn btn-small btn-primary" disabled={sending || picking} onClick={() => setPicking(true)}>
+              {open.length === 1 ? "Send 1 comment" : `Send ${open.length} comments`}
+            </button>
+          ) : null}
         </footer>
       </div>
     </dialog>
