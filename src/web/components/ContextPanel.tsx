@@ -68,6 +68,8 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
   // empty rail keeps its 40px and one with something to say opens by itself. `asked` is the person overruling
   // that — true when they opened an empty rail, false when they folded a busy one away.
   const [asked, setAsked] = useState<boolean | null>(null);
+  // Set while a person's own fold is animating the rail's width; the stylesheet keys the transition on it.
+  const [toggling, setToggling] = useState(false);
   const [open, setOpen] = useState<OpenState>(() => ({ ...DEFAULT_OPEN, ...validatedFolds(load<Partial<OpenState>>("context.folds", {})) }));
   const [races, setRaces] = useState<RaceSummary[] | null>(null);
   const [opinions, setOpinions] = useState<SecondOpinion[] | null>(null);
@@ -93,6 +95,14 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
 
   const [noteError, setNoteError] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
+
+  // Reduced motion turns every transition off, so the width never ends: clear the mark on a timer as well
+  // (a little over the fold's own 160 ms).
+  useEffect(() => {
+    if (!toggling) return;
+    const timer = window.setTimeout(() => setToggling(false), 240);
+    return () => window.clearTimeout(timer);
+  }, [toggling]);
 
   useEffect(() => {
     let active = true;
@@ -233,9 +243,19 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
   }
   // Opening the detail is an ask and closing it is the answer. `onOpen`/`onClose` still carry the sheet's
   // own state beside this one; the inline panel answers the chevron itself.
-  const openDetail = () => { setAsked(true); onOpen(); };
-  const closeDetail = () => { setAsked(false); onClose(); };
-  return <aside className={`context-panel${detail ? " is-expanded" : " is-collapsed"}`} aria-label="Chat context">
+  const openDetail = () => { setToggling(true); setAsked(true); onOpen(); };
+  const closeDetail = () => { setToggling(true); setAsked(false); onClose(); };
+  return <aside
+    className={`context-panel${detail ? " is-expanded" : " is-collapsed"}`}
+    aria-label="Chat context"
+    // The rail's width animates for a person's own fold only (the stylesheet listens for this attribute):
+    // a session switch changes the width because the new chat has other rows, and sliding it re-lays-out
+    // every label while the transcript beside it is already in its final place.
+    data-toggling={toggling ? "" : undefined}
+    onTransitionEnd={(e) => {
+      if (e.target === e.currentTarget && e.propertyName === "flex-basis") setToggling(false);
+    }}
+  >
     <div className={`context-top${detail ? " is-expanded" : ""}`}>
       {detail ? <h2 className="context-eyebrow">Active work</h2> : null}
       <button className={detail ? "icon-btn" : "context-rail-button"} aria-label={detail ? "Collapse context panel" : "Expand context panel"} title={detail ? "Hide active work detail" : "Open active work detail"} onClick={() => (detail ? closeDetail() : openDetail())}>{detail ? <IconChevronRight size={16} /> : <IconSidebar size={16} />}</button>

@@ -23,6 +23,12 @@
   min-height: 0;
   border-left: 1px solid var(--hairline);
   background: var(--card);
+  transition: background-color 160ms var(--ease-out);
+}
+/* Only a person's own fold animates the width. A session switch changes it because the new chat has other
+   rows, and a 160 ms slide re-wraps every label in the rail while the transcript beside it has already
+   taken its final measure: on a switch the width is final in the same frame. */
+.context-panel[data-toggling] {
   transition: flex-basis 160ms var(--ease-out), background-color 160ms var(--ease-out);
 }
 /* The detail is a reading column, not a second page: it never takes more than a fifth of a wide

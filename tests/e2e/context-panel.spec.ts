@@ -139,3 +139,44 @@ test("a short chat's composer sits on the bottom of the main column", async ({ p
   expect(Math.abs((work!.y + work!.height) - (main!.y + main!.height))).toBeLessThan(2);
   expect((main!.y + main!.height) - (composer!.y + composer!.height)).toBeLessThan(160);
 });
+
+test("the rail's width snaps on a session switch and animates only for a person's own fold", async ({ page }) => {
+  await signInAndOpen(page);
+  // One chat with rows in the rail (it takes the width by itself), one bare chat (a 40 px rail).
+  await newChat(page);
+  await sendAndWait(page, "subagents");
+  const panel = page.getByRole("complementary", { name: "Chat context" });
+  const wide = (await panel.boundingBox())!.width;
+  expect(wide).toBeGreaterThan(100);
+  await newChat(page);
+  await sendAndWait(page, "a plain rail switch answer");
+  await expect.poll(async () => Math.round((await panel.boundingBox())!.width)).toBeLessThan(wide);
+
+  /** Every width the panel takes over the next 200 ms, after one click on `click`. */
+  const widths = (click: string) => page.evaluate(async (selector) => {
+    const target = document.querySelector<HTMLElement>(selector);
+    target?.click();
+    const panelEl = document.querySelector<HTMLElement>(".context-panel");
+    const seen: number[] = [];
+    if (!panelEl) return seen;
+    await new Promise<void>((resolve) => {
+      const start = performance.now();
+      const tick = () => {
+        seen.push(Math.round(panelEl.getBoundingClientRect().width));
+        if (performance.now() - start < 200) requestAnimationFrame(tick);
+        else resolve();
+      };
+      tick();
+    });
+    return [...new Set(seen)];
+  }, click);
+
+  // A switch: the transcript and the rail take their final size in the same frame, so one width is read
+  // (two if the click's own frame is sampled first) instead of a 160 ms slide of every label in the rail.
+  const switched = await widths('[role="tab"]:not([aria-selected="true"])');
+  expect(switched.length).toBeLessThanOrEqual(2);
+
+  // A person's own fold still animates: the rail grows across several frames.
+  const toggled = await widths('.context-panel .context-top button');
+  expect(toggled.length).toBeGreaterThan(3);
+});
