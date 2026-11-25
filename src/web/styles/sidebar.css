@@ -693,14 +693,16 @@
 
 /* A row is a dot, the words, and the clock. The words may take two lines (a cut-off title says nothing about
    whether the chat is about the same thing as its neighbour), so the row grows instead of clipping at ~28
-   characters; a row with nothing more to say keeps one line and the slack centres. */
+   characters. Rows sit 2px apart with their own lines 2px apart, so proximity groups a row's lines before it
+   reaches the next row; the inset hairline below says the same thing again in the same place. */
 .session {
+  position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   width: 100%;
   min-height: calc(var(--row-h) + 6px);
-  padding: 4px 8px;
+  padding: 7px 8px;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -719,53 +721,92 @@
   box-shadow: inset 2px 0 0 color-mix(in oklab, var(--harness, var(--accent)) 75%, transparent);
 }
 
-/* Title over sub-line, centred in the row: one line is the quiet case, two lines the settled one. */
+/* Title over sub-line: the words start at the row's top edge, because the clock on the right is pinned to
+   the title's first line and the row's own lines must not drift down when the title takes two. */
 .session-body {
   display: grid;
   flex: 1;
   min-width: 0;
-  align-content: center;
-  gap: 1px;
+  align-content: start;
+  gap: 2px;
 }
 
+/* Two lines at most, at the weight a name reads at: the row's words are the list's content, not its
+   annotations. `pretty` keeps an orphan word off line two when the title just misses fitting. */
 .session-title {
   display: -webkit-box;
   min-width: 0;
   overflow: hidden;
+  color: var(--text);
   font-size: 13.5px;
+  font-weight: 500;
   line-height: 1.3;
+  text-wrap: pretty;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
-/* The second line: where the row is out of its project, or what the agent says it is doing (the
-   `.session-agent` tones keep that row's own colour). */
+/* The second line: where the row is out of its project, or what the agent says it is doing. One line,
+   ellipsised: a status is a glance, and a row that grows for it pushes the next one out of reach. */
 .session-sub {
   overflow: hidden;
   color: var(--muted-text);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* An agent's own line is the quietest text in the list: its state is a 6px dot in that state's colour,
+   and the words stay muted (the row's colour is for its title, which is what you pick by). */
 .session .session-agent {
   max-width: none;
-  font-size: 11.5px;
+  color: var(--muted-text);
+  font-size: 12px;
 }
+
+.session .session-agent.is-blocked,
+.session .session-agent.is-review,
+.session .session-agent.is-done {
+  color: var(--muted-text);
+}
+
+.session .session-agent::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--muted-text);
+  vertical-align: 1px;
+}
+
+.session .session-agent.is-blocked::before {
+  background: var(--warn);
+}
+
+.session .session-agent.is-review::before,
+.session .session-agent.is-done::before {
+  background: var(--ok);
+}
+
+/* The clock sits on the title's first line, not in the row's middle: on a two-line row the middle points
+   at neither line, and the time is read against the words it belongs to. */
 .session-meta {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: none;
-  font-size: 12px;
+  padding-top: 1px;
+  font-size: 11.5px;
   color: var(--muted-text);
 }
 
 /* Times line up from row to row, so the titles stop at one left edge. */
 .session-time,
 .session-wake {
-  min-width: 3.2ch;
+  min-width: 3.5ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -774,6 +815,37 @@
    row, and a long press on any row. */
 .session-item {
   position: relative;
+}
+
+/* A hairline between two rows in a group, inset to the title's left edge as iOS Mail does it: the dot
+   column stays clear, so the line reads as belonging to the words rather than to the panel's edge.
+   `.session::before`, not `.session-item::before`, because the item's pseudo-elements mark a drag. */
+.session-item + .session-item {
+  margin-top: 2px;
+}
+
+.session-item + .session-item > .session::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: calc(8px + 10px + 6px);
+  right: 8px;
+  height: 1px;
+  background: var(--hairline);
+  transition: opacity var(--dur-hover) var(--ease-out);
+}
+
+/* A filled row never touches a line: the hover wash, the open session and a selection hide their own
+   divider and the one under the row above them. */
+.session-item + .session-item > .session:is(:hover, .is-active, .is-selected)::before,
+.session-item:has(> .session:is(:hover, .is-active, .is-selected)) + .session-item > .session::before {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-item + .session-item > .session::before {
+    transition: none;
+  }
 }
 
 /* Dragging a row inside its date section: it dims, and a line marks where it will land. */
@@ -837,8 +909,11 @@
   }
 }
 
+/* A settled or snoozed row steps back: its title reads as an annotation of the date section it sits in,
+   so it keeps the size and loses the weight and the ink. */
 .session.is-archived .session-title {
   color: var(--muted-text);
+  font-weight: 400;
 }
 
 
