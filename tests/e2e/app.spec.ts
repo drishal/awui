@@ -802,6 +802,7 @@ test("the model picker opens as a bottom sheet on phones", async ({ page }) => {
   await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("model-picker").click();
   const dialog = page.getByRole("dialog", { name: "Choose a model" });
   await expect(dialog).toBeInViewport();
+  await expect(dialog).toHaveAttribute("data-morph", "");
   const box = (await dialog.boundingBox()) as { x: number; y: number; width: number; height: number };
   expect(box.x).toBeLessThanOrEqual(9);
   expect(box.x + box.width).toBeGreaterThanOrEqual(381);

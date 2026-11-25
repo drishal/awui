@@ -229,6 +229,10 @@
     transform-origin: bottom center;
     animation: rise-in var(--dur-spring) var(--spring);
   }
+  /* Uncovered from its pill by the measured morph (ModelPicker), the sheet does not also rise. */
+  .model-pop[data-morph]:not(.is-leaving) {
+    animation: none;
+  }
   /* A phone's sheet slides back down instead of furling into a corner. */
   .model-pop.is-leaving,
   .model-pop.is-below.is-leaving {

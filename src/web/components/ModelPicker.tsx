@@ -159,19 +159,19 @@ export function ModelPicker({
 
   const pop = useRef<HTMLDivElement>(null);
   // The measured morph (A8): once the panel mounts, uncover it from the chip's rect instead of the
-  // keyframed corner. Phones keep the sheet's own motion, reduced motion stays still, and browsers
+  // keyframed corner. Phones use the same short spring, or reduced motion stays still, and browsers
   // without the Web Animations API keep the CSS keyframes.
   useLayoutEffect(() => {
     if (!showPop || leaving) return;
     const panel = pop.current;
     const chip = trigger.current;
     if (!panel || !chip || typeof panel.animate !== "function") return;
-    if (window.matchMedia?.("(pointer: coarse)").matches) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const phone = window.matchMedia?.("(max-width: 819px)").matches === true;
     panel.dataset.morph = "";
     const anim = panel.animate(
       [{ clipPath: morphClip(chip.getBoundingClientRect(), panel.getBoundingClientRect()), opacity: "0" }, { clipPath: "inset(-24px)", opacity: "1" }],
-      { duration: 180, easing: getComputedStyle(panel).getPropertyValue("--ease-out") || "ease-out" },
+      { duration: phone ? 160 : 180, easing: getComputedStyle(panel).getPropertyValue(phone ? "--spring" : "--ease-out") || "ease-out" },
     );
     return () => anim.cancel();
   }, [showPop, leaving]);
