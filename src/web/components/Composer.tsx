@@ -136,7 +136,9 @@ export function Composer({
   const attempt = useRef<{ key: string; text: string; mode: SendMode; images: PendingImage[]; pastes: PasteAttachment[]; compactFirst: boolean } | null>(null);
   const [answering, setAnswering] = useState(false);
   const [folded, setFolded] = useState<FoldedRequest | null>(null);
-  const { git, direnv, at: gitAt, refresh: refreshGit } = useGitStatus(chat.chatId, chat.status);
+  // The project's path is how the git row survives a switch: the reading is the project's, so the dock is whole on
+  // the frame a chat lands instead of gaining its branch lane a round trip later.
+  const { git, direnv, at: gitAt, refresh: refreshGit } = useGitStatus(chat.chatId, chat.status, chat.workspace.path);
   const [gitOpen, setGitOpen] = useState(false);
   // Images are per chat like the text draft: the composer remounts on a tab switch
   // (App.tsx keys it by chatId), and a draft's pictures must come back with it.

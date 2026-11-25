@@ -95,3 +95,42 @@ test("the dock keeps its own frost, so its face does not pick up the hue of what
   expect(frost.saturate).toBe("1");
   expect(frost.filter).toContain("saturate(1)");
 });
+
+test("a chat switch lands with the dock whole, its branch lane already in place", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/gamma` } })).json()) as { id: string };
+  // Two chats in one project: one whose dock is the git row alone, and one with a run's Todos above that row.
+  const plain = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await request.post(`/api/chats/${plain.chatId}/messages`, { data: { text: "say hello to the dock", mode: "normal" } });
+  const title = "todo for the dock switch";
+  const work = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await request.post(`/api/chats/${work.chatId}/messages`, { data: { text: title, mode: "normal" } });
+  await expect
+    .poll(async () => ((await (await request.get(`/api/chats/${work.chatId}`)).json()) as { status: string }).status)
+    .toBe("idle");
+  await page.goto(`/#chat=${plain.chatId}`);
+  await expect(page.getByTestId("git-row")).toBeVisible();
+  // Sample every frame of the switch: a git status belongs to the project, so the dock already has it on the
+  // frame the transcript lands. Without that, the lane arrives a round trip later and pushes the composer up.
+  const frames = await page.evaluate(async (title) => {
+    const out: Array<{ turns: number; height: number }> = [];
+    const row = [...document.querySelectorAll<HTMLElement>(".sidebar .session")].find((el) => el.querySelector(".session-title")?.textContent === title);
+    if (!row) throw new Error(`no sidebar session titled ${title}`);
+    row.click();
+    // Up to two seconds for the switch to land (a resumed harness starts first), then eight frames of it.
+    for (let i = 0; i < 120; i += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const transcript = document.querySelector(".conversation, .thread");
+      const stack = document.querySelector(".status-stack");
+      out.push({ turns: transcript ? transcript.querySelectorAll(".turn, .bubble, .drow").length : 0, height: stack ? Math.round(stack.getBoundingClientRect().height) : 0 });
+      if (out.filter((frame) => frame.turns > 0).length >= 8) break;
+    }
+    return out;
+  }, title);
+  const landed = frames.findIndex((frame) => frame.turns > 0);
+  expect(landed).toBeGreaterThanOrEqual(0);
+  // Whole on that frame: neither absent (a base-only dock waiting for its reading) nor short of the Todos row.
+  const settled = frames[frames.length - 1]?.height ?? 0;
+  expect(settled).toBeGreaterThan(32);
+  expect(frames[landed]?.height).toBe(settled);
+});
