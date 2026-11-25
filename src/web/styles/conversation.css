@@ -1644,6 +1644,19 @@
   overflow-wrap: anywhere;
 }
 
+/* Running text stops at a readable measure: the column is ~800 px at a desk, which set a paragraph at about
+   100 characters and made an answer something to sweep rather than read. Prose, lists and their headings take
+   72ch; a card, a table and a code block keep the full column, because their own edges are what they are read
+   by. */
+.answer .md > p,
+.answer .md > ul,
+.answer .md > ol,
+.answer .md > blockquote,
+.answer .md > h2,
+.answer .md > h3 {
+  max-width: 72ch;
+}
+
 /* A turn's second opinion: one quiet card under the answer, in the same frame as a
    notice, with the from → to route and the opening of the reply. */
 .second-opinion {
