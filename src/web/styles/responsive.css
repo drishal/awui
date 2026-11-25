@@ -111,9 +111,10 @@
   }
 
   /* A phone has a notch and a rounded edge: the transcript keeps a real gutter on both sides and
-     stays clear of the home indicator, so no line starts or ends under the curve. */
+     stays clear of the home indicator and of the jump pill over its last line, so no line starts or
+     ends under the curve. */
   .thread {
-    padding: 4px max(16px, env(safe-area-inset-right)) calc(36px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    padding: 4px max(16px, env(safe-area-inset-right)) calc(56px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
   /* The transcript runs under the dock; this fades it out rather than letting the dock cut a line. */
@@ -128,15 +129,16 @@
     background: linear-gradient(to top, var(--bg), transparent);
   }
 
-  /* The way back to the newest turn floats over that fade instead of butting against the cut edge. */
+  /* The way back to the newest turn floats over the fade as a small round target, with a ring of the page
+     around it: the transcript scrolls under the pill, so the ring is what keeps its edge legible. */
   .jump {
-    right: 8px;
-    bottom: 6px;
-    width: 32px;
-    height: 32px;
+    right: 10px;
+    bottom: 8px;
+    width: 30px;
+    height: 30px;
     border: 1px solid var(--hairline-strong);
     border-radius: 999px;
-    box-shadow: var(--shadow-soft);
+    box-shadow: 0 0 0 4px var(--bg);
   }
 
   .jump::before {
