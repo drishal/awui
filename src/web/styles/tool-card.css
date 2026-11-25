@@ -466,11 +466,13 @@
   color: var(--danger);
 }
 
+/* The glyph is a 14px mark on the row's centre line. It used to take the head's whole end (a stretched 44px box),
+   which is not a hit area: the chevron is the head button's sibling, and a stretched box parked the glyph about
+   7px above the sentence it belongs to. Shrinking it hands that room to the head button, which is the target. */
 .tool-chevron {
   display: grid;
-  flex: 0 0 44px;
-  align-self: stretch;
-  place-content: center;
+  flex: 0 0 14px;
+  align-self: center;
   color: var(--muted-text);
   opacity: 0.6;
   transition: transform var(--dur-spring) var(--spring);
@@ -503,11 +505,11 @@
   pointer-events: none;
 }
 
-/* The real button, laid over its twin: 12px padding + 44px chevron column + gap + 16px status + gap from the right. */
+/* The real button, laid over its twin: 12px padding + the 14px chevron column + gap + 16px status + gap from the right. */
 .tool-retry {
   position: absolute;
   top: 50%;
-  right: 92px;
+  right: 62px;
   translate: 0 -50%;
 }
 
@@ -1026,10 +1028,10 @@
   color: var(--muted-text);
 }
 
-/* The card places Ask to retry at 92px: 12px of head padding plus the 44px chevron column, the gap, the
+/* The card places Ask to retry at 62px: 12px of head padding plus the 14px chevron column, the gap, the
    status, and the gap. Lines padding is 2px, so the same stack sits 10px closer to the edge. */
 :root[data-tool-style="lines"] .tool-retry {
-  right: 82px;
+  right: 52px;
 }
 
 /* An opened call's output keeps its code surface, inset under the sentence it belongs to

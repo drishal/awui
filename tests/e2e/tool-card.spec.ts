@@ -16,7 +16,8 @@ test("a run of calls is one card: a header that counts and stacks the kinds, a s
   await toggle.click();
   const rows = page.getByTestId("tool-row");
   await expect(rows).toHaveCount(8);
-  expect((await rows.first().locator(".tool-chevron").boundingBox())!.width).toBe(44);
+  // The glyph is 14px on the row's centre line; the head button around it is the row's whole width.
+  expect((await rows.first().locator(".tool-chevron").boundingBox())!.width).toBe(14);
   // Back-to-back plan updates fold into one row: the newest checklist, not a second copy.
   await expect(rows.filter({ hasText: "Updated the plan" })).toHaveCount(1);
   await expect(rows.filter({ hasText: "Updated the plan" }).locator(".tool-chevron")).toBeVisible();
