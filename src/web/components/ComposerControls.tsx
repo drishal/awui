@@ -43,6 +43,13 @@ function HandoffChip({ chat, harnesses, onHandoff }: { chat: ChatState; harnesse
   );
 }
 
+/** The harness's own first-listed permission mode is the safe default: it needs one shield, not a word.
+ *  Any other mode stops part of the asking and keeps its label (and its warn wash). */
+function quietPolicy(config: ChatState["config"]): boolean {
+  const first = config.permissionModes?.[0]?.id;
+  return config.permissionMode === null || config.permissionMode === first;
+}
+
 export function ComposerControls({
   chat,
   harnesses,
@@ -67,34 +74,45 @@ export function ComposerControls({
   return (
     <div className="composer-controls" data-harness-accent={current?.accent}>
       <div className={`composer-pickers${loading ? " is-loading" : ""}`} aria-busy={loading || undefined}>
-        <HandoffChip chat={chat} harnesses={harnesses} onHandoff={onHandoff} />
-        {caps.supportsModelSelection ? (
-          <ModelPicker
-            models={config.models}
-            current={config.model}
-            harnessId={chat.harnessId}
-            disabled={!idle}
-            loading={loading && config.model === null}
-            onSelect={(model) => void onConfig({ model })}
-            onRefresh={onRefreshModels}
-          />
-        ) : null}
-        {caps.supportsThinkingLevel && config.thinkingLevels.length > 0 ? (
-          <ThinkingPicker
-            levels={config.thinkingLevels}
-            current={config.thinkingLevel}
-            sent={config.thinkingSent ?? null}
-            disabled={!idle}
-            onSelect={(thinkingLevel) => void onConfig({ thinkingLevel })}
-          />
-        ) : null}
+        {/* One split pill: the harness mark leads, and model and level read together as a single
+            sentence ("Fake Echo · Low"). Each piece is still its own menu. */}
+        <div className="composer-pill">
+          <HandoffChip chat={chat} harnesses={harnesses} onHandoff={onHandoff} />
+          {caps.supportsModelSelection || (caps.supportsThinkingLevel && config.thinkingLevels.length > 0) ? (
+            <div className="composer-pill-settings">
+              {caps.supportsModelSelection ? (
+                <ModelPicker
+                  models={config.models}
+                  current={config.model}
+                  harnessId={chat.harnessId}
+                  disabled={!idle}
+                  loading={loading && config.model === null}
+                  onSelect={(model) => void onConfig({ model })}
+                  onRefresh={onRefreshModels}
+                />
+              ) : null}
+              {caps.supportsThinkingLevel && config.thinkingLevels.length > 0 ? (
+                <ThinkingPicker
+                  levels={config.thinkingLevels}
+                  current={config.thinkingLevel}
+                  sent={config.thinkingSent ?? null}
+                  disabled={!idle}
+                  onSelect={(thinkingLevel) => void onConfig({ thinkingLevel })}
+                />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         {caps.supportsPermissionMode && config.permissionModes?.length ? (
-          <PermissionPicker
-            modes={config.permissionModes}
-            current={config.permissionMode ?? null}
-            disabled={chat.status === "disposed"}
-            onSelect={(permissionMode) => void onConfig({ permissionMode })}
-          />
+          // The harness's default mode is one shield; a mode that stops asking keeps its word.
+          <div className={`composer-policy${quietPolicy(config) ? " is-quiet" : ""}`}>
+            <PermissionPicker
+              modes={config.permissionModes}
+              current={config.permissionMode ?? null}
+              disabled={chat.status === "disposed"}
+              onSelect={(permissionMode) => void onConfig({ permissionMode })}
+            />
+          </div>
         ) : null}
       </div>
       <button

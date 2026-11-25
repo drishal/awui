@@ -755,6 +755,115 @@
   min-width: 0;
 }
 
+
+/* The row's one split pill: the chat's identity and its two settings read as a single object with
+   three hit targets, instead of three chips of the same weight competing on one line. The leading
+   segment keeps the harness hue (identity is that colour's only job and its only use here); the
+   settings beside it are neutral and drop their own fills, so the model and the level read together
+   as one sentence: "Fake Echo · Low". */
+.composer-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-width: 0;
+  border-radius: var(--r-control);
+}
+
+/* The harness's name belongs to the chat header and the sidebar; in this row the mark stands for it.
+   It stays in the button, so the chip is still named for a screen reader. */
+.composer-pill .harness-menu-wrap > button.harness-chip {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--r-control) 0 0 var(--r-control);
+}
+
+.composer-pill .harness-row-name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.composer-pill-settings {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: 32px;
+  border-radius: 0 var(--r-control) var(--r-control) 0;
+  background: var(--hover);
+}
+
+/* One height, one ink, no fill of their own: the group is the fill. */
+.composer-pill-settings .pill-trigger,
+.composer-pill-settings .pill-trigger[data-level] {
+  height: 32px;
+  max-width: 200px;
+  padding: 0 8px;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12.5px;
+}
+
+.composer-pill-settings .pill-trigger:first-child {
+  padding-left: 10px;
+}
+
+.composer-pill-settings > .model-picker:last-child > .pill-trigger {
+  border-radius: 0 var(--r-control) var(--r-control) 0;
+}
+
+/* One chevron for the group, on its last segment: three of them turn a sentence into a toolbar. */
+.composer-pill-settings > :not(:last-child) > .pill-trigger > .icon:last-child {
+  display: none;
+}
+
+.composer-pill-settings .pill-trigger:hover:not(:disabled),
+.composer-pill-settings .pill-trigger[aria-expanded="true"] {
+  background: var(--active);
+}
+
+/* The level joins the model's sentence instead of starting a new one. */
+/* The level joins the model's sentence instead of starting a new one: the dot sits in the gap
+   between the two words, on the level's own side of it. */
+.composer-pill-settings:has(.model-trigger) .pill-trigger[data-level] {
+  padding-left: 0;
+}
+
+.composer-pill-settings:has(.model-trigger) .pill-trigger[data-level]::before {
+  content: "·";
+  margin-right: -2px;
+  color: var(--muted-text);
+}
+
+/* The safe default mode is one shield in the row; a mode that stops asking keeps its word and its
+   warn wash (model-picker.css), because that is the state worth seeing at a glance. */
+.composer-policy {
+  display: inline-flex;
+  min-width: 0;
+}
+
+/* Demoted to an icon button, it joins the row's quiet glyphs (attach, capture, stash) instead of
+   asking for a chip of its own; hovering it says the mode in words. */
+.composer-controls .composer-policy.is-quiet .pill-trigger {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+}
+
+.composer-controls .composer-policy.is-quiet .pill-trigger:hover:not(:disabled),
+.composer-controls .composer-policy.is-quiet .pill-trigger[aria-expanded="true"] {
+  background: var(--hover);
+}
+
+.composer-controls .composer-policy.is-quiet .pill-trigger .pill-label,
+.composer-controls .composer-policy.is-quiet .pill-trigger .icon:last-child {
+  display: none;
+}
+
 /* The sheet the chip opens: the harness list, then one row per picker, and each
    picker keeps its own phone sheet. */
 .config-section-title {
@@ -909,6 +1018,13 @@
 
 .pill-btn:disabled {
   opacity: 0.45;
+}
+
+/* Send ends the composer's row and is the one solid on it: a circle a size larger than the 32px
+   controls beside it, so the eye leaves the row there. A phone keeps its slim 32px row below. */
+.composer-actions .round-btn {
+  width: 36px;
+  height: 36px;
 }
 
 .round-btn {

@@ -328,30 +328,37 @@ export function StartScreen({
                     e.target.value = "";
                   }}
                 />
-                <HarnessMenu
-                  variant="chip"
-                  label="Agent for this chat"
-                  menuLabel="Agent"
-                  currentId={harnessId}
-                  choices={harnesses.map((h) => ({ harness: h, blocked: h.available ? null : (h.reason ?? "Not available") }))}
-                  onPick={onHarness}
-                  ariaKeyShortcuts="Enter"
-                />
-                {showModel && harnessId ? (
-                  <ModelPicker
-                    models={models}
-                    current={model}
-                    defaultModel={defaultModel}
-                    harnessId={harnessId}
-                    disabled={busy}
-                    onSelect={onModel}
-                    onRefresh={onRefreshModels}
-                    emptyLabel="Default model"
-                    levels={thinkingLevels}
-                    thinking={thinking}
-                    onThinking={onThinking}
+                {/* The same split pill a chat's composer draws: the harness mark, then the model (and
+                    its level) as one sentence. The folder stays its own chip: it is a different kind
+                    of choice. */}
+                <div className="composer-pill">
+                  <HarnessMenu
+                    variant="chip"
+                    label="Agent for this chat"
+                    menuLabel="Agent"
+                    currentId={harnessId}
+                    choices={harnesses.map((h) => ({ harness: h, blocked: h.available ? null : (h.reason ?? "Not available") }))}
+                    onPick={onHarness}
+                    ariaKeyShortcuts="Enter"
                   />
-                ) : null}
+                  {showModel && harnessId ? (
+                    <div className="composer-pill-settings">
+                      <ModelPicker
+                        models={models}
+                        current={model}
+                        defaultModel={defaultModel}
+                        harnessId={harnessId}
+                        disabled={busy}
+                        onSelect={onModel}
+                        onRefresh={onRefreshModels}
+                        emptyLabel="Default model"
+                        levels={thinkingLevels}
+                        thinking={thinking}
+                        onThinking={onThinking}
+                      />
+                    </div>
+                  ) : null}
+                </div>
                 {!projectless ? <FolderChip workspace={workspace} recent={recent} onPick={onPickFolder} onOpen={onOpenRecent} /> : null}
               </div>
               <div className="composer-actions">

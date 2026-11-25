@@ -112,9 +112,10 @@ a literal colour.
   `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat
   title, dialog titles, the start screen) take `--tracking-tight`.
 - **Control sizes:** the composer's row is 32 px tall on every screen, its
-  chips and icon buttons at `--r-control` and Send round (the composer is the exception to `phones.css` raising
-  touch targets to 36–44 px elsewhere: a phone keeps its one slim row). Keep
-  a row of controls one height: mismatched heights and radii are what makes a
+  chips and icon buttons at `--r-control`, and Send a round 36 px (the row's one
+  control a size larger; the composer is the exception to `phones.css` raising
+  touch targets to 36–44 px elsewhere: a phone keeps its one slim row at 32 px).
+  Keep a row of controls one height: mismatched heights and radii are what makes a
   part "look off".
 - **Motion:** short and eased out; `prefers-reduced-motion` turns it all off
   (the rule at the end of `tokens.css`).
@@ -134,14 +135,20 @@ a literal colour.
   tool rows tint their row; the approval card is the loudest object; answer
   prose, paths, timestamps, model names, section labels, and card backgrounds
   stay grey. Never colour alone: glyph, word, and shape stay.
-- **The composer's chip row:** the harness chip leads (`--lead-tint` 12 % wash,
-  `--lead-edge` 32 % edge, in `--harness`). The model chip and a quiet context ring
-  are neutral; the reasoning chip is a 6-12 % `--thinking` wash with no edge; the
-  normal permission chip is a neutral pill with a green shield, and a cautious mode
-  is the only other edged chip (the harness chip then keeps just its mark). The row
-  carries `data-harness-accent`: a harness whose accent is `thinking` (omp, Awui)
-  ramps reasoning in grey, and one whose accent is `ok` (DeepSeek Harness) gets a
-  grey shield, so no two chips ever share a hue.
+- **The composer's chip row:** one split pill carries the chat's identity and its two
+  settings. Its leading segment is the harness mark (a `--lead-tint` 12 % wash and a
+  `--lead-edge` 32 % edge, in `--harness`; the harness's name is the header's and the
+  sidebar's job, and stays in the button for screen readers). Beside it a neutral
+  segment holds the model and the reasoning level as one sentence, "Fake Echo · Low":
+  no fill of its own, one chevron on its last segment, and the level's word carries
+  the effort (its ink ramps on `--thinking` from medium up; the level's own wash is
+  gone inside the pill). The harness's default permission mode is a quiet 32 px
+  shield beside the pill, with its mode in the tooltip and the accessible name; a mode
+  that stops asking keeps its word and its warn wash (the harness segment then keeps
+  just its mark). Send is the row's one solid and the one control a size larger, 36 px
+  round. The row carries `data-harness-accent`: a harness whose accent is `thinking`
+  (omp, Awui) ramps reasoning in grey, and one whose accent is `ok` (DeepSeek Harness)
+  gets a grey shield, so no two parts ever share a hue.
 
 ## 4. See it without touching real chats
 
