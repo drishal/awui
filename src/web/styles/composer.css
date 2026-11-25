@@ -40,6 +40,11 @@
   box-shadow: var(--shadow-float), 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
+/* An approval is waiting, not focused. Its own warn border carries the state, not the editor's accent ring. */
+.composer:has(.approval-card) .composer-card {
+  box-shadow: none;
+}
+
 .composer-card.is-closed {
   opacity: 0.6;
 }

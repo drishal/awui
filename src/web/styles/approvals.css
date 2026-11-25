@@ -40,9 +40,10 @@
   position: relative;
   z-index: 1;
   padding: 12px 14px 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
   border-radius: var(--r-panel);
   background: var(--card);
-  box-shadow: var(--shadow-soft), 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent);
+  box-shadow: var(--shadow-float), 0 12px 40px rgb(0 0 0 / 0.35);
 }
 
 /* Waiting wears a light: one hairline of the warn hue travelling the card's edge once every twelve seconds,
@@ -189,6 +190,7 @@
   border-color: transparent;
   background: var(--accent);
   color: var(--accent-fg);
+  font-weight: 650;
 }
 
 .approval-actions .approval-approve:hover:not(:disabled) {
@@ -226,6 +228,10 @@
    appears under the decision only once someone wants one, with a real label over it. A field every approval had
    to look past made the card twice as tall as the decision it asks for. */
 .approval-reason-open {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
   color: var(--muted-text);
   font-weight: 500;
 }
@@ -249,7 +255,9 @@
 
 .approval-reason .input {
   width: 100%;
+  min-height: 32px;
   padding: 8px 12px;
+  border: 1px solid var(--hairline-strong);
   resize: none;
   font-size: var(--chat-small);
   line-height: 1.45;
