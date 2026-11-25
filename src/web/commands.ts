@@ -8,7 +8,7 @@ import type { SlashCommand } from "../shared/protocol.js";
 export const APP_COMMANDS: SlashCommand[] = [
   { name: "new", description: "Start a new chat in this project", source: "app" },
   { name: "compact", description: "Summarize the conversation to free up context", hint: "[focus]", source: "app" },
-  { name: "rename", description: "Rename this chat", hint: "<title>", source: "app" },
+  { name: "rename", description: "Give this chat a new title", hint: "<title>", source: "app" },
 ];
 
 /** App commands first; a harness command with the same name is left out, since the app runs that one. */

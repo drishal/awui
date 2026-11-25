@@ -1937,7 +1937,7 @@ export function App() {
         id: "chat-link",
         section: "Chat",
         label: "Copy chat link",
-        hint: "opens this chat again, even after a reopen",
+        hint: "A link that reopens this chat",
         keywords: "share url deep link",
         run: () => void navigator.clipboard?.writeText(chatLink(window.location.origin, chatLinkKey(chat))),
       });

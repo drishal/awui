@@ -65,7 +65,7 @@ const DESCRIPTIONS: Record<string, string> = {
   new: "Start a chat in this project",
   "new-tab": "Open another chat tab",
   stop: "Stop the running agent",
-  rename: "Rename this chat",
+  rename: "Give it a new title",
   "chat-link": "Copy a link to this chat",
   compact: "Free context for a longer run",
   restart: "Continue in another harness",
