@@ -1093,7 +1093,9 @@ test("the sidebar focuses the current project and opens its sessions across harn
   await chooseHarness(page, "Fake B");
   await expect(focused.locator(".project-name")).toHaveText("beta");
   await expect(list.locator(".session")).toHaveCount(1);
-  await expect(list.locator(".session", { hasText: "xproj one" }).locator(".harness-dot")).toHaveAttribute("aria-label", "Fake B");
+  // The list is one harness, so the rows drop their identity dot and keep its slot: the harness picker above
+  // is the only place the name has to appear once.
+  await expect(list.locator(".session", { hasText: "xproj one" }).locator(".harness-dot.is-blank")).toHaveCount(1);
   await expect(list.locator(".session", { hasText: "xproj six" })).toHaveCount(0);
 
   // A search covers every chat in one unscoped list: a Fake session in beta found from alpha's folder.

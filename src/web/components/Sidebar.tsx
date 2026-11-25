@@ -337,6 +337,8 @@ function SessionRow({
   working,
   harnessName,
   project,
+  branch,
+  showHarness = true,
   onOpen,
   onMark,
   move,
@@ -349,6 +351,10 @@ function SessionRow({
   harnessName: string;
   /** Shown beside the title where the row is out of its project (the pinned list). */
   project?: string;
+  /** The branch its project is on, for the row's second line inside a project. */
+  branch?: string | null;
+  /** False where every row of the list is the same harness: the dot would only repeat the heading above. */
+  showHarness?: boolean;
   /** Why this row is where it is (a routine started it, it is quiet, on the default branch); its hover card says it. */
   provenance?: string | null;
   /** `newTab`: Ctrl/⌘-click or middle-click, as in a browser. */
@@ -441,19 +447,25 @@ function SessionRow({
       >
         {working ? (
           <WorkingRing harnessId={s.harnessId} colored />
-        ) : (
+        ) : showHarness ? (
           <span className="harness-dot" style={harnessColor(s.harnessId)} role="img" aria-label={harnessName} title={harnessName} />
+        ) : (
+          // The slot stays (a blank dot), so titles keep one left edge whether or not the row is working.
+          <span className="harness-dot is-blank" aria-hidden="true" />
         )}
         <span className="session-body">
           <span className="session-title">{plainTitle(s.title)}</span>
-          {/* A second line of scent: what the agent says it is doing, else the project this row is out of.
-              Inside a project the heading already names it, so a quiet row keeps one line. */}
+          {/* A second line on every row: what the agent says it is doing, else the project this row is
+              out of, else the branch its project is on. A project's rows repeat their branch, and that is
+              the point: the line is a column to scan, not a per-row surprise. */}
           {s.agentStatus ? (
             <span className={`session-sub session-agent is-${s.agentStatus.state}`} title={`${agentStatusText(s.agentStatus)} · set by the agent ${ago(s.agentStatus.at)}`}>
               {s.agentStatus.comment || agentStatusText(s.agentStatus)}
             </span>
           ) : project ? (
             <span className="session-sub">{project}</span>
+          ) : branch ? (
+            <span className="session-sub session-sub-branch" title={`On ${branch}`}>{branch}</span>
           ) : null}
         </span>
         <span className="session-meta">
@@ -620,6 +632,9 @@ function ProjectGroupView({
   const [dragged, setDragged] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; place: "before" | "after" } | null>(null);
   const { workspace, sessions, current, checkout, sharesRepo } = group;
+  // One harness in the list means one dot on every row: the sidebar's harness row above already names it,
+  // so the rows drop theirs and their titles keep the slot.
+  const mixedHarness = sessions.some((row) => row.harnessId !== sessions[0]?.harnessId);
   const limit = current ? VISIBLE_CURRENT : VISIBLE_OTHER;
   const weekStart = useMemo(localeWeekStart, []);
   const all = useMemo(() => projectRows(sessions, { now, weekStartsOn: weekStart, ...(order ? { order } : {}) }), [sessions, now, weekStart, order]);
@@ -657,6 +672,8 @@ function ProjectGroupView({
         active={isActive(s)}
         working={isWorking(s)}
         harnessName={harnessName(s.harnessId)}
+        branch={checkout?.branch ?? null}
+        showHarness={mixedHarness}
         onOpen={(newTab) => onOpen(s, newTab)}
         onMark={(change) => onMark(s, change)}
         {...(arranging && markable && (up || down) ? { move: { up, down, by: (delta) => reorder(movedOrder(all, s.id, { delta })) } } : {})}
@@ -891,6 +908,7 @@ function FocusedProjectView({
   const total = sections.reduce((n, sec) => n + sec.sessions.length, 0);
   // The VISIBLE_CURRENT cap spreads over the date sections as they come, newest first.
   const allSessions = sections.flatMap((sec) => sec.sessions);
+  const mixedHarness = allSessions.some((row) => row.harnessId !== allSessions[0]?.harnessId);
   const projRows = projectRows(allSessions, { now, weekStartsOn: localeWeekStart(), ...(order ? { order } : {}) });
 
   // Each row's group (its date key) bounds a drag or a Move up/down, as in the unscoped list.
@@ -925,6 +943,8 @@ function FocusedProjectView({
           active={isActive(s)}
           working={isWorking(s)}
           harnessName={harnessName(s.harnessId)}
+          branch={checkout?.branch ?? null}
+          showHarness={mixedHarness}
           onOpen={(newTab) => onOpen(s, newTab)}
           onMark={(change) => onMark(s, change)}
           {...(markable && (up || down) ? { move: { up, down, by: (delta) => reorder(movedOrder(projRows, s.id, { delta })) } } : {})}
@@ -1153,6 +1173,9 @@ export function Sidebar(props: {
     needs.length === 0 &&
     working.length === 0 &&
     (!projectScoped(props.harnesses, props.harnessId ?? "") ? historySections(overview, groupOptions).length === 0 : groups.every((g) => g.sessions.length === 0));
+  // Every list that is one harness drops the row dots (see ProjectGroupView); the sections and the
+  // projectless history read the whole overview for it.
+  const oneHarness = new Set(overview.sessions.map((s) => s.harnessId)).size <= 1;
   const sectionRow = (s: ProjectSession) => (
     <SessionRow
       key={s.id}
@@ -1160,6 +1183,7 @@ export function Sidebar(props: {
       active={isActive(s)}
       working={isWorking(s)}
       harnessName={names.get(s.harnessId) ?? s.harnessId}
+      showHarness={!oneHarness}
       project={projectName(s)}
       provenance={provenanceOf(s, hideCtx)}
       onOpen={(newTab) => props.onOpenSession(s, newTab)}
@@ -1168,7 +1192,7 @@ export function Sidebar(props: {
   );
   // History rows carry no project label: a chat has no folder.
   const historyRow = (s: ProjectSession) => (
-    <SessionRow key={s.id} s={s} active={isActive(s)} working={isWorking(s)} harnessName={names.get(s.harnessId) ?? s.harnessId} provenance={provenanceOf(s, hideCtx)} onOpen={(newTab) => props.onOpenSession(s, newTab)} onMark={(change) => props.onMarkSession(s, change)} />
+    <SessionRow key={s.id} s={s} active={isActive(s)} working={isWorking(s)} harnessName={names.get(s.harnessId) ?? s.harnessId} showHarness={!oneHarness} provenance={provenanceOf(s, hideCtx)} onOpen={(newTab) => props.onOpenSession(s, newTab)} onMark={(change) => props.onMarkSession(s, change)} />
   );
 
   return (

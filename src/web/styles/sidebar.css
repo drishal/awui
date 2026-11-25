@@ -591,6 +591,12 @@
   margin: 0 2px;
 }
 
+/* A list of one harness keeps the slot and drops the colour: the harness row above the list says it
+   once, and eight identical dots down the column say nothing. */
+.session .harness-dot.is-blank {
+  background: none;
+}
+
 /* Harness selectors carry recognisable marks; session rows above keep their tiny
    identity/status dots. Local masks, or the built-in ACP glyph for custom agents. */
 .harness-dot .harness-mark {
@@ -734,6 +740,13 @@
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The branch line: a column of muted names, so a scan down the rail reads where each chat works.
+   Tabular figures keep a test or date branch's numbers on the same grid as the times beside it. */
+.session-sub-branch {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .session .session-agent {
