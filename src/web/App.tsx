@@ -293,7 +293,6 @@ export function App() {
   /** The races panel: one comparison by id (just started, or reopened), or the list. */
   const [racesOpen, setRacesOpen] = useState<{ raceId: string | null } | null>(null);
   const [contextClosed, setContextClosed] = useState(false);
-  const [contextDetailsCollapsed, setContextDetailsCollapsed] = useState(false);
   const [contextSheet, setContextSheet] = useState(false);
   const [toolPanel, setToolPanel] = useState<null | "terminal" | "github">(null);
   const [toolWorkspace, setToolWorkspace] = useState<WorkspaceInfo | null>(null);
@@ -2793,13 +2792,12 @@ export function App() {
             />
           ) : null}
         </div>
-          {chat && (!wide ? contextSheet : !contextClosed) && !room.roomId ? <LazyPanel contextPanel><ContextPanel chat={chat} expanded={wide && !side && !toolPanel && !viewer ? !contextDetailsCollapsed : !side && !toolPanel && !viewer} onOpen={() => wide ? setContextDetailsCollapsed(false) : setContextSheet(true)} onClose={() => wide ? setContextDetailsCollapsed(true) : setContextSheet(false)} mode={!wide ? "sheet" : "inline"} onOpenChat={(id) => void openChatById(id)} onCancelTask={(task) => void cancelDelegated(task)} onReview={() => setReviewOpen(true)} onRace={(raceId) => setRacesOpen({ raceId })} onOpinion={(opinion) => void openChatById(opinion.chatId)} onUsage={() => {
+          {chat && (!wide ? contextSheet : !contextClosed) && !room.roomId ? <LazyPanel contextPanel><ContextPanel chat={chat} expanded={!side && !toolPanel && !viewer} onOpen={() => setContextSheet(true)} onClose={() => setContextSheet(false)} mode={!wide ? "sheet" : "inline"} onOpenChat={(id) => void openChatById(id)} onCancelTask={(task) => void cancelDelegated(task)} onReview={() => setReviewOpen(true)} onRace={(raceId) => setRacesOpen({ raceId })} onOpinion={(opinion) => void openChatById(opinion.chatId)} onUsage={() => {
             const button = document.querySelector<HTMLButtonElement>(`[data-pane="main"] [data-testid="context-ring"]`);
             // Not a click: that opens the ring's small popover. This asks for the full view (ContextRing.tsx listens).
             button?.dispatchEvent(new CustomEvent("awui:context-details"));
           }} onQuestions={() => {
             setContextSheet(false);
-            setContextDetailsCollapsed(true);
             const cards = [...document.querySelectorAll<HTMLElement>('[data-pane="main"] [data-testid="approval-card"]')];
             const current = cards[0];
             if (!current) return;

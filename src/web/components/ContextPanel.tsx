@@ -64,6 +64,10 @@ function useProjectGit(chatId: string, status: ChatSnapshot["status"], showing: 
 }
 
 export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onOpenChat, onCancelTask, onReview, onRace, onOpinion, onUsage, onQuestions, onSubagents }: Props) {
+  // The rail is always there, being 240–280px wide is a choice: its rows are the reason for the width, so an
+  // empty rail keeps its 40px and one with something to say opens by itself. `asked` is the person overruling
+  // that — true when they opened an empty rail, false when they folded a busy one away.
+  const [asked, setAsked] = useState<boolean | null>(null);
   const [open, setOpen] = useState<OpenState>(() => ({ ...DEFAULT_OPEN, ...validatedFolds(load<Partial<OpenState>>("context.folds", {})) }));
   const [races, setRaces] = useState<RaceSummary[] | null>(null);
   const [opinions, setOpinions] = useState<SecondOpinion[] | null>(null);
@@ -75,7 +79,14 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
   const hasQuestions = chat.pending.length > 0;
   const running = taskAttention(tasks) + runs.filter((r) => r.status === "running" || r.status === "pending").length + jobs.filter((j) => j.status === "running").length;
   const numberOfRaces = raceCount(races, chat.workspace.id);
-  const showing = mode === "sheet" || expanded;
+  const inWorkspace = (races ?? []).filter((race) => race.workspaceId === chat.workspace.id);
+  // Nothing above the usage card: an empty rail says so once, in words, instead of leaving a silence
+  // that reads like a panel still loading. The groups keep their rule — no empty group, no zero count.
+  const idle = runs.length === 0 && !chat.lineage && tasks.length === 0 && jobs.length === 0 && !hasQuestions && inWorkspace.length === 0 && (opinions?.length ?? 0) === 0 && (threads?.length ?? 0) === 0;
+  // `expanded` is the room the panel has (no viewer, tool panel or split beside it); `asked` outranks it, and
+  // a rail with nothing in it does not claim the width on its own.
+  const detail = mode === "sheet" || (expanded && (asked ?? !idle));
+  const showing = detail;
   const git = useProjectGit(chatId, chat.status, showing);
   const project = gitSummary(git);
   const hasAttention = running + chat.pending.length;
@@ -98,25 +109,27 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
     void api<{ races: RaceSummary[] }>("/api/races").then((answer) => { if (active) setRaces(answer.races); }).catch((e: unknown) => { if (active) setNoteError(errorText(e)); });
     return () => { active = false; };
   }, [chat.workspace.id]);
+  // Read whether or not the detail is open: a chat whose only active work is a review comment has to know
+  // about it before the rail can open itself for it, and a comment is not something a collapsed rail badges.
   useEffect(() => {
-    if (!showing) return;
     let active = true;
     setThreads(null);
     setReviewError(null);
     void api<{ threads: ReviewThread[] }>(`/api/chats/${chatId}/review-threads`).then((answer) => { if (active) setThreads(answer.threads); }).catch((e: unknown) => { if (active) setReviewError(errorText(e)); });
     return () => { active = false; };
-  }, [chatId, showing]);
+  }, [chatId]);
+  // A row landing is what the width is for, so it overrules a fold made while the rail was empty. A busy
+  // rail folded away stays folded until it empties and fills again: the ask outranks the rows, not the reverse.
+  useEffect(() => {
+    if (!idle) setAsked((value) => (value === false ? null : value));
+  }, [idle]);
 
   const toggle = (id: ContextSectionId) => {
     const next = { ...open, [id]: !open[id] };
     setOpen(next);
     save("context.folds", next);
   };
-  const inWorkspace = (races ?? []).filter((race) => race.workspaceId === chat.workspace.id);
   const error = noteError ?? reviewError;
-  // Nothing above the usage card: an empty rail says so once, in words, instead of leaving a silence
-  // that reads like a panel still loading. The groups keep their rule — no empty group, no zero count.
-  const idle = runs.length === 0 && !chat.lineage && tasks.length === 0 && jobs.length === 0 && !hasQuestions && inWorkspace.length === 0 && (opinions?.length ?? 0) === 0 && (threads?.length ?? 0) === 0;
 
   const details = (
     <>
@@ -218,15 +231,19 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
       {details}
     </Dialog>;
   }
-  return <aside className={`context-panel${expanded ? " is-expanded" : " is-collapsed"}`} aria-label="Chat context">
-    <div className={`context-top${expanded ? " is-expanded" : ""}`}>
-      {expanded ? <h2 className="context-eyebrow">Active work</h2> : null}
-      <button className={expanded ? "icon-btn" : "context-rail-button"} aria-label={expanded ? "Collapse context panel" : "Expand context panel"} title={expanded ? "Hide active work detail" : "Open active work detail"} onClick={() => (expanded ? onClose() : onOpen())}>{expanded ? <IconChevronRight size={16} /> : <IconSidebar size={16} />}</button>
-      {!expanded ? <div className="context-rails">
-        <button type="button" className="context-rail-button" title={hasQuestions || running > 0 ? "Jump to an ongoing run or pending answer" : "Expand active work"} aria-label="Open contextual work details" onClick={() => { if (hasQuestions) onQuestions(); else onOpen(); }}><IconAgents size={16} />{hasAttention > 0 ? <span className="context-rail-badge">{hasAttention > 9 ? "9+" : hasAttention}</span> : null}</button>
-        <button type="button" className="context-rail-button" title="Project comparisons and races" aria-label="Inspect project races" onClick={() => { if (inWorkspace.length === 0) { onRace(null); return; } onOpen(); if (!open.races) toggle("races"); }}><IconSplit size={16} />{numberOfRaces > 0 ? <span className="context-rail-badge">{numberOfRaces > 9 ? "9+" : numberOfRaces}</span> : null}</button>
+  // Opening the detail is an ask and closing it is the answer. `onOpen`/`onClose` still carry the sheet's
+  // own state beside this one; the inline panel answers the chevron itself.
+  const openDetail = () => { setAsked(true); onOpen(); };
+  const closeDetail = () => { setAsked(false); onClose(); };
+  return <aside className={`context-panel${detail ? " is-expanded" : " is-collapsed"}`} aria-label="Chat context">
+    <div className={`context-top${detail ? " is-expanded" : ""}`}>
+      {detail ? <h2 className="context-eyebrow">Active work</h2> : null}
+      <button className={detail ? "icon-btn" : "context-rail-button"} aria-label={detail ? "Collapse context panel" : "Expand context panel"} title={detail ? "Hide active work detail" : "Open active work detail"} onClick={() => (detail ? closeDetail() : openDetail())}>{detail ? <IconChevronRight size={16} /> : <IconSidebar size={16} />}</button>
+      {!detail ? <div className="context-rails">
+        <button type="button" className="context-rail-button" title={hasQuestions || running > 0 ? "Jump to an ongoing run or pending answer" : "Expand active work"} aria-label="Open contextual work details" onClick={() => { if (hasQuestions) onQuestions(); else openDetail(); }}><IconAgents size={16} />{hasAttention > 0 ? <span className="context-rail-badge">{hasAttention > 9 ? "9+" : hasAttention}</span> : null}</button>
+        <button type="button" className="context-rail-button" title="Project comparisons and races" aria-label="Inspect project races" onClick={() => { if (inWorkspace.length === 0) { onRace(null); return; } openDetail(); if (!open.races) toggle("races"); }}><IconSplit size={16} />{numberOfRaces > 0 ? <span className="context-rail-badge">{numberOfRaces > 9 ? "9+" : numberOfRaces}</span> : null}</button>
       </div> : null}
     </div>
-    {expanded ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot"><span className={`context-live-grow${running || hasQuestions ? " is-on" : ""}`} /></div>}
+    {detail ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot"><span className={`context-live-grow${running || hasQuestions ? " is-on" : ""}`} /></div>}
   </aside>;
 }
