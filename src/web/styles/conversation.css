@@ -2052,31 +2052,24 @@
   font-style: italic;
 }
 
-/* Jump occupies the reserved right gutter, never the final row's chevron.
-   A 24px local fade separates it visually without adding another click target. */
+/* The way back to the newest turn: a 32px circle in the right gutter, lifted 12px off the bottom edge so it
+   no longer sits half over the last row, with a ring of the page around it (the transcript scrolls under the
+   pill) and the float shadow so it reads as above the rows rather than as part of them. */
 .jump {
   position: absolute;
   right: max(8px, calc((100% - var(--chat-col)) / 2 - 56px));
-  bottom: 0;
+  bottom: 12px;
   z-index: 5;
   display: inline-grid;
   place-items: center;
-  width: 48px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border: 0;
-  border-top: 1px solid var(--hairline-strong);
-  border-radius: 0;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
   background: var(--card);
+  box-shadow: var(--shadow-float), 0 0 0 4px var(--bg);
   color: var(--text-2);
-}
-
-.jump::before {
-  content: "";
-  position: absolute;
-  inset: -24px 0 100%;
-  pointer-events: none;
-  background: linear-gradient(transparent, var(--card));
 }
 
 /* The prompt of the turn being read, once it has scrolled off the top (StickyPrompt). It overlays the

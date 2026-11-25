@@ -117,20 +117,12 @@
     padding: 4px max(16px, env(safe-area-inset-right)) calc(56px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
-  /* The way back to the newest turn floats over the fade as a small round target, with a ring of the page
-     around it: the transcript scrolls under the pill, so the ring is what keeps its edge legible. */
+
+  /* The pill keeps its 32px circle and its float shadow; on a phone it sits 10px off the right edge and
+     clear of the home indicator, and the ring of the page around it stays what keeps its edge legible. */
   .jump {
     right: 10px;
-    bottom: 8px;
-    width: 30px;
-    height: 30px;
-    border: 1px solid var(--hairline-strong);
-    border-radius: 999px;
-    box-shadow: 0 0 0 4px var(--bg);
-  }
-
-  .jump::before {
-    display: none;
+    bottom: calc(14px + env(safe-area-inset-bottom));
   }
 
   .sticky-prompt {
