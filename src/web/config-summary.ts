@@ -14,6 +14,19 @@ export function levelTitle(level: string): string {
   return level.charAt(0).toUpperCase() + level.slice(1);
 }
 
+/** What model answers, and at what effort: "Fake Echo · Low". The folded phone composer reads this, where the
+ *  harness is already the header's and the row has no room for the permission mode. */
+export function modelSummary(chat: SummaryChat): string {
+  const { config, capabilities } = chat;
+  const parts: string[] = [];
+  if (capabilities.supportsModelSelection) {
+    const model = config.models.find((m) => m.key === config.model);
+    parts.push(model ? (model.providerName ? `${model.providerName} · ${model.name}` : model.name) : (config.model ?? "No model"));
+  }
+  if (capabilities.supportsThinkingLevel && config.thinkingLevel) parts.push(levelTitle(config.thinkingLevel));
+  return parts.join(" · ");
+}
+
 export function configSummary(chat: SummaryChat, harnesses: Array<{ id: string; displayName: string }>): string {
   const { config, capabilities } = chat;
   const parts = [harnesses.find((h) => h.id === chat.harnessId)?.displayName ?? chat.harnessId];

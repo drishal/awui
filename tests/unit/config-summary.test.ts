@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ModelInfo, PermissionModeInfo } from "../../src/shared/protocol.js";
-import { configSummary } from "../../src/web/config-summary.js";
+import { configSummary, modelSummary } from "../../src/web/config-summary.js";
 
 const models: ModelInfo[] = [
   { key: "fake/echo", provider: "fake", id: "echo", name: "Fake Echo", reasoning: true },
@@ -51,5 +51,20 @@ describe("the composer's one-line config summary", () => {
   it("falls back to the raw ids when the lists do not know them", () => {
     const chat = { harnessId: "claude", capabilities: caps({ supportsThinkingLevel: false }), config: config({ model: "unknown/key", thinkingLevel: null }) };
     expect(configSummary(chat, harnesses)).toBe("claude · unknown/key");
+  });
+});
+
+describe("the folded phone composer's one sentence", () => {
+  it("names the model and the level, without the harness or the permission mode", () => {
+    expect(modelSummary({ harnessId: "fake", capabilities: caps({ supportsPermissionMode: true }), config: config({ permissionMode: "default" }) })).toBe("Fake Echo · High");
+  });
+
+  it("leaves the level out where the harness has none", () => {
+    expect(modelSummary({ harnessId: "fake", capabilities: caps({ supportsThinkingLevel: false }), config: config() })).toBe("Fake Echo");
+  });
+
+  it("says so when the harness reports no model at all", () => {
+    expect(modelSummary({ harnessId: "fake", capabilities: caps(), config: config({ model: null }) })).toBe("No model · High");
+    expect(modelSummary({ harnessId: "fake", capabilities: caps({ supportsThinkingLevel: false }), config: config({ model: null }) })).toBe("No model");
   });
 });

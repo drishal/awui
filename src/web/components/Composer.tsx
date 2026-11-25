@@ -1204,7 +1204,7 @@ export function Composer({
                 </>
               ) : null}
             </div>
-            <ComposerControls chat={chat} harnesses={harnesses} onConfig={onConfig} onRefreshModels={onRefreshModels} onHandoff={(id) => onHandoff(id, text)} />
+            <ComposerControls chat={chat} harnesses={harnesses} compact={pillRow} onConfig={onConfig} onRefreshModels={onRefreshModels} onHandoff={(id) => onHandoff(id, text)} />
             <div className="composer-actions">
               {tooLong ? (
                 <span className="composer-error">

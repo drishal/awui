@@ -718,7 +718,8 @@
   .composer-card.is-folded .composer-input {
     order: 1;
     flex: 1;
-    min-width: 0;
+    /* A floor for the placeholder's own words: the model chip beside it shrinks first. */
+    min-width: 76px;
     min-height: 32px;
     padding: 6px 2px;
     /* One line's worth: the placeholder sets the row's height. */
@@ -748,10 +749,40 @@
     background: var(--hover);
   }
 
-  /* The settings pill and its row take no space when folded; the box's tap is
-     what opens them again (its focus re-runs the fold). */
+  /* The pickers' row takes no space when folded, but the settings chip does not vanish with it: a folded
+     card still says which model answers ("Fake Echo · Low"), because nothing else on a phone does. The
+     box's tap opens the pickers again (its focus re-runs the fold). */
   .composer-card.is-folded .composer-controls {
+    display: contents;
+  }
+
+  .composer-card.is-folded .composer-pickers {
     display: none;
+  }
+
+  /* Quiet and short, between the box and the ring: the harness is the header's already (the mark and
+     the chevron would cost the prompt ~30 px of its row), so the chip is only the sentence. */
+  .composer-card.is-folded .composer-config-chip {
+    order: 1;
+    /* It gives way before the box does: a long model name ellipsises here rather than squeezing the
+       prompt's own line. */
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 40vw;
+    gap: 0;
+    padding: 0 2px;
+    background: none;
+    color: var(--muted-text);
+    font-size: 11.5px;
+  }
+
+  .composer-card.is-folded .composer-config-chip > .harness-dot,
+  .composer-card.is-folded .composer-config-chip > .icon {
+    display: none;
+  }
+
+  .composer-card.is-folded .composer-config-chip .config-summary {
+    flex: 0 1 auto;
   }
 
   .composer-card.is-folded .composer-actions {

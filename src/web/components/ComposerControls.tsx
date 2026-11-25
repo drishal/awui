@@ -4,7 +4,7 @@
 import { useState } from "react";
 import type { ChatState } from "../chat-state.js";
 import type { ConfigPatch, HarnessStatus } from "../../shared/protocol.js";
-import { configSummary } from "../config-summary.js";
+import { configSummary, modelSummary } from "../config-summary.js";
 import { handoffChoice } from "../handoff.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconChevronDown } from "../icons.js";
@@ -56,12 +56,15 @@ export function ComposerControls({
   onConfig,
   onRefreshModels,
   onHandoff,
+  compact,
 }: {
   chat: ChatState;
   harnesses: HarnessStatus[];
   onConfig: (patch: ConfigPatch) => Promise<void>;
   onRefreshModels: () => Promise<void>;
   onHandoff: (harnessId: string) => Promise<void>;
+  /** The phone's folded one-row card: the chip stands alone, so it names the model and the level only. */
+  compact?: boolean;
 }) {
   const caps = chat.capabilities;
   const idle = chat.status === "idle" || chat.status === "error";
@@ -125,7 +128,7 @@ export function ComposerControls({
         onClick={() => setSettings(true)}
       >
         <span className="harness-dot" style={harnessColor(chat.harnessId)}><HarnessMark harness={current} /></span>
-        <span className="config-summary">{configSummary(chat, harnesses)}</span>
+        <span className="config-summary">{(compact && modelSummary(chat)) || configSummary(chat, harnesses)}</span>
         <IconChevronDown size={12} />
       </button>
       {settings ? (

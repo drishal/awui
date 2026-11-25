@@ -147,14 +147,18 @@ test("a phone composer folds its pickers into one settings chip", async ({ page 
   await signInAndOpen(page);
   await page.keyboard.press("Escape");
   await openChat(page);
-  // Folded to one row while idle: the chip is hidden until the box takes focus.
+  // Folded to one row while idle, the card still says which model answers: the chip is that row's one
+  // setting, and the pickers' own row stays out of the way.
   const chip = page.getByTestId("config-chip");
-  await expect(chip).toBeHidden();
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("Fake Echo");
+  await expect(chip).toContainText("Low");
+  await expect(chip).toHaveCSS("max-width", "156px");
+  await expect(page.locator(".composer-pickers")).toBeHidden();
+  // Writing opens the card; the same chip then carries the whole summary (harness, effort, mode).
   await page.getByRole("textbox", { name: "Message" }).click();
   await expect(chip).toBeVisible();
-  await expect(page.locator(".composer-pickers")).toBeHidden();
   await expect(chip).toContainText("Fake");
-  await expect(chip).toHaveCSS("max-width", "156px");
   await expect(page.getByTestId("context-ring")).toHaveAccessibleName(/^Context used: \d+% of 100K/);
   await expect(page.locator(".context-pct")).toBeVisible();
   await expect(page.locator(".context-pct")).toHaveCSS("font-size", "10px");
