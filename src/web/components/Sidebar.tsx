@@ -449,8 +449,12 @@ function SessionRow({
         aria-current={active ? "true" : undefined}
         title={project ? `${s.title} · ${project}` : s.title}
       >
-        {working ? (
+        {working && !s.asking ? (
           <WorkingRing harnessId={s.harnessId} colored />
+        ) : s.asking ? (
+          // Waiting on a person is not work in progress: the row wears the amber mark of a question, not the
+          // ring of a run, and a screen reader hears the state it is in.
+          <span className="session-asking-dot" role="img" aria-label="Needs you" title="Needs you: waiting for your answer" />
         ) : showHarness ? (
           <span className="harness-dot" style={harnessColor(s.harnessId)} role="img" aria-label={harnessName} title={harnessName} />
         ) : (

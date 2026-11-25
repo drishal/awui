@@ -52,6 +52,23 @@ test("Needs you lists the chats waiting on an answer, and Escape clears the sear
   await expect(needs).toHaveAttribute("aria-pressed", "true");
   await expect(row(page, "please ask first, for the needs filter")).toHaveCount(1);
   await expect(row(page, "settled chat for the needs filter")).toHaveCount(0);
+  // A chat waiting on you is not working: the row wears an amber "Needs you" mark, not the run's spinner, and a
+  // screen reader hears the state it is in.
+  const asking = row(page, "please ask first, for the needs filter");
+  const mark = asking.getByRole("img", { name: "Needs you" });
+  await expect(mark).toBeVisible();
+  await expect(mark).toHaveCSS("width", "7px");
+  await expect(asking.getByRole("img", { name: "Working" })).toHaveCount(0);
+  // Amber is the theme's warning role, never a colour written into the rule.
+  const tones = await mark.evaluate((el) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--warn)";
+    document.body.append(probe);
+    const warn = getComputedStyle(probe).color;
+    probe.remove();
+    return { mark: getComputedStyle(el).backgroundColor, warn };
+  });
+  expect(tones.mark).toBe(tones.warn);
 
   // The filter and the search both apply.
   await search(page).fill("settled chat");

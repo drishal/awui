@@ -743,6 +743,18 @@
   color: var(--harness, var(--accent));
 }
 
+/* Waiting on you: the ring means a run in progress, so a chat that is asking wears an amber dot in the same
+   10px slot instead (7px, 1.5px each side), and its title keeps the left edge. The dot is still: the question's
+   own card is the thing that moves, and two pulses compete. */
+.session-asking-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin: 0 1.5px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
 .project-toggle .working-ring {
   margin-left: 2px;
 }
