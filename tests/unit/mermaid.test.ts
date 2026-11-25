@@ -117,7 +117,7 @@ describe("mermaidNote", () => {
 
 describe("mermaidOptions", () => {
   test("no remote images, links as Markdown leaves them, and the instance's own id prefix", () => {
-    expect(mermaidOptions("mermaid-7")).toEqual({ idPrefix: "mermaid-7", images: false, linkRel: "noopener noreferrer nofollow" });
+    expect(mermaidOptions("mermaid-7")).toEqual({ idPrefix: "mermaid-7", images: false, linkRel: "noopener noreferrer nofollow", zoom: { maxScale: 4, controls: false } });
   });
 });
 

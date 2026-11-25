@@ -74,3 +74,26 @@ test("a fence Pele rejects keeps its source and says why, quietly", async ({ pag
   await expect(diagram.getByTestId("mermaid-svg")).toBeHidden();
   await expect(diagram.getByRole("button", { name: "Source", exact: true })).toHaveCount(0);
 });
+
+test("a wide diagram offers zoom, and reset restores its first frame", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "mermaidwide please");
+  const diagram = page.getByTestId("turn").last().getByTestId("answer").getByTestId("mermaid-diagram");
+  const svg = diagram.locator("svg.pele").first();
+  await expect(svg).toBeVisible();
+  const zoomIn = diagram.getByRole("button", { name: "Zoom diagram in", exact: true });
+  const zoomOut = diagram.getByRole("button", { name: "Zoom diagram out", exact: true });
+  const reset = diagram.getByRole("button", { name: "Reset diagram zoom", exact: true });
+  await expect(zoomIn).toBeVisible({ timeout: 20_000 });
+  await expect(zoomOut).toBeDisabled();
+  await expect(reset).toHaveCount(0);
+  const initial = await svg.getAttribute("viewBox");
+  await zoomIn.click();
+  await expect.poll(() => svg.getAttribute("viewBox")).not.toBe(initial);
+  await expect(zoomOut).toBeEnabled();
+  await expect(reset).toBeVisible();
+  await reset.click();
+  await expect.poll(() => svg.getAttribute("viewBox")).toBe(initial);
+  await expect(zoomOut).toBeDisabled();
+});

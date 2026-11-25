@@ -39,6 +39,7 @@
 //   "unsafe" a real write to unsafe-outside.ts in the project root, which a delegated child's write scope refuses
 //   "desktop" a write to a file outside the project (the row's path cannot be opened)
 //   "mermaidflow" answer with one complete mermaid flowchart fence, in small chunks (a diagram that grows)
+//   "mermaidwide" a flowchart wider than its card: zoom, pan and reset through Pele's controls
 //   "mermaidbad" the same, with text Pele cannot draw: the source and a quiet note instead of a diagram
 //
 // Board rooms drive this adapter through the real server. A Board invocation is
@@ -1012,6 +1013,11 @@ class FakeLiveChat implements LiveChat {
       if (/\bmermaidflow\b/i.test(text)) {
         // One complete mermaid fence, in small chunks: a test watches the diagram appear as the answer grows.
         await this.say("Here is the flow:\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Render]\n  B --> C[SVG]\n```\n", signal, true);
+        return;
+      }
+      if (/\bmermaidwide\b/i.test(text)) {
+        // Natural width beyond the transcript: Pele's controls should let the reader zoom and pan.
+        await this.say("A wide flow:\n\n```mermaid\nflowchart LR\n  A[One] --> B[Two] --> C[Three] --> D[Four]\n  D --> E[Five] --> F[Six] --> G[Seven] --> H[Eight]\n  H --> I[Nine] --> J[Ten] --> K[Eleven] --> L[Twelve]\n```\n", signal, true);
         return;
       }
       if (/\bmermaidbad\b/i.test(text)) {

@@ -71,9 +71,13 @@ export function mermaidNote(outcome: MermaidOutcome, final: boolean): string | n
   return outcome.reason === "partial" ? "This diagram stops before it is finished." : `Couldn't draw this diagram as Mermaid. ${outcome.message}`;
 }
 
+/** The furthest a diagram can grow beyond its fitted frame. */
+export const MERMAID_MAX_ZOOM = 4;
+
 /** The options every diagram is drawn with: no remote images (Markdown loads none either), and links as Markdown leaves them. */
-export function mermaidOptions(idPrefix: string): Pick<MountOptions, "idPrefix" | "images" | "linkRel"> {
-  return { idPrefix, images: false, linkRel: "noopener noreferrer nofollow" };
+export function mermaidOptions(idPrefix: string): Pick<MountOptions, "idPrefix" | "images" | "linkRel" | "zoom"> {
+  // Pele handles pan and the zoom transform. MermaidDiagram owns the controls so their state follows React.
+  return { idPrefix, images: false, linkRel: "noopener noreferrer nofollow", zoom: { maxScale: MERMAID_MAX_ZOOM, controls: false } };
 }
 
 let idSerial = 0;

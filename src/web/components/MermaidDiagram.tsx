@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MountOptions, Mounted } from "pele/lazy";
 import { IconCopy } from "../icons.js";
-import { loadPele, mermaidNote, mermaidOptions, nextMermaidId, rejectedMermaid, rejectionOf, takeStyles, type DiagramRejection } from "../mermaid.js";
+import { loadPele, MERMAID_MAX_ZOOM, mermaidNote, mermaidOptions, nextMermaidId, rejectedMermaid, rejectionOf, takeStyles, type DiagramRejection } from "../mermaid.js";
 import { CopyButton } from "./CopyButton.js";
 
 /** The least time between two redraws while the answer streams. */
@@ -40,12 +40,29 @@ export function MermaidDiagram({ code, streaming }: { code: string; streaming: b
   const [drawn, setDrawn] = useState(false);
   const [failure, setFailure] = useState<{ source: string; rejection: DiagramRejection } | null>(null);
   const [showSource, setShowSource] = useState(false);
+  const [zoomState, setZoomState] = useState<{ scale: number; fit: number } | null>(null);
   const host = useRef<HTMLDivElement>(null);
   const mounted = useRef<Mounted | null>(null);
   const destroyed = useRef(false);
   // Draws run one after another, so the picture always belongs to the last text queued.
   const queue = useRef<Promise<void>>(Promise.resolve());
   const painted = useRef(0);
+
+  /** Pele owns the transform; the controls read its latest scale into React after every gesture. */
+  function syncZoom(): void {
+    const zoom = mounted.current?.zoom;
+    setZoomState(zoom ? { scale: zoom.scale, fit: zoom.fit } : null);
+  }
+
+  function zoomBy(factor: number): void {
+    mounted.current?.zoom?.zoomBy(factor);
+    syncZoom();
+  }
+
+  function resetZoom(): void {
+    mounted.current?.zoom?.reset();
+    syncZoom();
+  }
 
   useEffect(() => {
     const wait = streaming ? Math.max(0, REDRAW_MS - (performance.now() - painted.current)) : 0;
@@ -77,6 +94,7 @@ export function MermaidDiagram({ code, streaming }: { code: string; streaming: b
       onRender: () => {
         setDrawn(true);
         setFailure(null);
+        syncZoom();
       },
       onError: (error: unknown) => {
         // Pele dims the diagram it keeps while its own error line is up; ours is under the card.
@@ -88,6 +106,7 @@ export function MermaidDiagram({ code, streaming }: { code: string; streaming: b
       const instance = mounted.current;
       if (instance) {
         instance.update(source, options);
+        syncZoom();
         return;
       }
       const pele = await loadPele();
@@ -95,7 +114,10 @@ export function MermaidDiagram({ code, streaming }: { code: string; streaming: b
       const fresh = await pele.mountAsync(host.current, source, options);
       // The answer may have left the page while the chunk loaded: hand the instance back, not a leak.
       if (destroyed.current) fresh.destroy();
-      else mounted.current = fresh;
+      else {
+        mounted.current = fresh;
+        syncZoom();
+      }
     } catch (error) {
       if (!destroyed.current) setFailure({ source, rejection: rejectionOf(error) });
     }
@@ -104,6 +126,10 @@ export function MermaidDiagram({ code, streaming }: { code: string; streaming: b
   // The failure belongs to the text it came from: newer text keeps the answer quiet until it draws or fails too.
   const rejected = failure && failure.source === code ? rejectedMermaid(code, failure.rejection, !streaming) : null;
   const note = rejected ? mermaidNote(rejected, !streaming) : null;
+  const fit = zoomState?.fit ?? 1;
+  const zoomed = zoomState !== null && zoomState.scale > zoomState.fit * 1.001;
+  const zoomAvailable = zoomState !== null && (fit < 0.999 || zoomed);
+  const zoomAtMax = (zoomState?.scale ?? fit) >= Math.max(fit, MERMAID_MAX_ZOOM) * 0.999;
   return (
     <div className="mermaid-diagram pele-diagram" data-testid="mermaid-diagram">
       <div className="code-head">
@@ -120,6 +146,21 @@ export function MermaidDiagram({ code, streaming }: { code: string; streaming: b
               Source
             </button>
           ) : null}
+          {note === null && zoomAvailable ? (
+            <>
+              <button type="button" className="code-action" aria-label="Zoom diagram out" title="Zoom diagram out" disabled={!zoomed} onClick={() => zoomBy(1 / 1.5625)}>
+                Zoom out
+              </button>
+              <button type="button" className="code-action" aria-label="Zoom diagram in" title="Zoom diagram in" disabled={zoomAtMax} onClick={() => zoomBy(1.5625)}>
+                Zoom in
+              </button>
+              {zoomed ? (
+                <button type="button" className="code-action" aria-label="Reset diagram zoom" title="Reset diagram zoom" onClick={resetZoom}>
+                  Reset
+                </button>
+              ) : null}
+            </>
+          ) : null}
           <CopyButton
             className="code-action"
             iconSize={13}
@@ -131,7 +172,7 @@ export function MermaidDiagram({ code, streaming }: { code: string; streaming: b
         </div>
       </div>
       {/* Hidden, not unmounted, while the source or a note is up: Pele redraws by itself when the canvas has a width again. */}
-      <div className="mermaid-canvas" data-testid="mermaid-svg" hidden={note !== null || showSource}>
+      <div className="mermaid-canvas" data-testid="mermaid-svg" hidden={note !== null || showSource} onPointerUp={syncZoom} onPointerCancel={syncZoom} onWheel={syncZoom} onKeyUp={syncZoom}>
         <div ref={host} />
       </div>
       {note !== null || showSource || !drawn ? (
