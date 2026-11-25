@@ -19,7 +19,8 @@ const overview: SessionsOverview = {
   workspaces: [{ id: "w", path: "/w", name: "w" }],
   sessions: [
     s("run", { liveChatId: "c1", status: "running" }),
-    s("ask", { liveChatId: "c2", status: "idle", asking: true, updatedAt: at(30) }),
+    // A harness waiting on an answer still reports a run: the row's state is the asking, not the status.
+    s("ask", { liveChatId: "c2", status: "running", asking: true, updatedAt: at(30) }),
     s("old", { updatedAt: at(100) }),
     s("undated", { updatedAt: null }),
     s("other", { harnessId: asHarnessId("omp"), liveChatId: "c3", status: "running" }),
@@ -36,6 +37,14 @@ describe("matchesQuick", () => {
     expect(matchesQuick(s("a", { status: "compacting" }), "running", now)).toBe(true);
     expect(matchesQuick(s("a", { status: "idle" }), "running", now)).toBe(false);
     expect(matchesQuick(s("a", { status: "idle" }), "running", now, () => true)).toBe(true);
+  });
+
+  it("never counts a chat asking for an answer as running: one chip per chat", () => {
+    const asking = s("a", { status: "running", asking: true, liveChatId: "c" });
+    expect(matchesQuick(asking, "running", now)).toBe(false);
+    expect(matchesQuick(asking, "needs", now)).toBe(true);
+    // What the caller knows of the open chat does not make it Running either.
+    expect(matchesQuick(asking, "running", now, () => true)).toBe(false);
   });
 
   it("needs you is a live chat asking, as the title's count has it", () => {
@@ -70,6 +79,7 @@ describe("applyQuick", () => {
     const out = applyQuick(overview, "needs", now);
     expect(out.sessions.map((x) => x.id)).toEqual(["ask"]);
     expect(out.workspaces).toBe(overview.workspaces);
+    // "ask" is running too, but it is waiting on a person: Running leaves it to Needs you.
     expect(applyQuick(overview, "running", now).sessions.map((x) => x.id)).toEqual(["run", "other"]);
   });
 });

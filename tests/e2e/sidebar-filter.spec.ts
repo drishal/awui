@@ -37,6 +37,37 @@ test("Running lists only the chats that are working, and Clear filter brings the
   await expect(row(page, "slow stream for the running filter")).toHaveCount(1);
 });
 
+test("a chat waiting on you is Needs you, never also Running", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  // A run first, so the Running chip is on show whatever else this shared server holds.
+  await send(page, "slow stream for the one-chip rule");
+  await expect(page.getByTestId("chat-status")).toHaveText("Working");
+  await showSidebar(page);
+  const running = chip(page, /^Running \d+$/);
+  await running.click();
+  await expect(running).toHaveAttribute("aria-pressed", "true");
+  // Now a second chat asks for an approval. Its harness still reports a run while the card waits, and the
+  // list must not call that working; the chip is the one that stays put as its own run settles.
+  await page.getByRole("button", { name: "New chat in a new tab" }).click();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+  await send(page, "please ask first, for the one-chip rule");
+  await expect(page.getByTestId("approval-card")).toBeVisible();
+  await showSidebar(page);
+  await expect(running).toHaveAttribute("aria-pressed", "true");
+  await expect(row(page, "please ask first, for the one-chip rule")).toHaveCount(0);
+  // It sits in the other attention chip instead.
+  await running.click();
+  await expect(running).toHaveAttribute("aria-pressed", "false");
+  const needs = chip(page, /^Needs you \d+$/);
+  await needs.click();
+  await expect(row(page, "please ask first, for the one-chip rule")).toHaveCount(1);
+  await expect(row(page, "slow stream for the one-chip rule")).toHaveCount(0);
+  await needs.click();
+  await page.getByTestId("approval-card").getByRole("button", { name: "Approve" }).click();
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });
+});
+
 test("Needs you lists the chats waiting on an answer, and Escape clears the search, then the filter", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
