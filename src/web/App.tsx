@@ -119,6 +119,7 @@ import { retryMode } from "./tool-retry.js";
 import { plainTitle } from "./plain-title.js";
 import { agentStatusText } from "./agent-status.js";
 import { ago } from "./turns.js";
+import { noticeText } from "./notice-name.js";
 
 // Heavy auxiliary panels load on first use, keeping the chat/streaming hot path small.
 const SettingsDialog = lazy(() => import("./components/SettingsDialog.js").then((m) => ({ default: m.SettingsDialog })));
@@ -560,7 +561,7 @@ export function App() {
     // The same news as a card that opens the chat; two finishes of one chat are one card.
     for (const id of finished) {
       const s = overview.sessions.find((x) => x.liveChatId === id);
-      if (s) toasts.push({ key: `done:${id}`, text: `“${s.title}” finished`, sessionId: s.id, ms: 8000, kind: "ok" });
+      if (s) toasts.push({ key: `done:${id}`, text: noticeText(s, "finished", overview.sessions, overview.workspaces), sessionId: s.id, ms: 8000, kind: "ok" });
     }
     if (finished.size > 0 && document.hidden) chime();
   }, [overview, chatId]);
@@ -580,7 +581,7 @@ export function App() {
     if (fresh.length > 0 && (document.hidden || fresh.some((id) => id !== chatId))) chime();
     for (const id of fresh) {
       const s = id === chatId ? undefined : overview.sessions.find((x) => x.liveChatId === id);
-      if (s) toasts.push({ key: `ask:${id}`, text: `“${s.title}” needs you`, sessionId: s.id, ms: 12000, kind: "warn" });
+      if (s) toasts.push({ key: `ask:${id}`, text: noticeText(s, "needs you", overview.sessions, overview.workspaces), sessionId: s.id, ms: 12000, kind: "warn" });
     }
   }, [askingIds, sessionsLoaded]);
 
