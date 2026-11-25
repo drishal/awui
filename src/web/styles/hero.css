@@ -23,9 +23,9 @@
   color: var(--harness, var(--accent));
 }
 
-/* The mark stands on a blueprint: one soft accent wash for a light source, and a dot grid that fades
-   out before it reaches the heading. Both are mixed from tokens, so a theme or a base16 scheme moves
-   them with everything else, and both paint behind the glyph, so nothing needs a z-index. */
+/* The mark stands on a blueprint: a hairline grid on a 24px cell, a soft disc of the accent behind the
+   glyph, and a wash around it. All three are mixed from tokens, so a theme or a base16 scheme moves them
+   with everything else, and all three paint behind the glyph, so nothing needs a z-index. */
 .hero-mark::before {
   content: "";
   position: absolute;
@@ -35,24 +35,26 @@
   height: 280px;
   max-width: 100vw;
   transform: translate(-50%, -50%);
-  background: radial-gradient(55% 45% at 50% 40%, color-mix(in srgb, var(--accent) var(--hero-wash), transparent), transparent 72%);
+  background:
+    radial-gradient(circle 124px at 50% 50%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 72%),
+    radial-gradient(55% 45% at 50% 40%, color-mix(in srgb, var(--accent) var(--hero-wash), transparent), transparent 72%);
   pointer-events: none;
 }
 
-/* 3px dots on a 16px grid, fading from the mark outwards, so the glyph reads as placed on a surface
-   rather than floating on the page. The ramp starts soft at the centre: a hard-edged disc of dots
-   behind the glyph is noise, not texture. */
+/* A 1px line every 24px each way, masked out in a disc so the sheet ends before the heading instead of
+   stopping at an edge. Half a cell of offset puts the glyph in the middle of one, not on a crossing. */
 .hero-mark-grid {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 240px;
-  height: 240px;
+  width: 288px;
+  height: 288px;
   transform: translate(-50%, -50%);
-  background-image: radial-gradient(circle, color-mix(in srgb, var(--text) 26%, transparent) 1.5px, transparent 1.6px);
-  background-position: center;
-  background-size: 16px 16px;
-  mask-image: radial-gradient(closest-side, #000, transparent 80%);
+  background-image:
+    repeating-linear-gradient(to right, var(--hairline) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(to bottom, var(--hairline) 0 1px, transparent 1px 24px);
+  background-position: calc(50% - 12px) calc(50% - 12px);
+  mask-image: radial-gradient(closest-side, #000 30%, transparent 92%);
   pointer-events: none;
 }
 
@@ -74,7 +76,7 @@
 }
 
 .hero-example {
-  height: 36px;
+  height: 42px;
   padding: 0 14px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
@@ -97,10 +99,11 @@
 }
 .hero-title {
   margin: 0 16px 8px;
-  font-size: 34px;
+  font-size: 40px;
   font-weight: 600;
   text-align: center;
-  letter-spacing: var(--tracking-tight);
+  /* The display size earns its own tracking: at -0.014em a 40px line reads loose next to the chips. */
+  letter-spacing: -0.02em;
 }
 
 .hero-project {
@@ -120,6 +123,26 @@
 
 .hero-notices {
   margin: 0 32px 16px;
+}
+
+/* A phone centres nothing and has no pointer to reach for the box: the words take the upper half and
+   the composer rests on the floor under the thumb (at 390x844 it used to float ~190px up). Two auto
+   margins share the free height, one above the words and one above the box; the hero's own row is
+   stretched, so the pair really does fill the pane. */
+@media (max-width: 640px) {
+  .hero {
+    align-items: stretch;
+  }
+
+  .hero-inner {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .hero-inner > :first-child,
+  .hero-inner > .composer {
+    margin-top: auto;
+  }
 }
 
 /* ---- start screen (no chat shown) -------------------------------------------------- */
