@@ -823,9 +823,15 @@
   border-radius: 0 var(--r-control) var(--r-control) 0;
 }
 
-/* One chevron for the group, on its last segment: three of them turn a sentence into a toolbar. */
-.composer-pill-settings > :not(:last-child) > .pill-trigger > .icon:last-child {
-  display: none;
+/* One chevron for the group, on its last segment: three of them turn a sentence into a toolbar. The ones
+   it hides keep their box — `visibility`, never `display`, and named by the icon rather than by
+   `:last-child`: a press drops a ripple clip into the button as its last child while the ink fades, and a
+   chevron hidden by either came back for those frames, growing the chip 18px and moving every control
+   beside it. The negative margin is that same 18px given back as spacing (the trigger's 6px gap plus the
+   12px glyph), so the sentence still reads "Fake Echo · Low" while the box itself never changes. */
+.composer-pill-settings > :not(:last-child) > .pill-trigger > .icon {
+  visibility: hidden;
+  margin-right: -18px;
 }
 
 .composer-pill-settings .pill-trigger:hover:not(:disabled),
@@ -867,8 +873,10 @@
   background: var(--hover);
 }
 
+/* The quiet mode is one glyph: its mark, and neither its word nor its chevron. Named by class, not by
+   `:last-child`, for the same reason the group's hidden chevron is: a ripple clip is a last child too. */
 .composer-controls .composer-policy.is-quiet .pill-trigger .pill-label,
-.composer-controls .composer-policy.is-quiet .pill-trigger .icon:last-child {
+.composer-controls .composer-policy.is-quiet .pill-trigger .icon {
   display: none;
 }
 

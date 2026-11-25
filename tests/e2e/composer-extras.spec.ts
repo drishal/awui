@@ -534,3 +534,38 @@ test("several dropped files are each handled, and images in the same drop still 
   expect(readFileSync(path.join(project, "one.txt"), "utf8")).toBe("1\n");
   expect(readFileSync(path.join(project, "two.txt"), "utf8")).toBe("2\n");
 });
+
+test("the model chip keeps its box while its menu opens", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "hello");
+  const model = page.getByTestId("model-picker");
+  const level = page.getByTestId("thinking-picker");
+  await expect(model).toBeVisible();
+  await expect(level).toBeVisible();
+  /** The chip, the segment beside it, and the row's Send: a press must move none of them. */
+  const places = async () => {
+    const at = async (locator: typeof model) => {
+      const box = await locator.boundingBox();
+      return box && { x: Math.round(box.x * 100) / 100, y: Math.round(box.y * 100) / 100, width: Math.round(box.width * 100) / 100, height: Math.round(box.height * 100) / 100 };
+    };
+    return { model: await at(model), level: await at(level), send: await at(page.getByRole("button", { name: "Send", exact: true })) };
+  };
+  const rest = await places();
+  await model.hover();
+  expect(await places()).toEqual(rest);
+  await model.focus();
+  expect(await places()).toEqual(rest);
+  // The press itself drops a ripple clip into the button and changes its aria-expanded: neither may
+  // change the box, so a chevron that appears for those frames would show up here.
+  await model.click();
+  const pressing = await places();
+  await expect(page.getByRole("dialog", { name: "Choose a model" })).toBeVisible();
+  expect(pressing).toEqual(rest);
+  expect(await places()).toEqual(rest);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Choose a model" })).toBeHidden();
+  // And once the ink has faded and its clip is gone.
+  await page.waitForTimeout(700);
+  expect(await places()).toEqual(rest);
+});
