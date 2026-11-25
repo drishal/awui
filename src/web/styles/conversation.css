@@ -40,11 +40,15 @@
    pill sits on the last row of a diff or a reply when the chat is scrolled to its end. */
 /* A short thread sits at the bottom, against the composer where the next prompt will go, instead of leaving a
    few hundred pixels of nothing above the dock. An auto margin on the first turn (not justify-content, which
-   would push a long thread's top out of reach) does the moving: the thread still grows past the view as it fills. */
+   would push a long thread's top out of reach) does the moving: the thread still grows past the view as it fills.
+   The width is stated because the same auto margins would otherwise shrink the column to its widest child: folds
+   and hunks then start right of the dock below them. At --chat-col wide its 20px of padding lands on the
+   composer card's edges, which is what the composer's +8px (the scrollbar gutter) is for. */
 .thread {
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
+  width: 100%;
   max-width: var(--chat-col);
   margin: 0 auto;
   padding: 8px 20px 44px;
