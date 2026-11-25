@@ -873,9 +873,14 @@ function Answer({
                     style={{
                       position: "fixed",
                       left: Math.max(8, Math.min(at.left, window.innerWidth - 240)),
+                      maxHeight: "min(360px, calc(100vh - 16px))",
+                      overflowY: "auto",
                       // Under half the screen the list hangs below the row; lower down, where a reply's actions usually
-                      // sit, it rises above them instead of opening over the composer or off the screen.
-                      ...(at.top > window.innerHeight / 2 ? { bottom: window.innerHeight - at.top + 6 } : { top: at.bottom + 6 }),
+                      // sit, it rises above them. top must be "auto" in that case: .menu-list's CSS top would
+                      // otherwise keep the fixed list below the viewport.
+                      ...(at.top > window.innerHeight / 2
+                        ? { top: "auto", bottom: window.innerHeight - at.top + 6 }
+                        : { top: at.bottom + 6, bottom: "auto" }),
                     }}
                     onKeyDown={(e) => {
                       if (e.key !== "Escape") return;

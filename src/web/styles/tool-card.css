@@ -902,8 +902,16 @@
 
 /* The old list's line reads as one sentence: the facts and the time follow the words, a dot apart,
    instead of being pushed to the tile's far edge. The status column stays on the right, in line. */
-:root[data-tool-style="lines"] .tool-sentence {
+:root[data-tool-style="lines"] .tool-head .tool-sentence {
   flex: 0 1 auto;
+}
+
+:root[data-tool-style="lines"] .tool-head .tool-facts {
+  /* Follow the words, a short gap apart, instead of sitting in the column at the tile's far edge. */
+  margin-left: 8px;
+  justify-content: flex-start;
+  min-width: 0;
+  text-align: left;
 }
 
 :root[data-tool-style="lines"] .tool-status {

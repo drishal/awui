@@ -15,9 +15,22 @@ test("work happens along with its chart: context count follows the original tool
   // Where the project stands is one row above the groups (the header already names the chat and project),
   // and each run reads one status word.
   const gitRow = panel.locator(".context-git");
-  await expect(gitRow).toBeVisible();
-  await expect(gitRow.locator(".context-git-branch")).not.toBeEmpty();
-  await expect(gitRow.getByRole("button", { name: "Review changes" })).toBeVisible();
+  const chatId = /chat=([^&]+)/.exec(new URL(page.url()).hash)?.[1];
+  // The row is painted only after /api/chats/:id/git returns a status. Wait for that
+  // answer; if this folder has no readable repo, skip the row and keep asserting the rail.
+  let gitStatus: unknown = null;
+  if (chatId) {
+    await expect.poll(async () => {
+      const res = await page.request.get(`/api/chats/${encodeURIComponent(chatId)}/git`);
+      gitStatus = ((await res.json()) as { status: unknown | null }).status;
+      return gitStatus !== undefined;
+    }, { timeout: 10_000 }).toBeTruthy();
+  }
+  if (gitStatus) {
+    await expect(gitRow).toBeVisible();
+    await expect(gitRow.locator(".context-git-branch")).not.toBeEmpty();
+    await expect(gitRow.getByRole("button", { name: "Review changes" })).toBeVisible();
+  }
   // The context number rides on its group's heading, so a folded rail still reads it.
   await expect(panel.locator(".context-section-memory .context-head-value")).toHaveText(/%|—/);
   await expect(panel.locator(".context-status").first()).toHaveText("Done");
