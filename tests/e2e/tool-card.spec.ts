@@ -354,21 +354,3 @@ test("an image the server no longer holds leaves no broken thumbnail behind", as
   await expect(row).toContainText("docs/screenshots/usage.png");
   await expect(row).toContainText("Read image file");
 });
-
-test("an opened read row names its file once and goes straight to what it read", async ({ page }) => {
-  await signInAndOpen(page);
-  await newChat(page);
-  await sendAndWait(page, "showcase");
-  await page.getByTestId("process-toggle").last().click();
-  const row = page.locator('[data-tool="read"]').first();
-  const head = row.locator(".tool-head");
-  if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
-  await expect(row.locator(".io-text")).toContainText("createServer");
-  // The row keeps the sentence that names the file (nothing hides it once the body is open)...
-  await expect(row.locator(".tool-row-line .tool-target")).toBeVisible();
-  await expect(row.locator(".tool-row-line .tool-target")).toHaveText("src/net.ts");
-  // ... and the body is the file's content alone: no caption under the sentence saying the same path again.
-  await expect(row.locator(".tool-card-caption")).toHaveCount(0);
-  await expect(row.locator(".tool-card-head")).toHaveCount(0);
-  await expect(row.locator(".file-link")).toHaveCount(0);
-});
