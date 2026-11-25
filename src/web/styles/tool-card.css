@@ -689,14 +689,14 @@
     -webkit-line-clamp: 2;
   }
 
-  /* Under the sentence, in the card's own column and right-aligned: the counts are a measure of the call, not
-     the rest of its sentence, so they take the edge the chevron column has rather than following the words. */
+  /* Beside the sentence when the two fit, under it only when they do not: the head wraps, and the counts give
+     way before the sentence does — they are a measure of the call, not its subject. They keep the right edge
+     (margin-left: auto) whichever line they land on, so "5 passed" still lines up with "2 results in 2 files"
+     down the card. Every row that fits costs one line here instead of two. */
   .tool-facts {
-    order: 5;
-    flex: 1 0 100%;
-    justify-content: flex-end;
+    flex: 0 1 auto;
     min-width: 0;
-    padding-left: 30px;
+    margin-left: auto;
     font-size: 12px;
     text-align: right;
   }
