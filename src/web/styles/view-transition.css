@@ -1,0 +1,72 @@
+/* ---- view transitions: a whole surface swaps as one piece -------------------- */
+
+/* The browser's own cross-surface swap, used only for a route, a tab, or a panel — never while a transcript
+   streams, and never on a phone (morph.ts's `viewTransition` asks both before it starts one). The platform
+   photographs the page, so anything not named would slide and fade with it, a running chat included. The root
+   snapshot is therefore switched off — everything unnamed cuts over at once, exactly as it did before — and
+   only an element a caller named gets the fade. That is the whole vocabulary: one arriving surface, 150ms.
+
+   A named element is `.is-swapping`; only one may carry the name at a time (two names abort the transition).
+   The name is global rather than per element, because the surfaces that swap one after another (settings, the
+   dashboard, the start screen) never do so together, and a per-surface name would need a class each. */
+
+:root {
+  /* Leaving is a blink, arriving settles. Both on --ease-out: a surface does not bounce into place. */
+  --vt-out: 90ms;
+  --vt-in: 150ms;
+}
+
+.is-swapping {
+  view-transition-name: surface;
+}
+
+/* Everything unnamed already swapped in the DOM; with no fade of its own it reads as the cut it was. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* The old snapshot would otherwise sit over the new page for the whole transition. */
+::view-transition-old(root) {
+  opacity: 0;
+}
+
+/* A surface with no predecessor in the old page is a fade at its final geometry; one that moved or changed
+   shape is carried by its group, which the platform interpolates (the browser already excludes it from both
+   root snapshots). Held inside a reduced-motion query: the cascade stops the CSS animations in tokens.css but
+   not the pseudo-elements a view transition draws by itself. */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(surface) {
+    animation: vt-out var(--vt-out) var(--ease-out) both;
+  }
+
+  ::view-transition-new(surface) {
+    animation: vt-in var(--vt-in) var(--ease-out) both;
+  }
+}
+
+/* Out: gone in a blink, so the arriving surface is never read against a ghost of the old one. */
+@keyframes vt-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* In: opacity only. A rising or scaling whole surface reads as a page reload, and text inside it would be
+   drawn once and stretched while it settles. */
+@keyframes vt-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A reduced-motion reader gets no transition at all (morph.ts asks motionOff before starting one); should a
+   transition still be running when the preference turns on, the swap ends at once. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

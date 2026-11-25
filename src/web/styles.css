@@ -61,5 +61,6 @@
 @import "./styles/guest.css";
 /* Glass last among the areas: it changes the face of surfaces those files already drew. */
 @import "./styles/glass.css";
+@import "./styles/view-transition.css";
 @import "./styles/themes.css";
 @import "./styles/pele.css";

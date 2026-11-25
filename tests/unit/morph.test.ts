@@ -1,7 +1,24 @@
-import { describe, expect, it } from "vitest";
-import { flight, handoff, pending, takeBox, type Box } from "../../src/web/morph.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { flight, handoff, pending, takeBox, viewTransition, type Box } from "../../src/web/morph.js";
 
 const box = (left: number, top: number, width: number, height: number): Box => ({ left, top, width, height });
+
+/** A page that can start a view transition, and a reader who has not asked for any less. */
+function stubPage({ reduce = false, coarse = false } = {}) {
+  const started = vi.fn((update: () => void) => {
+    update();
+    return { finished: Promise.resolve() };
+  });
+  vi.stubGlobal("Element", class {});
+  Object.defineProperty(Element.prototype, "animate", { value: () => ({}), configurable: true });
+  vi.stubGlobal("document", { startViewTransition: started });
+  vi.stubGlobal("window", { matchMedia: (query: string) => ({ matches: query.includes("reduced-motion") ? reduce : coarse }) });
+  return started;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("morph", () => {
   it("hands a box to its claimant once, and not after it has gone stale", () => {
@@ -29,5 +46,41 @@ describe("morph", () => {
     expect(flight(box(0, 0, 500, 120), box(0, 0, 500, 90))).toBeNull();
     expect(flight(box(0, 0, 500, 120), box(0, 0, 500, 90), true)).toEqual({ dx: 0, dy: 0, dh: true });
     expect(flight(box(0, 0, 500, 90.3), box(0, 0, 500, 90), true)).toBeNull();
+  });
+});
+
+describe("view transition", () => {
+  it("swaps whole surfaces, and only where the platform can and nobody objects", () => {
+    const started = stubPage();
+    const commit = vi.fn();
+    viewTransition(commit);
+    expect(started).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(commit.mock.invocationCallOrder[0]).toBeGreaterThan(started.mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it("hands a swap back to the plain cut while a run streams, on a phone, or under reduced motion", () => {
+    stubPage().mockClear();
+    const busy = vi.fn();
+    viewTransition(busy, { busy: true });
+    expect(busy).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+
+    const phone = stubPage({ coarse: true });
+    viewTransition(vi.fn());
+    expect(phone).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+
+    const quiet = stubPage({ reduce: true });
+    const commit = vi.fn();
+    viewTransition(commit);
+    expect(quiet).not.toHaveBeenCalled();
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs the commit when the browser has no view transitions at all", () => {
+    const commit = vi.fn();
+    viewTransition(commit);
+    expect(commit).toHaveBeenCalledTimes(1);
   });
 });
