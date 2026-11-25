@@ -1,10 +1,11 @@
 /* ---- glass: the surfaces that sit over moving content ---------------------- */
 
 /* Frost, not opacity. A surface gets a translucent face and a backdrop blur, so what passes under it
-   reads as light through wet glass rather than as ghosts of the rows behind. Only four static surfaces
+   reads as light through wet glass rather than as ghosts of the rows behind. Only three static surfaces
    take it, and none of them is inside a scrolling list (a blur there would repaint on every frame of a
-   streaming run): the composer card, the status stack, and the command menu. The sticky prompt is a
-   thin opaque label over otherwise empty page space, so its face needs no blur at all.
+   streaming run): the composer card, the status stack, and the command menu. The sticky prompt is an
+   opaque page-coloured label: it covers otherwise empty page space, and its one-pixel separator fades
+   from its text colour through its own pseudo-element instead.
    `.is-glass` is the same recipe for a surface that wants it (the notice stack) without a second copy.
 
    Three edges make it read as glass rather than as a faded card: the frost, one specular hairline inside
@@ -17,15 +18,13 @@
    backdrop-filter gets a 98% face and the hairline instead of a blur that does nothing. */
 
 :root {
-  /* How much of its face a glass surface keeps over the page. Higher on the sticky prompt: 13px of text
-     over blurred rows needs more of its own tone than a card with 3 lines of room in it. */
+  /* How much of its face a glass surface keeps over the page. */
   --glass-tint: 76%;
   --glass-blur: 12px;
   --glass-saturate: 1.6;
 }
 
 .composer-card,
-.sticky-prompt,
 .status-stack,
 .command-menu,
 .is-glass {
@@ -40,11 +39,8 @@
   --glass-face: color-mix(in srgb, var(--raised) 70%, var(--card));
 }
 
-.sticky-prompt {
-  --glass-tint: 88%;
-}
 
-/* A bar and a menu have no card to sit on: the pseudo needs a box of its own to be positioned in. */
+/* The status stack has no card to sit on: its specular pseudo needs a positioned containing block. */
 .status-stack {
   position: relative;
 }
@@ -52,7 +48,6 @@
 /* The specular: one bright pixel inside the top edge, following the surface's own radius. Positioned rather
    than a second box-shadow, because these surfaces already use box-shadow for state (focus, float, drag). */
 .composer-card::before,
-.sticky-prompt::before,
 .status-stack::before,
 .command-menu::before,
 .is-glass::before {
@@ -67,7 +62,6 @@
 /* No blur to draw: keep the face (its own shadow and border still separate it) and drop the work. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .composer-card,
-  .sticky-prompt,
   .status-stack,
   .command-menu,
   .is-glass {
@@ -79,7 +73,6 @@
    and the hairline edges carry the shape. */
 @media (prefers-reduced-transparency: reduce) {
   .composer-card,
-  .sticky-prompt,
   .status-stack,
   .command-menu,
   .is-glass {

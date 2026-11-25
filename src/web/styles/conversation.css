@@ -11,7 +11,8 @@
    that is half out is dimmed between its lines, not sliced through a glyph. The thread reserves both heights (its
    padding at the top, the last turn's at the bottom), so a row at rest is never under one. They sit above the rows
    (z 2) and below the sticky prompt (4), the jump pill (5) and the find bar (6), and take no pointer, so a row under
-   a fade is still clickable. The composer owns z3 for its upward-opening sheets; sticky prompt (4), jump pill (5) and find bar (6) sit above it. */
+   a fade is still clickable. The composer owns z3 for its upward-opening sheets; sticky prompt (4), jump pill (5) and find bar (6) sit above it.
+   The sticky prompt owns its background and the one-pixel separator on its pseudo-element (conversation.css). */
 .conversation-wrap::before,
 .conversation-wrap::after {
   content: "";
@@ -2181,11 +2182,10 @@
   height: 32px;
   padding: 0 calc(max(0px, (100% - 8px - var(--chat-col)) / 2) + 20px);
   border: 0;
-  border-bottom: 1px solid var(--hairline);
-  /* Nearly opaque: at 84% the row under the bar showed through the 13px text on a phone. */
-  background: color-mix(in srgb, var(--bg) 96%, transparent);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  border-bottom: 0;
+  /* The full page tone: a partial backdrop muddies the small label with the rows behind it. */
+  background: var(--bg);
+  backdrop-filter: none;
   color: var(--text-2);
   font-size: calc(var(--chat-small) - 0.5px);
   text-align: left;
@@ -2200,6 +2200,21 @@
   }
 }
 
+/* Keep the 13px label readable against the otherwise empty page space it overlays. A real separator sits
+   on this pseudo-element above the opaque face; it fades from the text colour into the page background.
+   The local stacking context and the conversation's own context keep z0 above the label's face. */
+.sticky-prompt {
+  isolation: isolate;
+}
+.sticky-prompt::before {
+  content: "";
+  position: absolute;
+  inset: -1px 0 auto 0;
+  height: 1px;
+  z-index: 0;
+  background: linear-gradient(to bottom, var(--fg), var(--bg));
+  pointer-events: none;
+}
 .sticky-prompt:hover {
   color: var(--text);
 }

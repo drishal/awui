@@ -5,6 +5,24 @@ const status = (page: Page) => page.getByTestId("chat-status");
 const answers = (page: Page) => page.getByTestId("answer");
 const prompts = (page: Page) => page.getByTestId("user-prompt");
 
+async function assertSolidStickyPrompt(page: Page): Promise<void> {
+  // The prompt sits over otherwise empty page space: only a single opaque, unblurred face stays readable in either scheme.
+  const bar = page.getByRole("button", { name: /^Back to prompt #1:/ });
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await expect.poll(async () => bar.evaluate((el) => {
+      const actual = getComputedStyle(el).backgroundColor;
+      const expected = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim().match(/^#([a-f\d]{6})$/i);
+      if (!expected) return false;
+      const rgb = expected[1]!.match(/.{2}/g)!.map((hex) => parseInt(hex, 16));
+      return actual === `rgb(${rgb.join(", ")})`;
+    })).toBe(true);
+    await expect(bar).toHaveCSS("backdrop-filter", "none");
+    for (const pseudo of ["before", "after"] as const) {
+      await expect(bar).toHaveCSS("box-shadow", "none", { pseudo });
+    }
+  }
+}
 /** Open a finished turn's "Worked for …" fold. */
 async function openFold(page: Page, index = -1) {
   const cards = page.locator(".process-card");
@@ -1750,6 +1768,7 @@ test("a sticky bar names the prompt once it has scrolled off, and goes back to i
   expect(barBox!.y).toBeCloseTo(viewBox!.y, 0);
   expect(barBox!.height).toBeLessThanOrEqual(32);
   // Find owns the top corner while it is open.
+  await assertSolidStickyPrompt(page);
   await page.locator(".chat-header h1").click();
   await page.keyboard.press("Control+KeyF");
   await expect(page.getByRole("searchbox", { name: "Find in chat" })).toBeFocused();
@@ -1776,6 +1795,7 @@ test("the sticky bar goes back at once under reduced motion, and from the keyboa
   await sendAndWait(page, "slow sticky reading");
   const bar = page.getByRole("button", { name: /^Back to prompt #1:/ });
   await expect(bar).toBeVisible();
+  await assertSolidStickyPrompt(page);
   await bar.focus();
   await page.keyboard.press("Enter");
   await expect(prompts(page).first()).toBeInViewport();
