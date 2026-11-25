@@ -50,12 +50,10 @@
   width: 288px;
   height: 288px;
   transform: translate(-50%, -50%);
-  /* One step firmer than a hairline: a grid drawn in --hairline vanished on the light page's white cards, and at
-     this strength it still reads as the paper the mark stands on rather than as a table. */
-  --grid-line: color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 6%), transparent);
+  /* Drawn from --hero-grid (tokens.css): paper-toned on a light page, a pale hairline on a dark one. */
   background-image:
-    repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 24px),
-    repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 24px);
+    repeating-linear-gradient(to right, var(--hero-grid) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(to bottom, var(--hero-grid) 0 1px, transparent 1px 24px);
   background-position: calc(50% - 12px) calc(50% - 12px);
   mask-image: radial-gradient(closest-side, #000 30%, transparent 92%);
   pointer-events: none;
@@ -187,7 +185,9 @@
     from var(--beam-turn),
     transparent 0deg,
     color-mix(in srgb, var(--accent) 28%, transparent) 12deg,
-    var(--accent) 24deg,
+    /* 80%: at full strength the beam read as a painted arc on the light page's pale halo rather
+       than as light travelling it. */
+    color-mix(in srgb, var(--accent) 80%, transparent) 24deg,
     color-mix(in srgb, var(--accent) 28%, transparent) 36deg,
     transparent 48deg
   );
