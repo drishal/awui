@@ -7,7 +7,7 @@ import { ZodError, type ZodType } from "zod";
 import { buildIdOf } from "./build-id.js";
 import { embeddedWeb } from "./embedded.js";
 import { compressApi, gzipEventStream } from "./compress.js";
-import { compressedStatic, embeddedHandler, setStaticHeaders } from "./static-web.js";
+import { bootHtml, bootThemeOf, compressedStatic, embeddedHandler, setStaticHeaders, type BootTheme } from "./static-web.js";
 import {
   answerSchema,
   workerPlanSaveSchema,
@@ -1048,6 +1048,15 @@ export async function createApp(deps: AppDeps) {
 
   const browserSettings = () => uiSettings(userConfig());
 
+  /** The theme a page boots with; the client's themeModeOf follows the same rule over the same two values. */
+  const bootThemes = async (): Promise<BootTheme> => bootThemeOf(browserSettings().theme, await theme.get());
+  /**
+   * Whether this request would pass requireAuth: a guest link's cookie never does, and a local peer or a live
+   * session does. The shell uses it, so an unauthenticated visitor is told no more than /api/theme tells them.
+   */
+  const signedIn = (req: Request, res: Response): boolean =>
+    security.guestBrowserKey(req, res.locals.authority as string) === null && (res.locals.local === true || security.hasSession(req, res.locals.authority as string));
+
   const harnessMarks = new HarnessMarkStore(deps.stateDir);
   let statusAt = 0;
   app.get("/api/bootstrap", async (req, res) => {
@@ -1247,6 +1256,19 @@ export async function createApp(deps: AppDeps) {
 
   app.get("/api/theme", async (_req, res) => {
     res.json(await theme.get());
+  });
+
+  // The scheme a booting page paints with, before its script is running (static-web.ts's bootHtml links it). It
+  // answers what /api/theme already tells a signed-in device, so it takes the same gate: an unauthenticated
+  // visitor's shell names no theme at all. The URL carries the stylesheet's hash, so it may be kept for good.
+  app.get("/theme.css", security.requireAuth, async (_req, res) => {
+    const css = (await bootThemes()).css;
+    if (!css) {
+      res.status(404).type("text").end();
+      return;
+    }
+    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+    res.type("text/css").send(css);
   });
 
   // ---- The theme library (theme-library.ts): ~/.config/awui/themes/<id>.yml ----
@@ -3223,17 +3245,40 @@ export async function createApp(deps: AppDeps) {
     res.status(404).json({ error: "Not found", code: "not_found" });
   });
 
+  // The app shell is the one page that boots: it carries the theme its first frame paints (static-web.ts), so a
+  // stored dark scheme never shows a white frame while the script is starting. It is never cached.
+  const appShell = async (req: Request, res: Response, html: string): Promise<void> => {
+    res.setHeader("Cache-Control", "no-store");
+    res.type("html").send(signedIn(req, res) ? bootHtml(html, await bootThemes()) : html);
+  };
+
   const embedded = embeddedWeb();
   if (embedded) {
     // The binary carries the web bundle: serve it from memory, same caching rules as on disk.
+    const shellFile = embedded.get("/index.html");
+    if (shellFile && typeof shellFile.text === "string") {
+      const html = shellFile.text;
+      app.get(["/", "/index.html"], (req, res) => appShell(req, res, html));
+    }
     app.get(/^\/(?!api\/).*/, embeddedHandler(embedded));
   } else if (deps.webDir && existsSync(path.join(deps.webDir, "index.html"))) {
     const webDir = deps.webDir;
+    const indexFile = path.join(webDir, "index.html");
+    // The two names the shell answers to, before the folder's own files: express.static would send it unwritten.
+    // A deep link past them is a guest's own document, which names no theme either way.
+    app.get(["/", "/index.html"], async (req, res) => {
+      const html = await fsp.readFile(indexFile, "utf8").catch(() => null);
+      if (html === null) {
+        res.status(404).end();
+        return;
+      }
+      await appShell(req, res, html);
+    });
     app.use(compressedStatic(webDir));
     app.use(express.static(webDir, { index: "index.html", maxAge: "1h", setHeaders: (res, filePath) => setStaticHeaders(res, filePath, webDir) }));
     app.get(/^\/(?!api\/).*/, (_req, res) => {
       res.setHeader("Cache-Control", "no-store");
-      res.sendFile(path.join(webDir, "index.html"));
+      res.sendFile(indexFile);
     });
   }
 

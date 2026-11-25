@@ -10,6 +10,9 @@ export type ThemeMode = "system" | "light" | "dark" | "scheme";
 
 let applied: string[] = [];
 
+/** The id bootHtml gives its stylesheet, so the first paint of the client can retire it. */
+export const BOOT_STYLE_ID = "theme-boot";
+
 function setMetaThemeColor(color: string | null): void {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (!meta) return;
@@ -65,6 +68,9 @@ function paint(mode: ThemeMode, info: ThemeInfo | null): void {
     if (mode === "light" || mode === "dark") root.dataset.theme = mode;
     else delete root.dataset.theme;
   }
+  // The stylesheet the shell carried (static-web.ts) is for the first frame only: left in place, it would pin
+  // the scheme it names under a mode chosen since (its :root block follows tokens.css's).
+  document.getElementById(BOOT_STYLE_ID)?.remove();
   setMetaThemeColor(useScheme ? info?.themeColor ?? null : null);
 }
 
@@ -99,11 +105,15 @@ export async function fetchTheme(): Promise<ThemeInfo | null> {
 export function useTheme() {
   const [themeInfo, setThemeInfo] = useState<ThemeInfo | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>("system");
+  // Nothing may be painted before the theme is known: the shell already carries the one the server wrote
+  // (static-web.ts), and painting its default "system" over that would flash the built-in colours back in.
+  const [ready, setReady] = useState(false);
 
   /** Take the theme delivered with the bootstrap payload (null when /api/theme failed). */
   const initTheme = (info: ThemeInfo | null, choice: ThemeChoice | null): void => {
     setThemeInfo(info);
     setThemeMode(themeModeOf(info, choice));
+    setReady(true);
   };
 
   /** Read the active scheme again (a switch, or an edit of the one in use); the old one stays when the read fails. */
@@ -114,8 +124,8 @@ export function useTheme() {
   };
 
   useEffect(() => {
-    applyTheme(themeMode, themeInfo);
-  }, [themeMode, themeInfo]);
+    if (ready) applyTheme(themeMode, themeInfo);
+  }, [ready, themeMode, themeInfo]);
 
   useEffect(() => {
     const onVisible = async () => {
