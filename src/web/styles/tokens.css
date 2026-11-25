@@ -107,6 +107,9 @@
   /* How much accent the start screen's wash behind its mark takes. It is a glow around the blueprint,
      not a lamp: the mark's own disc carries the colour, so both schemes keep this one low. */
   --hero-wash: 6%;
+  /* The one bright pixel inside a glass surface's top edge (glass.css). A white line is light on a dark
+     page and almost nothing on a light one, where the shadow and the hairline carry the edge instead. */
+  --glass-specular: rgb(255 255 255 / 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -142,6 +145,7 @@
     --raise-mix: 16%;
     --card-mix: 62%;
     --hero-wash: 6%;
+    --glass-specular: rgb(255 255 255 / 0.07);
     --card-edge: none;
   }
 }
@@ -179,6 +183,7 @@
   --raise-mix: 16%;
   --card-mix: 62%;
   --hero-wash: 6%;
+  --glass-specular: rgb(255 255 255 / 0.07);
   --card-edge: none;
 }
 
@@ -251,6 +256,10 @@
   /* The conversation's own width (Settings → Chat width); drawers keep --col. */
   --chat-col: var(--col);
   --sidebar-w: 292px;
+  /* The chat header's own height (header.css): a fixed element that must clear it — the notice stack —
+     measures from the top of the page, where the tab strip (--tab-h) sits above the header. */
+  --header-h: 61px;
+  --top-chrome-h: calc(var(--tab-h) + 1px + var(--header-h));
   --chat-scale: 1;
   --chat-font: calc(14.5px * var(--chat-scale));
   --chat-small: calc(13px * var(--chat-scale));
