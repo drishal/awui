@@ -22,7 +22,7 @@ import { RoomEditor } from "./components/RoomEditor.js";
 import { RoomHeadActions, RoomHeadSub } from "./components/RoomHeader.js";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { land, MORPH_IN_MS, viewTransition } from "./morph.js";
+import { landTitle, viewTransition } from "./morph.js";
 import type {
   SessionMarkState,
   ChatSnapshot,
@@ -635,7 +635,7 @@ export function App() {
   useLayoutEffect(() => {
     if (!chat?.chatId) return;
     // A session title clicked in the rail lands in the header, not in a second copy of itself.
-    land("sidebar-title", titleRef.current, { duration: MORPH_IN_MS, spring: true, from: { opacity: 0.4 } });
+    landTitle("sidebar-title", titleRef.current);
   }, [chat?.chatId]);
 
   const [viewSwap, setViewSwap] = useState(false);

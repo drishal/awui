@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { flight, glide, handoff, land, pending, takeBox, viewTransition, type Box } from "../../src/web/morph.js";
+import { firstLineBox, flight, glide, handoff, land, landTitle, pending, takeBox, viewTransition, withinReach, TITLE_REACH_PX, type Box } from "../../src/web/morph.js";
 
 const box = (left: number, top: number, width: number, height: number): Box => ({ left, top, width, height });
 
@@ -46,6 +46,69 @@ describe("morph", () => {
     expect(flight(box(0, 0, 500, 120), box(0, 0, 500, 90))).toBeNull();
     expect(flight(box(0, 0, 500, 120), box(0, 0, 500, 90), true)).toEqual({ dx: 0, dy: 0, dh: true });
     expect(flight(box(0, 0, 500, 90.3), box(0, 0, 500, 90), true)).toBeNull();
+  });
+});
+
+describe("a title's arrival", () => {
+  const header = (top: number) => ({ getAnimations: () => [], getBoundingClientRect: () => ({ left: 0, top, width: 200, height: 22 }), animate: vi.fn() }) as unknown as HTMLElement & { animate: ReturnType<typeof vi.fn> };
+
+  it("flies only from within reach, and settles in place from further away", () => {
+    expect(withinReach(box(0, 300, 100, 18), box(0, 44, 200, 22), TITLE_REACH_PX)).toBe(true);
+    expect(withinReach(box(0, 44 + TITLE_REACH_PX, 100, 18), box(0, 44, 200, 22), TITLE_REACH_PX)).toBe(true);
+    expect(withinReach(box(0, 45 + TITLE_REACH_PX, 100, 18), box(0, 44, 200, 22), TITLE_REACH_PX)).toBe(false);
+    // The rail's own geometry: its first row sits about 270 px below the header, a deep one much further.
+    expect(withinReach(box(0, 312, 100, 18), box(0, 44, 200, 22), TITLE_REACH_PX)).toBe(true);
+    expect(withinReach(box(0, 434, 100, 18), box(0, 44, 200, 22), TITLE_REACH_PX)).toBe(false);
+  });
+
+  it("makes a near row's title fly, eased, with no spring behind it", () => {
+    stubPage();
+    vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: (name: string) => (name === "--ease-out" ? "cubic-bezier(0.16, 1, 0.3, 1)" : "linear") }));
+    const el = header(44);
+    handoff("sidebar-title", box(53, 312, 113, 18), 1000);
+    expect(landTitle("sidebar-title", el, 1100)).not.toBeNull();
+    const [frames, timing] = el.animate.mock.calls[0] as unknown as [Array<Record<string, string>>, { id: string; duration: number; easing: string; fill: string }];
+    expect(frames[0]?.transform).toBe("translate(53px, 268px)");
+    expect(timing).toMatchObject({ id: "morph:sidebar-title", duration: 240, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "backwards" });
+  });
+
+  it("fades a far row's title up where it belongs instead of dragging it across the rail", () => {
+    stubPage();
+    vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "linear" }));
+    const el = header(44);
+    handoff("sidebar-title", box(53, 700, 113, 18), 1000);
+    landTitle("sidebar-title", el, 1100);
+    const [frames, timing] = el.animate.mock.calls[0] as unknown as [Array<Record<string, string | number>>, { id: string; duration: number; easing: string }];
+    expect(frames[0]).toMatchObject({ opacity: 0, transform: "translateY(6px)" });
+    expect(frames[1]).toMatchObject({ opacity: 1, transform: "none" });
+    expect(timing).toMatchObject({ id: "morph:sidebar-title", duration: 180, easing: "linear" });
+  });
+
+  it("shows nothing at all under reduced motion, and nothing without a box", () => {
+    stubPage({ reduce: true });
+    const quiet = header(44);
+    handoff("sidebar-title", box(53, 312, 113, 18), 1000);
+    expect(landTitle("sidebar-title", quiet, 1100)).toBeNull();
+    expect(quiet.animate).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+
+    stubPage();
+    expect(landTitle("sidebar-title", header(44), 1100)).toBeNull();
+  });
+
+  it("hands a wrapped title over as its first line, not as a two-line box", () => {
+    vi.stubGlobal("document", {
+      createRange: () => ({
+        selectNodeContents: () => {},
+        getClientRects: () => [
+          { left: 53, top: 308, width: 113, height: 18 },
+          { left: 53, top: 326, width: 80, height: 18 },
+        ],
+      }),
+    });
+    const span = { getBoundingClientRect: () => ({ left: 53, top: 308, width: 179, height: 36 }) } as unknown as Element;
+    expect(firstLineBox(span)).toEqual({ left: 53, top: 308, width: 113, height: 18 });
+    expect(firstLineBox(null)).toBeNull();
   });
 });
 

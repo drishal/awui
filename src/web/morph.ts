@@ -106,12 +106,7 @@ export function glide(from: Box, el: HTMLElement | null, opts: LandOptions = {})
   // One id for every glide, so a second move of the same element takes over from the first instead of
   // stacking two transforms on it. A caller may name its own (land does: the handoff key names the glide).
   const id = opts.id ?? `morph:glide`;
-  // The old glide's cancel event fires after this call returns; unhooked, it cannot strip the new one's class.
-  for (const running of el.getAnimations()) {
-    if (running.id !== id) continue;
-    running.oncancel = running.onfinish = null;
-    running.cancel();
-  }
+  cancelMove(el, id);
   const to = el.getBoundingClientRect();
   const move = flight(from, to, opts.height === true);
   if (!move) return null;
@@ -127,6 +122,65 @@ export function glide(from: Box, el: HTMLElement | null, opts: LandOptions = {})
   );
   if (hold) run.onfinish = run.oncancel = () => el.classList.remove(hold);
   return run;
+}
+
+/** Stop the animation named `id` on `el` where it is: a second move of one element takes over from the first. */
+function cancelMove(el: HTMLElement, id: string): void {
+  // The old animation's cancel event fires after this call returns; unhooked, it cannot strip the new one's class.
+  for (const running of el.getAnimations()) {
+    if (running.id !== id) continue;
+    running.oncancel = running.onfinish = null;
+    running.cancel();
+  }
+}
+
+/**
+ * The first line of text in `el` as a box, else the element's own box: a label that wrapped to two lines
+ * hands over the one line it starts with, since a two-line box would drag both of them across the screen.
+ */
+export function firstLineBox(el: Element | null): Box | null {
+  if (!el) return null;
+  const box = el.getBoundingClientRect();
+  if (typeof document === "undefined") return { left: box.left, top: box.top, width: box.width, height: box.height };
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const line = range.getClientRects()[0];
+  return line ? { left: line.left, top: line.top, width: line.width, height: line.height } : { left: box.left, top: box.top, width: box.width, height: box.height };
+}
+
+/** Whether a move is near enough for the eye to follow it: past `reach` it crosses whatever lies between. */
+export function withinReach(from: Box, to: Box, reach: number): boolean {
+  return Math.abs(from.top - to.top) <= reach;
+}
+
+/** The furthest a title may travel and still read as a move rather than a flicker across the rows in between. */
+export const TITLE_REACH_PX = 280;
+/** A title is a label, not a card: it arrives eased out and short, and never on the spring. */
+const TITLE_LAND_MS = 240;
+/** When it does not travel: a fade up from a few pixels below, at the row-arrival tempo (--dur-enter). */
+const TITLE_SETTLE_MS = 180;
+const TITLE_SETTLE_LIFT = 6;
+
+/**
+ * A session title arriving in the header. It flies only from a row close enough for the eye to follow —
+ * a 240 ms eased move over a few hundred pixels reads as a flicker past every row on the way — and
+ * otherwise fades up where it belongs. Either way the label itself never bounces.
+ */
+export function landTitle(key: string, el: HTMLElement | null, now = Date.now()): Animation | null {
+  const from = takeBox(key, now);
+  if (!from) return null;
+  const id = `morph:${key.split(":")[0]}`;
+  const to = el?.getBoundingClientRect() ?? null;
+  if (!el || !to || !withinReach(from, to, TITLE_REACH_PX)) return settle(el, { id, duration: TITLE_SETTLE_MS, lift: TITLE_SETTLE_LIFT });
+  return glide(from, el, { id, duration: TITLE_LAND_MS, from: { opacity: 0.4 } });
+}
+
+/** Arrive in place: a short eased fade, with a small lift for a move the eye could not follow. */
+function settle(el: HTMLElement | null, opts: { id: string; duration: number; lift: number }): Animation | null {
+  if (!el || motionOff()) return null;
+  cancelMove(el, opts.id);
+  const easing = getComputedStyle(el).getPropertyValue("--ease-out").trim() || "ease-out";
+  return el.animate([{ opacity: 0, transform: `translateY(${opts.lift}px)` }, { opacity: 1, transform: "none" }], { id: opts.id, duration: opts.duration, easing, fill: "backwards" });
 }
 
 /** The pair a shared-element swap runs at: leaving is quick, arriving settles. Callers keep them equal so two

@@ -31,7 +31,7 @@ import { setProjectIcon, useProjectIcons } from "../project-icons.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
-import { type Box, glide, handoff, MORPH_IN_MS } from "../morph.js";
+import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
 /** Sessions shown per project before "Show N more". */
 const VISIBLE_CURRENT = 8;
@@ -404,7 +404,7 @@ function SessionRow({
             toggleSelection(s.id, e.shiftKey);
             return;
           }
-          handoff("sidebar-title", titleRef.current?.getBoundingClientRect() ?? null);
+          handoff("sidebar-title", firstLineBox(titleRef.current));
           onOpen(e.ctrlKey || e.metaKey);
         }}
         onMouseDown={(e) => {
