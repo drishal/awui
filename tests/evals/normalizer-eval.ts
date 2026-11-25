@@ -127,16 +127,19 @@ function configFor(backend: NormalizerBackend, options: ReplayOptions, live: boo
   return {
     enabled: true,
     backend,
-    endpoint: live && backend === "local-clef-flash" ? "http://127.0.0.1:8000/v1/systemone" : "",
+    endpoint: live && backend === "local-clef-flash" ? "http://127.0.0.1:8000/v1/systemone" : live ? "" : "http://replay.invalid/v1/systemone",
     jevBaseUrl: NORMALIZER_DEFAULTS.jevBaseUrl,
     jevModel: NORMALIZER_DEFAULTS.jevModel,
-    cloudflareAccountId: "",
+    cloudflareAccountId: live ? "" : "replay-account",
     minChoice: options.minChoice ?? NORMALIZER_DEFAULTS.minChoice,
     minNoul: options.minNoul ?? NORMALIZER_DEFAULTS.minNoul,
     cache: options.cache ?? true,
     timeoutMs: null,
     allowFreeText: false,
-    keys: { jev: process.env.TYPESAFE_API_KEY?.trim() || null, commandCode: process.env.CMD_API_KEY?.trim() || null, cloudflare: null },
+    // Replay never reaches a network: these values only let backendPlan exercise the real decision path.
+    keys: live
+      ? { jev: process.env.TYPESAFE_API_KEY?.trim() || null, commandCode: process.env.CMD_API_KEY?.trim() || null, cloudflare: null }
+      : { jev: "replay-jev", commandCode: "replay-command-code", cloudflare: "replay-cloudflare" },
   };
 }
 
