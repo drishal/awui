@@ -709,7 +709,7 @@ export function Composer({
   // A phone's composer rests as one pill row and opens into the box and its controls when you write (Claude's
   // app): the open is a morph, the card's height springing and its parts gliding to their new places.
   const phone = useMediaQuery("(max-width: 600px)");
-  const pillRow = composerFolded({ phone, hero: Boolean(hero), closed, writing, text, images: images.length, pastes: pastes.length, menuOpen, dragging });
+  const pillRow = composerFolded({ phone, hero: Boolean(hero), closed, writing, text, images: images.length, pastes: pastes.length, menuOpen, dragging, busy });
   useMorph(cardRef, pillRow, MORPH_PARTS);
   // A chat that a start screen just made: the box glides down from where the start screen's was (morph.ts) on an
   // ease, not the spring, since a large surface that bounces looks cheap. Nothing waits for it, so nothing is left to do.

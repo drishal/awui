@@ -81,6 +81,12 @@ test("a running chat stops from the composer's Stop; Search lives in the chat me
   await page.keyboard.press("Escape");
   await send(page, "slow stream please");
   await expect(page.getByTestId("chat-status")).toHaveText("Working");
+  // Stop is on the screen, not scrolled into by the test: the folded row used to hold Steer, Follow-up and Stop
+  // beside the box and the ring, and Stop sat 60 px past the right edge. (A clipped app frame cannot be scrolled
+  // sideways to reach it, so this is also what keeps `overflow: clip` honest.)
+  const stopBox = await page.getByRole("button", { name: "Stop the agent" }).boundingBox();
+  expect(stopBox!.x).toBeGreaterThanOrEqual(0);
+  expect(stopBox!.x + stopBox!.width).toBeLessThanOrEqual(390);
   await page.getByRole("button", { name: "Stop the agent" }).click();
   await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 15_000 });
   // The header's Search button is folded into the chat menu here.
