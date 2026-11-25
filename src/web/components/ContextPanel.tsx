@@ -5,7 +5,7 @@
 /* Active work stays in what this chat's own snapshots already describe. Other
  * contexts fetched are bounded readings of its own project; ownership/actions
  * go through the host chat's native APIs, not via a second session model. */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSnapshot, DelegatedTaskView, GitStatus, RaceSummary, ReviewThread, SecondOpinion } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { save, load } from "../storage.js";
@@ -41,9 +41,10 @@ export interface ContextRailProps extends ContextActions {
 
 type Props = ContextRailProps;
 type OpenState = Record<ContextSectionId, boolean>;
-// The usage card is open by default: it is the rail's floor, the one card that always has a figure to
-// show, and the panel is composed around it. The other quiet groups start folded.
-const DEFAULT_OPEN: OpenState = { agents: true, tasks: true, jobs: true, questions: true, races: false, opinions: false, review: false, memory: true };
+// The usage card and the questions card are open by default: they are the rail's floor and the
+// one kind of work the chat cannot answer itself. The other groups start folded; pending, running,
+// or failed work opens its own group, unless seeing the group at all is what notes work.
+const DEFAULT_OPEN: OpenState = { agents: false, tasks: false, jobs: false, questions: true, races: false, opinions: false, review: false, memory: true };
 const labels: Record<ContextSectionId, string> = { agents: "Agents and lineage", tasks: "Delegated work", jobs: "Background jobs", questions: "Questions and permissions", races: "Comparisons and races", opinions: "Second opinions", review: "Review comments", memory: "Context and usage" };
 const OPERATION_LABEL: Record<NonNullable<GitStatus["operation"]>, string> = { merge: "merge", rebase: "rebase", "cherry-pick": "cherry-pick", revert: "revert", bisect: "bisect" };
 
@@ -70,7 +71,11 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
   const [asked, setAsked] = useState<boolean | null>(null);
   // Set while a person's own fold is animating the rail's width; the stylesheet keys the transition on it.
   const [toggling, setToggling] = useState(false);
-  const [open, setOpen] = useState<OpenState>(() => ({ ...DEFAULT_OPEN, ...validatedFolds(load<Partial<OpenState>>("context.folds", {})) }));
+  // Groups that have been there while this panel was mounted; a new one may open for live work,
+  // but a person's later fold of it stays put. An explicit saved fold has the same precedence.
+  const seenGroups = useRef<Partial<OpenState>>({});
+  const savedFolds = useRef<Partial<OpenState>>(validatedFolds(load<Partial<OpenState>>("context.folds", {})));
+  const [open, setOpen] = useState<OpenState>(() => ({ ...DEFAULT_OPEN, ...savedFolds.current }));
   const [races, setRaces] = useState<RaceSummary[] | null>(null);
   const [opinions, setOpinions] = useState<SecondOpinion[] | null>(null);
   const [threads, setThreads] = useState<ReviewThread[] | null>(null);
@@ -133,6 +138,38 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
   useEffect(() => {
     if (!idle) setAsked((value) => (value === false ? null : value));
   }, [idle]);
+
+  // A group's count is what announces pending, running, or failed work: it opens once, when the
+  // group appears. A person's fold of it afterwards is a choice, so the group's being there (not
+  // the work's state) is what opens it; the effect also runs when the panel is folded away.
+  useEffect(() => {
+    const hasLive = {
+      agents: runs.some((run) => run.status === "pending" || run.status === "running" || run.status === "failed"),
+      tasks: tasks.some((task) => task.state !== "result_available" || task.outcome === "failed"),
+      jobs: jobs.some((job) => job.status === "running" || job.status === "failed"),
+      questions: hasQuestions,
+      races: false,
+      opinions: false,
+      review: false,
+      memory: true,
+    };
+    let next: OpenState | null = null;
+    for (const id of Object.keys(hasLive) as ContextSectionId[]) {
+      const exists = id === "agents" ? runs.length > 0 || chat.lineage !== null
+        : id === "tasks" ? tasks.length > 0
+        : id === "jobs" ? jobs.length > 0
+        : id === "questions" ? hasQuestions
+        : id === "memory" ? chat.context !== null
+        : false;
+      const seen = seenGroups.current[id];
+      seenGroups.current[id] = exists;
+      if (exists && !seen && hasLive[id] && !open[id] && savedFolds.current[id] !== false) {
+        if (!next) next = { ...open };
+        next[id] = true;
+      }
+    }
+    if (next) setOpen(next);
+  }, [runs, tasks, jobs, hasQuestions, chat.lineage, chat.context, open]);
 
   const toggle = (id: ContextSectionId) => {
     const next = { ...open, [id]: !open[id] };
@@ -225,12 +262,11 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
       </ContextGroup> : null}
 
       {/* Only a harness that reports a window has anything to say here. The figure lives in the card's own
-          ring and second line, and again on the composer's ring: the heading does not say it a third time. */}
+          ring and second line: the rail keeps its own pie and puts the percentage in that button's accessible name. */}
       {chat.context ? <ContextGroup id="memory" label={labels.memory} open={open.memory} attention={chat.context.percent !== null && chat.context.percent >= 80 ? "warn" : false} onToggle={toggle}>
         <ContextList>
           <ContextRow className="context-usage-row" icon={<span className={`context-pie tone-${contextTone(chat.context.percent ?? 0)}`}><ContextPie percent={chat.context.percent ?? 0} size={24} /></span>} title="Context used" meta={`${tokenCount(chat.context.tokens)} of ${tokenCount(chat.context.window)} tokens`} actions={<ContextRowButton label="Open context and timings" onClick={onUsage}><IconChevronRight size={13} /></ContextRowButton>} />
         </ContextList>
-        <div className="context-usage-bar" style={{ "--context-value": `${Math.min(100, chat.context.percent ?? 0)}%` } as React.CSSProperties} />
       </ContextGroup> : null}
       {error ? <p className="context-error" role="alert">{error}</p> : null}
     </>
@@ -266,7 +302,6 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
     </div>
     {detail ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot">{chat.context ? <button type="button" className="context-rail-usage" onClick={onUsage} title="Open context and model usage" aria-label={chat.context.percent === null ? "Open context and model usage" : `Context used: ${Math.round(chat.context.percent)}% of ${tokenCount(chat.context.window)}`}>
       <span className={`context-pie tone-${contextTone(chat.context.percent ?? 0)}`}><ContextPie percent={chat.context.percent ?? 0} size={28} /></span>
-      {chat.context.percent === null ? null : <span className="context-rail-figure">{Math.round(chat.context.percent)}%</span>}
     </button> : null}</div>}
   </aside>;
 }
