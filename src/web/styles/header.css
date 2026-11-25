@@ -81,8 +81,9 @@
 }
 
 .chat-sub .chat-path::before {
-  content: "-";
-  margin-right: 8px;
+  /* A middot, not a hyphen: beside the harness's colour dot a hyphen reads as a minus sign. */
+  content: "·";
+  margin: 0 6px 0 0;
   color: var(--muted);
 }
 
@@ -128,6 +129,19 @@
      is cut short rather than pushing one of them onto a line of its own. */
   .chat-sub .badge-lineage {
     max-width: 16ch;
+  }
+
+  /* Which project this chat works in outranks how many devices have it open: a second device may add
+     itself at any moment, and "de…" says nothing. The project keeps its whole name; the presence chip
+     gives way first (and can ellipsise to its two dots). */
+  .chat-sub .chat-path {
+    flex-shrink: 0;
+  }
+
+  .chat-sub .chat-viewers {
+    flex-shrink: 10;
+    min-width: 0;
+    overflow: hidden;
   }
 }
 
