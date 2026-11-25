@@ -6,6 +6,31 @@
   min-height: 0;
 }
 
+/* The transcript runs under the header and the dock, so both edges fade it out instead of cutting a line: 20px
+   of page at the top, 28px at the bottom. They sit above the rows (z 2) and below the sticky prompt (4), the
+   jump pill (5) and the find bar (6), and take no pointer, so a row under a fade is still clickable. */
+.conversation-wrap::before,
+.conversation-wrap::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.conversation-wrap::before {
+  top: 0;
+  height: 20px;
+  background: linear-gradient(to bottom, var(--bg), transparent);
+}
+
+.conversation-wrap::after {
+  bottom: 0;
+  height: 28px;
+  background: linear-gradient(to top, var(--bg), transparent);
+}
+
 .conversation {
   /* A column, so the thread can take the empty height above it (see .thread below). */
   display: flex;

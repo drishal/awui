@@ -117,18 +117,6 @@
     padding: 4px max(16px, env(safe-area-inset-right)) calc(56px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
-  /* The transcript runs under the dock; this fades it out rather than letting the dock cut a line. */
-  .conversation-wrap::after {
-    content: "";
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    height: 28px;
-    pointer-events: none;
-    background: linear-gradient(to top, var(--bg), transparent);
-  }
-
   /* The way back to the newest turn floats over the fade as a small round target, with a ring of the page
      around it: the transcript scrolls under the pill, so the ring is what keeps its edge legible. */
   .jump {
