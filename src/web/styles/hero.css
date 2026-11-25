@@ -164,6 +164,54 @@
   flex-wrap: wrap;
 }
 
+/* The start screen's composer is the one live edge on an otherwise still page: while it holds the caret it
+   draws a 4 px accent halo, and a short beam of that accent now travels the halo once every 2.4 s, so the empty
+   screen breathes without anything on it moving. The beam is a conic gradient masked to a 2 px ring — one
+   registered angle lets it interpolate, and where @property is missing the ring simply sits still. It sits
+   inside the halo's own 4 px rather than on the card's border, so the card keeps one edge; a card that loses
+   focus loses the beam with the halo, and reduced motion stops it with every other animation (tokens.css). */
+@property --beam-turn {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.start-screen .composer-card:focus-within::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  padding: 2px;
+  /* The card's own radius plus the 4 px it grew by, or the ring squares off at its corners. */
+  border-radius: calc(var(--r-panel) + 8px);
+  background: conic-gradient(
+    from var(--beam-turn),
+    transparent 0deg,
+    color-mix(in srgb, var(--accent) 28%, transparent) 12deg,
+    var(--accent) 24deg,
+    color-mix(in srgb, var(--accent) 28%, transparent) 36deg,
+    transparent 48deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: beam-turn 2.4s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes beam-turn {
+  to {
+    --beam-turn: 360deg;
+  }
+}
+
+/* Without its travel the beam is a bright patch stuck in one corner of the halo, so it goes with the motion. */
+@media (prefers-reduced-motion: reduce) {
+  .start-screen .composer-card:focus-within::after {
+    display: none;
+  }
+}
+
 /* The folder chip: like the composer's pills (32 px, round), in the folder's accent. */
 .folder-chip-wrap {
   position: relative;
