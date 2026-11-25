@@ -7,6 +7,21 @@ import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helper
 const cards = (page: Page) => page.getByTestId("notice");
 const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: new RegExp(title) });
 
+/** The notice keeps only a restrained lift, not the large floating surface shadow. */
+async function expectNoticeShadow(page: Page): Promise<void> {
+  const card = cards(page).first();
+  await expect(card).toHaveCSS("box-shadow", "rgba(0, 0, 0, 0.2) 0px 1px 2px 0px, rgba(0, 0, 0, 0.4) 0px 4px 10px 0px");
+}
+
+/** The edge is measured by the component; compare it with the exact computed custom property. */
+async function expectNoticeEdge(page: Page, edgeProperty: "--toast-right" | "--toast-top" | "--toast-bottom"): Promise<void> {
+  await expect.poll(() => page.getByTestId("toast-stack").evaluate((el, edgeProperty) => {
+    const style = getComputedStyle(el);
+    const inset = style[edgeProperty === "--toast-right" ? "right" : edgeProperty === "--toast-top" ? "top" : "bottom"];
+    const measured = style.getPropertyValue(edgeProperty).trim();
+    return /^\d+(?:\.\d+)?px$/.test(measured) && parseFloat(measured) === parseFloat(inset) ? measured : inset;
+  }, edgeProperty)).toBe(await page.getByTestId("toast-stack").evaluate((el, property) => getComputedStyle(el)[property === "--toast-right" ? "right" : property === "--toast-top" ? "top" : "bottom"], edgeProperty));
+}
 /** Two chats left running in the background, and a third shown, so both finish "while away". */
 async function twoFinishInTheBackground(page: Page, tag: string): Promise<void> {
   await signInAndOpen(page);
@@ -29,6 +44,9 @@ test("two background chats finishing stack as cards that fan out on hover and op
 
   const stack = page.getByTestId("toast-stack");
   // The stack hangs off the right edge, below the header: it used to be centred over the header's row.
+  await expectNoticeShadow(page);
+  await expectNoticeEdge(page, "--toast-right");
+  await expectNoticeEdge(page, "--toast-top");
   const stackBox = await stack.boundingBox();
   const header = await page.locator(".chat-header").boundingBox();
   expect(stackBox!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
@@ -65,6 +83,7 @@ test("a notice keeps its lane left of the context rail", async ({ page }) => {
   const rail = await page.locator(".context-panel").boundingBox();
   const stack = await page.getByTestId("toast-stack").boundingBox();
   // The rail is a column of its own (its header, its buttons, its first rows): a notice starts where it ends.
+  await expectNoticeEdge(page, "--toast-right");
   expect(stack!.x + stack!.width).toBeLessThanOrEqual(rail!.x + 1);
   // And the rail's own control is still there to take: nothing of the stack sits over it.
   const toggle = page.locator(".context-panel .context-top button").first();
@@ -95,6 +114,7 @@ test("a notice raised on the start screen keeps its lane left of the rail once a
   await expect(cards(page).first()).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(500);
   // A chat opens under it and the rail mounts: the stack must move over to make room, not cover it.
+  await expectNoticeEdge(page, "--toast-right");
   await page.locator(".session", { hasText: "late rail idle" }).first().click();
   await expect(page.locator(".context-panel")).toBeVisible();
   const rail = (await page.locator(".context-panel").boundingBox())!;
@@ -155,6 +175,7 @@ test.describe("on a phone", () => {
     const card = (await notice.boundingBox())!;
     const approval = (await page.getByTestId("approval-card").boundingBox())!;
     // The dock grew when the request arrived; the notice followed it up instead of landing on it.
+    await expectNoticeEdge(page, "--toast-bottom");
     expect(card.y + card.height).toBeLessThanOrEqual(approval.y - 12);
     // The drawer covers the same corner: a notice under it is unreadable, so the stack steps out.
     await page.getByRole("button", { name: "Open menu" }).click();

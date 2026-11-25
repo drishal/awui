@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toastSwipe } from "../gestures.js";
 import { IconX } from "../icons.js";
-import { dismissToast, holdToasts, layoutToasts, nextDeadline, pushToast, releaseToasts, stackInset, stackOffset, sweepToasts, type Toast, type ToastInput } from "../toast-stack.js";
+import { dismissToast, DOCK_GAP, holdToasts, layoutToasts, nextDeadline, pushToast, releaseToasts, stackInset, stackOffset, sweepToasts, type Toast, type ToastInput } from "../toast-stack.js";
 
 export interface Toasts {
   stack: Toast[];
@@ -53,14 +53,17 @@ export function ToastStack({ toasts, onOpen }: { toasts: Toasts; onOpen: (t: Toa
     if (!root) return;
     // Everything the dock can grow with (the status stack above the box, an approval card taking the box's
     // place): a notice must clear the topmost of them, and each is watched, so an approval arriving under
-    // a notice pushes it up instead of being covered.
-    const dock = ['[data-pane="main"] .status-stack', '[data-pane="main"] [data-testid="approval-card"]', '[data-pane="main"] .composer'];
+    // a notice pushes it up instead of being covered. The opaque sticky prompt is part of that clearance.
+    const dock = ['[data-pane="main"] .status-stack', '[data-pane="main"] [data-testid="approval-card"]', '[data-pane="main"] .composer', '[data-pane="main"] .sticky-prompt'];
     const place = () => {
       const tops = dock.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)].map((el) => el.getBoundingClientRect().top));
       const fan = open ? cards.length * 50 : 6 * (cards.length - 1);
       if (tops.length > 0) root.style.setProperty("--toast-bottom", `${stackOffset(window.innerHeight, Math.min(...tops), fan)}px`);
-      // The context rail is a column of its own: the stack starts where it ends, so a notice never sits
-      // over the rail's own header or its buttons.
+      // A wide screen follows only the opaque sticky prompt's bottom; changing the fan then cannot make
+      // the top move out from under a hovering pointer. The CSS fallback keeps it below the top chrome.
+      for (const el of document.querySelectorAll<HTMLElement>('[data-pane="main"] .sticky-prompt')) {
+        root.style.setProperty("--toast-top", `${DOCK_GAP + el.getBoundingClientRect().bottom}px`);
+      }
       const rail = document.querySelector<HTMLElement>(".context-panel");
       root.style.setProperty("--toast-right", `${stackInset(rail?.getBoundingClientRect().width ?? 0)}px`);
     };
@@ -70,7 +73,7 @@ export function ToastStack({ toasts, onOpen }: { toasts: Toasts; onOpen: (t: Toa
     }
     const observer = new ResizeObserver(place);
     const watch = () => {
-      for (const selector of [...dock, "[data-pane=\"main\"] .chat-body", ".context-panel"]) {
+      for (const selector of [...dock, "[data-pane=\"main\"] .conversation-wrap", ".context-panel"]) {
         for (const el of document.querySelectorAll(selector)) observer.observe(el);
       }
     };

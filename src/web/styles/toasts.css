@@ -8,12 +8,14 @@
   --toast-gap: 6px;
   position: fixed;
   /* Beside the chat, not over it: the old centred stack landed on the header's own row, so a notice
-     covered the title and the controls beside it. It now hangs off the right edge, below the header, and
-     past the context rail's own column: ToastStack.tsx measures that width into --toast-right, so the
-     stack never sits over the rail's header or its buttons. */
+     covered the title and the controls beside it. It now hangs off the right edge, below the opaque sticky
+     prompt, and past the context rail's own column: ToastStack.tsx measures those edges into --toast-top
+     and --toast-right, so the stack never sits over the prompt or the rail's header or its buttons.
+     Isolation constrains its children's z index; the stack itself remains above the find bar and turn rail. */
   right: var(--toast-right, 16px);
-  top: calc(var(--top-chrome-h) + 8px);
-  z-index: 60;
+  top: var(--toast-top, calc(var(--top-chrome-h) + 8px));
+  isolation: isolate;
+  z-index: 8;
   width: min(360px, 40vw);
   height: var(--toast-h);
   pointer-events: none;
@@ -47,7 +49,7 @@
   padding: 6px 6px 6px 14px;
   border-radius: var(--r-md);
   background: var(--card);
-  box-shadow: var(--shadow-float), 0 0 0 1px var(--hairline-strong);
+  box-shadow: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.5)), 0 4px 10px rgb(0 0 0 / calc(var(--shadow-strength)));
   font-size: 13px;
   transform-origin: bottom center;
   transform: translateX(var(--dx, 0px)) translateY(var(--rest-y)) scale(var(--rest-scale));
