@@ -101,3 +101,23 @@ export function layoutToasts(stack: readonly Toast[]): Layout {
   for (const t of stack) if (t.leaving && t.leaving.slot < MAX_VISIBLE) cards.push({ toast: t, slot: t.leaving.slot });
   return { cards, hidden: Math.max(0, live.length - MAX_VISIBLE) };
 }
+
+/** The air a notice keeps over the dock it sits above, and off the rail beside it. */
+export const DOCK_GAP = 12;
+/** The lowest the stack may sit (px from the bottom): a tall dock must not push it off the screen. */
+export const MIN_FROM_BOTTOM = 30;
+
+/**
+ * `--toast-bottom`, the stack's bottom edge measured from the viewport's bottom. `dockTop` is the top edge
+ * of the highest thing a notice must clear (the status stack, an approval card, or the composer), `fan` how
+ * far the cards behind hang past the front one. A phone anchors the stack here; a wide screen keeps its own
+ * place under the header.
+ */
+export function stackOffset(viewportH: number, dockTop: number, fan: number): number {
+  return Math.max(viewportH - dockTop + fan + DOCK_GAP, MIN_FROM_BOTTOM + fan);
+}
+
+/** `--toast-right`: the stack hangs off the right edge, past the context rail's own column. */
+export function stackInset(railWidth: number): number {
+  return DOCK_GAP + 4 + Math.max(0, railWidth);
+}

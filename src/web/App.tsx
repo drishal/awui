@@ -580,6 +580,15 @@ export function App() {
       if (s) toasts.push({ key: `ask:${id}`, text: `“${s.title}” needs you`, sessionId: s.id, ms: 12000, kind: "warn" });
     }
   }, [askingIds]);
+
+  // A notice about the chat you are reading is news you already have: opening that chat takes its cards
+  // away (they were raised a moment before you arrived, and it is the approval card or the answer itself
+  // that needs your eye now).
+  const activeSessionId = chat?.sessionId ?? null;
+  useEffect(() => {
+    if (!activeSessionId) return;
+    for (const t of toasts.stack) if (!t.leaving && t.sessionId === activeSessionId) toasts.dismiss(t.id);
+  }, [activeSessionId, toasts.stack, toasts.dismiss]);
   useEffect(() => primeAudio(), []);
   const attention = attentionCount(
     askingIds,

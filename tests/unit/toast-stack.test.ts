@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dismissToast, holdToasts, layoutToasts, LEAVE_MS, nextDeadline, pushToast, releaseToasts, sweepToasts, type Toast } from "../../src/web/toast-stack.js";
+import { DOCK_GAP, dismissToast, holdToasts, layoutToasts, LEAVE_MS, MIN_FROM_BOTTOM, nextDeadline, pushToast, releaseToasts, stackInset, stackOffset, sweepToasts, type Toast } from "../../src/web/toast-stack.js";
 
 const add = (stack: Toast[], key: string, now = 0, ms = 1000) => pushToast(stack, { key, text: key, ms }, now);
 
@@ -41,6 +41,21 @@ describe("toast stack", () => {
     expect(cards.filter((c) => !c.toast.leaving).map((c) => [c.toast.key, c.slot])).toEqual([["c", 0], ["a", 1]]);
     expect(cards.find((c) => c.toast.leaving)?.slot).toBe(1);
     expect(sweepToasts(s, 100 + LEAVE_MS).map((t) => t.key)).toEqual(["c", "a"]);
+  });
+
+  it("docks 12 px above the topmost thing the notice must clear, and never off the screen", () => {
+    // A 844 px phone, the dock's top edge at 594: the stack's bottom sits 12 px above it.
+    expect(stackOffset(844, 594, 0)).toBe(844 - 594 + DOCK_GAP);
+    // Cards behind hang below the front one, so the stack's own box moves up by the same amount.
+    expect(stackOffset(844, 594, 14)).toBe(844 - 594 + 14 + DOCK_GAP);
+    // A tall dock (an approval card's whole sheet) keeps the stack on the screen.
+    expect(stackOffset(844, 830, 0)).toBe(MIN_FROM_BOTTOM);
+  });
+
+  it("keeps its lane clear of the context rail's measured width", () => {
+    expect(stackInset(0)).toBe(DOCK_GAP + 4);
+    expect(stackInset(40)).toBe(DOCK_GAP + 4 + 40);
+    expect(stackInset(272)).toBe(DOCK_GAP + 4 + 272);
   });
 
   it("does not hold a sinking card, and a new notice of its key starts a fresh card", () => {

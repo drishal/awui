@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toastSwipe } from "../gestures.js";
 import { IconX } from "../icons.js";
-import { dismissToast, holdToasts, layoutToasts, nextDeadline, pushToast, releaseToasts, sweepToasts, type Toast, type ToastInput } from "../toast-stack.js";
+import { dismissToast, holdToasts, layoutToasts, nextDeadline, pushToast, releaseToasts, stackInset, stackOffset, sweepToasts, type Toast, type ToastInput } from "../toast-stack.js";
 
 export interface Toasts {
   stack: Toast[];
@@ -50,23 +50,28 @@ export function ToastStack({ toasts, onOpen }: { toasts: Toasts; onOpen: (t: Toa
   const frame = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = frame.current;
-    if (!root || typeof ResizeObserver === "undefined") return;
+    if (!root) return;
+    // Everything the dock can grow with (the status stack above the box, an approval card taking the box's
+    // place): a notice must clear the topmost of them, and each is watched, so an approval arriving under
+    // a notice pushes it up instead of being covered.
+    const dock = ['[data-pane="main"] .status-stack', '[data-pane="main"] [data-testid="approval-card"]', '[data-pane="main"] .composer'];
     const place = () => {
-      // News belongs in the conversation, never over the composer's prompt or its sticky bar.
-      // On phones the status stack can grow, so use its real top edge rather than a fixed height.
-      const composer = document.querySelector<HTMLElement>('[data-pane="main"] .composer');
-      if (!composer) return;
-      const top = composer.getBoundingClientRect().top;
+      const tops = dock.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)].map((el) => el.getBoundingClientRect().top));
       const fan = open ? cards.length * 50 : 6 * (cards.length - 1);
-      const gap = 12;
-      const y = Math.max(window.innerHeight - top + fan + gap, 30 + fan);
-      root.style.setProperty("--toast-bottom", `${y}px`);
+      if (tops.length > 0) root.style.setProperty("--toast-bottom", `${stackOffset(window.innerHeight, Math.min(...tops), fan)}px`);
+      // The context rail is a column of its own: the stack starts where it ends, so a notice never sits
+      // over the rail's own header or its buttons.
+      const rail = document.querySelector<HTMLElement>(".context-panel");
+      root.style.setProperty("--toast-right", `${stackInset(rail?.getBoundingClientRect().width ?? 0)}px`);
     };
+    if (typeof ResizeObserver === "undefined") {
+      place();
+      return;
+    }
     const observer = new ResizeObserver(place);
-    const composer = document.querySelector('[data-pane="main"] .composer');
-    if (composer) observer.observe(composer);
-    const context = document.querySelector('[data-pane="main"] .chat-body');
-    if (context) observer.observe(context);
+    for (const selector of [...dock, "[data-pane=\"main\"] .chat-body", ".context-panel"]) {
+      for (const el of document.querySelectorAll(selector)) observer.observe(el);
+    }
     observer.observe(document.documentElement);
     place();
     return () => observer.disconnect();
@@ -121,6 +126,9 @@ function ToastCard({ toast, slot, onOpen, onDismiss }: { toast: Toast; slot: num
       data-testid={action ? "toast" : "notice"}
       data-kind={toast.kind ?? (action ? "undo" : null)}
       data-leaving={toast.leaving ? "" : undefined}
+      // The slot is an attribute as well as a custom property: the stylesheet hides a back card's accent
+      // rule by it, which a `style` string selector would make brittle.
+      data-slot={slot}
       style={{ "--slot": slot } as React.CSSProperties}
       onKeyDown={(e) => e.key === "Escape" && onDismiss()}
       // A sideways swipe on a touch screen sends it away; a short one springs back.

@@ -8,8 +8,10 @@
   --toast-gap: 6px;
   position: fixed;
   /* Beside the chat, not over it: the old centred stack landed on the header's own row, so a notice
-     covered the title and the controls beside it. It now hangs off the right edge, below the header. */
-  right: 16px;
+     covered the title and the controls beside it. It now hangs off the right edge, below the header, and
+     past the context rail's own column: ToastStack.tsx measures that width into --toast-right, so the
+     stack never sits over the rail's header or its buttons. */
+  right: var(--toast-right, 16px);
   top: calc(var(--top-chrome-h) + 8px);
   z-index: 60;
   width: min(360px, 40vw);
@@ -29,8 +31,10 @@
 }
 
 .toast {
-  --rest-y: calc(var(--slot) * 6px);
-  --rest-scale: calc(1 - var(--slot) * 0.06);
+  /* A card behind hangs 7 px lower and shrinks 5 % toward its bottom edge, so the lip under the front
+     card is one clean band centred on it rather than a nick on one corner. */
+  --rest-y: calc(var(--slot) * 7px);
+  --rest-scale: calc(1 - var(--slot) * 0.05);
   position: absolute;
   left: 0;
   right: 0;
@@ -45,9 +49,10 @@
   background: var(--card);
   box-shadow: var(--shadow-float), 0 0 0 1px var(--hairline-strong);
   font-size: 13px;
-  transform-origin: top center;
+  transform-origin: bottom center;
   transform: translateX(var(--dx, 0px)) translateY(var(--rest-y)) scale(var(--rest-scale));
-  opacity: calc(1 - var(--slot) * 0.25);
+  /* Faded by slot: the lip is depth, not a second card to read. */
+  opacity: calc(1 - var(--slot) * 0.35);
   /* Arriving, and fanning out or back, land on the spring; a dismissed card leaves on the same
      transition, which only moves it 10 px. */
   transition:
@@ -73,6 +78,12 @@
 .toast[data-kind="ok"]::before { background: var(--ok); }
 .toast[data-kind="warn"]::before { background: var(--warn); }
 .toast[data-kind="danger"]::before { background: var(--danger); }
+
+/* Only the front card carries a rule: the cards behind are the stack's depth, not a second notice that
+   says something louder than the one on top of it. */
+.toast[data-slot]:not([data-slot="0"])::before {
+  opacity: 0;
+}
 
 @keyframes toast-in {
   from {
@@ -146,27 +157,38 @@ a.toast-text:hover {
   .toast kbd {
     display: none;
   }
-
+  /* A thumb's dismiss target: the card is 44 px tall, so the button fills its height and sits flush with
+     its right edge instead of floating as a 32 px dot inside it. */
   .toast-close {
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
+    margin: -6px -6px -6px 0;
   }
 }
 
-/* "+2": the notices past the three drawn. A button, so a touch screen can fan the stack out. */
+/* The drawer covers the same bottom corner (a phone's notices dock there too), so while it is open the
+   stack steps out of it entirely: nothing of it is readable, and nothing of it takes a tap. */
+body:has(.sidebar.is-open) .toast-stack {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* "+2": the notices past the three drawn. A button, so a touch screen can fan the stack out. It sits on
+   the front card's top-left corner, its own 28 × 24 pill: the dismiss target owns the right-hand corner,
+   and a count pinched against it was easy to miss and easy to hit by accident. */
 .toast-more {
   position: absolute;
-  right: 6px;
-  top: -8px;
+  left: 6px;
+  top: -10px;
   z-index: 20;
-  min-width: 22px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 7px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 80%, var(--card));
   color: var(--accent-fg);
-  font: 600 11px/20px var(--font-mono);
+  font: 600 11px/24px var(--font-mono);
   pointer-events: auto;
   cursor: pointer;
 }

@@ -59,6 +59,28 @@ test("two background chats finishing stack as cards that fan out on hover and op
   await expect(cards(page)).toHaveCount(0);
 });
 
+test("a notice keeps its lane left of the context rail", async ({ page }) => {
+  await twoFinishInTheBackground(page, "rail lane");
+  await expect(cards(page).first()).toBeVisible();
+  const rail = await page.locator(".context-panel").boundingBox();
+  const stack = await page.getByTestId("toast-stack").boundingBox();
+  // The rail is a column of its own (its header, its buttons, its first rows): a notice starts where it ends.
+  expect(stack!.x + stack!.width).toBeLessThanOrEqual(rail!.x + 1);
+  // And the rail's own control is still there to take: nothing of the stack sits over it.
+  const toggle = page.locator(".context-panel .context-top button").first();
+  await expect(toggle).toBeVisible();
+  const button = (await toggle.boundingBox())!;
+  expect(stack!.x + stack!.width).toBeLessThanOrEqual(button.x + 1);
+});
+
+test("a notice about the chat you open goes with the arrival", async ({ page }) => {
+  await twoFinishInTheBackground(page, "arrival");
+  await expect(cards(page).filter({ hasText: "arrival one" })).toHaveCount(1, { timeout: 25_000 });
+  // Opening it from its tab, not from the card: what the card said is now the chat itself.
+  await tab(page, "arrival one").click();
+  await expect(cards(page).filter({ hasText: "arrival one" })).toHaveCount(0);
+});
+
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
@@ -75,6 +97,25 @@ test.describe("on a phone", () => {
   expect(timing).toMatch(/^(?:<1s|\d+(?:\.\d)?s|\d+m)/);
   await expect(page.getByTestId("answer-timing").last().locator(".answer-timing-full")).toBeHidden();
 });
+
+  test("a notice clears the approval card that took the composer's place, and the drawer covers it", async ({ page }) => {
+    await signInAndOpen(page);
+    // One chat runs long; the next one asks, so the approval card is the dock's top.
+    await newChat(page);
+    await send(page, "slow phone dock");
+    await newChat(page);
+    await send(page, "ask please, phone dock");
+    await expect(page.getByTestId("approval-card")).toBeVisible({ timeout: 25_000 });
+    const notice = page.getByTestId("notice").filter({ hasText: "phone dock" }).first();
+    await expect(notice).toBeVisible({ timeout: 30_000 });
+    const card = (await notice.boundingBox())!;
+    const approval = (await page.getByTestId("approval-card").boundingBox())!;
+    // The dock grew when the request arrived; the notice followed it up instead of landing on it.
+    expect(card.y + card.height).toBeLessThanOrEqual(approval.y - 12);
+    // The drawer covers the same corner: a notice under it is unreadable, so the stack steps out.
+    await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByTestId("toast-stack")).toBeHidden();
+  });
 
 test("a notice card swipes sideways away, and a short swipe springs back", async ({ page }) => {
     await twoFinishInTheBackground(page, "swiped");
