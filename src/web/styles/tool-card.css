@@ -525,7 +525,8 @@
 }
 
 .tool-row.is-open > .tool-line > .tool-row-line > .tool-head .tool-error {
-  display: none;
+  /* The opened body repeats the reason, but hiding its box must not move the head's facts. */
+  visibility: hidden;
 }
 
 .tool-line .drow-body {
@@ -562,7 +563,8 @@
    sentence, so the opened call says it once: the verb and the facts head the tile, and the body carries on under
    them. The chain is exact, so a subagent's own calls, deeper in, never hide their parent's sentence. */
 .tool-row.is-open:has(> .tool-line > .collapse > .collapse-inner > .drow-body > .tool-body > .names-target) > .tool-line > .tool-row-line > .tool-head .tool-target {
-  display: none;
+  /* Invisible, but its measured box stays: the head's text does not jump left during the unfurl. */
+  visibility: hidden;
 }
 
 /* A picture a call returned (a read of a screenshot): a thumbnail at the row's scale, left-aligned under the

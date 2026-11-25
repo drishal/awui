@@ -61,9 +61,14 @@ test("an opened call is one tile: the sentence keeps its verb and facts, the bod
   await sendAndWait(page, "testrun");
   const row = page.locator('[data-tool="bash"]');
   const head = row.locator(".tool-head");
+  const factBefore = await head.locator(".tool-facts").boundingBox();
   await expect(head.locator(".tool-target")).toBeVisible();
   await expect(row.getByTestId("tool-error")).toBeVisible();
   await head.click();
+  const factAfter = await head.locator(".tool-facts").boundingBox();
+  // The target and error leave visibly, but their reserved boxes do not move the remaining facts.
+  expect(Math.abs(factBefore!.x - factAfter!.x)).toBeLessThan(1);
+  expect(Math.abs(factBefore!.width - factAfter!.width)).toBeLessThan(1);
   // The whole command is in the body, so the sentence leaves it out; the failing test is in the output.
   await expect(row.locator(".term-command")).toBeVisible();
   await expect(head.locator(".tool-target")).toBeHidden();
