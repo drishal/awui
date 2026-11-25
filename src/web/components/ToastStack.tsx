@@ -69,12 +69,33 @@ export function ToastStack({ toasts, onOpen }: { toasts: Toasts; onOpen: (t: Toa
       return;
     }
     const observer = new ResizeObserver(place);
-    for (const selector of [...dock, "[data-pane=\"main\"] .chat-body", ".context-panel"]) {
-      for (const el of document.querySelectorAll(selector)) observer.observe(el);
-    }
+    const watch = () => {
+      for (const selector of [...dock, "[data-pane=\"main\"] .chat-body", ".context-panel"]) {
+        for (const el of document.querySelectorAll(selector)) observer.observe(el);
+      }
+    };
+    watch();
     observer.observe(document.documentElement);
     place();
-    return () => observer.disconnect();
+    // The rail, the dock and the approval card come and go as chats open and close, and a notice raised
+    // before one of them mounted would otherwise keep measuring what was there when it arrived (a card
+    // raised on the start screen sat over the rail of the chat opened a second later). One animation frame
+    // after the page's structure changes, watch what is new and place again; observing an element twice is a no-op.
+    let frameId = 0;
+    const mutations = new MutationObserver(() => {
+      if (frameId) return;
+      frameId = requestAnimationFrame(() => {
+        frameId = 0;
+        watch();
+        place();
+      });
+    });
+    mutations.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      mutations.disconnect();
+      if (frameId) cancelAnimationFrame(frameId);
+    };
   }, [cards.length, open]);
   useEffect(() => (holding ? hold() : release()), [holding, hold, release]);
   useEffect(() => {

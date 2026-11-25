@@ -73,6 +73,34 @@ test("a notice keeps its lane left of the context rail", async ({ page }) => {
   expect(stack!.x + stack!.width).toBeLessThanOrEqual(button.x + 1);
 });
 
+test("a notice raised before the rail exists still clears it once a chat opens", async ({ page }) => {
+  await signInAndOpen(page);
+  // An idle chat to open later: opening it raises and dismisses nothing, so the notices' count never changes
+  // and only the page's structure does.
+  await newChat(page);
+  await sendAndWait(page, "late rail idle");
+  for (const which of ["one", "two"]) {
+    await newChat(page);
+    await send(page, `ask late rail ${which}`);
+    await expect(page.getByTestId("approval-card")).toBeVisible();
+  }
+  // A fresh load lands on the start screen (no rail) and the chats still waiting on you raise their notices
+  // there: the stack measures a page without a rail.
+  await page.goto("/");
+  await expect(page.locator(".context-panel")).toHaveCount(0);
+  await expect(cards(page).first()).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(500);
+  // A chat opens under them and the rail mounts: the stack must move over to make room, not cover it.
+  await showSidebar(page);
+  await page.locator(".session", { hasText: "late rail idle" }).first().click();
+  await expect(page.locator(".context-panel")).toBeVisible();
+  const rail = (await page.locator(".context-panel").boundingBox())!;
+  await expect.poll(async () => {
+    const stack = await page.getByTestId("toast-stack").boundingBox();
+    return stack ? stack.x + stack.width <= rail.x + 1 : true;
+  }).toBe(true);
+});
+
 test("a notice about the chat you open goes with the arrival", async ({ page }) => {
   await twoFinishInTheBackground(page, "arrival");
   await expect(cards(page).filter({ hasText: "arrival one" })).toHaveCount(1, { timeout: 25_000 });
