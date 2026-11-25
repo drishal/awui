@@ -9,6 +9,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import type { PluggableList } from "unified";
 import remarkGfm from "remark-gfm";
 import { isMermaidFence } from "../mermaid.js";
+import { streamTail } from "../stream-tail.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { MermaidDiagram } from "./MermaidDiagram.js";
 
@@ -83,13 +84,16 @@ function withCode(allowRun: boolean, streaming: boolean): Components {
 
 function MarkdownImpl({ text, allowRun = false, streaming = false }: { text: string; allowRun?: boolean; streaming?: boolean }) {
   const parts = useMemo(() => withCode(allowRun, streaming), [allowRun, streaming]);
+  // While it streams, the frame holds back (or closes) the marker it is part-way through: a token of a bold
+  // span must not draw its "**", and a bold word should arrive bold rather than plain until the closer comes.
+  const shown = streaming ? streamTail(text) : text;
   return (
     <div className="md">
       {/* No rehype-raw: without it react-markdown has no path from markdown to
           elements, so an agent's `<details>` or `<script>` comes out escaped
           rather than being dropped (an answer quoting a tag used to lose it). */}
       <ReactMarkdown remarkPlugins={REMARK} skipHtml={false} urlTransform={safeUrl} components={parts}>
-        {text}
+        {shown}
       </ReactMarkdown>
     </div>
   );
