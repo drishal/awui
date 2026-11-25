@@ -776,14 +776,14 @@ test("the model picker searches across providers, remembers recents, and works b
   await expect(search).toBeFocused();
   await page.getByRole("button", { name: "Refresh models" }).click();
   await expect(dialog.getByRole("option", { name: /Fake Fresh/ })).toBeVisible();
-  await expect(dialog.getByRole("option", { name: /Fake Echo/ }).locator(".model-tag")).toHaveText("up to high");
+  await expect(dialog.getByRole("option", { name: /Fake Echo/ }).locator(".model-tag")).toHaveText("up to High");
   // Grouped by provider, the current provider first.
   await expect(dialog.getByRole("group")).toHaveCount(3);
   await expect(dialog.getByRole("group").first()).toHaveAccessibleName("fake");
   // Punctuation-insensitive: "gpt55" finds GPT-5.5 and GPT-5.5 Mini.
   await search.fill("gpt55");
   await expect(dialog.getByRole("option")).toHaveText([/GPT-5\.5/, /GPT-5\.5 Mini/]);
-  await expect(dialog.getByRole("option").first().locator(".model-tag")).toHaveText("up to xhigh");
+  await expect(dialog.getByRole("option").first().locator(".model-tag")).toHaveText("up to Extra high");
   await page.keyboard.press("ArrowDown");
   await expect(dialog.getByRole("option", { selected: true })).toContainText("GPT-5.5 Mini");
   await page.keyboard.press("Enter");

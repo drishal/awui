@@ -354,7 +354,7 @@ export function ModelPicker({
                           // The strongest level the model takes, said as the ceiling it is: the chat's own level is
                           // on the chip that opened this list, and a bare "high" beside it read as a contradiction.
                           <span className="model-tag" title={`Reasoning levels: ${model.levels.join(", ")}`}>
-                            up to {model.levels[model.levels.length - 1]}
+                            up to {levelTitle(model.levels[model.levels.length - 1]!)}
                           </span>
                         ) : null}
                         <span className="model-check">{model.key === current ? <IconCheck size={13} /> : null}</span>

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ModelInfo, PermissionModeInfo } from "../../src/shared/protocol.js";
-import { configSummary, modelSummary } from "../../src/web/config-summary.js";
+import { configSummary, levelTitle, modelSummary } from "../../src/web/config-summary.js";
 
+describe("thinking levels", () => {
+  it.each([{ level: "xhigh", title: "Extra high" }, { level: "max", title: "Max" }, { level: "minimal", title: "Minimal" }])("titles $level as $title", ({ level, title }) => {
+    expect(levelTitle(level)).toBe(title);
+  });
+});
 const models: ModelInfo[] = [
   { key: "fake/echo", provider: "fake", id: "echo", name: "Fake Echo", reasoning: true },
   { key: "zeta/glm", provider: "zeta", id: "glm", name: "GLM-5.3-Flash", reasoning: false },

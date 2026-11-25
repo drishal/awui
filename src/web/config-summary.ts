@@ -9,9 +9,9 @@ type SummaryChat = {
   config: Pick<ChatConfig, "model" | "models" | "thinkingLevel" | "permissionMode" | "permissionModes">;
 };
 
-/** A thinking level as a person reads it: "max" → "Max". */
+/** A thinking level as a person reads it: "xhigh" → "Extra high", "max" → "Max". */
 export function levelTitle(level: string): string {
-  return level.charAt(0).toUpperCase() + level.slice(1);
+  return level === "xhigh" ? "Extra high" : level.charAt(0).toUpperCase() + level.slice(1);
 }
 
 /** What model answers, and at what effort: "Fake Echo · Low". The folded phone composer reads this, where the
