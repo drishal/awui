@@ -247,3 +247,16 @@ test("a long press on a reply offers Copy turn as Markdown", async ({ page, cont
   await page.getByRole("dialog", { name: /^Reply/ }).getByRole("menuitem", { name: "Copy turn as Markdown" }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toMatch(/## Prompt\n\nplease edit the app[\s\S]*- \*\*Edit\*\* `src\/app\.ts`[\s\S]*## Answer/);
 });
+
+test("the start screen's composer stands on the same floor as a chat's", async ({ page }) => {
+  await signInAndOpen(page);
+  // The pane's own floor, measured from the window's bottom edge to the card's.
+  const floor = (selector: string) => page.locator(selector).evaluate((el) => Math.round(window.innerHeight - el.getBoundingClientRect().bottom));
+  // The hero carried 24px under the composer where a chat's dock is flush (round 7: frame 14 vs 15/18), so the
+  // same box sat raised on the screen you begin from.
+  const start = await floor(".composer-card");
+  await sendAndWait(page, "hello from the floor");
+  const chat = await floor(".composer-card");
+  expect(chat).toBeLessThan(16);
+  expect(start).toBe(chat);
+});

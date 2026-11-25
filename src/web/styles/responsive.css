@@ -135,6 +135,13 @@
     max-width: 88%;
   }
 
+  /* A phone's start screen puts its composer on the floor a chat's composer stands on: the hero carried 24px under
+     the card, so the same box sat raised on the screen you begin from (round 7: frame 14 vs 15/18). The composer's
+     own 8px plus the home indicator's inset is the floor; the hero still centres its words in what is left. */
+  .hero {
+    padding-bottom: 0;
+  }
+
   .composer {
     padding: 4px 8px calc(8px + env(safe-area-inset-bottom));
   }
