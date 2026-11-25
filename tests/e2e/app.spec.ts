@@ -890,8 +890,11 @@ test("todos from the harness show in the status stack, which can be hidden", asy
   await newChat(page);
   await sendAndWait(page, "make a todo list");
   const stack = page.getByTestId("status-stack");
-  await expect(stack).toContainText("Todos");
+  // The run has settled, so the dock is its shut head: "Todos 1/3" is all an idle chat needs, and opening it is the
+  // user's own call from there.
+  await expect(stack.getByRole("button", { name: /^Todos/ })).toHaveAttribute("aria-expanded", "false");
   await expect(stack).toContainText("1/3");
+  await stack.getByRole("button", { name: /^Todos/ }).click();
   await expect(stack.locator(".stack-row")).toHaveCount(3);
   // The harness's phases are a tree: a numbered row with its count, the tasks under it.
   const phases = stack.getByRole("list", { name: "Todo phases" });
@@ -918,7 +921,8 @@ test("a rpiv-todo list shows in the status stack, and its call reads as the acti
   // The tool's result carries the whole list; the row says which action it was, not "the plan".
   await expect(page.locator('[data-tool="todo"] .tool-sentence')).toHaveText("Updated #2 to in progress");
   const stack = page.getByTestId("status-stack");
-  await expect(stack).toContainText("Todos");
+  await expect(stack.getByRole("button", { name: /^Todos/ })).toHaveAttribute("aria-expanded", "false");
+  await stack.getByRole("button", { name: /^Todos/ }).click();
   await expect(stack).toContainText("1/3");
   await expect(stack.locator(".stack-row")).toHaveCount(3);
   await expect(stack).toContainText("Draw the reason inline");

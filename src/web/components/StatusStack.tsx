@@ -28,18 +28,20 @@ import type { DelegatedTaskView } from "../../shared/protocol.js";
 function Group({
   title,
   meta,
-  defaultOpen,
+  open: follows,
   children,
 }: {
   title: string;
   meta?: string;
-  defaultOpen: boolean;
+  /** The state the group takes until the user picks one: an idle chat leaves its todos to the head's count. */
+  open: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [picked, setPicked] = useState<boolean | null>(null);
+  const open = picked ?? follows;
   return (
     <div className={`stack-group${open ? " is-open" : ""}`}>
-      <button type="button" className="stack-group-head" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <button type="button" className="stack-group-head" aria-expanded={open} onClick={() => setPicked(!open)}>
         <IconChevronDown size={12} className="stack-chevron" />
         <span>{title}</span>
         {meta ? <span className="stack-meta">{meta}</span> : null}
@@ -107,7 +109,8 @@ export function StatusStack({
   const key = `stack.${chatId}`;
   const [hidden, setHidden] = useState(() => load<boolean>(key, false));
   // A phone's dock is a shelf: a card starts shut on its head (the title and its count) and opens on a tap, so the
-  // conversation keeps the screen. A desk has the height to open them.
+  // conversation keeps the screen. A desk has the height to open its groups, but its todos wait for a run to work:
+  // the head's count says all a settled chat needs, and the transcript keeps the height.
   const phone = useMediaQuery("(max-width: 600px)");
   useEffect(() => setHidden(load<boolean>(key, false)), [key]);
   const queued = [...queue.steering.map((t, i) => ({ t, k: "Steering", i })), ...queue.followUp.map((t, i) => ({ t, k: "Follow-up", i }))];
@@ -216,7 +219,7 @@ export function StatusStack({
             </div>
           ) : null}
           {background.length > 0 ? (
-            <Group title="Background" meta={runningJobs > 0 ? `${runningJobs} running` : "finished"} defaultOpen={!phone}>
+            <Group title="Background" meta={runningJobs > 0 ? `${runningJobs} running` : "finished"} open={!phone}>
               <div className="job-list" data-testid="background-jobs">
                 {background.map((job) => (
                   <JobCard key={job.id} job={job} />
@@ -321,12 +324,12 @@ export function StatusStack({
             </div>
           ) : null}
           {showTasks ? (
-            <Group title="Delegated" meta={tasksMeta(tasks) ?? undefined} defaultOpen={!phone}>
+            <Group title="Delegated" meta={tasksMeta(tasks) ?? undefined} open={!phone}>
               <DelegatedTasks tasks={tasks} chatId={chatId} workspaceId={workspaceId} harnessName={harnessName} onOpen={onOpenTask} onCancel={onCancelTask} />
             </Group>
           ) : null}
           {todos.length > 0 ? (
-            <Group title="Todos" meta={`${done}/${todos.length}`} defaultOpen={!phone}>
+            <Group title="Todos" meta={`${done}/${todos.length}`} open={!phone && working}>
               <TodoTree todos={todos} working={working} jobs={jobsById} />
             </Group>
           ) : null}
