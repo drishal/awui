@@ -613,13 +613,23 @@
 
 /* Phones: the facts drop under the sentence rather than squeezing it; status and chevron stay on the first line. */
 @media (pointer: coarse), (max-width: 640px) {
+  /* A thumb's row: the counts go under the sentence when they must, and the row keeps its floor (38px, a
+     finger's height) so a call is still a target rather than a line of text. */
   .tool-head {
     flex-wrap: wrap;
     row-gap: 0;
   }
 
+  /* A phone's row keeps two lines for the sentence: a command or a path that does not fit is read to its end
+     rather than cut at "…tool-diff". Two lines is the cap — a third would make the card a wall of text again —
+     and the row grows to hold them, with the counts and the chevron centred beside it. */
   .tool-sentence {
+    display: -webkit-box;
     flex: 1 1 0;
+    overflow: hidden;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   /* Under the sentence they read left to right with it, not pushed to the row's far edge. */

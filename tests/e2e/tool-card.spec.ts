@@ -216,15 +216,22 @@ test.describe("on a phone", () => {
     const toggle = page.getByTestId("process-toggle").last();
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // Past the grow (motion.css), so the rows are their own height rather than the clip's.
+    await page.waitForTimeout(400);
     // Settled with a tally, the header gives the check's room back to its label, which then fits whole.
     await expect(toggle.getByTestId("process-status")).toBeHidden();
     expect(await toggle.locator(".process-label").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const row = page.locator('[data-tool="bash"]').first();
     const [sentence, facts] = [await row.locator(".tool-sentence").boundingBox(), await row.locator(".tool-facts").boundingBox()];
-    // On a phone the counts stay on the call's line; the sentence ellipsises first.
-    expect(Math.abs(facts!.y - sentence!.y)).toBeLessThan(4);
+    // On a phone the counts stay on the call's line — beside the sentence, never wrapped under it — even where
+    // the sentence takes the second line it is allowed; the sentence ellipsises first.
+    expect(facts!.x).toBeGreaterThan(sentence!.x);
+    // They share the sentence's line: most of the counts' box sits inside the sentence's box, never below it.
+    const shared = Math.min(facts!.y + facts!.height, sentence!.y + sentence!.height) - Math.max(facts!.y, sentence!.y);
+    expect(shared).toBeGreaterThan(facts!.height * 0.6);
     const failed = page.locator('[data-status="error"]');
-    const [button, card] = [await failed.getByRole("button", { name: /^Ask the agent to retry/ }).boundingBox(), await failed.boundingBox()];
+    // The row's own line, not .tool-row: an opened fold's row boxes only its line, and the button is laid over that.
+    const [button, card] = [await failed.getByRole("button", { name: /^Ask the agent to retry/ }).boundingBox(), await failed.locator(".tool-row-line").boundingBox()];
     // One line: the button sits inside the call's row, finger-sized, not under it.
     expect(button!.y).toBeGreaterThanOrEqual(card!.y - 1);
     expect(button!.y + button!.height).toBeLessThanOrEqual(card!.y + card!.height + 1);
