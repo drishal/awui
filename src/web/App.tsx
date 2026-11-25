@@ -96,7 +96,7 @@ import { HandoverDialog } from "./components/HandoverDialog.js";
 import { collectChanges } from "./review.js";
 import { copyResumeCommand, useResumeCommand } from "./resume-command.js";
 import { chatMarkdown, downloadText, exportFileName } from "./export.js";
-import { IconEdit, IconGauge, IconMenu, IconMore, IconSearch, IconSidebar, IconSplit, IconTerminal, IconBranch, IconAgents } from "./icons.js";
+import { IconEdit, IconGauge, IconMenu, IconMore, IconSearch, IconSidebar, IconSplit, IconTerminal, IconBranch } from "./icons.js";
 import { applyHarnessAccents, harnessColor } from "./harness-colors.js";
 import { moveTab, pinnedCount, setPinned } from "./tab-order.js";
 import { closeTab, draftTab, findRoomTab, findTab, loadTabs, markUnread, placeChat, placeRoomTab, placeTab, runningChats, saveTabs, syncActive, syncRoomTitles, type Tab, type TabState } from "./tabs.js";
@@ -2463,7 +2463,7 @@ export function App() {
           {workspace && !room.roomId ? <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="Terminal" title="Open a project terminal" onClick={() => openTool("terminal")}><IconTerminal size={16} /></button> : null}
           {workspace && !room.roomId ? <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="GitHub and pull requests" title="Push or create a pull request" onClick={() => openTool("github")}><IconBranch size={16} /></button> : null}
           {chat && !room.roomId ? (
-            <button type="button" className={`icon-btn${!contextClosed ? " is-on" : ""}`} aria-label={!wide ? "Expand chat context" : contextClosed ? "Show chat context" : "Hide chat context"} aria-expanded={!contextClosed} title="Active work, agent runs and review context" onClick={() => wide ? setContextClosed((value) => !value) : setContextSheet(true)}><IconAgents size={16} /></button>
+            <button type="button" className={`icon-btn${!contextClosed ? " is-on" : ""}`} aria-label={!wide ? "Expand chat context" : contextClosed ? "Show chat context" : "Hide chat context"} aria-expanded={!contextClosed} title="Active work, agent runs and review context" onClick={() => wide ? setContextClosed((value) => !value) : setContextSheet(true)}><IconSidebar size={16} /></button>
           ) : null}
           {wide && !room.roomId && (chat || side) ? (
             <button
