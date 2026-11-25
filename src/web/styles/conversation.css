@@ -29,6 +29,13 @@
   background: linear-gradient(to bottom, var(--bg) 10px, transparent);
 }
 
+/* With the opaque sticky prompt mounted, start below its STICKY_BAR_PX height: the fade then belongs to its edge,
+   not to the next prompt under it. The bar-less rule stays at the scroll area's edge. Height matches the two-row fade. */
+.conversation-wrap:has(.sticky-prompt)::before {
+  top: 32px;
+  height: 40px;
+  background: linear-gradient(to bottom, var(--bg) 8px, transparent);
+}
 .conversation-wrap::after {
   bottom: 0;
   height: 36px;

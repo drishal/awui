@@ -6,8 +6,13 @@ const answers = (page: Page) => page.getByTestId("answer");
 const prompts = (page: Page) => page.getByTestId("user-prompt");
 
 async function assertSolidStickyPrompt(page: Page): Promise<void> {
-  // The prompt sits over otherwise empty page space: only a single opaque, unblurred face stays readable in either scheme.
+  // The prompt stays opaque and unblurred, while its fade begins below the bar's height.
   const bar = page.getByRole("button", { name: /^Back to prompt #1:/ });
+  const wrap = page.locator(".conversation-wrap");
+  const barBox = await bar.boundingBox();
+  expect(barBox).not.toBeNull();
+  await expect.poll(() => wrap.evaluate((el) => getComputedStyle(el, "::before").top)).toBe(`${Math.round(barBox!.height)}px`);
+  await expect.poll(() => wrap.evaluate((el) => getComputedStyle(el, "::before").height)).toBe("40px");
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await expect.poll(async () => bar.evaluate((el) => {
