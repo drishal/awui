@@ -55,10 +55,10 @@ export function DirenvRow({ direnv }: { direnv: DirenvState }) {
   const slash = direnv.rcPath.lastIndexOf("/");
   return (
     <div className="direnv-row" data-testid="direnv-row" title={`direnv loads ${direnv.rcPath} into every agent this project starts`}>
-      <IconTerminal size={13} className="direnv-row-icon" />
+      <IconTerminal size={14} className="direnv-row-icon" />
       <span className="direnv-row-text">direnv</span>
       <span className="direnv-row-file">{direnv.rcPath.slice(slash + 1)}</span>
-      <IconCheck size={11} className="direnv-row-check" />
+      <IconCheck size={13} className="direnv-row-check" />
     </div>
   );
 }

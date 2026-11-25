@@ -196,17 +196,48 @@
 }
 
 /* Git row: its own bubble, detached from the card above it. */
+/* Alone, the stack is no card at all: no frame, no surface. With the frame gone its pills' edges are the composer
+   card's own (a 1px transparent border was still holding them a pixel in on each side). */
 .status-stack.is-base-only {
-  border-color: transparent;
+  border: 0;
   background: none;
 }
 
-/* Alone, the row is the stack's bubble: no card around it, at the card's width and radius. */
-.status-stack.is-base-only .git-row {
-  width: 100%;
+/* The stack's two pills — the project's environment at the top of it and git at its base — are one family: the same
+   width and edges, height, padding, radius, hairline and type. Drawn apart they read as two different things: the
+   direnv pill sat 4px inside the git pill on each side, 2px shorter, at a smaller radius, so the pair looked like
+   one row with something inset over it rather than two rows of a list. */
+.git-row,
+.direnv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 8px);
   min-height: 32px;
-  margin: 0;
+  margin: 0 4px 4px;
+  padding: 0 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+}
+
+/* Alone in the dock, with no card above them, each is the stack's own bubble: the composer's full width and its
+   card's radius, so the pair's edges are the composer's edges. */
+.status-stack.is-base-only .git-row,
+.status-stack.is-base-only .direnv-row {
+  width: 100%;
   border-radius: var(--r-lg);
+}
+
+.status-stack.is-base-only .git-row {
+  margin: 0;
+}
+
+.status-stack.is-base-only .direnv-row {
+  margin: 0 0 4px;
 }
 
 /* While an approval waits, its card is the column's one surface above the composer: the git row drops its
@@ -220,21 +251,6 @@
   border-radius: var(--r-control);
 }
 
-.git-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: calc(100% - 8px);
-  min-height: 30px;
-  margin: 0 4px 4px;
-  padding: 0 8px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: 13px;
-  text-align: left;
-}
 
 /* Under the card's sections the row is the card's foot: flat, full width, a hairline above,
    its hover reaching the card's rounded bottom edge. */
@@ -254,22 +270,8 @@
   background: var(--hover);
 }
 
-/* Direnv row (at the top of the stack): the same quiet bubble, in the ok colour —
-   the agent starts on the environment the UI shows. */
-.direnv-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: calc(100% - 8px);
-  min-height: 30px;
-  margin: 0 4px 4px;
-  padding: 0 8px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: 13px;
-}
+/* Direnv row (at the top of the stack): its own quiet pill, the ok colour saying the agent starts on the environment
+   the UI shows. The shape is the shared one above; this is only what the row itself adds. */
 
 /* Led first in the card, under the ridge and above the body: the card's own width. */
 .stack-top {
@@ -283,12 +285,6 @@
   background: color-mix(in srgb, var(--ok) 8%, transparent);
 }
 
-.status-stack.is-base-only > .direnv-row {
-  width: 100%;
-  min-height: 32px;
-  margin: 0 0 4px;
-  border-radius: var(--r-lg);
-}
 
 .direnv-row-icon {
   flex: none;
