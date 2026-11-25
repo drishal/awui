@@ -20,6 +20,7 @@
 
 .job-card {
   --job-edge: var(--info);
+  --card-r: 14px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -27,9 +28,12 @@
   min-width: 0;
   padding: 9px 12px 10px 14px;
   overflow: hidden;
-  border-radius: var(--r-md);
+  border-radius: var(--card-r);
   background: var(--card);
-  box-shadow: inset 0 0 0 1px var(--hairline);
+  /* The same edge and lift a run's card has: a job is a card on the page too, not a table division. */
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 3%), transparent),
+    var(--shadow-soft);
   animation: settle-in var(--dur-spring) var(--spring);
 }
 

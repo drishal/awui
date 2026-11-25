@@ -5,15 +5,18 @@
    row is tinted and carries its error line. Every colour derives from the theme
    tokens; motion is short and eased out (tokens.css switches it off). */
 .process-card {
+  /* The card's own radius, so its head can take the same corners while it morphs. */
+  --card-r: 14px;
   position: relative;
   /* One rectangle: rows, hovers, and an opened call's panel run edge to edge and take the card's corners. */
   overflow: hidden;
-  border-radius: var(--r-md);
+  border-radius: var(--card-r);
   background: var(--card);
-  /* A little firmer than a hairline: on a light page a 10% edge on a near-white card all but dissolved. */
+  /* A little firmer than a hairline, and lifted off the page: a card drawn only with a 1px edge reads as a
+     table division at a glance. The ring is drawn inside the radius, so it never squares the corners. */
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 3%), transparent),
-    0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.4));
+    var(--shadow-soft);
 }
 
 .process-bar {
@@ -22,10 +25,12 @@
 
 .process-card .process-head {
   gap: 10px;
-  min-height: calc(38px * var(--chat-scale));
+  /* 40px: the header is the card's title, and a title line reads better with a row's worth of air around it.
+     The live clock's shimmer pad and the tally pills fit inside it. */
+  min-height: calc(40px * var(--chat-scale));
   padding: 6px 12px 6px 10px;
   border-bottom: 0;
-  border-radius: var(--r-md);
+  border-radius: var(--card-r);
   /* The head becomes the card's header as the body grows: ease its corners square, so
      the row morphs into the head of one container instead of snapping square at once. */
   transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease, border-radius 0.28s var(--ease-spring);
@@ -41,8 +46,19 @@
   background: var(--hover);
 }
 
+/* The header is the card's title ("Worked for 1s"), so it carries the weight; what the run used is the
+   subtitle beside it, in the quiet ink, and never bold. */
 .process-card .process-label {
   flex: 1 1 auto;
+  color: var(--text);
+  font-size: var(--chat-small);
+  font-weight: 600;
+}
+
+.process-card .process-counts,
+.process-card.is-live .process-time {
+  color: var(--muted-text);
+  font-weight: 500;
 }
 
 /* A live head's clock keeps the run's life too: a narrow sheen crossing its surface-2 pad, slow enough to read as a
