@@ -27,9 +27,14 @@ test("work happens along with its chart: context count follows the original tool
     }, { timeout: 10_000 }).toBeTruthy();
   }
   if (gitStatus) {
+    await page.getByRole("button", { name: "GitHub", exact: true }).click();
     await expect(gitRow).toBeVisible();
     await expect(gitRow.locator(".context-git-branch")).not.toBeEmpty();
     await expect(gitRow.getByRole("button", { name: "Review changes" })).toBeVisible();
+    await page.getByRole("button", { name: "GitHub", exact: true }).click();
+    // The dock shows the same facts: the rail no longer repeats them.
+    await expect(gitRow).toHaveCount(0);
+    await expect(page.locator("main .composer-git")).toBeVisible();
   }
   // The context figure lives in its card (the ring and the token line), and on the composer's ring: the
   // group's heading does not repeat it.

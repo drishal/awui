@@ -37,6 +37,8 @@ export interface ContextRailProps extends ContextActions {
   onOpen: () => void;
   /** Close the selected detail without removing the rail. */
   onClose: () => void;
+  /** The composer shows the branch and diff while this is true; the rail never repeats them. */
+  composerVisible: boolean;
 }
 
 type Props = ContextRailProps;
@@ -64,7 +66,7 @@ function useProjectGit(chatId: string, status: ChatSnapshot["status"], showing: 
   return git;
 }
 
-export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onOpenChat, onCancelTask, onReview, onRace, onOpinion, onUsage, onQuestions, onSubagents }: Props) {
+export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, composerVisible, onOpenChat, onCancelTask, onReview, onRace, onOpinion, onUsage, onQuestions, onSubagents }: Props) {
   // The rail is always there, being 240–280px wide is a choice: its rows are the reason for the width, so an
   // empty rail keeps its 40px and one with something to say opens by itself. `asked` is the person overruling
   // that — true when they opened an empty rail, false when they folded a busy one away.
@@ -94,7 +96,7 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, onO
   // a rail with nothing in it does not claim the width on its own.
   const detail = mode === "sheet" || (expanded && (asked ?? !idle));
   const showing = detail;
-  const git = useProjectGit(chatId, chat.status, showing);
+  const git = useProjectGit(chatId, chat.status, showing && !composerVisible);
   const project = gitSummary(git);
   const hasAttention = running + chat.pending.length;
 
