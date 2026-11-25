@@ -297,8 +297,10 @@
   background: var(--surface-2);
   cursor: pointer;
   touch-action: none;
-  /* --x is written per frame by effort-spring.ts (the thumb's left edge, inset = the track's half height);
-     the dots and the fill read it. The swell radius R is 0.7 × the step spacing. */
+  /* --x is the thumb's CENTRE in px from the track's left edge, written per frame by effort-spring.ts; the
+     dots and the fill read it. The stops sit at the same centres, from --inset (the track's half height)
+     to the width less --inset, so the 20px thumb at either end stays inside the track. The swell radius R
+     is 0.7 × the step spacing. */
   --x: var(--inset);
   --effort-r: 18px;
 }
@@ -313,23 +315,25 @@
   }
 }
 
+/* The wash from the left end to the thumb's centre (the thumb covers the rest). A clip of the track-wide
+   element, not a scaled one: a transform here would scale the whole track by a ratio of lengths and run
+   the wash out past the popover. The clip's rounded left end follows the track's own radius. */
 .effort-fill {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 100%;
-  border-radius: 15px 0 0 15px;
+  inset: 0;
+  border-radius: 15px;
   background: linear-gradient(90deg, color-mix(in srgb, var(--thinking) 10%, transparent), color-mix(in srgb, var(--thinking) 30%, transparent));
-  transform: scaleX(calc((var(--x) - var(--inset) + 10px) / (100 * 1px)));
-  transform-origin: left center;
-  clip-path: inset(0 calc(100% - var(--x) - 10px) 0 0);
+  clip-path: inset(0 calc(100% - var(--x)) 0 0);
 }
 
 .effort-stop {
   position: absolute;
-  /* The dot's centre sits at the thumb's centre (--x + 10): the thumb is 20px wide. Positioned by
-     margins, not translate, so the swell's scale grows around the centre instead of shifting it. */
+  /* The dot's centre is the stop's centre: the same point --x reaches when the thumb is on this stop.
+     Positioned by margins, not translate, so the swell's scale grows around the centre instead of
+     shifting it. */
   top: calc(50% - 2.5px);
-  left: calc(var(--inset) + var(--atx) * (100% - 2 * var(--inset)) / 100 + 7.5px);
+  margin-left: -2.5px;
+  left: calc(var(--inset) + var(--atx) * (100% - 2 * var(--inset)) / 100);
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -346,11 +350,6 @@
 .effort-stop.is-passed {
   background: var(--thinking);
   opacity: 0.95;
-}
-
-.effort-stop.is-passed ~ .effort-stop {
-  background: var(--muted);
-  opacity: 0.5;
 }
 
 /* The ripple: one pooled span per stop, restarted by WAAPI (ThinkingPicker.tsx), never mounted. */
@@ -380,6 +379,7 @@
   position: absolute;
   top: 50%;
   left: 8px;
+  margin-left: -7px;
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -391,8 +391,10 @@
 .effort-goo .effort-thumb {
   position: absolute;
   top: 50%;
-  /* The goo's -8px inset shifts the origin: left: 8px cancels it, so --x reads from the track's edge. */
+  /* The goo's -8px inset shifts the origin: left: 8px cancels it, so --x reads from the track's edge; the
+     -10px margin puts the 20px pill's centre on --x. */
   left: 8px;
+  margin-left: -10px;
   width: 20px;
   height: 24px;
   border-radius: 10px;
@@ -407,6 +409,7 @@
   position: absolute;
   top: 50%;
   left: 0;
+  margin-left: -10px;
   width: 20px;
   height: 24px;
   border-radius: 10px;
@@ -431,6 +434,7 @@
   position: absolute;
   top: 50%;
   left: 0;
+  margin-left: -10px;
   width: 20px;
   height: 24px;
   border-radius: 10px;

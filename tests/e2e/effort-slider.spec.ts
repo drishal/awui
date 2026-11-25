@@ -37,9 +37,9 @@ async function stopCentres(page: Page): Promise<Array<{ x: number; y: number }>>
   const track = (await page.locator(".effort-track").boundingBox()) as { x: number; y: number; width: number; height: number };
   const count = await page.locator(".effort-stop").count();
   const inset = track.height / 2;
-  // The dot's centre sits at the thumb's centre: the grid + the thumb's 10px half-width (model-picker.css).
+  // The dot's centre is the stop's centre, and the thumb's centre lands on it (model-picker.css).
   return Array.from({ length: count }, (_, i) => ({
-    x: track.x + inset + (i / (count - 1)) * (track.width - inset * 2) + 10,
+    x: track.x + inset + (i / (count - 1)) * (track.width - inset * 2),
     y: track.y + track.height / 2,
   }));
 }
@@ -163,4 +163,38 @@ test("the thumb and the passed dots clear 3:1 against the track in both themes",
     expect(ratio(parsed(thumbFill), parsed(trackFill))).toBeGreaterThanOrEqual(3);
     expect(ratio(parsed(dotFill), parsed(trackFill))).toBeGreaterThanOrEqual(3);
   }
+});
+
+test("the thumb, the dots and the fill stay inside the track at every stop", async ({ page }) => {
+  await openPicker(page);
+  const inside = async (label: string) => {
+    const f = await page.evaluate(() => {
+      const t = document.querySelector(".effort-track")!.getBoundingClientRect();
+      const r = (sel: string) => [...document.querySelectorAll(sel)].map((el) => el.getBoundingClientRect());
+      const within = (b: DOMRect) => b.left >= t.left - 0.5 && b.right <= t.right + 0.5;
+      const fill = document.querySelector(".effort-fill")!;
+      // The wash's drawn width is its clip: `inset(0 calc(100% - N) 0 0)` leaves N px of the box visible.
+      const clip = getComputedStyle(fill).clipPath;
+      const m = /calc\(100% - ([\d.]+)px\)/.exec(clip);
+      const box = fill.getBoundingClientRect();
+      return { thumb: r(".effort-thumb").every(within), dots: r(".effort-stop").every(within), shine: r(".effort-shine").every(within), fillBox: within(box), washWidth: m ? box.width - (box.width - Number(m[1])) : -1, x: parseFloat(getComputedStyle(document.querySelector(".effort-track")!).getPropertyValue("--x")) };
+    });
+    expect(f.thumb, `${label}: thumb inside`).toBe(true);
+    expect(f.dots, `${label}: dots inside`).toBe(true);
+    expect(f.shine, `${label}: shine inside`).toBe(true);
+    expect(f.fillBox, `${label}: fill box inside`).toBe(true);
+    // The wash reaches the thumb's centre: its visible width is --x.
+    expect(Math.abs(f.washWidth - f.x), `${label}: fill reaches the thumb centre`).toBeLessThanOrEqual(1);
+  };
+  await inside("rest");
+  for (const key of ["End", "Home", "End"]) {
+    await slider(page).press(key);
+    await page.waitForTimeout(700);
+    await inside(key);
+  }
+  // Every dot up to the value is lit, not only the first: the sibling rule that dimmed the later ones is gone.
+  await slider(page).press("End");
+  await page.waitForTimeout(700);
+  const lit = await page.locator(".effort-stop").evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
+  expect(new Set(lit).size, "all passed dots share one colour at the last stop").toBe(1);
 });

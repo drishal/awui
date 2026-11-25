@@ -191,8 +191,10 @@ export function ThinkingPicker({
     setDragging(true);
     slider.current?.focus();
     const left = r?.left ?? 0;
-    // --x is the thumb's left edge: the thumb's centre follows the pointer (its 10px half comes off).
-    targetSpring(Math.min(Math.max(e.clientX - left - 10, 0), (measured.current?.width ?? 0) - 20));
+    // --x is the thumb's centre: it follows the pointer, held between the first and last stop so the
+    // 20px pill never leaves the track.
+    const inset = measured.current?.inset ?? 15;
+    targetSpring(Math.min(Math.max(e.clientX - left, inset), (measured.current?.width ?? 0) - inset));
     const i = stopAt(e.clientX);
     if (i !== stop.current) {
       const from = stop.current;
@@ -206,8 +208,7 @@ export function ThinkingPicker({
     if (!dragging) return;
     const m = measured.current;
     if (!m) return;
-    const left = m.left;
-    targetSpring(Math.min(Math.max(e.clientX - left - 10, 0), m.width - 20));
+    targetSpring(Math.min(Math.max(e.clientX - m.left, m.inset), m.width - m.inset));
     const i = stopAt(e.clientX);
     if (i !== stop.current) {
       const from = stop.current;
