@@ -10,6 +10,9 @@ export const PHASE_HOLD_MS = 600;
 /** The turn's current phase; "Working" when nothing is known yet. */
 export function workingPhase(turn: Turn, workspace: string): string {
   const items = [...turn.process, ...(turn.answer ? [turn.answer] : []), ...turn.workAfter];
+  // A person is the bottleneck: while a request is unanswered the header says "Needs you" and the card says
+  // "Waiting for approval", so the fold must not say the run is working over them.
+  if (items.some((item) => item.kind === "request" && item.outcome === undefined)) return "Waiting for you";
   // The newest call still running names the phase.
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i];

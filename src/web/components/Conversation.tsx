@@ -431,12 +431,14 @@ function RequestRow({ item }: { item: RequestItem }) {
   const outcome = item.outcome ?? "Waiting for you…";
   const tone = /Denied|Cancelled|Dismissed/.test(outcome) ? "warn" : undefined;
   // Waiting, the card below is the state ("Waiting for approval", the whole title, the decisions): the row need
-  // only name what is being asked about. Answered, the row is the record, so it says the outcome it took.
+  // only name what is being asked about, with a still amber dot for a mark — the card already pulses, and a
+  // spinner here would say a run is going while the run waits on a person. Answered, the row is the record, so
+  // it says the outcome it took.
   const waiting = item.outcome === undefined;
   return (
     <div className={`request-row${arrival}`} id={`request-${item.request.id}`} data-request-id={item.request.id} data-testid="request-row">
       <DisclosureRow
-        icon={item.outcome ? (tone ? <IconX size={14} /> : <IconCheck size={14} />) : <Spinner size={13} />}
+        icon={item.outcome ? (tone ? <IconX size={14} /> : <IconCheck size={14} />) : <span className="request-wait-dot" aria-hidden="true" />}
         title={item.request.kind === "form" ? "Form" : item.request.kind === "confirm" || item.request.options?.includes("Approve") ? "Approval" : "Question"}
         summary={
           waiting ? (

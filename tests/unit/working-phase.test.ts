@@ -25,6 +25,19 @@ describe("workingPhase", () => {
   it("is Writing once the answer streams", () => {
     expect(phase([bash("done", "ls"), assistant({ text: "Here is" })])).toBe("Writing");
   });
+  it("is Waiting for you while a request is unanswered, whatever else the run is doing", () => {
+    const request = (outcome?: string): ChatItem => ({
+      kind: "request",
+      id: "r1",
+      request: { id: "req1", kind: "confirm", title: "Allow tool: read", createdAt: 1 },
+      ...(outcome ? { outcome } : {}),
+    });
+    expect(phase([request()])).toBe("Waiting for you");
+    // A call left running behind the question does not outshout the person it waits on.
+    expect(phase([bash("running", "npm test"), request()])).toBe("Waiting for you");
+    // Answered, the row is a record: the phase is the run's own words again.
+    expect(phase([request("Approved")])).toBe("Working");
+  });
 });
 
 describe("phaseDelay", () => {

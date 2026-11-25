@@ -13,6 +13,12 @@ test("an answered request folds into one line naming the answer", async ({ page 
   // card is already stating.
   await expect(page.getByTestId("request-row")).toContainText("Approval");
   await expect(page.getByTestId("request-subject")).toHaveText("read");
+  // The fold names the same state as the header and the card — the person it waits on, not a run — and its
+  // row's mark is a still amber dot, since the card below is the thing that pulses.
+  await expect(page.getByTestId("process-toggle").last().getByRole("status")).toHaveText("Waiting for you");
+  const waitMark = page.locator(".request-row .drow-icon .request-wait-dot");
+  await expect(waitMark).toBeVisible();
+  await expect(waitMark).toHaveCSS("width", "6px");
   await expect(page.getByTestId("request-row")).not.toContainText("Waiting for you");
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card).toHaveCount(0);

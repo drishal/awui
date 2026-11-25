@@ -229,6 +229,16 @@
   padding-inline: 10px 12px;
 }
 
+/* A request row waiting on a person: a still amber dot in the lead's 20px slot. The card below is the
+   thing that pulses, so a second motion here would compete with it, and a spinner would say a run is going. */
+.request-wait-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
 /* A thought (or a notice) inside the card is a row of the same list, not a pill in a box: its lead takes
    the 20px slot a call's chip takes, and its words start where a call's sentence starts (+40). */
 .process-card .process-body > .process-step .drow-lead,
