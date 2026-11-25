@@ -123,12 +123,15 @@
   scroll-padding-block-end: 44px;
 }
 
-/* Settings reads as sections, not one flat list: each group gets its own quiet card. */
+/* Settings reads as sections, not one flat list: each group gets its own quiet card. The face is a step
+   off the dialog's own (--surface-2): on --surface a section was white-on-white in light (1.02:1) and only
+   a shadow deep enough to double as a second background would have lifted it, so light gets a real face and
+   a real edge from the tokens instead of a scheme-specific rule. */
 .settings-pane .form-section {
   padding: 16px;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--surface-2);
 }
 
 .settings-pane .form-section + .form-section {
@@ -142,7 +145,7 @@
 }
 
 .settings-pane .form-section > .form-note {
-  color: var(--text-3);
+  color: var(--muted-text);
   font-size: 12.5px;
 }
 
