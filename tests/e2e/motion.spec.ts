@@ -45,7 +45,8 @@ test("a caret follows the streaming text and is gone once the answer settles", a
   await send(page, "slow caret");
   await expect(page.locator(".answer.is-streaming .md li").first()).toBeVisible({ timeout: 20_000 });
   // One read decides all three: a new list item takes the caret over between two reads, so a second read can land on one that has none yet.
-  await expect.poll(() => caret(page).then((c) => c.name === "stream-caret" && c.content !== "none" && c.duration === "1s")).toBe(true);
+  // A slow sweep of light down the caret, not a blink: two seconds, linear.
+  await expect.poll(() => caret(page).then((c) => c.name === "stream-caret" && c.content !== "none" && c.duration === "2s")).toBe(true);
   await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 30_000 });
   await expect(page.locator(".answer.is-streaming")).toHaveCount(0);
   const done = await page.locator(".answer .md li:last-child").evaluate((node) => getComputedStyle(node, "::after").content);

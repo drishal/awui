@@ -10,6 +10,7 @@
 import { Fragment, useMemo, type CSSProperties } from "react";
 import type { JobBlock, JobTone } from "../../shared/protocol.js";
 import { useNow } from "../hooks.js";
+import { Rolling } from "./Rolling.js";
 import { IconCheck, IconStop, IconX, Spinner } from "../icons.js";
 import { jobElapsed, type ChatJob } from "../jobs.js";
 import { testProgress } from "../../shared/output-facts.js";
@@ -169,7 +170,11 @@ export function JobCard({ job, variant = "full" }: { job: ChatJob; variant?: "fu
           </span>
         ) : null}
         <code className="job-id">{job.id}</code>
-        {elapsed !== undefined ? <span className="job-time">{formatDuration(elapsed)}</span> : null}
+        {elapsed !== undefined ? (
+          <span className="job-time">
+            <Rolling text={formatDuration(elapsed)} />
+          </span>
+        ) : null}
       </div>
       {title && !flat ? (
         <div className="job-command" title={job.label}>

@@ -237,18 +237,17 @@
 }
 
 /* Disclosures grow open and shrink shut (Collapse.tsx): grid rows from 0fr to 1fr, so nothing is measured and
-   the rows below glide instead of jumping; the content fades with it. Chevrons turn. */
+   the rows below glide instead of jumping; the content fades with it. Chevrons turn.
+   A small disclosure (a thought, a notice, a request) is a sentence opening, not a container growing: it runs
+   on a plain 180ms ease-out, so it lands at once and stays a different motion from the sprung unfurl below.
+   Both stay inside Collapse.tsx's COLLAPSE_MS. */
 .collapse {
   display: grid;
-  /* A touch longer and sprung at the end, so an opening card reads as the row's
-     container growing (Material's container transform), not content mounted under a
-     fixed row. Grow and fade share the duration/easing so it is one surface, not a
-     peel; the fade lags, so the container's edge leads and the content follows. */
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
-    grid-template-rows 0.28s var(--ease-spring),
-    opacity 0.2s var(--ease-out) 0.05s;
+    grid-template-rows 0.18s var(--ease-out),
+    opacity 0.14s var(--ease-out);
 }
 
 .collapse.is-open {
@@ -354,7 +353,9 @@
 /* A soft caret after the last streamed text, on the last block's own line so
    Markdown layout is untouched (a list's caret sits on its last item, a quote's
    on its last paragraph); code blocks and tables get none. It goes the moment
-   the answer stops streaming (Conversation drops .is-streaming). */
+   the answer stops streaming (Conversation drops .is-streaming). A hairline of
+   light travels down it instead of the bar blinking: a 1s strobe beside the
+   clock's shimmer made the two the app's only motions, and one of them a blink. */
 .answer.is-streaming .md > p:last-child::after,
 .answer.is-streaming .md > h1:last-child::after,
 .answer.is-streaming .md > h2:last-child::after,
@@ -369,17 +370,17 @@
   margin-left: 3px;
   vertical-align: text-bottom;
   border-radius: 1px;
-  background: var(--accent);
-  animation: stream-caret 1s ease-in-out infinite;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 55%, var(--text)), var(--accent) 45%, var(--accent) 55%, color-mix(in srgb, var(--accent) 55%, var(--text))) 0 0 / 100% 300%;
+  animation: stream-caret 2s linear infinite;
 }
 
 @keyframes stream-caret {
-  0%,
-  100% {
-    opacity: 0.15;
+  from {
+    background-position: 0 -100%;
   }
-  50% {
-    opacity: 0.9;
+  to {
+    background-position: 0 100%;
   }
 }
 
