@@ -198,7 +198,7 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, com
         </div>
       ) : null}
 
-      {idle ? <p className="context-idle">No runs, jobs or comments yet.</p> : null}
+      {idle ? <p className="context-idle">Nothing running.</p> : null}
 
       {runs.length > 0 || chat.lineage ? <ContextGroup id="agents" label={labels.agents} count={runs.length || undefined} open={open.agents} attention={runs.some((run) => run.status === "failed") ? "accent" : false} onToggle={toggle}>
         <ContextList>
