@@ -380,7 +380,9 @@ function SessionRow({
   ];
   const swipe = useRowSwipe(markable && !selection.on && coarse(), swipeActions.length, () => onMark(swipeActions[0]?.change ?? {}));
   const hover = useRef(0);
-  const { anchor: cardAt, show: showCard, hide: hideCard } = useHoverCard(HOVER_CARD_MS);
+  // The row's id outlives its node: the switch a click starts redraws the list under the pointer, and the
+  // press must keep the card away past that.
+  const { anchor: cardAt, show: showCard, hold: holdCard, hide: hideCard } = useHoverCard(HOVER_CARD_MS, s.id);
   const cardId = useId();
   useEffect(() => () => window.clearTimeout(hover.current), []);
   return (
@@ -411,8 +413,10 @@ function SessionRow({
           if (e.button === 1) e.preventDefault();
         }}
         // A touch press may be the start of a scroll, so only a mouse's press counts.
+        // A press says what the row is for, so its card stays away until the pointer leaves it (the browser
+        // re-fires an enter when the row is replaced under a still pointer).
         onPointerDown={(e) => {
-          hideCard();
+          holdCard();
           if (e.pointerType === "mouse" && (e.button === 0 || e.button === 1)) warm(s, "press");
         }}
         onPointerEnter={(e) => {
@@ -434,7 +438,7 @@ function SessionRow({
         }}
         onContextMenu={(e) => {
           e.preventDefault();
-          hideCard();
+          holdCard();
           setMenuAt(new DOMRect(e.clientX, e.clientY, 0, 0));
         }}
         onKeyDown={(e) => {
