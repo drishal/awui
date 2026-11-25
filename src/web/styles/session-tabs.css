@@ -50,9 +50,15 @@
   color: var(--text-2);
 }
 
+/* The shown tab's own edge: on a light page a near-white tab on a light strip had only the accent underline and
+   its tone to separate it, and toneless it read as a gap in the strip. Two inner hairlines (the right side already
+   has a real border) give the tab its outline in either scheme, and cost no layout. */
 .session-tab.is-active {
   background: var(--bg);
   color: var(--text);
+  box-shadow:
+    inset 1px 0 0 var(--hairline),
+    inset 0 1px 0 var(--hairline);
 }
 
 .session-tab:focus-visible {
