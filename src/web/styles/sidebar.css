@@ -471,6 +471,12 @@
 }
 
 /* Project groups (Hermes Desktop): a folder row with its sessions on a rail below. */
+.project-group {
+  /* A project is its own block: the 8px above its head separates it from the list and from the group
+     before it, so the heads read as headings rather than another row of the same list. */
+  padding-top: 8px;
+}
+
 .project-group + .project-group {
   margin-top: var(--section-gap);
 }
@@ -498,7 +504,7 @@
   background: none;
   color: var(--text-2);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   text-align: left;
 }
 
@@ -705,11 +711,12 @@
   background: var(--hover);
 }
 
-/* The open session is a wash plus one hairline of its harness colour: a 1px ring says "this one"
-   without the 2px bar that used to cut the row's left gutter. */
+/* The open session is the list's anchor: a stronger wash and a 2px rule in its own harness colour at the
+   row's left edge, which is what tells it apart from eight rows that differ only in their words. Both
+   are inset, so the rule is clipped by the row's radius instead of cutting into the sidebar's gutter. */
 .session.is-active {
-  background: color-mix(in oklab, var(--harness, var(--accent)) var(--tint), var(--surface-2));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--harness, var(--accent)) 40%, transparent);
+  background: color-mix(in oklab, var(--harness, var(--accent)) 12%, var(--surface-2));
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--harness, var(--accent)) 75%, transparent);
 }
 
 /* Title over sub-line, centred in the row: one line is the quiet case, two lines the settled one. */
@@ -740,13 +747,6 @@
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* The branch line: a column of muted names, so a scan down the rail reads where each chat works.
-   Tabular figures keep a test or date branch's numbers on the same grid as the times beside it. */
-.session-sub-branch {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
 }
 
 .session .session-agent {

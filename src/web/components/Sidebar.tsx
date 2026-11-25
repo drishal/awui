@@ -337,7 +337,6 @@ function SessionRow({
   working,
   harnessName,
   project,
-  branch,
   showHarness = true,
   onOpen,
   onMark,
@@ -351,8 +350,6 @@ function SessionRow({
   harnessName: string;
   /** Shown beside the title where the row is out of its project (the pinned list). */
   project?: string;
-  /** The branch its project is on, for the row's second line inside a project. */
-  branch?: string | null;
   /** False where every row of the list is the same harness: the dot would only repeat the heading above. */
   showHarness?: boolean;
   /** Why this row is where it is (a routine started it, it is quiet, on the default branch); its hover card says it. */
@@ -455,17 +452,15 @@ function SessionRow({
         )}
         <span className="session-body">
           <span className="session-title">{plainTitle(s.title)}</span>
-          {/* A second line on every row: what the agent says it is doing, else the project this row is
-              out of, else the branch its project is on. A project's rows repeat their branch, and that is
-              the point: the line is a column to scan, not a per-row surprise. */}
+          {/* A second line only where it says something new: the agent's own status, or the project a row
+              is out of. Inside a project the branch is the heading's fact, so the rows stay one line and
+              the list is scanned by title. */}
           {s.agentStatus ? (
             <span className={`session-sub session-agent is-${s.agentStatus.state}`} title={`${agentStatusText(s.agentStatus)} · set by the agent ${ago(s.agentStatus.at)}`}>
               {s.agentStatus.comment || agentStatusText(s.agentStatus)}
             </span>
           ) : project ? (
             <span className="session-sub">{project}</span>
-          ) : branch ? (
-            <span className="session-sub session-sub-branch" title={`On ${branch}`}>{branch}</span>
           ) : null}
         </span>
         <span className="session-meta">
@@ -672,7 +667,6 @@ function ProjectGroupView({
         active={isActive(s)}
         working={isWorking(s)}
         harnessName={harnessName(s.harnessId)}
-        branch={checkout?.branch ?? null}
         showHarness={mixedHarness}
         onOpen={(newTab) => onOpen(s, newTab)}
         onMark={(change) => onMark(s, change)}
@@ -943,7 +937,6 @@ function FocusedProjectView({
           active={isActive(s)}
           working={isWorking(s)}
           harnessName={harnessName(s.harnessId)}
-          branch={checkout?.branch ?? null}
           showHarness={mixedHarness}
           onOpen={(newTab) => onOpen(s, newTab)}
           onMark={(change) => onMark(s, change)}
