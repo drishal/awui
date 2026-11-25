@@ -542,7 +542,7 @@
   background: none;
   color: var(--text-2);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: left;
 }
 
@@ -775,9 +775,11 @@
   display: -webkit-box;
   min-width: 0;
   overflow: hidden;
-  color: var(--text);
+  /* Regular weight, one step below full ink: at 500 on a dark page, antialiased light-on-dark type
+     swells and a whole list of titles reads as bold. The row you hover or have open gets the full ink back. */
+  color: color-mix(in srgb, var(--text) 86%, var(--muted-text));
   font-size: 13.5px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.3;
   text-wrap: pretty;
   -webkit-box-orient: vertical;
@@ -945,6 +947,10 @@
   .session-item:has(> .session.is-active) .session-meta {
     visibility: hidden;
   }
+}
+
+.session:is(:hover, .is-active, .is-selected) .session-title {
+  color: var(--text);
 }
 
 /* A settled or snoozed row steps back: its title reads as an annotation of the date section it sits in,
