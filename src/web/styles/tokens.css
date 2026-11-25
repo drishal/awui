@@ -330,9 +330,13 @@ samp {
   font-family: var(--font-mono);
 }
 
+/* One focus ring everywhere: two accent pixels outside the control, then a pixel of page between them and
+   whatever the control sits on, so the ring reads on a card, in a row, or on the composer's own surface.
+   --accent clears 3:1 against the page and the cards in both schemes (3.9:1 light, 8.2:1 dark). */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+  box-shadow: 0 0 0 1px var(--bg);
 }
 
 .muted {
