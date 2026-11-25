@@ -914,12 +914,14 @@
 }
 
 
+/* The track is the scheme's own hover wash, as the usage bar's is: a white alpha vanished on a light page and was a
+   grey smudge on a dark card. */
 .test-meter-track {
   position: relative;
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.1);
+  background: var(--hover);
 }
 
 .test-meter-fill,

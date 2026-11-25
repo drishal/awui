@@ -295,7 +295,18 @@ test("a running test command shows how far it has got, and the bar goes when it 
   await expect(bar).toHaveAttribute("aria-valuemax", "8");
   await expect.poll(async () => Number(await bar.getAttribute("aria-valuenow")), { timeout: 10_000 }).toBeGreaterThanOrEqual(4);
   await expect(meter.getByText("1 failed")).toBeVisible();
-  await expect(bar).toHaveCSS("background-color", "rgba(255, 255, 255, 0.1)");
+  // The track is the scheme's hover wash, so it washes with the theme rather than a white alpha that a light page
+  // cannot show.
+  const track = await bar.evaluate((el) => {
+    const probe = document.createElement("span");
+    probe.style.background = "var(--hover)";
+    el.after(probe);
+    const expected = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return { actual: getComputedStyle(el).backgroundColor, expected };
+  });
+  expect(track.actual).toBe(track.expected);
+  expect(track.actual).not.toBe("rgba(255, 255, 255, 0.1)");
   await expect(meter.locator(".test-dot.failed")).toHaveCSS("width", "4px");
   await expect(meter.locator(".test-dot.failed")).toHaveCSS("height", "4px");
   await expect(meter.locator(".test-meter-now")).toContainText("tests/e2e/tabs.spec.ts");

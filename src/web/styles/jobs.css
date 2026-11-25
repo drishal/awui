@@ -255,7 +255,9 @@
   height: 4px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.1);
+  /* The same hover wash the other meters use: white alpha was invisible on a light card and a grey smudge on a
+     dark one. */
+  background: var(--hover);
 }
 
 .job-track-fill {
