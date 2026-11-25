@@ -998,13 +998,15 @@ function ChangedFiles({ id, files, workspace, stat, lines, onReview }: { id: str
             const own = lines[path];
             return (
               <li key={path}>
-                <FileLink path={rel}>
-                  <IconFile size={14} />
-                  <code>
-                    {cut > 0 ? <span className="changed-dir">{rel.slice(0, cut + 1)}</span> : null}
-                    <span className="changed-base">{rel.slice(cut + 1)}</span>
-                  </code>
-                </FileLink>
+                <div className="changed-row">
+                  <FileLink path={rel}>
+                    <IconFile size={13} />
+                    <code>
+                      {cut > 0 ? <span className="changed-dir">{rel.slice(0, cut + 1)}</span> : null}
+                      <span className="changed-base">{rel.slice(cut + 1)}</span>
+                    </code>
+                  </FileLink>
+                </div>
                 {/* Its own lines, where a call reported them: scanning four files needs to know which one was a
                     rewrite and which a line, and the head's total says only the sum. */}
                 {own ? <DiffBadge added={own.added} removed={own.removed} /> : null}

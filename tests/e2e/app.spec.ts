@@ -179,6 +179,30 @@ test("a finished turn's counts show once, on its changed files card", async ({ p
   await expect(page.getByRole("dialog", { name: "Review changes" })).toBeVisible();
 });
 
+test("a changed file outside the project keeps its icon and path on one line", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  // The fake writes outside the workspace: the row's path is absolute, so it is no link. It still has to be a row -
+  // one line, with the path starting where the card's own title starts.
+  await sendAndWait(page, "save the report to my desktop");
+  const changed = page.getByTestId("changed-files");
+  await expect(changed).toContainText("Edited 1 file");
+  await expect(changed.getByRole("button", { name: /pi-report\.md/ })).toHaveCount(0);
+  const box = async (locator: ReturnType<typeof changed.locator>) => {
+    const at = await locator.first().boundingBox();
+    expect(at).not.toBeNull();
+    return at as NonNullable<typeof at>;
+  };
+  const icon = await box(changed.locator(".changed-row .icon"));
+  const path = await box(changed.locator(".changed-row code"));
+  // One line: the path's box starts beside the icon's, not under it.
+  expect(path.y).toBeLessThan(icon.y + icon.height);
+  expect(path.y).toBeGreaterThan(icon.y - icon.height);
+  // And it starts in the head's text column, not at the card's edge.
+  const title = await box(changed.locator(".changed-title"));
+  expect(Math.abs(path.x - title.x)).toBeLessThanOrEqual(1.5);
+});
+
 test("tool cards: the harness's numbered diff, a terminal, a search, a fetch", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);

@@ -37,6 +37,7 @@
 //              running row can be cancelled, and with "worktree" it works in its own managed checkout and
 //              edits a file, so its patch can be reviewed
 //   "unsafe" a real write to unsafe-outside.ts in the project root, which a delegated child's write scope refuses
+//   "desktop" a write to a file outside the project (the row's path cannot be opened)
 //
 // Board rooms drive this adapter through the real server. A Board invocation is
 // recognised by the prompt envelope's "## Current request" section, and its
@@ -55,6 +56,7 @@
 //   "usagevary"     different token counts per model, and a null cost for fake/slow
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   asHarnessId,
@@ -749,6 +751,7 @@ class FakeLiveChat implements LiveChat {
       // The delegated child's guard scenario: an out-of-scope write the task's scope refuses,
       // before the run goes on. A capable harness denies it before the tool runs.
       if (/\bunsafe\b/i.test(text)) await this.tool("unsafe", signal);
+      if (/\bdesktop\b/i.test(text)) await this.tool("desktop", signal);
       if (/\bshowcase\b/i.test(text)) for (const call of this.showcase()) await this.call(call, signal);
       if (/\bsubagents\b/i.test(text)) await this.subagents(signal);
       if (/\bevalagents\b/i.test(text)) await this.evalAgents(signal);
@@ -1181,9 +1184,25 @@ class FakeLiveChat implements LiveChat {
     return { name: "write", args: { path: file, content: "outside" }, output: `Wrote ${file}` };
   }
 
-  private async tool(kind: "read" | "big" | "edit" | "unsafe", signal: AbortSignal): Promise<void> {
+
+  /**
+   * A write to a file outside the project, the way an agent asked to put a report on the user's desktop reports it:
+   * the path in its arguments is absolute, so the changed-files row cannot offer to open it.
+   */
+  private async desktopScenario(): Promise<FakeCall> {
+    const file = path.join(tmpdir(), "awui-fake-desktop", "pi-report.md");
+    return { name: "write", args: { path: file, content: "# Report\n\n- a line\n" }, output: `Wrote ${file}` };
+  }
+
+  private async tool(kind: "read" | "big" | "edit" | "unsafe" | "desktop", signal: AbortSignal): Promise<void> {
     await this.call(
-      kind === "edit" ? await this.editScenario() : kind === "unsafe" ? await this.unsafeScenario(signal) : { name: "read", args: { path: "README.md" }, output: kind === "big" ? "x".repeat(200_000) : "# Fake README\nhello" },
+      kind === "edit"
+        ? await this.editScenario()
+        : kind === "unsafe"
+          ? await this.unsafeScenario(signal)
+          : kind === "desktop"
+            ? await this.desktopScenario()
+            : { name: "read", args: { path: "README.md" }, output: kind === "big" ? "x".repeat(200_000) : "# Fake README\nhello" },
       signal,
     );
   }

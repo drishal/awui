@@ -1883,14 +1883,16 @@
   font-size: var(--chat-small);
 }
 
-/* A path is a row of the card: a 20px icon slot in the head's gutter, the file's folder quiet and its own name in
-   the text colour, and hovering it says it opens. */
-.changed-list li > .file-link,
+/* A file's row is a row of the card whether or not its path can be opened: FileLink draws no button for a path
+   outside the project, so the row itself carries the layout — the head's own icon slot and gutter, then the path,
+   the folder quiet and the file's name in the text colour — and the icon and the path stay on one line either way. */
+.changed-row,
 .changed-more {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
+  min-width: 0;
   min-height: calc(30px * var(--chat-scale));
   padding: 0 12px;
   border: 0;
@@ -1899,14 +1901,26 @@
   text-align: left;
 }
 
-.changed-list li > .file-link > .icon {
+/* The link joins its row rather than sitting in it: the icon and the counts are the row's, so a hover fills the row
+   the path belongs to instead of a strip inside it. */
+.changed-row > .file-link {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The row's icon slot is the head's own (13px, its icon), so a row's path starts in the head's text column rather
+   than seven pixels right of it. */
+.changed-row > .icon,
+.changed-row > .file-link > .icon {
   flex: none;
-  width: 20px;
+  width: 13px;
   color: var(--muted-text);
 }
 
-.changed-list li > .file-link:hover,
-.changed-list li > .file-link:focus-visible {
+.changed-row:has(> .file-link:hover, > .file-link:focus-visible) {
   background: var(--hover);
 }
 
@@ -1916,12 +1930,6 @@
 .changed-list li {
   display: flex;
   align-items: center;
-}
-
-.changed-list li > .file-link {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: auto;
 }
 
 .changed-list li > .diff-stat {
