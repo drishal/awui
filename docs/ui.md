@@ -117,7 +117,9 @@ a literal colour.
 - **Control sizes:** the composer's row is 32 px tall on every screen, its
   chips and icon buttons at `--r-control`, and Send a round 40 px (the row's one
   control a size larger; the composer is the exception to `phones.css` raising
-  touch targets to 36–44 px elsewhere: a phone keeps its one slim row at 32 px).
+  touch targets to 36–44 px elsewhere: a phone keeps its one slim row at 32 px,
+  and its folded card still names the model and the level in the settings chip,
+  which opens the chat-settings sheet).
   Keep a row of controls one height: mismatched heights and radii are what makes a
   part "look off".
 - **Motion:** short and eased out; `prefers-reduced-motion` turns it all off
