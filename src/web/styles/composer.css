@@ -17,18 +17,26 @@
   /* Two more pixels than the density tokens allow, and the same 14px gutter on both sides: the
      card reads as one surface around the text, not a box with a text column in it. */
   padding: calc(var(--composer-pad-top) + 2px) 14px calc(var(--composer-pad-bottom) + 2px);
-  border-radius: var(--r-panel);
-  background: var(--card);
+  /* A step rounder than a dialog: the composer is the page's softest object, and the extra radius is
+     what separates it from the square-cornered cards above it. */
+  border-radius: calc(var(--r-panel) + 4px);
+  /* The one face in the transcript that is lifted rather than recessed: --raised is the scheme's own
+     "above its track" colour, so a light page gets white and a dark one a lighter grey. Mixed with the
+     card's own tone, because a bare --raised on a dark page is two steps above the cards over it and
+     reads as a separate panel rather than the same page's top surface. */
+  background: color-mix(in srgb, var(--raised) 70%, var(--card));
   /* The ring, the soft edge, and one wide cast shadow that lifts the card off the transcript without
      a hard line under it. It is a variable because the ring changes on focus and on a drop: every
      state keeps the cast. It follows the theme's shadow strength, so light stays light. */
   --composer-cast: 0 4px 24px -2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.8));
   box-shadow: var(--shadow-soft), var(--composer-cast), 0 0 0 1px var(--hairline);
-  transition: box-shadow 0.12s ease;
+  transition: box-shadow 0.16s var(--ease-out), background-color 0.16s var(--ease-out);
 }
 
+/* Focus is a 3px accent halo under the float's shadow: one edge in the accent (so a card on a card
+   still shows where the caret is) and enough spread to read from across the screen. */
 .composer-card:focus-within {
-  box-shadow: var(--shadow-soft), var(--composer-cast), 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--shadow-float), 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent), 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .composer-card.is-closed {
@@ -1023,8 +1031,8 @@
 /* Send ends the composer's row and is the one solid on it: a circle a size larger than the 32px
    controls beside it, so the eye leaves the row there. A phone keeps its slim 32px row below. */
 .composer-actions .round-btn {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
 }
 
 .round-btn {
@@ -1049,10 +1057,17 @@
   background: var(--accent-hover);
 }
 
-/* Stop: a danger wash and icon, not a solid red fill. */
+/* Stop: a danger wash and icon, not a solid red fill. While it runs, a slow ring breathes out of it:
+   the card's one moving thing, and the words on the row say the same state without it. */
 .round-btn.is-stop:not(:disabled) {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
   color: var(--danger);
+  animation: stop-breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes stop-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 16%, transparent); }
 }
 
 .round-btn.is-stop:not(:disabled):hover {
