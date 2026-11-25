@@ -110,3 +110,35 @@ export function land(key: string, el: HTMLElement | null, opts: LandOptions = {}
   if (hold) run.onfinish = run.oncancel = () => el.classList.remove(hold);
   return run;
 }
+
+/** The pair a shared-element swap runs at: leaving is quick, arriving settles. Callers keep them equal so two
+ *  swaps in one screen cannot disagree about tempo. */
+export const MORPH_OUT_MS = 90;
+export const MORPH_IN_MS = 160;
+
+export interface ViewTransitionOptions {
+  /** A run is streaming on either side of the swap: its transcript must never be photographed. */
+  busy?: boolean;
+}
+
+/**
+ * Swap whole surfaces (a route, a tab, a panel) as one piece, through the browser's view transition: name the
+ * arriving element `.is-swapping` (view-transition.css), write the new surface inside `commit`, and the browser
+ * fades it in at its final geometry while everything else cuts over at once.
+ *
+ * Never while a transcript streams: a view transition snapshots the page, and a run's rows would freeze under
+ * the frozen image of themselves (morph.ts's glide exists for the same reason). Never on a phone, where the
+ * keyboard resizes the page mid-swap, and never when the reader asked for no motion. With no guard met — or no
+ * support at all — `commit` runs and the swap is the instant cut it was before.
+ *
+ * `commit` must put the new surface in the DOM before it returns: React batches state updates, so a caller
+ * flushes synchronously (`flushSync`) or returns a promise that resolves once the commit has painted.
+ */
+export function viewTransition(commit: () => void | Promise<void>, opts: ViewTransitionOptions = {}): void {
+  const start = typeof document === "undefined" ? undefined : document.startViewTransition;
+  if (typeof start !== "function" || opts.busy || handheld() || motionOff()) {
+    void commit();
+    return;
+  }
+  start.call(document, commit);
+}
