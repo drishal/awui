@@ -52,14 +52,12 @@
   min-width: 0;
   margin: 0 0 0 6px;
   overflow: hidden;
-  /* A rail heading is read at a glance, so it is a step up from the section labels under it:
-     12px 600 in the secondary text colour, on the same tracking as every other small label. */
+  /* The rail's own name, one step above the group labels under it: 12px 550 in the secondary colour,
+     in sentence case. Nothing in this rail shouts: the caps are kept for the labels inside a card. */
   color: var(--text-2);
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: var(--label-tracking);
+  font-weight: 550;
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -161,11 +159,11 @@
   margin: 0;
   overflow: hidden;
   color: inherit;
-  font-size: var(--label-size);
-  font-weight: 600;
-  letter-spacing: var(--label-tracking);
+  /* A group's name is a sentence, not a stencil: 12px 550, sentence case, no tracking. Three groups of
+     broadcast capitals above three cards read as chrome, and the rows under them are the content. */
+  font-size: 12px;
+  font-weight: 550;
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .context-section-head:hover { color: var(--text-2); }
