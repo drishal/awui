@@ -1155,6 +1155,11 @@ body.is-resizing {
     touch-action: pan-y;
   }
 
+  /* The divider usually sits in the gap, but this swipe clip would cut that one pixel off on touch. */
+  .session-item + .session-item > .session::before {
+    top: 0;
+  }
+
   .session-item.is-swiped > .session,
   .session-item.is-swiped > .session-more {
     translate: calc(-1 * var(--reveal)) 0;

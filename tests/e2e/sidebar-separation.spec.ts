@@ -112,3 +112,26 @@ test("a filled row takes the line off itself and off the row under it", async ({
   await page.mouse.move(0, 0);
   await expect.poll(async () => (await lineOf(third)).opacity).toBe(1);
 });
+
+test.describe("on touch", () => {
+  test("the divider stays inside the row that swipe clips", async ({ page }) => {
+    const section = await fourChats(page);
+    // Start desktop so the sessions exist; then make the same media query real as on a touch device.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    await expect.poll(() => page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    const second = section.locator(".session-item").nth(1).locator(".session");
+    const line = await second.evaluate((el) => {
+      const item = el.parentElement?.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      const style = getComputedStyle(el, "::before");
+      return item ? { itemTop: item.top, itemHeight: item.height, top: box.top + Number.parseFloat(style.top), height: Number.parseFloat(style.height), background: style.backgroundColor } : null;
+    });
+    expect(line).not.toBeNull();
+    const placed = line as { itemTop: number; itemHeight: number; top: number; height: number; background: string };
+    expect(placed.height).toBe(1);
+    expect(placed.background).not.toMatch(TRANSPARENT);
+    expect(placed.top).toBeGreaterThanOrEqual(placed.itemTop);
+    expect(placed.top + placed.height).toBeLessThanOrEqual(placed.itemTop + placed.itemHeight);
+  });
+});
