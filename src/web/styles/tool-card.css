@@ -62,14 +62,35 @@
 }
 
 /* A live head's clock keeps the run's life too: a narrow sheen crossing its surface-2 pad, slow enough to read as a
-   pulse rather than a spinner. tokens.css switches every animation off under reduced motion. */
-.process-card.is-live .process-time {
+   pulse rather than a spinner. tokens.css switches every animation off under reduced motion. The pad frames the
+   number alone: the " · " before it separates it on the head's own background, so the clock never reads as a button. */
+.process-card.is-live .process-time .roll {
   padding: 0 4px;
   border-radius: 4px;
   background:
     linear-gradient(100deg, transparent 49%, color-mix(in srgb, var(--text) 16%, transparent) 50%, transparent 51%) 0 0 / 400% 100%,
     var(--surface-2);
   animation: shimmer 2.4s linear infinite;
+}
+
+/* While an approval waits, the user is the bottleneck, not the model: the run's own motion settles to one quiet
+   count, and the approval's edge is the only thing left moving. The transcript reaches the composer's state through
+   the pane (a prop would have to cross every fold), and the card's label leaves its shimmer to its phase. */
+.chat-body:has(.approval-card) .process-card.is-live .process-label .phase {
+  background: none;
+  color: var(--text);
+  animation: none;
+}
+
+.chat-body:has(.approval-card) .process-card.is-live .process-time .roll {
+  background: none;
+  animation: none;
+}
+
+.chat-body:has(.approval-card) .process.is-live:not(.process-card) .process-label {
+  background: none;
+  color: var(--text-2);
+  animation: none;
 }
 
 .process-card .process-chevron {
