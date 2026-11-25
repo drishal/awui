@@ -258,6 +258,19 @@
   --tab-h: 36px;
 }
 
+/* Muted as text takes one step darker on a light page: --muted measures 5.3:1 on the page but 4.9:1 on
+   --surface-2, passing with no room for a tinted row, where a dark page's 5.5:1 already has it. Only the
+   text role moves; icons, dividers and hairlines keep --muted. A theme that sets --muted-text still wins. */
+:root[data-theme="light"] {
+  --muted-text: #5c6166;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --muted-text: #5c6166;
+  }
+}
+
 /* Compact density: tighter sidebar rows, turn gaps, tool rows, composer, and tab strip.
    Only with a fine pointer: a touch screen keeps the comfortable sizes (touch targets, phones.css). */
 @media (pointer: fine) {
