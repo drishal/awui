@@ -1948,9 +1948,12 @@ export function Conversation({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [pane]);
-  // Asked from outside (Search every chat): the bar opens holding the word, and its first place comes into view.
+  // Asked from outside (Search every chat, the palette's Find): the bar opens holding the word, the box takes
+  // the focus a palette row left behind, and its first place comes into view.
   useEffect(() => {
-    if (findRequest && findRequest.chatId === chatId) setFind({ query: findRequest.query, current: -1 });
+    if (!findRequest || findRequest.chatId !== chatId) return;
+    setFind({ query: findRequest.query, current: -1 });
+    window.requestAnimationFrame(() => findInput.current?.focus());
   }, [findRequest?.nonce, chatId]);
   const query = find?.query.trim() ?? "";
   const [searched, setSearched] = useState("");

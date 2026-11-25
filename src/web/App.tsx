@@ -1896,6 +1896,8 @@ export function App() {
         disabled: chat.checkpoints.length > 0 ? undefined : "No checkpoints yet (one is taken before each prompt in a git repository)",
         run: () => setTimelineOpen(true),
       });
+      // The chat on screen has a find of its own, and its key was the one binding no palette row named.
+      items.push({ id: "find", section: "Chat", label: "Find in this chat", hint: shortcutHint("find"), keys: true, keywords: "search conversation transcript", disabled: hasPrompt ? undefined : "Nothing to find yet", run: () => setFindAsk({ query: "", nonce: Date.now(), sessionId: chat.sessionId ?? "", chatId: chat.chatId }) });
       items.push({ id: "export", section: "Chat", label: "Export as Markdown", disabled: hasPrompt ? undefined : "Nothing to export yet", run: exportChat });
       items.push({ id: "close", section: "Chat", label: isBusy(chat.status) ? "Stop and close chat" : "Close chat", run: () => void closeChat() });
     }
@@ -2006,6 +2008,8 @@ export function App() {
     items.push({ id: "back", section: "App", label: "Back to the previous chat", hint: shortcutHint("back"), keys: true, searchOnly: true, disabled: visits.current.at > 0 ? undefined : "Nothing before this", run: () => stepVisits(-1) });
     items.push({ id: "forward", section: "App", label: "Forward to the next chat", hint: shortcutHint("forward"), keys: true, searchOnly: true, disabled: visits.current.at < visits.current.list.length - 1 ? undefined : "Nothing after this", run: () => stepVisits(1) });
     items.push({ id: "reopen", section: "App", label: "Reopen closed tab", hint: shortcutHint("reopen"), keys: true, disabled: closedTabs.current.length ? undefined : "No tab closed yet", searchOnly: true, run: reopenClosedTab });
+    // Mod+Z undoes the pin, archive or snooze whose toast is still up; the row names it while it is there.
+    items.push({ id: "undo-mark", section: "App", label: "Undo the last change", hint: shortcutHint("undo-mark"), keys: true, keywords: "pin archive snooze settle", disabled: undoToast ? undefined : "Nothing to undo", searchOnly: true, run: () => { undoToast?.action?.run(); if (undoToast) toasts.dismiss(undoToast.id); } });
     const shownTab = tabState.tabs[tabState.active];
     if (shownTab) {
       items.push({
