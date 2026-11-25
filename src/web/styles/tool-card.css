@@ -384,7 +384,7 @@
 }
 
 
-/* Tool rows by category: the glyph takes --cat-*, the row text stays --text. */
+/* Tool rows by category: the glyph takes --cat-*. */
 .tool-plain-lead,
 .kind-chip {
   color: var(--cat-run);
@@ -419,6 +419,27 @@
 .tool-row[data-category="other"] .tool-plain-lead,
 .tool-row[data-category="other"] .kind-chip {
   color: var(--cat-plan);
+}
+
+/* What a call only looked at (a read, a search, a fetch of a page) takes the quieter ink, and what changed or ran
+   the project keeps the full one with its target — the file, the command — a step firmer: a run of eight calls was
+   eight identical lines, so the eye had to read every one to find the work that touched the tree. */
+.tool-row[data-category="read"] .tool-sentence,
+.tool-row[data-category="search"] .tool-sentence,
+.tool-row[data-category="web"] .tool-sentence {
+  color: var(--text-2);
+}
+
+.tool-row[data-category="edit"] .tool-target,
+.tool-row[data-category="write"] .tool-target,
+.tool-row[data-category="command"] .tool-target {
+  font-weight: 550;
+}
+
+/* A failed call never goes quiet: the reason is the row's one thing to read. */
+.tool-row.is-failed .tool-sentence,
+.tool-row[data-outcome="fail"] .tool-sentence {
+  color: var(--text);
 }
 
 /* Running: a harness rule and tint; failed: a danger one. Done rows stay grey. */
@@ -637,7 +658,6 @@
   animation: shimmer 1.8s linear infinite;
 }
 
-/* Phones: the facts drop under the sentence rather than squeezing it; status and chevron stay on the first line. */
 /* Phones: the facts drop under the sentence rather than squeezing it; status and chevron stay on the first line.
    The counts line is the row's own line, right-aligned so "5 passed" lines up with "2 results in 2 files" down
    the card instead of reading as a continuation of the sentence. */
