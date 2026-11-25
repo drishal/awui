@@ -33,10 +33,11 @@
   transition: box-shadow 0.16s var(--ease-out), background-color 0.16s var(--ease-out);
 }
 
-/* Focus is a 3px accent halo under the float's shadow: one edge in the accent (so a card on a card
-   still shows where the caret is) and enough spread to read from across the screen. */
+/* Focus is one 2px accent ring under the float's shadow. The card used to draw two (a 1px edge and a
+   4px halo), and the editor's own outline had been taken away, so the pair read as one thick band with a
+   hard line inside it rather than as a single ring. */
 .composer-card:focus-within {
-  box-shadow: var(--shadow-float), 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent), 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: var(--shadow-float), 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .composer-card.is-closed {

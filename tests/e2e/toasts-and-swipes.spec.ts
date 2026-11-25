@@ -28,6 +28,15 @@ test("two background chats finishing stack as cards that fan out on hover and op
   await expect(cards(page).filter({ hasText: "stacked two" })).toContainText("finished");
 
   const stack = page.getByTestId("toast-stack");
+  // The stack hangs off the right edge, below the header: it used to be centred over the header's row.
+  const stackBox = await stack.boundingBox();
+  const header = await page.locator(".chat-header").boundingBox();
+  expect(stackBox!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
+  expect(stackBox!.x + stackBox!.width).toBeLessThanOrEqual((await page.evaluate(() => window.innerWidth)) + 1);
+  // One live region for the whole stack: the cards are its contents, so a status role inside each card
+  // would announce every notice twice.
+  await expect(stack).toHaveAttribute("role", "status");
+  await expect(page.locator(".toast[role=status]")).toHaveCount(0);
   const gap = async () => {
     const [a, b] = await Promise.all([cards(page).nth(0).boundingBox(), cards(page).nth(1).boundingBox()]);
     return Math.abs((b?.y ?? 0) - (a?.y ?? 0));

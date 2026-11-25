@@ -7,12 +7,13 @@
   --toast-h: 44px;
   --toast-gap: 6px;
   position: fixed;
-  left: 50%;
-  top: calc(64px + env(safe-area-inset-top));
+  /* Beside the chat, not over it: the old centred stack landed on the header's own row, so a notice
+     covered the title and the controls beside it. It now hangs off the right edge, below the header. */
+  right: 16px;
+  top: calc(var(--top-chrome-h) + 8px);
   z-index: 60;
-  width: min(420px, calc(100vw - 32px));
+  width: min(360px, 40vw);
   height: var(--toast-h);
-  transform: translateX(-50%);
   pointer-events: none;
 }
 
@@ -52,7 +53,9 @@
   transition:
     transform var(--dur-spring) var(--spring),
     opacity var(--dur-enter) var(--ease-out);
-  animation: toast-in var(--dur-spring) var(--spring);
+  /* It arrives from just above, on the short enter curve: a notice that slides out of the header reads as
+     a card that was always there, while one that drops a long way takes the eye off the chat. */
+  animation: toast-in var(--dur-enter) var(--ease-out);
   pointer-events: auto;
   touch-action: pan-y;
 }
@@ -74,7 +77,7 @@
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(-14px);
+    transform: translateY(-8px);
   }
 }
 
@@ -126,10 +129,16 @@ a.toast-text:hover {
   height: 26px;
 }
 
+/* A phone keeps the centred stack: it docks above the composer, where a right-hand column would sit over
+   the chat's own text, and the thumb reaches the middle of the screen. */
 @media (max-width: 819px) {
   .toast-stack {
     top: auto;
     bottom: calc(var(--toast-bottom, 150px) + env(safe-area-inset-bottom));
+    right: auto;
+    left: 50%;
+    width: min(420px, calc(100vw - 32px));
+    transform: translateX(-50%);
   }
 }
 

@@ -81,6 +81,9 @@ export function ToastStack({ toasts, onOpen }: { toasts: Toasts; onOpen: (t: Toa
       className="toast-stack"
       data-testid="toast-stack"
       ref={frame}
+      // One live region for the whole stack. The cards are its contents, so a status role inside each
+      // card would make every notice announce itself twice.
+      role="status"
       data-open={open}
       style={{ "--n": cards.length } as React.CSSProperties}
       onPointerEnter={(e) => e.pointerType === "mouse" && setPointer(true)}
@@ -113,8 +116,8 @@ function ToastCard({ toast, slot, onOpen, onDismiss }: { toast: Toast; slot: num
   return (
     <div
       className="toast"
-      role="status"
       // An Undo card is "toast" (what the mark-change specs look for); a news card is "notice", so one of each never clashes.
+      // The card itself carries no status role: the stack above is the one live region.
       data-testid={action ? "toast" : "notice"}
       data-kind={toast.kind ?? (action ? "undo" : null)}
       data-leaving={toast.leaving ? "" : undefined}

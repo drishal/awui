@@ -255,6 +255,21 @@ test("the page title and favicon count a chat that finished out of sight", async
   await expect(page).not.toHaveTitle(/^\(\d+\) /);
 });
 
+test("the composer draws one focus ring, not two", async ({ page }) => {
+  await signInAndOpen(page);
+  await openChat(page);
+  // A ring is a shadow with no offset and no blur: only its spread draws the edge. The card used to
+  // draw two of them (a 1px edge and a 4px halo), which read as one band with a line inside it.
+  const rings = async () => page.evaluate(() => {
+    const el = document.querySelector(".composer-card");
+    if (!el) return [] as string[];
+    const shadow = getComputedStyle(el).boxShadow;
+    return shadow.split(/,(?![^(]*\))/).map((s) => s.trim()).filter((s) => / 0px 0px 0px \d+px$/.test(s));
+  });
+  await box(page).focus();
+  await expect.poll(rings).toHaveLength(1);
+});
+
 test("the prompt box can be dragged taller, and a reload keeps it", async ({ page }) => {
   await signInAndOpen(page);
   // A real chat: the start screen's composer has no card to resize yet.
