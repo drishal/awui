@@ -210,7 +210,8 @@
   margin-left: 8px;
 }
 
-/* The thinking picker: an effort slider from Faster to Smarter, one stop per level. */
+/* The thinking picker: an effort slider from Faster to Smarter, one stop per level, with a liquid thumb
+   (effort-spring.ts's springs write transform and --x; the CSS never animates left or width). */
 .effort-pop {
   width: 280px;
   padding: 12px 14px 14px;
@@ -233,6 +234,21 @@
   font-weight: 600;
 }
 
+/* The rolling word: one 1lh clip wide enough for the widest level, so "Effort" never shifts. */
+.effort-value {
+  min-width: calc(var(--effort-wide, 6ch) + 0.6em);
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+.effort-roll {
+  display: inline-block;
+  min-width: var(--effort-wide, 6ch);
+  text-align: left;
+}
+
 .effort-note {
   margin: 4px 0 0;
   color: var(--muted-text);
@@ -252,39 +268,61 @@
   outline: none;
 }
 
+/* Outline, not box-shadow, so forced-colors keeps the ring. */
 .effort-slider:focus-visible {
-  box-shadow: 0 0 0 2px var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .effort-track {
-  --inset: 14px;
+  --inset: 15px;
   position: relative;
   height: 30px;
-  border-radius: 12px;
+  border-radius: 15px;
   background: var(--surface-2);
   cursor: pointer;
   touch-action: none;
+  /* --x is written per frame by effort-spring.ts (the thumb's left edge, inset = the track's half height);
+     the dots and the fill read it. The swell radius R is 0.7 × the step spacing. */
+  --x: var(--inset);
+  --effort-r: 18px;
+}
+
+/* On a touch screen the 30px track grows a transparent 44px hit area. */
+@media (pointer: coarse) {
+  .effort-track::before {
+    content: "";
+    position: absolute;
+    inset: -7px 0;
+    border-radius: 15px;
+  }
 }
 
 .effort-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  width: calc(var(--inset) + var(--pos) * (100% - 2 * var(--inset)));
-  border-radius: 12px 0 0 10px;
-  background: color-mix(in srgb, var(--thinking) 16%, transparent);
-  transition: width 0.2s var(--ease-out);
+  width: 100%;
+  border-radius: 15px 0 0 15px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--thinking) 10%, transparent), color-mix(in srgb, var(--thinking) 30%, transparent));
+  transform: scaleX(calc((var(--x) - var(--inset) + 10px) / (100 * 1px)));
+  transform-origin: left center;
+  clip-path: inset(0 calc(100% - var(--x) - 10px) 0 0);
 }
 
 .effort-stop {
   position: absolute;
-  top: 50%;
-  left: calc(var(--inset) + var(--at) * (100% - 2 * var(--inset)));
-  width: 4px;
-  height: 4px;
+  /* The dot's centre sits at the thumb's centre (--x + 10): the thumb is 20px wide. Positioned by
+     margins, not translate, so the swell's scale grows around the centre instead of shifting it. */
+  top: calc(50% - 2.5px);
+  left: calc(var(--inset) + var(--atx) * (100% - 2 * var(--inset)) / 100 + 7.5px);
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--muted);
-  opacity: 0.55;
-  transform: translate(-50%, -50%);
+  opacity: 0.5;
+  /* The swell reads --x off the track and --atx (px) off the dot; abs as max(a - b, b - a), R = 0.7 × the
+     step spacing (about 0.7 × (100% - 2 × 14px) / levels, floored at 12px). */
+  scale: calc(1 + 0.8 * max(0, 1 - max(var(--x) - var(--atx-px), var(--atx-px) - var(--x)) / var(--effort-r, 18px)));
   transition:
     background-color 0.15s ease,
     opacity 0.15s ease;
@@ -292,38 +330,189 @@
 
 .effort-stop.is-passed {
   background: var(--thinking);
-  opacity: 0.9;
+  opacity: 0.95;
 }
 
-.effort-thumb {
+.effort-stop.is-passed ~ .effort-stop {
+  background: var(--muted);
+  opacity: 0.5;
+}
+
+/* The ripple: one pooled span per stop, restarted by WAAPI (ThinkingPicker.tsx), never mounted. */
+.effort-ripple {
   position: absolute;
   top: 50%;
-  left: calc(var(--inset) + var(--pos) * (100% - 2 * var(--inset)));
-  width: 18px;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--thinking);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The goo layer: thumb and tail inside one small filter, so the neck forms between them and the repaint
+   stays tiny. The -8px inset gives the blur room; the thumb's origin is the goo's, so it sits at
+   left: 8px and translate3d carries the same --x the stops read. */
+.effort-goo {
+  position: absolute;
+  inset: -8px;
+  pointer-events: none;
+  filter: url(#effort-goo);
+}
+
+.effort-goo .effort-tail {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--effort-thumb-fill);
+  transform: translate3d(var(--x), -50%, 0);
+  will-change: transform;
+}
+
+.effort-goo .effort-thumb {
+  position: absolute;
+  top: 50%;
+  /* The goo's -8px inset shifts the origin: left: 8px cancels it, so --x reads from the track's edge. */
+  left: 8px;
+  width: 20px;
   height: 24px;
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 10px;
+  /* The mark's own fill: nearly white in either scheme, tinted in the dark one. */
+  background: var(--effort-thumb-fill, #fff);
+  transform: translate3d(var(--x), -50%, 0);
+  will-change: transform;
+}
+
+/* The bare thumb (no goo: reduced motion, the low-end fallback) sits on the track's own origin. */
+.effort-track > .effort-thumb {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 20px;
+  height: 24px;
+  border-radius: 10px;
+  background: var(--effort-thumb-fill, #fff);
+  transform: translate3d(var(--x), -50%, 0);
+}
+
+:root[data-theme="dark"] .effort-thumb,
+:root:not([data-theme="light"]):not([data-theme="dark"]) .effort-thumb {
+  --effort-thumb-fill: color-mix(in oklab, var(--thinking) 14%, #fff);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .effort-thumb {
+    --effort-thumb-fill: color-mix(in oklab, var(--thinking) 14%, #fff);
+  }
+}
+
+/* The unfiltered highlight: the shadow, the 1px inner hairline and the top specular the goo layer cannot
+   carry. Reduced transparency drops the gradient and keeps the hairline. */
+.effort-shine {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 20px;
+  height: 24px;
+  border-radius: 10px;
+  transform: translate3d(var(--x), -50%, 0);
+  will-change: transform;
   box-shadow:
     0 1px 3px rgb(0 0 0 / 0.35),
-    0 0 0 1px rgb(0 0 0 / 0.06);
-  transform: translate(-50%, -50%);
-  transition:
-    left 0.2s var(--ease-out),
-    transform 0.15s var(--ease-out);
+    inset 0 0 0 1px rgb(0 0 0 / 0.06);
+  background: linear-gradient(to bottom, rgb(255 255 255 / 0.55), transparent 55%) padding-box;
+  opacity: 0.55;
+  transition: opacity 120ms var(--ease-out);
+}
+
+.effort-track:hover .effort-shine,
+.effort-slider:focus-visible .effort-shine {
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .effort-shine {
+    background: none;
+  }
 }
 
 .effort-track:hover .effort-thumb,
 .effort-slider:focus-visible .effort-thumb {
-  transform: translate(-50%, -50%) scale(1.06);
+  cursor: grab;
 }
 
-.effort-slider.is-dragging .effort-thumb {
-  transform: translate(-50%, -50%) scale(1.1);
+.effort-slider.is-dragging .effort-track {
+  cursor: grabbing;
 }
 
-.effort-slider.is-dragging .effort-thumb,
-.effort-slider.is-dragging .effort-fill {
-  transition: transform 0.15s var(--ease-out);
+/* Reduced motion: a static slider. The springs never run, the tail is not rendered, the filter is off,
+   and the thumb, fill and dots sit at the value in the same paint. The swollen current dot and the
+   gradient fill still show the value. */
+.effort-pop.is-still .effort-goo {
+  filter: none;
+}
+
+.effort-pop.is-still .effort-tail {
+  display: none;
+}
+
+.effort-pop.is-still .effort-thumb,
+.effort-pop.is-still .effort-shine {
+  transform: translate3d(var(--x), -50%, 0);
+}
+
+/* The thumb sits at --x even without the springs (first paint, reduced motion): the track's --x starts at
+   the inset, and the static path writes it at open. */
+.effort-track .effort-thumb,
+.effort-track .effort-shine,
+.effort-track .effort-tail {
+  transform: translate3d(var(--x), -50%, 0);
+}
+
+/* Forced colors: no filter, no fills; the thumb is ButtonText on Canvas, the dots CanvasText, the ring
+   Highlight. */
+@media (forced-colors: active) {
+  .effort-goo {
+    filter: none;
+  }
+
+  .effort-tail {
+    display: none;
+  }
+
+  .effort-thumb {
+    background: ButtonText;
+    border: 1px solid Canvas;
+    forced-color-adjust: none;
+  }
+
+  .effort-shine {
+    background: none;
+    box-shadow: none;
+  }
+
+  .effort-fill {
+    background: Highlight;
+    clip-path: none;
+    opacity: 0.4;
+  }
+
+  .effort-stop {
+    background: CanvasText;
+    opacity: 1;
+  }
+
+  .effort-ripple {
+    background: Highlight;
+  }
+
+  .effort-slider:focus-visible {
+    outline: 2px solid Highlight;
+  }
 }
 
 .model-empty {
