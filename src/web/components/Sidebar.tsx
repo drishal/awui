@@ -1369,7 +1369,7 @@ export function Sidebar(props: {
               <div className="quick-chips">
                 {chipsShown(quickCount, quick).map((f) => (
                   <button key={f} type="button" className="quick-chip" data-kind={f} data-nonzero={quickCount[f] > 0 ? "" : undefined} aria-pressed={quick === f} onClick={() => pickQuick(quick === f ? null : f)}>
-                    {QUICK_LABELS[f]} <span className="quick-count">{quickCount[f]}</span>
+                    <span className="quick-chip-label">{QUICK_LABELS[f]}</span> <span className="quick-count">{quickCount[f]}</span>
                   </button>
                 ))}
               </div>
