@@ -71,7 +71,7 @@ herdr_socket: ~/run/herdr.sock
   });
 
   it("defaults the browser settings, and an empty file is no settings", () => {
-    expect(uiSettings(undefined, {})).toEqual({ theme: null, themeScheme: null, textScale: null, chatWidth: null, density: null, toolStyle: null, font: null, autocollapseSidebar: true, showStatusBar: true, herdr: true });
+    expect(uiSettings(undefined, {})).toEqual({ theme: null, themeScheme: null, textScale: null, chatWidth: null, density: null, toolStyle: null, font: null, autocollapseSidebar: true, showStatusBar: false, herdr: true });
     expect(readUserConfig(folder(""))?.config).toEqual({});
   });
 

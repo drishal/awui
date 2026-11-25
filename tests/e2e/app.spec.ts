@@ -84,23 +84,23 @@ test("a slow settings chunk leaves the main column where it was", async ({ page 
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
 });
 
-test("the status bar can be hidden", async ({ page }) => {
+test("the status bar is off unless Settings asks for it", async ({ page }) => {
   await signInAndOpen(page);
   const bar = page.locator(".status-bar");
-  await expect(bar).toBeVisible();
+  await expect(bar).toBeHidden();
   // Settings' show_status_bar reaches the page in the bootstrap. The e2e server's
   // config.yml is read-only, so the flag arrives stubbed here; the file's round trip
   // is settings.test.ts's.
   await page.route("**/api/bootstrap", async (route) => {
     const res = await route.fetch();
     const body = (await res.json()) as { ui: Record<string, unknown> };
-    await route.fulfill({ response: res, json: { ...body, ui: { ...body.ui, showStatusBar: false } } });
+    await route.fulfill({ response: res, json: { ...body, ui: { ...body.ui, showStatusBar: true } } });
   });
   await page.reload();
-  await expect(bar).toBeHidden();
+  await expect(bar).toBeVisible();
   await page.unroute("**/api/bootstrap");
   await page.reload();
-  await expect(bar).toBeVisible();
+  await expect(bar).toBeHidden();
 });
 
 test("a new chat opens as a hero composer; a turn folds its work above a plain answer", async ({ page }) => {
@@ -616,11 +616,11 @@ test("reconnects after going offline without duplicating messages", async ({ pag
   await send(page, "slow stream");
   await expect(status(page)).toHaveText("Working");
   await context.setOffline(true);
-  await expect(page.getByTestId("connection")).toHaveText("Disconnected");
+  // With the status bar off, a dropped stream is the header's own word: the run cannot be true offline.
+  await expect(status(page)).toHaveText("Offline");
   await expect(page.locator(".conn-banner")).toBeVisible();
   await page.waitForTimeout(800);
   await context.setOffline(false);
-  await expect(page.getByTestId("connection")).toHaveText("Connected", { timeout: 15_000 });
   await expect(status(page)).toHaveText("Idle", { timeout: 20_000 });
   await expect(prompts(page)).toHaveCount(1);
   await expect(answers(page)).toHaveCount(1);
@@ -691,8 +691,9 @@ test("model and thinking changes apply while idle", async ({ page }) => {
   await page.reload();
   await expect(page.getByTestId("model-picker")).toHaveAccessibleName("Model: Fake Slow");
   await expect(page.getByTestId("thinking-picker")).toHaveAccessibleName("Thinking: high");
-  await expect(page.getByTestId("connection")).toContainText("Connected");
-  await expect(page.locator(".status-bar")).toContainText("alpha");
+  // No status bar: the header names the project and the run, and neither claims a connection it lacks.
+  await expect(page.locator(".chat-header")).toContainText("alpha");
+  await expect(page.getByTestId("chat-status")).toHaveText(/Idle|Working/);
   // A click on the track jumps to the nearest stop: the weakest, at its left end.
   await page.getByTestId("thinking-picker").click();
   // The panel unfurls from its chip on a spring: measure the track once it has landed.

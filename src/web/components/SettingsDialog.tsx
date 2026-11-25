@@ -965,7 +965,7 @@ export function SettingsDialog({
                 <FormRow row="autocollapse" hidden={!shows("layout", "autocollapse")} label="Fold the sidebar away in narrow windows" desc="It comes back as a drawer from the edge." toggle>
                   <Switch label="Fold the sidebar away in narrow windows" checked={draft.autocollapseSidebar} disabled={!editable} onChange={(autocollapseSidebar) => update({ autocollapseSidebar })} />
                 </FormRow>
-                <FormRow row="status-bar" hidden={!shows("layout", "status-bar")} label="Status bar" desc="Under the conversation: connection, harness, model, folder, version." toggle>
+                <FormRow row="status-bar" hidden={!shows("layout", "status-bar")} label="Status bar" desc="Off by default: a thin strip under the conversation with the connection, the folder, and the version. The header and this dialog say both already." toggle>
                   <Switch label="Status bar" checked={draft.showStatusBar} disabled={!editable} onChange={(showStatusBar) => update({ showStatusBar })} />
                 </FormRow>
                 <FormRow row="herdr" hidden={!shows("layout", "herdr")} label="Work with herdr" desc="Mark the sessions open in its panes, and let atui in a pane report its chats." toggle>

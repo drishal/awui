@@ -2361,8 +2361,10 @@ export function App() {
                         {chat.workspace.name}
                       </span>
                     ) : null}
-                    <span className={`status status-${chat.status}${chat.pending.length > 0 ? " is-asking" : ""}`} data-testid="chat-status">
-                      <StatusWord text={chat.pending.length > 0 ? "Needs you" : STATUS_LABEL[chat.status] ?? chat.status} />
+                    {/* The status word is the header's one live fact, so a dropped stream says so here rather than
+                        in a bar of its own: while the server is unreachable nothing else on this line is true either. */}
+                    <span className={`status status-${chat.status}${chat.pending.length > 0 ? " is-asking" : ""}${conn === "disconnected" || conn === "reconnecting" ? " is-offline" : ""}`} data-testid="chat-status">
+                      <StatusWord text={conn === "disconnected" ? "Offline" : conn === "reconnecting" ? "Reconnecting" : chat.pending.length > 0 ? "Needs you" : STATUS_LABEL[chat.status] ?? chat.status} />
                     </span>
                     {chat.lineage ? <LineageChip lineage={chat.lineage} onOpen={(id) => void openChatById(id)} /> : null}
                     {chatStatusLine ? (

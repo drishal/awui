@@ -51,9 +51,10 @@ theme: system
 # drawer anyway). A sidebar you collapsed yourself stays collapsed.
 autocollapse_sidebar: true
 
-# The bar under the conversation: connection, harness, model, folder, and
-# version. false hides it (phones hide it anyway).
-show_status_bar: true
+# The thin bar under the conversation: the connection, the folder, and the
+# version. Off by default — the header's status word and dot carry a dropped
+# connection, and Settings' foot names the version.
+show_status_bar: false
 
 # Settle sessions nobody has touched for this many days (an hourly sweep), so
 # a long history stops filling the sidebar. Unset or 0 turns the sweep off.

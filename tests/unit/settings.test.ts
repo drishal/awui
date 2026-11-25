@@ -51,7 +51,7 @@ describe("settings", () => {
       toolStyle: null,
       font: null,
       autocollapseSidebar: true,
-      showStatusBar: true,
+      showStatusBar: false,
       herdr: true,
       desktopBackground: true,
       orchestrationEnabled: true,

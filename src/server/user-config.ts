@@ -541,7 +541,7 @@ export function uiSettings(c: UserConfig | undefined, env: NodeJS.ProcessEnv = p
     theme,
     themeScheme: c?.theme_scheme ?? null,
     autocollapseSidebar: c?.autocollapse_sidebar ?? true,
-    showStatusBar: c?.show_status_bar ?? true,
+    showStatusBar: c?.show_status_bar ?? false,
     textScale: c?.text_scale ?? null,
     chatWidth: c?.chat_width ?? null,
     density: c?.density ?? null,

@@ -187,6 +187,16 @@
   animation: pulse 1.2s ease-in-out infinite;
 }
 
+/* A dropped stream outranks the run: the word says Offline, and the dot is the one red mark in the header. */
+.status.is-offline {
+  color: var(--text-2);
+}
+
+.status.is-offline::before {
+  background: var(--danger);
+  animation: none;
+}
+
 .status-stopping::before {
   background: var(--warn);
 }

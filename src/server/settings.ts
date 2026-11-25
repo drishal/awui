@@ -98,7 +98,7 @@ function valuesOf(c: UserConfig, ctx: SettingsContext): ServerSettingsValues {
     toolStyle: c.tool_style ?? null,
     font: c.font ?? null,
     autocollapseSidebar: c.autocollapse_sidebar ?? true,
-    showStatusBar: c.show_status_bar ?? true,
+    showStatusBar: c.show_status_bar ?? false,
     herdr: c.herdr ?? true,
     desktopBackground: c.desktop_background ?? true,
     orchestrationEnabled: c.orchestration?.enabled ?? true,
