@@ -339,8 +339,11 @@ function CallBody({ item, workspace }: { item: ToolItem; workspace: string }) {
 
   if ((item.category === "edit" || item.category === "write") && item.diff) {
     const settledNote = item.output && item.status !== "running" && (failed || item.output.length < 400);
+    // The row's own sentence already names the file, mono and before its counts, so the opened tile does not repeat
+    // it as a loose caption over the diff: the diff is the file the row names. A call whose file the row cannot name
+    // (no path in its arguments) keeps the caption, which is then the only place it is said.
     return card(
-      <CardHead icon={<IconFile size={13} />} meta={<DiffBadge added={item.diff.added} removed={item.diff.removed} />} repeats="meta">
+      <CardHead icon={<IconFile size={13} />} meta={<DiffBadge added={item.diff.added} removed={item.diff.removed} />} repeats={path ? "all" : "meta"}>
         {path ? <FileLink path={path} /> : item.name}
       </CardHead>,
       <>
@@ -353,7 +356,7 @@ function CallBody({ item, workspace }: { item: ToolItem; workspace: string }) {
           </details>
         ) : null}
       </>,
-      path !== null,
+      false,
     );
   }
 

@@ -604,6 +604,12 @@
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--danger) 55%, transparent);
 }
 
+/* An edit's tile has no caption between the row and its diff (ToolBody leaves it out: the row named the file), so
+   the diff takes the air the caption gave it, and its first line is not flush against the row above. */
+.tool-body > .tool-card > .diff:first-child {
+  padding-top: 8px;
+}
+
 .tool-card-caption {
   display: flex;
   align-items: baseline;
