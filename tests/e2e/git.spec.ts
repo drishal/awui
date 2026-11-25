@@ -77,3 +77,21 @@ test("the status stack's ridge folds the git row too, and brings it back", async
   await page.getByRole("button", { name: "Show status" }).click();
   await expect(row).toBeVisible();
 });
+
+test("the dock keeps its own frost, so its face does not pick up the hue of what sits behind it", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/gamma` } })).json()) as { id: string };
+  const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await page.goto(`/#chat=${chat.chatId}`);
+  await expect(page.getByTestId("git-row")).toBeVisible();
+  // The shared glass (glass.css) gives 76% of the face behind a saturate(1.6), which turned the dock navy while an
+  // approval card sat under it (round 7: the same dock grey in one frame, blue in the next). The dock keeps 92%
+  // of its face and boosts nothing, so its colour is the surface's in every state.
+  const frost = await page.locator(".status-stack").evaluate((stack) => {
+    const cs = getComputedStyle(stack);
+    return { tint: cs.getPropertyValue("--glass-tint").trim(), saturate: cs.getPropertyValue("--glass-saturate").trim(), filter: cs.backdropFilter };
+  });
+  expect(frost.tint).toBe("92%");
+  expect(frost.saturate).toBe("1");
+  expect(frost.filter).toContain("saturate(1)");
+});

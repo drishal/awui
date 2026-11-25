@@ -5,6 +5,14 @@
 /* The composer's width and radius, so the two stack as one column with one edge rather than a narrower
    card perched on a wider one. */
 .status-stack {
+  /* The dock's own frost. glass.css gives every glass surface 76% of its face behind a saturate(1.6), and the
+     saturate boosts whatever blue sits behind it: over a plain chat that is the page's own tone, but with the
+     approval card up the same dock came out navy (round 7: two faces for one surface, 04 grey and 05 blue).
+     The dock keeps more of its face and boosts nothing, so it reads as the surface in every state and amber
+     stays the approval card's alone. A custom property resolves on the element that reads it, so these win
+     over glass.css's :root whatever order the two files load in. */
+  --glass-tint: 92%;
+  --glass-saturate: 1;
   margin: 0 0 6px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-panel);
