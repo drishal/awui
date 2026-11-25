@@ -1910,9 +1910,36 @@
   background: var(--hover);
 }
 
+/* A row is the path and its own count, the count at the card's edge in the column the head's total has: a list
+   that named four files and stopped left the reader to open each one to learn which was a rewrite. The count sits
+   outside the link, so the link keeps its own name and its hover fill stays the path's. */
+.changed-list li {
+  display: flex;
+  align-items: center;
+}
+
+.changed-list li > .file-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.changed-list li > .diff-stat {
+  flex: none;
+  margin-left: auto;
+  padding-right: 12px;
+  font-size: calc(12.5px * var(--chat-scale));
+}
+
+/* The path takes what the count leaves: a deep path ellipsises at its end rather than pushing the count out of
+   the card. */
 .changed-list code {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text);
   font-size: calc(13.5px * var(--chat-scale));
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .changed-dir {

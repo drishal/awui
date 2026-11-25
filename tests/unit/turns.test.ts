@@ -34,6 +34,16 @@ describe("a turn's change stat", () => {
     expect(stat).toEqual({ added: 6, removed: 5, files: 2, partial: false });
   });
 
+  it("gives each file its own lines, and none to a file a call changed among others", () => {
+    const items: ChatItem[] = [
+      { kind: "user", id: "u", text: "go" },
+      tool("t1", "edit", { paths: ["/w/a.ts"], diffStat: { added: 3, removed: 1 } }),
+      tool("t2", "edit", { paths: ["/w/a.ts"], diffStat: { added: 2, removed: 4 } }),
+      tool("t3", "edit", { paths: ["/w/b.ts", "/w/c.ts"], diffStat: { added: 9, removed: 9 } }),
+    ];
+    expect(buildTurns(items, "idle")[0]?.changedLines).toEqual({ "/w/a.ts": { added: 5, removed: 5 } });
+  });
+
   it("falls back on the diff's own counts, and a cut diff still counts in full", () => {
     // Three lines kept on the wire, 900 added: the diff's counts are taken before it is cut.
     const stat = statOf(tool("t1", "edit", { paths: ["/w/a.ts"], diff: diffOf(900, 20) }));

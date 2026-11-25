@@ -970,18 +970,19 @@ function ChangeCounts({ stat, withFiles = false }: { stat: ChangeStat; withFiles
  * under that, and the way into the review panel beside them. A long list shows four and keeps the rest behind
  * one more click, so a turn that touched twelve files still reads as a card and not as a wall.
  */
-function ChangedFiles({ id, files, workspace, stat, onReview }: { id: string; files: string[]; workspace: string; stat: ChangeStat | null; onReview?: (() => void) | undefined }) {
-  const rel = files.map((f) => relativePath(f, workspace));
+function ChangedFiles({ id, files, workspace, stat, lines, onReview }: { id: string; files: string[]; workspace: string; stat: ChangeStat | null; lines: Record<string, { added: number; removed: number }>; onReview?: (() => void) | undefined }) {
+  // Each row keeps the path it was given: the counts are keyed by that path, and the row shows the project-relative one.
+  const rows = files.map((path) => ({ path, rel: relativePath(path, workspace) }));
   const [open, setOpen] = useRowOpen(id, false);
-  const shown = open ? rel : rel.slice(0, 4);
-  const rest = rel.length - shown.length;
+  const shown = open ? rows : rows.slice(0, 4);
+  const rest = rows.length - shown.length;
   return (
     <div className="changed-files" data-testid="changed-files">
       <div className="changed-card">
         <div className="changed-head">
           <IconEdit size={13} aria-hidden="true" />
           <span className="changed-title">
-            Edited {rel.length} {rel.length === 1 ? "file" : "files"}
+            Edited {rows.length} {rows.length === 1 ? "file" : "files"}
           </span>
           {stat ? <ChangeCounts stat={stat} /> : null}
           {onReview ? (
@@ -991,18 +992,22 @@ function ChangedFiles({ id, files, workspace, stat, onReview }: { id: string; fi
           ) : null}
         </div>
         <ul className="changed-list">
-          {shown.map((f) => {
+          {shown.map(({ path, rel }) => {
             // The file's own name carries the row; its folder is context, so it goes quieter.
-            const cut = f.lastIndexOf("/");
+            const cut = rel.lastIndexOf("/");
+            const own = lines[path];
             return (
-              <li key={f}>
-                <FileLink path={f}>
+              <li key={path}>
+                <FileLink path={rel}>
                   <IconFile size={14} />
                   <code>
-                    {cut > 0 ? <span className="changed-dir">{f.slice(0, cut + 1)}</span> : null}
-                    <span className="changed-base">{f.slice(cut + 1)}</span>
+                    {cut > 0 ? <span className="changed-dir">{rel.slice(0, cut + 1)}</span> : null}
+                    <span className="changed-base">{rel.slice(cut + 1)}</span>
                   </code>
                 </FileLink>
+                {/* Its own lines, where a call reported them: scanning four files needs to know which one was a
+                    rewrite and which a line, and the head's total says only the sum. */}
+                {own ? <DiffBadge added={own.added} removed={own.removed} /> : null}
               </li>
             );
           })}
@@ -1013,7 +1018,7 @@ function ChangedFiles({ id, files, workspace, stat, onReview }: { id: string; fi
               </button>
             </li>
           ) : null}
-          {open && rel.length > 4 ? (
+          {open && rows.length > 4 ? (
             <li>
               <button type="button" className="changed-more" aria-expanded onClick={() => setOpen(false)}>
                 Show fewer
@@ -1463,7 +1468,7 @@ function TurnBody({
       {turn.errors.map((item) => (
         <NoticeRow key={item.id} item={item} />
       ))}
-      {turn.changedFiles.length > 0 && !turn.live ? <ChangedFiles id={`changed-${turn.id}`} files={turn.changedFiles} workspace={workspace} stat={turn.changeStat} {...(onReview ? { onReview } : {})} /> : null}
+      {turn.changedFiles.length > 0 && !turn.live ? <ChangedFiles id={`changed-${turn.id}`} files={turn.changedFiles} workspace={workspace} stat={turn.changeStat} lines={turn.changedLines} {...(onReview ? { onReview } : {})} /> : null}
       {turn.after.length > 0 ? (
         <div className="turn-after">
           {turn.after.map((item) => (

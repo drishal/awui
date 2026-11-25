@@ -34,6 +34,8 @@ export interface Turn {
   endedAt?: number;
   counts: Partial<Record<ToolCategory, number>>;
   changedFiles: string[];
+  /** Each of those files' own lines, by path, where a call reported them for that file alone (a card's per-file counts). */
+  changedLines: Record<string, { added: number; removed: number }>;
   /** Lines added and removed by this turn's edits, or null when none reported any (no badge). */
   changeStat: ChangeStat | null;
   /** HTML pages this turn's render calls published, shown full-width above the answer. */
@@ -164,6 +166,10 @@ export function buildTurns(items: ChatItem[], status: ChatStatus, runStartedAt: 
     for (const item of rest) if (item.kind === "assistant" && item.model) model = item.model;
     const counts: Partial<Record<ToolCategory, number>> = {};
     const changed = new Set<string>();
+    // A file's own count, when a call changed it alone: a call that names several files reports one total, and that
+    // total is no file's, so those files keep a badge off rather than a wrong one.
+    const perFile = new Map<string, { added: number; removed: number }>();
+    const shared = new Set<string>();
     let added = 0;
     let removed = 0;
     let unknown = false;
@@ -185,6 +191,13 @@ export function buildTurns(items: ChatItem[], status: ChatStatus, runStartedAt: 
           if (stat) {
             added += stat.added;
             removed += stat.removed;
+            // Two calls that each edit one file each know their own lines; a call that names three files knows only
+            // their sum, so it takes the badge away from all three instead of handing it to one.
+            if (item.paths.length === 1) {
+              const only = item.paths[0] as string;
+              const was = perFile.get(only);
+              perFile.set(only, { added: (was?.added ?? 0) + stat.added, removed: (was?.removed ?? 0) + stat.removed });
+            } else for (const p of item.paths) shared.add(p);
           } else if (item.status === "done") unknown = true;
         }
         if (item.htmlRender) renders.push(item.htmlRender);
@@ -212,6 +225,7 @@ export function buildTurns(items: ChatItem[], status: ChatStatus, runStartedAt: 
       ...(endedAt !== undefined ? { endedAt } : {}),
       counts,
       changedFiles: [...changed],
+      changedLines: Object.fromEntries([...perFile].filter(([p]) => !shared.has(p))),
       changeStat: added + removed > 0 ? { added, removed, files: changed.size, partial: unknown } : null,
       renders,
       plans,
