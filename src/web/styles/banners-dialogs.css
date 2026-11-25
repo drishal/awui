@@ -344,12 +344,39 @@
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
+/* Desktop draws the word "Review" and the pencil; a phone swaps them for the file mark and "Diff". */
+.review-open .review-icon-file,
+.review-open .review-label-short {
+  display: none;
+}
+
 @media (max-width: 640px) {
+  /* No room for the word, but its meaning stays in the accessible name ("Review 3" on every device): the label
+     goes where a screen reader still reads it, and "Diff" is what draws. */
   .review-label {
+    position: fixed;
+    inset: 0 auto auto 0;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* A pencil beside the title read as "rename", and it already means edit on every prompt below: the pill wears
+     the file mark instead. */
+  .review-open .review-icon-edit {
     display: none;
   }
 
-  /* An icon + count badge, no border: the header action reads at a glance. */
+  .review-open .review-icon-file,
+  .review-open .review-label-short {
+    display: inline;
+  }
+
+  /* An icon and short label + count badge, no border: the header action reads at a glance. */
   .review-open {
     border: 0;
     padding: 0 4px;

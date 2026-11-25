@@ -96,7 +96,7 @@ import { HandoverDialog } from "./components/HandoverDialog.js";
 import { collectChanges } from "./review.js";
 import { copyResumeCommand, useResumeCommand } from "./resume-command.js";
 import { chatMarkdown, downloadText, exportFileName } from "./export.js";
-import { IconEdit, IconGauge, IconMenu, IconMore, IconSearch, IconSidebar, IconSplit, IconTerminal, IconBranch } from "./icons.js";
+import { IconEdit, IconFile, IconGauge, IconMenu, IconMore, IconSearch, IconSidebar, IconSplit, IconTerminal, IconBranch } from "./icons.js";
 import { applyHarnessAccents, harnessColor } from "./harness-colors.js";
 import { moveTab, pinnedCount, setPinned } from "./tab-order.js";
 import { closeTab, draftTab, findRoomTab, findTab, loadTabs, markUnread, placeChat, placeRoomTab, placeTab, runningChats, saveTabs, syncActive, syncRoomTitles, type Tab, type TabState } from "./tabs.js";
@@ -2468,7 +2468,13 @@ export function App() {
           ) : null}
           {chat && !room.roomId && changedFiles > 0 ? (
             <button type="button" className="btn btn-small review-open" title="Review the changes and comment on them" onClick={() => setReviewOpen(true)}>
-              <IconEdit size={14} /> <span className="review-label">Review</span> <span className="review-count">{changedFiles}</span>
+              {/* A phone draws the file mark and "Diff" (banners-dialogs.css): a bare pencil beside the title read as
+                  "rename", while the word "Review" stays in the accessible name on every device. */}
+              <IconEdit size={14} className="review-icon-edit" />
+              <IconFile size={14} className="review-icon-file" />
+              <span className="review-label">Review</span>
+              <span className="review-label-short" aria-hidden="true">Diff</span>
+              <span className="review-count">{changedFiles}</span>
             </button>
           ) : null}
           {/* On a phone these two fold into the chat menu when there is one (header-tool), so the title keeps its room. */}

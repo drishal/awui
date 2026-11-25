@@ -266,3 +266,27 @@ test("the start screen's composer stands on the same floor as a chat's", async (
   expect(chat).toBeLessThan(16);
   expect(start).toBe(chat);
 });
+
+test("the review pill names what it opens, and fits beside the title at 320px", async ({ page }) => {
+  await signInAndOpen(page);
+  await page.keyboard.press("Escape");
+  await newChat(page);
+  await page.keyboard.press("Escape");
+  await sendAndWait(page, "please edit the app for the review pill");
+  const pill = page.locator("button.review-open");
+  await expect(pill).toBeVisible();
+  // Not a bare pencil beside the title (which read as "rename"): a file mark and the word "Diff".
+  await expect(pill.locator("svg.review-icon-file")).toBeVisible();
+  await expect(pill.locator("svg.review-icon-edit")).toBeHidden();
+  await expect(pill.locator(".review-label-short")).toHaveText("Diff");
+  await expect(pill.locator(".review-label-short")).toBeVisible();
+  // The full word stays in the name, so it is the same button a screen reader finds on any device.
+  await expect(pill).toHaveAccessibleName("Review 1");
+  // Narrower than a phone: the header keeps the pill whole and inside the window.
+  await page.setViewportSize({ width: 320, height: 844 });
+  const header = page.locator(".chat-header");
+  const [box, head] = [await pill.boundingBox(), await header.boundingBox()];
+  expect(box && head && box.x + box.width <= head.x + head.width).toBe(true);
+  await expect(pill.locator(".review-label-short")).toBeVisible();
+  await expect(pill.locator(".review-count")).toHaveText("1");
+});
