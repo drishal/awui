@@ -81,6 +81,14 @@
     mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
   }
 
+  /* The pad is the fade's height, so only a body that can overflow takes it: shut group heads are a ridge each, and
+     the card ends on its last head instead of leaving an empty band under a list that is not there. Any row of its
+     own (a job, a notice, the queue, the chain) keeps the fade, since those can still scroll past the cap. */
+  .stack-body:not(:has(.stack-group.is-open)):not(:has(> .stack-row, > .stack-queue, > .stack-chain)) {
+    padding-bottom: 6px;
+    mask-image: none;
+  }
+
   /* A thumb's row for the fold: the head is the whole card while it is shut, so it is a finger's height. */
   .stack-group-head {
     height: 40px;
