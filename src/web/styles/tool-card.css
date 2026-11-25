@@ -283,6 +283,20 @@
   color: var(--text);
 }
 
+/* A mouse also gets a short accent rule down the sentence's edge, so the line reads as one that opens something.
+   Only where there is a pointer that hovers: on a touch screen a hover sticks to the row just tapped. */
+@media (hover: hover) {
+  .tool-head:hover {
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+}
+
+/* A pressed row gives a hair (0.3%): enough to feel like a surface under the finger, small enough that no text
+   reflows. Reduced motion keeps it still (bottom of this file). */
+.tool-row:active {
+  transform: scale(0.997);
+}
+
 .tool-sentence {
   flex: 1 1 auto;
   min-width: 0;
@@ -999,4 +1013,12 @@
 /* The body is already under the sentence, so the card's side padding would shift a picture. */
 :root[data-tool-style="lines"] .tool-images {
   padding-inline: 0;
+}
+
+/* Reduced motion: the press has no give (tokens.css stops every animation and transition, but a static
+   transform is not one of them). */
+@media (prefers-reduced-motion: reduce) {
+  .tool-row:active {
+    transform: none;
+  }
 }
