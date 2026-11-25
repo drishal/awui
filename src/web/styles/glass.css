@@ -1,0 +1,89 @@
+/* ---- glass: the surfaces that sit over moving content ---------------------- */
+
+/* Frost, not opacity. A surface gets a translucent face and a backdrop blur, so what passes under it
+   reads as light through wet glass rather than as ghosts of the rows behind. Only four static surfaces
+   take it, and none of them is inside a scrolling list (a blur there would repaint on every frame of a
+   streaming run): the composer card, the sticky prompt bar, the status stack, and the command menu.
+   `.is-glass` is the same recipe for a surface that wants it (the notice stack) without a second copy.
+
+   Three edges make it read as glass rather than as a faded card: the frost, one specular hairline inside
+   the top edge (a pseudo-element, so the surface's own shadow keeps its state — the composer's focus halo
+   is the loudest of those), and the shadow each surface already casts. The specular is a scheme colour
+   (tokens.css): white light is a line on a dark page and barely anything on a light one.
+
+   A blur is the most expensive thing on this page after the transcript itself, so it is never repeated:
+   the face fades to plain card tone under `prefers-reduced-transparency: reduce`, and a browser without
+   backdrop-filter gets a 98% face and the hairline instead of a blur that does nothing. */
+
+:root {
+  /* How much of its face a glass surface keeps over the page. Higher on the sticky prompt: 13px of text
+     over blurred rows needs more of its own tone than a card with 3 lines of room in it. */
+  --glass-tint: 76%;
+  --glass-blur: 12px;
+  --glass-saturate: 1.6;
+}
+
+.composer-card,
+.sticky-prompt,
+.status-stack,
+.command-menu,
+.is-glass {
+  background: color-mix(in srgb, var(--glass-face, var(--surface)) var(--glass-tint), transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* The composer is the one face the transcript lifts rather than recesses, so its frost keeps that face
+   (the same mix its own rule draws) instead of dropping to the page's surface tone. */
+.composer-card {
+  --glass-face: color-mix(in srgb, var(--raised) 70%, var(--card));
+}
+
+.sticky-prompt {
+  --glass-tint: 88%;
+}
+
+/* A bar and a menu have no card to sit on: the pseudo needs a box of its own to be positioned in. */
+.status-stack {
+  position: relative;
+}
+
+/* The specular: one bright pixel inside the top edge, following the surface's own radius. Positioned rather
+   than a second box-shadow, because these surfaces already use box-shadow for state (focus, float, drag). */
+.composer-card::before,
+.sticky-prompt::before,
+.status-stack::before,
+.command-menu::before,
+.is-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 var(--glass-specular);
+  pointer-events: none;
+}
+
+/* No blur to draw: keep the face (its own shadow and border still separate it) and drop the work. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .composer-card,
+  .sticky-prompt,
+  .status-stack,
+  .command-menu,
+  .is-glass {
+    background: color-mix(in srgb, var(--glass-face, var(--card)) 98%, transparent);
+  }
+}
+
+/* Frost is the one thing a reader can ask not to have: the face goes back to nearly opaque card tone,
+   and the hairline edges carry the shape. */
+@media (prefers-reduced-transparency: reduce) {
+  .composer-card,
+  .sticky-prompt,
+  .status-stack,
+  .command-menu,
+  .is-glass {
+    background: color-mix(in srgb, var(--glass-face, var(--card)) 98%, transparent);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
