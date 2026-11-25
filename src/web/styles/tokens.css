@@ -105,8 +105,13 @@
      Light keeps nearly all of the white, because what lifts a card there is its shadow. */
   --card-mix: 76%;
   /* How much accent the start screen's wash behind its mark takes. It is a glow around the blueprint,
-     not a lamp: the mark's own disc carries the colour, so both schemes keep this one low. */
-  --hero-wash: 6%;
+     not a lamp: the mark's own disc carries the colour, so both schemes keep this one low. A light page
+     needs less of it than a dark one — at 6% the wash, the grid and the beam averaged into a grey smear
+     over #f2f3f6 instead of reading as three separate things. */
+  --hero-wash: 4%;
+  /* The blueprint's lines. A light page draws them in its border tone, which is paper rather than ink;
+     a dark page keeps the text mix, because there a pale hairline is what reads as paper. */
+  --hero-grid: color-mix(in srgb, var(--border) 75%, transparent);
   /* The one bright pixel inside a glass surface's top edge (glass.css). A white line is light on a dark
      page and almost nothing on a light one, where the shadow and the hairline carry the edge instead. */
   --glass-specular: rgb(255 255 255 / 0.45);
@@ -145,6 +150,7 @@
     --raise-mix: 16%;
     --card-mix: 62%;
     --hero-wash: 6%;
+    --hero-grid: color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 6%), transparent);
     --glass-specular: rgb(255 255 255 / 0.07);
     --card-edge: none;
   }
@@ -183,6 +189,7 @@
   --raise-mix: 16%;
   --card-mix: 62%;
   --hero-wash: 6%;
+  --hero-grid: color-mix(in srgb, var(--text) calc(var(--hairline-mix) + 6%), transparent);
   --glass-specular: rgb(255 255 255 / 0.07);
   --card-edge: none;
 }
