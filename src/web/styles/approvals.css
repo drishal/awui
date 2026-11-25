@@ -506,3 +506,14 @@
     stroke-dashoffset: 0;
   }
 }
+
+/* A phone's notices dock at the foot of the screen, over the composer's lane, and their dock can lag the moment an
+   approval arrives: the lane grows upward and the card lands under a notice that was placed for a shorter lane
+   (frame 17: only "Allow tool: read" was visible, its "Waiting for approval" head and Stop behind the card). The
+   approval is the one thing on screen the user has to touch, so on a phone it stands over the notices — 60 is the
+   notice stack's own layer (toasts.css, not ours to move). */
+@media (max-width: 819px) {
+  .approval-stack {
+    z-index: 61;
+  }
+}
