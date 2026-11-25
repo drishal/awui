@@ -7,6 +7,7 @@ import { createContext, Fragment, useContext, useMemo, useState, type CSSPropert
 import type { DiffLine, ToolDiff, ToolItem } from "../../shared/protocol.js";
 import type { LineOrigin } from "../../shared/review.js";
 import { todoEntries, type TodoEntry } from "../../shared/todo-entries.js";
+import { highlightLines, languageOf, type Token } from "../highlight.js";
 import { IconCheck, IconCircle, IconDot, IconFile, IconGlobe, IconSearch, IconTerminal, IconX } from "../icons.js";
 import { parseJsonContainer } from "../json-tree.js";
 import { relativePath } from "../turns.js";
@@ -106,8 +107,8 @@ function wordMarks(lines: DiffLine[]): Map<number, [number, number]> {
   return marks;
 }
 
+/** A plain line with its changed words marked; an empty line is the caller's, since it is only a blank row. */
 function lineText(text: string, mark: [number, number] | undefined): ReactNode {
-  if (!text) return " ";
   if (!mark) return text;
   return (
     <>
@@ -116,6 +117,30 @@ function lineText(text: string, mark: [number, number] | undefined): ReactNode {
       {text.slice(mark[1])}
     </>
   );
+}
+
+/**
+ * A line's tokens as spans, with the diff's own word marks still marked: each token is clipped to the mark that falls
+ * inside it, so a changed word keeps its syntax colour on the mark's ground rather than flattening to plain text.
+ * `start` is the line's offset from the run that was tokenised, which is only the mark's own coordinate system.
+ */
+function colouredLine(tokens: Token[], mark: [number, number] | undefined): ReactNode {
+  let at = 0;
+  return tokens.map((t, k) => {
+    const start = at;
+    at += t.text.length;
+    const className = t.kind === "plain" ? undefined : `tk-${t.kind}`;
+    const from = mark ? Math.max(mark[0], start) : 0;
+    const to = mark ? Math.min(mark[1], at) : 0;
+    if (!mark || to <= from) return <span key={k} className={className}>{t.text}</span>;
+    return (
+      <span key={k} className={className}>
+        {t.text.slice(0, from - start)}
+        <mark className="diff-word">{t.text.slice(from - start, to - start)}</mark>
+        {t.text.slice(to - start)}
+      </span>
+    );
+  });
 }
 
 const SIGN: Record<DiffLine["kind"], string> = { add: "+", del: "−", ctx: " ", hunk: "", gap: "" };
@@ -133,6 +158,8 @@ export function DiffView({
   onLine,
   notes,
   origins,
+  file,
+  colour = true,
 }: {
   diff: ToolDiff;
   /** The project a hunk's own path is under, so a multi-file diff names its files the way the rest of the row does. */
@@ -145,6 +172,11 @@ export function DiffView({
   notes?: ReadonlyMap<number, ReactNode>;
   /** Where each line came from, by its index (the review panel's attribution): adds a gutter mark. */
   origins?: ReadonlyMap<number, LineOrigin>;
+  /** The file the diff belongs to, for its language; a multi-file diff falls back on its own path rows. */
+  file?: string | null;
+  /** Colour the code (the file viewer's tokenizer). False while a call streams: half a hunk coloured reads as a
+   *  different file, so a live row stays plain until it settles. */
+  colour?: boolean;
 }) {
   const [all, setAll] = useState(expanded);
   const marks = useMemo(() => wordMarks(diff.lines), [diff.lines]);
@@ -152,6 +184,15 @@ export function DiffView({
   // Every row is its own grid, so the number column takes one width from the widest number: otherwise line 9's
   // code started a digit left of line 11's.
   const digits = useMemo(() => Math.max(2, ...diff.lines.map((l) => String(l.line ?? "").length)), [diff.lines]);
+  // The rows are code, so they take the file viewer's own tokenizer: the file the diff belongs to says its language
+  // (a multi-file diff's path row answers when no file was handed in), and a diff of something unknown stays plain.
+  const lang = useMemo(() => (colour ? languageOf(file ?? diff.lines.find((l) => l.kind === "hunk")?.text ?? "") : null), [colour, file, diff.lines]);
+  // Tokenised in one run over the whole diff, so a block comment or a multi-line string carries from line to line as
+  // it does in the file. A path row and a skipped run are blank in the run, which keeps each line's index its own.
+  const tokens = useMemo(
+    () => (lang ? highlightLines(diff.lines.map((l) => (l.kind === "hunk" || l.kind === "gap" ? "" : l.text)).join("\n"), lang) : null),
+    [lang, diff.lines],
+  );
   const shown = all ? diff.lines : diff.lines.slice(0, FOLDED_LINES);
   return (
     <div
@@ -193,7 +234,7 @@ export function DiffView({
               <span className="diff-sign" aria-label={l.kind === "add" ? "added" : l.kind === "del" ? "removed" : undefined}>
                 {SIGN[l.kind]}
               </span>
-              <span className="diff-text">{lineText(l.text, marks.get(i))}</span>
+              <span className="diff-text">{!l.text ? " " : tokens ? colouredLine(tokens[i] ?? [], marks.get(i)) : lineText(l.text, marks.get(i))}</span>
             </div>
             {notes?.get(i) ?? null}
           </Fragment>
@@ -347,7 +388,7 @@ function CallBody({ item, workspace }: { item: ToolItem; workspace: string }) {
         {path ? <FileLink path={path} /> : item.name}
       </CardHead>,
       <>
-        <DiffView diff={item.diff} workspace={workspace} />
+        <DiffView diff={item.diff} workspace={workspace} file={path} colour={item.status !== "running"} />
         {settledNote ? <div className={`tool-card-note${failed ? " is-error" : ""}`}>{item.output}</div> : null}
         {item.output && !settledNote && item.status !== "running" ? (
           <details className="tool-card-raw">
