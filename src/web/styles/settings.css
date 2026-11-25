@@ -114,11 +114,13 @@
   grid-column: 2;
   min-height: 0;
   margin-right: -18px;
-  padding: 14px 18px 36px;
+  padding: 14px 18px 64px;
   overflow-y: auto;
   /* Rows fade out at the bottom edge rather than being cut (as in the palette); the padding under
-     the last row matches the fade, so a row is never cut through its text. */
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
+     the last row matches the fade, so a row is never cut through its text. A section scrolled to by
+     the rail's search leaves the same room under itself, so its own first row is not what fades. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent);
+  scroll-padding-block-end: 72px;
 }
 
 /* Phones show one pane at a time; this is the way back from a section to the list. */
