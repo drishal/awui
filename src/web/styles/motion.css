@@ -332,21 +332,17 @@
   animation: slide-in 0.22s var(--ease-out);
 }
 
-/* A call that starts while the chat is on screen grows into its card (the rows under it glide down) as it
-   fades and drops into place. max-height, not interpolate-size, so Firefox does it too; the cap is past a
-   failed row's two lines, and the animation ends, so a taller row is never cut. */
+/* A call that starts while the chat is on screen fades and drops into place. Only paint: an arriving row takes
+   its height at once, so the rows under it move in one frame instead of sliding down it as it grew (a run can
+   add a call every second, and a transcript that re-flows under every one of them is what reads as jitter). */
 .tool-row.is-arriving {
   animation: row-in 0.28s var(--ease-out);
 }
 
 @keyframes row-in {
   from {
-    max-height: 0;
     opacity: 0;
     transform: translateY(-4px);
-  }
-  to {
-    max-height: 120px;
   }
 }
 
@@ -563,7 +559,8 @@
   }
 }
 
-/* The status stack grows to its content instead of appearing at full height, and a queued row grows in. */
+/* The status stack fades in where it belongs, and a queued row with it. Never its height: the dock sits over the
+   transcript, and growing it made every row above it move as it appeared. */
 .status-stack {
   animation: stack-grow var(--dur-enter) var(--ease-out);
 }
@@ -574,14 +571,7 @@
 
 @keyframes stack-grow {
   from {
-    max-height: 0;
     opacity: 0;
-    overflow: hidden;
-  }
-  to {
-    max-height: 40vh;
-    opacity: 1;
-    overflow: hidden;
   }
 }
 
