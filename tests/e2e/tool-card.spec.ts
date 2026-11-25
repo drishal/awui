@@ -209,7 +209,7 @@ test("an earlier turn's failed call has no retry while a new turn runs", async (
 
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-  test("the counts take their own line and the retry stays on the call's line", async ({ page }) => {
+  test("the counts share a fitting sentence's line and the retry stays on the call's line", async ({ page }) => {
     await signInAndOpen(page);
     await page.keyboard.press("Escape");
     await newChat(page);
@@ -225,10 +225,11 @@ test.describe("on a phone", () => {
     expect(await toggle.locator(".process-label").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const row = page.locator('[data-tool="bash"]').first();
     const [sentence, facts] = [await row.locator(".tool-sentence").boundingBox(), await row.locator(".tool-facts").boundingBox()];
-    // On a phone the counts take a line of their own under the sentence, so a command is read to its end instead of
-    // being cut at "…tool-diff" to leave a counts column beside it.
-    expect(facts!.y).toBeGreaterThanOrEqual(sentence!.y + sentence!.height - 1);
-    // That line is a thumb's row, and the counts sit at its right edge rather than following the words.
+    // A sentence and its counts share one thumb's row when they fit instead of the counts wrapping below it.
+    expect(await row.locator(".tool-sentence").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect(facts!.y).toBeLessThan(sentence!.y + sentence!.height - 1);
+    expect(facts!.y + facts!.height).toBeGreaterThan(sentence!.y);
+    // The counts sit at the row's right edge rather than following the words.
     const head = await row.locator(".tool-head").boundingBox();
     expect(head!.height).toBeGreaterThanOrEqual(43);
     expect(facts!.x + facts!.width).toBeGreaterThan(sentence!.x + sentence!.width - 1);
