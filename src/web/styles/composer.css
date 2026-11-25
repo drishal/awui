@@ -1,6 +1,9 @@
 /* ---- composer card (DeepSeek Harness) --------------------------------------- */
 
 .composer {
+  position: relative;
+  /* Its upward-opening sheets sit over the thread's bottom fade (z2), not under it. */
+  z-index: 3;
   width: 100%;
   /* The thread's scroller reserves its scrollbar's 8px, which lifts a centred thread 4px left of the pane's
      centre. The extra width and the wider right padding here put the composer and the dock on that same

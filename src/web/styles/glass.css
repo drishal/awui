@@ -3,7 +3,8 @@
 /* Frost, not opacity. A surface gets a translucent face and a backdrop blur, so what passes under it
    reads as light through wet glass rather than as ghosts of the rows behind. Only four static surfaces
    take it, and none of them is inside a scrolling list (a blur there would repaint on every frame of a
-   streaming run): the composer card, the sticky prompt bar, the status stack, and the command menu.
+   streaming run): the composer card, the status stack, and the command menu. The sticky prompt is a
+   thin opaque label over otherwise empty page space, so its face needs no blur at all.
    `.is-glass` is the same recipe for a surface that wants it (the notice stack) without a second copy.
 
    Three edges make it read as glass rather than as a faded card: the frost, one specular hairline inside

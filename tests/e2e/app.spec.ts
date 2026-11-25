@@ -1247,6 +1247,7 @@ test("a working session spins in the sidebar, also while another chat is open", 
 test("/ opens the command menu: it filters, completes, runs, and closes", async ({ page }) => {
   await signInAndOpen(page);
   await openChat(page);
+  await sendAndWait(page, "showcase");
   const box = page.getByRole("textbox", { name: "Message" });
   const menu = page.getByRole("listbox", { name: "Commands" });
   await box.fill("/");
@@ -1267,6 +1268,9 @@ test("/ opens the command menu: it filters, completes, runs, and closes", async 
   await box.press("Enter");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Better title");
   // Esc closes the menu and keeps the text.
+  // The transcript has enough content for its bottom fade now: the menu is a sibling of the conversation, not a child,
+  // so it sits in the same stacking context and above that fade (z 2), not on the page under it.
+  await expect(page.locator(".composer")).toHaveCSS("z-index", "3");
   await box.fill("/re");
   await expect(menu).toBeVisible();
   await box.press("Escape");

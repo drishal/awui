@@ -11,7 +11,7 @@
    that is half out is dimmed between its lines, not sliced through a glyph. The thread reserves both heights (its
    padding at the top, the last turn's at the bottom), so a row at rest is never under one. They sit above the rows
    (z 2) and below the sticky prompt (4), the jump pill (5) and the find bar (6), and take no pointer, so a row under
-   a fade is still clickable. */
+   a fade is still clickable. The composer owns z3 for its upward-opening sheets; sticky prompt (4), jump pill (5) and find bar (6) sit above it. */
 .conversation-wrap::before,
 .conversation-wrap::after {
   content: "";
