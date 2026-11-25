@@ -88,6 +88,13 @@
   padding-bottom: var(--gap-turn);
 }
 
+/* The thread's last turn keeps 40 px of quiet under it. The jump pill floats in the transcript's bottom corner, and
+   at the end of the scroll it sat on the last line of the last turn — the reserved room is what it floats in, and it
+   belongs on the turn rather than the thread's padding so a phone's own bottom padding keeps its gutter. */
+.thread > .turn:last-child {
+  padding-bottom: calc(var(--gap-turn) + 40px);
+}
+
 /* Compaction is a lasting history boundary, not a dismissible info notice.
  * For a compaction inside a run, the fold still says so when it is closed. */
 .compaction-marker {
