@@ -139,14 +139,19 @@ export function ModelPicker({
     if (onThinking && thinking && !next.includes(thinking)) onThinking("");
   };
 
-  // Place above the pill unless there is too little room; size to the space.
+  // Place above the box the chip sits in; size to the space. In the composer that is the card itself
+  // (model-picker.css anchors the list to it), because measuring the chip's own row would let the list
+  // reach down over the message box it belongs to.
   useLayoutEffect(() => {
     if (!open || !trigger.current) return;
-    const rect = trigger.current.getBoundingClientRect();
+    const composer = trigger.current.closest<HTMLElement>(".composer-pickers")?.closest<HTMLElement>(".composer");
+    const rect = (composer ?? trigger.current).getBoundingClientRect();
     const band = clipBand(trigger.current);
     const above = rect.top - band.top - 16;
     const below = band.bottom - rect.bottom - 16;
-    const useBelow = above < 280 && below > above;
+    // The composer sits on the column's floor, so its list always opens upwards; a chip elsewhere (Board's
+    // combined chip) turns to the other side when the room above is short.
+    const useBelow = !composer && above < 280 && below > above;
     // Fit the side it opens on; never taller than the room (that would push it off-screen).
     setPlace({ below: useBelow, maxHeight: Math.max(120, Math.min(520, useBelow ? below : above)) });
     const start = flat.findIndex((m) => m.key === current);
@@ -346,8 +351,10 @@ export function ModelPicker({
                         {model.name !== model.id ? <span className="model-id">{section.recent ? model.key : model.id}</span> : null}
                         {model.levels?.length ? (
                           // The strongest level; the harness lists them weakest first.
-                          <span className="model-tag" title={`Reasoning: ${model.levels.join(", ")}`}>
-                            {model.levels[model.levels.length - 1]}
+                          // The strongest level the model takes, said as the ceiling it is: the chat's own level is
+                          // on the chip that opened this list, and a bare "high" beside it read as a contradiction.
+                          <span className="model-tag" title={`Reasoning levels: ${model.levels.join(", ")}`}>
+                            up to {model.levels[model.levels.length - 1]}
                           </span>
                         ) : null}
                         <span className="model-check">{model.key === current ? <IconCheck size={13} /> : null}</span>
