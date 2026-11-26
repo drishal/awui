@@ -17,18 +17,34 @@ async function painted(page: import("@playwright/test").Page, token: string): Pr
   }, token);
 }
 
-/** WCAG contrast of two painted colours (`rgb()` / `rgba()` strings), so a pair is held to a ratio, not a hex. */
-function contrastOf(a: string, b: string): number {
-  const luminance = (colour: string) => {
-    const [r, g, b] = (colour.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number) as [number, number, number];
-    const channel = (value: number) => {
-      const s = value / 255;
-      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-    };
-    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-  };
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
-  return (hi + 0.05) / (lo + 0.05);
+/**
+ * WCAG contrast of two painted colours, so a pair is held to a ratio rather than to a hex. Both go through a
+ * canvas first: a `color-mix()` resolves to `oklab()` (or `color(srgb …)`) in this browser, which is not an
+ * `rgb()` triple to parse by hand.
+ */
+function contrastOf(page: import("@playwright/test").Page, one: string, other: string): Promise<number> {
+  return page.evaluate(
+    ([a, b]) => {
+      const ctx = document.createElement("canvas").getContext("2d") as CanvasRenderingContext2D;
+      const rgb = (colour: string) => {
+        ctx.fillStyle = "#000";
+        ctx.fillStyle = colour;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, blue] = ctx.getImageData(0, 0, 1, 1).data as Uint8ClampedArray;
+        return [r as number, g as number, blue as number] as const;
+      };
+      const luminance = ([r, g, b]: readonly [number, number, number]) => {
+        const channel = (value: number) => {
+          const s = value / 255;
+          return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+      };
+      const [hi, lo] = [luminance(rgb(a)), luminance(rgb(b))].sort((x, y) => y - x) as [number, number];
+      return (hi + 0.05) / (lo + 0.05);
+    },
+    [one, other] as const,
+  );
 }
 
 test("the two-row head and footer keep the controls on the new chrome", async ({ page }) => {
@@ -293,24 +309,19 @@ test("the list's bottom fade is a scrim under the rows, and the list masks nothi
   await last.getByRole("button", { name: /^More for / }).click();
   const menu = page.locator(".row-menu");
   await expect(menu).toBeVisible();
+  // Its unfurl scales it for a moment, and a box read mid-animation is smaller than the one it paints.
+  await expect.poll(async () => menu.evaluate((el) => el.getAnimations().length)).toBe(0);
+  // The menu's own bottom edge is its content, not another layer's: a menu taller than the room under its
+  // row scrolls, and the pointer there finds the menu.
   const foot = await page.evaluate(() => {
     const menu = document.querySelector<HTMLElement>(".row-menu");
     const box = menu?.getBoundingClientRect();
     if (!menu || !box) return null;
-    // The last item the menu actually shows: a menu taller than the room under its row scrolls.
-    const shown = [...menu.querySelectorAll<HTMLElement>("[role='menuitem']")].filter((el) => {
-      const r = el.getBoundingClientRect();
-      return r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5;
-    });
-    const item = shown[shown.length - 1];
-    if (!item) return null;
-    const r = item.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return { inside: Boolean(hit?.closest(".row-menu")), label: (item.textContent ?? "").trim() };
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.bottom - 4);
+    return { inside: Boolean(hit?.closest(".row-menu")), hit: hit ? `${hit.tagName}.${String(hit.className)}` : null };
   });
   expect(foot, "the menu drew").not.toBeNull();
-  // Its foot is a real target under the pointer, not a band the list's fade painted over.
-  expect(foot?.inside, `the menu's last row ("${foot?.label}") is a real target`).toBe(true);
+  expect(foot?.inside, `the menu's last row is a real target (found ${foot?.hit})`).toBe(true);
 });
 
 test.describe("phone drawer", () => {
@@ -555,6 +566,23 @@ test("the open row's second rank clears 4.5:1 on its own wash, in both schemes",
     });
     expect(pair, `the open row's words and its wash (${scheme})`).not.toBeNull();
     const seen = pair as { ink: string; wash: string };
-    expect(contrastOf(seen.ink, seen.wash), `the second rank on the wash, ${scheme}`).toBeGreaterThanOrEqual(4.5);
+    expect(await contrastOf(page, seen.ink, seen.wash), `the second rank on the wash, ${scheme}`).toBeGreaterThanOrEqual(4.5);
   }
+
+  // The case the mix was chosen for: the owner's own dark theme, whose wash is #3b4057 and whose muted ink
+  // #9ca0b0 — the pair that measured 4.16:1 at 88/12. Painted onto the sidebar, so the words and the wash are
+  // read from the page exactly as they were then.
+  const owned = await page.evaluate(() => {
+    const sidebar = document.querySelector(".sidebar") as HTMLElement;
+    sidebar.style.setProperty("--sidebar-active-wash", "#3b4057");
+    sidebar.style.setProperty("--muted-text", "#9ca0b0");
+    sidebar.style.setProperty("--text", "#cdd6f4");
+    const row = document.querySelector(".sidebar .session.is-active");
+    const wash = document.querySelector(".session-active-bg:not([hidden])");
+    const words = row?.querySelector(".session-sub, .session-meta");
+    return row && wash && words ? { ink: getComputedStyle(words).color, wash: getComputedStyle(wash).backgroundColor } : null;
+  });
+  expect(owned, "the open row's words and the owner's wash").not.toBeNull();
+  const painted = owned as { ink: string; wash: string };
+  expect(await contrastOf(page, painted.ink, painted.wash), "the second rank on the owner's wash").toBeGreaterThanOrEqual(4.5);
 });

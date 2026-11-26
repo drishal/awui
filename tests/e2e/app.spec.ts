@@ -1283,6 +1283,9 @@ test("a working session spins in the sidebar, also while another chat is open", 
   await newChat(page);
   const working = page.getByTestId("working-group");
   await expect(working.locator(".working-ring").first()).toBeVisible();
+  // One moving thing per run: the head's mark stands for its rows and holds still, and the row under it spins.
+  await expect(working.locator(".working-ring").first(), "the head's ring does not spin").toHaveCSS("animation-name", "none");
+  await expect(working.locator(".session", { hasText: "slow spinner run" }).locator(".working-ring"), "the row's ring spins").toHaveCSS("animation-name", "spin");
   await expect(working.getByRole("button", { name: /^Working, \d+ sessions?$/ })).toHaveAttribute("aria-expanded", "true");
   await expect(working.locator(".session", { hasText: "slow spinner run" }).getByRole("img", { name: "Working" })).toBeVisible();
   // This row leaves the section when its run settles. The section itself can outlive it: the suite shares one
