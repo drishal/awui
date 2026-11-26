@@ -719,7 +719,7 @@ test("model and thinking changes apply while idle", async ({ page }) => {
   const effort = page.getByRole("slider", { name: "Thinking" });
   await expect(effort).toBeFocused();
   await page.keyboard.press("End");
-  await expect(effort).toHaveAttribute("aria-valuetext", "high");
+  await expect(effort).toHaveAttribute("aria-valuetext", "High");
   await expect(page.getByTestId("thinking-picker")).toHaveAccessibleName("Thinking: high");
   await page.keyboard.press("Escape");
   await page.reload();
@@ -735,7 +735,7 @@ test("model and thinking changes apply while idle", async ({ page }) => {
   const track = page.locator(".effort-track");
   const box = (await track.boundingBox()) as { x: number; y: number; width: number; height: number };
   await page.mouse.click(box.x + 4, box.y + box.height / 2);
-  await expect(page.getByRole("slider", { name: "Thinking" })).toHaveAttribute("aria-valuetext", "off");
+  await expect(page.getByRole("slider", { name: "Thinking" })).toHaveAttribute("aria-valuetext", "Off");
   await expect(page.getByTestId("thinking-picker")).toHaveAccessibleName("Thinking: off");
 });
 
