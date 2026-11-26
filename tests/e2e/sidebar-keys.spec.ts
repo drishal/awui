@@ -409,7 +409,7 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   const running = rail.getByRole("button", { name: /^\d+ running$/ });
   await expect(running).toBeVisible();
   await expect(running.getByRole("img", { name: "Working" })).toBeVisible();
-  await expect(running.locator(".rail-badge")).toHaveCSS("box-shadow", "none");
+  await expect(running.locator(".rail-badge")).not.toHaveCSS("box-shadow", "none");
   await expect(running.locator(".rail-badge")).toHaveCSS("color", await paintedColor(page, "--text-2"));
   await running.click();
   await expect(page.getByRole("menu", { name: "Running", exact: true }).getByRole("menuitem", { name: /slow stream for the rail/ })).toBeVisible();

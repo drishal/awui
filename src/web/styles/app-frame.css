@@ -187,15 +187,15 @@
 
 .rail-badge {
   position: absolute;
-  top: 1px;
+  top: -1px;
   left: calc(50% + 1px);
   min-width: 15px;
   height: 15px;
   padding: 0 4px;
   border-radius: 8px;
-  background: var(--card);
-  box-shadow: none;
-  color: var(--accent);
+  /* A body, not a bare digit: the pill overlaps the glyph's corner instead of floating on the panel. */
+  background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--hairline-strong);
   font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
