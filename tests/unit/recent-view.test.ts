@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSession, SessionsOverview, WorkspaceInfo } from "../../src/shared/protocol.js";
 import { asHarnessId } from "../../src/shared/protocol.js";
-import { RECENT_MORE, RECENT_PAGE, projectTag, recentRows } from "../../src/web/recent-view.js";
+import { RECENT_PAGE, SHOW_MORE, projectTag, recentRows } from "../../src/web/recent-view.js";
 
 const NOW = new Date("2026-11-26T12:00:00Z").getTime();
 const at = (daysAgo: number) => new Date(NOW - daysAgo * 86_400_000).toISOString();
@@ -83,14 +83,14 @@ describe("recentRows", () => {
   });
 
   it("shows one page at a time: 12 rows first, then 20 more per page", () => {
-    const sessions = Array.from({ length: RECENT_PAGE + RECENT_MORE + 3 }, (_, i) => s(`r${String(i).padStart(2, "0")}`, "webui", "pi", at(0)));
+    const sessions = Array.from({ length: RECENT_PAGE + SHOW_MORE + 3 }, (_, i) => s(`r${String(i).padStart(2, "0")}`, "webui", "pi", at(0)));
     const first = recentRows(overview(sessions), opts);
     expect(ids(first.rows)).toHaveLength(RECENT_PAGE);
-    expect(first.hidden).toBe(RECENT_MORE + 3);
-    const second = recentRows(overview(sessions), opts, RECENT_PAGE + RECENT_MORE);
-    expect(ids(second.rows)).toHaveLength(RECENT_PAGE + RECENT_MORE);
+    expect(first.hidden).toBe(SHOW_MORE + 3);
+    const second = recentRows(overview(sessions), opts, RECENT_PAGE + SHOW_MORE);
+    expect(ids(second.rows)).toHaveLength(RECENT_PAGE + SHOW_MORE);
     expect(second.hidden).toBe(3);
-    const all = recentRows(overview(sessions), opts, RECENT_PAGE + RECENT_MORE + 3);
+    const all = recentRows(overview(sessions), opts, RECENT_PAGE + SHOW_MORE + 3);
     expect(all.hidden).toBe(0);
     // A page that cuts a day in half still heads its rows.
     expect(all.rows[0]).toEqual({ kind: "divider", key: "today", label: "Today" });

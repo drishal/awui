@@ -127,10 +127,13 @@ a literal colour.
   flat list across the shown harness's projects: the needs-you, working and
   pinned sections above, then `recent-view.ts`'s page — calendar headings from
   `session-groups.ts`'s `dateGroup`, rows newest first, each with the project it
-  is out of as its tag, 12 rows and then 20 per "Show more". Projects is the
-  grouped list (`groupByProject`, `focusProject`), where focus mode, the folder
-  heads and drag order live; `GroupOptions`' place rules (what needs you, what
-  works, what is pinned, and the settled/snoozed/archived toggles) apply to both.
+  is out of as its tag, 12 rows and then 20 per "Show more"; a folder's preview
+  is 4 rows (8 for the current one) and adds the same 20, and "Show more" is a
+  row of the list itself: plain muted text at the row pitch, 44px on a phone.
+  Projects is the grouped list (`groupByProject`, `focusProject`), where focus
+  mode, the folder heads and drag order live; `GroupOptions`' place rules (what
+  needs you, what works, what is pinned, and the settled/snoozed/archived
+  toggles) apply to both.
 - **Sidebar headings:** a calendar heading and a section head (Needs you, Working,
   Pinned, Rooms) are signposts: sentence case at 11.5px/500 in `--muted-text`,
   with no tracking, and the attention colour stays on the needs-you icon alone.

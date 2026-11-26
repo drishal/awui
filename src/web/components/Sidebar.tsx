@@ -16,7 +16,7 @@ import type { UsageLimits } from "../../shared/protocol.js";
 import { limitResetAt } from "../../shared/limit-stop.js";
 import { coarse, useRowSwipe } from "../gestures.js";
 import { focusProject, groupByProject, isWorking as statusWorking, localeWeekStart, movedOrder, projectRows, sidebarSections, snoozeOptions, wakeLabel, type ProjectGroup } from "../session-groups.js";
-import { RECENT_MORE, RECENT_PAGE, projectTag, recentRows, type ProjectTag } from "../recent-view.js";
+import { RECENT_PAGE, SHOW_MORE, projectTag, recentRows, type ProjectTag } from "../recent-view.js";
 import { useSidebarView } from "../sidebar-view.js";
 import { applyHidden, applyQuick, asHideGroups, asQuickFilter, chipsShown, escapeClears, hideCounts, provenanceOf, quickCounts, QUICK_LABELS, type HideGroup, type QuickFilter } from "../sidebar-filter.js";
 import { load, save } from "../storage.js";
@@ -35,7 +35,7 @@ import { plainTitle } from "../plain-title.js";
 import { rowState, rowSubline } from "../session-state.js";
 import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
-/** Sessions shown per project before "Show N more". */
+/** A folder's first page: the current one gets a fuller preview than the others (each adds SHOW_MORE). */
 const VISIBLE_CURRENT = 8;
 const VISIBLE_OTHER = 4;
 
@@ -687,14 +687,15 @@ function ProjectGroupView({
   onNewChat: (ws: WorkspaceInfo) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const [showAll, setShowAll] = useState(false);
+  // How many "Show more" pages of this folder are open: each adds SHOW_MORE rows to its first page.
+  const [pages, setPages] = useState(0);
   const [dragged, setDragged] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; place: "before" | "after" } | null>(null);
   const { workspace, sessions, current, checkout, sharesRepo } = group;
   // One harness in the list means one dot on every row: the sidebar's harness row above already names it,
   // so the rows drop theirs and their titles keep the slot.
   const mixedHarness = sessions.some((row) => row.harnessId !== sessions[0]?.harnessId);
-  const limit = current ? VISIBLE_CURRENT : VISIBLE_OTHER;
+  const limit = (current ? VISIBLE_CURRENT : VISIBLE_OTHER) + pages * SHOW_MORE;
   const weekStart = useMemo(localeWeekStart, []);
   const all = useMemo(() => projectRows(sessions, { now, weekStartsOn: weekStart, ...(order ? { order } : {}) }), [sessions, now, weekStart, order]);
   // A search lists matches, not a hand order.
@@ -708,7 +709,7 @@ function ProjectGroupView({
   let count = 0;
   // A preview is a folder's first few rows: its dates are not worth a heading until the folder is opened,
   // because the age on each row already says when. A search is the caller's list, headings and all.
-  const previewing = !searching && !showAll && sessions.length > limit;
+  const previewing = !searching && sessions.length > limit;
   for (const [i, r] of all.entries()) {
     if (r.kind === "divider") {
       // A divider shows only when a session under it does.
@@ -721,7 +722,7 @@ function ProjectGroupView({
         );
       continue;
     }
-    if (!searching && !showAll && count >= limit) break;
+    if (!searching && count >= limit) break;
     count++;
     const { s, group: section } = r;
     const markable = !s.id.includes(":live-");
@@ -806,8 +807,8 @@ function ProjectGroupView({
           {sessions.length === 0 ? <li className="sidebar-note">No sessions here yet</li> : null}
           {hidden > 0 ? (
             <li>
-              <button type="button" className="show-more" onClick={() => setShowAll(true)}>
-                <IconMore size={13} /> Show {hidden} more in {workspace.name}
+              <button type="button" className="show-more" onClick={() => setPages((n) => n + 1)}>
+                Show {Math.min(hidden, SHOW_MORE)} more in {workspace.name}
               </button>
             </li>
           ) : null}
@@ -967,10 +968,11 @@ function FocusedProjectView({
   onFocus: (workspaceId: string) => void;
   scope: Array<{ workspace: WorkspaceInfo; count: number; current: boolean }>;
 }) {
-  const [showAll, setShowAll] = useState(false);
+  const [pages, setPages] = useState(0);
   const { workspace, checkout, sections } = focused;
   const total = sections.reduce((n, sec) => n + sec.sessions.length, 0);
-  // The VISIBLE_CURRENT cap spreads over the date sections as they come, newest first.
+  // The current project's first page spreads over the date sections as they come, newest first, and each
+  // "Show more" adds SHOW_MORE rows to it.
   const allSessions = sections.flatMap((sec) => sec.sessions);
   const mixedHarness = allSessions.some((row) => row.harnessId !== allSessions[0]?.harnessId);
   const projRows = projectRows(allSessions, { now, weekStartsOn: localeWeekStart(), ...(order ? { order } : {}) });
@@ -985,7 +987,7 @@ function FocusedProjectView({
   const rows: React.ReactNode[] = [];
   let count = 0;
   for (const sec of sections) {
-    const list = showAll ? sec.sessions : sec.sessions.slice(0, Math.max(0, VISIBLE_CURRENT - count));
+    const list = sec.sessions.slice(0, Math.max(0, VISIBLE_CURRENT + pages * SHOW_MORE - count));
     if (list.length === 0) continue;
     if (sec.label !== "") {
       rows.push(
@@ -1057,8 +1059,8 @@ function FocusedProjectView({
         {sections.length === 0 ? <li className="sidebar-note">No past sessions here yet</li> : rows}
         {hidden > 0 ? (
           <li>
-            <button type="button" className="show-more" onClick={() => setShowAll(true)}>
-              <IconMore size={13} /> Show {hidden} more in {workspace.name}
+            <button type="button" className="show-more" onClick={() => setPages((n) => n + 1)}>
+              Show {Math.min(hidden, SHOW_MORE)} more in {workspace.name}
             </button>
           </li>
         ) : null}
@@ -1495,7 +1497,7 @@ export function Sidebar(props: {
                   )}
                   {recent.hidden > 0 ? (
                     <li>
-                      <button type="button" className="show-more" onClick={() => setRecentLimit((n) => n + RECENT_MORE)}>
+                      <button type="button" className="show-more" onClick={() => setRecentLimit((n) => n + SHOW_MORE)}>
                         Show {recent.hidden} more
                       </button>
                     </li>

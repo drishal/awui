@@ -1,6 +1,8 @@
 /* ---- sidebar -------------------------------------------------------------- */
 
 .sidebar {
+  /* The sidebar's row pitch: one line, and one line with its subline (the separated look). */
+  --sid-row: 32px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -488,7 +490,8 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   margin: 0 -4px;
-  padding: 0 4px;
+  /* The last row can scroll clear of the footer, where the scroller's edge fades out. */
+  padding: 0 4px 12px;
 }
 
 /* The one scroller that used to fall back to the platform's own bar (light thumb, arrow buttons) inside
@@ -793,19 +796,41 @@
   margin-left: 2px;
 }
 
+/* "Show N more" is a row of the list that happens to be words: plain muted text at the rows' pitch, its
+   label lined up with the titles above it (the paddings below), and a 44px target on a phone. */
 .show-more {
   display: flex;
   align-items: center;
   gap: 7px;
   width: 100%;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: var(--sid-row);
+  padding: 0 10px 0 var(--show-more-pad, 10px);
   border: 0;
   border-radius: var(--r-sm);
   background: none;
   color: var(--muted-text);
   font-size: 13px;
   text-align: left;
+}
+
+/* The title's column: 8px of row padding, the 10px mark and its 6px gap, over the sublist's own inset. */
+.project-group .show-more {
+  --show-more-pad: 24px;
+}
+
+.flat-group .show-more {
+  --show-more-pad: 24px;
+}
+
+.list-toggles .show-more {
+  --show-more-pad: 10px;
+  min-height: 30px;
+}
+
+@media (pointer: coarse) {
+  .show-more {
+    min-height: 44px;
+  }
 }
 
 .show-more:hover {
@@ -818,8 +843,6 @@
    title attribute and the hover card keep the rest of it). Rows sit 2px apart and carry no divider: the
    pitch, the calendar headings and the hover pill are what group them. */
 .session {
-  /* Sidebar rows: one line, and one line with its subline (the separated look). */
-  --sid-row: 32px;
   position: relative;
   display: flex;
   align-items: flex-start;
@@ -1393,8 +1416,11 @@ body.is-resizing {
    line. Every rule here restates one value the separated look set above, and only those: delete the block
    and the default look returns whole. The panel around the rows (heads, chips, hover cards, the active
    wash) keeps its own rules either way. */
-:root[data-sidebar="compact"] .session {
+:root[data-sidebar="compact"] .sidebar {
   --sid-row: 28px;
+}
+
+:root[data-sidebar="compact"] .session {
   align-items: center;
   padding: 0 8px;
 }

@@ -7,9 +7,9 @@
 import type { ProjectSession, SessionsOverview } from "../shared/protocol.js";
 import { dateGroup, isTrunkBranch, placeOf, recency, visibleSessions, type GroupOptions } from "./session-groups.js";
 
-/** The flat list's first page, and what each "Show more" adds to it. */
+/** The flat list's first page, and the rows one "Show more" adds — a folder's page adds the same. */
 export const RECENT_PAGE = 12;
-export const RECENT_MORE = 20;
+export const SHOW_MORE = 20;
 
 /** The project a flat row is tagged with: its badge and name, and a branch worth saying. */
 export interface ProjectTag {
