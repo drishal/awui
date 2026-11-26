@@ -2236,6 +2236,8 @@ export function App() {
   // The app's name is the sidebar's. The header names the open chat, a chosen folder, or the new chat
   // being composed. A phone without a folder still needs that context instead of a lone drawer button.
   const headerTitle = chat ? plainTitle(chat.title) || "New chat" : workspace?.name ?? "New chat";
+  // One theme menu for both footers: the sidebar's tray, and the rail that stands in for it when folded.
+  const themeMenu = boot ? <ThemeMenu options={themeChoices} current={themeKey} onOpen={() => void themeLib.refresh()} onChoose={(option) => void chooseTheme(option)} onManage={() => openThemeSettings()} /> : null;
 
   return (
     <ToolStyleContext.Provider value={toolStyle}>
@@ -2254,6 +2256,9 @@ export function App() {
             leaveRoom();
             void openSession(s);
           }}
+          onUsage={() => setUsageOpen(true)}
+          onSettings={() => setSettingsOpen(true)}
+          themeMenu={themeMenu}
         />
       ) : null}
       <Sidebar
@@ -2275,7 +2280,7 @@ export function App() {
             <span className="usage-link-label">Usage</span>
           </button>
         }
-        themeMenu={boot ? <ThemeMenu options={themeChoices} current={themeKey} onOpen={() => void themeLib.refresh()} onChoose={(option) => void chooseTheme(option)} onManage={() => openThemeSettings()} /> : null}
+        themeMenu={themeMenu}
         tabs={
           tabState.tabs.length >= 2 ? (
             <nav className="drawer-tabs" aria-label="Open tabs">

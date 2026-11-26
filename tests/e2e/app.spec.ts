@@ -290,7 +290,7 @@ test("switch harness without reloading; capabilities change the composer", async
 test("the harness menu lists every harness with its mark and accent and works from the keyboard", async ({ page }) => {
   await signInAndOpen(page);
   await showSidebar(page);
-  const row = page.getByRole("complementary", { name: "Sessions" }).getByRole("button", { name: "Harness" });
+  const row = page.getByRole("complementary", { name: "Sessions" }).getByRole("button", { name: /^Harness: / });
   await expect(row).toContainText("Fake");
   await row.focus();
   await page.keyboard.press("ArrowDown");

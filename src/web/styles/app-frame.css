@@ -140,15 +140,24 @@
   margin-top: 6px;
 }
 
-/* A count rides on its own glyph's corner: the rail is 44 px wide and the number must not widen it. */
+/* Usage, Theme and Settings where the folded panel's footer would be: the tray's own things, one press away. */
+.rail-bottom {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  margin-top: auto;
+}
+
+/* A count rides its own glyph's top-right corner, not the button's: half the 15px badge overlaps the 16px
+   icon and the rest stays inside the 32px button, so nothing clips at the rail's edge. */
 .rail-btn {
   position: relative;
 }
 
 .rail-badge {
   position: absolute;
-  top: -1px;
-  right: -1px;
+  top: 1px;
+  left: calc(50% + 1px);
   min-width: 15px;
   height: 15px;
   padding: 0 4px;

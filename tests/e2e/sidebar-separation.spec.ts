@@ -311,7 +311,8 @@ test("the project switch menu stands on one grid: marks in one column, labels on
   // Every row's mark (the back chevron, the image glyph, a folder's badge) is centred on one x, and every label (the
   // two commands and each folder's name) starts at one x: before, the badge sat on a line of its own and a path wrapped
   // under it, and the two glyph rows' labels stood 5 px left of the folders'.
-  const rows = await menu.getByRole("menuitem").evaluateAll((items) =>
+  // Every choice, including the folders (menuitemradio) the switch menu checks.
+  const rows = await menu.locator('[role^="menuitem"]').evaluateAll((items) =>
     items.map((item) => {
       const box = item.getBoundingClientRect();
       const mark = (item.firstElementChild as Element).getBoundingClientRect();

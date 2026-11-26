@@ -28,13 +28,23 @@ export async function showSidebar(page: Page): Promise<void> {
   await expect(sidebar).toBeInViewport({ ratio: 0.95 });
 }
 
+/**
+ * The New chat control this layout shows: the head's pencil on a pointer, and on a phone the drawer's
+ * own sticky pill (its head keeps only the harness title and the close button).
+ */
+async function clickNewChat(page: Page): Promise<void> {
+  const head = page.getByRole("button", { name: "New chat", exact: true });
+  if (await head.isVisible()) await head.click();
+  else await page.getByRole("button", { name: "New chat in folder" }).click();
+}
+
 /** Open the app (this machine needs no sign-in) and pick a project through the folder browser. */
 export async function signInAndOpen(page: Page, project = "alpha"): Promise<void> {
   await page.goto("/");
   await showSidebar(page);
   // "New chat" shows the start screen with the folder picker open over it (a
   // restored tab shows its chat instead, and New chat leaves that tab open).
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await clickNewChat(page);
   const dialog = page.getByRole("dialog", { name: "Choose a project folder" });
   // The picker opens wherever the server last had a folder open (shared across
   // tests), so name the folder outright instead of trusting its start point.
@@ -46,7 +56,7 @@ export async function signInAndOpen(page: Page, project = "alpha"): Promise<void
 }
 /** Pick the sidebar's harness from its menu. */
 export async function chooseHarness(page: Page, harness: string): Promise<void> {
-  await page.getByRole("complementary", { name: "Sessions" }).getByRole("button", { name: "Harness" }).click();
+  await page.getByRole("complementary", { name: "Sessions" }).getByRole("button", { name: /^Harness: / }).click();
   await page.getByRole("listbox", { name: "Harness" }).getByRole("option", { name: harness, exact: true }).click();
 }
 
@@ -61,7 +71,7 @@ export async function openSettings(page: Page): Promise<void> {
 export async function newChat(page: Page, harness?: string): Promise<void> {
   await showSidebar(page);
   if (harness) await chooseHarness(page, harness);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await clickNewChat(page);
   // The folder picker opens over the start screen; Escape keeps the current folder.
   const picker = page.getByRole("dialog", { name: "Choose a project folder" });
   await expect(picker).toBeVisible();

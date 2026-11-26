@@ -136,7 +136,7 @@ export function HarnessMenu({
         type="button"
         className={variant === "row" ? "harness-row" : "pill-select harness-chip"}
         style={harnessColor(currentId ?? undefined)}
-        aria-label={label}
+        aria-label={variant === "row" ? `${label}: ${name}` : label}
         {...(!staticLabel && hint ? { title: hint } : {})}
         aria-haspopup={staticLabel ? undefined : "listbox"}
         aria-expanded={open}
@@ -148,9 +148,12 @@ export function HarnessMenu({
         <span className="harness-dot">
           <HarnessMark harness={current} />
         </span>
-        <span className="harness-row-name">{name}</span>
-        {/* A lone harness's static title gets no affordance of a picker. */}
-        {variant === "row" && !staticLabel ? <IconChevronDown size={12} /> : null}
+        {/* The chevron is the name's neighbour, not the row's right end: 4px from it, inside the label. */}
+        <span className="harness-label">
+          <span className="harness-row-name">{name}</span>
+          {/* A lone harness's static title gets no affordance of a picker. */}
+          {variant === "row" && !staticLabel ? <IconChevronDown size={12} /> : null}
+        </span>
       </button>
       {showMenu ? (
         <div

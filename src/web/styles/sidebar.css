@@ -3,6 +3,9 @@
 .sidebar {
   /* The sidebar's row pitch: one line, and one line with its subline (the separated look). */
   --sid-row: 32px;
+  /* The scroller's bottom fade is the footer tray's own height (phones raise the tray): the last row fades
+     into the tray instead of merging with it. */
+  --sid-tray: 36px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -25,6 +28,13 @@
 .sidebar-head .harness-menu-wrap {
   flex: 1;
   min-width: 0;
+}
+
+/* The title is the name and its chevron, not the empty half of the row: the hover pill hugs what it says,
+   and only the words are a button (the icons keep the right end). */
+.sidebar-head .harness-row {
+  width: auto;
+  max-width: 100%;
 }
 
 .sidebar-head .icon-btn {
@@ -61,7 +71,20 @@
 }
 
 .session-list {
-  mask-image: linear-gradient(to bottom, black calc(100% - 16px), transparent);
+  mask-image: linear-gradient(to bottom, black calc(100% - var(--sid-tray)), transparent);
+}
+
+/* The drawer's top edge: a short fade that appears once the list has scrolled, so the row passing under the
+   head reads as scrolled rather than cut. Above the drawer breakpoint the sticky date heading is that edge. */
+.list-scrim {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 12px;
+  margin-bottom: -12px;
+  background: linear-gradient(to bottom, var(--surface), transparent);
+  pointer-events: none;
 }
 
 .sidebar-note {
@@ -279,9 +302,22 @@
   border-radius: 50%;
   background: var(--accent);
 }
+
+/* The filter is a glyph in the field's end, not a bordered tile: the search box is the control, and a second
+   frame inside it draws a sticker. chat-search.css's shared .filter-chip is a caption chip elsewhere, and it
+   is imported later, so this rule carries the field to win. */
 .search-field .filter-chip {
   width: 24px;
   height: 24px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  transition: background 0.12s ease-out, color 0.12s ease-out;
+}
+
+.search-field .filter-chip:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
 .filter-chip.is-on {
@@ -337,7 +373,6 @@
   padding: 8px;
 }
 
-.filter-view,
 .filter-quick,
 .filter-actions {
   display: flex;
@@ -356,6 +391,15 @@
   flex-direction: column;
   align-items: stretch;
   gap: 0;
+}
+
+/* The view segment is a control, not a caption: it stands on its own line at the rows' own left edge, so
+   the segment, the headings and the rows read down one column instead of three. */
+.filter-view {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
 }
 
 .filter-heading {
@@ -426,12 +470,44 @@
   background: var(--hover);
 }
 
+/* A row with an explanation keeps its control and count on the label's line, not floating against the two. */
+.filter-row:has(.filter-hint) {
+  align-items: flex-start;
+}
+
+.filter-row:has(.filter-hint) > input,
+.filter-row:has(.filter-hint) > .filter-count {
+  margin-top: 1px;
+}
+
+/* A count of nothing is still a choice, so it stays clickable: dimmed, not gone. */
+.filter-row[data-count="0"] {
+  color: var(--muted-text);
+  opacity: 0.55;
+}
+
 .filter-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The label and its one-line explanation stack: the toggle is named, and what it takes out is said under it. */
+.filter-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.filter-hint {
+  color: var(--muted-text);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: break-word;
 }
 
 /* The popover lives inside the search field's box, so a bare `input` rule there once stretched these
@@ -451,6 +527,9 @@
 }
 
 .menu-list .filter-clear {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 4px;
   border-top: 1px solid var(--hairline);
   border-radius: 0 0 8px 8px;
@@ -1211,15 +1290,27 @@
   font-size: 11.5px;
 }
 
-.focus-menu button > .group-count {
+/* The right-hand cell: the folder's count, and the check that says this is the folder you are in. */
+.project-menu-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   grid-column: 3;
   grid-row: 1 / span 2;
   align-self: center;
 }
 
+.project-menu-check {
+  flex: none;
+  color: var(--accent);
+}
 
+
+/* Float free of the list, and never wider than the window it opens in: RowMenu clamps its right edge to 8px
+   from the viewport, so this cap keeps the whole menu inside a 360px phone as well. */
 .row-menu {
   position: fixed;
+  max-width: calc(100vw - 16px);
 }
 
 .row-menu button,

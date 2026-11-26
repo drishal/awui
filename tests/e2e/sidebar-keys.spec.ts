@@ -213,13 +213,15 @@ test("the project switch menu walks with the arrows and Escape returns to its bu
   await button.click();
   const menu = page.getByRole("menu", { name: "Project" });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem").first()).toBeFocused();
+  // Every choice, whether it is the way out (a menuitem) or a folder (a menuitemradio).
+  const items = menu.locator('[role^="menuitem"]');
+  await expect(items.first()).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(menu.getByRole("menuitem").nth(1)).toBeFocused();
+  await expect(items.nth(1)).toBeFocused();
   await page.keyboard.press("End");
-  await expect(menu.getByRole("menuitem").last()).toBeFocused();
+  await expect(items.last()).toBeFocused();
   await page.keyboard.press("Home");
-  await expect(menu.getByRole("menuitem").first()).toBeFocused();
+  await expect(items.first()).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   await expect(button).toBeFocused();
@@ -246,8 +248,14 @@ test("the focus head is one button naming the project, and its menu counts and p
   await button.click();
   const menu = page.getByRole("menu", { name: "Project" });
   await expect(menu.getByRole("menuitem").first()).toHaveText(/^All projects\s*\d+$/);
+  // The folders are the menu's choices: radios, and the folder you are in wears the check.
+  await expect(menu.getByRole("menuitemradio", { name: /^alpha/ })).toHaveAttribute("aria-checked", "true");
+  await expect(menu.getByRole("menuitemradio", { name: /^beta/ })).toHaveAttribute("aria-checked", "false");
+  // "Set an icon…" is an action on the folder, not a place: last, under its own rule.
+  await expect(menu.getByRole("menuitem").last()).toContainText("Set an icon…");
+  await expect(menu.locator('[role="separator"]')).toHaveCount(1);
   // A path is home-relative and cut in the middle: the root stays, and so does the folder's own name.
-  const betaRow = menu.getByRole("menuitem", { name: /beta/ });
+  const betaRow = menu.getByRole("menuitemradio", { name: /beta/ });
   const shown = (await betaRow.locator(".project-menu-path").textContent()) ?? "";
   expect(shown).toMatch(/^(\/tmp|~)\/…\/[a-z]+\/beta$/);
   expect(await betaRow.locator(".project-menu-path").getAttribute("title")).toBe(null);
@@ -277,6 +285,13 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await expect(rail.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "New chat" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "Search and commands" })).toBeVisible();
+  // Each icon names its shortcut, as the app's own table has it.
+  await expect(rail.getByRole("button", { name: "New chat" })).toHaveAttribute("title", /^(New chat \(Ctrl\+N\)|New chat \(⌘N\))$/);
+  await expect(rail.getByRole("button", { name: "Search and commands" })).toHaveAttribute("title", /^(Search and commands \(Ctrl\+K\)|Search and commands \(⌘K\))$/);
+  // The count rides its glyph's own corner and stays inside the 44 px strip.
+  const badge = (await rail.locator(".rail-badge").first().boundingBox())!;
+  const strip = (await rail.boundingBox())!;
+  expect(badge.x + badge.width, "the badge is not clipped at the rail's edge").toBeLessThanOrEqual(strip.x + strip.width);
   const needs = rail.getByRole("button", { name: /^\d+ waiting on you$/ });
   await expect(needs).toBeVisible();
 
@@ -288,6 +303,17 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await expect(page.getByTestId("approval-card")).toBeVisible();
   await page.getByTestId("approval-card").getByRole("button", { name: "Approve" }).click();
   await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });
+
+  // The tray's own things are at the rail's bottom: Usage, Theme and Settings.
+  const usage = rail.getByRole("button", { name: "Usage", exact: true });
+  await expect(usage).toBeVisible();
+  await expect(rail.getByRole("button", { name: /^Theme: / })).toBeVisible();
+  const settings = rail.getByRole("button", { name: "Settings", exact: true });
+  await expect(settings).toBeVisible();
+  expect((await usage.boundingBox())!.y, "the cluster hangs at the bottom").toBeGreaterThan(strip.y + strip.height / 2);
+  await settings.click();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   // New chat and search are still one press away.
   await rail.getByRole("button", { name: "New chat" }).click();

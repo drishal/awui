@@ -8,7 +8,8 @@ import { sidebarSections } from "../session-groups.js";
 import { plainTitle } from "../plain-title.js";
 import { useMenuKeys } from "../menu-focus.js";
 import { useNow } from "../hooks.js";
-import { IconPlus, IconSearch, IconSidebar, IconWarning } from "../icons.js";
+import { shortcutHint } from "../shortcuts.js";
+import { IconGauge, IconPlus, IconSearch, IconSettings, IconSidebar, IconWarning } from "../icons.js";
 import { WorkingRing } from "./WorkingRing.js";
 
 type Peek = { kind: "needs" | "working"; at: DOMRect };
@@ -20,6 +21,9 @@ export function SidebarRail({
   onNewChat,
   onSearch,
   onOpenSession,
+  onUsage,
+  onSettings,
+  themeMenu,
 }: {
   overview: SessionsOverview;
   harnessId: string | null;
@@ -27,6 +31,11 @@ export function SidebarRail({
   onNewChat: () => void;
   onSearch: () => void;
   onOpenSession: (s: ProjectSession) => void;
+  /** The footer's Usage panel, and Settings: the rail's bottom cluster stands where the tray does. */
+  onUsage: () => void;
+  onSettings: () => void;
+  /** The theme menu the footer draws (the same element: it places its own popover). */
+  themeMenu?: React.ReactNode;
 }) {
   const now = useNow(true, 60_000);
   // The two lists the counts stand for: the same reader the sidebar uses, over the same scope.
@@ -61,10 +70,10 @@ export function SidebarRail({
       <button type="button" className="icon-btn sidebar-expand" aria-label="Expand sidebar" title="Expand sidebar" onClick={onExpand}>
         <IconSidebar size={16} />
       </button>
-      <button type="button" className="icon-btn" aria-label="New chat" title="New chat" onClick={onNewChat}>
+      <button type="button" className="icon-btn" aria-label="New chat" aria-keyshortcuts="Control+N Meta+N" title={`New chat (${shortcutHint("new")})`} onClick={onNewChat}>
         <IconPlus size={16} />
       </button>
-      <button type="button" className="icon-btn" aria-label="Search and commands" title="Commands" onClick={onSearch}>
+      <button type="button" className="icon-btn" aria-label="Search and commands" aria-keyshortcuts="Control+K Meta+K" title={`Search and commands (${shortcutHint("palette")})`} onClick={onSearch}>
         <IconSearch size={16} />
       </button>
       <div className="rail-counts">
@@ -115,6 +124,16 @@ export function SidebarRail({
           </ul>
         </>
       ) : null}
+      {/* The tray's own things, where the folded panel's footer would be: Usage, Theme, Settings stay one press away. */}
+      <div className="rail-bottom">
+        <button type="button" className="icon-btn" aria-label="Usage" title="Usage" onClick={onUsage}>
+          <IconGauge size={16} />
+        </button>
+        {themeMenu}
+        <button type="button" className="icon-btn" aria-label="Settings" title="Settings" onClick={onSettings}>
+          <IconSettings size={16} />
+        </button>
+      </div>
     </aside>
   );
 }

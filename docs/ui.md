@@ -108,7 +108,7 @@ a literal colour.
   and composer; config.yml's `chat_width`), `--sidebar-w`.
 - **Density:** `--row-h`, `--head-h`, `--section-gap`, `--gap-turn`, `--gap-process`,
   `--drow-h`, `--composer-pad-*`, `--tab-h` (sidebar rows, turn and tool-row
-- **Sidebar chrome:** the first 36 px row names the harness, with New chat and collapse at 28 px; search takes one 32 px row and holds the 24 px filter trigger inside. The popover holds View, Show, the hide options, Refresh sessions and New room. The quick-filter token exists only while selected. Empty Rooms renders no band, and its section commands appear on hover/focus. The 36 px footer holds Usage, Theme and Settings, with the scroller's last 16 px fading into it. On touch, search/filter/New chat targets are at least 44 px; New chat has its own bottom action because it duplicates the head's accessible purpose. Sidebar state colours mean: amber = needs you, accent ring/word = running, weight = unread, green = done; nothing else in the list is coloured.
+- **Sidebar chrome:** the first 36 px row is the harness's name and the ⌄ that opens its menu, four pixels apart and inside one trigger sized to the two (the pill, and the target, is the title rather than the empty half of the row); New chat and collapse sit at 28 px at its end. The trigger's name is `Harness: <name>`, so a screen reader hears the harness it switches. Search takes one 32 px row and holds the 24 px filter trigger inside — a glyph, not a tile: no border or fill of its own, a `--hover` wash under the pointer, and the accent dot for an active filter. The popover is 300 px wide and hangs from the search field's left edge (clamped into the viewport: aligning to the chip's right edge put its labels off-screen), so its frame, its View segment, its group headings and its rows stand on one left edge. It holds View, Show, the hide options (each with the sentence saying what it takes out, 11 px muted under the label, and a count of 0 dimmed to `opacity: .55` but still clickable), Show everything (with a check), Refresh sessions and New room; it is announced as a dialog (`aria-haspopup="dialog"`), and Tab inside it never lights the search field's focus ring. The quick-filter token exists only while selected. Empty Rooms renders no band, and its section commands appear on hover/focus. The 36 px footer holds Usage, Theme and Settings, and the scroller's bottom fade is the tray's own height (`--sid-tray`, 36 px; 44 px on a phone) so the last row fades into the tray instead of ending on it. On touch, search/filter/New chat targets are at least 44 px; the filter takes its 44 px from the field's own right end (`position:absolute; right:4px; top:0; bottom:0; width:40px`) rather than drawing a bordered square beside it. The drawer's head is a 44 px touch row with 40 px icon buttons and no pencil (its sticky 44 px New chat pill is the one way to start a chat), its close is an ✕, and its scrolled list wears a 12 px `--surface` fade under the head (`.list-scrim`, rendered only while `scrollTop > 0`). A row's menu is capped at `calc(100vw - 16px)` and keeps 8 px from the window's right edge, so it fits a 360–390 px phone. Sidebar state colours mean: amber = needs you, accent ring/word = running, weight = unread, green = done; nothing else in the list is coloured.
   spacing, composer, tab strip). config.yml's `density: compact` sets
   `data-density="compact"` on `<html>`, and `tokens.css` overrides them there,
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
@@ -162,9 +162,16 @@ a literal colour.
   drawer is a real modal: `focus-trap.ts` keeps Tab inside it, the chat behind it is
   `inert`, and closing it returns the focus to the Open-menu button. Folded at ≥ 1100 px
   the sidebar leaves `SidebarRail.tsx`, a 44 px strip (expand, new chat, the palette, and
-  the needs-you and running counts, each opening its list); narrower it hides completely
-  and the chat header's expand button returns it. `project-path.ts` words a folder for the
-  switch menu: home-relative, middle-cut (`~/…/dotfiles`), the full path on hover.
+  the needs-you and running counts, each opening its list); each icon's title carries its
+  shortcut from `shortcuts.ts` (`new`, `palette`), a count's badge rides its own glyph's
+  top-right corner (half over the icon, inside the strip, never clipped), and Usage, Theme
+  and Settings stay in a cluster at the strip's bottom, where the tray would be. Narrower it
+  hides completely and the chat header's expand button returns it. The project switch menu
+  orders itself as places then actions: All projects, every folder with the one you are in
+  checked (`role="menuitemradio"`), a rule, then "Set an icon…". The focus head shows its
+  branch after the name's `·` only when the folder is not on its trunk. `project-path.ts`
+  words a folder for the switch menu: home-relative, middle-cut (`~/…/dotfiles`), the full
+  path on hover.
 - **Text:** `--chat-font` = 14.5 px × `--chat-scale` (config.yml's text size).
   A small uppercase section label (Recent, Todos, Actions) is 600 weight at
   `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat

@@ -3,7 +3,7 @@
 // Filter logic lives in sidebar-filter.ts; this owns only the popover and its state.
 import { useEffect, useRef, useState } from "react";
 import { HIDE_GROUPS, HIDE_HINTS, HIDE_LABELS, QUICK_FILTERS, QUICK_LABELS, type HideGroup, type QuickFilter } from "../sidebar-filter.js";
-import { IconFilter, IconPlus, IconRefresh } from "../icons.js";
+import { IconCheck, IconFilter, IconPlus, IconRefresh } from "../icons.js";
 import { useSidebarView } from "../sidebar-view.js";
 import { useMenuKeys } from "../menu-focus.js";
 
@@ -47,10 +47,17 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
         type="button"
         className={`filter-chip${active > 0 ? " is-on" : ""}`}
         aria-expanded={at !== null}
-        aria-haspopup="true"
+        aria-haspopup="dialog"
         aria-label={hide.length > 0 && !quick ? `Filters, ${hide.length} hiding sessions` : active > 0 ? `Filters, ${active} active ${active === 1 ? "filter" : "filters"}` : "Filters"}
         title="Filter sessions and choose a view"
-        onClick={() => setAt(at ? null : (button.current?.getBoundingClientRect() ?? null))}
+        onClick={() => {
+          if (at) return setAt(null);
+          // The popover is 300 px wide and the panel is narrower than that: it hangs from the search field's
+          // own left edge (clamped into the viewport) rather than from the chip, whose right edge would push
+          // it off the screen's left.
+          const field = button.current?.closest(".search-field")?.getBoundingClientRect() ?? button.current?.getBoundingClientRect();
+          setAt(field ?? null);
+        }}
       >
         <IconFilter size={14} />
         {active > 0 ? <span className="filter-dot" aria-hidden="true" /> : null}
@@ -63,7 +70,7 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
             className="menu-list filter-menu"
             role="group"
             aria-label="Filter sessions"
-            style={{ position: "fixed", top: at.bottom + 4, right: Math.max(8, window.innerWidth - at.right) }}
+            style={{ position: "fixed", top: at.bottom + 4, left: Math.max(8, at.left) }}
             onKeyDown={keys.onKeyDown}
           >
             <div className="filter-view" role="group" aria-label="Sidebar view">
@@ -79,7 +86,7 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
             <div className="filter-quick" role="radiogroup" aria-label="Show">
               <span className="filter-heading">Show</span>
               {QUICK_FILTERS.map((filter) => (
-                <label key={filter} className="filter-row">
+                <label key={filter} className="filter-row" data-count={quickCounts[filter]}>
                   <input type="radio" name="sidebar-quick-filter" checked={quick === filter} onClick={(e) => { if (quick === filter) { e.preventDefault(); onQuickChange(null); } }} onChange={(e) => onQuickChange(e.currentTarget.checked ? filter : null)} />
                   <span className="filter-label">{QUICK_LABELS[filter]}</span>
                   <span className="filter-count">{quickCounts[filter]}</span>
@@ -89,14 +96,18 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
             <div className="filter-hide" role="group" aria-label="Hide sessions">
               <span className="filter-heading">Hide</span>
               {HIDE_GROUPS.map((group) => (
-                <label key={group} className="filter-row" title={HIDE_HINTS[group]}>
+                <label key={group} className="filter-row" data-count={counts[group]}>
                   <input type="checkbox" checked={hide.includes(group)} onChange={() => toggle(group)} />
-                  <span className="filter-label">{HIDE_LABELS[group]}</span>
+                  <span className="filter-text">
+                    <span className="filter-label">{HIDE_LABELS[group]}</span>
+                    {/* What the toggle takes out, in its own quiet line: "On the default branch" is a riddle on a phone. */}
+                    <span className="filter-hint">{HIDE_HINTS[group]}</span>
+                  </span>
                   <span className="filter-count">{counts[group]}</span>
                 </label>
               ))}
               <button type="button" className="filter-clear" disabled={hide.length === 0} onClick={clear}>
-                Show everything
+                <IconCheck size={14} /> Show everything
               </button>
             </div>
             <div className="filter-actions">

@@ -13,13 +13,13 @@ import { useHoverCard, type CardSide } from "../hover-card.js";
 import { menuStep, useMenuKeys } from "../menu-focus.js";
 import { useFocusTrap } from "../focus-trap.js";
 import { shortPath } from "../project-path.js";
-import { IconArchive, IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconEdit, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
+import { IconArchive, IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconEdit, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit, IconX } from "../icons.js";
 import { shortcutHint } from "../shortcuts.js";
 import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
 import type { UsageLimits } from "../../shared/protocol.js";
 import { limitResetAt } from "../../shared/limit-stop.js";
 import { coarse, useRowSwipe } from "../gestures.js";
-import { focusProject, groupByProject, isWorking as statusWorking, localeWeekStart, movedOrder, projectRows, sidebarSections, snoozeOptions, wakeLabel, type ProjectGroup } from "../session-groups.js";
+import { focusProject, groupByProject, isWorking as statusWorking, localeWeekStart, isTrunkBranch, movedOrder, projectRows, sidebarSections, snoozeOptions, wakeLabel, type ProjectGroup } from "../session-groups.js";
 import { RECENT_PAGE, SHOW_MORE, projectTag, recentRows, type ProjectTag } from "../recent-view.js";
 import { useSidebarView } from "../sidebar-view.js";
 import { applyHidden, applyQuick, asHideGroups, asQuickFilter, chipsShown, escapeClears, hideCounts, provenanceOf, quickCounts, QUICK_LABELS, type HideGroup, type QuickFilter } from "../sidebar-filter.js";
@@ -883,15 +883,21 @@ function ProjectGroupView({
   );
 }
 
-/** A folder's place in a project menu: its name, where it lives, and its count on one row. */
-function ProjectMenuItem({ name, path, home, count, onPick }: { name: string; path: string; home: string; count?: number; onPick: () => void }) {
+/** A folder's place in a project menu: its name, where it lives, and its count on one row. A radio, because
+    the menu switches the one folder in focus, and the one you are in wears the check. */
+function ProjectMenuItem({ name, path, home, count, checked, onPick }: { name: string; path: string; home: string; count?: number; checked: boolean; onPick: () => void }) {
   return (
-    <button type="button" role="menuitem" title={path} onClick={onPick}>
+    <button type="button" role="menuitemradio" aria-checked={checked} title={path} onClick={onPick}>
       <ProjectBadge name={name} size={16} />
       <span className="project-menu-name">{name}</span>
       {/* Home-relative and cut in the middle: the root and the folder's own name are the parts worth keeping. */}
       <span className="project-menu-path muted">{shortPath(path, home)}</span>
-      {count !== undefined ? <span className="group-count">{count}</span> : null}
+      {/* The count and the check share one right-hand cell: the number is the folder's, the check says it is the
+          folder you are in (the harness menu marks its own choice at the end the same way). */}
+      <span className="project-menu-meta">
+        {count !== undefined ? <span className="group-count">{count}</span> : null}
+        {checked ? <IconCheck size={13} className="project-menu-check" /> : null}
+      </span>
     </button>
   );
 }
@@ -927,7 +933,6 @@ function FocusedHeader({
   useDismiss(headWrap, menuOpen, () => setMenuOpen(false));
   // Its own keyboard: the arrows walk it as one tab stop, Escape closes it and returns to the switch button.
   const keys = useMenuKeys(menu, { open: menuOpen, close: () => setMenuOpen(false), opener: switchRef });
-  const other = scope.filter((p) => p.workspace.id !== workspace.id);
   const pick = (run: () => void) => {
     setMenuOpen(false);
     run();
@@ -948,11 +953,8 @@ function FocusedHeader({
         <IconChevronLeft size={13} className="focus-back-chevron" />
         <ProjectBadge id={workspace.id} name={workspace.name} />
         <span className="project-name">{workspace.name}</span>
-        {checkout?.branch ? (
-          <>
-            <span className="project-branch">{checkout.branch}</span>
-          </>
-        ) : null}
+        {/* A branch says where the folder is out of; on the trunk it is the default, so the head stays quiet. */}
+        {isTrunkBranch(checkout?.branch) ? null : <span className="project-branch">{checkout?.branch}</span>}
         <IconChevronDown size={12} className="group-chevron" />
       </button>
       <button type="button" className="icon-btn project-new" aria-label={`New chat in ${workspace.name}`} title={`New chat in ${workspace.name} in a new tab`} disabled={!canStartChat} onClick={() => onNewChat(workspace)}>
@@ -969,17 +971,20 @@ function FocusedHeader({
                 {scope.length > 0 ? <span className="group-count">{scope.reduce((n, p) => n + p.count, 0)}</span> : null}
               </button>
             </li>
+            {/* The folders are the choices, so they are radios and the one you are in is checked. "Set an icon…"
+                is an action on that folder, not a place: it goes last, under its own rule. */}
+            {scope.map((p) => (
+              <li key={p.workspace.id} role="none">
+                <ProjectMenuItem name={p.workspace.name} path={p.workspace.path} home={home} count={p.count} checked={p.current} onPick={() => pick(() => onFocus(p.workspace.id))} />
+              </li>
+            ))}
+            <MenuSeparator />
             <li role="none">
               <button type="button" role="menuitem" onClick={() => pick(() => setIconOpen(true))}>
                 <IconImage size={13} />
                 <span className="project-menu-name">Set an icon…</span>
               </button>
             </li>
-            {other.map((p) => (
-              <li key={p.workspace.id} role="none">
-                <ProjectMenuItem name={p.workspace.name} path={p.workspace.path} home={home} count={p.count} onPick={() => pick(() => onFocus(p.workspace.id))} />
-              </li>
-            ))}
           </ul>
         </>
       ) : null}
@@ -1197,6 +1202,9 @@ export function Sidebar(props: {
   const current = props.harnesses.find((h) => h.id === props.harnessId);
   const names = useMemo(() => new Map(props.harnesses.map((h) => [h.id as string, h.displayName])), [props.harnesses]);
   const resumable = (s: ProjectSession) => props.harnesses.some((h) => h.id === s.harnessId && h.capabilities.supportsResumeCommand);
+  // The drawer's list wears a 12px fade under the head once it has scrolled: the row being cut off reads as
+  // scrolled, not as broken. Desktop draws its sticky date head instead.
+  const [listScrolled, setListScrolled] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showSettled, setShowSettled] = useState(false);
   const [showSnoozed, setShowSnoozed] = useState(false);
@@ -1414,7 +1422,7 @@ export function Sidebar(props: {
             <IconSidebar size={16} />
           </button>
           <button type="button" className="icon-btn drawer-close" aria-label="Close menu" onClick={props.onClose}>
-            <IconChevronDown size={16} className="rotate-90" />
+            <IconX size={16} />
           </button>
         </div>
         {props.tabs}
@@ -1502,7 +1510,18 @@ export function Sidebar(props: {
             </button>
           ) : null}
           {props.sessionsError ? <p className="sidebar-note is-warning">{props.sessionsError}</p> : null}
-          <ul ref={sessionList} className="session-list" aria-busy={props.sessionsLoading} aria-label={flat ? "Sessions" : "Sessions by project"} onKeyDown={onListKeyDown}>
+          <ul
+            ref={sessionList}
+            className="session-list"
+            aria-busy={props.sessionsLoading}
+            aria-label={flat ? "Sessions" : "Sessions by project"}
+            onKeyDown={onListKeyDown}
+            onScroll={(e) => {
+              const at = e.currentTarget.scrollTop > 0;
+              if (at !== listScrolled) setListScrolled(at);
+            }}
+          >
+            {listScrolled ? <li className="list-scrim" role="presentation" aria-hidden="true" /> : null}
             {/*
               Rooms are the Awui harness's surface: they appear in its sidebar scope, not in a
               coding harness's. A server with no Awui harness has no scope to put them in (and

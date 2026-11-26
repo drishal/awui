@@ -96,29 +96,56 @@ body {
     width: 100%;
     min-height: 44px;
     border: 0;
-    border-radius: var(--r-control);
+    border-radius: var(--r-md);
     background: var(--accent);
     color: var(--accent-fg);
     font-weight: 500;
   }
 
   .sidebar .search-field {
+    position: relative;
     height: 44px;
+    /* The field is the control; the filter is a 44 px hit area flush in its end, so the text keeps clear of it. */
+    padding-right: 48px;
   }
 
-  .sidebar .filter-chip,
+  /* No bordered 44 px square: the square is the field, and the chip is its glyph with a thumb-sized target. */
+  .sidebar .search-field .filter-chip {
+    position: absolute;
+    top: 0;
+    right: 4px;
+    bottom: 0;
+    width: 40px;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: none;
+  }
+
+  .sidebar .search-field .filter-chip:hover,
+  .sidebar .search-field .filter-chip.is-on {
+    background: var(--hover);
+  }
+
   .sidebar .quick-chip {
     min-width: 44px;
     min-height: 44px;
   }
 
   .sidebar .filter-dot {
-    top: 8px;
-    right: 8px;
+    top: 10px;
+    right: 12px;
   }
 
   .sidebar-footer {
     height: 44px;
+  }
+
+  /* The tray is a little taller here, and so is the fade the list wears above it. */
+  .sidebar {
+    --sid-tray: 44px;
   }
 
   .sidebar .filter-menu .filter-row {
@@ -127,6 +154,31 @@ body {
 
   .sidebar .filter-menu .view-segment button {
     min-height: 44px;
+  }
+}
+
+/* The sidebar is a drawer here: a row passing under the head fades rather than being cut (Sidebar sets the
+   state, so a list at rest shows nothing). */
+@media (max-width: 819px) {
+  .sidebar .list-scrim {
+    display: block;
+  }
+}
+
+/* The sticky 44 px New chat pill is the drawer's primary action, so the head's own pencil goes with it: two
+   controls for one action made neither read as the way in. The head itself is a 44 px touch row. */
+@media (hover: none) and (max-width: 640px) {
+  .sidebar .sidebar-head {
+    min-height: 44px;
+  }
+
+  .sidebar .sidebar-head .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sidebar .sidebar-head .sidebar-compose {
+    display: none;
   }
 }
 

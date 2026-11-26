@@ -137,7 +137,7 @@ test("a double Enter (or double click) makes exactly one chat", async ({ page })
 test("the agent chip and the sidebar's harness row pick the same thing", async ({ page }) => {
   await signInAndOpen(page, "beta");
   const chip = page.getByRole("button", { name: "Agent for this chat" });
-  const row = page.getByRole("complementary", { name: "Sessions" }).getByRole("button", { name: "Harness" });
+  const row = page.getByRole("complementary", { name: "Sessions" }).getByRole("button", { name: /^Harness: / });
   await showSidebar(page);
   // The chip switches the harness; the sidebar's row follows.
   await chip.click();
