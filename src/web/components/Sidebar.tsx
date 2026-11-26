@@ -631,6 +631,7 @@ function DateHeading({ label, count }: { label: string; count: number }) {
     // count keeps its unit for the same reason ("1 session", not "1").
     <li className="date-divider" role="heading" aria-level={3}>
       <span className="date-label">{label}</span>
+      <span className="date-fade" aria-hidden="true" />
       <span className="date-count">
         {count}
         {/* The number alone would be read as part of the date; the unit says what it counts. */}

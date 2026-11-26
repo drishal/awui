@@ -674,6 +674,29 @@
   font-size: 11.5px;
   font-weight: 500;
   color: var(--muted-text);
+  /* The heading's own scroll-state container, so its fade can show only while it is stuck. */
+  container-type: scroll-state;
+}
+
+/* A clean edge under a stuck date heading: an 8px fade in the heading's own surface colour, so a
+   scrolled row's descenders never peek out mid-glyph under it (S17, phone drawer). The heading is
+   sticky, so it is the fade's containing block; the fade shows only while the heading is stuck.
+   Progressive enhancement (Chromium 133+): where scroll-state is unknown, the heading is unchanged. */
+.date-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 8px;
+  display: none;
+  background: linear-gradient(var(--surface), transparent);
+  pointer-events: none;
+}
+
+@container scroll-state(stuck: top) {
+  .date-fade {
+    display: block;
+  }
 }
 
 .date-count {

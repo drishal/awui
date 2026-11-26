@@ -168,7 +168,9 @@ a literal colour.
   its unit ("4 sessions", not a bare number; a foldable section head says its own name
   and count as words, since the spans would otherwise run together). Date
   headings stick to the
-  scroller's top on the panel's own `--surface`. Groups leave 14px between them (10px at
+  scroller's top on the panel's own `--surface`, and a stuck one fades the rows scrolling
+  under it (an 8px `.date-fade` of `--surface`, shown only while `stuck: top` under the heading's
+  `container-type: scroll-state`, `pointer-events: none`; progressive enhancement). Groups leave 14px between them (10px at
   compact density) and 4px from a head to its first row. A folder head names its branch
   once for its rows: any branch off the trunk, and the trunk too when another folder
   shares the repository; its rows never repeat it (`rowSubline`'s `groupBranch`). Branch

@@ -288,4 +288,28 @@ test.describe("phone drawer", () => {
     await list.evaluate((el) => { el.scrollTop = 0; });
     await expect(list.locator(".list-scrim")).toHaveCount(0);
   });
+
+  test("a stuck date heading fades the rows scrolling under it", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 520 });
+    await signInAndOpen(page);
+    for (const n of [1, 2, 3, 4]) {
+      await newChat(page);
+      await sendAndWait(page, `a row for the stuck heading ${n}`);
+    }
+    await showSidebar(page);
+    const list = page.locator(".sidebar .session-list");
+    const divider = list.locator(".date-divider").first();
+    await expect(divider).toBeVisible();
+    // Before any scroll the heading is not stuck, and its fade is not drawn.
+    const fade = divider.locator(".date-fade");
+    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).display)).toBe("none");
+    // Scrolled past its own position it sticks to the top, and an 8px fade of the heading's surface lies
+    // over the rows passing under it: no more descenders peeking out mid-glyph.
+    await list.evaluate((el) => { el.scrollTop = 600; });
+    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).height)).toBe("8px");
+    expect(await fade.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe("none");
+    // Back at rest the fade goes again: only a stuck heading has an edge.
+    await list.evaluate((el) => { el.scrollTop = 0; });
+    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).display)).toBe("none");
+  });
 });
