@@ -914,8 +914,7 @@
   gap: 6px;
   padding: 10px 12px 0;
 }
-.board-harness-chip,
-.board-level-chip {
+.board-harness-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -928,35 +927,21 @@
   color: var(--text-2);
   cursor: pointer;
 }
-.board-harness-chip[aria-pressed="true"],
-.board-level-chip[aria-pressed="true"] {
+.board-harness-chip[aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--text);
   background: color-mix(in srgb, var(--accent) 14%, var(--bg));
 }
-.board-harness-chip:disabled,
-.board-level-chip:disabled {
+.board-harness-chip:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-/* The thinking footer inside the combined picker: the levels the harness exposes, never free text. */
+/* The thinking footer inside the combined picker: the effort slider (EffortSlider.tsx) over the levels the harness
+   exposes, never free text. Its first stop is the model's own default. */
 .model-thinking {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px 12px;
+  padding: 12px 14px 14px;
   border-top: 1px solid var(--hairline);
-}
-.model-thinking-label {
-  font-size: 12px;
-  color: var(--muted);
-  flex: none;
-}
-.board-thinking-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 .board-static {

@@ -7,11 +7,16 @@ import type { ModelInfo } from "../../shared/protocol.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { IconCheck, IconChevronDown, IconRefresh, IconSearch, Spinner } from "../icons.js";
 import { levelTitle } from "../config-summary.js";
+
 import { groupModels, type ModelGroup } from "../model-search.js";
 import { morphClip } from "../model-morph.js";
 import { load, save } from "../storage.js";
 import { Dot } from "./Dot.js";
+import { EffortSlider } from "./EffortSlider.js";
 import { harnessColor } from "../harness-colors.js";
+
+/** A start-level stop's words: no level at all is the model's own default. */
+const startLevelTitle = (level: string): string => (level === "" ? "Model default" : levelTitle(level));
 
 const MAX_RECENT = 5;
 /** Visible vertical band for a popover under `el`: the viewport cut by any clipping ancestor. */
@@ -366,18 +371,10 @@ export function ModelPicker({
               {flat.length === 0 ? <div className="model-empty">No models match “{query}”</div> : null}
             </div>
             {footerLevels.length > 0 && onThinking ? (
+              // The level a new chat starts on, as the effort slider (its first stop is the model's own default). A model
+              // with other levels is a new slider: its stops are different stops.
               <div className="model-thinking" role="group" aria-label="Thinking level">
-                <span className="model-thinking-label">Thinking</span>
-                <div className="board-thinking-chips">
-                  <button type="button" className="board-level-chip" aria-pressed={!thinking} onClick={() => onThinking("")}>
-                    Model default
-                  </button>
-                  {footerLevels.map((level) => (
-                    <button key={level} type="button" className="board-level-chip" aria-pressed={thinking === level} onClick={() => onThinking(level)}>
-                      {level}
-                    </button>
-                  ))}
-                </div>
+                <EffortSlider key={footerLevels.join("|")} levels={["", ...footerLevels]} current={thinking ?? ""} closing={leaving} autoFocus={false} titleOf={startLevelTitle} onSelect={onThinking} />
               </div>
             ) : null}
           </div>

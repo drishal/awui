@@ -327,7 +327,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--muted-foreground);
+  background: var(--muted);
   opacity: .55;
   /* A bead-centred dead zone prevents the dot under the bead from inflating; the swell drops away again
      by 21px from its centre. Only colour and opacity need a transition here: scale is driven by the loop. */
@@ -365,8 +365,9 @@
   transform-origin: center;
 }
 /* The bead and its shadow share a transform, but not a filter. The analytic neck is one stroked union path. */
-.effort-thumb-shadow {
-/* The shadow's transform is identical to the bead's, so it shares its compositor layer. */
+/* The shadow's transform is identical to the bead's, so it shares its compositor layer. (The class once read
+   .effort-thumb-shadow while the markup says .effort-shadow, so the bead had neither shadow nor hairline.) */
+.effort-shadow {
   z-index: 2;
   position: absolute;
   left: 0;
@@ -401,8 +402,7 @@
   will-change: transform;
 }
 /* On the dark themes this is the brightest surface, not a translucent thumb over a light bar. */
-:root[data-theme="dark"] .effort-thumb,
-:root:not([data-theme="light"]):not([data-theme="dark"]) .effort-thumb {
+:root[data-theme="dark"] .effort-thumb {
   --effort-thumb-fill: color-mix(in oklab, var(--thinking) 14%, #fff);
   --effort-hairline: rgb(0 0 0 / .16);
 }

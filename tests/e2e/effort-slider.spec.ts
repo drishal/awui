@@ -47,7 +47,7 @@ test("dragging from the first stop to the last moves the thumb there and commits
   await page.mouse.up();
   // Released on the last stop: committed immediately, one change.
   await expect(slider(page)).toHaveAttribute("aria-valuenow", "2");
-  await expect(slider(page)).toHaveAttribute("aria-valuetext", "high");
+  await expect(slider(page)).toHaveAttribute("aria-valuetext", "High");
   await expect(page.locator(".effort-value .effort-roll")).toHaveText("High");
   await expect(page.getByTestId("thinking-picker")).toHaveAccessibleName("Thinking: high");
   // Once the thumb's transform is idle its centre is within 1px of the last stop's centre.
@@ -274,4 +274,27 @@ test("a coarse-pointer, low-end browser keeps the static path", async ({ browser
   } finally {
     await context.close();
   }
+});
+
+test("an unlit stop dot paints a colour of its own, not a transparent one", async ({ page }) => {
+  await openPicker(page);
+  // The dot's background once named a token that does not exist (--muted-foreground), which computes to transparent:
+  // at rest only the lit dots showed, and the stops ahead of the bead were invisible.
+  await slider(page).press("Home");
+  await page.waitForTimeout(700);
+  const dots = await page.locator(".effort-stop").evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
+  expect(dots.length).toBeGreaterThanOrEqual(3);
+  for (const color of dots) expect(color).not.toBe("rgba(0, 0, 0, 0)");
+});
+
+test("the bead has its shadow layer: sized, with a shadow and a hairline", async ({ page }) => {
+  await openPicker(page);
+  // The stylesheet once named .effort-thumb-shadow while the markup says .effort-shadow, so the layer was 0 px wide with
+  // no shadow: on a light track the white bead had no edge at all.
+  const shadow = await page.locator(".effort-shadow").evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { width: el.getBoundingClientRect().width, boxShadow: cs.boxShadow };
+  });
+  expect(shadow.width).toBeGreaterThanOrEqual(19);
+  expect(shadow.boxShadow).not.toBe("none");
 });

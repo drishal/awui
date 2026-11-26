@@ -81,25 +81,39 @@ test("the start screen picks the model the chat starts on", async ({ page }) => 
 
 test("the start screen's thinking level carries into the chat", async ({ page }) => {
   await signInAndOpen(page);
-  // The model chip's footer offers the harness's thinking levels before any chat exists.
+  // The model chip's footer offers the harness's thinking levels before any chat exists, as the effort slider whose
+  // first stop is the model's own default.
   await page.locator(".start-screen").getByTestId("model-picker").click();
   const dialog = page.getByRole("dialog", { name: "Choose a model" });
   const thinking = dialog.getByRole("group", { name: "Thinking level" });
-  await expect(thinking).toBeVisible();
-  await thinking.getByRole("button", { name: "high", exact: true }).click();
-  await expect(thinking.getByRole("button", { name: "high", exact: true })).toHaveAttribute("aria-pressed", "true");
-  // The chip says the level picked here, not the harness's default one.
+  const level = thinking.getByRole("slider", { name: "Thinking" });
+  await expect(level).toBeVisible();
+  await expect(level).toHaveAttribute("aria-valuetext", "Model default");
+  // Walk the stops from the start to a word (the keyboard's Home, then one stop at a time).
+  const stopAt = async (word: string) => {
+    await level.focus();
+    await level.press("Home");
+    for (let i = 0; i < 8 && (await level.getAttribute("aria-valuetext")) !== word; i++) await level.press("ArrowRight");
+    await expect(level).toHaveAttribute("aria-valuetext", word);
+  };
+  await stopAt("High");
+  // The chip says the level picked here, not the harness's default one (it settles a moment after the last key).
   await expect(page.locator(".start-screen").getByTestId("model-picker")).toHaveAccessibleName("Model: Fake Echo · High");
   // The footer offers the chosen model's own levels, and a model that does not take the picked one drops it,
   // rather than starting a chat the harness refuses.
   await dialog.getByRole("combobox", { name: "Search models" }).fill("gpt-5.5");
   await dialog.getByRole("option", { name: /^GPT-5\.5\b(?! Mini)/ }).click();
-  await thinking.getByRole("button", { name: "xhigh", exact: true }).click();
+  await stopAt("Extra high");
+  // A step settles a moment after the last key; wait for it to land before switching models, or the switch comes first.
+  await expect(page.locator(".start-screen").getByTestId("model-picker")).toHaveAccessibleName(/Extra high/);
   await dialog.getByRole("combobox", { name: "Search models" }).fill("glm");
   await dialog.getByRole("option", { name: /GLM-5\.3-Flash/ }).click();
-  await expect(thinking.getByRole("button", { name: "xhigh", exact: true })).toHaveCount(0);
-  await expect(thinking.getByRole("button", { name: "Model default" })).toHaveAttribute("aria-pressed", "true");
-  await thinking.getByRole("button", { name: "high", exact: true }).click();
+  // The other model has no such stop: its slider is a new one, back on "Model default".
+  await expect(level).toHaveAttribute("aria-valuetext", "Model default");
+  await level.focus();
+  await level.press("End");
+  await expect(level).not.toHaveAttribute("aria-valuetext", "Extra high");
+  await stopAt("High");
   await page.keyboard.press("Escape");
   await page.getByRole("textbox", { name: box }).fill("think hard");
   await page.keyboard.press("Enter");
