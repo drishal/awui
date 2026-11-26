@@ -54,7 +54,7 @@ test("the context panel draws how the context grew, with a name a screen reader 
   await signInAndOpen(page);
   await openChat(page);
   await page.getByRole("button", { name: "Open contextual work details" }).click();
-  await expect(page.getByRole("complementary", { name: "Chat context" }).getByText("Nothing running.")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Chat context" }).getByText("No agents, jobs or comments.")).toBeVisible();
   await sendAndWait(page, "second question");
   await page.getByTestId("context-ring").click();
   const panel = page.getByRole("dialog", { name: "Context and usage" });

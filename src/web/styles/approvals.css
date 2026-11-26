@@ -42,7 +42,9 @@
   padding: 12px 14px 10px;
   border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
   border-radius: var(--r-panel);
-  background: var(--card);
+  /* The composer's own face: --card is darker than the page in some schemes, which dropped the dock from raised to
+     sunken whenever a request arrived. */
+  background: var(--dock-face);
   box-shadow: var(--shadow-float), 0 12px 40px rgb(0 0 0 / 0.35);
 }
 

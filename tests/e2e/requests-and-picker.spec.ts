@@ -20,6 +20,13 @@ test("an answered request folds into one line naming the answer", async ({ page 
   await expect(waitMark).toBeVisible();
   await expect(waitMark).toHaveCSS("width", "6px");
   await expect(page.getByTestId("request-row")).not.toContainText("Waiting for you");
+  // The fold's own status column wears that dot too, not the working mark: nothing in it spins while a person is
+  // the bottleneck (it used to say "Waiting for you" beside the same starburst a live run shows).
+  const foldStatus = page.getByTestId("process-status").last();
+  await expect(foldStatus.locator(".request-wait-dot")).toBeVisible();
+  await expect(foldStatus.locator(".rays")).toHaveCount(0);
+  // And so does the chat's tab: the amber "Needs you" dot, not the run's ring, and a screen reader hears it so.
+  await expect(page.getByRole("tab").filter({ has: page.getByRole("img", { name: "Needs you" }) })).toHaveCount(1);
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card).toHaveCount(0);
   const folded = page.getByTestId("approval-folded");

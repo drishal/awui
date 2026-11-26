@@ -16,7 +16,7 @@ import { testProgress } from "../../shared/output-facts.js";
 import { TestMeter } from "./TestMeter.js";
 import { JobCard } from "./JobCard.js";
 import { chatJobs } from "../jobs.js";
-import { phaseDelay, workingPhase } from "../working-phase.js";
+import { phaseDelay, waitingOnYou, workingPhase } from "../working-phase.js";
 import { retryLabel, retryPrompt, type RetryMode } from "../tool-retry.js";
 import { iconStack, monogram, rowMark, serverHue, toolKind, toolKinds, usedLabel, type ToolKindChip } from "../tool-kinds.js";
 import { Dot } from "./Dot.js";
@@ -1146,6 +1146,9 @@ function ProcessFold({
     if (live) setWasLive(true);
   }, [live]);
   const phase = useSteadyPhase(live ? workingPhase(turn, workspace) : "");
+  // Held by a question: the status column wears the still amber dot the request row below it wears, not the
+  // working mark, so the fold, the row and the card name one state with one mark.
+  const waiting = live && waitingOnYou(turn);
   const answerAt = segment ? segment.answerAt : turn.answerAt;
   const toolCount = items.filter((item) => item.kind === "tool").length;
   const stack = iconStack(toolKinds(items));
@@ -1242,7 +1245,7 @@ function ProcessFold({
               rows' icons, and the spinner giving way to the check moves nothing. */}
           {live || wasLive ? (
             <span className={`process-status${live ? "" : " is-done"}`} data-testid="process-status" aria-hidden="true">
-              {live ? <RaySpinner size={14} /> : <IconCheck size={14} draw />}
+              {waiting ? <span className="request-wait-dot" /> : live ? <RaySpinner size={14} /> : <IconCheck size={14} draw />}
             </span>
           ) : null}
           <IconChevronDown size={14} className="process-chevron" />

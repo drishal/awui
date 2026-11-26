@@ -24,6 +24,7 @@ export function TabStrip({
   tabs,
   active,
   statusOf,
+  askingOf,
   harnessName,
   onActivate,
   onClose,
@@ -36,6 +37,8 @@ export function TabStrip({
   active: number;
   /** A tab's chat status, when the server holds its chat. */
   statusOf: (tab: Tab) => ChatStatus | null;
+  /** Whether a tab's chat is waiting on you: it wears the still amber dot, not the working ring. */
+  askingOf?: (tab: Tab) => boolean;
   harnessName: (id: string) => string;
   onActivate: (index: number) => void;
   onClose: (index: number) => void;
@@ -156,7 +159,8 @@ export function TabStrip({
       <div className={`tab-list${drag ? " is-dragging" : ""}`} role="tablist" aria-label="Open tabs" ref={strip}>
         {tabs.map((tab, i) => {
           const status = statusOf(tab);
-          const working = isWorking(status);
+          const asking = askingOf?.(tab) === true;
+          const working = isWorking(status) && !asking;
           const selected = i === active;
           const name = harnessName(tab.harnessId);
           // A room's tab says "Room" where a chat's names its harness.
@@ -203,6 +207,8 @@ export function TabStrip({
             >
               {tab.roomId ? (
                 <IconRooms size={13} className="session-tab-room-icon" />
+              ) : asking ? (
+                <span className="session-asking-dot" role="img" aria-label="Needs you" />
               ) : working ? (
                 <WorkingRing harnessId={tab.harnessId} colored />
               ) : (

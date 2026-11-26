@@ -34,7 +34,7 @@
   align-items: center;
   gap: 7px;
   flex: 0 1 auto;
-  width: max-content; min-width: 120px; max-width: min(320px, 34vw);
+  width: max-content; min-width: 120px; max-width: min(420px, 46vw);
   padding: 0 6px 0 12px;
   border-right: 1px solid var(--hairline);
   color: var(--muted-text);

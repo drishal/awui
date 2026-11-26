@@ -2374,6 +2374,7 @@ export function App() {
             tabs={tabState.tabs}
             active={tabState.active}
             statusOf={tabStatus}
+            askingOf={(tab) => tab.chatId !== null && askingIds.includes(tab.chatId)}
             harnessName={(id) => boot.harnesses.find((h) => h.id === id)?.displayName ?? id}
             onActivate={activateTab}
             onClose={closeTabAt}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantItem, ChatItem, ToolItem } from "../../src/shared/protocol.js";
 import { buildTurns } from "../../src/web/turns.js";
-import { phaseDelay, workingPhase } from "../../src/web/working-phase.js";
+import { phaseDelay, waitingOnYou, workingPhase } from "../../src/web/working-phase.js";
 
 const user: ChatItem = { kind: "user", id: "u", text: "go", at: 1 };
 const assistant = (over: Partial<AssistantItem>): AssistantItem => ({ kind: "assistant", id: `a${Math.random()}`, text: "", thinking: "", streaming: true, ...over }) as AssistantItem;
@@ -37,6 +37,18 @@ describe("workingPhase", () => {
     expect(phase([bash("running", "npm test"), request()])).toBe("Waiting for you");
     // Answered, the row is a record: the phase is the run's own words again.
     expect(phase([request("Approved")])).toBe("Working");
+  });
+  it("waitingOnYou is the same question the phase asks, for the fold's mark", () => {
+    const request = (outcome?: string): ChatItem => ({
+      kind: "request",
+      id: "r1",
+      request: { id: "req1", kind: "confirm", title: "Allow tool: read", createdAt: 1 },
+      ...(outcome ? { outcome } : {}),
+    });
+    const turn = (items: ChatItem[]) => buildTurns([user, ...items], "running")[0]!;
+    expect(waitingOnYou(turn([bash("running", "npm test"), request()]))).toBe(true);
+    expect(waitingOnYou(turn([request("Approved")]))).toBe(false);
+    expect(waitingOnYou(turn([bash("running", "npm test")]))).toBe(false);
   });
 });
 

@@ -2207,20 +2207,8 @@
   }
 }
 
-/* Keep the 13px label readable against the otherwise empty page space it overlays. A real separator sits
-   on this pseudo-element above the opaque face; it fades from the text colour into the page background.
-   The local stacking context and the conversation's own context keep z0 above the label's face. */
 .sticky-prompt {
   isolation: isolate;
-}
-.sticky-prompt::before {
-  content: "";
-  position: absolute;
-  inset: -1px 0 auto 0;
-  height: 1px;
-  z-index: 0;
-  background: linear-gradient(to bottom, var(--fg), var(--bg));
-  pointer-events: none;
 }
 .sticky-prompt:hover {
   color: var(--text);
