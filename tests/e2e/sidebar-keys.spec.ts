@@ -109,6 +109,9 @@ test("the session list is one tab stop, and its arrows walk the rows", async ({ 
     await sendAndWait(page, text);
   }
   await showSidebar(page);
+  // Narrowed to this test's own rows: the shared e2e server holds other specs' sessions too.
+  await page.getByRole("searchbox", { name: "Search sessions" }).fill("key row");
+  await expect(page.locator(".session-item > .session")).toHaveCount(3);
   // One stop for the whole list, and no separate stop for each row's ⋯.
   const stops = await page.locator(".session-list").evaluate((list) => ({
     rows: Array.from(list.querySelectorAll<HTMLElement>(".session-item > .session")).filter((row) => row.tabIndex >= 0).length,
@@ -179,14 +182,14 @@ test("All projects stays chosen when a session opens in another folder", async (
   await focused.locator(".focus-switch").click();
   await page.getByRole("menuitem", { name: "All projects" }).click();
   const groups = page.getByTestId("project-group");
-  await expect(groups).toHaveCount(2);
+  const beta = groups.filter({ has: page.locator(".project-name", { hasText: /^beta$/ }) });
+  await expect(beta).toHaveCount(1);
 
   // Opening a session in another folder moves the folder, not the list: the choice holds.
-  const beta = groups.filter({ has: page.locator(".project-name", { hasText: /^beta$/ }) });
   await beta.locator(".session", { hasText: "beta session" }).click();
   await expect(page.locator(".chat-header .chat-path")).toHaveText("beta");
   await expect(focused).toHaveCount(0);
-  await expect(groups).toHaveCount(2);
+  await expect(beta).toHaveCount(1);
 });
 
 test("the project switch menu walks with the arrows and Escape returns to its button", async ({ page, request }) => {
@@ -238,11 +241,12 @@ test("the focus head is one button naming the project, and its menu counts and p
   const menu = page.getByRole("menu", { name: "Project" });
   await expect(menu.getByRole("menuitem").first()).toHaveText(/^All projects\s*\d+$/);
   // A path is home-relative and cut in the middle: the root stays, and so does the folder's own name.
-  const shown = (await menu.locator(".project-menu-path").first().textContent()) ?? "";
+  const betaRow = menu.getByRole("menuitem", { name: /beta/ });
+  const shown = (await betaRow.locator(".project-menu-path").textContent()) ?? "";
   expect(shown).toMatch(/^(\/tmp|~)\/…\/[a-z]+\/beta$/);
-  expect(await menu.locator(".project-menu-path").first().getAttribute("title")).toBe(null);
+  expect(await betaRow.locator(".project-menu-path").getAttribute("title")).toBe(null);
   // The shortened line is for reading; the full path is one hover away.
-  expect(await menu.getByRole("menuitem", { name: /beta/ }).getAttribute("title")).toBe(`${root}/beta`);
+  expect(await betaRow.getAttribute("title")).toBe(`${root}/beta`);
 });
 
 test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narrower", async ({ page }) => {
@@ -267,7 +271,7 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await expect(rail.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "New chat" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "Search and commands" })).toBeVisible();
-  const needs = rail.getByRole("button", { name: "1 waiting on you" });
+  const needs = rail.getByRole("button", { name: /^\d+ waiting on you$/ });
   await expect(needs).toBeVisible();
 
   // A count opens the list it counts, and a row opens that chat.

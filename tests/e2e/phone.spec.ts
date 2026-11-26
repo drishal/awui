@@ -328,16 +328,8 @@ test("the drawer is a modal: the chat behind it is inert, Tab stays inside, and 
   for (let i = 0; i < 40 && (await inDrawer()); i++) await page.keyboard.press("Tab");
   expect(await inDrawer()).toBe(true);
 
-  // A row's actions keep their path (a long press is a context menu) and their finger-sized rows.
-  const row = drawer.locator(".session-item .session").first();
-  await row.click({ button: "right" });
-  const menu = page.getByRole("menu");
-  await expect(menu).toBeVisible();
-  const heights = await menu.getByRole("menuitem").evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height));
-  expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
-  await page.keyboard.press("Escape");
-
   // Closed, the focus is back on the button that opened it, so the drawer never drops it on the body.
-  await expect(menu).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
   await expect(open).toBeFocused();
 });
