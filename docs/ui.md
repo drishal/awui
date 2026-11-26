@@ -144,7 +144,8 @@ a literal colour.
   `session-groups.ts`'s `dateGroup`, rows newest first, each with the project it
   is out of as its tag, 12 rows and then 20 per "Show more"; a folder's preview
   is 4 rows (8 for the current one) and adds the same 20, and "Show more" is a
-  row of the list itself: plain muted text at the row pitch, 44px on a phone.
+  row of the list itself: muted words at the row pitch with a 12px chevron after them
+  and `--text-2` under the pointer, 44px on a phone.
   Projects is the grouped list (`groupByProject`, `focusProject`), where focus
   mode, the folder heads and drag order live; `GroupOptions`' place rules (what
   needs you, what works, what is pinned, and the settled/snoozed/archived
@@ -160,7 +161,10 @@ a literal colour.
   headings until the folder is opened: the age on each row already says when. Recent
   has one text edge: a date heading's text and every section head's label start on the
   rows' titles' edge (34px into a 292px panel); only marks hang in the mark column
-  (18px), and a section's count ends on the age column. Date headings stick to the
+  (18px), and every count ends on the age column. A date heading carries its bucket's
+  size there, and a section head outranks it: the state a section names reads in
+  `--text-2` at 600 where a date is `--muted-text` at 500, its count likewise. Date
+  headings stick to the
   scroller's top on the panel's own `--surface`. Groups leave 14px between them (10px at
   compact density) and 4px from a head to its first row. A folder head names its branch
   once for its rows: any branch off the trunk, and the trunk too when another folder

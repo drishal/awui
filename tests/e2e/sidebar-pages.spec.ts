@@ -1,11 +1,26 @@
 // "Show more" is a bounded page, in the flat list and inside a folder: a non-current folder opens with 4
 // rows, the current one with 8, and each "Show N more in <folder>" adds 20 — never a whole history at
-// once. It is plain muted text at the rows' pitch (44px on a phone), its label naming the folder.
+// once. It is a fold row at the rows' pitch (44px on a phone): muted words naming what it adds, a 12px
+// chevron after them, and the second ink on hover.
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { showAllProjects, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
 const rowsOf = (group: Locator) => group.locator(".session-item");
+
+/** A theme colour as the browser paints it (a token can be a hex, a mix, or a color() function). */
+const painted = (page: Page, token: string): Promise<string> =>
+  page.evaluate((name) => {
+    const ctx = document.createElement("canvas").getContext("2d") as CanvasRenderingContext2D;
+    const probe = document.createElement("span");
+    probe.style.color = getComputedStyle(document.documentElement).getPropertyValue(name);
+    document.body.append(probe);
+    ctx.fillStyle = getComputedStyle(probe).color;
+    probe.remove();
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return `rgb(${r}, ${g}, ${b})`;
+  }, token);
 
 /** The number in "Show N more in <folder>". */
 const hiddenIn = async (button: Locator): Promise<number> => Number(((await button.innerText()).match(/Show (\d+) more in /) ?? [])[1]);
@@ -34,10 +49,18 @@ test("a folder that is not the current one opens with 4 rows, and each Show more
   const more = beta.locator(".show-more");
   const hidden = await hiddenIn(more);
   expect(hidden, "the seeded history needs more than one page").toBeGreaterThanOrEqual(20);
-  await expect(more, "the page is plain text, with no icon").toHaveText(`Show ${Math.min(hidden, 20)} more in beta`);
-  expect(await more.locator("svg").count()).toBe(0);
-  // At the rows' pitch, not a 30px strip of its own.
+  await expect(more, "the fold names what it adds").toHaveText(`Show ${Math.min(hidden, 20)} more in beta`);
+  // A fold carries its own chevron, after the words, and takes the second ink under the pointer.
+  expect(await more.locator("svg").count(), "one chevron").toBe(1);
+  const chevron = await more.evaluate((el) => {
+    const svg = el.querySelector("svg")?.getBoundingClientRect();
+    const label = el.getBoundingClientRect();
+    return svg ? { left: svg.left, labelLeft: label.left } : null;
+  });
+  expect(chevron?.left ?? 0, "the chevron follows the label").toBeGreaterThan(chevron?.labelLeft ?? 0);
   await expect(more).toHaveCSS("min-height", "32px");
+  await more.hover();
+  await expect(more).toHaveCSS("color", await painted(page, "--text-2"));
 
   await more.click();
   const added = Math.min(hidden, 20);

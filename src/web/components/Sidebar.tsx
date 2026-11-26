@@ -606,6 +606,20 @@ function SessionRow({
   );
 }
 
+/** A calendar heading: its words, and how many sessions the bucket holds at the age column's end. */
+function DateHeading({ label, count }: { label: string; count: number }) {
+  return (
+    <li className="date-divider">
+      <span className="date-label">{label}</span>
+      <span className="date-count">
+        {count}
+        {/* The number alone would be read as part of the date; the unit says what it counts. */}
+        <span className="visually-hidden"> {count === 1 ? "session" : "sessions"}</span>
+      </span>
+    </li>
+  );
+}
+
 /** A list above the projects (Needs you, Working, Pinned): a header, and its rows unless folded. */
 function SectionList({
   className,
@@ -777,6 +791,8 @@ function ProjectGroupView({
   const limit = (current ? VISIBLE_CURRENT : VISIBLE_OTHER) + pages * SHOW_MORE;
   const weekStart = useMemo(localeWeekStart, []);
   const all = useMemo(() => projectRows(sessions, { now, weekStartsOn: weekStart, ...(order ? { order } : {}) }), [sessions, now, weekStart, order]);
+  // A heading's count is its bucket's whole size, which the folder's preview and its pages do not change.
+  const countIn = (key: string) => all.filter((r) => r.kind === "session" && r.group === key).length;
   // A search lists matches, not a hand order.
   const arranging = !searching;
   const groupOf = (id: string) => all.flatMap((r) => (r.kind === "session" && r.s.id === id ? [r.group] : []))[0];
@@ -793,12 +809,7 @@ function ProjectGroupView({
     if (r.kind === "divider") {
       // A divider shows only when a session under it does.
       const next = all[i + 1];
-      if (!previewing && next?.kind === "session")
-        rows.push(
-          <li key={`d-${r.key}`} className="date-divider" role="presentation">
-            {r.label}
-          </li>,
-        );
+      if (!previewing && next?.kind === "session") rows.push(<DateHeading key={`d-${r.key}`} label={r.label} count={countIn(r.key)} />);
       continue;
     }
     if (!searching && count >= limit) break;
@@ -892,6 +903,7 @@ function ProjectGroupView({
             <li>
               <button type="button" className="show-more" onClick={() => setPages((n) => n + 1)}>
                 Show {Math.min(hidden, SHOW_MORE)} more in {workspace.name}
+                <IconChevronDown size={12} />
               </button>
             </li>
           ) : null}
@@ -1071,13 +1083,7 @@ function FocusedProjectView({
   for (const sec of sections) {
     const list = sec.sessions.slice(0, Math.max(0, VISIBLE_CURRENT + pages * SHOW_MORE - count));
     if (list.length === 0) continue;
-    if (sec.label !== "") {
-      rows.push(
-        <li key={`d-${sec.label}`} className="date-divider" role="presentation">
-          {sec.label}
-        </li>,
-      );
-    }
+    if (sec.label !== "") rows.push(<DateHeading key={`d-${sec.label}`} label={sec.label} count={sec.sessions.length} />);
     for (const s of list) {
       count++;
       const markable = !s.id.includes(":live-");
@@ -1144,6 +1150,7 @@ function FocusedProjectView({
           <li>
             <button type="button" className="show-more" onClick={() => setPages((n) => n + 1)}>
               Show {Math.min(hidden, SHOW_MORE)} more in {workspace.name}
+              <IconChevronDown size={12} />
             </button>
           </li>
         ) : null}
@@ -1602,9 +1609,7 @@ export function Sidebar(props: {
                   <ActiveWash />
                   {recent.rows.map((r) =>
                     r.kind === "divider" ? (
-                      <li key={`d-${r.key}`} className="date-divider" role="presentation">
-                        {r.label}
-                      </li>
+                      <DateHeading key={`d-${r.key}`} label={r.label} count={r.count} />
                     ) : (
                       flatRow(r.s, r.tag)
                     ),
@@ -1613,6 +1618,7 @@ export function Sidebar(props: {
                     <li>
                       <button type="button" className="show-more" onClick={() => setRecentLimit((n) => n + SHOW_MORE)}>
                         Show {recent.hidden} more
+                        <IconChevronDown size={12} />
                       </button>
                     </li>
                   ) : null}

@@ -19,8 +19,8 @@ export interface ProjectTag {
   branch: string | null;
 }
 
-/** One row of the flat list: a calendar heading, or a session with the project it is out of. */
-export type RecentRow = { kind: "divider"; key: string; label: string } | { kind: "session"; s: ProjectSession; tag: ProjectTag | null };
+/** One row of the flat list: a calendar heading (with how many sessions it holds), or a session with the project it is out of. */
+export type RecentRow = { kind: "divider"; key: string; label: string; count: number } | { kind: "session"; s: ProjectSession; tag: ProjectTag | null };
 
 export interface RecentOptions extends GroupOptions {
   /** The locale's first day of the week, as the Projects view gets it; Monday when absent. */
@@ -64,7 +64,8 @@ function inFlatList(s: ProjectSession, opts: RecentOptions, searching: boolean):
  * The flat list as one page of it: the selected harness's sessions that are not above it in their own
  * section, newest first, each run of them under its calendar heading (`dateGroup`: Today, Yesterday,
  * Earlier this week, Last week, …, never one above the first row). `limit` stops the list after that
- * many sessions; `hidden` is how many the page left for "Show more".
+ * many sessions; `hidden` is how many the page left for "Show more". A heading carries its bucket's whole
+ * count, wherever the page's limit fell.
  */
 export function recentRows(overview: SessionsOverview, opts: RecentOptions, limit = RECENT_PAGE): { rows: RecentRow[]; hidden: number } {
   const searching = opts.query.trim() !== "";
@@ -73,6 +74,11 @@ export function recentRows(overview: SessionsOverview, opts: RecentOptions, limi
   const list = visibleSessions(overview, opts)
     .filter((s) => inFlatList(s, opts, searching))
     .sort((a, b) => recency(b) - recency(a));
+  const groupOf = (s: ProjectSession) => dateGroup(recency(s), now, weekStartsOn);
+  // A heading's number is the whole bucket's, not the page's: the page cuts rows, and a count that moved
+  // with it would say nothing about how much the bucket holds.
+  const counts = new Map<string, number>();
+  for (const s of list) counts.set(groupOf(s).key, (counts.get(groupOf(s).key) ?? 0) + 1);
   const rows: RecentRow[] = [];
   let shown = 0;
   let hidden = 0;
@@ -82,10 +88,10 @@ export function recentRows(overview: SessionsOverview, opts: RecentOptions, limi
       hidden += 1;
       continue;
     }
-    const group = dateGroup(recency(s), now, weekStartsOn);
+    const group = groupOf(s);
     if (group.key !== key) {
       key = group.key;
-      rows.push({ kind: "divider", key: group.key, label: group.label });
+      rows.push({ kind: "divider", key: group.key, label: group.label, count: counts.get(group.key) ?? 0 });
     }
     rows.push({ kind: "session", s, tag: projectTag(overview, s) });
     shown += 1;

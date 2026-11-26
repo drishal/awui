@@ -52,7 +52,18 @@ test("a calendar heading is a sentence-case signpost, not a title", async ({ pag
   expect(edges, "the list has a heading and a row under it").not.toBeNull();
   expect(Math.abs((edges?.dateText ?? 0) - (edges?.titleLeft ?? 99)), "a heading's text starts on the titles' edge").toBeLessThanOrEqual(0.5);
   // Sentence case, not the uppercase label it used to be.
-  await expect(heading).toHaveText(/^Today$/);
+  await expect(heading.locator(".date-label")).toHaveText(/^Today$/);
+  // Its bucket's size ends the heading on the rows' age column, so the dates' numbers and the ages form
+  // one column down the panel.
+  const column = await page.evaluate(() => {
+    const count = document.querySelector(".flat-group .date-divider .date-count")?.getBoundingClientRect();
+    const age = document.querySelector(".flat-group .session-time")?.getBoundingClientRect();
+    const text = document.querySelector(".flat-group .date-divider .date-count")?.textContent ?? "";
+    return count && age ? { countRight: count.right, ageRight: age.right, text } : null;
+  });
+  expect(column, "the heading carries its bucket's count").not.toBeNull();
+  expect(column?.text, "the count says how many, and what it counts").toMatch(/^\d+ sessions?$/);
+  expect(Math.abs((column?.countRight ?? 0) - (column?.ageRight ?? 99)), "the count ends on the age column").toBeLessThanOrEqual(0.5);
 });
 
 test("a folder head names the folder at 13px, and its count shows only while collapsed", async ({ page }) => {
@@ -116,5 +127,28 @@ test("a project's badge is a 16px rounded square with no ring, and the needs-you
   // The attention colour is the section's icon, not its name.
   const needs = page.getByTestId("needs-group");
   await expect(needs.locator(".project-toggle .icon:not(.group-chevron)").first()).toHaveCSS("color", await painted(page, "--warn"));
-  await expect(needs.locator(".section-name")).toHaveCSS("color", await painted(page, "--muted-text"));
+  // A section names a state where a date names a time, so the section outranks it: second ink at 600,
+  // against a date heading's muted ink at 500.
+  await expect(needs.locator(".section-name")).toHaveCSS("color", await painted(page, "--text-2"));
+  await expect(needs.locator(".section-name")).toHaveCSS("font-weight", "600");
+  await expect(needs.locator(".group-count")).toHaveCSS("color", await painted(page, "--text-2"));
+});
+
+test("a section head outranks a date heading: second ink at 600 against muted at 500", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "a row under today's heading");
+  // One chat waiting on you, so the Needs you section is drawn above the flat list's dates.
+  await newChat(page);
+  await page.getByRole("textbox", { name: "Message" }).fill("ask please approve the rank check");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByTestId("approval-card")).toBeVisible();
+  await newChat(page);
+  await showSidebar(page);
+  const needs = page.getByTestId("needs-group").locator(".section-name");
+  await expect(needs).toHaveCSS("color", await painted(page, "--text-2"));
+  await expect(needs).toHaveCSS("font-weight", "600");
+  const date = sidebar(page).locator(".flat-group .date-divider").first();
+  await expect(date).toHaveCSS("color", await painted(page, "--muted-text"));
+  await expect(date).toHaveCSS("font-weight", "500");
 });
