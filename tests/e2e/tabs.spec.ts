@@ -277,7 +277,8 @@ test("the sidebar lifts what needs you and what is working, and settling can be 
   await showSidebar(page);
   const needs = page.getByTestId("needs-group");
   await expect(needs).toContainText("please ask first", { timeout: 10_000 });
-  await expect(needs).toContainText("needs you");
+  // The row's one state word takes the age's place (session-state.ts).
+  await expect(needs.locator(".session-state").first()).toHaveText("Needs you");
 
   await tab(page, "please ask first").click();
   await page.getByTestId("approval-card").getByRole("button", { name: "Approve" }).click();

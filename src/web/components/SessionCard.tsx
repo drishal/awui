@@ -24,6 +24,13 @@ export function SessionCard({ s, anchor, harnessName, project, id, provenance }:
   // Beside the row, kept inside the window once its height is known.
   const { left, top } = useCardPlace(card, anchor, "right", [data]);
   const model = data?.model?.split("/").pop();
+  // The quiet facts the row folds into one glyph (or drops, for liveness): the card names them all.
+  const marks = [
+    s.liveChatId ? "Open in this server" : null,
+    s.parked && !s.liveChatId ? "Parked; opening it resumes the session" : null,
+    s.herdr ? `In a herdr pane (${s.herdr.status})` : null,
+    s.handover ? "Handed to a terminal" : null,
+  ].filter((fact): fact is string => fact !== null);
   return (
     <div ref={card} id={id} role="tooltip" className="session-card" style={{ left, top, ...harnessColor(s.harnessId) }}>
       <div className="session-card-title">{s.title}</div>
@@ -34,6 +41,7 @@ export function SessionCard({ s, anchor, harnessName, project, id, provenance }:
         {model ? <span className="session-card-model">{model}</span> : null}
       </div>
       {provenance ? <p className="session-card-provenance">{provenance}</p> : null}
+      {marks.length > 0 ? <p className="session-card-marks">{marks.join(" · ")}</p> : null}
       {s.agentStatus ? <p className={`session-card-status is-${s.agentStatus.state}`}>{agentStatusText(s.agentStatus)}</p> : null}
       {data === undefined ? (
         <div className="session-card-loading muted">Loading…</div>

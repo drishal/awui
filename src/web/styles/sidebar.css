@@ -917,6 +917,32 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The age's place can instead hold ONE word, and the colour contract allows exactly four colours in the
+   list: amber is needs-you, the accent is a run (its ring, or this word), green is done, and unread is
+   the title's weight. Nothing else here is coloured. */
+.session-state {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.session-state.is-warn {
+  color: var(--warn);
+}
+
+.session-state.is-accent {
+  color: var(--accent);
+}
+
+.session-state.is-ok {
+  color: var(--ok);
+}
+
+/* Unread is the list's one weight cue: the same size, at 600 and full ink. */
+.session.is-unread .session-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
 /* Pin and archive: a ⋯ in a gutter the row keeps for it, so the age never moves out from under the
    pointer; on touch screens it shows on the open session's row, and a long press on any row. */
 .session-item {
@@ -1119,19 +1145,43 @@
   margin-top: 6px;
 }
 
-.live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ok);
+/* One glyph for the quiet facts a row can carry (handover > herdr > parked), and never a colour:
+   liveness is the server's own detail, and its green dot was the most misread mark in the list.
+   The 12px box holds a 6px shape, so every row keeps the same right-hand rhythm. */
+.session-mark {
+  position: relative;
+  flex: none;
+  display: inline-block;
+  width: 12px;
+  height: 12px;
 }
 
-/* Hibernated: the harness child was parked; the session resumes where it was. */
-.session-parked {
+.session-mark::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
   width: 6px;
   height: 6px;
   border-radius: 2px;
   background: var(--muted-text);
+}
+
+/* A handover is a hollow diamond: the session is locked against a resume here until it is reclaimed. */
+.session-mark.session-handover::before {
+  border: 1px solid var(--muted-text);
+  background: none;
+  transform: rotate(45deg);
+}
+
+/* A herdr pane's diamond is filled — a writer outside this server, whatever it is doing. */
+.session-mark.session-herdr::before {
+  transform: rotate(45deg);
+}
+
+/* Parked: a dot, not a diamond, because no writer holds it: opening the row resumes the same session. */
+.session-mark.session-parked::before {
+  border-radius: 50%;
 }
 
 .badge {

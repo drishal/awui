@@ -693,7 +693,9 @@ test("reload re-attaches, and the session list resumes the same live chat", asyn
   await expect(prompts(page)).toHaveText(["remember me"]);
   const row = page.locator(".session", { hasText: "remember me" });
   await expect(row).toBeVisible();
-  await expect(row.locator(".live-dot")).toBeVisible();
+  // A live chat is the server's own detail, not a dot in the list: its row is not working and carries no
+  // other run's mark.
+  await expect(row.getByRole("img", { name: "Working" })).toHaveCount(0);
   await row.click();
   await expect(prompts(page)).toHaveText(["remember me"]);
   await page.getByRole("button", { name: "Chat actions" }).click();
@@ -1274,7 +1276,11 @@ test("a working session spins in the sidebar, also while another chat is open", 
   await expect(working.locator(".session", { hasText: "slow spinner run" }).getByRole("img", { name: "Working" })).toBeVisible();
   await expect(working).toHaveCount(0, { timeout: 15_000 });
   await expect(row.getByRole("img", { name: "Working" })).toHaveCount(0);
-  await expect(row.locator(".live-dot")).toBeVisible();
+  // Settled, the row is an ordinary one again: its age is back in place of the run's word, and no green
+  // "live" dot marks it as open here.
+  await expect(row.locator(".session-state")).toHaveCount(0);
+  await expect(row.locator(".session-time")).toBeVisible();
+  await expect(page.locator(".live-dot")).toHaveCount(0);
 });
 
 test("/ opens the command menu: it filters, completes, runs, and closes", async ({ page }) => {

@@ -32,7 +32,7 @@ import { setProjectIcon, useProjectIcons } from "../project-icons.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
-import { rowSubline } from "../session-state.js";
+import { rowState, rowSubline } from "../session-state.js";
 import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
 /** Sessions shown per project before "Show N more". */
@@ -380,6 +380,8 @@ function SessionRow({
   // The one line under the title (session-state.ts): the project it is out of, the agent's own line, or
   // a branch that is not the project's trunk; without one the row is a single line.
   const sub = rowSubline(s, { tag, branch });
+  // The two state slots (session-state.ts): the leading mark, one word or the age, and one muted glyph.
+  const state = rowState(s, { working, showHarness });
   // On a touch screen a row also slides left for Pin, Archive and Snooze (the menu's own actions); a full swipe is the first.
   const swipeActions: Array<{ label: string; icon: React.ReactNode; change: MarkChange }> = [
     { label: s.pinned ? "Unpin" : "Pin", icon: <IconPin size={16} />, change: { pinned: !s.pinned } },
@@ -408,7 +410,7 @@ function SessionRow({
     >
       <button
         type="button"
-        className={`session${active ? " is-active" : ""}${selection.ids.has(s.id) ? " is-selected" : ""}${working ? " is-working" : ""}${s.archived || s.settled || (s.snoozedUntil ?? 0) > Date.now() ? " is-archived" : ""}`}
+        className={`session${active ? " is-active" : ""}${selection.ids.has(s.id) ? " is-selected" : ""}${working ? " is-working" : ""}${state.unread ? " is-unread" : ""}${s.archived || s.settled || (s.snoozedUntil ?? 0) > Date.now() ? " is-archived" : ""}`}
         onClick={(e) => {
           if (selection.on) {
             toggleSelection(s.id, e.shiftKey);
@@ -457,13 +459,13 @@ function SessionRow({
         aria-current={active ? "true" : undefined}
         title={tag ? `${s.title} · ${tag.name}` : s.title}
       >
-        {working && !s.asking ? (
+        {state.mark === "working" ? (
           <WorkingRing harnessId={s.harnessId} colored />
-        ) : s.asking ? (
+        ) : state.mark === "needs" ? (
           // Waiting on a person is not work in progress: the row wears the amber mark of a question, not the
           // ring of a run, and a screen reader hears the state it is in.
           <span className="session-asking-dot" role="img" aria-label="Needs you" title="Needs you: waiting for your answer" />
-        ) : showHarness ? (
+        ) : state.mark === "harness" ? (
           <span className="harness-dot" style={harnessColor(s.harnessId)} role="img" aria-label={harnessName} title={harnessName} />
         ) : (
           // The slot stays (a blank dot), so titles keep one left edge whether or not the row is working.
@@ -490,29 +492,11 @@ function SessionRow({
           ) : null}
         </span>
         <span className="session-meta">
-          {s.unread ? <span className="session-unread" role="img" aria-label="Unread" title="Unread" /> : null}
-          {s.liveChatId && !working ? <span className="live-dot" title="Open in this server" aria-label="live" /> : null}
-          {s.parked && !s.liveChatId ? (
-            <span className="session-parked" role="img" aria-label="Parked" title="Parked: the agent was parked after sitting idle; opening it resumes the same session" />
-          ) : null}
-          {s.herdr ? (
-            <span
-              className={`session-herdr is-${s.herdr.status}`}
-              role="img"
-              aria-label={`Open in herdr, pane ${s.herdr.paneId} (${s.herdr.status})`}
-              title={`Open in herdr, pane ${s.herdr.paneId} (${s.herdr.status})`}
-            />
-          ) : null}
-          {s.handover ? (
-            <span
-              className="session-handover"
-              role="img"
-              aria-label={`Handed to a terminal${s.handoverCommand ? `: ${s.handoverCommand}` : ""}`}
-              title={`Handed to a terminal${s.handoverCommand ? `: ${s.handoverCommand}` : ""}`}
-            />
-          ) : null}
-          {s.asking ? <span className="session-asking">needs you</span> : null}
-          {(s.snoozedUntil ?? 0) > Date.now() ? (
+          {state.glyph ? <span className={`session-mark ${state.glyph.className}`} role="img" aria-label={state.glyph.label} title={state.glyph.label} /> : null}
+          {state.unread ? <span className="session-unread" role="img" aria-label="Unread" title="Unread" /> : null}
+          {state.word ? (
+            <span className={`session-state is-${state.word.tone}`}>{state.word.text}</span>
+          ) : (s.snoozedUntil ?? 0) > Date.now() ? (
             <span className="session-wake" title="Snoozed until then">
               <IconClock size={11} /> {wakeLabel(s.snoozedUntil as number)}
             </span>

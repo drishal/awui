@@ -31,3 +31,71 @@ export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; b
   const branch = opts.branch ?? null;
   return branch !== null && !isTrunkBranch(branch) ? { kind: "branch", text: branch } : null;
 }
+
+/** The leading slot a row's 10px mark takes, in the order the row chooses one. */
+export type RowMark = "working" | "needs" | "harness" | "blank";
+
+/** The one state word the right-hand slot can carry in place of the age, and its one colour. */
+export interface RowWord {
+  text: "Needs you" | "Working" | "Done";
+  tone: "warn" | "accent" | "ok";
+}
+
+/** The quieter facts that share ONE muted glyph to the left of the age, in priority order. */
+export interface RowGlyph {
+  kind: "handover" | "herdr" | "parked";
+  className: string;
+  label: string;
+}
+
+export interface RowState {
+  mark: RowMark;
+  /** The word in the age's place, or null where the age stays. */
+  word: RowWord | null;
+  glyph: RowGlyph | null;
+  unread: boolean;
+}
+
+/**
+ * What a row's two state slots say (the plan's colour contract, docs/ui.md):
+ *  - the leading mark is a run's ring, the amber question of a row waiting on you, or — in a list that
+ *    mixes harnesses — the harness's dot; a list of one harness keeps the slot but not the colour;
+ *  - the right-hand slot is ONE word when the session has one to say (Needs you, Working, Done), else
+ *    the age: a snoozed row keeps its wake time, which is its state;
+ *  - the parked / herdr / handover marks collapse into one glyph (handover wins over herdr wins over
+ *    parked); the card names the rest.
+ * Nothing else on the row is coloured: amber is needs-you, accent is a run or the word for one, green is
+ * done, and unread is the title's weight.
+ */
+export function rowState(s: ProjectSession, opts: { working: boolean; showHarness: boolean; now?: number }): RowState {
+  const snoozed = (s.snoozedUntil ?? 0) > (opts.now ?? Date.now());
+  const mark: RowMark = opts.working && !s.asking ? "working" : s.asking ? "needs" : opts.showHarness ? "harness" : "blank";
+  return { mark, word: rowWord(s, opts.working, snoozed), glyph: rowGlyph(s), unread: s.unread === true };
+}
+
+function rowWord(s: ProjectSession, working: boolean, snoozed: boolean): RowWord | null {
+  if (snoozed) return null;
+  if (s.asking) return { text: "Needs you", tone: "warn" };
+  if (working) return { text: "Working", tone: "accent" };
+  // Green is the agent's own verdict, and only a made one: review counts as done for now.
+  const state = s.agentStatus?.state;
+  if (state === "done" || state === "review") return { text: "Done", tone: "ok" };
+  return null;
+}
+
+function rowGlyph(s: ProjectSession): RowGlyph | null {
+  if (s.handover) {
+    const line = s.handoverCommand ? `Handed to a terminal: ${s.handoverCommand}` : "Handed to a terminal";
+    return { kind: "handover", className: "session-handover", label: line };
+  }
+  if (s.herdr) {
+    const { paneId, status } = s.herdr;
+    return { kind: "herdr", className: `session-herdr is-${status}`, label: `Open in herdr, pane ${paneId} (${status})` };
+  }
+  // A live chat is this server's own writer; a parked one is a child that was put to sleep (and a live
+  // chat is never parked).
+  if (s.parked && !s.liveChatId) {
+    return { kind: "parked", className: "session-parked", label: "Parked: the agent was parked after sitting idle; opening it resumes the same session" };
+  }
+  return null;
+}

@@ -131,6 +131,16 @@ a literal colour.
   grouped list (`groupByProject`, `focusProject`), where focus mode, the folder
   heads and drag order live; `GroupOptions`' place rules (what needs you, what
   works, what is pinned, and the settled/snoozed/archived toggles) apply to both.
+- **Sidebar state, the colour contract:** `session-state.ts` decides a row's two
+  state slots — a 10px leading mark and either the age or one word in its place
+  — and exactly four things in the list are coloured: **amber** (`--warn`) is
+  needs-you, its dot and its word; **the accent** is a run, its ring or its
+  word; **green** (`--ok`) is done, and only the agent's own verdict ("done" or
+  "ready for review") earns it; and **weight** is unread (the title at 600 and
+  full ink, read titles at 78 % ink). Nothing else in the list takes a colour:
+  liveness is a server detail (the hover card says "Open in this server"), and
+  parked / herdr / handed-over share one 12px muted glyph, in that priority,
+  with the whole story in the card.
 - **Text:** `--chat-font` = 14.5 px × `--chat-scale` (config.yml's text size).
   A small uppercase section label (Recent, Todos, Actions) is 600 weight at
   `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat

@@ -75,10 +75,9 @@ test.describe("the separated rows", () => {
     await useProjectsView(page);
     await page.reload();
     await showSidebar(page);
-    // One project has no focus mode: the plain folder head, and its rows under it.
-    const group = page.getByTestId("project-group").first();
-    await expect(group).toBeVisible();
-    await expect(group.locator(".session-item", { hasText: "pitch row in the sidebar" })).toHaveCount(1);
+    // The grouped view: one folder head (focused, or plain with a single project), and the row under it.
+    await expect(sidebar(page).locator(".flat-group")).toHaveCount(0);
+    await expect(sidebar(page).locator(".project-group").first()).toBeVisible();
     const grouped = row(page, "pitch row in the sidebar").first();
     await expect(grouped.locator(".session-sub")).toHaveCount(0);
     const box = (await grouped.boundingBox()) as { height: number } | null;

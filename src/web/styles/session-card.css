@@ -60,6 +60,14 @@
   font-size: 12px;
 }
 
+/* The facts the row keeps in one 12px glyph or leaves out (open here, parked, a herdr pane, handed over):
+   the card is where they are all named. */
+.session-card-marks {
+  margin: -4px 0 8px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
 /* The bubble carries the background and padding; the clamp lives on a box without
    either. A clamp clips at the content box while overflow clips at the padding box,
    and with both on one element the next line's top shows in the bottom padding

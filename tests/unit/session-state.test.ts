@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { asHarnessId, type ProjectSession } from "../../src/shared/protocol.js";
 import type { ProjectTag } from "../../src/web/recent-view.js";
-import { rowSubline } from "../../src/web/session-state.js";
+import { rowState, rowSubline } from "../../src/web/session-state.js";
 
 const s = (extra: Partial<ProjectSession> = {}): ProjectSession => ({
   id: "x",
@@ -36,5 +36,55 @@ describe("rowSubline", () => {
     expect(rowSubline(s(), { branch: null })).toBeNull();
     // A detached HEAD has no branch to say.
     expect(rowSubline(s(), {})).toBeNull();
+  });
+});
+
+describe("rowState", () => {
+  const state = (extra: Partial<ProjectSession> = {}, opts: Partial<{ working: boolean; showHarness: boolean; now: number }> = {}) =>
+    rowState(s(extra), { working: false, showHarness: false, now: 1_000, ...opts });
+
+  it("puts a run's ring or the amber question in the leading slot, and nothing when neither is true", () => {
+    expect(state({ status: "running" }, { working: true }).mark).toBe("working");
+    // Waiting on a person is not work in progress: the row shows one or the other.
+    expect(state({ asking: true, status: "running" }, { working: true }).mark).toBe("needs");
+    expect(state().mark).toBe("blank");
+    // A list that mixes harnesses keeps the harness dot, muted by the adapter's colour.
+    expect(state({}, { showHarness: true }).mark).toBe("harness");
+  });
+
+  it("says one word in the age's place: Needs you, Working, or the agent's Done", () => {
+    expect(state({ asking: true }).word).toEqual({ text: "Needs you", tone: "warn" });
+    expect(state({ status: "running" }, { working: true }).word).toEqual({ text: "Working", tone: "accent" });
+    expect(state({ agentStatus: { state: "done", comment: "", at: 1 } }).word).toEqual({ text: "Done", tone: "ok" });
+    expect(state({ agentStatus: { state: "review", comment: "ready", at: 1 } }).word).toEqual({ text: "Done", tone: "ok" });
+    // A blocked agent is nobody's answer to give: its words are the subline, and the age stays.
+    expect(state({ agentStatus: { state: "blocked", comment: "waiting on CI", at: 1 } }).word).toBeNull();
+    expect(state().word).toBeNull();
+    // A snoozed row keeps its wake time in that slot, which is the state it is in.
+    expect(state({ asking: true, snoozedUntil: 5_000 }).word).toBeNull();
+    // A snooze that has already ended is an ordinary row again.
+    expect(state({ snoozedUntil: 500 }).word).toBeNull();
+  });
+
+  it("collapses parked, herdr and handover into one glyph, handover first", () => {
+    expect(state({ handover: true, handoverCommand: "pi --resume x", herdr: { paneId: "w1:p1", status: "idle" }, parked: true }).glyph).toEqual({
+      kind: "handover",
+      className: "session-handover",
+      label: "Handed to a terminal: pi --resume x",
+    });
+    expect(state({ herdr: { paneId: "w1:p2", status: "working" }, parked: true }).glyph).toEqual({
+      kind: "herdr",
+      className: "session-herdr is-working",
+      label: "Open in herdr, pane w1:p2 (working)",
+    });
+    expect(state({ parked: true }).glyph?.kind).toBe("parked");
+    // A live chat here is this server's own writer: it is not parked.
+    expect(state({ parked: true, liveChatId: "c1" }).glyph).toBeNull();
+    expect(state().glyph).toBeNull();
+  });
+
+  it("marks unread, which the title draws as weight", () => {
+    expect(state({ unread: true }).unread).toBe(true);
+    expect(state().unread).toBe(false);
   });
 });
