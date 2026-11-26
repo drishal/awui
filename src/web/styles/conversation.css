@@ -459,8 +459,9 @@
   white-space: pre-wrap;
 }
 
-/* Inbox sections in the sidebar, and the undo toast for mark changes. */
-.needs-group .project-toggle {
+/* Inbox sections in the sidebar, and the undo toast for mark changes. The attention colour stays on the
+   section's icon: its name is a signpost like every other heading. */
+.needs-group .project-toggle .icon {
   color: var(--warn);
 }
 

@@ -537,12 +537,12 @@
   animation-delay: 0.3s;
 }
 
+/* A calendar heading is a signpost in the list, not a title: sentence case at the size of a subline, in
+   the muted ink, with no tracking. Uppercase was a third voice arguing with the rows. */
 .date-divider {
   padding: var(--section-pad-top) 10px 3px;
-  font-size: var(--label-size);
-  font-weight: 600;
-  letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  font-size: 11.5px;
+  font-weight: 500;
   color: var(--muted-text);
 }
 
@@ -592,19 +592,28 @@
   color: var(--accent);
 }
 
-/* A project head is a label over its rows, not a row of its own: small, spaced capitals, so the
-   sessions below it read as the list's content. The chevron, count and branch stay as they were. */
+/* A project head is a label over its rows, not a row of its own: its folder's name in sentence case
+   (no capitals, no tracking), in the second ink, with the chevron, badge, branch and count around it.
+   A section head (Needs you, Working, Pinned, Rooms) is smaller and quieter still: it organises the
+   projects rather than being one. */
 .project-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
 }
 
-/* A repository's projects sit together: each says its branch. */
+.section-name {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted-text);
+}
+
+/* A repository's projects sit together: each says its branch, after a `·` so `awui · test` reads as one
+   phrase rather than two labels. */
 .project-branch {
   flex: none;
   max-width: 40%;
@@ -614,6 +623,12 @@
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted-text);
+}
+
+.project-branch::before {
+  content: "·";
+  margin-right: 4px;
+  font-family: var(--font-sans);
 }
 
 .group-chevron {
@@ -876,8 +891,9 @@
   text-overflow: ellipsis;
 }
 
-/* The tag's badge is the head's, one size down: 12px, its letter set to fit inside it. */
-.session-sub .project-badge {
+/* The tag's badge is the head's, one size down: 12px, its letter (or its icon) set to fit inside it. */
+.session-sub .project-badge,
+.session-sub .project-badge[data-icon] {
   border-radius: 3px;
   font-size: 8px;
 }
@@ -1260,20 +1276,19 @@ body.is-resizing {
   background: var(--accent);
 }
 
-/* A project's monogram: its first letter, in one of four theme colours taken from its
-   name (--badge-1..4 in tokens.css). A wash with a tinted letter rather than a solid
-   fill, so four neighbours do not shout, and a low-saturation theme still tells them
-   apart by the roles it gives those tokens; a hue rotation of the accent would not. */
+/* A project's monogram: its first letter in one of four theme colours taken from its name
+   (--badge-1..4 in tokens.css). A wash with a tinted letter rather than a solid fill, so four
+   neighbours do not shout; no ring, since the 16px square is small enough to need none; and a
+   hue rotation of the accent could not tell them apart. */
 .project-badge {
   --badge: var(--badge-1);
   display: inline-grid;
   place-items: center;
   flex: none;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--badge) var(--tint-strong), var(--card));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--badge) var(--edge), transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--badge) 22%, var(--card));
   color: var(--badge);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1;
 }
@@ -1282,7 +1297,7 @@ body.is-resizing {
 .project-badge[data-slot="4"] { --badge: var(--badge-4); }
 
 /* A picked icon sits in the same badge, a touch larger than a letter. */
-.project-badge {
+.project-badge[data-icon] {
   font-size: 12px;
 }
 

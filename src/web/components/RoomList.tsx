@@ -68,7 +68,7 @@ export function RoomList({
         <button type="button" className="project-toggle" aria-expanded={open} onClick={toggle}>
           <IconChevronDown size={12} className="group-chevron" />
           <IconRooms size={14} />
-          <span className="project-name">Rooms</span>
+          <span className="project-name section-name">Rooms</span>
           {live.length > 0 ? <span className="group-count">{live.length}</span> : null}
           {pending > 0 ? (
             <span className="room-badge is-pending" title={`${pending} waiting for you`}>

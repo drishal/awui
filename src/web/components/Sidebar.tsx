@@ -587,13 +587,13 @@ function SectionList({
           <button type="button" className="project-toggle" aria-expanded={open} onClick={onToggle}>
             <IconChevronDown size={12} className="group-chevron" />
             {icon}
-            <span className="project-name">{title}</span>
+            <span className="project-name section-name">{title}</span>
             <span className="group-count">{sessions.length}</span>
           </button>
         ) : (
           <span className="project-toggle is-static">
             {icon}
-            <span className="project-name">{title}</span>
+            <span className="project-name section-name">{title}</span>
             <span className="group-count">{sessions.length}</span>
           </span>
         )}
@@ -706,11 +706,14 @@ function ProjectGroupView({
 
   const rows: React.ReactNode[] = [];
   let count = 0;
+  // A preview is a folder's first few rows: its dates are not worth a heading until the folder is opened,
+  // because the age on each row already says when. A search is the caller's list, headings and all.
+  const previewing = !searching && !showAll && sessions.length > limit;
   for (const [i, r] of all.entries()) {
     if (r.kind === "divider") {
       // A divider shows only when a session under it does.
       const next = all[i + 1];
-      if (next?.kind === "session" && (searching || showAll || count < limit))
+      if (!previewing && next?.kind === "session")
         rows.push(
           <li key={`d-${r.key}`} className="date-divider" role="presentation">
             {r.label}
@@ -782,7 +785,8 @@ function ProjectGroupView({
           <span className="project-name">{workspace.name}</span>
           {sharesRepo && checkout?.branch ? <span className="project-branch">{checkout.branch}</span> : null}
           {!open && sessions.some(isWorking) ? <WorkingRing colored={false} /> : null}
-          <span className="group-count">{sessions.length}</span>
+          {/* A count is what a collapsed group has instead of its rows; open, the rows are the count. */}
+          {!open ? <span className="group-count">{sessions.length}</span> : null}
         </button>
         <button
           type="button"
@@ -830,7 +834,6 @@ function ProjectMenuItem({ name, path, count, onPick }: { name: string; path: st
 function FocusedHeader({
   workspace,
   checkout,
-  total,
   canStartChat,
   onNewChat,
   onShowAll,
@@ -839,7 +842,6 @@ function FocusedHeader({
 }: {
   workspace: WorkspaceInfo;
   checkout?: Checkout;
-  total: number;
   canStartChat: boolean;
   onNewChat: (ws: WorkspaceInfo) => void;
   onShowAll: () => void;
@@ -894,7 +896,6 @@ function FocusedHeader({
         <ProjectBadge id={workspace.id} name={workspace.name} />
         <span className="project-name">{workspace.name}</span>
         {checkout?.branch ? <span className="project-branch">{checkout.branch}</span> : null}
-        <span className="group-count">{total}</span>
         <IconChevronDown size={12} className="group-chevron" />
       </button>
       <button type="button" className="icon-btn project-new" aria-label={`New chat in ${workspace.name}`} title={`New chat in ${workspace.name} in a new tab`} disabled={!canStartChat} onClick={() => onNewChat(workspace)}>
@@ -1050,7 +1051,7 @@ function FocusedProjectView({
   const hidden = total - count;
   return (
     <li className="project-group is-open is-current focus-group">
-      <FocusedHeader workspace={workspace} {...(checkout ? { checkout } : {})} total={total} canStartChat={canStartChat} onNewChat={onNewChat} onShowAll={onShowAll} onFocus={onFocus} scope={scope} />
+      <FocusedHeader workspace={workspace} {...(checkout ? { checkout } : {})} canStartChat={canStartChat} onNewChat={onNewChat} onShowAll={onShowAll} onFocus={onFocus} scope={scope} />
       <ul className="session-sublist">
         <ActiveWash />
         {sections.length === 0 ? <li className="sidebar-note">No past sessions here yet</li> : rows}

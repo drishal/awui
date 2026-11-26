@@ -131,6 +131,13 @@ a literal colour.
   grouped list (`groupByProject`, `focusProject`), where focus mode, the folder
   heads and drag order live; `GroupOptions`' place rules (what needs you, what
   works, what is pinned, and the settled/snoozed/archived toggles) apply to both.
+- **Sidebar headings:** a calendar heading and a section head (Needs you, Working,
+  Pinned, Rooms) are signposts: sentence case at 11.5px/500 in `--muted-text`,
+  with no tracking, and the attention colour stays on the needs-you icon alone.
+  A folder head is the folder's own name at 13px/600 in `--text-2`, with its
+  16px badge (radius 4, 10px/700, no ring), its branch after a `·`, and its
+  count only while the group is folded. A folder's preview rows carry no date
+  headings until the folder is opened: the age on each row already says when.
 - **Sidebar state, the colour contract:** `session-state.ts` decides a row's two
   state slots — a 10px leading mark and either the age or one word in its place
   — and exactly four things in the list are coloured: **amber** (`--warn`) is
