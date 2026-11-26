@@ -122,12 +122,13 @@ a literal colour.
   `session-state.ts` decides that subline and its state. On a two-line row the title
   takes the row's full width (8px right padding, no hover gutter). Its second line
   holds the project's badge and name on the left, and the age or allowed state word
-  on the right. Hover or keyboard focus shows a 24px ⋯ at the title's right end, which
-  gives the control 22px of its width in 90ms so the browser's own ellipsis lands just
-  left of it (no mask cuts a glyph, and reduced motion makes the change immediate);
-  never over the age. On a one-line row the age stays beside the title; hover or
-  keyboard focus swaps it for the ⋯ with an opacity cross-fade inside the age's own box,
-  so the title keeps its width. Touch keeps the ⋯ on the open row only. Inside the
+  on the right. Hover or keyboard focus shows a 24px ⋯ at the subline's right end,
+  bottom-aligned in the row, and fades that age out for it in 90ms: the title never
+  changes width under the pointer (the 22px it used to give the control cut two
+  letters off it), and no glyph is cut under the control. On a one-line row the age
+  stays beside the title; hover or keyboard focus swaps it for the ⋯ with an opacity
+  cross-fade inside the age's own box, so the title keeps its width. Touch keeps the ⋯
+  on the open row only. Inside the
   Needs-you or Working section that already names the state, the row shows the age
   (amber on a needs-you row), not a repeating word. Unread is title weight (600) and
   full ink, with the word “Unread” only in a visually hidden span for assistive tech.

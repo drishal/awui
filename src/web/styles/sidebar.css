@@ -1303,9 +1303,9 @@
 .session-item.is-drop-after::after {
   bottom: -1px;
 }
-
-/* The ⋯ is centred on the title's line (7 + 9 - 12 = 4px down), so on a two-line row it rides over the
-   title's masked end and stops above the subline, where the age is. */
+/* The ⋯ is centred on the title's line (7 + 9 - 12 = 4px down), so on a one-line row it lands where the
+   age was. On a two-line row it sits at the subline's end instead (the rule below), because a title that
+   gave the control room lost two letters of its own under the pointer. */
 .session-item > .session-more {
   position: absolute;
   top: 4px;
@@ -1316,33 +1316,33 @@
   transition: opacity var(--dur-hover) var(--ease-out);
 }
 
+/* A two-line row's ⋯ hangs at the subline's right end, over the age it replaces: 7 + 18 + 4 = 29px down
+   to the subline, and a 24px button bottom-aligned in the 48px row puts its glyph on that line (36
+   against the subline's 37). The title's line keeps its whole width either way. */
+.session-item:has(.session-body.has-sub) > .session-more {
+  top: auto;
+  bottom: 0;
+}
+
 .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-more {
   opacity: 1;
 }
 
 /* Shown on hover, while its menu is open, and on keyboard focus (a click's focus does not count: the row
-   you just opened would keep its age hidden). The title's line is the row's whole width now, with no
-   gutter kept for the ⋯ (the 34px one cost every title a fifth of the panel), so each row shape makes
-   its own room when the ⋯ shows — from its own width, so the ellipsis the title already draws moves in
-   and stays honest: a mask that faded the last glyph instead cut it in half under the control. */
+   you just opened would keep its age hidden). The title's line is the row's whole width, with no gutter
+   kept for the ⋯ (the 34px one cost every title a fifth of the panel), so each row shape gives the
+   control the room it has: a one-line row fades its age out inside the age's own box, and a two-line row
+   fades the age at the end of its subline, where the ⋯ then sits. Neither moves a glyph of the title. */
 @media (pointer: fine) {
-  /* A two-line row: the title gives the ⋯ 22px of its end (90ms, so it does not snap under the pointer),
-     and the age on the subline below stays in view. */
-  .session-body.has-sub > .session-title-line > .session-title {
-    transition: padding-right 90ms var(--ease-out);
-  }
-
-  .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-body.has-sub > .session-title-line > .session-title {
-    padding-right: 22px;
-  }
-
-  /* A one-line row: the ⋯ replaces the age, an opacity cross-fade inside the age's own box, so the
-     title's width does not change under the pointer. */
-  .session-title-line > .session-slot > .session-meta {
+  /* The age (or state word, or wake time) fades under the ⋯ on either line, and the box keeps its width,
+     so nothing beside it shifts. */
+  .session-title-line > .session-slot > .session-meta,
+  .session-body.has-sub > .session-sub > .session-slot > .session-meta {
     transition: opacity var(--dur-hover) var(--ease-out);
   }
 
-  .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-title-line > .session-slot > .session-meta {
+  .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-title-line > .session-slot > .session-meta,
+  .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-body.has-sub > .session-sub > .session-slot > .session-meta {
     opacity: 0;
   }
 }
@@ -1357,9 +1357,10 @@
     pointer-events: auto;
   }
 
-  /* Touch keeps the always-visible ⋯ on the active row, and the title keeps its 22px of room for it. */
-  .session-item:has(> .session.is-active) .session-body.has-sub > .session-title-line > .session-title {
-    padding-right: 22px;
+  /* The ⋯ stands over the subline's age on the active row, so that is what it takes: the title keeps its
+     whole width on touch too. */
+  .session-item:has(> .session.is-active) .session-body.has-sub > .session-sub > .session-slot > .session-meta {
+    visibility: hidden;
   }
 
   /* One line on touch has no spare width: the ⋯ takes the active row's age, as before. */
@@ -1858,22 +1859,10 @@ body.is-resizing {
 }
 
 /* The title never runs under the ⋯ here (the suffix and the age stand between), so it gives the control
-   no room of its own: the hover rule above, and touch's active-row room, are for the two-line shape. */
-:root[data-sidebar="compact"] .session-item .session-body.has-sub > .session-title-line > .session-title,
-:root[data-sidebar="compact"] .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-body.has-sub > .session-title-line > .session-title,
-:root[data-sidebar="compact"] .session-item:has(> .session.is-active) .session-body.has-sub > .session-title-line > .session-title {
+   no room of its own: the age at the line's end fades out for it, which the separated look's rule above
+   already does for this line's subline. */
+:root[data-sidebar="compact"] .session-item .session-body.has-sub > .session-title-line > .session-title {
   padding-right: 0;
-}
-
-/* A mouse's ⋯ replaces the age on the one line, as it does on any one-line row. */
-@media (pointer: fine) {
-  :root[data-sidebar="compact"] .session-sub > .session-slot > .session-meta {
-    transition: opacity var(--dur-hover) var(--ease-out);
-  }
-
-  :root[data-sidebar="compact"] .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-sub > .session-slot > .session-meta {
-    opacity: 0;
-  }
 }
 
 /* No badge in a 28px line: the project's name alone is the suffix. */
@@ -1881,9 +1870,11 @@ body.is-resizing {
   display: none;
 }
 
-/* The ⋯ is centred on the one 28px line, over the age it replaces. */
-:root[data-sidebar="compact"] .session-more {
+/* The ⋯ is centred on the one 28px line, over the age it replaces: the two-line shape's rule puts it at
+   the row's bottom, where that shape keeps its age, and this one keeps the age on the title's line. */
+:root[data-sidebar="compact"] .session-item:has(.session-body.has-sub) > .session-more {
   top: 2px;
+  bottom: auto;
 }
 
 /* The marks are positioned for a two-line row's first line; on the one centred line they centre too. */

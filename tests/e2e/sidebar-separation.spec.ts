@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 // Sidebar rows keep one pitch: 32px, or 48px with a subline. A two-line title takes
-// the full row; the right end of its subline holds the age, so hover's ⋯ never covers
-// it, and the title gives the control 22px of its end rather than fading under it.
+// the full row; the right end of its subline holds the age, which fades out on hover
+// for the ⋯ that takes its place, so the title never changes width under the pointer.
 // A one-line title keeps the age beside it, and hover swaps the ⋯ for that age.
 // Unread is title weight, never an accent dot; section rows do not repeat their section's
 // state word. A project group states a common branch on its head, not on every child.
@@ -133,7 +133,7 @@ test.describe("the separated rows", () => {
     expect(e.chevronLeft, "the fold chevron follows the name").toBeGreaterThan(e.nameRight);
   });
 
-  test("a long title stops at one line with an ellipsis, and keeps its words on hover", async ({ page }) => {
+  test("a long title stops at one line with an ellipsis, and hover never moves it", async ({ page }) => {
     await signInAndOpen(page);
     await newChat(page);
     await sendAndWait(page, "ellipsis check");
@@ -153,23 +153,22 @@ test.describe("the separated rows", () => {
     expect(box.scroll, "the title the test wrote is wider than the row").toBeGreaterThan(box.width);
     // The words the ellipsis hides are in the row's title attribute (and its hover card).
     await expect(item.locator(".session")).toHaveAttribute("title", new RegExp(`^${LONG_TITLE}`));
-    // Hover hands the ⋯ 22px of the title's end, and the text stops at the ellipsis left of it: the last
-    // glyph is never cut in half under the control.
+    // Hover gives the ⋯ the age at the subline's end, not 22px of the title: the title's box keeps the
+    // width it had, so its own ellipsis does not move and no glyph is cut under the control.
     await item.locator(".session").hover();
-    // The 90ms change finishes before it is measured.
-    await expect(item.locator(".session-title")).toHaveCSS("padding-right", "22px");
-    const hover = await item.evaluate((el) => {
-      const t = el.querySelector(".session-title") as HTMLElement;
-      const more = el.querySelector(".session-more")?.getBoundingClientRect();
-      const style = getComputedStyle(t);
-      return more ? { padding: style.paddingRight, textRight: t.getBoundingClientRect().right - Number.parseFloat(style.paddingRight), moreLeft: more.left, overflow: style.textOverflow } : null;
+    await expect(item.locator(".session-more")).toHaveCSS("opacity", "1");
+    await expect(item.locator(".session-sub .session-meta")).toHaveCSS("opacity", "0", { timeout: 2000 });
+    const after = await title.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { width: el.clientWidth, scroll: el.scrollWidth, padding: s.paddingRight, overflow: s.textOverflow };
     });
-    expect(hover?.padding).toBe("22px");
-    expect(hover?.textRight ?? 0, "the title's text ends left of the ⋯").toBeLessThanOrEqual(hover?.moreLeft ?? 0);
-    expect(hover?.overflow).toBe("ellipsis");
+    expect(after.padding, "no hover gutter on the title").toBe("0px");
+    expect(after.width, "the title's box is the same width hovered as not").toBe(box.width);
+    expect(after.scroll, "and its words end where they ended").toBe(box.scroll);
+    expect(after.overflow).toBe("ellipsis");
   });
 
-  test("a two-line title has the whole row, and its age stays clear of the ⋯", async ({ page }) => {
+  test("a two-line title keeps its width, and the ⋯ takes the age at the subline's end", async ({ page }) => {
     await signInAndOpen(page);
     await newChat(page);
     await sendAndWait(page, "hover keeps the age");
@@ -179,33 +178,32 @@ test.describe("the separated rows", () => {
     const before = await item.evaluate((el) => {
       const title = el.querySelector(".session-title")?.getBoundingClientRect();
       const meta = el.querySelector(".session-meta")?.parentElement?.getBoundingClientRect();
-      return title && meta ? { width: title.width, titleBottom: title.bottom, metaTop: meta.top } : null;
+      const sub = el.querySelector(".session-sub")?.getBoundingClientRect();
+      return title && meta && sub ? { width: title.width, titleBottom: title.bottom, metaTop: meta.top, metaRight: meta.right, subTop: sub.top, subBottom: sub.bottom } : null;
     });
     expect(before).not.toBeNull();
     await item.locator(".session").hover();
-    await expect(item.locator(".session-title")).toHaveCSS("padding-right", "22px");
+    await expect(item.locator(".session-more")).toHaveCSS("opacity", "1");
+    await expect(item.locator(".session-sub .session-meta")).toHaveCSS("opacity", "0", { timeout: 2000 });
     const now = await item.evaluate((el) => {
       const button = el.querySelector(".session-more")?.getBoundingClientRect();
-      const age = el.querySelector(".session-time")?.getBoundingClientRect();
-      const meta = el.querySelector(".session-meta")?.parentElement?.getBoundingClientRect();
       const title = el.querySelector(".session-title") as HTMLElement | null;
-      const metaEl = el.querySelector(".session-meta");
+      const metaEl = el.querySelector(".session-sub .session-meta");
       const sessionEl = el.querySelector(".session");
-      return button && age && meta && title && metaEl && sessionEl ? { left: button.left, right: button.right, bottom: button.bottom, ageTop: age.top, ageLeft: age.left, metaTop: meta.top, metaOpacity: getComputedStyle(metaEl).opacity, mask: getComputedStyle(title).maskImage, titlePadding: getComputedStyle(title).paddingRight, titleWidth: title.getBoundingClientRect().width, padding: getComputedStyle(sessionEl).paddingRight } : null;
+      return button && title && metaEl && sessionEl ? { left: button.left, right: button.right, centre: button.top + button.height / 2, bottom: button.bottom, metaOpacity: getComputedStyle(metaEl).opacity, mask: getComputedStyle(title).maskImage, titlePadding: getComputedStyle(title).paddingRight, titleWidth: title.getBoundingClientRect().width, padding: getComputedStyle(sessionEl).paddingRight } : null;
     });
-    expect(now?.metaOpacity).toBe("1");
-    // The title does not fade under the control: it gives it 22px of its end, so the browser's own
-    // ellipsis lands just left of the ⋯.
+    expect(now?.metaOpacity).toBe("0");
+    // The title neither fades nor narrows under the pointer: it keeps its whole width and its own ellipsis.
     expect(now?.mask).toBe("none");
-    expect(now?.titlePadding).toBe("22px");
+    expect(now?.titlePadding).toBe("0px");
+    expect(now?.titleWidth).toBe(before?.width);
     // No reserved gutter: the row's right padding stays the list's 8px.
     expect(now?.padding).toBe("8px");
-    expect(now?.titleWidth).toBe(before?.width);
-    // The age is on the second line; the ⋯ occupies only the title's line.
-    expect((now?.ageTop ?? 0)).toBeGreaterThanOrEqual(before?.titleBottom ?? 0);
-    expect((now?.bottom ?? Infinity)).toBeLessThanOrEqual((before?.metaTop ?? 0) + 1);
-    expect((now?.right ?? 0)).toBeGreaterThanOrEqual(now?.ageLeft ?? 0);
-    expect(now?.left).toBeGreaterThan(0);
+    // The ⋯ sits over the age at the subline's end: its glyph on that line's centre, and the box it covers
+    // is the age's own right end.
+    expect(now?.centre ?? 0).toBeGreaterThan(before?.titleBottom ?? 0);
+    expect(Math.abs((now?.centre ?? 0) - (((before?.subTop ?? 0) + (before?.subBottom ?? 0)) / 2))).toBeLessThanOrEqual(1.5);
+    expect(now?.right ?? 0).toBeGreaterThanOrEqual(before?.metaRight ?? 0);
     expect((await item.locator(".session-more").boundingBox())?.width).toBe(24);
   });
 
