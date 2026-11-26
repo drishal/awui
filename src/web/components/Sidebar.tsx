@@ -475,6 +475,14 @@ function SessionRow({
           window.clearTimeout(hover.current);
           hideCard();
         }}
+        // A row reached with the keyboard says what it holds too: the same card, under the row, so the
+        // row keeps its own focus ring in sight.
+        onFocus={(e) => {
+          setCardSide("below");
+          if (markable) showCard(e.currentTarget);
+          else hideCard();
+        }}
+        onBlur={hideCard}
         aria-describedby={cardAt ? cardId : undefined}
         onAuxClick={(e) => {
           if (e.button !== 1) return;
@@ -484,9 +492,18 @@ function SessionRow({
         onContextMenu={(e) => {
           e.preventDefault();
           holdCard();
+          menuFrom.current = rowRef.current;
           setMenuAt(new DOMRect(e.clientX, e.clientY, 0, 0));
         }}
         onKeyDown={(e) => {
+          // The keyboard's context menu (Shift+F10, or the ContextMenu key): at the row's ⋯ button.
+          if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+            e.preventDefault();
+            holdCard();
+            menuFrom.current = rowRef.current;
+            setMenuAt(moreRef.current?.getBoundingClientRect() ?? null);
+            return;
+          }
           if (!move || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
           e.preventDefault();
           if (e.key === "ArrowUp" ? move.up : move.down) move.by(e.key === "ArrowUp" ? -1 : 1);
@@ -645,6 +662,34 @@ function SectionList({
       ) : null}
     </li>
   );
+}
+
+/**
+ * The session list is one tab stop, not two per row: ↑/↓ walk its rows (Home/End to the ends, no wrapping,
+ * since the list has a first and a last), Enter opens the focused one, and every row's ⋯ leaves the tab
+ * order — Shift+F10 or the ContextMenu key opens that row's menu where a mouse would right-click.
+ */
+function useListKeys(list: RefObject<HTMLUListElement | null>) {
+  // The tab stop follows the row on screen: the open one, else where the keyboard already is, else the first.
+  useLayoutEffect(() => {
+    const root = list.current;
+    if (!root) return;
+    const rows = Array.from(root.querySelectorAll<HTMLElement>(".session-item > .session"));
+    if (rows.length === 0) return;
+    const stop = rows.find((el) => el === document.activeElement) ?? rows.find((el) => el.getAttribute("aria-current") === "true") ?? rows[0];
+    for (const el of rows) if (el.tabIndex !== (el === stop ? 0 : -1)) el.tabIndex = el === stop ? 0 : -1;
+    for (const more of root.querySelectorAll<HTMLElement>(".session-more")) more.tabIndex = -1;
+  });
+  return (e: React.KeyboardEvent<HTMLUListElement>) => {
+    // Alt+↑/↓ is the row's own move, and the browser keeps Ctrl/⌘/Shift chords.
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const rows = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(".session-item > .session"));
+    const at = rows.indexOf(document.activeElement as HTMLElement);
+    const next = menuStep(e.key, at, rows.length, false);
+    if (next === null || next === at) return;
+    e.preventDefault();
+    rows[next]?.focus();
+  };
 }
 
 /** One active wash per visible list. Its identity is the actual row marked aria-current. */
@@ -1260,6 +1305,7 @@ export function Sidebar(props: {
   const focusable = projectScoped(props.harnesses, props.harnessId ?? "") && props.overview.workspaces.length > 1;
   const focusId = flat || !focusable || focus === "all" ? null : focus === "auto" ? currentId : focus;
   const sessionList = useRef<HTMLUListElement>(null);
+  const onListKeyDown = useListKeys(sessionList);
   useViewSlide(sessionList, focusId ?? "all");
   const focused = useMemo(() => {
     if (!focusId) return null;
@@ -1466,7 +1512,7 @@ export function Sidebar(props: {
             </button>
           ) : null}
           {props.sessionsError ? <p className="sidebar-note is-warning">{props.sessionsError}</p> : null}
-          <ul ref={sessionList} className="session-list" aria-busy={props.sessionsLoading} aria-label={flat ? "Sessions" : "Sessions by project"}>
+          <ul ref={sessionList} className="session-list" aria-busy={props.sessionsLoading} aria-label={flat ? "Sessions" : "Sessions by project"} onKeyDown={onListKeyDown}>
             {/*
               Rooms are the Awui harness's surface: they appear in its sidebar scope, not in a
               coding harness's. A server with no Awui harness has no scope to put them in (and

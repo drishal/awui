@@ -101,3 +101,67 @@ test("the row menu is one tab stop: arrows walk it, Escape hands the focus back 
   await expect(menu).toHaveCount(0);
   await expect(row).toBeFocused();
 });
+
+test("the session list is one tab stop, and its arrows walk the rows", async ({ page }) => {
+  await signInAndOpen(page);
+  for (const text of ["key row one", "key row two", "key row three"]) {
+    await newChat(page);
+    await sendAndWait(page, text);
+  }
+  await showSidebar(page);
+  // One stop for the whole list, and no separate stop for each row's ⋯.
+  const stops = await page.locator(".session-list").evaluate((list) => ({
+    rows: Array.from(list.querySelectorAll<HTMLElement>(".session-item > .session")).filter((row) => row.tabIndex >= 0).length,
+    more: Array.from(list.querySelectorAll<HTMLElement>(".session-more")).filter((more) => more.tabIndex >= 0).length,
+  }));
+  expect(stops).toEqual({ rows: 1, more: 0 });
+
+  const rows = page.locator(".session-item > .session");
+  await rows.first().focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(rows.nth(1)).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(rows.last()).toBeFocused();
+  // A list clamps: the last row does not wrap round to the first.
+  await page.keyboard.press("ArrowDown");
+  await expect(rows.last()).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(rows.first()).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("user-prompt").first()).toContainText("key row");
+});
+
+test("the filter menu answers Escape from its trigger and hands the focus back", async ({ page }) => {
+  await signInAndOpen(page);
+  const trigger = page.getByRole("button", { name: /^Filters/ });
+  await trigger.click();
+  const menu = page.getByRole("group", { name: "Hide sessions" });
+  await expect(menu).toBeVisible();
+  // The menu takes the focus, and its arrows walk its rows.
+  const rows = menu.getByRole("checkbox");
+  await expect(rows.first()).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(rows.nth(1)).toBeFocused();
+  // Escape while the trigger itself has the focus closes the menu too (it used to stay open), and the
+  // focus lands back on the trigger rather than the body.
+  await trigger.focus();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+test("a row reached by the keyboard shows its hover card under itself", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "card on focus");
+  await showSidebar(page);
+  const row = page.locator(".session-item", { hasText: "card on focus" }).first().locator(".session");
+  await row.focus();
+  const card = page.locator(".session-card");
+  await expect(card).toBeVisible({ timeout: 3000 });
+  const [rowBox, cardBox] = [await row.boundingBox(), await card.boundingBox()];
+  // Under the row, never over it: the row keeps its focus ring in sight.
+  expect(cardBox!.y).toBeGreaterThanOrEqual(rowBox!.y + rowBox!.height - 1);
+  await expect(row).toHaveAttribute("aria-describedby", /.+/);
+});
+

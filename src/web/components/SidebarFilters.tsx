@@ -5,6 +5,7 @@
 import { useRef, useState } from "react";
 import { HIDE_GROUPS, HIDE_HINTS, HIDE_LABELS, type HideGroup } from "../sidebar-filter.js";
 import { IconFilter } from "../icons.js";
+import { useMenuKeys } from "../menu-focus.js";
 
 export function SidebarFilters({ hide, counts, onChange }: {
   hide: readonly HideGroup[];
@@ -12,7 +13,11 @@ export function SidebarFilters({ hide, counts, onChange }: {
   onChange: (next: HideGroup[]) => void;
 }) {
   const button = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<DOMRect | null>(null);
+  // Escape closes it from anywhere (its trigger included) and puts the focus back on the trigger; the
+  // arrows walk its rows, which are one tab stop.
+  const keys = useMenuKeys(menu, { open: at !== null, close: () => setAt(null), opener: button });
   const toggle = (group: HideGroup) => onChange(hide.includes(group) ? hide.filter((g) => g !== group) : [...hide, group]);
   const clear = () => onChange([]);
   return (
@@ -33,13 +38,12 @@ export function SidebarFilters({ hide, counts, onChange }: {
         <>
           <div className="menu-backdrop" onClick={() => setAt(null)} aria-hidden="true" />
           <div
+            ref={menu}
             className="menu-list filter-menu"
             role="group"
             aria-label="Hide sessions"
             style={{ position: "fixed", top: at.bottom + 4, right: Math.max(8, window.innerWidth - at.right) }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setAt(null);
-            }}
+            onKeyDown={keys.onKeyDown}
           >
             {HIDE_GROUPS.map((group) => (
               <label key={group} className="filter-row" title={HIDE_HINTS[group]}>
