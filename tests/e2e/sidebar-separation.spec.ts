@@ -6,8 +6,9 @@ import { type ChildProcess, spawn } from "node:child_process";
 // Unread is title weight, never an accent dot; section rows do not repeat their section's
 // state word. A project group states a common branch on its head, not on every child.
 //
-// Compact keeps one 28px line: title, an inline project suffix (8px gap, at most 34%),
-// and a stable age slot that hover trades for the ⋯. The tests below measure the contract.
+// Compact keeps one 28px line, in three columns: title (1fr, at least 96px), an inline project suffix in
+// its own column (never wider than 96px), and a stable age slot that hover trades for the ⋯. The project
+// ellipsises before the title does. The tests below measure the contract.
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -277,10 +278,14 @@ test.describe("the compact rows", () => {
     const suffix = placed as { titleBottom: number; subTop: number; titleRight: number; subLeft: number };
     expect(suffix.subTop, "one line: the suffix starts on the title's own line").toBeLessThan(suffix.titleBottom);
     expect(suffix.subLeft).toBeGreaterThanOrEqual(suffix.titleRight);
-    const compactWidth = await item.locator(".session-sub-name").evaluate((el) => ({ width: el.getBoundingClientRect().width, max: getComputedStyle(el).maxWidth }));
-    const body = await item.locator(".session-body").evaluate((el) => el.getBoundingClientRect().width);
-    expect(compactWidth.width).toBeLessThanOrEqual(body * 0.34 + 1);
-    expect(compactWidth.max.endsWith("px") ? compactWidth.width : 0).toBeLessThanOrEqual(body * 0.34 + 1);
+    // The suffix's column is capped in pixels (96), not at a share of the line: a percentage cap on a
+    // content-sized grid track resolved to its floor, which cut "drishal-notes" and left dead column beside it.
+    const suffixBox = await item.locator(".session-sub-name").evaluate((el) => ({ width: el.getBoundingClientRect().width, max: getComputedStyle(el).maxWidth }));
+    expect(suffixBox.max, "the suffix column's cap").toBe("96px");
+    expect(suffixBox.width).toBeLessThanOrEqual(96.5);
+    // The title keeps a sensible share of the line: at least 96px, and every spare pixel.
+    const titleWidth = await item.locator(".session-title").evaluate((el) => el.getBoundingClientRect().width);
+    expect(titleWidth, "the title's own floor").toBeGreaterThanOrEqual(95.5);
     // A second row whose title is wider than the line: the suffix keeps one position, so the project names
     // form a column beside the age. Hugging the title put a short row's suffix 98px left of a long one's.
     await newChat(page);
@@ -309,6 +314,34 @@ test.describe("the compact rows", () => {
     await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
     const back = (await item.boundingBox()) as { height: number } | null;
     expect(Math.round((back as { height: number }).height)).toBe(48);
+  });
+
+  test("a long project's name gives way before the title", async ({ page, request }) => {
+    // A folder whose name is wider than the suffix's 96px column, and a panel at 232px: the two cases where
+    // the flex row this replaced squeezed the title (89px of it) or cut the project to "drishal-not…".
+    const root = process.env.AWUI_E2E_ROOT as string;
+    const folder = path.join(root, "drishal-notes-archive");
+    mkdirSync(folder, { recursive: true });
+    const ws = (await (await request.post("/api/workspaces/open", { data: { path: folder } })).json()) as { id: string };
+    const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+    await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: "a compact row out of a long project name", mode: "normal" } });
+    await page.addInitScript(() => window.localStorage.setItem("awui.sidebarWidth", JSON.stringify(232)));
+    await signInAndOpen(page);
+    await showSidebar(page);
+    await page.evaluate(() => document.documentElement.setAttribute("data-sidebar", "compact"));
+    const longRow = row(page, "a compact row out of a long project name").first();
+    await expect(longRow).toBeVisible();
+    const fit = await longRow.evaluate((el) => {
+      const title = el.querySelector(".session-title") as HTMLElement;
+      const suffix = el.querySelector(".session-sub-name") as HTMLElement;
+      return { title: title.getBoundingClientRect().width, suffix: suffix.getBoundingClientRect().width, suffixScroll: suffix.scrollWidth };
+    });
+    // The project's column stops at 96px and its name ellipsises there; the title keeps its own 96px floor, so
+    // the title is never the part that gives way to fit a project name beside a full age.
+    expect(fit.suffix, "the suffix column's cap").toBeLessThanOrEqual(96.5);
+    expect(fit.suffixScroll, "a long project name ellipsises inside its column").toBeGreaterThan(fit.suffix);
+    expect(fit.title, "the title keeps its floor").toBeGreaterThanOrEqual(95.5);
+    await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
   });
 });
 

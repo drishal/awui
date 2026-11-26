@@ -1988,13 +1988,19 @@ body.is-resizing {
   align-content: center;
 }
 
-/* One line always: the title, its project's name (never more than 34% of the line, ellipsised past that),
-   and the age at the line's end, on the same column as every other row's. The title takes the rest of a
-   row without a suffix. With one, the title is only as wide as its words and the suffix takes the free
-   space, so the project names form a column of their own beside the age rather than hugging whichever
-   title they happen to sit next to; a long title gives way first, and the ellipsis stays its own. */
+/* One line always, in three columns: the title, its project's name as a dim suffix, and the age at the
+   line's end on the column every other row uses. The title gets the free space (1fr) and the suffix only what
+   its words need, capped at 96px: the project ellipsises before the title does, where the flex row it
+   replaced let a long title shrink to nothing beside a suffix that kept 34% of the line — S10 cut titles to
+   ten letters and still ended the project at "drishal-not…". The suffix's column is content-sized, so the
+   project names still land on one x down the list rather than hugging whichever title they sit next to. */
 :root[data-sidebar="compact"] .session-body.has-sub {
-  gap: 0;
+  display: grid;
+  /* The title keeps at least 96px (a dozen letters of its own) and takes every spare pixel; the suffix's
+     column is content-sized and capped at 96px, so the project gives way first when the panel is narrow. */
+  grid-template-columns: minmax(96px, 1fr) minmax(0, auto) auto;
+  column-gap: 8px;
+  align-items: baseline;
 }
 
 :root[data-sidebar="compact"] .session-title-line {
@@ -2002,33 +2008,30 @@ body.is-resizing {
 }
 
 :root[data-sidebar="compact"] .session-body.has-sub > .session-title-line {
-  flex: 0 1 auto;
+  min-width: 0;
 }
 
-/* The subline's own box goes, so its name and its age become items of the title's flex line. */
+/* The subline's own box goes, so its name and its age become columns of the title's line. */
 :root[data-sidebar="compact"] .session-sub {
   display: contents;
   font-size: 11.5px;
   line-height: 16px;
 }
 
-/* The suffix takes the line's free space, so it starts at one x on every row of the list (a short title's
-   suffix and a long one's landed 98px apart), and the 8px it keeps from the title is the least room it
-   gets: a title that runs into it ellipsises instead. */
 :root[data-sidebar="compact"] .session-sub > .session-sub-name {
-  flex: 0 0 auto;
-  max-width: 34%;
-  margin-left: auto;
-  padding-left: 8px;
+  min-width: 0;
+  /* A px cap, not a percentage: a % of a grid item's own content-sized area is indeterminate, and Chromium
+     resolved a `clamp(40px, 28%, 96px)` to its 40px floor — which ellipsised a 71px "drishal-notes" and left
+     30px of empty column beside it. */
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--muted-text);
   font-size: 11.5px;
 }
 
-/* One auto margin on the line: the age keeps its own 6px from the suffix and no free space of its own,
-   so the suffix, not the gap, is what lines up. */
 :root[data-sidebar="compact"] .session-sub > .session-slot {
-  margin-left: 0;
-  padding-left: 6px;
+  padding-left: 0;
 }
 
 /* The title never runs under the ⋯ here (the suffix and the age stand between), so it gives the control
