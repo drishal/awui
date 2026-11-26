@@ -1670,7 +1670,7 @@ export function Sidebar(props: {
               <SectionList
                 className="working-group"
                 testId="working-group"
-                icon={<WorkingRing colored={false} />}
+                icon={<WorkingRing colored={false} still />}
                 title="Working"
                 sessions={working}
                 open={workingOpen}

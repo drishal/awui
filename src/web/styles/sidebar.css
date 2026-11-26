@@ -1127,6 +1127,13 @@
   color: var(--harness, var(--accent));
 }
 
+/* A head that counts runs does not spin: the Working section's mark stands for its rows, and every one of
+   them already owns a ring. Three rings turning in one 110px column read as three runs for a single run;
+   motion in the list means "this row is the thing that is running". */
+.working-ring.is-still {
+  animation: none;
+}
+
 /* Waiting on you: the ring means a run in progress, so a chat that is asking wears an amber dot in the same
    10px slot instead (7px, 1.5px each side), and its title keeps the left edge. The dot is still: the question's
    own card is the thing that moves, and two pulses compete. */
