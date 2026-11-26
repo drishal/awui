@@ -697,6 +697,13 @@
   margin-top: calc(var(--section-gap) + 8px);
 }
 
+/* Under "Search every chat" the list is that row's own result, not a group after the head: it tucks up to
+   the row — the column's own 8px between the row and its list, less 2, so 6px in all — where the flat list
+   otherwise leaves a group's 14px break. */
+.flat-group.is-search:first-child {
+  margin-top: -2px;
+}
+
 /* Every head is laid on the rows' columns: its 8px inset puts a 10px icon, or the 16px badge of a folder,
    on the rows' mark column, and the 6px gap starts its label on their titles' edge. 4px under it, its
    first row; its count ends on the rows' age column (the row's 8px right padding). */
@@ -1215,6 +1222,15 @@
 }
 
 /* Unread is the list's one weight cue: the same size, at 600 and full ink. */
+/* A search's hit inside a title: the accent's own wash, never its ink or a weight (the accent means a run
+   and the weight means unread), so the row keeps its rank and the match is lit. */
+.title-match {
+  border-radius: 2px;
+  padding: 0 1px;
+  background: color-mix(in oklab, var(--accent) 24%, transparent);
+  color: inherit;
+}
+
 .session.is-unread .session-title {
   color: var(--text);
   font-weight: 600;

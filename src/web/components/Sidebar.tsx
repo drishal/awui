@@ -37,6 +37,7 @@ import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, use
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
 import { rowState, rowSubline } from "../session-state.js";
+import { matchSpan } from "../sidebar-filter.js";
 import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
 /** A folder's first page: the current one gets a fuller preview than the others (each adds SHOW_MORE). */
@@ -351,6 +352,7 @@ function SessionRow({
   tag,
   stateTone,
   branch = null,
+  query = null,
   groupBranch = null,
   showHarness = true,
   onOpen,
@@ -369,6 +371,8 @@ function SessionRow({
   stateTone?: "needs" | "working" | null;
   /** The branch its project is checked out on (shown when it is not the trunk's, nor the head's). */
   branch?: string | null;
+  /** The text the list is searching for: the row marks its first hit inside the title. */
+  query?: string | null;
   /** The branch the group's head above already states: the row does not repeat it. */
   groupBranch?: string | null;
   /** False where every row of the list is the same harness: the dot would only repeat the heading above. */
@@ -392,6 +396,10 @@ function SessionRow({
   // Where the menu was opened from: Escape hands the focus back there (a right-click leaves it on the row).
   const menuFrom = useRef<HTMLButtonElement | null>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
+  // The title as the list draws it, and where the search's query sits in it (the row marks that, so a
+  // 238px ellipsis does not hide why the row matched).
+  const titleText = plainTitle(s.title);
+  const hit = query ? matchSpan(titleText, query) : null;
   // A session not saved yet has nothing to mark.
   const markable = !s.id.includes(":live-");
   const { warm } = useContext(RowActions);
@@ -526,7 +534,17 @@ function SessionRow({
         )}
         <span className={`session-body${sub ? " has-sub" : ""}`}>
           <span className="session-title-line">
-            <span className="session-title" ref={titleRef}>{plainTitle(s.title)}</span>
+            <span className="session-title" ref={titleRef}>
+              {hit ? (
+                <>
+                  {titleText.slice(0, hit[0])}
+                  <mark className="title-match">{titleText.slice(hit[0], hit[1])}</mark>
+                  {titleText.slice(hit[1])}
+                </>
+              ) : (
+                titleText
+              )}
+            </span>
             {sub ? null : <span className="session-slot">{meta}</span>}
           </span>
           {state.unread ? <span className="visually-hidden">Unread</span> : null}
@@ -751,6 +769,7 @@ function ActiveWash() {
 function ProjectGroupView({
   group,
   searching,
+  query,
   order,
   now,
   isActive,
@@ -764,6 +783,8 @@ function ProjectGroupView({
 }: {
   group: ProjectGroup;
   searching: boolean;
+  /** The text the list is searching for, for a row to mark inside its title. */
+  query: string;
   /** The project's hand-made order, first to last. */
   order: string[] | undefined;
   now: number;
@@ -827,6 +848,7 @@ function ProjectGroupView({
         harnessName={harnessName(s.harnessId)}
         showHarness={mixedHarness}
         branch={checkout?.branch ?? null}
+        query={query}
         groupBranch={headBranch}
         onOpen={(newTab) => onOpen(s, newTab)}
         onMark={(change) => onMark(s, change)}
@@ -1031,6 +1053,7 @@ function FocusedHeader({
  */
 function FocusedProjectView({
   focused,
+  query,
   home,
   order,
   now,
@@ -1047,6 +1070,7 @@ function FocusedProjectView({
   scope,
 }: {
   focused: NonNullable<ReturnType<typeof focusProject>>;
+  query: string;
   home: string;
   order: string[] | undefined;
   now: number;
@@ -1099,6 +1123,7 @@ function FocusedProjectView({
           harnessName={harnessName(s.harnessId)}
           showHarness={mixedHarness}
           branch={checkout?.branch ?? null}
+          query={query}
           groupBranch={checkout?.branch ?? null}
           onOpen={(newTab) => onOpen(s, newTab)}
           onMark={(change) => onMark(s, change)}
@@ -1368,6 +1393,9 @@ export function Sidebar(props: {
 
   const isActive = isActiveSession;
   const searching = props.query.trim() !== "";
+  // "Search every chat" is offered for a query worth looking for (two letters), and the list under it then
+  // tucks up to it: the row is the list's own search, not a group above it.
+  const searchEverywhere = !!props.onSearchAll && props.query.trim().length >= 2;
   // A filter that leaves nothing to list offers to clear it; the matching count reads the full overview.
   // Enter opens the full-text search for an empty local result; local matches still work as usual.
   const noLocalMatches = (searching && props.overview.sessions.every((s) => s.harnessId !== props.harnessId || !s.title.toLowerCase().includes(props.query.trim().toLowerCase())));
@@ -1392,6 +1420,7 @@ export function Sidebar(props: {
       harnessName={names.get(s.harnessId) ?? s.harnessId}
       showHarness={!oneHarness}
       stateTone={stateTone}
+      query={props.query}
       tag={projectTag(overview, s)}
       provenance={provenanceOf(s, hideCtx)}
       onOpen={(newTab) => props.onOpenSession(s, newTab)}
@@ -1407,6 +1436,7 @@ export function Sidebar(props: {
       working={isWorking(s)}
       harnessName={names.get(s.harnessId) ?? s.harnessId}
       showHarness={!oneHarness}
+      query={props.query}
       tag={tag}
       provenance={provenanceOf(s, hideCtx)}
       onOpen={(newTab) => props.onOpenSession(s, newTab)}
@@ -1527,7 +1557,7 @@ export function Sidebar(props: {
               </button>
             </div>
           ) : null}
-          {props.onSearchAll && props.query.trim().length >= 2 ? (
+          {searchEverywhere ? (
             <button type="button" className="search-all" onClick={() => props.onSearchAll?.(props.query.trim())}>
               <IconSearch size={13} />
               <span className="search-all-label">
@@ -1604,7 +1634,7 @@ export function Sidebar(props: {
               // One flat list across projects (the Recent view, and every harness with no projects
               // to group): date headings, each row tagged with its project, a page at a time. One
               // group of its own, so the active row's wash keeps a scrolling box to sit in.
-              <li className="project-group is-open flat-group">
+              <li className={`project-group is-open flat-group${searchEverywhere ? " is-search" : ""}`}>
                 <ul className="session-sublist">
                   <ActiveWash />
                   {recent.rows.map((r) =>
@@ -1627,6 +1657,7 @@ export function Sidebar(props: {
             ) : focused && !searching ? (
               <FocusedProjectView
                 focused={focused}
+                query={props.query}
                 home={props.home}
                 order={overview.orders?.[`${props.harnessId}:${focused.workspace.id}`]}
                 now={now}
@@ -1648,6 +1679,7 @@ export function Sidebar(props: {
                   key={g.workspace.id}
                   group={g}
                   searching={searching}
+                  query={props.query}
                   order={overview.orders?.[`${props.harnessId}:${g.workspace.id}`]}
                   now={now}
                   isActive={isActive}

@@ -71,6 +71,18 @@ export function applyQuick(overview: SessionsOverview, filter: QuickFilter | nul
   return { ...overview, sessions: overview.sessions.filter((s) => matchesQuick(s, filter, now, working)) };
 }
 
+/**
+ * Where a title holds the query, for the row to mark it: the first case-insensitive occurrence, as a
+ * [start, end) span. A query shorter than two letters marks nothing (one letter is in every other title,
+ * and the whole list would light up); null when the title does not hold it.
+ */
+export function matchSpan(title: string, query: string): [number, number] | null {
+  const needle = query.trim().toLowerCase();
+  if (needle.length < 2) return null;
+  const at = title.toLowerCase().indexOf(needle);
+  return at < 0 ? null : [at, at + needle.length];
+}
+
 /** Escape in the search box: the text goes first, then the filter. Null when there is nothing to clear. */
 export function escapeClears(query: string, filter: QuickFilter | null): "query" | "filter" | null {
   if (query !== "") return "query";

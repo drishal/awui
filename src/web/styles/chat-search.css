@@ -4,7 +4,8 @@
 .search-all {
   display: flex;
   align-items: center;
-  gap: 8px;
+  /* The rows' own gap, so the label lands on the titles' edge: 8px in, a 10px mark column, 6px. */
+  gap: 6px;
   width: 100%;
   min-height: 32px;
   padding: 6px 8px;
@@ -24,8 +25,11 @@
   background: var(--hover);
 }
 
+/* The glyph takes the rows' 10px mark column, as a section head's icon does. */
 .search-all .icon {
   flex: none;
+  width: 10px;
+  height: 10px;
   color: var(--muted-text);
 }
 

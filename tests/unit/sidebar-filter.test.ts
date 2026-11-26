@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSession, SessionsOverview } from "../../src/shared/protocol.js";
 import { asHarnessId } from "../../src/shared/protocol.js";
-import { applyHidden, applyQuick, asHideGroups, asQuickFilter, chipsShown, escapeClears, hideCounts, hiddenBy, HIDE_GROUPS, isSleeping, isOnDefaultBranch, matchesQuick, provenanceOf, quickCounts, SLEEPING_AFTER_MS } from "../../src/web/sidebar-filter.js";
+import { applyHidden, applyQuick, asHideGroups, asQuickFilter, chipsShown, escapeClears, hideCounts, hiddenBy, HIDE_GROUPS, isSleeping, isOnDefaultBranch, matchesQuick, matchSpan, provenanceOf, quickCounts, SLEEPING_AFTER_MS } from "../../src/web/sidebar-filter.js";
 
 // Noon, local time: midnight is 12 hours behind it whatever the zone.
 const now = new Date(2026, 9, 27, 12, 0, 0).getTime();
@@ -89,6 +89,25 @@ describe("chipsShown", () => {
     expect(chipsShown({ running: 0, needs: 0, today: 0 }, null)).toEqual(["today"]);
     expect(chipsShown({ running: 2, needs: 0, today: 3 }, null)).toEqual(["running", "today"]);
     expect(chipsShown({ running: 0, needs: 0, today: 0 }, "needs")).toEqual(["needs", "today"]);
+  });
+});
+
+describe("matchSpan", () => {
+  it("finds the first hit in a title, whatever the case, as a span to mark", () => {
+    expect(matchSpan("does nixos herdr flake have herdr desktop", "flake")).toEqual([17, 22]);
+    expect(matchSpan("Fix the dark halo", "DARK")).toEqual([8, 12]);
+    // The query is trimmed: a stray space from the field does not move the span.
+    expect(matchSpan("does nixos flake", "  flake ")).toEqual([11, 16]);
+    // Only the first: a row marks one hit, which is what says why it is in the list.
+    expect(matchSpan("flake and flake", "flake")).toEqual([0, 5]);
+    // Where the text is not there, nothing to mark.
+    expect(matchSpan("a chat", "zzz")).toBeNull();
+  });
+
+  it("marks nothing for a query of one letter", () => {
+    expect(matchSpan("a chat", "a")).toBeNull();
+    expect(matchSpan("a chat", " ")).toBeNull();
+    expect(matchSpan("a chat", "")).toBeNull();
   });
 });
 

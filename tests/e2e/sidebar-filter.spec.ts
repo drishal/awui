@@ -149,6 +149,37 @@ test("Today shows today's sessions and is remembered after a reload", async ({ p
   await expect(sidebar(page).getByRole("button", { name: "Clear Today filter" })).toHaveCount(0);
 });
 
+test("a search marks the hit in the title and seats its row on the titles' edge", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "a row about a flake in the sidebar");
+  await showSidebar(page);
+  await search(page).fill("flake");
+  const hit = sidebar(page).locator(".flat-group .session-title mark.title-match");
+  await expect(hit, "the query is marked where it matched").toHaveText("flake");
+  // The mark is a wash, not an ink or a weight: those mean a run and unread.
+  const mark = await hit.evaluate((el) => ({ bg: getComputedStyle(el).backgroundColor, weight: getComputedStyle(el).fontWeight, colour: getComputedStyle(el).color }));
+  expect(mark.bg).not.toBe("rgba(0, 0, 0, 0)");
+  expect(mark.weight).toBe("400");
+  expect(mark.colour).toBe(await sidebar(page).locator(".flat-group .session-title").first().evaluate((el) => getComputedStyle(el).color));
+  // The mark does not change the words the row carries for its card and its title attribute.
+  const rowText = await sidebar(page).locator(".flat-group .session-item").first().locator(".session-title").innerText();
+  expect(rowText).toBe("a row about a flake in the sidebar");
+  await expect(sidebar(page).locator(".flat-group .session-item").first().locator(".session")).toHaveAttribute("title", /^a row about a flake in the sidebar/);
+
+  // "Search every chat" starts its words on the titles' edge, and the list tucks up 6px under it.
+  const seat = await page.evaluate(() => {
+    const label = document.querySelector(".search-all .search-all-label")?.getBoundingClientRect();
+    const button = document.querySelector(".search-all")?.getBoundingClientRect();
+    const title = document.querySelector(".flat-group .session-title")?.getBoundingClientRect();
+    const group = document.querySelector(".flat-group")?.getBoundingClientRect();
+    return label && button && title && group ? { label: label.left, title: title.left, gap: group.top - button.bottom } : null;
+  });
+  expect(seat, "the search offers every chat and lists its matches").not.toBeNull();
+  expect(Math.abs((seat?.label ?? 0) - (seat?.title ?? 99)), "the search row's words start on the titles' edge").toBeLessThanOrEqual(0.5);
+  expect(seat?.gap, "the list tucks up under the search row").toBeLessThanOrEqual(6.5);
+});
+
 test("the inactive filter row is absent and Filters sits inside the search", async ({ page }) => {
   await signInAndOpen(page);
   await showSidebar(page);
