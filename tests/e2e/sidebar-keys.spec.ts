@@ -386,9 +386,10 @@ test("focus mode scopes the Needs-you and Working sections to the focused projec
   await showSidebar(page);
   const head = page.getByTestId("focused-project");
   await expect(head.locator(".project-name")).toHaveText("alpha");
-  // The head says alpha, so a needs-you row from beta must not stand under it.
+  // The head says alpha, so a needs-you row from beta must not stand under it. The shared server may
+  // hold other specs' waiting chats, but beta's must never leak into alpha's focused section.
   const needs = page.getByTestId("needs-group");
-  await expect(needs).toHaveCount(0);
+  await expect(needs.locator(".session", { hasText: "please ask first, in beta for the focus scope" })).toHaveCount(0);
   // Out of focus, the same waiting chat is back in the global section.
   await head.getByRole("button", { name: "All projects", exact: true }).click();
   await expect(needs).toHaveCount(1);
@@ -429,7 +430,9 @@ test("Tab reaches All projects in the focused head and Enter shows every folder"
   await expect(back).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(head).toHaveCount(0);
-  await expect(page.getByTestId("project-group")).toHaveCount(2);
+  // Every folder, not a count the shared server's other specs would change.
+  await expect(page.getByTestId("project-group").locator(".project-name", { hasText: /^alpha$/ })).toHaveCount(1);
+  await expect(page.getByTestId("project-group").locator(".project-name", { hasText: /^beta$/ })).toHaveCount(1);
 });
 
 test("the focused head's back chevron is muted, never the current project's accent", async ({ page, request }) => {

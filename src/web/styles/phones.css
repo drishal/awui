@@ -148,6 +148,12 @@ body {
     --sid-tray: 44px;
   }
 
+  /* On the drawer --sidebar-w is the desktop token (200px), not the drawer's own width, so the
+     popover's rail-width term would pinch it to 180px: on a phone it is viewport-bound instead. */
+  .sidebar .menu-list.filter-menu {
+    width: min(272px, calc(100vw - 24px));
+  }
+
   .sidebar .filter-menu .filter-row {
     min-height: 44px;
   }
