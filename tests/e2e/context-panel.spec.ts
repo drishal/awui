@@ -72,12 +72,12 @@ test("work happens along with its chart: context count follows the original tool
   await expect(panel).toHaveClass(/is-collapsed/);
   await expect(panel.getByRole("heading", { name: "Active work" })).toHaveCount(0);
   const railToggle = panel.getByRole("button", { name: "Expand context panel", exact: true });
+  const railUsage = panel.locator(".context-rail-usage");
   await expect(railToggle).toHaveCSS("width", "34px");
   await expect(railToggle).toHaveCSS("height", "34px");
-  const railUsage = panel.getByRole("button", { name: /^Context used: \d+% of / });
-  await expect(railUsage).toBeVisible();
-  await expect(railUsage.locator(".context-rail-figure")).toHaveCount(0);
-  await expect(railUsage.locator("svg").first()).toHaveAttribute("width", "28");
+  // The composer's ring already says this: the collapsed rail must not say it a second time.
+  await expect(panel.getByRole("button", { name: /^Context used: \d+% of / })).toHaveCount(0);
+  await expect(railUsage).toHaveCount(0);
   await expect(panel.locator(".context-live-grow")).toHaveCount(0);
   await expect.poll(async () => (await panel.evaluate((el) => getComputedStyle(el).flexBasis)), { timeout: 3000 }).toBe("40px");
   const box = await panel.boundingBox();

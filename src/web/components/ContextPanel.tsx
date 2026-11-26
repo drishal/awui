@@ -37,7 +37,7 @@ export interface ContextRailProps extends ContextActions {
   onOpen: () => void;
   /** Close the selected detail without removing the rail. */
   onClose: () => void;
-  /** The composer shows the branch and diff while this is true; the rail never repeats them. */
+  /** The composer shows the branch, diff, and context ring while this is true; the rail never repeats them. */
   composerVisible: boolean;
 }
 
@@ -280,7 +280,7 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, com
     </Dialog>;
   }
   // Opening the detail is an ask and closing it is the answer. `onOpen`/`onClose` still carry the sheet's
-  // own state beside this one; the inline panel answers the chevron itself.
+  // own state beside this one; the inline panel answers the panel glyph itself.
   const openDetail = () => { setToggling(true); setAsked(true); onOpen(); };
   const closeDetail = () => { setToggling(true); setAsked(false); onClose(); };
   return <aside
@@ -296,13 +296,14 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, com
   >
     <div className={`context-top${detail ? " is-expanded" : ""}`}>
       {detail ? <h2 className="context-eyebrow">Active work</h2> : null}
-      <button className={detail ? "icon-btn" : "context-rail-button"} aria-label={detail ? "Collapse context panel" : "Expand context panel"} title={detail ? "Hide active work detail" : "Open active work detail"} onClick={() => (detail ? closeDetail() : openDetail())}>{detail ? <IconChevronRight size={16} /> : <IconSidebar size={16} />}</button>
+      {/* The sidebar's two silhouettes describe the panel's fold; the chevron names a row or a heading instead. */}
+      <button className={detail ? "icon-btn" : "context-rail-button"} aria-label={detail ? "Collapse context panel" : "Expand context panel"} title={detail ? "Hide active work detail" : "Open active work detail"} onClick={() => (detail ? closeDetail() : openDetail())}>{detail ? <IconSidebar size={16} className="icon-flip-x" /> : <IconSidebar size={16} />}</button>
       {!detail ? <div className="context-rails">
         <button type="button" className="context-rail-button" title={hasQuestions || running > 0 ? "Jump to an ongoing run or pending answer" : "Expand active work"} aria-label="Open contextual work details" onClick={() => { if (hasQuestions) onQuestions(); else openDetail(); }}><IconAgents size={16} />{hasAttention > 0 ? <span className="context-rail-badge">{hasAttention > 9 ? "9+" : hasAttention}</span> : null}</button>
         <button type="button" className="context-rail-button" title="Project comparisons and races" aria-label="Inspect project races" onClick={() => { if (inWorkspace.length === 0) { onRace(null); return; } openDetail(); if (!open.races) toggle("races"); }}><IconSplit size={16} />{numberOfRaces > 0 ? <span className="context-rail-badge">{numberOfRaces > 9 ? "9+" : numberOfRaces}</span> : null}</button>
       </div> : null}
     </div>
-    {detail ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot">{chat.context ? <button type="button" className="context-rail-usage" onClick={onUsage} title="Open context and model usage" aria-label={chat.context.percent === null ? "Open context and model usage" : `Context used: ${Math.round(chat.context.percent)}% of ${tokenCount(chat.context.window)}`}>
+    {detail ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot">{chat.context && !composerVisible ? <button type="button" className="context-rail-usage" onClick={onUsage} title="Open context and model usage" aria-label={chat.context.percent === null ? "Open context and model usage" : `Context used: ${Math.round(chat.context.percent)}% of ${tokenCount(chat.context.window)}`}>
       <span className={`context-pie tone-${contextTone(chat.context.percent ?? 0)}`}><ContextPie percent={chat.context.percent ?? 0} size={28} /></span>
     </button> : null}</div>}
   </aside>;

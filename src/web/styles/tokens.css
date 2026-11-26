@@ -392,6 +392,11 @@ samp {
   transform: rotate(90deg);
 }
 
+/* A panel glyph mirrors along with the panel's fold: its rail stays on the side that will be visible. */
+.icon-flip-x {
+  transform: scaleX(-1);
+}
+
 .spinner {
   flex: none;
   animation: spin 0.8s linear infinite;
