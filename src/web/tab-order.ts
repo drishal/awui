@@ -73,14 +73,16 @@ export function dropSlot(tabs: readonly Tab[], rects: readonly TabRect[], from: 
   return Math.min(slot, hi);
 }
 
-/** The drag's offset kept inside the span of its own group, so the lifted tab never floats over the other one. */
+/** The drag's offset kept far enough inside its group that its midpoint can pass a neighbour's, without crossing the group's far edge. */
 export function clampDrag(tabs: readonly Tab[], rects: readonly TabRect[], from: number, dx: number): number {
   const mine = rects[from];
   const [lo, hi] = groupRange(tabs, from);
   const first = rects[lo];
   const last = rects[hi];
   if (!mine || !first || !last) return 0;
-  return Math.max(first.left - mine.left, Math.min(last.left + last.width - mine.width - mine.left, dx));
+  const left = first.left + Math.min(first.width, mine.width) / 2 - mine.left - mine.width / 2;
+  const right = last.left + last.width / 2 - mine.left - Math.min(last.width, mine.width) / 2;
+  return Math.max(left, Math.min(right, dx));
 }
 
 /** Which way tab `i` slides while tab `from` is dragged to `to`: -1 left, 1 right, 0 stays (the dragged tab follows the pointer instead). */

@@ -74,14 +74,21 @@ describe("tab order", () => {
       expect(dropSlot(s.tabs, rects, 0, 10)).toBe(0);
     });
 
-    it("stops at the group's edge, however far the pointer went", () => {
+    it("stops at the group's edge, with enough midpoint overlap to reach each end", () => {
       expect(dropSlot(s.tabs, rects, 3, -1000)).toBe(2);
       expect(dropSlot(s.tabs, rects, 0, 1000)).toBe(1);
       expect(clampDrag(s.tabs, rects, 3, -1000)).toBe(-100);
       expect(clampDrag(s.tabs, rects, 2, 1000)).toBe(100);
       expect(clampDrag(s.tabs, rects, 0, -50)).toBe(0);
       expect(clampDrag(s.tabs, rects, 0, 1000)).toBe(60);
-      expect(clampDrag(s.tabs, rects, 2, 30)).toBe(30);
+      expect(dropSlot(s.tabs, rects, 2, 120)).toBe(3);
+      expect(dropSlot(s.tabs, rects, 3, -60)).toBe(3);
+    });
+
+    it("allows unequal width tabs to reach the same group's end", () => {
+      const unequal: TabRect[] = [{ left: 0, width: 150 }, { left: 150, width: 330 }];
+      expect(clampDrag(state("c d").tabs, unequal, 1, -240)).toBe(-240);
+      expect(dropSlot(state("c d").tabs, unequal, 1, -240)).toBe(0);
     });
 
     it("slides the tabs it passes aside, toward the gap it leaves", () => {

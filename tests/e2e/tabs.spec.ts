@@ -61,6 +61,15 @@ test("a new tab closes like any other, and the start screen comes back when the 
   await expect(page.getByRole("heading", { name: /^What should .* (do in|work on)/ })).toBeVisible();
 });
 
+test("a single tab grows enough to show its session title", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "a single long tab title stays readable");
+  await expect(tabs(page)).toHaveCount(1);
+  // There is plenty of strip left: a short-enough session title must not be truncated into indistinguishable dots.
+  await expect.poll(() => tab(page, "a single long tab title stays readable").locator(".session-tab-title").evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+});
+
 test("a sidebar click shows a session in the current tab, Ctrl-click in a new one, an open one is switched to", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
@@ -129,7 +138,7 @@ async function dragTab(page: Page, title: string, x: number): Promise<void> {
   await page.mouse.move(box.x + box.width / 2, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + (x < box.x + box.width / 2 ? -8 : 8), y, { steps: 3 });
-  await page.mouse.move(x, y, { steps: 12 });
+  await page.mouse.move(x, y, { steps: 1 });
   await page.mouse.up();
 }
 
@@ -144,8 +153,9 @@ test("tabs reorder by dragging, pin from a menu, and move by keyboard; order and
   await expect(tabs(page)).toHaveText([/order alpha/, /order beta/, /order gamma/]);
 
   // The third tab dragged before the first. It was the shown tab and still is; the drag is not a click on another.
-  const first = (await tab(page, "order alpha").boundingBox())!;
-  await dragTab(page, "order gamma", first.x + 10);
+  const [first, last] = await Promise.all([tab(page, "order alpha").boundingBox(), tab(page, "order gamma").boundingBox()]);
+  // The drag's midpoint must pass the first tab's midpoint, not merely the left edge of its box.
+  await dragTab(page, "order gamma", first!.x + first!.width / 2 - last!.width / 2 - 10);
   await expect(tabs(page)).toHaveText([/order gamma/, /order alpha/, /order beta/]);
   await expect(tab(page, "order gamma")).toHaveAttribute("aria-selected", "true");
   await expect(prompts(page)).toHaveText(["order gamma"]);
