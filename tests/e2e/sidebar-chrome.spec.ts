@@ -60,7 +60,7 @@ test("the two-row head and footer keep the controls on the new chrome", async ({
   await expect(sidebar.getByTestId("rooms-group")).toHaveCount(0);
   await expect(sidebar.locator(".harness-row-meta")).toHaveCount(0);
   // New chat is a plus, not the pencil this app uses for rename and edit.
-  const compose = sidebar.getByRole("button", { name: "New chat — choose project", exact: true });
+  const compose = sidebar.getByRole("button", { name: "New chat", exact: true });
   await expect(compose.locator("svg path")).toHaveAttribute("d", "M8 3v10M3 8h10");
   await expect(compose).toHaveAttribute("aria-keyshortcuts", "Control+N Meta+N");
   const filter = sidebar.getByRole("button", { name: "Filters", exact: true });
@@ -379,7 +379,7 @@ test.describe("phone drawer", () => {
     await page.getByRole("button", { name: "Open menu" }).click();
     const drawer = page.locator(".sidebar");
     await expect(drawer.getByRole("button", { name: "Close menu" })).toBeVisible();
-    const newChat = drawer.getByRole("button", { name: "New chat — choose project" });
+    const newChat = drawer.getByRole("button", { name: "New chat" });
     await expect(newChat).toBeVisible();
     await expect(newChat).toHaveCSS("height", "44px");
     const action = await newChat.boundingBox();

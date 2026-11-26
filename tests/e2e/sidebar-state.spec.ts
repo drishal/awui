@@ -70,9 +70,11 @@ test("a row waiting in Needs you wears the amber mark and age, not a repeated wo
 test("an unread row is heavier at full ink, not another dot", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
-  await send(page, "the unread one");
+  // Settled first: a running row sits in the (open) Working section and moves when it ends, which would
+  // replace the very element these reads hold.
+  await sendAndWait(page, "the unread one");
   await newChat(page);
-  await send(page, "the read one");
+  await sendAndWait(page, "the read one");
   await showSidebar(page);
   // The read one is the chat on screen; the unread one is not, so its title is the dimmed read ink.
   const target = row(page, "the unread one");
