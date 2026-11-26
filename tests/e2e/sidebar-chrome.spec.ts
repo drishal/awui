@@ -521,6 +521,20 @@ test("a desktop list wears a top scrim while it is scrolled", async ({ page }) =
     await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).display)).toBe("none");
   });
 
+  test("Escape closes the drawer while an open Working section is in it", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    await signInAndOpen(page);
+    await newChat(page);
+    await send(page, "slow keep a run going for the drawer " + "word ".repeat(1200));
+    await newChat(page);
+    await sendAndWait(page, "another chat on screen");
+    await showSidebar(page);
+    // An open section head is aria-expanded too, and used to stop Escape from reaching the drawer.
+    await expect(page.locator('.sidebar [data-testid="working-group"] .project-toggle[aria-expanded="true"]')).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".sidebar")).not.toBeInViewport();
+  });
+
   test("a scrolled phone drawer keeps a waiting chat one tap away", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 520 });
     await signInAndOpen(page);

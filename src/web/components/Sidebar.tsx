@@ -1424,7 +1424,9 @@ export function Sidebar(props: {
   // to the button that opened it on close, never to the body.
   useDismiss(asideRef, open, () => {
     // An open popover consumes Escape before its owner outside the drawer's frame; the parent stays open.
-    if (!asideRef.current?.querySelector('[aria-expanded="true"]')) props.onClose();
+    // Only a popup's trigger counts: an open section or folder head is also aria-expanded, and with a run
+    // going (the Working section is open) Escape stopped closing the drawer.
+    if (!asideRef.current?.querySelector('[aria-haspopup][aria-expanded="true"]')) props.onClose();
   }, { escape: true, outside: false });
   const trapTab = useFocusTrap(asideRef, open);
   const opener = useRef<HTMLElement | null>(null);
