@@ -17,7 +17,7 @@ test("a fresh browser lands on the start screen: a box, and a folder chip asking
   await expect(chip).toHaveClass(/is-needed/);
   // No folder is needed to show the start screen, so New chat works at once.
   await showSidebar(page);
-  await expect(page.locator(".sidebar-compose")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeEnabled();
   await page.keyboard.press("Escape");
   // The agent chip lists every harness this server knows.
   await page.getByRole("button", { name: "Agent for this chat" }).click();
@@ -174,7 +174,7 @@ test("New chat opens the folder picker over the start screen, and the picked fol
   await signInAndOpen(page);
   await sendAndWait(page, "first chat");
   await showSidebar(page);
-  await page.locator(".sidebar-compose").click();
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Choose a project folder" });
   await expect(dialog).toBeVisible();
   // Escape keeps the folder the start screen already had.
@@ -183,7 +183,7 @@ test("New chat opens the folder picker over the start screen, and the picked fol
   await expect(page.getByRole("heading", { name: /What should Fake do in alpha\?/ })).toBeVisible();
   // Picking another folder switches the start screen to it, with the cursor in the box.
   await showSidebar(page);
-  await page.locator(".sidebar-compose").click();
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
   // By path: what the Recent and Browse lists hold depends on what other tests opened on the shared server.
   await dialog.getByLabel("Or type a path").fill(`${process.env.AWUI_E2E_ROOT as string}/beta`);
   await dialog.getByRole("button", { name: "Open", exact: true }).click();

@@ -343,10 +343,10 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await expect(page.getByRole("listbox", { name: "Harness" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(rail.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
-  await expect(rail.getByRole("button", { name: "New chat — choose project" })).toBeVisible();
+  await expect(rail.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
   await expect(rail.getByRole("button", { name: "Search and commands" })).toBeVisible();
   // Each icon names its shortcut, as the app's own table has it.
-  await expect(rail.getByRole("button", { name: "New chat — choose project" })).toHaveAttribute("title", /^(New chat — choose project \(Ctrl\+N\)|New chat — choose project \(⌘N\))$/);
+  await expect(rail.getByRole("button", { name: "New chat", exact: true })).toHaveAttribute("title", /^(New chat \(Ctrl\+N\)|New chat \(⌘N\))$/);
   await expect(rail.getByRole("button", { name: "Search and commands" })).toHaveAttribute("title", /^(Search and commands \(Ctrl\+K\)|Search and commands \(⌘K\))$/);
   // The count rides its glyph's own corner and stays inside the 44 px strip.
   const badge = (await rail.locator(".rail-badge").first().boundingBox())!;
@@ -384,7 +384,7 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await page.keyboard.press("Escape");
 
   // New chat and search are still one press away.
-  await rail.getByRole("button", { name: "New chat — choose project" }).click();
+  await rail.getByRole("button", { name: "New chat", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "Choose a project folder" });
   await expect(picker).toBeVisible();
   await page.keyboard.press("Escape");

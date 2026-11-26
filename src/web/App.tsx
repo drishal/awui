@@ -2254,7 +2254,7 @@ export function App() {
           onExpand={() => collapseSidebar(false)}
           onNewChat={newChatInFolder}
           onSearch={() => setPaletteOpen(true)}
-          newChatLabel={!projectScoped(boot.harnesses, harnessId ?? "") && workspace ? `New chat in ${workspace.name}` : "New chat — choose project"}
+          newChatLabel="New chat"
           onOpenSession={(s) => {
             leaveRoom();
             void openSession(s);

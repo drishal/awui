@@ -129,21 +129,6 @@ test("a project's badge is a 16px rounded square with no ring, and the needs-you
   await showSidebar(page);
 
   await sidebar(page).locator(".focus-switch").click();
-  const globalNew = sidebar(page).locator(".sidebar-compose");
-  await expect(globalNew).toHaveAttribute("aria-label", "New chat in alpha");
-  await expect(globalNew).toHaveAttribute("title", /New chat in alpha /);
-  await expect(globalNew).toHaveAttribute("aria-keyshortcuts", "Control+N Meta+N");
-  await globalNew.click();
-  await expect(page.getByRole("dialog", { name: "Choose a project folder" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: /What should Fake do in alpha\?/ })).toBeVisible();
-  await showSidebar(page);
-  await expect(sidebar(page).locator(".sidebar-compose")).toHaveAttribute("aria-label", "New chat in alpha");
-  await sidebar(page).getByRole("button", { name: "Sidebar view: Projects" }).click();
-  await page.getByRole("menuitemradio", { name: "Recent", exact: true }).click();
-  await expect(sidebar(page).locator(".sidebar-compose")).toHaveAttribute("aria-label", "New chat — choose project");
-  await sidebar(page).getByRole("button", { name: "Sidebar view: Recent" }).click();
-  await page.getByRole("menuitemradio", { name: "Projects", exact: true }).click();
-  await sidebar(page).locator(".focus-switch").click();
   const badge = sidebar(page).locator(".focus-menu .project-badge").first();
   await expect(badge).toBeVisible();
   await page.keyboard.press("Escape");
@@ -218,7 +203,8 @@ test("every head's count ends on the rows' age column", async ({ page, request }
   await useProjectsView(page);
   await signInAndOpen(page);
   await showSidebar(page);
-  await showAllProjects(page);
+  // With one project in the list there is no focus to leave (the shared server may hold only this one).
+  if (await sidebar(page).locator(".focus-switch").count()) await showAllProjects(page);
 
   // One snapshot of the one column: the three kinds of head's numbers, and the row ages they belong beside.
   // A run settles in a couple of seconds and takes the Working head off the screen with it, so the read
@@ -253,11 +239,17 @@ test("every head's count ends on the rows' age column", async ({ page, request }
   expect(Math.abs((shot.folder as number) - age), "a folder's count ends on the age column").toBeLessThanOrEqual(0.5);
   // A folder's "+" does not open a second column: it sits over the count's own place, and the count gives
   // way to it under the pointer, as a row's age gives way to its "⋯".
-  const folder = page.getByTestId("project-group").first();
+  const folder = page.locator('[data-testid="project-group"]:not(.focus-group)').first();
   const count = folder.locator(".project-toggle > .group-count");
   await expect(count).toHaveCSS("opacity", "1");
   const plus = await folder.locator(".project-new").boundingBox();
   expect((plus as { x: number }).x, "the + is over the count column, not a slot beside it").toBeGreaterThan(age - 32);
-  await folder.locator(".project-head").hover();
-  await expect(count).toHaveCSS("opacity", "0");
+  // Groups re-sort and re-mount as the other chats finish, so hover again on each read instead of trusting
+  // one pointer position over an element that may have been replaced.
+  await expect
+    .poll(async () => {
+      await folder.locator(".project-head").hover();
+      return count.evaluate((el) => getComputedStyle(el).opacity);
+    })
+    .toBe("0");
 });

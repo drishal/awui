@@ -1243,7 +1243,7 @@ test("the sidebar's list slides back when it returns to all projects", async ({ 
   expect(await slideFrom(page, '[data-testid="focused-project"] .focus-switch', '[role="menuitem"]')).toBe("translateX(-22px)");
   await expect(page.getByTestId("focused-project")).toHaveCount(0);
   // Into another folder, then ask for reduced motion: it returns the same way, without the slide.
-  await page.locator(".sidebar-compose").click();
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "Choose a project folder" });
   await picker.getByLabel("Or type a path").fill(`${process.env.AWUI_E2E_ROOT as string}/beta`);
   await picker.getByRole("button", { name: "Open", exact: true }).click();
