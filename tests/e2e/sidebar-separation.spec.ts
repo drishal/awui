@@ -289,3 +289,35 @@ test.describe("the sidebar style setting", () => {
     await expect(page.locator("html")).not.toHaveAttribute("data-sidebar", "compact");
   });
 });
+
+test("the project switch menu stands on one grid: marks in one column, labels on one edge", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  for (const name of ["alpha", "beta"]) {
+    const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/${name}` } })).json()) as { id: string };
+    const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+    await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: `menu grid ${name}`, mode: "normal" } });
+  }
+  await page.goto("/");
+  await showSidebar(page);
+  await page.locator(".session", { hasText: "menu grid beta" }).first().click();
+  await page.locator(".focus-group .project-toggle").first().click();
+  const menu = page.getByRole("menu", { name: "Project" });
+  await expect(menu).toBeVisible();
+  // Every row's mark (the back chevron, the image glyph, a folder's badge) is centred on one x, and every label (the
+  // two commands and each folder's name) starts at one x: before, the badge sat on a line of its own and a path wrapped
+  // under it, and the two glyph rows' labels stood 5 px left of the folders'.
+  const rows = await menu.getByRole("menuitem").evaluateAll((items) =>
+    items.map((item) => {
+      const box = item.getBoundingClientRect();
+      const mark = (item.firstElementChild as Element).getBoundingClientRect();
+      const label = (item.querySelector(".project-menu-name") as Element).getBoundingClientRect();
+      return { markCentre: mark.left + mark.width / 2 - box.left, labelLeft: label.left - box.left, markMid: mark.top + mark.height / 2 - (box.top + box.height / 2), height: box.height };
+    }),
+  );
+  expect(rows.length).toBeGreaterThanOrEqual(3);
+  for (const row of rows) {
+    expect(Math.abs(row.markCentre - rows[0]!.markCentre), "marks share a column").toBeLessThanOrEqual(1);
+    expect(Math.abs(row.labelLeft - rows[0]!.labelLeft), "labels share an edge").toBeLessThanOrEqual(1);
+    expect(Math.abs(row.markMid), "mark is centred in its row").toBeLessThanOrEqual(1.5);
+  }
+});

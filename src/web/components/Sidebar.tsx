@@ -10,7 +10,7 @@ import { RoomList } from "./RoomList.js";
 import { useDismiss, useLeave, useNow, useViewSlide } from "../hooks.js";
 import { projectScoped } from "../harness-policy.js";
 import { useHoverCard } from "../hover-card.js";
-import { IconArchive, IconCheck, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
+import { IconArchive, IconCheck, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
 import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
 import type { UsageLimits } from "../../shared/protocol.js";
 import { limitResetAt } from "../../shared/limit-stop.js";
@@ -819,7 +819,8 @@ function ProjectMenuItem({ name, path, count, onPick }: { name: string; path: st
     <button type="button" role="menuitem" title={path} onClick={onPick}>
       <ProjectBadge name={name} size={16} />
       <span className="project-menu-name">{name}</span>
-      <span className="project-menu-path muted">{path}</span>
+      {/* The path is cut on its left (the folder's own name is the part worth keeping); <bdi> keeps its slashes in order. */}
+      <span className="project-menu-path muted"><bdi>{path}</bdi></span>
       {count !== undefined ? <span className="group-count">{count}</span> : null}
     </button>
   );
@@ -905,12 +906,14 @@ function FocusedHeader({
           <ul ref={menu} className={`menu-list focus-menu${leaving ? " is-leaving" : ""}`} role="menu" aria-label="Project" onKeyDown={onMenuKey}>
             <li role="none" className="focus-menu-all">
               <button type="button" role="menuitem" onClick={() => pick(onShowAll)}>
-                <IconChevronLeft size={13} /> All projects
+                <IconChevronLeft size={13} />
+                <span className="project-menu-name">All projects</span>
               </button>
             </li>
             <li role="none">
               <button type="button" role="menuitem" onClick={() => pick(() => setIconOpen(true))}>
-                Set an icon…
+                <IconImage size={13} />
+                <span className="project-menu-name">Set an icon…</span>
               </button>
             </li>
             {other.map((p) => (
