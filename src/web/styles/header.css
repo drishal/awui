@@ -201,7 +201,6 @@
 /* A request waiting on the person here: the attention colour, as the approval card's. */
 .status.is-asking::before {
   background: var(--warn);
-  animation: pulse 1.2s ease-in-out infinite;
 }
 
 /* A dropped stream outranks the run: the word says Offline, and the dot is the one red mark in the header. */

@@ -290,3 +290,22 @@ test("the review pill names what it opens, and fits beside the title at 320px", 
   await expect(pill.locator(".review-label-short")).toBeVisible();
   await expect(pill.locator(".review-count")).toHaveText("1");
 });
+
+test("a lone branch lane's grip sits on the lane's top edge, not above it", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/gamma` } })).json()) as { id: string };
+  const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await page.goto(`/#chat=${chat.chatId}`);
+  const lane = page.getByTestId("git-row");
+  await expect(lane).toBeVisible();
+  const geometry = await page.evaluate(() => {
+    const ridge = document.querySelector(".status-stack.is-base-only .stack-ridge") as HTMLElement;
+    const row = document.querySelector('[data-testid="git-row"]') as HTMLElement;
+    const r = ridge.getBoundingClientRect();
+    return { position: getComputedStyle(ridge).position, ridgeMid: r.top + r.height / 2, laneTop: row.getBoundingClientRect().top };
+  });
+  // Out of flow, its bar straddling the lane's top edge: before, the 14 px row hung above the lane (about 20 px
+  // above it under an approval, where the lane has no surface at all).
+  expect(geometry.position).toBe("absolute");
+  expect(Math.abs(geometry.ridgeMid - geometry.laneTop)).toBeLessThanOrEqual(2);
+});

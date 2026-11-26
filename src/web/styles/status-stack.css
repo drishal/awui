@@ -91,6 +91,22 @@
   }
 }
 
+/* A finger keeps the grip's row, but a lone lane has no card for the row to be the top of: the grip would hang 14px
+   above the lane (or above nothing, under an approval). It comes out of flow and its bar sits on the lane's top
+   edge, half above it, so only the lane's top 7px belong to the grip. */
+@media (hover: none) and (pointer: coarse) {
+  .status-stack.is-base-only:not(.is-hidden) {
+    position: relative;
+  }
+
+  .status-stack.is-base-only:not(.is-hidden) .stack-ridge {
+    position: absolute;
+    top: -7px;
+    right: 0;
+    left: 0;
+  }
+}
+
 .stack-body {
   display: flex;
   flex-direction: column;
