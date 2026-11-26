@@ -40,6 +40,20 @@ test("a row waiting in Needs you wears the amber mark and age, not a repeated wo
   const widths = await Promise.all([waiting, ordinary].map((item) => item.locator(".session-title").evaluate((el) => el.getBoundingClientRect().width)));
   expect(widths[0]).toBe(widths[1]);
   expect(widths[0]).toBeGreaterThan(200);
+  // The section's head is laid on its rows' columns: the icon centred on the marks, the label on the
+  // titles' edge, and the count ending where the ages do.
+  const columns = await page.getByTestId("needs-group").evaluate((group) => {
+    const box = (sel: string) => group.querySelector(sel)?.getBoundingClientRect();
+    const [icon, label, count, mark, title, age] = [".section-icon", ".section-name", ".group-count", ".session-asking-dot", ".session-title", ".session-meta"].map(box);
+    return icon && label && count && mark && title && age
+      ? { icon: icon.left + icon.width / 2, mark: mark.left + mark.width / 2, label: label.left, title: title.left, count: count.right, age: age.right }
+      : null;
+  });
+  expect(columns, "the section has a head and a row").not.toBeNull();
+  const c = columns as NonNullable<typeof columns>;
+  expect(Math.abs(c.icon - c.mark)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(c.label - c.title)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(c.count - c.age)).toBeLessThanOrEqual(0.5);
   // No green "live" dot: being open on this server is not a state the list paints.
   await expect(sidebar(page).locator(".live-dot")).toHaveCount(0);
 });

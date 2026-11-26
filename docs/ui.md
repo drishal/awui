@@ -150,10 +150,15 @@ a literal colour.
   A folder head is the folder's own name at 13px/600 in `--text-2`, with its
   16px badge (radius 4, 10px/700, no ring), its branch after a `·`, and its
   count only while the group is folded. A folder's preview rows carry no date
-  headings until the folder is opened: the age on each row already says when. A folder head names
-  its branch once for its rows: any branch off the trunk, and the trunk too when
-  another folder shares the repository; its rows never repeat it (`rowSubline`'s
-  `groupBranch`). Branch names are in the UI sans face, muted.
+  headings until the folder is opened: the age on each row already says when. Recent
+  has two left edges: a date heading's text and a section head's 10px icon sit on the
+  rows' mark column (18px into a 292px panel), and a section's label on the titles'
+  edge (34px); a section's count ends on the age column. Date headings stick to the
+  scroller's top on the panel's own `--surface`. Groups leave 14px between them (10px at
+  compact density) and 4px from a head to its first row. A folder head names its branch
+  once for its rows: any branch off the trunk, and the trunk too when another folder
+  shares the repository; its rows never repeat it (`rowSubline`'s `groupBranch`). Branch
+  names are in the UI sans face, muted.
 - **Sidebar state, the colour contract:** `session-state.ts` decides a row's two
   state slots — a 10px leading mark and either the age or one word in its place
   — and exactly four things in the list are coloured: **amber** (`--warn`) is

@@ -33,6 +33,21 @@ test("a calendar heading is a sentence-case signpost, not a title", async ({ pag
   await expect(heading).toHaveCSS("font-size", "11.5px");
   await expect(heading).toHaveCSS("font-weight", "500");
   await expect(heading).toHaveCSS("color", await painted(page, "--muted-text"));
+  await expect(heading).toHaveCSS("position", "sticky");
+  await expect(heading).toHaveCSS("background-color", await painted(page, "--surface"));
+  // Two left edges in Recent: the heading's text starts on the rows' mark column, and the titles start
+  // on the next one (a section head's icon and label sit on the same two, measured in sidebar-state).
+  const edges = await page.evaluate(() => {
+    const date = document.querySelector(".flat-group .date-divider") as HTMLElement | null;
+    const mark = document.querySelector(".flat-group .session-item .harness-dot")?.getBoundingClientRect();
+    if (!date || !mark) return null;
+    const range = document.createRange();
+    range.selectNodeContents(date);
+    // The mark column is the 10px slot a harness dot (6px) is centred in.
+    return { dateText: range.getBoundingClientRect().left, markColumn: mark.left + mark.width / 2 - 5 };
+  });
+  expect(edges, "the list has a heading and a row under it").not.toBeNull();
+  expect(Math.abs((edges?.dateText ?? 0) - (edges?.markColumn ?? 99))).toBeLessThanOrEqual(0.5);
   // Sentence case, not the uppercase label it used to be.
   await expect(heading).toHaveText(/^Today$/);
 });

@@ -639,23 +639,72 @@
 }
 
 /* A calendar heading is a signpost in the list, not a title: sentence case at the size of a subline, in
-   the muted ink, with no tracking. Uppercase was a third voice arguing with the rows. */
+   the muted ink, with no tracking. Uppercase was a third voice arguing with the rows. Its text starts
+   where the rows' marks do (the row's own 8px inset), so marks and headings read as one column and the
+   titles as the next. It sticks to the top of the scroller on the panel's own surface, so a long
+   bucket keeps its name in view; z-index 1 lifts it over the rows' washes, and every menu or card
+   (z-index 31 and up) still opens over it. */
 .date-divider {
-  padding: var(--section-pad-top) 10px 3px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: calc(var(--section-pad-top) + 2px) 8px 4px;
+  background: var(--surface);
   font-size: 11.5px;
   font-weight: 500;
   color: var(--muted-text);
 }
 
-/* Project groups (Hermes Desktop): a folder row with its sessions on a rail below. */
+/* Project groups (Hermes Desktop): a folder row with its sessions below, on the same contract. The
+   separation belongs between groups (14px, 10px at compact density); a head sits 4px over its first
+   row, so it reads as that group's label rather than one more row of the list. */
 .project-group {
-  /* A project is its own block: the 8px above its head separates it from the list and from the group
-     before it, so the heads read as headings rather than another row of the same list. */
-  padding-top: 8px;
+  padding-top: 4px;
 }
 
 .project-group + .project-group {
-  margin-top: var(--section-gap);
+  margin-top: calc(var(--section-gap) + 8px);
+}
+
+.project-group.is-open > .project-head {
+  margin-bottom: 4px;
+}
+
+/* The flat list and the toggles under it have no head of their own: the same 14px between groups,
+   never a row's pad. A date heading's own 10px top is the rest of a bucket's separation. */
+.flat-group,
+.list-toggles {
+  padding-top: 0;
+  margin-top: calc(var(--section-gap) + 8px);
+}
+
+/* A section head (Needs you, Working, Pinned, Rooms) is laid on the rows' columns: its 8px inset puts the
+   10px icon on the rows' mark column, and the 6px gap starts its label on their titles' edge. 4px under
+   it, its first row; its count ends on the rows' age column (the row's 8px right padding). */
+.section-group .project-toggle {
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+}
+
+.section-group .project-toggle > .section-icon,
+.section-group .project-toggle > .working-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-left: 0;
+}
+
+.section-group .group-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A foldable section's chevron follows its label, so it never takes the mark column. */
+.section-group .project-toggle > .group-chevron {
+  margin-left: -2px;
 }
 
 .project-head {

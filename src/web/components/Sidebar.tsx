@@ -630,14 +630,15 @@ function SectionList({
       <div className="project-head">
         {onToggle ? (
           <button type="button" className="project-toggle" aria-expanded={open} onClick={onToggle}>
-            <IconChevronDown size={12} className="group-chevron" />
-            {icon}
+            <span className="section-icon" aria-hidden="true">{icon}</span>
             <span className="project-name section-name">{title}</span>
+            {/* After the label, not before the icon: the icon keeps the rows' mark column. */}
+            <IconChevronDown size={12} className="group-chevron" />
             <span className="group-count">{sessions.length}</span>
           </button>
         ) : (
           <span className="project-toggle is-static">
-            {icon}
+            <span className="section-icon" aria-hidden="true">{icon}</span>
             <span className="project-name section-name">{title}</span>
             <span className="group-count">{sessions.length}</span>
           </span>
