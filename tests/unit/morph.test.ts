@@ -72,14 +72,14 @@ describe("a title's arrival", () => {
     expect(timing).toMatchObject({ id: "morph:sidebar-title", duration: 240, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "backwards" });
   });
 
-  it("fades a far row's title up where it belongs instead of dragging it across the rail", () => {
+  it("keeps a far row's title partly visible where it belongs instead of dragging it across the rail", () => {
     stubPage();
     vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "linear" }));
     const el = header(44);
     handoff("sidebar-title", box(53, 700, 113, 18), 1000);
     landTitle("sidebar-title", el, 1100);
     const [frames, timing] = el.animate.mock.calls[0] as unknown as [Array<Record<string, string | number>>, { id: string; duration: number; easing: string }];
-    expect(frames[0]).toMatchObject({ opacity: 0, transform: "translateY(6px)" });
+    expect(frames[0]).toMatchObject({ opacity: 0.35, transform: "translateY(3px)" });
     expect(frames[1]).toMatchObject({ opacity: 1, transform: "none" });
     expect(timing).toMatchObject({ id: "morph:sidebar-title", duration: 180, easing: "linear" });
   });

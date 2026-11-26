@@ -157,14 +157,14 @@ export function withinReach(from: Box, to: Box, reach: number): boolean {
 export const TITLE_REACH_PX = 280;
 /** A title is a label, not a card: it arrives eased out and short, and never on the spring. */
 const TITLE_LAND_MS = 240;
-/** When it does not travel: a fade up from a few pixels below, at the row-arrival tempo (--dur-enter). */
+/** When it does not travel: partly visible, rising from a few pixels below, at the row-arrival tempo (--dur-enter). */
 const TITLE_SETTLE_MS = 180;
-const TITLE_SETTLE_LIFT = 6;
+const TITLE_SETTLE_LIFT = 3;
 
 /**
  * A session title arriving in the header. It flies only from a row close enough for the eye to follow —
  * a 240 ms eased move over a few hundred pixels reads as a flicker past every row on the way — and
- * otherwise fades up where it belongs. Either way the label itself never bounces.
+ * otherwise rises part-transparent where it belongs. Either way the label itself never bounces.
  */
 export function landTitle(key: string, el: HTMLElement | null, now = Date.now()): Animation | null {
   const from = takeBox(key, now);
@@ -175,12 +175,13 @@ export function landTitle(key: string, el: HTMLElement | null, now = Date.now())
   return glide(from, el, { id, duration: TITLE_LAND_MS, from: { opacity: 0.4 } });
 }
 
-/** Arrive in place: a short eased fade, with a small lift for a move the eye could not follow. */
+/** Arrive in place: a short eased part-fade, with a small lift for a move the eye could not follow.
+ * The first frame stays part-visible: a transparent title disappears completely between the rail and the header. */
 function settle(el: HTMLElement | null, opts: { id: string; duration: number; lift: number }): Animation | null {
   if (!el || motionOff()) return null;
   cancelMove(el, opts.id);
   const easing = getComputedStyle(el).getPropertyValue("--ease-out").trim() || "ease-out";
-  return el.animate([{ opacity: 0, transform: `translateY(${opts.lift}px)` }, { opacity: 1, transform: "none" }], { id: opts.id, duration: opts.duration, easing, fill: "backwards" });
+  return el.animate([{ opacity: 0.35, transform: `translateY(${opts.lift}px)` }, { opacity: 1, transform: "none" }], { id: opts.id, duration: opts.duration, easing, fill: "backwards" });
 }
 
 /** The pair a shared-element swap runs at: leaving is quick, arriving settles. Callers keep them equal so two
