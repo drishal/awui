@@ -108,7 +108,7 @@ a literal colour.
   and composer; config.yml's `chat_width`), `--sidebar-w`.
 - **Density:** `--row-h`, `--head-h`, `--section-gap`, `--gap-turn`, `--gap-process`,
   `--drow-h`, `--composer-pad-*`, `--tab-h` (sidebar rows, turn and tool-row
-- **Sidebar chrome:** the first 36 px row is the harness's name and the ⌄ that opens its menu, four pixels apart and inside one trigger sized to the two (the pill, and the target, is the title rather than the empty half of the row); New chat and collapse sit at 28 px at its end. The trigger's name is `Harness: <name>`, so a screen reader hears the harness it switches. Search takes one 32 px row and holds a Recent / Projects menu button before its 24 px filter trigger — a glyph, not a tile: no border or fill of its own, a `--hover` wash under the pointer, and the accent dot for an active filter. The popover is `min(272px, var(--sidebar-w) - 20px, 100vw - 24px)` wide and hangs from the search field's left edge (clamped into the viewport: aligning to the chip's right edge put its labels off-screen), so it ends inside the rail. Outside the narrow phone's View radio fallback it holds Show, the hide options (what each takes out lives on the label's `title` and in a `visually-hidden` span outside the labels, referenced by the control's `aria-describedby` — inside a label Chromium folds the description into the accessible name; a count of 0 dims only its words), a Reset text button at the Hide heading's right end only while something is hidden (11.5/500 accent, a 44 px hit area on a phone), and Refresh sessions and New room as plain column rows in `--text-2`; every row and action is on a 32 px pitch. Radios are drawn rings (appearance none, 1.5 px `--muted` border; checked = accent ring + dot), checkboxes stay native in the accent. It is a dialog (`role="dialog" aria-label="Filters"`, matching `aria-haspopup="dialog"` on the trigger), Tab walks its form controls and arrows select the Show radio group, Escape returns the focus to the chip, and focus inside it never lights the search field's ring. A row marks the search's hit inside its title with the accent's 24% wash (never its ink or a weight: those mean a run and unread), and with a query of two letters or more the "Search every chat" row starts its words on the titles' edge (its glyph takes the 10px mark column) and the list tucks up 6px under it. The quick-filter token exists only while selected. Empty Rooms renders no band, and its section commands appear on hover/focus. The 36 px footer holds Usage, Theme and Settings, and the scroller's bottom fade is the tray's own height (`--sid-tray`, 36 px; 44 px on a phone) so the last row fades into the tray instead of ending on it. On touch, search/filter/New chat targets are at least 44 px; the filter takes its 44 px from the field's own right end (`position:absolute; right:4px; top:0; bottom:0; width:40px`) rather than drawing a bordered square beside it. The drawer's head is a 44 px touch row with 40 px icon buttons and no pencil (its sticky 44 px New chat pill is the one way to start a chat), its close is an ✕, and its scrolled list wears a 12 px `--surface` fade under the head (`.list-scrim`, rendered only while `scrollTop > 0`). Below 375 px the narrow phone uses a View radio group in Filters and otherwise the same search-edge menu; a scrolled waiting list keeps a 44 px amber pill above New chat to open its first row. A row's menu is capped at `calc(100vw - 16px)` and keeps 8 px from the window's right edge, so it fits a 360–390 px phone. Sidebar state colours mean: amber = needs you, accent ring/word = running, weight = unread, green = done; nothing else in the list is coloured, and a project's monogram — the one decoration — takes four hues from `--badge-1..4`, none of them the accent: a monogram in the run's own colour read as a run.
+- **Sidebar chrome:** the first 36 px row is the harness's name and the ⌄ that opens its menu, four pixels apart and inside one trigger sized to the two (the pill, and the target, is the title rather than the empty half of the row); New chat and collapse sit at 28 px at its end. The trigger's name is `Harness: <name>`, so a screen reader hears the harness it switches. Search takes one 32 px row and holds a Recent / Projects menu button before its 24 px filter trigger — a glyph, not a tile: no border or fill of its own, a `--hover` wash under the pointer, and the accent dot for an active filter. The popover is `min(272px, var(--sidebar-w) - 20px, 100vw - 24px)` wide and hangs from the search field's left edge (clamped into the viewport: aligning to the chip's right edge put its labels off-screen), so it ends inside the rail. Outside the narrow phone's View radio fallback it holds Show, the hide options (what each takes out lives on the label's `title` and in a `visually-hidden` span outside the labels, referenced by the control's `aria-describedby` — inside a label Chromium folds the description into the accessible name; a count of 0 dims only its words), a Reset text button at the Hide heading's right end only while something is hidden (11.5/500 accent, a 44 px hit area on a phone), and Refresh sessions and New room as plain column rows in `--text-2`; every row and action is on a 32 px pitch. Radios are drawn rings (appearance none, 1.5 px `--muted` border; checked = accent ring + dot), checkboxes stay native in the accent. It is a dialog (`role="dialog" aria-label="Filters"`, matching `aria-haspopup="dialog"` on the trigger), Tab walks its form controls and arrows select the Show radio group, Escape returns the focus to the chip, and focus inside it never lights the search field's ring. A row marks the search's hit inside its title with the accent's 24% wash (never its ink or a weight: those mean a run and unread), and with a query of two letters or more the "Search every chat" row starts its words on the titles' edge (its glyph takes the 10px mark column) and the list tucks up 6px under it. The quick-filter token exists only while selected. Empty Rooms renders no band, and its section commands appear on hover/focus. The 36 px footer holds Usage, Theme and Settings, and the scroller's bottom fade is its last child, a sticky `.list-tray` as tall as the tray (`--sid-tray`, 36 px; 44 px on a phone) with the scroller's own bottom padding set to it: a mask on the scroller was a clipping stacking context, so the row menu's foot faded into the footer and the hover card beside the rail was cut away whole (its shadow was the band on the list's edge); now the fade covers what scrolls under it and, at the end of the list, the padding and nothing else. On touch, search/filter/New chat targets are at least 44 px; the filter takes its 44 px from the field's own right end (`position:absolute; right:4px; top:0; bottom:0; width:40px`) rather than drawing a bordered square beside it. The drawer's head is a 44 px touch row with 40 px icon buttons and no pencil (its sticky 44 px New chat pill is the one way to start a chat), its close is an ✕, and its scrolled list wears a 12 px `--surface` fade under the head (`.list-scrim`, rendered only while `scrollTop > 0`). Below 375 px the narrow phone uses a View radio group in Filters and otherwise the same search-edge menu; a scrolled waiting list keeps a 44 px amber pill above New chat to open its first row. A row's menu is capped at `calc(100vw - 16px)` and keeps 8 px from the window's right edge, so it fits a 360–390 px phone. Sidebar state colours mean: amber = needs you, accent ring/word = running, weight = unread, green = done; nothing else in the list is coloured, and a project's monogram — the one decoration — takes four different hues from `--badge-1..4` (teal, violet, orange, red), none of them the accent, the needs-you amber or the done green: a monogram in the run's own colour read as a run. The set of a sidebar's projects is worked out together (`projectSlots`), so no two folders beside each other wear one hue, and a folder keeps its hue from its head to the switch menu to the flat list's rows; its letter is 9px/700 on the 12px row badge, 10px on the 16px head, and takes a step toward the text ink so it clears 4.5:1 on its own wash in both schemes.
   spacing, composer, tab strip). config.yml's `density: compact` sets
   `data-density="compact"` on `<html>`, and `tokens.css` overrides them there,
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
@@ -128,15 +128,22 @@ a literal colour.
   letters off it), and no glyph is cut under the control. On a one-line row the age
   stays beside the title; hover or keyboard focus swaps it for the ⋯ with an opacity
   cross-fade inside the age's own box, so the title keeps its width. Touch keeps the ⋯
-  on the open row only. Inside the
-  Needs-you or Working section that already names the state, the row shows the age
-  (amber on a needs-you row), not a repeating word. Unread is title weight (600) and
+  on the open row only. Inside the Needs-you or Working section that already names the state, the row
+  shows the age (amber on a needs-you row), not a repeating word. In the Working section that age is
+  the run's own elapsed time ("12s", "1m 4s"), counting up on its own second clock in `--text-2`, tabular
+  like every other time in the list — the age said "now" for the whole run, which is the one thing someone
+  watching a run already knows; a run whose start the listing does not give keeps the age. The section's
+  own mark does not spin (`WorkingRing`'s `still`): its rows each own a ring, and three rings turning in one
+  column read as three runs. Unread is title weight (600) and
   full ink, with the word “Unread” only in a visually hidden span for assistive tech.
   `config.yml`'s `sidebar_style: compact` sets `data-sidebar="compact"` on
   `<html>`, and `sidebar.css` ends with the handful of overrides that make the
-  rows tighter still (28px, a project suffix at most 34% of the line and right-aligned
-  against the age — one column on every row, 8px of room from the title, which ellipsises
-  first — with the same ⋯/age swap on hover, and 1px between rows).
+  rows tighter still: 28px, one line in three columns — the title (1fr, at least 96px), the project's
+  name as a dim suffix (its own column, never wider than 96px) and the age on the column every row uses,
+  8px apart, with the same ⋯/age swap on hover and 1px between rows. The project gives way first: the suffix
+  ellipsises past 96px while the title keeps its share (at least 96px) — a 292px panel measured a title of
+  104–174px against a suffix of 26–96px, and at 232px the title held 96 where the old flex row, with the
+  suffix's 34% fixed and the title free to shrink, left it 89.
   It changes the row look only: heads, chips, hover cards, and the wash keep
   their own rules, and a phone's row is still at least 44px tall.
 - **Sidebar list:** the sidebar draws one of two views (`sidebar-view.ts`, saved
@@ -158,9 +165,11 @@ a literal colour.
   A folder head is the folder's own name at 13px/600 in `--text-2`, with its
   16px badge (radius 4, 10px/700, no ring) hanging in the rows' mark column, its
   branch after a `·`, the fold chevron after the name, and its count (past the
-  chevron) only while the head hides rows — the group folded, or a page of its rows still behind
-  "Show N more", whose own words then drop the folder's name the head already said; its rows
-  are not indented under it, so
+  chevron) at every state — the folder's size, not a note about hidden rows, so one column
+  holds one meaning; the pointer's `+` sits over that count's own place and fades it, as a
+  row's `⋯` fades its age, so a head never spends 28px on a control (a touch screen keeps the
+  `+` in the flow and the count beside it); "Show N more" then drops the folder's name the
+  head already said; its rows are not indented under it, so
   a folder's titles are as wide as the flat list's. A folder's preview rows carry no date
   headings until the folder is opened: the age on each row already says when. Recent
   has one text edge: a date heading's text and every section head's label start on the
@@ -192,8 +201,11 @@ a literal colour.
   and **weight** is unread (the title at 600 and full ink, read titles at 78 % ink).
   The section's state word stays outside it; inside it no second word replaces the age.
   Nothing else in the list states anything by colour: a project's monogram is the one
-  decoration (four hues from `--badge-1..4`, none the accent, so no row can be mistaken for a
-  run; its 10px letter measures 3.6–4.2:1 in light and 5.2–6.2:1 in dark on its own wash), and
+  decoration: four different hues from `--badge-1..4` — teal, violet, orange, red — none the
+  accent, and none the amber of needs-you or the green of done, so no row can be mistaken for a
+  run; its letter takes a step toward the text ink, which measures 4.7–5.3:1 in light and
+  5.3–6.6:1 in dark on its own 22 % wash, at 9px/700 on the 12px row badge (10px on the 16px
+  head); and
   liveness is a server detail (the hover card
   says "Open in this server"), and parked / herdr / handed-over share one 12px muted
   glyph, in that priority, with the whole story in the card. Sidebar-local `--hover`
@@ -203,8 +215,10 @@ a literal colour.
   where it covers it. The state words take sidebar-local `--row-warn`, `--row-accent` and
   `--row-ok`, each a step from its token toward `--text` so it clears 4.5:1 on the
   panel; the open row deepens them further and gives its title `--text` and its meta
-  and subline a step from `--muted-text` toward `--text` (88/12), so the row keeps its
-  second rank on the wash — 5.2:1 in either scheme, where halfway from `--text-2` to
+  and subline a step from `--muted-text` toward `--text` (72/28), so the row keeps its
+  second rank on the wash — 5.6–6.0:1 in the two shipped schemes and 4.57:1 on the owner's
+  darkest theme, where 88/12 measured 4.16:1 (#a2a5b1 on #3b4057) and even 78/22 reached only
+  4.42; halfway from `--text-2` to
   `--text` read 10.6:1 in light — and every word clears 4.5:1. That wash is
   `--sidebar-active-wash`: 12% of the row's harness colour over `--surface-2`, and 8% on a light page,
   where 12% read as a selected tab among grey rows rather than as the open chat (the title then measures
