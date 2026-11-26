@@ -4,8 +4,7 @@
    reads as light through wet glass rather than as ghosts of the rows behind. Only three static surfaces
    take it, and none of them is inside a scrolling list (a blur there would repaint on every frame of a
    streaming run): the composer card, the status stack, and the command menu. The sticky prompt is an
-   opaque page-coloured label: it covers otherwise empty page space, and its one-pixel separator fades
-   from its text colour through its own pseudo-element instead.
+   opaque page-coloured label: it covers otherwise empty page space, so it takes no frost at all.
    `.is-glass` is the same recipe for a surface that wants it (the notice stack) without a second copy.
 
    Three edges make it read as glass rather than as a faded card: the frost, one specular hairline inside
