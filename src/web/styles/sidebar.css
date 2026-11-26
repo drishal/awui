@@ -1522,10 +1522,12 @@
 }
 
 /* The open row's words sit on the harness wash, not the panel, and the panel's inks fall short there:
-   muted measured 3.74:1 (dark) and 4.41:1 (light), amber 3.70:1 and the accent 3.12:1 (light). The
-   title takes full ink, and the meta and subline a step from --muted-text toward it (88/12): the row's
-   second rank, at 5.2:1 in either scheme, where halfway from --text-2 to --text read 10.6:1 in light and
-   lost it. The state inks take a further step toward the text, which clears 4.5:1 in both schemes. */
+   muted measured 3.74:1 (dark) and 4.41:1 (light), amber 3.70:1 and the accent 3.12:1 (light). The title
+   takes full ink, and the meta and subline a step from --muted-text toward it (72/28): the row's second
+   rank, which measured 5.6–6.0:1 in the two shipped schemes and 4.57:1 on the owner's own dark theme, where
+   88/12 was 4.16:1 (#a2a5b1 on #3b4057 — the old comment here claimed 5.2) and a cheaper 78/22 still only
+   reached 4.42. Halfway from --text-2 to --text read 10.6:1 in light and lost the rank altogether. The state
+   inks take a further step toward the text, which clears 4.5:1 in both schemes. */
 .session.is-active {
   --row-warn: color-mix(in oklab, var(--warn) 72%, var(--text));
   --row-accent: color-mix(in oklab, var(--accent) 72%, var(--text));
@@ -1537,7 +1539,7 @@
 }
 
 .session.is-active :is(.session-meta, .session-sub) {
-  color: color-mix(in oklab, var(--muted-text) 88%, var(--text));
+  color: color-mix(in oklab, var(--muted-text) 72%, var(--text));
 }
 
 .session:is(:hover, .is-selected) .session-title {

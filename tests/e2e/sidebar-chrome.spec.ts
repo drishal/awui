@@ -17,6 +17,20 @@ async function painted(page: import("@playwright/test").Page, token: string): Pr
   }, token);
 }
 
+/** WCAG contrast of two painted colours (`rgb()` / `rgba()` strings), so a pair is held to a ratio, not a hex. */
+function contrastOf(a: string, b: string): number {
+  const luminance = (colour: string) => {
+    const [r, g, b] = (colour.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number) as [number, number, number];
+    const channel = (value: number) => {
+      const s = value / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  };
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 test("the two-row head and footer keep the controls on the new chrome", async ({ page }) => {
   // Other specs create rooms on the shared server; this geometry check starts empty.
   await page.route("**/api/rooms", (route) => route.fulfill({ contentType: "application/json", body: "[]" }));
@@ -511,4 +525,36 @@ test("the open row's wash takes one step less on a light page", async ({ page })
   await expect.poll(async () => wash.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(dark);
   // The 2px rule is what carries the state either way, so it stays in both schemes.
   await expect(wash).toHaveCSS("box-shadow", /2px 0px 0px 0px inset$/);
+});
+
+test("the open row's second rank clears 4.5:1 on its own wash, in both schemes", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "the open row's second rank");
+  await showSidebar(page);
+  // The row's supporting words (its subline's project, or the age) sit on the harness wash, where the
+  // panel's muted ink falls short: the old 88/12 mix measured 4.16:1 on the owner's dark theme (#a2a5b1 on
+  // #3b4057) while the CSS claimed 5.2. 72/28 is the mix now, and the two shipped schemes are held to AA
+  // here. This suite's server serves a fixture theme whose muted ink sits exactly at 4.5:1 on its own
+  // surfaces, so the served scheme comes off the page first (its stylesheet, and the properties the app
+  // wrote on :root) and what is measured is tokens.css's own two palettes, which is what a device picks.
+  await page.evaluate(() => {
+    document.getElementById("theme-boot")?.remove();
+    const root = document.documentElement;
+    for (const name of [...root.style]) if (name.startsWith("--")) root.style.removeProperty(name);
+  });
+  for (const scheme of ["dark", "light"] as const) {
+    await page.evaluate((theme) => {
+      document.documentElement.dataset.theme = theme;
+    }, scheme);
+    const pair = await page.evaluate(() => {
+      const row = document.querySelector(".sidebar .session.is-active");
+      const wash = document.querySelector(".session-active-bg:not([hidden])");
+      const words = row?.querySelector(".session-sub, .session-meta");
+      return row && wash && words ? { ink: getComputedStyle(words).color, wash: getComputedStyle(wash).backgroundColor } : null;
+    });
+    expect(pair, `the open row's words and its wash (${scheme})`).not.toBeNull();
+    const seen = pair as { ink: string; wash: string };
+    expect(contrastOf(seen.ink, seen.wash), `the second rank on the wash, ${scheme}`).toBeGreaterThanOrEqual(4.5);
+  }
 });
