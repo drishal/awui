@@ -1,9 +1,9 @@
 // The sessions sidebar: the harness and project pickers, search with its quick
-// filter chips (Running, Needs you, Today), and every
-// project's sessions in date sections ("Show N more" past a few), from the
-// server's sessions overview. Rows warm their chat on hover, show a hover card,
-// carry a menu (new tab, resume command, pin, snooze, archive, move), and drag
-// to a new place inside their date section. On phones it is the drawer.
+// filter chips (Running, Needs you, Today), and the sessions in one of two views — Recent, one flat
+// list across projects under date headings, or Projects, grouped by folder with focus mode ("Show N
+// more" past a page), from the server's sessions overview. Rows warm their chat on hover, show a hover
+// card, carry a menu (new tab, resume command, pin, snooze, archive, move), and, in the Projects view,
+// drag to a new place inside their date section. On phones it is the drawer.
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatStatus, Checkout, HarnessStatus, ProjectSession, RoomSummary, SessionsOverview, WorkspaceInfo } from "../../shared/protocol.js";
 import { RoomList } from "./RoomList.js";
@@ -15,7 +15,9 @@ import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
 import type { UsageLimits } from "../../shared/protocol.js";
 import { limitResetAt } from "../../shared/limit-stop.js";
 import { coarse, useRowSwipe } from "../gestures.js";
-import { focusProject, groupByProject, historySections, isWorking as statusWorking, localeWeekStart, movedOrder, projectRows, sidebarSections, snoozeOptions, wakeLabel, type ProjectGroup } from "../session-groups.js";
+import { focusProject, groupByProject, isWorking as statusWorking, localeWeekStart, movedOrder, projectRows, sidebarSections, snoozeOptions, wakeLabel, type ProjectGroup } from "../session-groups.js";
+import { RECENT_MORE, RECENT_PAGE, projectTag, recentRows, type ProjectTag } from "../recent-view.js";
+import { useSidebarView } from "../sidebar-view.js";
 import { applyHidden, applyQuick, asHideGroups, asQuickFilter, chipsShown, escapeClears, hideCounts, provenanceOf, quickCounts, QUICK_LABELS, type HideGroup, type QuickFilter } from "../sidebar-filter.js";
 import { load, save } from "../storage.js";
 import { harnessColor } from "../harness-colors.js";
@@ -337,7 +339,7 @@ function SessionRow({
   active,
   working,
   harnessName,
-  project,
+  tag,
   showHarness = true,
   onOpen,
   onMark,
@@ -349,8 +351,8 @@ function SessionRow({
   active: boolean;
   working: boolean;
   harnessName: string;
-  /** Shown beside the title where the row is out of its project (the pinned list). */
-  project?: string;
+  /** The project a row is out of (the flat list, and the sections above the projects): its tag line. */
+  tag?: ProjectTag | null;
   /** False where every row of the list is the same harness: the dot would only repeat the heading above. */
   showHarness?: boolean;
   /** Why this row is where it is (a routine started it, it is quiet, on the default branch); its hover card says it. */
@@ -447,7 +449,7 @@ function SessionRow({
           if (e.key === "ArrowUp" ? move.up : move.down) move.by(e.key === "ArrowUp" ? -1 : 1);
         }}
         aria-current={active ? "true" : undefined}
-        title={project ? `${s.title} · ${project}` : s.title}
+        title={tag ? `${s.title} · ${tag.name}` : s.title}
       >
         {working && !s.asking ? (
           <WorkingRing harnessId={s.harnessId} colored />
@@ -470,8 +472,8 @@ function SessionRow({
             <span className={`session-sub session-agent is-${s.agentStatus.state}`} title={`${agentStatusText(s.agentStatus)} · set by the agent ${ago(s.agentStatus.at)}`}>
               {s.agentStatus.comment || agentStatusText(s.agentStatus)}
             </span>
-          ) : project ? (
-            <span className="session-sub">{project}</span>
+          ) : tag ? (
+            <span className="session-sub">{tag.name}</span>
           ) : null}
         </span>
         <span className="session-meta">
@@ -534,7 +536,7 @@ function SessionRow({
           ))}
         </div>
       ) : null}
-      {cardAt && !menuAt ? <SessionCard s={s} anchor={cardAt} harnessName={harnessName} project={project ?? ""} id={cardId} provenance={provenance ?? null} /> : null}
+      {cardAt && !menuAt ? <SessionCard s={s} anchor={cardAt} harnessName={harnessName} project={tag?.name ?? ""} id={cardId} provenance={provenance ?? null} /> : null}
       {menuAt ? (
         <RowMenu
           s={s}
@@ -1188,7 +1190,19 @@ export function Sidebar(props: {
     () => quickCounts(unhidden, groupOptions, isWorking),
     [unhidden, props.harnessId, props.activeStatus, props.activeSessionId, props.activeChatId, now],
   );
-  const projectName = (s: ProjectSession) => overview.workspaces.find((w) => w.id === s.workspaceId)?.name ?? "";
+  // The Recent view (sidebar-view.ts, whose switch is the filter menu's) is one flat list across the
+  // projects; the Projects view is the grouped list below. A harness with no projects has no grouping
+  // to show, so there both views are the flat list.
+  const [view] = useSidebarView();
+  const weekStart = useMemo(localeWeekStart, []);
+  const [recentLimit, setRecentLimit] = useState(RECENT_PAGE);
+  const flat = view === "recent" || !projectScoped(props.harnesses, props.harnessId ?? "");
+  // A page of the list belongs to the list it was turned on: a new view, harness, or search starts at 12 again.
+  useEffect(() => setRecentLimit(RECENT_PAGE), [view, props.harnessId, props.query]);
+  const recent = useMemo(
+    () => recentRows(overview, { ...groupOptions, weekStartsOn: weekStart }, recentLimit),
+    [overview, props.query, props.harnessId, showArchived, showSettled, showSnoozed, props.activeSessionId, props.activeChatId, now, weekStart, recentLimit],
+  );
 
   // The focused project (Hermes Desktop's one-folder view). "auto" follows the current folder;
   // "all" is the back row's choice, kept until a folder is picked elsewhere or the header names one.
@@ -1203,7 +1217,7 @@ export function Sidebar(props: {
   // "All projects" is the same list, so the plain group head stays instead of growing a back row that goes
   // nowhere. The count is the whole overview's, so a filter does not switch the layout under the pointer.
   const focusable = projectScoped(props.harnesses, props.harnessId ?? "") && props.overview.workspaces.length > 1;
-  const focusId = !focusable || focus === "all" ? null : focus === "auto" ? currentId : focus;
+  const focusId = flat || !focusable || focus === "all" ? null : focus === "auto" ? currentId : focus;
   const sessionList = useRef<HTMLUListElement>(null);
   useViewSlide(sessionList, focusId ?? "all");
   const focused = useMemo(() => {
@@ -1214,8 +1228,13 @@ export function Sidebar(props: {
   const selection = useSelectionMode();
   // The ids in the order the sections show them, for a Shift-click run.
   const selectionOrder = useMemo(
-    () => (focused ? focused.sections.flatMap((sec) => sec.sessions.map((x) => x.id)) : groups.flatMap((g) => g.sessions.map((x) => x.id))),
-    [focused, groups],
+    () =>
+      flat
+        ? recent.rows.flatMap((r) => (r.kind === "session" ? [r.s.id] : []))
+        : focused
+          ? focused.sections.flatMap((sec) => sec.sessions.map((x) => x.id))
+          : groups.flatMap((g) => g.sessions.map((x) => x.id)),
+    [flat, recent, focused, groups],
   );
   useEffect(() => setSelectionOrder(selectionOrder), [selectionOrder]);
 
@@ -1238,7 +1257,7 @@ export function Sidebar(props: {
     pinned.length === 0 &&
     needs.length === 0 &&
     working.length === 0 &&
-    (!projectScoped(props.harnesses, props.harnessId ?? "") ? historySections(overview, groupOptions).length === 0 : groups.every((g) => g.sessions.length === 0));
+    (flat ? recent.rows.length === 0 : groups.every((g) => g.sessions.length === 0));
   // Every list that is one harness drops the row dots (see ProjectGroupView); the sections and the
   // projectless history read the whole overview for it.
   const oneHarness = new Set(overview.sessions.map((s) => s.harnessId)).size <= 1;
@@ -1250,15 +1269,26 @@ export function Sidebar(props: {
       working={isWorking(s)}
       harnessName={names.get(s.harnessId) ?? s.harnessId}
       showHarness={!oneHarness}
-      project={projectName(s)}
+      tag={projectTag(overview, s)}
       provenance={provenanceOf(s, hideCtx)}
       onOpen={(newTab) => props.onOpenSession(s, newTab)}
       onMark={(change) => props.onMarkSession(s, change)}
     />
   );
-  // History rows carry no project label: a chat has no folder.
-  const historyRow = (s: ProjectSession) => (
-    <SessionRow key={s.id} s={s} active={isActive(s)} working={isWorking(s)} harnessName={names.get(s.harnessId) ?? s.harnessId} showHarness={!oneHarness} provenance={provenanceOf(s, hideCtx)} onOpen={(newTab) => props.onOpenSession(s, newTab)} onMark={(change) => props.onMarkSession(s, change)} />
+  // The flat list's rows: one line, the project it is out of as its tag.
+  const flatRow = (s: ProjectSession, tag: ProjectTag | null) => (
+    <SessionRow
+      key={s.id}
+      s={s}
+      active={isActive(s)}
+      working={isWorking(s)}
+      harnessName={names.get(s.harnessId) ?? s.harnessId}
+      showHarness={!oneHarness}
+      tag={tag}
+      provenance={provenanceOf(s, hideCtx)}
+      onOpen={(newTab) => props.onOpenSession(s, newTab)}
+      onMark={(change) => props.onMarkSession(s, change)}
+    />
   );
 
   return (
@@ -1395,7 +1425,7 @@ export function Sidebar(props: {
             </button>
           ) : null}
           {props.sessionsError ? <p className="sidebar-note is-warning">{props.sessionsError}</p> : null}
-          <ul ref={sessionList} className="session-list" aria-busy={props.sessionsLoading} aria-label="Sessions by project">
+          <ul ref={sessionList} className="session-list" aria-busy={props.sessionsLoading} aria-label={flat ? "Sessions" : "Sessions by project"}>
             {/*
               Rooms are the Awui harness's surface: they appear in its sidebar scope, not in a
               coding harness's. A server with no Awui harness has no scope to put them in (and
@@ -1447,23 +1477,31 @@ export function Sidebar(props: {
             {pinned.length > 0 ? (
               <SectionList className="pinned-group" testId="pinned-group" icon={<IconPin size={14} />} title="Pinned" sessions={pinned} row={(s) => sectionRow(s)} />
             ) : null}
-            {quickEmpty ? null : !projectScoped(props.harnesses, props.harnessId ?? "") ? (
-              // The chat surface has no projects: a Claude.ai-style history, newest first by day.
-              historySections(overview, groupOptions)
-                .filter((sec) => sec.label !== "Pinned")
-                .map((sec) => (
-                  <li className="project-group is-open history-group" key={sec.label} data-testid="history-group">
-                    <div className="project-head">
-                      <span className="project-toggle is-static">
-                        <span className="project-name">{sec.label}</span>
-                      </span>
-                    </div>
-                    <ul className="session-sublist">
-                      <ActiveWash />
-                      {sec.sessions.map((s) => historyRow(s))}
-                    </ul>
-                  </li>
-                ))
+            {quickEmpty ? null : flat ? (
+              // One flat list across projects (the Recent view, and every harness with no projects
+              // to group): date headings, each row tagged with its project, a page at a time. One
+              // group of its own, so the active row's wash keeps a scrolling box to sit in.
+              <li className="project-group is-open flat-group">
+                <ul className="session-sublist">
+                  <ActiveWash />
+                  {recent.rows.map((r) =>
+                    r.kind === "divider" ? (
+                      <li key={`d-${r.key}`} className="date-divider" role="presentation">
+                        {r.label}
+                      </li>
+                    ) : (
+                      flatRow(r.s, r.tag)
+                    ),
+                  )}
+                  {recent.hidden > 0 ? (
+                    <li>
+                      <button type="button" className="show-more" onClick={() => setRecentLimit((n) => n + RECENT_MORE)}>
+                        Show {recent.hidden} more
+                      </button>
+                    </li>
+                  ) : null}
+                </ul>
+              </li>
             ) : focused && !searching ? (
               <FocusedProjectView
                 focused={focused}
@@ -1527,7 +1565,7 @@ export function Sidebar(props: {
                 </button>
               </li>
             ) : null}
-            {!quick && !props.sessionsLoading && groups.length === 0 && pinned.length === 0 && needs.length === 0 && working.length === 0 && !props.sessionsError ? (
+            {!quick && !props.sessionsLoading && (flat ? recent.rows.length === 0 : groups.length === 0) && pinned.length === 0 && needs.length === 0 && working.length === 0 && !props.sessionsError ? (
               <li className="sidebar-note">{searching ? "No matching sessions" : "No chats yet. Start one on the right."}</li>
             ) : null}
           </ul>

@@ -1,6 +1,14 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
+ * Show the sidebar's grouped Projects view in this browser, before the app boots: the sidebar's saved
+ * view is Recent by default, and the folder heads, focus mode and drag order belong to Projects.
+ */
+export async function useProjectsView(page: Page): Promise<void> {
+  await page.addInitScript(() => window.localStorage.setItem("awui.sidebarView", JSON.stringify("projects")));
+}
+
+/**
  * Make the sidebar usable. On phones it is a drawer; `isVisible()` is not a
  * reliable signal mid-transition, so decide by layout and the drawer's state.
  */

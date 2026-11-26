@@ -1,7 +1,7 @@
 // The start screen: the main pane with no chat — one question, a box, and the
 // agent and folder chips. Nothing spawns until a send.
 import { expect, test } from "@playwright/test";
-import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
+import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 const box = "Message";
 const folderChip = (page: import("@playwright/test").Page) => page.getByRole("button", { name: /^Folder: / });
@@ -195,6 +195,8 @@ test("New chat opens the folder picker over the start screen, and the picked fol
 });
 
 test("a project's + opens its start screen in a new tab, without replacing the shown history", async ({ page }) => {
+  // The per-folder + and the focus mode it is reached through are the grouped view's.
+  await useProjectsView(page);
   await signInAndOpen(page);
   await sendAndWait(page, "a chat in alpha");
   await signInAndOpen(page, "beta");

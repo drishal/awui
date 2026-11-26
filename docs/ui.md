@@ -39,7 +39,7 @@ banners-dialogs.css), so search rather than guess.
 | Region | Components | Main styles | Covered by |
 |---|---|---|---|
 | Page frame, header (the "2 devices" count, its two control groups, the offline status word), the optional status bar | `App.tsx`, `StatusBar.tsx` | `app-frame.css`, `header.css` | `app.spec.ts`, `context-and-viewers.spec.ts` |
-| Sidebar: harness, projects, sessions, quick filter chips (`sidebar-filter.ts`) | `Sidebar.tsx`, `HarnessMenu.tsx`, `SessionCard.tsx`, `SidebarResizer.tsx`, `WorkingRing.tsx` | `sidebar.css`, `session-card.css` | `app.spec.ts`, `tabs.spec.ts`, `sidebar-filter.spec.ts` |
+| Sidebar: harness, projects, sessions, quick filter chips (`sidebar-filter.ts`), its two views (`sidebar-view.ts`, and the flat list's model in `recent-view.ts`) | `Sidebar.tsx`, `HarnessMenu.tsx`, `SessionCard.tsx`, `SidebarResizer.tsx`, `WorkingRing.tsx` | `sidebar.css`, `session-card.css` | `app.spec.ts`, `tabs.spec.ts`, `sidebar-filter.spec.ts`, `sidebar-recent.spec.ts`, `sidebar-separation.spec.ts` |
 | Session tabs: chats and rooms (drag to reorder, pin) | `TabStrip.tsx` (order logic: `tab-order.ts`) | `session-tabs.css` | `tabs.spec.ts`, `board.spec.ts` |
 | Timing: a turn's time as a waterfall (opened from the answer's row, and by the context chip's **Show more**) | `TurnTiming.tsx` (over `Dialog.tsx`) and `TimingView.tsx`, which the chip's full view draws too; rows and axis in `waterfall.ts` | `timing.css` (and `usage-details.css` inside the chip's dialog) | `turn-timing.spec.ts`, `context-and-viewers.spec.ts` |
 | Conversation: turns, answers, thoughts | `Conversation.tsx`, `CopyButton.tsx`, `Markdown.tsx`, `CodeBlock.tsx`, `QuoteButton.tsx`, `TurnRail.tsx`, `StickyPrompt.tsx` (`sticky-prompt.ts`), a turn's time on hover (`turn-time.ts`), Copy turn as Markdown (`turn-markdown.ts`) | `conversation.css`, `controls.css` (the copy morph) | `app.spec.ts`, `usage-and-actions.spec.ts` |
@@ -118,6 +118,15 @@ a literal colour.
   1px between rows, no inset hairline, the clock centred, the agent's state as
   coloured words). It changes the row look only: heads, chips, hover cards, and
   the wash keep their own rules, and a phone's row is still 44px tall.
+- **Sidebar list:** the sidebar draws one of two views (`sidebar-view.ts`, saved
+  per browser; the filter menu's switch writes it). Recent, the default, is one
+  flat list across the shown harness's projects: the needs-you, working and
+  pinned sections above, then `recent-view.ts`'s page — calendar headings from
+  `session-groups.ts`'s `dateGroup`, rows newest first, each with the project it
+  is out of as its tag, 12 rows and then 20 per "Show more". Projects is the
+  grouped list (`groupByProject`, `focusProject`), where focus mode, the folder
+  heads and drag order live; `GroupOptions`' place rules (what needs you, what
+  works, what is pinned, and the settled/snoozed/archived toggles) apply to both.
 - **Text:** `--chat-font` = 14.5 px × `--chat-scale` (config.yml's text size).
   A small uppercase section label (Recent, Todos, Actions) is 600 weight at
   `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat

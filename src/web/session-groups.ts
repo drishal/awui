@@ -75,8 +75,8 @@ export function placeOf(s: ProjectSession, opts: GroupOptions): Place {
   return "project";
 }
 
-/** The selected harness's sessions that match the search. */
-function visible(overview: SessionsOverview, opts: GroupOptions): ProjectSession[] {
+/** The selected harness's sessions that match the search (every list below starts from these). */
+export function visibleSessions(overview: SessionsOverview, opts: GroupOptions): ProjectSession[] {
   const q = opts.query.trim().toLowerCase();
   // The harness switch scopes the list: only sessions that actually ran in it.
   return overview.sessions.filter((s) => s.harnessId === opts.harnessId && (!q || s.title.toLowerCase().includes(q)));
@@ -95,7 +95,7 @@ export function groupByProject(overview: SessionsOverview, opts: GroupOptions): 
     const checkout = overview.checkouts?.[ws.id];
     groups.set(ws.id, { workspace: ws, sessions: [], current: ws.id === opts.currentId, ...(checkout ? { checkout } : {}), sharesRepo: false });
   }
-  for (const s of visible(overview, opts)) {
+  for (const s of visibleSessions(overview, opts)) {
     const place = placeOf(s, opts);
     const shown =
       searching ||
@@ -135,7 +135,7 @@ export interface SidebarSections {
 export function sidebarSections(overview: SessionsOverview, opts: GroupOptions): SidebarSections {
   const out: SidebarSections = { needs: [], working: [], pinned: [], counts: { snoozed: 0, settled: 0, archived: 0 } };
   if (opts.query.trim()) return out;
-  for (const s of visible(overview, opts)) {
+  for (const s of visibleSessions(overview, opts)) {
     const place = placeOf(s, opts);
     if (place === "needs" || place === "working" || place === "pinned") out[place].push(s);
     else if (place !== "project") out.counts[place] += 1;
@@ -201,22 +201,6 @@ function localSnoozeInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** Claude.ai's sidebar bucket: Today, Yesterday, this week, then a short date, then Older. */
-export function conversationBucket(iso: string | null, now = new Date()): string {
-  if (!iso) return "Older";
-  const then = new Date(iso);
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  const day = 86_400_000;
-  const t = then.getTime();
-  if (t >= today.getTime()) return "Today";
-  if (t >= today.getTime() - day) return "Yesterday";
-  if (t >= today.getTime() - 6 * day) {
-    const label = then.toLocaleDateString([], { month: "short", day: "numeric" });
-    return then.getFullYear() === now.getFullYear() ? label : then.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-  }
-  return "Older";
-}
 
 /** One labelled rung of a history or focused list, in display order; a blank label is the unlabelled recent run. */
 export interface HistorySection {
@@ -263,7 +247,7 @@ export function focusProject(
     run.sessions.push(r.s);
   }
   const rest = groups.filter((g) => g.workspace.id !== workspaceId && g.sessions.length > 0);
-  const allCount = visible(overview, opts).length;
+  const allCount = visibleSessions(overview, opts).length;
   return { workspace, ...(checkout ? { checkout } : {}), sections: out, allCount, rest };
 }
 
@@ -272,31 +256,6 @@ export function sessionScope(overview: SessionsOverview, opts: GroupOptions): Ar
   return groupByProject(overview, opts).map((g) => ({ workspace: g.workspace, count: g.sessions.length, current: g.current }));
 }
 
-/**
- * The awui harness's history: a flat, newest-first list grouped into dated
- * rungs — no projects. Pinned first, then Today, Yesterday, this week (each
- * its own short date), Older. Search flattens to one matching list.
- */
-export function historySections(overview: SessionsOverview, opts: GroupOptions): HistorySection[] {
-  const sessions = visible(overview, opts).filter((s) => !s.archived);
-  const pinned = sessions.filter((s) => s.pinned);
-  // Newest first (undated last), so the buckets come out in display order as they fill:
-  // Today, Yesterday, this week's days newest first, Older.
-  const time = (s: ProjectSession) => (s.updatedAt ? Date.parse(s.updatedAt) : -Infinity);
-  const rest = sessions.filter((s) => !s.pinned).sort((a, b) => time(b) - time(a));
-  const byBucket = new Map<string, ProjectSession[]>();
-  const now = opts.now !== undefined ? new Date(opts.now) : new Date();
-  for (const s of rest) {
-    const label = conversationBucket(s.updatedAt, now);
-    const list = byBucket.get(label);
-    if (list) list.push(s);
-    else byBucket.set(label, [s]);
-  }
-  const out: HistorySection[] = [];
-  if (pinned.length > 0) out.push({ label: "Pinned", sessions: pinned });
-  for (const [label, list] of byBucket) out.push({ label, sessions: list });
-  return out;
-}
 
 
 /** The locale's first day of the week (0 Sunday … 6 Saturday); Monday when the browser does not say. */

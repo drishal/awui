@@ -1,7 +1,7 @@
 // Session tabs: several chats open at once, one shown; runs carry on in the
 // tabs that are not.
 import { expect, type Page, test } from "@playwright/test";
-import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
+import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 const prompts = (page: Page) => page.getByTestId("user-prompt");
 const tabs = (page: Page) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab");
@@ -492,6 +492,8 @@ test("a session can be snoozed until the limit resets", async ({ page }) => {
 });
 
 test("a project's folder shows its own monogram", async ({ page }) => {
+  // The monogram hangs on the folder head, which is the grouped view's.
+  await useProjectsView(page);
   await signInAndOpen(page);
   await showSidebar(page);
   // alpha is the project here: its badge is A, drawn in one of four theme colours (its slot), washed and edged, never hue-rotated.
@@ -503,6 +505,7 @@ test("a project's folder shows its own monogram", async ({ page }) => {
 });
 
 test("a project's icon can be set on this device", async ({ page }) => {
+  await useProjectsView(page);
   // The folder head this test drives needs focus mode, which needs a second project with a session.
   await signInAndOpen(page, "beta");
   await sendAndWait(page, "a beta chat for the folder icon");

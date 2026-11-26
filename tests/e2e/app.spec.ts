@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { chooseHarness, commandChat, newChat, openChat, openSettings, send, sendAndWait, showSidebar, signInAndOpen, expectDraft } from "./helpers.js";
+import { chooseHarness, commandChat, newChat, openChat, openSettings, send, sendAndWait, showSidebar, signInAndOpen, expectDraft, useProjectsView } from "./helpers.js";
 
 const status = (page: Page) => page.getByTestId("chat-status");
 const answers = (page: Page) => page.getByTestId("answer");
@@ -1132,6 +1132,8 @@ test("several pending requests stack; answering the front one reveals the next",
 });
 
 test("the sidebar focuses the current project and opens its sessions across harnesses", async ({ page }) => {
+  // The grouped view: focus mode is a Projects-view behaviour (Recent is one list across projects).
+  await useProjectsView(page);
   // Focus mode is for two projects or more: alpha gets a chat of its own, then this test works in beta.
   await signInAndOpen(page);
   await sendAndWait(page, "an alpha chat for the focus view");
@@ -1218,6 +1220,7 @@ async function slideFrom(page: Page, selector: string): Promise<string> {
 }
 
 test("the sidebar's list slides back when it returns to all projects", async ({ page }) => {
+  await useProjectsView(page);
   // Focus mode is for two projects or more: a chat in each, then work in alpha.
   await signInAndOpen(page, "beta");
   await sendAndWait(page, "a beta chat for the focus slide");
@@ -1731,7 +1734,8 @@ test("a chat's link opens it in its own project, in a browser that never chose o
   await fresh.goto(`/${hash}`);
   await expect(fresh.getByTestId("answer").last()).toContainText("Echo: hello from beta");
   await showSidebar(fresh);
-  await expect(fresh.locator(".project-name", { hasText: "beta" })).toBeVisible();
+  // The list is the flat one, so the row's tag says which project the chat is out of.
+  await expect(fresh.locator(".session-item", { hasText: "hello from beta" }).locator(".session-sub")).toContainText("beta");
   await context.close();
 });
 
