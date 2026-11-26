@@ -1,5 +1,6 @@
 // A sidebar row's title, its line of supporting facts, and its state. In Recent the subline
-// names the project and puts the age at its end; a one-line row puts that age beside the title.
+// names the project, then what its agent says when it set a status, and puts the age at its end; a
+// one-line row puts that age beside the title.
 // Pure, so the flat Recent list, its sections, and grouped Projects share the same rules.
 import type { AgentStatusState, ProjectSession } from "../shared/protocol.js";
 import { agentStatusText } from "./agent-status.js";
@@ -8,8 +9,11 @@ import { isTrunkBranch } from "./session-groups.js";
 
 /** The one muted line under a title. */
 export type RowSubline =
-  /** The project the row is out of: its badge and name, and its branch when that is not the trunk. */
-  | { kind: "tag"; tag: ProjectTag }
+  /**
+   * The project the row is out of: its badge and name, its branch when that is not the trunk, and — in
+   * place of that branch — the line its own agent set.
+   */
+  | { kind: "tag"; tag: ProjectTag; status: string | null }
   /** The line the row's own agent set for itself: its words, its state, and when it wrote it. */
   | { kind: "agent"; text: string; state: AgentStatusState; line: string; at: number }
   /** The branch the row's project is checked out on, when it is not one it treats as its trunk. */
@@ -17,15 +21,20 @@ export type RowSubline =
 
 /**
  * The subline a row shows, or null when it has nothing to add (the row is then one line):
- *  - out of its project (`tag`), say which project — the flat list, and the sections above the folders;
+ *  - out of its project (`tag`), say which project — the flat list, and the sections above the folders —
+ *    and, when its agent set a line, what it said after a `·`: one annotation, so the branch gives way;
  *  - inside its project, the agent's own status line, else a branch that is not the trunk one and not
  *    the one its group's head already states (`groupBranch`): a branch is said once, where it applies.
  */
 export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; branch?: string | null; groupBranch?: string | null }): RowSubline | null {
   if (opts.tag) {
+    // The list is read by project first; the agent's own line, when it set one, rides after the project
+    // rather than in a third place. A status takes the branch's place: two annotations on one line is one
+    // too many, and the branch is the group's fact (the head states it) where a status is this row's.
+    const status = s.agentStatus ? s.agentStatus.comment || agentStatusText(s.agentStatus) : null;
     // A group head owns its branch: only a worktree row with a different one states it again.
-    const tag = opts.groupBranch != null && opts.tag.branch === opts.groupBranch ? { ...opts.tag, branch: null } : opts.tag;
-    return { kind: "tag", tag };
+    const tag = status !== null || (opts.groupBranch != null && opts.tag.branch === opts.groupBranch) ? { ...opts.tag, branch: null } : opts.tag;
+    return { kind: "tag", tag, status };
   }
   if (s.agentStatus) {
     const { state, comment, at } = s.agentStatus;

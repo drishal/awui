@@ -115,7 +115,10 @@ a literal colour.
   a literal, for a new row height or gap.
 - **Sidebar rows:** each title is one 13.5px line with an ellipsis. A row is 32px tall,
   or 48px with its supporting subline (project tag, agent status, or a branch that
-  differs from its group's head), with 2px between rows and no hairline or rail.
+  differs from its group's head), with 2px between rows and no hairline or rail. In
+  Recent the tag is the project's badge and name, then — after a `·` and in the branch's
+  place — the line the agent set for itself, so a row states one fact beyond where it
+  lives.
   `session-state.ts` decides that subline and its state. On a two-line row the title
   takes the row's full width (8px right padding, no hover gutter). Its second line
   holds the project's badge and name on the left, and the age or allowed state word

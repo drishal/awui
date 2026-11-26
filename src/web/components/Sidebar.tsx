@@ -538,6 +538,8 @@ function SessionRow({
                   <>
                     {sub.tag.name}
                     {sub.tag.branch ? ` · ${sub.tag.branch}` : ""}
+                    {/* The agent's own line, in the branch's place: one annotation, the row's own. */}
+                    {sub.status ? ` · ${sub.status}` : ""}
                   </>
                 ) : sub.text}
               </span>

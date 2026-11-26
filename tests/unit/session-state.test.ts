@@ -18,9 +18,16 @@ const tag: ProjectTag = { id: "wt", name: "awui-wt", branch: "feat/sidebar" };
 
 describe("rowSubline", () => {
   it("says which project a row is out of, when the list is across projects", () => {
-    expect(rowSubline(s(), { tag })).toEqual({ kind: "tag", tag });
-    // A tag wins over the agent's line: the flat list is read by project first.
-    expect(rowSubline(s({ agentStatus: { state: "done", comment: "", at: 1 } }), { tag })).toEqual({ kind: "tag", tag });
+    expect(rowSubline(s(), { tag })).toEqual({ kind: "tag", tag, status: null });
+  });
+
+  it("puts the agent's own line after the project, in the branch's place", () => {
+    // The flat list is read by project first; what the agent reported rides after it, as one annotation.
+    expect(rowSubline(s({ agentStatus: { state: "review", comment: "ready to merge", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: "ready to merge" });
+    // With no sentence of its own, the state's word.
+    expect(rowSubline(s({ agentStatus: { state: "blocked", comment: "", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: "blocked" });
+    // A branch is one more annotation than a 16px subline holds, so the status takes its place.
+    expect(rowSubline(s({ agentStatus: { state: "done", comment: "shipped", at: 7 } }), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: "shipped" });
   });
 
   it("says what the agent reported, inside its project", () => {
@@ -42,8 +49,8 @@ describe("rowSubline", () => {
     // The head is always asked to show a branch it has, even without sharesRepo.
     expect(rowSubline(s(), { branch: "test", groupBranch: "test" })).toBeNull();
     expect(rowSubline(s(), { branch: "feat/worktree", groupBranch: "test" })).toEqual({ kind: "branch", text: "feat/worktree" });
-    expect(rowSubline(s(), { tag, groupBranch: tag.branch })).toEqual({ kind: "tag", tag: { ...tag, branch: null } });
-    expect(rowSubline(s(), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag });
+    expect(rowSubline(s(), { tag, groupBranch: tag.branch })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: null });
+    expect(rowSubline(s(), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag, status: null });
   });
 });
 
