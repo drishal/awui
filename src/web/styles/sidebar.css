@@ -1795,6 +1795,21 @@
   max-width: calc(100vw - 16px);
 }
 
+/* A menu, not a second panel: 32px items, where the shared menu rule's 37px ones made nine actions 409px
+   tall and hid eight rows behind one row's actions. */
+/* header.css loads after sidebar.css, so its `.menu-list button` base wins at equal specificity;
+   the `.menu-list` prefix raises this to 0-2-1 to beat it without touching other menus. */
+.menu-list.row-menu button {
+  padding: 6px 10px;
+  font-size: 13.5px;
+}
+
+/* A thumb keeps the shared 44px floor (phones.css); the line's own size stays the desktop's. */
+@media (pointer: coarse) {
+  .row-menu button {
+    min-height: 44px;
+  }
+}
 .row-menu button,
 .menu-list button:has(> .icon) {
   display: flex;

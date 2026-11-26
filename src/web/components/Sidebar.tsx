@@ -148,16 +148,20 @@ function RowMenu({
   // own scroller is its ceiling: a menu on a row near the top opens inside the list, never over the head.
   const roomBelow = window.innerHeight - anchor.bottom - 12;
   const ceiling = (document.querySelector<HTMLElement>(".sidebar .session-list")?.getBoundingClientRect().top ?? 8) + 4;
-  const roomAbove = anchor.top - 12;
+  // A flipped menu clears the whole row, not only the ⋯ on its subline: even the title being acted on stays
+  // readable. The row's `.session` is the opener's sibling in `li.session-item`, or the opener on a right-click.
+  const fromRow = opener.current?.closest<HTMLElement>(".session-item")?.querySelector<HTMLElement>(".session") ?? opener.current?.closest<HTMLElement>(".session");
+  const rowTop = fromRow?.getBoundingClientRect().top ?? anchor.top;
+  const roomAbove = rowTop - 12;
   const below = height <= roomBelow || (height > roomAbove && roomBelow >= roomAbove);
-  const room = below ? roomBelow : Math.max(0, Math.min(roomAbove, anchor.top - 4 - ceiling));
+  const room = below ? roomBelow : Math.max(0, Math.min(roomAbove, rowTop - 4 - ceiling));
   // Under the ⋯ button it lines up with the button's right edge; at a right-click's
   // point (no width) it opens rightwards, since the sidebar sits at the window's left.
   const across = anchor.width === 0 ? { left: Math.max(8, Math.min(anchor.left, window.innerWidth - 240)), right: "auto" } : { left: "auto", right: Math.max(8, window.innerWidth - anchor.right) };
   const style = {
     position: "fixed" as const,
     ...across,
-    ...(below ? { top: anchor.bottom + 4, bottom: "auto" } : { top: "auto", bottom: window.innerHeight - anchor.top + 4 }),
+    ...(below ? { top: anchor.bottom + 4, bottom: "auto" } : { top: "auto", bottom: window.innerHeight - rowTop + 4 }),
     ...(height > room ? { maxHeight: room, overflowY: "auto" as const } : {}),
   };
   const { beside, resumable, reclaim: reclaimFn, notice } = useContext(RowActions);
@@ -292,7 +296,9 @@ function RowMenu({
                 ) : null}
               </>
             )}
-            <MenuSeparator />
+            {/* Two rules, three tasks when Move is absent: Select joins the state group; with Move up/down
+                the pair is a real organise group and keeps the rule between it and Select. */}
+            {onMove ? <MenuSeparator /> : null}
             <li role="none">
               <button
                 type="button"

@@ -46,7 +46,7 @@ test("the row menu groups its actions by task, with a rule between the groups", 
 
   const shape = await menuShape(page);
   const marks = shape.flatMap((row, i) => (row === "|" ? [i] : []));
-  // Four tasks, three rules: open, mark and snooze, arrange, archive — not thirteen flat rows.
+  // Four tasks, three rules when Move is present: open, mark and snooze, organise (Select + Move), archive.
   expect(marks).toHaveLength(3);
   expect(shape.filter((row) => row !== "|")).toEqual([
     "Open in new tab",
@@ -61,9 +61,11 @@ test("the row menu groups its actions by task, with a rule between the groups", 
     "Move down",
     "Archive",
   ]);
+  // Select and Move sit on one side of the same rule (the organise group), Archive on the other.
+  expect(shape.indexOf("Select sessions")).toBe(marks[1]! + 1);
   // Archive is the last thing a row's menu says, whatever else it can do.
-  expect(shape.at(-1)).toBe("Archive");
   // Every row leads with a glyph, Select included.
+  expect(shape.at(-1)).toBe("Archive");
   const glyphs = await page.getByRole("menu").getByRole("menuitem").evaluateAll((items) => items.map((item) => item.querySelector("svg.icon") !== null));
   expect(glyphs.every(Boolean)).toBe(true);
 
@@ -71,6 +73,57 @@ test("the row menu groups its actions by task, with a rule between the groups", 
   await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
   const folded = await menuShape(page);
   expect(folded.slice(folded.indexOf("Snooze") + 1, folded.indexOf("Select sessions")).filter((row) => row !== "|")).toEqual(["For an hour", "Until tomorrow", "Until next week", "Until a time…"]);
+});
+
+test("a row menu flipped above clears its own row's title", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await signInAndOpen(page);
+  for (const text of ["menu above one", "menu above two", "menu above three"]) {
+    await newChat(page);
+    await sendAndWait(page, text);
+  }
+  await showSidebar(page);
+  // The newest row sits near the list's bottom third; a long menu cannot fit under it.
+  await page.locator(".session-item", { hasText: "menu above one" }).first().locator(".session").click({ button: "right" });
+  const box = await page.evaluate(() => {
+    const menu = document.querySelector(".row-menu")!.getBoundingClientRect();
+    const row = document.querySelector(".session-item.is-menu-open .session")!.getBoundingClientRect();
+    return { menuBottom: menu.bottom, rowTop: row.top };
+  });
+  expect(box.menuBottom, "the menu's foot clears the row").toBeLessThanOrEqual(box.rowTop + 0.5);
+  await page.keyboard.press("Escape");
+});
+
+test("a Recent row menu is 32px, with Select joining the state group", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "menu compact without move");
+  await showSidebar(page);
+  await page.locator(".session-item", { hasText: "menu compact without move" }).first().locator(".session").click({ button: "right" });
+  // In Recent there is no Move pair: Select joins the state group and two rules separate three tasks.
+  expect((await menuShape(page)).filter((row) => row === "|")).toHaveLength(2);
+  const pitch = await page.getByRole("menuitem", { name: "Pin", exact: true }).evaluate((el) => el.getBoundingClientRect().height);
+  expect(pitch, "not the shared menu rule's 37px items").toBeLessThanOrEqual(33);
+  expect(pitch).toBeGreaterThanOrEqual(28);
+});
+
+test("Tab closes the row menu and moves the focus on, and so does the view menu", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "menu tab close");
+  await showSidebar(page);
+  const row = page.locator(".session-item", { hasText: "menu tab close" }).first().locator(".session");
+  await row.focus();
+  await page.keyboard.press("Shift+F10");
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await page.getByRole("button", { name: "Sidebar view: Recent" }).click();
+  await expect(page.getByRole("menu", { name: "Sidebar view" })).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("menu", { name: "Sidebar view" })).toHaveCount(0);
 });
 
 test("a long row menu opens inside the session list, never over the head above it", async ({ page }) => {

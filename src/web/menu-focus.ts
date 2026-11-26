@@ -87,6 +87,12 @@ export function useMenuKeys<T extends HTMLElement>(list: RefObject<T | null>, { 
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === "Tab") {
+      // A menu is one stop, not part of the page's walk: close here without preventDefault, so the press
+      // moves the focus on naturally from the opener. Filter dialogs keep their native Tab walk.
+      close();
+      return;
+    }
     const items = focusables(list.current);
     const at = items.indexOf(document.activeElement as HTMLElement);
     const next = menuStep(e.key, at, items.length);
