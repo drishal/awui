@@ -1337,7 +1337,9 @@ export function Sidebar(props: {
     opener.current = (document.activeElement as HTMLElement | null) ?? null;
     asideRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
     return () => {
-      const back = opener.current?.isConnected ? opener.current : document.querySelector<HTMLElement>(".drawer-open");
+      // The button that opens the drawer is the chat header's, so the focus goes back there (a touch press
+      // does not focus what it pressed, which is why the captured element is only the fallback).
+      const back = document.querySelector<HTMLElement>(".drawer-open") ?? (opener.current?.isConnected ? opener.current : null);
       back?.focus();
     };
   }, [open]);
