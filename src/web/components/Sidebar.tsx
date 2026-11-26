@@ -964,7 +964,7 @@ function ProjectMenuItem({ name, path, home, count, checked, onPick }: { name: s
   );
 }
 
-/** The head of a focused project: one button naming it (`‹ project · branch ⌄`) that switches project, and new chat. */
+/** The head of a focused project: an "All projects" back button, then one button naming it (`project · branch ⌄`) that switches project, and new chat. */
 function FocusedHeader({
   workspace,
   checkout,
@@ -1001,8 +1001,12 @@ function FocusedHeader({
   };
   return (
     <div className="project-head focus-head" ref={headWrap} data-testid="focused-project">
-      {/* One button, not two: the way back to every folder is the menu's first item, so the head spends
-          its width on the project's name and branch instead of on a chevron of its own. */}
+      {/* Back is its own button, not a chevron on the switch: a ‹ inside the switch read as a back
+          action but opened the menu, and the current project's accent rule leaked onto it. The menu's
+          first item ("All projects") stays as the second path out. */}
+      <button type="button" className="icon-btn focus-back" aria-label="All projects" title="All projects" onClick={onShowAll}>
+        <IconChevronLeft size={13} className="focus-back-chevron" />
+      </button>
       <button
         ref={switchRef}
         type="button"
@@ -1012,7 +1016,6 @@ function FocusedHeader({
         title={workspace.path}
         onClick={() => setMenuOpen((v) => !v)}
       >
-        <IconChevronLeft size={13} className="focus-back-chevron" />
         <ProjectBadge id={workspace.id} name={workspace.name} />
         <span className="project-name">{workspace.name}</span>
         {/* A branch says where the folder is out of; on the trunk it is the default, so the head stays quiet. */}
@@ -1319,7 +1322,8 @@ export function Sidebar(props: {
     () => sidebarSections(overview, groupOptions),
     [overview, props.query, props.harnessId, props.activeSessionId, props.activeChatId, now],
   );
-  const { pinned, needs, working } = sections;
+  // Focus mode's section scoping happens below, next to `focused`; `sections` stays the global one for
+  // its counts (the snoozed/settled/archived toggles) and the empty-state checks.
   const quickCount = useMemo(
     () => quickCounts(unhidden, groupOptions, isWorking),
     [unhidden, props.harnessId, props.activeStatus, props.activeSessionId, props.activeChatId, now],
@@ -1406,6 +1410,18 @@ export function Sidebar(props: {
   // "Search every chat" is offered for a query worth looking for (two letters), and the list under it then
   // tucks up to it: the row is the list's own search, not a group above it.
   const searchEverywhere = !!props.onSearchAll && props.query.trim().length >= 2;
+  // Focus mode claims one folder, so its Needs-you/Working sections must hold that folder's sessions
+  // alone: the section lists read a workspace-narrowed overview, while the rail's and the tab title's
+  // counts (computed elsewhere from the whole overview) stay global. A search shows every project
+  // instead, and the section lists stay empty then (sidebarSections returns none while searching).
+  const scopedOverview = useMemo(() => {
+    if (flat || focusId === null || searching) return overview;
+    return { ...overview, sessions: overview.sessions.filter((s) => s.workspaceId === focusId) };
+  }, [flat, focusId, searching, overview]);
+  const { pinned, needs, working } = useMemo(
+    () => (scopedOverview === overview ? sections : sidebarSections(scopedOverview, groupOptions)),
+    [scopedOverview, overview, sections, groupOptions],
+  );
   // A filter that leaves nothing to list offers to clear it; the matching count reads the full overview.
   // Enter opens the full-text search for an empty local result; local matches still work as usual.
   const noLocalMatches = (searching && props.overview.sessions.every((s) => s.harnessId !== props.harnessId || !s.title.toLowerCase().includes(props.query.trim().toLowerCase())));

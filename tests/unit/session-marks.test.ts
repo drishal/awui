@@ -158,3 +158,32 @@ describe("the sidebar's places", () => {
     expect(new Date(week?.until ?? 0).toString()).toContain("Mon Oct 12 2026 09:00");
   });
 });
+
+describe("sidebarSections inside a focused project", () => {
+  const s = (id: string, workspaceId: string, extra: Partial<ProjectSession> = {}): ProjectSession => ({ id, harnessId: asHarnessId("pi"), title: id, updatedAt: "2026-10-08T10:00:00Z", workspaceId, ...extra });
+  const two: SessionsOverview = {
+    workspaces: [
+      { id: "alpha", path: "/alpha", name: "alpha" },
+      { id: "beta", path: "/beta", name: "beta" },
+    ],
+    sessions: [
+      s("alpha-plain", "alpha"),
+      s("beta-asks", "beta", { liveChatId: "c1", status: "running", asking: true }),
+      s("beta-busy", "beta", { liveChatId: "c2", status: "running" }),
+      s("alpha-works", "alpha", { liveChatId: "c3", status: "running" }),
+    ],
+    errors: [],
+  };
+  const opts = { currentId: "alpha", query: "", harnessId: "pi" };
+
+  it("scopes needs and working to the focused workspace when the overview is narrowed to it", () => {
+    const focused: SessionsOverview = { ...two, sessions: two.sessions.filter((x) => x.workspaceId === "alpha") };
+    const sections = sidebarSections(focused, opts);
+    expect(sections.needs.map((x) => x.id)).toEqual([]);
+    expect(sections.working.map((x) => x.id)).toEqual(["alpha-works"]);
+    // The unscoped overview keeps the global sections (the rail's and the tab title's counts read that one).
+    const global = sidebarSections(two, opts);
+    expect(global.needs.map((x) => x.id)).toEqual(["beta-asks"]);
+    expect(global.working.map((x) => x.id)).toEqual(["beta-busy", "alpha-works"]);
+  });
+});

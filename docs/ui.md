@@ -207,10 +207,15 @@ a literal colour.
   and Settings stay in a cluster at the strip's bottom, where the tray would be. Narrower it
   hides completely and the chat header's expand button returns it. The project switch menu
   orders itself as places then actions: All projects, every folder with the one you are in
-  checked (`role="menuitemradio"`), a rule, then "Set an icon…". The focus head shows its
-  branch after the name's `·` only when the folder is not on its trunk. `project-path.ts`
-  words a folder for the switch menu: home-relative, middle-cut (`~/…/dotfiles`), the full
-  path on hover.
+  checked (`role="menuitemradio"`), a rule, then "Set an icon…". The focus head is a separate
+  24 px muted **All projects** back button (its glyph in the mark column, never the current
+  project's accent — the `is-current` accent rule excludes `.focus-back-chevron`), then the
+  switch (badge, name, branch after the name's `·` only off the trunk, ⌄), then **+**; the
+  focused rows sit at the list's own edge (`.focus-group .session-sublist{padding-left:0}`),
+  and its Needs-you/Working sections are scoped to the focused folder (a workspace-narrowed
+  overview feeds `sidebarSections`; the rail's and the tab title's counts stay global).
+  `project-path.ts` words a folder for the switch menu: home-relative, middle-cut
+  (`~/…/dotfiles`), the full path on hover.
 - **Text:** `--chat-font` = 14.5 px × `--chat-scale` (config.yml's text size).
   A small uppercase section label (Recent, Todos, Actions) is 600 weight at
   `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat

@@ -3,6 +3,26 @@
 import { expect, test, type Page } from "@playwright/test";
 import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
+
+/** A theme colour as the browser paints it (a token can be a hex, a mix, or a color() function). */
+async function paintedColor(page: Page, token: string): Promise<string> {
+  return page.evaluate((name) => {
+    const probe = document.createElement("span");
+    probe.style.color = `var(${name})`;
+    document.body.append(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  }, token);
+}
+
+/** A second project (beta) holding sessions of its own, so focus mode has somewhere to leak from. */
+async function seedBeta(page: Page, request: import("@playwright/test").APIRequestContext, text: string): Promise<void> {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
+  const other = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await request.post(`/api/chats/${other.chatId}/messages`, { data: { text, mode: "normal" } });
+}
 /** The menu's rows in order, a `|` for each group rule and a folded group's own rows inline, so a test reads its shape. */
 async function menuShape(page: Page): Promise<string[]> {
   return page.getByRole("menu").evaluate((menu) =>
@@ -227,7 +247,7 @@ test("the project switch menu walks with the arrows and Escape returns to its bu
   await expect(button).toBeFocused();
 });
 
-test("the focus head is one button naming the project, and its menu counts and places the folders", async ({ page, request }) => {
+test("the focus head has a separate All projects back button beside its switch, and the switch menu counts and places the folders", async ({ page, request }) => {
   await useProjectsView(page);
   const root = process.env.AWUI_E2E_ROOT as string;
   const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
@@ -238,10 +258,15 @@ test("the focus head is one button naming the project, and its menu counts and p
   await sendAndWait(page, "alpha for the head");
 
   const head = page.getByTestId("focused-project");
-  // The back chevron and the switch chevron are one control: the head is the project and its +.
-  await expect(head.getByRole("button")).toHaveCount(2);
-  await expect(head.locator(".focus-back")).toHaveCount(0);
+  // Back is its own button, not a chevron that opens the switch menu: the head is back + switch + new chat.
+  await expect(head.getByRole("button")).toHaveCount(3);
+  const back = head.getByRole("button", { name: "All projects", exact: true });
+  await expect(back).toBeVisible();
+  await expect(back).toHaveCSS("width", "24px");
+  await expect(back.locator("svg")).toHaveCSS("color", await back.evaluate((el) => getComputedStyle(el).color));
   const button = head.locator(".focus-switch");
+  // The switch keeps badge, name, branch and ⌄ — and no back chevron of its own.
+  await expect(button.locator(".focus-back-chevron")).toHaveCount(0);
   await expect(button.locator(".project-name")).toHaveText("alpha");
   // The count is the menu's fact now, not the head's.
   await expect(button.locator(".group-count")).toHaveCount(0);
@@ -339,4 +364,71 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await expect(page.locator(".sidebar")).toBeHidden();
   await expect.poll(() => page.locator(".main").evaluate((el) => Math.round(el.getBoundingClientRect().left))).toBe(0);
   await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+});
+
+test("focus mode scopes the Needs-you and Working sections to the focused project", async ({ page, request }) => {
+  await useProjectsView(page);
+  // beta holds a chat waiting on an answer; alpha is the folder on screen.
+  await seedBeta(page, request, "please ask first, in beta for the focus scope");
+  await signInAndOpen(page, "alpha");
+  await newChat(page);
+  await sendAndWait(page, "an alpha chat for the focus scope");
+  await showSidebar(page);
+  const head = page.getByTestId("focused-project");
+  await expect(head.locator(".project-name")).toHaveText("alpha");
+  // The head says alpha, so a needs-you row from beta must not stand under it.
+  const needs = page.getByTestId("needs-group");
+  await expect(needs).toHaveCount(0);
+  // Out of focus, the same waiting chat is back in the global section.
+  await head.getByRole("button", { name: "All projects", exact: true }).click();
+  await expect(needs).toHaveCount(1);
+  await expect(needs.locator(".session", { hasText: "please ask first, in beta for the focus scope" })).toHaveCount(1);
+});
+
+test("the focused rows sit at the list's own edge, not indented 24px under a headless sibling", async ({ page, request }) => {
+  await useProjectsView(page);
+  await seedBeta(page, request, "beta for the focus indent");
+  await signInAndOpen(page, "alpha");
+  await newChat(page);
+  await sendAndWait(page, "alpha for the focus indent");
+  await showSidebar(page);
+  await expect(page.getByTestId("focused-project").locator(".project-name")).toHaveText("alpha");
+  await expect(page.locator(".focus-group .session-sublist")).toHaveCSS("padding-left", "0px");
+});
+
+test("Tab reaches All projects in the focused head and Enter shows every folder", async ({ page, request }) => {
+  await useProjectsView(page);
+  await seedBeta(page, request, "beta for the back button's keyboard");
+  await signInAndOpen(page, "alpha");
+  // A chat on screen, not the start screen a fresh New chat leaves: the sidebar's rows are live then.
+  await sendAndWait(page, "alpha for the back button's keyboard");
+  await showSidebar(page);
+  const head = page.getByTestId("focused-project");
+  await expect(head.locator(".project-name")).toHaveText("alpha");
+  const back = head.getByRole("button", { name: "All projects", exact: true });
+  await back.focus();
+  await expect(back).toBeFocused();
+  // Shift+Tab from the switch button is the back button: it precedes the switch in the tab order.
+  await head.locator(".focus-switch").focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(back).toBeFocused();
+  // Tab forward from the back button returns to the switch, and Shift+Tab leaves it on the back button.
+  await page.keyboard.press("Tab");
+  await expect(head.locator(".focus-switch")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(back).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(head).toHaveCount(0);
+  await expect(page.getByTestId("project-group")).toHaveCount(2);
+});
+
+test("the focused head's back chevron is muted, never the current project's accent", async ({ page, request }) => {
+  await useProjectsView(page);
+  await seedBeta(page, request, "beta for the muted chevron");
+  await signInAndOpen(page, "alpha");
+  await newChat(page);
+  await sendAndWait(page, "alpha for the muted chevron");
+  await showSidebar(page);
+  const back = page.getByTestId("focused-project").getByRole("button", { name: "All projects", exact: true });
+  await expect(back.locator("svg")).toHaveCSS("color", await paintedColor(page, "--muted-text"));
 });

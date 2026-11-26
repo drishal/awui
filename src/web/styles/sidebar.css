@@ -799,7 +799,9 @@
   color: var(--text);
 }
 
-.project-group.is-current .project-toggle svg:not(.group-chevron) {
+/* The badge carries the current project's accent; the back button's chevron is not part of that,
+   and the focussed head's switch chevron stays muted too. */
+.project-group.is-current .project-toggle svg:not(.group-chevron, .focus-back-chevron) {
   color: var(--accent);
 }
 
@@ -1389,12 +1391,23 @@
   cursor: pointer;
 }
 
-/* The focused head is one button: a back chevron, the project's badge and name, its branch after a middot,
-   and the switch's own chevron at the end (the count lives in the menu now). */
+/* Back is a separate small muted button before the switch, its glyph on the rows' mark column. */
+.focus-head .focus-back {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--muted-text);
+}
+
 .focus-switch .focus-back-chevron {
   flex: none;
-  margin-left: -2px;
   color: var(--muted-text);
+}
+
+/* A focused project has no sibling folders to indent under: its rows sit at the list's own edge,
+   and so does the active row's wash. */
+.focus-group .session-sublist {
+  padding-left: 0;
 }
 
 .focus-switch .group-chevron {
