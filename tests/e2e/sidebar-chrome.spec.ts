@@ -313,3 +313,29 @@ test.describe("phone drawer", () => {
     await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).display)).toBe("none");
   });
 });
+
+test("the row whose ⋯ menu is open keeps a wash, so the menu names its row", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "menu owner row");
+  // A second chat on screen, so the row under test is an ordinary one (the open session has a wash of its
+  // own, drawn behind the list).
+  await newChat(page);
+  await sendAndWait(page, "the chat on screen");
+  await showSidebar(page);
+  const item = page.getByRole("complementary", { name: "Sessions" }).locator(".session-item", { hasText: "menu owner row" }).first();
+  const session = item.locator(".session");
+  // At rest the row is the panel's own surface, with no wash of its own.
+  await expect(session).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  // Opened from the keyboard, so the pointer is nowhere near the row: what lights it is the open menu.
+  await session.press("Shift+F10");
+  await expect(page.getByRole("menu")).toBeVisible();
+  // Its 90ms fade runs; once it has finished, the row sits on the same wash the pointer gives it.
+  await expect.poll(async () => session.evaluate((el) => el.getAnimations().length)).toBe(0);
+  const open = await session.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(open, "the menu's own row stays lit while it is open").not.toBe("rgba(0, 0, 0, 0)");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await session.hover();
+  await expect.poll(async () => session.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(open);
+});

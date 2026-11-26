@@ -1103,6 +1103,13 @@
   background: var(--hover);
 }
 
+/* The row a menu was opened from keeps the pointer's wash while that menu is up: the menu covers the row
+   it acts on (its own subline included), so nothing else on screen would say which row it belongs to. The
+   open session keeps its stronger wash and rule. */
+.session-item.is-menu-open > .session:not(.is-active) {
+  background: var(--hover);
+}
+
 /* The open session is the list's anchor: a stronger wash and a 2px rule in its own harness colour at the
    row's left edge, which is what tells it apart from eight rows that differ only in their words. Both
    are inset, so the rule is clipped by the row's radius instead of cutting into the sidebar's gutter. */

@@ -188,7 +188,9 @@ a literal colour.
   says "Open in this server"), and parked / herdr / handed-over share one 12px muted
   glyph, in that priority, with the whole story in the card. Sidebar-local `--hover`
   is 9% ink (1.2:1 on the panel) with a 90ms background transition (removed with the
-  rest of motion). The state words take sidebar-local `--row-warn`, `--row-accent` and
+  rest of motion), and the row a menu was opened from keeps that wash while the menu
+  is up (`.is-menu-open` on the `.session` inside it), so a menu still names its row
+  where it covers it. The state words take sidebar-local `--row-warn`, `--row-accent` and
   `--row-ok`, each a step from its token toward `--text` so it clears 4.5:1 on the
   panel; the open row deepens them further and gives its title `--text` and its meta
   and subline a step from `--muted-text` toward `--text` (88/12), so the row keeps its
