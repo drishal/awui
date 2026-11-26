@@ -19,8 +19,12 @@ export interface ProjectTag {
   branch: string | null;
 }
 
-/** One row of the flat list: a calendar heading (with how many sessions it holds), or a session with the project it is out of. */
-export type RecentRow = { kind: "divider"; key: string; label: string; count: number } | { kind: "session"; s: ProjectSession; tag: ProjectTag | null };
+/**
+ * One row of the flat list: a calendar heading, or a session with the project it is out of. A heading
+ * says its bucket's whole size (`count`) and how much of it this page draws (`shown`): a page's limit
+ * falls in the middle of one bucket, and a count that ignored that would disagree with the rows below it.
+ */
+export type RecentRow = { kind: "divider"; key: string; label: string; count: number; shown: number } | { kind: "session"; s: ProjectSession; tag: ProjectTag | null };
 
 export interface RecentOptions extends GroupOptions {
   /** The locale's first day of the week, as the Projects view gets it; Monday when absent. */
@@ -65,7 +69,7 @@ function inFlatList(s: ProjectSession, opts: RecentOptions, searching: boolean):
  * section, newest first, each run of them under its calendar heading (`dateGroup`: Today, Yesterday,
  * Earlier this week, Last week, …, never one above the first row). `limit` stops the list after that
  * many sessions; `hidden` is how many the page left for "Show more". A heading carries its bucket's whole
- * count, wherever the page's limit fell.
+ * count, wherever the page's limit fell, and how many of those rows it drew.
  */
 export function recentRows(overview: SessionsOverview, opts: RecentOptions, limit = RECENT_PAGE): { rows: RecentRow[]; hidden: number } {
   const searching = opts.query.trim() !== "";
@@ -80,6 +84,9 @@ export function recentRows(overview: SessionsOverview, opts: RecentOptions, limi
   const counts = new Map<string, number>();
   for (const s of list) counts.set(groupOf(s).key, (counts.get(groupOf(s).key) ?? 0) + 1);
   const rows: RecentRow[] = [];
+  // The rows the page draws under each heading, filled in below: the limit falls inside one bucket, and
+  // that heading is the only one that draws fewer rows than it counts.
+  const drawn = new Map<string, number>();
   let shown = 0;
   let hidden = 0;
   let key = "";
@@ -91,10 +98,11 @@ export function recentRows(overview: SessionsOverview, opts: RecentOptions, limi
     const group = groupOf(s);
     if (group.key !== key) {
       key = group.key;
-      rows.push({ kind: "divider", key: group.key, label: group.label, count: counts.get(group.key) ?? 0 });
+      rows.push({ kind: "divider", key: group.key, label: group.label, count: counts.get(group.key) ?? 0, shown: 0 });
     }
+    drawn.set(group.key, (drawn.get(group.key) ?? 0) + 1);
     rows.push({ kind: "session", s, tag: projectTag(overview, s) });
     shown += 1;
   }
-  return { rows, hidden };
+  return { rows: rows.map((r) => (r.kind === "divider" ? { ...r, shown: drawn.get(r.key) ?? 0 } : r)), hidden };
 }

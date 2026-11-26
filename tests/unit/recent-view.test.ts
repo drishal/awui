@@ -93,19 +93,20 @@ describe("recentRows", () => {
     const all = recentRows(overview(sessions), opts, RECENT_PAGE + SHOW_MORE + 3);
     expect(all.hidden).toBe(0);
     // A page that cuts a day in half still heads its rows, with the whole bucket's size.
-    expect(all.rows[0]).toEqual({ kind: "divider", key: "today", label: "Today", count: RECENT_PAGE + SHOW_MORE + 3 });
+    expect(all.rows[0]).toEqual({ kind: "divider", key: "today", label: "Today", count: RECENT_PAGE + SHOW_MORE + 3, shown: RECENT_PAGE + SHOW_MORE + 3 });
   });
 
-  it("gives each heading its bucket's size, whatever the page shows", () => {
+  it("gives each heading its bucket's size and how much of it the page drew", () => {
     const overview: SessionsOverview = {
       workspaces: [ws("webui")],
       sessions: [s("t1", "webui", "pi", at(0)), s("t2", "webui", "pi", at(0)), s("y1", "webui", "pi", at(1)), s("w1", "webui", "pi", at(9))],
       errors: [],
     };
-    expect(recentRows(overview, opts).rows.flatMap((r) => (r.kind === "divider" ? [`${r.label}:${r.count}`] : []))).toEqual(["Today:2", "Yesterday:1", "Last week:1"]);
-    // A page of two still says what the buckets hold: two today, so nothing is cut here, but the sizes
-    // do not follow the limit.
-    expect(recentRows(overview, opts, 1).rows.flatMap((r) => (r.kind === "divider" ? [`${r.label}:${r.count}`] : []))).toEqual(["Today:2"]);
+    const heads = (rows: ReturnType<typeof recentRows>["rows"]) => rows.flatMap((r) => (r.kind === "divider" ? [`${r.label}:${r.shown} of ${r.count}`] : []));
+    expect(heads(recentRows(overview, opts).rows)).toEqual(["Today:2 of 2", "Yesterday:1 of 1", "Last week:1 of 1"]);
+    // A page that stops inside a bucket says both: the sizes do not follow the limit, and the rows the page
+    // drew do — that is what the heading's "1 of 2" tells a reader (the rest is behind "Show more").
+    expect(heads(recentRows(overview, opts, 1).rows)).toEqual(["Today:1 of 2"]);
   });
 
   it("scopes to the shown harness and to the text search", () => {

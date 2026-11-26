@@ -41,10 +41,18 @@ test("the default view is one flat list across projects, a page at a time", asyn
   const seeded = Array.from({ length: 13 }, (_, i) => chat(request, `${root}/beta`, `paging row ${String(i + 1).padStart(2, "0")}`));
   await Promise.all(seeded);
   await expect(flatRows(page)).toHaveCount(12, { timeout: 20_000 });
+  // The page stopped inside the day, so its heading says how much of the day it drew, and how much it holds.
+  const today = sidebar(page).locator(".flat-group .date-divider .date-count").first();
+  await expect(today).toHaveText("12 of 13 sessions");
+  await expect(today).toHaveAttribute("title", "1 more session");
+  await expect(today.locator(".date-part")).toHaveCSS("font-size", "11px");
   const more = sidebar(page).locator(".flat-group .show-more");
   await expect(more).toHaveText("Show 1 more");
   await more.click();
   await expect(flatRows(page)).toHaveCount(13);
+  // The whole bucket is on screen now: the heading says the bare size again.
+  await expect(today).toHaveText("13 sessions");
+  await expect(today).not.toHaveAttribute("title", /.+/);
   await expect(sidebar(page).locator(".flat-group .show-more")).toHaveCount(0);
 });
 

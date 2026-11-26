@@ -62,7 +62,8 @@ test("a calendar heading is a sentence-case signpost, not a title", async ({ pag
     return count && age ? { countRight: count.right, ageRight: age.right, text } : null;
   });
   expect(column, "the heading carries its bucket's count").not.toBeNull();
-  expect(column?.text, "the count says how many, and what it counts").toMatch(/^\d+ sessions?$/);
+  // Its bucket's whole size, or how much of it the page drew ("12 of 15") where the page stopped inside it.
+  expect(column?.text, "the count says how many, and what it counts").toMatch(/^(\d+ of )?\d+ sessions?$/);
   // Assistive tech hears the list's structure: the dates are level-3 headings, and the count carries its
   // unit rather than a bare number.
   await expect(heading).toHaveAttribute("role", "heading");

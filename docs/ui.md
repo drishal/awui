@@ -163,7 +163,9 @@ a literal colour.
   has one text edge: a date heading's text and every section head's label start on the
   rows' titles' edge (34px into a 292px panel); only marks hang in the mark column
   (18px), and every count ends on the age column. A date heading carries its bucket's
-  size there, and a section head outranks it: the state a section names reads in
+  size there — or, where the page stopped inside that bucket, how much of it the page drew
+  (`12 of 15`, 11px, the rest in its `title`) — and a section head outranks it: the state a
+  section names reads in
   `--text-2` at 600 where a date is `--muted-text` at 500, its count likewise. Both
   are `role="heading"` at `aria-level` 3 for assistive tech, and every count carries
   its unit ("4 sessions", not a bare number; a foldable section head says its own name

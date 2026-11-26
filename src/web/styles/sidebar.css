@@ -704,6 +704,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A page can stop inside a bucket, and the heading then says "12 of 15": one step smaller (11px), so the
+   longer words still end on the ages' column instead of pushing the date's label aside. */
+.date-part {
+  font-size: 11px;
+}
+
 /* Project groups (Hermes Desktop): a folder row with its sessions below, on the same contract. The
    separation belongs between groups (14px, 10px at compact density); a head sits 4px over its first
    row, so it reads as that group's label rather than one more row of the list. */

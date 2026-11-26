@@ -624,16 +624,21 @@ function SessionRow({
   );
 }
 
-/** A calendar heading: its words, and how many sessions the bucket holds at the age column's end. */
-function DateHeading({ label, count }: { label: string; count: number }) {
+/**
+ * A calendar heading: its words, and how many sessions the bucket holds at the age column's end. When the
+ * page drew only part of the bucket the heading says both ("12 of 15"), because a bare count would then
+ * disagree with the rows under it; the rest is in its tooltip.
+ */
+function DateHeading({ label, count, shown = count }: { label: string; count: number; shown?: number }) {
+  const part = shown < count;
   return (
     // A heading, for a reader that walks the list by its structure: the dates are its levels, and the
     // count keeps its unit for the same reason ("1 session", not "1").
     <li className="date-divider" role="heading" aria-level={3}>
       <span className="date-label">{label}</span>
       <span className="date-fade" aria-hidden="true" />
-      <span className="date-count">
-        {count}
+      <span className="date-count" {...(part ? { title: `${count - shown} more ${count - shown === 1 ? "session" : "sessions"}` } : {})}>
+        {part ? <span className="date-part">{`${shown} of ${count}`}</span> : count}
         {/* The number alone would be read as part of the date; the unit says what it counts. */}
         <span className="visually-hidden"> {count === 1 ? "session" : "sessions"}</span>
       </span>
@@ -1121,7 +1126,7 @@ function FocusedProjectView({
   for (const sec of sections) {
     const list = sec.sessions.slice(0, Math.max(0, VISIBLE_CURRENT + pages * SHOW_MORE - count));
     if (list.length === 0) continue;
-    if (sec.label !== "") rows.push(<DateHeading key={`d-${sec.label}`} label={sec.label} count={sec.sessions.length} />);
+    if (sec.label !== "") rows.push(<DateHeading key={`d-${sec.label}`} label={sec.label} count={sec.sessions.length} shown={list.length} />);
     for (const s of list) {
       count++;
       const markable = !s.id.includes(":live-");
@@ -1666,7 +1671,7 @@ export function Sidebar(props: {
                   <ActiveWash />
                   {recent.rows.map((r) =>
                     r.kind === "divider" ? (
-                      <DateHeading key={`d-${r.key}`} label={r.label} count={r.count} />
+                      <DateHeading key={`d-${r.key}`} label={r.label} count={r.count} shown={r.shown} />
                     ) : (
                       flatRow(r.s, r.tag)
                     ),
