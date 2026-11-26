@@ -1549,7 +1549,9 @@ test("the sidebar collapses and expands from its header, and stays that way", as
   await expect(sidebar).toBeHidden();
   await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeFocused();
   const mainLeft = () => page.locator(".main").evaluate((el) => el.getBoundingClientRect().left);
-  await expect.poll(mainLeft).toBeLessThan(2);
+  // Wide enough for the 44 px rail (the narrower hide is the next test).
+  await expect(page.locator(".sidebar-rail")).toBeVisible();
+  await expect.poll(mainLeft).toBeCloseTo(44, 0);
   await page.reload();
   await expect(page.locator(".chat-header")).toBeVisible();
   await expect(sidebar).toBeHidden();

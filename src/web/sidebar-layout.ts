@@ -7,6 +7,8 @@ import { load, save } from "./storage.js";
 /** Below this width (and above the phone drawer's 820 px) the sidebar folds away by itself. */
 const AUTO_COLLAPSE_BELOW = 1200;
 const NARROW_QUERY = `(min-width: 820px) and (max-width: ${AUTO_COLLAPSE_BELOW - 1}px)`;
+/** From this width a collapsed sidebar leaves its 44 px rail; narrower, it hides completely. */
+const RAIL_QUERY = "(min-width: 1100px)";
 
 export function useSidebarLayout() {
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => clampSidebar(load<number>("sidebarWidth", SIDEBAR_DEFAULT)));
@@ -18,6 +20,7 @@ export function useSidebarLayout() {
   // Narrow windows (a vertical monitor, a tiled half screen) fold the sidebar away by
   // themselves, unless the user reopens it; crossing the threshold again resets that.
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches);
+  const [rail, setRail] = useState(() => window.matchMedia(RAIL_QUERY).matches);
   const [openedWhileNarrow, setOpenedWhileNarrow] = useState(false);
   useEffect(() => {
     const query = window.matchMedia(NARROW_QUERY);
@@ -25,6 +28,12 @@ export function useSidebarLayout() {
       setNarrow(query.matches);
       setOpenedWhileNarrow(false);
     };
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  useEffect(() => {
+    const query = window.matchMedia(RAIL_QUERY);
+    const onChange = () => setRail(query.matches);
     query.addEventListener("change", onChange);
     return () => query.removeEventListener("change", onChange);
   }, []);
@@ -62,5 +71,6 @@ export function useSidebarLayout() {
     setDrawerOpen,
     narrow,
     openedWhileNarrow,
+    rail,
   };
 }

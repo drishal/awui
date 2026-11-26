@@ -245,3 +245,62 @@ test("the focus head is one button naming the project, and its menu counts and p
   expect(await menu.getByRole("menuitem", { name: /beta/ }).getAttribute("title")).toBe(`${root}/beta`);
 });
 
+test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narrower", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "settled for the rail");
+  // One chat waiting on an answer, so the amber count has something to count.
+  await page.getByRole("button", { name: "New chat in a new tab" }).click();
+  await send(page, "please ask first, for the rail");
+  await expect(page.getByTestId("approval-card")).toBeVisible();
+  await showSidebar(page);
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+
+  const rail = page.locator(".sidebar-rail");
+  await expect(rail).toBeVisible();
+  // The collapse animates its column (the is-toggling path): measure the rail where it settles.
+  await expect.poll(async () => Math.round((await rail.boundingBox())!.width)).toBe(44);
+  await expect(page.locator(".sidebar")).toBeHidden();
+  await expect.poll(() => page.locator(".main").evaluate((el) => Math.round(el.getBoundingClientRect().left))).toBe(44);
+  // The rail keeps the three actions and the one fact that matters.
+  await expect(rail.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  await expect(rail.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(rail.getByRole("button", { name: "Search and commands" })).toBeVisible();
+  const needs = rail.getByRole("button", { name: "1 waiting on you" });
+  await expect(needs).toBeVisible();
+
+  // A count opens the list it counts, and a row opens that chat.
+  await needs.click();
+  const peek = page.getByRole("menu", { name: "Waiting on you" });
+  await expect(peek.getByRole("menuitem", { name: /please ask first, for the rail/ })).toBeVisible();
+  await peek.getByRole("menuitem", { name: /please ask first, for the rail/ }).click();
+  await expect(page.getByTestId("approval-card")).toBeVisible();
+  await page.getByTestId("approval-card").getByRole("button", { name: "Approve" }).click();
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle", { timeout: 20_000 });
+
+  // New chat and search are still one press away.
+  await rail.getByRole("button", { name: "New chat" }).click();
+  const picker = page.getByRole("dialog", { name: "Choose a project folder" });
+  await expect(picker).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(picker).toBeHidden();
+  await rail.getByRole("button", { name: "Search and commands" }).click();
+  await expect(page.getByRole("dialog", { name: "Commands" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // Reduced motion: no width animation, so the rail is 44 px in the click's own frame.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await rail.getByRole("button", { name: "Expand sidebar" }).click();
+  await expect(page.locator(".sidebar")).toBeVisible();
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  expect(Math.round((await rail.boundingBox())!.width)).toBe(44);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+
+  // Narrower than 1100 px the rail goes: the old full hide, with the header's expand button.
+  await page.setViewportSize({ width: 1080, height: 860 });
+  await expect(rail).toHaveCount(0);
+  await expect(page.locator(".sidebar")).toBeHidden();
+  await expect.poll(() => page.locator(".main").evaluate((el) => Math.round(el.getBoundingClientRect().left))).toBe(0);
+  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+});

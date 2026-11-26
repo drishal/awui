@@ -66,6 +66,7 @@ import { LoginForm } from "./components/LoginForm.js";
 import { StartScreen } from "./components/StartScreen.js";
 import { ToolStyleContext } from "./tool-style.js";
 import { Sidebar, type MarkChange } from "./components/Sidebar.js";
+import { SidebarRail } from "./components/SidebarRail.js";
 import { SidebarResizer } from "./components/SidebarResizer.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { TabStrip } from "./components/TabStrip.js";
@@ -197,6 +198,7 @@ export function App() {
     setDrawerOpen,
     narrow,
     openedWhileNarrow,
+    rail,
   } = useSidebarLayout();
 
   /**
@@ -2155,6 +2157,8 @@ export function App() {
   // ---- render ---------------------------------------------------------------------------
 
   const collapsed = sidebarCollapsed || (narrow && !openedWhileNarrow && (boot?.ui.autocollapseSidebar ?? true));
+  // Wide enough to keep a 44 px rail when folded; narrower, the sidebar hides completely.
+  const railed = collapsed && rail;
 
   // Above the early returns: a hook must run on every render.
   const resumable = chat?.capabilities.supportsResumeCommand && chat.sessionId ? { harnessId: chat.harnessId, sessionId: chat.sessionId, workspaceId: chat.workspace.id } : null;
@@ -2222,9 +2226,22 @@ export function App() {
   return (
     <ToolStyleContext.Provider value={toolStyle}>
     <div
-      className={`app${collapsed ? " is-collapsed" : ""}${sidebarToggling ? " is-toggling" : ""}${boot && !boot.ui.showStatusBar ? " no-status-bar" : ""}`}
+      className={`app${collapsed ? " is-collapsed" : ""}${railed ? " is-railed" : ""}${sidebarToggling ? " is-toggling" : ""}${boot && !boot.ui.showStatusBar ? " no-status-bar" : ""}`}
       style={{ ["--sidebar-w" as string]: `${sidebarWidth}px` }}
     >
+      {railed ? (
+        <SidebarRail
+          overview={overview}
+          harnessId={harnessId}
+          onExpand={() => collapseSidebar(false)}
+          onNewChat={newChatInFolder}
+          onSearch={() => setPaletteOpen(true)}
+          onOpenSession={(s) => {
+            leaveRoom();
+            void openSession(s);
+          }}
+        />
+      ) : null}
       <Sidebar
         home={boot.home}
         limits={limits}
@@ -2390,7 +2407,8 @@ export function App() {
           <button type="button" className="icon-btn drawer-open" aria-label="Open menu" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
             <IconMenu size={18} />
           </button>
-          {collapsed ? (
+          {/* With the rail showing, its own expand button is the one: the header keeps no second one. */}
+          {collapsed && !railed ? (
             <button type="button" className="icon-btn sidebar-expand" aria-label="Expand sidebar" title="Expand sidebar" onClick={() => collapseSidebar(false)}>
               <IconSidebar size={16} />
             </button>

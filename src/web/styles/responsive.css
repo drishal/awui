@@ -29,6 +29,17 @@
   .sidebar-expand {
     margin-left: -8px;
   }
+
+  /* A folded sidebar on a wide screen keeps its 44 px rail (app-frame.css draws it), so expand, new chat,
+     search and the two live counts stay reachable. Narrower than 1100 px there is no rail: the full hide. */
+  .app.is-railed {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  /* The real sidebar leaves the grid: the rail takes its column. */
+  .app.is-railed .sidebar {
+    display: none;
+  }
 }
 
 @media (max-width: 819px) {
