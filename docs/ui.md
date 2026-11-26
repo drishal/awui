@@ -134,8 +134,9 @@ a literal colour.
   full ink, with the word “Unread” only in a visually hidden span for assistive tech.
   `config.yml`'s `sidebar_style: compact` sets `data-sidebar="compact"` on
   `<html>`, and `sidebar.css` ends with the handful of overrides that make the
-  rows tighter still (28px, a project suffix hugging the title at 8px and at most
-  34% of its line, with the same ⋯/age swap on hover, and 1px between rows).
+  rows tighter still (28px, a project suffix at most 34% of the line and right-aligned
+  against the age — one column on every row, 8px of room from the title, which ellipsises
+  first — with the same ⋯/age swap on hover, and 1px between rows).
   It changes the row look only: heads, chips, hover cards, and the wash keep
   their own rules, and a phone's row is still at least 44px tall.
 - **Sidebar list:** the sidebar draws one of two views (`sidebar-view.ts`, saved

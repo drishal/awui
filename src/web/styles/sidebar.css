@@ -1836,10 +1836,11 @@ body.is-resizing {
   align-content: center;
 }
 
-/* One line always: the title, its project's name hugging it 8px after (never more than 34% of the
-   line, ellipsised past that), and the age at the line's end, on the same column as every other row's.
-   The title's line takes the rest of a row without a suffix; with one it is only as wide as its words,
-   so the suffix sits against them rather than at a column of its own, and a long title gives way first. */
+/* One line always: the title, its project's name (never more than 34% of the line, ellipsised past that),
+   and the age at the line's end, on the same column as every other row's. The title takes the rest of a
+   row without a suffix. With one, the title is only as wide as its words and the suffix takes the free
+   space, so the project names form a column of their own beside the age rather than hugging whichever
+   title they happen to sit next to; a long title gives way first, and the ellipsis stays its own. */
 :root[data-sidebar="compact"] .session-body.has-sub {
   gap: 0;
 }
@@ -1859,15 +1860,22 @@ body.is-resizing {
   line-height: 16px;
 }
 
+/* The suffix takes the line's free space, so it starts at one x on every row of the list (a short title's
+   suffix and a long one's landed 98px apart), and the 8px it keeps from the title is the least room it
+   gets: a title that runs into it ellipsises instead. */
 :root[data-sidebar="compact"] .session-sub > .session-sub-name {
   flex: 0 0 auto;
   max-width: 34%;
-  margin-left: 8px;
+  margin-left: auto;
+  padding-left: 8px;
   color: var(--muted-text);
   font-size: 11.5px;
 }
 
+/* One auto margin on the line: the age keeps its own 6px from the suffix and no free space of its own,
+   so the suffix, not the gap, is what lines up. */
 :root[data-sidebar="compact"] .session-sub > .session-slot {
+  margin-left: 0;
   padding-left: 6px;
 }
 

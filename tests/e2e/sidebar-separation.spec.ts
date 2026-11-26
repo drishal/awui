@@ -277,11 +277,30 @@ test.describe("the compact rows", () => {
     const suffix = placed as { titleBottom: number; subTop: number; titleRight: number; subLeft: number };
     expect(suffix.subTop, "one line: the suffix starts on the title's own line").toBeLessThan(suffix.titleBottom);
     expect(suffix.subLeft).toBeGreaterThanOrEqual(suffix.titleRight);
-    await expect(item.locator(".session-sub-name")).toHaveCSS("margin-left", "8px");
     const compactWidth = await item.locator(".session-sub-name").evaluate((el) => ({ width: el.getBoundingClientRect().width, max: getComputedStyle(el).maxWidth }));
     const body = await item.locator(".session-body").evaluate((el) => el.getBoundingClientRect().width);
     expect(compactWidth.width).toBeLessThanOrEqual(body * 0.34 + 1);
     expect(compactWidth.max.endsWith("px") ? compactWidth.width : 0).toBeLessThanOrEqual(body * 0.34 + 1);
+    // A second row whose title is wider than the line: the suffix keeps one position, so the project names
+    // form a column beside the age. Hugging the title put a short row's suffix 98px left of a long one's.
+    await newChat(page);
+    await sendAndWait(page, "compact long row");
+    await send(page, `/rename ${LONG_TITLE}`);
+    // The row takes the new title when the list refreshes: measure the two once it is there.
+    const long = row(page, "a session title long enough").first();
+    await expect(long).toBeVisible();
+    const rights = await page.evaluate(() =>
+      [...document.querySelectorAll(".flat-group .session-item")].flatMap((el) => {
+        const right = el.querySelector(".session-sub-name")?.getBoundingClientRect().right;
+        return right === undefined ? [] : [right];
+      }),
+    );
+    expect(rights.length, "both compact rows carry a suffix").toBeGreaterThanOrEqual(2);
+    expect(Math.max(...rights) - Math.min(...rights), "the suffix has one position").toBeLessThanOrEqual(0.5);
+    // The title gives way first, with its own ellipsis, left of the suffix.
+    const titleBox = await long.locator(".session-title").evaluate((el) => ({ client: el.clientWidth, scroll: el.scrollWidth }));
+    expect(titleBox.scroll, "the long title is cut, not wrapped").toBeGreaterThan(titleBox.client);
+    expect(await long.locator(".session-title").evaluate((el) => el.clientHeight), "one line").toBeLessThanOrEqual(19);
     // The age at the line's end gets the same slot as ⋯ on hover, not a third column.
     await item.locator(".session").hover();
     await expect(item.locator(".session-meta")).toHaveCSS("opacity", "0", { timeout: 2000 });
