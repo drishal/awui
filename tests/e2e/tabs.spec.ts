@@ -297,8 +297,8 @@ test("the sidebar lifts what needs you and what is working, and settling can be 
   await tab(page, "settle me later").click();
   const working = page.getByTestId("working-group");
   await expect(working).toBeVisible({ timeout: 10_000 });
-  await expect(working.getByRole("button", { name: /Working/ })).toHaveAttribute("aria-expanded", "false");
-  await working.getByRole("button", { name: /Working/ }).click();
+  // The section is open by default, so a run in the background is on screen without a fold to open.
+  await expect(working.getByRole("button", { name: /^Working, \d+ sessions?$/ })).toHaveAttribute("aria-expanded", "true");
   await expect(working).toContainText("please ask first");
   await expect(working).toHaveCount(0, { timeout: 20_000 });
 

@@ -1278,7 +1278,9 @@ export function Sidebar(props: {
   const [showArchived, setShowArchived] = useState(false);
   const [showSettled, setShowSettled] = useState(false);
   const [showSnoozed, setShowSnoozed] = useState(false);
-  const [workingOpen, setWorkingOpen] = useState(() => load<boolean>("workingOpen", false));
+  // Open by default: a run in progress is the one thing in the list that is about to need a person. A
+  // device that folded it keeps its own choice (the fold is saved like the filters beside it).
+  const [workingOpen, setWorkingOpen] = useState(() => load<boolean>("workingOpen", true));
   // Snoozes end on the minute.
   const now = useNow(true, 60_000);
   const isActiveSession = (s: ProjectSession) =>

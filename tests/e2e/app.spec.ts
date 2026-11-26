@@ -1278,12 +1278,12 @@ test("a working session spins in the sidebar, also while another chat is open", 
   await send(page, "slow spinner run");
   const row = page.locator(".session", { hasText: "slow spinner run" });
   await expect(row.getByRole("img", { name: "Working" })).toBeVisible();
-  // Switch away: the run carries on in the background, in the folded Working section, and
-  // spins there until it settles; then it is back in its project.
+  // Switch away: the run carries on in the background, in the Working section, and spins there until
+  // it settles; then it is back in its project. The section is open by default, so its row is on screen.
   await newChat(page);
   const working = page.getByTestId("working-group");
   await expect(working.locator(".working-ring").first()).toBeVisible();
-  await working.getByRole("button", { name: /Working/ }).click();
+  await expect(working.getByRole("button", { name: /^Working, \d+ sessions?$/ })).toHaveAttribute("aria-expanded", "true");
   await expect(working.locator(".session", { hasText: "slow spinner run" }).getByRole("img", { name: "Working" })).toBeVisible();
   await expect(working).toHaveCount(0, { timeout: 15_000 });
   await expect(row.getByRole("img", { name: "Working" })).toHaveCount(0);
