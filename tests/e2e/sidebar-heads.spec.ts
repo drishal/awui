@@ -63,6 +63,11 @@ test("a calendar heading is a sentence-case signpost, not a title", async ({ pag
   });
   expect(column, "the heading carries its bucket's count").not.toBeNull();
   expect(column?.text, "the count says how many, and what it counts").toMatch(/^\d+ sessions?$/);
+  // Assistive tech hears the list's structure: the dates are level-3 headings, and the count carries its
+  // unit rather than a bare number.
+  await expect(heading).toHaveAttribute("role", "heading");
+  await expect(heading).toHaveAttribute("aria-level", "3");
+  await expect(page.getByRole("heading", { level: 3, name: /^Today/ })).toBeVisible();
   expect(Math.abs((column?.countRight ?? 0) - (column?.ageRight ?? 99)), "the count ends on the age column").toBeLessThanOrEqual(0.5);
 });
 
@@ -148,6 +153,11 @@ test("a section head outranks a date heading: second ink at 600 against muted at
   const needs = page.getByTestId("needs-group").locator(".section-name");
   await expect(needs).toHaveCSS("color", await painted(page, "--text-2"));
   await expect(needs).toHaveCSS("font-weight", "600");
+  // A section head is a heading of the same level as a date, with its count as words of its own.
+  await expect(needs).toHaveAttribute("role", "heading");
+  await expect(needs).toHaveAttribute("aria-level", "3");
+  await expect(page.getByRole("heading", { level: 3, name: "Needs you" })).toBeVisible();
+  await expect(page.getByTestId("needs-group").locator(".group-count")).toHaveText(/^\d+ sessions?$/);
   const date = sidebar(page).locator(".flat-group .date-divider").first();
   await expect(date).toHaveCSS("color", await painted(page, "--muted-text"));
   await expect(date).toHaveCSS("font-weight", "500");

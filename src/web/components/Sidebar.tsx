@@ -627,7 +627,9 @@ function SessionRow({
 /** A calendar heading: its words, and how many sessions the bucket holds at the age column's end. */
 function DateHeading({ label, count }: { label: string; count: number }) {
   return (
-    <li className="date-divider">
+    // A heading, for a reader that walks the list by its structure: the dates are its levels, and the
+    // count keeps its unit for the same reason ("1 session", not "1").
+    <li className="date-divider" role="heading" aria-level={3}>
       <span className="date-label">{label}</span>
       <span className="date-count">
         {count}
@@ -659,22 +661,30 @@ function SectionList({
   onToggle?: () => void;
   row: (s: ProjectSession) => React.ReactNode;
 }) {
+  // A foldable head carries its own name: the label and the count would run together as one string
+  // ("Working3 sessions") read from its contents, so it says them as words instead.
   return (
     <li className={`project-group section-group ${className}${open ? " is-open" : ""}`} data-testid={testId}>
       <div className="project-head">
         {onToggle ? (
-          <button type="button" className="project-toggle" aria-expanded={open} onClick={onToggle}>
+          <button type="button" className="project-toggle" aria-expanded={open} aria-label={`${title}, ${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`} onClick={onToggle}>
             <span className="section-icon" aria-hidden="true">{icon}</span>
-            <span className="project-name section-name">{title}</span>
+            <span className="project-name section-name" role="heading" aria-level={3}>{title}</span>
             {/* After the label, not before the icon: the icon keeps the rows' mark column. */}
             <IconChevronDown size={12} className="group-chevron" />
-            <span className="group-count">{sessions.length}</span>
+            <span className="group-count">
+              {sessions.length}
+              <span className="visually-hidden"> {sessions.length === 1 ? "session" : "sessions"}</span>
+            </span>
           </button>
         ) : (
           <span className="project-toggle is-static">
             <span className="section-icon" aria-hidden="true">{icon}</span>
-            <span className="project-name section-name">{title}</span>
-            <span className="group-count">{sessions.length}</span>
+            <span className="project-name section-name" role="heading" aria-level={3}>{title}</span>
+            <span className="group-count">
+              {sessions.length}
+              <span className="visually-hidden"> {sessions.length === 1 ? "session" : "sessions"}</span>
+            </span>
           </span>
         )}
       </div>

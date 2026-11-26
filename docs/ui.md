@@ -163,7 +163,10 @@ a literal colour.
   rows' titles' edge (34px into a 292px panel); only marks hang in the mark column
   (18px), and every count ends on the age column. A date heading carries its bucket's
   size there, and a section head outranks it: the state a section names reads in
-  `--text-2` at 600 where a date is `--muted-text` at 500, its count likewise. Date
+  `--text-2` at 600 where a date is `--muted-text` at 500, its count likewise. Both
+  are `role="heading"` at `aria-level` 3 for assistive tech, and every count carries
+  its unit ("4 sessions", not a bare number; a foldable section head says its own name
+  and count as words, since the spans would otherwise run together). Date
   headings stick to the
   scroller's top on the panel's own `--surface`. Groups leave 14px between them (10px at
   compact density) and 4px from a head to its first row. A folder head names its branch
