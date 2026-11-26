@@ -33,8 +33,9 @@ export function HarnessMenu({
   choices: HarnessChoice[];
   /** The harness in use; marked as selected in the list. */
   currentId: string | null;
-  /** "row": a full-width sidebar row that opens downward. "chip": a composer pill that opens upward. */
-  variant: "row" | "chip";
+  /** "row": a full-width sidebar row that opens downward. "chip": a composer pill that opens upward.
+   *  "mark": a bare harness mark (the collapsed rail); same downward menu as the row's. */
+  variant: "row" | "chip" | "mark";
   label: string;
   menuLabel: string;
   /** Replaces the harness name on the trigger (e.g. while a handoff runs). */
@@ -134,10 +135,10 @@ export function HarnessMenu({
       <button
         ref={trigger}
         type="button"
-        className={variant === "row" ? "harness-row" : "pill-select harness-chip"}
+        className={variant === "row" ? "harness-row" : variant === "mark" ? "icon-btn harness-mark-btn" : "pill-select harness-chip"}
         style={harnessColor(currentId ?? undefined)}
-        aria-label={variant === "row" ? `${label}: ${name}` : label}
-        {...(!staticLabel && hint ? { title: hint } : {})}
+        aria-label={variant === "chip" ? label : `${label}: ${name}`}
+        {...(!staticLabel && hint && variant !== "mark" ? { title: hint } : variant === "mark" ? { title: `${label}: ${name}` } : {})}
         aria-haspopup={staticLabel ? undefined : "listbox"}
         aria-expanded={open}
         disabled={!canOpen}
@@ -145,15 +146,21 @@ export function HarnessMenu({
         onClick={() => (open ? close(false) : show())}
         onKeyDown={onTriggerKey}
       >
-        <span className="harness-dot">
-          <HarnessMark harness={current} />
-        </span>
-        {/* The chevron is the name's neighbour, not the row's right end: 4px from it, inside the label. */}
-        <span className="harness-label">
-          <span className="harness-row-name">{name}</span>
-          {/* A lone harness's static title gets no affordance of a picker. */}
-          {variant === "row" && !staticLabel ? <IconChevronDown size={12} /> : null}
-        </span>
+        {variant === "mark" ? (
+          <HarnessMark harness={current} size={18} />
+        ) : (
+          <>
+            <span className="harness-dot">
+              <HarnessMark harness={current} />
+            </span>
+            {/* The chevron is the name's neighbour, not the row's right end: 4px from it, inside the label. */}
+            <span className="harness-label">
+              <span className="harness-row-name">{name}</span>
+              {/* A lone harness's static title gets no affordance of a picker. */}
+              {variant === "row" && !staticLabel ? <IconChevronDown size={12} /> : null}
+            </span>
+          </>
+        )}
       </button>
       {showMenu ? (
         <div

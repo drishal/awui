@@ -133,6 +133,37 @@
   margin-left: 0;
 }
 
+
+/* The rail leads with the harness's own mark (a 32px button like the rest), so a folded panel still
+   says which harness its list is scoped to. The menu below it is the head title's own. */
+.sidebar-rail .harness-menu-wrap.is-mark {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.sidebar-rail .harness-menu-wrap.is-mark .harness-mark-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--harness, var(--muted-text));
+}
+
+.sidebar-rail .harness-menu-wrap.is-mark .harness-mark-btn:hover {
+  background: var(--hover);
+}
+
+.sidebar-rail .harness-menu-wrap.is-mark .harness-menu {
+  left: calc(100% + 8px);
+  right: auto;
+  top: 0;
+  bottom: auto;
+}
 .rail-counts {
   display: grid;
   gap: 4px;

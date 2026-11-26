@@ -3,7 +3,8 @@
 // window keeps the full hide, where the chat header's expand button is the only way back. The rail reads the
 // same overview the sidebar does and owns nothing: opening a row opens a chat, exactly as the list does.
 import { useMemo, useRef, useState } from "react";
-import type { ProjectSession, SessionsOverview } from "../../shared/protocol.js";
+import type { HarnessStatus, ProjectSession, SessionsOverview } from "../../shared/protocol.js";
+import { HarnessMenu } from "./HarnessMenu.js";
 import { sidebarSections } from "../session-groups.js";
 import { plainTitle } from "../plain-title.js";
 import { useMenuKeys } from "../menu-focus.js";
@@ -16,7 +17,9 @@ type Peek = { kind: "needs" | "working"; at: DOMRect };
 
 export function SidebarRail({
   overview,
+  harnesses,
   harnessId,
+  onHarness,
   onExpand,
   onNewChat,
   onSearch,
@@ -26,7 +29,10 @@ export function SidebarRail({
   themeMenu,
 }: {
   overview: SessionsOverview;
+  /** The harnesses the list is scoped to, whose mark the rail leads with (opens the same harness menu). */
+  harnesses: HarnessStatus[];
   harnessId: string | null;
+  onHarness: (id: string) => void;
   onExpand: () => void;
   onNewChat: () => void;
   onSearch: () => void;
@@ -67,6 +73,17 @@ export function SidebarRail({
   const projects = useMemo(() => new Map(overview.workspaces.map((w) => [w.id, w.name])), [overview.workspaces]);
   return (
     <aside className="sidebar-rail" aria-label="Sidebar (collapsed)">
+      {/* The list behind the rail is scoped to one harness: its mark first, so the folded surface
+          still says which harness it is (and opens the same menu the head's title does). */}
+      <HarnessMenu
+        variant="mark"
+        label="Harness"
+        menuLabel="Harness"
+        currentId={harnessId}
+        choices={harnesses.map((h) => ({ harness: h, blocked: h.available ? null : (h.reason ?? "Not available") }))}
+        hint="Filters the list; new chats start with this agent."
+        onPick={onHarness}
+      />
       <button type="button" className="icon-btn sidebar-expand" aria-label="Expand sidebar" title="Expand sidebar" onClick={onExpand}>
         <IconSidebar size={16} />
       </button>

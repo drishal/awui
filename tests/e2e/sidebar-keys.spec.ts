@@ -308,6 +308,16 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await expect.poll(() => page.locator(".main").evaluate((el) => Math.round(el.getBoundingClientRect().left))).toBe(44);
   // The rail keeps the three actions and the one fact that matters.
   await expect(rail.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  // The rail names its harness: a 32px mark first, opening the same harness menu as the head's title.
+  const mark = rail.getByRole("button", { name: /^Harness: / });
+  await expect(mark).toBeVisible();
+  expect(Math.round((await mark.boundingBox())!.height)).toBe(32);
+  const expand = await rail.getByRole("button", { name: "Expand sidebar" }).boundingBox();
+  expect(Math.round((await mark.boundingBox())!.y), "the mark leads the rail").toBeLessThan(expand!.y);
+  await mark.click();
+  await expect(page.getByRole("listbox", { name: "Harness" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(rail.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "New chat" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "Search and commands" })).toBeVisible();
   // Each icon names its shortcut, as the app's own table has it.

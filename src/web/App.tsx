@@ -2248,7 +2248,9 @@ export function App() {
       {railed ? (
         <SidebarRail
           overview={overview}
+          harnesses={boot.harnesses}
           harnessId={harnessId}
+          onHarness={chooseHarness}
           onExpand={() => collapseSidebar(false)}
           onNewChat={newChatInFolder}
           onSearch={() => setPaletteOpen(true)}
