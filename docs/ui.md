@@ -163,6 +163,8 @@ a literal colour.
   (omp, Awui) ramps reasoning in grey, and one whose accent is `ok` (DeepSeek Harness)
   gets a grey shield, so no two parts ever share a hue.
 
+- **The effort slider's liquid:** the bead and its shadow share a transform. An analytic SVG neck must taper into the bead, not become a thin stick between two circles; its gap stays at most 22 px. The violet wash follows the bead by a bounded lag and reaches a stop before that stop turns violet. Ring only an actual bead-centre crossing, with at most two live animations per dot. `effort-spring.ts` and `effort-slider.spec.ts` own the geometry, containment, crossing, focus and fallback checks. Reduced motion and low-end coarse pointers use the static slider, including its selected-stop coloring. Test forced-colors strokes against the computed system `Highlight`, not a hard-coded RGB value.
+
 ## 4. See it without touching real chats
 
 The user's server (port 4783) holds their live chats: look at it, don't
