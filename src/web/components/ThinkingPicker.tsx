@@ -1,14 +1,14 @@
 // The thinking level as an effort slider: "Effort  High" over a track of
 // stops from Faster to Smarter, one per level the harness offers (weakest
 // first), with a liquid thumb that is dragged, clicked to, or moved with the
-// arrow keys (effort-spring.ts's springs, one pooled ripple per crossed stop,
-// a rolling value label). A change applies once the knob settles, so dragging
-// across levels sends one change, not one per stop. When the harness's route
-// sends a lower level than the one picked (Hermes's "ultra" sends "max"), the
-// pill and the popover say so. Reduced motion is a static slider: the thumb,
-// fill and dots jump, no tail, no ripple, no loop. Low-end phones drop the
-// tail and the goo filter and keep squash, ripple, swell and label.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+// arrow keys. A measured wash, an analytic neck and a shared-motion shadow
+// supply the liquid; no SVG filter or layout reads run during a drag. A change
+// applies once the knob settles, so dragging across levels sends one change,
+// not one per stop. When the harness's route sends a lower level than the one
+// picked (Hermes's "ultra" sends "max"), the pill and the popover say so.
+// Reduced motion and low-end coarse pointers have no independent tail: their
+// wash follows the bead, while the thumb remains on its selected stop.
+import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { useDismiss, useLeave } from "../hooks.js";
 import { levelTitle } from "../config-summary.js";
 import { motionOff } from "../morph.js";
@@ -18,6 +18,8 @@ import { clipBand } from "./ModelPicker.js";
 
 /** Quiet time after the last step before the level is sent. */
 const SETTLE_MS = 350;
+/** Only the last two ring animations are live; a busy drag cannot accumulate an unbounded pool. */
+const RING_MS = 440;
 
 export function ThinkingPicker({
   levels,
@@ -39,22 +41,29 @@ export function ThinkingPicker({
   const at = Math.max(0, levels.indexOf(current ?? ""));
   const [value, setValue] = useState(at);
   const [dragging, setDragging] = useState(false);
+  // The liquid SVG needs the track's pixel frame, measured once when the popover opens.
+  const [size, setSize] = useState({ width: 0, height: 0 });
   const wrap = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const slider = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLSpanElement>(null);
-  const tail = useRef<HTMLSpanElement>(null);
-  const shine = useRef<HTMLSpanElement>(null);
+  const shadow = useRef<HTMLSpanElement>(null);
+  const stops = useRef<HTMLSpanElement>(null);
+  const liquid = useRef<SVGSVGElement>(null);
+  const neck = useRef<SVGPathElement>(null);
+  const wash = useRef<SVGPathElement>(null);
+  const rim = useRef<SVGPathElement>(null);
   const timer = useRef<number | null>(null);
   const springs = useRef<SpringLoop | null>(null);
   const measured = useRef<{ left: number; width: number; inset: number } | null>(null);
   const stop = useRef<number>(at);
   const roll = useRef<HTMLSpanElement>(null);
+  const gradientId = useId();
   const last = levels.length - 1;
 
-  // One decision, made once: reduced motion has no rAF loop, and a low-end coarse pointer skips the tail
-  // and the goo filter and keeps squash, ripple, swell and label.
+  // One decision, made once: reduced motion has no rAF loop, and a low-end coarse pointer skips the
+  // independent liquid springs while keeping the thumb and the bow-wave dots alive.
   const still = motionOff();
   const lowEnd = useMemo(
     () => typeof navigator !== "undefined" && navigator.hardwareConcurrency <= 4 && window.matchMedia?.("(pointer: coarse)").matches === true,
@@ -89,7 +98,7 @@ export function ThinkingPicker({
   useDismiss(wrap, open, () => close(false), { escape: true });
 
   // The popover mounts with the picker open; the springs and the one measurement of the track are taken
-  // here, never per move.
+  // here, never per move. The band is measured from the clip root rather than the viewport alone.
   useLayoutEffect(() => {
     if (!open || !trigger.current) return;
     const rect = trigger.current.getBoundingClientRect();
@@ -98,22 +107,25 @@ export function ThinkingPicker({
     setBelow(room < 150 && band.bottom - rect.bottom > room);
     const r = track.current?.getBoundingClientRect();
     if (r) measured.current = { left: r.left, width: r.width, inset: r.height / 2 };
-    if (!still) {
-      springs.current?.stop();
-      springs.current = startSprings(
-        { thumb: thumb.current, tail: goo ? tail.current : null, shine: shine.current, track: track.current },
-        stopX(at),
-        { tail: goo },
-      );
-      if (track.current) track.current.style.setProperty("--x", `${stopX(at)}px`);
-    } else if (track.current) {
-      // Static path: the thumb, fill and dots sit at the value in the same paint.
-      track.current.style.setProperty("--x", `${stopX(at)}px`);
-    }
+    springs.current?.stop();
+    const atStop = stop.current;
+    springs.current = startSprings(
+      { thumb: thumb.current, shadow: shadow.current, stops: stops.current, neck: neck.current, washBody: wash.current, washRim: rim.current },
+      stopX(atStop), levels.map((_, i) => stopX(i)), track.current?.getBoundingClientRect().width ?? 0,
+      { tail: goo, onRing: (i) => ring(i), onWet: (i, wet) => stops.current?.children[i]?.classList.toggle("lit", wet) },
+    );
+    // Reduced motion and low-end coarse pointers keep the wash at the lead in one write, so their
+    // displayed level and the wash agree in the opening paint. No independent animation starts here.
+    // The one measured SVG frame is also the frame the stop coordinates and wash gradient use.
+    if (r && r.width > 0 && r.height > 0) setSize({ width: r.width, height: r.height });
+    // displayed level and the wash agree in the opening paint. No independent animation starts here.
     slider.current?.focus();
     // Runs only when the picker opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /** A stop's measured x in track coordinates; the opening effect stores the track's one geometry. */
+  const stopVar = (i: number): string => `${stopX(i).toFixed(2)}px`;
 
   /** The stop nearest the pointer, from the rect measured once at the gesture's start. */
   const stopAt = (clientX: number) => {
@@ -124,41 +136,32 @@ export function ThinkingPicker({
     return Math.round(Math.min(1, Math.max(0, ratio)) * last);
   };
 
-  /** A stop's x in px, from the same measurement (0 before the first measurement: the CSS math holds). */
+  /** A stop's x in px, from the same opening measurement (a single level has no travel and sits in the middle). */
   const stopX = (i: number): number => {
     const m = measured.current;
-    if (!m || last <= 0) return 0;
+    if (!m) return 0;
+    // A single stop has no travel: keep its bead at the track's midpoint, not half outside its left edge.
+    if (last <= 0) return m.width / 2;
     return m.inset + (i / last) * (m.width - m.inset * 2);
   };
 
-  /** The x for a stop as the track's CSS reads it: proportional, valid before any measurement. */
-  const stopVar = (i: number): string => {
-    if (measured.current) return `${stopX(i).toFixed(2)}px`;
-    return `calc(var(--inset) + ${(last > 0 ? i / last : 0).toFixed(4)} * (100% - 2 * var(--inset)))`;
-  };
 
-  /** One pooled ripple per stop: restart the crossed dot's span, never mount one. */
-  const ripple = (from: number, to: number): void => {
-    if (still) return;
-    const first = Math.min(from, to);
-    const lastStop = Math.max(from, to);
-    for (let i = first; i <= lastStop; i++) {
-      const dot = track.current?.querySelectorAll<HTMLElement>(".effort-stop")[i];
-      const span = dot?.querySelector<HTMLElement>(".effort-ripple");
-      if (!span) continue;
-      const run = span.animate(
-        [
-          { transform: "translate(-50%, -50%) scale(1)", opacity: 0.45 },
-          { transform: "translate(-50%, -50%) scale(3.2)", opacity: 0 },
-        ],
-        { duration: 360, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
-      );
-      run.addEventListener("finish", () => span.getAnimations().forEach((a) => a.cancel()));
-    }
+  /** Ring only a crossing reported by the integrator; no React render starts or pools an animation. */
+  const ring = (i: number): void => {
+    const dot = liquid.current?.querySelectorAll<SVGCircleElement>(".effort-ring")[i];
+    if (!dot) return;
+    const running = dot.getAnimations();
+    if (running.length >= 2) running[0]?.cancel();
+    const run = dot.animate(
+      [{ transform: "scale(.4)", opacity: 0, strokeWidth: 1.25 }, { opacity: 0.55, offset: 0.2 },
+        { transform: "scale(1)", opacity: 0, strokeWidth: 0.5 }],
+      { duration: RING_MS, easing: "cubic-bezier(.2,.65,.3,1)", id: "effort-ring" },
+    );
+    run.addEventListener("finish", () => dot.getAnimations().forEach((a) => { if (a.id === "effort-ring") a.cancel(); }));
   };
 
   /** The value label rolls to the new word: the outgoing word leaves toward the travel, the incoming one
-   *  arrives from it, in one clip (motion.css's .effort-roll). */
+   * arrives from it, in one clip (motion.css's .effort-roll). */
   const rollLabel = (word: string | undefined): void => {
     const el = roll.current;
     if (!el || word === undefined) return;
@@ -176,56 +179,59 @@ export function ThinkingPicker({
     );
   };
 
-  const targetSpring = (x: number): void => {
-    // --x moves the thumb, fill and dots in either path; the springs only run when motion is on.
-    if (!still) springs.current?.target(x);
-    if (track.current) track.current.style.setProperty("--x", `${x.toFixed(2)}px`);
-  };
-
-  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
+  /** Prepare a drag: measure once, then the loop owns the thumb and all its liquid layers. */
+  const beginDrag = (e: PointerEvent<HTMLDivElement>): boolean => {
+    if (e.button !== 0) return false;
     e.currentTarget.setPointerCapture(e.pointerId);
-    // Measured once at the gesture's start, never per move.
     const r = track.current?.getBoundingClientRect();
     if (r) measured.current = { left: r.left, width: r.width, inset: r.height / 2 };
     setDragging(true);
     slider.current?.focus();
-    const left = r?.left ?? 0;
+    return true;
+  };
+
+  /** Move the bead and the ARIA value together; React never represents the moving thumb. */
+  const moveTo = (clientX: number): void => {
+    const m = measured.current;
+    if (!m) return;
     // --x is the thumb's centre: it follows the pointer, held between the first and last stop so the
-    // 20px pill never leaves the track.
-    const inset = measured.current?.inset ?? 15;
-    targetSpring(Math.min(Math.max(e.clientX - left, inset), (measured.current?.width ?? 0) - inset));
-    const i = stopAt(e.clientX);
+    // 20px pill never leaves the track. target() also arms the landing wobble.
+    const left = m.left;
+    const x = Math.min(Math.max(clientX - left, m.inset), m.width - m.inset);
+    springs.current?.press(true, stop.current);
+    springs.current?.target(x, stop.current);
+    const i = stopAt(clientX);
     if (i !== stop.current) {
-      const from = stop.current;
       stop.current = i;
       setValue(i);
-      ripple(from, i);
       rollLabel(levels[i]);
     }
   };
+
+  /** Release snaps to the current stop; the armed integrator applies the landing wobble on arrival. */
+  const endDrag = (i: number): void => {
+    setDragging(false);
+    // Keep the departure stop until target() arms the landing: the newly selected stop may ring, the one left may not.
+    const from = stop.current;
+    stop.current = i;
+    springs.current?.press(false, from);
+    springs.current?.target(stopX(i), from);
+    commit(i, true);
+  };
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (beginDrag(e)) moveTo(e.clientX);
+  };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!dragging) return;
-    const m = measured.current;
-    if (!m) return;
-    targetSpring(Math.min(Math.max(e.clientX - m.left, m.inset), m.width - m.inset));
-    const i = stopAt(e.clientX);
-    if (i !== stop.current) {
-      const from = stop.current;
-      stop.current = i;
-      setValue(i);
-      ripple(from, i);
-      rollLabel(levels[i]);
-    }
+    if (dragging) moveTo(e.clientX);
   };
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging) return;
-    setDragging(false);
-    const i = stopAt(e.clientX);
-    stop.current = i;
-    springs.current?.target(stopX(i));
-    springs.current?.kick();
-    commit(i, true);
+    endDrag(stopAt(e.clientX));
+  };
+  const onPointerCancel = () => {
+    if (!dragging) return;
+    endDrag(stop.current);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -235,10 +241,9 @@ export function ThinkingPicker({
       const from = stop.current;
       stop.current = next;
       setValue(next);
-      // targetSpring writes --x even with the springs idle (reduced motion), so the thumb jumps in the
-      // same paint as the ARIA change.
-      targetSpring(stopX(next));
-      ripple(from, next);
+      // A keyboard change has no pointer press: the loop runs when motion is on, and rests the reduced
+      // or low-end liquid in the same paint as the ARIA value. It also arms the landing wobble.
+      springs.current?.target(stopX(next), from);
       rollLabel(levels[next]);
       commit(next);
     };
@@ -261,7 +266,6 @@ export function ThinkingPicker({
   };
 
   const shown = levels[value] ?? current ?? "default";
-  const position = last > 0 ? value / last : 0;
   const wide = useMemo(() => levels.reduce((w, l) => Math.max(w, levelTitle(l).length), 0), [levels]);
   const popStyle: CSSProperties = { ["--effort-wide" as string]: `${Math.max(4, wide)}ch` };
   return (
@@ -289,17 +293,6 @@ export function ThinkingPicker({
         <>
           <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(false)} />
           <div className={`model-pop effort-pop${below ? " is-below" : ""}${leaving ? " is-leaving" : ""}${still ? " is-still" : ""}`} role="dialog" aria-label="Thinking effort" style={popStyle}>
-            {goo ? (
-              <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}>
-                <defs>
-                  <filter id="effort-goo" x="-20%" y="-40%" width="140%" height="180%">
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
-                    <feColorMatrix in="blur" mode="matrix" values="0 0 0 19 -8 0 0 0 19 -8 0 0 0 19 -8 0 0 0 1 0" result="goo" />
-                    <feComposite in="SourceGraphic" in2="goo" operator="atop" />
-                  </filter>
-                </defs>
-              </svg>
-            ) : null}
             <div className="effort-head">
               <span className="effort-label">Effort</span>
               <span className="effort-value">
@@ -326,36 +319,45 @@ export function ThinkingPicker({
               aria-valuetext={shown}
               aria-disabled={disabled || undefined}
               onKeyDown={onKeyDown}
+              onLostPointerCapture={onPointerCancel}
             >
               <div
                 ref={track}
                 className="effort-track"
-                style={{ ["--pos" as string]: position }}
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
-                onPointerCancel={() => setDragging(false)}
+                onPointerCancel={onPointerCancel}
               >
-                <span className="effort-fill" />
-                {levels.map((level, i) => (
-                  <span
-                    key={level}
-                    className={`effort-stop${i <= value ? " is-passed" : ""}`}
-                    style={{ ["--atx" as string]: last > 0 ? (i / last) * 100 : 0, ["--atx-px" as string]: stopVar(i) }}
-                    title={levelTitle(level)}
-                  >
-                    <span className="effort-ripple" aria-hidden="true" />
-                  </span>
-                ))}
+                <svg className="effort-wash" aria-hidden="true" width={size.width} height={size.height}>
+                  <defs>
+                    <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1="0" x2={size.width}>
+                      <stop offset="0" stopColor="var(--thinking)" stopOpacity=".1" />
+                      <stop offset="1" stopColor="var(--thinking)" stopOpacity=".3" />
+                    </linearGradient>
+                  </defs>
+                  <path ref={wash} className="effort-wash-body" fill={`url(#${gradientId})`} clipPath="inset(0 round 15px)" />
+                  <path ref={rim} className="effort-wash-rim" />
+                </svg>
+                <span className="effort-stops" ref={stops} aria-hidden="true">
+                  {levels.map((level, i) => (
+                    <span
+                      key={level}
+                      className={`effort-stop${i <= value && !goo ? " is-passed" : ""}`}
+                      style={{ ["--atx-px" as string]: stopVar(i) }}
+                      title={levelTitle(level)}
+                    />
+                  ))}
+                </span>
+                <span className="effort-shadow" ref={shadow} aria-hidden="true" />
+{/* Low-end hardware and reduced motion keep the static thumb and meniscus, without the liquid or its rings. */}
                 {goo ? (
-                  <span className="effort-goo" aria-hidden="true">
-                    <span className="effort-tail" ref={tail} />
-                    <span className="effort-thumb" ref={thumb} />
-                  </span>
-                ) : (
-                  <span className="effort-thumb" ref={thumb} />
-                )}
-                <span className="effort-shine" ref={shine} aria-hidden="true" />
+                <svg ref={liquid} className="effort-liquid" aria-hidden="true" width={size.width} height={size.height}>
+                  {levels.map((level, i) => <circle key={level} className="effort-ring" cx={stopX(i)} cy={size.height / 2} r={13} />)}
+                  <path ref={neck} className="effort-neck" />
+                </svg>
+                ) : null}
+                <span className="effort-thumb" ref={thumb} />
               </div>
             </div>
           </div>
