@@ -18,6 +18,8 @@
    backdrop-filter gets a 98% face and the hairline instead of a blur that does nothing. */
 
 :root {
+  /* The composer's face is opaque and shared with the status stack. Its frost keeps the hue of what passes below. */
+  --dock-face: color-mix(in srgb, var(--raised) 70%, var(--card));
   /* How much of its face a glass surface keeps over the page. */
   --glass-tint: 76%;
   --glass-blur: 12px;
@@ -28,7 +30,7 @@
 .status-stack,
 .command-menu,
 .is-glass {
-  background: color-mix(in srgb, var(--glass-face, var(--surface)) var(--glass-tint), transparent);
+  background: color-mix(in srgb, var(--glass-face, var(--dock-face)) var(--glass-tint), transparent);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
@@ -36,7 +38,8 @@
 /* The composer is the one face the transcript lifts rather than recesses, so its frost keeps that face
    (the same mix its own rule draws) instead of dropping to the page's surface tone. */
 .composer-card {
-  --glass-face: color-mix(in srgb, var(--raised) 70%, var(--card));
+  --glass-tint: 92%;
+  --glass-saturate: 1;
 }
 
 
@@ -57,6 +60,12 @@
   border-radius: inherit;
   box-shadow: inset 0 1px 0 var(--glass-specular);
   pointer-events: none;
+}
+
+/* No specular lip above a base-only lane: on a coarse pointer the grip is a strip on that pill, not a second
+   outlined row. The layout change below puts the strip's finger target inside the lane. */
+.status-stack.is-base-only::before {
+  content: none;
 }
 
 /* No blur to draw: keep the face (its own shadow and border still separate it) and drop the work. */

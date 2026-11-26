@@ -96,6 +96,39 @@ test("the dock keeps its own frost, so its face does not pick up the hue of what
   expect(frost.filter).toContain("saturate(1)");
 });
 
+test("a lone branch lane wears the composer's face, with no frame of its own", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/gamma` } })).json()) as { id: string };
+  const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  {
+    // (The suite's server paints one scheme whatever the media says; the dark and light frames of this were
+    // checked by hand with /api/theme stubbed, and the face is one token, so the equality below is the invariant.)
+    const scheme = "default";
+    await page.goto(`/#chat=${chat.chatId}`);
+    await expect(page.getByTestId("git-row")).toBeVisible();
+    // Computed colours, not pixels: the lane and the composer resolve the same --dock-face (the lane opaque, the
+    // composer's frost at 92%), so their channels agree to rounding. Before, the lane painted --surface-2: 0.008 off
+    // here, and above the composer in one scheme and below the page in the other.
+    const faces = await page.evaluate(() => {
+      const channels = (el: Element) => {
+        const nums = (getComputedStyle(el).backgroundColor.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+        return nums.map((n) => (n > 1 ? n / 255 : n));
+      };
+      const stack = document.querySelector(".status-stack.is-base-only") as HTMLElement;
+      return {
+        lane: channels(document.querySelector('[data-testid="git-row"]') as Element),
+        composer: channels(document.querySelector(".composer-card") as Element),
+        frame: getComputedStyle(stack).borderTopWidth,
+        stackFace: getComputedStyle(stack).backgroundColor,
+      };
+    });
+    faces.lane.forEach((c, i) => expect(Math.abs(c - (faces.composer[i] as number)), `${scheme}: channel ${i}`).toBeLessThan(0.002));
+    // One outline, not a frame around a pill: the stack itself has neither a border nor a face.
+    expect(faces.frame, `${scheme}: no frame`).toBe("0px");
+    expect(faces.stackFace, `${scheme}: no surface`).toBe("rgba(0, 0, 0, 0)");
+  }
+});
+
 test("a chat switch lands with the dock whole, its branch lane already in place", async ({ page, request }) => {
   const root = process.env.AWUI_E2E_ROOT as string;
   const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/gamma` } })).json()) as { id: string };

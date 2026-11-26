@@ -91,7 +91,9 @@ a literal colour.
   `--muted`, `--accent`, `--link`, `--ok`, `--warn`, `--danger`; derived
   `--hairline`, `--hairline-strong`, `--hover`, `--active`, and `--raised` (a
   face that sits above its track, like a segmented control's chosen pill: the
-  surface on a light page, lightened on a dark one). A harness's colour
+  surface on a light page, lightened on a dark one); `--dock-face` (glass.css) is
+  the composer's own face, shared by the status stack and a lone branch lane so the
+  dock stands at one height in every scheme. A harness's colour
   is `--harness`, set per element by `harnessColor()` from its `accent`.
 - **Radii:** `--r-xs` 4, `--r-sm` 8, `--r-control` 8, `--r-md` 10, `--r-lg` 12,
   `--r-xl` 14, `--r-panel` 16 (px). A radius says what a thing is: controls

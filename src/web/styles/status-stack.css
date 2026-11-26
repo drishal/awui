@@ -5,12 +5,8 @@
 /* The composer's width and radius, so the two stack as one column with one edge rather than a narrower
    card perched on a wider one. */
 .status-stack {
-  /* The dock's own frost. glass.css gives every glass surface 76% of its face behind a saturate(1.6), and the
-     saturate boosts whatever blue sits behind it: over a plain chat that is the page's own tone, but with the
-     approval card up the same dock came out navy (round 7: two faces for one surface, 04 grey and 05 blue).
-     The dock keeps more of its face and boosts nothing, so it reads as the surface in every state and amber
-     stays the approval card's alone. A custom property resolves on the element that reads it, so these win
-     over glass.css's :root whatever order the two files load in. */
+  /* The dock shares the composer's opaque face. More of that face and no saturation keep the approval card's
+     amber out of the blur. The custom properties override glass.css's :root regardless of import order. */
   --glass-tint: 92%;
   --glass-saturate: 1;
   margin: 0 0 6px;
@@ -24,6 +20,7 @@
 
 .status-stack.is-hidden {
   border-color: transparent;
+  /* A hidden stack is not a second card either: its transparent frame leaves only the fold's quiet placeholder. */
   background: none;
 }
 
@@ -239,10 +236,23 @@
 
 /* Git row: its own bubble, detached from the card above it. */
 /* Alone, the stack is no card at all: no frame, no surface. With the frame gone its pills' edges are the composer
-   card's own (a 1px transparent border was still holding them a pixel in on each side). */
+   card's own (a 1px transparent border was still holding them a pixel in on each side). The pill itself wears the
+   composer's face (--dock-face, glass.css), so a lone lane sits at the composer's height instead of at --surface-2's,
+   which is lighter than the page in one scheme and darker in another; a frame around it would be a second outline. */
 .status-stack.is-base-only {
   border: 0;
   background: none;
+}
+
+.status-stack.is-base-only .git-row,
+.status-stack.is-base-only .direnv-row {
+  width: 100%;
+  border-radius: var(--r-lg);
+  background: var(--dock-face);
+}
+
+.status-stack.is-base-only .git-row:hover {
+  background: color-mix(in srgb, var(--dock-face), var(--text) 6%);
 }
 
 /* The stack's two pills — the project's environment at the top of it and git at its base — are one family: the same
@@ -266,13 +276,6 @@
   text-align: left;
 }
 
-/* Alone in the dock, with no card above them, each is the stack's own bubble: the composer's full width and its
-   card's radius, so the pair's edges are the composer's edges. */
-.status-stack.is-base-only .git-row,
-.status-stack.is-base-only .direnv-row {
-  width: 100%;
-  border-radius: var(--r-lg);
-}
 
 .status-stack.is-base-only .git-row {
   margin: 0;
