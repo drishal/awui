@@ -950,7 +950,6 @@ function FocusedHeader({
         <span className="project-name">{workspace.name}</span>
         {checkout?.branch ? (
           <>
-            <span className="project-branch-sep" aria-hidden="true">·</span>
             <span className="project-branch">{checkout.branch}</span>
           </>
         ) : null}
@@ -1347,7 +1346,9 @@ export function Sidebar(props: {
     (flat ? recent.rows.length === 0 : groups.every((g) => g.sessions.length === 0));
   // Every list that is one harness drops the row dots (see ProjectGroupView); the sections and the
   // projectless history read the whole overview for it.
-  const oneHarness = new Set(overview.sessions.map((s) => s.harnessId)).size <= 1;
+  // The Recent list and the sections show only the selected harness's sessions, so that is the set to judge: reading
+  // the whole overview put the same blue dot on every row of anyone who uses two harnesses.
+  const oneHarness = new Set(overview.sessions.filter((s) => !props.harnessId || s.harnessId === props.harnessId).map((s) => s.harnessId)).size <= 1;
   const sectionRow = (s: ProjectSession) => (
     <SessionRow
       key={s.id}

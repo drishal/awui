@@ -230,7 +230,7 @@
   color: var(--muted-text);
 }
 
-.search-field input {
+.search-field > input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -240,12 +240,12 @@
   font-size: 13px;
 }
 
-.search-field input:focus-visible {
+.search-field > input:focus-visible {
   outline: none;
   box-shadow: none;
 }
 
-.search-field:focus-within {
+.search-field:has(> input:focus-visible) {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
@@ -331,7 +331,7 @@
 
 .menu-list.filter-menu {
   position: fixed;
-  width: min(280px, calc(100vw - 24px));
+  width: min(300px, calc(100vw - 24px));
   max-height: calc(100dvh - 100px);
   overflow-y: auto;
   padding: 8px;
@@ -429,6 +429,19 @@
 .filter-label {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The popover lives inside the search field's box, so a bare `input` rule there once stretched these
+   too; they are fixed 14px controls in the accent, the label and count do the flexing. */
+.filter-row input {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .filter-count {
@@ -683,7 +696,8 @@
   padding-left: 24px;
 }
 
-.flat-group .session-sublist {
+.flat-group .session-sublist,
+.section-group .session-sublist {
   padding-left: 0;
 }
 
@@ -1508,7 +1522,7 @@ body.is-resizing {
 /* One ink for every title: the suffix beside it is dim enough to read as an annotation. */
 :root[data-sidebar="compact"] .session-sub {
   flex: 0 1 auto;
-  max-width: 40%;
+  max-width: 34%;
   font-size: 11.5px;
   line-height: 1;
 }
@@ -1521,6 +1535,19 @@ body.is-resizing {
 /* The ⋯ is centred with the one line it belongs to. */
 :root[data-sidebar="compact"] .session-more {
   top: 1px;
+}
+
+/* The marks are positioned for a two-line row's first line; on the one centred line they centre too. */
+:root[data-sidebar="compact"] .session :is(.harness-dot, .working-ring, .session-asking-dot) {
+  align-self: center;
+  margin-top: 0;
+}
+
+/* A mouse's gutter for the ⋯ (the pointer: fine rule above) is restated: the compact padding came later and out-specifies it. */
+@media (pointer: fine) {
+  :root[data-sidebar="compact"] .session {
+    padding-right: 34px;
+  }
 }
 
 /* A phone's 44px row height is phones.css's, unchanged: it has no suffix to fit. */
