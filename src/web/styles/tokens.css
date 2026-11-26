@@ -229,13 +229,14 @@
   --cat-web: var(--link);
   --cat-agent: var(--thinking);
   --cat-plan: var(--accent);
-  /* A project's monogram, four hues chosen from its name. None of them is a state colour: the accent
-     means a run (its ring and its word) everywhere in the sidebar, so a monogram in that hue read as one.
-     Slot 1 therefore shares the teal with slot 2, which is the cheaper half of the trade. */
+  /* A project's monogram, four hues chosen from its name. Four different ones, and none of them a state
+     colour: the accent means a run (its ring and its word) everywhere in the sidebar, so a monogram in that
+     hue read as one; amber is needs-you and green is done. Slots 1 and 2 used to share the teal, which put
+     one hue on two of three projects by construction (the slot is a hash of the name, mod 4). */
   --badge-1: var(--info);
-  --badge-2: var(--info);
-  --badge-3: var(--thinking);
-  --badge-4: var(--orange);
+  --badge-2: var(--thinking);
+  --badge-3: var(--orange);
+  --badge-4: var(--danger);
   /* A per-element --tone sets these; var() resolves where declared, so [data-tone]
      and the chips that set it declare them here. */
   --tone-wash: color-mix(in oklab, var(--tone, var(--muted)) var(--tint), var(--surface-2));

@@ -34,6 +34,7 @@ import { SidebarViewMenu } from "./SidebarViewMenu.js";
 import { ProjectBadge } from "./ProjectBadge.js";
 import { ProjectIconDialog } from "./ProjectIconDialog.js";
 import { setProjectIcon, useProjectIcons } from "../project-icons.js";
+import { projectSlots, type ProjectMonogram } from "../project-badge.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
@@ -366,6 +367,7 @@ function SessionRow({
   query = null,
   groupBranch = null,
   showHarness = true,
+  slot,
   onOpen,
   onMark,
   move,
@@ -378,6 +380,8 @@ function SessionRow({
   harnessName: string;
   /** The project a row is out of (the flat list, and the sections above the projects): its tag line. */
   tag?: ProjectTag | null;
+  /** The hue that project's badge wears in this list (see projectSlots): one hue per project, once for the set. */
+  slot?: ProjectMonogram["slot"];
   /** The Needs-you or Working section the row sits in: its heading already names the state, so the row keeps its age. */
   stateTone?: "needs" | "working" | null;
   /** The branch its project is checked out on (shown when it is not the trunk's, nor the head's). */
@@ -563,7 +567,7 @@ function SessionRow({
           {state.unread ? <span className="visually-hidden">Unread</span> : null}
           {sub ? (
             <span className={`session-sub${sub.kind === "branch" ? " is-branch" : ""}${sub.kind === "agent" ? ` session-agent is-${sub.state}` : ""}`} title={sub.kind === "agent" ? `${sub.line} · set by the agent ${ago(sub.at)}` : undefined}>
-              {sub.kind === "tag" ? <ProjectBadge id={sub.tag.id} name={sub.tag.name} size={12} /> : null}
+              {sub.kind === "tag" ? <ProjectBadge id={sub.tag.id} name={sub.tag.name} size={12} slot={slot} /> : null}
               <span className="session-sub-name">
                 {sub.kind === "tag" ? tagWords(sub.tag, sub.status) : sub.text}
               </span>
@@ -805,7 +809,10 @@ function ProjectGroupView({
   onMark,
   onReorder,
   onNewChat,
+  slots,
 }: {
+  /** Every project's badge hue in this sidebar, by name (project-badge.ts's projectSlots). */
+  slots: Map<string, ProjectMonogram["slot"]>;
   group: ProjectGroup;
   searching: boolean;
   /** The text the list is searching for, for a row to mark inside its title. */
@@ -922,7 +929,7 @@ function ProjectGroupView({
           {/* The head lies on the rows' columns: its badge hangs in their 10px mark slot, its name starts on
               their titles' edge, and the fold chevron follows the name so it takes no column of its own
               (a section head's chevron does the same). */}
-          <span className="head-mark"><ProjectBadge id={workspace.id} name={workspace.name} /></span>
+          <span className="head-mark"><ProjectBadge id={workspace.id} name={workspace.name} slot={slots.get(workspace.name)} /></span>
           <span className="project-name">{workspace.name}</span>
           {headBranch ? <span className="project-branch">{headBranch}</span> : null}
           {!open && sessions.some(isWorking) ? <WorkingRing colored={false} /> : null}
@@ -963,10 +970,10 @@ function ProjectGroupView({
 }
 
 /** A folder's place in a project menu: badge, name, home-relative path and one aligned count column. */
-function ProjectMenuItem({ id, name, path, home, count, checked, onPick }: { id: string; name: string; path: string; home: string; count: number; checked: boolean; onPick: () => void }) {
+function ProjectMenuItem({ id, name, path, home, count, checked, slot, onPick }: { id: string; name: string; path: string; home: string; count: number; checked: boolean; slot?: ProjectMonogram["slot"]; onPick: () => void }) {
   return (
     <button type="button" role="menuitemradio" aria-checked={checked} title={path} onClick={onPick}>
-      <ProjectBadge id={id} name={name} size={16} />
+      <ProjectBadge id={id} name={name} size={16} slot={slot} />
       <span className="project-menu-name">{name}</span>
       {/* Home-relative and cut in the middle: the root and the folder's own name are the parts worth keeping. */}
       <span className="project-menu-path muted">{shortPath(path, home)}</span>
@@ -989,6 +996,7 @@ function FocusedHeader({
   onShowAll,
   onFocus,
   scope,
+  slots,
 }: {
   workspace: WorkspaceInfo;
   checkout?: Checkout;
@@ -999,6 +1007,8 @@ function FocusedHeader({
   onShowAll: () => void;
   onFocus: (workspaceId: string) => void;
   scope: Array<{ workspace: WorkspaceInfo; count: number; current: boolean }>;
+  /** Every project's badge hue in this sidebar, by name: the menu's folders wear what the list's do. */
+  slots: Map<string, ProjectMonogram["slot"]>;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { render: showMenu, leaving } = useLeave(menuOpen);
@@ -1057,7 +1067,7 @@ function FocusedHeader({
                 is an action on that folder, not a place: it goes last, under its own rule. */}
             {scope.map((p) => (
               <li key={p.workspace.id} role="none">
-                <ProjectMenuItem id={p.workspace.id} name={p.workspace.name} path={p.workspace.path} home={home} count={p.count} checked={p.current} onPick={() => pick(() => onFocus(p.workspace.id))} />
+                <ProjectMenuItem id={p.workspace.id} name={p.workspace.name} path={p.workspace.path} home={home} count={p.count} checked={p.current} slot={slots.get(p.workspace.name)} onPick={() => pick(() => onFocus(p.workspace.id))} />
               </li>
             ))}
             <MenuSeparator />
@@ -1098,6 +1108,7 @@ function FocusedProjectView({
   onShowAll,
   onFocus,
   scope,
+  slots,
 }: {
   focused: NonNullable<ReturnType<typeof focusProject>>;
   query: string;
@@ -1115,6 +1126,8 @@ function FocusedProjectView({
   onShowAll: () => void;
   onFocus: (workspaceId: string) => void;
   scope: Array<{ workspace: WorkspaceInfo; count: number; current: boolean }>;
+  /** Every project's badge hue in this sidebar, by name: the switch menu's folders wear what the list's do. */
+  slots: Map<string, ProjectMonogram["slot"]>;
 }) {
   const [pages, setPages] = useState(0);
   const { workspace, checkout, sections } = focused;
@@ -1197,7 +1210,7 @@ function FocusedProjectView({
   const hidden = total - count;
   return (
     <li className="project-group is-open is-current focus-group">
-      <FocusedHeader workspace={workspace} {...(checkout ? { checkout } : {})} home={home} canStartChat={canStartChat} onNewChat={onNewChat} onShowAll={onShowAll} onFocus={onFocus} scope={scope} />
+      <FocusedHeader workspace={workspace} {...(checkout ? { checkout } : {})} home={home} canStartChat={canStartChat} onNewChat={onNewChat} onShowAll={onShowAll} onFocus={onFocus} scope={scope} slots={slots} />
       <ul className="session-sublist">
         <ActiveWash />
         {sections.length === 0 ? <li className="sidebar-note">No past sessions here yet</li> : rows}
@@ -1459,6 +1472,12 @@ export function Sidebar(props: {
   // The Recent list and the sections show only the selected harness's sessions, so that is the set to judge: reading
   // the whole overview put the same blue dot on every row of anyone who uses two harnesses.
   const oneHarness = new Set(overview.sessions.filter((s) => !props.harnessId || s.harnessId === props.harnessId).map((s) => s.harnessId)).size <= 1;
+  // One hue per project, worked out once over the sidebar's whole set of folders: two of three projects
+  // used to wear the same colour by chance (the slot is a hash of the name, mod 4), and a badge that
+  // repeats says nothing. The set is the overview's projects, so a folder keeps its hue in its head, in the
+  // switch menu and on the flat list's rows; the sort inside projectSlots is what makes that stable.
+  const badgeSlots = useMemo(() => projectSlots(overview.workspaces.map((w) => w.name)), [overview.workspaces]);
+  const tagSlot = (tag: ProjectTag | null): ProjectMonogram["slot"] | undefined => (tag === null ? undefined : badgeSlots.get(tag.name));
   const sectionRow = (s: ProjectSession, stateTone?: "needs" | "working") => (
     <SessionRow
       key={s.id}
@@ -1470,6 +1489,7 @@ export function Sidebar(props: {
       stateTone={stateTone}
       query={props.query}
       tag={projectTag(overview, s)}
+      slot={tagSlot(projectTag(overview, s))}
       provenance={provenanceOf(s, hideCtx)}
       onOpen={(newTab) => props.onOpenSession(s, newTab)}
       onMark={(change) => props.onMarkSession(s, change)}
@@ -1486,6 +1506,7 @@ export function Sidebar(props: {
       showHarness={!oneHarness}
       query={props.query}
       tag={tag}
+      slot={tagSlot(tag)}
       provenance={provenanceOf(s, hideCtx)}
       onOpen={(newTab) => props.onOpenSession(s, newTab)}
       onMark={(change) => props.onMarkSession(s, change)}
@@ -1726,6 +1747,7 @@ export function Sidebar(props: {
                 onShowAll={() => setFocus("all")}
                 onFocus={(id) => setFocus(id)}
                 scope={groups.map((g) => ({ workspace: g.workspace, count: g.sessions.length, current: g.workspace.id === focusId }))}
+                slots={badgeSlots}
               />
             ) : (
               groups.map((g) => (
@@ -1744,6 +1766,7 @@ export function Sidebar(props: {
                   onMark={props.onMarkSession}
                   onReorder={(ids) => props.harnessId && props.onReorderSessions(props.harnessId, g.workspace.id, ids)}
                   onNewChat={props.onNewChatIn}
+                  slots={badgeSlots}
                 />
               ))
             )}

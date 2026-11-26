@@ -1328,11 +1328,13 @@
   text-overflow: ellipsis;
 }
 
-/* The tag's badge is the head's, one size down: 12px, its letter (or its icon) set to fit inside it. */
+/* The tag's badge is the head's, one size down: 12px, its letter (or its icon) set to fit inside it. Nine
+   pixels is the smallest weight-700 letter that still reads as one: at 8px a D and an A were a smudge in a
+   screenshot, which is how they are met in a scrolled list. */
 .session-sub .project-badge,
 .session-sub .project-badge[data-icon] {
   border-radius: 3px;
-  font-size: 8px;
+  font-size: 9px;
 }
 
 /* An agent's own line is the quietest text in the list: the words stay muted, and its state is the
@@ -1849,9 +1851,12 @@ body.is-resizing {
 
 
 /* A project's monogram: its first letter in one of four theme colours taken from its name
-   (--badge-1..4 in tokens.css, none of them the accent, which means a run in this list). A wash with a
-   tinted letter rather than a solid fill, so four neighbours do not shout; no ring, since the 16px square
-   is small enough to need none; and a hue rotation of the accent could not tell them apart. */
+   (--badge-1..4 in tokens.css: four different hues, none of them the accent, which means a run in this list,
+   nor the amber of needs-you, nor the green of done). A wash with a tinted letter rather than a solid fill,
+   so four neighbours do not shout; no ring, since the 16px square is small enough to need none; and a hue
+   rotation of the accent could not tell them apart. The letter takes a step toward the text ink, because the
+   wash carries the same hue: at 100% it measured 3.65:1 on its own 22% wash in the light scheme, and at 84%
+   it clears 4.5:1 in both (light 4.67–5.27, dark 5.50–6.72). */
 .project-badge {
   --badge: var(--badge-1);
   display: inline-grid;
@@ -1859,7 +1864,7 @@ body.is-resizing {
   flex: none;
   border-radius: 4px;
   background: color-mix(in srgb, var(--badge) 22%, var(--card));
-  color: var(--badge);
+  color: color-mix(in oklab, var(--badge) 84%, var(--text));
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
