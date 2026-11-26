@@ -139,7 +139,7 @@ test("the filter menu answers Escape from its trigger and hands the focus back",
   await signInAndOpen(page);
   const trigger = page.getByRole("button", { name: /^Filters/ });
   await trigger.click();
-  const menu = page.getByRole("group", { name: "Filter sessions" });
+  const menu = page.getByRole("dialog", { name: "Filters", exact: true });
   await expect(menu).toBeVisible();
   // The menu takes the focus (its View, Show and Hide groups are one walk), and its arrows move it along.
   const focusedLabel = () => page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");

@@ -152,6 +152,14 @@ body {
     min-height: 44px;
   }
 
+  /* The Reset action's hit area grows to a thumb, but its row's pitch stays the menu's. */
+  .sidebar .filter-menu .filter-reset {
+    min-height: 44px;
+    margin-top: -12px;
+    margin-bottom: -12px;
+    padding: 0 8px;
+  }
+
   .sidebar .filter-menu .view-segment button {
     min-height: 44px;
   }

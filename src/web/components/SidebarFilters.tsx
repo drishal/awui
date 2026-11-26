@@ -3,10 +3,9 @@
 // Filter logic lives in sidebar-filter.ts; this owns only the popover and its state.
 import { useEffect, useRef, useState } from "react";
 import { HIDE_GROUPS, HIDE_HINTS, HIDE_LABELS, QUICK_FILTERS, QUICK_LABELS, type HideGroup, type QuickFilter } from "../sidebar-filter.js";
-import { IconCheck, IconFilter, IconPlus, IconRefresh } from "../icons.js";
+import { IconFilter, IconPlus, IconRefresh } from "../icons.js";
 import { useSidebarView } from "../sidebar-view.js";
 import { useMenuKeys } from "../menu-focus.js";
-
 export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts, onChange, onRefresh, onNewRoom, roomsAvailable }: {
   quick: QuickFilter | null;
   quickCounts: Record<QuickFilter, number>;
@@ -22,10 +21,9 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
   const menu = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<DOMRect | null>(null);
   const [view, setView] = useSidebarView();
+  // The roving item set is re-read when the Reset button appears or goes (a toggle changes the walk's length).
+  const keys = useMenuKeys(menu, { open: at !== null, close: () => setAt(null), opener: button, version: hide.length });
   const active = hide.length + (quick ? 1 : 0);
-  // Escape closes it from anywhere (its trigger included) and puts the focus back on the trigger; the
-  // arrows walk its rows, which are one tab stop.
-  const keys = useMenuKeys(menu, { open: at !== null, close: () => setAt(null), opener: button });
   const toggle = (group: HideGroup) => onChange(hide.includes(group) ? hide.filter((g) => g !== group) : [...hide, group]);
   const clear = () => onChange([]);
   useEffect(() => {
@@ -52,9 +50,9 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
         title="Filter sessions and choose a view"
         onClick={() => {
           if (at) return setAt(null);
-          // The popover is 300 px wide and the panel is narrower than that: it hangs from the search field's
-          // own left edge (clamped into the viewport) rather than from the chip, whose right edge would push
-          // it off the screen's left.
+          // The popover is wider than the chip and must end inside the rail: it hangs from the search
+          // field's own left edge (clamped into the viewport) rather than from the chip, whose right
+          // edge would push it off the screen's left.
           const field = button.current?.closest(".search-field")?.getBoundingClientRect() ?? button.current?.getBoundingClientRect();
           setAt(field ?? null);
         }}
@@ -68,8 +66,8 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
           <div
             ref={menu}
             className="menu-list filter-menu"
-            role="group"
-            aria-label="Filter sessions"
+            role="dialog"
+            aria-label="Filters"
             style={{ position: "fixed", top: at.bottom + 4, left: Math.max(8, at.left) }}
             onKeyDown={keys.onKeyDown}
           >
@@ -94,21 +92,31 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
               ))}
             </div>
             <div className="filter-hide" role="group" aria-label="Hide sessions">
-              <span className="filter-heading">Hide</span>
+              <div className="filter-heading-row">
+                <span className="filter-heading">Hide</span>
+                {/* A quiet text action, and only while there is something to undo: an always-present
+                    "✓ Show everything" read as a checked option. */}
+                {hide.length > 0 ? (
+                  <button type="button" className="filter-reset" onClick={clear}>
+                    Reset
+                  </button>
+                ) : null}
+              </div>
               {HIDE_GROUPS.map((group) => (
-                <label key={group} className="filter-row" data-count={counts[group]}>
-                  <input type="checkbox" checked={hide.includes(group)} onChange={() => toggle(group)} />
-                  <span className="filter-text">
-                    <span className="filter-label">{HIDE_LABELS[group]}</span>
-                    {/* What the toggle takes out, in its own quiet line: "On the default branch" is a riddle on a phone. */}
-                    <span className="filter-hint">{HIDE_HINTS[group]}</span>
-                  </span>
+                <label key={group} className="filter-row" data-count={counts[group]} title={HIDE_HINTS[group]}>
+                  <input type="checkbox" checked={hide.includes(group)} onChange={() => toggle(group)} aria-describedby={`filter-hint-${group}`} />
+                  <span className="filter-label">{HIDE_LABELS[group]}</span>
                   <span className="filter-count">{counts[group]}</span>
                 </label>
               ))}
-              <button type="button" className="filter-clear" disabled={hide.length === 0} onClick={clear}>
-                <IconCheck size={14} /> Show everything
-              </button>
+              {/* What each toggle takes out, on hover (the label's title) and to a screen reader. The
+                  hidden spans live outside the labels: inside one, Chromium folds the description into
+                  the control's accessible name. */}
+              {HIDE_GROUPS.map((group) => (
+                <span key={group} id={`filter-hint-${group}`} className="visually-hidden">
+                  {HIDE_HINTS[group]}
+                </span>
+              ))}
             </div>
             <div className="filter-actions">
               <button type="button" disabled={!roomsAvailable} onClick={() => { setAt(null); onNewRoom(); }}>

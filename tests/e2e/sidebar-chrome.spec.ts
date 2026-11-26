@@ -61,7 +61,7 @@ test("search has no inner shadow and Enter searches an empty local result", asyn
   await expect(page.getByRole("dialog", { name: "Search every chat" })).toBeVisible();
 });
 
-test("the filter is a glyph in the field, and its popover is one left edge of controls", async ({ page }) => {
+test("the filter is a glyph in the field, and its popover is a short rail-wide dialog", async ({ page }) => {
   await signInAndOpen(page);
   const sidebar = page.locator(".sidebar");
   const filter = sidebar.getByRole("button", { name: "Filters", exact: true });
@@ -71,15 +71,37 @@ test("the filter is a glyph in the field, and its popover is one left edge of co
   await expect(filter).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await filter.hover();
   await expect(filter).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  // Its content is form controls, so it is announced as a dialog.
+  // Its content is form controls, so it is announced as a dialog — and the role agrees this time.
   await expect(filter).toHaveAttribute("aria-haspopup", "dialog");
   await filter.click();
-  const popover = page.locator(".filter-menu");
+  const popover = page.getByRole("dialog", { name: "Filters", exact: true });
   await expect(popover).toBeVisible();
-  // On screen at all: the popover hangs from the field's left edge, and its frame is inside the viewport.
+  // It ends inside the rail, not over the chat, and it is a menu's height, not a settings page's.
   const box = (await popover.boundingBox())!;
+  const side = (await sidebar.boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(8);
-  expect(Math.round(box.x + box.width)).toBeLessThanOrEqual(page.viewportSize()!.width - 8);
+  expect(Math.round(box.x + box.width), "the popover ends inside the sidebar").toBeLessThanOrEqual(Math.round(side.x + side.width));
+  expect(box.height, "a short menu, not 631px of hints").toBeLessThanOrEqual(470);
+  // Every row and action is on one 32px pitch.
+  for (const row of await popover.locator(".filter-row").all()) {
+    expect(Math.round((await row.boundingBox())!.height)).toBe(32);
+  }
+  for (const action of await popover.locator(".filter-actions button").all()) {
+    expect(Math.round((await action.boundingBox())!.height)).toBe(32);
+  }
+  // No visible hint lines, no "✓ Show everything": what a toggle takes out is its tooltip and description.
+  await expect(popover.locator(".filter-hint")).toHaveCount(0);
+  await expect(popover.locator(".filter-clear")).toHaveCount(0);
+  const sleeping = popover.getByRole("checkbox", { name: "Sleeping 0", exact: true });
+  await expect(sleeping).toHaveAttribute("aria-describedby", "filter-hint-sleeping");
+  await expect(sleeping.locator("..")).toHaveAttribute("title", "No run, no question, and nothing said for a day");
+  // Nothing is hidden yet, so there is no Reset.
+  await expect(popover.getByRole("button", { name: "Reset", exact: true })).toHaveCount(0);
+  // An unchecked radio is a ring, not a filled disc (Chromium rounds the declared 1.5px border to 1px).
+  const radio = popover.getByRole("radio", { name: /^Running/ });
+  await expect(radio).toHaveCSS("appearance", "none");
+  await expect(radio).toHaveCSS("border-top-style", "solid");
+  await expect(radio).toHaveCSS("border-radius", "50%");
   // The segment, the headings and the rows stand on one left edge (the heading's text on the row's control).
   const segment = (await popover.locator(".view-segment").boundingBox())!;
   const firstRow = (await popover.locator(".filter-row").first().boundingBox())!;
@@ -91,23 +113,53 @@ test("the filter is a glyph in the field, and its popover is one left edge of co
   const zero = popover.locator('.filter-row[data-count="0"]').first();
   await expect(zero).toHaveCSS("opacity", "0.55");
   await expect(zero.getByRole("radio")).toBeEnabled();
-  // Each hide option says what it takes out, under its label.
-  const hints = popover.locator(".filter-hide .filter-hint");
-  await expect(hints).toHaveCount(4);
-  await expect(hints.first()).toBeVisible();
-  await expect(hints.first()).toHaveCSS("font-size", "11px");
-  await expect(hints.first()).toContainText("No run, no question");
-  // "Show everything" is an item like its neighbours, with a glyph.
-  await expect(popover.locator(".filter-clear svg")).toHaveCount(1);
+  // The actions read as plain menu rows in the second ink, not a wrapping button bar of muted text.
+  await expect(popover.locator(".filter-actions")).toHaveCSS("flex-direction", "column");
 
-  // Tab moves inside the popover without lighting the search field's ring.
-  await page.keyboard.press("Tab");
-  await expect(popover).toContainText("View");
+  // Focus inside the popover never lights the search field's ring: while a checkbox has it, the field's
+  // box-shadow stays none (the global :focus-visible ring used to reach the field through the popover).
+  await sleeping.focus();
+  await expect(sleeping).toBeFocused();
   expect(await sidebar.locator(".search-field").evaluate((el) => getComputedStyle(el).boxShadow)).toBe("none");
-  // The arrows walk its controls as one tab stop; Escape returns the focus to the chip.
+
+  // The arrows walk View (the segment's buttons) → Show → Hide → actions as one tab stop.
+  await popover.getByRole("button", { name: "Recent", exact: true }).focus();
+  const walked: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    walked.push(
+      await page.evaluate(() => {
+        const el = document.activeElement as HTMLInputElement | HTMLButtonElement | null;
+        if (!el) return "";
+        return el.tagName === "INPUT" ? `${el.type}:${el.getAttribute("aria-describedby") ?? el.name}` : (el.textContent ?? "").trim();
+      }),
+    );
+    await page.keyboard.press("ArrowDown");
+  }
+  expect(walked[0]).toBe("Recent");
+  expect(walked).toContain("Projects");
+  expect(walked).toContain("radio:sidebar-quick-filter");
+  expect(walked).toContain("checkbox:filter-hint-sleeping");
+  expect(walked).toContain("Refresh sessions");
+  // Escape returns the focus to the chip.
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
   await expect(filter).toBeFocused();
+});
+
+test("the Hide heading's Reset shows only while something is hidden, and clears the toggles", async ({ page }) => {
+  await signInAndOpen(page, "gamma");
+  const sidebar = page.locator(".sidebar");
+  await sidebar.getByRole("button", { name: "Filters", exact: true }).click();
+  const popover = page.getByRole("dialog", { name: "Filters", exact: true });
+  await popover.getByRole("checkbox", { name: /On the default branch/ }).check();
+  const reset = popover.getByRole("button", { name: "Reset", exact: true });
+  await expect(reset).toBeVisible();
+  await expect(reset).toHaveCSS("font-size", "11.5px");
+  await expect(reset).toHaveCSS("font-weight", "500");
+  await reset.click();
+  await expect(reset).toHaveCount(0);
+  await expect(popover.getByRole("checkbox", { name: /On the default branch/ })).not.toBeChecked();
+  await page.keyboard.press("Escape");
 });
 
 test("the harness title is its name and chevron, and its own label", async ({ page }) => {

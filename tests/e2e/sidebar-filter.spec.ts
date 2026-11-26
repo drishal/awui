@@ -210,7 +210,7 @@ test("Filters hides a chat on the default branch, keeps the one on screen, and r
   // The quiet one goes, the one on screen stays (so it can still be closed from here).
   await expect(row(page, "settled on the default branch")).toHaveCount(0);
   await expect(row(page, "the chat on screen for the hide filter")).toHaveCount(1);
-  await hide.getByRole("button", { name: "Show everything" }).click();
+  await hide.getByRole("button", { name: "Reset", exact: true }).click();
   await expect(row(page, "settled on the default branch")).toHaveCount(1);
 
   // The choice is kept per device like the chips are.

@@ -104,11 +104,11 @@ export const HIDE_GROUPS: readonly HideGroup[] = ["sleeping", "defaultBranch", "
 export const HIDE_LABELS: Record<HideGroup, string> = {
   sleeping: "Sleeping",
   defaultBranch: "On the default branch",
-  automation: "Started by a routine",
-  agent: "Started by an agent",
+  automation: "From a routine",
+  agent: "From an agent",
 };
 
-/** One line under each label, saying what it takes out of the list. */
+/** What each toggle takes out of the list, as the row's tooltip and its control's description. */
 export const HIDE_HINTS: Record<HideGroup, string> = {
   sleeping: "No run, no question, and nothing said for a day",
   defaultBranch: "Chats in a project's own checkout on main/master, not in a worktree",
