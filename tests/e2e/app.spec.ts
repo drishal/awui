@@ -1211,12 +1211,17 @@ test("the sidebar focuses the current project and opens its sessions across harn
  * slide starts from. Sampled inside the page: a 190 ms move is gone before a
  * Playwright round trip can see it.
  */
-async function slideFrom(page: Page, selector: string): Promise<string> {
-  return page.evaluate(async (sel) => {
+async function slideFrom(page: Page, selector: string, then?: string): Promise<string> {
+  return page.evaluate(async ([sel, next]) => {
     const el = document.querySelector(".session-list");
     // A slide already running (the folder opened moments ago) would be read instead.
     el?.getAnimations().forEach((a) => a.cancel());
-    (document.querySelector(sel) as HTMLElement | null)?.click();
+    (document.querySelector(sel as string) as HTMLElement | null)?.click();
+    if (next) {
+      // A menu opens on that click: the choice that moves the list is its first item.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      (document.querySelector(next as string) as HTMLElement | null)?.click();
+    }
     // Opening a folder can take a request first; wait up to ~2.5 s for the slide.
     for (let i = 0; i < 150; i++) {
       const a = el?.getAnimations()[0];
@@ -1224,7 +1229,7 @@ async function slideFrom(page: Page, selector: string): Promise<string> {
       await new Promise((r) => requestAnimationFrame(r));
     }
     return "none";
-  }, selector);
+  }, [selector, then]);
 }
 
 test("the sidebar's list slides back when it returns to all projects", async ({ page }) => {
@@ -1235,7 +1240,7 @@ test("the sidebar's list slides back when it returns to all projects", async ({ 
   await signInAndOpen(page);
   await sendAndWait(page, "an alpha chat for the focus slide");
   // Back out to all projects: the list comes from the left.
-  expect(await slideFrom(page, '[data-testid="focused-project"] .focus-back')).toBe("translateX(-22px)");
+  expect(await slideFrom(page, '[data-testid="focused-project"] .focus-switch', '[role="menuitem"]')).toBe("translateX(-22px)");
   await expect(page.getByTestId("focused-project")).toHaveCount(0);
   // Into another folder, then ask for reduced motion: it returns the same way, without the slide.
   await page.getByRole("button", { name: "New chat", exact: true }).click();
@@ -1244,7 +1249,7 @@ test("the sidebar's list slides back when it returns to all projects", async ({ 
   await picker.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.getByTestId("focused-project").locator(".project-name")).toHaveText("beta");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  expect(await slideFrom(page, '[data-testid="focused-project"] .focus-back')).toBe("none");
+  expect(await slideFrom(page, '[data-testid="focused-project"] .focus-switch', '[role="menuitem"]')).toBe("none");
   await expect(page.getByTestId("focused-project")).toHaveCount(0);
 });
 

@@ -2226,6 +2226,7 @@ export function App() {
       style={{ ["--sidebar-w" as string]: `${sidebarWidth}px` }}
     >
       <Sidebar
+        home={boot.home}
         limits={limits}
         onMarkMany={(ids, change) => void markMany(ids, change)}
         resizer={<SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} onCommit={commitSidebarWidth} />}

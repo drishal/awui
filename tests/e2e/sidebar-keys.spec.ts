@@ -189,3 +189,59 @@ test("All projects stays chosen when a session opens in another folder", async (
   await expect(groups).toHaveCount(2);
 });
 
+test("the project switch menu walks with the arrows and Escape returns to its button", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  // A second folder with a session of its own, so the switch has somewhere to go.
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
+  const other = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await request.post(`/api/chats/${other.chatId}/messages`, { data: { text: "beta elsewhere", mode: "normal" } });
+  await signInAndOpen(page, "alpha");
+  await newChat(page);
+  await sendAndWait(page, "switch menu keys");
+  await showSidebar(page);
+  const head = page.getByTestId("focused-project");
+  await expect(head.locator(".project-name")).toHaveText("alpha");
+  const button = head.locator(".focus-switch");
+  await button.click();
+  const menu = page.getByRole("menu", { name: "Project" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem").first()).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem").nth(1)).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(menu.getByRole("menuitem").last()).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(menu.getByRole("menuitem").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(button).toBeFocused();
+});
+
+test("the focus head is one button naming the project, and its menu counts and places the folders", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
+  const other = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await request.post(`/api/chats/${other.chatId}/messages`, { data: { text: "beta for the head", mode: "normal" } });
+  await signInAndOpen(page, "alpha");
+  await newChat(page);
+  await sendAndWait(page, "alpha for the head");
+
+  const head = page.getByTestId("focused-project");
+  // The back chevron and the switch chevron are one control: the head is the project and its +.
+  await expect(head.getByRole("button")).toHaveCount(2);
+  await expect(head.locator(".focus-back")).toHaveCount(0);
+  const button = head.locator(".focus-switch");
+  await expect(button.locator(".project-name")).toHaveText("alpha");
+  // The count is the menu's fact now, not the head's.
+  await expect(button.locator(".group-count")).toHaveCount(0);
+  await button.click();
+  const menu = page.getByRole("menu", { name: "Project" });
+  await expect(menu.getByRole("menuitem").first()).toHaveText(/^All projects\s*\d+$/);
+  // A path is home-relative and cut in the middle: the root stays, and so does the folder's own name.
+  const shown = (await menu.locator(".project-menu-path").first().textContent()) ?? "";
+  expect(shown).toMatch(/^(\/tmp|~)\/…\/[a-z]+\/beta$/);
+  expect(await menu.locator(".project-menu-path").first().getAttribute("title")).toBe(null);
+  // The shortened line is for reading; the full path is one hover away.
+  expect(await menu.getByRole("menuitem", { name: /beta/ }).getAttribute("title")).toBe(`${root}/beta`);
+});
+

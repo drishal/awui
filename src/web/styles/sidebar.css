@@ -1089,6 +1089,24 @@
   cursor: pointer;
 }
 
+/* The focused head is one button: a back chevron, the project's badge and name, its branch after a middot,
+   and the switch's own chevron at the end (the count lives in the menu now). */
+.focus-switch .focus-back-chevron {
+  flex: none;
+  margin-left: -2px;
+  color: var(--muted-text);
+}
+
+.focus-switch .group-chevron {
+  margin-left: auto;
+}
+
+.project-branch-sep {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted-text);
+}
+
 /* In the focused head the "+" is always within reach (there is no other folder row for it). */
 .focus-group .project-head .project-new {
   opacity: 1;
@@ -1149,7 +1167,8 @@
   white-space: nowrap;
 }
 
-/* The path is the row's second line, and keeps its tail (the folder's own name) when it must be cut. */
+/* The path is the row's second line: home-relative and cut in the middle (project-path.ts), so it needs no
+   right-to-left trick to keep the folder's own name. */
 .project-menu-path {
   grid-column: 2;
   grid-row: 2;
@@ -1158,8 +1177,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11.5px;
-  direction: rtl;
-  text-align: left;
 }
 
 .focus-menu button > .group-count {

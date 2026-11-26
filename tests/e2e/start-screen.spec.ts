@@ -203,8 +203,9 @@ test("a project's + opens its start screen in a new tab, without replacing the s
   await sendAndWait(page, "a chat in beta");
   const before = await tabs(page).count();
   await showSidebar(page);
-  // The list is focused on beta; alpha's + is in All projects.
-  await page.getByTestId("focused-project").getByRole("button", { name: "All projects" }).click();
+  // The list is focused on beta; alpha's + is in All projects, the focus head's switch menu's first item.
+  await page.getByTestId("focused-project").locator(".focus-switch").click();
+  await page.getByRole("menuitem", { name: "All projects" }).click();
   await page.getByRole("button", { name: "New chat in alpha" }).click();
   await expect(page.getByRole("heading", { name: /What should Fake do in alpha\?/ })).toBeVisible();
   await expect(page.getByTestId("user-prompt")).toHaveCount(0);

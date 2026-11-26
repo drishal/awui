@@ -902,23 +902,24 @@ function ProjectGroupView({
   );
 }
 
-/** A folder's place in a project menu: its name, path, and count on one row. */
-function ProjectMenuItem({ name, path, count, onPick }: { name: string; path: string; count?: number; onPick: () => void }) {
+/** A folder's place in a project menu: its name, where it lives, and its count on one row. */
+function ProjectMenuItem({ name, path, home, count, onPick }: { name: string; path: string; home: string; count?: number; onPick: () => void }) {
   return (
     <button type="button" role="menuitem" title={path} onClick={onPick}>
       <ProjectBadge name={name} size={16} />
       <span className="project-menu-name">{name}</span>
-      {/* The path is cut on its left (the folder's own name is the part worth keeping); <bdi> keeps its slashes in order. */}
-      <span className="project-menu-path muted"><bdi>{path}</bdi></span>
+      {/* Home-relative and cut in the middle: the root and the folder's own name are the parts worth keeping. */}
+      <span className="project-menu-path muted">{shortPath(path, home)}</span>
       {count !== undefined ? <span className="group-count">{count}</span> : null}
     </button>
   );
 }
 
-/** The head of a focused project: "All projects" back, the project (a switch to another), new chat. */
+/** The head of a focused project: one button naming it (`‹ project · branch ⌄`) that switches project, and new chat. */
 function FocusedHeader({
   workspace,
   checkout,
+  home,
   canStartChat,
   onNewChat,
   onShowAll,
@@ -927,6 +928,8 @@ function FocusedHeader({
 }: {
   workspace: WorkspaceInfo;
   checkout?: Checkout;
+  /** The home folder, so the menu names folders where they live (see project-path.ts). */
+  home: string;
   canStartChat: boolean;
   onNewChat: (ws: WorkspaceInfo) => void;
   onShowAll: () => void;
@@ -939,38 +942,21 @@ function FocusedHeader({
   const icons = useProjectIcons();
   const headWrap = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLUListElement>(null);
+  const switchRef = useRef<HTMLButtonElement>(null);
   useDismiss(headWrap, menuOpen, () => setMenuOpen(false));
+  // Its own keyboard: the arrows walk it as one tab stop, Escape closes it and returns to the switch button.
+  const keys = useMenuKeys(menu, { open: menuOpen, close: () => setMenuOpen(false), opener: switchRef });
   const other = scope.filter((p) => p.workspace.id !== workspace.id);
   const pick = (run: () => void) => {
     setMenuOpen(false);
     run();
   };
-  // Menu keys: Escape closes (useDismiss's outside click too), arrows move, the first item takes the focus on open.
-  const onMenuKey = (e: React.KeyboardEvent<HTMLElement>) => {
-    if (e.key === "Escape") {
-      setMenuOpen(false);
-      return;
-    }
-    const buttons = menu.current?.querySelectorAll<HTMLButtonElement>("button");
-    if (!buttons?.length) return;
-    const index = [...buttons].findIndex((b) => b === document.activeElement);
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      (buttons[(index + 1) % buttons.length] as HTMLButtonElement).focus();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      (buttons[(index - 1 + buttons.length) % buttons.length] as HTMLButtonElement).focus();
-    }
-  };
-  useEffect(() => {
-    if (menuOpen) menu.current?.querySelector("button")?.focus();
-  }, [menuOpen]);
   return (
     <div className="project-head focus-head" ref={headWrap} data-testid="focused-project">
-      <button type="button" className="icon-btn focus-back" aria-label="All projects" title="All projects" onClick={() => pick(onShowAll)}>
-        <IconChevronLeft size={14} />
-      </button>
+      {/* One button, not two: the way back to every folder is the menu's first item, so the head spends
+          its width on the project's name and branch instead of on a chevron of its own. */}
       <button
+        ref={switchRef}
         type="button"
         className="project-toggle focus-switch"
         aria-haspopup="menu"
@@ -978,9 +964,15 @@ function FocusedHeader({
         title={workspace.path}
         onClick={() => setMenuOpen((v) => !v)}
       >
+        <IconChevronLeft size={13} className="focus-back-chevron" />
         <ProjectBadge id={workspace.id} name={workspace.name} />
         <span className="project-name">{workspace.name}</span>
-        {checkout?.branch ? <span className="project-branch">{checkout.branch}</span> : null}
+        {checkout?.branch ? (
+          <>
+            <span className="project-branch-sep" aria-hidden="true">·</span>
+            <span className="project-branch">{checkout.branch}</span>
+          </>
+        ) : null}
         <IconChevronDown size={12} className="group-chevron" />
       </button>
       <button type="button" className="icon-btn project-new" aria-label={`New chat in ${workspace.name}`} title={`New chat in ${workspace.name} in a new tab`} disabled={!canStartChat} onClick={() => onNewChat(workspace)}>
@@ -989,11 +981,12 @@ function FocusedHeader({
       {showMenu ? (
         <>
           <div className="menu-backdrop" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-          <ul ref={menu} className={`menu-list focus-menu${leaving ? " is-leaving" : ""}`} role="menu" aria-label="Project" onKeyDown={onMenuKey}>
+          <ul ref={menu} className={`menu-list focus-menu${leaving ? " is-leaving" : ""}`} role="menu" aria-label="Project" onKeyDown={keys.onKeyDown}>
             <li role="none" className="focus-menu-all">
               <button type="button" role="menuitem" onClick={() => pick(onShowAll)}>
                 <IconChevronLeft size={13} />
                 <span className="project-menu-name">All projects</span>
+                {scope.length > 0 ? <span className="group-count">{scope.reduce((n, p) => n + p.count, 0)}</span> : null}
               </button>
             </li>
             <li role="none">
@@ -1004,7 +997,7 @@ function FocusedHeader({
             </li>
             {other.map((p) => (
               <li key={p.workspace.id} role="none">
-                <ProjectMenuItem name={p.workspace.name} path={p.workspace.path} count={p.count} onPick={() => pick(() => onFocus(p.workspace.id))} />
+                <ProjectMenuItem name={p.workspace.name} path={p.workspace.path} home={home} count={p.count} onPick={() => pick(() => onFocus(p.workspace.id))} />
               </li>
             ))}
           </ul>
@@ -1023,6 +1016,7 @@ function FocusedHeader({
  */
 function FocusedProjectView({
   focused,
+  home,
   order,
   now,
   isActive,
@@ -1038,6 +1032,7 @@ function FocusedProjectView({
   scope,
 }: {
   focused: NonNullable<ReturnType<typeof focusProject>>;
+  home: string;
   order: string[] | undefined;
   now: number;
   isActive: (s: ProjectSession) => boolean;
@@ -1137,7 +1132,7 @@ function FocusedProjectView({
   const hidden = total - count;
   return (
     <li className="project-group is-open is-current focus-group">
-      <FocusedHeader workspace={workspace} {...(checkout ? { checkout } : {})} canStartChat={canStartChat} onNewChat={onNewChat} onShowAll={onShowAll} onFocus={onFocus} scope={scope} />
+      <FocusedHeader workspace={workspace} {...(checkout ? { checkout } : {})} home={home} canStartChat={canStartChat} onNewChat={onNewChat} onShowAll={onShowAll} onFocus={onFocus} scope={scope} />
       <ul className="session-sublist">
         <ActiveWash />
         {sections.length === 0 ? <li className="sidebar-note">No past sessions here yet</li> : rows}
@@ -1155,6 +1150,8 @@ function FocusedProjectView({
 
 export function Sidebar(props: {
   open: boolean;
+  /** The home folder (the server's), so the project menu shows `~/…/name` rather than a cut-off absolute path. */
+  home: string;
   /** Every account limits, whose reset the row menu can snooze until. */
   limits: UsageLimits | null;
   /** One bulk change for a selection of sessions (the endpoint takes them together). */
@@ -1603,6 +1600,7 @@ export function Sidebar(props: {
             ) : focused && !searching ? (
               <FocusedProjectView
                 focused={focused}
+                home={props.home}
                 order={overview.orders?.[`${props.harnessId}:${focused.workspace.id}`]}
                 now={now}
                 isActive={isActive}
