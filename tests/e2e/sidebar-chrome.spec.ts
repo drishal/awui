@@ -367,6 +367,19 @@ test.describe("phone drawer", () => {
   });
 });
 
+test("the needs-you shortcut is the phone drawer's: a desktop list never draws it", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "please ask first for the desktop shortcut");
+  await expect(page.getByTestId("approval-card")).toBeVisible();
+  // The chat on screen stays out of Needs you, so look at the list from another chat.
+  await newChat(page);
+  await sendAndWait(page, "another chat on screen");
+  await showSidebar(page);
+  await expect(page.locator('.sidebar [data-testid="needs-group"]')).toBeVisible();
+  await expect(page.locator(".sidebar .needs-you-shortcut")).toBeHidden();
+});
+
 test("the row whose ⋯ menu is open keeps a wash, so the menu names its row", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);

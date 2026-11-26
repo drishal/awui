@@ -389,6 +389,12 @@
   min-width: 0;
 }
 
+/* The needs-you shortcut is a phone drawer's: phones.css shows it (under 640px) once the list scrolls. Without
+   this base rule its `.new-chat` look drew it as a grey button at the foot of every desktop list. */
+.sidebar .needs-you-shortcut {
+  display: none;
+}
+
 .filter-chip {
   position: relative;
   display: inline-flex;
