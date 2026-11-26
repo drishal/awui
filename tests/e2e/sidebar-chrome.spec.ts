@@ -60,7 +60,7 @@ test("the two-row head and footer keep the controls on the new chrome", async ({
   await expect(sidebar.getByTestId("rooms-group")).toHaveCount(0);
   await expect(sidebar.locator(".harness-row-meta")).toHaveCount(0);
   // New chat is a plus, not the pencil this app uses for rename and edit.
-  const compose = sidebar.getByRole("button", { name: "New chat", exact: true });
+  const compose = sidebar.getByRole("button", { name: "New chat — choose project", exact: true });
   await expect(compose.locator("svg path")).toHaveAttribute("d", "M8 3v10M3 8h10");
   await expect(compose).toHaveAttribute("aria-keyshortcuts", "Control+N Meta+N");
   const filter = sidebar.getByRole("button", { name: "Filters", exact: true });
@@ -111,6 +111,34 @@ test("search has no inner shadow and Enter searches an empty local result", asyn
   await search.press("Enter");
   await expect(page.getByRole("dialog", { name: "Search every chat" })).toBeVisible();
 });
+test("search chrome fits every supported width in either view, with or without a query", async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await signInAndOpen(page);
+  const sidebar = page.locator(".sidebar");
+  const measure = async () => {
+    const width = await page.locator(".app").evaluate((el) => Number.parseFloat(getComputedStyle(el).getPropertyValue("--sidebar-w")));
+    const field = (await sidebar.locator(".search-field").boundingBox())!;
+    const filter = (await sidebar.locator(".filter-chip").boundingBox())!;
+    expect(filter.x + filter.width, `filter stays inside a ${width}px field`).toBeLessThanOrEqual(field.x + field.width - 3.5);
+    expect(filter.x + filter.width, `filter has one inset at ${width}px`).toBe(field.x + field.width - 4);
+    return filter.x;
+  };
+  for (const width of [200, 240, 292, 560]) {
+    await page.locator(".app").evaluate((el, next) => (el as HTMLElement).style.setProperty("--sidebar-w", `${next}px`), width);
+    await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(width);
+    const recent = await measure();
+    await sidebar.getByRole("searchbox", { name: "Search sessions" }).fill("needle");
+    expect(await measure(), "a query does not move the filter").toBe(recent);
+    await sidebar.getByRole("button", { name: "Sidebar view: Recent" }).click();
+    await page.getByRole("menuitemradio", { name: "Projects", exact: true }).click();
+    expect(await measure(), "Projects has the same filter position").toBe(recent);
+    await sidebar.getByRole("searchbox", { name: "Search sessions" }).fill("");
+    expect(await measure(), "clearing the query does not move the filter").toBe(recent);
+    await sidebar.getByRole("button", { name: "Sidebar view: Projects" }).click();
+    await page.getByRole("menuitemradio", { name: "Recent", exact: true }).click();
+  }
+});
+
 
 test("the filter is a glyph in the field, and its popover is a short rail-wide dialog", async ({ page }) => {
   await signInAndOpen(page);
@@ -148,6 +176,23 @@ test("the filter is a glyph in the field, and its popover is a short rail-wide d
   await expect(sleeping.locator("..")).toHaveAttribute("title", "No run, no question, and nothing said for a day");
   // Nothing is hidden yet, so there is no Reset.
   await expect(popover.getByRole("button", { name: "Reset", exact: true })).toHaveCount(0);
+  await expect(popover.locator(".filter-quick")).toHaveCSS("border-top-width", "0px");
+  await expect(popover.locator(".filter-quick")).toHaveCSS("margin-top", "0px");
+  await expect(popover.locator(".filter-quick")).toHaveCSS("padding-top", "0px");
+  const checkbox = popover.getByRole("checkbox", { name: /Sleeping/ });
+  await expect(checkbox).toHaveCSS("appearance", "none");
+  await expect(checkbox).toHaveCSS("border-radius", "4px");
+  await checkbox.check();
+  expect(await checkbox.evaluate((el) => ({
+    after: getComputedStyle(el, "::after").content,
+    fill: getComputedStyle(el).backgroundColor,
+    mark: getComputedStyle(el, "::after").borderLeftColor,
+  }))).toEqual({
+    after: '""',
+    fill: await painted(page, "--accent"),
+    mark: await painted(page, "--surface"),
+  });
+  await checkbox.uncheck();
   // An unchecked radio is a ring, not a filled disc (Chromium rounds the declared 1.5px border to 1px).
   const radio = popover.getByRole("radio", { name: /^Running/ });
   await expect(radio).toHaveCSS("appearance", "none");
@@ -161,7 +206,7 @@ test("the filter is a glyph in the field, and its popover is a short rail-wide d
   // Zero dims only its words, not the radio ring or the row's hit area.
   const zero = popover.locator('.filter-row[data-count="0"]').first();
   await expect(zero).toHaveCSS("opacity", "1");
-  await expect(zero.locator(".filter-label")).toHaveCSS("color", await painted(page, "--muted"));
+  await expect(zero.locator(".filter-label")).toHaveCSS("color", await painted(page, "--text-2"));
   await expect(zero.getByRole("radio")).toBeEnabled();
   // Actions read as plain menu rows in the second ink, not a wrapping button bar.
   await expect(popover.locator(".filter-actions")).toHaveCSS("flex-direction", "column");
@@ -324,6 +369,7 @@ test("the list's bottom fade is a scrim under the rows, and the list masks nothi
   expect(foot?.inside, `the menu's last row is a real target (found ${foot?.hit})`).toBe(true);
 });
 
+
 test.describe("phone drawer", () => {
   test.use({ hasTouch: true, isMobile: true });
 
@@ -333,7 +379,7 @@ test.describe("phone drawer", () => {
     await page.getByRole("button", { name: "Open menu" }).click();
     const drawer = page.locator(".sidebar");
     await expect(drawer.getByRole("button", { name: "Close menu" })).toBeVisible();
-    const newChat = drawer.getByRole("button", { name: "New chat in folder" });
+    const newChat = drawer.getByRole("button", { name: "New chat — choose project" });
     await expect(newChat).toBeVisible();
     await expect(newChat).toHaveCSS("height", "44px");
     const action = await newChat.boundingBox();
@@ -344,18 +390,24 @@ test.describe("phone drawer", () => {
     // The filter is a glyph flush in the field's end, not a bordered 44 px square beside it: the field is the
     // box, the chip is the target. Polled, since the drawer slides in for 160 ms.
     const filter = drawer.getByRole("button", { name: "Filters", exact: true });
-    await expect(drawer.locator(".sidebar-view-control")).toBeHidden();
+    await expect(drawer.getByRole("button", { name: "Sidebar view: Recent", exact: true })).toBeVisible();
+    await expect(drawer.locator(".view-switch")).toHaveCSS("height", "44px");
     await filter.click();
-    await expect(page.getByRole("radiogroup", { name: "View", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("radiogroup", { name: "View", exact: true })).toBeHidden();
     await expect(page.getByRole("dialog", { name: "Filters", exact: true })).toHaveCount(0);
     await expect(drawer).toHaveClass(/is-open/);
     await expect(newChat).toBeVisible();
     await expect(newChat).toHaveCSS("border-radius", "10px");
-    await page.setViewportSize({ width: 345, height: 844 });
+    await page.setViewportSize({ width: 375, height: 844 });
     await expect(drawer.locator(".sidebar-view-control")).toBeVisible();
     expect((await drawer.getByRole("searchbox", { name: "Search sessions" }).boundingBox())!.width).toBeGreaterThanOrEqual(149.5);
     await expect(drawer.locator(".view-switch")).toHaveCSS("height", "44px");
+    await page.setViewportSize({ width: 360, height: 844 });
+    await expect(drawer.locator(".sidebar-view-control")).toBeHidden();
+    await filter.click();
+    await expect(page.getByRole("radiogroup", { name: "View", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(filter).toHaveCSS("position", "absolute");
     await expect(filter).toHaveCSS("border-top-width", "0px");
@@ -429,6 +481,22 @@ test.describe("phone drawer", () => {
     await expect(list.locator(".list-scrim")).toHaveCount(0);
   });
 
+test("a desktop list wears a top scrim while it is scrolled", async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 520 });
+  await signInAndOpen(page);
+  for (const n of [1, 2, 3, 4]) {
+    await newChat(page);
+    await sendAndWait(page, `a row for the desktop fade ${n}`);
+  }
+  await showSidebar(page);
+  const list = page.locator(".sidebar .session-list");
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight + 24), "the rows overflow").toBe(true);
+  await expect(list.locator(".list-scrim")).toHaveCount(0);
+  await list.evaluate((el) => { el.scrollTop = 600; });
+  await expect(list.locator(".list-scrim")).toBeVisible();
+  await list.evaluate((el) => { el.scrollTop = 0; });
+  await expect(list.locator(".list-scrim")).toHaveCount(0);
+});
   test("a stuck date heading fades the rows scrolling under it", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 520 });
     await signInAndOpen(page);
@@ -443,9 +511,10 @@ test.describe("phone drawer", () => {
     // Before any scroll the heading is not stuck, and its fade is not drawn.
     const fade = divider.locator(".date-fade");
     await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).display)).toBe("none");
-    // Scrolled past its own position it sticks, and an 18px fade covers a 16px passing subline.
+    // Scrolled past its own position it sticks, and a 26px fade covers a 16px passing subline.
     await list.evaluate((el) => { el.scrollTop = 600; });
-    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).height)).toBe("18px");
+    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).height)).toBe("26px");
+    expect(await fade.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe("none");
     expect(await fade.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe("none");
     // Back at rest the fade goes again: only a stuck heading has an edge.
     await list.evaluate((el) => { el.scrollTop = 0; });
@@ -469,11 +538,15 @@ test.describe("phone drawer", () => {
     await list.evaluate((el) => { el.scrollTop = 600; });
     await expect(shortcut).toBeVisible();
     await expect(shortcut).toHaveCSS("height", "44px");
-    await expect(shortcut).toHaveCSS("border-radius", "12px");
+    await expect(shortcut).toHaveCSS("border-radius", "999px");
     const pill = await page.locator(".sidebar .drawer-new-chat").boundingBox();
     const above = await shortcut.boundingBox();
     expect(above!.y + above!.height).toBeLessThanOrEqual(pill!.y + 0.5);
     await expect(shortcut).toHaveText("1 needs you");
+    const shortcutStyle = await shortcut.evaluate((el) => ({ right: getComputedStyle(el).right, shadow: getComputedStyle(el).boxShadow }));
+    expect(shortcutStyle.right).toBe("10px");
+    expect(shortcutStyle.shadow).not.toBe("none");
+    expect(Number.parseFloat(await list.evaluate((el) => getComputedStyle(el).scrollPaddingBottom))).toBeGreaterThanOrEqual(120);
     await shortcut.click();
     await expect(page.getByTestId("approval-card")).toBeVisible();
   });

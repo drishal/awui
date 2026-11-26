@@ -468,3 +468,32 @@ test("the project switch menu stands on one grid: marks in one column, labels on
     expect(Math.abs(row.markMid), "mark is centred in its row").toBeLessThanOrEqual(1.5);
   }
 });
+
+
+test("single-line switch rows centre their labels, marks and counts", async ({ page, request }) => {
+  await useProjectsView(page);
+  const root = process.env.AWUI_E2E_ROOT as string;
+  for (const name of ["alpha", "beta"]) {
+    const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/${name}` } })).json()) as { id: string };
+    const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+    await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: `single line menu ${name}`, mode: "normal" } });
+  }
+  await page.goto("/");
+  await showSidebar(page);
+  await page.getByRole("searchbox", { name: "Search sessions" }).fill("single line menu beta");
+  await page.locator(".session", { hasText: "single line menu beta" }).first().click();
+  await page.getByRole("searchbox", { name: "Search sessions" }).fill("");
+  await page.locator(".focus-group .project-toggle").first().click();
+  const menu = page.getByRole("menu", { name: "Project" });
+  await expect(menu).toBeVisible();
+  const rows = await menu.locator("button:not(:has(.project-menu-path))").evaluateAll((items) => items.map((item) => {
+    const label = item.querySelector(".project-menu-name")?.getBoundingClientRect();
+    const marks = [...item.querySelectorAll(":scope > .icon, :scope > .project-badge, :scope > .project-menu-meta")].map((el) => el.getBoundingClientRect());
+    return label ? { label: label.top + label.height / 2, marks: marks.map((mark) => mark.top + mark.height / 2) } : null;
+  }));
+  expect(rows.length).toBeGreaterThanOrEqual(2);
+  for (const row of rows) {
+    expect(row).not.toBeNull();
+    for (const centre of row!.marks) expect(Math.abs(centre - row!.label), "one-line label and mark centres").toBeLessThanOrEqual(0.5);
+  }
+});

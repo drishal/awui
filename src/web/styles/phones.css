@@ -167,19 +167,24 @@ body {
   }
 
   .sidebar .view-switch {
+  /* At 375px a full search field still fits beside the View and filter touch targets. */
+  .sidebar.is-open .search-field > input {
+    min-width: 150px;
+  }
     min-width: 44px;
     min-height: 44px;
     /* The filter is absolute, so its target needs a column of its own. */
     margin-right: 40px;
+    flex: none;
   }
 }
 
-/* At 375px a 150px search field can sit beside the view's 44px touch target. Below it, Filters owns View. */
+/* On a roomy phone the text View button stays beside search. Only the narrowest drawer needs View in Filters. */
 .sidebar .filter-view {
   display: none;
 }
 
-@media (min-width: 375px) and (max-width: 640px) {
+@media (max-width: 374px) {
   .sidebar.is-open .sidebar-view-control {
     display: none;
   }
@@ -191,8 +196,14 @@ body {
   .sidebar.is-open .filter-view .filter-label {
     font-size: 13px;
   }
-}
 
+  /* View is the popover's first visible block here, so the next group carries the separating rule. */
+  .sidebar.is-open .filter-view + .filter-quick {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--hairline);
+  }
+}
 /* The sidebar is a drawer here: a row passing under the head fades rather than being cut (Sidebar sets the
    state, so a list at rest shows nothing). */
 @media (max-width: 819px) {
@@ -218,24 +229,31 @@ body {
   }
 }
 
-@media (max-width: 640px) {
+@media (hover: none) and (max-width: 640px) {
   .sidebar .needs-you-shortcut {
     position: absolute;
     display: none;
     visibility: hidden;
     z-index: 35;
-    right: 0;
-    bottom: calc(var(--drawer-pill) + var(--sid-tray) + 28px);
+    right: 10px;
+    /* One whole touch row above New chat leaves the list's Show-more row unobscured. */
+    bottom: calc(var(--drawer-pill) + var(--sid-tray) + 72px);
     align-items: center;
     justify-content: center;
     gap: 8px;
     min-height: 44px;
     padding: 0 14px;
     border: 1px solid var(--hairline-strong);
-    border-radius: 12px;
+    border-radius: 999px;
+    box-shadow: var(--shadow-float);
     background: var(--surface-2);
     color: var(--row-warn);
     font-weight: 500;
+  }
+
+  .sidebar .session-list {
+    /* A row brought into view can clear the floating attention pill and the New-chat action. */
+    scroll-padding-bottom: calc(var(--drawer-pill) + var(--sid-tray) + 132px);
   }
 
   .sidebar .needs-you-shortcut.is-visible {
