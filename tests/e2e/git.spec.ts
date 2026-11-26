@@ -129,6 +129,23 @@ test("a lone branch lane wears the composer's face, with no frame of its own", a
   }
 });
 
+test("while an approval waits, a lone lane's grip bar hides and its button stays", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/gamma` } })).json()) as { id: string };
+  const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await page.goto(`/#chat=${chat.chatId}`);
+  await expect(page.getByTestId("git-row")).toBeVisible();
+  const bar = page.locator(".status-stack.is-base-only .ridge-bar");
+  // Idle, the bar is there (hover reveals it on a pointer device); the lane is the edge it sits on.
+  expect(await bar.evaluate((el) => getComputedStyle(el).visibility)).toBe("visible");
+  await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: "ask gamma", mode: "normal" } });
+  await expect(page.getByTestId("approval-card")).toBeVisible();
+  // The lane has no box under an approval (the card is the one surface), so a bar on its edge would hang over
+  // nothing; the button is still the keyboard's "Hide status".
+  expect(await bar.evaluate((el) => getComputedStyle(el).visibility)).toBe("hidden");
+  await expect(page.getByRole("button", { name: "Hide status" })).toBeAttached();
+});
+
 test("a chat switch lands with the dock whole, its branch lane already in place", async ({ page, request }) => {
   const root = process.env.AWUI_E2E_ROOT as string;
   const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/gamma` } })).json()) as { id: string };

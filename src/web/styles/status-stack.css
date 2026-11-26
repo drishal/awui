@@ -301,6 +301,12 @@
   margin: 0 0 4px;
 }
 
+/* While an approval waits the lane has no box to be the edge of (below), so its grip would hang over nothing: the bar
+   hides and its button stays, since it is still the real "Hide status" control for a keyboard. */
+.composer:has(.approval-card) .status-stack.is-base-only .ridge-bar {
+  visibility: hidden;
+}
+
 /* While an approval waits, its card is the column's one surface above the composer: the git row drops its
    bubble and reads as the status line it is, instead of a second bar stacked on the card. */
 .composer:has(.approval-card) .status-stack.is-base-only .git-row {
