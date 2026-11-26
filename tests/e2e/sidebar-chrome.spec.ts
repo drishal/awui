@@ -157,11 +157,12 @@ test("the filter is a glyph in the field, and its popover is a short rail-wide d
   await page.keyboard.press("ArrowDown");
   await expect(popover.getByRole("radio", { name: /^Needs you/ })).toBeChecked();
   await expect(sidebar.getByRole("button", { name: "Clear Needs you filter" })).toBeVisible();
-  await sidebar.getByRole("button", { name: "Clear Needs you filter" }).click();
-  // Escape returns the focus to the chip.
+  // The popover covers the token while it is open (the pointer lands on the popover's own rows), so the
+  // token is not clicked here: Escape closes the popover and returns the focus to the chip.
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
-  await expect(filter).toBeFocused();
+  // The chip's name now says a filter is on, so the exact "Filters" locator no longer matches it.
+  await expect(sidebar.locator(".filter-chip")).toBeFocused();
 });
 
 test("the Hide heading's Reset shows only while something is hidden, and clears the toggles", async ({ page }) => {
@@ -398,7 +399,8 @@ test("the open row's wash takes one step less on a light page", async ({ page })
   await sendAndWait(page, "the open row");
   await showSidebar(page);
   // The wash is drawn behind the list (`.session-active-bg`), so the row keeps its own transparent box.
-  const wash = page.locator(".session-active-bg").first();
+  // Other lists (a folded section) can hold a wash of their own that is not drawn: take the visible one.
+  const wash = page.locator(".session-active-bg:visible").first();
   await expect(wash).toBeVisible();
   const dark = await wash.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(dark, "the open row sits on a wash, not on the panel").not.toBe("rgba(0, 0, 0, 0)");
