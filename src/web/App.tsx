@@ -2368,7 +2368,8 @@ export function App() {
         </Suspense>
       ) : null}
 
-      <main className={`main${viewSwap ? " is-swapping" : ""}`}>
+      {/* A phone's sidebar is a modal: with the drawer open, the chat behind it is inert (no focus, no clicks). */}
+      <main className={`main${viewSwap ? " is-swapping" : ""}`} inert={drawerOpen || undefined}>
         {tabState.tabs.length >= (narrow ? 2 : 1) ? (
           <TabStrip
             tabs={tabState.tabs}

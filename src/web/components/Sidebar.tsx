@@ -1328,12 +1328,20 @@ export function Sidebar(props: {
   const asideRef = useRef<HTMLElement>(null);
   const { open } = props;
 
-  // Drawer mode: Escape closes from anywhere; the backdrop owns outside clicks.
+  // Drawer mode: Escape closes from anywhere (the backdrop owns outside clicks) and Tab stays inside, so the
+  // chat behind the drawer — inert over there — is never reached. Focus moves in once on open and goes back
+  // to the button that opened it on close, never to the body.
   useDismiss(asideRef, open, props.onClose, { escape: true, outside: false });
-  // Focus moves in once on open.
+  const trapTab = useFocusTrap(asideRef, open);
+  const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!open) return;
+    opener.current = (document.activeElement as HTMLElement | null) ?? null;
     asideRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
+    return () => {
+      const back = opener.current?.isConnected ? opener.current : document.querySelector<HTMLElement>(".drawer-open");
+      back?.focus();
+    };
   }, [open]);
 
   const isActive = isActiveSession;
@@ -1390,7 +1398,9 @@ export function Sidebar(props: {
           if (e.key === "Escape" && selection.on) {
             e.stopPropagation();
             leaveSelection();
+            return;
           }
+          trapTab(e);
         }}
       >
         <div className="sidebar-head">

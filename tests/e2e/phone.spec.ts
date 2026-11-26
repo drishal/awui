@@ -309,3 +309,35 @@ test("a lone branch lane's grip sits on the lane's top edge, not above it", asyn
   expect(geometry.position).toBe("absolute");
   expect(Math.abs(geometry.ridgeMid - geometry.laneTop)).toBeLessThanOrEqual(2);
 });
+
+test("the drawer is a modal: the chat behind it is inert, Tab stays inside, and it hands the focus back", async ({ page }) => {
+  await signInAndOpen(page);
+  await page.keyboard.press("Escape");
+  const open = page.getByRole("button", { name: "Open menu" });
+  await open.click();
+  const drawer = page.getByRole("dialog", { name: "Sessions" });
+  await expect(drawer).toBeVisible();
+  // Nothing behind the drawer can be reached: the chat is inert, not merely covered.
+  expect(await page.locator("main").evaluate((el) => (el as HTMLElement).inert)).toBe(true);
+
+  // Tab walks the drawer's own controls and wraps at both ends, instead of stepping into the chat.
+  const inDrawer = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.closest(".sidebar") !== null);
+  await page.evaluate(() => (document.querySelector(".sidebar button") as HTMLElement | null)?.focus());
+  await page.keyboard.press("Shift+Tab");
+  expect(await inDrawer()).toBe(true);
+  for (let i = 0; i < 40 && (await inDrawer()); i++) await page.keyboard.press("Tab");
+  expect(await inDrawer()).toBe(true);
+
+  // A row's actions keep their path (a long press is a context menu) and their finger-sized rows.
+  const row = drawer.locator(".session-item .session").first();
+  await row.click({ button: "right" });
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  const heights = await menu.getByRole("menuitem").evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height));
+  expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+  await page.keyboard.press("Escape");
+
+  // Closed, the focus is back on the button that opened it, so the drawer never drops it on the body.
+  await expect(menu).toHaveCount(0);
+  await expect(open).toBeFocused();
+});
