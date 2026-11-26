@@ -1285,7 +1285,9 @@ test("a working session spins in the sidebar, also while another chat is open", 
   await expect(working.locator(".working-ring").first()).toBeVisible();
   await expect(working.getByRole("button", { name: /^Working, \d+ sessions?$/ })).toHaveAttribute("aria-expanded", "true");
   await expect(working.locator(".session", { hasText: "slow spinner run" }).getByRole("img", { name: "Working" })).toBeVisible();
-  await expect(working).toHaveCount(0, { timeout: 15_000 });
+  // This row leaves the section when its run settles. The section itself can outlive it: the suite shares one
+  // server, and a chat another spec left running keeps a Working head on screen.
+  await expect(working.locator(".session-item", { hasText: "slow spinner run" }), "the settled run leaves Working").toHaveCount(0, { timeout: 15_000 });
   await expect(row.getByRole("img", { name: "Working" })).toHaveCount(0);
   // Settled, the row is an ordinary one again: its age is back in place of the run's word, and no green
   // "live" dot marks it as open here.
