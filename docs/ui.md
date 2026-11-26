@@ -113,16 +113,25 @@ a literal colour.
   `data-density="compact"` on `<html>`, and `tokens.css` overrides them there,
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
   a literal, for a new row height or gap.
-- **Sidebar rows:** one line per row is the list's shape: a title at 13.5px cut
-  with an ellipsis, a row 32px tall (48px when it carries its subline — the
-  project tag, the agent's line, or a branch off the trunk), 2px between rows,
-  no hairline or rail, and a 26px gutter at the right for the ⋯ so the age
-  never moves under the pointer. `session-state.ts` decides that subline.
+- **Sidebar rows:** each title is one 13.5px line with an ellipsis. A row is 32px tall,
+  or 48px with its supporting subline (project tag, agent status, or a branch that
+  differs from its group's head), with 2px between rows and no hairline or rail.
+  `session-state.ts` decides that subline and its state. On a two-line row the title
+  takes the row's full width (8px right padding, no hover gutter). Its second line
+  holds the project's badge and name on the left, and the age or allowed state word
+  on the right. Hover or keyboard focus shows a 24px ⋯ over the title's masked right
+  end, never over the age. On a one-line row the age stays beside the title; hover or
+  keyboard focus swaps it for the ⋯ with an opacity cross-fade inside the age's own box,
+  so the title keeps its width. Touch keeps the ⋯ on the open row only. Inside the
+  Needs-you or Working section that already names the state, the row shows the age
+  (amber on a needs-you row), not a repeating word. Unread is title weight (600) and
+  full ink, with the word “Unread” only in a visually hidden span for assistive tech.
   `config.yml`'s `sidebar_style: compact` sets `data-sidebar="compact"` on
   `<html>`, and `sidebar.css` ends with the handful of overrides that make the
-  rows tighter still (28px, the subline as a dim suffix after the title, 1px
-  between rows). It changes the row look only: heads, chips, hover cards, and
-  the wash keep their own rules, and a phone's row is still 44px tall.
+  rows tighter still (28px, a project suffix hugging the title at 8px and at most
+  34% of its line, with the same ⋯/age swap on hover, and 1px between rows).
+  It changes the row look only: heads, chips, hover cards, and the wash keep
+  their own rules, and a phone's row is still at least 44px tall.
 - **Sidebar list:** the sidebar draws one of two views (`sidebar-view.ts`, saved
   per browser; the filter menu's switch writes it). Recent, the default, is one
   flat list across the shown harness's projects: the needs-you, working and
@@ -141,17 +150,21 @@ a literal colour.
   A folder head is the folder's own name at 13px/600 in `--text-2`, with its
   16px badge (radius 4, 10px/700, no ring), its branch after a `·`, and its
   count only while the group is folded. A folder's preview rows carry no date
-  headings until the folder is opened: the age on each row already says when.
+  headings until the folder is opened: the age on each row already says when. A folder head names
+  its branch once for its rows: any branch off the trunk, and the trunk too when
+  another folder shares the repository; its rows never repeat it (`rowSubline`'s
+  `groupBranch`). Branch names are in the UI sans face, muted.
 - **Sidebar state, the colour contract:** `session-state.ts` decides a row's two
   state slots — a 10px leading mark and either the age or one word in its place
   — and exactly four things in the list are coloured: **amber** (`--warn`) is
-  needs-you, its dot and its word; **the accent** is a run, its ring or its
-  word; **green** (`--ok`) is done, and only the agent's own verdict ("done" or
-  "ready for review") earns it; and **weight** is unread (the title at 600 and
-  full ink, read titles at 78 % ink). Nothing else in the list takes a colour:
-  liveness is a server detail (the hover card says "Open in this server"), and
-  parked / herdr / handed-over share one 12px muted glyph, in that priority,
-  with the whole story in the card.
+  needs-you, its dot and its age where the section already names the state;
+  **the accent** is a run, its ring or its word; **green** (`--ok`) is done,
+  and only the agent's own verdict ("done" or "ready for review") earns it;
+  and **weight** is unread (the title at 600 and full ink, read titles at 78 % ink).
+  The section's state word stays outside it; inside it no second word replaces the age.
+  Nothing else in the list takes a colour: liveness is a server detail (the hover card
+  says "Open in this server"), and parked / herdr / handed-over share one 12px muted
+  glyph, in that priority, with the whole story in the card.
 - **Sidebar menus, keys, and the rail:** every popover (a row's ⋯ menu, the filter
   menu, the project switch) is one tab stop: ↑/↓ and Home/End walk its items
   (`menu-focus.ts`; the walk is `menuStep`, pure and tested), and Escape closes it and puts

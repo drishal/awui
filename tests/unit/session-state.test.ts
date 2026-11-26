@@ -37,12 +37,19 @@ describe("rowSubline", () => {
     // A detached HEAD has no branch to say.
     expect(rowSubline(s(), {})).toBeNull();
   });
+
+  it("lets the group head say the common branch, while a different worktree says its own", () => {
+    // The head is always asked to show a branch it has, even without sharesRepo.
+    expect(rowSubline(s(), { branch: "test", groupBranch: "test" })).toBeNull();
+    expect(rowSubline(s(), { branch: "feat/worktree", groupBranch: "test" })).toEqual({ kind: "branch", text: "feat/worktree" });
+    expect(rowSubline(s(), { tag, groupBranch: tag.branch })).toEqual({ kind: "tag", tag: { ...tag, branch: null } });
+    expect(rowSubline(s(), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag });
+  });
 });
 
 describe("rowState", () => {
-  const state = (extra: Partial<ProjectSession> = {}, opts: Partial<{ working: boolean; showHarness: boolean; now: number }> = {}) =>
+  const state = (extra: Partial<ProjectSession> = {}, opts: Partial<{ working: boolean; showHarness: boolean; section: "needs" | "working" | null; now: number }> = {}) =>
     rowState(s(extra), { working: false, showHarness: false, now: 1_000, ...opts });
-
   it("puts a run's ring or the amber question in the leading slot, and nothing when neither is true", () => {
     expect(state({ status: "running" }, { working: true }).mark).toBe("working");
     // Waiting on a person is not work in progress: the row shows one or the other.
@@ -64,6 +71,16 @@ describe("rowState", () => {
     expect(state({ asking: true, snoozedUntil: 5_000 }).word).toBeNull();
     // A snooze that has already ended is an ordinary row again.
     expect(state({ snoozedUntil: 500 }).word).toBeNull();
+  });
+
+  it("says the state once inside its own section, and keeps the age instead", () => {
+    expect(rowState(s({ asking: true }), { working: false, showHarness: false, section: "needs", now: 1_000 }).word).toBeNull();
+    expect(rowState(s({ status: "running" }), { working: true, showHarness: false, section: "working", now: 1_000 }).word).toBeNull();
+    // The section wins over an old agent status: its row never substitutes a second word either.
+    expect(rowState(s({ asking: true, agentStatus: { state: "done", comment: "", at: 1 } }), { working: false, showHarness: false, section: "needs", now: 1_000 }).word).toBeNull();
+    // Search results and Projects-view folders still say Needs you / Working.
+    expect(rowState(s({ asking: true }), { working: false, showHarness: false, section: "working", now: 1_000 }).word).toEqual({ text: "Needs you", tone: "warn" });
+    expect(rowState(s({ status: "running" }), { working: true, showHarness: false, section: "needs", now: 1_000 }).word).toEqual({ text: "Working", tone: "accent" });
   });
 
   it("collapses parked, herdr and handover into one glyph, handover first", () => {

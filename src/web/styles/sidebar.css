@@ -713,16 +713,17 @@
   color: var(--muted-text);
 }
 
-/* A repository's projects sit together: each says its branch, after a `·` so `awui · test` reads as one
-   phrase rather than two labels. */
+/* A folder head says its branch once for the rows under it, after a `·` so `awui · test` reads as one
+   phrase rather than two labels: the UI's own face at the regular weight, muted, since a branch is a
+   fact about the folder and not a second name. */
 .project-branch {
   flex: none;
   max-width: 40%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
   font-size: 11px;
+  font-weight: 400;
   color: var(--muted-text);
 }
 
@@ -947,6 +948,11 @@
   :root[data-density="compact"] .session {
     padding-block: 5px;
   }
+
+  /* The subline's 4px step (below) comes out of the bottom pad, so 5 + 18 + 4 + 16 + 1 is still 44px. */
+  :root[data-density="compact"] .session:has(> .session-body.has-sub) {
+    padding-bottom: 1px;
+  }
 }
 
 /* A row is a mark, one line of words, and the age. Every row has the same pitch — 32px, or 48px with
@@ -987,6 +993,34 @@
   min-width: 0;
   align-content: start;
   gap: 0;
+}
+
+/* The title's line: the title, and on a one-line row the age beside it, on one 18px flex line (as a grid
+   item the age would take a second row and the 32px row would grow). On their baseline: centring an
+   11.5px age against a 13.5px title sat it visibly high. The line's height is fixed, because the smaller
+   text's box, once dropped onto the title's baseline, would hang a pixel below and make the row 33px. */
+.session-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  height: 18px;
+  line-height: 18px;
+}
+
+.session-title-line > .session-title {
+  flex: 1;
+}
+
+/* The subline sits 4px under the title's line, so the 24px ⋯ centred on that line ends above it, and the
+   age at its end is never under the control. The bottom pad gives the 4px back: 7 + 18 + 4 + 16 + 3 is
+   still 48px. */
+.session:has(> .session-body.has-sub) {
+  padding-bottom: 3px;
+}
+
+.session-body.has-sub {
+  gap: 4px;
 }
 
 /* One line at most, at the weight a name reads at: the row's words are the list's content, not its
@@ -1032,13 +1066,6 @@
   font-size: 8px;
 }
 
-/* A branch is a machine name: the mono face tells it apart from the folder's own words at a glance. */
-.session-sub.is-branch {
-  display: block;
-  font-family: var(--font-mono);
-  text-overflow: ellipsis;
-}
-
 /* An agent's own line is the quietest text in the list: the words stay muted, and its state is the
    row's one state word (the age's slot) — never a second coloured dot. */
 .session .session-agent {
@@ -1047,16 +1074,28 @@
   font-size: 12px;
 }
 
-/* The clock sits on the title's first line, not in the row's middle: on a two-line row the middle points
-   at neither line, and the time is read against the words it belongs to. */
+/* The age's box, at the end of whichever line holds it. On hover only its contents fade (the rules
+   with the ⋯ below), so the box keeps its width and nothing beside it moves. */
+.session-slot {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+}
+
+/* The age (or the row's one state word) and its glyph. On a two-line row it ends the subline, which leaves
+   the title's line to the title; on a one-line row it ends the title's line, and hover swaps it for the ⋯. */
 .session-meta {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: none;
-  padding-top: 1px;
+  padding: 0;
   font-size: 11.5px;
   color: var(--muted-text);
+}
+
+.session-sub .session-meta {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Times line up from row to row, so the titles stop at one left edge. */
@@ -1075,7 +1114,8 @@
   font-weight: 500;
 }
 
-.session-state.is-warn {
+.session-state.is-warn,
+.session-time.is-warn {
   color: var(--warn);
 }
 
@@ -1093,8 +1133,7 @@
   font-weight: 600;
 }
 
-/* Pin and archive: a ⋯ in a gutter the row keeps for it, so the age never moves out from under the
-   pointer; on touch screens it shows on the open session's row, and a long press on any row. */
+/* Pin and archive live behind the ⋯, shown on hover/focus and on an open touch row. */
 .session-item {
   position: relative;
 }
@@ -1130,23 +1169,44 @@
   bottom: -1px;
 }
 
-/* The ⋯ sits in the gutter the row keeps for it (see the `pointer: fine` rule below), so the age stays
-   where it was while the pointer is on the row. */
-/* Smaller than a toolbar's icon button (controls.css's 34px), and centred on the title's one line. */
+/* The ⋯ is centred on the title's line (7 + 9 - 12 = 4px down), so on a two-line row it rides over the
+   title's masked end and stops above the subline, where the age is. */
 .session-item > .session-more {
   position: absolute;
-  top: 3px;
+  top: 4px;
   right: 4px;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   opacity: 0;
+  transition: opacity var(--dur-hover) var(--ease-out);
 }
 
-.session-item:hover .session-more,
-.session-item.is-menu-open .session-more,
-.session-more:focus-visible {
+.session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-more {
   opacity: 1;
 }
+
+/* Shown on hover, while its menu is open, and on keyboard focus (a click's focus does not count: the row
+   you just opened would keep its age hidden). The title's line is the row's whole width now, with no
+   gutter kept for the ⋯ (the 34px one cost every title a fifth of the panel), so each row shape makes
+   its own room when the ⋯ shows. */
+@media (pointer: fine) {
+  /* A two-line row: the title fades out under the ⋯ (from 52px to 28px off its end), and the age on the
+     subline below stays in view. */
+  .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-body.has-sub > .session-title-line > .session-title {
+    mask-image: linear-gradient(to left, transparent 28px, #000 52px);
+  }
+
+  /* A one-line row: the ⋯ replaces the age, an opacity cross-fade inside the age's own box, so the
+     title's width does not change under the pointer. */
+  .session-title-line > .session-slot > .session-meta {
+    transition: opacity var(--dur-hover) var(--ease-out);
+  }
+
+  .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-title-line > .session-slot > .session-meta {
+    opacity: 0;
+  }
+}
+
 @media (hover: none) {
   .session-more {
     pointer-events: none;
@@ -1157,17 +1217,14 @@
     pointer-events: auto;
   }
 
-  /* A phone has no gutter to spare: on the open row the ⋯ takes the age's place, as before. */
-  .session-item:has(> .session.is-active) .session-meta {
-    visibility: hidden;
+  /* Touch keeps the always-visible ⋯ on the active row, over the title only. */
+  .session-item:has(> .session.is-active) .session-body.has-sub > .session-title-line > .session-title {
+    mask-image: linear-gradient(to left, transparent 28px, #000 52px);
   }
-}
 
-/* A mouse's row keeps a 26px gutter for the ⋯, so hovering never covers the age. Touch screens trade that
-   for title width: their ⋯ rides over the age on the open row instead (the rule above). */
-@media (pointer: fine) {
-  .session {
-    padding-right: 34px;
+  /* One line on touch has no spare width: the ⋯ takes the active row's age, as before. */
+  .session-item:has(> .session.is-active) .session-title-line > .session-slot > .session-meta {
+    visibility: hidden;
   }
 }
 
@@ -1175,7 +1232,6 @@
 .session:is(:hover, .is-active, .is-selected) .session-title {
   color: var(--text);
 }
-
 
 /* A settled or snoozed row steps back: its title reads as an annotation of the date section it sits in,
    so it keeps the size and loses the weight and the ink. */
@@ -1463,14 +1519,6 @@ body.is-resizing {
   user-select: none;
 }
 
-/* Marked unread: a dot beside the title until it is opened here. */
-.session-unread {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
 
 /* A project's monogram: its first letter in one of four theme colours taken from its name
    (--badge-1..4 in tokens.css). A wash with a tinted letter rather than a solid fill, so four
@@ -1605,17 +1653,55 @@ body.is-resizing {
   align-content: center;
 }
 
-/* The title keeps its ellipsis in the flex row; the suffix takes only what it needs. */
-:root[data-sidebar="compact"] .session-title {
-  flex: 1;
+/* One line always: the title, its project's name hugging it 8px after (never more than 34% of the
+   line, ellipsised past that), and the age at the line's end, on the same column as every other row's.
+   The title's line takes the rest of a row without a suffix; with one it is only as wide as its words,
+   so the suffix sits against them rather than at a column of its own, and a long title gives way first. */
+:root[data-sidebar="compact"] .session-body.has-sub {
+  gap: 0;
 }
 
-/* One ink for every title: the suffix beside it is dim enough to read as an annotation. */
-:root[data-sidebar="compact"] .session-sub {
+:root[data-sidebar="compact"] .session-title-line {
+  flex: 1 1 auto;
+}
+
+:root[data-sidebar="compact"] .session-body.has-sub > .session-title-line {
   flex: 0 1 auto;
-  max-width: 34%;
+}
+
+/* The subline's own box goes, so its name and its age become items of the title's flex line. */
+:root[data-sidebar="compact"] .session-sub {
+  display: contents;
   font-size: 11.5px;
-  line-height: 1;
+  line-height: 16px;
+}
+
+:root[data-sidebar="compact"] .session-sub > .session-sub-name {
+  flex: 0 0 auto;
+  max-width: 34%;
+  margin-left: 8px;
+  color: var(--muted-text);
+  font-size: 11.5px;
+}
+
+:root[data-sidebar="compact"] .session-sub > .session-slot {
+  padding-left: 6px;
+}
+
+/* The title never runs under the ⋯ here (the suffix and the age stand between), so it needs no mask. */
+:root[data-sidebar="compact"] .session-item .session-body.has-sub > .session-title-line > .session-title {
+  mask-image: none;
+}
+
+/* A mouse's ⋯ replaces the age on the one line, as it does on any one-line row. */
+@media (pointer: fine) {
+  :root[data-sidebar="compact"] .session-sub > .session-slot > .session-meta {
+    transition: opacity var(--dur-hover) var(--ease-out);
+  }
+
+  :root[data-sidebar="compact"] .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-sub > .session-slot > .session-meta {
+    opacity: 0;
+  }
 }
 
 /* No badge in a 28px line: the project's name alone is the suffix. */
@@ -1623,22 +1709,15 @@ body.is-resizing {
   display: none;
 }
 
-/* The ⋯ is centred with the one line it belongs to. */
+/* The ⋯ is centred on the one 28px line, over the age it replaces. */
 :root[data-sidebar="compact"] .session-more {
-  top: 1px;
+  top: 2px;
 }
 
 /* The marks are positioned for a two-line row's first line; on the one centred line they centre too. */
 :root[data-sidebar="compact"] .session :is(.harness-dot, .working-ring, .session-asking-dot) {
   align-self: center;
   margin-top: 0;
-}
-
-/* A mouse's gutter for the ⋯ (the pointer: fine rule above) is restated: the compact padding came later and out-specifies it. */
-@media (pointer: fine) {
-  :root[data-sidebar="compact"] .session {
-    padding-right: 34px;
-  }
 }
 
 /* A phone's 44px row height is phones.css's, unchanged: it has no suffix to fit. */

@@ -277,8 +277,16 @@ test("the sidebar lifts what needs you and what is working, and settling can be 
   await showSidebar(page);
   const needs = page.getByTestId("needs-group");
   await expect(needs).toContainText("please ask first", { timeout: 10_000 });
-  // The row's one state word takes the age's place (session-state.ts).
-  await expect(needs.locator(".session-state").first()).toHaveText("Needs you");
+  // The section already names the state, so its row keeps its age, in the sidebar's amber (session-state.ts).
+  await expect(needs.locator(".session-state")).toHaveCount(0);
+  await expect(needs.locator(".session-time").first()).toHaveCSS("color", await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = getComputedStyle(document.documentElement).getPropertyValue("--warn");
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }));
 
   await tab(page, "please ask first").click();
   await page.getByTestId("approval-card").getByRole("button", { name: "Approve" }).click();
@@ -468,10 +476,13 @@ test("a session can be marked unread, and opening it marks it read", async ({ pa
   const row = page.locator(".session-item", { hasText: "unread me" }).first();
   await row.locator(".session").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Mark unread" }).click();
-  await expect(row.locator(".session-unread")).toBeVisible();
-  // Opening it here is reading it: the dot goes without a word.
-  await row.locator(".session").click();
   await expect(row.locator(".session-unread")).toHaveCount(0);
+  await expect(row.locator(".session-title")).toHaveCSS("font-weight", "600");
+  await expect(row.locator(".visually-hidden", { hasText: "Unread" })).toHaveCount(1);
+  // Opening it here reads it: the weight and its assistive text both go.
+  await row.locator(".session").click();
+  await expect(row.locator(".session-title")).toHaveCSS("font-weight", "400");
+  await expect(row.locator(".visually-hidden", { hasText: "Unread" })).toHaveCount(0);
 });
 
 test("a session can be snoozed until the limit resets", async ({ page }) => {

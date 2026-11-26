@@ -349,7 +349,9 @@ function SessionRow({
   working,
   harnessName,
   tag,
+  stateTone,
   branch = null,
+  groupBranch = null,
   showHarness = true,
   onOpen,
   onMark,
@@ -363,8 +365,12 @@ function SessionRow({
   harnessName: string;
   /** The project a row is out of (the flat list, and the sections above the projects): its tag line. */
   tag?: ProjectTag | null;
-  /** The branch its project is checked out on, for a row inside its project (shown when it is not the trunk's). */
+  /** The Needs-you or Working section the row sits in: its heading already names the state, so the row keeps its age. */
+  stateTone?: "needs" | "working" | null;
+  /** The branch its project is checked out on (shown when it is not the trunk's, nor the head's). */
   branch?: string | null;
+  /** The branch the group's head above already states: the row does not repeat it. */
+  groupBranch?: string | null;
   /** False where every row of the list is the same harness: the dot would only repeat the heading above. */
   showHarness?: boolean;
   /** Why this row is where it is (a routine started it, it is quiet, on the default branch); its hover card says it. */
@@ -389,11 +395,25 @@ function SessionRow({
   // A session not saved yet has nothing to mark.
   const markable = !s.id.includes(":live-");
   const { warm } = useContext(RowActions);
-  // The one line under the title (session-state.ts): the project it is out of, the agent's own line, or
-  // a branch that is not the project's trunk; without one the row is a single line.
-  const sub = rowSubline(s, { tag, branch });
-  // The two state slots (session-state.ts): the leading mark, one word or the age, and one muted glyph.
-  const state = rowState(s, { working, showHarness });
+  // The line under the title names the project, the agent's own status, or a branch that differs
+  // from its group. Without one the row is a single line; its ⋯ replaces the age on hover.
+  const sub = rowSubline(s, { tag, branch, groupBranch });
+  // Inside its own state section, the leading mark says the state; the meta line keeps the age.
+  const state = rowState(s, { working, showHarness, section: stateTone });
+  const meta = (
+    <span className="session-meta">
+      {state.glyph ? <span className={`session-mark ${state.glyph.className}`} role="img" aria-label={state.glyph.label} title={state.glyph.label} /> : null}
+      {state.word ? (
+        <span className={`session-state is-${state.word.tone}`}>{state.word.text}</span>
+      ) : (s.snoozedUntil ?? 0) > Date.now() ? (
+        <span className="session-wake" title="Snoozed until then">
+          <IconClock size={11} /> {wakeLabel(s.snoozedUntil as number)}
+        </span>
+      ) : (
+        <span className={`session-time${stateTone === "needs" ? " is-warn" : ""}`}>{relativeTime(s.updatedAt)}</span>
+      )}
+    </span>
+  );
   // On a touch screen a row also slides left for Pin, Archive and Snooze (the menu's own actions); a full swipe is the first.
   const swipeActions: Array<{ label: string; icon: React.ReactNode; change: MarkChange }> = [
     { label: s.pinned ? "Unpin" : "Pin", icon: <IconPin size={16} />, change: { pinned: !s.pinned } },
@@ -504,38 +524,26 @@ function SessionRow({
           // The slot stays (a blank dot), so titles keep one left edge whether or not the row is working.
           <span className="harness-dot is-blank" aria-hidden="true" />
         )}
-        <span className="session-body">
-          <span className="session-title" ref={titleRef}>{plainTitle(s.title)}</span>
-          {/* One line under the title, and only where it says something new: the project a row is out
-              of, the agent's own status, or a branch the project is not on its trunk of. */}
-          {sub?.kind === "tag" ? (
-            <span className="session-sub">
-              <ProjectBadge id={sub.tag.id} name={sub.tag.name} size={12} />
+        <span className={`session-body${sub ? " has-sub" : ""}`}>
+          <span className="session-title-line">
+            <span className="session-title" ref={titleRef}>{plainTitle(s.title)}</span>
+            {sub ? null : <span className="session-slot">{meta}</span>}
+          </span>
+          {state.unread ? <span className="visually-hidden">Unread</span> : null}
+          {sub ? (
+            <span className={`session-sub${sub.kind === "branch" ? " is-branch" : ""}${sub.kind === "agent" ? ` session-agent is-${sub.state}` : ""}`} title={sub.kind === "agent" ? `${sub.line} · set by the agent ${ago(sub.at)}` : undefined}>
+              {sub.kind === "tag" ? <ProjectBadge id={sub.tag.id} name={sub.tag.name} size={12} /> : null}
               <span className="session-sub-name">
-                {sub.tag.name}
-                {sub.tag.branch ? ` · ${sub.tag.branch}` : ""}
+                {sub.kind === "tag" ? (
+                  <>
+                    {sub.tag.name}
+                    {sub.tag.branch ? ` · ${sub.tag.branch}` : ""}
+                  </>
+                ) : sub.text}
               </span>
+              <span className="session-slot">{meta}</span>
             </span>
-          ) : sub?.kind === "agent" ? (
-            <span className={`session-sub session-agent is-${sub.state}`} title={`${sub.line} · set by the agent ${ago(sub.at)}`}>
-              {sub.text}
-            </span>
-          ) : sub ? (
-            <span className="session-sub is-branch">{sub.text}</span>
           ) : null}
-        </span>
-        <span className="session-meta">
-          {state.glyph ? <span className={`session-mark ${state.glyph.className}`} role="img" aria-label={state.glyph.label} title={state.glyph.label} /> : null}
-          {state.unread ? <span className="session-unread" role="img" aria-label="Unread" title="Unread" /> : null}
-          {state.word ? (
-            <span className={`session-state is-${state.word.tone}`}>{state.word.text}</span>
-          ) : (s.snoozedUntil ?? 0) > Date.now() ? (
-            <span className="session-wake" title="Snoozed until then">
-              <IconClock size={11} /> {wakeLabel(s.snoozedUntil as number)}
-            </span>
-          ) : (
-            <span className="session-time">{relativeTime(s.updatedAt)}</span>
-          )}
         </span>
       </button>
       <button
@@ -757,6 +765,9 @@ function ProjectGroupView({
   const [dragged, setDragged] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; place: "before" | "after" } | null>(null);
   const { workspace, sessions, current, checkout, sharesRepo } = group;
+  // The head says the branch once for every row under it: any branch off the trunk, and the trunk too when
+  // another group checks out the same repository (then "main" is what tells the two apart).
+  const headBranch = checkout?.branch && (sharesRepo || !isTrunkBranch(checkout.branch)) ? checkout.branch : null;
   // One harness in the list means one dot on every row: the sidebar's harness row above already names it,
   // so the rows drop theirs and their titles keep the slot.
   const mixedHarness = sessions.some((row) => row.harnessId !== sessions[0]?.harnessId);
@@ -802,6 +813,7 @@ function ProjectGroupView({
         harnessName={harnessName(s.harnessId)}
         showHarness={mixedHarness}
         branch={checkout?.branch ?? null}
+        groupBranch={headBranch}
         onOpen={(newTab) => onOpen(s, newTab)}
         onMark={(change) => onMark(s, change)}
         {...(arranging && markable && (up || down) ? { move: { up, down, by: (delta) => reorder(movedOrder(all, s.id, { delta })) } } : {})}
@@ -849,7 +861,7 @@ function ProjectGroupView({
           <IconChevronDown size={12} className="group-chevron" />
           <ProjectBadge id={workspace.id} name={workspace.name} />
           <span className="project-name">{workspace.name}</span>
-          {sharesRepo && checkout?.branch ? <span className="project-branch">{checkout.branch}</span> : null}
+          {headBranch ? <span className="project-branch">{headBranch}</span> : null}
           {!open && sessions.some(isWorking) ? <WorkingRing colored={false} /> : null}
           {/* A count is what a collapsed group has instead of its rows; open, the rows are the count. */}
           {!open ? <span className="group-count">{sessions.length}</span> : null}
@@ -1075,6 +1087,7 @@ function FocusedProjectView({
           harnessName={harnessName(s.harnessId)}
           showHarness={mixedHarness}
           branch={checkout?.branch ?? null}
+          groupBranch={checkout?.branch ?? null}
           onOpen={(newTab) => onOpen(s, newTab)}
           onMark={(change) => onMark(s, change)}
           {...(markable && (up || down) ? { move: { up, down, by: (delta) => reorder(movedOrder(projRows, s.id, { delta })) } } : {})}
@@ -1357,7 +1370,7 @@ export function Sidebar(props: {
   // The Recent list and the sections show only the selected harness's sessions, so that is the set to judge: reading
   // the whole overview put the same blue dot on every row of anyone who uses two harnesses.
   const oneHarness = new Set(overview.sessions.filter((s) => !props.harnessId || s.harnessId === props.harnessId).map((s) => s.harnessId)).size <= 1;
-  const sectionRow = (s: ProjectSession) => (
+  const sectionRow = (s: ProjectSession, stateTone?: "needs" | "working") => (
     <SessionRow
       key={s.id}
       s={s}
@@ -1365,6 +1378,7 @@ export function Sidebar(props: {
       working={isWorking(s)}
       harnessName={names.get(s.harnessId) ?? s.harnessId}
       showHarness={!oneHarness}
+      stateTone={stateTone}
       tag={projectTag(overview, s)}
       provenance={provenanceOf(s, hideCtx)}
       onOpen={(newTab) => props.onOpenSession(s, newTab)}
@@ -1552,7 +1566,7 @@ export function Sidebar(props: {
                 icon={<IconWarning size={14} />}
                 title="Needs you"
                 sessions={needs}
-                row={(s) => sectionRow(s)}
+                row={(s) => sectionRow(s, "needs")}
               />
             ) : null}
             {working.length > 0 ? (
@@ -1567,7 +1581,7 @@ export function Sidebar(props: {
                   setWorkingOpen(!workingOpen);
                   save("workingOpen", !workingOpen);
                 }}
-                row={(s) => sectionRow(s)}
+                row={(s) => sectionRow(s, "working")}
               />
             ) : null}
             {pinned.length > 0 ? (

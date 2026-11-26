@@ -1,7 +1,6 @@
-// What a sidebar row says about its session besides its title: the one muted subline under the title —
-// the project it is out of, the status its agent set, or a branch that is not the folder's trunk — and
-// nothing else. Pure, so the flat Recent list, the sections above it, and the grouped Projects list all
-// state a session the same way, and the rules are unit-tested without a DOM.
+// A sidebar row's title, its line of supporting facts, and its state. In Recent the subline
+// names the project and puts the age at its end; a one-line row puts that age beside the title.
+// Pure, so the flat Recent list, its sections, and grouped Projects share the same rules.
 import type { AgentStatusState, ProjectSession } from "../shared/protocol.js";
 import { agentStatusText } from "./agent-status.js";
 import type { ProjectTag } from "./recent-view.js";
@@ -19,17 +18,22 @@ export type RowSubline =
 /**
  * The subline a row shows, or null when it has nothing to add (the row is then one line):
  *  - out of its project (`tag`), say which project — the flat list, and the sections above the folders;
- *  - inside its project, the agent's own status line, else a branch that is not the trunk one. Inside a
- *    project on `main` the branch is the folder head's fact, so repeating it says nothing.
+ *  - inside its project, the agent's own status line, else a branch that is not the trunk one and not
+ *    the one its group's head already states (`groupBranch`): a branch is said once, where it applies.
  */
-export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; branch?: string | null }): RowSubline | null {
-  if (opts.tag) return { kind: "tag", tag: opts.tag };
+export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; branch?: string | null; groupBranch?: string | null }): RowSubline | null {
+  if (opts.tag) {
+    // A group head owns its branch: only a worktree row with a different one states it again.
+    const tag = opts.groupBranch != null && opts.tag.branch === opts.groupBranch ? { ...opts.tag, branch: null } : opts.tag;
+    return { kind: "tag", tag };
+  }
   if (s.agentStatus) {
     const { state, comment, at } = s.agentStatus;
     return { kind: "agent", text: comment || agentStatusText(s.agentStatus), state, line: agentStatusText(s.agentStatus), at };
   }
   const branch = opts.branch ?? null;
-  return branch !== null && !isTrunkBranch(branch) ? { kind: "branch", text: branch } : null;
+  if (branch === null || branch === opts.groupBranch || isTrunkBranch(branch)) return null;
+  return { kind: "branch", text: branch };
 }
 
 /** The leading slot a row's 10px mark takes, in the order the row chooses one. */
@@ -60,21 +64,22 @@ export interface RowState {
  * What a row's two state slots say (the plan's colour contract, docs/ui.md):
  *  - the leading mark is a run's ring, the amber question of a row waiting on you, or — in a list that
  *    mixes harnesses — the harness's dot; a list of one harness keeps the slot but not the colour;
- *  - the right-hand slot is ONE word when the session has one to say (Needs you, Working, Done), else
- *    the age: a snoozed row keeps its wake time, which is its state;
+ *  - the meta holds the age, or one state word elsewhere than its own Needs-you/Working section.
+ *    Inside either section the row's mark and heading carry the state, so no word repeats it.
  *  - the parked / herdr / handover marks collapse into one glyph (handover wins over herdr wins over
  *    parked); the card names the rest.
  * Nothing else on the row is coloured: amber is needs-you, accent is a run or the word for one, green is
  * done, and unread is the title's weight.
  */
-export function rowState(s: ProjectSession, opts: { working: boolean; showHarness: boolean; now?: number }): RowState {
+export function rowState(s: ProjectSession, opts: { working: boolean; showHarness: boolean; section?: "needs" | "working" | null; now?: number }): RowState {
   const snoozed = (s.snoozedUntil ?? 0) > (opts.now ?? Date.now());
   const mark: RowMark = opts.working && !s.asking ? "working" : s.asking ? "needs" : opts.showHarness ? "harness" : "blank";
-  return { mark, word: rowWord(s, opts.working, snoozed), glyph: rowGlyph(s), unread: s.unread === true };
+  return { mark, word: rowWord(s, opts.working, snoozed, opts.section), glyph: rowGlyph(s), unread: s.unread === true };
 }
 
-function rowWord(s: ProjectSession, working: boolean, snoozed: boolean): RowWord | null {
+function rowWord(s: ProjectSession, working: boolean, snoozed: boolean, section?: "needs" | "working" | null): RowWord | null {
   if (snoozed) return null;
+  if ((s.asking && section === "needs") || (working && section === "working")) return null;
   if (s.asking) return { text: "Needs you", tone: "warn" };
   if (working) return { text: "Working", tone: "accent" };
   // Green is the agent's own verdict, and only a made one: review counts as done for now.

@@ -1,12 +1,12 @@
-// Sidebar rows are one line each, on one pitch: 32px, or 48px when the row has a subline (the project it
-// is out of, the agent's status, a branch). Nothing divides them — no inset hairline, no rail — so the
-// rhythm and the calendar headings do the grouping, and a title is cut with an ellipsis rather than
-// wrapped onto a second line that says nothing about the story. The ⋯ keeps a gutter of its own, so the
-// age never disappears under the pointer.
-//
-// The setting that swaps the rows for the compact ones older versions drew (config.yml's `sidebar_style`)
-// is measured the same way: 28px, one line, and the subline as a dim suffix after the title.
 import { type ChildProcess, spawn } from "node:child_process";
+// Sidebar rows keep one pitch: 32px, or 48px with a subline. A two-line title takes
+// the full row; the right end of its subline holds the age, so hover's ⋯ never covers it.
+// A one-line title keeps the age beside it, and hover swaps the ⋯ for that age.
+// Unread is title weight, never an accent dot; section rows do not repeat their section's
+// state word. A project group states a common branch on its head, not on every child.
+//
+// Compact keeps one 28px line: title, an inline project suffix (8px gap, at most 34%),
+// and a stable age slot that hover trades for the ⋯. The tests below measure the contract.
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -131,24 +131,64 @@ test.describe("the separated rows", () => {
     await expect(item.locator(".session")).toHaveAttribute("title", new RegExp(`^${LONG_TITLE}`));
   });
 
-  test("the age stays where it is on hover; the ⋯ has a gutter of its own", async ({ page }) => {
+  test("a two-line title has the whole row, and its age stays clear of the ⋯", async ({ page }) => {
     await signInAndOpen(page);
     await newChat(page);
     await sendAndWait(page, "hover keeps the age");
     await showSidebar(page);
     const item = row(page, "hover keeps the age").first();
-    const age = item.locator(".session-time");
-    await expect(age).toBeVisible();
-    const before = (await age.boundingBox()) as { x: number; width: number } | null;
+    await expect(item.locator(".session-body")).toHaveClass(/has-sub/);
+    const before = await item.evaluate((el) => {
+      const title = el.querySelector(".session-title")?.getBoundingClientRect();
+      const meta = el.querySelector(".session-meta")?.parentElement?.getBoundingClientRect();
+      return title && meta ? { width: title.width, titleBottom: title.bottom, metaTop: meta.top } : null;
+    });
+    expect(before).not.toBeNull();
     await item.locator(".session").hover();
-    const more = item.locator(".session-more");
-    await expect(more).toBeVisible();
-    await expect(age, "the age is not taken away under the pointer").toBeVisible();
-    const after = (await age.boundingBox()) as { x: number; width: number } | null;
-    expect(after?.x).toBe(before?.x);
-    // The gutter sits to the right of the age, so the two never overlap.
-    const button = (await more.boundingBox()) as { x: number } | null;
-    expect(button?.x ?? 0).toBeGreaterThanOrEqual(((before as { x: number; width: number }).x + (before as { x: number; width: number }).width));
+    const now = await item.evaluate((el) => {
+      const button = el.querySelector(".session-more")?.getBoundingClientRect();
+      const age = el.querySelector(".session-time")?.getBoundingClientRect();
+      const meta = el.querySelector(".session-meta")?.parentElement?.getBoundingClientRect();
+      const title = el.querySelector(".session-title");
+      const metaEl = el.querySelector(".session-meta");
+      const sessionEl = el.querySelector(".session");
+      return button && age && meta && title && metaEl && sessionEl ? { left: button.left, right: button.right, bottom: button.bottom, ageTop: age.top, ageLeft: age.left, metaTop: meta.top, metaOpacity: getComputedStyle(metaEl).opacity, mask: getComputedStyle(title).maskImage, padding: getComputedStyle(sessionEl).paddingRight } : null;
+    });
+    expect(now?.metaOpacity).toBe("1");
+    expect(now?.mask).toContain("28px");
+    expect(now?.mask).toContain("52px");
+    // No reserved gutter: the row's right padding stays the list's 8px.
+    expect(now?.padding).toBe("8px");
+    // The age is on the second line; the ⋯ occupies only the title's line.
+    expect((now?.ageTop ?? 0)).toBeGreaterThanOrEqual(before?.titleBottom ?? 0);
+    expect((now?.bottom ?? Infinity)).toBeLessThanOrEqual((before?.metaTop ?? 0) + 1);
+    expect((now?.right ?? 0)).toBeGreaterThanOrEqual(now?.ageLeft ?? 0);
+    expect(now?.left).toBeGreaterThan(0);
+    expect((await item.locator(".session-more").boundingBox())?.width).toBe(24);
+  });
+
+  test("a one-line row swaps its age for the ⋯ without moving the title", async ({ page }) => {
+    await useProjectsView(page);
+    await signInAndOpen(page);
+    await newChat(page);
+    await sendAndWait(page, "one line hover row");
+    await showSidebar(page);
+    const item = row(page, "one line hover row").first();
+    await expect(item.locator(".session-body")).not.toHaveClass(/has-sub/);
+    const titleBefore = await item.locator(".session-title").boundingBox();
+    const age = item.locator(".session-meta");
+    await item.locator(".session").hover();
+    await expect(item.locator(".session-more")).toHaveCSS("opacity", "1");
+    await expect(age).toHaveCSS("opacity", "0", { timeout: 2000 });
+    expect((await item.locator(".session-title").boundingBox())?.width).toBe(titleBefore?.width);
+    // The control replaces its faded age in the same part of the one-line row.
+    const boxes = await item.evaluate((el) => {
+      const more = el.querySelector(".session-more")?.getBoundingClientRect();
+      const meta = el.querySelector(".session-meta")?.parentElement?.getBoundingClientRect();
+      return more && meta ? { moreTop: more.top, moreBottom: more.bottom, metaTop: meta.top, metaBottom: meta.bottom } : null;
+    });
+    expect(boxes?.metaTop).toBeLessThan(boxes?.moreBottom ?? 0);
+    expect(boxes?.metaBottom).toBeGreaterThan(boxes?.moreTop ?? 0);
   });
 });
 
@@ -190,13 +230,22 @@ test.describe("the compact rows", () => {
     // The subline is a suffix on that line, not a second one: the title ends left of the project's name.
     const placed = await item.evaluate((el) => {
       const title = el.querySelector(".session-title")?.getBoundingClientRect();
-      const sub = el.querySelector(".session-sub")?.getBoundingClientRect();
+      const sub = el.querySelector(".session-sub-name")?.getBoundingClientRect();
       return title && sub ? { titleBottom: title.bottom, subTop: sub.top, titleRight: title.right, subLeft: sub.left } : null;
     });
     expect(placed, "the row carries its project").not.toBeNull();
     const suffix = placed as { titleBottom: number; subTop: number; titleRight: number; subLeft: number };
     expect(suffix.subTop, "one line: the suffix starts on the title's own line").toBeLessThan(suffix.titleBottom);
     expect(suffix.subLeft).toBeGreaterThanOrEqual(suffix.titleRight);
+    await expect(item.locator(".session-sub-name")).toHaveCSS("margin-left", "8px");
+    const compactWidth = await item.locator(".session-sub-name").evaluate((el) => ({ width: el.getBoundingClientRect().width, max: getComputedStyle(el).maxWidth }));
+    const body = await item.locator(".session-body").evaluate((el) => el.getBoundingClientRect().width);
+    expect(compactWidth.width).toBeLessThanOrEqual(body * 0.34 + 1);
+    expect(compactWidth.max.endsWith("px") ? compactWidth.width : 0).toBeLessThanOrEqual(body * 0.34 + 1);
+    // The age at the line's end gets the same slot as ⋯ on hover, not a third column.
+    await item.locator(".session").hover();
+    await expect(item.locator(".session-meta")).toHaveCSS("opacity", "0", { timeout: 2000 });
+    await expect(item.locator(".session-more")).toHaveCSS("opacity", "1");
     // Off again is the separated look, whole: the setting only swaps rows.
     await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
     const back = (await item.boundingBox()) as { height: number } | null;

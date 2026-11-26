@@ -1,9 +1,8 @@
-// A sidebar row's state, in the two slots it keeps (session-state.ts): the leading mark, and the
-// right-hand slot — the age, or ONE word in its place (Needs you, Working, Done). Nothing in the list is
-// a colour-only dot: liveness is the server's own detail and lives in the hover card, and unread is the
-// title's weight. The colour contract is in docs/ui.md.
+// Section rows state their Needs-you / Working status once: the leading mark plus the age.
+// Elsewhere the age may carry a state word. Unread is weight and full ink, with visually
+// hidden supporting text for assistive technology, not a second accent dot. See docs/ui.md.
 import { expect, type Page, test } from "@playwright/test";
-import { newChat, send, showSidebar, signInAndOpen } from "./helpers.js";
+import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
 const row = (page: Page, title: string) => sidebar(page).locator(".session-item", { hasText: title }).first();
@@ -22,21 +21,25 @@ const painted = (page: Page, token: string): Promise<string> =>
     return `rgb(${r}, ${g}, ${b})`;
   }, token);
 
-test("a row waiting on you wears the amber mark and one word where its age would be", async ({ page }) => {
+test("a row waiting in Needs you wears the amber mark and age, not a repeated word", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
-  // The fake harness raises an approval for a prompt that asks for one.
   await send(page, "ask please approve the state row");
   await expect(page.getByTestId("approval-card")).toBeVisible();
+  // Off the asking tab: only an inactive session belongs in the section above the list.
+  await page.getByRole("button", { name: "New chat in a new tab" }).click();
+  await sendAndWait(page, "ordinary state row");
   await showSidebar(page);
 
-  const waiting = row(page, "ask please approve the state row");
+  const waiting = page.getByTestId("needs-group").locator(".session-item", { hasText: "ask please approve the state row" });
   await expect(waiting.locator(".session-asking-dot")).toBeVisible();
-  // One word in the age's place, in the attention colour, and no age beside it.
-  const word = waiting.locator(".session-state");
-  await expect(word).toHaveText("Needs you");
-  await expect(word).toHaveCSS("color", await painted(page, "--warn"));
-  await expect(waiting.locator(".session-time")).toHaveCount(0);
+  await expect(waiting.locator(".session-state")).toHaveCount(0);
+  await expect(waiting.locator(".session-time")).toHaveCSS("color", await painted(page, "--warn"));
+  // Needs-you and idle titles share the same full width; the old state word and gutter are gone.
+  const ordinary = row(page, "ordinary state row");
+  const widths = await Promise.all([waiting, ordinary].map((item) => item.locator(".session-title").evaluate((el) => el.getBoundingClientRect().width)));
+  expect(widths[0]).toBe(widths[1]);
+  expect(widths[0]).toBeGreaterThan(200);
   // No green "live" dot: being open on this server is not a state the list paints.
   await expect(sidebar(page).locator(".live-dot")).toHaveCount(0);
 });
@@ -61,4 +64,9 @@ test("an unread row is heavier at full ink, not another dot", async ({ page }) =
   expect(unread.row).toContain("is-unread");
   expect(unread.color, "an unread title takes the row's full ink").not.toBe(readColor);
   expect(unread.color, "and it is the theme's own text colour").toBe(await painted(page, "--text"));
+  await expect(target.locator(".session-unread")).toHaveCount(0);
+  await expect(target.locator(".visually-hidden", { hasText: "Unread" })).toHaveCount(1);
+  await target.locator(".session").click();
+  await expect(target.locator(".session-title")).toHaveCSS("font-weight", "400");
+  await expect(target.locator(".visually-hidden", { hasText: "Unread" })).toHaveCount(0);
 });
