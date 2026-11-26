@@ -301,7 +301,10 @@ test("the project switch menu stands on one grid: marks in one column, labels on
   }
   await page.goto("/");
   await showSidebar(page);
+  // The shared server's current folder may not be beta: the search finds a row in any project.
+  await page.getByRole("searchbox", { name: "Search sessions" }).fill("menu grid beta");
   await page.locator(".session", { hasText: "menu grid beta" }).first().click();
+  await page.getByRole("searchbox", { name: "Search sessions" }).fill("");
   await page.locator(".focus-group .project-toggle").first().click();
   const menu = page.getByRole("menu", { name: "Project" });
   await expect(menu).toBeVisible();

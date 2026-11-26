@@ -207,6 +207,8 @@ test("a notice card swipes sideways away, and a short swipe springs back", async
   /** A finger dragged left along a row, through the DevTools touch input. */
   async function dragRow(page: Page, title: string, fraction: number) {
     const row = page.locator(".sidebar").locator(".session", { hasText: title }).first();
+    // A shared server's list is long: a row scrolled out of the drawer has a box the finger cannot reach.
+    await row.scrollIntoViewIfNeeded();
     const box = await row.boundingBox();
     if (!box) throw new Error("no row");
     const y = box.y + box.height / 2;
