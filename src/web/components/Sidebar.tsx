@@ -13,7 +13,7 @@ import { useHoverCard, type CardSide } from "../hover-card.js";
 import { menuStep, useMenuKeys } from "../menu-focus.js";
 import { useFocusTrap } from "../focus-trap.js";
 import { shortPath } from "../project-path.js";
-import { IconArchive, IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconEdit, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit, IconX } from "../icons.js";
+import { IconArchive, IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit, IconX } from "../icons.js";
 import { shortcutHint } from "../shortcuts.js";
 import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
 import type { UsageLimits } from "../../shared/protocol.js";
@@ -1499,7 +1499,7 @@ export function Sidebar(props: {
             onPick={props.onHarness}
           />
           <button type="button" className="icon-btn sidebar-compose" aria-label="New chat" aria-keyshortcuts="Control+N Meta+N" title={`New chat (${shortcutHint("new")})`} onClick={props.onNewChat} disabled={props.newChatDisabled !== null}>
-            <IconEdit size={16} />
+            <IconPlus size={16} />
           </button>
           <button type="button" className="icon-btn sidebar-collapse" aria-label="Collapse sidebar" title="Collapse sidebar" onClick={props.onCollapse}>
             <IconSidebar size={16} />

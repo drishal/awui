@@ -15,6 +15,10 @@ test("the two-row head and footer keep the controls on the new chrome", async ({
   await expect(sidebar.locator(".quick-filters")).toHaveCount(0);
   await expect(sidebar.getByTestId("rooms-group")).toHaveCount(0);
   await expect(sidebar.locator(".harness-row-meta")).toHaveCount(0);
+  // New chat is a plus, not the pencil this app uses for rename and edit.
+  const compose = sidebar.getByRole("button", { name: "New chat", exact: true });
+  await expect(compose.locator("svg path")).toHaveAttribute("d", "M8 3v10M3 8h10");
+  await expect(compose).toHaveAttribute("aria-keyshortcuts", "Control+N Meta+N");
   const filter = sidebar.getByRole("button", { name: "Filters", exact: true });
   expect((await filter.boundingBox())!.width).toBe(24);
   expect((await filter.boundingBox())!.height).toBe(24);
@@ -227,7 +231,7 @@ test.describe("phone drawer", () => {
       })
       .toEqual({ end: 0, fill: 0, top: 0 });
     // The head is a 44 px touch row with 40 px controls, and the sticky New chat pill is the only way to start
-    // one: the head's pencil is gone.
+    // one: the head's compose button is gone.
     const head = (await drawer.locator(".sidebar-head").boundingBox())!;
     expect(Math.round(head.height)).toBe(44);
     const close = (await drawer.getByRole("button", { name: "Close menu" }).boundingBox())!;

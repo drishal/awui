@@ -29,7 +29,7 @@ export async function showSidebar(page: Page): Promise<void> {
 }
 
 /**
- * The New chat control this layout shows: the head's pencil on a pointer, and on a phone the drawer's
+ * The New chat control this layout shows: the head's plus on a pointer, and on a phone the drawer's
  * own sticky pill (its head keeps only the harness title and the close button).
  */
 async function clickNewChat(page: Page): Promise<void> {
