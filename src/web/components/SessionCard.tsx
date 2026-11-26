@@ -7,11 +7,11 @@ import { useEffect, useRef, useState } from "react";
 import type { ProjectSession, SessionPreview } from "../../shared/protocol.js";
 import { sessionPreview } from "../session-preview.js";
 import { harnessColor } from "../harness-colors.js";
-import { useCardPlace } from "../hover-card.js";
+import { useCardPlace, type CardSide } from "../hover-card.js";
 import { plainPreview } from "../session-groups.js";
 import { agentStatusText } from "../agent-status.js";
 
-export function SessionCard({ s, anchor, harnessName, project, id, provenance }: { s: ProjectSession; anchor: DOMRect; harnessName: string; project: string; id: string; provenance?: string | null }) {
+export function SessionCard({ s, anchor, side = "right", harnessName, project, id, provenance }: { s: ProjectSession; anchor: DOMRect; /** "right" beside the row (the mouse), "below" under it (the keyboard, where the row must stay in view). */ side?: CardSide; harnessName: string; project: string; id: string; provenance?: string | null }) {
   const [data, setData] = useState<SessionPreview | null | undefined>(undefined);
   const card = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -21,8 +21,8 @@ export function SessionCard({ s, anchor, harnessName, project, id, provenance }:
       live = false;
     };
   }, [s.id, s.updatedAt]);
-  // Beside the row, kept inside the window once its height is known.
-  const { left, top } = useCardPlace(card, anchor, "right", [data]);
+  // Beside the row (or under it), kept inside the window once its height is known.
+  const { left, top } = useCardPlace(card, anchor, side, [data]);
   const model = data?.model?.split("/").pop();
   // The quiet facts the row folds into one glyph (or drops, for liveness): the card names them all.
   const marks = [

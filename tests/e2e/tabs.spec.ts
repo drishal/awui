@@ -438,7 +438,9 @@ test("a session can be snoozed until a time you pick", async ({ page }) => {
   await showSidebar(page);
   const row = page.locator(".session-item", { hasText: "snooze me later" }).first();
   await row.locator(".session").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Snooze until a time…" }).click();
+  // The snooze choices fold under their one row: a picked time is one press deeper.
+  await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Until a time…" }).click();
   const dialog = page.getByRole("dialog", { name: "Snooze until" });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Wake it at").fill("2027-03-04T09:30");
@@ -486,6 +488,7 @@ test("a session can be snoozed until the limit resets", async ({ page }) => {
   await showSidebar(page);
   const row = page.locator(".session-item", { hasText: "limit snooze me" }).first();
   await row.locator(".session").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Snooze", exact: true }).click();
   await page.getByRole("menuitem", { name: "Until the limit resets" }).click();
   await expect(page.getByTestId("toast")).toContainText("limit snooze me");
   await expect(page.locator(".session-item", { hasText: "limit snooze me" })).toHaveCount(0);

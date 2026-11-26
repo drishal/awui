@@ -116,6 +116,13 @@ export const IconCheck = ({ draw, className, ...p }: IconProps & { draw?: boolea
     <path d="M3 8.5l3 3 7-7" pathLength={1} />
   </Svg>
 );
+/** A tick in a square: picking rows out of a list (the sidebar's "Select sessions"). */
+export const IconCheckSquare = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.5" />
+    <path d="M5.25 8.25l1.9 1.9 3.6-4.4" />
+  </Svg>
+);
 export const IconX = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 4l8 8M12 4l-8 8" />

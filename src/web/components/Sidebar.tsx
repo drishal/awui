@@ -4,13 +4,16 @@
 // more" past a page), from the server's sessions overview. Rows warm their chat on hover, show a hover
 // card, carry a menu (new tab, resume command, pin, snooze, archive, move), and, in the Projects view,
 // drag to a new place inside their date section. On phones it is the drawer.
-import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { ChatStatus, Checkout, HarnessStatus, ProjectSession, RoomSummary, SessionsOverview, WorkspaceInfo } from "../../shared/protocol.js";
 import { RoomList } from "./RoomList.js";
 import { useDismiss, useLeave, useNow, useViewSlide } from "../hooks.js";
 import { projectScoped } from "../harness-policy.js";
-import { useHoverCard } from "../hover-card.js";
-import { IconArchive, IconCheck, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
+import { useHoverCard, type CardSide } from "../hover-card.js";
+import { menuStep, useMenuKeys } from "../menu-focus.js";
+import { useFocusTrap } from "../focus-trap.js";
+import { shortPath } from "../project-path.js";
+import { IconArchive, IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
 import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
 import type { UsageLimits } from "../../shared/protocol.js";
 import { limitResetAt } from "../../shared/limit-stop.js";
@@ -109,6 +112,10 @@ const HOVER_WARM_MS = 90;
 /** How long the mouse rests on a row before its hover card shows. */
 const HOVER_CARD_MS = 500;
 
+/** A rule between a menu's groups: five short tasks read faster than thirteen flat actions. */
+function MenuSeparator() {
+  return <li role="separator" className="menu-separator" />;
+}
 /**
  * Open in a new tab, copy its resume command, pin, settle, snooze, archive:
  * from the row's ⋯ button or a right-click (a long press on phones). A session
@@ -123,6 +130,7 @@ function RowMenu({
   onMove,
   onClose,
   onSnoozeAt,
+  opener,
 }: {
   s: ProjectSession;
   anchor: DOMRect;
@@ -133,20 +141,29 @@ function RowMenu({
   onClose: () => void;
   /** Wake it again at a time the user picks (the dialog's own item). */
   onSnoozeAt: () => void;
+  /** The row's ⋯ button, or the row itself after a right-click: where Escape hands the focus back. */
+  opener: { readonly current: HTMLElement | null };
 }) {
   const { snoozeReset } = useContext(RowActions);
   const selection = useSelectionMode();
   const list = useRef<HTMLUListElement>(null);
-  // Its height, measured before the first paint: the layout's, since it pops in scaled.
+  // Its height, measured before the first paint: the layout's, since it pops in scaled. The snooze choices
+  // fold open inside it, which changes it.
   const [height, setHeight] = useState(300);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
   useLayoutEffect(() => {
     if (list.current) setHeight(list.current.scrollHeight);
-  }, []);
-  // Below when it fits there, else above when it fits there, else on the roomier side, scrolling.
+  }, [snoozeOpen]);
+  const snoozed = (s.snoozedUntil ?? 0) > Date.now();
+  // Its own keyboard: one tab stop, arrows between the rows, Escape back to the button that opened it.
+  const keys = useMenuKeys(list, { open: true, close: onClose, opener, version: snoozeOpen ? 1 : 0 });
+  // Below when it fits there, else above when it fits there, else on the roomier side, scrolling. The list's
+  // own scroller is its ceiling: a menu on a row near the top opens inside the list, never over the head.
   const roomBelow = window.innerHeight - anchor.bottom - 12;
+  const ceiling = (document.querySelector<HTMLElement>(".sidebar .session-list")?.getBoundingClientRect().top ?? 8) + 4;
   const roomAbove = anchor.top - 12;
   const below = height <= roomBelow || (height > roomAbove && roomBelow >= roomAbove);
-  const room = below ? roomBelow : roomAbove;
+  const room = below ? roomBelow : Math.max(0, Math.min(roomAbove, anchor.top - 4 - ceiling));
   // Under the ⋯ button it lines up with the button's right edge; at a right-click's
   // point (no width) it opens rightwards, since the sidebar sits at the window's left.
   const across = anchor.width === 0 ? { left: Math.max(8, Math.min(anchor.left, window.innerWidth - 240)), right: "auto" } : { left: "auto", right: Math.max(8, window.innerWidth - anchor.right) };
@@ -166,12 +183,12 @@ function RowMenu({
   return (
     <>
       <div className="menu-backdrop" onClick={onClose} aria-hidden="true" />
-      <ul ref={list} className="menu-list row-menu" role="menu" style={style} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <ul ref={list} className="menu-list row-menu" role="menu" aria-label={`Actions for ${s.title}`} style={style} onKeyDown={keys.onKeyDown}>
+        {/* Open first: every way out of this list, with the session's own handoff. */}
         <li role="none">
           <button
             type="button"
             role="menuitem"
-            autoFocus
             onClick={() => {
               onClose();
               onOpenNewTab();
@@ -229,14 +246,10 @@ function RowMenu({
         ) : null}
         {markable ? (
           <>
+            <MenuSeparator />
             <li role="none">
               <button type="button" role="menuitem" onClick={() => pick({ pinned: !s.pinned })}>
                 <IconPin size={14} /> {s.pinned ? "Unpin" : "Pin"}
-              </button>
-            </li>
-            <li role="none">
-              <button type="button" role="menuitem" onClick={() => pick({ settled: !s.settled })}>
-                <IconCheck size={14} /> {s.settled ? "Unsettle" : "Settle"}
               </button>
             </li>
             <li role="none">
@@ -244,6 +257,56 @@ function RowMenu({
                 <IconDot size={14} /> {s.unread ? "Mark read" : "Mark unread"}
               </button>
             </li>
+            <li role="none">
+              <button type="button" role="menuitem" onClick={() => pick({ settled: !s.settled })}>
+                <IconCheck size={14} /> {s.settled ? "Unsettle" : "Settle"}
+              </button>
+            </li>
+            <MenuSeparator />
+            {snoozed ? (
+              <li role="none">
+                <button type="button" role="menuitem" onClick={() => pick({ snoozedUntil: null })}>
+                  <IconClock size={14} /> Wake now
+                </button>
+              </li>
+            ) : (
+              <>
+                {/* One row, its choices folded under it: the presets, the limit, and a time of your own. */}
+                <li role="none">
+                  <button type="button" role="menuitem" aria-expanded={snoozeOpen} onClick={() => setSnoozeOpen((open) => !open)}>
+                    <IconClock size={14} /> Snooze
+                    <IconChevronDown size={12} className={`menu-disclosure${snoozeOpen ? " is-open" : ""}`} />
+                  </button>
+                </li>
+                {snoozeOpen ? (
+                  <li role="none" className="menu-fold">
+                    <div role="group" aria-label="Snooze until">
+                      {snoozeReset ? (
+                        <button type="button" role="menuitem" onClick={() => pick({ snoozedUntil: snoozeReset + 20_000 })}>
+                          Until the limit resets
+                        </button>
+                      ) : null}
+                      {snoozeOptions().map((o) => (
+                        <button type="button" role="menuitem" key={o.label} onClick={() => pick({ snoozedUntil: o.until })}>
+                          {o.label}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          onClose();
+                          onSnoozeAt();
+                        }}
+                      >
+                        Until a time…
+                      </button>
+                    </div>
+                  </li>
+                ) : null}
+              </>
+            )}
+            <MenuSeparator />
             <li role="none">
               <button
                 type="button"
@@ -253,78 +316,43 @@ function RowMenu({
                   enterSelection(s.id);
                 }}
               >
-                Select sessions
+                <IconCheckSquare size={14} /> Select sessions
               </button>
             </li>
-            {s.snoozedUntil && s.snoozedUntil > Date.now() ? (
-              <li role="none">
-                <button type="button" role="menuitem" onClick={() => pick({ snoozedUntil: null })}>
-                  <IconClock size={14} /> Wake now
-                </button>
-              </li>
-            ) : (
+            {onMove ? (
               <>
-                {snoozeReset ? (
-                  <li role="none">
-                    <button type="button" role="menuitem" onClick={() => pick({ snoozedUntil: snoozeReset + 20_000 })}>
-                      <IconClock size={14} /> Until the limit resets
-                    </button>
-                  </li>
-                ) : null}
-                {snoozeOptions().map((o) => (
-                <li role="none" key={o.label}>
-                  <button type="button" role="menuitem" onClick={() => pick({ snoozedUntil: o.until })}>
-                    <IconClock size={14} /> Snooze {o.label.toLowerCase()}
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!onMove.up}
+                    onClick={() => {
+                      onClose();
+                      onMove.by(-1);
+                    }}
+                  >
+                    <IconChevronUp size={14} /> Move up
                   </button>
                 </li>
-                ))}
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!onMove.down}
+                    onClick={() => {
+                      onClose();
+                      onMove.by(1);
+                    }}
+                  >
+                    <IconChevronDown size={14} /> Move down
+                  </button>
+                </li>
               </>
-            )}
+            ) : null}
+            <MenuSeparator />
             <li role="none">
               <button type="button" role="menuitem" onClick={() => pick({ archived: !s.archived })}>
                 <IconArchive size={14} /> {s.archived ? "Unarchive" : "Archive"}
-              </button>
-            </li>
-            <li role="none">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  onClose();
-                  onSnoozeAt();
-                }}
-              >
-                <IconClock size={14} /> Snooze until a time…
-              </button>
-            </li>
-          </>
-        ) : null}
-        {onMove ? (
-          <>
-            <li role="none">
-              <button
-                type="button"
-                role="menuitem"
-                disabled={!onMove.up}
-                onClick={() => {
-                  onClose();
-                  onMove.by(-1);
-                }}
-              >
-                <IconChevronUp size={14} /> Move up
-              </button>
-            </li>
-            <li role="none">
-              <button
-                type="button"
-                role="menuitem"
-                disabled={!onMove.down}
-                onClick={() => {
-                  onClose();
-                  onMove.by(1);
-                }}
-              >
-                <IconChevronDown size={14} /> Move down
               </button>
             </li>
           </>
@@ -373,6 +401,9 @@ function SessionRow({
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const selection = useSelectionMode();
   const moreRef = useRef<HTMLButtonElement>(null);
+  const rowRef = useRef<HTMLButtonElement>(null);
+  // Where the menu was opened from: Escape hands the focus back there (a right-click leaves it on the row).
+  const menuFrom = useRef<HTMLButtonElement | null>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
   // A session not saved yet has nothing to mark.
   const markable = !s.id.includes(":live-");
@@ -393,6 +424,8 @@ function SessionRow({
   // The row's id outlives its node: the switch a click starts redraws the list under the pointer, and the
   // press must keep the card away past that.
   const { anchor: cardAt, show: showCard, hold: holdCard, hide: hideCard } = useHoverCard(HOVER_CARD_MS, s.id);
+  // A card opened by the keyboard sits under its row, where it never covers the row it belongs to.
+  const [cardSide, setCardSide] = useState<CardSide>("right");
   const cardId = useId();
   useEffect(() => () => window.clearTimeout(hover.current), []);
   return (
@@ -409,6 +442,7 @@ function SessionRow({
       onDragEnd={drag?.onEnd}
     >
       <button
+        ref={rowRef}
         type="button"
         className={`session${active ? " is-active" : ""}${selection.ids.has(s.id) ? " is-selected" : ""}${working ? " is-working" : ""}${state.unread ? " is-unread" : ""}${s.archived || s.settled || (s.snoozedUntil ?? 0) > Date.now() ? " is-archived" : ""}`}
         onClick={(e) => {
@@ -433,6 +467,7 @@ function SessionRow({
           if (e.pointerType !== "mouse") return;
           window.clearTimeout(hover.current);
           hover.current = window.setTimeout(() => warm(s, "hover"), HOVER_WARM_MS);
+          setCardSide("right");
           if (markable) showCard(e.currentTarget);
           else hideCard();
         }}
@@ -512,7 +547,10 @@ function SessionRow({
         aria-label={`More for ${s.title}`}
         aria-haspopup="menu"
         aria-expanded={menuAt !== null}
-        onClick={() => setMenuAt(moreRef.current?.getBoundingClientRect() ?? null)}
+        onClick={() => {
+          menuFrom.current = moreRef.current;
+          setMenuAt(moreRef.current?.getBoundingClientRect() ?? null);
+        }}
       >
         <IconMore size={14} />
       </button>
@@ -533,11 +571,12 @@ function SessionRow({
           ))}
         </div>
       ) : null}
-      {cardAt && !menuAt ? <SessionCard s={s} anchor={cardAt} harnessName={harnessName} project={tag?.name ?? ""} id={cardId} provenance={provenance ?? null} /> : null}
+      {cardAt && !menuAt ? <SessionCard s={s} anchor={cardAt} side={cardSide} harnessName={harnessName} project={tag?.name ?? ""} id={cardId} provenance={provenance ?? null} /> : null}
       {menuAt ? (
         <RowMenu
           s={s}
           anchor={menuAt}
+          opener={menuFrom}
           markable={markable}
           onOpenNewTab={() => onOpen(true)}
           onMark={onMark}

@@ -1180,6 +1180,39 @@
   gap: 8px;
 }
 
+/* Groups inside a menu: a hairline rule, and the snooze choices folded under their one row. The disclosure's
+   chevron sits at the row's end (the row is a flex line, its label second) and tips over while it is open. */
+.menu-list > [role="separator"] {
+  height: 1px;
+  margin: 4px 8px;
+  padding: 0;
+  background: var(--hairline);
+}
+
+.row-menu button > .menu-disclosure {
+  margin-left: auto;
+  color: var(--muted-text);
+  transition: transform var(--dur-spring) var(--spring);
+}
+
+.row-menu button > .menu-disclosure.is-open {
+  transform: rotate(180deg);
+}
+
+.menu-fold [role="group"] {
+  display: grid;
+  gap: 1px;
+  margin: 1px 0 2px 22px;
+  padding-left: 8px;
+  border-left: 1px solid var(--hairline);
+}
+
+.menu-fold button {
+  padding-block: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
 .archived-toggle {
   margin-top: 6px;
 }
