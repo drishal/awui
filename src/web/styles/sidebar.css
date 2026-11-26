@@ -6,9 +6,10 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-height: 0;
-  padding: 12px 10px 10px;
+  padding: 10px 10px 6px;
+
   background: var(--surface);
   border-right: 1px solid var(--hairline);
   overflow: hidden;
@@ -21,55 +22,46 @@
   min-height: 30px;
   padding: 0 6px;
 }
-
-/* The brand takes the free space; Settings and the fold/close buttons sit together at the right. */
-.sidebar-head .brand {
+.sidebar-head .harness-menu-wrap {
   flex: 1;
   min-width: 0;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-weight: 600;
-  font-size: 14.5px;
-  letter-spacing: 0.01em;
-}
-
-/* The start screen's glyph, at the size of a wordmark's dot: it is the same mark the hero draws,
-   so the app has one face rather than a word and a picture. */
-.brand-mark {
-  display: flex;
+.sidebar-head .icon-btn {
   flex: none;
-  color: var(--accent);
+  width: 28px;
+  height: 28px;
 }
 
-.brand-mark svg {
-  display: block;
-  overflow: hidden;
+.sidebar-compose:disabled {
+  opacity: 0.45;
 }
-.new-chat {
+
+.drawer-new-chat {
+  display: none;
+}
+
+.sidebar-footer {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--r-md);
-  background: var(--bg);
-  font-weight: 500;
-  text-align: left;
-  box-shadow: 0 1px 2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.6));
+  flex: none;
+  gap: 2px;
+  height: 36px;
 }
 
-.new-chat:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--text) 3%, var(--bg));
+.sidebar-footer .usage-link {
+  flex: 1;
+  min-width: 0;
 }
 
-.new-chat:disabled {
-  opacity: 0.55;
+.sidebar-footer .icon-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+
+.session-list {
+  mask-image: linear-gradient(to bottom, black calc(100% - 16px), transparent);
 }
 
 .sidebar-note {
@@ -232,7 +224,7 @@
   align-items: center;
   gap: 7px;
   height: 32px;
-  padding: 0 10px;
+  padding: 0 4px 0 8px;
   border-radius: var(--r-sm);
   background: var(--hover);
   color: var(--muted-text);
@@ -248,14 +240,17 @@
   font-size: 13px;
 }
 
+.search-field input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .search-field:focus-within {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
-.sessions-head {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.sessions {
+  gap: 8px;
 }
 
 .sessions-head .search-field {
@@ -263,65 +258,57 @@
   min-width: 0;
 }
 
-.sessions-head .icon-btn {
-  width: 32px;
-  height: 32px;
+.filter-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--muted-text);
+}
+
+.filter-dot {
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.search-field .filter-chip {
+  width: 24px;
+  height: 24px;
+}
+
+.filter-chip.is-on {
+  color: var(--text);
 }
 
 .quick-filters {
   display: flex;
   flex-wrap: nowrap;
   gap: 4px;
-  margin: 4px 0 2px;
   overflow: hidden;
-}
-
-/* The chips, the Filters button and the head's one row. The chips never wrap: a wrapped chip grew the head by a
-   whole row (28 px) for a count too wide to fit, which is what the light frames showed. They give up their counts
-   first, one step at a time as the sidebar narrows (`@container` below reads their own room), because the words
-   are what make a chip readable; at the resizer's floor the words shorten rather than wrap or clip. */
-.quick-chips {
-  display: flex;
-  flex: 1 1 0;
-  flex-wrap: nowrap;
-  gap: 3px;
-  min-width: 0;
-  overflow: hidden;
-  /* A query container for the room the chips get, which is what the rules below ask about. Nothing positioned
-     inside it is fixed or absolute: it holds the chips only. */
-  container-type: inline-size;
-}
-
-
-
-.quick-filters .filter-chip {
-  flex: 0 0 24px;
-  align-self: flex-start;
-  width: 24px;
-  height: 24px;
-  justify-content: center;
-  margin-left: auto;
-  padding: 0;
-}
-
-.quick-filters .filter-chip .quick-count {
-  font-size: 10px;
 }
 
 .quick-chip {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   height: 24px;
   padding: 0 6px;
   white-space: nowrap;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--r-control);
   background: none;
   color: var(--muted-text);
   font-size: 12px;
-  transition: background 0.12s ease-out, color 0.12s ease-out, border-color 0.12s ease-out;
+  transition: background 0.12s ease-out, color 0.12s ease-out;
 }
 
 .quick-chip:hover {
@@ -329,58 +316,10 @@
   color: var(--text);
 }
 
-.quick-chip[aria-pressed="true"] {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--text);
-}
-
-/* Needs you: the attention colour when there is something to answer; Running: the primary one. */
-.quick-chip[data-kind="needs"][data-nonzero] {
-  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
-  color: var(--text);
-}
-
-.quick-chip[data-kind="running"][data-nonzero] {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-.quick-count {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
-}
-
-/* The chip's word: it keeps its own box so a chip at the narrowest sidebar shortens with an ellipsis instead of
-   cutting a glyph, while the count beside it stays whole. */
 .quick-chip-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* What goes as the room shrinks, measured against the widest the three counts can be (two digits each): the
-   day's count first (it is the least of the three), then the other two, then the words themselves shorten.
-   These rules come after the chips' own, because a container query adds no weight of its own. */
-@container (max-width: 255px) {
-  .quick-chip:last-child .quick-count {
-    display: none;
-  }
-}
-
-@container (max-width: 235px) {
-  .quick-chip .quick-count {
-    display: none;
-  }
-}
-
-@container (max-width: 197px) {
-  .quick-chip {
-    flex: 0 1 auto;
-    min-width: 0;
-  }
 }
 
 .quick-empty {
@@ -389,21 +328,88 @@
   gap: 8px;
 }
 
-/* The hide menu: the same chip look, pushed to the group's end, and a small card of toggles. */
-.quick-filters .filter-chip {
-  margin-left: auto;
-}
-
-.filter-chip.is-on {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--text);
-}
 
 .menu-list.filter-menu {
   position: fixed;
   width: min(280px, calc(100vw - 24px));
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
   padding: 8px;
+}
+
+.filter-view,
+.filter-quick,
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-quick,
+.filter-hide {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.filter-quick {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.filter-heading {
+  display: block;
+  margin: 2px 8px 4px;
+  color: var(--muted-text);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.view-segment {
+  display: flex;
+  flex: 1;
+  padding: 2px;
+  border-radius: var(--r-control);
+  background: var(--hover);
+}
+
+.view-segment button {
+  flex: 1;
+  min-height: 26px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.view-segment button[aria-pressed="true"] {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.filter-hide {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.filter-actions {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.filter-actions {
+  flex-wrap: wrap;
+}
+.filter-actions button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  color: var(--muted-text);
+  font-size: 13px;
 }
 
 .filter-row {

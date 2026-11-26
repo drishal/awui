@@ -1,7 +1,6 @@
-// The sidebar's filters: the quick chips under the search box (Running, Needs
-// you, Today) and the hide menu beside them. One chip at most is on and it
-// narrows the list together with the text search; the hide toggles take whole
-// kinds of session out of the way (sleeping, on the default branch, started by
+// The sidebar's quick filters (Running, Needs you, Today) in the disclosure's
+// Show radio group, and the kinds of session its hide options take out of the
+// list: sleeping, on the default branch, or started by a routine or another agent.
 // a routine or by an agent), each a fact read off the row without opening it.
 // Pure: the Sidebar passes the clock, the projects' checkouts, and what it
 // knows of the chat on screen (whose live status beats the listing's), and

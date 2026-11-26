@@ -1,4 +1,5 @@
 // The theme button beside Settings: a menu of every theme with its swatch,
+// The menu rises from the footer's trigger on wide screens; it opens as a sheet on phones.
 // System, Light, and Dark first. Pointing at one (hover, or the arrow keys)
 // previews it on the whole page; leaving, Escape, or closing puts the current
 // one back, and choosing saves it for every device (config.yml). "Manage
@@ -50,7 +51,8 @@ export function ThemeMenu({
     const rect = trigger.current?.getBoundingClientRect();
     const sheet = window.matchMedia("(max-width: 819px)").matches;
     const width = Math.min(300, window.innerWidth - 24);
-    setPlace(rect && !sheet ? { position: "fixed", top: rect.bottom + 8, left: Math.max(12, Math.min(rect.left - 8, window.innerWidth - width - 12)), right: "auto", bottom: "auto", maxHeight: window.innerHeight - rect.bottom - 24 } : undefined);
+    // The trigger lives in the footer: the menu rises through the session panel rather than off-screen.
+    setPlace(rect && !sheet ? { position: "fixed", top: "auto", left: Math.max(12, Math.min(rect.left - 8, window.innerWidth - width - 12)), right: "auto", bottom: window.innerHeight - rect.top + 8, maxHeight: Math.min(72 * window.innerHeight / 100, rect.top - 24) } : undefined);
     const at = Math.max(0, ordered.findIndex((o) => o.key === current));
     setActive(at);
     list.current?.querySelector<HTMLElement>(`[data-index="${at}"]`)?.focus();

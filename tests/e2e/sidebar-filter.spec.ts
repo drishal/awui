@@ -1,12 +1,23 @@
-// The sidebar's quick filters: Running, Needs you, and Today chips under the
-// search box, one on at a time, combined with the text search, remembered per
-// device. The server is shared with the other specs, so these look for their
-// own sessions by title rather than counting.
+// The sidebar's quick filters: Running, Needs you, and Today choices in the
+// filter disclosure, combined with the text search and remembered per device.
+// An active choice is one removable token beside the search. The server is
+// shared with the other specs, so these look for their own sessions by title.
 import { expect, type Page, test } from "@playwright/test";
 import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
-const chip = (page: Page, name: RegExp) => sidebar(page).getByRole("group", { name: "Filter sessions" }).locator(".quick-chip[aria-pressed]").filter({ hasText: name });
+const tokenFor = (filter: RegExp) => `Clear ${String(filter).replace(/^\/\^/, "").replace(/ \d.*$/, "")} filter`;
+const chip = (page: Page, name: RegExp) => ({
+  async click() {
+    if (await sidebar(page).getByRole("button", { name: tokenFor(name), exact: true }).count()) {
+      await sidebar(page).getByRole("button", { name: tokenFor(name), exact: true }).click();
+      return;
+    }
+    await sidebar(page).getByRole("button", { name: /^Filters/ }).click();
+    await page.getByRole("radiogroup", { name: "Show" }).getByRole("radio", { name }).click();
+    await page.keyboard.press("Escape");
+  },
+});
 const row = (page: Page, title: string) => sidebar(page).locator(".session-item", { hasText: title });
 const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: new RegExp(title) });
 const search = (page: Page) => sidebar(page).getByRole("searchbox", { name: "Search sessions" });
@@ -21,9 +32,8 @@ test("Running lists only the chats that are working, and Clear filter brings the
   await expect(page.getByTestId("chat-status")).toHaveText("Working");
   await showSidebar(page);
   const running = chip(page, /^Running \d+$/);
-  await expect(running).toHaveAttribute("aria-pressed", "false");
   await running.click();
-  await expect(running).toHaveAttribute("aria-pressed", "true");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Running filter" })).toBeVisible();
   await expect(row(page, "slow stream for the running filter")).toHaveCount(1);
   await expect(row(page, "idle chat for the filter")).toHaveCount(0);
   // The run ends; the chip stays on, so the list says nothing matches and offers the way out.
@@ -46,22 +56,21 @@ test("a chat waiting on you is Needs you, never also Running", async ({ page }) 
   await showSidebar(page);
   const running = chip(page, /^Running \d+$/);
   await running.click();
-  await expect(running).toHaveAttribute("aria-pressed", "true");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Running filter" })).toBeVisible();
   // Now a second chat asks for an approval. Its harness still reports a run while the card waits, and the
-  // list must not call that working; the chip is the one that stays put as its own run settles.
+  // list must not call that working; the selected filter stays on as its own run settles.
   await page.getByRole("button", { name: "New chat in a new tab" }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
   await send(page, "please ask first, for the one-chip rule");
   await expect(page.getByTestId("approval-card")).toBeVisible();
   await showSidebar(page);
-  await expect(running).toHaveAttribute("aria-pressed", "true");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Running filter" })).toBeVisible();
   await expect(row(page, "please ask first, for the one-chip rule")).toHaveCount(0);
-  // It sits in the other attention chip instead.
+  // It sits in the other attention filter instead.
   await running.click();
-  await expect(running).toHaveAttribute("aria-pressed", "false");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Running filter" })).toHaveCount(0);
   const needs = chip(page, /^Needs you \d+$/);
   await needs.click();
-  await expect(row(page, "please ask first, for the one-chip rule")).toHaveCount(1);
   await expect(row(page, "slow stream for the one-chip rule")).toHaveCount(0);
   await needs.click();
   await page.getByTestId("approval-card").getByRole("button", { name: "Approve" }).click();
@@ -78,9 +87,9 @@ test("Needs you lists the chats waiting on an answer, and Escape clears the sear
   await expect(page.getByTestId("approval-card")).toBeVisible();
   await showSidebar(page);
   const needs = chip(page, /^Needs you \d+$/);
-  await expect(needs).toBeVisible({ timeout: 10_000 });
+  await expect(sidebar(page).getByRole("button", { name: "Filters", exact: true })).toBeVisible({ timeout: 10_000 });
   await needs.click();
-  await expect(needs).toHaveAttribute("aria-pressed", "true");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Needs you filter" })).toBeVisible();
   await expect(row(page, "please ask first, for the needs filter")).toHaveCount(1);
   await expect(row(page, "settled chat for the needs filter")).toHaveCount(0);
   // A chat waiting on you is not working: the row wears an amber "Needs you" mark, not the run's spinner, and a
@@ -106,16 +115,16 @@ test("Needs you lists the chats waiting on an answer, and Escape clears the sear
   await expect(sidebar(page).getByText("No sessions match")).toBeVisible();
   await search(page).press("Escape");
   await expect(search(page)).toHaveValue("");
-  await expect(needs).toHaveAttribute("aria-pressed", "true");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Needs you filter" })).toBeVisible();
   await search(page).press("Escape");
-  await expect(needs).toHaveAttribute("aria-pressed", "false");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Needs you filter" })).toHaveCount(0);
   await expect(row(page, "settled chat for the needs filter")).toHaveCount(1);
 
   // Clicking the chip that is on switches it off.
   await needs.click();
-  await expect(needs).toHaveAttribute("aria-pressed", "true");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Needs you filter" })).toBeVisible();
   await needs.click();
-  await expect(needs).toHaveAttribute("aria-pressed", "false");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Needs you filter" })).toHaveCount(0);
 
   // Leave the shared server with nothing waiting.
   await page.getByTestId("approval-card").getByRole("button", { name: "Approve" }).click();
@@ -130,33 +139,25 @@ test("Today shows today's sessions and is remembered after a reload", async ({ p
   await showSidebar(page);
   const today = chip(page, /^Today \d+$/);
   await today.click();
-  await expect(today).toHaveAttribute("aria-pressed", "true");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Today filter" })).toBeVisible();
   await expect(row(page, "chat for the today filter")).toHaveCount(1);
   await page.reload();
   await showSidebar(page);
-  await expect(chip(page, /^Today \d+$/)).toHaveAttribute("aria-pressed", "true");
+  await expect(sidebar(page).getByRole("button", { name: "Clear Today filter" })).toBeVisible();
   await expect(row(page, "chat for the today filter")).toHaveCount(1);
-  await chip(page, /^Today \d+$/).click();
-  await expect(chip(page, /^Today \d+$/)).toHaveAttribute("aria-pressed", "false");
+  await sidebar(page).getByRole("button", { name: "Clear Today filter" }).click();
+  await expect(sidebar(page).getByRole("button", { name: "Clear Today filter" })).toHaveCount(0);
 });
 
-test("every chip stays whole and the Filters button stays inside the sidebar", async ({ page }) => {
+test("the inactive filter row is absent and Filters sits inside the search", async ({ page }) => {
   await signInAndOpen(page);
   await showSidebar(page);
   const aside = sidebar(page);
-  const group = aside.getByRole("group", { name: "Filter sessions" });
-  const chips = group.locator(".quick-chip[aria-pressed]");
-  await expect(chips.first()).toBeVisible();
+  await expect(aside.locator(".quick-filters")).toHaveCount(0);
   const side = await aside.boundingBox();
-  const boxes = await chips.evaluateAll((els) => els.map((el) => { const r = el.getBoundingClientRect(); return { right: r.right, height: Math.round(r.height), clipped: el.scrollWidth > el.clientWidth }; }));
-  // No chip wrapped its own words (a second text line would make it taller), none is cut by the edge, none is scrolled out of reach.
-  expect(boxes.length).toBeGreaterThanOrEqual(1);
-  for (const b of boxes) {
-    expect(b.height).toBeLessThan(32);
-    expect(b.clipped).toBe(false);
-    expect(side && b.right <= side.x + side.width).toBe(true);
-  }
-  const filters = await aside.getByRole("button", { name: /^Filters/ }).boundingBox();
+  const field = await aside.locator(".search-field").boundingBox();
+  const filters = await aside.getByRole("button", { name: /Filters/ }).boundingBox();
+  expect(field && filters && filters.x >= field.x && filters.x + filters.width <= field.x + field.width).toBe(true);
   expect(side && filters && filters.x + filters.width <= side.x + side.width).toBe(true);
 });
 

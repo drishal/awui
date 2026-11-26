@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import {
   IconAgents, IconBranch, IconChat, IconCheck, IconChevronLeft, IconChevronRight, IconClock, IconDownload, IconEdit,
   IconFile, IconFilter, IconFork, IconGauge, IconGlobe, IconLink, IconMenu, IconNewTab, IconPalette, IconPin, IconPlan,
-  IconPlus, IconQueue, IconRefresh, IconScreen, IconSearch, IconSettings, IconShield, IconSidebar, IconSplit, IconSpark,
+  IconPlus, IconQueue, IconRefresh, IconRooms, IconScreen, IconSearch, IconSettings, IconShield, IconSidebar, IconSplit, IconSpark,
   IconStash, IconStop, IconSwap, IconTerminal, IconTool, IconUndo, IconX,
 } from "../icons.js";
 import { rankItems, type PaletteItem } from "../palette.js";
@@ -33,6 +33,7 @@ const ICONS: Record<string, ReactNode> = {
   close: <IconX size={16} />,
   beside: <IconSplit size={16} />,
   "worker-plan": <IconPlan size={16} />,
+  "new-room": <IconRooms size={16} />,
   worktrees: <IconBranch size={16} />,
   terminal: <IconTerminal size={16} />,
   github: <IconFork size={16} />,

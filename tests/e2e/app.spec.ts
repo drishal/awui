@@ -1500,7 +1500,7 @@ test("the capture button stays out of a browser that cannot capture", async ({ p
 
 test("buttons show a Material ripple from the press point; reduced motion turns it off", async ({ page }) => {
   await signInAndOpen(page);
-  const btn = page.getByRole("button", { name: "Refresh sessions" });
+  const btn = page.getByRole("button", { name: "Settings", exact: true });
   const box = (await btn.boundingBox()) as { x: number; y: number; width: number; height: number };
   const px = box.x + 6;
   const py = box.y + box.height / 2;
@@ -1511,11 +1511,21 @@ test("buttons show a Material ripple from the press point; reduced motion turns 
   const inkBox = (await ink.boundingBox()) as { x: number; y: number; width: number; height: number };
   expect(Math.abs(inkBox.x + inkBox.width / 2 - px)).toBeLessThan(3);
   expect(Math.abs(inkBox.y + inkBox.height / 2 - py)).toBeLessThan(3);
-  await expect(btn).toHaveAccessibleName("Refresh sessions");
+  await expect(btn).toHaveAccessibleName("Settings");
   await page.mouse.up();
   await expect(ink).toHaveCount(0, { timeout: 3000 });
   await btn.focus();
-  await page.keyboard.press("Enter");
+  // Capture insertion at the event boundary, before the destination opens.
+  const keyboardRipple = btn.evaluate((element) => new Promise<number>((resolve) => {
+    const observer = new MutationObserver(() => {
+      const count = element.querySelectorAll(".ripple").length;
+      if (count > 0) { resolve(count); observer.disconnect(); }
+    });
+    observer.observe(element, { childList: true });
+    element.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    setTimeout(() => { observer.disconnect(); resolve(0); }, 1000);
+  }));
+  expect(await keyboardRipple).toBe(1);
   await expect(ink).toHaveCount(1);
   await expect(ink).toHaveCount(0, { timeout: 3000 });
   await page.emulateMedia({ reducedMotion: "reduce" });

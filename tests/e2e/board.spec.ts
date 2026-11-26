@@ -8,7 +8,8 @@ import { showSidebar, signInAndOpen } from "./helpers.js";
 
 /** Create a bot through the room editor's entry (the only one), leaving the room dialog open. */
 async function makeBot(page: Page, name: string) {
-  await page.getByRole("button", { name: "New room" }).click();
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await page.locator(".filter-menu").getByRole("button", { name: "New room" }).click();
   await page.getByRole("button", { name: /^(New bot|Create a bot)$/ }).click();
   await page.getByLabel("Bot name").fill(name);
   await page.getByRole("button", { name: "Create bot" }).click();

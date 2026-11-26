@@ -108,6 +108,7 @@ import { isPaletteKey, type PaletteItem } from "./palette.js";
 import { projectScoped } from "./harness-policy.js";
 import { isBusy, wakeLabel } from "./session-groups.js";
 import { pendingImage, sentAttachments, type PendingImage } from "./images.js";
+
 import { useSplitLayout } from "./split-layout.js";
 import { useSessions } from "./sessions.js";
 import { useSidebarLayout } from "./sidebar-layout.js";
@@ -383,6 +384,7 @@ export function App() {
   /** The turn a side thread's question is being asked about, while its sheet is open. */
   const [sideThreadTurn, setSideThreadTurn] = useState<number | null>(null);
 
+  const newChatAction = useRef<() => void>(() => {});
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isPaletteKey(e)) {
@@ -396,6 +398,10 @@ export function App() {
         return;
       }
       const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+      if (mod && e.code === "KeyN" && !(e.target as HTMLElement | null)?.closest("input, textarea, [contenteditable='true']")) {
+        e.preventDefault();
+        newChatAction.current();
+      }
       if (mod && (e.code === "BracketLeft" || e.code === "BracketRight")) {
         e.preventDefault();
         keysRef.current.step(e.code === "BracketLeft" ? -1 : 1);
@@ -870,6 +876,8 @@ export function App() {
     setPickerError(null);
     setPickerOpen(true);
   };
+  // The global shortcut uses the latest folder/harness, not the first render's closure.
+  newChatAction.current = newChatInFolder;
 
   /** The start screen's Send: create the chat, then post the message to its id (the render closure still holds no chat). */
   const [startBusy, setStartBusy] = useState(false);
@@ -2045,6 +2053,8 @@ export function App() {
     items.push({ id: "folder", section: "Work", label: "Choose project folder…", run: () => setPickerOpen(true) });
     items.push({ id: "prompts", section: "Work", label: "Saved prompts…", hint: "#", keys: true, keywords: "templates snippets", run: () => setPromptsOpen({}) });
     items.push({ id: "routines", section: "Work", label: "Routines…", hint: "scheduled prompts", keywords: "schedule cron jobs recurring", run: () => setRoutinesOpen(true) });
+    // The command palette keeps New room reachable when the empty section is hidden.
+    items.push({ id: "new-room", section: "Work", label: "New room", run: () => setRoomEditor({ mode: "create" }) });
     items.push({ id: "dashboard", section: "Work", label: "Agent dashboard…", hint: "needs you · working · done", keywords: "board kanban overview agents progress", run: () => surfaceSwap(() => setDashboardOpen(true)) });
 
     items.push({ id: "usage", section: "App", label: "Usage across chats", hint: "tokens, cost", keywords: "spend dashboard stats", run: () => setUsageOpen(true) });

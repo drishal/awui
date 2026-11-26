@@ -1,8 +1,7 @@
-// One harness menu for both places a harness is chosen: the sidebar row picks
-// the harness the sidebar lists and new chats use; the composer chip hands the
-// open chat off. Every harness is listed with its version, and one that cannot
-// be picked says why, so the menu grows with the registry instead of
-// squeezing a segmented control.
+// One harness menu for both places a harness is chosen: the sidebar's title
+// scopes the list and new chats; the composer chip hands the open chat off.
+// Every harness keeps its version in the menu, with the reason one cannot be
+// picked. A single harness is a static title rather than a disabled picker.
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { HarnessStatus } from "../../shared/protocol.js";
 import { harnessColor } from "../harness-colors.js";
@@ -25,6 +24,7 @@ export function HarnessMenu({
   label,
   menuLabel,
   triggerText,
+  static: staticLabel = false,
   disabled = false,
   ariaKeyShortcuts,
   hint,
@@ -39,6 +39,8 @@ export function HarnessMenu({
   menuLabel: string;
   /** Replaces the harness name on the trigger (e.g. while a handoff runs). */
   triggerText?: string;
+  static?: boolean;
+  /** Disable the picker during a handoff. */
   disabled?: boolean;
   /** What a key press on the trigger does (the start screen's agent chip: Enter opens the menu). */
   ariaKeyShortcuts?: string;
@@ -55,7 +57,7 @@ export function HarnessMenu({
   const baseId = useId();
   const current = choices.find((c) => c.harness.id === currentId)?.harness;
   const enabled = (i: number) => choices[i] !== undefined && choices[i].blocked === null;
-  const canOpen = !disabled && choices.length > 0;
+  const canOpen = !staticLabel && !disabled && choices.length > 0;
 
   const close = (refocus: boolean) => {
     setOpen(false);
@@ -120,6 +122,13 @@ export function HarnessMenu({
   };
 
   const name = triggerText ?? current?.displayName ?? currentId ?? "Choose a harness";
+  const staticTitle = staticLabel ? (
+    <span className="harness-row is-static" style={harnessColor(currentId ?? undefined)} aria-label={label}>
+      <span className="harness-dot"><HarnessMark harness={current} /></span>
+      <span className="harness-row-name">{name}</span>
+    </span>
+  ) : null;
+  if (staticTitle) return <div className={`harness-menu-wrap is-${variant}`}>{staticTitle}</div>;
   return (
     <div className={`harness-menu-wrap is-${variant}`} ref={wrap}>
       <button
@@ -128,8 +137,8 @@ export function HarnessMenu({
         className={variant === "row" ? "harness-row" : "pill-select harness-chip"}
         style={harnessColor(currentId ?? undefined)}
         aria-label={label}
-        {...(hint ? { title: hint } : {})}
-        aria-haspopup="listbox"
+        {...(!staticLabel && hint ? { title: hint } : {})}
+        aria-haspopup={staticLabel ? undefined : "listbox"}
         aria-expanded={open}
         disabled={!canOpen}
         {...(ariaKeyShortcuts ? { "aria-keyshortcuts": ariaKeyShortcuts } : {})}
@@ -140,13 +149,8 @@ export function HarnessMenu({
           <HarnessMark harness={current} />
         </span>
         <span className="harness-row-name">{name}</span>
-        {variant === "row" && current?.version ? (
-          <span className="harness-row-meta" title={current.versionDetail ?? current.version}>
-            {current.version}
-          </span>
-        ) : null}
-        {/* The chip needs no chevron: its tint says it opens; the sidebar row keeps one. */}
-        {variant === "row" ? <IconChevronDown size={12} /> : null}
+        {/* A lone harness's static title gets no affordance of a picker. */}
+        {variant === "row" && !staticLabel ? <IconChevronDown size={12} /> : null}
       </button>
       {showMenu ? (
         <div
@@ -159,7 +163,7 @@ export function HarnessMenu({
           onKeyDown={onListKey}
         >
           <div className="harness-menu-head">{menuLabel}</div>
-          {hint ? <p className="harness-menu-hint">{hint}</p> : null}
+          {!staticLabel && hint ? <p className="harness-menu-hint">{hint}</p> : null}
           {choices.map((c, i) => (
             <div
               key={c.harness.id}

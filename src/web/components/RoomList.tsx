@@ -61,6 +61,8 @@ export function RoomList({
     setShowArchived(!showArchived);
     save("roomsArchived", !showArchived);
   };
+  // No empty band: the filter menu and palette still offer New room.
+  if (rooms !== null && live.length === 0 && archived.length === 0) return null;
 
   return (
     <li className={`project-group section-group rooms-group${open ? " is-open" : ""}`} data-testid="rooms-group">
@@ -88,14 +90,6 @@ export function RoomList({
       {open ? (
         <ul className="session-sublist" aria-label="Rooms">
           {error ? <li className="sidebar-note is-warning">{error}</li> : null}
-          {rooms !== null && live.length === 0 ? (
-            <li className="room-empty-note">
-              <p>Rooms put several named bots on one topic: one leads, and you decide who else runs.</p>
-              <button type="button" className="btn btn-small" onClick={onNew}>
-                Create a room
-              </button>
-            </li>
-          ) : null}
           {live.map((room) => (
             <li key={room.id} className={`room-row${room.id === activeRoomId ? " is-current" : ""}`}>
               <button

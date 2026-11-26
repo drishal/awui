@@ -86,6 +86,50 @@ body {
   }
 }
 
+@media (hover: none) and (max-width: 819px) {
+  .sidebar .drawer-new-chat {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    border: 0;
+    border-radius: var(--r-control);
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 500;
+  }
+
+  .sidebar .search-field {
+    height: 44px;
+  }
+
+  .sidebar .filter-chip,
+  .sidebar .quick-chip {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .sidebar .filter-dot {
+    top: 8px;
+    right: 8px;
+  }
+
+  .sidebar-footer {
+    height: 44px;
+  }
+
+  .sidebar .filter-menu .filter-row {
+    min-height: 44px;
+  }
+
+  .sidebar .filter-menu .view-segment button {
+    min-height: 44px;
+  }
+}
+
 @media (max-width: 640px) {
   /* Prompts on a phone: four lines of a long one before Show more (six filled
      half the screen), and less padding inside the bubble. */

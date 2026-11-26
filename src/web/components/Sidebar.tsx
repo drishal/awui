@@ -1,5 +1,5 @@
-// The sessions sidebar: the harness and project pickers, search with its quick
-// filter chips (Running, Needs you, Today), and the sessions in one of two views — Recent, one flat
+// The sessions sidebar: two rows of chrome (the harness as its title with New chat and collapse; search with the filter
+// inside it) above the sessions in one of two views — Recent, one flat
 // list across projects under date headings, or Projects, grouped by folder with focus mode ("Show N
 // more" past a page), from the server's sessions overview. Rows warm their chat on hover, show a hover
 // card, carry a menu (new tab, resume command, pin, snooze, archive, move), and, in the Projects view,
@@ -13,7 +13,8 @@ import { useHoverCard, type CardSide } from "../hover-card.js";
 import { menuStep, useMenuKeys } from "../menu-focus.js";
 import { useFocusTrap } from "../focus-trap.js";
 import { shortPath } from "../project-path.js";
-import { IconArchive, IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
+import { IconArchive, IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconEdit, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit } from "../icons.js";
+import { shortcutHint } from "../shortcuts.js";
 import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
 import type { UsageLimits } from "../../shared/protocol.js";
 import { limitResetAt } from "../../shared/limit-stop.js";
@@ -53,27 +54,7 @@ function relativeTime(iso: string | null): string {
   return iso ? shortAgo(new Date(iso).getTime()) : "";
 }
 
-/**
- * The wordmark's mark: the same terminal bubble the start screen draws, small enough to sit beside
- * "awui" in the sidebar's head. The caret and the underscore are the accent's text colour so they
- * stay readable on the filled bubble in either scheme.
- */
-function BrandMark() {
-  return (
-    <span className="brand-mark" aria-hidden="true">
-      <svg viewBox="0 0 64 64" width="18" height="18" fill="none">
-        <rect x="6" y="8" width="52" height="38" rx="11" fill="currentColor" />
-        <path d="M20 46v10l11-10z" fill="currentColor" />
-        <path d="M25 19l8 8-8 8" stroke="var(--accent-fg)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M38 35h7" stroke="var(--accent-fg)" strokeWidth="4.5" strokeLinecap="round" />
-      </svg>
-    </span>
-  );
-}
-
-
 export type MarkChange = { pinned?: boolean; archived?: boolean; settled?: boolean; snoozedUntil?: number | null; unread?: boolean };
-
 /** A row's moves inside its date section: whether it can go up or down, and the move. */
 type Mover = { up: boolean; down: boolean; by: (delta: -1 | 1) => void };
 
@@ -1354,6 +1335,9 @@ export function Sidebar(props: {
 
   const isActive = isActiveSession;
   const searching = props.query.trim() !== "";
+  // A filter that leaves nothing to list offers to clear it; the matching count reads the full overview.
+  // Enter opens the full-text search for an empty local result; local matches still work as usual.
+  const noLocalMatches = (searching && props.overview.sessions.every((s) => s.harnessId !== props.harnessId || !s.title.toLowerCase().includes(props.query.trim().toLowerCase())));
   // A filter that leaves nothing to list (the current project's empty heading does not count).
   const quickEmpty =
     quick !== null &&
@@ -1412,18 +1396,20 @@ export function Sidebar(props: {
         }}
       >
         <div className="sidebar-head">
-          <span className="brand"><BrandMark />awui</span>
-          {props.themeMenu}
-          <button type="button" className="icon-btn sidebar-settings" aria-label="Settings" title="Settings" onClick={props.onSettings}>
-            <IconSettings size={16} />
+          <HarnessMenu
+            variant="row"
+            label="Harness"
+            menuLabel="Harness"
+            currentId={props.harnessId}
+            choices={props.harnesses.map((h) => ({ harness: h, blocked: h.available ? null : (h.reason ?? "Not available") }))}
+            static={props.harnesses.length === 1}
+            hint="Filters the list; new chats start with this agent."
+            onPick={props.onHarness}
+          />
+          <button type="button" className="icon-btn sidebar-compose" aria-label="New chat" aria-keyshortcuts="Control+N Meta+N" title={`New chat (${shortcutHint("new")})`} onClick={props.onNewChat} disabled={props.newChatDisabled !== null}>
+            <IconEdit size={16} />
           </button>
-          <button
-            type="button"
-            className="icon-btn sidebar-collapse"
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar"
-            onClick={props.onCollapse}
-          >
+          <button type="button" className="icon-btn sidebar-collapse" aria-label="Collapse sidebar" title="Collapse sidebar" onClick={props.onCollapse}>
             <IconSidebar size={16} />
           </button>
           <button type="button" className="icon-btn drawer-close" aria-label="Close menu" onClick={props.onClose}>
@@ -1431,21 +1417,7 @@ export function Sidebar(props: {
           </button>
         </div>
         {props.tabs}
-
-        <button type="button" className="new-chat" onClick={props.onNewChat} disabled={props.newChatDisabled !== null}>
-          <IconPlus size={15} /> New chat
-        </button>
         {props.newChatDisabled ? <p className="sidebar-note">{props.newChatDisabled}</p> : null}
-
-        <HarnessMenu
-          variant="row"
-          label="Harness"
-          menuLabel="Harness"
-          currentId={props.harnessId}
-          choices={props.harnesses.map((h) => ({ harness: h, blocked: h.available ? null : (h.reason ?? "Not available") }))}
-          hint="Filters the list; new chats start with this agent."
-          onPick={props.onHarness}
-        />
         {current?.warnings.map((w) => (
           <p key={w} className="sidebar-note is-warning">
             {w}
@@ -1484,7 +1456,7 @@ export function Sidebar(props: {
               </div>
             ) : (
               <>
-                <label className="search-field">
+                <div className="search-field">
                   <IconSearch size={14} />
                   <input
                     type="search"
@@ -1492,6 +1464,11 @@ export function Sidebar(props: {
                     value={props.query}
                     onChange={(e) => props.onQuery(e.target.value)}
                     onKeyDown={(e) => {
+                      if (e.key === "Enter" && props.onSearchAll && noLocalMatches && props.query.trim().length >= 2) {
+                        e.preventDefault();
+                        props.onSearchAll(props.query.trim());
+                        return;
+                      }
                       const clears = escapeClears(props.query, quick);
                       if (e.key !== "Escape" || !clears) return;
                       // Not the drawer's Escape, and not the browser's own clearing of a search box.
@@ -1502,23 +1479,16 @@ export function Sidebar(props: {
                     }}
                     aria-label="Search sessions"
                   />
-                </label>
-                <button type="button" className="icon-btn" aria-label="Refresh sessions" onClick={props.onRefresh}>
-                  ↻
-                </button>
+                  <SidebarFilters quick={quick} quickCounts={quickCount} onQuickChange={pickQuick} hide={hide} counts={hideCount} onChange={pickHide} onRefresh={props.onRefresh} onNewRoom={props.onNewRoom} roomsAvailable={props.harnessId === "awui" || !props.harnesses.some((h) => h.id === "awui")} />
+                </div>
               </>
             )}
           </div>
-          {!selection.on ? (
+          {!selection.on && quick ? (
             <div className="quick-filters" role="group" aria-label="Filter sessions">
-              <div className="quick-chips">
-                {chipsShown(quickCount, quick).map((f) => (
-                  <button key={f} type="button" className="quick-chip" data-kind={f} data-nonzero={quickCount[f] > 0 ? "" : undefined} aria-pressed={quick === f} onClick={() => pickQuick(quick === f ? null : f)}>
-                    <span className="quick-chip-label">{QUICK_LABELS[f]}</span> <span className="quick-count">{quickCount[f]}</span>
-                  </button>
-                ))}
-              </div>
-              <SidebarFilters hide={hide} counts={hideCount} onChange={pickHide} />
+              <button type="button" className="quick-chip" aria-label={`Clear ${QUICK_LABELS[quick]} filter`} onClick={() => pickQuick(null)}>
+                <span className="quick-chip-label">{QUICK_LABELS[quick]}</span> <span aria-hidden="true">×</span>
+              </button>
             </div>
           ) : null}
           {props.onSearchAll && props.query.trim().length >= 2 ? (
@@ -1527,6 +1497,7 @@ export function Sidebar(props: {
               <span className="search-all-label">
                 Search every chat for <q>{props.query.trim()}</q>
               </span>
+              <kbd className="search-all-hint" aria-hidden="true">↵</kbd>
             </button>
           ) : null}
           {props.sessionsError ? <p className="sidebar-note is-warning">{props.sessionsError}</p> : null}
@@ -1644,25 +1615,6 @@ export function Sidebar(props: {
                 />
               ))
             )}
-            {!searching && (sections.counts.snoozed > 0 || sections.counts.settled > 0 || sections.counts.archived > 0) ? (
-              <li className="list-toggles">
-                {sections.counts.snoozed > 0 ? (
-                  <button type="button" className="show-more" aria-pressed={showSnoozed} onClick={() => setShowSnoozed((v) => !v)}>
-                    <IconClock size={13} /> {showSnoozed ? "Hide snoozed" : `${sections.counts.snoozed} snoozed`}
-                  </button>
-                ) : null}
-                {sections.counts.settled > 0 ? (
-                  <button type="button" className="show-more" aria-pressed={showSettled} onClick={() => setShowSettled((v) => !v)}>
-                    <IconCheck size={13} /> {showSettled ? "Hide settled" : `${sections.counts.settled} settled`}
-                  </button>
-                ) : null}
-                {sections.counts.archived > 0 ? (
-                  <button type="button" className="show-more archived-toggle" aria-pressed={showArchived} onClick={() => setShowArchived((v) => !v)}>
-                    <IconArchive size={13} /> {showArchived ? "Hide archived" : `${sections.counts.archived} archived`}
-                  </button>
-                ) : null}
-              </li>
-            ) : null}
             {quickEmpty && !props.sessionsLoading && !props.sessionsError ? (
               <li className="sidebar-note quick-empty">
                 No sessions match
@@ -1677,7 +1629,35 @@ export function Sidebar(props: {
           </ul>
         </div>
 
-        {props.footer}
+        {!searching && (sections.counts.snoozed > 0 || sections.counts.settled > 0 || sections.counts.archived > 0) ? (
+          <div className="list-toggles">
+            {sections.counts.snoozed > 0 ? (
+              <button type="button" className="show-more" aria-pressed={showSnoozed} onClick={() => setShowSnoozed((v) => !v)}>
+                <IconClock size={13} /> {showSnoozed ? "Hide snoozed" : `${sections.counts.snoozed} snoozed`}
+              </button>
+            ) : null}
+            {sections.counts.settled > 0 ? (
+              <button type="button" className="show-more" aria-pressed={showSettled} onClick={() => setShowSettled((v) => !v)}>
+                <IconCheck size={13} /> {showSettled ? "Hide settled" : `${sections.counts.settled} settled`}
+              </button>
+            ) : null}
+            {sections.counts.archived > 0 ? (
+              <button type="button" className="show-more archived-toggle" aria-pressed={showArchived} onClick={() => setShowArchived((v) => !v)}>
+                <IconArchive size={13} /> {showArchived ? "Hide archived" : `${sections.counts.archived} archived`}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <button type="button" className="new-chat drawer-new-chat" onClick={props.onNewChat} disabled={props.newChatDisabled !== null} aria-label="New chat in folder">
+          <IconPlus size={15} /> New chat
+        </button>
+        <div className="sidebar-footer">
+          {props.footer}
+          {props.themeMenu}
+          <button type="button" className="icon-btn sidebar-settings" aria-label="Settings" title="Settings" onClick={props.onSettings}>
+            <IconSettings size={16} />
+          </button>
+        </div>
         {props.resizer}
       </aside>
     </RowActions.Provider>

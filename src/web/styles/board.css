@@ -15,6 +15,25 @@
   gap: 2px;
   margin-left: auto;
   padding-right: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+
+.rooms-group .project-name {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.rooms-group .project-head:hover .room-group-actions,
+.rooms-group .project-head:focus-within .room-group-actions,
+.room-group-actions:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .room-group-actions {
+    opacity: 1;
+  }
 }
 
 .rooms-group .room-group-actions .icon-btn {

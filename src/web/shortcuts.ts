@@ -20,6 +20,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
     title: "Anywhere",
     items: [
       { id: "palette", keys: ["Mod+K"], label: "Commands, sessions, models, and settings" },
+      { id: "new", keys: ["Mod+N"], label: "New chat" },
       { id: "shortcuts", keys: ["?", "Mod+/"], label: "These shortcuts" },
       { id: "history-search", keys: ["Mod+Shift+H"], label: "Search every chat" },
       { id: "search", keys: ["Mod+Shift+F"], label: "Search in project" },
