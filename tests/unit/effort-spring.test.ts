@@ -92,8 +92,10 @@ describe("neckGap and waist", () => {
     [0, 4, 10, 22].forEach((gap) => {
       const r2 = neckGap(gap).r2;
       const h = waist(gap, r2);
-      expect(h).toBeGreaterThanOrEqual(r2 * 0.7);
-      expect(h).toBeLessThanOrEqual(r2 * 0.95);
+      // A bump at short gaps (about the droplet's own height), flaring to 5.4 px at full stretch: never the barbell's
+      // thin bar (< 0.7 of the droplet), never wider than the bead (10 px).
+      expect(h).toBeGreaterThanOrEqual(Math.min(r2 * 0.95, 5.4) - 0.1);
+      expect(h).toBeLessThanOrEqual(6.7);
     });
   });
 });

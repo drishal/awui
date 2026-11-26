@@ -105,10 +105,19 @@ export function neckGap(raw: number): { gap: number; r2: number } {
   return { gap, r2: 7 - 2.5 * smooth(6, 22, gap) };
 }
 
-/** A pinched waist still joins the bead to the droplet; it never becomes a broken bridge. */
+/**
+ * The half-height of the neck two thirds of the way along: with the gap short it is the droplet's own (a bump), and as
+ * the gap grows it flares to 5.4 px, wider than the shrinking droplet, so the silhouette tapers from the bead to a
+ * rounded tip like one teardrop of liquid. A waist narrower than the droplet draws a barbell instead: two circles
+ * joined by a bar.
+ */
 export function waist(gap: number, r2: number): number {
-  return r2 * (0.95 - 0.25 * smooth(8, 22, gap));
+  const bump = r2 * 0.95;
+  return bump + (WAIST_FLARE - bump) * smooth(6, 22, gap);
 }
+
+/** The half-height the neck flares to at full stretch (px). */
+const WAIST_FLARE = 5.4;
 
 /** The wash front follows the bead with a short lead; its bulge follows the front's velocity. */
 export function washPaths(thumbX: number, wash: SpringState, width: number, cy = 15): { body: string; rim: string } {
@@ -173,7 +182,7 @@ export function neckPath(x1: number, r1: number, x2: number, r2: number, h: numb
     const a = (d * d + r1 * r1 - r2 * r2) / (2 * d);
     h = Math.max(h, Math.sqrt(Math.max(0, r1 * r1 - a * a)) + 0.3);
   }
-  h = Math.min(h, r2 * 0.98);
+  h = Math.min(h, Math.max(r2 * 0.98, r1 * 0.9));
   // A broad bead attachment tapering toward a smaller droplet makes a teardrop, not a barbell's straight bar.
   const H1 = Math.min(r1 * 0.94, h + 0.55 * (r1 - h));
   const H2 = Math.min(r2 * 0.94, h + 0.4 * (r2 - h));
@@ -220,7 +229,7 @@ export function neckBounds(x1: number, r1: number, x2: number, r2: number, h: nu
     const a = (d * d + r1 * r1 - r2 * r2) / (2 * d);
     h = Math.max(h, Math.sqrt(Math.max(0, r1 * r1 - a * a)) + 0.3);
   }
-  h = Math.min(h, r2 * 0.98);
+  h = Math.min(h, Math.max(r2 * 0.98, r1 * 0.9));
   const H1 = Math.min(r1 * 0.94, h + 0.55 * (r1 - h));
   const H2 = Math.min(r2 * 0.94, h + 0.4 * (r2 - h));
   const c1 = Math.sqrt(r1 * r1 - H1 * H1);
