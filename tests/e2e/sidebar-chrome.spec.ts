@@ -339,3 +339,22 @@ test("the row whose ⋯ menu is open keeps a wash, so the menu names its row", a
   await session.hover();
   await expect.poll(async () => session.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(open);
 });
+
+test("the open row's wash takes one step less on a light page", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "the open row");
+  await showSidebar(page);
+  // The wash is drawn behind the list (`.session-active-bg`), so the row keeps its own transparent box.
+  const wash = page.locator(".session-active-bg").first();
+  await expect(wash).toBeVisible();
+  const dark = await wash.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(dark, "the open row sits on a wash, not on the panel").not.toBe("rgba(0, 0, 0, 0)");
+  // The same hue, one step quieter: 8% of the harness colour instead of 12%.
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "light";
+  });
+  await expect.poll(async () => wash.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(dark);
+  // The 2px rule is what carries the state either way, so it stays in both schemes.
+  await expect(wash).toHaveCSS("box-shadow", /2px 0px 0px 0px inset$/);
+});

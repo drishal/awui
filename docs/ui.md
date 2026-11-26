@@ -205,7 +205,10 @@ a literal colour.
   panel; the open row deepens them further and gives its title `--text` and its meta
   and subline a step from `--muted-text` toward `--text` (88/12), so the row keeps its
   second rank on the wash — 5.2:1 in either scheme, where halfway from `--text-2` to
-  `--text` read 10.6:1 in light — and every word clears 4.5:1.
+  `--text` read 10.6:1 in light — and every word clears 4.5:1. That wash is
+  `--sidebar-active-wash`: 12% of the row's harness colour over `--surface-2`, and 8% on a light page,
+  where 12% read as a selected tab among grey rows rather than as the open chat (the title then measures
+  14.6:1 and the subline 5.5:1, so the step is quieter without losing a word). The 2px rule stays in both.
 - **Sidebar menus, keys, and the rail:** every popover (a row's ⋯ menu, the filter
   menu, the project switch) is one tab stop: ↑/↓ and Home/End walk its items
   (`menu-focus.ts`; the walk is `menuStep`, pure and tested), and Escape closes it and puts

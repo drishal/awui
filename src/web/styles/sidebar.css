@@ -15,6 +15,12 @@
   --row-warn: color-mix(in oklab, var(--warn) 85%, var(--text));
   --row-accent: color-mix(in oklab, var(--accent) 85%, var(--text));
   --row-ok: color-mix(in oklab, var(--ok) 85%, var(--text));
+  /* The open row's wash, its own harness colour over the panel: 12% of it, and one step less on a light
+     page, where 12% read as a selected tab among grey rows rather than as the open chat (S14). The 2px
+     rule and the full-ink title are what carry the state either way. Declared here, not on :root: a token's
+     own var() is resolved on the element it is declared on, so a mix frozen at the root would lose the
+     harness colour and fall back to the accent. */
+  --sidebar-active-wash: color-mix(in oklab, var(--harness, var(--accent)) 12%, var(--surface-2));
   position: relative;
   display: flex;
   flex-direction: column;
@@ -25,6 +31,18 @@
   background: var(--surface);
   border-right: 1px solid var(--hairline);
   overflow: hidden;
+}
+
+/* One step quieter on a light page: the same hue, 8% of it. The rule and the inks below are what tell the
+   open row apart there; the wash only has to say "this one", not "selected tab". */
+:root[data-theme="light"] .sidebar {
+  --sidebar-active-wash: color-mix(in oklab, var(--harness, var(--accent)) 8%, var(--surface-2));
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .sidebar {
+    --sidebar-active-wash: color-mix(in oklab, var(--harness, var(--accent)) 8%, var(--surface-2));
+  }
 }
 
 .sidebar-head {
@@ -579,7 +597,7 @@
 .session-active-bg {
   position: absolute;
   border-radius: var(--r-sm);
-  background: color-mix(in oklab, var(--harness, var(--accent)) 12%, var(--surface-2));
+  background: var(--sidebar-active-wash);
   box-shadow: inset 2px 0 0 color-mix(in oklab, var(--harness, var(--accent)) 75%, transparent);
   pointer-events: none;
 }
@@ -1125,9 +1143,10 @@
 
 /* The open session is the list's anchor: a stronger wash and a 2px rule in its own harness colour at the
    row's left edge, which is what tells it apart from eight rows that differ only in their words. Both
-   are inset, so the rule is clipped by the row's radius instead of cutting into the sidebar's gutter. */
+   are inset, so the rule is clipped by the row's radius instead of cutting into the sidebar's gutter. The
+   wash is `--sidebar-active-wash` (the panel's own, a step quieter in light). */
 .session.is-active {
-  background: color-mix(in oklab, var(--harness, var(--accent)) 12%, var(--surface-2));
+  background: var(--sidebar-active-wash);
   box-shadow: inset 2px 0 0 color-mix(in oklab, var(--harness, var(--accent)) 75%, transparent);
 }
 
