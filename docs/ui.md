@@ -181,8 +181,9 @@ a literal colour.
   rest of motion). The state words take sidebar-local `--row-warn`, `--row-accent` and
   `--row-ok`, each a step from its token toward `--text` so it clears 4.5:1 on the
   panel; the open row deepens them further and gives its title `--text` and its meta
-  and subline a mix of `--text-2` and `--text`, so every word on the wash clears 4.5:1
-  in both schemes.
+  and subline a step from `--muted-text` toward `--text` (88/12), so the row keeps its
+  second rank on the wash — 5.2:1 in either scheme, where halfway from `--text-2` to
+  `--text` read 10.6:1 in light — and every word clears 4.5:1.
 - **Sidebar menus, keys, and the rail:** every popover (a row's ⋯ menu, the filter
   menu, the project switch) is one tab stop: ↑/↓ and Home/End walk its items
   (`menu-focus.ts`; the walk is `menuStep`, pure and tested), and Escape closes it and puts
