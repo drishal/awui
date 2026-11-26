@@ -687,13 +687,30 @@
   margin-top: calc(var(--section-gap) + 8px);
 }
 
-/* A section head (Needs you, Working, Pinned, Rooms) is laid on the rows' columns: its 8px inset puts the
-   10px icon on the rows' mark column, and the 6px gap starts its label on their titles' edge. 4px under
-   it, its first row; its count ends on the rows' age column (the row's 8px right padding). */
+/* Every head is laid on the rows' columns: its 8px inset puts a 10px icon, or the 16px badge of a folder,
+   on the rows' mark column, and the 6px gap starts its label on their titles' edge. 4px under it, its
+   first row; its count ends on the rows' age column (the row's 8px right padding). */
 .section-group .project-toggle {
   gap: 6px;
   height: 24px;
   padding: 0 8px;
+}
+
+/* A folder head sits on the same columns as a section head: 8px in, a 10px mark slot (a 16px badge centred
+   in it hangs 3px either side), and a 6px gap that starts the name on the rows' titles' edge. The focused
+   head has its own rules (the focus rules below): it is a project switch, not a fold. */
+.project-group:not(.section-group):not(.focus-group) > .project-head > .project-toggle {
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.project-head .head-mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
 }
 
 .section-group .project-toggle > .section-icon,
@@ -826,18 +843,9 @@
   }
 }
 
-/* No rail under a project head: the rows line up under the project's own name instead, so the titles of
-   a folder and its head share one left edge (a head is padding 6 + chevron 12 + gap 7 + badge 16 + gap 7
-   = 48; a row is this 24 + its own 8 + the 10px mark + 6 = 48). The flat list has no head to line up
-   with, so its rows sit at the panel's own edge. */
-.project-group .session-sublist {
-  padding-left: 24px;
-}
-
-.flat-group .session-sublist,
-.section-group .session-sublist {
-  padding-left: 0;
-}
+/* No rail and no indent under a project head: its name already says the folder, so an inset would only
+   cost each row a tenth of its title. A folder's rows sit at the list's own edge with its head's name on
+   their titles' edge, exactly as the flat list's rows do. */
 
 /* Which harness a session belongs to; the harness menu doubles as the legend. The colour
    comes from the server (HarnessStatus.accent) as --harness, so a new harness needs no CSS. */

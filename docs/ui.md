@@ -148,8 +148,10 @@ a literal colour.
   Pinned, Rooms) are signposts: sentence case at 11.5px/500 in `--muted-text`,
   with no tracking, and the attention colour stays on the needs-you icon alone.
   A folder head is the folder's own name at 13px/600 in `--text-2`, with its
-  16px badge (radius 4, 10px/700, no ring), its branch after a `·`, and its
-  count only while the group is folded. A folder's preview rows carry no date
+  16px badge (radius 4, 10px/700, no ring) hanging in the rows' mark column, its
+  branch after a `·`, the fold chevron after the name, and its count (past the
+  chevron) only while the group is folded; its rows are not indented under it, so
+  a folder's titles are as wide as the flat list's. A folder's preview rows carry no date
   headings until the folder is opened: the age on each row already says when. Recent
   has one text edge: a date heading's text and every section head's label start on the
   rows' titles' edge (34px into a 292px panel); only marks hang in the mark column

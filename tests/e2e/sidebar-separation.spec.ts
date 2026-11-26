@@ -84,7 +84,7 @@ test.describe("the separated rows", () => {
     expect(Math.round((box as { height: number }).height), "a one-line row is 32px").toBe(32);
   });
 
-  test("a title under a project head lines up with the project's name", async ({ page, request }) => {
+  test("a folder head and its rows share the list's one edge", async ({ page, request }) => {
     await useProjectsView(page);
     // Focus mode needs a second project with a session of its own (the suite shares one server).
     const beta = (await (await request.post("/api/workspaces/open", { data: { path: `${process.env.AWUI_E2E_ROOT as string}/beta` } })).json()) as { id: string };
@@ -94,19 +94,42 @@ test.describe("the separated rows", () => {
     await newChat(page);
     await sendAndWait(page, "aligned row under the head");
     await showSidebar(page);
-    // The all-projects list, whose heads have no back button: a head is chevron, badge, name.
+    // The all-projects list, whose heads have no back button: a head is the badge, the name, the chevron.
     await expect(page.getByTestId("focused-project")).toBeVisible();
     await showAllProjects(page);
     await expect(page.getByTestId("focused-project")).toHaveCount(0);
-    const xs = await page.evaluate(() => {
+    const edge = await page.evaluate(() => {
       const group = [...document.querySelectorAll('[data-testid="project-group"]')].find((el) => el.querySelector(".project-name")?.textContent === "alpha");
-      const name = group?.querySelector(".project-name")?.getBoundingClientRect();
+      const head = group?.querySelector(".project-head") as HTMLElement | null;
+      const badge = head?.querySelector(".project-badge")?.getBoundingClientRect();
+      const chevron = head?.querySelector(".group-chevron")?.getBoundingClientRect();
+      const name = head?.querySelector(".project-name")?.getBoundingClientRect();
       const title = [...(group?.querySelectorAll(".session-title") ?? [])].find((el) => el.textContent?.includes("aligned row under the head"))?.getBoundingClientRect();
-      return name && title ? { name: name.left, title: title.left } : null;
+      const item = group?.querySelector(".session-item")?.getBoundingClientRect();
+      const headBox = head?.getBoundingClientRect();
+      if (!badge || !name || !title || !item || !headBox || !chevron) return null;
+      return {
+        headLeft: headBox.left,
+        name: name.left,
+        title: title.left,
+        rowLeft: item.left,
+        rowRight: item.right,
+        headRight: headBox.right,
+        badgeCentre: badge.left + badge.width / 2,
+        markCentre: headBox.left + 8 + 5,
+        chevronLeft: chevron.left,
+        nameRight: name.right,
+      };
     });
-    expect(xs, "the head and the row are both drawn").not.toBeNull();
-    // No rail under the head: its rows start at the name's own left edge.
-    expect(Math.abs((xs as { name: number; title: number }).title - (xs as { name: number; title: number }).name)).toBeLessThanOrEqual(2);
+    expect(edge, "the head and the row are both drawn").not.toBeNull();
+    const e = edge as { headLeft: number; name: number; title: number; rowLeft: number; rowRight: number; headRight: number; badgeCentre: number; markCentre: number; chevronLeft: number; nameRight: number };
+    // One text edge, and no indent: the head's name and its rows' titles start on the same x, the row
+    // spans the list, and the badge hangs in the mark column left of it.
+    expect(Math.abs(e.title - e.name), "the head's name is on the titles' edge").toBeLessThanOrEqual(2);
+    expect(Math.abs(e.rowLeft - e.headLeft), "a folder's rows are not indented under it").toBeLessThanOrEqual(1);
+    expect(Math.abs(e.rowRight - e.headRight), "a folder's rows span the list").toBeLessThanOrEqual(1);
+    expect(Math.abs(e.badgeCentre - e.markCentre), "the badge hangs in the mark column").toBeLessThanOrEqual(0.5);
+    expect(e.chevronLeft, "the fold chevron follows the name").toBeGreaterThan(e.nameRight);
   });
 
   test("a long title stops at one line with an ellipsis, and keeps its words on hover", async ({ page }) => {

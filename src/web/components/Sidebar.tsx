@@ -859,11 +859,14 @@ function ProjectGroupView({
     <li className={`project-group${open ? " is-open" : ""}${current ? " is-current" : ""}`} data-testid="project-group">
       <div className="project-head">
         <button type="button" className="project-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)} title={workspace.path}>
-          <IconChevronDown size={12} className="group-chevron" />
-          <ProjectBadge id={workspace.id} name={workspace.name} />
+          {/* The head lies on the rows' columns: its badge hangs in their 10px mark slot, its name starts on
+              their titles' edge, and the fold chevron follows the name so it takes no column of its own
+              (a section head's chevron does the same). */}
+          <span className="head-mark"><ProjectBadge id={workspace.id} name={workspace.name} /></span>
           <span className="project-name">{workspace.name}</span>
           {headBranch ? <span className="project-branch">{headBranch}</span> : null}
           {!open && sessions.some(isWorking) ? <WorkingRing colored={false} /> : null}
+          <IconChevronDown size={12} className="group-chevron" />
           {/* A count is what a collapsed group has instead of its rows; open, the rows are the count. */}
           {!open ? <span className="group-count">{sessions.length}</span> : null}
         </button>
