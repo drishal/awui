@@ -22,14 +22,14 @@ export type RowSubline =
 /**
  * The subline a row shows, or null when it has nothing to add (the row is then one line):
  *  - out of its project (`tag`), say which project — the flat list, and the sections above the folders —
- *    and, when its agent set a line, what it said after a `·`: one annotation, so the branch gives way;
+ *    and, when its agent set a line, that line first (`tagWords`): one annotation, so the branch gives way;
  *  - inside its project, the agent's own status line, else a branch that is not the trunk one and not
  *    the one its group's head already states (`groupBranch`): a branch is said once, where it applies.
  */
 export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; branch?: string | null; groupBranch?: string | null }): RowSubline | null {
   if (opts.tag) {
-    // The list is read by project first; the agent's own line, when it set one, rides after the project
-    // rather than in a third place. A status takes the branch's place: two annotations on one line is one
+    // The status is the fact that changed, so it leads: the tag's words put it before the project it is
+    // out of (tagWords below). It takes the branch's place, because two annotations on one line is one
     // too many, and the branch is the group's fact (the head states it) where a status is this row's.
     const status = s.agentStatus ? s.agentStatus.comment || agentStatusText(s.agentStatus) : null;
     // A group head owns its branch: only a worktree row with a different one states it again.
@@ -43,6 +43,16 @@ export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; b
   const branch = opts.branch ?? null;
   if (branch === null || branch === opts.groupBranch || isTrunkBranch(branch)) return null;
   return { kind: "branch", text: branch };
+}
+
+/**
+ * The words a tagged row says after its badge. The agent's own line comes first — it is the fact that
+ * changed, and the project is where the row lives — then the project, after a `·`: `ready to merge ·
+ * awui-wt`. A branch rides after the project's name only where no status took its place.
+ */
+export function tagWords(tag: ProjectTag, status: string | null): string {
+  const project = tag.branch ? `${tag.name} · ${tag.branch}` : tag.name;
+  return status ? `${status} · ${project}` : project;
 }
 
 /** The leading slot a row's 10px mark takes, in the order the row chooses one. */

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { asHarnessId, type ProjectSession } from "../../src/shared/protocol.js";
 import type { ProjectTag } from "../../src/web/recent-view.js";
-import { rowState, rowSubline } from "../../src/web/session-state.js";
+import { rowState, rowSubline, tagWords } from "../../src/web/session-state.js";
 
 const s = (extra: Partial<ProjectSession> = {}): ProjectSession => ({
   id: "x",
@@ -21,13 +21,19 @@ describe("rowSubline", () => {
     expect(rowSubline(s(), { tag })).toEqual({ kind: "tag", tag, status: null });
   });
 
-  it("puts the agent's own line after the project, in the branch's place", () => {
-    // The flat list is read by project first; what the agent reported rides after it, as one annotation.
+  it("puts the agent's own line first, in the branch's place", () => {
+    // What the agent reported is the fact that changed, so it leads: badge, status, then the project.
     expect(rowSubline(s({ agentStatus: { state: "review", comment: "ready to merge", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: "ready to merge" });
     // With no sentence of its own, the state's word.
     expect(rowSubline(s({ agentStatus: { state: "blocked", comment: "", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: "blocked" });
     // A branch is one more annotation than a 16px subline holds, so the status takes its place.
     expect(rowSubline(s({ agentStatus: { state: "done", comment: "shipped", at: 7 } }), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: "shipped" });
+  });
+
+  it("words a tag's badge line: the status, a `·`, then the project", () => {
+    expect(tagWords(tag, null), "a row out of its project, nothing reported").toBe("awui-wt · feat/sidebar");
+    expect(tagWords({ ...tag, branch: null }, null), "the branch said once, at the head").toBe("awui-wt");
+    expect(tagWords({ ...tag, branch: null }, "ready to merge"), "what the agent said, before where it lives").toBe("ready to merge · awui-wt");
   });
 
   it("says what the agent reported, inside its project", () => {

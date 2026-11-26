@@ -36,7 +36,7 @@ import { setProjectIcon, useProjectIcons } from "../project-icons.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
-import { rowState, rowSubline } from "../session-state.js";
+import { rowState, rowSubline, tagWords } from "../session-state.js";
 import { matchSpan } from "../sidebar-filter.js";
 import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
@@ -552,14 +552,7 @@ function SessionRow({
             <span className={`session-sub${sub.kind === "branch" ? " is-branch" : ""}${sub.kind === "agent" ? ` session-agent is-${sub.state}` : ""}`} title={sub.kind === "agent" ? `${sub.line} · set by the agent ${ago(sub.at)}` : undefined}>
               {sub.kind === "tag" ? <ProjectBadge id={sub.tag.id} name={sub.tag.name} size={12} /> : null}
               <span className="session-sub-name">
-                {sub.kind === "tag" ? (
-                  <>
-                    {sub.tag.name}
-                    {sub.tag.branch ? ` · ${sub.tag.branch}` : ""}
-                    {/* The agent's own line, in the branch's place: one annotation, the row's own. */}
-                    {sub.status ? ` · ${sub.status}` : ""}
-                  </>
-                ) : sub.text}
+                {sub.kind === "tag" ? tagWords(sub.tag, sub.status) : sub.text}
               </span>
               <span className="session-slot">{meta}</span>
             </span>
