@@ -3,8 +3,10 @@
 import { useRef } from "react";
 
 export const SIDEBAR_DEFAULT = 292;
-export const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 560;
+// Narrower than this the Recent/Projects switch collapses to a bare 18px chevron and the field's own
+// placeholder truncates, so 236 is the smallest width that keeps the view control's word and target.
+export const SIDEBAR_MIN = 236;
 
 export function sidebarMax(): number {
   return Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(window.innerWidth * 0.5)));

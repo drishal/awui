@@ -123,7 +123,7 @@ test("search chrome fits every supported width in either view, with or without a
     expect(filter.x + filter.width, `filter has one inset at ${width}px`).toBe(field.x + field.width - 4);
     return filter.x;
   };
-  for (const width of [200, 240, 292, 560]) {
+  for (const width of [236, 240, 292, 560]) {
     await page.locator(".app").evaluate((el, next) => (el as HTMLElement).style.setProperty("--sidebar-w", `${next}px`), width);
     await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(width);
     const recent = await measure();
@@ -137,6 +137,24 @@ test("search chrome fits every supported width in either view, with or without a
     await sidebar.getByRole("button", { name: "Sidebar view: Projects" }).click();
     await page.getByRole("menuitemradio", { name: "Recent", exact: true }).click();
   }
+});
+
+test("the view control keeps its name and target at the narrowest supported width", async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await signInAndOpen(page);
+  await page.locator(".app").evaluate((el) => (el as HTMLElement).style.setProperty("--sidebar-w", "236px"));
+  const sidebar = page.locator(".sidebar");
+  await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(236);
+  const view = sidebar.getByRole("button", { name: "Sidebar view: Recent" });
+  const box = (await view.boundingBox())!;
+  expect(box.width, "the control keeps a real target").toBeGreaterThanOrEqual(44);
+  const label = view.locator("span");
+  expect((await label.boundingBox())!.width, "Recent never collapses to a bare chevron").toBeGreaterThan(18);
+  await expect(label).toHaveText("Recent");
+  expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth + 0.5), "Recent is the whole word, not Rec…").toBe(true);
+  const input = sidebar.getByRole("searchbox", { name: "Search sessions" });
+  expect((await input.boundingBox())!.width, "the placeholder keeps room beside it").toBeGreaterThanOrEqual(80);
+  await expect(sidebar.locator(".filter-chip")).toBeVisible();
 });
 
 

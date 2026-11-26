@@ -1622,7 +1622,7 @@ test("the sidebar is resizable by drag and keyboard, and remembers its width", a
   await page.keyboard.press("ArrowLeft");
   expect(Math.round(await width())).toBe(396);
   await page.keyboard.press("Home");
-  expect(Math.round(await width())).toBe(200);
+  expect(Math.round(await width())).toBe(236);
   // Dragging far past the limit clamps instead of swallowing the chat.
   const b2 = (await handle.boundingBox()) as { x: number; y: number; width: number; height: number };
   await page.mouse.move(b2.x + 3, b2.y + 200);

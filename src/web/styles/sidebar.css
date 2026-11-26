@@ -308,7 +308,7 @@
 
 .search-field > input {
   flex: 1;
-  /* The search, view switch and filter share one field down to the resizer's 200px minimum. */
+  /* The search, view switch and filter share one field down to the resizer's 236px minimum. */
   min-width: 96px;
   border: 0;
   outline: none;
@@ -346,9 +346,11 @@
   width: 100%;
   min-width: 0;
   align-items: center;
-  gap: 3px;
+  gap: 1px;
   height: 24px;
-  padding: 0 2px;
+  /* The 6px this tightens over 3px of gap and 4px of padding keeps "Recent" whole beside a 96px
+     search input at the 236px resizer floor, rather than leaving an 18px chevron or an ellipsised "Rec…". */
+  padding: 0;
   border: 0;
   border-radius: var(--r-sm);
   background: none;
