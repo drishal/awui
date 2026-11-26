@@ -12,7 +12,7 @@
    padding at the top, the last turn's at the bottom), so a row at rest is never under one. They sit above the rows
    (z 2) and below the sticky prompt (4), the jump pill (5) and the find bar (6), and take no pointer, so a row under
    a fade is still clickable. The composer owns z3 for its upward-opening sheets; sticky prompt (4), jump pill (5) and find bar (6) sit above it.
-   The sticky prompt owns its background and the one-pixel separator on its pseudo-element (conversation.css). */
+   The sticky prompt is an opaque label that owns its own background. */
 .conversation-wrap::before,
 .conversation-wrap::after {
   content: "";
@@ -2207,9 +2207,6 @@
   }
 }
 
-.sticky-prompt {
-  isolation: isolate;
-}
 .sticky-prompt:hover {
   color: var(--text);
 }

@@ -27,6 +27,9 @@ test("an answered request folds into one line naming the answer", async ({ page 
   await expect(foldStatus.locator(".rays")).toHaveCount(0);
   // And so does the chat's tab: the amber "Needs you" dot, not the run's ring, and a screen reader hears it so.
   await expect(page.getByRole("tab").filter({ has: page.getByRole("img", { name: "Needs you" }) })).toHaveCount(1);
+  // The header's dot is still too: an asking chat is also a running one, whose own rule pulses it, so the asking rule
+  // has to switch that off (it read as a taupe dot in a still frame at the pulse's 35%).
+  expect(await page.locator(".status.is-asking").evaluate((el) => getComputedStyle(el, "::before").animationName)).toBe("none");
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card).toHaveCount(0);
   const folded = page.getByTestId("approval-folded");

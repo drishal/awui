@@ -198,9 +198,12 @@
   animation: pulse 1.2s ease-in-out infinite;
 }
 
-/* A request waiting on the person here: the attention colour, as the approval card's. */
+/* A request waiting on the person here: the attention colour, as the approval card's, and still. An asking chat is
+   also a running one (`status-running is-asking`), whose rule above pulses the dot: the person is the bottleneck, so
+   this one says so by not moving, like the tab, the row and the fold. */
 .status.is-asking::before {
   background: var(--warn);
+  animation: none;
 }
 
 /* A dropped stream outranks the run: the word says Offline, and the dot is the one red mark in the header. */
