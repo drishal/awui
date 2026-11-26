@@ -139,13 +139,15 @@ test("the filter menu answers Escape from its trigger and hands the focus back",
   await signInAndOpen(page);
   const trigger = page.getByRole("button", { name: /^Filters/ });
   await trigger.click();
-  const menu = page.getByRole("group", { name: "Hide sessions" });
+  const menu = page.getByRole("group", { name: "Filter sessions" });
   await expect(menu).toBeVisible();
-  // The menu takes the focus, and its arrows walk its rows.
-  const rows = menu.getByRole("checkbox");
-  await expect(rows.first()).toBeFocused();
+  // The menu takes the focus (its View, Show and Hide groups are one walk), and its arrows move it along.
+  const focusedLabel = () => page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");
+  await expect(menu.locator(":focus")).toHaveCount(1);
+  const first = await focusedLabel();
   await page.keyboard.press("ArrowDown");
-  await expect(rows.nth(1)).toBeFocused();
+  await expect(menu.locator(":focus")).toHaveCount(1);
+  expect(await focusedLabel()).not.toBe(first);
   // Escape while the trigger itself has the focus closes the menu too (it used to stay open), and the
   // focus lands back on the trigger rather than the body.
   await trigger.focus();
