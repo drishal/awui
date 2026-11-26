@@ -157,7 +157,9 @@ a literal colour.
   A folder head is the folder's own name at 13px/600 in `--text-2`, with its
   16px badge (radius 4, 10px/700, no ring) hanging in the rows' mark column, its
   branch after a `·`, the fold chevron after the name, and its count (past the
-  chevron) only while the group is folded; its rows are not indented under it, so
+  chevron) only while the head hides rows — the group folded, or a page of its rows still behind
+  "Show N more", whose own words then drop the folder's name the head already said; its rows
+  are not indented under it, so
   a folder's titles are as wide as the flat list's. A folder's preview rows carry no date
   headings until the folder is opened: the age on each row already says when. Recent
   has one text edge: a date heading's text and every section head's label start on the

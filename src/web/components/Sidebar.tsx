@@ -918,8 +918,9 @@ function ProjectGroupView({
           {headBranch ? <span className="project-branch">{headBranch}</span> : null}
           {!open && sessions.some(isWorking) ? <WorkingRing colored={false} /> : null}
           <IconChevronDown size={12} className="group-chevron" />
-          {/* A count is what a collapsed group has instead of its rows; open, the rows are the count. */}
-          {!open ? <span className="group-count">{sessions.length}</span> : null}
+          {/* The count says what the head is hiding: a collapsed group's rows, or the ones the page left
+              behind its "Show N more". An open group showing all of them is its own count. */}
+          {!open || hidden > 0 ? <span className="group-count">{sessions.length}</span> : null}
         </button>
         <button
           type="button"
@@ -940,7 +941,8 @@ function ProjectGroupView({
           {hidden > 0 ? (
             <li>
               <button type="button" className="show-more" onClick={() => setPages((n) => n + 1)}>
-                Show {Math.min(hidden, SHOW_MORE)} more in {workspace.name}
+                {/* The head above already names the folder: repeating it here said it twice, one row apart. */}
+                Show {Math.min(hidden, SHOW_MORE)} more
                 <IconChevronDown size={12} />
               </button>
             </li>

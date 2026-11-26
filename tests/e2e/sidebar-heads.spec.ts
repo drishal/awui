@@ -2,8 +2,9 @@
 // sentence-case signposts at 11.5px in the muted ink (the attention colour stays on the needs-you icon
 // alone), and every one of them puts its words on the rows' titles' edge; a folder head is the folder's
 // own name at 13px in the second ink, its badge a 16px rounded square with no ring, and its count shows
-// only while the group is collapsed — an open group's rows are the count. A folder's first few rows
-// carry no date headings until the folder is opened.
+// only while the head hides rows — a collapsed group's, or the ones behind its "Show N more" — where an
+// open group showing all of them is its own count. A folder's first few rows carry no date headings until
+// the folder is opened.
 import { expect, type Page, test } from "@playwright/test";
 import { newChat, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
@@ -72,7 +73,7 @@ test("a calendar heading is a sentence-case signpost, not a title", async ({ pag
   expect(Math.abs((column?.countRight ?? 0) - (column?.ageRight ?? 99)), "the count ends on the age column").toBeLessThanOrEqual(0.5);
 });
 
-test("a folder head names the folder at 13px, and its count shows only while collapsed", async ({ page }) => {
+test("a folder head names the folder at 13px, and its count shows only while it hides rows", async ({ page }) => {
   await useProjectsView(page);
   await signInAndOpen(page);
   await newChat(page);
@@ -87,7 +88,7 @@ test("a folder head names the folder at 13px, and its count shows only while col
   await expect(name).toHaveCSS("font-weight", "600");
   await expect(name).toHaveCSS("color", await painted(page, "--text-2"));
 
-  // Open, the rows are the count (or the focused head, which never collapses).
+  // Folded it counts its rows; open with every row on screen it does not (the focused head never folds).
   if ((await page.getByTestId("focused-project").count()) === 0) {
     await expect(group.locator(".group-count")).toHaveCount(0);
     await group.locator(".project-toggle").first().click();
@@ -98,7 +99,7 @@ test("a folder head names the folder at 13px, and its count shows only while col
   // A folder's first rows carry no date headings: the age on each row already says when.
   const preview = sidebar(page).locator('[data-testid="project-group"]').filter({ hasNot: page.locator(".flat-group") });
   for (const list of await preview.all()) {
-    if (await list.getByRole("button", { name: /^Show \d+ more in / }).count()) await expect(list.locator(".date-divider")).toHaveCount(0);
+    if (await list.getByRole("button", { name: /^Show \d+ more/ }).count()) await expect(list.locator(".date-divider")).toHaveCount(0);
   }
 });
 

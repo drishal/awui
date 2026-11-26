@@ -1,5 +1,5 @@
 // "Show more" is a bounded page, in the flat list and inside a folder: a non-current folder opens with 4
-// rows, the current one with 8, and each "Show N more in <folder>" adds 20 — never a whole history at
+// rows, the current one with 8, and each "Show N more" adds 20 — never a whole history at
 // once. It is a fold row at the rows' pitch (44px on a phone): muted words naming what it adds, a 12px
 // chevron after them, and the second ink on hover.
 import { expect, type Locator, type Page, test } from "@playwright/test";
@@ -22,8 +22,8 @@ const painted = (page: Page, token: string): Promise<string> =>
     return `rgb(${r}, ${g}, ${b})`;
   }, token);
 
-/** The number in "Show N more in <folder>". */
-const hiddenIn = async (button: Locator): Promise<number> => Number(((await button.innerText()).match(/Show (\d+) more in /) ?? [])[1]);
+/** The number in a fold's "Show N more". */
+const hiddenIn = async (button: Locator): Promise<number> => Number(((await button.innerText()).match(/Show (\d+) more/) ?? [])[1]);
 
 /** Chats sent through the API: the suite shares one server, so the test seeds its own history. */
 async function seed(request: Page["request"], path: string, count: number, prefix: string): Promise<void> {
@@ -45,11 +45,16 @@ test("a folder that is not the current one opens with 4 rows, and each Show more
   const beta = page.getByTestId("project-group").filter({ has: page.locator(".project-name", { hasText: /^beta$/ }) });
   await expect(beta).toBeVisible();
   await expect(rowsOf(beta), "a folder's preview is 4 rows").toHaveCount(4);
-
+  // The head says how many rows the folder holds, because four of them are on screen and the rest are
+  // behind the fold: an open group is only its own count when it shows all of them.
+  const head = beta.locator(".group-count");
+  const total = Number(await head.innerText());
+  expect(total, "the seeded history fills more than one page").toBeGreaterThan(20);
   const more = beta.locator(".show-more");
   const hidden = await hiddenIn(more);
   expect(hidden, "the seeded history needs more than one page").toBeGreaterThanOrEqual(20);
-  await expect(more, "the fold names what it adds").toHaveText(`Show ${Math.min(hidden, 20)} more in beta`);
+  // The head above already names the folder, so the fold adds no name of its own.
+  await expect(more, "the fold names what it adds").toHaveText(`Show ${Math.min(hidden, 20)} more`);
   // A fold carries its own chevron, after the words, and takes the second ink under the pointer.
   expect(await more.locator("svg").count(), "one chevron").toBe(1);
   const chevron = await more.evaluate((el) => {
@@ -65,13 +70,11 @@ test("a folder that is not the current one opens with 4 rows, and each Show more
   await more.click();
   const added = Math.min(hidden, 20);
   await expect(rowsOf(beta)).toHaveCount(4 + added);
-  const left = hidden - added;
-  if (left > 0) {
-    await expect(more).toHaveText(`Show ${left} more in beta`);
-    await more.click();
-    await expect(rowsOf(beta)).toHaveCount(4 + added + left);
-    await expect(more).toHaveCount(0);
-  }
+  // The fold names one page at a time, so a second one can remain: take them until every row is drawn.
+  for (let i = 0; i < 5 && (await beta.locator(".show-more").count()) > 0; i++) await beta.locator(".show-more").click();
+  await expect(rowsOf(beta), "every row of the folder is on screen").toHaveCount(total);
+  // Every row is on screen now, so the head's number would repeat what the list says.
+  await expect(head).toHaveCount(0);
 });
 
 test("the current folder's page is 8 rows, and the same 20-row steps", async ({ page, request }) => {

@@ -1186,7 +1186,7 @@ test("the sidebar focuses the current project and opens its sessions across harn
   await expect(groups).toHaveCount(2);
   const beta = groups.filter({ has: page.locator(".project-name", { hasText: /^beta$/ }) });
   // The folded sessions of a folder open from "Show N more".
-  await beta.getByRole("button", { name: /^Show \d+ more in beta$/ }).click();
+  await beta.getByRole("button", { name: /^Show \d+ more$/ }).click();
   await beta.locator(".session", { hasText: "xproj four" }).click();
   await expect(prompts(page)).toHaveText(["xproj four"]);
   await expect(page.locator(".chat-header .chat-path")).toHaveText("beta");
