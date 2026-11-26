@@ -87,7 +87,7 @@ body {
 }
 
 @media (hover: none) and (max-width: 819px) {
-  .sidebar .drawer-new-chat {
+  .sidebar.is-open .drawer-new-chat {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -105,8 +105,8 @@ body {
   .sidebar .search-field {
     position: relative;
     height: 44px;
-    /* The field is the control; the filter is a 44 px hit area flush in its end, so the text keeps clear of it. */
-    padding-right: 48px;
+    /* The view and filter share the field's end; padding is not a third control. */
+    padding-right: 4px;
   }
 
   /* No bordered 44 px square: the square is the field, and the chip is its glyph with a thumb-sized target. */
@@ -166,8 +166,30 @@ body {
     padding: 0 8px;
   }
 
-  .sidebar .filter-menu .view-segment button {
+  .sidebar .view-switch {
+    min-width: 44px;
     min-height: 44px;
+    /* The filter is absolute, so its target needs a column of its own. */
+    margin-right: 40px;
+  }
+}
+
+/* At 375px a 150px search field can sit beside the view's 44px touch target. Below it, Filters owns View. */
+.sidebar .filter-view {
+  display: none;
+}
+
+@media (min-width: 375px) and (max-width: 640px) {
+  .sidebar.is-open .sidebar-view-control {
+    display: none;
+  }
+
+  .sidebar.is-open .filter-view {
+    display: block;
+  }
+
+  .sidebar.is-open .filter-view .filter-label {
+    font-size: 13px;
   }
 }
 
@@ -197,6 +219,29 @@ body {
 }
 
 @media (max-width: 640px) {
+  .sidebar .needs-you-shortcut {
+    position: absolute;
+    display: none;
+    visibility: hidden;
+    z-index: 35;
+    right: 0;
+    bottom: calc(var(--drawer-pill) + var(--sid-tray) + 28px);
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--hairline-strong);
+    border-radius: 12px;
+    background: var(--surface-2);
+    color: var(--row-warn);
+    font-weight: 500;
+  }
+
+  .sidebar .needs-you-shortcut.is-visible {
+    display: flex;
+    visibility: visible;
+  }
   /* Prompts on a phone: four lines of a long one before Show more (six filled
      half the screen), and less padding inside the bubble. */
   .bubble {

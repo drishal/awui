@@ -513,10 +513,13 @@ test("a session can be snoozed until the limit resets", async ({ page }) => {
 test("a project's folder shows its own monogram", async ({ page }) => {
   // The monogram hangs on the folder head, which is the grouped view's.
   await useProjectsView(page);
+  await signInAndOpen(page, "beta");
+  await sendAndWait(page, "a beta chat for the monogram");
   await signInAndOpen(page);
   await showSidebar(page);
-  // alpha is the project here: its badge is A, drawn in one of four theme colours (its slot), washed and edged, never hue-rotated.
-  const badge = page.locator(".project-badge").first();
+  // The focus head no longer repeats the badge; project identity belongs on its switch menu.
+  await page.getByTestId("focused-project").locator(".focus-switch").click();
+  const badge = page.locator(".focus-menu [role='menuitemradio']").filter({ hasText: "alpha" }).locator(".project-badge");
   await expect(badge).toHaveText("A");
   await expect(badge).toHaveAttribute("data-slot", /^[1-4]$/);
   await expect(badge).toHaveCSS("filter", "none");
@@ -539,11 +542,13 @@ test("a project's icon can be set on this device", async ({ page }) => {
   await dialog.getByLabel(/A letter or an emoji/).fill("★");
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.locator(".project-badge").first()).toHaveText("★");
+  await head.locator(".focus-switch").click();
+  await expect(page.locator(".focus-menu [role='menuitemradio']").filter({ hasText: "alpha" }).locator(".project-badge")).toHaveText("★");
   // It lives in this browser: a reload keeps it.
   await page.reload();
   await showSidebar(page);
-  await expect(page.locator(".project-badge").first()).toHaveText("★");
+  await head.locator(".focus-switch").click();
+  await expect(page.locator(".focus-menu [role='menuitemradio']").filter({ hasText: "alpha" }).locator(".project-badge")).toHaveText("★");
 });
 
 test("a selection of sessions can be settled at once, and undone", async ({ page }) => {

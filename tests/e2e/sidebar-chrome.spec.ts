@@ -1,7 +1,21 @@
 // Chrome checks for the compact sidebar, its filter disclosure, search, footer,
 // and touch drawer. Row geometry remains sidebar-separation.spec's responsibility.
 import { expect, test } from "@playwright/test";
-import { newChat, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
+import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
+
+async function painted(page: import("@playwright/test").Page, token: string): Promise<string> {
+  return page.evaluate((name) => {
+    const canvas = document.createElement("canvas").getContext("2d") as CanvasRenderingContext2D;
+    const probe = document.createElement("span");
+    probe.style.color = getComputedStyle(document.documentElement).getPropertyValue(name);
+    document.body.append(probe);
+    canvas.fillStyle = getComputedStyle(probe).color;
+    probe.remove();
+    canvas.fillRect(0, 0, 1, 1);
+    const [r, g, b] = canvas.getImageData(0, 0, 1, 1).data;
+    return `rgb(${r}, ${g}, ${b})`;
+  }, token);
+}
 
 test("the two-row head and footer keep the controls on the new chrome", async ({ page }) => {
   // Other specs create rooms on the shared server; this geometry check starts empty.
@@ -33,14 +47,13 @@ test("the two-row head and footer keep the controls on the new chrome", async ({
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
 });
 
-test("a selected quick filter is one token; view and room commands live in Filters", async ({ page }) => {
+test("a selected quick filter is one token; view and room commands stay reachable", async ({ page }) => {
   await signInAndOpen(page);
   const sidebar = page.locator(".sidebar");
   await sidebar.getByRole("button", { name: "Filters", exact: true }).click();
   await page.getByRole("radiogroup", { name: "Show" }).getByRole("radio", { name: /^Today/ }).click();
   await expect(sidebar.getByRole("button", { name: "Clear Today filter" })).toBeVisible();
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".filter-view")).toBeHidden();
   await page.locator(".filter-menu").getByRole("button", { name: "New room", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "New room" })).toBeVisible();
   await page.keyboard.press("Escape");
@@ -49,8 +62,12 @@ test("a selected quick filter is one token; view and room commands live in Filte
   await page.keyboard.press("Escape");
   await sidebar.getByRole("button", { name: "Clear Today filter" }).click();
   await expect(sidebar.locator(".quick-filters")).toHaveCount(0);
-  await sidebar.getByRole("button", { name: "Filters", exact: true }).click();
-  await page.getByRole("button", { name: "Recent", exact: true }).click();
+  await sidebar.getByRole("button", { name: "Sidebar view: Recent" }).click();
+  await expect(page.getByRole("button", { name: "Sidebar view: Recent" })).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("menuitemradio", { name: "Projects", exact: true }).click();
+  await expect(sidebar.getByRole("button", { name: "Sidebar view: Projects" })).toHaveAttribute("aria-expanded", "false");
+  await sidebar.getByRole("button", { name: "Sidebar view: Projects" }).click();
+  await page.getByRole("menuitemradio", { name: "Recent", exact: true }).click();
 });
 
 test("search has no inner shadow and Enter searches an empty local result", async ({ page }) => {
@@ -87,7 +104,7 @@ test("the filter is a glyph in the field, and its popover is a short rail-wide d
   expect(Math.round(box.x + box.width), "the popover ends inside the sidebar").toBeLessThanOrEqual(Math.round(side.x + side.width));
   expect(box.height, "a short menu, not 631px of hints").toBeLessThanOrEqual(470);
   // Every row and action is on one 32px pitch.
-  for (const row of await popover.locator(".filter-row").all()) {
+  for (const row of await popover.locator(".filter-row:visible").all()) {
     expect(Math.round((await row.boundingBox())!.height)).toBe(32);
   }
   for (const action of await popover.locator(".filter-actions button").all()) {
@@ -106,44 +123,41 @@ test("the filter is a glyph in the field, and its popover is a short rail-wide d
   await expect(radio).toHaveCSS("appearance", "none");
   await expect(radio).toHaveCSS("border-top-style", "solid");
   await expect(radio).toHaveCSS("border-radius", "50%");
-  // The segment, the headings and the rows stand on one left edge (the heading's text on the row's control).
-  const segment = (await popover.locator(".view-segment").boundingBox())!;
-  const firstRow = (await popover.locator(".filter-row").first().boundingBox())!;
-  expect(Math.round(segment.x)).toBe(Math.round(firstRow.x));
-  const heading = (await popover.locator(".filter-heading").first().boundingBox())!;
-  const control = (await popover.locator(".filter-row input").first().boundingBox())!;
+  // Group headings share the controls' edge; view choices are no longer inside this dialog.
+  await expect(popover.getByRole("group", { name: "View" })).toHaveCount(0);
+  const heading = (await popover.locator(".filter-heading:visible").first().boundingBox())!;
+  const control = (await popover.locator(".filter-row input:visible").first().boundingBox())!;
   expect(Math.round(heading.x)).toBe(Math.round(control.x));
-  // A count of nothing dims its row but never disables it.
+  // Zero dims only its words, not the radio ring or the row's hit area.
   const zero = popover.locator('.filter-row[data-count="0"]').first();
-  await expect(zero).toHaveCSS("opacity", "0.55");
+  await expect(zero).toHaveCSS("opacity", "1");
+  await expect(zero.locator(".filter-label")).toHaveCSS("color", await painted(page, "--muted"));
   await expect(zero.getByRole("radio")).toBeEnabled();
-  // The actions read as plain menu rows in the second ink, not a wrapping button bar of muted text.
+  // Actions read as plain menu rows in the second ink, not a wrapping button bar.
   await expect(popover.locator(".filter-actions")).toHaveCSS("flex-direction", "column");
-
   // Focus inside the popover never lights the search field's ring: while a checkbox has it, the field's
   // box-shadow stays none (the global :focus-visible ring used to reach the field through the popover).
   await sleeping.focus();
   await expect(sleeping).toBeFocused();
   expect(await sidebar.locator(".search-field").evaluate((el) => getComputedStyle(el).boxShadow)).toBe("none");
 
-  // The arrows walk View (the segment's buttons) → Show → Hide → actions as one tab stop.
-  await popover.getByRole("button", { name: "Recent", exact: true }).focus();
-  const walked: string[] = [];
-  for (let i = 0; i < 12; i++) {
-    walked.push(
-      await page.evaluate(() => {
-        const el = document.activeElement as HTMLInputElement | HTMLButtonElement | null;
-        if (!el) return "";
-        return el.tagName === "INPUT" ? `${el.type}:${el.getAttribute("aria-describedby") ?? el.name}` : (el.textContent ?? "").trim();
-      }),
-    );
-    await page.keyboard.press("ArrowDown");
+  // Tab walks the shared Show stop, four Hide choices and two commands, then leaves this form.
+  const running = popover.getByRole("radio", { name: /^Running/ });
+  await running.focus();
+  const walked = [];
+  for (let i = 0; i < 7; i++) {
+    walked.push(await page.evaluate(() => {
+      const el = document.activeElement as HTMLInputElement | HTMLButtonElement;
+      return el.tagName === "INPUT" ? `${el.type}:${el.getAttribute("aria-describedby") ?? el.name}` : (el.textContent ?? "").trim();
+    }));
+    await page.keyboard.press("Tab");
   }
-  expect(walked[0]).toBe("Recent");
-  expect(walked).toContain("Projects");
-  expect(walked).toContain("radio:sidebar-quick-filter");
-  expect(walked).toContain("checkbox:filter-hint-sleeping");
-  expect(walked).toContain("Refresh sessions");
+  expect(walked).toEqual(["radio:sidebar-quick-filter", "checkbox:filter-hint-sleeping", "checkbox:filter-hint-defaultBranch", "checkbox:filter-hint-automation", "checkbox:filter-hint-agent", "New room", "Refresh sessions"]);
+  await running.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(popover.getByRole("radio", { name: /^Needs you/ })).toBeChecked();
+  await expect(sidebar.getByRole("button", { name: "Clear Needs you filter" })).toBeVisible();
+  await sidebar.getByRole("button", { name: "Clear Needs you filter" }).click();
   // Escape returns the focus to the chip.
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
@@ -217,6 +231,19 @@ test.describe("phone drawer", () => {
     // The filter is a glyph flush in the field's end, not a bordered 44 px square beside it: the field is the
     // box, the chip is the target. Polled, since the drawer slides in for 160 ms.
     const filter = drawer.getByRole("button", { name: "Filters", exact: true });
+    await expect(drawer.locator(".sidebar-view-control")).toBeHidden();
+    await filter.click();
+    await expect(page.getByRole("radiogroup", { name: "View", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Filters", exact: true })).toHaveCount(0);
+    await expect(drawer).toHaveClass(/is-open/);
+    await expect(newChat).toBeVisible();
+    await expect(newChat).toHaveCSS("border-radius", "10px");
+    await page.setViewportSize({ width: 345, height: 844 });
+    await expect(drawer.locator(".sidebar-view-control")).toBeVisible();
+    expect((await drawer.getByRole("searchbox", { name: "Search sessions" }).boundingBox())!.width).toBeGreaterThanOrEqual(149.5);
+    await expect(drawer.locator(".view-switch")).toHaveCSS("height", "44px");
+    await page.setViewportSize({ width: 390, height: 844 });
     await expect(filter).toHaveCSS("position", "absolute");
     await expect(filter).toHaveCSS("border-top-width", "0px");
     await expect
@@ -239,8 +266,8 @@ test.describe("phone drawer", () => {
     await expect(drawer.getByRole("button", { name: "New chat", exact: true })).toBeHidden();
     // The pill takes the medium radius, as every other control of its size does.
     const radius = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--r-md").trim());
+    expect(radius).toBe("10px");
     await expect(newChat).toHaveCSS("border-radius", radius);
-    await page.setViewportSize({ width: 320, height: 740 });
     await expect(newChat).toBeVisible();
   });
 
@@ -303,14 +330,39 @@ test.describe("phone drawer", () => {
     // Before any scroll the heading is not stuck, and its fade is not drawn.
     const fade = divider.locator(".date-fade");
     await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).display)).toBe("none");
-    // Scrolled past its own position it sticks to the top, and an 8px fade of the heading's surface lies
-    // over the rows passing under it: no more descenders peeking out mid-glyph.
+    // Scrolled past its own position it sticks, and an 18px fade covers a 16px passing subline.
     await list.evaluate((el) => { el.scrollTop = 600; });
-    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).height)).toBe("8px");
+    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).height)).toBe("18px");
     expect(await fade.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe("none");
     // Back at rest the fade goes again: only a stuck heading has an edge.
     await list.evaluate((el) => { el.scrollTop = 0; });
     await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).display)).toBe("none");
+  });
+
+  test("a scrolled phone drawer keeps a waiting chat one tap away", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 520 });
+    await signInAndOpen(page);
+    await newChat(page);
+    await send(page, "please ask first for the phone shortcut");
+    await expect(page.getByTestId("approval-card")).toBeVisible();
+    for (const n of [1, 2, 3, 4]) {
+      await newChat(page);
+      await sendAndWait(page, `phone attention filler ${n}`);
+    }
+    await showSidebar(page);
+    const shortcut = page.locator(".sidebar .needs-you-shortcut");
+    await expect(shortcut).toBeHidden();
+    const list = page.locator(".sidebar .session-list");
+    await list.evaluate((el) => { el.scrollTop = 600; });
+    await expect(shortcut).toBeVisible();
+    await expect(shortcut).toHaveCSS("height", "44px");
+    await expect(shortcut).toHaveCSS("border-radius", "12px");
+    const pill = await page.locator(".sidebar .drawer-new-chat").boundingBox();
+    const above = await shortcut.boundingBox();
+    expect(above!.y + above!.height).toBeLessThanOrEqual(pill!.y + 0.5);
+    await expect(shortcut).toHaveText("1 needs you");
+    await shortcut.click();
+    await expect(page.getByTestId("approval-card")).toBeVisible();
   });
 });
 

@@ -1,11 +1,9 @@
-// The sidebar's one filter disclosure: the list view, one optional quick filter,
-// and the kinds of session to hide. Counts explain each choice before it is made.
-// Filter logic lives in sidebar-filter.ts; this owns only the popover and its state.
-import { useEffect, useRef, useState } from "react";
+// The sidebar's filter disclosure: quick filters and the kinds of session to hide.
+// Native Tab and radio keys keep their form semantics; view selection lives beside search.
+import { useLayoutEffect, useRef, useState } from "react";
 import { HIDE_GROUPS, HIDE_HINTS, HIDE_LABELS, QUICK_FILTERS, QUICK_LABELS, type HideGroup, type QuickFilter } from "../sidebar-filter.js";
 import { IconFilter, IconPlus, IconRefresh } from "../icons.js";
 import { useSidebarView } from "../sidebar-view.js";
-import { useMenuKeys } from "../menu-focus.js";
 export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts, onChange, onRefresh, onNewRoom, roomsAvailable }: {
   quick: QuickFilter | null;
   quickCounts: Record<QuickFilter, number>;
@@ -17,19 +15,18 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
   onNewRoom: () => void;
   roomsAvailable: boolean;
 }) {
+  const root = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<DOMRect | null>(null);
   const [view, setView] = useSidebarView();
-  // The roving item set is re-read when the Reset button appears or goes (a toggle changes the walk's length).
-  const keys = useMenuKeys(menu, { open: at !== null, close: () => setAt(null), opener: button, version: hide.length });
   const active = hide.length + (quick ? 1 : 0);
   const toggle = (group: HideGroup) => onChange(hide.includes(group) ? hide.filter((g) => g !== group) : [...hide, group]);
   const clear = () => onChange([]);
-  useEffect(() => {
-    if (!at) return;
+  // Register before Sidebar's effect: a child's Escape dismisses only this popover, never its drawer parent.
+  useLayoutEffect(() => {
     const escape = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || at === null) return;
       e.preventDefault();
       e.stopPropagation();
       setAt(null);
@@ -39,7 +36,7 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
     return () => document.removeEventListener("keydown", escape, true);
   }, [at]);
   return (
-    <>
+    <span ref={root} className="filter-control">
       <button
         ref={button}
         type="button"
@@ -47,7 +44,7 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
         aria-expanded={at !== null}
         aria-haspopup="dialog"
         aria-label={hide.length > 0 && !quick ? `Filters, ${hide.length} hiding sessions` : active > 0 ? `Filters, ${active} active ${active === 1 ? "filter" : "filters"}` : "Filters"}
-        title="Filter sessions and choose a view"
+        title="Filter sessions"
         onClick={() => {
           if (at) return setAt(null);
           // The popover is wider than the chip and must end inside the rail: it hangs from the search
@@ -69,17 +66,15 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
             role="dialog"
             aria-label="Filters"
             style={{ position: "fixed", top: at.bottom + 4, left: Math.max(8, at.left) }}
-            onKeyDown={keys.onKeyDown}
           >
-            <div className="filter-view" role="group" aria-label="Sidebar view">
+            <div className="filter-view" role="radiogroup" aria-label="View">
               <span className="filter-heading">View</span>
-              <span className="view-segment">
-                {(["recent", "projects"] as const).map((option) => (
-                  <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)}>
-                    {option === "recent" ? "Recent" : "Projects"}
-                  </button>
-                ))}
-              </span>
+              {(["recent", "projects"] as const).map((option) => (
+                <label key={option} className="filter-row">
+                  <input type="radio" name="sidebar-view" checked={view === option} onChange={() => setView(option)} />
+                  <span className="filter-label">{option === "recent" ? "Recent" : "Projects"}</span>
+                </label>
+              ))}
             </div>
             <div className="filter-quick" role="radiogroup" aria-label="Show">
               <span className="filter-heading">Show</span>
@@ -129,6 +124,6 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
           </div>
         </>
       ) : null}
-    </>
+    </span>
   );
 }

@@ -155,21 +155,31 @@ test("the session list is one tab stop, and its arrows walk the rows", async ({ 
   await expect(page.getByTestId("user-prompt").first()).toContainText("key row");
 });
 
-test("the filter menu answers Escape from its trigger and hands the focus back", async ({ page }) => {
+test("the filter dialog keeps native Tab and radio keys, and Escape returns to its trigger", async ({ page }) => {
   await signInAndOpen(page);
   const trigger = page.getByRole("button", { name: /^Filters/ });
   await trigger.click();
   const menu = page.getByRole("dialog", { name: "Filters", exact: true });
   await expect(menu).toBeVisible();
-  // The menu takes the focus (its View, Show and Hide groups are one walk), and its arrows move it along.
-  const focusedLabel = () => page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");
-  await expect(menu.locator(":focus")).toHaveCount(1);
-  const first = await focusedLabel();
+  // A form keeps the trigger's focus on open; native Tab reaches its first visible control.
+  await page.keyboard.press("Tab");
+  await expect(menu.getByRole("radio").first()).toBeFocused();
+  const running = menu.getByRole("radio", { name: /^Running/ });
+  await running.focus();
   await page.keyboard.press("ArrowDown");
-  await expect(menu.locator(":focus")).toHaveCount(1);
-  expect(await focusedLabel()).not.toBe(first);
-  // Escape while the trigger itself has the focus closes the menu too (it used to stay open), and the
-  // focus lands back on the trigger rather than the body.
+  await expect(menu.getByRole("radio", { name: /^Needs you/ })).toBeChecked();
+  // A native radio group is one Tab stop; Tab then reaches each enabled command in document order.
+  // The checked Show radio owns its group's native Tab stop; the following six are distinct controls.
+  await page.getByRole("radio", { name: /^Needs you/ }).focus();
+  const names = [];
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press("Tab");
+    names.push(await page.evaluate(() => {
+      const el = document.activeElement as HTMLInputElement | HTMLButtonElement;
+      return el.tagName === "INPUT" ? el.name || el.getAttribute("aria-describedby") : (el.textContent ?? "").trim();
+    }));
+  }
+  expect(names).toEqual(["filter-hint-sleeping", "filter-hint-defaultBranch", "filter-hint-automation", "filter-hint-agent", "New room", "Refresh sessions"]);
   await trigger.focus();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
@@ -265,9 +275,17 @@ test("the focus head has a separate All projects back button beside its switch, 
   await expect(back).toHaveCSS("width", "24px");
   await expect(back.locator("svg")).toHaveCSS("color", await back.evaluate((el) => getComputedStyle(el).color));
   const button = head.locator(".focus-switch");
-  // The switch keeps badge, name, branch and ⌄ — and no back chevron of its own.
+  // The name shares the rows' title edge; no badge or duplicate back disclosure competes with it.
+  await expect(button.locator(".project-badge")).toHaveCount(0);
   await expect(button.locator(".focus-back-chevron")).toHaveCount(0);
   await expect(button.locator(".project-name")).toHaveText("alpha");
+  const edges = await page.evaluate(() => {
+    const name = document.querySelector(".focus-switch .project-name")?.getBoundingClientRect();
+    const title = document.querySelector(".focus-group .session-title")?.getBoundingClientRect();
+    return name && title ? { name: name.left, title: title.left } : null;
+  });
+  expect(edges).not.toBeNull();
+  expect(Math.abs((edges?.name ?? 0) - (edges?.title ?? 99)), "the focus name starts on the titles' edge").toBeLessThanOrEqual(0.5);
   // The count is the menu's fact now, not the head's.
   await expect(button.locator(".group-count")).toHaveCount(0);
   await button.click();
@@ -276,6 +294,9 @@ test("the focus head has a separate All projects back button beside its switch, 
   // The folders are the menu's choices: radios, and the folder you are in wears the check.
   await expect(menu.getByRole("menuitemradio", { name: /^alpha/ })).toHaveAttribute("aria-checked", "true");
   await expect(menu.getByRole("menuitemradio", { name: /^beta/ })).toHaveAttribute("aria-checked", "false");
+  const countEdges = await menu.locator(".group-count").evaluateAll((counts) => counts.map((el) => el.getBoundingClientRect().right));
+  expect(Math.max(...countEdges) - Math.min(...countEdges), "all project counts end on one column").toBeLessThanOrEqual(0.5);
+  await expect(menu.locator(".project-menu-check").first()).toHaveCSS("width", "13px");
   // "Set an icon…" is an action on the folder, not a place: last, under its own rule.
   await expect(menu.getByRole("menuitem").last()).toContainText("Set an icon…");
   await expect(menu.locator('[role="separator"]')).toHaveCount(1);

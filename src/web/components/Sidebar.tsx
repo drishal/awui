@@ -13,7 +13,7 @@ import { useHoverCard, type CardSide } from "../hover-card.js";
 import { menuStep, useMenuKeys } from "../menu-focus.js";
 import { useFocusTrap } from "../focus-trap.js";
 import { shortPath } from "../project-path.js";
-import { IconArchive, IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit, IconX } from "../icons.js";
+import { IconArchive, IconArrowLeft, IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconChevronUp, IconClock, IconDot, IconImage, IconMore, IconNewTab, IconPin, IconPlus, IconSearch, IconSettings, IconSidebar, IconTerminal, IconWarning, IconSplit, IconX } from "../icons.js";
 import { shortcutHint } from "../shortcuts.js";
 import { copyResumeCommand, useResumeCommand } from "../resume-command.js";
 import type { UsageLimits } from "../../shared/protocol.js";
@@ -30,6 +30,7 @@ import { WorkingRing } from "./WorkingRing.js";
 import { SessionCard } from "./SessionCard.js";
 import { ago, shortAgo } from "../turns.js";
 import { SidebarFilters } from "./SidebarFilters.js";
+import { SidebarViewMenu } from "./SidebarViewMenu.js";
 import { ProjectBadge } from "./ProjectBadge.js";
 import { ProjectIconDialog } from "./ProjectIconDialog.js";
 import { setProjectIcon, useProjectIcons } from "../project-icons.js";
@@ -664,22 +665,25 @@ function SectionList({
   // ("Working3 sessions") read from its contents, so it says them as words instead.
   return (
     <li className={`project-group section-group ${className}${open ? " is-open" : ""}`} data-testid={testId}>
-      <div className="project-head">
+      <div className="project-head" role="heading" aria-level={3} aria-label={`${title}, ${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`}>
         {onToggle ? (
-          <button type="button" className="project-toggle" aria-expanded={open} aria-label={`${title}, ${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`} onClick={onToggle}>
-            <span className="section-icon" aria-hidden="true">{icon}</span>
-            <span className="project-name section-name" role="heading" aria-level={3}>{title}</span>
-            {/* After the label, not before the icon: the icon keeps the rows' mark column. */}
-            <IconChevronDown size={12} className="group-chevron" />
-            <span className="group-count">
-              {sessions.length}
-              <span className="visually-hidden"> {sessions.length === 1 ? "session" : "sessions"}</span>
-            </span>
-          </button>
+          // The heading is the outer project head: button labels otherwise flatten away its semantics.
+          <div className="section-heading">
+            <button type="button" className="project-toggle" aria-expanded={open} aria-label={`${title}, ${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`} onClick={onToggle}>
+              <span className="section-icon" aria-hidden="true">{icon}</span>
+              <span className="project-name section-name">{title}</span>
+              {/* After the label, not before the icon: the icon keeps the rows' mark column. */}
+              <IconChevronDown size={12} className="group-chevron" />
+              <span className="group-count">
+                {sessions.length}
+                <span className="visually-hidden"> {sessions.length === 1 ? "session" : "sessions"}</span>
+              </span>
+            </button>
+          </div>
         ) : (
           <span className="project-toggle is-static">
             <span className="section-icon" aria-hidden="true">{icon}</span>
-            <span className="project-name section-name" role="heading" aria-level={3}>{title}</span>
+            <span className="project-name section-name">{title}</span>
             <span className="group-count">
               {sessions.length}
               <span className="visually-hidden"> {sessions.length === 1 ? "session" : "sessions"}</span>
@@ -946,20 +950,18 @@ function ProjectGroupView({
   );
 }
 
-/** A folder's place in a project menu: its name, where it lives, and its count on one row. A radio, because
-    the menu switches the one folder in focus, and the one you are in wears the check. */
-function ProjectMenuItem({ name, path, home, count, checked, onPick }: { name: string; path: string; home: string; count?: number; checked: boolean; onPick: () => void }) {
+/** A folder's place in a project menu: badge, name, home-relative path and one aligned count column. */
+function ProjectMenuItem({ id, name, path, home, count, checked, onPick }: { id: string; name: string; path: string; home: string; count: number; checked: boolean; onPick: () => void }) {
   return (
     <button type="button" role="menuitemradio" aria-checked={checked} title={path} onClick={onPick}>
-      <ProjectBadge name={name} size={16} />
+      <ProjectBadge id={id} name={name} size={16} />
       <span className="project-menu-name">{name}</span>
       {/* Home-relative and cut in the middle: the root and the folder's own name are the parts worth keeping. */}
       <span className="project-menu-path muted">{shortPath(path, home)}</span>
-      {/* The count and the check share one right-hand cell: the number is the folder's, the check says it is the
-          folder you are in (the harness menu marks its own choice at the end the same way). */}
+      {/* Every row reserves the check's slot, so counts have one right edge. */}
       <span className="project-menu-meta">
         {count !== undefined ? <span className="group-count">{count}</span> : null}
-        {checked ? <IconCheck size={13} className="project-menu-check" /> : null}
+        {checked ? <IconCheck size={13} className="project-menu-check" /> : <span className="project-menu-check" aria-hidden="true" />}
       </span>
     </button>
   );
@@ -1006,7 +1008,7 @@ function FocusedHeader({
           action but opened the menu, and the current project's accent rule leaked onto it. The menu's
           first item ("All projects") stays as the second path out. */}
       <button type="button" className="icon-btn focus-back" aria-label="All projects" title="All projects" onClick={onShowAll}>
-        <IconChevronLeft size={13} className="focus-back-chevron" />
+        <IconArrowLeft size={13} className="focus-back-chevron" />
       </button>
       <button
         ref={switchRef}
@@ -1017,7 +1019,6 @@ function FocusedHeader({
         title={workspace.path}
         onClick={() => setMenuOpen((v) => !v)}
       >
-        <ProjectBadge id={workspace.id} name={workspace.name} />
         <span className="project-name">{workspace.name}</span>
         {/* A branch says where the folder is out of; on the trunk it is the default, so the head stays quiet. */}
         {isTrunkBranch(checkout?.branch) ? null : <span className="project-branch">{checkout?.branch}</span>}
@@ -1034,14 +1035,17 @@ function FocusedHeader({
               <button type="button" role="menuitem" onClick={() => pick(onShowAll)}>
                 <IconChevronLeft size={13} />
                 <span className="project-menu-name">All projects</span>
-                {scope.length > 0 ? <span className="group-count">{scope.reduce((n, p) => n + p.count, 0)}</span> : null}
+                <span className="project-menu-meta">
+                  {scope.length > 0 ? <span className="group-count">{scope.reduce((n, p) => n + p.count, 0)}</span> : null}
+                  <span className="project-menu-check" aria-hidden="true" />
+                </span>
               </button>
             </li>
             {/* The folders are the choices, so they are radios and the one you are in is checked. "Set an icon…"
                 is an action on that folder, not a place: it goes last, under its own rule. */}
             {scope.map((p) => (
               <li key={p.workspace.id} role="none">
-                <ProjectMenuItem name={p.workspace.name} path={p.workspace.path} home={home} count={p.count} checked={p.current} onPick={() => pick(() => onFocus(p.workspace.id))} />
+                <ProjectMenuItem id={p.workspace.id} name={p.workspace.name} path={p.workspace.path} home={home} count={p.count} checked={p.current} onPick={() => pick(() => onFocus(p.workspace.id))} />
               </li>
             ))}
             <MenuSeparator />
@@ -1331,7 +1335,7 @@ export function Sidebar(props: {
     () => quickCounts(unhidden, groupOptions, isWorking),
     [unhidden, props.harnessId, props.activeStatus, props.activeSessionId, props.activeChatId, now],
   );
-  // The Recent view (sidebar-view.ts, whose switch is the filter menu's) is one flat list across the
+  // The Recent view (sidebar-view.ts, whose switch is beside search) is one flat list across the
   // projects; the Projects view is the grouped list below. A harness with no projects has no grouping
   // to show, so there both views are the flat list.
   const [view] = useSidebarView();
@@ -1393,7 +1397,10 @@ export function Sidebar(props: {
   // Drawer mode: Escape closes from anywhere (the backdrop owns outside clicks) and Tab stays inside, so the
   // chat behind the drawer — inert over there — is never reached. Focus moves in once on open and goes back
   // to the button that opened it on close, never to the body.
-  useDismiss(asideRef, open, props.onClose, { escape: true, outside: false });
+  useDismiss(asideRef, open, () => {
+    // An open popover consumes Escape before its owner outside the drawer's frame; the parent stays open.
+    if (!asideRef.current?.querySelector('[aria-expanded="true"]')) props.onClose();
+  }, { escape: true, outside: false });
   const trapTab = useFocusTrap(asideRef, open);
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -1482,6 +1489,11 @@ export function Sidebar(props: {
         aria-label="Sessions"
         {...(props.open ? { role: "dialog", "aria-modal": true } : {})}
         onKeyDown={(e) => {
+          // A document-level filter or row-menu listener owns Escape first, else the drawer closes.
+          if (e.key === "Escape" && open) {
+            props.onClose();
+            return;
+          }
           if (e.key === "Escape" && selection.on) {
             e.stopPropagation();
             leaveSelection();
@@ -1574,6 +1586,7 @@ export function Sidebar(props: {
                     }}
                     aria-label="Search sessions"
                   />
+                  <SidebarViewMenu />
                   <SidebarFilters quick={quick} quickCounts={quickCount} onQuickChange={pickQuick} hide={hide} counts={hideCount} onChange={pickHide} onRefresh={props.onRefresh} onNewRoom={props.onNewRoom} roomsAvailable={props.harnessId === "awui" || !props.harnesses.some((h) => h.id === "awui")} />
                 </div>
               </>
@@ -1754,6 +1767,23 @@ export function Sidebar(props: {
               </button>
             ) : null}
           </div>
+        ) : null}
+        {!selection.on && needs.length > 0 ? (
+          // A scrolled phone list has no rail: keep its one action that needs a person within reach.
+          <button
+            type="button"
+            className={`new-chat needs-you-shortcut${listScrolled ? " is-visible" : ""}`}
+            aria-label={`${needs.length} ${needs.length === 1 ? "needs" : "need"} you`}
+            onClick={() => {
+              const row = sessionList.current?.querySelector<HTMLElement>('[data-testid="needs-group"] .session');
+              row?.focus();
+              row?.click();
+              props.onClose();
+            }}
+          >
+            <IconWarning size={15} />
+            {needs.length} {needs.length === 1 ? "needs" : "need"} you
+          </button>
         ) : null}
         <button type="button" className="new-chat drawer-new-chat" onClick={props.onNewChat} disabled={props.newChatDisabled !== null} aria-label="New chat in folder">
           <IconPlus size={15} /> New chat

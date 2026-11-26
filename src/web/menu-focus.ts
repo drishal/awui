@@ -1,7 +1,5 @@
-// A menu's keyboard, shared by the three popovers the sidebar opens (a row's ⋯ menu, the filter menu, the
-// project switch): its items are one tab stop, ↑/↓ and Home/End walk them, and Escape closes the menu and
-// puts the focus back on the button that opened it, so Escape never leaves the page with no focus. The walk
-// itself is pure (`menuStep`) and unit-tested; this file only binds it to the DOM.
+// Keyboard support for the sidebar's action menus (a row's ⋯ menu, the view and project switches, and the rail peek).
+// Menu items rove with ↑/↓ and Home/End; Escape returns focus to the opener. Filter dialogs keep native form keys.
 import { useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from "react";
 import { useDismiss } from "./hooks.js";
 import { focusables } from "./focus-trap.js";

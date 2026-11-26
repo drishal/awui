@@ -133,6 +133,12 @@ export const IconArrowUp = (p: IconProps) => (
     <path d="M8 13V3M3.75 7.25L8 3l4.25 4.25" />
   </Svg>
 );
+
+export const IconArrowLeft = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 3v10M8 3L3.75 7.25M8 3l4.25 4.25" transform="rotate(-90 8 8)" />
+  </Svg>
+);
 export const IconDownload = (p: IconProps) => (
   <Svg {...p}>
     <path d="M8 2.75v7.5M4.75 7L8 10.25 11.25 7M3 13.25h10" />

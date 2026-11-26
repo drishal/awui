@@ -6,6 +6,7 @@
   /* The scroller's bottom fade is the footer tray's own height (phones raise the tray): the last row fades
      into the tray instead of merging with it. */
   --sid-tray: 36px;
+  --drawer-pill: 44px;
   /* The list's hover is quieter than a selected row, but still visible against its panel (1.2:1 in both
      schemes; the global 6% hover measured 1.13:1 here). */
   --hover: color-mix(in oklab, var(--text) 9%, transparent);
@@ -272,7 +273,7 @@
 .search-field {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   height: 32px;
   padding: 0 4px 0 8px;
   border-radius: var(--r-sm);
@@ -283,13 +284,93 @@
 .search-field > input {
   flex: 1;
   min-width: 0;
+  /* At 345px the view trigger and filter still leave room for the search placeholder. */
+  min-width: 150px;
   border: 0;
   outline: none;
   background: transparent;
   color: var(--text);
   font-size: 13px;
 }
+.section-heading {
+  min-width: 0;
+  border-radius: var(--r-sm);
+}
 
+/* Clear matches the other 12px search controls: muted, with a small hover ring. */
+.filter-view {
+  display: none;
+}
+.filter-control {
+  display: inline-flex;
+  flex: none;
+}
+
+/* Keep the current organising choice visible rather than behind the filter's funnel. */
+.sidebar-view-control {
+  flex: none;
+}
+
+.view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.view-switch:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.menu-list.view-menu {
+  position: fixed;
+  z-index: 53;
+  width: 140px;
+  padding: 4px;
+}
+
+.menu-list.view-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.menu-list.view-menu button > .icon {
+  color: var(--accent);
+}
+
+.view-menu-check {
+  width: 13px;
+  height: 13px;
+}
+
+.search-field input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--r-xs);
+  background: var(--muted-text);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 3l6 6M9 3l-6 6' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  cursor: pointer;
+}
+
+.search-field input::-webkit-search-cancel-button:hover {
+  background: var(--text-2);
+  box-shadow: 0 0 0 4px var(--hover);
+}
 .search-field > input:focus-visible {
   outline: none;
   box-shadow: none;
@@ -420,16 +501,6 @@
   align-items: stretch;
   gap: 0;
 }
-
-/* The view segment is a control, not a caption: it stands on its own line at the rows' own left edge, so
-   the segment, the headings and the rows read down one column instead of three. */
-.filter-view {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-}
-
 .filter-heading {
   display: block;
   margin: 2px 8px 4px;
@@ -437,30 +508,6 @@
   font-size: 11.5px;
   font-weight: 500;
 }
-
-.view-segment {
-  display: flex;
-  flex: 1;
-  padding: 2px;
-  border-radius: var(--r-control);
-  background: var(--hover);
-}
-
-.view-segment button {
-  flex: 1;
-  min-height: 28px;
-  border: 0;
-  border-radius: var(--r-control);
-  background: transparent;
-  color: var(--muted-text);
-  font-size: 12px;
-}
-
-.view-segment button[aria-pressed="true"] {
-  background: var(--raised);
-  color: var(--text);
-}
-
 .filter-hide {
   margin-top: 8px;
   padding-top: 8px;
@@ -502,10 +549,9 @@
 }
 
 
-/* A count of nothing is still a choice, so it stays clickable: dimmed, not gone. */
-.filter-row[data-count="0"] {
-  color: var(--muted-text);
-  opacity: 0.55;
+/* Zero is an available choice, not a disabled control: only its words step back. */
+.filter-row[data-count="0"] :is(.filter-label, .filter-count) {
+  color: var(--muted);
 }
 
 .filter-label {
@@ -696,18 +742,15 @@
   container-type: scroll-state;
 }
 
-/* A clean edge under a stuck date heading: an 8px fade in the heading's own surface colour, so a
-   scrolled row's descenders never peek out mid-glyph under it (S17, phone drawer). The heading is
-   sticky, so it is the fade's containing block; the fade shows only while the heading is stuck.
-   Progressive enhancement (Chromium 133+): where scroll-state is unknown, the heading is unchanged. */
+/* An 18px fade covers a row's 16px subline as it passes under a stuck heading. */
 .date-fade {
   position: absolute;
   left: 0;
   right: 0;
   top: 100%;
-  height: 8px;
+  height: 18px;
   display: none;
-  background: linear-gradient(var(--surface), transparent);
+  background: linear-gradient(var(--surface) 35%, transparent);
   pointer-events: none;
 }
 
@@ -1448,6 +1491,7 @@
    an "All projects" back row, then its sessions grouped by date under a rail. */
 .focus-group .project-head {
   position: relative;
+  gap: 0;
 }
 
 .focus-group .project-toggle {
@@ -1473,8 +1517,13 @@
   padding-left: 0;
 }
 
+/* The switch's name starts on the rows' titles' edge: the 24px back target sits in the mark column. */
+.focus-head .focus-switch {
+  padding-left: 0;
+}
+
 .focus-switch .group-chevron {
-  margin-left: auto;
+  flex: none;
 }
 
 .project-branch-sep {
@@ -1567,6 +1616,8 @@
 
 .project-menu-check {
   flex: none;
+  width: 13px;
+  height: 13px;
   color: var(--accent);
 }
 

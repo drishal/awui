@@ -55,7 +55,7 @@ export interface DismissOptions {
 
 /**
  * Dismiss an open popover: pointerdown outside the element and, when opted in,
- * Escape. Listeners stay mounted-stable; the latest `onClose` wins via a ref.
+ * Escape on the capture phase, so the nearest popover wins before a parent surface.
  */
 export function useDismiss<T extends HTMLElement>(
   ref: RefObject<T | null>,
@@ -82,10 +82,10 @@ export function useDismiss<T extends HTMLElement>(
         }
       : null;
     if (onDown) document.addEventListener("pointerdown", onDown);
-    if (onKey) document.addEventListener("keydown", onKey);
+    if (onKey) document.addEventListener("keydown", onKey, true);
     return () => {
       if (onDown) document.removeEventListener("pointerdown", onDown);
-      if (onKey) document.removeEventListener("keydown", onKey);
+      if (onKey) document.removeEventListener("keydown", onKey, true);
     };
   }, [ref, open, escape, outside]);
 }

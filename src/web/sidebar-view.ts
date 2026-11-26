@@ -1,7 +1,6 @@
 // How the sidebar lists sessions, kept in this browser: "recent" is one flat list across projects (newest and
-// most urgent first, each row carrying its project as a tag: T3 Code's and Codex's shape), "projects" is the list
-// grouped by folder with the focus-after-current behaviour. Several places read it (the list, the filter menu that
-// switches it, the row that shows or hides its project tag), so it is a small shared store: one value, one
+// most urgent first, each row carrying its project as a tag), "projects" groups the list by folder.
+// The view switch beside search and the phone's filter choice share this one browser store, so it is a
 // subscription, written through storage.ts. Pure of React except the hook at the bottom.
 import { useSyncExternalStore } from "react";
 import { load, save } from "./storage.js";

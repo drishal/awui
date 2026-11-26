@@ -6,7 +6,7 @@
 // open group showing all of them is its own count. A folder's first few rows carry no date headings until
 // the folder is opened.
 import { expect, type Page, test } from "@playwright/test";
-import { newChat, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
+import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
 
@@ -71,6 +71,7 @@ test("a calendar heading is a sentence-case signpost, not a title", async ({ pag
   await expect(heading).toHaveAttribute("aria-level", "3");
   await expect(page.getByRole("heading", { level: 3, name: /^Today/ })).toBeVisible();
   expect(Math.abs((column?.countRight ?? 0) - (column?.ageRight ?? 99)), "the count ends on the age column").toBeLessThanOrEqual(0.5);
+
 });
 
 test("a folder head names the folder at 13px, and its count shows only while it hides rows", async ({ page }) => {
@@ -105,7 +106,7 @@ test("a folder head names the folder at 13px, and its count shows only while it 
 
 test("a project's badge is a 16px rounded square with no ring, and the needs-you colour stays on its icon", async ({ page, request }) => {
   await useProjectsView(page);
-  // A second project with a session, so focus mode draws a folder head (and its badge).
+  // A second project makes the switch focus one folder; its menu keeps the folder badges.
   const beta = (await (await request.post("/api/workspaces/open", { data: { path: `${process.env.AWUI_E2E_ROOT as string}/beta` } })).json()) as { id: string };
   const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: beta.id } })).json()) as { chatId: string };
   await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: "a beta row for the head", mode: "normal" } });
@@ -121,8 +122,10 @@ test("a project's badge is a 16px rounded square with no ring, and the needs-you
   await newChat(page);
   await showSidebar(page);
 
-  const badge = sidebar(page).locator(".project-head .project-badge").first();
+  await sidebar(page).locator(".focus-switch").click();
+  const badge = sidebar(page).locator(".focus-menu .project-badge").first();
   await expect(badge).toBeVisible();
+  await page.keyboard.press("Escape");
   const box = await badge.boundingBox();
   expect(Math.round((box as { width: number }).width)).toBe(16);
   expect(Math.round((box as { height: number }).height)).toBe(16);
@@ -153,7 +156,7 @@ test("a project's badge is a 16px rounded square with no ring, and the needs-you
   await expect(needs.locator(".group-count")).toHaveCSS("color", await painted(page, "--text-2"));
 });
 
-test("a section head outranks a date heading: second ink at 600 against muted at 500", async ({ page }) => {
+test("a section head outranks a date heading and keeps heading semantics", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
   await sendAndWait(page, "a row under today's heading");
@@ -164,14 +167,15 @@ test("a section head outranks a date heading: second ink at 600 against muted at
   await expect(page.getByTestId("approval-card")).toBeVisible();
   await newChat(page);
   await showSidebar(page);
-  const needs = page.getByTestId("needs-group").locator(".section-name");
-  await expect(needs).toHaveCSS("color", await painted(page, "--text-2"));
-  await expect(needs).toHaveCSS("font-weight", "600");
-  // A section head is a heading of the same level as a date, with its count as words of its own.
-  await expect(needs).toHaveAttribute("role", "heading");
-  await expect(needs).toHaveAttribute("aria-level", "3");
-  await expect(page.getByRole("heading", { level: 3, name: "Needs you" })).toBeVisible();
-  await expect(page.getByTestId("needs-group").locator(".group-count")).toHaveText(/^\d+ sessions?$/);
+  const needs = page.getByTestId("needs-group");
+  await expect(needs.locator(".section-name")).toHaveCSS("color", await painted(page, "--text-2"));
+  await expect(needs.locator(".section-name")).toHaveCSS("font-weight", "600");
+  // A foldable heading is its outer wrapper, never a heading inside the toggle's accessible name.
+  await expect(needs.locator(".section-name")).not.toHaveAttribute("role", "heading");
+  await expect(needs.locator(".project-head")).toHaveAttribute("role", "heading");
+  await expect(page.getByRole("heading", { level: 3, name: /^Needs you/ })).toBeVisible();
+  expect(await needs.locator('button [role="heading"]').count()).toBe(0);
+  await expect(needs.locator(".group-count")).toHaveText(/^\d+ sessions?$/);
   const date = sidebar(page).locator(".flat-group .date-divider").first();
   await expect(date).toHaveCSS("color", await painted(page, "--muted-text"));
   await expect(date).toHaveCSS("font-weight", "500");
