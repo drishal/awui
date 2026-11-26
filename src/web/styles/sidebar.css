@@ -52,6 +52,19 @@
   gap: 2px;
   min-height: 30px;
   padding: 0 6px;
+  position: relative;
+}
+
+/* The harness menu is as wide as the search field under it: it positions against the head, not against
+   the trigger that sized to its two words (it was narrower than the field and left its text beside it). */
+.sidebar-head .harness-menu-wrap {
+  position: static;
+}
+
+.sidebar-head .is-row > .harness-menu {
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
 }
 .sidebar-head .harness-menu-wrap {
   flex: 1;
@@ -113,7 +126,7 @@
   pointer-events: none;
 }
 
-/* A short fade appears once the list has scrolled. On desktop a stuck date heading covers it. */
+/* A short fade appears once the list has scrolled: a row passing under the head fades instead of being cut. */
 .list-scrim {
   display: block;
   position: sticky;
@@ -729,10 +742,10 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   margin: 0 -4px;
-  /* The fade the list's tray paints is this much of the scroller's tail, so the last row and the fold
-     under it come to rest above it, at full contrast, instead of inside it (the fold measured 1.35:1 at
-     the drawer's max scroll when the tail was 12px and the fade 44). */
-  padding: 0 4px var(--sid-tray);
+  /* No bottom padding: the list's tray is its in-flow last child (as tall as the footer), so at the end of
+     the list it covers only its own empty box, and mid-list it sticks to the scroller's real bottom edge.
+     A tail of the same height pushed the sticky box 36px up and greyed a row in the middle of the list. */
+  padding: 0 4px;
 }
 
 /* The one scroller that used to fall back to the platform's own bar (light thumb, arrow buttons) inside
@@ -784,13 +797,10 @@
 /* A calendar heading is a signpost in the list, not a title: sentence case at the size of a subline, in
    the muted ink, with no tracking. Uppercase was a third voice arguing with the rows. Every word in the
    list starts on the titles' edge: the heading's 24px inset is the row's own 8px, its 10px mark slot and
-   the 6px gap after it, so only icons and marks hang in the mark column. It sticks to the top of the
-   scroller on the panel's own surface, so a long bucket keeps its name in view; z-index 1 lifts it over
-   the rows' washes, and every menu or card (z-index 31 and up) still opens over it. */
+   the 6px gap after it, so only icons and marks hang in the mark column. It is a plain divider, not a
+   sticky label (T3 Code's has none): a stuck heading's fade and hairline kept ghosting the first row of a
+   search and cutting a passing row in half on a phone, and the bucket's name is one scroll away. */
 .date-divider {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   /* The bucket's size ends the heading on the rows' age column (the row's 8px right padding), so the
      dates' numbers and the ages form one column down the panel. */
   display: flex;
@@ -801,27 +811,6 @@
   font-size: 11.5px;
   font-weight: 500;
   color: var(--muted-text);
-  /* The heading's own scroll-state container, so its fade can show only while it is stuck. */
-  container-type: scroll-state;
-}
-
-/* A 26px fade and hairline hide the whole subline that used to peek under a stuck heading. */
-.date-fade {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  height: 26px;
-  display: none;
-  background: linear-gradient(var(--surface) 45%, transparent);
-  pointer-events: none;
-}
-
-@container scroll-state(stuck: top) {
-  .date-fade {
-    display: block;
-    box-shadow: inset 0 -1px var(--hairline);
-  }
 }
 
 .date-count {
@@ -866,11 +855,8 @@
 }
 
 /* Under "Search every chat" the list is that row's own result, not a group after the head: it tucks up to
-   the row — the column's own 8px between the row and its list, less 2, so 6px in all — where the flat list
-   otherwise leaves a group's 14px break. */
-.flat-group.is-search:first-child {
-  margin-top: -2px;
-}
+   the row (6px in all, chat-search.css pulls the row down 2px of its own 8px). Nothing inside the scroller
+   may take a negative top margin: it would hang above the scrollport. */
 
 /* Every head is laid on the rows' columns: its 8px inset puts a 10px icon, or the 16px badge of a folder,
    on the rows' mark column, and the 6px gap starts its label on their titles' edge. 4px under it, its

@@ -34,7 +34,7 @@ test("a calendar heading is a sentence-case signpost, not a title", async ({ pag
   await expect(heading).toHaveCSS("font-size", "11.5px");
   await expect(heading).toHaveCSS("font-weight", "500");
   await expect(heading).toHaveCSS("color", await painted(page, "--muted-text"));
-  await expect(heading).toHaveCSS("position", "sticky");
+  await expect(heading).toHaveCSS("position", "static");
   await expect(heading).toHaveCSS("background-color", await painted(page, "--surface"));
   // One text edge in Recent: the heading's text starts on the rows' titles' edge, and so does a section
   // head's label. Only marks hang in the mark column, 16px left of that edge.

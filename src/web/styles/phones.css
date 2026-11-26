@@ -209,6 +209,9 @@ body {
 @media (max-width: 819px) {
   .sidebar .list-scrim {
     display: block;
+    /* A phone's rows are taller, so a passing title needs a longer fade than the desktop's 12px. */
+    height: 20px;
+    margin-bottom: -20px;
   }
 }
 

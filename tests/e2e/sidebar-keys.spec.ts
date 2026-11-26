@@ -46,8 +46,8 @@ test("the row menu groups its actions by task, with a rule between the groups", 
 
   const shape = await menuShape(page);
   const marks = shape.flatMap((row, i) => (row === "|" ? [i] : []));
-  // Five tasks, four rules: open, mark, snooze, arrange, archive — not thirteen flat rows.
-  expect(marks).toHaveLength(4);
+  // Four tasks, three rules: open, mark and snooze, arrange, archive — not thirteen flat rows.
+  expect(marks).toHaveLength(3);
   expect(shape.filter((row) => row !== "|")).toEqual([
     "Open in new tab",
     "Open beside",

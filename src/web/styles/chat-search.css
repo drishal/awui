@@ -2,6 +2,8 @@
 
 /* Under the sidebar's search: the same words, looked for in what the chats said. */
 .search-all {
+  /* Half of the 8px to its results: the list under it may not hang above its own scrollport. */
+  margin-bottom: -2px;
   display: flex;
   align-items: center;
   /* The rows' own gap, so the label lands on the titles' edge: 8px in, a 10px mark column, 6px. */

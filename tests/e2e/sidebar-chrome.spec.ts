@@ -319,7 +319,7 @@ test("the list's bottom fade is a scrim under the rows, and the list masks nothi
   expect(tray.last, "the tray is the list's last child, so it paints over the rows").toBe(true);
   expect(tray.gradient).toContain("gradient");
   expect(tray.height, "the fade is the footer tray's own height").toBe(await sidebar.locator(".sidebar-footer").evaluate((el) => getComputedStyle(el).height));
-  expect(tray.tail, "the scroller's tail is the fade's height").toBe(tray.height);
+  expect(tray.tail, "the scroller has no tail of its own: the tray is it").toBe("0px");
 
   // The hover card opens beside the rail, past the list's right edge: the popup a mask on the scroller ate.
   const first = sidebar.locator(".flat-group .session-item").first();
@@ -332,6 +332,22 @@ test("the list's bottom fade is a scrim under the rows, and the list masks nothi
   });
   expect(card, "the hover card drew").not.toBeNull();
   expect((card as { cardRight: number }).cardRight, "the card reaches past the list").toBeGreaterThan((card as { listRight: number }).listRight + 40);
+
+  // At rest the tray sits on the scroller's real bottom edge (a tail of its own height pushed it 36px up
+  // and greyed a row in the middle of the list), and a search's first result is not displaced under its
+  // heading (a negative top margin made the heading read as stuck, with a fade over that result).
+  const atRest = await page.evaluate(() => {
+    const list = document.querySelector<HTMLElement>(".sidebar .session-list");
+    if (!list) return null;
+    list.scrollTop = 0;
+    const tray = list.querySelector(".list-tray")?.getBoundingClientRect();
+    const box = list.getBoundingClientRect();
+    const head = list.querySelector(".date-divider")?.getBoundingClientRect();
+    const first = list.querySelector(".session-item")?.getBoundingClientRect();
+    return { trayGap: tray ? Math.abs(tray.bottom - box.bottom) : null, firstBelowHead: head && first ? first.top - head.bottom : null };
+  });
+  expect(atRest?.trayGap ?? 99, "the tray is on the list's real bottom edge").toBeLessThanOrEqual(0.5);
+  expect(atRest?.firstBelowHead ?? -99, "the first result sits under its heading").toBeGreaterThanOrEqual(-0.5);
 
   // At the end of the list nothing sits inside the fade: the last row and the fold under it rest above it,
   // where before the tail was 12px and the fade 36, so the fold was drawn through it.
@@ -476,7 +492,7 @@ test.describe("phone drawer", () => {
     await list.evaluate((el) => { el.scrollTop = 120; });
     const scrim = list.locator(".list-scrim");
     await expect(scrim).toBeVisible();
-    expect((await scrim.boundingBox())!.height, "a 12 px fade").toBe(12);
+    expect((await scrim.boundingBox())!.height, "a 20 px fade: a phone row is taller than the desktop's").toBe(20);
     await list.evaluate((el) => { el.scrollTop = 0; });
     await expect(list.locator(".list-scrim")).toHaveCount(0);
   });
@@ -497,28 +513,22 @@ test("a desktop list wears a top scrim while it is scrolled", async ({ page }) =
   await list.evaluate((el) => { el.scrollTop = 0; });
   await expect(list.locator(".list-scrim")).toHaveCount(0);
 });
-  test("a stuck date heading fades the rows scrolling under it", async ({ page }) => {
+  test("date headings are plain dividers, and the list's top fade is the only edge a scrolled row meets", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 520 });
     await signInAndOpen(page);
     for (const n of [1, 2, 3, 4]) {
       await newChat(page);
-      await sendAndWait(page, `a row for the stuck heading ${n}`);
+      await sendAndWait(page, `a row for the plain heading ${n}`);
     }
     await showSidebar(page);
     const list = page.locator(".sidebar .session-list");
-    const divider = list.locator(".date-divider").first();
-    await expect(divider).toBeVisible();
-    // Before any scroll the heading is not stuck, and its fade is not drawn.
-    const fade = divider.locator(".date-fade");
-    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).display)).toBe("none");
-    // Scrolled past its own position it sticks, and a 26px fade covers a 16px passing subline.
+    await expect(list.locator(".date-divider").first()).toBeVisible();
     await list.evaluate((el) => { el.scrollTop = 600; });
-    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).height)).toBe("26px");
-    expect(await fade.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe("none");
-    expect(await fade.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe("none");
-    // Back at rest the fade goes again: only a stuck heading has an edge.
-    await list.evaluate((el) => { el.scrollTop = 0; });
-    await expect.poll(async () => fade.evaluate((el) => getComputedStyle(el).display)).toBe("none");
+    // A sticky heading cut a passing row in half and left its subline crisp below; nothing in the list sticks
+    // but the two scrims.
+    const sticky = await list.evaluate((el) => [...el.querySelectorAll<HTMLElement>("*")].filter((n) => getComputedStyle(n).position === "sticky").map((n) => n.className));
+    expect(sticky.filter((c) => c.includes("date-divider") || c.includes("section")), "no heading sticks").toEqual([]);
+    expect(await list.locator(".date-divider").first().evaluate((el) => getComputedStyle(el).position)).toBe("static");
   });
 
   test("Escape closes the drawer while an open Working section is in it", async ({ page }) => {
@@ -672,4 +682,18 @@ test("the open row's second rank clears 4.5:1 on its own wash, in both schemes",
   expect(owned, "the open row's words and the owner's wash").not.toBeNull();
   const painted = owned as { ink: string; wash: string };
   expect(await contrastOf(page, painted.ink, painted.wash), "the second rank on the owner's wash").toBeGreaterThanOrEqual(4.5);
+});
+
+test("the harness menu is exactly as wide as the search field and starts on the same edge", async ({ page }) => {
+  await signInAndOpen(page);
+  await showSidebar(page);
+  const sidebar = page.locator(".sidebar");
+  await sidebar.getByRole("button", { name: /^Harness: / }).click();
+  const menu = page.getByRole("listbox", { name: "Harness" });
+  await expect(menu).toBeVisible();
+  await expect.poll(async () => menu.evaluate((el) => el.getAnimations().length)).toBe(0);
+  const m = (await menu.boundingBox())!;
+  const f = (await sidebar.locator(".search-field").boundingBox())!;
+  expect(Math.abs(m.x - f.x), "the menu starts on the field's left edge").toBeLessThanOrEqual(8.5);
+  expect(Math.abs(m.x + m.width - (f.x + f.width)), "and ends on its right edge").toBeLessThanOrEqual(8.5);
 });

@@ -246,7 +246,6 @@ function RowMenu({
                 <IconCheck size={14} /> {s.settled ? "Unsettle" : "Settle"}
               </button>
             </li>
-            <MenuSeparator />
             {snoozed ? (
               <li role="none">
                 <button type="button" role="menuitem" onClick={() => pick({ snoozedUntil: null })}>
@@ -646,7 +645,6 @@ function DateHeading({ label, count, shown = count }: { label: string; count: nu
     // count keeps its unit for the same reason ("1 session", not "1").
     <li className="date-divider" role="heading" aria-level={3}>
       <span className="date-label">{label}</span>
-      <span className="date-fade" aria-hidden="true" />
       <span className="date-count" {...(part ? { title: `${count - shown} more ${count - shown === 1 ? "session" : "sessions"}` } : {})}>
         {part ? <span className="date-part">{`${shown} of ${count}`}</span> : count}
         {/* The number alone would be read as part of the date; the unit says what it counts. */}
