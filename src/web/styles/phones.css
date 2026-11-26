@@ -213,6 +213,16 @@ body {
     height: 20px;
     margin-bottom: -20px;
   }
+  /* A settled user scroll starts on a row, not mid-row, so the first subline never shows title-less.
+     Snap is disabled until the list really scrolls: with rows snapping while the closed drawer mounts,
+     the browser chooses a target on the empty hidden list and opens it scrolled to its foot. */
+  .sidebar .session-list.is-scrolled {
+    scroll-snap-type: y proximity;
+  }
+
+  .sidebar .session-item {
+    scroll-snap-align: start;
+  }
 }
 
 /* The sticky 44 px New chat pill is the drawer's primary action, so the head's own pencil goes with it: two

@@ -1723,7 +1723,7 @@ export function Sidebar(props: {
           {props.sessionsError ? <p className="sidebar-note is-warning">{props.sessionsError}</p> : null}
           <ul
             ref={sessionList}
-            className="session-list"
+            className={`session-list${listScrolled ? " is-scrolled" : ""}`}
             aria-busy={props.sessionsLoading}
             aria-label={flat ? "Sessions" : "Sessions by project"}
             onKeyDown={onListKeyDown}

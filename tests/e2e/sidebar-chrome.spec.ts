@@ -527,6 +527,10 @@ test.describe("phone drawer", () => {
     const scrim = list.locator(".list-scrim");
     await expect(scrim).toBeVisible();
     expect((await scrim.boundingBox())!.height, "a 20 px fade: a phone row is taller than the desktop's").toBe(20);
+    // A real scroll engages row snapping: a settled scroll starts on a row, not a title-less subline.
+    await expect(list).toHaveCSS("scroll-snap-type", "y");
+    await expect(list.locator(".session-item").first()).toHaveCSS("scroll-snap-align", "start");
+    await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
     await list.evaluate((el) => { el.scrollTop = 0; });
     await expect(list.locator(".list-scrim")).toHaveCount(0);
   });
@@ -534,7 +538,7 @@ test.describe("phone drawer", () => {
 test("a desktop list wears a top scrim while it is scrolled", async ({ page }) => {
   await page.setViewportSize({ width: 1360, height: 520 });
   await signInAndOpen(page);
-  for (const n of [1, 2, 3, 4]) {
+  for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
     await newChat(page);
     await sendAndWait(page, `a row for the desktop fade ${n}`);
   }
