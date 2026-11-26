@@ -1,12 +1,11 @@
 // The sidebar's headings and folder marks: a calendar heading and the Needs you / Working sections are
 // sentence-case signposts at 11.5px in the muted ink (the attention colour stays on the needs-you icon
 // alone), and every one of them puts its words on the rows' titles' edge; a folder head is the folder's
-// own name at 13px in the second ink, its badge a 16px rounded square with no ring, and its count shows
-// only while the head hides rows — a collapsed group's, or the ones behind its "Show N more" — where an
-// open group showing all of them is its own count. A folder's first few rows carry no date headings until
-// the folder is opened.
+// own name at 13px in the second ink, its badge a 16px rounded square with no ring, and its count is the
+// folder's size at every state — the count is one column, wherever it sits. A folder's first few rows carry
+// no date headings until the folder is opened.
 import { expect, type Page, test } from "@playwright/test";
-import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
+import { newChat, send, sendAndWait, showAllProjects, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
 
@@ -74,7 +73,7 @@ test("a calendar heading is a sentence-case signpost, not a title", async ({ pag
 
 });
 
-test("a folder head names the folder at 13px, and its count shows only while it hides rows", async ({ page }) => {
+test("a folder head names the folder at 13px, and counts it at every state", async ({ page }) => {
   await useProjectsView(page);
   await signInAndOpen(page);
   await newChat(page);
@@ -89,13 +88,20 @@ test("a folder head names the folder at 13px, and its count shows only while it 
   await expect(name).toHaveCSS("font-weight", "600");
   await expect(name).toHaveCSS("color", await painted(page, "--text-2"));
 
-  // Folded it counts its rows; open with every row on screen it does not (the focused head never folds).
+  // Folded or open, the head carries the folder's size: a number that showed only while rows were hidden
+  // read as an alert, and a column that sometimes held one meaning and sometimes another is not a column.
+  // (The focused head is a project switch, not a fold, and never counts.)
   if ((await page.getByTestId("focused-project").count()) === 0) {
-    await expect(group.locator(".group-count")).toHaveCount(0);
+    const count = group.locator(".group-count");
+    await expect(count).toHaveCount(1);
+    const total = (await count.innerText()).trim();
+    expect(total, "a folder head counts sessions").toMatch(/^\d+$/);
     await group.locator(".project-toggle").first().click();
-    await expect(group.locator(".group-count")).toHaveCount(1);
+    await expect(group.locator(".project-toggle").first()).toHaveAttribute("aria-expanded", "false");
+    await expect(count).toHaveText(total);
     await group.locator(".project-toggle").first().click();
-    await expect(group.locator(".group-count")).toHaveCount(0);
+    await expect(group.locator(".project-toggle").first()).toHaveAttribute("aria-expanded", "true");
+    await expect(count).toHaveText(total);
   }
   // A folder's first rows carry no date headings: the age on each row already says when.
   const preview = sidebar(page).locator('[data-testid="project-group"]').filter({ hasNot: page.locator(".flat-group") });
@@ -182,4 +188,61 @@ test("a section head outranks a date heading and keeps heading semantics", async
   // A state section and the dates under it are two ranks of one list: the break between them is the flat
   // list's own 8px (6px of section gap + 2), not a folder's 14px, so the section does not float in a hole.
   await expect(sidebar(page).locator(".flat-group").first()).toHaveCSS("margin-top", "8px");
+});
+
+test("every head's count ends on the rows' age column", async ({ page, request }) => {
+  // Two chats nothing has on screen, so they sit in their own sections: one waiting on you, one running.
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/alpha` } })).json()) as { id: string };
+  const start = async (text: string) => {
+    const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+    await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text, mode: "normal" } });
+  };
+  await start("ask please approve the count column");
+  await start("slow count column run");
+  await useProjectsView(page);
+  await signInAndOpen(page);
+  await showSidebar(page);
+  await showAllProjects(page);
+
+  // One snapshot of the one column: the three kinds of head's numbers, and the row ages they belong beside.
+  // A run settles in a couple of seconds and takes the Working head off the screen with it, so the read
+  // retries until a single snapshot holds every kind.
+  type Columns = { needs: number | null; working: number | null; folder: number | null; ages: number[] };
+  const read = (): Promise<Columns> =>
+    page.evaluate(() => {
+      const rightOf = (selector: string) => document.querySelector<HTMLElement>(`.sidebar ${selector}`)?.getBoundingClientRect().right ?? null;
+      return {
+        needs: rightOf('[data-testid="needs-group"] .project-toggle > .group-count'),
+        working: rightOf('[data-testid="working-group"] .project-toggle > .group-count'),
+        folder: rightOf('[data-testid="project-group"] > .project-head > .project-toggle > .group-count'),
+        ages: [...document.querySelectorAll<HTMLElement>(".sidebar .session-time")].map((el) => el.getBoundingClientRect().right),
+      };
+    });
+  let shot: Columns = await read();
+  await expect
+    .poll(
+      async () => {
+        shot = await read();
+        return shot.needs !== null && shot.working !== null && shot.folder !== null && shot.ages.length > 0;
+      },
+      { timeout: 20_000, message: "a needs-you, a working and a folder head in one snapshot" },
+    )
+    .toBe(true);
+
+  const age = shot.ages[0] as number;
+  // One column, whatever the head: the foldable section's count, the folder's count, the dates' counts and
+  // every age end on the same right edge. Working's `2` used to hug its own label, 160px off the ages.
+  expect(Math.abs((shot.needs as number) - age), "Needs you's count ends on the age column").toBeLessThanOrEqual(0.5);
+  expect(Math.abs((shot.working as number) - age), "Working's count ends on the age column").toBeLessThanOrEqual(0.5);
+  expect(Math.abs((shot.folder as number) - age), "a folder's count ends on the age column").toBeLessThanOrEqual(0.5);
+  // A folder's "+" does not open a second column: it sits over the count's own place, and the count gives
+  // way to it under the pointer, as a row's age gives way to its "⋯".
+  const folder = page.getByTestId("project-group").first();
+  const count = folder.locator(".project-toggle > .group-count");
+  await expect(count).toHaveCSS("opacity", "1");
+  const plus = await folder.locator(".project-new").boundingBox();
+  expect((plus as { x: number }).x, "the + is over the count column, not a slot beside it").toBeGreaterThan(age - 32);
+  await folder.locator(".project-head").hover();
+  await expect(count).toHaveCSS("opacity", "0");
 });

@@ -915,9 +915,9 @@ function ProjectGroupView({
           {headBranch ? <span className="project-branch">{headBranch}</span> : null}
           {!open && sessions.some(isWorking) ? <WorkingRing colored={false} /> : null}
           <IconChevronDown size={12} className="group-chevron" />
-          {/* The count says what the head is hiding: a collapsed group's rows, or the ones the page left
-              behind its "Show N more". An open group showing all of them is its own count. */}
-          {!open || hidden > 0 ? <span className="group-count">{sessions.length}</span> : null}
+          {/* The folder's size, always: a number that appeared only while the head hid rows read as an alert
+              rather than as the folder's size, and the one column then meant six different things. */}
+          <span className="group-count">{sessions.length}</span>
         </button>
         <button
           type="button"

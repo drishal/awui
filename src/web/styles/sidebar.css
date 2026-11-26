@@ -292,7 +292,12 @@
   color: var(--text);
   font-size: 13px;
 }
+/* A foldable head's button takes the whole head, so the count it ends with lands on the rows' age
+   column like every other head's. Sized to its content, the button's auto margin had nothing to push
+   against and "Working 2" hugged its own label, 160px left of the ages. */
 .section-heading {
+  display: flex;
+  flex: 1;
   min-width: 0;
   border-radius: var(--r-sm);
 }
@@ -957,12 +962,28 @@
 .project-group:not(.is-open) .group-chevron {
   transform: rotate(-90deg);
 }
-
+/* The count is a column, so it fades under the pointer's "+" instead of moving aside for it (the row's
+   ⋯ fades the age the same way). */
 .group-count {
   margin-left: auto;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted-text);
+  transition: opacity var(--dur-hover) var(--ease-out);
+}
+
+/* A folder's "+" sits over the count's own column rather than taking a 26px slot beside it: a slot in
+   the flow pushed the head's number 28px left of the ages, so one panel had its counts on two
+   columns. On a touch screen there is no hover to bring it back, so there it keeps its own slot. */
+.project-group:not(.section-group):not(.focus-group) > .project-head {
+  position: relative;
+}
+
+.project-group:not(.section-group):not(.focus-group) > .project-head > .project-new {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  translate: 0 -50%;
 }
 
 .project-head .project-new {
@@ -972,13 +993,27 @@
   opacity: 0;
 }
 
-.project-head:hover .project-new,
+.project-head:is(:hover, :focus-within) .project-new,
 .project-head .project-new:focus-visible {
   opacity: 1;
 }
 
+.project-head:is(:hover, :focus-within) .project-toggle > .group-count {
+  opacity: 0;
+}
+
 @media (hover: none) {
   .project-head .project-new {
+    opacity: 1;
+  }
+
+  /* No hover swap: the "+" keeps its slot, and the count stays readable beside it. */
+  .project-group:not(.section-group):not(.focus-group) > .project-head > .project-new {
+    position: static;
+    translate: none;
+  }
+
+  .project-head:is(:hover, :focus-within) .project-toggle > .group-count {
     opacity: 1;
   }
 }

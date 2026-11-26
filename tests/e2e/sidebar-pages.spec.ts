@@ -73,8 +73,9 @@ test("a folder that is not the current one opens with 4 rows, and each Show more
   // The fold names one page at a time, so a second one can remain: take them until every row is drawn.
   for (let i = 0; i < 5 && (await beta.locator(".show-more").count()) > 0; i++) await beta.locator(".show-more").click();
   await expect(rowsOf(beta), "every row of the folder is on screen").toHaveCount(total);
-  // Every row is on screen now, so the head's number would repeat what the list says.
-  await expect(head).toHaveCount(0);
+  // Every row is on screen now, and the head still counts them: the number is the folder's size at every
+  // state, so one column holds one meaning rather than a number that only ever meant "hidden here".
+  await expect(head).toHaveText(String(total));
 });
 
 test("the current folder's page is 8 rows, and the same 20-row steps", async ({ page, request }) => {
