@@ -6,6 +6,15 @@
   /* The scroller's bottom fade is the footer tray's own height (phones raise the tray): the last row fades
      into the tray instead of merging with it. */
   --sid-tray: 36px;
+  /* The list's hover is quieter than a selected row, but still visible against its panel (1.2:1 in both
+     schemes; the global 6% hover measured 1.13:1 here). */
+  --hover: color-mix(in oklab, var(--text) 9%, transparent);
+  /* The row's state inks, a step toward the text so the words clear 4.5:1 on the panel: the light
+     scheme's accent "Working" measured 4.23:1 as the raw token. The open row deepens them again
+     (.session.is-active below). Sidebar-local, so the theme's tokens stay what they are elsewhere. */
+  --row-warn: color-mix(in oklab, var(--warn) 85%, var(--text));
+  --row-accent: color-mix(in oklab, var(--accent) 85%, var(--text));
+  --row-ok: color-mix(in oklab, var(--ok) 85%, var(--text));
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1020,8 +1029,8 @@
   border-radius: var(--r-sm);
   background: transparent;
   text-align: left;
+  transition: background-color 90ms var(--ease-out);
 }
-
 .session:hover {
   background: var(--hover);
 }
@@ -1165,15 +1174,15 @@
 
 .session-state.is-warn,
 .session-time.is-warn {
-  color: var(--warn);
+  color: var(--row-warn);
 }
 
 .session-state.is-accent {
-  color: var(--accent);
+  color: var(--row-accent);
 }
 
 .session-state.is-ok {
-  color: var(--ok);
+  color: var(--row-ok);
 }
 
 /* Unread is the list's one weight cue: the same size, at 600 and full ink. */
@@ -1277,8 +1286,25 @@
   }
 }
 
-/* The row you are on, or have open, gets the full ink back. */
-.session:is(:hover, .is-active, .is-selected) .session-title {
+/* The open row's words sit on the harness wash, not the panel, and the panel's inks fall short there:
+   muted measured 3.74:1 (dark) and 4.41:1 (light), amber 3.70:1 and the accent 3.12:1 (light). The
+   title takes full ink; the meta and subline go halfway from the second ink to it, and the state inks
+   a further step toward the text, which clears 4.5:1 in both schemes. */
+.session.is-active {
+  --row-warn: color-mix(in oklab, var(--warn) 72%, var(--text));
+  --row-accent: color-mix(in oklab, var(--accent) 72%, var(--text));
+  --row-ok: color-mix(in oklab, var(--ok) 72%, var(--text));
+}
+
+.session.is-active .session-title {
+  color: var(--text);
+}
+
+.session.is-active :is(.session-meta, .session-sub) {
+  color: color-mix(in oklab, var(--text-2) 50%, var(--text));
+}
+
+.session:is(:hover, .is-selected) .session-title {
   color: var(--text);
 }
 

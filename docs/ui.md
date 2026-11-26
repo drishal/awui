@@ -169,7 +169,13 @@ a literal colour.
   The section's state word stays outside it; inside it no second word replaces the age.
   Nothing else in the list takes a colour: liveness is a server detail (the hover card
   says "Open in this server"), and parked / herdr / handed-over share one 12px muted
-  glyph, in that priority, with the whole story in the card.
+  glyph, in that priority, with the whole story in the card. Sidebar-local `--hover`
+  is 9% ink (1.2:1 on the panel) with a 90ms background transition (removed with the
+  rest of motion). The state words take sidebar-local `--row-warn`, `--row-accent` and
+  `--row-ok`, each a step from its token toward `--text` so it clears 4.5:1 on the
+  panel; the open row deepens them further and gives its title `--text` and its meta
+  and subline a mix of `--text-2` and `--text`, so every word on the wash clears 4.5:1
+  in both schemes.
 - **Sidebar menus, keys, and the rail:** every popover (a row's ⋯ menu, the filter
   menu, the project switch) is one tab stop: ↑/↓ and Home/End walk its items
   (`menu-focus.ts`; the walk is `menuStep`, pure and tested), and Escape closes it and puts

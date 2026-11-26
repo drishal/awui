@@ -279,14 +279,15 @@ test("the sidebar lifts what needs you and what is working, and settling can be 
   await expect(needs).toContainText("please ask first", { timeout: 10_000 });
   // The section already names the state, so its row keeps its age, in the sidebar's amber (session-state.ts).
   await expect(needs.locator(".session-state")).toHaveCount(0);
-  await expect(needs.locator(".session-time").first()).toHaveCSS("color", await page.evaluate(() => {
+  const rowWarn = await page.evaluate(() => {
     const probe = document.createElement("span");
-    probe.style.color = getComputedStyle(document.documentElement).getPropertyValue("--warn");
-    document.body.append(probe);
+    probe.style.color = "var(--row-warn)";
+    document.querySelector(".sidebar")?.append(probe);
     const colour = getComputedStyle(probe).color;
     probe.remove();
     return colour;
-  }));
+  });
+  await expect(needs.locator(".session-time").first()).toHaveCSS("color", rowWarn);
 
   await tab(page, "please ask first").click();
   await page.getByTestId("approval-card").getByRole("button", { name: "Approve" }).click();

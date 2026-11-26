@@ -34,7 +34,16 @@ test("a row waiting in Needs you wears the amber mark and age, not a repeated wo
   const waiting = page.getByTestId("needs-group").locator(".session-item", { hasText: "ask please approve the state row" });
   await expect(waiting.locator(".session-asking-dot")).toBeVisible();
   await expect(waiting.locator(".session-state")).toHaveCount(0);
-  await expect(waiting.locator(".session-time")).toHaveCSS("color", await painted(page, "--warn"));
+  // The sidebar's own amber (--row-warn: --warn a step toward the text, for contrast on the panel).
+  const rowWarn = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--row-warn)";
+    document.querySelector(".sidebar")?.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  });
+  await expect(waiting.locator(".session-time")).toHaveCSS("color", rowWarn);
   // Needs-you and idle titles share the same full width; the old state word and gutter are gone.
   const ordinary = row(page, "ordinary state row");
   const widths = await Promise.all([waiting, ordinary].map((item) => item.locator(".session-title").evaluate((el) => el.getBoundingClientRect().width)));
