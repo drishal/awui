@@ -112,11 +112,15 @@ a literal colour.
   `data-density="compact"` on `<html>`, and `tokens.css` overrides them there,
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
   a literal, for a new row height or gap.
-- **Sidebar rows:** `config.yml`'s `sidebar_style: compact` sets
-  `data-sidebar="compact"` on `<html>`, and `sidebar.css` ends with the handful
-  of overrides that bring back the tight rows older versions drew (4px padding,
-  1px between rows, no inset hairline, the clock centred, the agent's state as
-  coloured words). It changes the row look only: heads, chips, hover cards, and
+- **Sidebar rows:** one line per row is the list's shape: a title at 13.5px cut
+  with an ellipsis, a row 32px tall (48px when it carries its subline — the
+  project tag, the agent's line, or a branch off the trunk), 2px between rows,
+  no hairline or rail, and a 26px gutter at the right for the ⋯ so the age
+  never moves under the pointer. `session-state.ts` decides that subline.
+  `config.yml`'s `sidebar_style: compact` sets `data-sidebar="compact"` on
+  `<html>`, and `sidebar.css` ends with the handful of overrides that make the
+  rows tighter still (28px, the subline as a dim suffix after the title, 1px
+  between rows). It changes the row look only: heads, chips, hover cards, and
   the wash keep their own rules, and a phone's row is still 44px tall.
 - **Sidebar list:** the sidebar draws one of two views (`sidebar-view.ts`, saved
   per browser; the filter menu's switch writes it). Recent, the default, is one

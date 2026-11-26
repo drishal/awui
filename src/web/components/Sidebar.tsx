@@ -24,7 +24,6 @@ import { harnessColor } from "../harness-colors.js";
 import { HarnessMenu } from "./HarnessMenu.js";
 import { WorkingRing } from "./WorkingRing.js";
 import { SessionCard } from "./SessionCard.js";
-import { agentStatusText } from "../agent-status.js";
 import { ago, shortAgo } from "../turns.js";
 import { SidebarFilters } from "./SidebarFilters.js";
 import { ProjectBadge } from "./ProjectBadge.js";
@@ -33,6 +32,7 @@ import { setProjectIcon, useProjectIcons } from "../project-icons.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
+import { rowSubline } from "../session-state.js";
 import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
 /** Sessions shown per project before "Show N more". */
@@ -340,6 +340,7 @@ function SessionRow({
   working,
   harnessName,
   tag,
+  branch = null,
   showHarness = true,
   onOpen,
   onMark,
@@ -353,6 +354,8 @@ function SessionRow({
   harnessName: string;
   /** The project a row is out of (the flat list, and the sections above the projects): its tag line. */
   tag?: ProjectTag | null;
+  /** The branch its project is checked out on, for a row inside its project (shown when it is not the trunk's). */
+  branch?: string | null;
   /** False where every row of the list is the same harness: the dot would only repeat the heading above. */
   showHarness?: boolean;
   /** Why this row is where it is (a routine started it, it is quiet, on the default branch); its hover card says it. */
@@ -374,6 +377,9 @@ function SessionRow({
   // A session not saved yet has nothing to mark.
   const markable = !s.id.includes(":live-");
   const { warm } = useContext(RowActions);
+  // The one line under the title (session-state.ts): the project it is out of, the agent's own line, or
+  // a branch that is not the project's trunk; without one the row is a single line.
+  const sub = rowSubline(s, { tag, branch });
   // On a touch screen a row also slides left for Pin, Archive and Snooze (the menu's own actions); a full swipe is the first.
   const swipeActions: Array<{ label: string; icon: React.ReactNode; change: MarkChange }> = [
     { label: s.pinned ? "Unpin" : "Pin", icon: <IconPin size={16} />, change: { pinned: !s.pinned } },
@@ -465,15 +471,22 @@ function SessionRow({
         )}
         <span className="session-body">
           <span className="session-title" ref={titleRef}>{plainTitle(s.title)}</span>
-          {/* A second line only where it says something new: the agent's own status, or the project a row
-              is out of. Inside a project the branch is the heading's fact, so the rows stay one line and
-              the list is scanned by title. */}
-          {s.agentStatus ? (
-            <span className={`session-sub session-agent is-${s.agentStatus.state}`} title={`${agentStatusText(s.agentStatus)} · set by the agent ${ago(s.agentStatus.at)}`}>
-              {s.agentStatus.comment || agentStatusText(s.agentStatus)}
+          {/* One line under the title, and only where it says something new: the project a row is out
+              of, the agent's own status, or a branch the project is not on its trunk of. */}
+          {sub?.kind === "tag" ? (
+            <span className="session-sub">
+              <ProjectBadge id={sub.tag.id} name={sub.tag.name} size={12} />
+              <span className="session-sub-name">
+                {sub.tag.name}
+                {sub.tag.branch ? ` · ${sub.tag.branch}` : ""}
+              </span>
             </span>
-          ) : tag ? (
-            <span className="session-sub">{tag.name}</span>
+          ) : sub?.kind === "agent" ? (
+            <span className={`session-sub session-agent is-${sub.state}`} title={`${sub.line} · set by the agent ${ago(sub.at)}`}>
+              {sub.text}
+            </span>
+          ) : sub ? (
+            <span className="session-sub is-branch">{sub.text}</span>
           ) : null}
         </span>
         <span className="session-meta">
@@ -735,6 +748,7 @@ function ProjectGroupView({
         working={isWorking(s)}
         harnessName={harnessName(s.harnessId)}
         showHarness={mixedHarness}
+        branch={checkout?.branch ?? null}
         onOpen={(newTab) => onOpen(s, newTab)}
         onMark={(change) => onMark(s, change)}
         {...(arranging && markable && (up || down) ? { move: { up, down, by: (delta) => reorder(movedOrder(all, s.id, { delta })) } } : {})}
@@ -1009,6 +1023,7 @@ function FocusedProjectView({
           working={isWorking(s)}
           harnessName={harnessName(s.harnessId)}
           showHarness={mixedHarness}
+          branch={checkout?.branch ?? null}
           onOpen={(newTab) => onOpen(s, newTab)}
           onMark={(change) => onMark(s, change)}
           {...(markable && (up || down) ? { move: { up, down, by: (delta) => reorder(movedOrder(projRows, s.id, { delta })) } } : {})}

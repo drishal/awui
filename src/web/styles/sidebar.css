@@ -651,10 +651,16 @@
   }
 }
 
+/* No rail under a project head: the rows line up under the project's own name instead, so the titles of
+   a folder and its head share one left edge (a head is padding 6 + chevron 12 + gap 7 + badge 16 + gap 7
+   = 48; a row is this 24 + its own 8 + the 10px mark + 6 = 48). The flat list has no head to line up
+   with, so its rows sit at the panel's own edge. */
 .project-group .session-sublist {
-  margin-left: 12px;
-  padding-left: 6px;
-  border-left: 1px solid var(--hairline);
+  padding-left: 24px;
+}
+
+.flat-group .session-sublist {
+  padding-left: 0;
 }
 
 /* Which harness a session belongs to; the harness menu doubles as the legend. The colour
@@ -668,9 +674,15 @@
   background: var(--harness, var(--muted));
 }
 
-/* Same 10px slot as the working ring, so titles don't shift when a run starts. */
+/* Same 10px slot as the working ring, so titles don't shift when a run starts, and every mark rides the
+   title's own line: the row is 7px padded and the line 18px, so a mark centred on it starts 4–5px down. */
 .session .harness-dot {
-  margin: 0 2px;
+  align-self: flex-start;
+  margin: 5px 2px 0;
+}
+
+.session .working-ring {
+  margin-top: 4px;
 }
 
 /* A list of one harness keeps the slot and drops the colour: the harness row above the list says it
@@ -755,6 +767,13 @@
   background: var(--warn);
 }
 
+/* In a row (not the tab strip, which keeps its dot centred on the title) the amber dot sits on the
+   title's line too. */
+.session .session-asking-dot {
+  align-self: flex-start;
+  margin-top: 5px;
+}
+
 .project-toggle .working-ring {
   margin-left: 2px;
 }
@@ -779,17 +798,19 @@
   color: var(--text);
 }
 
-/* A row is a dot, the words, and the clock. The words may take two lines (a cut-off title says nothing about
-   whether the chat is about the same thing as its neighbour), so the row grows instead of clipping at ~28
-   characters. Rows sit 2px apart with their own lines 2px apart, so proximity groups a row's lines before it
-   reaches the next row; the inset hairline below says the same thing again in the same place. */
+/* A row is a mark, one line of words, and the age. Every row has the same pitch — 32px, or 48px with
+   its subline — so a column of them is read by title alone; the title is one line with an ellipsis (the
+   title attribute and the hover card keep the rest of it). Rows sit 2px apart and carry no divider: the
+   pitch, the calendar headings and the hover pill are what group them. */
 .session {
+  /* Sidebar rows: one line, and one line with its subline (the separated look). */
+  --sid-row: 32px;
   position: relative;
   display: flex;
   align-items: flex-start;
   gap: 6px;
   width: 100%;
-  min-height: calc(var(--row-h) + 6px);
+  min-height: var(--sid-row);
   padding: 7px 8px;
   border: 0;
   border-radius: var(--r-sm);
@@ -809,76 +830,71 @@
   box-shadow: inset 2px 0 0 color-mix(in oklab, var(--harness, var(--accent)) 75%, transparent);
 }
 
-/* Title over sub-line: the words start at the row's top edge, because the clock on the right is pinned to
-   the title's first line and the row's own lines must not drift down when the title takes two. */
+/* Title over subline: both start at the row's top edge, because the age on the right is pinned to the
+   title's line and the row's lines must not drift down. */
 .session-body {
   display: grid;
   flex: 1;
   min-width: 0;
   align-content: start;
-  gap: 2px;
+  gap: 0;
 }
 
-/* Two lines at most, at the weight a name reads at: the row's words are the list's content, not its
-   annotations. `pretty` keeps an orphan word off line two when the title just misses fitting. */
+/* One line at most, at the weight a name reads at: the row's words are the list's content, not its
+   annotations. The line box is 18px so the pitch is exact: 7 + 18 + 7 = 32px, or + 16px for a subline. */
 .session-title {
-  display: -webkit-box;
+  display: block;
   min-width: 0;
   overflow: hidden;
-  /* Regular weight, one step below full ink: at 500 on a dark page, antialiased light-on-dark type
-     swells and a whole list of titles reads as bold. The row you hover or have open gets the full ink back. */
-  color: color-mix(in srgb, var(--text) 86%, var(--muted-text));
+  /* Read titles sit one step below full ink (and weight); an unread one is full ink at 600, which is the
+     list's cue that reads without a colour. 78% still clears 4.5:1 on the panel in both schemes. */
+  color: color-mix(in srgb, var(--text) 78%, var(--muted-text));
   font-size: 13.5px;
   font-weight: 400;
-  line-height: 1.3;
-  text-wrap: pretty;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-/* The second line: where the row is out of its project, or what the agent says it is doing. One line,
-   ellipsised: a status is a glance, and a row that grows for it pushes the next one out of reach. */
-.session-sub {
-  overflow: hidden;
-  color: var(--muted-text);
-  font-size: 12px;
-  line-height: 1.3;
+  line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* An agent's own line is the quietest text in the list: its state is a 6px dot in that state's colour,
-   and the words stay muted (the row's colour is for its title, which is what you pick by). */
+/* The one line under the title, at a fixed 16px so the row with one is 48px exactly: a project tag, the
+   agent's own line, or a branch the folder is not on its trunk of. Ellipsised: it is a glance. */
+.session-sub {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-text);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.session-sub-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The tag's badge is the head's, one size down: 12px, its letter set to fit inside it. */
+.session-sub .project-badge {
+  border-radius: 3px;
+  font-size: 8px;
+}
+
+/* A branch is a machine name: the mono face tells it apart from the folder's own words at a glance. */
+.session-sub.is-branch {
+  display: block;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+}
+
+/* An agent's own line is the quietest text in the list: the words stay muted, and its state is the
+   row's one state word (the age's slot) — never a second coloured dot. */
 .session .session-agent {
   max-width: none;
   color: var(--muted-text);
   font-size: 12px;
-}
-
-.session .session-agent.is-blocked,
-.session .session-agent.is-review,
-.session .session-agent.is-done {
-  color: var(--muted-text);
-}
-
-.session .session-agent::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 5px;
-  border-radius: 50%;
-  background: var(--muted-text);
-  vertical-align: 1px;
-}
-
-.session .session-agent.is-blocked::before {
-  background: var(--warn);
-}
-
-.session .session-agent.is-review::before,
-.session .session-agent.is-done::before {
-  background: var(--ok);
 }
 
 /* The clock sits on the title's first line, not in the row's middle: on a two-line row the middle points
@@ -901,41 +917,16 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Pin and archive: a ⋯ over the row's time on hover; on touch screens on the open session's
-   row, and a long press on any row. */
+/* Pin and archive: a ⋯ in a gutter the row keeps for it, so the age never moves out from under the
+   pointer; on touch screens it shows on the open session's row, and a long press on any row. */
 .session-item {
   position: relative;
 }
 
-/* A hairline between two rows in a group, inset to the title's left edge as iOS Mail does it: the dot
-   column stays clear, so the line reads as belonging to the words rather than to the panel's edge.
-   `.session::before`, not `.session-item::before`, because the item's pseudo-elements mark a drag. */
+/* Rows sit 2px apart and no line joins them: the pitch does that work, and a rule between two 32px rows
+   was the busiest thing in the panel. */
 .session-item + .session-item {
   margin-top: 2px;
-}
-
-.session-item + .session-item > .session::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: calc(8px + 10px + 6px);
-  right: 8px;
-  height: 1px;
-  background: var(--hairline);
-  transition: opacity var(--dur-hover) var(--ease-out);
-}
-
-/* A filled row never touches a line: the hover wash, the open session and a selection hide their own
-   divider and the one under the row above them. */
-.session-item + .session-item > .session:is(:hover, .is-active, .is-selected)::before,
-.session-item:has(> .session:is(:hover, .is-active, .is-selected)) + .session-item > .session::before {
-  opacity: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .session-item + .session-item > .session::before {
-    transition: none;
-  }
 }
 
 /* Dragging a row inside its date section: it dims, and a line marks where it will land. */
@@ -963,13 +954,15 @@
   bottom: -1px;
 }
 
-.session-more {
+/* The ⋯ sits in the gutter the row keeps for it (see the `pointer: fine` rule below), so the age stays
+   where it was while the pointer is on the row. */
+/* Smaller than a toolbar's icon button (controls.css's 34px), and centred on the title's one line. */
+.session-item > .session-more {
   position: absolute;
-  top: 50%;
+  top: 3px;
   right: 4px;
   width: 26px;
   height: 26px;
-  transform: translateY(-50%);
   opacity: 0;
 }
 
@@ -978,12 +971,6 @@
 .session-more:focus-visible {
   opacity: 1;
 }
-
-.session-item:hover .session-meta,
-.session-item.is-menu-open .session-meta {
-  visibility: hidden;
-}
-
 @media (hover: none) {
   .session-more {
     pointer-events: none;
@@ -994,14 +981,25 @@
     pointer-events: auto;
   }
 
+  /* A phone has no gutter to spare: on the open row the ⋯ takes the age's place, as before. */
   .session-item:has(> .session.is-active) .session-meta {
     visibility: hidden;
   }
 }
 
+/* A mouse's row keeps a 26px gutter for the ⋯, so hovering never covers the age. Touch screens trade that
+   for title width: their ⋯ rides over the age on the open row instead (the rule above). */
+@media (pointer: fine) {
+  .session {
+    padding-right: 34px;
+  }
+}
+
+/* The row you are on, or have open, gets the full ink back. */
 .session:is(:hover, .is-active, .is-selected) .session-title {
   color: var(--text);
 }
+
 
 /* A settled or snoozed row steps back: its title reads as an annotation of the date section it sits in,
    so it keeps the size and loses the weight and the ink. */
@@ -1105,9 +1103,6 @@
   align-self: center;
 }
 
-.pinned-group .session-sublist {
-  border-left-color: transparent;
-}
 
 .row-menu {
   position: fixed;
@@ -1328,63 +1323,48 @@ body.is-resizing {
   }
 }
 
-/* The compact session rows (config.yml's `sidebar_style: compact`): the list older versions drew, before
-   the rows were separated. Every rule here restates one value the separated look set above, and only
-   those: delete the block and the default look returns whole. The panel around the rows (heads, chips,
-   hover cards, the active wash) keeps its own rules either way. */
+/* The compact session rows (config.yml's `sidebar_style: compact`): tighter than the separated look and
+   one line always — the subline becomes a dim suffix after the title (Codex's rows) instead of a second
+   line. Every rule here restates one value the separated look set above, and only those: delete the block
+   and the default look returns whole. The panel around the rows (heads, chips, hover cards, the active
+   wash) keeps its own rules either way. */
 :root[data-sidebar="compact"] .session {
+  --sid-row: 28px;
   align-items: center;
-  padding: 4px 8px;
+  padding: 0 8px;
 }
 
 :root[data-sidebar="compact"] .session-body {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   align-content: center;
-  gap: 1px;
 }
 
-/* One ink for every title: the separated look eases the row down to 86% so a whole column of two-line
-   titles does not read as bold, which only matters once the rows carry that rhythm. */
+/* The title keeps its ellipsis in the flex row; the suffix takes only what it needs. */
 :root[data-sidebar="compact"] .session-title {
-  color: var(--text);
+  flex: 1;
 }
 
-:root[data-sidebar="compact"] .session-sub,
-:root[data-sidebar="compact"] .session .session-agent {
+/* One ink for every title: the suffix beside it is dim enough to read as an annotation. */
+:root[data-sidebar="compact"] .session-sub {
+  flex: 0 1 auto;
+  max-width: 40%;
   font-size: 11.5px;
+  line-height: 1;
 }
 
-/* An agent's state is the words' own colour here, not a 6px dot beside them. */
-:root[data-sidebar="compact"] .session .session-agent::before {
-  content: none;
+/* No badge in a 28px line: the project's name alone is the suffix. */
+:root[data-sidebar="compact"] .session-sub .project-badge {
+  display: none;
 }
 
-:root[data-sidebar="compact"] .session .session-agent.is-blocked {
-  color: var(--warn);
+/* The ⋯ is centred with the one line it belongs to. */
+:root[data-sidebar="compact"] .session-more {
+  top: 1px;
 }
 
-:root[data-sidebar="compact"] .session .session-agent.is-review,
-:root[data-sidebar="compact"] .session .session-agent.is-done {
-  color: var(--ok);
-}
-
-/* The clock is centred with the row instead of pinned to the title's first line, which only a two-line
-   row needs to tell apart. */
-:root[data-sidebar="compact"] .session-meta {
-  padding-top: 0;
-  font-size: 12px;
-}
-
-:root[data-sidebar="compact"] .session-time,
-:root[data-sidebar="compact"] .session-wake {
-  min-width: 3.2ch;
-}
-
-/* Tight rows with no hairline: 1px is the whole gap, so there is no room for the inset line to sit in
-   (and nothing to hide under a filled row). A phone's 44px row height is phones.css's, unchanged. */
+/* A phone's 44px row height is phones.css's, unchanged: it has no suffix to fit. */
 :root[data-sidebar="compact"] .session-item + .session-item {
   margin-top: 1px;
-}
-
-:root[data-sidebar="compact"] .session-item + .session-item > .session::before {
-  content: none;
 }

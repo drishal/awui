@@ -1,150 +1,174 @@
-// Sidebar session rows have to read as separate sessions (t169): a two-line title plus a
-// sub-line used to sit almost as close to the next row's title as to its own. The row
-// rhythm and the inset hairline are both cheap to lose in a later restyle, so this spec
-// measures them rather than reading the stylesheet: adjacent rows are either 2px apart or
-// joined by a 1px line, a long title stops at two lines, the time sits on the title's first
-// line, and a filled row takes the line off itself and the row under it.
+// Sidebar rows are one line each, on one pitch: 32px, or 48px when the row has a subline (the project it
+// is out of, the agent's status, a branch). Nothing divides them — no inset hairline, no rail — so the
+// rhythm and the calendar headings do the grouping, and a title is cut with an ellipsis rather than
+// wrapped onto a second line that says nothing about the story. The ⋯ keeps a gutter of its own, so the
+// age never disappears under the pointer.
 //
-// The setting that swaps the rows for the compact ones older versions drew (config.yml's
-// `sidebar_style`) is measured the same way: 1px apart, no line, and the clock in the row's
-// middle instead of against the title's first line.
+// The setting that swaps the rows for the compact ones older versions drew (config.yml's `sidebar_style`)
+// is measured the same way: 28px, one line, and the subline as a dim suffix after the title.
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
+import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
-/** A title long enough to take the two lines the clamp allows, in the ~200px sidebar rail. */
-const LONG_TITLE = "a session title long enough to want a third line in the two-hundred-pixel sidebar rail, which it must not take";
+/** Longer than the row can hold: the title must be cut, not wrapped. */
+const LONG_TITLE =
+  "a session title long enough to want a third line in the two-hundred-pixel sidebar rail, which it must not take, because one line is the whole rhythm of this list";
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
 const row = (page: Page, title: string) => sidebar(page).locator(".session-item", { hasText: title });
 
-/** The first date section holding at least `atLeast` rows: only rows inside one group can share a line. */
-async function sectionWith(page: Page, atLeast: number): Promise<Locator> {
-  const lists = sidebar(page).locator(".session-sublist");
-  await expect(lists.first()).toBeVisible();
-  for (let i = 0; i < (await lists.count()); i++) {
-    const list = lists.nth(i);
-    if ((await list.locator(".session-item").count()) >= atLeast) return list;
-  }
-  throw new Error(`no date section with ${atLeast} session rows`);
+/** A row's own `::before`, as the browser resolves it: `content` says whether anything is drawn at all. */
+const lineOf = (session: Locator) => session.evaluate((el) => ({ content: getComputedStyle(el, "::before").content }));
+
+/** A row's own box, in the list it is drawn in. */
+async function rowBox(title: string, page: Page): Promise<{ height: number }> {
+  const box = await row(page, title)
+    .first()
+    .evaluate((el) => el.getBoundingClientRect().height);
+  return { height: Math.round(box) };
 }
 
-/** Four chats in the open project: a line needs a neighbour on both sides, and the open row takes one. */
-async function fourChats(page: Page): Promise<Locator> {
-  await signInAndOpen(page);
-  for (const word of ["first", "second", "third", "fourth"]) {
+/**
+ * The pitch of the rows a selector draws: each row's height, and the gap to the row right under it. Only
+ * adjacent session rows are paired, so a date heading or the show-more row never skews a gap.
+ */
+async function pitchIn(page: Page, selector: string): Promise<{ heights: number[]; gaps: number[] }> {
+  return page.evaluate((sel) => {
+    const rows = [...document.querySelectorAll(`${sel} .session-item`)];
+    const heights = rows.map((el) => Math.round(el.getBoundingClientRect().height));
+    const gaps = rows.flatMap((el) => {
+      const next = el.nextElementSibling;
+      if (!next?.classList.contains("session-item")) return [];
+      return [Math.round(next.getBoundingClientRect().top - el.getBoundingClientRect().bottom)];
+    });
+    return { heights, gaps };
+  }, selector);
+}
+
+test.describe("the separated rows", () => {
+  test("one line at 32px inside a project, 48px with its tag in the flat list, no divider", async ({ page }) => {
+    await signInAndOpen(page);
     await newChat(page);
-    await sendAndWait(page, `${word} row of the separation check`);
-  }
-  await showSidebar(page);
-  return sectionWith(page, 4);
-}
+    await sendAndWait(page, "older pitch row");
+    await newChat(page);
+    await sendAndWait(page, "pitch row in the sidebar");
+    await showSidebar(page);
 
-/** A row's own `::before` line as the browser resolves it. */
-const lineOf = (session: Locator) =>
-  session.evaluate((el) => {
-    const s = getComputedStyle(el, "::before");
-    // `content` is the only field that says whether the line is drawn at all: a `content: none` rule leaves
-    // the height and colour the base rule set, because nothing is painted to use them.
-    return { content: s.content, height: Number.parseFloat(s.height), background: s.backgroundColor, opacity: Number(s.opacity) };
+    // The flat list: this row carries its project as a tag, which is its subline, so it stands 48px tall.
+    const item = row(page, "pitch row in the sidebar").first();
+    await expect(item.locator(".session-sub")).toBeVisible();
+    expect(await rowBox("pitch row in the sidebar", page), "a row with its tag is 48px").toEqual({ height: 48 });
+    // The pitch of the whole list: one 2px step from row to row, and every row one line (48 here, since
+    // every row of the flat list carries its project).
+    const pitch = await pitchIn(page, ".flat-group");
+    expect(new Set(pitch.heights)).toEqual(new Set([48]));
+    expect(new Set(pitch.gaps), "rows sit 2px apart").toEqual(new Set([2]));
+    expect((await lineOf(item.locator(".session"))).content, "no hairline joins two rows").toBe("none");
+    // The tag is the project's badge and its name, on one line under the title.
+    await expect(item.locator(".session-sub .project-badge")).toHaveCount(1);
+    await expect(item.locator(".session-sub")).toContainText("alpha");
+
+    // The grouped view: inside its own project the row has nothing to add, so it is one 32px line.
+    await useProjectsView(page);
+    await page.reload();
+    await showSidebar(page);
+    // One project has no focus mode: the plain folder head, and its rows under it.
+    const group = page.getByTestId("project-group").first();
+    await expect(group).toBeVisible();
+    await expect(group.locator(".session-item", { hasText: "pitch row in the sidebar" })).toHaveCount(1);
+    const grouped = row(page, "pitch row in the sidebar").first();
+    await expect(grouped.locator(".session-sub")).toHaveCount(0);
+    const box = (await grouped.boundingBox()) as { height: number } | null;
+    expect(Math.round((box as { height: number }).height), "a one-line row is 32px").toBe(32);
   });
 
-const TRANSPARENT = /rgba\(0, 0, 0, 0\)|transparent/;
-
-test("adjacent rows are 2px apart or carry a 1px inset line", async ({ page }) => {
-  const section = await fourChats(page);
-  const rows = section.locator(".session-item");
-  const count = await rows.count();
-  for (let i = 1; i < count; i++) {
-    const above = await rows.nth(i - 1).boundingBox();
-    const below = await rows.nth(i).boundingBox();
-    expect(above, "row above has a box").not.toBeNull();
-    expect(below, "row below has a box").not.toBeNull();
-    const gap = (below as { y: number; height: number }).y - ((above as { y: number; height: number }).y + (above as { height: number }).height);
-    if (gap >= 2) continue;
-    const line = await lineOf(rows.nth(i).locator(".session"));
-    expect(line.height, "rows closer than 2px are joined by a 1px line").toBe(1);
-    expect(line.background, "the line is drawn, not transparent").not.toMatch(TRANSPARENT);
-  }
-});
-
-test("a long title clamps to two lines, and the time sits on the first", async ({ page }) => {
-  await signInAndOpen(page);
-  await newChat(page);
-  await sendAndWait(page, "clamp check");
-  await send(page, `/rename ${LONG_TITLE}`);
-  await showSidebar(page);
-
-  const title = row(page, "a session title long enough").locator(".session-title");
-  await expect(title).toBeVisible();
-  const box = await title.evaluate((el) => {
-    const s = getComputedStyle(el);
-    return { client: el.clientHeight, scroll: el.scrollHeight, line: Number.parseFloat(s.lineHeight) };
+  test("a title under a project head lines up with the project's name", async ({ page, request }) => {
+    await useProjectsView(page);
+    // Focus mode needs a second project with a session of its own (the suite shares one server).
+    const beta = (await (await request.post("/api/workspaces/open", { data: { path: `${process.env.AWUI_E2E_ROOT as string}/beta` } })).json()) as { id: string };
+    const other = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: beta.id } })).json()) as { chatId: string };
+    await request.post(`/api/chats/${other.chatId}/messages`, { data: { text: "aligned row's other project", mode: "normal" } });
+    await signInAndOpen(page);
+    await newChat(page);
+    await sendAndWait(page, "aligned row under the head");
+    await showSidebar(page);
+    // The all-projects list, whose heads have no back button: a head is chevron, badge, name.
+    await expect(page.getByTestId("focused-project")).toBeVisible();
+    await page.getByRole("button", { name: "All projects" }).click();
+    await expect(page.getByTestId("focused-project")).toHaveCount(0);
+    const xs = await page.evaluate(() => {
+      const group = [...document.querySelectorAll('[data-testid="project-group"]')].find((el) => el.querySelector(".project-name")?.textContent === "alpha");
+      const name = group?.querySelector(".project-name")?.getBoundingClientRect();
+      const title = [...(group?.querySelectorAll(".session-title") ?? [])].find((el) => el.textContent?.includes("aligned row under the head"))?.getBoundingClientRect();
+      return name && title ? { name: name.left, title: title.left } : null;
+    });
+    expect(xs, "the head and the row are both drawn").not.toBeNull();
+    // No rail under the head: its rows start at the name's own left edge.
+    expect(Math.abs((xs as { name: number; title: number }).title - (xs as { name: number; title: number }).name)).toBeLessThanOrEqual(2);
   });
-  expect(box.line).toBeGreaterThan(0);
-  expect(box.scroll, "the title the test wrote is longer than two lines").toBeGreaterThan(box.client);
-  expect(box.client, "at most two lines").toBeLessThanOrEqual(2 * box.line + 1);
 
-  // The clock is read against the title it belongs to; centred, it floats between lines.
-  const placed = await row(page, "a session title long enough").evaluate((el) => {
-    const t = el.querySelector(".session-title")?.getBoundingClientRect();
-    const m = el.querySelector(".session-time")?.getBoundingClientRect();
-    return t && m ? { title: t.top, time: m.top } : null;
+  test("a long title stops at one line with an ellipsis, and keeps its words on hover", async ({ page }) => {
+    await signInAndOpen(page);
+    await newChat(page);
+    await sendAndWait(page, "ellipsis check");
+    await send(page, `/rename ${LONG_TITLE}`);
+    await showSidebar(page);
+
+    const item = row(page, "a session title long enough").first();
+    const title = item.locator(".session-title");
+    await expect(title).toBeVisible();
+    const box = await title.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { client: el.clientHeight, line: Number.parseFloat(s.lineHeight), scroll: el.scrollWidth, width: el.clientWidth, overflow: s.textOverflow, wrap: s.whiteSpace };
+    });
+    expect(box.client, "one line, never two").toBeLessThanOrEqual(box.line + 1);
+    expect(box.overflow).toBe("ellipsis");
+    expect(box.wrap).toBe("nowrap");
+    expect(box.scroll, "the title the test wrote is wider than the row").toBeGreaterThan(box.width);
+    // The words the ellipsis hides are in the row's title attribute (and its hover card).
+    await expect(item.locator(".session")).toHaveAttribute("title", new RegExp(`^${LONG_TITLE}`));
   });
-  expect(placed, "the row has a title and a time").not.toBeNull();
-  expect(Math.abs((placed as { title: number; time: number }).time - (placed as { title: number }).title)).toBeLessThanOrEqual(3);
-});
 
-test("a filled row takes the line off itself and off the row under it", async ({ page }) => {
-  const section = await fourChats(page);
-  const rows = section.locator(".session-item");
-  // The open session's own line and the next row's are hidden on purpose, so take the first row
-  // whose line is in place and which has a row under it.
-  const count = await rows.count();
-  let at = -1;
-  for (let i = 1; i < count - 1; i++) {
-    if ((await lineOf(rows.nth(i).locator(".session"))).opacity === 1) {
-      at = i;
-      break;
-    }
-  }
-  expect(at, "a row with its line, and a row under it").toBeGreaterThan(0);
-  const second = rows.nth(at).locator(".session");
-  const third = rows.nth(at + 1).locator(".session");
-  await expect.poll(async () => (await lineOf(second)).opacity).toBe(1);
-
-  await second.hover();
-  await expect.poll(async () => (await lineOf(second)).opacity, { message: "the filled row drops its own line" }).toBe(0);
-  await expect.poll(async () => (await lineOf(third)).opacity, { message: "so does the row below it" }).toBe(0);
-
-  // Leaving puts both back, so the list is unchanged by a pointer that crossed it.
-  await page.mouse.move(0, 0);
-  await expect.poll(async () => (await lineOf(third)).opacity).toBe(1);
+  test("the age stays where it is on hover; the ⋯ has a gutter of its own", async ({ page }) => {
+    await signInAndOpen(page);
+    await newChat(page);
+    await sendAndWait(page, "hover keeps the age");
+    await showSidebar(page);
+    const item = row(page, "hover keeps the age").first();
+    const age = item.locator(".session-time");
+    await expect(age).toBeVisible();
+    const before = (await age.boundingBox()) as { x: number; width: number } | null;
+    await item.locator(".session").hover();
+    const more = item.locator(".session-more");
+    await expect(more).toBeVisible();
+    await expect(age, "the age is not taken away under the pointer").toBeVisible();
+    const after = (await age.boundingBox()) as { x: number; width: number } | null;
+    expect(after?.x).toBe(before?.x);
+    // The gutter sits to the right of the age, so the two never overlap.
+    const button = (await more.boundingBox()) as { x: number } | null;
+    expect(button?.x ?? 0).toBeGreaterThanOrEqual(((before as { x: number; width: number }).x + (before as { x: number; width: number }).width));
+  });
 });
 
 test.describe("on touch", () => {
-  test("the divider stays inside the row that swipe clips", async ({ page }) => {
-    const section = await fourChats(page);
+  test("a row is a 44px target and its title still ends with an ellipsis", async ({ page }) => {
+    await signInAndOpen(page);
+    await newChat(page);
+    await sendAndWait(page, "touch row height");
     // Start desktop so the sessions exist; then make the same media query real as on a touch device.
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
     await expect.poll(() => page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
-    const second = section.locator(".session-item").nth(1).locator(".session");
-    const line = await second.evaluate((el) => {
-      const item = el.parentElement?.getBoundingClientRect();
-      const box = el.getBoundingClientRect();
-      const style = getComputedStyle(el, "::before");
-      return item ? { itemTop: item.top, itemHeight: item.height, top: box.top + Number.parseFloat(style.top), height: Number.parseFloat(style.height), background: style.backgroundColor } : null;
-    });
-    expect(line).not.toBeNull();
-    const placed = line as { itemTop: number; itemHeight: number; top: number; height: number; background: string };
-    expect(placed.height).toBe(1);
-    expect(placed.background).not.toMatch(TRANSPARENT);
-    expect(placed.top).toBeGreaterThanOrEqual(placed.itemTop);
-    expect(placed.top + placed.height).toBeLessThanOrEqual(placed.itemTop + placed.itemHeight);
+    await showSidebar(page);
+    const item = row(page, "touch row height").first();
+    const box = (await item.boundingBox()) as { height: number } | null;
+    expect(Math.round((box as { height: number }).height)).toBeGreaterThanOrEqual(44);
+    const title = item.locator(".session-title");
+    await expect(title).toHaveCSS("text-overflow", "ellipsis");
+    expect(await title.evaluate((el) => el.clientHeight <= Number.parseFloat(getComputedStyle(el).lineHeight) + 1)).toBe(true);
   });
 });
 
@@ -152,54 +176,32 @@ test.describe("on touch", () => {
 // drew. The suite's own server has no settings folder, so the attribute is set on <html> here, which is
 // exactly what App.tsx does from the setting; saving the setting from the dialog gets its own server.
 test.describe("the compact rows", () => {
-  test("compact sits rows 1px apart with no divider and centres the clock", async ({ page }) => {
+  test("compact is 28px and one line, with the project as a suffix after the title", async ({ page }) => {
     await signInAndOpen(page);
-    await sendAndWait(page, "compact row one");
     await newChat(page);
-    await sendAndWait(page, "compact row two");
-    // A title long enough for two lines: on one line both looks centre the clock, so the difference only
-    // shows where the separated look pins it to the first line of a taller row.
-    await send(page, `/rename ${LONG_TITLE}`);
-    await showSidebar(page);
-    const section = await sectionWith(page, 2);
-    const rows = section.locator(".session-item");
-    // The suite shares one server and one project, so the section holds other tests' sessions too: the
-    // newest two are this test's own.
-    const count = await rows.count();
-    const top = rows.nth(count - 2);
-    const bottom = rows.nth(count - 1);
+    await sendAndWait(page, "compact row one");
 
+    const item = row(page, "compact row one").first();
     await page.evaluate(() => document.documentElement.setAttribute("data-sidebar", "compact"));
     await expect(page.locator("html")).toHaveAttribute("data-sidebar", "compact");
 
-    // Tight: the 1px the old rows had, and no hairline to sit in it.
-    const above = (await top.boundingBox()) as { y: number; height: number };
-    const below = (await bottom.boundingBox()) as { y: number; height: number };
-    expect(below.y - (above.y + above.height)).toBe(1);
-    const line = await lineOf(bottom.locator(".session"));
-    expect(line.content, "compact draws no divider").toBe("none");
-
-    // The clock sits in the row's middle rather than against the title's first line.
-    const clock = await row(page, "a session title long enough").locator(".session").evaluate((el) => {
-      const box = el.getBoundingClientRect();
-      const time = el.querySelector(".session-time")?.getBoundingClientRect();
-      const title = el.querySelector(".session-title") as HTMLElement | null;
-      return {
-        row: box.top + box.height / 2,
-        clock: time ? time.top + time.height / 2 : null,
-        lines: title ? Math.round(title.clientHeight / Number.parseFloat(getComputedStyle(title).lineHeight)) : 0,
-      };
+    const box = (await item.boundingBox()) as { height: number } | null;
+    expect(Math.round((box as { height: number }).height), "a compact row is one 28px line").toBe(28);
+    expect((await lineOf(item.locator(".session"))).content, "compact draws no divider").toBe("none");
+    // The subline is a suffix on that line, not a second one: the title ends left of the project's name.
+    const placed = await item.evaluate((el) => {
+      const title = el.querySelector(".session-title")?.getBoundingClientRect();
+      const sub = el.querySelector(".session-sub")?.getBoundingClientRect();
+      return title && sub ? { titleBottom: title.bottom, subTop: sub.top, titleRight: title.right, subLeft: sub.left } : null;
     });
-    expect(clock.lines, "the row under test takes two lines").toBe(2);
-    expect(clock.clock, "the row has a clock").not.toBeNull();
-    expect(Math.abs((clock.clock as number) - clock.row), "the clock is centred with the row").toBeLessThanOrEqual(2);
-
+    expect(placed, "the row carries its project").not.toBeNull();
+    const suffix = placed as { titleBottom: number; subTop: number; titleRight: number; subLeft: number };
+    expect(suffix.subTop, "one line: the suffix starts on the title's own line").toBeLessThan(suffix.titleBottom);
+    expect(suffix.subLeft).toBeGreaterThanOrEqual(suffix.titleRight);
     // Off again is the separated look, whole: the setting only swaps rows.
     await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
-    const backAbove = (await top.boundingBox()) as { y: number; height: number };
-    const backBelow = (await bottom.boundingBox()) as { y: number; height: number };
-    expect(backBelow.y - (backAbove.y + backAbove.height)).toBe(2);
-    await expect.poll(async () => (await lineOf(bottom.locator(".session"))).content, { message: "the divider is drawn again" }).toBe('""');
+    const back = (await item.boundingBox()) as { height: number } | null;
+    expect(Math.round((back as { height: number }).height)).toBe(48);
   });
 });
 
@@ -291,6 +293,7 @@ test.describe("the sidebar style setting", () => {
 });
 
 test("the project switch menu stands on one grid: marks in one column, labels on one edge", async ({ page, request }) => {
+  await useProjectsView(page);
   const root = process.env.AWUI_E2E_ROOT as string;
   for (const name of ["alpha", "beta"]) {
     const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/${name}` } })).json()) as { id: string };
