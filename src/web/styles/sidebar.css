@@ -803,7 +803,7 @@
   align-items: center;
   gap: 7px;
   width: 100%;
-  min-height: var(--sid-row);
+  min-height: var(--sid-row, 30px);
   padding: 0 10px 0 var(--show-more-pad, 10px);
   border: 0;
   border-radius: var(--r-sm);
