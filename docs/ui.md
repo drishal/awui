@@ -39,7 +39,7 @@ banners-dialogs.css), so search rather than guess.
 | Region | Components | Main styles | Covered by |
 |---|---|---|---|
 | Page frame, header (the "2 devices" count, its two control groups, the offline status word), the optional status bar | `App.tsx`, `StatusBar.tsx` | `app-frame.css`, `header.css` | `app.spec.ts`, `context-and-viewers.spec.ts` |
-| Sidebar: harness, projects, sessions, quick filter chips (`sidebar-filter.ts`), its two views (`sidebar-view.ts`, and the flat list's model in `recent-view.ts`) | `Sidebar.tsx`, `HarnessMenu.tsx`, `SessionCard.tsx`, `SidebarResizer.tsx`, `WorkingRing.tsx` | `sidebar.css`, `session-card.css` | `app.spec.ts`, `tabs.spec.ts`, `sidebar-filter.spec.ts`, `sidebar-recent.spec.ts`, `sidebar-separation.spec.ts` |
+| Sidebar: harness, projects, sessions, quick filter chips (`sidebar-filter.ts`), its two views (`sidebar-view.ts`, and the flat list's model in `recent-view.ts`), its menus and keyboard (`menu-focus.ts`, `focus-trap.ts`), the collapsed rail | `Sidebar.tsx`, `SidebarFilters.tsx`, `SidebarRail.tsx`, `HarnessMenu.tsx`, `SessionCard.tsx`, `SidebarResizer.tsx`, `WorkingRing.tsx`, `project-path.ts` | `sidebar.css`, `session-card.css`, `app-frame.css`, `responsive.css` | `app.spec.ts`, `tabs.spec.ts`, `sidebar-filter.spec.ts`, `sidebar-recent.spec.ts`, `sidebar-separation.spec.ts`, `sidebar-keys.spec.ts`, `phone.spec.ts` |
 | Session tabs: chats and rooms (drag to reorder, pin) | `TabStrip.tsx` (order logic: `tab-order.ts`) | `session-tabs.css` | `tabs.spec.ts`, `board.spec.ts` |
 | Timing: a turn's time as a waterfall (opened from the answer's row, and by the context chip's **Show more**) | `TurnTiming.tsx` (over `Dialog.tsx`) and `TimingView.tsx`, which the chip's full view draws too; rows and axis in `waterfall.ts` | `timing.css` (and `usage-details.css` inside the chip's dialog) | `turn-timing.spec.ts`, `context-and-viewers.spec.ts` |
 | Conversation: turns, answers, thoughts | `Conversation.tsx`, `CopyButton.tsx`, `Markdown.tsx`, `CodeBlock.tsx`, `QuoteButton.tsx`, `TurnRail.tsx`, `StickyPrompt.tsx` (`sticky-prompt.ts`), a turn's time on hover (`turn-time.ts`), Copy turn as Markdown (`turn-markdown.ts`) | `conversation.css`, `controls.css` (the copy morph) | `app.spec.ts`, `usage-and-actions.spec.ts` |
@@ -151,6 +151,19 @@ a literal colour.
   liveness is a server detail (the hover card says "Open in this server"), and
   parked / herdr / handed-over share one 12px muted glyph, in that priority,
   with the whole story in the card.
+- **Sidebar menus, keys, and the rail:** every popover (a row's ⋯ menu, the filter
+  menu, the project switch) is one tab stop: ↑/↓ and Home/End walk its items
+  (`menu-focus.ts`; the walk is `menuStep`, pure and tested), and Escape closes it and puts
+  the focus back on the button that opened it. The session list is one tab stop too
+  (`Sidebar.tsx`'s `useListKeys`): ↑/↓ between rows, Enter opens, and Shift+F10 (or the
+  ContextMenu key) opens that row's menu, so a row is not two stops. A row's hover card
+  also opens on keyboard focus, under the row (`SessionCard`'s `side`). On a phone the
+  drawer is a real modal: `focus-trap.ts` keeps Tab inside it, the chat behind it is
+  `inert`, and closing it returns the focus to the Open-menu button. Folded at ≥ 1100 px
+  the sidebar leaves `SidebarRail.tsx`, a 44 px strip (expand, new chat, the palette, and
+  the needs-you and running counts, each opening its list); narrower it hides completely
+  and the chat header's expand button returns it. `project-path.ts` words a folder for the
+  switch menu: home-relative, middle-cut (`~/…/dotfiles`), the full path on hover.
 - **Text:** `--chat-font` = 14.5 px × `--chat-scale` (config.yml's text size).
   A small uppercase section label (Recent, Todos, Actions) is 600 weight at
   `--label-size` with `--label-tracking`, in `--muted-text`; headings (the chat
