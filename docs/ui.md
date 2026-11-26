@@ -151,9 +151,9 @@ a literal colour.
   16px badge (radius 4, 10px/700, no ring), its branch after a `·`, and its
   count only while the group is folded. A folder's preview rows carry no date
   headings until the folder is opened: the age on each row already says when. Recent
-  has two left edges: a date heading's text and a section head's 10px icon sit on the
-  rows' mark column (18px into a 292px panel), and a section's label on the titles'
-  edge (34px); a section's count ends on the age column. Date headings stick to the
+  has one text edge: a date heading's text and every section head's label start on the
+  rows' titles' edge (34px into a 292px panel); only marks hang in the mark column
+  (18px), and a section's count ends on the age column. Date headings stick to the
   scroller's top on the panel's own `--surface`. Groups leave 14px between them (10px at
   compact density) and 4px from a head to its first row. A folder head names its branch
   once for its rows: any branch off the trunk, and the trunk too when another folder

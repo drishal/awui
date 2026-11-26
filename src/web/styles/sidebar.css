@@ -648,16 +648,16 @@
 }
 
 /* A calendar heading is a signpost in the list, not a title: sentence case at the size of a subline, in
-   the muted ink, with no tracking. Uppercase was a third voice arguing with the rows. Its text starts
-   where the rows' marks do (the row's own 8px inset), so marks and headings read as one column and the
-   titles as the next. It sticks to the top of the scroller on the panel's own surface, so a long
-   bucket keeps its name in view; z-index 1 lifts it over the rows' washes, and every menu or card
-   (z-index 31 and up) still opens over it. */
+   the muted ink, with no tracking. Uppercase was a third voice arguing with the rows. Every word in the
+   list starts on the titles' edge: the heading's 24px inset is the row's own 8px, its 10px mark slot and
+   the 6px gap after it, so only icons and marks hang in the mark column. It sticks to the top of the
+   scroller on the panel's own surface, so a long bucket keeps its name in view; z-index 1 lifts it over
+   the rows' washes, and every menu or card (z-index 31 and up) still opens over it. */
 .date-divider {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: calc(var(--section-pad-top) + 2px) 8px 4px;
+  padding: calc(var(--section-pad-top) + 2px) 8px 4px 24px;
   background: var(--surface);
   font-size: 11.5px;
   font-weight: 500;
