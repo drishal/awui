@@ -79,19 +79,31 @@ test("a row menu flipped above clears its own row's title", async ({ page }) => 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 1280, height: 560 });
   await signInAndOpen(page);
-  for (const text of ["menu above one", "menu above two", "menu above three"]) {
+  for (const text of ["menu above one", "menu above two", "menu above three", "menu above four", "menu above five", "menu above six", "menu above seven", "menu above eight"]) {
     await newChat(page);
     await sendAndWait(page, text);
   }
   await showSidebar(page);
-  // The newest row sits near the list's bottom third; a long menu cannot fit under it.
-  await page.locator(".session-item", { hasText: "menu above one" }).first().locator(".session").click({ button: "right" });
-  const box = await page.evaluate(() => {
-    const menu = document.querySelector(".row-menu")!.getBoundingClientRect();
-    const row = document.querySelector(".session-item.is-menu-open .session")!.getBoundingClientRect();
-    return { menuBottom: menu.bottom, rowTop: row.top };
+  // The first of these eight rows is now oldest: at the list's foot it is in the bottom third, where the
+  // menu must flip above rather than choosing the roomier side and scrolling itself.
+  const list = page.locator(".session-list");
+  await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await page.locator(".session-item", { hasText: "menu above one" }).first().locator(".session").evaluate((el) => {
+    el.scrollIntoView({ block: "end" });
+    if (el.getBoundingClientRect().top < window.innerHeight / 2) throw new Error(`fixture: target row is at ${el.getBoundingClientRect().top}, not in the window's lower half`);
+    const box = el.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.right - 30, clientY: box.top + box.height / 2 }));
   });
-  expect(box.menuBottom, "the menu's foot clears the row").toBeLessThanOrEqual(box.rowTop + 0.5);
+  // The menu measures its height on layout; read the settled pair rather than the first frame. The explicit
+  // alignment and precondition make this a test of the above-flip, not of the roomier-side below path.
+  await expect.poll(async () => {
+    const box = await page.evaluate(() => {
+      const menu = document.querySelector(".row-menu")!.getBoundingClientRect();
+      const row = document.querySelector(".session-item.is-menu-open .session")!.getBoundingClientRect();
+      return { bottom: menu.bottom, row: row.top, top: menu.top };
+    });
+    return box.bottom - box.row;
+  }, { message: "the flipped menu's foot clears its whole row" }).toBeLessThanOrEqual(0.5);
   await page.keyboard.press("Escape");
 });
 
