@@ -308,6 +308,8 @@ export function App() {
     });
   };
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** Bumped when a folder is picked by hand (the picker, a project's +): the sidebar's list follows that folder. */
+  const [folderPicks, setFolderPicks] = useState(0);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [opening, setOpening] = useState(false);
@@ -765,6 +767,7 @@ export function App() {
     try {
       const ws = await api<WorkspaceInfo>("/api/workspaces/open", { body: { path } });
       setWorkspace(ws);
+      setFolderPicks((n) => n + 1);
       setRecent(rememberWorkspace(ws.path));
       setPickerOpen(false);
       // The start screen's chip is the main way in now; picking a folder lands on it, so the drawer closes (as showChat does).
@@ -855,6 +858,7 @@ export function App() {
       fail(e);
       return;
     }
+    setFolderPicks((n) => n + 1);
     newTab();
     setStartFocus((n) => n + 1);
   };
@@ -2244,6 +2248,7 @@ export function App() {
       ) : null}
       <Sidebar
         home={boot.home}
+        picked={folderPicks}
         limits={limits}
         onMarkMany={(ids, change) => void markMany(ids, change)}
         resizer={<SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} onCommit={commitSidebarWidth} />}

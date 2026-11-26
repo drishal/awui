@@ -1152,6 +1152,8 @@ export function Sidebar(props: {
   open: boolean;
   /** The home folder (the server's), so the project menu shows `~/…/name` rather than a cut-off absolute path. */
   home: string;
+  /** Counts folders picked by hand (the picker, a project's +): a pick names the list, a session elsewhere does not. */
+  picked: number;
   /** Every account limits, whose reset the row menu can snooze until. */
   limits: UsageLimits | null;
   /** One bulk change for a selection of sessions (the endpoint takes them together). */
@@ -1296,6 +1298,12 @@ export function Sidebar(props: {
   if (currentId !== lastCurrent) {
     setLastCurrent(currentId);
     setFocus((chosen) => (chosen === "all" || (chosen !== "auto" && props.overview.workspaces.some((w) => w.id === chosen)) ? chosen : "auto"));
+  }
+  // A folder picked by hand names the list again; opening a session elsewhere leaves a chosen list where it is.
+  const lastPick = useRef(props.picked);
+  if (props.picked !== lastPick.current) {
+    lastPick.current = props.picked;
+    if (focus !== "auto") setFocus("auto");
   }
   // A projectless harness's flat history has no projects to focus, and neither has a lone project: with one,
   // "All projects" is the same list, so the plain group head stays instead of growing a back row that goes
