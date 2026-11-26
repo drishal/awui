@@ -37,7 +37,7 @@ import { setProjectIcon, useProjectIcons } from "../project-icons.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
-import { rowState, rowSubline, tagWords } from "../session-state.js";
+import { rowState, rowSubline, runElapsed, tagWords } from "../session-state.js";
 import { matchSpan } from "../sidebar-filter.js";
 import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
@@ -345,6 +345,16 @@ function RowMenu({
   );
 }
 
+/**
+ * A running row's age slot: how long its run has been going, counting up. Its own second clock, so only this
+ * word redraws as the time passes (the list's clock ticks a minute at a time, which would leave a counter
+ * saying "<1s" for a minute). A row whose start the listing does not say keeps its age.
+ */
+function RunElapsed({ s }: { s: ProjectSession }) {
+  const now = useNow(true, 1000);
+  return <span className="session-time is-elapsed">{runElapsed(s, now) ?? relativeTime(s.updatedAt)}</span>;
+}
+
 function SessionRow({
   s,
   active,
@@ -418,6 +428,8 @@ function SessionRow({
         <span className="session-wake" title="Snoozed until then">
           <IconClock size={11} /> {wakeLabel(s.snoozedUntil as number)}
         </span>
+      ) : stateTone === "working" ? (
+        <RunElapsed s={s} />
       ) : (
         <span className={`session-time${stateTone === "needs" ? " is-warn" : ""}`}>{relativeTime(s.updatedAt)}</span>
       )}

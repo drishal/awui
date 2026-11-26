@@ -1368,6 +1368,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A running row counts up instead of saying when it last changed: its age read "now" for the whole run,
+   which is the one thing someone watching a run already knows. The second ink, since the number is the
+   row's news, and tabular like every other time in the list. */
+.session-time.is-elapsed {
+  color: var(--text-2);
+}
+
 /* The age's place can instead hold ONE word, and the colour contract allows exactly four colours in the
    list: amber is needs-you, the accent is a run (its ring, or this word), green is done, and unread is
    the title's weight. Nothing else here is coloured. */

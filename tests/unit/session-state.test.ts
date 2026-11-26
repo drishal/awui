@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { asHarnessId, type ProjectSession } from "../../src/shared/protocol.js";
 import type { ProjectTag } from "../../src/web/recent-view.js";
-import { rowState, rowSubline, tagWords } from "../../src/web/session-state.js";
+import { rowState, rowSubline, runElapsed, tagWords } from "../../src/web/session-state.js";
 
 const s = (extra: Partial<ProjectSession> = {}): ProjectSession => ({
   id: "x",
@@ -116,5 +116,27 @@ describe("rowState", () => {
   it("marks unread, which the title draws as weight", () => {
     expect(state({ unread: true }).unread).toBe(true);
     expect(state().unread).toBe(false);
+  });
+});
+
+describe("runElapsed", () => {
+  // The row's own clock: its last activity is the message that started the run, so 10:00:00 against a
+  // reading of 10:01:04 is a run going for 1 minute and 4 seconds.
+  const at = (now: string) => Date.parse(now);
+  it("counts how long the run has been going, in the age slot's words", () => {
+    expect(runElapsed(s(), at("2026-11-26T10:00:12Z"))).toBe("12s");
+    expect(runElapsed(s(), at("2026-11-26T10:01:04Z"))).toBe("1m 4s");
+    expect(runElapsed(s(), at("2026-11-26T10:05:00Z"))).toBe("5m");
+    expect(runElapsed(s(), at("2026-11-26T11:30:00Z"))).toBe("1h 30m");
+    // A run the reader catches just as it starts is under a second, not "0s" (which reads as the letter O).
+    expect(runElapsed(s(), at("2026-11-26T10:00:00Z"))).toBe("<1s");
+  });
+
+  it("keeps the age when no start is known, rather than inventing one", () => {
+    // A listing with no activity says nothing about when the run began.
+    expect(runElapsed(s({ updatedAt: null }), at("2026-11-26T10:00:00Z"))).toBeNull();
+    expect(runElapsed(s({ updatedAt: "not a time" }), at("2026-11-26T10:00:00Z"))).toBeNull();
+    // A clock that reads ahead of ours is not a start either: the elapsed number would be negative.
+    expect(runElapsed(s(), at("2026-11-26T09:59:00Z"))).toBeNull();
   });
 });

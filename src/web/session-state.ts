@@ -3,6 +3,7 @@
 // one-line row puts that age beside the title.
 // Pure, so the flat Recent list, its sections, and grouped Projects share the same rules.
 import type { AgentStatusState, ProjectSession } from "../shared/protocol.js";
+import { formatDuration } from "../shared/time-words.js";
 import { agentStatusText } from "./agent-status.js";
 import type { ProjectTag } from "./recent-view.js";
 import { isTrunkBranch } from "./session-groups.js";
@@ -122,4 +123,17 @@ function rowGlyph(s: ProjectSession): RowGlyph | null {
     return { kind: "parked", className: "session-parked", label: "Parked: the agent was parked after sitting idle; opening it resumes the same session" };
   }
   return null;
+}
+
+/**
+ * How long the run in this row has been going, in words ("12s", "1m 4s"), or null when its start is not
+ * known and the row should keep its age. A working row's only clock is its last activity, which for a live
+ * chat is the prompt that started the run (the server stamps it on the user's message); a listing that
+ * says nothing, or a clock that reads ahead of ours, leaves the age in place rather than inventing a start.
+ * The reader is scanning for "is this going anywhere", so the elapsed time belongs where the age would sit.
+ */
+export function runElapsed(s: ProjectSession, now: number): string | null {
+  const start = s.updatedAt === null ? Number.NaN : Date.parse(s.updatedAt);
+  if (!Number.isFinite(start) || start > now) return null;
+  return formatDuration(now - start);
 }
