@@ -1746,6 +1746,9 @@ export function Sidebar(props: {
             {!quick && !props.sessionsLoading && (flat ? recent.rows.length === 0 : groups.length === 0) && pinned.length === 0 && needs.length === 0 && working.length === 0 && !props.sessionsError ? (
               <li className="sidebar-note">{searching ? "No matching sessions" : "No chats yet. Start one on the right."}</li>
             ) : null}
+            {/* The last child, so it paints over the rows by order: the fade into the footer tray is a scrim
+                here, never a mask on the scroller (see .list-tray in sidebar.css). */}
+            <li className="list-tray" role="presentation" aria-hidden="true" />
           </ul>
         </div>
 

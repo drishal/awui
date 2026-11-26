@@ -202,14 +202,101 @@ test("the harness title is its name and chevron, and its own label", async ({ pa
   await expect(head).toHaveCSS("font-weight", "500");
 });
 
-test("the list's bottom fade is the footer tray's own height", async ({ page }) => {
+test("the list's bottom fade is a scrim under the rows, and the list masks nothing", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  // Its own rows: 14, so the list scrolls and its page leaves a fold — the control that measured 1.35:1
+  // inside the fade at the drawer's end.
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/alpha` } })).json()) as { id: string };
+  await Promise.all(
+    Array.from({ length: 14 }, async (_, i) => {
+      const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+      await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: `fade row ${String(i + 1).padStart(2, "0")}`, mode: "normal" } });
+    }),
+  );
+  await page.setViewportSize({ width: 1280, height: 520 });
   await signInAndOpen(page);
+  await showSidebar(page);
+  await page.getByRole("searchbox", { name: "Search sessions" }).fill("fade row");
   const sidebar = page.locator(".sidebar");
-  const tray = await sidebar.evaluate((el) => getComputedStyle(el).getPropertyValue("--sid-tray").trim());
-  const footer = await sidebar.locator(".sidebar-footer").evaluate((el) => getComputedStyle(el).height);
-  expect(tray).toBe(footer);
-  const mask = await sidebar.locator(".session-list").evaluate((el) => getComputedStyle(el).maskImage);
-  expect(mask).toContain(footer);
+  const list = sidebar.locator(".session-list");
+  await expect(sidebar.locator(".flat-group .session-item")).toHaveCount(12, { timeout: 20_000 });
+
+  // The scroller is not a masked stacking context any more. A mask on it clipped every fixed popup drawn
+  // inside it: the row menu's foot faded into the footer, and the hover card beside the rail disappeared
+  // whole, leaving its shadow as a band on the list's edge. Playwright's visibility ignores masks, which is
+  // how both shipped.
+  await expect(list).toHaveCSS("mask-image", "none");
+  await expect(list).toHaveCSS("-webkit-mask-image", "none");
+
+  // The fade is the list's last child: a sticky scrim, as tall as the footer tray, with the scroller's own
+  // tail set to it, so the fade covers the tail at the end and never a row.
+  const fade = await page.evaluate(() => {
+    const list = document.querySelector<HTMLElement>(".sidebar .session-list");
+    const tray = list?.querySelector<HTMLElement>(".list-tray");
+    if (!list || !tray) return null;
+    const style = getComputedStyle(tray);
+    return { position: style.position, bottom: style.bottom, height: style.height, gradient: style.backgroundImage, last: list.lastElementChild === tray, tail: getComputedStyle(list).paddingBottom };
+  });
+  expect(fade, "the list ends in its tray").not.toBeNull();
+  const tray = fade as { position: string; bottom: string; height: string; gradient: string; last: boolean; tail: string };
+  expect(tray.position, "a sticky scrim, not a mask").toBe("sticky");
+  expect(tray.bottom).toBe("0px");
+  expect(tray.last, "the tray is the list's last child, so it paints over the rows").toBe(true);
+  expect(tray.gradient).toContain("gradient");
+  expect(tray.height, "the fade is the footer tray's own height").toBe(await sidebar.locator(".sidebar-footer").evaluate((el) => getComputedStyle(el).height));
+  expect(tray.tail, "the scroller's tail is the fade's height").toBe(tray.height);
+
+  // The hover card opens beside the rail, past the list's right edge: the popup a mask on the scroller ate.
+  const first = sidebar.locator(".flat-group .session-item").first();
+  await first.hover();
+  await expect(page.locator(".session-card")).toBeVisible();
+  const card = await page.evaluate(() => {
+    const card = document.querySelector(".session-card")?.getBoundingClientRect();
+    const list = document.querySelector(".sidebar .session-list")?.getBoundingClientRect();
+    return card && list ? { cardRight: card.right, listRight: list.right } : null;
+  });
+  expect(card, "the hover card drew").not.toBeNull();
+  expect((card as { cardRight: number }).cardRight, "the card reaches past the list").toBeGreaterThan((card as { listRight: number }).listRight + 40);
+
+  // At the end of the list nothing sits inside the fade: the last row and the fold under it rest above it,
+  // where before the tail was 12px and the fade 36, so the fold was drawn through it.
+  const rest = await page.evaluate(() => {
+    const list = document.querySelector<HTMLElement>(".sidebar .session-list");
+    if (!list) return null;
+    list.scrollTop = list.scrollHeight;
+    const trayTop = list.querySelector(".list-tray")?.getBoundingClientRect().top ?? null;
+    const items = [...list.querySelectorAll<HTMLElement>(".session-item, .show-more")];
+    const bottom = items[items.length - 1]?.getBoundingClientRect().bottom ?? null;
+    return { trayTop, bottom, scrolls: list.scrollHeight > list.clientHeight + 40 };
+  });
+  expect(rest?.scrolls, "the list has more rows than its height").toBe(true);
+  expect(rest?.bottom ?? 99, "the end of the list rests above the fade").toBeLessThanOrEqual((rest?.trayTop ?? 0) + 0.5);
+
+  // A menu from the last row runs to the window's own edge: its foot is a real item under the pointer, not
+  // a faded band (S04 lost "Archive" in the tray).
+  const last = sidebar.locator(".flat-group .session-item").last();
+  await last.hover();
+  await last.getByRole("button", { name: /^More for / }).click();
+  const menu = page.locator(".row-menu");
+  await expect(menu).toBeVisible();
+  const foot = await page.evaluate(() => {
+    const menu = document.querySelector<HTMLElement>(".row-menu");
+    const box = menu?.getBoundingClientRect();
+    if (!menu || !box) return null;
+    // The last item the menu actually shows: a menu taller than the room under its row scrolls.
+    const shown = [...menu.querySelectorAll<HTMLElement>("[role='menuitem']")].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5;
+    });
+    const item = shown[shown.length - 1];
+    if (!item) return null;
+    const r = item.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { inside: Boolean(hit?.closest(".row-menu")), label: (item.textContent ?? "").trim() };
+  });
+  expect(foot, "the menu drew").not.toBeNull();
+  // Its foot is a real target under the pointer, not a band the list's fade painted over.
+  expect(foot?.inside, `the menu's last row ("${foot?.label}") is a real target`).toBe(true);
 });
 
 test.describe("phone drawer", () => {

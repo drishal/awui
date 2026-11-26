@@ -98,8 +98,19 @@
   height: 28px;
 }
 
-.session-list {
-  mask-image: linear-gradient(to bottom, black calc(100% - var(--sid-tray)), transparent);
+/* The list's bottom edge: the last child fades whatever scrolls under it into the footer tray. It is a
+   sticky scrim on the list, not a mask on the scroller: a masked element is a clipping stacking context,
+   so the row menu opened from the last row faded into the tray, and the hover card beside the rail was cut
+   away entirely — its shadow was the only trace. Its own 36px is the tail the scroller may use (the tray's
+   height, kept as the list's bottom padding), so at the end of the list the fade covers the padding and
+   nothing else. */
+.list-tray {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  height: var(--sid-tray);
+  background: linear-gradient(to bottom, transparent, var(--surface));
+  pointer-events: none;
 }
 
 /* The drawer's top edge: a short fade that appears once the list has scrolled, so the row passing under the
@@ -679,8 +690,10 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   margin: 0 -4px;
-  /* The last row can scroll clear of the footer, where the scroller's edge fades out. */
-  padding: 0 4px 12px;
+  /* The fade the list's tray paints is this much of the scroller's tail, so the last row and the fold
+     under it come to rest above it, at full contrast, instead of inside it (the fold measured 1.35:1 at
+     the drawer's max scroll when the tail was 12px and the fade 44). */
+  padding: 0 4px var(--sid-tray);
 }
 
 /* The one scroller that used to fall back to the platform's own bar (light thumb, arrow buttons) inside
