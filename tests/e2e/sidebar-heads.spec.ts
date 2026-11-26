@@ -175,4 +175,7 @@ test("a section head outranks a date heading: second ink at 600 against muted at
   const date = sidebar(page).locator(".flat-group .date-divider").first();
   await expect(date).toHaveCSS("color", await painted(page, "--muted-text"));
   await expect(date).toHaveCSS("font-weight", "500");
+  // A state section and the dates under it are two ranks of one list: the break between them is the flat
+  // list's own 8px (6px of section gap + 2), not a folder's 14px, so the section does not float in a hole.
+  await expect(sidebar(page).locator(".flat-group").first()).toHaveCSS("margin-top", "8px");
 });

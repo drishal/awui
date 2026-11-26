@@ -733,6 +733,13 @@
   margin-top: calc(var(--section-gap) + 8px);
 }
 
+/* A state section and the dates under it are two ranks of one list, not two folders: the gap between them
+   closes to 8px (from 14), so the Needs-you block stops floating in its own hole. Folders keep the larger
+   break above — each is a place, and the step between places is what tells them apart. */
+.section-group + .flat-group {
+  margin-top: calc(var(--section-gap) + 2px);
+}
+
 /* Under "Search every chat" the list is that row's own result, not a group after the head: it tucks up to
    the row — the column's own 8px between the row and its list, less 2, so 6px in all — where the flat list
    otherwise leaves a group's 14px break. */

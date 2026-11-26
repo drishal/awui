@@ -176,8 +176,10 @@ a literal colour.
   headings stick to the
   scroller's top on the panel's own `--surface`, and a stuck one fades the rows scrolling
   under it (an 8px `.date-fade` of `--surface`, shown only while `stuck: top` under the heading's
-  `container-type: scroll-state`, `pointer-events: none`; progressive enhancement). Groups leave 14px between them (10px at
-  compact density) and 4px from a head to its first row. A folder head names its branch
+  `container-type: scroll-state`, `pointer-events: none`; progressive enhancement). Folders leave 14px between them (10px at
+  compact density) and 4px from a head to its first row; a state section (Needs you, Working, Pinned) leaves
+  only 8px (6px at compact density) above the dates under it, two ranks of one list rather than two places.
+  A folder head names its branch
   once for its rows: any branch off the trunk, and the trunk too when another folder
   shares the repository; its rows never repeat it (`rowSubline`'s `groupBranch`). Branch
   names are in the UI sans face, muted.
