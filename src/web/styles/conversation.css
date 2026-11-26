@@ -2271,12 +2271,20 @@
   padding: 0;
   border: 0;
   background: none;
+  border-radius: var(--r-xs);
+
+  /* Hover and keyboard focus fill the tick's target. Keep its existing 18px right edge, so a selected
+     mark does not move and the quiet tick remains quiet. */
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
+  }
 }
 
 .rail-tick {
-  width: 10px;
-  height: 2px;
-  border-radius: 1px;
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
   background: var(--hairline-strong);
   transition: width 0.12s ease, background 0.12s ease;
 }
