@@ -129,6 +129,21 @@ test("a project's badge is a 16px rounded square with no ring, and the needs-you
   await showSidebar(page);
 
   await sidebar(page).locator(".focus-switch").click();
+  const globalNew = sidebar(page).locator(".sidebar-compose");
+  await expect(globalNew).toHaveAttribute("aria-label", "New chat in alpha");
+  await expect(globalNew).toHaveAttribute("title", /New chat in alpha /);
+  await expect(globalNew).toHaveAttribute("aria-keyshortcuts", "Control+N Meta+N");
+  await globalNew.click();
+  await expect(page.getByRole("dialog", { name: "Choose a project folder" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /What should Fake do in alpha\?/ })).toBeVisible();
+  await showSidebar(page);
+  await expect(sidebar(page).locator(".sidebar-compose")).toHaveAttribute("aria-label", "New chat in alpha");
+  await sidebar(page).getByRole("button", { name: "Sidebar view: Projects" }).click();
+  await page.getByRole("menuitemradio", { name: "Recent", exact: true }).click();
+  await expect(sidebar(page).locator(".sidebar-compose")).toHaveAttribute("aria-label", "New chat — choose project");
+  await sidebar(page).getByRole("button", { name: "Sidebar view: Recent" }).click();
+  await page.getByRole("menuitemradio", { name: "Projects", exact: true }).click();
+  await sidebar(page).locator(".focus-switch").click();
   const badge = sidebar(page).locator(".focus-menu .project-badge").first();
   await expect(badge).toBeVisible();
   await page.keyboard.press("Escape");

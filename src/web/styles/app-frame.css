@@ -194,13 +194,18 @@
   padding: 0 4px;
   border-radius: 8px;
   background: var(--card);
-  box-shadow: 0 0 0 1px var(--hairline-strong);
+  box-shadow: none;
   color: var(--accent);
   font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 15px;
   text-align: center;
+}
+
+/* The running ring carries the state; its count stays neutral and unringed. */
+.rail-badge.is-working {
+  color: var(--text-2);
 }
 
 .rail-badge.is-warn,

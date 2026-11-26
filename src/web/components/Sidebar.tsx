@@ -1395,6 +1395,10 @@ export function Sidebar(props: {
   // nowhere. The count is the whole overview's, so a filter does not switch the layout under the pointer.
   const focusable = projectScoped(props.harnesses, props.harnessId ?? "") && props.overview.workspaces.length > 1;
   const focusId = flat || !focusable || focus === "all" ? null : focus === "auto" ? currentId : focus;
+  // A focused folder is a direct project target; Recent and All projects keep global project choice.
+  const namedFocus = !flat && focus !== "all" && focusable ? props.overview.workspaces.find((w) => w.id === (focus === "auto" ? currentId : focus)) ?? null : null;
+  const newChatLabel = namedFocus ? `New chat in ${namedFocus.name}` : "New chat — choose project";
+  const onNewChat = namedFocus ? () => props.onNewChatIn(namedFocus) : props.onNewChat;
   const sessionList = useRef<HTMLUListElement>(null);
   const onListKeyDown = useListKeys(sessionList);
   useViewSlide(sessionList, focusId ?? "all");
@@ -1546,7 +1550,7 @@ export function Sidebar(props: {
             hint="Filters the list; new chats start with this agent."
             onPick={props.onHarness}
           />
-          <button type="button" className="icon-btn sidebar-compose" aria-label="New chat" aria-keyshortcuts="Control+N Meta+N" title={`New chat (${shortcutHint("new")})`} onClick={props.onNewChat} disabled={props.newChatDisabled !== null}>
+          <button type="button" className="icon-btn sidebar-compose" aria-label={newChatLabel} aria-keyshortcuts="Control+N Meta+N" title={`${newChatLabel} (${shortcutHint("new")})`} onClick={onNewChat} disabled={props.newChatDisabled !== null}>
             <IconPlus size={16} />
           </button>
           <button type="button" className="icon-btn sidebar-collapse" aria-label="Collapse sidebar" title="Collapse sidebar" onClick={props.onCollapse}>
@@ -1823,7 +1827,7 @@ export function Sidebar(props: {
             {needs.length} {needs.length === 1 ? "needs" : "need"} you
           </button>
         ) : null}
-        <button type="button" className="new-chat drawer-new-chat" onClick={props.onNewChat} disabled={props.newChatDisabled !== null} aria-label="New chat in folder">
+        <button type="button" className="new-chat drawer-new-chat" onClick={onNewChat} disabled={props.newChatDisabled !== null} aria-label={newChatLabel} title={newChatLabel}>
           <IconPlus size={15} /> New chat
         </button>
         <div className="sidebar-footer">

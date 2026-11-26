@@ -25,7 +25,7 @@ function project(name: string): string {
 async function openProject(page: Page, dir: string): Promise<void> {
   await page.goto("/");
   await showSidebar(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.locator(".sidebar-compose").click();
   const picker = page.getByRole("dialog", { name: "Choose a project folder" });
   await picker.getByLabel("Or type a path").fill(dir);
   await picker.getByRole("button", { name: "Open", exact: true }).click();

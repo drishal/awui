@@ -52,7 +52,7 @@ test("capture ripple", async ({ page }) => {
   await page.getByRole("textbox", { name: "Message" }).fill("ripple demo");
   for (const [name, locator] of [
     ["send", page.getByRole("button", { name: "Send", exact: true })],
-    ["newchat", page.getByRole("button", { name: "New chat", exact: true })],
+    ["newchat", page.locator(".sidebar-compose")],
   ] as const) {
     const box = (await locator.boundingBox()) as { x: number; y: number; width: number; height: number };
     await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.4);

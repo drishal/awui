@@ -23,6 +23,7 @@ export function SidebarRail({
   onExpand,
   onNewChat,
   onSearch,
+  newChatLabel,
   onOpenSession,
   onUsage,
   onSettings,
@@ -36,6 +37,8 @@ export function SidebarRail({
   onExpand: () => void;
   onNewChat: () => void;
   onSearch: () => void;
+  /** The global action opens project choice; a direct project target names that project instead. */
+  newChatLabel: string;
   onOpenSession: (s: ProjectSession) => void;
   /** The footer's Usage panel, and Settings: the rail's bottom cluster stands where the tray does. */
   onUsage: () => void;
@@ -87,7 +90,7 @@ export function SidebarRail({
       <button type="button" className="icon-btn sidebar-expand" aria-label="Expand sidebar" title="Expand sidebar" onClick={onExpand}>
         <IconSidebar size={16} />
       </button>
-      <button type="button" className="icon-btn" aria-label="New chat" aria-keyshortcuts="Control+N Meta+N" title={`New chat (${shortcutHint("new")})`} onClick={onNewChat}>
+      <button type="button" className="icon-btn" aria-label={newChatLabel} aria-keyshortcuts="Control+N Meta+N" title={`${newChatLabel} (${shortcutHint("new")})`} onClick={onNewChat}>
         <IconPlus size={16} />
       </button>
       <button type="button" className="icon-btn" aria-label="Search and commands" aria-keyshortcuts="Control+K Meta+K" title={`Search and commands (${shortcutHint("palette")})`} onClick={onSearch}>
@@ -103,7 +106,7 @@ export function SidebarRail({
         {working.length > 0 ? (
           <button type="button" className="icon-btn rail-btn" aria-label={`${working.length} running`} aria-haspopup="menu" title={`${working.length} running`} onClick={(e) => openPeek("working", e.currentTarget)}>
             <WorkingRing colored={false} />
-            <span className="rail-badge">{working.length}</span>
+            <span className="rail-badge is-working">{working.length}</span>
           </button>
         ) : null}
       </div>

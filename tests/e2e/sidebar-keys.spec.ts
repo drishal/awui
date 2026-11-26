@@ -314,7 +314,11 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await signInAndOpen(page);
   await newChat(page);
   await sendAndWait(page, "settled for the rail");
-  // One chat waiting on an answer, so the amber count has something to count.
+  // Working and Waiting are exclusive buckets: a slow sibling supplies the first, an approval the second.
+  await newChat(page);
+  await send(page, "slow stream for the rail");
+  await expect(page.getByTestId("chat-status")).toHaveText("Working");
+  await newChat(page);
   await page.getByRole("button", { name: "New chat in a new tab" }).click();
   await send(page, "please ask first, for the rail");
   await expect(page.getByTestId("approval-card")).toBeVisible();
@@ -339,16 +343,24 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await expect(page.getByRole("listbox", { name: "Harness" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(rail.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
-  await expect(rail.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(rail.getByRole("button", { name: "New chat — choose project" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "Search and commands" })).toBeVisible();
   // Each icon names its shortcut, as the app's own table has it.
-  await expect(rail.getByRole("button", { name: "New chat" })).toHaveAttribute("title", /^(New chat \(Ctrl\+N\)|New chat \(⌘N\))$/);
+  await expect(rail.getByRole("button", { name: "New chat — choose project" })).toHaveAttribute("title", /^(New chat — choose project \(Ctrl\+N\)|New chat — choose project \(⌘N\))$/);
   await expect(rail.getByRole("button", { name: "Search and commands" })).toHaveAttribute("title", /^(Search and commands \(Ctrl\+K\)|Search and commands \(⌘K\))$/);
   // The count rides its glyph's own corner and stays inside the 44 px strip.
   const badge = (await rail.locator(".rail-badge").first().boundingBox())!;
   const strip = (await rail.boundingBox())!;
   expect(badge.x + badge.width, "the badge is not clipped at the rail's edge").toBeLessThanOrEqual(strip.x + strip.width);
   const needs = rail.getByRole("button", { name: /^\d+ waiting on you$/ });
+  const running = rail.getByRole("button", { name: /^\d+ running$/ });
+  await expect(running).toBeVisible();
+  await expect(running.getByRole("img", { name: "Working" })).toBeVisible();
+  await expect(running.locator(".rail-badge")).toHaveCSS("box-shadow", "none");
+  await expect(running.locator(".rail-badge")).toHaveCSS("color", await paintedColor(page, "--text-2"));
+  await running.click();
+  await expect(page.getByRole("menu", { name: "Running", exact: true }).getByRole("menuitem", { name: /slow stream for the rail/ })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(needs).toBeVisible();
 
   // A count opens the list it counts, and a row opens that chat.
@@ -372,7 +384,7 @@ test("a collapsed sidebar leaves a 44 px rail on a wide screen, and nothing narr
   await page.keyboard.press("Escape");
 
   // New chat and search are still one press away.
-  await rail.getByRole("button", { name: "New chat" }).click();
+  await rail.getByRole("button", { name: "New chat — choose project" }).click();
   const picker = page.getByRole("dialog", { name: "Choose a project folder" });
   await expect(picker).toBeVisible();
   await page.keyboard.press("Escape");

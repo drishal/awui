@@ -33,9 +33,9 @@ export async function showSidebar(page: Page): Promise<void> {
  * own sticky pill (its head keeps only the harness title and the close button).
  */
 async function clickNewChat(page: Page): Promise<void> {
-  const head = page.getByRole("button", { name: "New chat", exact: true });
+  const head = page.locator(".sidebar-compose:visible, .drawer-new-chat:visible").first();
   if (await head.isVisible()) await head.click();
-  else await page.getByRole("button", { name: "New chat in folder" }).click();
+  else await page.getByRole("button", { name: "New chat — choose project", exact: true }).click();
 }
 
 /** Open the app (this machine needs no sign-in) and pick a project through the folder browser. */
@@ -74,7 +74,7 @@ export async function newChat(page: Page, harness?: string): Promise<void> {
   await clickNewChat(page);
   // The folder picker opens over the start screen; Escape keeps the current folder.
   const picker = page.getByRole("dialog", { name: "Choose a project folder" });
-  await expect(picker).toBeVisible();
+  if (await picker.count()) await expect(picker).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(picker).toBeHidden();
   // A fresh chat always opens as the hero; wait for it rather than for "Idle",
