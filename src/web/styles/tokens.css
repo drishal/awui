@@ -229,7 +229,10 @@
   --cat-web: var(--link);
   --cat-agent: var(--thinking);
   --cat-plan: var(--accent);
-  --badge-1: var(--accent);
+  /* A project's monogram, four hues chosen from its name. None of them is a state colour: the accent
+     means a run (its ring and its word) everywhere in the sidebar, so a monogram in that hue read as one.
+     Slot 1 therefore shares the teal with slot 2, which is the cheaper half of the trade. */
+  --badge-1: var(--info);
   --badge-2: var(--info);
   --badge-3: var(--thinking);
   --badge-4: var(--orange);

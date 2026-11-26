@@ -130,6 +130,18 @@ test("a project's badge is a 16px rounded square with no ring, and the needs-you
   await expect(badge).toHaveCSS("box-shadow", "none");
   await expect(badge).toHaveCSS("font-size", "10px");
   await expect(badge).toHaveCSS("font-weight", "700");
+  // A monogram never wears the run's colour: --badge-1 is off the accent, so no row's badge can be read
+  // as a run. A project's hue comes from its name, and its letter is drawn in that hue.
+  const slotInk = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--badge-1)";
+    document.body.append(probe);
+    const ink = getComputedStyle(probe).color;
+    probe.remove();
+    return ink;
+  });
+  expect(slotInk, "no badge hue is the accent").not.toBe(await painted(page, "--accent"));
+  expect(await badge.evaluate((el) => getComputedStyle(el).color), "no badge in the accent").not.toBe(await painted(page, "--accent"));
 
   // The attention colour is the section's icon, not its name.
   const needs = page.getByTestId("needs-group");

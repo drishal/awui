@@ -1704,9 +1704,9 @@ body.is-resizing {
 
 
 /* A project's monogram: its first letter in one of four theme colours taken from its name
-   (--badge-1..4 in tokens.css). A wash with a tinted letter rather than a solid fill, so four
-   neighbours do not shout; no ring, since the 16px square is small enough to need none; and a
-   hue rotation of the accent could not tell them apart. */
+   (--badge-1..4 in tokens.css, none of them the accent, which means a run in this list). A wash with a
+   tinted letter rather than a solid fill, so four neighbours do not shout; no ring, since the 16px square
+   is small enough to need none; and a hue rotation of the accent could not tell them apart. */
 .project-badge {
   --badge: var(--badge-1);
   display: inline-grid;
