@@ -838,6 +838,18 @@
   color: var(--text);
 }
 
+/* Density: compact tightens the pitch to 28px (one line) and 44px (with a subline); a touch screen keeps the
+   larger sizes (the coarse-pointer rule below). */
+@media (hover: hover) {
+  :root[data-density="compact"] .sidebar {
+    --sid-row: 28px;
+  }
+
+  :root[data-density="compact"] .session {
+    padding-block: 5px;
+  }
+}
+
 /* A row is a mark, one line of words, and the age. Every row has the same pitch — 32px, or 48px with
    its subline — so a column of them is read by title alone; the title is one line with an ellipsis (the
    title attribute and the hover card keep the rest of it). Rows sit 2px apart and carry no divider: the

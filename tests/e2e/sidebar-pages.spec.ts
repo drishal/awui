@@ -2,7 +2,7 @@
 // rows, the current one with 8, and each "Show N more in <folder>" adds 20 — never a whole history at
 // once. It is plain muted text at the rows' pitch (44px on a phone), its label naming the folder.
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
+import { showAllProjects, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
 const rowsOf = (group: Locator) => group.locator(".session-item");
@@ -26,7 +26,7 @@ test("a folder that is not the current one opens with 4 rows, and each Show more
   await signInAndOpen(page);
   await showSidebar(page);
   // All projects, so beta is a folder of its own beside the current one.
-  await page.getByRole("button", { name: "All projects" }).click();
+  await showAllProjects(page);
   const beta = page.getByTestId("project-group").filter({ has: page.locator(".project-name", { hasText: /^beta$/ }) });
   await expect(beta).toBeVisible();
   await expect(rowsOf(beta), "a folder's preview is 4 rows").toHaveCount(4);

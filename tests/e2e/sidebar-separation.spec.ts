@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
+import { newChat, send, sendAndWait, showAllProjects, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 /** Longer than the row can hold: the title must be cut, not wrapped. */
 const LONG_TITLE =
@@ -96,7 +96,7 @@ test.describe("the separated rows", () => {
     await showSidebar(page);
     // The all-projects list, whose heads have no back button: a head is chevron, badge, name.
     await expect(page.getByTestId("focused-project")).toBeVisible();
-    await page.getByRole("button", { name: "All projects" }).click();
+    await showAllProjects(page);
     await expect(page.getByTestId("focused-project")).toHaveCount(0);
     const xs = await page.evaluate(() => {
       const group = [...document.querySelectorAll('[data-testid="project-group"]')].find((el) => el.querySelector(".project-name")?.textContent === "alpha");

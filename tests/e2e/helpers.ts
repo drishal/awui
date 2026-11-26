@@ -8,6 +8,12 @@ export async function useProjectsView(page: Page): Promise<void> {
   await page.addInitScript(() => window.localStorage.setItem("awui.sidebarView", JSON.stringify("projects")));
 }
 
+/** Leave a focused project for the all-projects list: the head is one switch button whose menu starts with "All projects". */
+export async function showAllProjects(page: Page): Promise<void> {
+  await page.locator(".focus-switch").click();
+  await page.getByRole("menuitem", { name: "All projects" }).click();
+}
+
 /**
  * Make the sidebar usable. On phones it is a drawer; `isVisible()` is not a
  * reliable signal mid-transition, so decide by layout and the drawer's state.

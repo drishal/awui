@@ -1,7 +1,7 @@
 // The sidebar's menus, keyboard and focus: the row menu's task groups, the keys every menu answers
 // (arrows, Home/End, Escape back to its opener), the list as one tab stop, and the collapsed rail.
 import { expect, test, type Page } from "@playwright/test";
-import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
+import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 /** The menu's rows in order, a `|` for each group rule and a folded group's own rows inline, so a test reads its shape. */
 async function menuShape(page: Page): Promise<string[]> {
@@ -14,6 +14,7 @@ async function menuShape(page: Page): Promise<string[]> {
 }
 
 test("the row menu groups its actions by task, with a rule between the groups", async ({ page }) => {
+  await useProjectsView(page);
   await page.setViewportSize({ width: 1280, height: 860 });
   await signInAndOpen(page);
   await newChat(page);
@@ -169,6 +170,7 @@ test("a row reached by the keyboard shows its hover card under itself", async ({
 });
 
 test("All projects stays chosen when a session opens in another folder", async ({ page, request }) => {
+  await useProjectsView(page);
   const root = process.env.AWUI_E2E_ROOT as string;
   const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
   const other = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
@@ -193,6 +195,7 @@ test("All projects stays chosen when a session opens in another folder", async (
 });
 
 test("the project switch menu walks with the arrows and Escape returns to its button", async ({ page, request }) => {
+  await useProjectsView(page);
   const root = process.env.AWUI_E2E_ROOT as string;
   // A second folder with a session of its own, so the switch has somewhere to go.
   const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
@@ -221,6 +224,7 @@ test("the project switch menu walks with the arrows and Escape returns to its bu
 });
 
 test("the focus head is one button naming the project, and its menu counts and places the folders", async ({ page, request }) => {
+  await useProjectsView(page);
   const root = process.env.AWUI_E2E_ROOT as string;
   const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
   const other = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
