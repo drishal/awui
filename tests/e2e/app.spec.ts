@@ -1178,8 +1178,10 @@ test("the sidebar focuses the current project and opens its sessions across harn
   await expect(page.getByText("No matching sessions")).toBeVisible();
   await page.getByRole("searchbox", { name: "Search sessions" }).fill("");
 
-  // All projects lists each folder; opening a session in beta refocuses the list on it.
-  await focused.getByRole("button", { name: "All projects" }).click();
+  // All projects lists each folder, and opening a session in beta leaves that choice where it is: a list the
+  // user picked holds, and only automatic following moves with the folder.
+  await focused.locator(".focus-switch").click();
+  await page.getByRole("menuitem", { name: "All projects" }).click();
   const groups = page.getByTestId("project-group");
   await expect(groups).toHaveCount(2);
   const beta = groups.filter({ has: page.locator(".project-name", { hasText: /^beta$/ }) });
@@ -1188,9 +1190,13 @@ test("the sidebar focuses the current project and opens its sessions across harn
   await beta.locator(".session", { hasText: "xproj four" }).click();
   await expect(prompts(page)).toHaveText(["xproj four"]);
   await expect(page.locator(".chat-header .chat-path")).toHaveText("beta");
-  await expect(focused.locator(".project-name")).toHaveText("beta");
-  await expect(list.locator(".session")).toHaveCount(otherFake + 5);
+  await expect(focused).toHaveCount(0);
+  await expect(groups).toHaveCount(2);
 
+  // A reload follows the folder again, which is how the focused list comes back.
+  await page.reload();
+  await expect(page.getByTestId("focused-project").locator(".project-name")).toHaveText("beta");
+  await expect(list.locator(".session")).toHaveCount(otherFake + 5);
   // A session moves inside its date section from its menu, and keeps its place for every device.
   await list.getByRole("button", { name: "More for xproj five" }).click();
   await page.getByRole("menuitem", { name: "Move up" }).click();

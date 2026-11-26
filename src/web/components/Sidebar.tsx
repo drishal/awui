@@ -1290,14 +1290,15 @@ export function Sidebar(props: {
     [overview, props.query, props.harnessId, showArchived, showSettled, showSnoozed, props.activeSessionId, props.activeChatId, now, weekStart, recentLimit],
   );
 
-  // The focused project (Hermes Desktop's one-folder view). "auto" follows the current folder;
-  // "all" is the back row's choice, kept until a folder is picked elsewhere or the header names one.
+  // The focused project (Hermes Desktop's one-folder view). "auto" follows the current folder; "all" is the
+  // user's own choice, and so is a named project: both hold while sessions open in other folders, and only
+  // automatic following (or a project that left the list) gives way to the folder that moved.
   const [focus, setFocus] = useState<string | "all" | "auto">("auto");
   const currentId = props.workspace?.id ?? null;
   const [lastCurrent, setLastCurrent] = useState(currentId);
   if (currentId !== lastCurrent) {
     setLastCurrent(currentId);
-    setFocus("auto");
+    setFocus((chosen) => (chosen === "all" || (chosen !== "auto" && props.overview.workspaces.some((w) => w.id === chosen)) ? chosen : "auto"));
   }
   // A projectless harness's flat history has no projects to focus, and neither has a lone project: with one,
   // "All projects" is the same list, so the plain group head stays instead of growing a back row that goes

@@ -165,3 +165,27 @@ test("a row reached by the keyboard shows its hover card under itself", async ({
   await expect(row).toHaveAttribute("aria-describedby", /.+/);
 });
 
+test("All projects stays chosen when a session opens in another folder", async ({ page, request }) => {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
+  const other = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+  await request.post(`/api/chats/${other.chatId}/messages`, { data: { text: "beta session", mode: "normal" } });
+  await signInAndOpen(page, "alpha");
+  await newChat(page);
+  await sendAndWait(page, "alpha session");
+  const focused = page.getByTestId("focused-project");
+  await expect(focused.locator(".project-name")).toHaveText("alpha");
+  // All projects, deliberately, from the switch's first item.
+  await focused.locator(".focus-switch").click();
+  await page.getByRole("menuitem", { name: "All projects" }).click();
+  const groups = page.getByTestId("project-group");
+  await expect(groups).toHaveCount(2);
+
+  // Opening a session in another folder moves the folder, not the list: the choice holds.
+  const beta = groups.filter({ has: page.locator(".project-name", { hasText: /^beta$/ }) });
+  await beta.locator(".session", { hasText: "beta session" }).click();
+  await expect(page.locator(".chat-header .chat-path")).toHaveText("beta");
+  await expect(focused).toHaveCount(0);
+  await expect(groups).toHaveCount(2);
+});
+
