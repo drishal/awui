@@ -118,7 +118,10 @@ a literal colour.
   differs from its group's head), with 2px between rows and no hairline or rail. In
   Recent the tag is the project's badge, then — in the branch's place, and so before the project's
   name — the line the agent set for itself, then the project's name after a `·` (`ready to merge ·
-  awui-wt`): a row states one fact beyond where it lives, and the fact that changed comes first.
+  awui-wt`): a row states one fact beyond where it lives, and the fact that changed comes first. A
+  blocked agent's state is that fact and its comment is a note under it, so the row says `blocked ·
+  waiting on CI`: the word takes `--row-warn` while the note and the project stay muted (`TagFact`),
+  where the note alone used to read as a finished row.
   `session-state.ts` decides that subline and its state. On a two-line row the title
   takes the row's full width (8px right padding, no hover gutter). Its second line
   holds the project's badge and name on the left, and the age or allowed state word

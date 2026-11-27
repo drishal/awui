@@ -1,9 +1,9 @@
-// A sidebar row's one muted subline (session-state.ts): the project a row is out of, the status its
-// agent set, or a branch that is not the folder's trunk — and the row stays one line when none applies.
+// A sidebar row's one muted subline (session-state.ts): the project a row is out of, the fact its
+// agent stated, or a branch that is not the folder's trunk — and the row stays one line when none applies.
 import { describe, expect, it } from "vitest";
 import { asHarnessId, type ProjectSession } from "../../src/shared/protocol.js";
 import type { ProjectTag } from "../../src/web/recent-view.js";
-import { rowState, rowSubline, runElapsed, tagWords } from "../../src/web/session-state.js";
+import { rowState, rowSubline, runElapsed } from "../../src/web/session-state.js";
 
 const s = (extra: Partial<ProjectSession> = {}): ProjectSession => ({
   id: "x",
@@ -18,22 +18,24 @@ const tag: ProjectTag = { id: "wt", name: "awui-wt", branch: "feat/sidebar" };
 
 describe("rowSubline", () => {
   it("says which project a row is out of, when the list is across projects", () => {
-    expect(rowSubline(s(), { tag })).toEqual({ kind: "tag", tag, status: null });
+    expect(rowSubline(s(), { tag })).toEqual({ kind: "tag", tag, fact: null });
   });
 
   it("puts the agent's own line first, in the branch's place", () => {
-    // What the agent reported is the fact that changed, so it leads: badge, status, then the project.
-    expect(rowSubline(s({ agentStatus: { state: "review", comment: "ready to merge", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: "ready to merge" });
+    // What the agent reported is the fact that changed, so it leads: badge, fact, then the project.
+    expect(rowSubline(s({ agentStatus: { state: "review", comment: "ready to merge", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, fact: { kind: "words", text: "ready to merge" } });
     // With no sentence of its own, the state's word.
-    expect(rowSubline(s({ agentStatus: { state: "blocked", comment: "", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: "blocked" });
-    // A branch is one more annotation than a 16px subline holds, so the status takes its place.
-    expect(rowSubline(s({ agentStatus: { state: "done", comment: "shipped", at: 7 } }), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: "shipped" });
+    expect(rowSubline(s({ agentStatus: { state: "blocked", comment: "", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, fact: { kind: "state", word: "blocked", note: null } });
+    // A branch is one more annotation than a 16px subline holds, so the fact takes its place.
+    expect(rowSubline(s({ agentStatus: { state: "done", comment: "shipped", at: 7 } }), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, fact: { kind: "words", text: "shipped" } });
   });
 
-  it("words a tag's badge line: the status, a `·`, then the project", () => {
-    expect(tagWords(tag, null), "a row out of its project, nothing reported").toBe("awui-wt · feat/sidebar");
-    expect(tagWords({ ...tag, branch: null }, null), "the branch said once, at the head").toBe("awui-wt");
-    expect(tagWords({ ...tag, branch: null }, "ready to merge"), "what the agent said, before where it lives").toBe("ready to merge · awui-wt");
+  it("says a blocked agent's state before the note under it", () => {
+    // The state is the fact and the comment is a note under it: a row that only said "waiting on CI" read
+    // as a finished one, so `blocked` stays its own word (the row colours it and never cuts it).
+    expect(rowSubline(s({ agentStatus: { state: "blocked", comment: "waiting on CI", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, fact: { kind: "state", word: "blocked", note: "waiting on CI" } });
+    // Every other state's comment already says what it is: it is the line, with no word beside it.
+    expect(rowSubline(s({ agentStatus: { state: "working", comment: "running the tests", at: 7 } }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, fact: { kind: "words", text: "running the tests" } });
   });
 
   it("says what the agent reported, inside its project", () => {
@@ -55,8 +57,8 @@ describe("rowSubline", () => {
     // The head is always asked to show a branch it has, even without sharesRepo.
     expect(rowSubline(s(), { branch: "test", groupBranch: "test" })).toBeNull();
     expect(rowSubline(s(), { branch: "feat/worktree", groupBranch: "test" })).toEqual({ kind: "branch", text: "feat/worktree" });
-    expect(rowSubline(s(), { tag, groupBranch: tag.branch })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, status: null });
-    expect(rowSubline(s(), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag, status: null });
+    expect(rowSubline(s(), { tag, groupBranch: tag.branch })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, fact: null });
+    expect(rowSubline(s(), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag, fact: null });
   });
 });
 

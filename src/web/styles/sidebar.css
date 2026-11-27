@@ -1337,7 +1337,9 @@
 }
 
 /* The one line under the title, at a fixed 16px so the row with one is 48px exactly: a project tag, the
-   agent's own line, or a branch the folder is not on its trunk of. Ellipsised: it is a glance. */
+   agent's own line, or a branch the folder is not on its trunk of. Ellipsised: it is a glance. A tag's words
+   are separate spans (TagLine), so a compact row can give way piece by piece (the compact block at the end of
+   this file). */
 .session-sub {
   display: flex;
   align-items: center;
@@ -1371,6 +1373,13 @@
   max-width: none;
   color: var(--muted-text);
   font-size: 12px;
+}
+
+/* A blocked agent's state word leads its own line and takes the attention colour: its comment is a note
+   under the state, so the rest of the line (the note, the project) stays muted. It read as a finished row
+   when the note stood alone ("waiting on CI · awui"). */
+.session-sub-state {
+  color: var(--row-warn);
 }
 
 /* The age's box, at the end of whichever line holds it. On hover only its contents fade (the rules

@@ -38,7 +38,7 @@ import { projectSlots, type ProjectMonogram } from "../project-badge.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
-import { rowState, rowSubline, runElapsed, tagWords } from "../session-state.js";
+import { rowState, rowSubline, runElapsed, type TagFact } from "../session-state.js";
 import { matchSpan } from "../sidebar-filter.js";
 import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
@@ -355,6 +355,45 @@ function RunElapsed({ s }: { s: ProjectSession }) {
   return <span className="session-time is-elapsed">{runElapsed(s, now) ?? relativeTime(s.updatedAt)}</span>;
 }
 
+/**
+ * A tagged row's one line of words, piece by piece: the fact that changed (a blocked agent's state word and
+ * the note under it, or the agent's own sentence), then the project the row is out of, then a branch no head
+ * stated. Each piece is its own span so a compact row gives way in that order (sidebar.css): the project
+ * before the fact beside it, and the state's word never.
+ */
+function TagLine({ tag, fact }: { tag: ProjectTag; fact: TagFact | null }) {
+  return (
+    <span className={`session-sub-name${fact === null && tag.branch === null ? " is-plain" : ""}`}>
+      {fact === null ? null : (
+        <>
+          <span className="session-sub-fact">
+            {fact.kind === "state" ? (
+              <>
+                <span className="session-sub-state">{fact.word}</span>
+                {fact.note ? ` · ${fact.note}` : null}
+              </>
+            ) : (
+              fact.text
+            )}
+          </span>
+          {" "}
+          <span className="session-sub-dot" aria-hidden="true">·</span>
+          {" "}
+        </>
+      )}
+      <span className="session-sub-project">{tag.name}</span>
+      {tag.branch ? (
+        <>
+          {" "}
+          <span className="session-sub-dot" aria-hidden="true">·</span>
+          {" "}
+          <span className="session-sub-branch">{tag.branch}</span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
 function SessionRow({
   s,
   active,
@@ -567,9 +606,7 @@ function SessionRow({
           {sub ? (
             <span className={`session-sub${sub.kind === "branch" ? " is-branch" : ""}${sub.kind === "agent" ? ` session-agent is-${sub.state}` : ""}`} title={sub.kind === "agent" ? `${sub.line} · set by the agent ${ago(sub.at)}` : undefined}>
               {sub.kind === "tag" ? <ProjectBadge id={sub.tag.id} name={sub.tag.name} size={12} slot={slot} /> : null}
-              <span className="session-sub-name">
-                {sub.kind === "tag" ? tagWords(sub.tag, sub.status) : sub.text}
-              </span>
+              {sub.kind === "tag" ? <TagLine tag={sub.tag} fact={sub.fact} /> : <span className="session-sub-name">{sub.text}</span>}
               <span className="session-slot">{meta}</span>
             </span>
           ) : null}

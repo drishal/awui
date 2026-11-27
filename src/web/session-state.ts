@@ -2,19 +2,27 @@
 // names the project, then what its agent says when it set a status, and puts the age at its end; a
 // one-line row puts that age beside the title.
 // Pure, so the flat Recent list, its sections, and grouped Projects share the same rules.
-import type { AgentStatusState, ProjectSession } from "../shared/protocol.js";
+import type { AgentStatusLine, AgentStatusState, ProjectSession } from "../shared/protocol.js";
 import { formatDuration } from "../shared/time-words.js";
-import { agentStatusText } from "./agent-status.js";
+import { AGENT_STATUS_WORDS, agentStatusText } from "./agent-status.js";
 import type { ProjectTag } from "./recent-view.js";
 import { isTrunkBranch } from "./session-groups.js";
+
+/**
+ * The fact a tagged row says before the project it is out of:
+ *  - `state`: the word for the state an agent reported, with the sentence it wrote under it as a note — a
+ *    `blocked` row says both (`blocked · waiting on CI`), because a note alone read as a finished row;
+ *  - `words`: everything else the agent said, one sentence (`ready to merge`).
+ */
+export type TagFact = { kind: "state"; word: string; note: string | null } | { kind: "words"; text: string };
 
 /** The one muted line under a title. */
 export type RowSubline =
   /**
    * The project the row is out of: its badge and name, its branch when that is not the trunk, and — in
-   * place of that branch — the line its own agent set.
+   * place of that branch — the fact its own agent stated.
    */
-  | { kind: "tag"; tag: ProjectTag; status: string | null }
+  | { kind: "tag"; tag: ProjectTag; fact: TagFact | null }
   /** The line the row's own agent set for itself: its words, its state, and when it wrote it. */
   | { kind: "agent"; text: string; state: AgentStatusState; line: string; at: number }
   /** The branch the row's project is checked out on, when it is not one it treats as its trunk. */
@@ -23,19 +31,19 @@ export type RowSubline =
 /**
  * The subline a row shows, or null when it has nothing to add (the row is then one line):
  *  - out of its project (`tag`), say which project — the flat list, and the sections above the folders —
- *    and, when its agent set a line, that line first (`tagWords`): one annotation, so the branch gives way;
+ *    and, when its agent stated one, that fact first (`tagFact`): one annotation, so the branch gives way;
  *  - inside its project, the agent's own status line, else a branch that is not the trunk one and not
  *    the one its group's head already states (`groupBranch`): a branch is said once, where it applies.
  */
 export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; branch?: string | null; groupBranch?: string | null }): RowSubline | null {
   if (opts.tag) {
-    // The status is the fact that changed, so it leads: the tag's words put it before the project it is
-    // out of (tagWords below). It takes the branch's place, because two annotations on one line is one
-    // too many, and the branch is the group's fact (the head states it) where a status is this row's.
-    const status = s.agentStatus ? s.agentStatus.comment || agentStatusText(s.agentStatus) : null;
+    // The fact is what changed, so it leads: the row says it before the project it is out of. It takes the
+    // branch's place, because two annotations on one line is one too many, and the branch is the group's
+    // fact (the head states it) where a status is this row's.
+    const fact = tagFact(s.agentStatus);
     // A group head owns its branch: only a worktree row with a different one states it again.
-    const tag = status !== null || (opts.groupBranch != null && opts.tag.branch === opts.groupBranch) ? { ...opts.tag, branch: null } : opts.tag;
-    return { kind: "tag", tag, status };
+    const tag = fact !== null || (opts.groupBranch != null && opts.tag.branch === opts.groupBranch) ? { ...opts.tag, branch: null } : opts.tag;
+    return { kind: "tag", tag, fact };
   }
   if (s.agentStatus) {
     const { state, comment, at } = s.agentStatus;
@@ -47,13 +55,15 @@ export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; b
 }
 
 /**
- * The words a tagged row says after its badge. The agent's own line comes first — it is the fact that
- * changed, and the project is where the row lives — then the project, after a `·`: `ready to merge ·
- * awui-wt`. A branch rides after the project's name only where no status took its place.
+ * What a tagged row says before the project it is out of, in the branch's place. The agent's own words lead
+ * — it is the fact that changed, and the project is only where the row lives — and `blocked` is the one state
+ * whose word its own note does not already say: `waiting on CI` alone read as a finished row, so the row says
+ * `blocked · waiting on CI` (the state first, its note under it).
  */
-export function tagWords(tag: ProjectTag, status: string | null): string {
-  const project = tag.branch ? `${tag.name} · ${tag.branch}` : tag.name;
-  return status ? `${status} · ${project}` : project;
+function tagFact(status: AgentStatusLine | undefined): TagFact | null {
+  if (!status) return null;
+  if (status.state === "blocked") return { kind: "state", word: AGENT_STATUS_WORDS.blocked, note: status.comment || null };
+  return { kind: "words", text: status.comment || agentStatusText(status) };
 }
 
 /** The leading slot a row's 10px mark takes, in the order the row chooses one. */
