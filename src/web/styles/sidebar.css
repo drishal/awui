@@ -341,6 +341,11 @@
   min-width: 0;
 }
 
+/* Placeholder needs the theme's minimum contrast, not the UA default grey on a tinted field. */
+.search-field > input::placeholder {
+  color: var(--muted-text);
+  opacity: 1;
+}
 .view-switch {
   display: inline-flex;
   width: 100%;
@@ -358,6 +363,11 @@
   font-size: 11.5px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* At the desktop resizer's floor the longer view name outranks the chevron's gap, not the input's own text floor. */
+.sidebar[data-narrow-field] .view-switch {
+  gap: 0;
 }
 
 /* Only the view's words yield at the narrowest supported width; its target and the filter keep their place. */
@@ -1405,7 +1415,9 @@
    pixels is the smallest weight-700 letter that still reads as one: at 8px a D and an A were a smudge in a
    screenshot, which is how they are met in a scrolled list. */
 .session-sub .project-badge,
-.session-sub .project-badge[data-icon] {
+.session-sub .project-badge[data-icon],
+.session-project-mark > .project-badge,
+.session-project-mark > .project-badge[data-icon] {
   border-radius: 3px;
   font-size: 9px;
 }
@@ -1546,8 +1558,9 @@
 .session-item > .session-more {
   position: absolute;
   top: 4px;
-  right: 4px;
-  width: 24px;
+  right: 2px;
+  /* Only the box grows toward the row's left, never the glyph's centre or court. */
+  width: 28px;
   height: 24px;
   opacity: 0;
   transition: opacity var(--dur-hover) var(--ease-out);
@@ -1560,6 +1573,7 @@
   top: auto;
   bottom: 0;
 }
+
 
 .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-more {
   opacity: 1;
@@ -2086,6 +2100,10 @@ body.is-resizing {
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .sidebar .search-field > input {
     min-width: 92px;
   }
+  /* Recent is shorter than Projects: the longer view label needs 4px of the search minimum back at the floor. */
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .sidebar[data-narrow-field] .search-field > input {
+    min-width: 88px;
+  }
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .session {
     padding: 9px 10px;
     border-radius: var(--r-md);
@@ -2155,6 +2173,21 @@ body.is-resizing {
    line. Every rule here restates one value the separated look set above, and only those: delete the block
    and the default look returns whole. The panel around the rows (heads, chips, hover cards, the active
    wash) keeps its own rules either way. */
+/* When the project name clips for space, its decorative badge gives way too: otherwise 12px and its gap stay
+   stranded between the title and a clipped word. The accessible name keeps the project text, not the badge. */
+:root[data-sidebar="compact"] .sidebar.is-narrow .session-sub .project-badge {
+  display: none;
+}
+/* The compact inset keeps search notes on the row's own text edge, 2px left of the airy default. */
+:root[data-sidebar="compact"] .search-scope {
+  padding: 0 10px 0 24px;
+}
+/* The longer Projects label must fit on the same minimum rail; coarse pointers retain their own input floor. */
+@media (hover: hover) and (pointer: fine) {
+  :root[data-sidebar="compact"] .sidebar[data-narrow-field] .search-field > input {
+    min-width: 88px;
+  }
+}
 :root[data-sidebar="compact"] .sidebar {
   --sid-row: 28px;
 }
@@ -2321,11 +2354,7 @@ body.is-resizing {
   padding-right: 0;
 }
 
-/* No badge in a 28px line: the project's name alone is the suffix. */
-:root[data-sidebar="compact"] .session-sub .project-badge {
-  display: none;
-}
-
+/* A compact fact owns the suffix. Its project identity moves to the empty mark court, not a second badge beside it. */
 /* The ⋯ is centred on the one 28px line, over the age it replaces: the two-line shape's rule puts it at
    the row's bottom, where that shape keeps its age, and this one keeps the age on the title's line. */
 :root[data-sidebar="compact"] .session-item:has(.session-body.has-sub) > .session-more {
@@ -2334,6 +2363,20 @@ body.is-resizing {
 }
 
 /* The marks are positioned for a two-line row's first line; on the one centred line they centre too. */
+/* The mark rides the harness dot's own court — its 6px box and 2px side margins — with the 12px badge
+   centred in it (it overlaps 3px into each side's gap): a tag row spends no more width than a blank
+   one, so every title keeps one left edge. The compact centring rule below centres the whole mark on
+   the one 28px line; the default style keeps it on the title's own line, as the ring and blank dot sit. */
+.session-project-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.session-project-mark > .project-badge {
+  flex: none;
+}
+
 :root[data-sidebar="compact"] .session :is(.harness-dot, .working-ring, .session-asking-dot) {
   align-self: center;
   margin-top: 0;

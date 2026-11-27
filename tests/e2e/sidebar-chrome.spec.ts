@@ -154,6 +154,14 @@ test("the view control keeps its name and target at the narrowest supported widt
   expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth + 0.5), "Recent is the whole word, not Rec…").toBe(true);
   const input = sidebar.getByRole("searchbox", { name: "Search sessions" });
   expect((await input.boundingBox())!.width, "the placeholder keeps room beside it").toBeGreaterThanOrEqual(80);
+  await view.click();
+  await page.getByRole("menuitemradio", { name: "Projects", exact: true }).click();
+  const projects = sidebar.getByRole("button", { name: "Sidebar view: Projects" }).locator("span");
+  await expect(projects).toHaveText("Projects");
+  expect(await projects.evaluate((el) => el.scrollWidth <= el.clientWidth + 0.5), "Projects is the whole word at the resizer floor, not Proje…").toBe(true);
+  await page.evaluate(() => document.documentElement.dataset.sidebar = "compact");
+  await expect(sidebar).toBeVisible();
+  expect(await projects.evaluate((el) => el.scrollWidth <= el.clientWidth + 0.5), "compact also keeps the whole Projects word").toBe(true);
   await expect(sidebar.locator(".filter-chip")).toBeVisible();
 });
 
@@ -506,13 +514,31 @@ test.describe("phone drawer", () => {
         };
       })
       .toEqual({ end: 0, fill: 0, top: 0 });
-    // The head is a 44 px touch row with 40 px controls, and the sticky New chat pill is the only way to start
-    // one: the head's compose button is gone.
+    // The head is a 44 px touch row: the close fills it in place of the 40 px icon buttons, and the sticky New chat
+    // pill is the only way to start one, since the head's compose button is gone.
     const head = (await drawer.locator(".sidebar-head").boundingBox())!;
     expect(Math.round(head.height)).toBe(44);
     const close = (await drawer.getByRole("button", { name: "Close menu" }).boundingBox())!;
-    expect([Math.round(close.width), Math.round(close.height)]).toEqual([40, 40]);
+    expect([Math.round(close.width), Math.round(close.height)]).toEqual([44, 44]);
+    expect(Math.round((await drawer.getByRole("button", { name: "Close menu" }).locator("svg").boundingBox())!.width), "the ✕ stays 16 px").toBe(16);
     await expect(drawer.getByRole("button", { name: "New chat", exact: true })).toBeHidden();
+    // The glyph-sized footer controls take the thumb's 44 inside the tray that already stands 44 high; both icon
+    // buttons are checked, so one of them cannot hide behind the other's pass.
+    const footerButtons = await drawer.locator(".sidebar-footer .icon-btn").all();
+    expect(footerButtons.length).toBe(2);
+    for (const button of footerButtons) {
+      const box = (await button.boundingBox())!;
+      expect([Math.round(box.width), Math.round(box.height)]).toEqual([44, 44]);
+      // The target grew to the thumb's 44; the glyph it draws did not.
+      expect(Math.round((await button.locator("svg").boundingBox())!.width)).toBe(16);
+    }
+    const tray = (await drawer.locator(".sidebar-footer").boundingBox())!;
+    expect(Math.round(tray.height), "the tray itself does not grow").toBe(44);
+    await expect(drawer.locator(".sidebar-footer .usage-link")).toHaveCSS("height", "44px");
+    await expect(drawer.locator(".sidebar-head .harness-row")).toHaveCSS("min-height", "44px");
+    // The chat header's hamburger is the way back in, and it carries the same 44 px target.
+    const opener = page.getByRole("button", { name: "Open menu" });
+    expect(await opener.evaluate((el) => [getComputedStyle(el).width, getComputedStyle(el).height])).toEqual(["44px", "44px"]);
     // The pill takes the medium radius, as every other control of its size does.
     const radius = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--r-md").trim());
     expect(radius).toBe("10px");
@@ -545,7 +571,7 @@ test.describe("phone drawer", () => {
     }
   });
 
-  test("a real phone scroll starts a row or heading below the 20px scrim", async ({ page, request }) => {
+  test("a real phone scroll starts a row or heading below the 24px scrim", async ({ page, request }) => {
     test.setTimeout(60_000);
     const root = process.env.AWUI_E2E_ROOT as string;
     const other = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
@@ -599,9 +625,9 @@ test.describe("phone drawer", () => {
         dateSnap: getComputedStyle(element.querySelector(".date-divider")!).scrollSnapAlign,
       };
     });
-    expect(snapped.top, "the first fully visible row clears the scrim's bottom").toBeGreaterThanOrEqual(box.y + 20 - 1);
+    expect(snapped.top, "the first fully visible row clears the scrim's bottom").toBeGreaterThanOrEqual(box.y + 24 - 1);
     expect(snapped.heading || snapped.hasTitle, `a title-less subline does not start the viewport: ${snapped.text}`).toBe(true);
-    expect(snapped.padding).toBe("20px");
+    expect(snapped.padding).toBe("24px");
     expect(snapped.dateSnap).toBe("start");
     await useProjectsView(page);
     await page.reload();
@@ -641,10 +667,10 @@ test.describe("phone drawer", () => {
     await list.evaluate((el) => { el.scrollTop = 120; });
     const scrim = list.locator(".list-scrim");
     await expect(scrim).toBeVisible();
-    expect((await scrim.boundingBox())!.height, "a 20 px fade: a phone row is taller than the desktop's").toBe(20);
-    // A real scroll engages row snapping: the settled row starts below the 20px fade, not under it.
+    expect((await scrim.boundingBox())!.height, "a 24 px fade: a phone row is taller than the desktop's").toBe(24);
+    // A real scroll engages row snapping: the settled row starts below the 24px fade, not under it.
     await expect(list).toHaveCSS("scroll-snap-type", "y");
-    await expect(list).toHaveCSS("scroll-padding-top", "20px");
+    await expect(list).toHaveCSS("scroll-padding-top", "24px");
     await expect(list.locator(".session-item").first()).toHaveCSS("scroll-snap-align", "start");
     await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
     await list.evaluate((el) => { el.scrollTop = 0; });
@@ -699,22 +725,39 @@ test("a desktop list wears a top scrim while it is scrolled", async ({ page }) =
     await expect(page.locator(".sidebar")).not.toBeInViewport();
   });
 
-  test("a scrolled phone drawer keeps a waiting chat one tap away", async ({ page }) => {
+  test("a scrolled phone drawer keeps a waiting chat one tap away", async ({ page, request }) => {
     await page.setViewportSize({ width: 390, height: 520 });
     await signInAndOpen(page);
     await newChat(page);
     await send(page, "please ask first for the phone shortcut");
     await expect(page.getByTestId("approval-card")).toBeVisible();
-    for (const n of [1, 2, 3, 4]) {
-      await newChat(page);
-      await sendAndWait(page, `phone attention filler ${n}`);
+    // The rest of the history comes from the API: a tab per filler would stack a tab strip over the list and
+    // test the drawer's tab section instead of the end of the list.
+    const sessions = (await (await request.get("/api/sessions")).json()) as { sessions: { title: string; workspaceId: string }[] };
+    const workspaceId = sessions.sessions.find((s) => s.title.includes("please ask first for the phone shortcut"))!.workspaceId;
+    for (let n = 1; n <= 13; n++) {
+      const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId } })).json()) as { chatId: string };
+      await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: `phone attention filler ${n}`, mode: "normal" } });
     }
     await showSidebar(page);
+    // A running chat sits in Working, not in the flat list: wait for the API's runs to settle.
+    await expect(page.locator('.sidebar [data-testid="working-group"]')).toHaveCount(0, { timeout: 30_000 });
+    const lastFiller = page.locator(".sidebar .flat-group .session-item").filter({ hasText: "phone attention filler 13" }).first();
+    await expect(lastFiller).toBeVisible({ timeout: 15_000 });
+    await lastFiller.click();
+    await showSidebar(page);
+    const list = page.locator(".sidebar .session-list");
+    await list.evaluate((el) => { el.scrollTop = 0; });
     const shortcut = page.locator(".sidebar .needs-you-shortcut");
     await expect(shortcut).toBeHidden();
-    const list = page.locator(".sidebar .session-list");
-    await list.evaluate((el) => { el.scrollTop = 600; });
+    // No tail while the pill is away: the reserve belongs to the floating pill, not to every list.
+    await expect(list).toHaveCSS("padding-bottom", "0px");
+    await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await expect(shortcut).toBeVisible();
+    // The pill's tail appears with it, so the end moves: scroll again and check the real end,
+    // where Show more and the last row rest as close to the pill as they ever can.
+    await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await expect.poll(() => list.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true);
     await expect(shortcut).toHaveCSS("height", "44px");
     await expect(shortcut).toHaveCSS("border-radius", "999px");
     const pill = await page.locator(".sidebar .drawer-new-chat").boundingBox();
@@ -725,6 +768,54 @@ test("a desktop list wears a top scrim while it is scrolled", async ({ page }) =
     expect(shortcutStyle.right).toBe("10px");
     expect(shortcutStyle.shadow).not.toBe("none");
     expect(Number.parseFloat(await list.evaluate((el) => getComputedStyle(el).scrollPaddingBottom))).toBeGreaterThanOrEqual(120);
+    await expect(list).toHaveCSS("padding-bottom", "44px");
+    // The pill is up, so the list keeps one touch row of tail and the last row and Show more rest above the
+    // pill's band.
+    const more = list.locator(".show-more").first();
+    await expect(more).toBeVisible();
+    await expect(more).toContainText("Show");
+    const moreBox = (await more.boundingBox())!;
+    expect(moreBox.y + moreBox.height, "the Show-more row ends above the pill's top").toBeLessThanOrEqual(above!.y + 1);
+    // A box is not a target. Ask the page what sits at the Show-more row's right end and at the last row's, at
+    // the real end of the list: a floating pill over either one fails here instead of swallowing the tap.
+    const hits = await page.evaluate(() => {
+      const listEl = document.querySelector<HTMLElement>(".sidebar .session-list")!;
+      const rows = [...listEl.querySelectorAll<HTMLElement>(".flat-group .session-item")].filter((el) => el.getBoundingClientRect().height > 0);
+      const targets = { more: listEl.querySelector<HTMLElement>(".show-more")!, row: rows[rows.length - 1]! };
+      const hit = (el: HTMLElement) => {
+        const b = el.getBoundingClientRect();
+        const x = Math.round(b.right - 4);
+        const y = Math.round(b.top + b.height / 2);
+        const at = document.elementFromPoint(x, y);
+        return { x, y, at: at ? `${at.tagName.toLowerCase()}.${String(at.className)}` : null, more: Boolean(at?.closest(".show-more")), row: Boolean(at?.closest(".session-item")) };
+      };
+      return { more: hit(targets.more), row: hit(targets.row) };
+    });
+    expect(hits.more.more, `Show more owns (${hits.more.x},${hits.more.y}); the page found ${hits.more.at}`).toBe(true);
+    expect(hits.row.row, `the last row owns (${hits.row.x},${hits.row.y}); the page found ${hits.row.at}`).toBe(true);
+    // The real history expands in place: the row that now ends the list must be its own target too, not only the
+    // page that was there before the tap. The server is shared, so one tap may not exhaust a longer fold; the
+    // taps after the first are setup, and the first one is the hit-tested click.
+    await more.click();
+    for (let n = 0; n < 5 && (await page.locator(".sidebar .session-list .show-more").count()) > 0; n++) {
+      await page.evaluate(() => document.querySelector<HTMLElement>(".sidebar .session-list .show-more")?.click());
+      await page.waitForTimeout(80);
+    }
+    await expect(more).toHaveCount(0);
+    await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await expect.poll(() => list.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true);
+    const expanded = await page.evaluate(() => {
+      const listEl = document.querySelector<HTMLElement>(".sidebar .session-list")!;
+      const rows = [...listEl.querySelectorAll<HTMLElement>(".flat-group .session-item")].filter((el) => el.getBoundingClientRect().height > 0);
+      const last = rows[rows.length - 1]!;
+      const b = last.getBoundingClientRect();
+      const x = Math.round(b.right - 4);
+      const y = Math.round(b.top + b.height / 2);
+      const at = document.elementFromPoint(x, y);
+      return { x, y, at: at ? `${at.tagName.toLowerCase()}.${String(at.className)}` : null, row: Boolean(at?.closest(".session-item")) };
+    });
+    expect(expanded.row, `the expanded end's last row owns (${expanded.x},${expanded.y}); the page found ${expanded.at}`).toBe(true);
     await shortcut.click();
     await expect(page.getByTestId("approval-card")).toBeVisible();
   });

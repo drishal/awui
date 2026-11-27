@@ -139,6 +139,16 @@ body {
     right: 12px;
   }
 
+/* Small drawers get full touch targets without enlarging the footer's tray or changing icon geometry elsewhere. */
+.sidebar-footer .icon-btn,
+.sidebar-footer .usage-link {
+  height: 44px;
+}
+
+.sidebar-footer .icon-btn {
+  width: 44px;
+}
+
   .sidebar-footer {
     height: 44px;
   }
@@ -211,15 +221,15 @@ body {
   .sidebar .list-scrim {
     display: block;
     /* A phone's rows are taller, so a passing title needs a longer fade than the desktop's 12px. */
-    height: 20px;
-    margin-bottom: -20px;
+    height: 24px;
+    margin-bottom: -24px;
   }
-  /* A settled user scroll starts on a row or heading below the 20px scrim, not mid-row under it.
+  /* A settled user scroll starts on a row or heading below the 24px scrim, not mid-row under it.
      Snap is disabled until the list really scrolls: with rows snapping while the closed drawer mounts,
      the browser chooses a target on the empty hidden list and opens it scrolled to its foot. */
   .sidebar .session-list.is-scrolled {
     scroll-snap-type: y proximity;
-    scroll-padding-top: 20px;
+    scroll-padding-top: 24px;
   }
 
   .sidebar .session-item,
@@ -236,9 +246,19 @@ body {
     min-height: 44px;
   }
 
+  .sidebar .sidebar-head .harness-row {
+    min-height: 44px;
+  }
+
+
   .sidebar .sidebar-head .icon-btn {
     width: 40px;
     height: 40px;
+  }
+
+  .sidebar .sidebar-head .drawer-close {
+    width: 44px;
+    height: 44px;
   }
 
   .sidebar .sidebar-head .sidebar-compose {
@@ -253,7 +273,8 @@ body {
     visibility: hidden;
     z-index: 35;
     right: 10px;
-    /* One whole touch row above New chat leaves the list's Show-more row unobscured. */
+    /* One touch row's clearance above New chat. At the list's end the reserved tail below lifts the last row
+       and Show more above this band, so here the pill sits over the fade and covers no control. */
     bottom: calc(var(--drawer-pill) + var(--sid-tray) + 72px);
     align-items: center;
     justify-content: center;
@@ -271,6 +292,12 @@ body {
   .sidebar .session-list {
     /* A row brought into view can clear the floating attention pill and the New-chat action. */
     scroll-padding-bottom: calc(var(--drawer-pill) + var(--sid-tray) + 132px);
+  }
+
+  /* While the pill floats, the list keeps one touch row of real tail, the pill's own height: it shifts the tray
+     up into the pill's band at the list's end, so Show more and the last row rest directly above it. */
+  .sidebar:has(.needs-you-shortcut.is-visible) .session-list {
+    padding-bottom: 44px;
   }
 
   .sidebar .needs-you-shortcut.is-visible {

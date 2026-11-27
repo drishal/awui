@@ -406,6 +406,16 @@ function TagLine({ tag, fact }: { tag: ProjectTag; fact: TagFact | null }) {
   );
 }
 
+/** The same compact setting as `App`'s root attribute, without measuring the rail. */
+function useCompactSessionFacts(): boolean {
+  const [compact, setCompact] = useState(() => typeof document !== "undefined" && document.documentElement.dataset.sidebar === "compact");
+  useEffect(() => {
+    const observer = new MutationObserver(() => setCompact(document.documentElement.dataset.sidebar === "compact"));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-sidebar"] });
+    return () => observer.disconnect();
+  }, []);
+  return compact;
+}
 function SessionRow({
   s,
   active,
@@ -422,6 +432,7 @@ function SessionRow({
   onMark,
   move,
   drag,
+  compactFacts,
   provenance,
 }: {
   s: ProjectSession;
@@ -440,6 +451,8 @@ function SessionRow({
   query?: string | null;
   /** The branch the group's head above already states: the row does not repeat it. */
   groupBranch?: string | null;
+  /** Compact facts use the reserved identity column; default keeps its original subline badge. */
+  compactFacts: boolean;
   /** False where every row of the list is the same harness: the dot would only repeat the heading above. */
   showHarness?: boolean;
   /** Why this row is where it is (a routine started it, it is quiet, on the default branch); its hover card says it. */
@@ -472,6 +485,8 @@ function SessionRow({
   // delegated task, a routine), or a branch that differs from its group. Without one the row is a
   // single line; its ⋯ replaces the age on hover.
   const sub = rowSubline(s, { tag, branch, groupBranch });
+  // Only a compact row with a fact beside its project moves that project's mark into the reserved court.
+  const markFact = compactFacts && sub?.kind === "tag" && sub.fact !== null;
   // Inside its own state section, the leading mark says the state; the meta line keeps the age.
   const state = rowState(s, { working, showHarness, section: stateTone });
   const meta = (
@@ -600,6 +615,9 @@ function SessionRow({
           <span className="session-asking-dot" role="img" aria-label="Needs you" title="Needs you: waiting for your answer" />
         ) : state.mark === "harness" ? (
           <span className="harness-dot" style={harnessColor(s.harnessId)} role="img" aria-label={harnessName} title={harnessName} />
+        ) : sub?.kind === "tag" && markFact && tag ? (
+          // Compact puts the fact before the project: the existing mark court carries its identity for no extra width.
+          <span className="harness-dot session-project-mark"><ProjectBadge id={tag.id} name={tag.name} size={12} slot={slot} /></span>
         ) : (
           // The slot stays (a blank dot), so titles keep one left edge whether or not the row is working.
           <span className="harness-dot is-blank" aria-hidden="true" />
@@ -622,7 +640,7 @@ function SessionRow({
           {state.unread ? <span className="visually-hidden">Unread</span> : null}
           {sub ? (
             <span className={`session-sub${sub.kind === "branch" ? " is-branch" : ""}${sub.kind === "agent" ? ` session-agent is-${sub.state}` : ""}`} title={sub.kind === "agent" ? `${sub.line} · set by the agent ${ago(sub.at)}` : undefined}>
-              {sub.kind === "tag" ? <ProjectBadge id={sub.tag.id} name={sub.tag.name} size={12} slot={slot} /> : null}
+              {sub.kind === "tag" && !(compactFacts && sub.fact !== null) ? <ProjectBadge id={sub.tag.id} name={sub.tag.name} size={12} slot={slot} /> : null}
               {sub.kind === "tag" ? <TagLine tag={sub.tag} fact={sub.fact} /> : <span className="session-sub-name">{sub.text}</span>}
               <span className="session-slot">{meta}</span>
             </span>
@@ -882,6 +900,7 @@ function ProjectGroupView({
   onReorder: (ids: string[]) => void;
   onNewChat: (ws: WorkspaceInfo) => void;
 }) {
+  const compact = useCompactSessionFacts();
   const [open, setOpen] = useState(true);
   // How many "Show more" pages of this folder are open: each adds SHOW_MORE rows to its first page.
   const [pages, setPages] = useState(0);
@@ -928,6 +947,7 @@ function ProjectGroupView({
       <SessionRow
         key={s.id}
         s={s}
+        compactFacts={compact}
         active={isActive(s)}
         working={isWorking(s)}
         harnessName={harnessName(s.harnessId)}
@@ -1182,6 +1202,7 @@ function FocusedProjectView({
   /** Every project's badge hue in this sidebar, by name: the switch menu's folders wear what the list's do. */
   slots: Map<string, ProjectMonogram["slot"]>;
 }) {
+  const compact = useCompactSessionFacts();
   const [pages, setPages] = useState(0);
   const { workspace, checkout, sections } = focused;
   const total = sections.reduce((n, sec) => n + sec.sessions.length, 0);
@@ -1214,6 +1235,7 @@ function FocusedProjectView({
         <SessionRow
           key={s.id}
           s={s}
+          compactFacts={compact}
           active={isActive(s)}
           working={isWorking(s)}
           harnessName={harnessName(s.harnessId)}
@@ -1347,6 +1369,7 @@ export function Sidebar(props: {
   onCollapse: () => void;
 }) {
   const current = props.harnesses.find((h) => h.id === props.harnessId);
+  const compact = useCompactSessionFacts();
   const names = useMemo(() => new Map(props.harnesses.map((h) => [h.id as string, h.displayName])), [props.harnesses]);
   const resumable = (s: ProjectSession) => props.harnesses.some((h) => h.id === s.harnessId && h.capabilities.supportsResumeCommand);
   // The drawer's list wears a 12px fade under the head once it has scrolled: the row being cut off reads as
@@ -1564,6 +1587,7 @@ export function Sidebar(props: {
     <SessionRow
       key={s.id}
       s={s}
+      compactFacts={compact}
       active={isActive(s)}
       working={isWorking(s)}
       harnessName={names.get(s.harnessId) ?? s.harnessId}
@@ -1582,6 +1606,7 @@ export function Sidebar(props: {
     <SessionRow
       key={s.id}
       s={s}
+      compactFacts={compact}
       active={isActive(s)}
       working={isWorking(s)}
       harnessName={names.get(s.harnessId) ?? s.harnessId}
@@ -1601,6 +1626,7 @@ export function Sidebar(props: {
       <aside
         ref={asideRef}
         className={`sidebar${props.open ? " is-open" : ""}${narrow ? " is-narrow" : ""}`}
+        data-narrow-field={tightField && !props.open ? "" : undefined}
         aria-label="Sessions"
         {...(props.open ? { role: "dialog", "aria-modal": true } : {})}
         onKeyDown={(e) => {

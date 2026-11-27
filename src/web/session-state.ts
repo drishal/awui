@@ -146,7 +146,7 @@ export type RowMark = "working" | "needs" | "harness" | "blank";
 
 /** The one state word the right-hand slot can carry in place of the age, and its one colour. */
 export interface RowWord {
-  text: "Needs you" | "Working" | "Done";
+  text: "Needs you" | "Working" | "Review" | "Done";
   tone: "warn" | "accent" | "ok";
 }
 
@@ -187,9 +187,10 @@ function rowWord(s: ProjectSession, working: boolean, snoozed: boolean, section?
   if ((s.asking && section === "needs") || (working && section === "working")) return null;
   if (s.asking) return { text: "Needs you", tone: "warn" };
   if (working) return { text: "Working", tone: "accent" };
-  // Green is the agent's own verdict, and only a made one: review counts as done for now.
+  // One coloured outcome per slot: review waits for a person, done means the agent made a verdict.
   const state = s.agentStatus?.state;
-  if (state === "done" || state === "review") return { text: "Done", tone: "ok" };
+  if (state === "review") return { text: "Review", tone: "accent" };
+  if (state === "done") return { text: "Done", tone: "ok" };
   return null;
 }
 

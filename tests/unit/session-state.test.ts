@@ -109,11 +109,11 @@ describe("rowState", () => {
     expect(state({}, { showHarness: true }).mark).toBe("harness");
   });
 
-  it("says one word in the age's place: Needs you, Working, or the agent's Done", () => {
+  it("says one word in the age's place: Needs you, Working, Review or Done", () => {
     expect(state({ asking: true }).word).toEqual({ text: "Needs you", tone: "warn" });
     expect(state({ status: "running" }, { working: true }).word).toEqual({ text: "Working", tone: "accent" });
     expect(state({ agentStatus: { state: "done", comment: "", at: 1 } }).word).toEqual({ text: "Done", tone: "ok" });
-    expect(state({ agentStatus: { state: "review", comment: "ready", at: 1 } }).word).toEqual({ text: "Done", tone: "ok" });
+    expect(state({ agentStatus: { state: "review", comment: "ready", at: 1 } }).word).toEqual({ text: "Review", tone: "accent" });
     // A blocked agent is nobody's answer to give: its words are the subline, and the age stays.
     expect(state({ agentStatus: { state: "blocked", comment: "waiting on CI", at: 1 } }).word).toBeNull();
     expect(state().word).toBeNull();

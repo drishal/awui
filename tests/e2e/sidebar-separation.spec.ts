@@ -118,6 +118,14 @@ test.describe("the separated rows", () => {
     expect(flat, "a row and a date heading are drawn").not.toBeNull();
     expect(flat?.rowGutter ?? 0, "the rows sit on the panel's 12px gutter").toBeCloseTo(12, 0);
     expect(flat?.titleInset ?? 0, "the titles start 26px into a row").toBeCloseTo(26, 0);
+    // Default keeps the existing blank identity court and exactly one project badge on the subline.
+    const marked = await sidebar(page).locator(".session", { hasText: "one shared title edge" }).evaluate((el) => {
+      const slot = el.querySelector(":scope > .harness-dot.is-blank");
+      const badge = el.querySelector(".session-sub > .project-badge");
+      if (!(slot instanceof HTMLElement) || !(badge instanceof HTMLElement)) return null;
+      return { count: el.querySelectorAll(".project-badge").length, width: slot.getBoundingClientRect().width, blank: true, font: getComputedStyle(badge).fontSize };
+    });
+    expect(marked, "one project badge in the default subline").toEqual({ count: 1, width: 6, blank: true, font: "9px" });
     expect(flat?.dateEdge ?? 0, "a date label starts on the titles' edge").toBeCloseTo(38, 0);
 
     await useProjectsView(page);
@@ -255,7 +263,7 @@ test.describe("the separated rows", () => {
     expect(now?.centre ?? 0).toBeGreaterThan(before?.titleBottom ?? 0);
     expect(Math.abs((now?.centre ?? 0) - (((before?.subTop ?? 0) + (before?.subBottom ?? 0)) / 2))).toBeLessThanOrEqual(1.5);
     expect(now?.right ?? 0).toBeGreaterThanOrEqual(before?.metaRight ?? 0);
-    expect((await item.locator(".session-more").boundingBox())?.width).toBe(24);
+    expect((await item.locator(".session-more").boundingBox())?.width).toBe(28);
   });
 
   test("a one-line row swaps its age for the ⋯ without moving the title", async ({ page }) => {
@@ -589,6 +597,8 @@ test.describe("the compact rows", () => {
           });
           expect(pieces.project, `the project is not drawn beside a fact at ${width}px`).toBeLessThanOrEqual(1.5);
           expect(pieces.fact, `the fact takes the suffix's room at ${width}px`).toBeGreaterThan(WAS_FACT_WIDTH[width] ?? 0);
+          await expect(active.locator(":scope > .session > .session-project-mark"), "only the reserved slot carries the project mark").toHaveCount(1);
+          await expect(active.locator(".project-badge:visible"), "its one project mark does not repeat beside the fact").toHaveCount(1);
           expect(pieces.name, "a clipped project keeps its words in the accessible name").toContain(pieces.projectName);
           // The native tooltip says what the drawn line cuts: the agent's whole sentence and the project.
           const tooltip = (await active.locator(".session").first().getAttribute("title")) ?? "";

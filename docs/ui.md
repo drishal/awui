@@ -148,6 +148,9 @@ a literal colour.
   own mark does not spin (`WorkingRing`'s `still`): its rows each own a ring, and three rings turning in one
   column read as three runs. Unread is title weight (600) and
   full ink, with the word “Unread” only in a visually hidden span for assistive tech.
+  Only a compact row with a fact beside its project moves the 12px badge to the reserved identity slot. The slot keeps
+  its original width, so every title keeps one left edge, and the agent's fact keeps the whole suffix width. Default
+  rows keep their original blank identity slot and subline badge. Narrow compact rows hide a clipped project's badge.
   `config.yml`'s `sidebar_style: compact` sets `data-sidebar="compact"` on
   `<html>`, and `sidebar.css` ends with the handful of overrides that make the
   rows tighter still: 28px and one line — the title (`flex: 1 1 auto`, never below 96px), the project's
@@ -210,7 +213,7 @@ a literal colour.
   its unit ("4 sessions", not a bare number; a foldable section head says its own name
   and count as words, since the spans would otherwise run together). Date
   headings are plain dividers, not sticky labels (a stuck heading's fade ghosted a search's first
-  result and cut a passing row in half on a phone); the scrolled list's own top fade (12px, 20px on a phone) is
+  result and cut a passing row in half on a phone); the scrolled list's own top fade (12px, 24px on a phone, enough to shade a whole title row) is
   the only edge a row meets. At the default style on a fine pointer, folders leave 16px between them
   and 6px from a head to its first row; compact style and compact density keep their own gaps;
   only 8px (6px at compact density) above the dates under it, two ranks of one list rather than two places.
@@ -223,12 +226,13 @@ a literal colour.
   — and exactly four things in the list are coloured: **amber** (`--warn`) is
   needs-you — its dot, its word outside its own section, and the `blocked` a blocked row says before its
   note;
-  **the accent** is a run, its ring or its word; **green** (`--ok`) is done,
-  and only the agent's own verdict ("done" or "ready for review") earns it;
+  **the accent** is a run, its ring or word, and an agent's `Review` waiting for a person's check; **green** (`--ok`)
+  is done, and only the agent's own made verdict earns it (`ready for review` says `Review`, not `Done`);
   and **weight** is unread (the title at 600 and full ink, read titles at 86 % of the text ink: one rank
   above the muted annotations, not the 78 % that read as disabled beside the bold rows).
   The section's state word stays outside it; inside it no second word replaces the age, and the age itself
-  keeps the muted ink.
+  keeps the muted ink. The More control expands its pointer box from 24 to 28px, without moving the glyph or shifting
+  the age's column.
   Nothing else in the list states anything by colour: a project's monogram is the one
   decoration: four different hues from `--badge-1..4` — teal, violet, orange, red — none the
   accent, and none the amber of needs-you or the green of done, so no row can be mistaken for a
