@@ -114,6 +114,7 @@ export function SidebarFilters({ quick, quickCounts, onQuickChange, hide, counts
               ))}
             </div>
             <div className="filter-actions">
+              <span className="filter-heading">List actions</span>
               <button type="button" disabled={!roomsAvailable} onClick={() => { setAt(null); onNewRoom(); }}>
                 <IconPlus size={14} /> New room
               </button>

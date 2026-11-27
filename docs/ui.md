@@ -153,8 +153,8 @@ a literal colour.
   rather than a size), so the project keeps its cap wherever the line has room for it and shrinks only under
   the title's 96px floor: at 236px, the resizer's narrowest rail, the project has 50px and every row's age
   lands on one column — the row used to overflow its own body by 6px and put its age 6px right of the others'.
-  Measured: a 292px rail gives the title 146px (was 129) against a 56px project (was 71); at 236px the title
-  holds its 96 with a 50px project; at 232px the project has 46px (it overflowed at 56); at 200px the title
+  The desktop resize floor is 236px, so the under-224 branch is reachable only through a very narrow phone drawer (88vw under 254px). Measured: a 292px rail gives the title 146px (was 129) against a 56px project (was 71); at 236px the title
+  holds its 96 with a 50px project; at 232px the project has 46px (it overflowed at 56); at 200px on that narrow phone the title
   has 116 (was 96) with no suffix, and a branch row keeps `test` where it used to show 12px of nothing.
   It changes the row look only: heads, chips, hover cards, and the wash keep
   their own rules, and a phone's row is still at least 44px tall.

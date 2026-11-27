@@ -45,8 +45,8 @@ import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js
 /** A folder's first page: the current one gets a fuller preview than the others (each adds SHOW_MORE). */
 const VISIBLE_CURRENT = 8;
 const VISIBLE_OTHER = 4;
-/** Under this rail width a compact row says nothing but its title and its state: a lone project's name in
- *  the suffix is 7px of ellipsis at 200px, which is not a word (see `.is-narrow`, sidebar.css). */
+/** A compact row hides its lone project suffix under this rail width: below the desktop floor, so only a
+ *  viewport under 254px reaches it, through the phone drawer's 88vw width (`.is-narrow`, sidebar.css). */
 const NARROW_RAIL = 224;
 /** Under this rail the search field is too narrow for the whole placeholder (an input cannot ellipsise one),
  *  so it asks for a search in one word instead. The field's own label stays "Search sessions" at every width. */
