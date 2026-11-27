@@ -157,11 +157,13 @@ test("the view control keeps its name and target at the narrowest supported widt
     label.evaluate((el) => {
       const range = document.createRange();
       range.selectNodeContents(el);
-      return { right: range.getBoundingClientRect().right, box: el.getBoundingClientRect().right };
+      const chevron = (el.parentElement as HTMLElement).querySelector(":scope > svg") as SVGElement;
+      return { right: range.getBoundingClientRect().right, box: el.getBoundingClientRect().right, chevron: chevron.getBoundingClientRect().left };
     });
   const fits = (label: Locator, name: string) =>
     expect.poll(async () => {
-      const { right, box } = await ink(label);
+      const { right, box, chevron } = await ink(label);
+      expect(chevron - right, "the chevron keeps 2px of air after the word").toBeGreaterThanOrEqual(1.95);
       return box - right;
     }, `${name} ends inside its box, not ellipsised`).toBeGreaterThanOrEqual(-0.05);
   await fits(label, "Recent");

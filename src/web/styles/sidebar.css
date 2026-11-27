@@ -367,11 +367,14 @@
   white-space: nowrap;
 }
 
-/* At the desktop resizer's floor the longer view name outranks the chevron's gap, not the input's own text floor. */
+/* The narrow floor has just enough room in the control for the word, chevron and 2px of air.
+   Use that reserved space visually, not a wider control: the input and filter must keep their columns. */
 .sidebar[data-narrow-field] .view-switch {
   gap: 0;
 }
-
+.sidebar[data-narrow-field] .view-switch > svg {
+  transform: translateX(2px);
+}
 /* Only the view's words yield at the narrowest supported width; its target and the filter keep their place. */
 .view-switch > span {
   overflow: hidden;
@@ -878,10 +881,21 @@
   line-height: 16px;
 }
 
+/* The scope fact stays on its one line; the back action borrows the remainder and ellipsizes there. */
+.search-scope > span {
+  flex: none;
+  white-space: nowrap;
+}
+
 /* A text action on a 16px note line: the box itself was 16px tall, so a press 3px under the words fell
    through to the list. 4px of padding with its own negative margin makes a 24px target without growing the
    note (24 - 8 is still the line's 16); a thumb gets the shared 44px floor the same way, below. */
 .search-scope-back {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 4px 0;
   margin: -4px 0;
   border: 0;
@@ -1594,10 +1608,6 @@
     transition: opacity var(--dur-hover) var(--ease-out);
   }
 
-  .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-title-line > .session-slot > .session-meta,
-  .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-body.has-sub > .session-sub > .session-slot > .session-meta {
-    opacity: 0;
-  }
 }
 
 /* A hovered or keyboard-owned row hides the age under its ⋯: owning the action, not being
@@ -2288,6 +2298,11 @@ body.is-resizing {
   white-space: nowrap;
 }
 
+/* A plain agent sentence borrows 16px from the title's floor, not from a project or branch suffix.
+   That is enough to keep the agent name at the rail's floor; ordinary rows retain their 96px title floor. */
+:root[data-sidebar="compact"] .session-body.has-sub:has(> .session-sub.session-agent) > .session-title-line {
+  min-width: 80px;
+}
 /* An agent's status is direct text, not a flex TagLine item: the latter truncates at its own text edge
    but an anonymous flex child cannot ellipsis before the next token, so direct text hard-cut mid-word.
    Keep flex box sizing/shrinking, but let the plain sentence ellipsize inside that cap instead. */

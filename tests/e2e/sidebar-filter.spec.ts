@@ -292,6 +292,18 @@ test("a search under a focused folder says it looks in every project", async ({ 
   expect(geometry.titleLeft, "a row's title is drawn beside the note").not.toBeNull();
   expect(Math.abs(geometry.noteLeft - (geometry.titleLeft ?? 0)), "the note starts on the titles' edge").toBeLessThanOrEqual(0.5);
   expect(geometry.gap, "the list under it stays put").toBeLessThanOrEqual(8.5);
+  await page.evaluate(() => (document.querySelector(".app") as HTMLElement).style.setProperty("--sidebar-w", "236px"));
+  await expect.poll(() => page.locator(".sidebar").evaluate((el) => Math.round(el.getBoundingClientRect().width)), "the floor rail").toBe(236);
+  await expect(note).toHaveCSS("height", "16px");
+  await expect(back).toHaveCSS("white-space", "nowrap");
+  await expect(back).toHaveCSS("text-overflow", "ellipsis");
+  await expect(back, "the whole scope action still names the project").toContainText("Back to alpha");
+  await expect(note, "the scope statement stays on one line").toHaveCSS("height", "16px");
+  const backRight = (await back.boundingBox())!.x + (await back.boundingBox())!.width;
+  const noteRight = (await note.boundingBox())!.x + (await note.boundingBox())!.width;
+  expect(backRight, "the action cannot escape the scope note").toBeLessThanOrEqual(noteRight + 0.5);
+  await back.focus();
+  await expect(back).toBeFocused();
   // Density settings change the row's own text edge, not its semantic scope. Measure against that
   // actual title rather than an assumed panel padding: the same focused search remains the same fact.
   for (const attrs of [{ "data-density": "compact" }, { "data-density": "compact", "data-sidebar": "compact" }]) {

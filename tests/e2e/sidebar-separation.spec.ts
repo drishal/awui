@@ -638,7 +638,11 @@ test.describe("the compact rows", () => {
     expect(fact.overflow, "plain agent text actually ellipsizes rather than clipping").toBe("ellipsis");
     expect(fact.white, "the status sentence remains one bounded line").toBe("nowrap");
     expect(fact.surplus, "an overlong plain agent sentence is permitted inside its own ellipsis cap").toBeGreaterThan(0);
-    await active.locator(".session-sub.session-agent > .session-sub-name").screenshot({ path: "/tmp/awui-sidebar-climb/r12/projects-agent-after.png" });
+    await page.evaluate(() => (document.querySelector(".app") as HTMLElement).style.setProperty("--sidebar-w", "236px"));
+    await expect.poll(() => page.locator(".sidebar").evaluate((el) => Math.round(el.getBoundingClientRect().width)), "the rail is at its floor").toBe(236);
+    await expect.poll(() => active.locator(".session-sub.session-agent > .session-sub-name").evaluate((el) => el.getBoundingClientRect().width), "a plain agent status borrows the title's spare floor, not the age's space").toBeGreaterThan(55.5);
+    await active.locator(".session-sub.session-agent > .session-sub-name").screenshot({ path: "/tmp/awui-sidebar-climb/r13/agent-after.png" });
+    await active.locator(".session-sub.session-agent > .session-sub-name").screenshot({ path: "/tmp/awui-sidebar-climb/r12/projects-agent-wide-after.png" });
     await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
   });
 });
