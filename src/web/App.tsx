@@ -2426,7 +2426,9 @@ export function App() {
             newDisabled={newChatDisabled !== null}
           />
         ) : null}
-        <header className="chat-header">
+        {/* The rail owns the last 40px of this row, so the header says so and gives ⋯ back the 4px that put its
+            centre on the rail's column (header.css). */}
+        <header className={`chat-header${wide && chat && !contextClosed && !room.roomId ? " has-context-rail" : ""}`}>
           <button type="button" className="icon-btn drawer-open" aria-label="Open menu" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
             <IconMenu size={18} />
           </button>
@@ -2436,49 +2438,56 @@ export function App() {
               <IconSidebar size={16} />
             </button>
           ) : null}
+          {/* Where the chat lives, then what it is called, then its facts: the crumb and the title share one size
+              and one line-height, and .chat-sub keeps the same line-height, so the whole row has one baseline. */}
           <div className="chat-title">
             {room.roomId ? (
               <>
+                {room.state ? (
+                  <span className="chat-path" title="Every bot runs in this project">
+                    {room.state.room.workspaceName}
+                  </span>
+                ) : null}
+                {room.state ? <span className="chat-crumb-sep" aria-hidden="true">/</span> : null}
                 <h1>{room.state?.room.name ?? "Room"}</h1>
                 <div className="chat-sub">
+                  {room.state ? <RoomHeadSub state={room.state} /> : null}
                   <span className="badge badge-room">Room</span>
                   {room.state?.room.archived ? <span className="room-tag is-archived">Archived</span> : null}
-                  {room.state ? <RoomHeadSub state={room.state} /> : null}
-                  {room.state ? (
-                    <span className="chat-path" title="Every bot runs in this project">
-                      {room.state.room.workspaceName}
-                    </span>
-                  ) : null}
                 </div>
               </>
             ) : heading ? (
               <>
+                {heading.project ? <span className="chat-path">{heading.project}</span> : null}
+                {heading.project ? <span className="chat-crumb-sep" aria-hidden="true">/</span> : null}
                 <h1>{heading.title}</h1>
                 <div className="chat-sub">
+                  {/* The state comes first and the harness after it, as in a chat: the shape of the header never
+                      changes while a chat is opening. */}
+                  <span className="status status-starting">Opening</span>
                   <span className="badge badge-harness" style={harnessColor(heading.harnessId)}>
                     {heading.harnessName}
                   </span>
-                  <span className="status status-starting">Opening</span>
-                  {heading.project ? <span className="chat-path">{heading.project}</span> : null}
                 </div>
               </>
             ) : (
               <>
+                {chat?.capabilities.supportsProjectFolders ? (
+                  <span className="chat-path" title={chat.workspace.path}>
+                    {chat.workspace.name}
+                  </span>
+                ) : null}
+                {chat?.capabilities.supportsProjectFolders ? <span className="chat-crumb-sep" aria-hidden="true">/</span> : null}
                 {headerTitle ? <h1 ref={titleRef}>{headerTitle}</h1> : null}
                 {chat ? (
                   <div className="chat-sub">
-                    <span className="badge badge-harness" style={harnessColor(chat.harnessId)}>
-                      {chatHarness?.displayName ?? chat.harnessId}
-                    </span>
-                    {chat.capabilities.supportsProjectFolders ? (
-                      <span className="chat-path" title={chat.workspace.path}>
-                        {chat.workspace.name}
-                      </span>
-                    ) : null}
                     {/* The status word is the header's one live fact, so a dropped stream says so here rather than
                         in a bar of its own: while the server is unreachable nothing else on this line is true either. */}
                     <span className={`status status-${chat.status}${chat.pending.length > 0 ? " is-asking" : ""}${conn === "disconnected" || conn === "reconnecting" ? " is-offline" : ""}`} data-testid="chat-status">
                       <StatusWord text={conn === "disconnected" ? "Offline" : conn === "reconnecting" ? "Reconnecting" : chat.pending.length > 0 ? "Needs you" : STATUS_LABEL[chat.status] ?? chat.status} />
+                    </span>
+                    <span className="badge badge-harness" style={harnessColor(chat.harnessId)}>
+                      {chatHarness?.displayName ?? chat.harnessId}
                     </span>
                     {chat.lineage ? <LineageChip lineage={chat.lineage} onOpen={(id) => void openChatById(id)} /> : null}
                     {chatStatusLine ? (
@@ -2497,164 +2506,182 @@ export function App() {
               </>
             )}
           </div>
-          {room.roomId && room.state ? (
-            <RoomHeadActions
-              membersOpen={roomMembersOpen}
-              onMembers={() => setRoomMembersOpen(true)}
-              onEdit={() => setRoomEditor({ mode: "edit" })}
-              onExport={() => {
-                if (room.roomId) downloadRoomExport(room.roomId);
-              }}
-                onCopyLink={() => {
-                  if (room.roomId) void navigator.clipboard?.writeText(`${window.location.origin}/#room=${encodeURIComponent(room.roomId)}`);
-                }}
-            />
-          ) : null}
-          {chat && !room.roomId && changedFiles > 0 ? (
-            <button type="button" className="btn btn-small review-open" title="Review the changes and comment on them" onClick={() => setReviewOpen(true)}>
-              {/* A phone draws the file mark and "Diff" (banners-dialogs.css): a bare pencil beside the title read as
-                  "rename", while the word "Review" stays in the accessible name on every device. */}
-              <IconEdit size={14} className="review-icon-edit" />
-              <IconFile size={14} className="review-icon-file" />
-              <span className="review-label">Review</span>
-              <span className="review-label-short" aria-hidden="true">Diff</span>
-              <span className="review-count">{changedFiles}</span>
-            </button>
-          ) : null}
-          {/* On a phone these two fold into the chat menu when there is one (header-tool), so the title keeps its room. */}
-          {workspace && !room.roomId ? <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="Terminal" title="Open a project terminal" onClick={() => openTool("terminal")}><IconTerminal size={16} /></button> : null}
-          {workspace && !room.roomId ? <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="GitHub and pull requests" title="Push or create a pull request" onClick={() => openTool("github")}><IconBranch size={16} /></button> : null}
-          {chat && !room.roomId ? (
-            <button type="button" className={`icon-btn${!contextClosed ? " is-on" : ""}`} aria-label={!wide ? "Expand chat context" : contextClosed ? "Show chat context" : "Hide chat context"} aria-expanded={!contextClosed} title="Active work, agent runs and review context" onClick={() => wide ? setContextClosed((value) => !value) : setContextSheet(true)}><IconSidebar size={16} /></button>
-          ) : null}
-          {wide && !room.roomId && (chat || side) ? (
-            <button
-              type="button"
-              className={`icon-btn split-toggle${side ? " is-on" : ""}`}
-              aria-label={side ? "Close the chat beside" : "Open a chat beside"}
-              aria-pressed={side !== null}
-              title={side ? "Close the chat beside" : "Open a chat beside this one"}
-              onClick={() => (side ? setSide(null) : void openBeside())}
-            >
-              <IconSplit size={16} />
-            </button>
-          ) : null}
-          <button type="button" className="icon-btn palette-open" aria-label="Commands" title={`Commands (${shortcutHint("palette")})`} onClick={() => setPaletteOpen(true)}>
-            <IconSearch size={16} />
-          </button>
-          {chatMenu ? (
-            <div className="menu">
-              <button type="button" className="icon-btn" aria-label="Chat actions" aria-expanded={menuOpen} aria-haspopup="menu" onClick={() => setMenuOpen((v) => !v)}>
-                <IconMore size={18} />
+          {/* Four groups, set apart by space alone: the worded call to action leads, then the project's tools, then
+              the two panes, then what takes a typed word or a menu. A group with nothing in it is not drawn. */}
+          <div className="head-actions">
+            {room.roomId && room.state ? (
+              <div className="head-group">
+                <RoomHeadActions
+                  membersOpen={roomMembersOpen}
+                  onMembers={() => setRoomMembersOpen(true)}
+                  onEdit={() => setRoomEditor({ mode: "edit" })}
+                  onExport={() => {
+                    if (room.roomId) downloadRoomExport(room.roomId);
+                  }}
+                  onCopyLink={() => {
+                    if (room.roomId) void navigator.clipboard?.writeText(`${window.location.origin}/#room=${encodeURIComponent(room.roomId)}`);
+                  }}
+                />
+              </div>
+            ) : null}
+            {chat && !room.roomId && changedFiles > 0 ? (
+              <div className="head-group">
+                <button type="button" className="btn btn-small review-open" title="Review the changes and comment on them" onClick={() => setReviewOpen(true)}>
+                  {/* A phone draws the file mark and "Diff" (banners-dialogs.css): a bare pencil beside the title read as
+                      "rename", while the word "Review" stays in the accessible name on every device. */}
+                  <IconEdit size={14} className="review-icon-edit" />
+                  <IconFile size={14} className="review-icon-file" />
+                  <span className="review-label">Review</span>
+                  <span className="review-label-short" aria-hidden="true">Diff</span>
+                  <span className="review-count">{changedFiles}</span>
+                </button>
+              </div>
+            ) : null}
+            {workspace && !room.roomId ? (
+              <div className="head-group">
+                {/* On a phone these two fold into the chat menu when there is one (header-tool), so the title keeps its room. */}
+                <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="Terminal" title="Open a project terminal" onClick={() => openTool("terminal")}><IconTerminal size={16} /></button>
+                <button type="button" className={`icon-btn${chatMenu ? " header-tool" : ""}`} aria-label="GitHub and pull requests" title="Push or create a pull request" onClick={() => openTool("github")}><IconBranch size={16} /></button>
+              </div>
+            ) : null}
+            {!room.roomId && (chat || side) ? (
+              <div className="head-group">
+                {chat ? (
+                  <button type="button" className={`icon-btn${!contextClosed ? " is-on" : ""}`} aria-label={!wide ? "Expand chat context" : contextClosed ? "Show chat context" : "Hide chat context"} aria-expanded={!contextClosed} title="Active work, agent runs and review context" onClick={() => wide ? setContextClosed((value) => !value) : setContextSheet(true)}><IconSidebar size={16} /></button>
+                ) : null}
+                {wide && (chat || side) ? (
+                  <button
+                    type="button"
+                    className={`icon-btn split-toggle${side ? " is-on" : ""}`}
+                    aria-label={side ? "Close the chat beside" : "Open a chat beside"}
+                    aria-pressed={side !== null}
+                    title={side ? "Close the chat beside" : "Open a chat beside this one"}
+                    onClick={() => (side ? setSide(null) : void openBeside())}
+                  >
+                    <IconSplit size={16} />
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="head-group">
+              <button type="button" className="icon-btn palette-open" aria-label="Commands" title={`Commands (${shortcutHint("palette")})`} onClick={() => setPaletteOpen(true)}>
+                <IconSearch size={16} />
               </button>
-              {menuOpen ? (
-                <>
-                  <div className="menu-backdrop" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-                  <ul className="menu-list" role="menu" onKeyDown={(e) => e.key === "Escape" && setMenuOpen(false)}>
-                    {chat.capabilities.supportsRename ? (
-                      <li role="none">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setMenuOpen(false);
-                            setRenameOpen(true);
-                          }}
-                        >
-                          Rename
-                        </button>
-                      </li>
-                    ) : null}
-                    {chat.capabilities.supportsCompact ? (
-                      <li role="none">
-                        <button type="button" role="menuitem" disabled={chat.status !== "idle"} onClick={() => void compact()}>
-                          Compact context
-                        </button>
-                      </li>
-                    ) : null}
-                    <li role="none" className="menu-phone-only">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setPaletteOpen(true);
-                        }}
-                      >
-                        Search and commands
-                      </button>
-                    </li>
-                    {workspace ? (
-                      <>
+              {chatMenu ? (
+                <div className="menu">
+                  <button type="button" className="icon-btn" aria-label="Chat actions" aria-expanded={menuOpen} aria-haspopup="menu" onClick={() => setMenuOpen((v) => !v)}>
+                    <IconMore size={18} />
+                  </button>
+                  {menuOpen ? (
+                    <>
+                      <div className="menu-backdrop" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+                      <ul className="menu-list" role="menu" onKeyDown={(e) => e.key === "Escape" && setMenuOpen(false)}>
+                        {chat.capabilities.supportsRename ? (
+                          <li role="none">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setMenuOpen(false);
+                                setRenameOpen(true);
+                              }}
+                            >
+                              Rename
+                            </button>
+                          </li>
+                        ) : null}
+                        {chat.capabilities.supportsCompact ? (
+                          <li role="none">
+                            <button type="button" role="menuitem" disabled={chat.status !== "idle"} onClick={() => void compact()}>
+                              Compact context
+                            </button>
+                          </li>
+                        ) : null}
                         <li role="none" className="menu-phone-only">
                           <button
                             type="button"
                             role="menuitem"
                             onClick={() => {
                               setMenuOpen(false);
-                              openTool("terminal");
+                              setPaletteOpen(true);
                             }}
                           >
-                            Terminal
+                            Search and commands
                           </button>
                         </li>
-                        <li role="none" className="menu-phone-only">
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setMenuOpen(false);
-                              openTool("github");
-                            }}
-                          >
-                            GitHub and pull requests
+                        {workspace ? (
+                          <>
+                            <li role="none" className="menu-phone-only">
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setMenuOpen(false);
+                                  openTool("terminal");
+                                }}
+                              >
+                                Terminal
+                              </button>
+                            </li>
+                            <li role="none" className="menu-phone-only">
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setMenuOpen(false);
+                                  openTool("github");
+                                }}
+                              >
+                                GitHub and pull requests
+                              </button>
+                            </li>
+                          </>
+                        ) : null}
+                        {chat.checkpoints.length > 0 ? (
+                          <li role="none">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setMenuOpen(false);
+                                setTimelineOpen(true);
+                              }}
+                            >
+                              File timeline
+                            </button>
+                          </li>
+                        ) : null}
+                        {chat.sessionId ? (
+                          <li role="none">
+                            <button type="button" role="menuitem" disabled={shareBusy} onClick={() => void shareChat()}>
+                              Share as guest link
+                            </button>
+                          </li>
+                        ) : null}
+                        <li role="none">
+                          <button type="button" role="menuitem" disabled={!hasPrompt} onClick={exportChat}>
+                            Export as Markdown
                           </button>
                         </li>
-                      </>
-                    ) : null}
-                    {chat.checkpoints.length > 0 ? (
-                      <li role="none">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setMenuOpen(false);
-                            setTimelineOpen(true);
-                          }}
-                        >
-                          File timeline
-                        </button>
-                      </li>
-                    ) : null}
-                    {chat.sessionId ? (
-                      <li role="none">
-                        <button type="button" role="menuitem" disabled={shareBusy} onClick={() => void shareChat()}>
-                          Share as guest link
-                        </button>
-                      </li>
-                    ) : null}
-                    <li role="none">
-                      <button type="button" role="menuitem" disabled={!hasPrompt} onClick={exportChat}>
-                        Export as Markdown
-                      </button>
-                    </li>
-                    {resumable ? (
-                      <li role="none">
-                        <button type="button" role="menuitem" disabled={!resume} title={resume?.command ?? noResume ?? undefined} onClick={copyResume}>
-                          Copy resume command
-                        </button>
-                      </li>
-                    ) : null}
-                    <li role="none">
-                      <button type="button" role="menuitem" onClick={() => void closeChat()}>
-                        {isBusy(chat.status) ? "Stop and close chat" : "Close chat"}
-                      </button>
-                    </li>
-                  </ul>
-                </>
+                        {resumable ? (
+                          <li role="none">
+                            <button type="button" role="menuitem" disabled={!resume} title={resume?.command ?? noResume ?? undefined} onClick={copyResume}>
+                              Copy resume command
+                            </button>
+                          </li>
+                        ) : null}
+                        <li role="none">
+                          <button type="button" role="menuitem" onClick={() => void closeChat()}>
+                            {isBusy(chat.status) ? "Stop and close chat" : "Close chat"}
+                          </button>
+                        </li>
+                      </ul>
+                    </>
+                  ) : null}
+                </div>
               ) : null}
             </div>
-          ) : null}
+          </div>
         </header>
 
         {chat && conn !== "connected" && conn !== "connecting" ? (

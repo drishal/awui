@@ -1,116 +1,183 @@
 /* ---- header ------------------------------------------------------------------ */
 
-/* Tall enough for a chat's title and its status line, so the header (and everything under it) does not
-   jump 7px when a chat replaces the start screen, whose header has the title alone. */
+/* One row for the whole chat: where it lives (a crumb), what it is called, its facts, and every control. The
+   height is --header-h, so nothing under it moves when a chat replaces the start screen; the left padding is the
+   tab strip's own gutter, so the tab's dot and the header's first glyph share one x. */
 .chat-header {
+  position: relative;
+  z-index: 5;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-height: var(--header-h);
-  padding: 8px 16px;
+  padding: 0 12px 0 var(--chrome-gutter, 12px);
   border-bottom: 1px solid var(--hairline);
+  /* The header's own width decides what gives way (see the container queries at the end), not the window's: a
+     sidebar that takes 292px matters more to this row than the 1360 a window reports. */
+  container: chathead / inline-size;
 }
 
-/* The header's controls are one dense row beside the title: 32px squares, so seven of them weigh less than
-   the words they sit next to. A touch screen keeps the 44px squares phones.css gives every icon button. */
+/* The context rail owns the last 40px of the row. ⋯ keeps 4px of it, so its centre (right − 4 − 16) lands on the
+   rail's own centre, and the header and the rail read as one column. The containment above traps the overflow
+   menu inside the header, so the header keeps a level of its own to stay over the chat body it drops onto. */
+.chat-header.has-context-rail {
+  padding-right: 4px;
+}
+
+/* The header's controls are one dense row beside the title: 32px squares, so four of them weigh less than the
+   words they sit next to. A touch screen keeps the 44px squares phones.css gives every icon button. */
 .chat-header .icon-btn {
   width: 32px;
   height: 32px;
 }
 
 @media (pointer: coarse) {
+  /* 44px squares need 4px above and below them, so a touch header is taller than the desk's. */
+  .chat-header {
+    min-height: 52px;
+  }
+
   .chat-header .icon-btn {
     width: 44px;
     height: 44px;
   }
 }
 
-/* Commands and the overflow menu are the header's second group, and the hairline in the gap before them
-   says so: the panel toggles change what you see, those two take a typed word or a menu. It is drawn in
-   the gap rather than as a border, so the square keeps its size and the icon its centre. */
-.chat-header .palette-open {
-  position: relative;
-}
-
-.chat-header .palette-open::before {
-  content: "";
-  position: absolute;
-  top: 7px;
-  bottom: 7px;
-  left: -6px;
-  width: 1px;
-  background: var(--hairline);
-}
-
+/* The one alignment rule: every text piece in this row, and in .chat-sub after it, is a flex item of a row with
+   align-items: baseline and a 20px line-height. No piece is inline-flex and none carries a height, so the crumb,
+   the title, the state word and the harness word share one baseline by construction rather than by nudging. Each
+   piece that can ellipsise uses overflow: clip — a scroll container synthesises its baseline from its bottom edge,
+   which is exactly the drop this row is fixing. */
 .chat-title {
-  flex: 1;
+  display: flex;
+  align-items: baseline;
+  flex: 1 1 auto;
+  gap: 0;
   min-width: 0;
+  line-height: 20px;
+  white-space: nowrap;
 }
 
-.chat-title h1 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: var(--tracking-tight);
-  overflow: hidden;
+/* Where: the project, in the same 15px as the title so the two read as one phrase. */
+.chat-path {
+  flex: 0 1 auto;
+  min-width: 4ch;
+  max-width: 24ch;
+  overflow: clip;
+  color: var(--muted-text);
+  font-size: 15px;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* The slash at weight 400 in the quieter ink: a separator, not a third word. */
+.chat-crumb-sep {
+  flex: none;
+  margin: 0 8px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+/* What: the full title, which the tab above cuts to its own width. It gives way down to 8ch before anything else
+   in the row does. */
+.chat-title h1 {
+  margin: 0;
+  flex: 0 1 auto;
+  min-width: 8ch;
+  overflow: clip;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Then the live fact and the stable attributes, on the same baseline: 12px words after a 15px title. */
 .chat-sub {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 2px;
+  align-items: baseline;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  gap: 12px;
+  margin-left: 16px;
+  /* A last resort when a long lineage title and a long agent status meet: the row is cut at the controls rather
+     than drawn under them. */
+  overflow: clip;
   font-size: 12px;
+  line-height: 20px;
+  /* The state word is the sub's only piece that takes its ink from here; a chip or a dropped stream sets its own. */
   color: var(--muted-text);
 }
-/* Harness, project, and working share one control-height row. Center the dots
- * as flex children: an inline-block baseline offset drops Working below Pi. */
-.chat-sub .status {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
+
+/* The sub holds its own content's width, so the title gives way first and nothing inside the sub is chopped in
+   half: with a zero minimum the row's proportional shrink cut the state word to "Ic" while the title still had
+   room to give. Inside the sub the agent's status is then the first thing to go (flex-shrink: 4). Written with the
+   header in the selector because responsive.css's ≤819 block still zeroes this minimum until it is removed. */
+.chat-header .chat-sub {
+  min-width: min-content;
 }
 
-.chat-sub .status::before {
-  flex: none;
-  margin: 0 5px 0 0;
-  vertical-align: middle;
+/* The state word is the row's one live fact, so a run in progress darkens it one step from the idle grey. */
+.chat-sub .status.status-running,
+.chat-sub .status.status-compacting {
+  color: var(--text-2);
 }
 
-.chat-sub .chat-path::before {
-  /* A middot, not a hyphen: beside the harness's colour dot a hyphen reads as a minus sign. */
-  content: "·";
-  margin: 0 6px 0 0;
-  color: var(--muted);
+/* The dot rides the x-height of the word beside it, as an inline-block, so the word keeps its baseline. Scoped to
+   the header: the tab strip, the sidebar and the connection banner centre their own dots as they please. */
+.chat-header .status::before {
+  display: inline-block;
+  vertical-align: calc(0.5ex - 3px);
 }
 
-/* The harness tag on the header's second line keeps its colour dot but not its chip: a filled pill there
-   competes with the tab highlighted above it. */
+/* Needs you: the only filled chip in the row, and the only loud thing on the screen, because it is the thing that
+   is waiting on the person. The dot stays, so the state still reads at a glance. */
+.chat-sub .status.is-asking:not(.is-offline) {
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* The harness is a plain word: the tab above already owns its colour dot, and a second filled pill in this row
+   would fight the tab and the Needs-you chip. */
 .chat-sub .badge-harness {
+  display: inline;
+  height: auto;
   padding: 0;
   background: none;
+  color: var(--muted-text);
+  font-size: 12px;
+  font-weight: 400;
 }
 
-/* A delegated child's provenance: the harness tag's shape with the accent as a tint and a pointer,
-   since it opens the chat that started this one. The title is cut, never wrapped, so the status word
-   beside it keeps its place. */
+.chat-sub .badge-harness::before {
+  content: none;
+}
+
+/* A delegated child's provenance: the harness tag's shape with the accent as a tint and a pointer, since it opens
+   the chat that started this one. The chip keeps the row's line-height, so its text sits on the shared baseline,
+   and its title is cut rather than wrapped, so the state word beside it keeps its place. */
 .chat-sub .badge-lineage {
-  /* The title is what gives way when the line is tight: without this a flex item keeps its
-     min-content width and pushes the chip past the header's edge on a phone. */
+  display: block;
   flex: 0 1 auto;
-  gap: 5px;
   min-width: 0;
-  max-width: 34ch;
-  padding: 0 6px;
+  max-width: 28ch;
+  height: auto;
+  padding: 0 7px;
   border: 0;
+  overflow: clip;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--text-2);
   font: inherit;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -118,44 +185,26 @@
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* The chip's own glyph is inline content now, so it is nudged onto the text rather than centred in a flex row. */
+.chat-sub .badge-lineage svg {
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
 .badge-lineage-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: inline;
 }
 
-@media (max-width: 640px) {
-  /* A phone: the header carries the harness, the status, and the project too, so the parent's title
-     is cut short rather than pushing one of them onto a line of its own. */
-  .chat-sub .badge-lineage {
-    max-width: 16ch;
-  }
-
-  /* Which project this chat works in outranks how many devices have it open: a second device may add
-     itself at any moment, and "de…" says nothing. The project keeps its whole name; the presence chip
-     gives way first (and can ellipsise to its two dots). */
-  .chat-sub .chat-path {
-    flex-shrink: 0;
-  }
-
-  .chat-sub .chat-viewers {
-    flex-shrink: 10;
-    min-width: 0;
-    /* The presence chip is a bare count: it shrinks but can no longer ellipsise a word. */
-    min-width: 0;
-    flex-shrink: 10;
-    overflow: visible;
-  }
-}
-
-/* The agent's own status line, in the header's sub row: where the work stands, in its words. */
+/* The agent's own status line: where the work stands, in its words. It gives way before the state word does, and
+   after the title, so it can shrink four times as fast. */
 .chat-agent-status {
+  flex-shrink: 4;
   min-width: 0;
-  max-width: 42ch;
-  overflow: hidden;
+  max-width: 36ch;
+  overflow: clip;
+  color: var(--muted-text);
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--muted-text);
 }
 
 .chat-agent-status.is-blocked {
@@ -167,29 +216,62 @@
   color: var(--ok);
 }
 
-.chat-path {
-  max-width: 30ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* Two overlapping dots, then the count: more than just you are watching. */
 .chat-viewers {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
+  display: block;
   color: var(--text-2);
+  white-space: nowrap;
 }
 
-/* Two overlapping dots: more than just you are watching. */
 .chat-viewers::before {
   content: "";
+  display: inline-block;
   width: 14px;
   height: 8px;
+  margin-right: 5px;
+  vertical-align: calc(0.5ex - 4px);
   background:
     radial-gradient(circle at 4px 4px, var(--accent) 3.5px, transparent 4px),
     radial-gradient(circle at 10px 4px, color-mix(in srgb, var(--accent) 55%, var(--bg)) 3.5px, transparent 4px);
+}
+
+/* The actions: four groups set apart by space alone — the worded call to action, the project's two tools, the two
+   panes, then what takes a typed word or a menu. 4px inside a group and 12px between them; no hairline, so the
+   start screen, which has one group, carries no orphan mark. */
+.head-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 12px;
+}
+
+.head-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A group with nothing in it is not drawn, and its 12px gap goes with it. */
+.head-group:empty {
+  display: none;
+}
+
+/* Review is the row's one worded control and the only call to action, so it leads: 32px, the height of the squares
+   beside it, at 13px 500 — a pill, not a second heading. The room's Members is its twin. */
+.chat-header .review-open,
+.chat-header .room-members-open {
+  height: 32px;
+  margin-right: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Pressed: the rail or the chat beside is showing. The fill is neutral because the rail is open most of the time,
+   so an accent mark would always be on; the ink is the full one, and that alone tells the two states apart. */
+.chat-header .icon-btn.is-on,
+.chat-header .icon-btn.split-toggle.is-on {
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  color: var(--text);
 }
 
 .status-running::before,
@@ -226,6 +308,66 @@
 
 .status-idle::before {
   background: var(--ok);
+}
+
+/* What gives way as the header narrows, in one order: the title ellipsises first (down to 8ch), then the agent's
+   own status, then the harness word, whose colour the tab above still carries. The state word and Review never
+   hide. The header's width decides, not the window's. */
+@container chathead (width < 900px) {
+  .chat-agent-status {
+    display: none;
+  }
+
+  .chat-sub .badge-lineage {
+    max-width: 20ch;
+  }
+}
+
+@container chathead (width < 760px) {
+  .chat-sub .badge-harness {
+    display: none;
+  }
+}
+
+/* Two lines on a phone: the title takes the first one whole, and the crumb and the facts share the second, still on
+   one baseline. This block comes after the collapse order on purpose: a 390px header is under both thresholds, and
+   on a phone the second line has room for the harness word — the tab strip that otherwise carries its colour is in
+   the drawer. */
+@media (max-width: 640px) {
+  .chat-title {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .chat-title h1 {
+    order: -1;
+    flex: 1 0 100%;
+  }
+
+  /* The slash says nothing once the crumb is under the title rather than before it. */
+  .chat-crumb-sep {
+    display: none;
+  }
+
+  .chat-path {
+    margin-right: 10px;
+    max-width: 12ch;
+    font-size: 12px;
+  }
+
+  .chat-sub {
+    margin-left: 0;
+    gap: 10px;
+  }
+
+  .chat-sub .badge-harness {
+    display: inline;
+  }
+
+  /* The lineage chip shares the second line with the crumb, the state and the harness, so it is cut short. */
+  .chat-sub .badge-lineage {
+    max-width: 16ch;
+  }
 }
 
 .menu {
