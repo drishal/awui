@@ -35,7 +35,7 @@
   gap: 7px;
   flex: 0 1 auto;
   width: max-content; min-width: 120px; max-width: min(420px, 46vw);
-  padding: 0 6px 0 12px;
+  padding: 0 6px 0 var(--chrome-gutter);
   border-right: 1px solid var(--hairline);
   color: var(--muted-text);
   font-size: 13px;

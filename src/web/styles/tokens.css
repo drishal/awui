@@ -270,7 +270,7 @@
   --sidebar-w: 292px;
   /* The chat header's own height (header.css): a fixed element that must clear it — the notice stack —
      measures from the top of the page, where the tab strip (--tab-h) sits above the header. */
-  --header-h: 61px;
+  --header-h: 44px;
   --top-chrome-h: calc(var(--tab-h) + 1px + var(--header-h));
   --chat-scale: 1;
   --chat-font: calc(14.5px * var(--chat-scale));
@@ -287,6 +287,8 @@
   --composer-pad-top: 10px;
   --composer-pad-bottom: 8px;
   --tab-h: 36px;
+  /* The header and tabs share one left edge for their first glyphs. */
+  --chrome-gutter: 12px;
 }
 
 /* Muted as text takes one step darker on a light page: --muted measures 5.3:1 on the page but 4.9:1 on
