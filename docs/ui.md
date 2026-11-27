@@ -155,7 +155,10 @@ a literal colour.
   to 0 under its 96px cap (`min-width: 0`; its `min-content` was the whole suffix), and the fact inside it
   gives way the same way (a nowrap line's `min-content` is its whole sentence), so a long status ellipsises
   inside the row and the age stays on its column. A `min-content` floor used to hold a 440px status inside
-  the 96px box, which pushed the project's name out of the row. Under a 224px rail the
+  the 96px box, which pushed the project's name out of the row. Beside the agent's own status the project's
+  name is not drawn at any width — the pair printed two fragments that said nothing (`DeepSee… · a…` at
+  292px, `D. · a…` at the 236px floor) — so the fact takes the whole suffix and the project keeps its place
+  in the row's `title`, hover card and accessible name. Under a 224px rail the
   project's name alone is not a suffix but an ellipsis (7px of a 74px name at 200px), so it is not drawn
   there — the row keeps it in its `title`, its hover card and its accessible name — and the title takes the
   room. The title gives its room up before the suffix gives up any of its own (a 1000 shrink weight, an order

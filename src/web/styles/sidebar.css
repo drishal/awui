@@ -2275,6 +2275,32 @@ body.is-resizing {
 :root[data-sidebar="compact"] .sidebar.is-narrow .session-sub-name > .session-sub-dot {
   display: none;
 }
+
+/* A status is a sentence, and the suffix has room for one fact, not two. Beside the agent's own status the
+   project's name is not drawn at every rail width, not only under the 224px phone rule above: the desktop
+   resizer's 236px floor is already past that rule, and the pair printed two fragments, neither of them a
+   word — `DeepSee… · a…` at 292 and `D. · a…` at the floor, where the project kept its 24px floor and the
+   sentence gave way around it. The fact then takes the whole suffix. The project keeps its place in the
+   row's accessible name (a clipped box, not `display: none`, which takes the name away with the ink), and
+   the row's `title` and hover card say it too. */
+:root[data-sidebar="compact"] .session-sub-name:has(> .session-sub-fact) > .session-sub-project {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  /* The compact rules cap the project at 56px and floor it at 24: a clipped box takes neither. */
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* No dot is left with two words to join: the project is clipped, so both the dot before it and the one
+   before a branch after it have nothing to separate. */
+:root[data-sidebar="compact"] .session-sub-name:has(> .session-sub-fact) > .session-sub-dot {
+  display: none;
+}
 /* 8px before the age, not the line's 6: the age is another kind of fact, and 6px read as one sentence. */
 :root[data-sidebar="compact"] .session-sub > .session-slot {
   margin-left: 2px;

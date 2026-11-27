@@ -8,8 +8,9 @@ import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 //
 // Compact keeps one 28px line: the title (flex 1 1 auto, never below 96px), the project's name as a suffix
 // of at most 56px, and a stable age slot that hover trades for the ⋯. The title takes every spare pixel and
-// the suffix yields first; under a 224px rail the project's name goes altogether, while a branch or a state
-// the agent set stays. The tests below measure the contract.
+// the suffix yields first; the suffix holds one fact, so beside a state the agent set the project's name is
+// not drawn at any width, and under a 224px rail it goes altogether, while a branch or the state stays. The
+// tests below measure the contract.
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,6 +20,10 @@ import { newChat, send, sendAndWait, showAllProjects, showSidebar, signInAndOpen
 /** Longer than the row can hold: the title must be cut, not wrapped. */
 const LONG_TITLE =
   "a session title long enough to want a third line in the two-hundred-pixel sidebar rail, which it must not take, because one line is the whole rhythm of this list";
+
+/** A stubbed status's width inside a compact suffix before the project stopped being drawn beside it (measured
+ *  at 57f5405f): the project kept its 24px floor and the sentence gave way around it. The fact is wider now. */
+const WAS_FACT_WIDTH: Record<number, number> = { 236: 10.7, 292: 62.9, 340: 62.9 };
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
 const row = (page: Page, title: string) => sidebar(page).locator(".session-item", { hasText: title });
@@ -570,13 +575,27 @@ test.describe("the compact rows", () => {
           )
           .toBe(true);
         expect(await overflowing(width), `every row's words end inside it at ${width}px (${view})`).toEqual([]);
+        // The suffix holds one fact, not two: beside the agent's own status the project is not drawn at any
+        // width (a clipped 1px box, so its words stay in the row's name) and the sentence takes the room. It
+        // kept its 24px floor before this, and the fact gave way around it: 10.7px at 236, 62.9px above it.
+        if (view === "recent") {
+          const pieces = await active.evaluate((el) => {
+            const widthOf = (sel: string) => Math.round((el.querySelector(sel)?.getBoundingClientRect().width ?? 0) * 10) / 10;
+            return { fact: widthOf(".session-sub-fact"), project: widthOf(".session-sub-project"), name: el.textContent ?? "", projectName: el.querySelector(".session-sub-project")?.textContent ?? "" };
+          });
+          expect(pieces.project, `the project is not drawn beside a fact at ${width}px`).toBeLessThanOrEqual(1.5);
+          expect(pieces.fact, `the fact takes the suffix's room at ${width}px`).toBeGreaterThan(WAS_FACT_WIDTH[width] ?? 0);
+          expect(pieces.name, "a clipped project keeps its words in the accessible name").toContain(pieces.projectName);
+        }
       }
     };
+
+    // The row the listing gives the status to: its suffix is the fact, and the age is the verdict.
+    const active = sidebar(page).locator(".session-item.is-active, .session-item:has(.session.is-active)").first();
 
     // Recent: the status is the tag line's fact, before the project's name.
     await measure("recent");
     // The age keeps the row's one column, and the agent's verdict is the word in it.
-    const active = sidebar(page).locator(".session-item.is-active, .session-item:has(.session.is-active)").first();
     await expect(active.locator(".session-slot"), "the active row keeps its age").toBeVisible();
     await expect(active.locator(".session-slot")).toHaveText("Done");
     // Projects: the same status, drawn as the row's one plain suffix text.
