@@ -533,8 +533,9 @@ test.describe("the compact rows", () => {
           const rect = el.getBoundingClientRect();
           const padding = parseFloat(getComputedStyle(el).paddingRight);
           // The active row's wash is its own box, and it is what the row's ink must stay inside.
-          const bg = (el.closest("li")?.parentElement?.querySelector(":scope > .session-active-bg") as HTMLElement | null)?.getBoundingClientRect().right;
-          const edge = Math.min(rect.right, bg === undefined ? Infinity : bg) - padding;
+          // A list with no active row keeps a hidden (0×0) wash of its own: only a drawn one bounds the row.
+          const wash = (el.closest("li")?.parentElement?.querySelector(":scope > .session-active-bg") as HTMLElement | null)?.getBoundingClientRect();
+          const edge = Math.min(rect.right, wash && wash.width > 0 ? wash.right : Infinity) - padding;
           for (const part of [".session-title-line", ".session-sub-name", ".session-slot"]) {
             const box = el.querySelector(part)?.getBoundingClientRect();
             if (box && box.right > edge + 0.5) over.push({ title, w, part, over: Math.round((box.right - edge) * 10) / 10 });
@@ -560,7 +561,8 @@ test.describe("the compact rows", () => {
           .poll(
             () =>
               page.evaluate(() => {
-                const wash = document.querySelector(".sidebar .session-active-bg")?.getBoundingClientRect().right;
+                // A list with no active row keeps a hidden wash of its own (0×0): the drawn one is the one to read.
+                const wash = [...document.querySelectorAll(".sidebar .session-active-bg")].map((el) => el.getBoundingClientRect()).find((r) => r.width > 0)?.right;
                 const active = document.querySelector(".sidebar .session.is-active")?.getBoundingClientRect().right;
                 return wash === undefined || active === undefined ? true : Math.abs(wash - active) <= 0.5;
               }),

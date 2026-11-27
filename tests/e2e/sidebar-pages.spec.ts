@@ -63,7 +63,8 @@ test("a folder that is not the current one opens with 4 rows, and each Show more
     return svg ? { left: svg.left, labelLeft: label.left } : null;
   });
   expect(chevron?.left ?? 0, "the chevron follows the label").toBeGreaterThan(chevron?.labelLeft ?? 0);
-  await expect(more).toHaveCSS("min-height", "32px");
+  // A "Show more" is one row of the list: 36px at the default style on a desktop (32px before the roomier rows).
+  await expect(more).toHaveCSS("min-height", "36px");
   await more.hover();
   await expect(more).toHaveCSS("color", await painted(page, "--text-2"));
 
