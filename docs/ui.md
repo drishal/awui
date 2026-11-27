@@ -132,7 +132,8 @@ a literal colour.
   stays beside the title; hover or keyboard focus swaps it for the ⋯ with an opacity
   cross-fade inside the age's own box, so the title keeps its width. Touch keeps the ⋯
   on the open row only. Inside the Needs-you or Working section that already names the state, the row
-  shows the age (amber on a needs-you row), not a repeating word. In the Working section that age is
+  shows the age in the muted ink, not a repeating word and not a third amber cue (the section's icon and
+  the row's dot already carry it). In the Working section that age is
   the run's own elapsed time ("12s", "1m 4s"), counting up on its own second clock in `--text-2`, tabular
   like every other time in the list — the age said "now" for the whole run, which is the one thing someone
   watching a run already knows; a run whose start the listing does not give keeps the age. The section's

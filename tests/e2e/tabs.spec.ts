@@ -277,17 +277,19 @@ test("the sidebar lifts what needs you and what is working, and settling can be 
   await showSidebar(page);
   const needs = page.getByTestId("needs-group");
   await expect(needs).toContainText("please ask first", { timeout: 10_000 });
-  // The section already names the state, so its row keeps its age, in the sidebar's amber (session-state.ts).
+  // The section's own head and the row's dot already say the state, so the age keeps the muted ink: three
+  // amber cues for one fact (the head's icon, the dot, the age) was one too many.
   await expect(needs.locator(".session-state")).toHaveCount(0);
-  const rowWarn = await page.evaluate(() => {
+  await expect(needs.locator(".session-asking-dot").first()).toBeVisible();
+  const rowMuted = await page.evaluate(() => {
     const probe = document.createElement("span");
-    probe.style.color = "var(--row-warn)";
+    probe.style.color = "var(--muted-text)";
     document.querySelector(".sidebar")?.append(probe);
     const colour = getComputedStyle(probe).color;
     probe.remove();
     return colour;
   });
-  await expect(needs.locator(".session-time").first()).toHaveCSS("color", rowWarn);
+  await expect(needs.locator(".session-time").first()).toHaveCSS("color", rowMuted);
 
   await tab(page, "please ask first").click();
   await page.getByTestId("approval-card").getByRole("button", { name: "Approve" }).click();

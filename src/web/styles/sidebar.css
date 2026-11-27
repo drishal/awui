@@ -1437,8 +1437,7 @@
   font-weight: 500;
 }
 
-.session-state.is-warn,
-.session-time.is-warn {
+.session-state.is-warn {
   color: var(--row-warn);
 }
 

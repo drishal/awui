@@ -476,7 +476,9 @@ function SessionRow({
       ) : stateTone === "working" ? (
         <RunElapsed s={s} />
       ) : (
-        <span className={`session-time${stateTone === "needs" ? " is-warn" : ""}`}>{relativeTime(s.updatedAt)}</span>
+        // Inside its own section the mark (a run's ring, the amber dot of a question) says the state and the
+        // heading names it: the age stays muted, a third amber cue for one fact.
+        <span className="session-time">{relativeTime(s.updatedAt)}</span>
       )}
     </span>
   );
