@@ -9,6 +9,8 @@ import { motionOff } from "../morph.js";
 import { IconChevronDown } from "../icons.js";
 import { clipBand } from "./ModelPicker.js";
 import { EffortSlider } from "./EffortSlider.js";
+import { usePopupMorph } from "../model-morph.js";
+/** An unset effort remains Default on both trigger and slider; only an explicit stop names Low or High. */
 
 export function ThinkingPicker({
   levels,
@@ -29,6 +31,7 @@ export function ThinkingPicker({
   const [below, setBelow] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
   const still = motionOff();
 
   const close = (refocus = true) => {
@@ -47,6 +50,7 @@ export function ThinkingPicker({
     setBelow(room < 150 && band.bottom - rect.bottom > room);
   }, [open]);
 
+  usePopupMorph(trigger, pop, showPop, leaving);
   return (
     <div className="model-picker" ref={wrap}>
       <button
@@ -71,8 +75,8 @@ export function ThinkingPicker({
       {showPop ? (
         <>
           <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(false)} />
-          <div className={`model-pop effort-pop${below ? " is-below" : ""}${leaving ? " is-leaving" : ""}${still ? " is-still" : ""}`} role="dialog" aria-label="Thinking effort">
-            <EffortSlider levels={levels} current={current} sent={sent} disabled={disabled} closing={leaving} onSelect={onSelect} onDone={close} />
+          <div ref={pop} className={`model-pop effort-pop${below ? " is-below" : ""}${leaving ? " is-leaving" : ""}${still ? " is-still" : ""}`} role="dialog" aria-label="Thinking effort">
+            <EffortSlider levels={levels} current={current} titleOf={(level) => current === null ? "Default" : levelTitle(level)} disabled={disabled} closing={leaving} onSelect={onSelect} onDone={close} />
           </div>
         </>
       ) : null}

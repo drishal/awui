@@ -9,7 +9,7 @@ import { IconCheck, IconChevronDown, IconRefresh, IconSearch, Spinner } from "..
 import { levelTitle } from "../config-summary.js";
 
 import { groupModels, type ModelGroup } from "../model-search.js";
-import { morphClip } from "../model-morph.js";
+import { usePopupMorph } from "../model-morph.js";
 import { load, save } from "../storage.js";
 import { Dot } from "./Dot.js";
 import { EffortSlider } from "./EffortSlider.js";
@@ -168,23 +168,9 @@ export function ModelPicker({
   }, [open]);
 
   const pop = useRef<HTMLDivElement>(null);
-  // The measured morph (A8): once the panel mounts, uncover it from the chip's rect instead of the
-  // keyframed corner. Phones use the same short spring, or reduced motion stays still, and browsers
-  // without the Web Animations API keep the CSS keyframes.
-  useLayoutEffect(() => {
-    if (!showPop || leaving) return;
-    const panel = pop.current;
-    const chip = trigger.current;
-    if (!panel || !chip || typeof panel.animate !== "function") return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const phone = window.matchMedia?.("(max-width: 819px)").matches === true;
-    panel.dataset.morph = "";
-    const anim = panel.animate(
-      [{ clipPath: morphClip(chip.getBoundingClientRect(), panel.getBoundingClientRect()), opacity: "0" }, { clipPath: "inset(-24px)", opacity: "1" }],
-      { duration: phone ? 160 : 180, easing: getComputedStyle(panel).getPropertyValue(phone ? "--spring" : "--ease-out") || "ease-out" },
-    );
-    return () => anim.cancel();
-  }, [showPop, leaving]);
+  // Every composer picker contracts to its actual trigger; measurements are taken in the panel's
+  // own local space, regardless of whether its containing block is a card, a phone sheet or a page.
+  usePopupMorph(trigger, pop, showPop, leaving);
 
   useEffect(() => {
     if (!open) return;

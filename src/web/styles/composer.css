@@ -882,17 +882,22 @@
   border-radius: 0 var(--r-control) var(--r-control) 0;
 }
 
-/* One chevron for the group, on its last segment: three of them turn a sentence into a toolbar. The ones
-   it hides keep their box — `visibility`, never `display`, and named by the icon rather than by
-   `:last-child`: a press drops a ripple clip into the button as its last child while the ink fades, and a
-   chevron hidden by either came back for those frames, growing the chip 18px and moving every control
-   beside it. The negative margin is that same 18px given back as spacing (the trigger's 6px gap plus the
-   12px glyph), so the sentence still reads "Fake Echo · Low" while the box itself never changes. */
+/* Model and effort are two individual choices, but one visual group. Keep each chevron and give it a
+ * state: this replaces the old hidden model arrow, where only effort seemed clickable. Text and
+ * container do not resize on hover/open, so sibling controls and the input remain at the same origin. */
 .composer-pill-settings > :not(:last-child) > .pill-trigger > .icon {
-  visibility: hidden;
-  margin-right: -18px;
+  width: 10px;
+  margin-right: -4px;
+  opacity: 0.65;
 }
-
+.pill-trigger > .icon:last-child {
+  transition: transform 150ms var(--ease-out);
+}
+.pill-trigger[aria-expanded="true"] > .icon:last-child { transform: rotate(180deg); }
+.composer-pill-settings .pill-trigger[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--active);
+}
 .composer-pill-settings .pill-trigger:hover:not(:disabled),
 .composer-pill-settings .pill-trigger[aria-expanded="true"] {
   background: var(--active);

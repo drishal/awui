@@ -6,6 +6,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { PermissionModeInfo } from "../../shared/protocol.js";
 import { useDismiss, useLeave } from "../hooks.js";
+import { usePopupMorph } from "../model-morph.js";
 import { IconCheck, IconChevronDown, IconShield } from "../icons.js";
 
 export function PermissionPicker({
@@ -57,6 +58,7 @@ export function PermissionPicker({
     if (open) list.current?.focus();
   }, [open]);
 
+  usePopupMorph(trigger, list, showMenu, leaving);
   const pick = (i: number) => {
     const choice = modes[i];
     if (!choice) return;

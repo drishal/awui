@@ -103,6 +103,13 @@
   transform-origin: bottom left;
   animation: pop-up var(--dur-spring) var(--spring);
 }
+/* The model/agent/effort/permission picker owns a measured clip once data-morph appears (model-morph.ts).
+ * Do not also run the original corner spring or remove a closing panel before its reverse is visible. */
+.model-pop[data-morph],
+.permission-menu[data-morph],
+.permission-menu.is-leaving[data-morph] {
+  animation: none;
+}
 
 .usage-pop {
   transform-origin: bottom right;

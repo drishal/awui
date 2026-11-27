@@ -632,8 +632,8 @@ button.harness-chip {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  background: color-mix(in oklab, var(--harness, var(--muted)) var(--lead-tint), var(--hover));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--harness, var(--muted)) var(--lead-edge), transparent);
+  background: var(--hover);
+  box-shadow: none;
   color: var(--text);
 }
 
@@ -842,32 +842,40 @@ button.harness-chip:disabled {
 .config-sheet .agent-menu .permission-option-desc { white-space: normal; }
 /* The native dialog owns one backdrop; this list occupies viewport margins rather than
  * stretching its host or carrying a desktop clamp's negative left offset. */
-.agent-menu.is-sheet { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); width: auto; max-width: none; max-height: 72dvh; }
+.agent-menu.is-sheet { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); top: auto; width: auto; max-width: none; max-height: min(340px, 55dvh); z-index: 40; border-radius: var(--r-lg); }
+/* The primary role opens the config sheet's own pane, not a fixed popup below that sheet. */
+.agent-menu.is-pane { position: static; width: 100%; max-width: none; max-height: none; padding: 0; overflow: visible; background: none; box-shadow: none; }
+.agent-menu.is-pane .permission-option { min-height: 48px; padding: 9px 10px; }
+.config-back { margin: 0 0 8px; padding: 4px 0; }
+.config-pane-note { margin: -2px 0 12px; color: var(--muted-text); font-size: 12px; line-height: 1.5; }
+.config-sheet .config-row .pill-trigger { height: 44px; }
+.composer-pickers > .model-picker > .agent-menu,
+.composer-pickers > .model-picker > .effort-pop,
+.composer-pill-settings > .model-picker > .effort-pop,
+.composer-policy > .model-picker > .permission-menu { bottom: calc(100% + 8px); max-height: min(440px, 55dvh); }
 /* The panel grows out of its chip: measured from the chip's rect where the Web Animations API runs
    (model-morph.ts sets data-morph and uncovers from there), else from the chip's corner via the keyframes
    below. Either way it fades in as a clip uncovers it, and closing furls it back into that corner.
    A phone's sheet is uncovered from its pill the same way (motion.css turns its rise off then). */
 @media (min-width: 820px) {
-  .model-picker .model-pop {
+  .model-picker .model-pop:not([data-morph]) {
     transform-origin: bottom left;
     animation: model-grow var(--dur-spring) var(--spring);
   }
 
-  /* A measured morph replaces the keyframed corner grow; the furl below still closes it. */
-  .model-picker .model-pop[data-morph]:not(.is-leaving) {
-    animation: none;
-  }
-
-  .model-picker .model-pop.is-below {
+  .model-picker .model-pop.is-below:not([data-morph]) {
     transform-origin: top left;
     animation-name: model-grow-below;
   }
+  /* A measured open takes over the easing; a leave belonging to the popup must remain clickable-free
+   * while the reverse returns to its trigger, not jump back to the corner of an unrelated card. */
   .model-picker .model-pop.is-leaving {
     pointer-events: none;
-    animation: model-furl var(--dur-hover) var(--ease-out) forwards;
+    animation: model-furl var(--dur-hover) var(--ease-out);
   }
+  .model-picker .model-pop.is-leaving[data-morph] { animation: none; }
 
-  .model-picker .model-pop.is-below.is-leaving {
+  .model-picker .model-pop.is-below.is-leaving:not([data-morph]) {
     animation-name: model-furl-below;
   }
 }

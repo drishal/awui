@@ -25,7 +25,7 @@ test("OpenCode primary agents are catalogued, chosen through the API, and kept o
   const chatId = await openCodeChat(page);
   await expect(page.getByTestId("connection")).toHaveText("Connected");
   const trigger = page.getByTestId("agent-picker");
-  await expect(trigger).toHaveAccessibleName("Agent: Default agent");
+  await expect(trigger).toHaveAccessibleName("Agent: Agent (default)");
   await trigger.click();
   const list = page.getByRole("listbox", { name: "Primary agent" });
   await expect(list).toBeVisible();
@@ -74,7 +74,7 @@ test("the pre-send new-chat screen lists primary roles and uses one on OpenCode 
   await page.getByRole("listbox", { name: "Agent" }).getByRole("option", { name: "OpenCode", exact: true }).click();
   await expect(page.getByRole("heading", { name: /What should OpenCode do in alpha\?/ })).toBeVisible();
   const picker = page.locator(".start-screen").getByTestId("agent-picker");
-  await expect(picker).toHaveAccessibleName("Agent: Default agent");
+  await expect(picker).toHaveAccessibleName("Agent: Agent (default)");
   await picker.click();
   const menu = page.getByRole("listbox", { name: "Primary agent" });
   await expect(menu).toBeVisible();
@@ -104,7 +104,7 @@ test("the pre-send role picker works on a phone inside its viewport", async ({ p
   await page.getByRole("button", { name: "Agent for this chat" }).click();
   await page.getByRole("listbox", { name: "Agent" }).getByRole("option", { name: "OpenCode", exact: true }).click();
   const picker = page.locator(".start-screen").getByTestId("agent-picker");
-  await expect(picker).toHaveAccessibleName("Agent: Default agent");
+  await expect(picker).toHaveAccessibleName("Agent: Agent (default)");
   await picker.click();
   const menu = page.getByRole("listbox", { name: "Primary agent" });
   await expect(menu).toBeVisible();
@@ -130,27 +130,48 @@ test("a phone puts the real primary agent in Chat settings without narrowing the
   await page.getByTestId("config-chip").click();
   const sheet = page.getByRole("dialog", { name: "Chat settings" });
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator(".config-row-label", { hasText: /^Agent$/ })).toBeVisible();
-  await expect(sheet.getByTestId("agent-picker")).toHaveAccessibleName("Agent: Default agent");
+  // Common choices lead, ahead of every rare handoff option.
+  await expect(sheet.locator(".config-row-label", { hasText: /^Primary agent$/ })).toBeVisible();
+  await expect(sheet.getByTestId("agent-picker")).toHaveAccessibleName("Agent: Agent (default)");
   await expect(sheet.getByTestId("model-picker")).toBeVisible();
+  await expect(sheet.getByTestId("thinking-picker")).toBeVisible();
   await sheet.getByTestId("agent-picker").click();
+  const pane = page.getByRole("dialog", { name: "Primary agent", exact: true });
+  await expect(pane).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Chat settings" })).toHaveCount(0);
   const menu = page.getByRole("listbox", { name: "Primary agent" });
-  await expect(menu).toBeVisible();
-  const rect = await menu.boundingBox();
-  expect(rect).not.toBeNull();
-  expect(rect!.x).toBeGreaterThanOrEqual(0);
-  expect(rect!.x + rect!.width).toBeLessThanOrEqual(390);
-  expect(rect!.y + rect!.height).toBeLessThanOrEqual(844);
+  // This is an animated native dialog, so measure steady hit geometry once it has actually settled.
+  await menu.evaluate(async (el) => { await Promise.all((el.closest("dialog")?.getAnimations({ subtree: true }) ?? []).map((a) => a.finished.catch(() => undefined))); });
+  await expect(menu).toBeFocused();
+  const contained = await menu.evaluate((el) => {
+    const sheet = el.closest("dialog");
+    if (!sheet) return false;
+    const body = sheet.querySelector(".dialog-body")!.getBoundingClientRect();
+    const list = el.getBoundingClientRect();
+    return list.left >= body.left && list.right <= body.right && list.top >= body.top && list.bottom <= body.bottom;
+  });
+  expect(contained).toBe(true);
+  const owned = await menu.getByRole("option").evaluateAll((elements) => elements.every((el) => {
+    const r = el.getBoundingClientRect();
+    return r.height >= 44 && el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+  }));
+  expect(owned).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Chat settings" })).toBeVisible();
+  await expect(sheet.getByTestId("agent-picker")).toBeFocused();
+  await page.getByRole("listbox", { name: "Primary agent" }).waitFor({ state: "detached" });
+  await sheet.getByTestId("agent-picker").click();
+  await expect(page.getByRole("listbox", { name: "Primary agent" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Chat settings" })).toBeHidden();
+  await expect(page.getByTestId("config-chip")).toContainText("Build");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
-  expect(await sheet.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(await sheet.evaluate((el) => el.clientWidth));
-  await menu.getByRole("option", { name: "orchestrator", exact: true }).click();
-  await expect(sheet).toBeHidden();
-  await expect(page.getByTestId("config-chip")).toContainText("orchestrator");
   await page.getByTestId("config-chip").click();
-  await expect(page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker")).toHaveAccessibleName("Agent: orchestrator");
+  await expect(page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker")).toHaveAccessibleName("Agent: Build");
 });
 
-test("a harness with no primary-agent catalogue gains no fake Default agent control", async ({ page }) => {
+test("a harness with no primary-agent catalogue gains no fabricated default-role control", async ({ page }) => {
   await page.setViewportSize({ width: 1360, height: 900 });
   await signInAndOpen(page);
   await page.getByRole("textbox", { name: "Message" }).fill("hello on another harness");

@@ -313,20 +313,21 @@ a literal colour.
   tool rows tint their row; the approval card is the loudest object; answer
   prose, paths, timestamps, model names, section labels, and card backgrounds
   stay grey. Never colour alone: glyph, word, and shape stay.
-- **The composer's chip row:** one split pill carries the chat's identity and its two
-  settings. Its leading segment is the harness mark (a `--lead-tint` 12 % wash and a
-  `--lead-edge` 32 % edge, in `--harness`; the harness's name is the header's and the
-  sidebar's job, and stays in the button for screen readers). Beside it a neutral
-  segment holds the model and the reasoning level as one sentence, "Fake Echo · Low":
-  no fill of its own, one chevron on its last segment, and the level's word carries
-  the effort (its ink ramps on `--thinking` from medium up; the level's own wash is
-  gone inside the pill). The harness's default permission mode is a quiet 32 px
-  shield beside the pill, with its mode in the tooltip and the accessible name; a mode
-  that stops asking keeps its word and its warn wash (the harness segment then keeps
-  just its mark). Send is the row's one solid and the one control a size larger, 40 px
-  round. The row carries `data-harness-accent`: a harness whose accent is `thinking`
-  (omp, Awui) ramps reasoning in grey, and one whose accent is `ok` (DeepSeek Harness)
-  gets a grey shield, so no two parts ever share a hue.
+- **The composer's chip row:** the agent, model, and thinking controls are actual
+  native triggers, not one link that shares a chevron; model and thinking sit in
+  one neutral sentence beside a quiet harness mark for an exceptional handoff.
+  `model-morph.ts` (`morphClip` and `usePopupMorph`) gives all these surfaces the
+  same 190 ms reveal from the actual trigger, and a 120 ms return on dismissal,
+  while the trigger's arrow doesn't resize the working row. The panel's containing
+  block supplies the measurements: input text is never stretched or obscured by
+  a surface growing from somewhere else. Reduced motion shows the values at once.
+  `AgentOptions.tsx` owns the one focused primary-role list (arrows, Home, End,
+  Enter, Escape), reused by `AgentPicker.tsx`; on a phone `ConfigSheet.tsx` shows
+  it as a sub-pane of the existing native dialog, with Back and focus restoration,
+  instead of floating a second sheet over its parent. Common choices lead; the
+  harness handoff list follows. The permission mode stays separate, with its
+  safe default as a quiet shield and a cautious mode named in its warning wash.
+  Send is the row's one solid and the one control a size larger, 40 px round.
 
 - **Where the effort slider sits:** `EffortSlider.tsx` is the slider alone; `ThinkingPicker.tsx` wraps it in the composer's pill and popover (the chat's own level), and `ModelPicker.tsx` draws it inline as the footer of the model list (the level a new chat starts on, on the start screen and in Board rooms), where its first stop is "Model default" and a model with other levels is a new slider. A change still settling is sent when its surface closes, never on a model switch (the stops it belonged to are gone).
 - **The effort slider's liquid:** the bead and its shadow share a transform. An analytic SVG neck must taper into the bead, not become a thin stick between two circles; its gap stays at most 22 px. The violet wash follows the bead by a bounded lag and reaches a stop before that stop turns violet. Ring only an actual bead-centre crossing, with at most two live animations per dot. `effort-spring.ts` and `effort-slider.spec.ts` own the geometry, containment, crossing, focus and fallback checks. Reduced motion and low-end coarse pointers use the static slider, including its selected-stop coloring. Test forced-colors strokes against the computed system `Highlight`, not a hard-coded RGB value.
