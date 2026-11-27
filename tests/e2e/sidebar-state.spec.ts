@@ -81,6 +81,17 @@ test("an unread row is heavier at full ink, not another dot", async ({ page }) =
   const ink = () => target.locator(".session-title").evaluate((el) => ({ weight: getComputedStyle(el).fontWeight, color: getComputedStyle(el).color, row: el.closest(".session")?.className ?? "" }));
   expect((await ink()).weight, "a read title is regular weight").toBe("400");
   const readColor = (await ink()).color;
+  // One step below full ink, not two: at 78% half the list read as disabled beside the bold rows (86% of the
+  // text ink measures 11.2:1 on the panel in dark and 16.9:1 in light).
+  const readInk = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "color-mix(in srgb, var(--text) 86%, var(--muted-text))";
+    document.querySelector(".sidebar")?.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  });
+  expect(readColor, "a read title sits at 86% of the text ink").toBe(readInk);
 
   await target.locator(".session").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Mark unread" }).click();

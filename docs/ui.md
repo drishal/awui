@@ -194,11 +194,14 @@ a literal colour.
 - **Sidebar state, the colour contract:** `session-state.ts` decides a row's two
   state slots — a 10px leading mark and either the age or one word in its place
   — and exactly four things in the list are coloured: **amber** (`--warn`) is
-  needs-you, its dot and its age where the section already names the state;
+  needs-you — its dot, its word outside its own section, and the `blocked` a blocked row says before its
+  note;
   **the accent** is a run, its ring or its word; **green** (`--ok`) is done,
   and only the agent's own verdict ("done" or "ready for review") earns it;
-  and **weight** is unread (the title at 600 and full ink, read titles at 78 % ink).
-  The section's state word stays outside it; inside it no second word replaces the age.
+  and **weight** is unread (the title at 600 and full ink, read titles at 86 % of the text ink: one rank
+  above the muted annotations, not the 78 % that read as disabled beside the bold rows).
+  The section's state word stays outside it; inside it no second word replaces the age, and the age itself
+  keeps the muted ink.
   Nothing else in the list states anything by colour: a project's monogram is the one
   decoration: four different hues from `--badge-1..4` — teal, violet, orange, red — none the
   accent, and none the amber of needs-you or the green of done, so no row can be mistaken for a
