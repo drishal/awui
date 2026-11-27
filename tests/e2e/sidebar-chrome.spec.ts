@@ -357,10 +357,10 @@ test("the list's bottom fade is a scrim under the rows, and the list masks nothi
   expect(tray.position, "a sticky scrim, not a mask").toBe("sticky");
   expect(tray.bottom).toBe("0px");
   expect(tray.last, "the tray is the list's last child, so it paints over the rows").toBe(true);
-  // The fade reaches ink only in its last 10px: a gradient over the whole tray dimmed the title of the row at
-  // the fold to ~87% of its ink (measured 176 of 202 luminance), while the row itself was fully on screen.
+  // The fade reaches ink over one full 16px subline. A 10px ramp showed a whole half-line at full ink and
+  // then cut it through the x-height. The title above that one 18px line box stays crisp.
   expect(tray.gradient).toContain("gradient");
-  expect(tray.gradient, "the fade starts 10px above the tray's bottom edge").toContain("calc(100% - 10px)");
+  expect(tray.gradient, "the fade starts 16px above the tray's bottom edge").toContain("calc(100% - 16px)");
   expect(tray.height, "the fade is the footer tray's own height").toBe(await sidebar.locator(".sidebar-footer").evaluate((el) => getComputedStyle(el).height));
   expect(tray.tail, "the scroller has no tail of its own: the tray is it").toBe("0px");
 
