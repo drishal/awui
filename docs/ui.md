@@ -115,8 +115,10 @@ a literal colour.
   a literal, for a new row height or gap.
 - **Scrollbars:** themed globally, once, in `tokens.css` (`*`): every scroller in the app takes an 8px thin bar, `--hairline-strong` on a transparent track, so a menu, a picker, a dialog, the composer or a code block never falls back to the platform's light bar; a container that hides its bar (`scrollbar-width: none` on the tab strips) or reserves a gutter (`scrollbar-gutter: stable` on the thread) says so itself.
 - **Sidebar rows:** each title is one 14px line with an ellipsis. A row is 36px tall,
-  or 54px with its supporting subline (project tag, agent status, or a branch that
-  differs from its group's head), with 2px between rows and no hairline or rail on desktop at the default style.
+  or 54px with its supporting subline (the project it is out of, the agent's status, how the
+  session began — `From <parent chat>` or `Scheduled routine` — or a branch that differs from its
+  group's head), with 2px between rows and no hairline or rail on desktop at the default style; a row
+  inside its own project with none of those stays one line, so a group mixes the two heights.
   The rows sit on a 12px panel gutter with 10px of row padding and a `--r-md` wash. Titles start
   26px into the row, and folder groups sit 16px apart. In Recent the tag is the project's badge,
   then — in the branch's place, and so before the project's name — the line the agent set for itself,
@@ -124,7 +126,7 @@ a literal colour.
   it lives, and the fact that changed comes first. A blocked agent's state is that fact and its comment
   is a note under it, so the row says `blocked · waiting on CI`: the word takes `--row-warn` while the
   note and the project stay muted (`TagFact`), where the note alone used to read as a finished row.
-  Touch keeps 44px. Compact style and compact density keep their own values.
+  Touch keeps 44px on one line and 48px with its subline. Compact style and compact density keep their own values.
   `session-state.ts` decides that subline and its state. On a two-line row the title
   takes the row's full width (10px right padding, no hover gutter). Its second line
   holds the project's badge and name on the left, and the age or allowed state word
