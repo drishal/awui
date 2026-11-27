@@ -154,7 +154,7 @@ a literal colour.
   `config.yml`'s `sidebar_style: compact` sets `data-sidebar="compact"` on
   `<html>`, and `sidebar.css` ends with the handful of overrides that make the
   rows tighter still: 28px and one line — the title (`flex: 1 1 auto`, never below 96px), the project's
-  name as a dim suffix of at most 56px; a plain agent-status row lends 16px of the title's floor to its sentence, so it reads more than a three-letter fragment at the narrowest rail, and the age at the line's end on the column every row uses, 6px
+  name as a dim suffix of at most 56px. Whether a status appears as plain agent text or inside a tag's fact, it lends 16px of the title's floor to its sentence at the narrowest rail. The age stays at the line's end on the column every row uses, 6px
   from the title and 8px before the age, with the same ⋯/age swap on hover and 1px between rows. The suffix
   gives way first, piece by piece (`TagLine`): the project's name carries a 56px cap and shrinks to 24px
   before a branch after it, while a branch keeps its own width (`flex: none`). The suffix box itself shrinks

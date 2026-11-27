@@ -595,6 +595,10 @@ test.describe("the compact rows", () => {
             const widthOf = (sel: string) => Math.round((el.querySelector(sel)?.getBoundingClientRect().width ?? 0) * 10) / 10;
             return { fact: widthOf(".session-sub-fact"), project: widthOf(".session-sub-project"), name: el.textContent ?? "", projectName: el.querySelector(".session-sub-project")?.textContent ?? "" };
           });
+          if (width === 236) {
+            expect(pieces.fact, "a status fact in Recent gets the same meaningful text budget as Projects' plain agent line").toBeGreaterThan(55.5);
+            await expect(active.locator(".session-body.has-sub > .session-title-line"), "only fact-bearing rows lend the title's floor").toHaveCSS("min-width", "80px");
+          }
           expect(pieces.project, `the project is not drawn beside a fact at ${width}px`).toBeLessThanOrEqual(1.5);
           expect(pieces.fact, `the fact takes the suffix's room at ${width}px`).toBeGreaterThan(WAS_FACT_WIDTH[width] ?? 0);
           await expect(active.locator(":scope > .session > .session-project-mark"), "only the reserved slot carries the project mark").toHaveCount(1);

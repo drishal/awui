@@ -2298,9 +2298,11 @@ body.is-resizing {
   white-space: nowrap;
 }
 
-/* A plain agent sentence borrows 16px from the title's floor, not from a project or branch suffix.
-   That is enough to keep the agent name at the rail's floor; ordinary rows retain their 96px title floor. */
-:root[data-sidebar="compact"] .session-body.has-sub:has(> .session-sub.session-agent) > .session-title-line {
+/* A real status borrows 16px from the title's floor, not from a project or branch suffix. Projects
+   renders it directly; Recent carries the same sentence inside a tag's fact. Keep the ordinary 96px
+   title floor on tag-only, project and branch rows, where no status competes for the suffix. */
+:root[data-sidebar="compact"] .session-body.has-sub:has(> .session-sub.session-agent) > .session-title-line,
+:root[data-sidebar="compact"] .session-body.has-sub:has(> .session-sub .session-sub-fact) > .session-title-line {
   min-width: 80px;
 }
 /* An agent's status is direct text, not a flex TagLine item: the latter truncates at its own text edge
