@@ -454,6 +454,99 @@ test.describe("the compact rows", () => {
     await expect(row(page, "a row in a plain folder").first().locator(".session"), "the clipped name is still in the accessible name").toHaveAccessibleName(/drishal-notes-plain/);
     await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
   });
+
+  // The agent's own sentence is a status, not a place: at the rail's floor it is longer than the suffix box
+  // that caps it at 96px. A nowrap box's min-content is the whole sentence, so with a min-content floor the
+  // fact stayed 440px wide inside the box and pushed the project's name out of the row (its left edge 585 on a
+  // 236px rail), cutting the words mid-glyph with no ellipsis and taking the age with them.
+  test("a long status ends inside its row at 236, 292 and 340px, active or not", async ({ page }) => {
+    const status = "DeepSeek research, live Pi audit, and two-model council review all finished cleanly";
+    // The listing is the one reader of an agent's status line: stand one in for the two rows below, the way
+    // the orchestration `set_status` tool would set it. Nothing else in the payload changes.
+    await page.route("**/api/sessions*", async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as { sessions?: { title?: string; agentStatus?: unknown }[] };
+      for (const s of json.sessions ?? []) {
+        if ((s.title ?? "").includes("compact status")) s.agentStatus = { state: "done", comment: status, at: Date.now() };
+      }
+      await route.fulfill({ response, json });
+    });
+    await signInAndOpen(page);
+    await newChat(page);
+    await sendAndWait(page, "compact status row");
+    await newChat(page);
+    await sendAndWait(page, "compact status other");
+    await showSidebar(page);
+    await row(page, "compact status row")
+      .first()
+      .click();
+    await page.evaluate(() => document.documentElement.setAttribute("data-sidebar", "compact"));
+    await expect(page.locator("html")).toHaveAttribute("data-sidebar", "compact");
+
+    /** Every fact the row draws has to end inside the row: the line, the suffix's box and the age's slot. */
+    const overflowing = async (width: number) => {
+      return page.evaluate((w) => {
+        const list = [...document.querySelectorAll(".sidebar .session")] as HTMLElement[];
+        const over: { title: string; w: number; part: string; over: number }[] = [];
+        for (const el of list) {
+          const title = el.querySelector(".session-title")?.textContent ?? "";
+          const rect = el.getBoundingClientRect();
+          const padding = parseFloat(getComputedStyle(el).paddingRight);
+          // The active row's wash is its own box, and it is what the row's ink must stay inside.
+          const bg = (el.closest("li")?.parentElement?.querySelector(":scope > .session-active-bg") as HTMLElement | null)?.getBoundingClientRect().right;
+          const edge = Math.min(rect.right, bg === undefined ? Infinity : bg) - padding;
+          for (const part of [".session-title-line", ".session-sub-name", ".session-slot"]) {
+            const box = el.querySelector(part)?.getBoundingClientRect();
+            if (box && box.right > edge + 0.5) over.push({ title, w, part, over: Math.round((box.right - edge) * 10) / 10 });
+          }
+          // The suffix's own box cuts what does not fit: a piece left outside it is a piece nobody sees.
+          const suffix = el.querySelector(".session-sub-name")?.getBoundingClientRect();
+          for (const part of [".session-sub-fact", ".session-sub-project"]) {
+            const piece = el.querySelector(part)?.getBoundingClientRect();
+            if (suffix && piece && piece.right > suffix.right + 0.5) over.push({ title, w, part, over: Math.round((piece.right - suffix.right) * 10) / 10 });
+          }
+        }
+        return over;
+      }, width);
+    };
+
+    const measure = async (view: string) => {
+      for (const width of [236, 292, 340]) {
+        await page.evaluate((w) => (document.querySelector(".app") as HTMLElement).style.setProperty("--sidebar-w", `${w}px`), width);
+        // The rail's own measurement lands a frame after the token: measure the row once it is that wide, and
+        // once the active row's wash (a box the list measures and writes itself) has caught up with it.
+        await expect.poll(() => page.locator(".sidebar").evaluate((el) => Math.round(el.getBoundingClientRect().width)), `the rail is ${width}px (${view})`).toBe(width);
+        await expect
+          .poll(
+            () =>
+              page.evaluate(() => {
+                const wash = document.querySelector(".sidebar .session-active-bg")?.getBoundingClientRect().right;
+                const active = document.querySelector(".sidebar .session.is-active")?.getBoundingClientRect().right;
+                return wash === undefined || active === undefined ? true : Math.abs(wash - active) <= 0.5;
+              }),
+            `the active row's wash caught up at ${width}px (${view})`,
+          )
+          .toBe(true);
+        expect(await overflowing(width), `every row's words end inside it at ${width}px (${view})`).toEqual([]);
+      }
+    };
+
+    // Recent: the status is the tag line's fact, before the project's name.
+    await measure("recent");
+    // The age keeps the row's one column, and the agent's verdict is the word in it.
+    const active = sidebar(page).locator(".session-item.is-active, .session-item:has(.session.is-active)").first();
+    await expect(active.locator(".session-slot"), "the active row keeps its age").toBeVisible();
+    await expect(active.locator(".session-slot")).toHaveText("Done");
+    // Projects: the same status, drawn as the row's one plain suffix text.
+    await useProjectsView(page);
+    await page.reload();
+    await page.evaluate(() => document.documentElement.setAttribute("data-sidebar", "compact"));
+    await row(page, "compact status row")
+      .first()
+      .click();
+    await measure("projects");
+    await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
+  });
 });
 
 const SETTINGS_PORT = Number(process.env.AWUI_E2E_PORT ?? 4791) + 2;

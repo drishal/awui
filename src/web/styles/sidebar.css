@@ -2159,9 +2159,9 @@ body.is-resizing {
   gap: 0;
   /* The box gives way only after the title has given up its room (the 1000 weight above). `min-content` here
      was the whole suffix, so at the 236px floor a row whose project hit its 56px cap made the line 189px
-     inside a 183px body and put its age 6px right of every other row's. What must not shrink is the fact
-     (`.session-sub-fact`, whose min-content is its whole words on a nowrap line) and the age (`flex: none`
-     on `.session-slot`); the project is the one that gives way, down to its own 24px floor. */
+     inside a 183px body and put its age 6px right of every other row's. It shrinks to 0 here and the box's
+     `overflow: hidden` does the cutting, inside the row: its pieces keep their own floors (the project
+     24px, a branch `flex: none` up to 56px), and the age is `flex: none` on `.session-slot`. */
   min-width: 0;
   max-width: 96px;
   overflow: hidden;
@@ -2170,11 +2170,14 @@ body.is-resizing {
   white-space: nowrap;
 }
 
-/* A state's word or a note may be ellipsised at its longest word, never inside its first one ("blocked",
-   "waiting"): the fact is what the row exists to say. The project gives way first, down to three letters
-   and its ellipsis (a bare "·" before a branch read as a typo), and a branch holds its width. */
+/* A status is a sentence, and on a nowrap line its `min-content` is the whole sentence: that floor held the
+   box at its full 440px inside the 96px suffix, so the project's name was pushed out of the row and the
+   words were cut mid-glyph with no ellipsis. It gives way (down to nothing) with the project beside it and
+   ellipsises inside its own box instead. The sentence is not lost: the row's accessible name carries it, and
+   so does the hover card. */
 :root[data-sidebar="compact"] .session-sub-fact {
-  min-width: min-content;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
