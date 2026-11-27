@@ -24,7 +24,7 @@ More schemes than one live in `~/.config/awui/themes/`, one base16 or base24 fil
 ## Shared settings and terminal surfaces
 
 - **Automatic** (`""` in config) uses `theme.yml` when present, otherwise follows the system. `system`, `light`, `dark`, `base16`, and the legacy `custom` selector alias are accepted. `base16` is also settable directly in `config.yml`.
-- **Text size** (0.5–2×) affects conversation and composer text through `--chat-scale`; chat width is `comfortable`, `wide`, or `full`. **Density** is `comfortable` or `compact` for fine-pointer desktops; coarse pointers retain the larger 44 px main targets rather than shrinking every control.
+- **Text size** (0.5–2×) affects conversation and composer text through `--chat-scale`; chat width is `comfortable`, `wide`, or `full`, and an answer's prose takes that whole column (nothing else caps its measure). **Density** is `comfortable` or `compact` for fine-pointer desktops; coarse pointers retain the larger 44 px main targets rather than shrinking every control.
 - **Tool style** is `cards` or `lines`. Colors remain derived from foundational palette tokens rather than hard-coded surface values; `DESIGN.md` carries the complete token/motion contract.
 - **Reduced motion** rises no panels, plays no toggles/morphs/ripples, and does not wait for dialog dismissals; final status/color feedback remains meaningful.
 - The xterm document takes the surface, foreground, cursor and selection colors from these existing CSS variables on each respective workspace's child frame. It uses the same fonts but has its own especially limited `terminal-shell.html` document CSP: only the xterm renderer needs inline grid dimensions. Main chat remains strict. There is no CDN or font service doorway through the terminal.
