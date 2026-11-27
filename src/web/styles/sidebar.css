@@ -884,8 +884,12 @@
   line-height: 16px;
 }
 
+/* A text action on a 16px note line: the box itself was 16px tall, so a press 3px under the words fell
+   through to the list. 4px of padding with its own negative margin makes a 24px target without growing the
+   note (24 - 8 is still the line's 16); a thumb gets the shared 44px floor the same way, below. */
 .search-scope-back {
-  padding: 0;
+  padding: 4px 0;
+  margin: -4px 0;
   border: 0;
   background: none;
   color: var(--text-2);
@@ -897,6 +901,14 @@
 
 .search-scope-back:hover {
   color: var(--text);
+}
+
+/* The shared 44px floor for a thumb, taken outward so the note keeps its 16px line. */
+@media (pointer: coarse) {
+  .search-scope-back {
+    padding: 14px 0;
+    margin: -14px 0;
+  }
 }
 
 /* Every head is laid on the rows' columns: its 8px inset puts a 10px icon, or the 16px badge of a folder,

@@ -258,8 +258,23 @@ test("a search under a focused folder says it looks in every project", async ({ 
   });
   await expect(note, "the note is muted: it is a remark, not a state").toHaveCSS("color", muted);
 
-  // Its action leaves the search and hands the rail back to the folder it names.
-  await note.getByRole("button", { name: /^Back to / }).click();
+  // Its action was 16px of inline text, so a press 3px under the words fell through to the list. It is a
+  // 24px target now, taken outward (4px of padding and its own negative margin), so the note's own line
+  // stays 16px tall and the list under it does not move.
+  const back = note.getByRole("button", { name: /^Back to / });
+  expect((await back.boundingBox())!.height, "a text action with a real target").toBeGreaterThanOrEqual(24);
+  const geometry = await note.evaluate((el) => {
+    const button = el.querySelector(".search-scope-back") as HTMLElement;
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    const text = range.getBoundingClientRect();
+    const under = el.nextElementSibling as HTMLElement | null;
+    return { line: Math.round(el.getBoundingClientRect().height), textLeft: text.left, textBottom: text.bottom, gap: under ? under.getBoundingClientRect().top - el.getBoundingClientRect().bottom : null };
+  });
+  expect(geometry.line, "the note itself keeps its one line").toBe(16);
+  expect(geometry.gap, "the list under it stays put").toBeLessThanOrEqual(8.5);
+  // A press just under the words is the action's, not the list's.
+  await page.mouse.click(geometry.textLeft + 4, geometry.textBottom + 3);
   await expect(page.getByRole("searchbox", { name: "Search sessions" })).toHaveValue("");
   await expect(page.locator(".search-scope")).toHaveCount(0);
   await expect(sidebar(page).locator(".focus-switch"), "the folder's own list is back").toBeVisible();
