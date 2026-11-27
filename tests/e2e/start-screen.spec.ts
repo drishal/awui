@@ -26,6 +26,13 @@ test("a fresh browser lands on the start screen: a box, and a folder chip asking
   await expect(menu.getByRole("option", { name: "Fake B" })).toBeVisible();
 });
 
+test("the start screen has no orphan divider before its only command group", async ({ page }) => {
+  await page.goto("/");
+  const commands = page.getByRole("button", { name: "Commands", exact: true });
+  await expect(commands).toBeVisible();
+  await expect.poll(() => commands.evaluate((el) => getComputedStyle(el, "::before").content)).toBe("none");
+});
+
 test("sending with no folder asks for one, keeps the draft, and the next Enter starts the chat", async ({ page }) => {
   await page.goto("/");
   const input = page.getByRole("textbox", { name: box });

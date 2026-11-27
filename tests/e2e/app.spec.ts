@@ -39,24 +39,143 @@ async function openFold(page: Page, index = -1) {
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
 
-test("the chat header keeps harness and project before its status", async ({ page }) => {
+test("the chat header is one row: project / title, then state, then harness", async ({ page }) => {
   await signInAndOpen(page);
   await openChat(page);
-  const parts = await page.locator(".chat-sub").evaluate((el) => Array.from(el.children, (child) => child.className));
-  expect(parts.indexOf("badge badge-harness")).toBeGreaterThanOrEqual(0);
-  expect(parts.indexOf("chat-path")).toBe(parts.indexOf("badge badge-harness") + 1);
-  expect(parts.some((name) => name.includes("status status-"))).toBe(true);
-  expect(parts.findIndex((name) => name.includes("status status-"))).toBeGreaterThan(parts.indexOf("chat-path"));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.locator(".chat-header")).toHaveJSProperty("offsetHeight", 44);
+  const classes = async (selector: string) => page.locator(selector).evaluateAll((elements) => elements.map((el) => Array.from(el.classList)));
+  expect(await classes(".chat-title > .chat-path, .chat-title > .chat-crumb-sep, .chat-title > h1, .chat-title > .chat-sub")).toEqual([["chat-path"], ["chat-crumb-sep"], [], ["chat-sub"]]);
+  const subParts = await page.locator(".chat-sub").evaluate((el) => Array.from(el.children, (child) => child.className));
+  expect(subParts[0]).toContain("status status-idle");
+  expect(subParts[1]).toBe("badge badge-harness");
   for (const width of [1280, 320]) {
     await page.setViewportSize({ width, height: 720 });
-    const dotCenters = await page.locator(".chat-header .badge-harness, .chat-header .status").evaluateAll((nodes) => nodes.map((el) => {
-      const box = el.getBoundingClientRect();
-      return box.y + (box.height - parseFloat(getComputedStyle(el, "::before").height)) / 2 + 3;
-    }));
-    expect(dotCenters[0]).toBe(dotCenters[1]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
 });
+
+test("every word in the header sits on one baseline", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "ask");
+  await expect(status(page)).toHaveText("Needs you");
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const probes = await page.locator(".chat-title .chat-path, .chat-title h1, [data-testid=chat-status] > span, .chat-sub .badge-harness").evaluateAll((elements) => elements.map((el) => {
+    const probe = document.createElement("span");
+    probe.style.display = "inline-block";
+    probe.style.width = "0";
+    probe.style.height = "0";
+    el.append(probe);
+    const bottom = probe.getBoundingClientRect().bottom;
+    probe.remove();
+    return bottom;
+  }));
+  expect(Math.max(...probes) - Math.min(...probes)).toBeLessThanOrEqual(0.5);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phone = await page.locator(".chat-title .chat-path, [data-testid=chat-status] > span, .chat-sub .badge-harness").evaluateAll((elements) => elements.map((el) => {
+    const probe = document.createElement("span");
+    probe.style.display = "inline-block";
+    probe.style.width = "0";
+    probe.style.height = "0";
+    el.append(probe);
+    const bottom = probe.getBoundingClientRect().bottom;
+    probe.remove();
+    return bottom;
+  }));
+  expect(Math.max(...phone) - Math.min(...phone), `phone probe bottoms: ${phone.join(", ")}`).toBeLessThanOrEqual(0.5);
+  const h1 = await page.locator(".chat-title h1").boundingBox();
+  const path = await page.locator(".chat-title .chat-path").boundingBox();
+  expect(h1!.y + h1!.height).toBeLessThanOrEqual(path!.y);
+});
+
+test("the header's controls share one height and centre", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "edit");
+  await expect(page.getByRole("button", { name: /^Review 1$/ })).toBeVisible();
+  await expect(page.locator(".chat-header .head-actions button:visible")).toHaveCount(7);
+  const header = (await page.locator(".chat-header").boundingBox())!;
+  for (const button of await page.locator(".chat-header .head-actions button:visible").all()) {
+    const box = (await button.boundingBox())!;
+    expect(box.height).toBe(32);
+    expect(Math.abs(box.y + box.height / 2 - (header.y + header.height / 2))).toBeLessThanOrEqual(0.5);
+  }
+});
+
+test("the harness word gives way first", async ({ page }) => {
+  await signInAndOpen(page);
+  await openChat(page);
+  const harness = page.locator(".chat-sub .badge-harness");
+  await page.setViewportSize({ width: 700, height: 720 });
+  await expect(harness).toBeHidden();
+  await expect(harness).toHaveText("Fake");
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(harness).toBeVisible();
+});
+test("a full child header keeps its status and actions clear at every width", async ({ page, context }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await signInAndOpen(page, "beta");
+  const other = await context.newPage();
+  await other.goto("/");
+  await send(page, "delegate a slow task to another agent");
+  const row = page.getByRole("list", { name: "Delegated tasks" }).getByTestId("task-row");
+  await expect(row.getByRole("button", { name: "Open" })).toBeEnabled({ timeout: 15_000 });
+  await row.getByRole("button", { name: "Open" }).click();
+  const chip = page.getByRole("region", { name: "Chat beside" }).getByRole("button", { name: /^Delegated by / });
+  await expect(chip).toBeVisible();
+  await page.getByRole("region", { name: "Chat beside" }).getByRole("button", { name: "Make main" }).click();
+  await expect(page.locator(".chat-header .badge-lineage")).toBeVisible();
+  await expect(page.getByTestId("chat-viewers")).toHaveText("2", { timeout: 10_000 });
+  const measure = async () => {
+    await expect.poll(() => page.locator(".chat-title").evaluate((el) => {
+      const actions = el.parentElement?.querySelector(".head-actions")?.getBoundingClientRect();
+      return actions !== undefined && el.getBoundingClientRect().right <= actions.left - 16;
+    })).toBe(true);
+  };
+  await measure();
+  await page.locator(".chat-header > .head-actions").getByRole("button", { name: "Close the chat beside" }).click();
+  await expect(page.getByRole("region", { name: "Chat beside" })).toHaveCount(0);
+  await sendAndWait(page, "edit");
+  await expect(page.getByRole("button", { name: /^Review 1$/ })).toBeVisible();
+  // The overview response is the app's only source for an agent-set status, so stub that metadata in the same way as
+  // the sidebar's agent-status specs. Lineage, Review and two viewers above all come from real fake-harness runs.
+  const chatId = page.url().match(/#chat=([^&]+)/)?.[1];
+  expect(chatId).toBeTruthy();
+  await page.route("**/api/sessions*", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const response = await route.fetch();
+    const body = await response.json() as { sessions: { liveChatId?: string; agentStatus?: unknown }[] };
+    await route.fulfill({ response, json: { ...body, sessions: body.sessions.map((s) => s.liveChatId === chatId ? { ...s, agentStatus: { state: "review", comment: "Reviewing the diff against the specification before committing", at: Date.now() } } : s) } });
+  });
+  await page.reload();
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle");
+  await expect(page.locator(".chat-agent-status")).toContainText("Reviewing the diff");
+  await expect(page.locator(".badge-lineage")).toBeVisible();
+  const baseline = await page.locator(".chat-title .chat-path, .chat-title h1, [data-testid=chat-status], .chat-sub .badge-harness, .badge-lineage").evaluateAll((els) => els.map((el) => {
+    const probe = document.createElement("span");
+    probe.style.display = "inline-block";
+    probe.style.width = "0";
+    probe.style.height = "0";
+    el.append(probe);
+    const bottom = probe.getBoundingClientRect().bottom;
+    probe.remove();
+    return bottom;
+  }));
+  expect(Math.max(...baseline) - Math.min(...baseline)).toBeLessThanOrEqual(0.5);
+  await page.emulateMedia({ media: "screen", reducedMotion: "reduce" });
+  for (const width of [1360, 980, 720, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const client = await context.newCDPSession(page);
+    await client.send("Emulation.setTouchEmulationEnabled", { enabled: width === 390, maxTouchPoints: 1 });
+    await page.mouse.move(0, 700);
+    await expect(page.locator(".chat-header .badge-lineage")).toBeVisible();
+    expect((await page.locator(".badge-lineage").boundingBox())!.height).toBeGreaterThanOrEqual(24);
+    await measure();
+  }
+  await other.close();
+});
+
 
 test("this machine opens straight into the app: no token, no sign-in", async ({ page }) => {
   await page.goto("/");

@@ -19,6 +19,46 @@ test("a second page on the same chat shows '2 devices' in the header, and it goe
   await expect(page.getByTestId("chat-viewers")).toHaveCount(0, { timeout: 10_000 });
 });
 
+test("the chat menu sits on the rail's column", async ({ page }) => {
+  await signInAndOpen(page);
+  await openChat(page);
+  await page.setViewportSize({ width: 1360, height: 720 });
+  await expect(page.getByRole("button", { name: "Expand context panel", exact: true })).toBeVisible();
+  const lastAction = page.locator(".chat-header .head-actions button:visible").last();
+  const menu = (await lastAction.count()) ? lastAction : page.locator(".chat-header > button:visible").last();
+  const menuBox = (await menu.boundingBox())!;
+  const rail = (await page.locator(".context-rail-button:visible").first().boundingBox())!;
+  expect(Math.abs(menuBox.x + menuBox.width / 2 - (rail.x + rail.width / 2))).toBeLessThanOrEqual(1);
+});
+
+test("the context toggle looks pressed while the rail shows", async ({ page }) => {
+  await signInAndOpen(page);
+  await openChat(page);
+  const hide = page.getByRole("button", { name: "Hide chat context", exact: true });
+  await expect(hide).toBeVisible();
+  expect(await hide.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+  await hide.click();
+  await page.mouse.move(0, 700);
+  const show = page.getByRole("button", { name: "Show chat context", exact: true });
+  await expect(show).toBeVisible();
+  expect(await show.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+});
+test("a narrow context opener is not pressed before its sheet opens", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await signInAndOpen(page);
+  await openChat(page);
+  await page.setViewportSize({ width: 980, height: 720 });
+  const open = page.getByRole("button", { name: "Expand chat context", exact: true });
+  await expect(open).toBeVisible();
+  await page.mouse.move(0, 700);
+  await expect(open).not.toHaveClass(/is-on/);
+  await expect(open).not.toHaveAttribute("aria-expanded", /./);
+  await open.click();
+  await expect(page.getByRole("dialog", { name: "Chat context" })).toBeVisible();
+  await expect(open).not.toHaveClass(/is-on/);
+});
+
+
 test("focusing a row in the context panel puts its share in the headline and dims the rest", async ({ page }) => {
   await signInAndOpen(page);
   await openChat(page);

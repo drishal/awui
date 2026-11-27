@@ -2478,7 +2478,7 @@ export function App() {
                   </span>
                 ) : null}
                 {chat?.capabilities.supportsProjectFolders ? <span className="chat-crumb-sep" aria-hidden="true">/</span> : null}
-                {headerTitle ? <h1 ref={titleRef}>{headerTitle}</h1> : null}
+                {headerTitle ? <h1 ref={titleRef} title={headerTitle}>{headerTitle}</h1> : null}
                 {chat ? (
                   <div className="chat-sub">
                     {/* The status word is the header's one live fact, so a dropped stream says so here rather than
@@ -2547,7 +2547,7 @@ export function App() {
             {!room.roomId && (chat || side) ? (
               <div className="head-group">
                 {chat ? (
-                  <button type="button" className={`icon-btn${!contextClosed ? " is-on" : ""}`} aria-label={!wide ? "Expand chat context" : contextClosed ? "Show chat context" : "Hide chat context"} aria-expanded={!contextClosed} title="Active work, agent runs and review context" onClick={() => wide ? setContextClosed((value) => !value) : setContextSheet(true)}><IconSidebar size={16} /></button>
+                  <button type="button" className={`icon-btn${wide && !contextClosed ? " is-on" : ""}`} aria-label={!wide ? "Expand chat context" : contextClosed ? "Show chat context" : "Hide chat context"} aria-expanded={wide ? !contextClosed : undefined} title="Active work, agent runs and review context" onClick={() => wide ? setContextClosed((value) => !value) : setContextSheet(true)}><IconSidebar size={16} /></button>
                 ) : null}
                 {wide && (chat || side) ? (
                   <button
