@@ -299,7 +299,7 @@ class OpenCodeChat implements LiveChat {
     this.sessionTitle = str(created?.data?.title) || null;
     this.watch(id);
     // OpenCode remains the source of the default. Only a person's explicit pick was sent on create.
-    this.agent = str(created?.data?.agent) || str((await this.adapter.sessionInfo(id).catch(() => null))?.agent);
+    if (!this.agentPicked) this.agent = str(created?.data?.agent) || str((await this.adapter.sessionInfo(id).catch(() => null))?.agent) || this.agent;
     this.emit({ type: "session", nativeId: id });
     return id;
   }

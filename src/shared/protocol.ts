@@ -1636,6 +1636,8 @@ export const createChatSchema = z.object({
   model: z.string().min(1).max(512).optional(),
   /** A thinking level picked before the chat existed; absent starts on the harness's own default. */
   thinkingLevel: z.string().min(1).max(64).optional(),
+  /** A primary-role id picked before the chat existed; the adapter applies it on session creation. */
+  agent: z.string().min(1).max(128).optional(),
 });
 export const resumeChatSchema = z.object({
   harnessId: z.string().min(1).max(64),

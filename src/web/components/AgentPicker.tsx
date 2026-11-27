@@ -1,6 +1,7 @@
 // The harness's primary agent in the composer. This is its conversation role
 // (OpenCode's Build, Plan, or a plugin's orchestrator), not a permission mode
 // and not a type of delegated worker: the server already filtered the catalog.
+import { createPortal } from "react-dom";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { AgentInfo } from "../../shared/protocol.js";
 import { useDismiss, useLeave } from "../hooks.js";
@@ -66,6 +67,38 @@ export function AgentPicker({ agents, current, disabled, viewportSheet = false, 
     e.stopPropagation();
     action();
   };
+  const menuNode = (
+    <div
+      ref={list}
+      className={`harness-menu permission-menu agent-menu${viewportSheet ? " is-sheet" : ""}${leaving ? " is-leaving" : ""}`}
+      role="listbox"
+      tabIndex={-1}
+      aria-label="Primary agent"
+      aria-activedescendant={`${baseId}-${active}`}
+      style={!viewportSheet && shift ? { left: shift } : undefined}
+      onKeyDown={onListKey}
+    >
+      <div className="harness-menu-head">Primary agent</div>
+      {agents.map((a, i) => (
+        <div
+          key={a.id}
+          id={`${baseId}-${i}`}
+          role="option"
+          aria-label={a.label}
+          aria-selected={a.id === current}
+          className={`permission-option${i === active ? " is-active" : ""}`}
+          onMouseMove={() => setActive(i)}
+          onClick={() => pick(i)}
+        >
+          <span className="permission-option-text">
+            <span className="permission-option-name">{a.label}</span>
+            {a.description ? <span className="permission-option-desc">{a.description}</span> : null}
+          </span>
+          {a.id === current ? <IconCheck size={13} className="harness-option-check" /> : null}
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="model-picker" ref={wrap}>
@@ -98,36 +131,7 @@ export function AgentPicker({ agents, current, disabled, viewportSheet = false, 
       {showMenu ? (
         <>
           {!viewportSheet ? <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(false)} /> : null}
-          <div
-            ref={list}
-            className={`harness-menu permission-menu agent-menu${viewportSheet ? " is-sheet" : ""}${leaving ? " is-leaving" : ""}`}
-            role="listbox"
-            tabIndex={-1}
-            aria-label="Primary agent"
-            aria-activedescendant={`${baseId}-${active}`}
-            style={!viewportSheet && shift ? { left: shift } : undefined}
-            onKeyDown={onListKey}
-          >
-            <div className="harness-menu-head">Primary agent</div>
-            {agents.map((a, i) => (
-              <div
-                key={a.id}
-                id={`${baseId}-${i}`}
-                role="option"
-                aria-label={a.label}
-                aria-selected={a.id === current}
-                className={`permission-option${i === active ? " is-active" : ""}`}
-                onMouseMove={() => setActive(i)}
-                onClick={() => pick(i)}
-              >
-                <span className="permission-option-text">
-                  <span className="permission-option-name">{a.label}</span>
-                  {a.description ? <span className="permission-option-desc">{a.description}</span> : null}
-                </span>
-                {a.id === current ? <IconCheck size={13} className="harness-option-check" /> : null}
-              </div>
-            ))}
-          </div>
+          {viewportSheet ? createPortal(menuNode, wrap.current?.closest("dialog") ?? document.body) : menuNode}
         </>
       ) : null}
     </div>

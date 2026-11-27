@@ -32,6 +32,9 @@ function harness(id: string) {
     forgetModels() {
       state.forgotten += 1;
     },
+    async listAgents() {
+      return [{ id: "orchestrator", label: "orchestrator", description: "Plugin primary", model: { providerID: "litellm", id: "Kimi" }, system: "must never enter wire metadata" }];
+    },
   };
   return { adapter, state };
 }
@@ -45,7 +48,9 @@ describe("model catalog", () => {
     const { adapter, state } = harness("pi");
     const [a, b] = await Promise.all([catalog.get(adapter, "/p"), catalog.get(adapter, "/p")]);
     expect(state.asks).toBe(1);
-    expect(a).toEqual({ models: state.models, thinkingLevels: ["low", "high"], defaultModel: { model: "pi/one", thinkingLevel: null } });
+    expect(a).toEqual({ models: state.models, thinkingLevels: ["low", "high"], defaultModel: { model: "pi/one", thinkingLevel: null }, agents: [{ id: "orchestrator", label: "orchestrator", description: "Plugin primary" }] });
+    expect((await catalog.peek("pi", "/p"))?.agents).toEqual([{ id: "orchestrator", label: "orchestrator", description: "Plugin primary" }]);
+    expect(JSON.stringify(await catalog.peek("pi", "/p"))).not.toContain("must never enter wire metadata");
     expect(b).toEqual(a);
     await catalog.get(adapter, "/p");
     expect(state.asks).toBe(1);

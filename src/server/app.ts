@@ -2523,13 +2523,12 @@ export async function createApp(deps: AppDeps) {
     const adapter = await availableAdapter(input.harnessId);
     const ws = await workspaces.get(input.workspaceId);
     const chat = await manager.create(adapter, ws);
-    if (input.model || input.thinkingLevel) {
-      // The start screen picked these before the session existed: apply them now, while the chat
-      // is still starting and nothing has run, so the first prompt already uses them.
+    if (input.model || input.thinkingLevel || input.agent) {
+      // A start-screen pick applies now, before any model call—including a primary role alone.
       try {
-        await chat.setConfig({ ...(input.model ? { model: input.model } : {}), ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}) });
+        await chat.setConfig({ ...(input.model ? { model: input.model } : {}), ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}), ...(input.agent ? { agent: input.agent } : {}) });
       } catch (error) {
-        await chat.dispose("The chosen model or thinking level was refused").catch(() => undefined);
+        await chat.dispose("The chosen model, thinking level, or primary agent was refused").catch(() => undefined);
         throw error;
       }
     }

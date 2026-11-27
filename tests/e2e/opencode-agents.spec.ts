@@ -66,6 +66,63 @@ test("OpenCode primary agents are catalogued, chosen through the API, and kept o
   await expect(page.getByRole("listbox", { name: "Primary agent" })).toHaveCount(0);
 });
 
+
+test("the pre-send new-chat screen lists primary roles and uses one on OpenCode session create", async ({ page }) => {
+  await signInAndOpen(page);
+  // StartScreen has its own harness chip; OpenCode is not selected just because the API adapter is installed.
+  await page.getByRole("button", { name: "Agent for this chat" }).click();
+  await page.getByRole("listbox", { name: "Agent" }).getByRole("option", { name: "OpenCode", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /What should OpenCode do in alpha\?/ })).toBeVisible();
+  const picker = page.locator(".start-screen").getByTestId("agent-picker");
+  await expect(picker).toHaveAccessibleName("Agent: Default agent");
+  await picker.click();
+  const menu = page.getByRole("listbox", { name: "Primary agent" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("option")).toHaveCount(3);
+  await expect(menu.getByRole("option", { name: "orchestrator", exact: true })).toBeVisible();
+  await expect(menu.getByRole("option", { name: "Build", exact: true })).toBeVisible();
+  await expect(menu.getByRole("option", { name: "Plan", exact: true })).toBeVisible();
+  await menu.getByRole("option", { name: "orchestrator", exact: true }).click();
+  await expect(picker).toHaveAccessibleName("Agent: orchestrator");
+  await page.getByRole("textbox", { name: "Message" }).fill("pre-send primary agent choice");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle");
+  const response = await page.request.get(`/api/chats/${/chat=([^/]+)$/.exec(page.url())?.[1]}`);
+  const snapshot = await response.json();
+  expect(snapshot.config.agent).toBe("orchestrator");
+  expect(snapshot.sessionId).toMatch(/^opencode:ses_/);
+  expect(fixture().sessions[(snapshot.sessionId as string).replace(/^.*?:/, "")]?.agent).toBe("orchestrator");
+  expect(fixture().createdAgents).toContain("orchestrator");
+  await expect(page.getByTestId("agent-picker")).toHaveAccessibleName("Agent: orchestrator");
+  await page.screenshot({ path: "test-results/opencode-new-chat-agents-desktop.png" });
+});
+
+test("the pre-send role picker works on a phone inside its viewport", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signInAndOpen(page);
+  await page.getByRole("button", { name: "Agent for this chat" }).click();
+  await page.getByRole("listbox", { name: "Agent" }).getByRole("option", { name: "OpenCode", exact: true }).click();
+  const picker = page.locator(".start-screen").getByTestId("agent-picker");
+  await expect(picker).toHaveAccessibleName("Agent: Default agent");
+  await picker.click();
+  const menu = page.getByRole("listbox", { name: "Primary agent" });
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
+    const bounds = await menu.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(844);
+  await expect(page.locator(".start-screen")).toBeVisible();
+  await page.screenshot({ path: "test-results/opencode-pre-send-phone.png" });
+  await menu.getByRole("option", { name: "orchestrator", exact: true }).click();
+  await expect(picker).toHaveAccessibleName("Agent: orchestrator");
+  await page.getByRole("textbox", { name: "Message" }).fill("first from phone");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle");
+  expect(fixture().createdAgents).toContain("orchestrator");
+});
 test("a phone puts the real primary agent in Chat settings without narrowing the layout", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openCodeChat(page);

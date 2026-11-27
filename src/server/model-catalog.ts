@@ -14,6 +14,7 @@
 import { writeJson, readJson, isObj } from "./state-file.js";
 import type { ModelInfo } from "../shared/protocol.js";
 import type { HarnessAdapter } from "./harness/types.js";
+import type { AgentInfo } from "../shared/protocol.js";
 
 /** Past this, the answer is still served, and a refresh starts behind it. */
 const FRESH_MS = 60_000;
@@ -27,6 +28,8 @@ const MAX_WARM_PROJECTS = 3;
 export interface CatalogAnswer {
   models: ModelInfo[];
   thinkingLevels: string[];
+  /** Visible primary choices, when the harness exposes them for a fresh chat. */
+  agents?: AgentInfo[];
   defaultModel: { model: string; thinkingLevel: string | null } | null;
 }
 
@@ -37,7 +40,7 @@ interface Entry extends CatalogAnswer {
   used: number;
 }
 
-type CatalogAdapter = Pick<HarnessAdapter, "id" | "listModels" | "listThinkingLevels" | "defaultModel" | "forgetModels">;
+type CatalogAdapter = Pick<HarnessAdapter, "id" | "listModels" | "listThinkingLevels" | "defaultModel" | "forgetModels" | "listAgents">;
 
 export class ModelCatalog {
   private entries = new Map<string, Entry>();
@@ -180,12 +183,13 @@ export class ModelCatalog {
     // thinkingLevels is the harness's own default list, for a picker with no model chosen yet;
     // a model's own levels (ModelInfo.levels) win when one is. Both are the harness's words, never invented.
     // defaultModel is the harness's own default so the start screen can name it; null when the harness does not say.
-    const [models, thinkingLevels, defaultModel] = await Promise.all([
+    const [models, thinkingLevels, defaultModel, agents] = await Promise.all([
       adapter.listModels(cwd),
       adapter.listThinkingLevels(cwd).catch(() => [] as string[]),
       adapter.defaultModel ? adapter.defaultModel(cwd).catch(() => null) : Promise.resolve(null),
+      adapter.listAgents ? adapter.listAgents(cwd).catch(() => [] as AgentInfo[]) : Promise.resolve([]),
     ]);
-    return { models: models.slice(0, MAX_MODELS), thinkingLevels, defaultModel };
+    return { models: models.slice(0, MAX_MODELS), thinkingLevels, defaultModel, ...(cleanAgents(agents).length > 0 ? { agents: cleanAgents(agents) } : {}) };
   }
 
   private evict(): void {
@@ -221,7 +225,7 @@ export class ModelCatalog {
 
 const keyOf = (adapterId: string, cwd: string) => `${adapterId}\0${cwd}`;
 
-const answerOf = (entry: Entry): CatalogAnswer => ({ models: entry.models, thinkingLevels: entry.thinkingLevels, defaultModel: entry.defaultModel });
+const answerOf = (entry: Entry): CatalogAnswer => ({ models: entry.models, thinkingLevels: entry.thinkingLevels, defaultModel: entry.defaultModel, ...(entry.agents?.length ? { agents: entry.agents } : {}) });
 
 /** A saved entry, checked: the file is ours, but an older or hand-edited one must not reach the client malformed. */
 function entryOf(value: unknown): Entry | null {
@@ -230,5 +234,21 @@ function entryOf(value: unknown): Entry | null {
   const thinkingLevels = Array.isArray(value.thinkingLevels) ? value.thinkingLevels.filter((l): l is string => typeof l === "string") : [];
   const d = value.defaultModel;
   const defaultModel = isObj(d) && typeof d.model === "string" ? { model: d.model, thinkingLevel: typeof d.thinkingLevel === "string" ? d.thinkingLevel : null } : null;
+  const agents = cleanAgents(value.agents);
+  if (agents.length > 0) return { at: value.at, used: typeof value.used === "number" ? value.used : value.at, models, thinkingLevels, defaultModel, agents };
   return { at: value.at, used: typeof value.used === "number" ? value.used : value.at, models, thinkingLevels, defaultModel };
+}
+
+/** Neither raw provider options nor plugin prompt text belongs in start-screen metadata. */
+function cleanAgents(value: unknown): AgentInfo[] {
+  if (!Array.isArray(value)) return [];
+  const out: AgentInfo[] = [];
+  const seen = new Set<string>();
+  for (const a of value.filter(isObj)) {
+    if (typeof a.id !== "string" || !a.id || a.id.length > 128 || seen.has(a.id)) continue;
+    seen.add(a.id);
+    out.push({ id: a.id, label: typeof a.label === "string" && a.label ? a.label.slice(0, 80) : a.id.slice(0, 80), description: typeof a.description === "string" ? a.description.slice(0, 400) : "" });
+    if (out.length === 64) break;
+  }
+  return out;
 }

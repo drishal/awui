@@ -33,7 +33,7 @@ import type {
   ImageAttachment,
   InteractionAnswer,
   RoomInfo,
-  ModelInfo,
+  AgentInfo, ModelInfo,
   ProjectSession,
   PushNote,
   RotateResult,
@@ -885,7 +885,7 @@ export function App() {
   // One key pair per start attempt: a start retried after a lost answer reuses them, so it can
   // neither make a second chat nor send the prompt twice. Any change to what it would send is a
   // new attempt, with new keys.
-  const startAttempt = useRef<{ harness: string; path: string; model: string | null; thinking: string; text: string; images: PendingImage[]; create: string; send: string } | null>(null);
+  const startAttempt = useRef<{ harness: string; path: string; model: string | null; agent: string | null; thinking: string; text: string; images: PendingImage[]; create: string; send: string } | null>(null);
   // A start's own words, held from the moment its chat is shown until that chat's first prompt has drawn. The
   // snapshot a create returns predates the message, so without the hold the swap is three screens (start,
   // an empty hero, the conversation); with it the start screen stays up and its box and words hand their
@@ -911,12 +911,15 @@ export function App() {
   // The thinking levels the harness offers a fresh chat, and the one picked here ("" = the harness's default).
   const [startLevels, setStartLevels] = useState<string[]>([]);
   const [startThinking, setStartThinking] = useState<string>("");
+  // Primary roles, not worker-agent ids. A null selection deliberately means OpenCode's default.
+  const [startAgents, setStartAgents] = useState<AgentInfo[]>([]);
+  const [startAgent, setStartAgent] = useState<string | null>(null);
   const modelFetch = useRef(0);
   const modelsKey = useRef<string | null>(null);
   const loadStartModels = async (forHarness: string, forWs: WorkspaceInfo, refresh = false): Promise<ModelInfo[]> => {
     const seq = ++modelFetch.current;
     try {
-      const { models, defaultModel, thinkingLevels } = await api<{ models: ModelInfo[]; defaultModel?: { model: string; thinkingLevel: string | null } | null; thinkingLevels?: string[] }>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?workspaceId=${encodeURIComponent(forWs.id)}${refresh ? "&refresh=1" : ""}`);
+      const { models, defaultModel, thinkingLevels, agents } = await api<{ models: ModelInfo[]; agents?: AgentInfo[]; defaultModel?: { model: string; thinkingLevel: string | null } | null; thinkingLevels?: string[] }>(`/api/harnesses/${encodeURIComponent(forHarness)}/models?workspaceId=${encodeURIComponent(forWs.id)}${refresh ? "&refresh=1" : ""}`);
       if (seq === modelFetch.current) {
         setStartModels(models);
         // Only a default that names a model the list actually offers is shown; anything else is no better than "Default model".
@@ -926,12 +929,16 @@ export function App() {
         // A model the harness no longer lists (another harness, another folder's providers) is no pick.
         setStartModel((picked) => (picked && models.some((m) => m.key === picked) ? picked : null));
         setStartThinking((picked) => (thinkingLevels?.includes(picked) ? picked : ""));
+        const roles = agents ?? [];
+        setStartAgents(roles);
+        setStartAgent((picked) => picked && roles.some((a) => a.id === picked) ? picked : null);
       }
       return models;
     } catch {
       if (seq === modelFetch.current) {
         setStartModels([]);
         setStartDefault(null);
+        setStartAgents([]);
         setStartLevels([]);
       }
       return [];
@@ -945,6 +952,8 @@ export function App() {
       setStartModels([]);
       setStartDefault(null);
       setStartLevels([]);
+      setStartAgents([]);
+      setStartAgent(null);
       setStartThinking("");
       return;
     }
@@ -957,6 +966,8 @@ export function App() {
       setStartModel(null);
       setStartDefault(null);
       setStartLevels([]);
+      setStartAgents([]);
+      setStartAgent(null);
       setStartThinking("");
     }
     void loadStartModels(harnessId, workspace);
@@ -982,14 +993,18 @@ export function App() {
     const originKey = startTabKey.current;
     const startHarness = harnessId;
     const prior = startAttempt.current;
-    const retry = prior !== null && prior.harness === startHarness && prior.path === target.path && prior.model === startModel && prior.thinking === startThinking && prior.text === text && prior.images === images;
-    const keys = retry ? prior : { harness: startHarness, path: target.path, model: startModel, thinking: startThinking, text, images, create: idempotencyKey(), send: idempotencyKey() };
+    const retry = prior !== null && prior.harness === startHarness && prior.path === target.path && prior.model === startModel && prior.agent === startAgent && prior.thinking === startThinking && prior.text === text && prior.images === images;
+    const keys = retry ? prior : { harness: startHarness, path: target.path, model: startModel, agent: startAgent, thinking: startThinking, text, images, create: idempotencyKey(), send: idempotencyKey() };
     startAttempt.current = keys;
     setStartBusy(true);
     setBanner(null);
     try {
       const ws = await enterWorkspace(target);
-      const snapshot = await api<ChatSnapshot>("/api/chats", { body: { harnessId: startHarness, workspaceId: ws.id, ...(startModel ? { model: startModel } : {}), ...(startThinking ? { thinkingLevel: startThinking } : {}) }, idempotencyKey: keys.create });
+      const body: Record<string, string | boolean> = { harnessId: startHarness, workspaceId: ws.id };
+      if (startModel) body.model = startModel;
+      if (startThinking) body.thinkingLevel = startThinking;
+      if (startAgent) body.agent = startAgent;
+      const snapshot = await api<ChatSnapshot>("/api/chats", { body, idempotencyKey: keys.create });
       // A create is never undone by the user going elsewhere while it ran (a tab
       // switch, another open): the chat keeps its tab and its prompt, landing in
       // the background below. startingRef already guarantees one create at a time,
@@ -1015,6 +1030,7 @@ export function App() {
       setStartSeed(null);
       // The chat took the picks; a next New chat starts on the harness's defaults again.
       setStartModel(null);
+      setStartAgent(null);
       setStartThinking("");
       if (token !== nav.current) {
         // The user went elsewhere while the harness spawned: the chat keeps its tab —
@@ -2883,6 +2899,9 @@ export function App() {
                 onThinking={setStartThinking}
                 onModel={setStartModel}
                 onRefreshModels={refreshStartModels}
+                agents={startAgents}
+                agent={startAgent}
+                onAgent={setStartAgent}
                 workspace={projectScoped(boot?.harnesses ?? [], harnessId ?? "") ? workspace : null}
                 recent={recent}
                 onPickFolder={() => {

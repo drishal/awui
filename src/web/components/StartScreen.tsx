@@ -6,6 +6,7 @@
 // composer's names ("Message", "Send") so every shortcut and test finds them.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { IMAGE_MIME_TYPES, MAX_IMAGES, type HarnessStatus, type ModelInfo } from "../../shared/protocol.js";
+import type { AgentInfo } from "../../shared/protocol.js";
 import { useAddImagesToDraft } from "../draft-bus.js";
 import { useDismiss, useLeave } from "../hooks.js";
 import { handoff, type Box } from "../morph.js";
@@ -15,6 +16,7 @@ import { projectScoped } from "../harness-policy.js";
 import { recentForChip, startAction, startExamples, startHeading, startSendBlocked, startSetup, type StartSetup } from "../start-screen.js";
 import { HarnessMenu } from "./HarnessMenu.js";
 import { ModelPicker } from "./ModelPicker.js";
+import { AgentPicker } from "./AgentPicker.js";
 import { harnessColor } from "../harness-colors.js";
 
 export function StartScreen({
@@ -27,6 +29,9 @@ export function StartScreen({
   thinkingLevels = [],
   thinking = "",
   onThinking,
+  agents = [],
+  agent = null,
+  onAgent,
   onModel,
   onRefreshModels,
   workspace,
@@ -49,6 +54,10 @@ export function StartScreen({
   onHarness: (id: string) => void;
   /** The harness's models for this folder, read before any chat exists. */
   models: ModelInfo[];
+  /** Visible primary roles for a harness that exposes them before a chat exists. */
+  agents?: AgentInfo[];
+  /** An explicit primary-role pick, null to leave the provider's default alone. */
+  agent?: string | null;
   /** The model picked here, or null to start on the harness's own default. */
   model: string | null;
   /** The harness's own default for a fresh chat, when it says one; named on the chip when nothing is picked. */
@@ -60,6 +69,7 @@ export function StartScreen({
   onThinking?: (level: string) => void;
   onModel: (key: string) => void;
   onRefreshModels: () => Promise<void>;
+  onAgent?: (id: string) => void;
   workspace: { name: string; path: string } | null;
   /** Recent folder paths, newest first (the chip's menu, plus "Choose another folder…"). */
   recent: string[];
@@ -108,6 +118,7 @@ export function StartScreen({
   // has one, and only once its list has loaded (the fetch runs when the harness or folder changes).
   const showModel = harnesses.find((h) => h.id === harnessId)?.capabilities.supportsModelSelection === true && models.length > 0;
   const tooLong = text.length > maxChars;
+  const showAgents = harnesses.some((h) => h.id === harnessId && h.capabilities.supportsAgentSelection) && agents.length > 0 && onAgent !== undefined;
 
   // The box grows with the draft like the real composer's.
   useLayoutEffect(() => {
@@ -331,6 +342,7 @@ export function StartScreen({
                 {/* The same split pill a chat's composer draws: the harness mark, then the model (and
                     its level) as one sentence. The folder stays its own chip: it is a different kind
                     of choice. */}
+                {showAgents ? <AgentPicker agents={agents} current={agent} viewportSheet={window.matchMedia("(max-width: 819px)").matches} disabled={busy} onSelect={(id) => onAgent?.(id)} /> : null}
                 <div className="composer-pill">
                   <HarnessMenu
                     variant="chip"

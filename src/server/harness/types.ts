@@ -3,6 +3,7 @@
 import type {
   BackgroundJob,
   BranchInfo,
+  AgentInfo,
   ChatConfig,
   ChatItem,
   ConfigPatch,
@@ -234,6 +235,8 @@ export interface HarnessAdapter {
   // Server-only path resolution; never serialized to the browser.
   resolveAgentDir(): Promise<string>;
   resolveSessionDir(cwd: string): Promise<string>;
+  /** A harness's visible primary roles for the initial catalog (OpenCode plugins contribute them), if it exposes one. */
+  listAgents?(cwd: string): Promise<AgentInfo[]>;
   listModels(cwd: string): Promise<ModelInfo[]>;
   /**
    * Drop what listModels has cached for `cwd`, so the next call asks the harness
