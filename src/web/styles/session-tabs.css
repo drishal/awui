@@ -30,6 +30,9 @@
 
 .session-tab {
   position: relative;
+  /* How much room a shown ✕ takes from the title: the 20px control and its 7px gap, widened for a coarse
+     pointer's 28px target (phones.css). An unpinned tab reserves it only while the ✕ is shown. */
+  --tab-close-slot: 20px;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -97,9 +100,14 @@
 }
 
 .session-tab-close {
+  /* Over the tab's right edge rather than in its row: an inactive tab must not spend title width on a ✕ it
+     does not show. The states below that show it reserve its width and its 7px gap. */
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
   display: grid;
   place-items: center;
-  flex: none;
   width: 20px;
   height: 20px;
   padding: 0;
@@ -108,6 +116,8 @@
   background: transparent;
   color: var(--muted-text);
   opacity: 0;
+  /* Hidden means not clickable: it lies over the title's tail on an inactive tab. */
+  pointer-events: none;
   cursor: pointer;
 }
 
@@ -115,6 +125,7 @@
 .session-tab.is-active .session-tab-close,
 .session-tab:focus-within .session-tab-close {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .session-tab-close:hover {
@@ -127,9 +138,22 @@
   display: none;
 }
 
+/* The ✕'s slot comes back to the title while the ✕ is hidden: only the states that show it reserve the control
+   and its gap. An unread tab hides it until hovered, so it keeps the whole width too. */
+.session-tab:is(:hover, .is-active, :focus-within):not(.is-pinned):not(.is-unread:not(:hover)) {
+  padding-right: calc(13px + var(--tab-close-slot));
+}
+
+/* The ✕ no longer takes layout width, so phones.css's negative margin (which kept its 28px touch target inside
+   a 20px row) would only push it off centre. */
+.session-tab > .session-tab-close {
+  margin: 0;
+}
+
 /* Pinned tabs: the harness dot and a short title, left of the rest, no ✕. */
 .session-tab.is-pinned {
   width: 104px;
+  min-width: 104px;
   padding-right: 10px;
 }
 
@@ -164,9 +188,78 @@
   margin: 0 6px;
 }
 
+/* Only while the strip cuts tabs off: one control lists every tab, by its full title, under the strip. */
+.tab-overflow {
+  display: flex;
+  align-self: center;
+  flex: none;
+}
+
+.tab-overflow-button {
+  width: 28px;
+  height: 32px;
+  margin: 0 2px;
+}
+
+.menu-list.tab-overflow-menu {
+  position: fixed;
+  z-index: 53;
+  width: min(420px, calc(100vw - 24px));
+  min-width: 260px;
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.menu-list.tab-overflow-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 10px;
+  font-size: 13.5px;
+}
+
+.tab-overflow-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-overflow-state {
+  flex: none;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.menu-list.tab-overflow-menu button.is-current {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.menu-list.tab-overflow-menu button > .icon {
+  flex: none;
+  color: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .session-tab {
+    --tab-close-slot: 28px;
+  }
+}
+
 @media (hover: none) {
   .session-tab-close {
     opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* With no hover to reveal it, the ✕ is always shown, so every unpinned tab pays for its slot. An unread
+     tab keeps its dot in the ✕'s place until hover, which this pointer never has. */
+  .session-tab:not(.is-pinned):not(.is-unread) {
+    padding-right: calc(13px + var(--tab-close-slot));
   }
 }
 

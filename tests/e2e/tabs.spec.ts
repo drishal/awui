@@ -1,11 +1,15 @@
 // Session tabs: several chats open at once, one shown; runs carry on in the
 // tabs that are not.
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 const prompts = (page: Page) => page.getByTestId("user-prompt");
 const tabs = (page: Page) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab");
 const tab = (page: Page, title: string) => page.getByRole("tablist", { name: "Open tabs" }).getByRole("tab", { name: new RegExp(title) });
+
+/** The space between a tab's title box and its right edge: what an invisible ✕ would otherwise hold. */
+const rightGap = (locator: Locator) =>
+  locator.evaluate((el) => el.getBoundingClientRect().right - el.querySelector(".session-tab-title")!.getBoundingClientRect().right);
 /** + on the strip: a tab at once, showing the start screen; the first send fills it in. */
 async function newTab(page: Page): Promise<void> {
   await page.getByRole("button", { name: "New chat in a new tab" }).click();
@@ -104,7 +108,9 @@ test("a run keeps going in a background tab, which says when it is done", async 
   await sendAndWait(page, "meanwhile here");
   const background = tab(page, "slow please");
   await expect(background.getByRole("img", { name: "Working" })).toBeVisible();
+  await expect(background).toHaveAccessibleName("slow please · Working");
   await expect(background.getByRole("img", { name: "Finished while away" })).toBeVisible({ timeout: 20_000 });
+  await expect(background).toHaveAccessibleName("slow please · Finished while away");
   await background.click();
   await expect(page.getByTestId("answer").last()).toContainText("Echo: slow please");
   await expect(background.getByRole("img", { name: "Finished while away" })).toHaveCount(0);
@@ -175,7 +181,10 @@ test("tabs reorder by dragging, pin from a menu, and move by keyboard; order and
   await page.getByRole("menuitem", { name: "Pin tab" }).click();
   await expect(tabs(page)).toHaveText([/order beta/, /order gamma/, /order alpha/]);
   await expect(tab(page, "order beta").getByRole("button", { name: /^Close / })).toHaveCount(0);
-  expect((await tab(page, "order beta").boundingBox())!.width).toBeLessThan(wide);
+  const pinnedWidth = (await tab(page, "order beta").boundingBox())!.width;
+  expect(pinnedWidth).toBeLessThan(wide);
+  // The pinned tab's own 104px intent, not the ordinary 120px floor: it has no ✕ to make room for.
+  expect(pinnedWidth).toBeCloseTo(104, 0);
   // An unread tab shows its ✕ only on hover.
   await tab(page, "order gamma").hover();
   await expect(tab(page, "order gamma").getByRole("button", { name: /^Close / })).toHaveCount(1);
@@ -610,4 +619,102 @@ test("the shown tab's underline glides to the tab picked, and reduced motion mak
   await page.emulateMedia({ reducedMotion: "reduce" });
   const duration = await line.evaluate((node) => getComputedStyle(node).transitionDuration);
   expect(duration).toBe("0s");
+});
+
+test("a tab is named by its title and live state, not by its harness or ✕", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "please ask first");
+  await expect(page.getByTestId("approval-card")).toBeVisible();
+  const asking = tab(page, "please ask first");
+  // The state is in the name exactly as the tab paints it; the harness word and the ✕'s label are not.
+  await expect(asking).toHaveAccessibleName("please ask first · Needs you");
+  await expect(asking).not.toHaveAccessibleName(/Fake|Close/);
+  // The ✕ remains its own action with its own name.
+  await expect(asking.getByRole("button", { name: "Close please ask first" })).toHaveCount(1);
+});
+
+test("an inactive tab spends no width on its hidden ✕; the shown one keeps clear of the title", async ({ page }) => {
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "first short tab");
+  await newTab(page);
+  await sendAndWait(page, "second short tab");
+  const first = tab(page, "first short tab");
+  const second = tab(page, "second short tab");
+  const firstClose = first.getByRole("button", { name: /^Close / });
+  // Two tabs fit: a hidden ✕ must not be mistaken for the strip cutting a tab off.
+  await expect(page.getByRole("button", { name: "Open all tabs" })).toHaveCount(0);
+
+  // Not shown means not laid out: the title reaches the tab's own 6px padding, and the ✕ cannot be hit.
+  await expect(firstClose).toHaveCSS("opacity", "0");
+  await expect(firstClose).toHaveCSS("pointer-events", "none");
+  expect(await rightGap(first)).toBeLessThanOrEqual(8);
+
+  // The shown tab always has its ✕: its title stops short of it, with the 7px gap.
+  const activeGap = await rightGap(second);
+  expect(activeGap).toBeGreaterThanOrEqual(33);
+  await expect(second.getByRole("button", { name: /^Close / })).toHaveCSS("opacity", "1");
+  // Hovering the shown tab changes nothing about that allocation.
+  await second.hover();
+  expect(await rightGap(second)).toBeCloseTo(activeGap, 0);
+
+  // Hovering an inactive tab shows the ✕ and reserves its slot without covering the text.
+  await first.hover();
+  await expect(firstClose).toHaveCSS("opacity", "1");
+  await expect(firstClose).toHaveCSS("pointer-events", "auto");
+  await expect.poll(() => rightGap(first)).toBeGreaterThanOrEqual(33);
+  const [titleBox, closeBox] = await Promise.all([first.locator(".session-tab-title").boundingBox(), firstClose.boundingBox()]);
+  expect(closeBox!.x).toBeGreaterThanOrEqual(titleBox!.x + titleBox!.width + 6);
+});
+
+test("a strip too narrow for every tab lists them all by full title", async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 800 });
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "overflow one: the first tab with a long title");
+  // Six tabs is where the 120px floor stops fitting a 720px strip: the tabs give their titles up rather than
+  // scroll until even the floor cannot fit.
+  for (const title of [
+    "overflow two: the second tab with a long title",
+    "overflow three: the third tab with a long title",
+    "overflow four: the fourth tab with a long title",
+    "overflow five: the fifth tab with a long title",
+    "overflow six: the sixth tab with a long title",
+  ]) {
+    await newTab(page);
+    await sendAndWait(page, title);
+  }
+  await expect(tabs(page)).toHaveCount(6);
+  const openAll = page.getByRole("button", { name: "Open all tabs" });
+  await expect(openAll).toBeVisible();
+  await expect(openAll).toHaveAttribute("aria-haspopup", "menu");
+  await expect(openAll).toHaveAttribute("aria-expanded", "false");
+
+  await openAll.click();
+  await expect(openAll).toHaveAttribute("aria-expanded", "true");
+  const menu = page.getByRole("menu", { name: "All tabs" });
+  const items = menu.getByRole("menuitem");
+  await expect(items).toHaveCount(6);
+  // Full titles, not the strip's clipped paint, and the shown tab is marked.
+  await expect(items.nth(0)).toContainText("overflow one: the first tab with a long title");
+  await expect(items.nth(5)).toContainText("overflow six: the sixth tab with a long title");
+  await expect(items.nth(5)).toHaveAttribute("aria-current", "true");
+  // It hangs inside the window, under the strip.
+  const box = (await menu.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(8);
+  expect(box.x + box.width).toBeLessThanOrEqual(720 - 8 + 1);
+
+  // Picking one shows that tab, closes the list, and hands the focus back.
+  await items.nth(0).click();
+  await expect(prompts(page)).toHaveText(["overflow one: the first tab with a long title"]);
+  await expect(menu).toHaveCount(0);
+  await expect(openAll).toBeFocused();
+
+  // Escape closes it too.
+  await openAll.click();
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(openAll).toBeFocused();
 });
