@@ -348,6 +348,44 @@ test.describe("the compact rows", () => {
     await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
   });
 
+  test("at the 236px floor the suffix yields, so every row's age keeps one column", async ({ page, request }) => {
+    // The narrowest rail a desktop resizer gives. A row whose project hit its 56px cap used to make the line
+    // wider than the body it sits in (189px inside 183), so its age sat 6px right of every other row's: the
+    // suffix has to give way to the age's column, not overflow past it.
+    const root = process.env.AWUI_E2E_ROOT as string;
+    const rows = [
+      { folder: "a-project-name-longer-than-the-suffix-cap", text: "a long-foldered row whose title wants the whole line at the narrowest rail" },
+      { folder: "rings", text: "a short-foldered row whose title wants the whole line at the narrowest rail" },
+    ];
+    for (const one of rows) {
+      const folder = path.join(root, one.folder);
+      mkdirSync(folder, { recursive: true });
+      const ws = (await (await request.post("/api/workspaces/open", { data: { path: folder } })).json()) as { id: string };
+      const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+      await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: one.text, mode: "normal" } });
+    }
+    await page.addInitScript(() => window.localStorage.setItem("awui.sidebarWidth", JSON.stringify(236)));
+    await signInAndOpen(page);
+    await showSidebar(page);
+    await page.evaluate(() => document.documentElement.setAttribute("data-sidebar", "compact"));
+    for (const one of rows) await expect(row(page, one.text.slice(0, 24)).first(), "the row is in the list").toBeVisible();
+    const measured = await page.evaluate(() =>
+      [...document.querySelectorAll(".session-item")]
+        .filter((el) => el.querySelector(".session-sub-project") !== null)
+        .map((el) => {
+          const body = el.querySelector(".session-body") as HTMLElement;
+          const slot = el.querySelector(".session-slot") as HTMLElement;
+          return { edge: Math.round(slot.getBoundingClientRect().right * 10) / 10, over: body.scrollWidth - body.clientWidth, put: el.querySelector(".session-sub-project")?.textContent ?? "" };
+        }),
+    );
+    expect(measured.length, "two tagged rows at least").toBeGreaterThanOrEqual(2);
+    expect(new Set(measured.map((m) => m.put)).size, "a long project's name and a short one's").toBeGreaterThanOrEqual(2);
+    const edges = measured.map((m) => m.edge);
+    expect(Math.max(...edges) - Math.min(...edges), "one age column, at 236px").toBeLessThanOrEqual(0.5);
+    expect(Math.max(...measured.map((m) => m.over)), "no row overflows the line it is drawn in").toBeLessThanOrEqual(0.5);
+    await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
+  });
+
   test("under a 224px rail the project's name goes and the fact beside it stays", async ({ page, request }) => {
     // Two folders and one repository on a feature branch: at 200px a project's name alone is 7-12px of
     // ellipsis — no word at all — while a branch is what tells the row from its siblings.
@@ -376,6 +414,9 @@ test.describe("the compact rows", () => {
     });
     const narrowRow = row(page, "a row on a narrow rail").first();
     await expect(narrowRow).toBeVisible();
+    // The class is the sidebar's own measurement of the rail, and it lands a frame after the token: wait for
+    // it, or the row is read in the state before it (the project still 24px wide, the title still on its floor).
+    await expect(page.locator(".sidebar"), "the rail has measured itself narrow").toHaveClass(/is-narrow/);
     const parts = await narrowRow.evaluate((el) => {
       const title = el.querySelector(".session-title") as HTMLElement;
       const project = el.querySelector(".session-sub-project") as HTMLElement;

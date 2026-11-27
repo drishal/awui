@@ -2118,9 +2118,13 @@ body.is-resizing {
 
 /* The title keeps a dozen letters of its own (96px) and yields below that only on a rail too narrow for the
    row's pieces at all: the suffix gives way first, which is the whole point of the line. Without the floor a
-   232px rail gave the project 56px and the title 86, 10px less than the grid it replaced gave the title. */
+   232px rail gave the project 56px and the title 86, 10px less than the grid it replaced gave the title.
+   The shrink weight is the order, not a size: the title gives up its room before the suffix gives up any of
+   its own, so a 292px rail still reads title 146px and project 56px, and only under the floor does the project
+   shrink at all (50px at 236px, where the age then keeps one column for every row). */
 :root[data-sidebar="compact"] .session-body.has-sub > .session-title-line {
   min-width: 96px;
+  flex-shrink: 1000;
 }
 
 /* The subline's own box goes, so its name and its age become items of the title's line. */
@@ -2141,9 +2145,12 @@ body.is-resizing {
   /* No gap: the dot's own 3px margins are the spacing inside the suffix, so its pieces sit as the text form
      of them did (`awui · test`, ~10px), and the row's 6px gap still separates the title from the suffix. */
   gap: 0;
-  /* Not `0`: the box may shrink to what its unshrinkable pieces need (a branch, a state's word), and never
-     past it — that is what turned a suffix into a bare "…" at 232px. */
-  min-width: min-content;
+  /* The box gives way only after the title has given up its room (the 1000 weight above). `min-content` here
+     was the whole suffix, so at the 236px floor a row whose project hit its 56px cap made the line 189px
+     inside a 183px body and put its age 6px right of every other row's. What must not shrink is the fact
+     (`.session-sub-fact`, whose min-content is its whole words on a nowrap line) and the age (`flex: none`
+     on `.session-slot`); the project is the one that gives way, down to its own 24px floor. */
+  min-width: 0;
   max-width: 96px;
   overflow: hidden;
   color: var(--muted-text);
