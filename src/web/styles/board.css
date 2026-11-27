@@ -210,29 +210,38 @@
   color: var(--danger);
 }
 
-.room-tag,
-.room-member-count,
-.room-spend-head {
+.room-tag {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+/* The bots and the spend are plain text: in the header's sub row each one's first line is the row's baseline, the
+   one rule every word in the header follows. A flex box of its own would centre its content in a box of a kept
+   height instead, and a row of those comes apart the moment one box's height changes. */
+.room-member-count,
+.room-spend-head {
+  display: block;
 }
 
 .room-tag.is-archived {
   color: var(--warn);
 }
 
+/* The room's state word is a line of text, as the chat's is in the same row: the dot sits on the text's baseline and
+   has the chat's 6 px shape, instead of being a flex child centred in a box of its own. */
 .room-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  display: block;
 }
 
 .room-status::before {
   content: "";
-  width: 7px;
-  height: 7px;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
   border-radius: 50%;
+  vertical-align: calc(0.5ex - 3px);
   background: var(--ok);
 }
 
@@ -281,11 +290,15 @@
 }
 
 /* On the subtitle line the Room tag is unfilled, as the chat's harness tag is: a filled pill there competes with
-   the highlighted tab above it. */
+   the highlighted tab above it. It is text with no box of its own, so it keeps the row's 12px and its baseline. */
 .chat-sub .badge-room {
+  display: inline;
+  height: auto;
   padding: 0;
   background: none;
-  color: var(--text-2);
+  color: var(--muted-text);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 /* ---- transcript ---- */
