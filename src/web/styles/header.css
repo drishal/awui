@@ -63,7 +63,7 @@
 /* Where: the project, in the same 15px as the title so the two read as one phrase. */
 .chat-path {
   flex: 0 1 auto;
-  min-width: 4ch;
+  min-width: min-content;
   max-width: 24ch;
   overflow: clip;
   color: var(--muted-text);

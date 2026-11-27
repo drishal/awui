@@ -55,6 +55,39 @@ test("the chat header is one row: project / title, then state, then harness", as
   }
 });
 
+test("the short project keeps its word while the title yields at 720px", async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await signInAndOpen(page);
+  await newChat(page);
+  await send(page, "ask to approve the background tool call with a deliberately long title");
+  await expect(status(page)).toHaveText("Needs you");
+  const measure = (selector: string) => page.locator(selector).evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const ink = range.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    return { text: el.textContent, client: el.clientWidth, inkWidth: ink.width, inkRight: ink.right, boxRight: box.right, width: box.width };
+  });
+  const wideTitle = await measure(".chat-title h1");
+  await page.setViewportSize({ width: 720, height: 900 });
+  await page.locator(".chat-header").screenshot({ path: "test-results/header-project-720.png" });
+  const project = page.locator(".chat-path");
+  await expect(project).toHaveText("alpha");
+  const crumb = await measure(".chat-path");
+  const title = await measure(".chat-title h1");
+  expect(crumb.text).toBe("alpha");
+  expect(crumb.inkRight, JSON.stringify(crumb)).toBeLessThanOrEqual(crumb.boxRight + 0.5);
+  expect(title.client).toBeLessThan(title.inkWidth);
+  expect(title.client).toBeLessThan(wideTitle.client);
+  await page.locator(".chat-header").screenshot({ path: "test-results/header-project-720.png" });
+  const geometry = await page.locator(".chat-title").evaluate((el) => {
+    const actions = el.parentElement?.querySelector(".head-actions")?.getBoundingClientRect();
+    return { titleRight: el.getBoundingClientRect().right, actionsLeft: actions?.left ?? 0, documentWidth: document.documentElement.scrollWidth, viewportWidth: window.innerWidth };
+  });
+  expect(geometry.titleRight).toBeLessThanOrEqual(geometry.actionsLeft - 16);
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+});
+
 test("every word in the header sits on one baseline", async ({ page }) => {
   await signInAndOpen(page);
   await newChat(page);
