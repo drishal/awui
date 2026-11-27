@@ -2137,6 +2137,13 @@ body.is-resizing {
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .search-all {
     padding-inline: 10px;
   }
+  /* The scope note is one more line of the panel's text, not an aside: its words start on the same edge as
+     the titles, the date labels and the folder heads (the panel's 12px gutter and the list's own 26px inset),
+     where 16px in it read as a remark hanging beside the list. Its 24px target (44px under a thumb) is taken
+     from the note's own line, so the edge moves and the height does not. */
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .search-scope {
+    padding: 0 10px 0 26px;
+  }
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .project-group .show-more,
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .flat-group .show-more {
     --show-more-pad: 26px;

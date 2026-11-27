@@ -268,10 +268,24 @@ test("a search under a focused folder says it looks in every project", async ({ 
     const range = document.createRange();
     range.selectNodeContents(button);
     const text = range.getBoundingClientRect();
+    // The note is one more line of the panel's text: its first words sit on the titles' edge (38px: the
+    // panel's 12px gutter and the list's own inset), not 16px in where it read as an aside.
+    const words = document.createRange();
+    words.selectNodeContents(el.querySelector("span") as HTMLElement);
+    const title = document.querySelector(".session-title") as HTMLElement | null;
     const under = el.nextElementSibling as HTMLElement | null;
-    return { line: Math.round(el.getBoundingClientRect().height), textLeft: text.left, textBottom: text.bottom, gap: under ? under.getBoundingClientRect().top - el.getBoundingClientRect().bottom : null };
+    return {
+      line: Math.round(el.getBoundingClientRect().height),
+      textLeft: text.left,
+      textBottom: text.bottom,
+      noteLeft: words.getBoundingClientRect().left,
+      titleLeft: title ? title.getBoundingClientRect().left : null,
+      gap: under ? under.getBoundingClientRect().top - el.getBoundingClientRect().bottom : null,
+    };
   });
   expect(geometry.line, "the note itself keeps its one line").toBe(16);
+  expect(geometry.titleLeft, "a row's title is drawn beside the note").not.toBeNull();
+  expect(Math.abs(geometry.noteLeft - (geometry.titleLeft ?? 0)), "the note starts on the titles' edge").toBeLessThanOrEqual(0.5);
   expect(geometry.gap, "the list under it stays put").toBeLessThanOrEqual(8.5);
   // A press just under the words is the action's, not the list's.
   await page.mouse.click(geometry.textLeft + 4, geometry.textBottom + 3);
