@@ -869,6 +869,34 @@
   padding-top: 4px;
 }
 
+/* A search looks in every project, while the rail still names one (the focus head is not drawn while a
+   search's results are): the note under the field says whose results these are not, and its text action
+   leaves the search to go back to that folder. */
+.search-scope {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--muted-text);
+  font-size: 11.5px;
+  line-height: 16px;
+}
+
+.search-scope-back {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.search-scope-back:hover {
+  color: var(--text);
+}
+
 /* Every head is laid on the rows' columns: its 8px inset puts a 10px icon, or the 16px badge of a folder,
    on the rows' mark column, and the 6px gap starts its label on their titles' edge. 4px under it, its
    first row; its count ends on the rows' age column (the row's 8px right padding). */

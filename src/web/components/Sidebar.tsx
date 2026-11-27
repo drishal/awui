@@ -1447,6 +1447,9 @@ export function Sidebar(props: {
     const order = props.harnessId ? overview.orders?.[`${props.harnessId}:${focusId}`] : undefined;
     return focusProject(overview, focusId, { ...groupOptions, ...(order ? { order } : {}) });
   }, [overview, focusId, props.query, props.harnessId, showArchived, showSettled, showSnoozed, props.activeSessionId, props.activeChatId, now]);
+  // The focused project's name, taken from the overview rather than from `focused`: while a search runs the
+  // focused list narrows to the query, and a project with no match would have no name to say the scope with.
+  const focusedName = focusId === null ? null : (overview.workspaces.find((w) => w.id === focusId)?.name ?? null);
   const selection = useSelectionMode();
   // The ids in the order the sections show them, for a Shift-click run.
   const selectionOrder = useMemo(
@@ -1685,6 +1688,16 @@ export function Sidebar(props: {
               </>
             )}
           </div>
+          {focusedName !== null && searching ? (
+            // A search looks in every project, while the rail still names one: the list says whose results
+            // these are not, and the way back out of it (the focus head is not drawn while they are shown).
+            <div className="search-scope">
+              <span>Searching all projects</span>
+              <button type="button" className="search-scope-back" onClick={() => props.onQuery("")} title={`Clear the search and go back to ${focusedName}`}>
+                Back to {focusedName}
+              </button>
+            </div>
+          ) : null}
           {!selection.on && quick ? (
             <div className="quick-filters" role="group" aria-label="Filter sessions">
               <button type="button" className="quick-chip" aria-label={`Clear ${QUICK_LABELS[quick]} filter`} onClick={() => pickQuick(null)}>

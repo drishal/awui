@@ -3,7 +3,7 @@
 // An active choice is one removable token beside the search. The server is
 // shared with the other specs, so these look for their own sessions by title.
 import { expect, type Page, test } from "@playwright/test";
-import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
+import { newChat, send, sendAndWait, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Sessions" });
 const tokenFor = (filter: RegExp) => `Clear ${String(filter).replace(/^\/\^/, "").replace(/ \d.*$/, "")} filter`;
@@ -230,4 +230,37 @@ test("Filters hides a chat on the default branch, keeps the one on screen, and r
   await sidebar(page).getByRole("button", { name: /^Filters, 1 hiding sessions$/ }).click();
   await page.getByRole("group", { name: "Hide sessions" }).getByRole("checkbox", { name: /On the default branch/ }).uncheck();
   await expect(row(page, "settled on the default branch")).toHaveCount(1);
+});
+
+test("a search under a focused folder says it looks in every project", async ({ page }) => {
+  // The Projects view narrows the list to one folder; a typed query does not — search is global — and the
+  // focused head is not drawn while its results are, so without this note the scope changed in silence.
+  await useProjectsView(page);
+  await signInAndOpen(page);
+  await newChat(page);
+  await sendAndWait(page, "a row for the scope note");
+  await showSidebar(page);
+  await expect(sidebar(page).locator(".focus-switch"), "the Projects view focuses the chat's folder").toBeVisible();
+  await expect(page.locator(".search-scope")).toHaveCount(0);
+
+  await page.getByRole("searchbox", { name: "Search sessions" }).fill("scope note");
+  const note = page.locator(".search-scope");
+  await expect(note).toBeVisible();
+  await expect(note).toContainText("Searching all projects");
+  await expect(note).toHaveCSS("font-size", "11.5px");
+  const muted = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--muted-text)";
+    document.querySelector(".sidebar")?.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  });
+  await expect(note, "the note is muted: it is a remark, not a state").toHaveCSS("color", muted);
+
+  // Its action leaves the search and hands the rail back to the folder it names.
+  await note.getByRole("button", { name: /^Back to / }).click();
+  await expect(page.getByRole("searchbox", { name: "Search sessions" })).toHaveValue("");
+  await expect(page.locator(".search-scope")).toHaveCount(0);
+  await expect(sidebar(page).locator(".focus-switch"), "the folder's own list is back").toBeVisible();
 });
