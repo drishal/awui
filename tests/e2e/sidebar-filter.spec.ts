@@ -232,9 +232,14 @@ test("Filters hides a chat on the default branch, keeps the one on screen, and r
   await expect(row(page, "settled on the default branch")).toHaveCount(1);
 });
 
-test("a search under a focused folder says it looks in every project", async ({ page }) => {
+test("a search under a focused folder says it looks in every project", async ({ page, request }) => {
   // The Projects view narrows the list to one folder; a typed query does not — search is global — and the
   // focused head is not drawn while its results are, so without this note the scope changed in silence.
+  // A second folder keeps the expected focus switch even if this sandbox's first folder has only one chat.
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const beta = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
+  const second = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: beta.id } })).json()) as { chatId: string };
+  await request.post(`/api/chats/${second.chatId}/messages`, { data: { text: "the other folder also gets a session in the example", mode: "normal" } });
   await useProjectsView(page);
   await signInAndOpen(page);
   await newChat(page);
@@ -287,6 +292,27 @@ test("a search under a focused folder says it looks in every project", async ({ 
   expect(geometry.titleLeft, "a row's title is drawn beside the note").not.toBeNull();
   expect(Math.abs(geometry.noteLeft - (geometry.titleLeft ?? 0)), "the note starts on the titles' edge").toBeLessThanOrEqual(0.5);
   expect(geometry.gap, "the list under it stays put").toBeLessThanOrEqual(8.5);
+  // Density settings change the row's own text edge, not its semantic scope. Measure against that
+  // actual title rather than an assumed panel padding: the same focused search remains the same fact.
+  for (const attrs of [{ "data-density": "compact" }, { "data-density": "compact", "data-sidebar": "compact" }]) {
+    await page.evaluate((attrs) => {
+      document.documentElement.removeAttribute("data-density");
+      document.documentElement.removeAttribute("data-sidebar");
+      for (const [name, value] of Object.entries(attrs)) document.documentElement.setAttribute(name, value);
+    }, attrs);
+    const alignment = await note.evaluate((el) => {
+      const words = document.createRange();
+      words.selectNodeContents(el.querySelector("span")!);
+      const title = el.parentElement?.querySelector(".session-title");
+      return { note: words.getBoundingClientRect().left, title: title?.getBoundingClientRect().left, density: document.documentElement.dataset.density, style: document.documentElement.dataset.sidebar };
+    });
+    expect(alignment.note, `the scope and title must share an edge under density: ${JSON.stringify(attrs)}`).not.toBeNull();
+    expect(Math.abs(alignment.note - (alignment.title ?? 0)), `real note/title edge under ${JSON.stringify(attrs)}`).toBeLessThanOrEqual(0.5);
+  }
+  await page.evaluate(() => {
+    document.documentElement.removeAttribute("data-density");
+    document.documentElement.removeAttribute("data-sidebar");
+  });
   // A press just under the words is the action's, not the list's.
   await page.mouse.click(geometry.textLeft + 4, geometry.textBottom + 3);
   await expect(page.getByRole("searchbox", { name: "Search sessions" })).toHaveValue("");

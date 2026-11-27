@@ -624,6 +624,21 @@ test.describe("the compact rows", () => {
       .first()
       .click();
     await measure("projects");
+    // Direct agent text must ellipsize inside this cap: a flex wrapper hid its overflow at a word edge.
+    // Anonymous flex text never ellipsized before. The proper block text now ellipsizes within this cap;
+    // measure that fitted box instead of a DOM range (a range can include text that is hidden by ellipsis).
+    await expect(active.locator(".session-sub.session-agent > .session-sub-name")).toHaveCSS("display", "block");
+    const fact = await active.locator(".session-sub.session-agent > .session-sub-name").evaluate((el) => ({
+      client: el.clientWidth,
+      scroll: el.scrollWidth,
+      overflow: getComputedStyle(el).textOverflow,
+      white: getComputedStyle(el).whiteSpace,
+      surplus: el.scrollWidth - el.clientWidth,
+    }));
+    expect(fact.overflow, "plain agent text actually ellipsizes rather than clipping").toBe("ellipsis");
+    expect(fact.white, "the status sentence remains one bounded line").toBe("nowrap");
+    expect(fact.surplus, "an overlong plain agent sentence is permitted inside its own ellipsis cap").toBeGreaterThan(0);
+    await active.locator(".session-sub.session-agent > .session-sub-name").screenshot({ path: "/tmp/awui-sidebar-climb/r12/projects-agent-after.png" });
     await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
   });
 });

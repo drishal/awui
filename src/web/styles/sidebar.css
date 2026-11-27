@@ -335,10 +335,12 @@
   flex: none;
 }
 
-/* Keep the current organising choice visible rather than behind the filter's funnel. */
+/* Keep the current organising choice visible rather than behind the filter's funnel. The text and chevron
+   need 60px at the two offered views ("Recent" and "Projects"), so the search input must yield instead
+   of producing "Projec…" or placing the filter differently when the chosen view changes. */
 .sidebar-view-control {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: none;
+  min-width: 60px;
 }
 
 /* Placeholder needs the theme's minimum contrast, not the UA default grey on a tinted field. */
@@ -1584,7 +1586,7 @@
    kept for the ⋯ (the 34px one cost every title a fifth of the panel), so each row shape gives the
    control the room it has: a one-line row fades its age out inside the age's own box, and a two-line row
    fades the age at the end of its subline, where the ⋯ then sits. Neither moves a glyph of the title. */
-@media (pointer: fine) {
+@media (pointer: fine), (hover: hover) {
   /* The age (or state word, or wake time) fades under the ⋯ on either line, and the box keeps its width,
      so nothing beside it shifts. */
   .session-title-line > .session-slot > .session-meta,
@@ -1596,6 +1598,20 @@
   .session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-body.has-sub > .session-sub > .session-slot > .session-meta {
     opacity: 0;
   }
+}
+
+/* A hovered or keyboard-owned row hides the age under its ⋯: owning the action, not being
+   toggle-active, is what decides this. A real mouse still matches :hover while touch media says
+   hover:none — so a pointer/hover feature query alone would leave the age overprinted. */
+.session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-title-line > .session-slot > .session-meta,
+.session-item:is(:hover, .is-menu-open, :has(:focus-visible)) .session-body.has-sub > .session-sub > .session-slot > .session-meta {
+  opacity: 0;
+}
+
+/* More actually accepts the real hover or keyboard's pointer as well as the coarse tap default.
+   The native coarse rule below disables a generic More unless the row is active; ownership must win. */
+.session-item:is(:hover, .is-menu-open, :has(:focus-visible)) > .session-more {
+  pointer-events: auto;
 }
 
 @media (hover: none) {
@@ -2102,7 +2118,7 @@ body.is-resizing {
   }
   /* Recent is shorter than Projects: the longer view label needs 4px of the search minimum back at the floor. */
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .sidebar[data-narrow-field] .search-field > input {
-    min-width: 88px;
+    min-width: 86px;
   }
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .session {
     padding: 9px 10px;
@@ -2162,6 +2178,12 @@ body.is-resizing {
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .search-scope {
     padding: 0 10px 0 26px;
   }
+  /* Density compact defaults to a 4px note gutter. The session's own title column is one 24px inset
+     from the panel's left, so a search under one focused folder must use that same edge, not the
+     airy 26px rule below nor the plain 4px note gutter (the actual title's screen leading edge). */
+  :root[data-density="compact"]:not([data-sidebar="compact"]) .search-scope {
+    padding: 0 10px 0 24px;
+  }
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .project-group .show-more,
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .flat-group .show-more {
     --show-more-pad: 26px;
@@ -2182,9 +2204,12 @@ body.is-resizing {
 :root[data-sidebar="compact"] .search-scope {
   padding: 0 10px 0 24px;
 }
-/* The longer Projects label must fit on the same minimum rail; coarse pointers retain their own input floor. */
+/* The longer Projects label must fit on the same minimum rail; coarse pointers retain their own input floor.
+   Density compact shares the fine-pointer floor: its airy default panel is one width narrower than the
+   comfortable block above, and its input otherwise stayed at 96px and squeezed the label. */
 @media (hover: hover) and (pointer: fine) {
-  :root[data-sidebar="compact"] .sidebar[data-narrow-field] .search-field > input {
+  :root[data-sidebar="compact"] .sidebar[data-narrow-field] .search-field > input,
+  :root[data-density="compact"] .sidebar[data-narrow-field] .search-field > input {
     min-width: 88px;
   }
 }
@@ -2261,6 +2286,14 @@ body.is-resizing {
   color: var(--muted-text);
   font-size: 11.5px;
   white-space: nowrap;
+}
+
+/* An agent's status is direct text, not a flex TagLine item: the latter truncates at its own text edge
+   but an anonymous flex child cannot ellipsis before the next token, so direct text hard-cut mid-word.
+   Keep flex box sizing/shrinking, but let the plain sentence ellipsize inside that cap instead. */
+:root[data-sidebar="compact"] .session-sub.session-agent > .session-sub-name {
+  display: block;
+  text-overflow: ellipsis;
 }
 
 /* A status is a sentence, and on a nowrap line its `min-content` is the whole sentence: that floor held the

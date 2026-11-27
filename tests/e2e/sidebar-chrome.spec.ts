@@ -1,6 +1,6 @@
 // Chrome checks for the compact sidebar, its filter disclosure, search, footer,
 // and touch drawer. Row geometry remains sidebar-separation.spec's responsibility.
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { newChat, send, sendAndWait, showAllProjects, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 async function painted(page: import("@playwright/test").Page, token: string): Promise<string> {
@@ -120,7 +120,7 @@ test("search chrome fits every supported width in either view, with or without a
     const field = (await sidebar.locator(".search-field").boundingBox())!;
     const filter = (await sidebar.locator(".filter-chip").boundingBox())!;
     expect(filter.x + filter.width, `filter stays inside a ${width}px field`).toBeLessThanOrEqual(field.x + field.width - 3.5);
-    expect(filter.x + filter.width, `filter has one inset at ${width}px`).toBe(field.x + field.width - 4);
+    expect(Math.abs(filter.x + filter.width - (field.x + field.width - 4)), `filter's 4px inset stays within a fractional pixel at ${width}px`).toBeLessThanOrEqual(0.5);
     return filter.x;
   };
   for (const width of [236, 240, 292, 560]) {
@@ -151,17 +151,37 @@ test("the view control keeps its name and target at the narrowest supported widt
   const label = view.locator("span");
   expect((await label.boundingBox())!.width, "Recent never collapses to a bare chevron").toBeGreaterThan(18);
   await expect(label).toHaveText("Recent");
-  expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth + 0.5), "Recent is the whole word, not Rec…").toBe(true);
+  // A Range reads the text's real width, where `scrollWidth`/`clientWidth` round to whole pixels: a 46.234px
+  // "Projects" inside a 46px box read green on the rounded metrics while the word was drawn as "Projec…".
+  const ink = (label: Locator) =>
+    label.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return { right: range.getBoundingClientRect().right, box: el.getBoundingClientRect().right };
+    });
+  const fits = (label: Locator, name: string) =>
+    expect.poll(async () => {
+      const { right, box } = await ink(label);
+      return box - right;
+    }, `${name} ends inside its box, not ellipsised`).toBeGreaterThanOrEqual(-0.05);
+  await fits(label, "Recent");
   const input = sidebar.getByRole("searchbox", { name: "Search sessions" });
   expect((await input.boundingBox())!.width, "the placeholder keeps room beside it").toBeGreaterThanOrEqual(80);
   await view.click();
   await page.getByRole("menuitemradio", { name: "Projects", exact: true }).click();
   const projects = sidebar.getByRole("button", { name: "Sidebar view: Projects" }).locator("span");
   await expect(projects).toHaveText("Projects");
-  expect(await projects.evaluate((el) => el.scrollWidth <= el.clientWidth + 0.5), "Projects is the whole word at the resizer floor, not Proje…").toBe(true);
+  await fits(projects, "Projects");
+  const control = sidebar.locator(".sidebar-view-control");
+  expect(await control.evaluate((el) => getComputedStyle(el).flexGrow === "0" && getComputedStyle(el).flexShrink === "0"), "the view control never shrinks; the input yields").toBe(true);
   await page.evaluate(() => document.documentElement.dataset.sidebar = "compact");
   await expect(sidebar).toBeVisible();
-  expect(await projects.evaluate((el) => el.scrollWidth <= el.clientWidth + 0.5), "compact also keeps the whole Projects word").toBe(true);
+  await fits(projects, "compact Projects");
+  // Density compact is a supported setting on the default style: its airy panel is one width narrower, and
+  // its input floor must give way to the label the same way.
+  await page.evaluate(() => document.documentElement.dataset.density = "compact");
+  await fits(projects, "density-compact Projects");
+  await page.evaluate(() => document.documentElement.dataset.density = "");
   await expect(sidebar.locator(".filter-chip")).toBeVisible();
 });
 
@@ -463,6 +483,23 @@ test("the list's bottom fade is a scrim under the rows, and the list masks nothi
 
 test.describe("phone drawer", () => {
   test.use({ hasTouch: true, isMobile: true });
+  test("an actual hover owns More instead of the age on a touch-capable device", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await signInAndOpen(page);
+    await newChat(page);
+    await sendAndWait(page, "a row with a long two-line fact for hover ownership");
+    await newChat(page);
+    await sendAndWait(page, "make the first chat nonactive");
+    await page.getByRole("button", { name: "Open menu", exact: true }).click();
+    const item = page.locator(".sidebar .session-item", { hasText: "hover ownership" }).first();
+    const meta = item.locator(".session-meta");
+    const more = item.locator(".session-more");
+    await expect.poll(async () => page.evaluate(() => matchMedia("(pointer: coarse)").matches), "the test has a coarse pointer area").toBe(true);
+    await item.hover();
+    await expect.poll(async () => meta.evaluate((el) => getComputedStyle(el).opacity === "0" || getComputedStyle(el).visibility === "hidden"), "hover hides the age instead of painting More over it").toBe(true);
+    await expect(more).toHaveCSS("opacity", "1");
+    await expect(more).toHaveCSS("pointer-events", "auto");
+  });
 
   test("the phone drawer has a bottom New chat and 44px filter/search targets", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
