@@ -1,9 +1,10 @@
 // A sidebar row's one muted subline (session-state.ts): the project a row is out of, the fact its
-// agent stated, or a branch that is not the folder's trunk — and the row stays one line when none applies.
+// agent stated, how it began when no person did, or a branch that is not the folder's trunk — and the
+// row stays one line when none applies.
 import { describe, expect, it } from "vitest";
 import { asHarnessId, type ProjectSession } from "../../src/shared/protocol.js";
 import type { ProjectTag } from "../../src/web/recent-view.js";
-import { rowState, rowSubline, runElapsed } from "../../src/web/session-state.js";
+import { originWords, rowState, rowSubline, runElapsed } from "../../src/web/session-state.js";
 
 const s = (extra: Partial<ProjectSession> = {}): ProjectSession => ({
   id: "x",
@@ -59,6 +60,40 @@ describe("rowSubline", () => {
     expect(rowSubline(s(), { branch: "feat/worktree", groupBranch: "test" })).toEqual({ kind: "branch", text: "feat/worktree" });
     expect(rowSubline(s(), { tag, groupBranch: tag.branch })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, fact: null });
     expect(rowSubline(s(), { tag, groupBranch: "test" })).toEqual({ kind: "tag", tag, fact: null });
+  });
+
+  it("says how a routine woke its session, inside its own project", () => {
+    // Nothing here repeats the project (its group's head names it) or the harness (the leading dot
+    // says that): how the session began is the one line such a row has to add.
+    expect(rowSubline(s({ origin: "routine" }), {})).toEqual({ kind: "origin", text: "Scheduled routine" });
+    expect(originWords(s({ origin: "routine" }))).toBe("Scheduled routine");
+  });
+
+  it("says whose task a delegated session is, and does not claim a parent it lost", () => {
+    const child = (parentTitle: string | null) => s({ origin: "agent", lineage: { kind: "delegate", taskId: "t1", parentChatId: "c0", parentTitle, depth: 1 } });
+    expect(rowSubline(child("Fix CI"), {})).toEqual({ kind: "origin", text: "From Fix CI" });
+    // A reaped parent chat is gone from the listing, so the row says all it still knows.
+    expect(rowSubline(child(null), {})).toEqual({ kind: "origin", text: "From another agent" });
+  });
+
+  it("keeps the agent's own status ahead of how the session began", () => {
+    // The status is what changed and what the person acts on; a lineage or a routine is context.
+    const r = rowSubline(s({ origin: "routine", agentStatus: { state: "review", comment: "ready to merge", at: 7 } }), {});
+    expect(r).toEqual({ kind: "agent", text: "ready to merge", state: "review", line: "ready for review · ready to merge", at: 7 });
+    // Only with the status gone does the origin take the line, which is what makes the order visible.
+    expect(rowSubline(s({ origin: "routine" }), {})).toEqual({ kind: "origin", text: "Scheduled routine" });
+  });
+
+  it("puts how a session began in the branch's place, on a tagged row, before the project", () => {
+    expect(rowSubline(s({ origin: "routine" }), { tag })).toEqual({ kind: "tag", tag: { ...tag, branch: null }, fact: { kind: "words", text: "Scheduled routine" } });
+    expect(originWords(s({ origin: "agent" }))).toBe("From another agent");
+  });
+
+  it("leaves the row one line when nothing on it has anything to say", () => {
+    // The guard: no status, nobody who started it, and the trunk's branch — where the branch alone is
+    // today's answer, and a second line invented for it would make every row two lines.
+    expect(originWords(s())).toBeNull();
+    expect(rowSubline(s(), { branch: "main" })).toBeNull();
   });
 });
 

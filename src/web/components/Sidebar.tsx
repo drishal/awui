@@ -468,8 +468,9 @@ function SessionRow({
   // A session not saved yet has nothing to mark.
   const markable = !s.id.includes(":live-");
   const { warm } = useContext(RowActions);
-  // The line under the title names the project, the agent's own status, or a branch that differs
-  // from its group. Without one the row is a single line; its ⋯ replaces the age on hover.
+  // The line under the title names the project, the agent's own status, how the session began (a
+  // delegated task, a routine), or a branch that differs from its group. Without one the row is a
+  // single line; its ⋯ replaces the age on hover.
   const sub = rowSubline(s, { tag, branch, groupBranch });
   // Inside its own state section, the leading mark says the state; the meta line keeps the age.
   const state = rowState(s, { working, showHarness, section: stateTone });

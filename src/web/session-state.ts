@@ -20,27 +20,33 @@ export type TagFact = { kind: "state"; word: string; note: string | null } | { k
 export type RowSubline =
   /**
    * The project the row is out of: its badge and name, its branch when that is not the trunk, and — in
-   * place of that branch — the fact its own agent stated.
+   * place of that branch — the fact its own agent stated, or how it began.
    */
   | { kind: "tag"; tag: ProjectTag; fact: TagFact | null }
   /** The line the row's own agent set for itself: its words, its state, and when it wrote it. */
   | { kind: "agent"; text: string; state: AgentStatusState; line: string; at: number }
   /** The branch the row's project is checked out on, when it is not one it treats as its trunk. */
-  | { kind: "branch"; text: string };
+  | { kind: "branch"; text: string }
+  /**
+   * How the session began where no person typed its first prompt (`originWords`): whose task it is, or
+   * that a schedule woke it — the one fact such a row has, since its group's head names the project.
+   */
+  | { kind: "origin"; text: string };
 
 /**
  * The subline a row shows, or null when it has nothing to add (the row is then one line):
  *  - out of its project (`tag`), say which project — the flat list, and the sections above the folders —
- *    and, when its agent stated one, that fact first (`tagFact`): one annotation, so the branch gives way;
- *  - inside its project, the agent's own status line, else a branch that is not the trunk one and not
- *    the one its group's head already states (`groupBranch`): a branch is said once, where it applies.
+ *    and, when it has one, that fact first (`tagFact`): one annotation, so the branch gives way;
+ *  - inside its project, the agent's own status line, else how the session began (`originWords`), else a
+ *    branch that is not the trunk one and not the one its group's head already states (`groupBranch`): a
+ *    branch is said once, where it applies.
  */
 export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; branch?: string | null; groupBranch?: string | null }): RowSubline | null {
   if (opts.tag) {
     // The fact is what changed, so it leads: the row says it before the project it is out of. It takes the
     // branch's place, because two annotations on one line is one too many, and the branch is the group's
-    // fact (the head states it) where a status is this row's.
-    const fact = tagFact(s.agentStatus);
+    // fact (the head states it) where a status, or how the session began, is this row's.
+    const fact = tagFact(s.agentStatus) ?? wordsOf(originWords(s));
     // A group head owns its branch: only a worktree row with a different one states it again.
     const tag = fact !== null || (opts.groupBranch != null && opts.tag.branch === opts.groupBranch) ? { ...opts.tag, branch: null } : opts.tag;
     return { kind: "tag", tag, fact };
@@ -49,9 +55,25 @@ export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; b
     const { state, comment, at } = s.agentStatus;
     return { kind: "agent", text: comment || agentStatusText(s.agentStatus), state, line: agentStatusText(s.agentStatus), at };
   }
+  // How it began is this row's own fact, so it comes before a branch: a delegated child or a routine's
+  // session says that it is one, not only where it is checked out.
+  const origin = originWords(s);
+  if (origin) return { kind: "origin", text: origin };
   const branch = opts.branch ?? null;
   if (branch === null || branch === opts.groupBranch || isTrunkBranch(branch)) return null;
   return { kind: "branch", text: branch };
+}
+
+/**
+ * How a session began, where no person typed its first prompt: whose task it is, or that a schedule woke
+ * it. A delegated child's lineage is live only while its chat is (the listing drops it once the chat is
+ * reaped), so both say "another agent" when the parent's name is gone. Null for what a person started.
+ */
+export function originWords(s: ProjectSession): string | null {
+  if (s.lineage) return s.lineage.parentTitle ? `From ${s.lineage.parentTitle}` : "From another agent";
+  if (s.origin === "routine") return "Scheduled routine";
+  if (s.origin === "agent") return "From another agent";
+  return null;
 }
 
 /**
@@ -64,6 +86,11 @@ function tagFact(status: AgentStatusLine | undefined): TagFact | null {
   if (!status) return null;
   if (status.state === "blocked") return { kind: "state", word: AGENT_STATUS_WORDS.blocked, note: status.comment || null };
   return { kind: "words", text: status.comment || agentStatusText(status) };
+}
+
+/** A row's own words as the fact of a tagged line, or nothing where it has none to add. */
+function wordsOf(text: string | null): TagFact | null {
+  return text ? { kind: "words", text } : null;
 }
 
 /** The leading slot a row's 10px mark takes, in the order the row chooses one. */
