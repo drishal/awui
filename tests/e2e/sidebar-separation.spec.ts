@@ -1,5 +1,5 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-// Sidebar rows keep one pitch: 32px, or 48px with a subline. A two-line title takes
+// Sidebar rows keep one pitch: 36px, or 54px with a subline on a fine pointer. A two-line title takes
 // the full row; the right end of its subline holds the age, which fades out on hover
 // for the ⋯ that takes its place, so the title never changes width under the pointer.
 // A one-line title keeps the age beside it, and hover swaps the ⋯ for that age.
@@ -52,7 +52,7 @@ async function pitchIn(page: Page, selector: string): Promise<{ heights: number[
 }
 
 test.describe("the separated rows", () => {
-  test("one line at 32px inside a project, 48px with its tag in the flat list, no divider", async ({ page }) => {
+  test("one line at 36px inside a project, 54px with its tag in the flat list, no divider", async ({ page }) => {
     await signInAndOpen(page);
     await newChat(page);
     await sendAndWait(page, "older pitch row");
@@ -60,21 +60,21 @@ test.describe("the separated rows", () => {
     await sendAndWait(page, "pitch row in the sidebar");
     await showSidebar(page);
 
-    // The flat list: this row carries its project as a tag, which is its subline, so it stands 48px tall.
+    // The flat list: this row carries its project as a tag, which is its subline, so it stands 54px tall.
     const item = row(page, "pitch row in the sidebar").first();
     await expect(item.locator(".session-sub")).toBeVisible();
-    expect(await rowBox("pitch row in the sidebar", page), "a row with its tag is 48px").toEqual({ height: 48 });
-    // The pitch of the whole list: one 2px step from row to row, and every row one line (48 here, since
+    expect(await rowBox("pitch row in the sidebar", page), "a row with its tag is 54px").toEqual({ height: 54 });
+    // The pitch of the whole list: one 2px step from row to row, and every row one line (54 here, since
     // every row of the flat list carries its project).
     const pitch = await pitchIn(page, ".flat-group");
-    expect(new Set(pitch.heights)).toEqual(new Set([48]));
+    expect(new Set(pitch.heights)).toEqual(new Set([54]));
     expect(new Set(pitch.gaps), "rows sit 2px apart").toEqual(new Set([2]));
     expect((await lineOf(item.locator(".session"))).content, "no hairline joins two rows").toBe("none");
     // The tag is the project's badge and its name, on one line under the title.
     await expect(item.locator(".session-sub .project-badge")).toHaveCount(1);
     await expect(item.locator(".session-sub")).toContainText("alpha");
 
-    // The grouped view: inside its own project the row has nothing to add, so it is one 32px line.
+    // The grouped view: inside its own project the row has nothing to add, so it is one 36px line.
     await useProjectsView(page);
     await page.reload();
     await showSidebar(page);
@@ -84,7 +84,47 @@ test.describe("the separated rows", () => {
     const grouped = row(page, "pitch row in the sidebar").first();
     await expect(grouped.locator(".session-sub")).toHaveCount(0);
     const box = (await grouped.boundingBox()) as { height: number } | null;
-    expect(Math.round((box as { height: number }).height), "a one-line row is 32px").toBe(32);
+    expect(Math.round((box as { height: number }).height), "a one-line row is 36px").toBe(36);
+  });
+
+  test("the rows sit on a 12px gutter and the titles on one 26px edge", async ({ page, request }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const root = process.env.AWUI_E2E_ROOT as string;
+    const beta = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
+    const other = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: beta.id } })).json()) as { chatId: string };
+    await request.post(`/api/chats/${other.chatId}/messages`, { data: { text: "a second folder head", mode: "normal" } });
+    await signInAndOpen(page);
+    await newChat(page);
+    await sendAndWait(page, "one shared title edge");
+    await showSidebar(page);
+    await expect(sidebar(page).locator(".date-divider").first()).toBeVisible();
+    const flat = await page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar")?.getBoundingClientRect();
+      const first = document.querySelector(".sidebar .session")?.getBoundingClientRect();
+      const title = document.querySelector(".sidebar .session-title")?.getBoundingClientRect();
+      const date = document.querySelector(".sidebar .date-divider") as HTMLElement | null;
+      const dateStyle = date && getComputedStyle(date);
+      return sidebar && first && title && date && dateStyle ? {
+        rowGutter: first.left - sidebar.left,
+        titleInset: title.left - first.left,
+        dateEdge: date.getBoundingClientRect().left + Number.parseFloat(dateStyle.paddingLeft) - sidebar.left,
+      } : null;
+    });
+    expect(flat, "a row and a date heading are drawn").not.toBeNull();
+    expect(flat?.rowGutter ?? 0, "the rows sit on the panel's 12px gutter").toBeCloseTo(12, 0);
+    expect(flat?.titleInset ?? 0, "the titles start 26px into a row").toBeCloseTo(26, 0);
+    expect(flat?.dateEdge ?? 0, "a date label starts on the titles' edge").toBeCloseTo(38, 0);
+
+    await useProjectsView(page);
+    await page.reload();
+    await showSidebar(page);
+    if (await sidebar(page).locator(".focus-switch").count()) await showAllProjects(page);
+    await expect(sidebar(page).locator('.project-group[data-testid="project-group"]').first()).toBeVisible();
+    const folderEdge = await sidebar(page).locator(".project-group[data-testid='project-group'] .project-name").first().evaluate((el) => {
+      const sidebar = document.querySelector(".sidebar")?.getBoundingClientRect();
+      return sidebar ? el.getBoundingClientRect().left - sidebar.left : null;
+    });
+    expect(folderEdge ?? 0, "a folder head's name shares the titles' 38px edge").toBeCloseTo(38, 0);
   });
 
   test("a folder head and its rows share the list's one edge", async ({ page, request }) => {
@@ -119,7 +159,7 @@ test.describe("the separated rows", () => {
         rowRight: item.right,
         headRight: headBox.right,
         badgeCentre: badge.left + badge.width / 2,
-        markCentre: headBox.left + 8 + 5,
+        markCentre: headBox.left + 10 + 5,
         chevronLeft: chevron.left,
         nameRight: name.right,
       };
@@ -199,8 +239,8 @@ test.describe("the separated rows", () => {
     expect(now?.mask).toBe("none");
     expect(now?.titlePadding).toBe("0px");
     expect(now?.titleWidth).toBe(before?.width);
-    // No reserved gutter: the row's right padding stays the list's 8px.
-    expect(now?.padding).toBe("8px");
+    // No reserved gutter: the row's right padding stays the list's 10px.
+    expect(now?.padding).toBe("10px");
     // The ⋯ sits over the age at the subline's end: its glyph on that line's centre, and the box it covers
     // is the age's own right end.
     expect(now?.centre ?? 0).toBeGreaterThan(before?.titleBottom ?? 0);
@@ -317,7 +357,7 @@ test.describe("the compact rows", () => {
     // Off again is the separated look, whole: the setting only swaps rows.
     await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
     const back = (await item.boundingBox()) as { height: number } | null;
-    expect(Math.round((back as { height: number }).height)).toBe(48);
+    expect(Math.round((back as { height: number }).height)).toBe(54);
   });
 
   test("a long project's name is cut, and the title keeps its own 96px", async ({ page, request }) => {

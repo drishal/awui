@@ -2072,6 +2072,73 @@ body.is-resizing {
   }
 }
 
+/* On a mouse, the default rows take their room from the panel gutter and the wash, rather than more
+   text: 12px at the panel, 10px at the row's edge, and one 26px edge for titles, heads and dates.
+   Compact style, compact density and coarse pointers keep their own pitches. */
+@media (hover: hover) and (pointer: fine) {
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .sidebar {
+    padding: 12px 12px 6px;
+    --sid-row: 36px;
+    --head-h: 30px;
+  }
+  /* Give the wider panel gutter its two pixels per side back from the input's floor.
+     Otherwise "Recent" truncates at the narrowest supported width. */
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .sidebar .search-field > input {
+    min-width: 92px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .session {
+    padding: 9px 10px;
+    border-radius: var(--r-md);
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .session:has(> .session-body.has-sub) {
+    padding-bottom: 7px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .session-active-bg {
+    border-radius: var(--r-md);
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .session-title {
+    font-size: 14px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .session-item > .session-more {
+    top: 6px;
+    right: 6px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .session-item:has(.session-body.has-sub) > .session-more {
+    top: auto;
+    bottom: 3px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .project-group.is-open > .project-head {
+    margin-bottom: 6px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) :is(.project-group + .project-group, .flat-group, .list-toggles) {
+    margin-top: calc(var(--section-gap) + 10px);
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .flat-group.is-search:first-child {
+    margin-top: 0;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .date-divider {
+    padding: calc(var(--section-pad-top) + 6px) 10px 6px 26px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .section-group .project-toggle {
+    height: 28px;
+    padding: 0 10px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .project-group:not(.section-group):not(.focus-group) > .project-head > .project-toggle {
+    padding: 0 10px;
+  }
+  /* These controls own their insets, but share the rows' text edge too. */
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .focus-head .focus-back {
+    width: 26px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .search-all {
+    padding-inline: 10px;
+  }
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .project-group .show-more,
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .flat-group .show-more {
+    --show-more-pad: 26px;
+  }
+}
+
 /* The compact session rows (config.yml's `sidebar_style: compact`): tighter than the separated look and
    one line always — the subline becomes a dim suffix after the title (Codex's rows) instead of a second
    line. Every rule here restates one value the separated look set above, and only those: delete the block

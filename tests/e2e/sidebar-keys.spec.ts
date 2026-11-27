@@ -337,7 +337,7 @@ test("the focus head has a separate All projects back button beside its switch, 
   await expect(head.getByRole("button")).toHaveCount(3);
   const back = head.getByRole("button", { name: "All projects", exact: true });
   await expect(back).toBeVisible();
-  await expect(back).toHaveCSS("width", "24px");
+  await expect(back).toHaveCSS("width", "26px");
   await expect(back.locator("svg")).toHaveCSS("color", await back.evaluate((el) => getComputedStyle(el).color));
   const button = head.locator(".focus-switch");
   // The name shares the rows' title edge; no badge or duplicate back disclosure competes with it.

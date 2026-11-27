@@ -114,17 +114,19 @@ a literal colour.
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
   a literal, for a new row height or gap.
 - **Scrollbars:** themed globally, once, in `tokens.css` (`*`): every scroller in the app takes an 8px thin bar, `--hairline-strong` on a transparent track, so a menu, a picker, a dialog, the composer or a code block never falls back to the platform's light bar; a container that hides its bar (`scrollbar-width: none` on the tab strips) or reserves a gutter (`scrollbar-gutter: stable` on the thread) says so itself.
-- **Sidebar rows:** each title is one 13.5px line with an ellipsis. A row is 32px tall,
-  or 48px with its supporting subline (project tag, agent status, or a branch that
-  differs from its group's head), with 2px between rows and no hairline or rail. In
-  Recent the tag is the project's badge, then — in the branch's place, and so before the project's
-  name — the line the agent set for itself, then the project's name after a `·` (`ready to merge ·
-  awui-wt`): a row states one fact beyond where it lives, and the fact that changed comes first. A
-  blocked agent's state is that fact and its comment is a note under it, so the row says `blocked ·
-  waiting on CI`: the word takes `--row-warn` while the note and the project stay muted (`TagFact`),
-  where the note alone used to read as a finished row.
+- **Sidebar rows:** each title is one 14px line with an ellipsis. A row is 36px tall,
+  or 54px with its supporting subline (project tag, agent status, or a branch that
+  differs from its group's head), with 2px between rows and no hairline or rail on desktop at the default style.
+  The rows sit on a 12px panel gutter with 10px of row padding and a `--r-md` wash. Titles start
+  26px into the row, and folder groups sit 16px apart. In Recent the tag is the project's badge,
+  then — in the branch's place, and so before the project's name — the line the agent set for itself,
+  then the project's name after a `·` (`ready to merge · awui-wt`): a row states one fact beyond where
+  it lives, and the fact that changed comes first. A blocked agent's state is that fact and its comment
+  is a note under it, so the row says `blocked · waiting on CI`: the word takes `--row-warn` while the
+  note and the project stay muted (`TagFact`), where the note alone used to read as a finished row.
+  Touch keeps 44px. Compact style and compact density keep their own values.
   `session-state.ts` decides that subline and its state. On a two-line row the title
-  takes the row's full width (8px right padding, no hover gutter). Its second line
+  takes the row's full width (10px right padding, no hover gutter). Its second line
   holds the project's badge and name on the left, and the age or allowed state word
   on the right. Hover or keyboard focus shows a 24px ⋯ at the subline's right end,
   bottom-aligned in the row, and fades that age out for it in 90ms: the title never
@@ -190,7 +192,7 @@ a literal colour.
   a folder's titles are as wide as the flat list's. A folder's preview rows carry no date
   headings until the folder is opened: the age on each row already says when. Recent
   has one text edge: a date heading's text and every section head's label start on the
-  rows' titles' edge (34px into a 292px panel); only marks hang in the mark column
+  rows' titles' edge (38px into a 292px panel); only marks hang in the mark column
   (18px), and every count ends on the age column. A date heading carries its bucket's
   size there — or, where the page stopped inside that bucket, how much of it the page drew
   (`12 of 15`, 11px, the rest in its `title`) — and a section head outranks it: the state a
@@ -201,8 +203,8 @@ a literal colour.
   and count as words, since the spans would otherwise run together). Date
   headings are plain dividers, not sticky labels (a stuck heading's fade ghosted a search's first
   result and cut a passing row in half on a phone); the scrolled list's own top fade (12px, 20px on a phone) is
-  the only edge a row meets. Folders leave 14px between them (10px at
-  compact density) and 4px from a head to its first row; a state section (Needs you, Working, Pinned) leaves
+  the only edge a row meets. At the default style on a fine pointer, folders leave 16px between them
+  and 6px from a head to its first row; compact style and compact density keep their own gaps;
   only 8px (6px at compact density) above the dates under it, two ranks of one list rather than two places.
   A folder head names its branch
   once for its rows: any branch off the trunk, and the trunk too when another folder
