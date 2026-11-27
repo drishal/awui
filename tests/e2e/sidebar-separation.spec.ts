@@ -366,10 +366,14 @@ test.describe("the compact rows", () => {
     const plainChat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: plainWs.id } })).json()) as { chatId: string };
     await request.post(`/api/chats/${plainChat.chatId}/messages`, { data: { text: "a row in a plain folder", mode: "normal" } });
 
-    await page.addInitScript(() => window.localStorage.setItem("awui.sidebarWidth", JSON.stringify(200)));
     await signInAndOpen(page);
     await showSidebar(page);
-    await page.evaluate(() => document.documentElement.setAttribute("data-sidebar", "compact"));
+    // The resizer stops at 236px, so no saved width gets a desktop rail under 224px; a very narrow phone drawer
+    // can. Set the rail's width token directly (CSSOM, not an inline style attribute) to stand in for it.
+    await page.evaluate(() => {
+      document.documentElement.setAttribute("data-sidebar", "compact");
+      (document.querySelector(".app") as HTMLElement).style.setProperty("--sidebar-w", "200px");
+    });
     const narrowRow = row(page, "a row on a narrow rail").first();
     await expect(narrowRow).toBeVisible();
     const parts = await narrowRow.evaluate((el) => {
