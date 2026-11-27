@@ -367,6 +367,35 @@ a {
   text-underline-offset: 2px;
 }
 
+/* One scrollbar for everything that scrolls. The thin themed bar used to be opt-in per container (the sidebar's
+   list, the chat's thread, the usage dialog, a room's transcript), so every other scroller — the harness and
+   model pickers, the palette, menus, dialogs, the composer's textarea, a code block — fell back to the
+   platform's own light bar with arrow buttons inside the dark panel. A container that wants the space back
+   says `scrollbar-width: none` itself (the tab strips, the rail), and one that reserves a gutter says
+   `scrollbar-gutter: stable`; both are more specific than this rule and win. Chromium ≥ 121 ignores the
+   `::-webkit-` rules once `scrollbar-color` is set — they stay for engines that colour the bar that way. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--control-border);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 code,
 pre,
 kbd,

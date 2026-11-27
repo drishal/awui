@@ -113,6 +113,7 @@ a literal colour.
   `data-density="compact"` on `<html>`, and `tokens.css` overrides them there,
   for a fine pointer only (touch keeps the comfortable sizes). Use a token, not
   a literal, for a new row height or gap.
+- **Scrollbars:** themed globally, once, in `tokens.css` (`*`): every scroller in the app takes an 8px thin bar, `--hairline-strong` on a transparent track, so a menu, a picker, a dialog, the composer or a code block never falls back to the platform's light bar; a container that hides its bar (`scrollbar-width: none` on the tab strips) or reserves a gutter (`scrollbar-gutter: stable` on the thread) says so itself.
 - **Sidebar rows:** each title is one 13.5px line with an ellipsis. A row is 32px tall,
   or 48px with its supporting subline (project tag, agent status, or a branch that
   differs from its group's head), with 2px between rows and no hairline or rail. In

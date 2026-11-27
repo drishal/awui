@@ -51,25 +51,10 @@
   overscroll-behavior-y: contain;
 }
 
-/* Thin themed scrollbar that reserves its space, so arriving turns do not shift
+/* The app-wide thin bar (tokens.css), reserving its space: arriving turns do not shift
    the thread when the bar appears. */
 .conversation {
-  scrollbar-width: thin;
-  scrollbar-color: var(--hairline-strong) transparent;
   scrollbar-gutter: stable;
-}
-.conversation::-webkit-scrollbar {
-  width: 8px;
-}
-.conversation::-webkit-scrollbar-thumb {
-  background: var(--hairline-strong);
-  border-radius: 4px;
-}
-.conversation::-webkit-scrollbar-thumb:hover {
-  background: var(--control-border);
-}
-.conversation::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 /* Room under the last line for the "Jump to latest" pill, which floats 10px above this edge: without it the

@@ -77,22 +77,8 @@
   overscroll-behavior: contain;
   /* A row cut by the bottom edge fades out (the palette's list does the same) instead of showing half a line. */
   mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
-  scrollbar-width: thin;
-  scrollbar-color: var(--hairline-strong) transparent;
+  /* The app-wide thin bar (tokens.css), reserving its space so the sliding pill's measurements hold. */
   scrollbar-gutter: stable;
-}
-
-.usage-body::-webkit-scrollbar {
-  width: 8px;
-}
-
-.usage-body::-webkit-scrollbar-thumb {
-  background: var(--hairline-strong);
-  border-radius: 4px;
-}
-
-.usage-body::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 .usage-report {

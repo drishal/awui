@@ -294,24 +294,14 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  /* The chat's thread: its top inset, its thin scrollbar with the gutter kept, and turns spaced by their own
-     padding (var(--gap-turn)) rather than a second gap on top of it. */
+  /* The chat's thread: its top inset, and turns spaced by their own padding (var(--gap-turn)) rather
+     than a second gap on top of it. */
   padding: 8px var(--room-gutter) 44px;
   display: flex;
   flex-direction: column;
   gap: 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--hairline-strong) transparent;
+  /* The app-wide thin bar (tokens.css), reserving its space. */
   scrollbar-gutter: stable;
-}
-
-.room-transcript::-webkit-scrollbar {
-  width: 8px;
-}
-
-.room-transcript::-webkit-scrollbar-thumb {
-  background: var(--hairline-strong);
-  border-radius: 4px;
 }
 
 .room-older {
