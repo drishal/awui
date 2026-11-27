@@ -276,12 +276,12 @@
   color: var(--muted-text);
 }
 
-/* Members is the room's one worded control in the header, drawn like the chat's Review beside the icon tools. */
+/* Members is the room's one worded control in the header, drawn like the chat's Review beside the icon tools. Its
+   step to Edit is the action group's own (4px), not a margin of its own. */
 .room-members-open {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-right: 4px;
 }
 
 .badge-room {

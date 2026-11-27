@@ -335,7 +335,6 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-right: 4px;
   border-color: color-mix(in srgb, var(--accent) 34%, var(--hairline-strong));
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }

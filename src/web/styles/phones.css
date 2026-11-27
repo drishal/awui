@@ -347,6 +347,16 @@ body {
     display: none;
   }
 
+  /* What folded into the menu leaves no 12 px step behind: with the groups dissolved, the four that remain are
+     one run of 4 px steps and the row closes up to the right edge. */
+  .chat-header .head-actions {
+    gap: 4px;
+  }
+
+  .chat-header .head-group {
+    display: contents;
+  }
+
   .menu-phone-only {
     display: list-item;
   }

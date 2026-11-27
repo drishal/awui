@@ -111,16 +111,6 @@
     padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
   }
 
-  /* The project stays on a phone, shortened, so the header still says where the chat runs. */
-  .chat-sub {
-    flex-wrap: nowrap;
-    min-width: 0;
-  }
-
-  .chat-path {
-    max-width: 12ch;
-  }
-
   /* A phone has a notch and a rounded edge: the transcript keeps a real gutter on both sides and stays clear of the
      home indicator, so no line starts or ends under the curve. Its foot reserves the page's own margin, not a lane
      for the jump pill: the pill floats only while the reader is scrolled up (Conversation's showJump), and it carries
