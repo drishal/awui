@@ -249,6 +249,7 @@ leaves a button that fails. Gate any server route on the flag too.
 | `supportsQueueEdit` | Editing or removing a queued message | `Composer.tsx`, `chat.ts` |
 | `supportsModelSelection` | The model pill and picker | `ComposerControls.tsx`, `App.tsx`, `chat.ts` |
 | `supportsThinkingLevel` | The thinking/effort pill | `ComposerControls.tsx`, `App.tsx`, `chat.ts` |
+| `supportsAgentSelection` (optional) | The primary-agent pill (`ChatConfig.agent` / `.agents`) | `ComposerControls.tsx`, `App.tsx`, `chat.ts` |
 | `supportsPermissionMode` | The permission pill, switchable mid-run | `ComposerControls.tsx`, `App.tsx`, `chat.ts` |
 | `supportsCompact` | Compact, and the full-context chip | `Composer.tsx`, `App.tsx`, `chat.ts` |
 | `supportsRename` | Renaming the chat | `App.tsx`, `chat.ts`, `app.ts` |

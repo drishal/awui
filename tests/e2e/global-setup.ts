@@ -63,8 +63,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       // Never pick up the developer's own config.yml (host, login, theme).
       AWUI_CONFIG_DIR: "",
       PORT: String(E2E_PORT),
-      AWUI_HARNESSES: "fake,fake-b",
+      AWUI_HARNESSES: "fake,fake-b,opencode",
       AWUI_FAKE_DELAY_MS: "30",
+      OPENCODE_BIN: path.join(import.meta.dirname, "..", "fixtures", "fake-opencode.mjs"),
+      FAKE_OPENCODE_STATE: process.env.AWUI_OPENCODE_STATE ?? path.join(base, "opencode-state.json"),
       AWUI_HEARTBEAT_MS: "1000",
       WORKSPACE_ROOTS: root,
       XDG_STATE_HOME: path.join(base, "state"),
@@ -88,6 +90,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   });
   process.env.AWUI_E2E_ROOT = root;
   process.env.AWUI_E2E_HERDR = herdrDir;
+  process.env.AWUI_OPENCODE_STATE = path.join(base, "opencode-state.json");
   return async () => {
     await herdr.close();
     if (server.exitCode !== null) return;

@@ -1643,8 +1643,9 @@ export class Chat implements CheckpointHost {
     this.assertOpen();
     // While starting the change waits for the harness, which applies it before any run.
     const idle = this.status === "idle" || this.status === "error" || this.status === "starting";
-    // A permission mode is the exception: it can change mid-run, as Claude Code's own Shift+Tab does.
-    if (!idle && (patch.model !== undefined || patch.thinkingLevel !== undefined)) {
+    // A primary agent affects the next model call, so it follows the model's idle-only rule.
+  // A permission mode is the exception: it can change mid-run, as Claude Code's own Shift+Tab does.
+    if (!idle && (patch.model !== undefined || patch.thinkingLevel !== undefined || patch.agent !== undefined)) {
       throw new ChatError(409, "busy", "Settings can only change while the agent is idle");
     }
     const caps = this.adapter.capabilities;
@@ -1656,6 +1657,9 @@ export class Chat implements CheckpointHost {
     }
     if (patch.thinkingLevel !== undefined && !caps.supportsThinkingLevel) {
       throw new ChatError(400, "unsupported", "This harness has no thinking levels");
+    }
+    if (patch.agent !== undefined && !caps.supportsAgentSelection) {
+      throw new ChatError(400, "unsupported", "This harness has no selectable primary agents");
     }
     try {
       await this.live.setConfig(patch);

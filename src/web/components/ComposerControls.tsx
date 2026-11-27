@@ -2,6 +2,7 @@
 // row (DeepSeek Harness). Tools are never narrowed: each harness keeps its
 // normal tool set.
 import { useState } from "react";
+import { AgentPicker } from "./AgentPicker.js";
 import type { ChatState } from "../chat-state.js";
 import type { ConfigPatch, HarnessStatus } from "../../shared/protocol.js";
 import { configSummary, modelSummary } from "../config-summary.js";
@@ -74,9 +75,11 @@ export function ComposerControls({
   // A resumed chat's harness is still coming up: its pickers fade in and out until its own models arrive.
   const loading = chat.status === "starting";
 
+  const agents = caps.supportsAgentSelection && config.agent !== undefined && config.agents !== undefined ? config.agents : null;
   return (
     <div className="composer-controls" data-harness-accent={current?.accent}>
       <div className={`composer-pickers${loading ? " is-loading" : ""}`} aria-busy={loading || undefined}>
+        {agents ? <AgentPicker agents={agents} current={config.agent ?? null} disabled={!idle} onSelect={(agent) => void onConfig({ agent })} /> : null}
         {/* One split pill: the harness mark leads, and model and level read together as a single
             sentence ("Fake Echo · Low"). Each piece is still its own menu. */}
         <div className="composer-pill">

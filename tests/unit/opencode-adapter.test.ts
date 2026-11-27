@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Chat } from "../../src/server/chats/chat.js";
 import { OpenCodeAdapter } from "../../src/server/harness/opencode.js";
 import { liveOpenCodeServers } from "../../src/server/harness/opencode-server.js";
-import { formQuestions, formValue, permissionCard, permissionReply, toModelInfo, transcriptOf, usageOf } from "../../src/server/harness/opencode-messages.js";
+import { formQuestions, formValue, primaryAgents, permissionCard, permissionReply, toModelInfo, transcriptOf, usageOf } from "../../src/server/harness/opencode-messages.js";
 import { historyToItems } from "../../src/server/harness/agent-events.js";
 import type { HarnessEvent, LiveChat } from "../../src/server/harness/types.js";
 import type { WorkspaceInfo } from "../../src/shared/protocol.js";
@@ -226,6 +226,45 @@ describe("opencode adapter (scripted server)", () => {
     expect(info?.model).toEqual({ providerID: "acme", id: "plain", variant: "default" });
     expect((await live.listCommands())[0]).toEqual({ name: "review", description: "review changes", source: "command" });
   });
+  it("refuses a primary-agent patch on a harness without that capability", async () => {
+    const { chat, live } = await openChat();
+    adapter.capabilities.supportsAgentSelection = false;
+    await expect(chat.setConfig({ agent: "plan" })).rejects.toMatchObject({ code: "unsupported", status: 400 });
+    expect(live.nativeId).toBeNull();
+    expect(existsSync(state)).toBe(false); // No session or native write is created by the rejected configuration.
+  });
+
+  it("lists only visible primary agents, creates with the chosen one, switches it, and resumes it", async () => {
+    const { chat, live } = await openChat();
+    expect(chat.snapshot().config.agents).toEqual([
+      { id: "orchestrator", label: "orchestrator", description: "Delegate to specialist agents" },
+      { id: "build", label: "Build", description: "The default agent" },
+      { id: "plan", label: "Plan", description: "Read-only planning" },
+    ]);
+    expect(chat.snapshot().config.agent).toBe(null); // No default is inferred from the plugin's catalog order.
+    expect(JSON.stringify(chat.snapshot().config)).not.toContain("never expose this");
+    await chat.setConfig({ agent: "orchestrator" });
+    expect(live.nativeId).toBeNull(); // A preflight pick must not create a session before a prompt.
+    expect(existsSync(state)).toBe(false); // No stored session must exist before this first prompt either.
+    await chat.send("first primary", "normal");
+    await until(() => chat.status === "idle");
+    expect(fakeState().createdAgents).toEqual(["orchestrator"]);
+    expect(chat.snapshot().config.agent).toBe("orchestrator");
+
+    const modelsBefore = fakeState().modelSet ?? 0;
+    await chat.setConfig({ agent: "plan" });
+    expect((await adapter.sessionInfo(live.nativeId as string))?.agent).toBe("plan");
+    expect(fakeState().agentSwitches).toEqual([{ sessionID: live.nativeId, agent: "plan" }]);
+    expect(fakeState().modelSet ?? 0).toBe(modelsBefore); // Selecting a role does not secretly override the model.
+    await chat.setConfig({ model: "acme/plain" });
+    expect((await adapter.sessionInfo(live.nativeId as string))?.model).toMatchObject({ providerID: "acme", id: "plain" });
+    await expect(chat.setConfig({ agent: "explorer" })).rejects.toThrow(/Unknown primary agent/);
+
+    await chat.dispose("Resume the selected primary");
+    const { chat: again } = await openChat(live.nativeId as string);
+    expect(again.snapshot().config.agent).toBe("plan");
+    expect(again.snapshot().items.map((i) => i.kind)).toEqual(["user", "assistant"]);
+  });
 
   it("renames, lists, resumes, replaces a past prompt in place, and forks before one", async () => {
     const { chat, live } = await openChat();
@@ -274,6 +313,7 @@ describe("opencode adapter (scripted server)", () => {
 
 describe("OpenCode's shapes", () => {
   it("reads stored messages as history: thinking, text, calls with their results, an interrupted step, a compaction", () => {
+
     const messages = [
       { id: "u1", type: "user", time: { created: 1 }, text: "Read README.md" },
       {
@@ -300,6 +340,18 @@ describe("OpenCode's shapes", () => {
     expect(items[3]).toMatchObject({ name: "shell", status: "error", output: "Denied" });
     expect(items[4]).toMatchObject({ text: "partial", error: "Stopped" });
     expect(usageOf(messages)).toEqual([{ at: 2, model: "opencode/m", input: 10, cachedInput: 5, cacheWrite: 0, output: 3, cost: 0 }]);
+  });
+
+  it("filters only visible primary roles, with no raw model, prompt, or permission config", () => {
+    expect(primaryAgents([
+      { id: "orchestrator", name: "orchestrator", mode: "primary", description: "Plugin primary", hidden: false, model: { providerID: "litellm", id: "Kimi" }, system: "not for browser" },
+      { id: "build", name: "Build", mode: "primary", description: "The default", hidden: true },
+      { id: "explorer", name: "explorer", mode: "subagent", hidden: false },
+      { id: "plan", name: "Plan", mode: "primary" },
+    ])).toEqual([
+      { id: "orchestrator", label: "orchestrator", description: "Plugin primary" },
+      { id: "plan", label: "Plan", description: "" },
+    ]);
   });
 
   it("reads a model without passing its settings on", () => {
@@ -350,6 +402,9 @@ function tokens(n: number): NodeJS.ProcessEnv {
 interface FakeState {
   sessions: Record<string, { title?: string; permissions?: Array<{ action: string; resource: string; effect: string }> }>;
   pid?: number;
+  createdAgents?: Array<string | null>;
+  agentSwitches?: Array<{ sessionID: string; agent: string }>;
+  modelSet?: number;
   mcpAdds?: Array<{ directory: string; server: string; config: { type: string; command: string[]; environment: Record<string, string>; codemode?: boolean } }>;
   mcpRemoves?: Array<{ directory: string; server: string }>;
 }

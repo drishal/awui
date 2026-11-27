@@ -5,8 +5,8 @@ import type { ChatConfig, HarnessCapabilities } from "../shared/protocol.js";
 
 type SummaryChat = {
   harnessId: string;
-  capabilities: Pick<HarnessCapabilities, "supportsModelSelection" | "supportsThinkingLevel" | "supportsPermissionMode">;
-  config: Pick<ChatConfig, "model" | "models" | "thinkingLevel" | "permissionMode" | "permissionModes">;
+  capabilities: Pick<HarnessCapabilities, "supportsModelSelection" | "supportsThinkingLevel" | "supportsPermissionMode" | "supportsAgentSelection">;
+  config: Pick<ChatConfig, "model" | "models" | "thinkingLevel" | "permissionMode" | "permissionModes" | "agent" | "agents">;
 };
 
 /** A thinking level as a person reads it: "xhigh" → "Extra high", "max" → "Max". */
@@ -23,6 +23,7 @@ export function modelSummary(chat: SummaryChat): string {
     const model = config.models.find((m) => m.key === config.model);
     parts.push(model ? (model.providerName ? `${model.providerName} · ${model.name}` : model.name) : (config.model ?? "No model"));
   }
+  if (capabilities.supportsAgentSelection && config.agent) parts.push(config.agents?.find((a) => a.id === config.agent)?.label ?? config.agent);
   if (capabilities.supportsThinkingLevel && config.thinkingLevel) parts.push(levelTitle(config.thinkingLevel));
   return parts.join(" · ");
 }
@@ -35,6 +36,7 @@ export function configSummary(chat: SummaryChat, harnesses: Array<{ id: string; 
     // A virtual provider (MoA) says its name: "Mixture of Agents · default", not "default".
     parts.push(model ? (model.providerName ? `${model.providerName} · ${model.name}` : model.name) : (config.model ?? "No model"));
   }
+  if (capabilities.supportsAgentSelection && config.agent) parts.push(config.agents?.find((a) => a.id === config.agent)?.label ?? config.agent);
   if (capabilities.supportsThinkingLevel && config.thinkingLevel) parts.push(levelTitle(config.thinkingLevel));
   if (capabilities.supportsPermissionMode && config.permissionMode) {
     parts.push(config.permissionModes?.find((m) => m.id === config.permissionMode)?.label ?? config.permissionMode);

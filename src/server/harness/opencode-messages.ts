@@ -6,7 +6,7 @@
 // one request per field; an assistant message's tokens become a usage entry.
 // OpenCode's model entries carry provider settings, which can hold an API key:
 // only the fields named here are ever read from them.
-import type { InteractionRequest, ModelInfo, TodoItem } from "../../shared/protocol.js";
+import type { AgentInfo, InteractionRequest, ModelInfo, TodoItem } from "../../shared/protocol.js";
 import { isObj, type Obj } from "./agent-events.js";
 import { isHtmlRenderCall, splitRenderMarker } from "./render-token.js";
 import { isAgentTool } from "./subagents.js";
@@ -22,6 +22,21 @@ export function modelKey(ref: unknown): string | null {
   return `${str(ref.providerID)}/${str(ref.id)}`;
 }
 
+
+/** OpenCode's selectable conversation roles, not its delegated workers, hidden title/summary agents, or raw prompts. */
+export function primaryAgents(raw: unknown[]): AgentInfo[] {
+  const seen = new Set<string>();
+  const agents: AgentInfo[] = [];
+  for (const rawAgent of raw.filter(isObj)) {
+    if (str(rawAgent.mode) !== "primary" || rawAgent.hidden === true) continue;
+    const id = str(rawAgent.id).slice(0, 128);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    agents.push({ id, label: (str(rawAgent.name) || id).slice(0, 80), description: str(rawAgent.description).slice(0, 400) });
+    if (agents.length === 64) break;
+  }
+  return agents;
+}
 /** A model's variant as a thinking level: OpenCode's `default` is no choice made, and `none` is thinking off. */
 export function levelOf(ref: unknown): string | null {
   const variant = isObj(ref) ? str(ref.variant) : "";

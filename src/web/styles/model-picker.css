@@ -834,6 +834,15 @@ button.harness-chip:disabled {
   margin-left: auto;
 }
 
+/* Primary-agent choices use the same calm popover construction as permission choices.
+ * These rules must sit after the broad harness-menu min-width and z-index rules above. */
+.composer-pickers .agent-menu,
+.config-sheet .agent-menu { z-index: 40; width: min(420px, calc(100vw - 16px)); min-width: 0; }
+.composer-pickers .agent-menu .permission-option-desc,
+.config-sheet .agent-menu .permission-option-desc { white-space: normal; }
+/* The native dialog owns one backdrop; this list occupies viewport margins rather than
+ * stretching its host or carrying a desktop clamp's negative left offset. */
+.config-sheet .agent-menu.is-sheet { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); width: auto; max-width: none; max-height: 72dvh; }
 /* The panel grows out of its chip: measured from the chip's rect where the Web Animations API runs
    (model-morph.ts sets data-morph and uncovers from there), else from the chip's corner via the keyframes
    below. Either way it fades in as a clip uncovers it, and closing furls it back into that corner.

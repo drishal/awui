@@ -21,6 +21,8 @@ export interface HarnessCapabilities {
   supportsInteractiveRequests: boolean;
   supportsRename: boolean;
   supportsModelSelection: boolean;
+  /** The harness has selectable primary agents (a conversation role), not its delegated worker types or permission modes. */
+  supportsAgentSelection?: boolean;
   /** The chat can be branched into a new session at a chosen turn. */
   supportsFork: boolean;
   /** The session file keeps abandoned branches (an edit or a retry leaves the old path behind), which can be listed and continued in a session of their own (Pi, omp). Absent: no. */
@@ -446,11 +448,22 @@ export interface PermissionModeInfo {
   caution?: boolean;
 }
 
+/** A conversation's primary-agent role (OpenCode's Build, Plan, or a plugin primary). */
+export interface AgentInfo {
+  id: string;
+  label: string;
+  description: string;
+}
+
 export interface ChatConfig {
   model: string | null;
   thinkingLevel: string | null;
   models: ModelInfo[];
   thinkingLevels: string[];
+  /** The primary agent in force; absent when the harness does not offer or report one. */
+  agent?: string | null;
+  /** The visible primary agents in the harness's catalog order. Never its delegated worker types. */
+  agents?: AgentInfo[];
   /** What the harness actually sends for thinkingLevel when its route clamps it (Hermes's "ultra" sends "max"); absent or null when it sends the level as named. */
   thinkingSent?: string | null;
   /** The permission mode in force; absent when the harness has none (supportsPermissionMode). */
@@ -2134,12 +2147,13 @@ export const patchConfigSchema = z
     model: z.string().min(1).max(512).optional(),
     thinkingLevel: z.string().min(1).max(32).optional(),
     permissionMode: z.string().min(1).max(64).optional(),
+    agent: z.string().min(1).max(128).optional(),
   })
-  .refine((v) => v.model !== undefined || v.thinkingLevel !== undefined || v.permissionMode !== undefined, {
+  .refine((v) => v.model !== undefined || v.thinkingLevel !== undefined || v.permissionMode !== undefined || v.agent !== undefined, {
     message: "empty patch",
   });
-/** A chat's settings change: model and thinking only while idle, permission mode at any time. */
-export type ConfigPatch = { model?: string; thinkingLevel?: string; permissionMode?: string };
+/** A chat's settings change: model, primary agent, and thinking only while idle; permission mode at any time. */
+export type ConfigPatch = { model?: string; thinkingLevel?: string; permissionMode?: string; agent?: string };
 
 /** A comment's line pin: a path inside the project, the side, the file line, and the line's hash. */
 const reviewAnchorSchema = z.object({

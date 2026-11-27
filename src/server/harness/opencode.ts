@@ -20,8 +20,10 @@ import {
   type ChatConfig,
   type ChatItem,
   type ContextUsage,
+  type ConfigPatch,
   type HarnessCapabilities,
   type ImageAttachment,
+  type AgentInfo,
   type InteractionAnswer,
   type ModelInfo,
   type QueueState,
@@ -34,6 +36,7 @@ import { historyToItems, isObj, toolSummary, type Obj } from "./agent-events.js"
 import { isAgentTool } from "./subagents.js";
 import { DialogTracker, EventHub } from "./event-hub.js";
 import {
+  primaryAgents,
   childSession,
   contextWindow,
   delegateAgent,
@@ -91,6 +94,7 @@ interface ModelRef {
   id: string;
   variant?: string;
 }
+type Catalog = { models: ModelInfo[]; agents: AgentInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null };
 
 /** `provider/model` (and a level) as OpenCode's model reference; null for a key it cannot be. */
 function refOf(key: string, level: string | null): ModelRef | null {
@@ -145,6 +149,10 @@ class OpenCodeChat implements LiveChat {
   private sessionId: string | null;
   private sessionTitle: string | null = null;
   private model: ModelRef | null = null;
+  private agent: string | null = null;
+  /** An untouched chat leaves the default to OpenCode; only a person's pick is sent on creation. */
+  // OpenCode primary agents are conversation roles, not permission modes or worker-agent types.
+  private agentPicked = false;
   private readonly hub = new EventHub();
   private readonly dialogs = new DialogTracker(this.hub);
   /** Requests answered elsewhere (OpenCode's own TUI, another client): their cards close without a reply. */
@@ -208,6 +216,7 @@ class OpenCodeChat implements LiveChat {
     }
     this.sessionTitle = str(info.title) || null;
     this.model = isObj(info.model) ? (info.model as unknown as ModelRef) : null;
+    this.agent = str(info.agent) || null;
     this.takeUsage(info);
     this.watch(this.sessionId);
     const messages = await this.adapter.messages(this.sessionId).catch(() => []);
@@ -280,7 +289,7 @@ class OpenCodeChat implements LiveChat {
   /** The session, made on the first message with the model chosen before it. */
   private async ensureSession(): Promise<string> {
     if (this.sessionId) return this.sessionId;
-    const created = await this.server.call<{ data?: Obj }>("POST", "/api/session", { location: { directory: this.cwd }, ...(this.model ? { model: this.model } : {}) });
+    const created = await this.server.call<{ data?: Obj }>("POST", "/api/session", { location: { directory: this.cwd }, ...(this.model ? { model: this.model } : {}), ...(this.agentPicked && this.agent ? { agent: this.agent } : {}) });
     const id = str(created?.data?.id);
     if (!id) throw new Error("OpenCode made no session");
     this.sessionId = id;
@@ -289,6 +298,8 @@ class OpenCodeChat implements LiveChat {
     this.adapter.noteSession(id, this.toolServers?.rules ?? null);
     this.sessionTitle = str(created?.data?.title) || null;
     this.watch(id);
+    // OpenCode remains the source of the default. Only a person's explicit pick was sent on create.
+    this.agent = str(created?.data?.agent) || str((await this.adapter.sessionInfo(id).catch(() => null))?.agent);
     this.emit({ type: "session", nativeId: id });
     return id;
   }
@@ -308,6 +319,8 @@ class OpenCodeChat implements LiveChat {
   private onEvent(event: OpenCodeEvent): void {
     const d = event.data;
     switch (event.type) {
+    // OpenCode's primary role (Build, Plan, or a plugin's orchestrator) is separate from its worker types.
+    // Agent choice alone is never translated to permissionMode or a model-policy rewrite.
       case "session.inbox.enqueued": {
         const item = isObj(d.item) ? d.item : {};
         if (item.type !== "user") return;
@@ -331,6 +344,14 @@ class OpenCodeChat implements LiveChat {
       }
       case "session.step.started": {
         this.endStep(null);
+        if (str(d.agent)) {
+          this.agent = str(d.agent);
+          this.emit({ type: "config", config: { agent: this.agent } });
+        }
+        if (isObj(d.model)) {
+          this.model = d.model as unknown as ModelRef;
+          this.emit({ type: "config", config: { model: modelKey(d.model), thinkingLevel: levelOf(d.model) } });
+        }
         const model = isObj(d.model) ? modelKey(d.model) : null;
         this.step = { model, text: "", thinking: "", closed: false, texts: new Map(), thoughts: new Map() };
         this.emit({ type: "assistant_start", ...(model ? { model } : {}) });
@@ -458,6 +479,12 @@ class OpenCodeChat implements LiveChat {
         if (isObj(d.model)) {
           this.model = d.model as unknown as ModelRef;
           this.emit({ type: "config", config: { model: modelKey(d.model), thinkingLevel: levelOf(d.model) } });
+        }
+        return;
+      case "session.agent.selected":
+        if (str(d.agent)) {
+          this.agent = str(d.agent);
+          this.emit({ type: "config", config: { agent: this.agent } });
         }
         return;
       case "permission.asked":
@@ -692,10 +719,20 @@ class OpenCodeChat implements LiveChat {
   }
 
   async getConfig(): Promise<ChatConfig> {
-    const [models, model] = await Promise.all([this.adapter.listModels(this.cwd).catch(() => [] as ModelInfo[]), this.currentModel()]);
+    const [models, model, agents, session] = await Promise.all([
+      this.adapter.listModels(this.cwd).catch(() => [] as ModelInfo[]),
+      this.currentModel(),
+      this.adapter.listAgents(this.cwd).catch(() => [] as AgentInfo[]),
+      this.sessionId ? this.adapter.sessionInfo(this.sessionId).catch(() => null) : Promise.resolve(null),
+    ]);
+    if (typeof session?.agent === "string") this.agent = session.agent;
+    // A null role is meaningful while opening a new chat: OpenCode elects its default later, not by catalog position.
+    const current = this.agent;
+    const labels = agents.length > 0 || current !== null ? [...agents] : undefined;
+    if (current && labels && !labels.some((a) => a.id === current)) labels.unshift({ id: current, label: current, description: "This session's primary agent" });
     const key = model ? modelKey(model) : null;
     const levels = models.find((m) => m.key === key)?.levels ?? [];
-    return { model: key, thinkingLevel: levelOf(model), models, thinkingLevels: levels };
+    return { model: key, thinkingLevel: levelOf(model), models, thinkingLevels: levels, ...(agents.length > 0 || current !== null ? { agent: current, agents: labels } : {}) };
   }
 
   async getContextUsage(): Promise<ContextUsage | null> {
@@ -783,7 +820,18 @@ class OpenCodeChat implements LiveChat {
     for (const text of queue.followUp) await this.send(text, undefined, "queue");
   }
 
-  async setConfig(patch: { model?: string; thinkingLevel?: string }): Promise<void> {
+  async setConfig(patch: ConfigPatch): Promise<void> {
+    if (patch.agent !== undefined) {
+      const requested = patch.agent;
+      const agents = await this.adapter.listAgents(this.cwd);
+      if (!agents.some((a) => a.id === requested)) throw new Error(`Unknown primary agent ${requested}`);
+      if (this.sessionId) await this.server.call("POST", `/api/session/${this.sessionId}/agent`, { agent: requested });
+      this.agent = requested;
+      this.agentPicked = true;
+      // OpenCode resolves this profile's own model on its next call. Never turn an agent pick into a model override.
+      this.emit({ type: "config", config: { agent: requested } });
+    }
+    if (patch.model === undefined && patch.thinkingLevel === undefined) return;
     const current = await this.currentModel();
     const key = patch.model ?? (current ? `${current.providerID}/${current.id}` : null);
     if (!key) throw new Error("Choose a model first");
@@ -862,6 +910,7 @@ export class OpenCodeAdapter implements HarnessAdapter {
     supportsInteractiveRequests: true,
     supportsRename: true,
     supportsModelSelection: true,
+    supportsAgentSelection: true,
     supportsFork: true,
     supportsHandoff: false,
     supportsRewind: true,
@@ -877,7 +926,7 @@ export class OpenCodeAdapter implements HarnessAdapter {
     webOnly: false,
   };
   readonly server: OpenCodeServer;
-  private modelCache = new Map<string, { at: number; models: ModelInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null }>();
+  private modelCache = new Map<string, { at: number } & Catalog>();
   /** Each live chat's session, with the tool rules its chat wrote there (null: it was given no tools). */
   private readonly chatSessions = new Map<string, OpenCodeRule[] | null>();
   private watchingSessions = false;
@@ -938,10 +987,10 @@ export class OpenCodeAdapter implements HarnessAdapter {
     return out;
   }
 
-  private modelReads = new Map<string, Promise<{ models: ModelInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null }>>();
+  private modelReads = new Map<string, Promise<Catalog>>();
 
-  /** The list and the default are asked together (the start screen), so a read on its way is shared. */
-  private models(cwd: string): Promise<{ models: ModelInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
+  /** Models and primary agents share one read: the start screen or composer often asks both together. */
+  private models(cwd: string): Promise<Catalog> {
     const cached = this.modelCache.get(cwd);
     if (cached && Date.now() - cached.at < MODEL_CACHE_MS) return Promise.resolve(cached);
     const running = this.modelReads.get(cwd);
@@ -951,15 +1000,19 @@ export class OpenCodeAdapter implements HarnessAdapter {
     return read;
   }
 
-  private async readModels(cwd: string): Promise<{ models: ModelInfo[]; windows: Map<string, number>; defaultModel: { model: string; thinkingLevel: string | null } | null }> {
+  private async readModels(cwd: string): Promise<Catalog> {
     // The default a new session there starts on is the server's own answer (a chat's currentModel asks the same).
-    const [found, fallback] = await Promise.all([
+    const [found, fallback, roles] = await Promise.all([
       this.server.call<{ data?: unknown[] }>("GET", `/api/model?${locationQuery(cwd)}`),
       this.server.call<{ data?: unknown }>("GET", `/api/model/default?${locationQuery(cwd)}`).catch(() => null),
+      this.server.call<{ data?: unknown[] }>("GET", `/api/agent?${locationQuery(cwd)}`).catch(() => null),
     ]);
     const key = modelKey(fallback?.data);
     const defaultModel = key ? { model: key, thinkingLevel: levelOf(fallback?.data) } : null;
     const models: ModelInfo[] = [];
+    // An old server may not expose /api/agent. Preserve a successful list on a later transient
+    // failure; a first failure is no list, never a fabricated Build/Plan menu.
+    const primary = roles === null ? (this.modelCache.get(cwd)?.agents ?? []) : primaryAgents(roles.data ?? []);
     const windows = new Map<string, number>();
     for (const raw of found?.data ?? []) {
       const info = toModelInfo(raw);
@@ -968,9 +1021,13 @@ export class OpenCodeAdapter implements HarnessAdapter {
       windows.set(info.key, contextWindow(raw));
     }
     if (this.modelCache.size > 50) this.modelCache.clear();
-    const entry = { at: Date.now(), models, windows, defaultModel };
+    const entry = { at: Date.now(), models, agents: primary, windows, defaultModel };
     this.modelCache.set(cwd, entry);
     return entry;
+  }
+
+  async listAgents(cwd: string): Promise<AgentInfo[]> {
+    return (await this.models(cwd)).agents;
   }
 
   async listModels(cwd: string): Promise<ModelInfo[]> {

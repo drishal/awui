@@ -203,9 +203,9 @@ export interface LiveChat {
    * capabilities.supportsQueueEdit implement it.
    */
   replaceQueue?(queue: QueueState): Promise<void>;
-  /** Model and thinking only while idle (Chat checks); a permission mode, on a harness that declares them, at any time. */
+  /** Model, primary agent, and thinking only while idle (Chat checks); a permission mode, on a harness that declares them, at any time. */
   setConfig(patch: ConfigPatch): Promise<void>;
-  /** Drop cached models so the next getConfig() sees new ones (local servers, catalogs, config edits). */
+  /** Drop cached models and primary agents so the next getConfig() reads the harness anew. */
   refreshModels(): Promise<void>;
   rename(name: string): Promise<void>;
   compact(instructions?: string): Promise<void>;

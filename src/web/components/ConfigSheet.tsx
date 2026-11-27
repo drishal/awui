@@ -5,6 +5,7 @@
 // bottom sheets, so nothing about choosing one changes. Picking a value closes
 // the sheet: the point of it was to get back to the message box.
 import { useState } from "react";
+import { AgentPicker } from "./AgentPicker.js";
 import type { ChatState } from "../chat-state.js";
 import type { ConfigPatch, HarnessStatus, OauthAccountChoice } from "../../shared/protocol.js";
 import { handoffChoice } from "../handoff.js";
@@ -36,6 +37,8 @@ export function ConfigSheet({
   const { config } = chat;
   const idle = chat.status === "idle" || chat.status === "error";
   const [pending, setPending] = useState<string | null>(null);
+  // Agent roles follow models' idle-only rule: their instructions/model affect the next model call.
+  const agents = caps.supportsAgentSelection && config.agent !== undefined && config.agents !== undefined ? config.agents : null;
   const [accounts, setAccounts] = useState<OauthAccountChoice[] | null>(null);
   const pick = (patch: ConfigPatch) => {
     void onConfig(patch);
@@ -71,6 +74,12 @@ export function ConfigSheet({
           );
         })}
       </div>
+      {agents ? (
+        <div className="config-row">
+          <span className="config-row-label">Agent</span>
+          <AgentPicker agents={agents} current={config.agent ?? null} viewportSheet disabled={!idle} onSelect={(agent) => pick({ agent })} />
+        </div>
+      ) : null}
       {caps.supportsModelSelection ? (
         <div className="config-row">
           <span className="config-row-label">Model</span>

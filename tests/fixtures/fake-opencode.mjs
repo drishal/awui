@@ -4,6 +4,8 @@
 // shapes recorded from OpenCode 2.0.27, plus the runtime MCP routes and the
 // session permission rules recorded from 2.2.7 (add and remove a server, a
 // session's rules checked the way OpenCode checks them: last match wins, else
+// Primary-agent catalog/session switching covers OpenCode 2.4.2: Build and Plan
+// plus a visible oh-my-opencode-slim Orchestrator as primary choices, not worker types.
 // ask). Basic auth with $OPENCODE_SERVER_PASSWORD; sessions live in
 // $FAKE_OPENCODE_STATE (JSON), so a restarted server still has them, and every
 // permission or form reply, MCP registration, and removal is recorded there.
@@ -77,6 +79,15 @@ const MODELS = [
     settings: { apiKey: "sk-fake-never-shown", baseURL: "https://example.invalid" },
   },
   { id: "plain", providerID: "acme", name: "Plain", capabilities: { tools: true, input: ["text"], output: ["text"] }, variants: [], limit: { context: 32000 }, enabled: true },
+];
+// Visible primary and worker agents as recorded from OpenCode 2.4.2, with oh-my-opencode-slim enabled.
+// No system prompts or permission rules are needed by the selector: awui reads id/name/mode/hidden/description only.
+const AGENTS = [
+  { id: "orchestrator", name: "orchestrator", mode: "primary", hidden: false, description: "Delegate to specialist agents", model: { providerID: "acme", id: "plain" }, system: "never expose this" },
+  { id: "build", name: "Build", mode: "primary", hidden: false, description: "The default agent", model: null },
+  { id: "plan", name: "Plan", mode: "primary", hidden: false, description: "Read-only planning", model: null },
+  { id: "explorer", name: "explorer", mode: "subagent", hidden: false, description: "Read-only recon" },
+  { id: "title", name: "Title", mode: "primary", hidden: true, description: "Internal title generator" },
 ];
 const COMMANDS = [{ name: "review", description: "review changes" }];
 // The page a "render" prompt publishes: awui's render tool ids are 32 hex characters.
@@ -154,9 +165,9 @@ async function turn(s, text) {
   const loc = s.location.directory;
   const step = async (parts) => {
     const mid = id("msg");
-    const message = { id: mid, type: "assistant", time: { created: Date.now() }, agent: "build", model: s.model, content: [] };
+    const message = { id: mid, type: "assistant", time: { created: Date.now() }, agent: s.agent ?? "build", model: s.model, content: [] };
     s.messages.push(message);
-    emit("session.step.started", { sessionID: s.id, agent: "build", model: s.model, assistantMessageID: mid, started: Date.now() }, loc);
+    emit("session.step.started", { sessionID: s.id, agent: s.agent ?? "build", model: s.model, assistantMessageID: mid, started: Date.now() }, loc);
     for (const part of parts) {
       if (r.stop) break;
       if (part.reasoning) {
@@ -417,6 +428,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/model" && m === "GET") return send(res, 200, { location: { directory: q.get("location[directory]") }, data: MODELS });
     if (p === "/api/model/default") return send(res, 200, { data: MODELS[0] });
     if (p === "/api/command") return send(res, 200, { data: COMMANDS });
+    if (p === "/api/agent" && m === "GET") return send(res, 200, { location: { directory: q.get("location[directory]") }, data: AGENTS });
     if (p === "/api/session/active") return send(res, 200, { data: [...runs].filter(([, r]) => r.active).map(([sid]) => ({ sessionID: sid })) });
     // awui's MCP servers: runtime-only, per directory, as OpenCode's own are (the answer is 204).
     const mcpRoute = /^\/api\/experimental\/mcp\/([^/]+)$/.exec(p);
@@ -441,12 +453,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === "/api/session" && m === "POST") {
       const body = await readBody(req);
+      if (body.agent !== undefined && !AGENTS.some((a) => a.id === body.agent && a.mode === "primary" && !a.hidden)) return send(res, 400, { message: "Primary agent not found" });
+      state.createdAgents = [...(state.createdAgents ?? []), body.agent ?? null];
       const sid = id("ses");
       const now = Date.now();
       const s = {
         id: sid,
         title: body.title ?? `New session - ${new Date(now).toISOString()}`,
         location: body.location,
+        agent: body.agent ?? "build",
         model: { ...(body.model ?? { providerID: "opencode", id: "fast-free" }), variant: body.model?.variant ?? "default" },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -558,9 +573,22 @@ const server = http.createServer(async (req, res) => {
       }
       return send(res, 204);
     }
+    if (rest === "agent" && m === "POST") {
+      const body = await readBody(req);
+      if (!AGENTS.some((a) => a.id === body.agent && a.mode === "primary" && !a.hidden)) return send(res, 400, { message: "Primary agent not found" });
+      const previous = s.agent;
+      if (typeof state.modelSet === "number") throw new Error("The agent route must not change the model");
+      s.agent = body.agent;
+      s.messages.push({ id: id("msg"), type: "agent-switched", time: { created: Date.now() }, agent: s.agent, previous });
+      state.agentSwitches = [...(state.agentSwitches ?? []), { sessionID: s.id, agent: s.agent }];
+      save();
+      emit("session.agent.selected", { sessionID: s.id, agent: s.agent, previous }, s.location.directory);
+      return send(res, 204);
+    }
     if (rest === "model") {
       const body = await readBody(req);
       const previous = s.model;
+      state.modelSet = (state.modelSet ?? 0) + 1;
       s.model = { variant: "default", ...body.model };
       save();
       emit("session.model.selected", { sessionID: s.id, model: s.model, previous }, s.location.directory);

@@ -58,6 +58,12 @@ describe("the composer's one-line config summary", () => {
     expect(configSummary(chat, harnesses)).toBe("claude · unknown/key");
   });
 });
+  it("names a real chosen primary agent, not an inferred or permission default", () => {
+    const capabilities = caps({ supportsAgentSelection: true });
+    expect(configSummary({ harnessId: "fake", capabilities, config: config({ agent: "orchestrator", agents: [{ id: "orchestrator", label: "orchestrator", description: "Plugin role" }] }) }, harnesses)).toBe("Pi · Fake Echo · orchestrator · High");
+    expect(modelSummary({ harnessId: "fake", capabilities, config: config({ agent: "orchestrator", agents: [{ id: "orchestrator", label: "orchestrator", description: "Plugin role" }] }) })).toBe("Fake Echo · orchestrator · High");
+    expect(configSummary({ harnessId: "fake", capabilities, config: config({ agent: null, agents: [{ id: "build", label: "Build", description: "Default role" }] }) }, harnesses)).toBe("Pi · Fake Echo · High");
+  });
 
 describe("the folded phone composer's one sentence", () => {
   it("names the model and the level, without the harness or the permission mode", () => {
