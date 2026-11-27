@@ -167,17 +167,24 @@ test("a search marks the hit in the title and seats its row on the titles' edge"
   expect(rowText).toBe("a row about a flake in the sidebar");
   await expect(sidebar(page).locator(".flat-group .session-item").first().locator(".session")).toHaveAttribute("title", /^a row about a flake in the sidebar/);
 
-  // "Search every chat" starts its words on the titles' edge, and the list tucks up 6px under it.
+  // "Search every chat" starts its words on the titles' edge, and the list tucks up under it: the group's 14px
+  // break is gone and the first heading keeps 4px, so its words start 11px under the row that offered the search
+  // (they sat 31px under it, a gap that read as the end of the list).
   const seat = await page.evaluate(() => {
     const label = document.querySelector(".search-all .search-all-label")?.getBoundingClientRect();
     const button = document.querySelector(".search-all")?.getBoundingClientRect();
     const title = document.querySelector(".flat-group .session-title")?.getBoundingClientRect();
     const group = document.querySelector(".flat-group")?.getBoundingClientRect();
-    return label && button && title && group ? { label: label.left, title: title.left, gap: group.top - button.bottom } : null;
+    const heading = document.querySelector(".flat-group .date-divider .date-label");
+    const range = heading ? document.createRange() : null;
+    if (heading && range) range.selectNodeContents(heading);
+    const words = range?.getBoundingClientRect() ?? null;
+    return label && button && title && group ? { label: label.left, title: title.left, gap: group.top - button.bottom, words: words ? words.top - button.bottom : null } : null;
   });
   expect(seat, "the search offers every chat and lists its matches").not.toBeNull();
   expect(Math.abs((seat?.label ?? 0) - (seat?.title ?? 99)), "the search row's words start on the titles' edge").toBeLessThanOrEqual(0.5);
   expect(seat?.gap, "the list tucks up under the search row").toBeLessThanOrEqual(6.5);
+  expect(seat?.words ?? 99, "the first heading's words sit right under it").toBeLessThanOrEqual(12);
 });
 
 test("the inactive filter row is absent and Filters sits inside the search", async ({ page }) => {

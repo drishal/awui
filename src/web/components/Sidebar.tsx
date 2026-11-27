@@ -680,12 +680,13 @@ function SessionRow({
  * page drew only part of the bucket the heading says both ("12 of 15"), because a bare count would then
  * disagree with the rows under it; the rest is in its tooltip.
  */
-function DateHeading({ label, count, shown = count }: { label: string; count: number; shown?: number }) {
+function DateHeading({ label, count, shown = count, first = false }: { label: string; count: number; shown?: number; first?: boolean }) {
   const part = shown < count;
   return (
     // A heading, for a reader that walks the list by its structure: the dates are its levels, and the
-    // count keeps its unit for the same reason ("1 session", not "1").
-    <li className="date-divider" role="heading" aria-level={3}>
+    // count keeps its unit for the same reason ("1 session", not "1"). The first heading of a group is
+    // marked so a search's list can tuck its own first line up under "Search every chat" (sidebar.css).
+    <li className={`date-divider${first ? " is-first" : ""}`} role="heading" aria-level={3}>
       <span className="date-label">{label}</span>
       <span className="date-count" {...(part ? { title: `${count - shown} more ${count - shown === 1 ? "session" : "sessions"}` } : {})}>
         {part ? <span className="date-part">{`${shown} of ${count}`}</span> : count}
@@ -1413,6 +1414,9 @@ export function Sidebar(props: {
     () => recentRows(overview, { ...groupOptions, weekStartsOn: weekStart }, recentLimit),
     [overview, props.query, props.harnessId, showArchived, showSettled, showSnoozed, props.activeSessionId, props.activeChatId, now, weekStart, recentLimit],
   );
+  // The flat list's first date heading, so a search's list can tuck its first line up under "Search every
+  // chat" (sidebar.css, .is-search): a search's results are that row's own, not a group after it.
+  const firstHeading = recent.rows.find((r) => r.kind === "divider") ?? null;
 
   // The focused project (Hermes Desktop's one-folder view). "auto" follows the current folder; "all" is the
   // user's own choice, and so is a named project: both hold while sessions open in other folders, and only
@@ -1770,7 +1774,7 @@ export function Sidebar(props: {
                   <ActiveWash />
                   {recent.rows.map((r) =>
                     r.kind === "divider" ? (
-                      <DateHeading key={`d-${r.key}`} label={r.label} count={r.count} shown={r.shown} />
+                      <DateHeading key={`d-${r.key}`} label={r.label} count={r.count} shown={r.shown} first={r === firstHeading} />
                     ) : (
                       flatRow(r.s, r.tag)
                     ),

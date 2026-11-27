@@ -856,9 +856,18 @@
   margin-top: calc(var(--section-gap) + 2px);
 }
 
-/* Under "Search every chat" the list is that row's own result, not a group after the head: it tucks up to
-   the row (6px in all, chat-search.css pulls the row down 2px of its own 8px). Nothing inside the scroller
-   may take a negative top margin: it would hang above the scrollport. */
+/* Under "Search every chat" the list is that row's own result, not a group after the head: the group's 14px
+   break goes, so only the scroller's own 6px (8px between the field's rows, less chat-search.css's 2px pull)
+   and the heading's 4px of padding stand between the row and its first words — 9px, where the heading sat 31px
+   under the row and the gap read as the end of the list. Padding, never a negative margin: nothing inside the
+   scroller may hang above its own scrollport. */
+.flat-group.is-search:first-child {
+  margin-top: 0;
+}
+
+.flat-group.is-search:first-child .date-divider.is-first {
+  padding-top: 4px;
+}
 
 /* Every head is laid on the rows' columns: its 8px inset puts a 10px icon, or the 16px badge of a folder,
    on the rows' mark column, and the 6px gap starts its label on their titles' edge. 4px under it, its
