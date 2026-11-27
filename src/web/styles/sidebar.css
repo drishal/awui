@@ -570,8 +570,8 @@
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--hairline);
-  /* Commands, but drawn as the menu's own rows: one column at the filters' pitch, in the second
-     ink so they do not read as disabled beside the toggles. */
+  /* A quiet caption marks the list-wide commands. The commands themselves keep one column at the filters'
+     pitch, in the second ink so they do not read as disabled beside the toggles. */
   flex-direction: column;
   align-items: stretch;
   gap: 0;

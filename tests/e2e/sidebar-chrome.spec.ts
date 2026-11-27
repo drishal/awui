@@ -250,6 +250,17 @@ test("the filter is a glyph in the field, and its popover is a short rail-wide d
   await expect(zero.getByRole("radio")).toBeEnabled();
   // Actions read as plain menu rows in the second ink, not a wrapping button bar.
   await expect(popover.locator(".filter-actions")).toHaveCSS("flex-direction", "column");
+  const listActions = popover.locator(".filter-actions").getByText("List actions", { exact: true });
+  await expect(listActions).toBeVisible();
+  await expect(listActions).toHaveClass("filter-heading");
+  await expect(listActions).toHaveCSS("color", await painted(page, "--muted-text"));
+  const captions = await listActions.evaluate((el) => {
+    const label = el.getBoundingClientRect();
+    const commands = [...el.parentElement!.querySelectorAll("button")].map((button) => ({ text: button.textContent, top: button.getBoundingClientRect().top }));
+    return { captionTop: label.top, commands, border: getComputedStyle(el).borderTopWidth };
+  });
+  expect(captions.border).toBe("0px");
+  for (const command of captions.commands) expect(captions.captionTop, `List actions sits above ${command.text}`).toBeLessThan(command.top);
   // Focus inside the popover never lights the search field's ring: while a checkbox has it, the field's
   // box-shadow stays none (the global :focus-visible ring used to reach the field through the popover).
   await sleeping.focus();
