@@ -2113,6 +2113,10 @@ body.is-resizing {
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) :is(.project-group + .project-group, .flat-group, .list-toggles) {
     margin-top: calc(var(--section-gap) + 10px);
   }
+  /* The block above would otherwise lift the flat list under a state section back to a folder's step. */
+  :root:not([data-sidebar="compact"]):not([data-density="compact"]) .section-group + .flat-group {
+    margin-top: calc(var(--section-gap) + 2px);
+  }
   :root:not([data-sidebar="compact"]):not([data-density="compact"]) .flat-group.is-search:first-child {
     margin-top: 0;
   }
