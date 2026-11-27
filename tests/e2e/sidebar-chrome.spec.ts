@@ -1,7 +1,7 @@
 // Chrome checks for the compact sidebar, its filter disclosure, search, footer,
 // and touch drawer. Row geometry remains sidebar-separation.spec's responsibility.
 import { expect, test } from "@playwright/test";
-import { newChat, send, sendAndWait, showSidebar, signInAndOpen } from "./helpers.js";
+import { newChat, send, sendAndWait, showAllProjects, showSidebar, signInAndOpen, useProjectsView } from "./helpers.js";
 
 async function painted(page: import("@playwright/test").Page, token: string): Promise<string> {
   return page.evaluate((name) => {
@@ -482,6 +482,7 @@ test.describe("phone drawer", () => {
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(filter).toHaveCSS("position", "absolute");
+    await expect(drawer.getByRole("searchbox", { name: "Search sessions" })).toHaveCSS("min-width", "150px");
     await expect(filter).toHaveCSS("border-top-width", "0px");
     await expect
       .poll(async () => {
@@ -533,6 +534,87 @@ test.describe("phone drawer", () => {
     }
   });
 
+  test("a real phone scroll starts a row or heading below the 20px scrim", async ({ page, request }) => {
+    test.setTimeout(60_000);
+    const root = process.env.AWUI_E2E_ROOT as string;
+    const other = (await (await request.post("/api/workspaces/open", { data: { path: `${root}/beta` } })).json()) as { id: string };
+    const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: other.id } })).json()) as { chatId: string };
+    await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: "a second project for the phone snap", mode: "normal" } });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    // Keep the required viewport while giving this small fixture a short scrollport. The CSS route changes
+    // only drawer geometry; the scroll itself is real CDP touch events, never a scrollTop assignment.
+    await page.route("**/assets/*.css", async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: `${await response.text()}\n.sidebar .session-list { min-height: 0; height: 180px; flex: none; }` });
+    });
+    await expect.poll(() => page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    await signInAndOpen(page);
+    for (let n = 1; n <= 6; n++) {
+      await newChat(page);
+      await sendAndWait(page, `real phone snap row ${n}`);
+    }
+    await showSidebar(page);
+    const list = page.locator(".sidebar .session-list");
+    expect(await list.locator(".session-item").count()).toBeGreaterThanOrEqual(6);
+    expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight + 24), "the list really overflows").toBe(true);
+    const box = (await list.boundingBox())!;
+    const x = Math.round(box.x + box.width / 2);
+    const startY = Math.round(box.y + box.height * 0.7);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: startY }] });
+    for (let step = 1; step <= 8; step++) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: startY - step * 8 }] });
+      await page.waitForTimeout(16);
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect(list.locator(".list-scrim")).toBeVisible();
+    await expect(list).toHaveCSS("scroll-snap-type", "y");
+    await expect.poll(async () => list.evaluate((element) => {
+      const top = element.getBoundingClientRect().top;
+      const full = [...element.querySelectorAll<HTMLElement>(".session-item")].find((row) => row.getBoundingClientRect().top >= top - 1 && row.getBoundingClientRect().bottom <= element.getBoundingClientRect().bottom + 1);
+      return full ? full.getBoundingClientRect().top - top : 0;
+    })).toBeGreaterThanOrEqual(19);
+    const snapped = await list.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const full = [...element.querySelectorAll<HTMLElement>(".session-item, .project-head, .date-divider")].find((row) => row.getBoundingClientRect().top >= box.top - 1 && row.getBoundingClientRect().bottom <= box.bottom + 1);
+      return {
+        top: full ? full.getBoundingClientRect().top : -999,
+        text: full?.textContent ?? "",
+        heading: full?.classList.contains("project-head") || full?.classList.contains("date-divider") || false,
+        hasTitle: Boolean(full?.querySelector(".session-title")),
+        padding: getComputedStyle(element).scrollPaddingTop,
+        dateSnap: getComputedStyle(element.querySelector(".date-divider")!).scrollSnapAlign,
+      };
+    });
+    expect(snapped.top, "the first fully visible row clears the scrim's bottom").toBeGreaterThanOrEqual(box.y + 20 - 1);
+    expect(snapped.heading || snapped.hasTitle, `a title-less subline does not start the viewport: ${snapped.text}`).toBe(true);
+    expect(snapped.padding).toBe("20px");
+    expect(snapped.dateSnap).toBe("start");
+    await useProjectsView(page);
+    await page.reload();
+    await showSidebar(page);
+    await showAllProjects(page);
+    await expect(list.locator(".date-divider")).toHaveCount(0);
+    await expect(list.locator(".project-head").first()).toHaveCSS("scroll-snap-align", "start");
+    await expect(list.locator(".project-head").first()).toBeVisible();
+    const grouped = (await list.boundingBox())!;
+    const gx = Math.round(grouped.x + grouped.width / 2);
+    const gy = Math.round(grouped.y + grouped.height * 0.7);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: gx, y: gy }] });
+    for (let step = 1; step <= 8; step++) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: gx, y: gy - step * 8 }] });
+      await page.waitForTimeout(16);
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect.poll(async () => list.evaluate((element) => {
+      const top = element.getBoundingClientRect().top;
+      const first = [...element.querySelectorAll<HTMLElement>(".session-item, .project-head")].find((row) => row.getBoundingClientRect().top >= top - 1 && row.getBoundingClientRect().bottom <= element.getBoundingClientRect().bottom + 1);
+      return first ? first.getBoundingClientRect().top - top : 0;
+    })).toBeGreaterThanOrEqual(19);
+  });
   test("the drawer's list fades under the head only once it has scrolled", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 520 });
     await signInAndOpen(page);
@@ -549,8 +631,9 @@ test.describe("phone drawer", () => {
     const scrim = list.locator(".list-scrim");
     await expect(scrim).toBeVisible();
     expect((await scrim.boundingBox())!.height, "a 20 px fade: a phone row is taller than the desktop's").toBe(20);
-    // A real scroll engages row snapping: a settled scroll starts on a row, not a title-less subline.
+    // A real scroll engages row snapping: the settled row starts below the 20px fade, not under it.
     await expect(list).toHaveCSS("scroll-snap-type", "y");
+    await expect(list).toHaveCSS("scroll-padding-top", "20px");
     await expect(list.locator(".session-item").first()).toHaveCSS("scroll-snap-align", "start");
     await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
     await list.evaluate((el) => { el.scrollTop = 0; });

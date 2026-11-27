@@ -148,8 +148,8 @@ body {
     --sid-tray: 44px;
   }
 
-  /* On the drawer --sidebar-w is the desktop token (200px), not the drawer's own width, so the
-     popover's rail-width term would pinch it to 180px: on a phone it is viewport-bound instead. */
+  /* On the drawer --sidebar-w is the desktop rail's own width (236–560px), not the drawer's width, so the
+     popover's rail-width term would pinch it: on a phone it is viewport-bound instead. */
   .sidebar .menu-list.filter-menu {
     width: min(272px, calc(100vw - 24px));
   }
@@ -166,11 +166,12 @@ body {
     padding: 0 8px;
   }
 
-  .sidebar .view-switch {
   /* At 375px a full search field still fits beside the View and filter touch targets. */
   .sidebar.is-open .search-field > input {
     min-width: 150px;
   }
+
+  .sidebar .view-switch {
     min-width: 44px;
     min-height: 44px;
     /* The filter is absolute, so its target needs a column of its own. */
@@ -213,14 +214,17 @@ body {
     height: 20px;
     margin-bottom: -20px;
   }
-  /* A settled user scroll starts on a row, not mid-row, so the first subline never shows title-less.
+  /* A settled user scroll starts on a row or heading below the 20px scrim, not mid-row under it.
      Snap is disabled until the list really scrolls: with rows snapping while the closed drawer mounts,
      the browser chooses a target on the empty hidden list and opens it scrolled to its foot. */
   .sidebar .session-list.is-scrolled {
     scroll-snap-type: y proximity;
+    scroll-padding-top: 20px;
   }
 
-  .sidebar .session-item {
+  .sidebar .session-item,
+  .sidebar .project-head,
+  .sidebar .date-divider {
     scroll-snap-align: start;
   }
 }
