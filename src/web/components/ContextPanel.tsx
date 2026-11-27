@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSnapshot, DelegatedTaskView, GitStatus, RaceSummary, ReviewThread, SecondOpinion } from "../../shared/protocol.js";
 import { api, errorText } from "../api.js";
 import { save, load } from "../storage.js";
-import { IconAgents, IconBranch, IconChevronRight, IconEdit, IconFork, IconSidebar, IconSpark, IconSplit, IconStop, IconTerminal, IconTool, IconWarning } from "../icons.js";
+import { IconAgents, IconBranch, IconChevronRight, IconEdit, IconFlask, IconFork, IconSidebar, IconSpark, IconSplit, IconStop, IconTerminal, IconTool, IconWarning } from "../icons.js";
 import { Dialog } from "./Dialog.js";
 import { ConfirmButton } from "./ConfirmButton.js";
 import { DiffBadge } from "./ToolBody.js";
@@ -300,7 +300,7 @@ export function ContextPanel({ chat, expanded = true, onOpen, mode, onClose, com
       <button className={detail ? "icon-btn" : "context-rail-button"} aria-label={detail ? "Collapse context panel" : "Expand context panel"} title={detail ? "Hide active work detail" : "Open active work detail"} onClick={() => (detail ? closeDetail() : openDetail())}>{detail ? <IconSidebar size={16} className="icon-flip-x" /> : <IconSidebar size={16} />}</button>
       {!detail ? <div className="context-rails">
         <button type="button" className="context-rail-button" title={hasQuestions || running > 0 ? "Jump to an ongoing run or pending answer" : "Expand active work"} aria-label="Open contextual work details" onClick={() => { if (hasQuestions) onQuestions(); else openDetail(); }}><IconAgents size={16} />{hasAttention > 0 ? <span className="context-rail-badge">{hasAttention > 9 ? "9+" : hasAttention}</span> : null}</button>
-        <button type="button" className="context-rail-button" title="Project comparisons and races" aria-label="Inspect project races" onClick={() => { if (inWorkspace.length === 0) { onRace(null); return; } openDetail(); if (!open.races) toggle("races"); }}><IconSplit size={16} />{numberOfRaces > 0 ? <span className="context-rail-badge">{numberOfRaces > 9 ? "9+" : numberOfRaces}</span> : null}</button>
+        <button type="button" className="context-rail-button" title="Project comparisons and races" aria-label="Inspect project races" onClick={() => { if (inWorkspace.length === 0) { onRace(null); return; } openDetail(); if (!open.races) toggle("races"); }}><IconFlask size={16} />{numberOfRaces > 0 ? <span className="context-rail-badge">{numberOfRaces > 9 ? "9+" : numberOfRaces}</span> : null}</button>
       </div> : null}
     </div>
     {detail ? <div className="context-scroller">{details}</div> : <div className="context-rail-foot">{chat.context && !composerVisible ? <button type="button" className="context-rail-usage" onClick={onUsage} title="Open context and model usage" aria-label={chat.context.percent === null ? "Open context and model usage" : `Context used: ${Math.round(chat.context.percent)}% of ${tokenCount(chat.context.window)}`}>
