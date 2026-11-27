@@ -114,15 +114,17 @@
 /* The list's bottom edge: the last child fades whatever scrolls under it into the footer tray. It is a
    sticky scrim on the list, not a mask on the scroller: a masked element is a clipping stacking context,
    so the row menu opened from the last row faded into the tray, and the hover card beside the rail was cut
-   away entirely — its shadow was the only trace. Its own 36px is the tail the scroller may use (the tray's
-   height, kept as the list's bottom padding), so at the end of the list the fade covers the padding and
-   nothing else. */
+   away entirely — its shadow was the only trace. Its own 36px is the scroller's in-flow tail, with no
+   padding of the list's own behind it, so the fade rests on the list's real bottom edge: at the end of the
+   list it covers its own empty box and nothing else. Only the last 10px of that box reach ink, so a row at
+   the fold keeps its title and subline crisp and the row the pointer or the focus is on (one layer up, see
+   the .session-item rule below) is never dimmed at all. */
 .list-tray {
   position: sticky;
   bottom: 0;
   z-index: 2;
   height: var(--sid-tray);
-  background: linear-gradient(to bottom, transparent, var(--surface));
+  background: linear-gradient(to bottom, transparent calc(100% - 10px), var(--surface));
   pointer-events: none;
 }
 
@@ -1467,6 +1469,12 @@
 /* Pin and archive live behind the ⋯, shown on hover/focus and on an open touch row. */
 .session-item {
   position: relative;
+}
+
+/* The row a pointer, the focus or an open menu is on comes up one layer, over the sticky scrims (the tray and
+   the top fade, both z-index 2): the row under the fade is the one being read, and half of it was dimmed. */
+.session-item:is(:hover, :focus-within, .is-menu-open) {
+  z-index: 3;
 }
 
 /* Rows sit 2px apart and no line joins them: the pitch does that work, and a rule between two 32px rows
