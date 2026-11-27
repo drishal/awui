@@ -45,6 +45,9 @@ import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js
 /** A folder's first page: the current one gets a fuller preview than the others (each adds SHOW_MORE). */
 const VISIBLE_CURRENT = 8;
 const VISIBLE_OTHER = 4;
+/** Under this rail width a compact row says nothing but its title and its state: a lone project's name in
+ *  the suffix is 7px of ellipsis at 200px, which is not a word (see `.is-narrow`, sidebar.css). */
+const NARROW_RAIL = 224;
 
 export const TEXT_SCALES: Array<[string, number]> = [
   ["Small", 0.92],
@@ -1453,6 +1456,20 @@ export function Sidebar(props: {
 
   const asideRef = useRef<HTMLElement>(null);
   const { open } = props;
+  // Whether the rail is too narrow to read a lone project's name in a compact row (sidebar.css, .is-narrow).
+  // Measured here rather than by a container query: `container-type` is layout containment, and that would
+  // make the sidebar the containing block for the row menu and the hover card drawn inside it — clipped by
+  // the panel's own overflow instead of floating over the chat beside it.
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    const el = asideRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const read = () => setNarrow(el.getBoundingClientRect().width < NARROW_RAIL);
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Drawer mode: Escape closes from anywhere (the backdrop owns outside clicks) and Tab stays inside, so the
   // chat behind the drawer — inert over there — is never reached. Focus moves in once on open and goes back
@@ -1555,7 +1572,7 @@ export function Sidebar(props: {
       <div className={`backdrop${props.open ? " is-open" : ""}`} onClick={props.onClose} aria-hidden="true" />
       <aside
         ref={asideRef}
-        className={`sidebar${props.open ? " is-open" : ""}`}
+        className={`sidebar${props.open ? " is-open" : ""}${narrow ? " is-narrow" : ""}`}
         aria-label="Sessions"
         {...(props.open ? { role: "dialog", "aria-modal": true } : {})}
         onKeyDown={(e) => {

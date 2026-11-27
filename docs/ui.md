@@ -141,12 +141,16 @@ a literal colour.
   full ink, with the word “Unread” only in a visually hidden span for assistive tech.
   `config.yml`'s `sidebar_style: compact` sets `data-sidebar="compact"` on
   `<html>`, and `sidebar.css` ends with the handful of overrides that make the
-  rows tighter still: 28px, one line in three columns — the title (1fr, at least 96px), the project's
-  name as a dim suffix (its own column, never wider than 96px) and the age on the column every row uses,
-  8px apart, with the same ⋯/age swap on hover and 1px between rows. The project gives way first: the suffix
-  ellipsises past 96px while the title keeps its share (at least 96px) — a 292px panel measured a title of
-  104–174px against a suffix of 26–96px, and at 232px the title held 96 where the old flex row, with the
-  suffix's 34% fixed and the title free to shrink, left it 89.
+  rows tighter still: 28px and one line — the title (`flex: 1 1 auto`, never below 96px), the project's
+  name as a dim suffix of at most 56px, and the age at the line's end on the column every row uses, 6px
+  from the title and 8px before the age, with the same ⋯/age swap on hover and 1px between rows. The suffix
+  gives way first, piece by piece (`TagLine`): the project's name carries a 56px cap and shrinks to 24px
+  before a branch after it, while a branch and a state's word hold their width. Under a 224px rail the
+  project's name alone is not a suffix but an ellipsis (7px of a 74px name at 200px), so it is not drawn
+  there — the row keeps it in its `title`, its hover card and its accessible name — and the title takes the
+  room. Measured: a 292px rail gives the title 146px (was 129) against a 56px project (was 71); at 232px
+  the title holds its 96 and the project 56 (was 44); at 200px the title has 116 (was 96) with no suffix,
+  and a branch row keeps `test` where it used to show 12px of nothing.
   It changes the row look only: heads, chips, hover cards, and the wash keep
   their own rules, and a phone's row is still at least 44px tall.
 - **Sidebar list:** the sidebar draws one of two views (`sidebar-view.ts`, saved

@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 // Sidebar rows keep one pitch: 32px, or 48px with a subline. A two-line title takes
 // the full row; the right end of its subline holds the age, which fades out on hover
 // for the ⋯ that takes its place, so the title never changes width under the pointer.
@@ -6,9 +6,10 @@ import { type ChildProcess, spawn } from "node:child_process";
 // Unread is title weight, never an accent dot; section rows do not repeat their section's
 // state word. A project group states a common branch on its head, not on every child.
 //
-// Compact keeps one 28px line, in three columns: title (1fr, at least 96px), an inline project suffix in
-// its own column (never wider than 96px), and a stable age slot that hover trades for the ⋯. The project
-// ellipsises before the title does. The tests below measure the contract.
+// Compact keeps one 28px line: the title (flex 1 1 auto, never below 96px), the project's name as a suffix
+// of at most 56px, and a stable age slot that hover trades for the ⋯. The title takes every spare pixel and
+// the suffix yields first; under a 224px rail the project's name goes altogether, while a branch or a state
+// the agent set stays. The tests below measure the contract.
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -278,11 +279,14 @@ test.describe("the compact rows", () => {
     const suffix = placed as { titleBottom: number; subTop: number; titleRight: number; subLeft: number };
     expect(suffix.subTop, "one line: the suffix starts on the title's own line").toBeLessThan(suffix.titleBottom);
     expect(suffix.subLeft).toBeGreaterThanOrEqual(suffix.titleRight);
-    // The suffix's column is capped in pixels (96), not at a share of the line: a percentage cap on a
-    // content-sized grid track resolved to its floor, which cut "drishal-notes" and left dead column beside it.
+    // The suffix is one bounded box: the project's name wears a 56px cap (a px cap, not a share of the line:
+    // a percentage cap on a content-sized track resolved to its floor, which cut "drishal-notes" and left
+    // 30px of dead column beside it).
     const suffixBox = await item.locator(".session-sub-name").evaluate((el) => ({ width: el.getBoundingClientRect().width, max: getComputedStyle(el).maxWidth }));
-    expect(suffixBox.max, "the suffix column's cap").toBe("96px");
-    expect(suffixBox.width).toBeLessThanOrEqual(96.5);
+    expect(suffixBox.max, "the suffix's own cap").toBe("96px");
+    const projectCap = await item.locator(".session-sub-project").evaluate((el) => ({ max: getComputedStyle(el).maxWidth, width: el.getBoundingClientRect().width }));
+    expect(projectCap.max, "the project's name gives way at 56px").toBe("56px");
+    expect(projectCap.width).toBeLessThanOrEqual(56.5);
     // The title keeps a sensible share of the line: at least 96px, and every spare pixel.
     const titleWidth = await item.locator(".session-title").evaluate((el) => el.getBoundingClientRect().width);
     expect(titleWidth, "the title's own floor").toBeGreaterThanOrEqual(95.5);
@@ -316,9 +320,9 @@ test.describe("the compact rows", () => {
     expect(Math.round((back as { height: number }).height)).toBe(48);
   });
 
-  test("a long project's name gives way before the title", async ({ page, request }) => {
-    // A folder whose name is wider than the suffix's 96px column, and a panel at 232px: the two cases where
-    // the flex row this replaced squeezed the title (89px of it) or cut the project to "drishal-not…".
+  test("a long project's name is cut, and the title keeps its own 96px", async ({ page, request }) => {
+    // A folder whose name is wider than the suffix's 56px, on a 232px rail: the width where the grid this
+    // replaced gave the title exactly 96px and the suffix 44px of "drish…".
     const root = process.env.AWUI_E2E_ROOT as string;
     const folder = path.join(root, "drishal-notes-archive");
     mkdirSync(folder, { recursive: true });
@@ -333,14 +337,76 @@ test.describe("the compact rows", () => {
     await expect(longRow).toBeVisible();
     const fit = await longRow.evaluate((el) => {
       const title = el.querySelector(".session-title") as HTMLElement;
-      const suffix = el.querySelector(".session-sub-name") as HTMLElement;
-      return { title: title.getBoundingClientRect().width, suffix: suffix.getBoundingClientRect().width, suffixScroll: suffix.scrollWidth };
+      const project = el.querySelector(".session-sub-project") as HTMLElement;
+      return { title: title.getBoundingClientRect().width, project: project.getBoundingClientRect().width, projectScroll: project.scrollWidth };
     });
-    // The project's column stops at 96px and its name ellipsises there; the title keeps its own 96px floor, so
-    // the title is never the part that gives way to fit a project name beside a full age.
-    expect(fit.suffix, "the suffix column's cap").toBeLessThanOrEqual(96.5);
-    expect(fit.suffixScroll, "a long project name ellipsises inside its column").toBeGreaterThan(fit.suffix);
+    // The project's name stops at 56px and ellipsises there; the title keeps its own 96px floor, so the title
+    // is never the part that gives way to fit a project name beside a full age.
+    expect(fit.project, "the project's name is cut at 56px").toBeLessThanOrEqual(56.5);
+    expect(fit.projectScroll, "a long project name ellipsises inside its box").toBeGreaterThan(fit.project);
     expect(fit.title, "the title keeps its floor").toBeGreaterThanOrEqual(95.5);
+    await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
+  });
+
+  test("under a 224px rail the project's name goes and the fact beside it stays", async ({ page, request }) => {
+    // Two folders and one repository on a feature branch: at 200px a project's name alone is 7-12px of
+    // ellipsis — no word at all — while a branch is what tells the row from its siblings.
+    const root = process.env.AWUI_E2E_ROOT as string;
+    const folder = path.join(root, "drishal-notes-narrow");
+    mkdirSync(folder, { recursive: true });
+    execFileSync("git", ["init", "-q", "-b", "feature/sidebar-compact"], { cwd: folder, stdio: "ignore" });
+    execFileSync("git", ["-c", "user.name=E2E", "-c", "user.email=e2e@example.com", "commit", "-q", "--allow-empty", "-m", "first"], { cwd: folder, stdio: "ignore" });
+    const ws = (await (await request.post("/api/workspaces/open", { data: { path: folder } })).json()) as { id: string };
+    const chat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: ws.id } })).json()) as { chatId: string };
+    await request.post(`/api/chats/${chat.chatId}/messages`, { data: { text: "a row on a narrow rail", mode: "normal" } });
+    // A folder with no repository: its row's suffix is the project's name and nothing else.
+    const plain = path.join(root, "drishal-notes-plain");
+    mkdirSync(plain, { recursive: true });
+    const plainWs = (await (await request.post("/api/workspaces/open", { data: { path: plain } })).json()) as { id: string };
+    const plainChat = (await (await request.post("/api/chats", { data: { harnessId: "fake", workspaceId: plainWs.id } })).json()) as { chatId: string };
+    await request.post(`/api/chats/${plainChat.chatId}/messages`, { data: { text: "a row in a plain folder", mode: "normal" } });
+
+    await page.addInitScript(() => window.localStorage.setItem("awui.sidebarWidth", JSON.stringify(200)));
+    await signInAndOpen(page);
+    await showSidebar(page);
+    await page.evaluate(() => document.documentElement.setAttribute("data-sidebar", "compact"));
+    const narrowRow = row(page, "a row on a narrow rail").first();
+    await expect(narrowRow).toBeVisible();
+    const parts = await narrowRow.evaluate((el) => {
+      const title = el.querySelector(".session-title") as HTMLElement;
+      const project = el.querySelector(".session-sub-project") as HTMLElement;
+      const branch = el.querySelector(".session-sub-branch") as HTMLElement | null;
+      const row = el.querySelector(".session") as HTMLElement;
+      return {
+        rail: document.querySelector(".sidebar")?.getBoundingClientRect().width ?? 0,
+        title: title.getBoundingClientRect().width,
+        project: { display: getComputedStyle(project).display, width: project.getBoundingClientRect().width },
+        branch: branch ? { display: getComputedStyle(branch).display, text: branch.textContent, width: branch.getBoundingClientRect().width } : null,
+        name: row.getAttribute("title") ?? "",
+      };
+    });
+    expect(Math.round(parts.rail), "the rail is at the narrow width this is about").toBe(200);
+    expect(parts.project.width, "the project's name is not drawn").toBeLessThanOrEqual(1.5);
+    expect(parts.project.display, "clipped, not display:none: the name stays in the accessible name").not.toBe("none");
+    expect(parts.branch?.display, "the branch is a fact the row keeps").not.toBe("none");
+    expect(parts.branch?.text).toBe("feature/sidebar-compact");
+    expect(parts.branch?.width ?? 0, "a long branch ellipsises at 56px").toBeLessThanOrEqual(56.5);
+    expect(parts.title, "the title keeps its own floor").toBeGreaterThanOrEqual(95.5);
+    // The project is still named: the row's own title, its hover card and its accessible name carry it.
+    expect(parts.name).toContain("drishal-notes-narrow");
+    await expect(narrowRow.locator(".session")).toHaveAccessibleName(/drishal-notes-narrow/);
+
+    // The plain row: its name is gone, and the title takes the 20px it held (96 → 116 at this width).
+    const plainBits = await row(page, "a row in a plain folder")
+      .first()
+      .evaluate((el) => {
+        const title = el.querySelector(".session-title") as HTMLElement;
+        const project = el.querySelector(".session-sub-project") as HTMLElement;
+        return { title: title.getBoundingClientRect().width, project: { display: getComputedStyle(project).display, width: project.getBoundingClientRect().width } };
+      });
+    expect(plainBits.project.width, "a lone project name is not drawn under 224px").toBeLessThanOrEqual(1.5);
+    expect(plainBits.title, "the title takes the room it had").toBeGreaterThanOrEqual(110);
+    await expect(row(page, "a row in a plain folder").first().locator(".session"), "the clipped name is still in the accessible name").toHaveAccessibleName(/drishal-notes-plain/);
     await page.evaluate(() => document.documentElement.removeAttribute("data-sidebar"));
   });
 });
