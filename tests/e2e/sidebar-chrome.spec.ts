@@ -157,6 +157,28 @@ test("the view control keeps its name and target at the narrowest supported widt
   await expect(sidebar.locator(".filter-chip")).toBeVisible();
 });
 
+test("under a 256px rail the field asks for a search in one word, and keeps its name", async ({ page }) => {
+  // An input cannot ellipsise its placeholder: at the 236px floor "Search sessions" was drawn as
+  // "Search sessi", cut mid-word. Short of the 256px the field asks in one word instead; its accessible
+  // name stays the same at every width, so a screen reader hears the same search.
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await signInAndOpen(page);
+  const sidebar = page.locator(".sidebar");
+  const input = sidebar.getByRole("searchbox", { name: "Search sessions" });
+  const rail = async (width: number) => {
+    await page.locator(".app").evaluate((el, next) => (el as HTMLElement).style.setProperty("--sidebar-w", `${next}px`), width);
+    await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(width);
+  };
+  // "Search sessions" measures 96.0px at the field's own font against a 96–97px field, which is why Chromium
+  // drew it clipped; "Search" is 41.2px. The placeholder is the contract, not a fit sum: an input cannot
+  // ellipsise one, so a width where the whole string no longer fits is the bug this threshold answers.
+  for (const [width, placeholder] of [[236, "Search"], [255, "Search"], [256, "Search sessions"], [292, "Search sessions"]] as const) {
+    await rail(width);
+    await expect(input, `at ${width}px the field's own words are "${placeholder}"`).toHaveAttribute("placeholder", placeholder);
+  }
+  await expect(input, "the name never changes with the placeholder").toHaveAttribute("aria-label", "Search sessions");
+});
+
 
 test("the filter is a glyph in the field, and its popover is a short rail-wide dialog", async ({ page }) => {
   await signInAndOpen(page);

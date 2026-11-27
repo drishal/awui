@@ -48,6 +48,9 @@ const VISIBLE_OTHER = 4;
 /** Under this rail width a compact row says nothing but its title and its state: a lone project's name in
  *  the suffix is 7px of ellipsis at 200px, which is not a word (see `.is-narrow`, sidebar.css). */
 const NARROW_RAIL = 224;
+/** Under this rail the search field is too narrow for the whole placeholder (an input cannot ellipsise one),
+ *  so it asks for a search in one word instead. The field's own label stays "Search sessions" at every width. */
+const TIGHT_FIELD = 256;
 
 export const TEXT_SCALES: Array<[string, number]> = [
   ["Small", 0.92],
@@ -1476,10 +1479,17 @@ export function Sidebar(props: {
   // make the sidebar the containing block for the row menu and the hover card drawn inside it — clipped by
   // the panel's own overflow instead of floating over the chat beside it.
   const [narrow, setNarrow] = useState(false);
+  // Whether the field can show its whole placeholder (TIGHT_FIELD): read by the same observer, so the rail's
+  // width is one measurement, not two.
+  const [tightField, setTightField] = useState(false);
   useLayoutEffect(() => {
     const el = asideRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const read = () => setNarrow(el.getBoundingClientRect().width < NARROW_RAIL);
+    const read = () => {
+      const width = el.getBoundingClientRect().width;
+      setNarrow(width < NARROW_RAIL);
+      setTightField(width < TIGHT_FIELD);
+    };
     read();
     const observer = new ResizeObserver(read);
     observer.observe(el);
@@ -1669,7 +1679,7 @@ export function Sidebar(props: {
                   <IconSearch size={14} />
                   <input
                     type="search"
-                    placeholder="Search sessions"
+                    placeholder={tightField ? "Search" : "Search sessions"}
                     value={props.query}
                     onChange={(e) => props.onQuery(e.target.value)}
                     onKeyDown={(e) => {
