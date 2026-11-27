@@ -1,10 +1,11 @@
-// A sidebar row's title, its line of supporting facts, and its state. In Recent the subline
-// names the project, then what its agent says when it set a status, and puts the age at its end; a
+// A sidebar row's title, its line of supporting facts, its state, and its native tooltip. In Recent the
+// subline names the project, then what its agent says when it set a status, and puts the age at its end; a
 // one-line row puts that age beside the title.
 // Pure, so the flat Recent list, its sections, and grouped Projects share the same rules.
 import type { AgentStatusLine, AgentStatusState, ProjectSession } from "../shared/protocol.js";
 import { formatDuration } from "../shared/time-words.js";
 import { AGENT_STATUS_WORDS, agentStatusText } from "./agent-status.js";
+import { plainTitle } from "./plain-title.js";
 import type { ProjectTag } from "./recent-view.js";
 import { isTrunkBranch } from "./session-groups.js";
 
@@ -62,6 +63,53 @@ export function rowSubline(s: ProjectSession, opts: { tag?: ProjectTag | null; b
   const branch = opts.branch ?? null;
   if (branch === null || branch === opts.groupBranch || isTrunkBranch(branch)) return null;
   return { kind: "branch", text: branch };
+}
+
+/**
+ * The longest one part of a row's native tooltip runs. A session's title is a whole prompt, and a tooltip
+ * that long is a wall over the list; a status sentence is the one thing the compact row clips hardest, so
+ * the cap sits above a real one (the shipped example is 83 characters). Each part is cut on its own, so a
+ * long title never takes the fact's or the project's words away.
+ */
+const TITLE_PART_MAX = 100;
+
+/** One part of a row's tooltip: one line, and never longer than TITLE_PART_MAX. */
+function titlePart(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length <= TITLE_PART_MAX ? flat : `${flat.slice(0, TITLE_PART_MAX - 1).trimEnd()}…`;
+}
+
+/**
+ * A row's native `title`. The drawn line can clip any part of itself — a compact row does not draw the
+ * project's name beside a fact at all (sidebar.css) — so the tooltip is where the whole text stays: the
+ * session's full title, the line under it (the agent's sentence, how the session began, or the project's
+ * fact), the project it is out of, and a branch that is not the trunk's. The accessible name is not this:
+ * it stays the row's own drawn content, which keeps a clipped project's words.
+ */
+export function rowTitle(s: ProjectSession, opts: { tag?: ProjectTag | null; branch?: string | null; groupBranch?: string | null } = {}): string {
+  const sub = rowSubline(s, opts);
+  const parts = [titlePart(plainTitle(s.title))];
+  if (sub?.kind === "tag") {
+    if (sub.fact !== null) parts.push(titlePart(factText(sub.fact)));
+    parts.push(titlePart(sub.tag.name));
+    // The branch the drawn line says, which a compact row also caps at 56px.
+    if (sub.tag.branch !== null) parts.push(titlePart(sub.tag.branch));
+  } else if (sub !== null) {
+    parts.push(titlePart(sub.text));
+  }
+  // The branch the drawn line could not say: a tagged row gives that place to its fact, and a row whose
+  // folder head above already states the branch does not repeat it (rowSubline's groupBranch).
+  const own = opts.tag?.branch ?? opts.branch ?? null;
+  const said = sub?.kind === "branch" ? sub.text : sub?.kind === "tag" ? sub.tag.branch : null;
+  // A tagged row's branch is already known not to be the trunk's (projectTag cleared it); the row's own
+  // checkout is not, so it is asked here.
+  if (own !== null && own !== said && !isTrunkBranch(own) && own !== opts.groupBranch) parts.push(titlePart(own));
+  return parts.filter((part) => part !== "").join(" · ");
+}
+
+/** The words a tag fact says, one line: a state's word and the note under it, or the agent's sentence. */
+function factText(fact: TagFact): string {
+  return fact.kind === "state" ? [fact.word, fact.note].filter((part) => part !== null && part !== "").join(" · ") : fact.text;
 }
 
 /**

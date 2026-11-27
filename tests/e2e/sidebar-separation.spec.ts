@@ -198,8 +198,12 @@ test.describe("the separated rows", () => {
     expect(box.overflow).toBe("ellipsis");
     expect(box.wrap).toBe("nowrap");
     expect(box.scroll, "the title the test wrote is wider than the row").toBeGreaterThan(box.width);
-    // The words the ellipsis hides are in the row's title attribute (and its hover card).
-    await expect(item.locator(".session")).toHaveAttribute("title", new RegExp(`^${LONG_TITLE}`));
+    // The words the ellipsis hides are in the row's title attribute (and its hover card), bounded: a
+    // session's title is a whole prompt, so the tooltip keeps a caption's worth of it, not the wall itself.
+    const tooltip = (await item.locator(".session").getAttribute("title")) ?? "";
+    expect(tooltip, "the tooltip keeps the title's first words").toMatch(/^a session title long enough/);
+    expect(tooltip.split(" · ")[0], "one part is capped at a caption").toHaveLength(100);
+    expect(tooltip, "and says it was cut").toContain("…");
     // Hover gives the ⋯ the age at the subline's end, not 22px of the title: the title's box keeps the
     // width it had, so its own ellipsis does not move and no glyph is cut under the control.
     await item.locator(".session").hover();
@@ -586,6 +590,10 @@ test.describe("the compact rows", () => {
           expect(pieces.project, `the project is not drawn beside a fact at ${width}px`).toBeLessThanOrEqual(1.5);
           expect(pieces.fact, `the fact takes the suffix's room at ${width}px`).toBeGreaterThan(WAS_FACT_WIDTH[width] ?? 0);
           expect(pieces.name, "a clipped project keeps its words in the accessible name").toContain(pieces.projectName);
+          // The native tooltip says what the drawn line cuts: the agent's whole sentence and the project.
+          const tooltip = (await active.locator(".session").first().getAttribute("title")) ?? "";
+          expect(tooltip, "the row's title carries the agent's status").toContain(status);
+          expect(tooltip, "the row's title carries the project").toContain(pieces.projectName);
         }
       }
     };

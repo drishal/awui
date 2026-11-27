@@ -38,7 +38,7 @@ import { projectSlots, type ProjectMonogram } from "../project-badge.js";
 import { enterSelection, leaveSelection, setSelectionOrder, toggleSelection, useSelectionMode } from "../selection-mode.js";
 import { SnoozeUntil } from "./SnoozeUntil.js";
 import { plainTitle } from "../plain-title.js";
-import { rowState, rowSubline, runElapsed, type TagFact } from "../session-state.js";
+import { rowState, rowSubline, rowTitle, runElapsed, type TagFact } from "../session-state.js";
 import { matchSpan } from "../sidebar-filter.js";
 import { type Box, firstLineBox, glide, handoff, MORPH_IN_MS } from "../morph.js";
 
@@ -520,6 +520,8 @@ function SessionRow({
       onDrop={drag?.onDrop}
       onDragEnd={drag?.onEnd}
     >
+      {/* The drawn line can clip any of its parts — a compact row does not draw a project beside a fact at
+          all — so the tooltip carries the whole of them, bounded; the accessible name stays what is drawn. */}
       <button
         ref={rowRef}
         type="button"
@@ -588,7 +590,7 @@ function SessionRow({
           if (e.key === "ArrowUp" ? move.up : move.down) move.by(e.key === "ArrowUp" ? -1 : 1);
         }}
         aria-current={active ? "true" : undefined}
-        title={tag ? `${s.title} · ${tag.name}` : s.title}
+        title={rowTitle(s, { tag, branch, groupBranch })}
       >
         {state.mark === "working" ? (
           <WorkingRing harnessId={s.harnessId} colored />

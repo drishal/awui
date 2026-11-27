@@ -126,6 +126,9 @@ a literal colour.
   it lives, and the fact that changed comes first. A blocked agent's state is that fact and its comment
   is a note under it, so the row says `blocked · waiting on CI`: the word takes `--row-warn` while the
   note and the project stay muted (`TagFact`), where the note alone used to read as a finished row.
+  The row's native `title` carries the whole of those words — the session's title, its fact, the project it
+  is out of and a branch that is not the trunk's, each bounded to 100 characters (`rowTitle` in
+  `session-state.ts`) — because neither a compact suffix nor a title's ellipsis shows all of them.
   Touch keeps 44px on one line and 48px with its subline. Compact style and compact density keep their own values.
   `session-state.ts` decides that subline and its state. On a two-line row the title
   takes the row's full width (10px right padding, no hover gutter). Its second line

@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { asHarnessId, type ProjectSession } from "../../src/shared/protocol.js";
 import type { ProjectTag } from "../../src/web/recent-view.js";
-import { originWords, rowState, rowSubline, runElapsed } from "../../src/web/session-state.js";
+import { originWords, rowState, rowSubline, rowTitle, runElapsed } from "../../src/web/session-state.js";
 
 const s = (extra: Partial<ProjectSession> = {}): ProjectSession => ({
   id: "x",
@@ -175,5 +175,48 @@ describe("runElapsed", () => {
     expect(runElapsed(s({ updatedAt: "not a time" }), at("2026-11-26T10:00:00Z"))).toBeNull();
     // A clock that reads ahead of ours is not a start either: the elapsed number would be negative.
     expect(runElapsed(s(), at("2026-11-26T09:59:00Z"))).toBeNull();
+  });
+});
+
+describe("rowTitle", () => {
+  // The native tooltip is where the whole of a row's words stays: the drawn line ellipsises a title, and a
+  // compact row does not draw a project's name beside the agent's own status at all.
+  it("says the title, the line under it and the project it is out of", () => {
+    expect(rowTitle(s(), { tag })).toBe("a chat · awui-wt · feat/sidebar");
+    expect(rowTitle(s({ agentStatus: { state: "done", comment: "ready to merge", at: 7 } }), { tag })).toBe("a chat · ready to merge · awui-wt · feat/sidebar");
+    // A blocked row's word and its note are the fact, and the branch the drawn line gave up is still said.
+    expect(rowTitle(s({ agentStatus: { state: "blocked", comment: "waiting on CI", at: 7 } }), { tag })).toBe("a chat · blocked · waiting on CI · awui-wt · feat/sidebar");
+    expect(rowTitle(s({ agentStatus: { state: "blocked", comment: "", at: 7 } }), { tag })).toBe("a chat · blocked · awui-wt · feat/sidebar");
+  });
+
+  it("says how the session began, inside its own project", () => {
+    expect(rowTitle(s({ lineage: { kind: "delegate", taskId: "t1", parentChatId: "c1", parentTitle: "Fix the CI pipeline", depth: 1 } }), {})).toBe("a chat · From Fix the CI pipeline");
+    expect(rowTitle(s({ origin: "routine" }), {})).toBe("a chat · Scheduled routine");
+    expect(rowTitle(s({ agentStatus: { state: "review", comment: "ready to merge", at: 7 } }), {})).toBe("a chat · ready to merge");
+  });
+
+  it("says a branch only when it is not the trunk's, nor the one a head states", () => {
+    expect(rowTitle(s(), { branch: "feat/sidebar" })).toBe("a chat · feat/sidebar");
+    expect(rowTitle(s(), { branch: "main" })).toBe("a chat");
+    expect(rowTitle(s(), { branch: "test", groupBranch: "test" })).toBe("a chat");
+  });
+
+  it("draws a title as one plain line, without its Markdown", () => {
+    expect(rowTitle(s({ title: "**Fix** the `bug`\nin\tone line" }), {})).toBe("Fix the bug in one line");
+  });
+
+  it("bounds each part, so a long title never takes the fact's or the project's words", () => {
+    // The shipped status is 83 characters, and must survive whole: the cap sits above it.
+    const status = "DeepSeek research, live Pi audit, and two-model council review all finished cleanly";
+    const long = "x".repeat(300);
+    const title = rowTitle(s({ title: long, agentStatus: { state: "done", comment: status, at: 7 } }), { tag });
+    const [titlePart, fact, project, branch] = title.split(" · ");
+    expect(titlePart).toBe(`${"x".repeat(99)}…`);
+    expect(fact).toBe(status);
+    expect(project).toBe("awui-wt");
+    expect(branch).toBe("feat/sidebar");
+    // A sentence past the cap is cut with an ellipsis, not dropped.
+    const capped = rowTitle(s({ title: "a chat", agentStatus: { state: "working", comment: long, at: 7 } }), {});
+    expect(capped).toBe(`a chat · ${"x".repeat(99)}…`);
   });
 });
