@@ -577,7 +577,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       if (!AGENTS.some((a) => a.id === body.agent && a.mode === "primary" && !a.hidden)) return send(res, 400, { message: "Primary agent not found" });
       const previous = s.agent;
-      if (typeof state.modelSet === "number") throw new Error("The agent route must not change the model");
+      if (body.model !== undefined) throw new Error("The agent route must not change the model");
       s.agent = body.agent;
       s.messages.push({ id: id("msg"), type: "agent-switched", time: { created: Date.now() }, agent: s.agent, previous });
       state.agentSwitches = [...(state.agentSwitches ?? []), { sessionID: s.id, agent: s.agent }];

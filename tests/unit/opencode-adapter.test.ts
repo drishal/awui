@@ -226,6 +226,28 @@ describe("opencode adapter (scripted server)", () => {
     expect(info?.model).toEqual({ providerID: "acme", id: "plain", variant: "default" });
     expect((await live.listCommands())[0]).toEqual({ name: "review", description: "review changes", source: "command" });
   });
+  it("keeps primary-role switches valid after an earlier model change", async () => {
+    const { chat, live } = await openChat();
+    await chat.send("create native session", "normal");
+    await until(() => chat.status === "idle");
+    await chat.setConfig({ thinkingLevel: "high" });
+    const before = (await adapter.sessionInfo(live.nativeId as string))?.model;
+    await chat.setConfig({ agent: "plan" });
+    expect((await adapter.sessionInfo(live.nativeId as string))?.agent).toBe("plan");
+    expect((await adapter.sessionInfo(live.nativeId as string))?.model).toEqual(before);
+    expect(fakeState().agentSwitches).toEqual([{ sessionID: live.nativeId, agent: "plan" }]);
+  });
+  it("restores the model's own thinking default without changing its model or primary role", async () => {
+    const { chat, live } = await openChat();
+    await chat.setConfig({ agent: "plan" });
+    await chat.send("first prompt", "normal");
+    await until(() => chat.status === "idle");
+    await chat.setConfig({ thinkingLevel: "high" });
+    expect(chat.snapshot().config).toMatchObject({ model: "opencode/fast-free", thinkingLevel: "high", agent: "plan" });
+    await chat.setConfig({ thinkingLevel: "" });
+    expect(chat.snapshot().config).toMatchObject({ model: "opencode/fast-free", thinkingLevel: null, agent: "plan" });
+    expect((await adapter.sessionInfo(live.nativeId as string))?.model).toMatchObject({ providerID: "opencode", id: "fast-free", variant: "default" });
+  });
   it("refuses a primary-agent patch on a harness without that capability", async () => {
     const { chat, live } = await openChat();
     adapter.capabilities.supportsAgentSelection = false;
