@@ -1,4 +1,5 @@
 import { mkdtempSync, mkdirSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -42,6 +43,7 @@ export const PASS = "correct horse battery";
 export function tempDir(prefix = "awui-"): string {
   return mkdtempSync(path.join(tmpdir(), prefix));
 }
+
 
 export interface TestApp {
   app: Awaited<ReturnType<typeof createApp>>;
@@ -284,6 +286,8 @@ export async function makeTestApp(options: {
     await manager.shutdown();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    // The root was created by this fixture. Its resources are closed before removal; other agents' roots are untouched.
+    await rm(root, { recursive: true, force: true });
   };
   return { app, server, port, close, manager, registry, root, project, security, fake, boards, stateDir, workspaces, boardNotes, ...(mesh ? { mesh } : {}) };
 }

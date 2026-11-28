@@ -1,12 +1,12 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { E2E_PORT } from "../../playwright.config.js";
 import { startFakeHerdr } from "../helpers/fake-herdr.js";
 
 /** Start the built server with fake harnesses on 127.0.0.1 (local use: no sign-in). */
-export default async function globalSetup(): Promise<() => Promise<void>> {
+export async function startFixture(port: number): Promise<() => Promise<void>> {
   const base = mkdtempSync(path.join(tmpdir(), "awui-e2e-"));
   const root = path.join(base, "workspaces");
   for (const name of ["alpha", "beta", ".hidden-proj"]) mkdirSync(path.join(root, name), { recursive: true });
@@ -62,7 +62,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       AWUI_HERDR: "1",
       // Never pick up the developer's own config.yml (host, login, theme).
       AWUI_CONFIG_DIR: "",
-      PORT: String(E2E_PORT),
+      PORT: String(port),
       AWUI_HARNESSES: "fake,fake-b,opencode",
       AWUI_FAKE_DELAY_MS: "30",
       OPENCODE_BIN: path.join(import.meta.dirname, "..", "fixtures", "fake-opencode.mjs"),
@@ -75,7 +75,20 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
-  await new Promise<void>((resolve, reject) => {
+  const cleanup = async () => {
+    await herdr.close();
+    try {
+      if (server.exitCode !== null) return;
+      const exited = new Promise((resolve) => server.once("exit", resolve));
+      server.kill("SIGTERM");
+      await exited;
+    } finally {
+      // This setup owns the whole synthetic sandbox, not just the project folders.
+      rmSync(base, { recursive: true, force: true });
+    }
+  };
+  try {
+    await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`server did not start:\n${output}`)), 20_000);
     const onData = (chunk: Buffer) => {
       output += chunk.toString();
@@ -87,15 +100,19 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     server.stdout?.on("data", onData);
     server.stderr?.on("data", onData);
     server.once("exit", (code) => reject(new Error(`server exited (${code}):\n${output}`)));
-  });
+    });
+  } catch (error) {
+    // A rejected startup owns a sandbox too; stop it before removing the whole base.
+    await cleanup();
+    throw error;
+  }
   process.env.AWUI_E2E_ROOT = root;
   process.env.AWUI_E2E_HERDR = herdrDir;
   process.env.AWUI_OPENCODE_STATE = path.join(base, "opencode-state.json");
-  return async () => {
-    await herdr.close();
-    if (server.exitCode !== null) return;
-    const exited = new Promise((resolve) => server.once("exit", resolve));
-    server.kill("SIGTERM");
-    await exited;
-  };
+  return cleanup;
+}
+
+/** Playwright passes its config object to the setup hook; keep that public contract unchanged. */
+export default async function globalSetup(): Promise<() => Promise<void>> {
+  return startFixture(E2E_PORT);
 }
