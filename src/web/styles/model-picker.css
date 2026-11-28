@@ -818,6 +818,7 @@ button.harness-chip:disabled {
 }
 
 .permission-option {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -878,7 +879,7 @@ button.harness-chip:disabled {
 .config-agent-pane.is-returning { pointer-events: none; }
 @media (pointer: coarse) {
   .model-search .model-refresh { width: 44px; height: 44px; margin-right: -10px; }
-  .model-option {  min-height: 44px; }
+  .model-option { min-height: 44px; }
 }
 
 /* Keep the group name available when a longer role catalogue scrolls to its current choice. */
@@ -896,11 +897,32 @@ button.harness-chip:disabled {
   background: var(--active);
   box-shadow: inset 2px 0 0 var(--accent);
 }
+/* Disabled saving keeps the native current selected, but attempts and disabled
+ * choices remain visibly unavailable. Keyboard navigation has a distinct quiet
+ * shape rather than being confused with the current check or erased with a CSS reset. */
+.agent-menu .permission-option.is-active:not([aria-selected="true"]) {
+  color: var(--text);
+}
+.agent-menu .permission-option.is-active:not([aria-selected="true"])::after {
+  content: "";
+  position: absolute;
+  inset: auto 8px 3px 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--muted-text);
+}
+.agent-menu .permission-option[aria-disabled="true"] {
+  cursor: default;
+}
 .agent-menu[aria-disabled="true"] .permission-option[aria-selected="false"] {
   background: transparent;
   opacity: 0.65;
-  cursor: default;
 }
+.agent-menu[aria-disabled="true"] .permission-option.is-active {
+  background: var(--hover);
+}
+.icon-btn:disabled,
+.config-back:disabled { opacity: 0.4; }
 
 /* Back and choices share the sheet's readable left edge and a real thumb-sized tap row. */
 .config-back { min-height: 44px; }

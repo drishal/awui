@@ -31,6 +31,7 @@ function HandoffChip({ chat, harnesses, onHandoff }: { chat: ChatState; harnesse
     <HarnessMenu
       variant="chip"
       label="Hand off to another harness"
+      handoff
       menuLabel="Hand off to"
       currentId={chat.harnessId}
       choices={current ? [{ harness: current, blocked: "This chat's harness" }, ...choices] : choices}

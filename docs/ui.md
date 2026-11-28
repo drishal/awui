@@ -318,6 +318,8 @@ a literal colour.
 - **The composer's chip row:** the agent, model, and thinking controls are actual
   native triggers, not one link that shares a chevron; model and thinking sit in
   one neutral sentence beside a **named harness chip with its own chevron** for an exceptional handoff.
+  Its accessible name includes the same harness label the user sees (for example, `Hand off from OpenCode to another harness`). The primary-role trigger stays quieter and separate: there is a 12px family break before the model sentence, not two equal identity pills.
+  StartScreen's harness chooser keeps its own meaning instead of inheriting handoff semantics.
   `model-morph.ts` (`morphShift` and `usePopupMorph`) gives all these surfaces a
   190 ms rise/settle toward the trigger's facing edge, and a 120 ms return.
   The complete panel, heading, choices and selection check remain laid out at
@@ -338,8 +340,10 @@ a literal colour.
   Enter, Escape), reused by `AgentPicker.tsx`; on a phone `ConfigSheet.tsx` shows
   it as a sub-pane of the existing native dialog, with Back and focus restoration,
   A setting waits for its native apply. Other configuration controls and handoffs
-  stay disabled until the request settles. `closeLocked` also guards Back, Escape, Close,
-  and swiping the native dialog while applying. A late completion cannot change owners.
+  stay disabled until the request settles. `applying` guards the role pane's own Back/Escape,
+  while `closeLocked` guards Close, backdrop Cancel, and swipe dismissal. Disabled controls
+  dim without losing current selection or keyboard navigation cues. The measured outgoing
+  root keeps its end frame (`fill: "forwards"`) before its settings view replaces it.
   Close restores the composer settings invoker even if it hid its previous inner focus owner.
   A failure stays in the awaiting pane as its one error announcement; Back clears it.
   use `onConfigError` for their original single failure notice rather than creating

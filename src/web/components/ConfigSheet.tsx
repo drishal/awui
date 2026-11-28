@@ -39,8 +39,8 @@ function AgentPane({ agents, current, disabled, applying, returning, error, onBa
   };
   return (
     <div className={`config-agent-pane${returning ? " is-returning" : ""}`} ref={rootRef} onKeyDown={onKey}>
-      <button type="button" className="btn btn-ghost config-back" disabled={applying || returning} onClick={onBack}><IconArrowLeft size={14} />Back to chat settings</button>
-      <p className={`config-pane-note${error ? " config-error" : ""}`} aria-live="polite" aria-busy={applying}>{error ?? (applying ? "Saving…" : "Choose the role for this conversation.")}</p>
+      <button type="button" className="btn btn-ghost config-back" disabled={applying || returning} title={applying ? "Close when saving finishes" : "Back to chat settings"} onClick={onBack}><IconArrowLeft size={14} />Back to chat settings</button>
+      <p className={`config-pane-note${error ? " config-error" : ""}`} aria-live="polite" aria-busy={applying}>{error ?? (applying ? "Saving…" : current === null ? "Harness default. Arrow keys navigate; Enter chooses a role." : "Choose the role for this conversation.")}</p>
       <AgentOptions agents={agents} current={current} onBack={onBack} pane disabled={disabled || returning} onSelect={onSelect} />
     </div>
   );
@@ -88,7 +88,8 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
   };
 
   const back = async () => {
-    if (transitioning.current) return;
+    // Both Back and its Escape route obey the single in-flight owner's lock.
+    if (applying || transitioning.current) return;
     const dialog = ownerRef.current;
     const root = dialog?.querySelector<HTMLElement>(".config-agent-pane");
     const body = dialog?.querySelector<HTMLElement>(".dialog-body");
@@ -109,7 +110,7 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
         ) : null;
         const leave = root.animate(
           [{ opacity: 1, transform: "translateY(0)" }, { opacity: 0.72, transform: "translateY(8px)" }],
-          { id: "morph:pane", duration: POPUP_LEAVE_MS, easing: getComputedStyle(root).getPropertyValue("--ease-out").trim() || "ease-out" },
+          { id: "morph:pane", duration: POPUP_LEAVE_MS, easing: getComputedStyle(root).getPropertyValue("--ease-out").trim() || "ease-out", fill: "forwards" },
         );
         // Settings must not arrive early and overflow the currently shorter sheet.
         const settled = await Promise.all([size?.finished, leave.finished]).then(() => true, () => false);

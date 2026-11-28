@@ -27,6 +27,7 @@ export function HarnessMenu({
   static: staticLabel = false,
   disabled = false,
   ariaKeyShortcuts,
+  handoff = false,
   hint,
   onPick,
 }: {
@@ -47,6 +48,8 @@ export function HarnessMenu({
   ariaKeyShortcuts?: string;
   /** What choosing one does, said on hover and under the open menu's heading rather than as standing copy. */
   hint?: string;
+  /** A composer handoff, not a generic StartScreen harness chooser. Names the seen harness in speech. */
+  handoff?: boolean;
   onPick: (harnessId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -137,7 +140,7 @@ export function HarnessMenu({
         type="button"
         className={variant === "row" ? "harness-row" : variant === "mark" ? "icon-btn harness-mark-btn" : "pill-select harness-chip"}
         style={harnessColor(currentId ?? undefined)}
-        aria-label={variant === "chip" ? label : `${label}: ${name}`}
+        aria-label={variant === "chip" ? (handoff ? `Hand off from ${current?.displayName ?? currentId ?? "the current harness"} to another harness` : label) : `${label}: ${name}`}
         {...(!staticLabel && hint && variant !== "mark" ? { title: hint } : variant === "mark" ? { title: `${label}: ${name}` } : {})}
         aria-haspopup={staticLabel ? undefined : "listbox"}
         aria-expanded={open}

@@ -136,6 +136,8 @@ test("a phone puts the real primary agent in Chat settings without narrowing the
   await sheet.getByTestId("agent-picker").click();
   const pane = page.getByRole("dialog", { name: "Primary agent", exact: true });
   await expect(pane).toBeVisible();
+  await expect(pane.locator(".config-pane-note")).toContainText("Harness default");
+  await expect(pane.getByRole("option", { selected: true })).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Chat settings" })).toHaveCount(0);
   const menu = page.getByRole("listbox", { name: "Primary agent" });
   const paneMotion = await pane.evaluate(el => {
@@ -435,7 +437,19 @@ test("phone role selection applies before closing and keeps errors in the owning
     await expect(pane.getByRole("button", { name: "Back to chat settings" })).toBeDisabled();
     await expect(pane.getByRole("button", { name: "Close", exact: true })).toBeDisabled();
     await expect(pane.locator("[role=option][aria-disabled=true]")).toHaveCount(3);
-    await page.keyboard.press("Escape");
+    expect(await pane.getByRole("button", { name: "Close", exact: true }).evaluate(el => Number(getComputedStyle(el).opacity))).toBeLessThan(1);
+    await expect(pane.getByRole("button", { name: "Back to chat settings" })).toHaveAttribute("title", "Close when saving finishes");
+    // Pointer-selected focus need not be a visible keyboard ring; exercise real locked keyboard navigation.
+    await pane.getByRole("listbox", { name: "Primary agent" }).press("ArrowUp");
+    await pane.getByRole("listbox", { name: "Primary agent" }).press("ArrowDown");
+    expect(await pane.getByRole("listbox", { name: "Primary agent" }).evaluate(el => el.matches(":focus-visible"))).toBe(true);
+    const attemptedActive = await pane.getByRole("option", { name: "Plan", exact: true }).evaluate(el => ({ selected: el.getAttribute("aria-selected"), activeClass: el.classList.contains("is-active"),
+      bg: getComputedStyle(el).backgroundColor }));
+    expect(attemptedActive).toMatchObject({ selected: "false", activeClass: true });
+    expect(attemptedActive.bg).not.toBe("rgba(0, 0, 0, 0)");
+    await pane.getByRole("listbox", { name: "Primary agent" }).press("Escape");
+    // Escape routes through the role's Back handler too; it may not merely hide behind a 120 ms leave timer.
+    await expect(pane.locator(".config-agent-pane.is-returning")).toHaveCount(0);
     await expect(pane).toBeVisible();
     await expect(pane.getByRole("button", { name: "Close", exact: true })).toHaveAttribute("title", "Close when saving finishes");
     const emphasis = async (name: "Build" | "Plan" | "orchestrator") => pane.getByRole("option", { name, exact: true }).evaluate(el => ({
@@ -450,7 +464,8 @@ test("phone role selection applies before closing and keeps errors in the owning
     expect(Number(attempted.opacity)).toBeLessThan(1);
     expect(attempted.disabled).toBe("true");
     expect(current.background).not.toBe(attempted.background);
-    expect(attempted.background).toBe("rgba(0, 0, 0, 0)");
+    expect(await pane.locator(".agent-menu[aria-disabled=true] > .is-active").evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+    await expect(pane.getByRole("option", { name: "Plan", exact: true }).locator(".harness-option-check")).toHaveCount(0);
     release();
     await expect(pane).toHaveCount(0);
     await expect(page.getByTestId("config-chip")).toContainText("Fast Free · Plan · Default");
@@ -484,7 +499,7 @@ test("phone role selection applies before closing and keeps errors in the owning
       const range = document.createRange(); range.selectNodeContents(root);
       const text = range.getBoundingClientRect(); const panel = dialog.getBoundingClientRect();
       return {
-        at: leave.currentTime, opacity: Number(getComputedStyle(root).opacity), clip: getComputedStyle(root).clipPath,
+        at: leave.currentTime, fill: leave.effect?.getComputedTiming().fill, opacity: Number(getComputedStyle(root).opacity), clip: getComputedStyle(root).clipPath,
         labels: root.querySelectorAll(".permission-option-name").length,
         selected: root.querySelector("[aria-selected=true] .permission-option-name")?.textContent,
         owner: dialog.getAttribute("aria-label"), disabled: root.querySelector("[role=listbox]")?.getAttribute("aria-disabled"),
@@ -497,6 +512,7 @@ test("phone role selection applies before closing and keeps errors in the owning
     expect(reverse.selected).toBe("Plan");
     expect(reverse.at).toBe(40);
     expect(reverse.clip).toBe("none");
+    expect(reverse.fill).toBe("forwards");
     expect(reverse.opacity).toBeCloseTo(0.747196, 5);
     expect(reverse.owner).toBe("Primary agent");
     expect(reverse.disabled).toBe("true");
@@ -575,7 +591,7 @@ test("model popovers keep their choices, contrast and native lifecycle while ope
 
 test("the desktop handoff names its action and opens the real native choices", async ({ page }) => {
   await openCodeChat(page);
-  const trigger = page.getByRole("button", { name: "Hand off to another harness", exact: true });
+  const trigger = page.getByRole("button", { name: "Hand off from OpenCode to another harness", exact: true });
   await expect(trigger).toContainText("OpenCode");
   await expect(trigger.locator(".icon")).toBeVisible();
   await expect(trigger).toHaveAttribute("title", /fresh native session/);
@@ -589,6 +605,25 @@ test("the desktop handoff names its action and opens the real native choices", a
   await expect(menu.getByRole("option", { name: "Fake B", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
+});
+
+
+test("the primary role reads as a quieter separate trigger from model and harness", async ({ page }) => {
+  await openCodeChat(page);
+  const role = page.getByTestId("agent-picker");
+  const pill = page.locator(".composer-pill");
+  await expect(role).toBeVisible();
+  const layout = await page.evaluate(() => {
+    const agent = document.querySelector<HTMLElement>("[data-testid=agent-picker]")!;
+    const group = document.querySelector<HTMLElement>(".composer-pill")!;
+    const ar = agent.getBoundingClientRect(); const pr = group.getBoundingClientRect();
+    return { gap: pr.left - ar.right, roleFill: getComputedStyle(agent).backgroundColor, pillFill: getComputedStyle(group.querySelector(".composer-pill-settings")!).backgroundColor,
+      name: group.querySelector("button.harness-chip")?.getAttribute("aria-label") };
+  });
+  expect(layout.gap).toBeGreaterThanOrEqual(12);
+  expect(layout.roleFill).not.toBe(layout.pillFill);
+  expect(layout.roleFill).toBe("rgba(0, 0, 0, 0)");
+  expect(layout.name).toContain("OpenCode");
 });
 
 test("phone handoffs stay disabled while a model configuration applies", async ({ browser }) => {

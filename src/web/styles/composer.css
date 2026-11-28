@@ -865,6 +865,11 @@
   border-radius: var(--r-control);
 }
 
+/* The primary role is a quiet trigger, not a second identity pill competing with
+ * the harness/model/effort sentence. Keep a 12px family break when that role exists. */
+.composer-pickers > .model-picker > .agent-trigger { background: transparent; }
+.composer-pickers > .model-picker:has(.agent-trigger) + .composer-pill { margin-inline-start: 6px; }
+
 /* This is a command, not just the chat's logo: name the harness and expose the menu affordance. */
 .composer-pill .harness-menu-wrap > button.harness-chip {
   max-width: 180px;
