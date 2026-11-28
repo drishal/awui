@@ -113,6 +113,16 @@ export async function openChat(page: Page, harness?: string): Promise<void> {
   await newChat(page, harness);
   await sendAndWait(page, "hello");
 }
+/** Create an existing OpenCode fixture chat; the caller decides whether to send a prompt. */
+export async function openCodeChat(page: Page) {
+  const root = process.env.AWUI_E2E_ROOT as string;
+  const ws = await (await page.request.post("/api/workspaces/open", { data: { path: `${root}/alpha` } })).json() as { id: string };
+  const chat = await (await page.request.post("/api/chats", { data: { harnessId: "opencode", workspaceId: ws.id } })).json() as { chatId: string };
+  await page.goto(`/#chat=${chat.chatId}`);
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle");
+  return chat.chatId;
+}
+
 
 /** A chat with no model call in it yet: a harness command answers, so its usage panel has no token sections. */
 export async function commandChat(page: Page): Promise<void> {
