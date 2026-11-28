@@ -188,10 +188,33 @@ test("the model listbox keeps keyboard focus separate from the actually selected
   await expect(options.getByRole("option", { name: /Fast Free/ })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("combobox", { name: "Search models" }).focus();
   await page.keyboard.press("ArrowDown");
+  await page.locator(".model-pop").evaluate(async el => { await Promise.all(el.getAnimations().map(a => a.finished.catch(() => undefined))); });
   const plain = options.getByRole("option", { name: /Plain/ });
   const active = await plain.getAttribute("id");
   await expect(page.getByRole("combobox", { name: "Search models" })).toHaveAttribute("aria-activedescendant", active!);
+  const search = page.getByRole("combobox", { name: "Search models" });
+  const focusHint = await search.evaluate((el) => {
+    const owner = el.parentElement!;
+    const probe = document.createElement("span");
+    probe.append("x"); probe.style.color = "var(--accent)"; owner.append(probe);
+    const expected = getComputedStyle(probe).color; probe.remove();
+    return { visible: el.matches(":focus-visible"), before: el.clientWidth, after: owner.getBoundingClientRect().width, border: getComputedStyle(owner).borderBottomColor, expected };
+  });
+  expect(focusHint.visible).toBe(true);
+  expect(focusHint.border).toBe(focusHint.expected);
+  expect(Math.abs(focusHint.before - ((await search.boundingBox())?.width ?? 0))).toBeLessThanOrEqual(1);
+  // Focus and selection differ in more shape than a near-background hover tint.
+  // The keyboard indicator is a shape cue, while Fast Free's own current flag is untouched.
+  expect(await plain.evaluate((el) => getComputedStyle(el, "::before").backgroundColor)).toBe(await plain.evaluate((el) => {
+    const swatch = document.createElement("span");
+    swatch.style.color = "var(--muted-text)";
+    el.append(swatch);
+    const colour = getComputedStyle(swatch).color;
+    swatch.remove();
+    return colour;
+  }));
   await expect(options.getByRole("option", { name: /Fast Free/ })).toHaveAttribute("aria-selected", "true");
+  expect(await options.getByRole("option", { name: /Fast Free/ }).evaluate((el) => getComputedStyle(el, "::before").display)).toBe("none");
   await expect(plain).toHaveAttribute("aria-selected", "false");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("model-picker")).toHaveAccessibleName("Model: Plain");
@@ -299,6 +322,11 @@ test("the role surface keeps its labels and selection intact throughout its morp
   await menu.waitFor({ state: "detached" });
 });
 
+async function settleComposer(page: Page) {
+  await page.locator(".composer").evaluate(async el => {
+    await Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished.catch(() => undefined)));
+  });
+}
 async function phoneRows(page: Page) {
   return page.locator(".composer").evaluate((composer) => {
     const at = (selector: string) => {
@@ -314,8 +342,8 @@ function promptActionsAboveSettings(rows: Awaited<ReturnType<typeof phoneRows>>)
   expect(rows.attach, "attachment is present").not.toBeNull();
   expect(rows.actions, "sending actions are present").not.toBeNull();
   expect(rows.chip, "settings trigger is present").not.toBeNull();
-  expect(rows.attach!.bottom, "attach stays on actions' row").toBeLessThanOrEqual(rows.actions!.bottom);
-  expect(rows.attach!.bottom).toBe(rows.actions!.bottom);
+  const centreOf = (row: NonNullable<(typeof rows)["attach"]>) => row.top + (row.bottom - row.top) / 2;
+  expect(Math.abs(centreOf(rows.attach!) - centreOf(rows.actions!)), "actions and attachment share a visual row").toBeLessThanOrEqual(1);
   expect(rows.chip!.top, "settings is below both actions, not between attachment and Send").toBeGreaterThanOrEqual(rows.actions!.bottom + 2);
   for (const row of [rows.attach, rows.chip]) expect(row!.ownsPoint).toBe(true);
 }
@@ -336,6 +364,7 @@ test("the phone shows the full summary with non-overlapping 44px core controls",
     expect(boxes.length).toBeGreaterThanOrEqual(5);
     expect(boxes.every((box) => box.width >= 44 && box.height >= 44 && box.left >= 0 && box.right <= 390 && box.owned)).toBe(true);
     expect(await page.getByTestId("config-chip").locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await settleComposer(page);
     promptActionsAboveSettings(await phoneRows(page));
     await page.getByTestId("config-chip").click();
     await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
@@ -346,7 +375,7 @@ test("the phone shows the full summary with non-overlapping 44px core controls",
     expect(await page.getByTestId("config-chip").locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.getByRole("textbox", { name: "Message" }).click();
     await expect(page.locator(".composer-card")).not.toHaveClass(/is-folded/);
-    await expect(page.getByTestId("config-chip")).toContainText("OpenCode · Fast Free · Plan");
+    await expect(page.getByTestId("config-chip")).toContainText("Fast Free · Plan · Default");
     expect(await page.getByTestId("config-chip").locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     expect((await page.getByTestId("config-chip").boundingBox())?.width).toBeGreaterThan(300);
     await page.locator(".composer").evaluate(async el => { await Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished.catch(() => undefined))); });
@@ -360,4 +389,45 @@ test("the phone shows the full summary with non-overlapping 44px core controls",
   } finally {
     await context.close();
   }
+});
+
+
+test("phone role selection applies before closing and keeps errors in the owning pane", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  try {
+    const page = await context.newPage();
+    await openCodeChat(page);
+    await page.getByRole("textbox", { name: "Message" }).fill("ticking");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByTestId("answer").last()).toContainText("Echo: ticking", { timeout: 15_000 });
+    await page.getByTestId("config-chip").click();
+    await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+    const pane = page.getByRole("dialog", { name: "Primary agent", exact: true });
+    await expect(pane).toBeVisible();
+
+    let requestSeen = false;
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => { release = resolve; });
+    // Route the browser's config PATCH. OpenCode's own child call is server-side, invisible to page.route.
+    await page.route("**/api/chats/*/config", async (route) => { requestSeen = true; await hold; await route.continue(); });
+    await pane.getByRole("option", { name: "Plan", exact: true }).click();
+    await expect.poll(() => requestSeen).toBe(true);
+    await expect(pane).toBeVisible();
+    await expect(pane.locator(".config-pane-note")).toHaveText("Saving…");
+    release();
+    await expect(pane).toHaveCount(0);
+    await expect(page.getByTestId("config-chip")).toContainText("Fast Free · Plan · Default");
+    await page.unroute("**/api/chats/*/config");
+
+    await page.getByTestId("config-chip").click();
+    await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+    await expect(page.getByRole("dialog", { name: "Primary agent", exact: true })).toBeVisible();
+    await page.route("**/api/chats/*/config", (route) => route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "Fixture role save failed" }) }));
+    await page.getByRole("option", { name: "Plan", exact: true }).click();
+    await expect(pane).toBeVisible();
+    await expect(pane.locator(".config-pane-note.config-error")).toHaveText("Fixture role save failed");
+    await expect(pane.getByRole("option", { name: "Plan", exact: true })).toHaveAttribute("aria-selected", "true");
+    await pane.getByRole("button", { name: "Back to chat settings" }).click();
+    await expect(page.getByRole("dialog", { name: "Chat settings" })).toBeVisible();
+  } finally { await context.close(); }
 });

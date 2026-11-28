@@ -64,6 +64,11 @@ describe("the composer's one-line config summary", () => {
     expect(modelSummary({ harnessId: "fake", capabilities, config: config({ agent: "orchestrator", agents: [{ id: "orchestrator", label: "orchestrator", description: "Plugin role" }] }) })).toBe("Fake Echo · orchestrator · High");
     expect(configSummary({ harnessId: "fake", capabilities, config: config({ agent: null, agents: [{ id: "build", label: "Build", description: "Default role" }] }) }, harnesses)).toBe("Pi · Fake Echo · High");
   });
+  it("does not infer a role for an unset default, while preserving selected ordering", () => {
+    const caps = { supportsAgentSelection: true, supportsModelSelection: true, supportsThinkingLevel: true, supportsPermissionMode: false };
+    expect(modelSummary({ harnessId: "fake", capabilities: caps, config: { agent: null, agents: [{ id: "build", label: "Build", description: "The default agent" }], models: [{ key: "fake/echo", provider: "fake", id: "echo", name: "Fake Echo" }], model: "fake/echo", thinkingLevel: null, permissionMode: null, permissionModes: [] } })).toBe("Fake Echo · Harness default · Default");
+    expect(modelSummary({ harnessId: "fake", capabilities: caps, config: { agent: "plan", agents: [{ id: "plan", label: "Plan", description: "Read-only planning" }], models: [{ key: "fake/echo", provider: "fake", id: "echo", name: "Fake Echo" }], model: "fake/echo", thinkingLevel: "high", permissionMode: null, permissionModes: [] } })).toBe("Fake Echo · Plan · High");
+  });
 
 describe("the folded phone composer's one sentence", () => {
   it("names the model and the level, without the harness or the permission mode", () => {

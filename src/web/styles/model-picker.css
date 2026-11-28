@@ -92,6 +92,11 @@
   border-bottom: 1px solid var(--hairline);
   color: var(--muted-text);
 }
+/* The search row owns the editing focus when its input has no outline of its own. */
+.model-search:focus-within {
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
 
 .model-search input {
   flex: 1;
@@ -158,6 +163,7 @@
 }
 
 .model-option {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -172,6 +178,21 @@
   background: var(--hover);
 }
 
+/* A left shape cue marks active navigation outside actual selection. This must
+ * precede current's rule so the CSS compiler cannot treat it as a nested selector. */
+.model-option::before {
+  content: "";
+  position: absolute;
+  inset: 5px auto 5px 0;
+  width: 2px;
+  background: transparent;
+}
+.model-option.is-active::before {
+  background: var(--muted-text);
+}
+.model-option.is-current::before {
+  display: none;
+}
 /* The model in use: the same selected fill the sidebar gives the open session. */
 .model-option.is-current {
   background: var(--active);
@@ -872,6 +893,7 @@ button.harness-chip:disabled {
 .config-agent-pane .agent-menu.is-pane { margin-inline-start: -6px; }
 .config-agent-pane .permission-option { padding-inline: 10px; }
 .config-pane-note { margin: -2px 0 12px; color: var(--muted-text); font-size: 12px; line-height: 1.5; }
+.config-pane-note.config-error { color: var(--danger); }
 .config-sheet .config-row .pill-trigger { height: 44px; }
 .composer-pickers > .model-picker > .agent-menu,
 .composer-pickers > .model-picker > .effort-pop,

@@ -7,6 +7,7 @@ import type { ChatState } from "../chat-state.js";
 import type { ConfigPatch, HarnessStatus } from "../../shared/protocol.js";
 import { configSummary, modelSummary } from "../config-summary.js";
 import { handoffChoice } from "../handoff.js";
+import { useMediaQuery } from "../hooks.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconChevronDown } from "../icons.js";
 import { ConfigSheet } from "./ConfigSheet.js";
@@ -57,20 +58,19 @@ export function ComposerControls({
   onConfig,
   onRefreshModels,
   onHandoff,
-  compact,
 }: {
   chat: ChatState;
   harnesses: HarnessStatus[];
   onConfig: (patch: ConfigPatch) => Promise<void>;
   onRefreshModels: () => Promise<void>;
   onHandoff: (harnessId: string) => Promise<void>;
-  /** The phone's folded one-row card: the chip stands alone, so it names the model and the level only. */
-  compact?: boolean;
 }) {
   const caps = chat.capabilities;
+  const change = (patch: ConfigPatch) => { void onConfig(patch).catch(() => undefined); };
   const idle = chat.status === "idle" || chat.status === "error";
   const { config } = chat;
   const [settings, setSettings] = useState(false);
+  const phone = useMediaQuery("(max-width: 600px)");
   const current = harnesses.find((h) => h.id === chat.harnessId);
   // A resumed chat's harness is still coming up: its pickers fade in and out until its own models arrive.
   const loading = chat.status === "starting";
@@ -79,7 +79,7 @@ export function ComposerControls({
   return (
     <div className="composer-controls" data-harness-accent={current?.accent}>
       <div className={`composer-pickers${loading ? " is-loading" : ""}`} aria-busy={loading || undefined}>
-        {agents ? <AgentPicker agents={agents} current={config.agent ?? null} disabled={!idle} onSelect={(agent) => void onConfig({ agent })} /> : null}
+        {agents ? <AgentPicker agents={agents} current={config.agent ?? null} disabled={!idle} onSelect={(agent) => change({ agent })} /> : null}
         {/* One split pill: the harness mark leads, and model and level read together as a single
             sentence ("Fake Echo · Low"). Each piece is still its own menu. */}
         <div className="composer-pill">
@@ -93,7 +93,7 @@ export function ComposerControls({
                   harnessId={chat.harnessId}
                   disabled={!idle}
                   loading={loading && config.model === null}
-                  onSelect={(model) => void onConfig({ model })}
+                  onSelect={(model) => change({ model })}
                   onRefresh={onRefreshModels}
                 />
               ) : null}
@@ -104,7 +104,7 @@ export function ComposerControls({
                   sent={config.thinkingSent ?? null}
                   defaultLevel={caps.supportsThinkingDefault ? "Default" : undefined}
                   disabled={!idle}
-                  onSelect={(thinkingLevel) => void onConfig({ thinkingLevel })}
+                  onSelect={(thinkingLevel) => change({ thinkingLevel })}
                 />
               ) : null}
             </div>
@@ -117,7 +117,7 @@ export function ComposerControls({
               modes={config.permissionModes}
               current={config.permissionMode ?? null}
               disabled={chat.status === "disposed"}
-              onSelect={(permissionMode) => void onConfig({ permissionMode })}
+              onSelect={(permissionMode) => change({ permissionMode })}
             />
           </div>
         ) : null}
@@ -132,7 +132,7 @@ export function ComposerControls({
         onClick={() => setSettings(true)}
       >
         <span className="harness-dot" style={harnessColor(chat.harnessId)}><HarnessMark harness={current} /></span>
-        <span className="config-summary">{(compact && modelSummary(chat)) || configSummary(chat, harnesses)}</span>
+        <span className="config-summary">{phone ? modelSummary(chat) : configSummary(chat, harnesses)}</span>
         <IconChevronDown size={12} />
       </button>
       {settings ? (

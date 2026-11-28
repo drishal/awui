@@ -1,5 +1,5 @@
-// The composer's one line of settings on a phone (harness · model · effort ·
-// permission), for the single chip that stands in for the pickers there. Pure,
+// The composer's one line of settings on a phone (model · role · effort ·
+// permission), for the single chip standing in for the pickers there. Pure,
 // so which parts appear and in what order is tested without a browser.
 import type { ChatConfig, HarnessCapabilities } from "../shared/protocol.js";
 
@@ -14,8 +14,9 @@ export function levelTitle(level: string): string {
   return level === "xhigh" ? "Extra high" : level.charAt(0).toUpperCase() + level.slice(1);
 }
 
-/** What model answers, and at what effort: "Fake Echo · Low". The folded phone composer reads this, where the
- *  harness is already the header's and the row has no room for the permission mode. */
+/** Model, primary role and effort in native order. "Harness default" marks an
+ * unset role, distinct from a selected role or a delegated worker. The header
+ * already names the harness, so the phone needn't repeat it. */
 export function modelSummary(chat: SummaryChat): string {
   const { config, capabilities } = chat;
   const parts: string[] = [];
@@ -24,7 +25,7 @@ export function modelSummary(chat: SummaryChat): string {
     parts.push(model ? (model.providerName ? `${model.providerName} · ${model.name}` : model.name) : (config.model ?? "No model"));
   }
 
-  if (capabilities.supportsAgentSelection && config.agent) parts.push(config.agents?.find((a) => a.id === config.agent)?.label ?? config.agent);
+  if (capabilities.supportsAgentSelection) parts.push(config.agent ? (config.agents?.find((a) => a.id === config.agent)?.label ?? config.agent) : "Harness default");
   if (capabilities.supportsThinkingLevel) parts.push(levelTitle(config.thinkingLevel ?? "default"));
   return parts.join(" · ");
 }

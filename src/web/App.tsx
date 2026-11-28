@@ -1793,6 +1793,7 @@ export function App() {
       await api(`/api/chats/${chat.chatId}/config`, { method: "PATCH", body: patch });
     } catch (e) {
       fail(e);
+      throw e;
     }
   };
 
