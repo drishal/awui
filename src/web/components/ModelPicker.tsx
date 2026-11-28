@@ -153,11 +153,10 @@ export function ModelPicker({
     const band = clipBand(trigger.current);
     const above = rect.top - band.top - 16;
     const below = band.bottom - rect.bottom - 16;
-    // The composer's model list is anchored below its card by model-morph; a chip
-    // elsewhere (Board's combined chip) turns to the roomier side.
+    // The composer's model list prefers opening below its card (model-morph flips the
+    // panel if the room below disappears), so give it the room on that side; a chip
+    // elsewhere (Board's combined chip) turns to the roomier side outright.
     const useBelow = Boolean(composer) || (above < 280 && below > above);
-    // model-morph picks the final side from the panel's real height, so cap it by the
-    // larger side; capping to the smaller clip band would cut the list before that choice.
     const room = composer ? Math.max(above, below) : (useBelow ? below : above);
     setPlace({ below: useBelow, maxHeight: Math.max(120, Math.min(520, room)) });
     const start = flat.findIndex((m) => m.key === current);

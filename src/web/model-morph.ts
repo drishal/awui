@@ -45,35 +45,41 @@ export function usePopupMorph(trigger: RefObject<HTMLElement | null>, panel: Ref
     const face = panel.current;
     const chip = trigger.current;
     if (!face || !chip) return;
-    // Measure against the real containing block, not a presumed parent or the viewport.
-    // The panel opens below the visible card (above only without room) and never covers the prompt.
-    const card = chip.closest<HTMLElement>(".composer");
-    if (card && getComputedStyle(face).position !== "fixed") {
+    // The panel grows after open (a model catalogue loads asynchronously), so measure on
+    // every size change: re-anchor to the chip's column and flip sides when the room below
+    // disappears. The panel never covers the prompt or leaves the viewport.
+    const measure = () => {
+      const card = chip.closest<HTMLElement>(".composer");
+      if (!card || getComputedStyle(face).position === "fixed") return;
       const owner = face.offsetParent instanceof HTMLElement ? face.offsetParent : null;
       const socket = face.getBoundingClientRect();
       const origin = owner?.getBoundingClientRect();
-      if (origin) {
-        const chipRect = chip.getBoundingClientRect();
-        const left = Math.max(8, Math.min(window.innerWidth - 8 - socket.width, chipRect.left));
-        // Anchor the popover to the chip's column. In the composer the chip sits near
-        // the card's bottom, so open just below the card (never over the prompt).
-        // Fall back above the card when the viewport has no room beneath it.
-        const visibleCard = chip.closest<HTMLElement>(".composer-card") ?? card;
-        const cardRect = visibleCard.getBoundingClientRect();
-        // Eight pixels from the visible card, not from the composer's wider box (whose padding added a hidden 12).
-        const belowEdge = Math.max(chipRect.bottom, cardRect.bottom) + 8;
-        const below = window.innerHeight - belowEdge >= socket.height + 8;
-        const top = below
-          ? belowEdge
-          : Math.max(8, cardRect.top - socket.height - 8);
-        face.style.left = `${Math.round(left - origin.left)}px`;
-        face.style.bottom = "auto";
-        face.style.top = `${Math.round(top - origin.top)}px`;
-      }
-    }
+      if (!origin) return;
+      const chipRect = chip.getBoundingClientRect();
+      const left = Math.max(8, Math.min(window.innerWidth - 8 - socket.width, chipRect.left));
+      const visibleCard = chip.closest<HTMLElement>(".composer-card") ?? card;
+      const cardRect = visibleCard.getBoundingClientRect();
+      // Eight pixels from the visible card, not from the composer's wider box (whose padding added a hidden 12).
+      const belowEdge = Math.max(chipRect.bottom, cardRect.bottom) + 8;
+      const below = window.innerHeight - belowEdge >= socket.height + 8;
+      const top = below
+        ? belowEdge
+        : Math.max(8, cardRect.top - socket.height - 8);
+      face.style.left = `${Math.round(left - origin.left)}px`;
+      face.style.bottom = "auto";
+      face.style.top = `${Math.round(top - origin.top)}px`;
+    };
+    measure();
+    // Content arriving late (model lists, role descriptions) changes the panel's height; re-place it.
+    const grow = new ResizeObserver(() => measure());
+    grow.observe(face);
+    window.addEventListener("resize", measure);
     if (motionOff() || typeof face.animate !== "function") {
       delete face.dataset.morph;
-      return;
+      return () => {
+        grow.disconnect();
+        window.removeEventListener("resize", measure);
+      };
     }
     const a = face.getBoundingClientRect();
     const b = chip.getBoundingClientRect();
@@ -107,6 +113,10 @@ export function usePopupMorph(trigger: RefObject<HTMLElement | null>, panel: Ref
       face.style.opacity = "";
       face.style.willChange = previousCompositing;
     });
-    return () => run.cancel();
+    return () => {
+      grow.disconnect();
+      window.removeEventListener("resize", measure);
+      run.cancel();
+    };
   }, [visible, leaving, trigger, panel]);
 }

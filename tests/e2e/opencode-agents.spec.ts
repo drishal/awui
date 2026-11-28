@@ -797,6 +797,10 @@ test("model popovers keep their choices, contrast and native lifecycle while ope
   expect(opening.parts.length).toBeGreaterThan(1);
   await pop.evaluate(async el => { await Promise.all(el.getAnimations().map(a => a.finished.catch(() => undefined))); });
   expect(await pop.evaluate(el => Number(getComputedStyle(el).opacity)), "the settled menu is fully opaque over the hero").toBe(1);
+  // However tall the catalogue is, the settled panel stays inside the viewport.
+  const box = await pop.evaluate(el => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: r.height, viewport: innerHeight }; });
+  expect(box.top).toBeGreaterThanOrEqual(8);
+  expect(box.bottom).toBeLessThanOrEqual(box.viewport - 8);
   await pop.screenshot({ path: "test-results/model-motion-rest.png" });
   expect(await pop.evaluate(el => getComputedStyle(el).willChange)).toBe("auto");
   await page.keyboard.press("Escape");
