@@ -322,6 +322,11 @@ test("the phone shows the full summary with non-overlapping 44px core controls",
     await expect(page.getByTestId("config-chip")).toContainText("Fast Free · Plan · Default");
     await expect(page.getByTestId("config-chip")).toHaveAccessibleName("Fast Free · Plan · Default");
     expect(await page.getByTestId("config-chip").locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.getByRole("textbox", { name: "Message" }).click();
+    await expect(page.locator(".composer-card")).not.toHaveClass(/is-folded/);
+    await expect(page.getByTestId("config-chip")).toContainText("OpenCode · Fast Free · Plan");
+    expect(await page.getByTestId("config-chip").locator(".config-summary").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect((await page.getByTestId("config-chip").boundingBox())?.width).toBeGreaterThan(300);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByTestId("config-chip").click();
     const sheet = page.getByRole("dialog", { name: "Chat settings" });

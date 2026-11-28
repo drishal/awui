@@ -292,7 +292,7 @@ a literal colour.
   the core attachment, settings, context and Send controls are at least 44 px.
   The folded card has a prompt/action row above a full-width settings row;
   the complete model, role and effort fit without cutting a word into fragments.
-  The compact choice can use two short lines when expanded. The sheet opens
+  Both the folded and expanded phone give settings their own full-width row.
   the chat settings and retains a native Back/focus path.
   Keep a row of controls one height: mismatched heights and radii are what makes a
   part "look off".

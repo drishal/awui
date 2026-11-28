@@ -602,7 +602,7 @@
   }
 
   .composer-bar {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 4px;
     margin-top: 2px;
   }
@@ -639,9 +639,9 @@
   }
 
   .composer-bar .composer-controls {
-    order: 0;
-    flex: 1;
-    min-width: 0;
+    flex-basis: 100%;
+    flex: 0 0 100%;
+    width: 100%;
   }
 
   .composer-pickers {
@@ -676,28 +676,26 @@
     margin-bottom: 4px;
   }
 
-  /* The sheet opener as the row's model pill: centred, single line; a tap
-     still opens the chat-settings sheet. Outranks phones.css's coarse-pointer
-     min-height on .pill-trigger. */
+  /* Full-width settings are a second row, so the compact summary states its
+   * whole configuration rather than competing with the prompt for 40vw. */
   .composer .composer-controls .pill-trigger.composer-config-chip {
     display: inline-flex;
-    flex: 1;
+    flex: 0 0 100%;
     min-width: 0;
-    width: auto;
-    max-width: 40vw;
+    width: 100%;
+    max-width: none;
     height: 44px;
     min-height: 44px;
-    justify-content: center;
+    justify-content: flex-start;
     border-radius: var(--r-control);
   }
-  /* Expanded controls have a bounded second line for a long configuration, not a mid-word crop. */
+  /* A complete single-line summary where the row has room, not two clipped fragments. */
   .composer-controls .composer-config-chip .config-summary {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    display: block;
+    flex: 1;
     white-space: normal;
-    overflow-wrap: anywhere;
     line-height: 1.2;
+    text-overflow: clip;
   }
 }
 
