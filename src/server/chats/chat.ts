@@ -1658,6 +1658,7 @@ export class Chat implements CheckpointHost {
     if (patch.thinkingLevel !== undefined && !caps.supportsThinkingLevel) {
       throw new ChatError(400, "unsupported", "This harness has no thinking levels");
     }
+    if (patch.thinkingLevel === "" && !caps.supportsThinkingDefault) throw new ChatError(400, "unsupported", "This harness cannot clear its thinking override");
     if (patch.agent !== undefined && !caps.supportsAgentSelection) {
       throw new ChatError(400, "unsupported", "This harness has no selectable primary agents");
     }

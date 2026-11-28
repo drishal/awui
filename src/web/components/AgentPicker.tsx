@@ -22,7 +22,7 @@ export function AgentPicker({ agents, current, disabled, viewportSheet = false, 
   const wrap = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const label = agents.find((agent) => agent.id === current)?.label ?? current ?? "Agent (default)";
+  const label = agents.find((agent) => agent.id === current)?.label ?? current ?? "Harness default";
   const close = (refocus: boolean) => {
     setOpen(false);
     if (refocus) trigger.current?.focus();
@@ -46,7 +46,7 @@ export function AgentPicker({ agents, current, disabled, viewportSheet = false, 
     viewport={viewportSheet} shift={viewportSheet ? 0 : shift} leaving={leaving} onTab={() => close(false)} />;
   return (
     <div className="model-picker" ref={wrap}>
-      <button ref={trigger} type="button" className="pill-trigger agent-trigger" aria-haspopup={onOpen ? "dialog" : "listbox"} aria-expanded={onOpen ? false : open}
+      <button ref={trigger} type="button" className="pill-trigger agent-trigger" aria-haspopup={onOpen ? "dialog" : "listbox"} aria-expanded={onOpen ? undefined : open}
         aria-label={`Agent: ${label}`} title={agents.find((agent) => agent.id === current)?.description ?? "Primary agent"}
         disabled={disabled || agents.length === 0} data-testid="agent-picker" data-agent={current ?? ""}
         onClick={show} onKeyDown={(e) => {

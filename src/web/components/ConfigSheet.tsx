@@ -26,7 +26,7 @@ function AgentPane({ agents, current, disabled, onBack, onSelect }: { agents: No
   return (
     <div className="config-agent-pane" onKeyDown={onKey}>
       <button type="button" className="btn btn-ghost config-back" onClick={onBack}><IconArrowLeft size={14} />Back to chat settings</button>
-      <p className="config-pane-note">Choose the conversation role. This is separate from permission mode.</p>
+      <p className="config-pane-note">Choose the role for this conversation.</p>
       <AgentOptions agents={agents} current={current} onBack={onBack} pane disabled={disabled} onSelect={onSelect} />
     </div>
   );
@@ -76,7 +76,8 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
             </div>
           ) : null}
           {caps.supportsThinkingLevel && config.thinkingLevels.length > 0 ? (
-            <div className="config-row"><span className="config-row-label">Effort</span><ThinkingPicker levels={config.thinkingLevels} current={config.thinkingLevel} sent={config.thinkingSent ?? null} disabled={!idle} onSelect={(thinkingLevel) => pick({ thinkingLevel })} /></div>
+            <div className="config-row"><span className="config-row-label">Effort</span><ThinkingPicker levels={config.thinkingLevels} current={config.thinkingLevel} sent={config.thinkingSent ?? null}
+              defaultLevel={caps.supportsThinkingDefault ? "Default" : undefined} disabled={!idle} onSelect={(thinkingLevel) => pick({ thinkingLevel })} /></div>
           ) : null}
           {caps.supportsAccountSelection ? <AccountPicker chat={chat} /> : null}
           {caps.supportsPermissionMode && config.permissionModes?.length ? (

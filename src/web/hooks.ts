@@ -51,6 +51,8 @@ export interface DismissOptions {
   escape?: boolean;
   /** Close on pointerdown outside `ref`. On by default. */
   outside?: boolean;
+  /** Optional return target for Escape; pointer-outside keeps its own focus destination. */
+  escapeFocus?: () => void;
 }
 
 /**
@@ -61,10 +63,12 @@ export function useDismiss<T extends HTMLElement>(
   ref: RefObject<T | null>,
   open: boolean,
   onClose: () => void,
-  { escape = false, outside = true }: DismissOptions = {},
+  { escape = false, outside = true, escapeFocus }: DismissOptions = {},
 ): void {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const escapeFocusRef = useRef(escapeFocus);
+  escapeFocusRef.current = escapeFocus;
   useEffect(() => {
     if (!open) return;
     const onDown = outside
@@ -78,6 +82,8 @@ export function useDismiss<T extends HTMLElement>(
           // The topmost popover owns Escape: without this, a native <dialog>'s cancel
           // would close the dialog underneath the picker that just closed.
           e.preventDefault();
+          if (escapeFocusRef.current) e.stopPropagation();
+          escapeFocusRef.current?.();
           onCloseRef.current();
         }
       : null;

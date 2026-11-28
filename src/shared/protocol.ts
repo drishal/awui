@@ -16,6 +16,8 @@ export interface HarnessCapabilities {
   supportsSteer: boolean;
   supportsFollowUp: boolean;
   supportsThinkingLevel: boolean;
+  /** The harness can clear a chosen thinking level and return to the model's own default. */
+  supportsThinkingDefault?: boolean;
   supportsCompact: boolean;
   supportsExtensions: boolean;
   supportsInteractiveRequests: boolean;
@@ -2147,7 +2149,7 @@ export const sendMessageSchema = z.object({
 export const patchConfigSchema = z
   .object({
     model: z.string().min(1).max(512).optional(),
-    thinkingLevel: z.string().min(1).max(32).optional(),
+    thinkingLevel: z.string().max(32).optional(),
     permissionMode: z.string().min(1).max(64).optional(),
     agent: z.string().min(1).max(128).optional(),
   })

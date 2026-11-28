@@ -509,6 +509,10 @@ h3,
   *,
   *::before,
   *::after {
+  *::backdrop {
+    animation: none !important;
+    transition: none !important;
+  }
     animation: none !important;
     transition: none !important;
   }

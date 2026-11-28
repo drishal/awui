@@ -773,8 +773,8 @@
        prompt's own line. */
     flex: 0 1 auto;
     min-width: 0;
-    max-width: 40vw;
-    gap: 0;
+    max-width: 44vw;
+    gap: 6px;
     padding: 0 2px;
     background: none;
     /* The model stays legible at 12px in the body's second ink: at 11.5px in the muted tone the one fact the
@@ -783,13 +783,18 @@
     font-size: 12px;
   }
 
-  .composer-card.is-folded .composer-config-chip > .harness-dot,
-  .composer-card.is-folded .composer-config-chip > .icon {
+  .composer-card.is-folded .composer-config-chip > .harness-dot {
+    /* The harness is already the header: a duplicate identity mark would waste the prompt's width.
+     * The chevron stays, as the one quiet signal that this row contains the chat's settings. */
     display: none;
   }
-
+  .composer-card.is-folded .composer-config-chip > .icon {
+    flex: none;
+    color: var(--muted-text);
+  }
   .composer-card.is-folded .composer-config-chip .config-summary {
     flex: 0 1 auto;
+
   }
 
   .composer-card.is-folded .composer-actions {

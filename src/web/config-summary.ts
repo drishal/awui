@@ -23,9 +23,9 @@ export function modelSummary(chat: SummaryChat): string {
     const model = config.models.find((m) => m.key === config.model);
     parts.push(model ? (model.providerName ? `${model.providerName} · ${model.name}` : model.name) : (config.model ?? "No model"));
   }
-    // OpenCode already names the harness in the chat header, so give this row's room to the role.
+
   if (capabilities.supportsAgentSelection && config.agent) parts.push(config.agents?.find((a) => a.id === config.agent)?.label ?? config.agent);
-  if (capabilities.supportsThinkingLevel && config.thinkingLevel) parts.push(levelTitle(config.thinkingLevel));
+  if (capabilities.supportsThinkingLevel) parts.push(levelTitle(config.thinkingLevel ?? "default"));
   return parts.join(" · ");
 }
 

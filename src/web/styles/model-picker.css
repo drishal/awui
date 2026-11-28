@@ -847,6 +847,10 @@ button.harness-chip:disabled {
 .agent-menu.is-pane { position: static; width: 100%; max-width: none; max-height: none; padding: 0; overflow: visible; background: none; box-shadow: none; }
 .agent-menu.is-pane .permission-option { min-height: 48px; padding: 9px 10px; }
 .config-back { margin: 0 0 8px; padding: 4px 0; }
+/* Back and choices share the sheet's readable left edge and a real thumb-sized tap row. */
+.config-back { min-height: 44px; }
+.config-agent-pane .agent-menu.is-pane { margin-inline-start: -6px; }
+.config-agent-pane .permission-option { padding-inline: 10px; }
 .config-pane-note { margin: -2px 0 12px; color: var(--muted-text); font-size: 12px; line-height: 1.5; }
 .config-sheet .config-row .pill-trigger { height: 44px; }
 .composer-pickers > .model-picker > .agent-menu,

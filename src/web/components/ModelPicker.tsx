@@ -177,9 +177,9 @@ export function ModelPicker({
     document.getElementById(`${listId}-opt-${active}`)?.scrollIntoView({ block: "nearest" });
   }, [open, active, listId]);
 
-  // Escape closes from anywhere; the input's own Escape case runs first and
-  // refocuses the trigger, then this idempotent close is a no-op.
-  useDismiss(wrap, open, () => close(false), { escape: true });
+  // Pointerdown outside dismisses without stealing its target's focus. Escape belongs to the
+  // search/refresh keys below: they close once and restore the exact invoking chip.
+  useDismiss(wrap, open, () => close(false), { escape: true, escapeFocus: () => trigger.current?.focus() });
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     switch (e.key) {
@@ -278,7 +278,7 @@ export function ModelPicker({
                 onKeyDown={onKeyDown}
               />
               <span className="model-count" aria-live="polite">
-                {flat.length}
+                {flat.length} {flat.length === 1 ? "model" : "models"}
               </span>
               <button
                 ref={refreshButton}
@@ -314,8 +314,6 @@ export function ModelPicker({
             {currentModel ? (
               <div className="model-current">
                 Current <strong>{currentModel.name}</strong>
-                <Dot />
-                {currentModel.providerName ?? currentModel.provider}
               </div>
             ) : null}
             <div className="model-list" id={listId} role="listbox" aria-label="Models">
@@ -333,19 +331,19 @@ export function ModelPicker({
                         key={`${section.provider}:${model.key}`}
                         id={`${listId}-opt-${i}`}
                         role="option"
-                        aria-selected={i === active}
+                        aria-selected={model.key === current}
                         className={`model-option${i === active ? " is-active" : ""}${model.key === current ? " is-current" : ""}`}
                         onPointerMove={() => setActive(i)}
                         onClick={() => choose(model)}
                       >
                         <span className="model-name">{model.name}</span>
-                        {model.name !== model.id ? <span className="model-id">{section.recent ? model.key : model.id}</span> : null}
+                        {model.name.toLowerCase().replaceAll(" ", "-") !== model.id ? <span className="model-id">{section.recent ? model.key : model.id}</span> : null}
                         {model.levels?.length ? (
                           // The strongest level; the harness lists them weakest first.
                           // The strongest level the model takes, said as the ceiling it is: the chat's own level is
                           // on the chip that opened this list, and a bare "high" beside it read as a contradiction.
                           <span className="model-tag" title={`Reasoning levels: ${model.levels.join(", ")}`}>
-                            up to {levelTitle(model.levels[model.levels.length - 1]!)}
+                            Reasoning up to {levelTitle(model.levels[model.levels.length - 1]!)}
                           </span>
                         ) : null}
                         <span className="model-check">{model.key === current ? <IconCheck size={13} /> : null}</span>

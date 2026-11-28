@@ -905,6 +905,7 @@ export class OpenCodeAdapter implements HarnessAdapter {
     supportsSteer: true,
     supportsFollowUp: true,
     supportsThinkingLevel: true,
+    supportsThinkingDefault: true,
     supportsCompact: true,
     supportsExtensions: false,
     supportsInteractiveRequests: true,

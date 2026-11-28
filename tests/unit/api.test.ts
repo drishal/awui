@@ -466,7 +466,10 @@ describe("chat lifecycle over HTTP + SSE", () => {
     // There is no tool-narrowing mode to switch to.
     expect((await agent.patch(`/api/chats/${chat.chatId}/config`).send({ toolsMode: "readOnly" })).status).toBe(400);
     expect((await agent.patch(`/api/chats/${chat.chatId}/config`).send({ model: "nope/x" })).status).toBe(422);
-    expect((await agent.patch(`/api/chats/${chat.chatId}/config`).send({})).status).toBe(400);
+    // Only a harness declaring clear-override support may receive an empty thinking choice.
+    const reset = await agent.patch(`/api/chats/${chat.chatId}/config`).send({ thinkingLevel: "" });
+    expect(reset.status).toBe(400);
+    expect(reset.body).toMatchObject({ code: "unsupported" });
     await agent.post(`/api/chats/${chat.chatId}/messages`).send({ text: "slow" });
     expect((await agent.patch(`/api/chats/${chat.chatId}/config`).send({ thinkingLevel: "off" })).status).toBe(409);
   });

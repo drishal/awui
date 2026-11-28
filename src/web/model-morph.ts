@@ -58,7 +58,7 @@ export function usePopupMorph(trigger: RefObject<HTMLElement | null>, panel: Ref
     const open = { clipPath: "inset(-24px)", opacity: "1" };
     const closed = { clipPath: from, opacity: "0.65" };
     face.dataset.morph = leaving ? "leaving" : "";
-    const run = face.animate(leaving ? [open, closed] : [closed, open], { id: "morph:popup", duration: leaving ? POPUP_LEAVE_MS : POPUP_ENTER_MS, easing: getComputedStyle(face).getPropertyValue("--ease-out").trim() || "ease-out" });
+    const run = face.animate(leaving ? [open, closed] : [closed, open], { id: "morph:popup", duration: leaving ? POPUP_LEAVE_MS : POPUP_ENTER_MS, easing: leaving ? getComputedStyle(face).getPropertyValue("--ease-out").trim() || "ease-out" : "cubic-bezier(.65, 0, .35, 1)" });
     return () => run.cancel();
   }, [visible, leaving, trigger, panel]);
 }

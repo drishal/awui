@@ -8,7 +8,7 @@ interface FixtureState {
   createdAgents?: Array<string | null>;
   agentSwitches?: Array<{ sessionID: string; agent: string }>;
   modelSet?: number;
-  sessions: Record<string, { agent?: string }>;
+  sessions: Record<string, { agent?: string; model?: { variant?: string; id?: string; providerID?: string } }>;
 }
 const fixture = () => JSON.parse(readFileSync(process.env.AWUI_OPENCODE_STATE as string, "utf8")) as FixtureState;
 
@@ -25,7 +25,7 @@ test("OpenCode primary agents are catalogued, chosen through the API, and kept o
   const chatId = await openCodeChat(page);
   await expect(page.getByTestId("connection")).toHaveText("Connected");
   const trigger = page.getByTestId("agent-picker");
-  await expect(trigger).toHaveAccessibleName("Agent: Agent (default)");
+  await expect(trigger).toHaveAccessibleName("Agent: Harness default");
   await trigger.click();
   const list = page.getByRole("listbox", { name: "Primary agent" });
   await expect(list).toBeVisible();
@@ -74,7 +74,7 @@ test("the pre-send new-chat screen lists primary roles and uses one on OpenCode 
   await page.getByRole("listbox", { name: "Agent" }).getByRole("option", { name: "OpenCode", exact: true }).click();
   await expect(page.getByRole("heading", { name: /What should OpenCode do in alpha\?/ })).toBeVisible();
   const picker = page.locator(".start-screen").getByTestId("agent-picker");
-  await expect(picker).toHaveAccessibleName("Agent: Agent (default)");
+  await expect(picker).toHaveAccessibleName("Agent: Harness default");
   await picker.click();
   const menu = page.getByRole("listbox", { name: "Primary agent" });
   await expect(menu).toBeVisible();
@@ -104,7 +104,7 @@ test("the pre-send role picker works on a phone inside its viewport", async ({ p
   await page.getByRole("button", { name: "Agent for this chat" }).click();
   await page.getByRole("listbox", { name: "Agent" }).getByRole("option", { name: "OpenCode", exact: true }).click();
   const picker = page.locator(".start-screen").getByTestId("agent-picker");
-  await expect(picker).toHaveAccessibleName("Agent: Agent (default)");
+  await expect(picker).toHaveAccessibleName("Agent: Harness default");
   await picker.click();
   const menu = page.getByRole("listbox", { name: "Primary agent" });
   await expect(menu).toBeVisible();
@@ -132,7 +132,7 @@ test("a phone puts the real primary agent in Chat settings without narrowing the
   await expect(sheet).toBeVisible();
   // Common choices lead, ahead of every rare handoff option.
   await expect(sheet.locator(".config-row-label", { hasText: /^Primary agent$/ })).toBeVisible();
-  await expect(sheet.getByTestId("agent-picker")).toHaveAccessibleName("Agent: Agent (default)");
+  await expect(sheet.getByTestId("agent-picker")).toHaveAccessibleName("Agent: Harness default");
   await expect(sheet.getByTestId("model-picker")).toBeVisible();
   await expect(sheet.getByTestId("thinking-picker")).toBeVisible();
   await sheet.getByTestId("agent-picker").click();
@@ -178,4 +178,70 @@ test("a harness with no primary-agent catalogue gains no fabricated default-role
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByTestId("chat-status")).toHaveText("Idle");
   await expect(page.getByTestId("agent-picker")).toHaveCount(0);
+});
+
+// Selection state and effort preferences use native values, not visual highlights or aliases.
+test("the model listbox keeps keyboard focus separate from the actually selected model", async ({ page }) => {
+  await openCodeChat(page);
+  await page.getByTestId("model-picker").click();
+  const options = page.getByRole("listbox", { name: "Models" });
+  await expect(options.getByRole("option", { name: /Fast Free/ })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("combobox", { name: "Search models" }).focus();
+  await page.keyboard.press("ArrowDown");
+  const plain = options.getByRole("option", { name: /Plain/ });
+  const active = await plain.getAttribute("id");
+  await expect(page.getByRole("combobox", { name: "Search models" })).toHaveAttribute("aria-activedescendant", active!);
+  await expect(options.getByRole("option", { name: /Fast Free/ })).toHaveAttribute("aria-selected", "true");
+  await expect(plain).toHaveAttribute("aria-selected", "false");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("model-picker")).toHaveAccessibleName("Model: Plain");
+});
+
+test("OpenCode's thinking default is a named stop with a real way back", async ({ page }) => {
+  const chatId = await openCodeChat(page);
+  const think = page.getByTestId("thinking-picker");
+  await page.getByRole("textbox", { name: "Message" }).fill("ticking");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByTestId("chat-status")).toHaveText("Idle");
+  const session = await (await page.request.get(`/api/chats/${chatId}`)).json();
+  expect(session.sessionId).toMatch(/^opencode:ses_/);
+  const nativeId = session.sessionId.replace(/^opencode:/, "");
+  const variant = () => fixture().sessions[nativeId]?.model?.variant;
+  await expect.poll(variant).toBe("default");
+  await think.click();
+  const slider = page.getByRole("slider", { name: "Thinking" });
+  await expect(slider).toBeFocused();
+  await expect(slider).toHaveAttribute("aria-valuetext", "Default");
+  expect(await page.locator(".effort-stop").evaluateAll((stops) => stops.map((stop) => stop.getAttribute("title")))).toEqual(["Default", "Low", "High"]);
+  const config = async () => (await (await page.request.get(`/api/chats/${chatId}`)).json()).config.thinkingLevel as string | null;
+  await slider.press("End");
+  await expect(slider).toHaveAttribute("aria-valuetext", "High");
+  await expect.poll(config).toBe("high");
+  await expect.poll(variant).toBe("high");
+  await page.keyboard.press("Escape");
+  await think.click();
+  await page.getByRole("slider", { name: "Thinking" }).press("Home");
+  await expect.poll(config).toBe(null);
+  await expect.poll(variant).toBe("default");
+  await expect(page.getByRole("slider", { name: "Thinking" })).toHaveAttribute("aria-valuetext", "Default");
+  await page.getByRole("slider", { name: "Thinking" }).press("ArrowRight");
+  await expect(page.getByRole("slider", { name: "Thinking" })).toHaveAttribute("aria-valuetext", "Low");
+  await expect.poll(config).toBe("low");
+  await expect.poll(variant).toBe("low");
+  await page.getByRole("slider", { name: "Thinking" }).press("Home");
+  await expect.poll(config).toBe(null);
+  await expect.poll(variant).toBe("default");
+  expect(fixture().modelSet).toBe(4);
+});
+
+test("Escape returns a thinking control's focus without inventing a state change", async ({ page }) => {
+  await openCodeChat(page);
+  await page.getByTestId("thinking-picker").click();
+  await expect(page.getByRole("slider", { name: "Thinking" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("thinking-picker")).toBeFocused();
+  await page.getByTestId("model-picker").click();
+  await expect(page.getByRole("combobox", { name: "Search models" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("model-picker")).toBeFocused();
 });

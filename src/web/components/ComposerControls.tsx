@@ -102,6 +102,7 @@ export function ComposerControls({
                   levels={config.thinkingLevels}
                   current={config.thinkingLevel}
                   sent={config.thinkingSent ?? null}
+                  defaultLevel={caps.supportsThinkingDefault ? "Default" : undefined}
                   disabled={!idle}
                   onSelect={(thinkingLevel) => void onConfig({ thinkingLevel })}
                 />

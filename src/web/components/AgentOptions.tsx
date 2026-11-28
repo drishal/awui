@@ -44,7 +44,7 @@ export const AgentOptions = forwardRef<HTMLDivElement, {
       className={`harness-menu permission-menu agent-menu${viewport ? " is-sheet" : ""}${pane ? " is-pane" : ""}${leaving ? " is-leaving" : ""}`}
       role="listbox" tabIndex={-1} aria-label="Primary agent" aria-disabled={disabled || undefined} aria-activedescendant={`${id}-${active}`}
       style={shift ? { left: shift } : undefined} onKeyDown={onKeyDown}>
-      <div className="harness-menu-head">{pane ? "The role this chat runs as" : "Primary agent"}</div>
+      <div className="harness-menu-head">{!pane ? "Primary agent" : null}</div>
       {agents.map((agent, i) => (
         <div key={agent.id} id={`${id}-${i}`} role="option" aria-label={agent.label} aria-selected={agent.id === current}
           className={`permission-option${i === active ? " is-active" : ""}${pane ? " is-pane" : ""}`}

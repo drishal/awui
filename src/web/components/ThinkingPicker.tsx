@@ -10,13 +10,13 @@ import { IconChevronDown } from "../icons.js";
 import { clipBand } from "./ModelPicker.js";
 import { EffortSlider } from "./EffortSlider.js";
 import { usePopupMorph } from "../model-morph.js";
-/** An unset effort remains Default on both trigger and slider; only an explicit stop names Low or High. */
 
 export function ThinkingPicker({
   levels,
   current,
   sent,
   disabled,
+  defaultLevel,
   onSelect,
 }: {
   levels: string[];
@@ -24,6 +24,8 @@ export function ThinkingPicker({
   /** What the route actually sends for `current`, when that differs. */
   sent: string | null;
   disabled: boolean;
+  /** A harness that clears its override also gets a separately named Default stop. */
+  defaultLevel?: string;
   onSelect: (level: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -38,7 +40,7 @@ export function ThinkingPicker({
     setOpen(false);
     if (refocus) trigger.current?.focus();
   };
-  useDismiss(wrap, open, () => close(false), { escape: true });
+  useDismiss(wrap, open, () => close(false), { escape: true, escapeFocus: () => trigger.current?.focus() });
 
   // Which side of the opener the popover has room on, measured when it opens. The band is measured from the clip
   // root rather than the viewport alone.
@@ -76,7 +78,8 @@ export function ThinkingPicker({
         <>
           <div className={`model-backdrop${leaving ? " is-leaving" : ""}`} aria-hidden="true" onClick={() => close(false)} />
           <div ref={pop} className={`model-pop effort-pop${below ? " is-below" : ""}${leaving ? " is-leaving" : ""}${still ? " is-still" : ""}`} role="dialog" aria-label="Thinking effort">
-            <EffortSlider levels={levels} current={current} titleOf={(level) => current === null ? "Default" : levelTitle(level)} disabled={disabled} closing={leaving} onSelect={onSelect} onDone={close} />
+
+            <EffortSlider levels={defaultLevel ? ["", ...levels] : levels} current={current} titleOf={(level) => level === "" ? (defaultLevel ?? "Default") : levelTitle(level)} sent={sent} disabled={disabled} closing={leaving} onSelect={onSelect} onDone={close} />
           </div>
         </>
       ) : null}
