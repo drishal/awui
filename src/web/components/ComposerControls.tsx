@@ -56,17 +56,19 @@ export function ComposerControls({
   chat,
   harnesses,
   onConfig,
+  onConfigError,
   onRefreshModels,
   onHandoff,
 }: {
   chat: ChatState;
   harnesses: HarnessStatus[];
   onConfig: (patch: ConfigPatch) => Promise<void>;
+  onConfigError: (error: unknown) => void;
   onRefreshModels: () => Promise<void>;
   onHandoff: (harnessId: string) => Promise<void>;
 }) {
   const caps = chat.capabilities;
-  const change = (patch: ConfigPatch) => { void onConfig(patch).catch(() => undefined); };
+  const change = (patch: ConfigPatch) => { void onConfig(patch).catch(onConfigError); };
   const idle = chat.status === "idle" || chat.status === "error";
   const { config } = chat;
   const [settings, setSettings] = useState(false);

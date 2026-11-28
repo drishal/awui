@@ -64,7 +64,7 @@ export function chatActions(
       try {
         await api(`/api/chats/${id}/config`, { method: "PATCH", body: patch });
       } catch (e) {
-        fail(e);
+        throw e;
       }
     },
     refreshModels: async () => {

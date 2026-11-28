@@ -93,6 +93,7 @@ export function Composer({
   onRotate,
   onAnswer,
   onConfig,
+  onConfigError,
   onRefreshModels,
   onHandoff,
   onNewChat,
@@ -115,6 +116,7 @@ export function Composer({
   onRotate?: () => void;
   onAnswer: (requestId: string, answer: InteractionAnswer, denialReason?: string) => Promise<void>;
   onConfig: (patch: ConfigPatch) => Promise<void>;
+  onConfigError: (error: unknown) => void;
   onRefreshModels: () => Promise<void>;
   onHandoff: (harnessId: string, draft: string) => Promise<void>;
   /** Ctrl+Alt+Enter: once the message is sent, open a new chat. */
@@ -1210,7 +1212,7 @@ export function Composer({
                 </>
               ) : null}
             </div>
-            <ComposerControls chat={chat} harnesses={harnesses} onConfig={onConfig} onRefreshModels={onRefreshModels} onHandoff={(id) => onHandoff(id, text)} />
+            <ComposerControls chat={chat} harnesses={harnesses} onConfig={onConfig} onConfigError={onConfigError} onRefreshModels={onRefreshModels} onHandoff={(id) => onHandoff(id, text)} />
             <div className="composer-actions">
               {tooLong ? (
                 <span className="composer-error">

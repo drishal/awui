@@ -393,7 +393,7 @@
 }
 
 .composer-input {
-  --composer-hint-text: color-mix(in srgb, var(--muted) 75%, var(--text-2));
+  --composer-hint-text: var(--muted-text);
   display: block;
   width: 100%;
   min-height: 26px;

@@ -1,13 +1,15 @@
 // Phone settings: actual common work choices come before the rare handoff list.
 // A primary-agent choice opens a sub-pane of this same native Dialog, not an
 // overlay that can escape the parent sheet. Back restores the settings list.
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AgentPicker } from "./AgentPicker.js";
 import { AgentOptions } from "./AgentOptions.js";
 import type { ChatState } from "../chat-state.js";
 import type { ConfigPatch, HarnessStatus, OauthAccountChoice } from "../../shared/protocol.js";
 import { handoffChoice } from "../handoff.js";
 import { errorText } from "../api.js";
+import { motionOff } from "../morph.js";
+import { POPUP_ENTER_MS } from "../model-morph.js";
 import { harnessColor } from "../harness-colors.js";
 import { IconArrowLeft, IconCheck } from "../icons.js";
 import { HarnessMark } from "./HarnessMark.js";
@@ -18,6 +20,16 @@ import { ThinkingPicker } from "./ThinkingPicker.js";
 import { AccountPicker } from "./AccountPicker.js";
 
 function AgentPane({ agents, current, disabled, applying, error, onBack, onSelect }: { agents: NonNullable<ChatState["config"]["agents"]>; current: string | null; disabled: boolean; applying: boolean; error: string | null; onBack: () => void; onSelect: (id: string) => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || motionOff() || typeof root.animate !== "function") return;
+    // The role root transitions inside its existing native dialog. It never becomes a second overlay.
+    void root.animate(
+      [{ opacity: 0.72, transform: "translateY(8px)" }, { opacity: 1, transform: "translateY(0)" }],
+      { id: "morph:pane", duration: POPUP_ENTER_MS, easing: "cubic-bezier(.65,0,.35,1)" },
+    );
+  }, []);
   const onKey = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape") return;
     event.preventDefault();
@@ -25,7 +37,7 @@ function AgentPane({ agents, current, disabled, applying, error, onBack, onSelec
     onBack();
   };
   return (
-    <div className="config-agent-pane" onKeyDown={onKey}>
+    <div className="config-agent-pane" ref={rootRef} onKeyDown={onKey}>
       <button type="button" className="btn btn-ghost config-back" onClick={onBack}><IconArrowLeft size={14} />Back to chat settings</button>
       <p className={`config-pane-note${error ? " config-error" : ""}`} aria-live="polite" aria-busy={applying}>{error ?? (applying ? "Saving…" : "Choose the role for this conversation.")}</p>
       <AgentOptions agents={agents} current={current} onBack={onBack} pane disabled={disabled} onSelect={onSelect} />
@@ -104,7 +116,7 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
               const here = h.id === chat.harnessId;
               const note = here ? "This chat" : (choice.blocked ?? choice.note);
               return (
-                <button key={h.id} type="button" className="config-choice" disabled={here || choice.blocked !== null || pending !== null} aria-current={here ? "true" : undefined}
+                <button key={h.id} type="button" className="config-choice" disabled={here || choice.blocked !== null || pending !== null || applying} aria-current={here ? "true" : undefined}
                   onClick={() => { setPending(h.id); void onHandoff(h.id).finally(() => setPending(null)); }}>
                   <span className="harness-dot" style={harnessColor(h.id)}><HarnessMark harness={h} /></span>
                   <span className="config-choice-main"><span className="config-choice-name">{h.displayName}</span><span className="config-choice-note">{pending === h.id ? "Handing off…" : note}</span></span>

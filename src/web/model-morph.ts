@@ -66,7 +66,7 @@ export function usePopupMorph(trigger: RefObject<HTMLElement | null>, panel: Ref
     const a = face.getBoundingClientRect();
     const b = chip.getBoundingClientRect();
     const shift = morphShift({ top: b.top - a.top, left: b.left - a.left, right: b.right - a.left, bottom: b.bottom - a.top }, { top: 0, left: 0, right: a.width, bottom: a.height });
-    const away = { transform: `translate(${shift.x}px, ${shift.y}px)`, opacity: "0.4" };
+    const away = { transform: `translate(${shift.x}px, ${shift.y}px)`, opacity: "0.72" };
     const rest = { transform: "translate(0, 0)", opacity: "1" };
     face.dataset.morph = leaving ? "leaving" : "";
     const run = face.animate(leaving ? [rest, away] : [away, rest], {

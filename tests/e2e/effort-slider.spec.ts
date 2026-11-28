@@ -104,7 +104,7 @@ test("with reduced motion the liquid paths are hidden and the thumb jumps to the
   expect(Math.abs(thumb.x + thumb.width / 2 - stops[2]!.x)).toBeLessThanOrEqual(1);
 });
 
-test("the thumb and the passed dots clear 3:1 against the track in both themes", async ({ page }) => {
+test("the thumb, eye cues and the full text caption clear 3:1 against the track in both themes", async ({ page }) => {
   for (const theme of ["dark", "light"] as const) {
     // Reduced motion draws passed stops directly; normal motion wets them only while the liquid passes.
     await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
@@ -154,6 +154,13 @@ test("the thumb and the passed dots clear 3:1 against the track in both themes",
     // what contrast is checked on.
     expect(ratio(parsed(thumbFill), parsed(trackFill))).toBeGreaterThanOrEqual(3);
     expect(ratio(parsed(dotFill), parsed(trackFill))).toBeGreaterThanOrEqual(3);
+    for (const dot of await page.locator(".effort-stop:not(.is-passed)").all()) {
+      const unlit = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(ratio(parsed(unlit), parsed(trackFill)), `${theme}: unlit stop ${unlit} vs track ${trackFill}`).toBeGreaterThanOrEqual(3);
+    }
+    const hint = await page.locator(".composer-input").evaluate((el) => getComputedStyle(el, "::before").color);
+    const face = await page.locator(".composer-card").evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(ratio(parsed(hint), parsed(face)), `${theme}: prompt hint ${hint} vs composer ${face}`).toBeGreaterThanOrEqual(4.5);
   }
 });
 

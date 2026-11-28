@@ -1792,7 +1792,6 @@ export function App() {
     try {
       await api(`/api/chats/${chat.chatId}/config`, { method: "PATCH", body: patch });
     } catch (e) {
-      fail(e);
       throw e;
     }
   };
@@ -2819,6 +2818,7 @@ export function App() {
                     onCompact={() => void compact()}
                     onAnswer={answer}
                     onConfig={configure}
+                    onConfigError={fail}
                     onHandoff={(id, draft) => handoffChat(id, draft)}
                     draftTransfer={mainDraft}
                     onNewChat={() => void newChat(chat.workspace, { newTab: true })}
@@ -2873,6 +2873,7 @@ export function App() {
                   onRotate={() => void rotateChat()}
                   onAnswer={answer}
                   onConfig={configure}
+                    onConfigError={fail}
                   onHandoff={(id, draft) => handoffChat(id, draft)}
                   onNewChat={() => void newChat(chat.workspace, { newTab: true })}
                   onOpenTask={(task) => void openDelegated(task)}

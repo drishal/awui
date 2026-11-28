@@ -350,8 +350,8 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--muted);
-  opacity: .55;
+  background: var(--muted-text);
+  opacity: 1;
   /* A bead-centred dead zone prevents the dot under the bead from inflating; the swell drops away again
      by 21px from its centre. Only colour and opacity need a transition here: scale is driven by the loop. */
   transition: background-color .22s var(--ease-out), opacity .22s var(--ease-out);
@@ -884,8 +884,16 @@ button.harness-chip:disabled {
 }
 
 /* The native pane already has its own heading and selected-row fill. */
-.agent-menu.is-pane .permission-option[aria-selected="true"] {
-  box-shadow: none;
+/* Current and attempted roles never share selection emphasis. The native pane
+ * keeps its checked/filled current role while a different choice is in flight. */
+.agent-menu .permission-option[aria-selected="true"] {
+  background: var(--active);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.agent-menu[aria-disabled="true"] .permission-option[aria-selected="false"] {
+  background: transparent;
+  opacity: 0.65;
+  cursor: default;
 }
 
 /* Back and choices share the sheet's readable left edge and a real thumb-sized tap row. */
@@ -926,49 +934,27 @@ button.harness-chip:disabled {
   }
 }
 
-/* Uncovered from the chip's corner rather than scaled up from it, so the list's text is sharp as it opens
-   (motion.css's pops say why); the clip ends 24 px wide of the panel, past its shadow. Closing is the
-   same clip in reverse: it furls back into the corner instead of shrinking, so nothing ever scales. */
+/* Fallback when WAAPI is not available: the same 12px rise/settle as the
+ * measured path. Keep the full pane visible, including every word and check;
+ * don't use the historical inset wipe or an unrelated corner. */
 @keyframes model-grow {
-  from {
-    opacity: 0;
-    clip-path: inset(100% 100% -24px -24px);
-  }
-  to {
-    clip-path: inset(-24px);
-  }
+  from { opacity: 0.72; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes model-grow-below {
-  from {
-    opacity: 0;
-    clip-path: inset(-24px 100% 100% -24px);
-  }
-  to {
-    clip-path: inset(-24px);
-  }
+  from { opacity: 0.72; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes model-furl {
-  from {
-    opacity: 1;
-    clip-path: inset(-24px);
-  }
-  to {
-    opacity: 0;
-    clip-path: inset(100% 100% -24px -24px);
-  }
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0.72; transform: translateY(10px); }
 }
 
 @keyframes model-furl-below {
-  from {
-    opacity: 1;
-    clip-path: inset(-24px);
-  }
-  to {
-    opacity: 0;
-    clip-path: inset(-24px 100% 100% -24px);
-  }
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0.72; transform: translateY(-10px); }
 }
 
 /* A phone's backdrop fades back out while the sheet slides down. */

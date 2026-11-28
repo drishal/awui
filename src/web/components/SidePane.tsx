@@ -271,6 +271,7 @@ export function SidePane({
                 onStop={actions.stop}
                 onAnswer={actions.answer}
                 onConfig={actions.configure}
+                onConfigError={fail}
                 onHandoff={actions.handoff}
                 limits={limits}
               />

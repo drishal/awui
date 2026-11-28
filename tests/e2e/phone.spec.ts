@@ -159,7 +159,13 @@ test("a phone composer folds its pickers into one settings chip", async ({ page 
   await expect(chip).toBeVisible();
   await expect(chip).toContainText("Fake Echo");
   await expect(chip).toContainText("Low");
-  await expect(chip).toHaveCSS("max-width", "156px");
+  const settingsGeometry = await chip.boundingBox();
+  const cardGeometry = await page.locator(".composer-card").boundingBox();
+  expect(settingsGeometry, "the phone settings button exists").not.toBeNull();
+  expect(cardGeometry, "the phone composer exists").not.toBeNull();
+  // Full width, not the old 40vw cutoff that clipped role and effort after only two characters.
+  expect(settingsGeometry!.width).toBeGreaterThanOrEqual(cardGeometry!.width - 14);
+  expect(settingsGeometry!.height).toBeGreaterThanOrEqual(44);
   // The folded row's own words fit the box the chip leaves it: "Message the agent…" is 146px in a 112px box, so
   // the row read "Message the …". The placeholder stays one word plus its ellipsis, and the box stays unclipped.
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveAttribute("data-placeholder", "Message…");

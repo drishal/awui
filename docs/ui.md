@@ -322,11 +322,20 @@ a literal colour.
   190 ms rise/settle toward the trigger's facing edge, and a 120 ms return.
   The complete panel, heading, choices and selection check remain laid out at
   full size throughout; the glide does not slice words or scale the text. The
+  Opening begins at 0.72 opacity to keep the words readable during the short glide.
+  The CSS fallback follows the same small rise and opacity without an inherited clip wipe.
+  The phone's role sub-pane has the same modest composed entrance within its one
+  owning native dialog—not a second sheet.
   panel's containing block supplies the placement, above the prompt, and a short
   measured travel expresses the trigger's direction without covering input.
   `AgentOptions.tsx` owns the one focused primary-role list (arrows, Home, End,
   Enter, Escape), reused by `AgentPicker.tsx`; on a phone `ConfigSheet.tsx` shows
   it as a sub-pane of the existing native dialog, with Back and focus restoration,
+  A setting waits for its native apply. Other configuration controls and handoffs
+  stay disabled until the request settles; a failure stays in the awaiting pane
+  as its one error announcement, with Back available. Desktop nonblocking changes
+  use `onConfigError` for their original single failure notice rather than creating
+  duplicate inline and global error messages.
   instead of floating a second sheet over its parent. Common choices lead; the
   harness handoff list follows. The permission mode stays separate, with its
   safe default as a quiet shield and a cautious mode named in its warning wash.
