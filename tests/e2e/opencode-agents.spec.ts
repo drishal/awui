@@ -550,7 +550,7 @@ test("model popovers keep their choices, contrast and native lifecycle while ope
   await trigger.click();
   const opening = await phase(40, false);
   expect(opening.clip).toBe("none");
-  expect(opening.opacity).toBeGreaterThanOrEqual(0.72);
+  expect(opening.opacity, "the opaque panel stays legible over large text behind it").toBe(1);
   expect(opening.parts.every(part => part.inside)).toBe(true);
   expect(opening.parts.length).toBeGreaterThan(1);
   await pop.evaluate(async el => { await Promise.all(el.getAnimations().map(a => a.finished.catch(() => undefined))); });
@@ -558,7 +558,7 @@ test("model popovers keep their choices, contrast and native lifecycle while ope
   await page.keyboard.press("Escape");
   const closing = await phase(40, true);
   expect(closing.clip).toBe("none");
-  expect(closing.opacity).toBeGreaterThanOrEqual(0.72);
+  expect(closing.opacity, "the outgoing model menu remains opaque over the hero").toBe(1);
   expect(closing.width).toBe(opening.width);
   expect(closing.height).toBe(opening.height);
   expect(closing.parts.every(part => part.inside)).toBe(true);

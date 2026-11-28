@@ -914,7 +914,7 @@ button.harness-chip:disabled {
 .composer-pill-settings > .model-picker > .effort-pop,
 .composer-policy > .model-picker > .permission-menu { bottom: calc(100% + 8px); max-height: min(440px, 55dvh); }
 /* The measured WAAPI path and fallback both retain whole laid-out content during
- * a short facing-axis translate and opacity change. There is no text wipe. */
+ * a short opaque facing-axis translate. Text stays opaque over the hero's large type. */
 @media (min-width: 820px) {
   .model-picker .model-pop:not([data-morph]) {
     transform-origin: bottom left;
@@ -942,23 +942,23 @@ button.harness-chip:disabled {
  * measured path. Keep the full pane visible, including every word and check;
  * don't use the historical inset wipe or an unrelated corner. */
 @keyframes model-grow {
-  from { opacity: 0.72; transform: translateY(10px); }
+  from { opacity: 1; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes model-grow-below {
-  from { opacity: 0.72; transform: translateY(-10px); }
+  from { opacity: 1; transform: translateY(-10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes model-furl {
   from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0.72; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(10px); }
 }
 
 @keyframes model-furl-below {
   from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0.72; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(-10px); }
 }
 
 /* A phone's backdrop fades back out while the sheet slides down. */

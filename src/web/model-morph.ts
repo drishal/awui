@@ -1,6 +1,6 @@
 // Model, agent, effort, and permission popovers use a measured glide. Pure
-// geometry and one small hook reveal the whole surface toward its trigger's
-// facing edge, without wiping through words or scaling/blurring the text.
+// geometry and one small hook translate the opaque whole surface toward its
+// trigger's facing edge, without fading, wiping or scaling into its labels.
 import { useLayoutEffect, type RefObject } from "react";
 import { motionOff } from "./morph.js";
 
@@ -66,8 +66,8 @@ export function usePopupMorph(trigger: RefObject<HTMLElement | null>, panel: Ref
     const a = face.getBoundingClientRect();
     const b = chip.getBoundingClientRect();
     const shift = morphShift({ top: b.top - a.top, left: b.left - a.left, right: b.right - a.left, bottom: b.bottom - a.top }, { top: 0, left: 0, right: a.width, bottom: a.height });
-    const away = { transform: `translate(${shift.x}px, ${shift.y}px)`, opacity: "0.72" };
-    const rest = { transform: "translate(0, 0)", opacity: "1" };
+    const away = { transform: `translate(${shift.x}px, ${shift.y}px)` };
+    const rest = { transform: "translate(0, 0)" };
     face.dataset.morph = leaving ? "leaving" : "";
     const run = face.animate(leaving ? [rest, away] : [away, rest], {
       id: "morph:popup",
