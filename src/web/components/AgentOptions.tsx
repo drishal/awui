@@ -41,7 +41,7 @@ export const AgentOptions = forwardRef<HTMLDivElement, {
   };
   return (
     <div ref={(el) => { own.current = el; if (typeof forwarded === "function") forwarded(el); else if (forwarded) forwarded.current = el; }}
-      className={`harness-menu permission-menu agent-menu${viewport ? " is-sheet" : ""}${pane ? " is-pane" : ""}${leaving ? " is-leaving" : ""}`}
+      className={`${pane ? "" : "harness-menu "}permission-menu agent-menu${viewport ? " is-sheet" : ""}${pane ? " is-pane" : ""}${leaving ? " is-leaving" : ""}`}
       role="listbox" tabIndex={-1} aria-label="Primary agent" aria-disabled={disabled || undefined} aria-activedescendant={`${id}-${active}`}
       style={shift ? { left: shift } : undefined} onKeyDown={onKeyDown}>
       <div className="harness-menu-head">{!pane ? "Primary agent" : null}</div>

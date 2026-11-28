@@ -867,6 +867,9 @@ button.harness-chip:disabled {
 .agent-menu.is-sheet { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); top: auto; width: auto; max-width: none; max-height: min(340px, 55dvh); z-index: 40; border-radius: var(--r-lg); }
 /* The primary role opens the config sheet's own pane, not a fixed popup below that sheet. */
 .agent-menu.is-pane { position: static; width: 100%; max-width: none; max-height: none; padding: 0; overflow: visible; background: none; box-shadow: none; }
+/* A native settings pane is not a detached harness popover. Do not run the
+ * legacy harness clip/spring here; ConfigSheet owns its one composed entrance. */
+.agent-menu.is-pane { animation: none; }
 .agent-menu.is-pane .permission-option { min-height: 48px; padding: 9px 10px; }
 .config-back { margin: 0 0 8px; padding: 4px 0; }
 /* Current selection is not the keyboard-focus fill. The small left rule and check keep those

@@ -326,6 +326,10 @@ a literal colour.
   The CSS fallback follows the same small rise and opacity without an inherited clip wipe.
   The phone's role sub-pane has the same modest composed entrance within its one
   owning native dialog—not a second sheet.
+  Only detached harness menus carry the generic `harness-menu` motion style.
+  Within the native role pane, `AgentOptions` uses shared option-row styles; a
+  detached-menu class would also apply an unwanted second spring/clip. Its
+  first sample must fit all choices within the owning dialog, not just the lowest row.
   panel's containing block supplies the placement, above the prompt, and a short
   measured travel expresses the trigger's direction without covering input.
   `AgentOptions.tsx` owns the one focused primary-role list (arrows, Home, End,

@@ -2,7 +2,7 @@
 // effects and the phone sheet. Model inference is still the scripted fixture.
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { signInAndOpen } from "./helpers.js";
+import { signInAndOpen, openCodeChat } from "./helpers.js";
 
 interface FixtureState {
   createdAgents?: Array<string | null>;
@@ -12,14 +12,6 @@ interface FixtureState {
 }
 const fixture = () => JSON.parse(readFileSync(process.env.AWUI_OPENCODE_STATE as string, "utf8")) as FixtureState;
 
-export async function openCodeChat(page: Page) {
-  const root = process.env.AWUI_E2E_ROOT as string;
-  const ws = await (await page.request.post("/api/workspaces/open", { data: { path: `${root}/alpha` } })).json() as { id: string };
-  const chat = await (await page.request.post("/api/chats", { data: { harnessId: "opencode", workspaceId: ws.id } })).json() as { chatId: string };
-  await page.goto(`/#chat=${chat.chatId}`);
-  await expect(page.getByTestId("chat-status")).toHaveText("Idle");
-  return chat.chatId;
-}
 
 test("OpenCode primary agents are catalogued, chosen through the API, and kept on resume", async ({ page }) => {
   const chatId = await openCodeChat(page);
@@ -152,9 +144,12 @@ test("a phone puts the real primary agent in Chat settings without narrowing the
   expect(paneMotion.present, "the role pane uses its own composed transition").toBe(true);
   expect(paneMotion.clip).toBe("none");
   expect(paneMotion.opacity).toBeGreaterThanOrEqual(0.72);
+  expect(await menu.getByRole("option").evaluateAll(rows => rows.every(row => row.getBoundingClientRect().bottom <= row.closest("dialog")!.getBoundingClientRect().bottom))).toBe(true);
   expect(paneMotion.roleCount).toBe(3);
   // This is an animated native dialog, so measure steady hit geometry once it has actually settled.
   await menu.evaluate(async (el) => { await Promise.all((el.closest("dialog")?.getAnimations({ subtree: true }) ?? []).map((a) => a.finished.catch(() => undefined))); });
+  await expect(menu).not.toHaveClass(/harness-menu/);
+  expect(await menu.evaluate(el => getComputedStyle(el).animationName)).toBe("none");
   await expect(menu).toBeFocused();
   const contained = await menu.evaluate((el) => {
     const sheet = el.closest("dialog");
