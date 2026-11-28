@@ -136,6 +136,8 @@ test("a phone puts the real primary agent in Chat settings without narrowing the
   await sheet.getByTestId("agent-picker").click();
   const pane = page.getByRole("dialog", { name: "Primary agent", exact: true });
   await expect(pane).toBeVisible();
+  await expect(pane.locator(".config-pane-note")).toContainText("model and permissions stay separate");
+  await expect(pane.locator(".config-pane-note")).toContainText("OpenCode");
   await expect(pane.locator(".config-pane-note")).toContainText("Harness default");
   await expect(pane.getByRole("option", { selected: true })).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Chat settings" })).toHaveCount(0);
@@ -484,27 +486,33 @@ test("phone role selection applies before closing and keeps errors in the owning
     await pane.getByRole("button", { name: "Back to chat settings" }).click();
     await expect(pane).toBeVisible();
     const snapshot = page.locator(".config-agent-pane.is-returning");
-    await expect.poll(() => snapshot.evaluate(root => root.getAnimations().some(run => run.id === "morph:pane"))).toBe(true);
+    await expect.poll(() => snapshot.evaluate(root => root.getAnimations().some(run => run.id === "morph:pane")), { intervals: [16] }).toBe(true);
+    await expect.poll(() => snapshot.evaluate(root => root.closest("dialog")!.querySelector(".dialog-body")!.getAnimations().some(run => run.id === "morph:pane-size")), { intervals: [16] }).toBe(true);
     const reverse = await snapshot.evaluate(root => {
       const dialog = root.closest("dialog")!;
       const body = dialog.querySelector<HTMLElement>(".dialog-body")!;
       const leave = root.getAnimations().find(a => a.id === "morph:pane");
       const size = body.getAnimations().find(a => a.id === "morph:pane-size");
-      if (!leave || !size) throw new Error("Expected genuine outgoing and sizing movement");
+      if (!leave || !size) throw new Error("Expected the actual outgoing pane and subsequent sizing movement");
+      // Make the paused timeline deterministic before reading its start height.
+      // Unpaused native motion is separately sampled throughout the full sequence.
+      size.pause(); size.currentTime = 0;
       const before = body.getBoundingClientRect().height;
-      for (const run of [leave, size]) { run.pause(); run.currentTime = 40; }
+      size.currentTime = 40;
       const keyframes = (size.effect as KeyframeEffect | null)?.getKeyframes() ?? [];
       const from = Number.parseFloat(String(keyframes[0]?.height));
       const target = Number.parseFloat(String(keyframes[1]?.height));
-      const range = document.createRange(); range.selectNodeContents(root);
-      const text = range.getBoundingClientRect(); const panel = dialog.getBoundingClientRect();
+      const panel = dialog.getBoundingClientRect();
+      const rows = root.querySelectorAll<HTMLElement>("[role=option]");
       return {
-        at: leave.currentTime, fill: leave.effect?.getComputedTiming().fill, opacity: Number(getComputedStyle(root).opacity), clip: getComputedStyle(root).clipPath,
+        at: size.currentTime, outgoingState: leave.playState,
+        fill: leave.effect?.getComputedTiming().fill, opacity: Number(getComputedStyle(root).opacity), clip: getComputedStyle(root).clipPath,
         labels: root.querySelectorAll(".permission-option-name").length,
         selected: root.querySelector("[aria-selected=true] .permission-option-name")?.textContent,
         owner: dialog.getAttribute("aria-label"), disabled: root.querySelector("[role=listbox]")?.getAttribute("aria-disabled"),
-        from, target, before, current: body.getBoundingClientRect().height,
-        roleInside: text.top >= panel.top && text.bottom <= panel.bottom,
+        from, target, before, current: body.getBoundingClientRect().height, sizeFill: size.effect?.getComputedTiming().fill,
+        roleInside: [...rows].every(row => { const r = row.getBoundingClientRect(); return r.top >= panel.top - 0.01 && r.bottom <= panel.bottom + 0.01; }),
+        textInside: [...root.querySelectorAll<HTMLElement>(".permission-option-name,.permission-option-desc")].every(part => { const r = part.getBoundingClientRect(); return r.top >= panel.top - 0.01 && r.bottom <= panel.bottom + 0.01; }),
         futureButtons: root.querySelectorAll("[data-testid=model-picker]").length,
       };
     });
@@ -513,14 +521,18 @@ test("phone role selection applies before closing and keeps errors in the owning
     expect(reverse.at).toBe(40);
     expect(reverse.clip).toBe("none");
     expect(reverse.fill).toBe("forwards");
-    expect(reverse.opacity).toBeCloseTo(0.747196, 5);
+    expect(reverse.opacity).toBeCloseTo(0.72, 5);
+    expect(reverse.outgoingState).toBe("finished");
     expect(reverse.owner).toBe("Primary agent");
     expect(reverse.disabled).toBe("true");
     expect(reverse.roleInside).toBe(true);
+    expect(reverse.textInside).toBe(true);
     expect(reverse.futureButtons).toBe(0);
     expect(Number.isFinite(reverse.from) && Number.isFinite(reverse.target)).toBe(true);
     expect(reverse.target).toBeGreaterThan(reverse.from);
     expect(reverse.current).toBeGreaterThan(reverse.from);
+    expect(reverse.sizeFill).toBe("forwards");
+    expect(Math.abs(reverse.before - reverse.from)).toBeLessThan(0.02);
     expect(reverse.current).toBeLessThan(reverse.target);
     await snapshot.evaluate(async root => {
       const dialog = root.closest("dialog")!;
@@ -530,6 +542,15 @@ test("phone role selection applies before closing and keeps errors in the owning
     });
     await expect(snapshot).toHaveCount(0);
     const settings = page.getByRole("dialog", { name: "Chat settings" });
+    const released = await settings.locator(".dialog-body").evaluate(async body => {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      return {
+        outgoing: body.querySelector(".config-agent-pane"),
+        sizing: body.getAnimations().filter(run => run.id === "morph:pane-size").length,
+        heightOverride: body.style.height,
+      };
+    });
+    expect(released).toEqual({ outgoing: null, sizing: 0, heightOverride: "" });
     await expect(settings.getByTestId("agent-picker")).toBeFocused();
     await expect(page.getByText("Fixture role save failed", { exact: true })).toHaveCount(0);
     await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
@@ -571,6 +592,7 @@ test("model popovers keep their choices, contrast and native lifecycle while ope
   expect(opening.parts.length).toBeGreaterThan(1);
   await pop.evaluate(async el => { await Promise.all(el.getAnimations().map(a => a.finished.catch(() => undefined))); });
   await pop.screenshot({ path: "test-results/model-motion-rest.png" });
+  expect(await pop.evaluate(el => getComputedStyle(el).willChange)).toBe("auto");
   await page.keyboard.press("Escape");
   const closing = await phase(40, true);
   expect(closing.clip).toBe("none");
@@ -593,7 +615,24 @@ test("the desktop handoff names its action and opens the real native choices", a
   await openCodeChat(page);
   const trigger = page.getByRole("button", { name: "Hand off from OpenCode to another harness", exact: true });
   await expect(trigger).toContainText("OpenCode");
-  await expect(trigger.locator(".icon")).toBeVisible();
+  await expect(trigger.locator(".harness-label > svg.icon")).toBeVisible();
+  const geometry = await trigger.locator(".harness-label > svg.icon").evaluate(icon => {
+    const r = icon.getBoundingClientRect();
+    const button = icon.closest("button")!.getBoundingClientRect();
+    const text = icon.parentElement!.querySelector(".harness-row-name")!.getBoundingClientRect();
+    return { inside: r.left >= button.left && r.right <= button.right && r.top >= button.top && r.bottom <= button.bottom,
+      rightOfLabel: r.x >= text.right, position: getComputedStyle(icon).position, strokeColor: getComputedStyle(icon).color };
+  });
+  expect(geometry).toEqual({ inside: true, rightOfLabel: true, position: "static", strokeColor: "rgb(172, 164, 153)" });
+  await expect(trigger.locator(".harness-label > svg.icon path")).toHaveAttribute("d", "M4 6l4 4 4-4");
+  await page.setViewportSize({ width: 720, height: 900 });
+  expect(await trigger.locator(".harness-label > svg.icon").evaluate(icon => {
+    const box = icon.getBoundingClientRect();
+    const button = icon.closest("button")!.getBoundingClientRect();
+    const group = document.querySelector<HTMLElement>(".composer-pill-settings")!.getBoundingClientRect();
+    return { withinChip: box.right <= button.right && box.top >= button.top && box.bottom <= button.bottom,
+      precedesSettings: box.right <= group.left };
+  })).toEqual({ withinChip: true, precedesSettings: true });
   await expect(trigger).toHaveAttribute("title", /fresh native session/);
   const label = trigger.locator(".harness-row-name");
   expect(await label.evaluate(el => ({ position: getComputedStyle(el).position, width: el.getBoundingClientRect().width }))).toEqual({ position: "static", width: expect.closeTo(65.59375, 1) });
@@ -626,6 +665,23 @@ test("the primary role reads as a quieter separate trigger from model and harnes
   expect(layout.name).toContain("OpenCode");
 });
 
+test("a real coarse pointer gives the primary-role dialog a 44px Close", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  try {
+    const page = await context.newPage();
+    await openCodeChat(page);
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    await page.getByTestId("config-chip").click();
+    await page.getByRole("dialog", { name: "Chat settings" }).getByTestId("agent-picker").click();
+    const pane = page.getByRole("dialog", { name: "Primary agent" });
+    await expect(pane).toBeVisible();
+    const close = await pane.getByRole("button", { name: "Close", exact: true }).boundingBox();
+    expect(close?.width).toBe(44);
+    expect(close?.height).toBe(44);
+    await pane.getByRole("option", { name: "Build", exact: true }).click();
+    await expect(page.getByTestId("config-chip")).toContainText("Build");
+  } finally { await context.close(); }
+});
 test("phone handoffs stay disabled while a model configuration applies", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
   try {

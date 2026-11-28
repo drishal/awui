@@ -931,6 +931,7 @@ button.harness-chip:disabled {
 .config-pane-note { margin: -2px 0 12px; color: var(--muted-text); font-size: 12px; line-height: 1.5; }
 .config-pane-note.config-error { color: var(--danger); }
 .config-sheet .config-row .pill-trigger { height: 44px; }
+@media (pointer: coarse) { .config-sheet .dialog-head .icon-btn { width: 44px; height: 44px; } }
 .composer-pickers > .model-picker > .agent-menu,
 .composer-pickers > .model-picker > .effort-pop,
 .composer-pill-settings > .model-picker > .effort-pop,
@@ -960,27 +961,27 @@ button.harness-chip:disabled {
   }
 }
 
-/* Fallback when WAAPI is not available: the same 12px rise/settle as the
+/* Fallback when WAAPI is not available: the same 4px rise/settle as the
  * measured path. Keep the full pane visible, including every word and check;
  * don't use the historical inset wipe or an unrelated corner. */
 @keyframes model-grow {
-  from { opacity: 1; transform: translateY(10px); }
+  from { opacity: 1; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes model-grow-below {
-  from { opacity: 1; transform: translateY(-10px); }
+  from { opacity: 1; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes model-furl {
   from { opacity: 1; transform: translateY(0); }
-  to { opacity: 1; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(4px); }
 }
 
 @keyframes model-furl-below {
   from { opacity: 1; transform: translateY(0); }
-  to { opacity: 1; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(-4px); }
 }
 
 /* A phone's backdrop fades back out while the sheet slides down. */

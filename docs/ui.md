@@ -322,6 +322,8 @@ a literal colour.
   StartScreen's harness chooser keeps its own meaning instead of inheriting handoff semantics.
   `model-morph.ts` (`morphShift` and `usePopupMorph`) gives all these surfaces a
   190 ms rise/settle toward the trigger's facing edge, and a 120 ms return.
+  This travel is deliberately **4px, not a dramatic slide**. Native `will-change: transform`
+  is owned only while that motion runs, then restored after its last queued frame.
   The complete panel, heading, choices and selection check remain laid out at
   full size throughout; the glide does not slice words or scale the text. The
   full size throughout; the glide does not slice words or scale the text. Model
@@ -330,6 +332,10 @@ a literal colour.
   The phone's role sub-pane has the same modest composed entrance within its one
   owning native dialog—not a second sheet. Back leaves the current role root briefly,
   then the shared `Dialog` eases its measured body height to settings and restores focus.
+  The outgoing explanatory note stays unchanged throughout leave and resize.
+  Size holds its last frame until settings replace the pane, so neither text nor height jumps.
+  A layout commit releases that retained size and restores focus. Reduced-motion takes
+  the same settings-render ownership route, without inventing an entrance or leave.
   Only detached harness menus carry the generic `harness-menu` motion style.
   Within the native role pane, `AgentOptions` uses shared option-row styles; a
   detached-menu class would also apply an unwanted second spring/clip. Its

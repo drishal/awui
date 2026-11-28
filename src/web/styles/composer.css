@@ -878,7 +878,14 @@
   border-radius: var(--r-control) 0 0 var(--r-control);
 }
 
-.composer-pill .harness-label { min-width: 0; }
+.composer-pill .harness-label { min-width: 0; display: inline-flex; align-items: center; }
+/* Keep the handoff chevron in local label flow; absolute positioning hid it under
+ * the next settings segment or, at this width, under the lever label itself. */
+.composer-pill .harness-label > svg.icon {
+  position: static;
+  flex: none;
+  margin-left: 4px;
+}
 .composer-pill .harness-row-name {
   overflow: hidden;
   text-overflow: ellipsis;

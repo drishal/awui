@@ -19,7 +19,7 @@ import { PermissionPicker } from "./PermissionPicker.js";
 import { ThinkingPicker } from "./ThinkingPicker.js";
 import { AccountPicker } from "./AccountPicker.js";
 
-function AgentPane({ agents, current, disabled, applying, returning, error, onBack, onSelect }: { agents: NonNullable<ChatState["config"]["agents"]>; current: string | null; disabled: boolean; applying: boolean; returning: boolean; error: string | null; onBack: () => void; onSelect: (id: string) => void }) {
+function AgentPane({ harnessName, agents, current, disabled, applying, returning, error, onBack, onSelect }: { harnessName: string; agents: NonNullable<ChatState["config"]["agents"]>; current: string | null; disabled: boolean; applying: boolean; returning: boolean; error: string | null; onBack: () => void; onSelect: (id: string) => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -40,7 +40,7 @@ function AgentPane({ agents, current, disabled, applying, returning, error, onBa
   return (
     <div className={`config-agent-pane${returning ? " is-returning" : ""}`} ref={rootRef} onKeyDown={onKey}>
       <button type="button" className="btn btn-ghost config-back" disabled={applying || returning} title={applying ? "Close when saving finishes" : "Back to chat settings"} onClick={onBack}><IconArrowLeft size={14} />Back to chat settings</button>
-      <p className={`config-pane-note${error ? " config-error" : ""}`} aria-live="polite" aria-busy={applying}>{error ?? (applying ? "Saving…" : current === null ? "Harness default. Arrow keys navigate; Enter chooses a role." : "Choose the role for this conversation.")}</p>
+      <p className={`config-pane-note${error ? " config-error" : ""}`} aria-live="polite" aria-busy={applying}>{error ?? (applying ? "Saving…" : `${current === null ? "Harness default. " : ""}Role changes how ${harnessName} approaches the prompt; model and permissions stay separate. Tap a role, or use Arrow keys and Enter.`)}</p>
       <AgentOptions agents={agents} current={current} onBack={onBack} pane disabled={disabled || returning} onSelect={onSelect} />
     </div>
   );
@@ -67,6 +67,20 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
   const ownerRef = useRef<HTMLDialogElement>(null);
   // The role pane can hide Dialog's own previous focus target. The composer chip is the outside owner.
   const returnFocus = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const resized = useRef<Animation | null>(null);
+  const restoreRoleFocus = useRef(false);
+  useLayoutEffect(() => {
+    // Reduced-motion Back skips the outgoing phase. It has the same focus target,
+    // so depend on actual settings replacing the role pane, not returning flags.
+    if (!choosing && restoreRoleFocus.current) {
+      restoreRoleFocus.current = false;
+      const picker = primaryRow.current?.querySelector<HTMLButtonElement>("[data-testid=agent-picker]");
+      if (picker && !picker.disabled) picker.focus();
+      resized.current?.cancel();
+      resized.current = null;
+      ownerRef.current?.querySelector<HTMLElement>(".dialog-body")?.style.removeProperty("height");
+    }
+  }, [choosing, returning]);
   const settingsHeight = useRef<number | null>(null);
   const [applying, setApplying] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -96,7 +110,7 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
     const target = settingsHeight.current;
     if (!root || !dialog || !body) return;
     transitioning.current = true;
-    setConfigError(null);
+    restoreRoleFocus.current = true;
     setReturning(true);
     if (!motionOff() && typeof root.animate === "function" && typeof body.animate === "function") {
       // Earlier entrance takes precedence. Repeated Escape/click cannot start another outgoing call.
@@ -104,25 +118,32 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
       if (entry) await entry.finished.catch(() => undefined);
       if (root.isConnected) {
         const current = body.getBoundingClientRect().height;
-        const size = target !== null && target !== current ? body.animate(
-          [{ height: `${current}px` }, { height: `${target}px` }],
-          { id: "morph:pane-size", duration: POPUP_LEAVE_MS, easing: "cubic-bezier(.65,0,.35,1)" },
-        ) : null;
         const leave = root.animate(
-          [{ opacity: 1, transform: "translateY(0)" }, { opacity: 0.72, transform: "translateY(8px)" }],
+          [{ opacity: 1, transform: "translateY(0)" }, { opacity: 0.72, transform: "translateY(-8px)" }],
           { id: "morph:pane", duration: POPUP_LEAVE_MS, easing: getComputedStyle(root).getPropertyValue("--ease-out").trim() || "ease-out", fill: "forwards" },
         );
-        // Settings must not arrive early and overflow the currently shorter sheet.
-        const settled = await Promise.all([size?.finished, leave.finished]).then(() => true, () => false);
-        if (!settled || !root.isConnected) return;
+        // Exit toward Back. Pushing the bottom choice down would clip it through
+        // the sheet before its container had finished moving into its next size.
+        const left = await leave.finished.then(() => true, () => false);
+        if (!left || !root.isConnected) return;
+        if (target !== null && target !== current) {
+          resized.current = body.animate(
+            [{ height: `${current}px` }, { height: `${target}px` }],
+            { id: "morph:pane-size", duration: POPUP_LEAVE_MS, easing: "cubic-bezier(.65,0,.35,1)", fill: "forwards" },
+          );
+          const sized = await resized.current.finished.then(() => true, () => false);
+          if (!sized) return;
+          // Preserve this completed size until settings commits; cancellation and
+          // native focus then belong to that same replacement, not a newer RAF.
+        }
+        // Settings mount only after the outgoing pane has left and its native body fits.
       }
     }
     transitioning.current = false;
     setReturning(false);
+    setConfigError(null);
     setChoosing(false);
-    // Leave no shape override behind: settings' actual content automatically owns its height again.
-    body.style.removeProperty("height");
-    window.requestAnimationFrame(() => primaryRow.current?.querySelector<HTMLButtonElement>("[data-testid=agent-picker]")?.focus());
+    // The returning effect releases ownership after these replacements commit.
   };
   const openAgent = () => {
     if (applying || returning) return;
@@ -133,7 +154,7 @@ export function ConfigSheet({ chat, harnesses, onConfig, onHandoff, onRefreshMod
   return (
     <Dialog title={choosing ? "Primary agent" : "Chat settings"} onClose={onClose} closeLocked={applying} ownerRef={ownerRef} returnFocus={returnFocus} className="config-sheet">
       {agents && choosing ? (
-        <AgentPane agents={agents} current={config.agent ?? null} disabled={!idle || applying} applying={applying} returning={returning} error={configError} onBack={back} onSelect={(agent) => pick({ agent })} />
+        <AgentPane harnessName={harnesses.find(h => h.id === chat.harnessId)?.displayName ?? chat.harnessId} agents={agents} current={config.agent ?? null} disabled={!idle || applying} applying={applying} returning={returning} error={configError} onBack={back} onSelect={(agent) => pick({ agent })} />
       ) : (
         <>
           {agents ? (
